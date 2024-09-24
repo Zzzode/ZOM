@@ -36,14 +36,14 @@ template <typename T>
 inline constexpr bool _zc_internal_isPolymorphic(T*) {
   // If you get a compiler error here complaining that T is incomplete, it's
   // because you are trying to use zc::Own<T> with a type that has only been
-  // forward-declared. Since KJ doesn't know if the type might be involved in
+  // forward-declared. Since ZC doesn't know if the type might be involved in
   // inheritance (especially multiple inheritance), it doesn't know how to
   // correctly call the disposer to destroy the type, since the object's true
   // memory address may differ from the address used to point to a superclass.
   //
   // However, if you know for sure that T is NOT polymorphic (i.e. it doesn't
   // have a vtable and isn't involved in inheritance), then you can use
-  // ZC_DECLARE_NON_POLYMORPHIC(T) to declare this to KJ without actually
+  // ZC_DECLARE_NON_POLYMORPHIC(T) to declare this to ZC without actually
   // completing the type. Place this macro invocation either in the global
   // scope, or in the same namespace as T is defined.
   return __is_polymorphic(T);
@@ -68,15 +68,15 @@ namespace _ {  // private
 
 template <typename T>
 struct RefOrVoid_ {
-  typedef T& Type;
+  using Type = T&;
 };
 template <>
 struct RefOrVoid_<void> {
-  typedef void Type;
+  using Type = void;
 };
 template <>
 struct RefOrVoid_<const void> {
-  typedef void Type;
+  using Type = void;
 };
 
 template <typename T>
@@ -579,9 +579,6 @@ class Maybe<Own<T, D>> {
   template <typename U>
   inline Maybe(Own<U, D>&& other) : ptr(mv(other)) {}
 
-  ZC_DEPRECATE_EMPTY_MAYBE_FROM_NULLPTR_ATTR
-  inline Maybe(decltype(nullptr)) noexcept : ptr(nullptr) {}
-
   inline Maybe(zc::None) noexcept : ptr(nullptr) {}
 
   inline Own<T, D>& emplace(Own<T, D> value) {
@@ -610,9 +607,6 @@ class Maybe<Own<T, D>> {
     ptr = zc::mv(other.ptr);
     return *this;
   }
-
-  ZC_DEPRECATE_EMPTY_MAYBE_FROM_NULLPTR_ATTR
-  inline bool operator==(decltype(nullptr)) const { return ptr == nullptr; }
 
   inline bool operator==(zc::None) const { return ptr == nullptr; }
 
@@ -752,7 +746,7 @@ Own<Decay<T>> heap(T&& orig) {
   // The purpose of this overload is to allow you to omit the template parameter
   // as there is only one argument and the purpose is to copy it.
 
-  typedef Decay<T> T2;
+  using T2 = Decay<T>;
   return Own<T2>(new T2(zc::fwd<T>(orig)), _::HeapDisposer<T2>::instance);
 }
 

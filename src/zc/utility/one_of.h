@@ -37,78 +37,10 @@
 #define ZC_UTILITY_ONE_OF_
 
 #include <algorithm>
-#include <cstdint>
 
 #include "src/zc/base/common.h"
 
 namespace zc {
-
-template <typename T>
-struct Decay_ {
-  using Type = T;
-};
-template <typename T>
-struct Decay_<T &> {
-  using Type = typename Decay_<T>::Type;
-};
-template <typename T>
-struct Decay_<T &&> {
-  using Type = typename Decay_<T>::Type;
-};
-template <typename T>
-struct Decay_<T[]> {
-  using Type = typename Decay_<T *>::Type;
-};
-template <typename T>
-struct Decay_<const T[]> {
-  using Type = typename Decay_<const T *>::Type;
-};
-template <typename T, size_t s>
-struct Decay_<T[s]> {
-  using Type = typename Decay_<T *>::Type;
-};
-template <typename T, size_t s>
-struct Decay_<const T[s]> {
-  using Type = typename Decay_<const T *>::Type;
-};
-template <typename T>
-struct Decay_<const T> {
-  using Type = typename Decay_<T>::Type;
-};
-template <typename T>
-struct Decay_<volatile T> {
-  using Type = typename Decay_<T>::Type;
-};
-template <typename T>
-using Decay = typename Decay_<T>::Type;
-
-namespace _ {
-
-struct PlacementNew {};
-
-}  // namespace _
-}  // namespace zc
-
-inline void *operator new(size_t, zc::_::PlacementNew, void *_p) noexcept {
-  return _p;
-}
-
-inline void operator delete(void *, zc::_::PlacementNew, void *_p) noexcept {}
-
-namespace zc {
-
-// use placement new with stack allocated memory, so we do not need to malloc
-// and free, thus we override new and delete operator
-template <typename T, typename... Params>
-inline void ctor(T &location, Params &&...params) {
-  new (_::PlacementNew(), &location) T(zc::fwd<Params>(params)...);
-}
-
-template <typename T>
-inline void dtor(T &location) {
-  location.~T();
-}
-
 namespace _ {
 
 template <uint32_t i, template <uint32_t> class Fail, typename Key,
@@ -143,7 +75,7 @@ struct OneOfFailZero_ {
 
 template <uint32_t i>
 struct SuccessIfNotZero {
-  typedef int Success;
+  using Success = int;
 };
 
 template <>
@@ -210,47 +142,47 @@ template <uint32_t i>
 struct Variants_;
 template <>
 struct Variants_<0> {
-  typedef Variants0 Type;
+  using Type = Variants0;
 };
 template <>
 struct Variants_<1> {
-  typedef Variants1 Type;
+  using Type = Variants1;
 };
 template <>
 struct Variants_<2> {
-  typedef Variants2 Type;
+  using Type = Variants2;
 };
 template <>
 struct Variants_<3> {
-  typedef Variants3 Type;
+  using Type = Variants3;
 };
 template <>
 struct Variants_<4> {
-  typedef Variants4 Type;
+  using Type = Variants4;
 };
 template <>
 struct Variants_<5> {
-  typedef Variants5 Type;
+  using Type = Variants5;
 };
 template <>
 struct Variants_<6> {
-  typedef Variants6 Type;
+  using Type = Variants6;
 };
 template <>
 struct Variants_<7> {
-  typedef Variants7 Type;
+  using Type = Variants7;
 };
 template <>
 struct Variants_<8> {
-  typedef Variants8 Type;
+  using Type = Variants8;
 };
 template <>
 struct Variants_<9> {
-  typedef Variants9 Type;
+  using Type = Variants9;
 };
 template <>
 struct Variants_<10> {
-  typedef Variants10 Type;
+  using Type = Variants10;
 };
 
 template <uint32_t i>

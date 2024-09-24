@@ -36,8 +36,7 @@
 #ifndef ZC_CONTAINERS_ARRAY_H_
 #define ZC_CONTAINERS_ARRAY_H_
 
-#include <string.h>
-
+#include <cstring>
 #include <initializer_list>
 
 #include "src/zc/memory/memory.h"
@@ -274,7 +273,9 @@ class Array {
     return result;
   }
 
-  inline bool operator==(decltype(nullptr)) const { return size_ == 0; }
+  inline constexpr bool operator==(decltype(nullptr)) const {
+    return size_ == 0;
+  }
 
   inline Array& operator=(decltype(nullptr)) {
     dispose();
@@ -662,7 +663,7 @@ class CappedArray {
   // TODO(someday):  Don't construct elements past currentSize?
 
  public:
-  inline ZC_CONSTEXPR() CappedArray() : currentSize(fixedSize) {}
+  inline ZC_CONSTEXPR CappedArray() : currentSize(fixedSize) {}
   inline explicit constexpr CappedArray(size_t s) : currentSize(s) {}
 
   inline size_t size() const { return currentSize; }
@@ -724,7 +725,7 @@ struct Mapper {
     }
     return builder.finish();
   }
-  typedef decltype(*zc::instance<T>().begin()) Element;
+  using Element = decltype(*zc::instance<T>().begin());
 };
 
 template <typename T, size_t s>
@@ -739,7 +740,7 @@ struct Mapper<T (&)[s]> {
     }
     return builder.finish();
   }
-  typedef decltype(*array)& Element;
+  using Element = decltype(*array)&;
 };
 
 }  // namespace _

@@ -124,7 +124,7 @@ class StringPtr {
                    const char8_t* end ZC_LIFETIMEBOUND)
       : StringPtr(reinterpret_cast<const char*>(begin),
                   reinterpret_cast<const char*>(end)) {}
-  // KJ strings are and always have been UTF-8, so screw this C++20 char8_t
+  // zc strings are and always have been UTF-8, so screw this C++20 char8_t
   // stuff.
 #endif
 
@@ -819,7 +819,8 @@ struct Stringifier {
   }
 #endif
 };
-static ZC_CONSTEXPR(const) Stringifier STR = Stringifier();
+
+static ZC_CONSTEXPR Stringifier STR = Stringifier();
 
 }  // namespace _
 
@@ -896,7 +897,7 @@ StringPtr strPreallocated(ArrayPtr<char> buffer, Params&&... params) {
   //
   // This is useful for optimization. It can also potentially be used safely in
   // async signal handlers. HOWEVER, to use in an async signal handler, all of
-  // the stringifiers for the inputs must also be signal-safe. KJ guarantees
+  // the stringifiers for the inputs must also be signal-safe. zc guarantees
   // signal safety when stringifying any built-in integer type (but NOT
   // floating-points), basic char/byte sequences (ArrayPtr<byte>, String, etc.),
   // as well as Array<T> as long as T can also be stringified safely. To safely
@@ -1150,7 +1151,7 @@ class Delimited {
   }
 
  private:
-  typedef decltype(toCharSequence(*instance<T>().begin())) StringifiedItem;
+  using StringifiedItem = decltype(toCharSequence(*instance<T>().begin()));
   T array;
   zc::StringPtr delimiter;
   Array<StringifiedItem> stringified;

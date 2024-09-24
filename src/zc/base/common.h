@@ -118,6 +118,8 @@
 #endif
 
 #include <cstddef>
+#include <cstring>
+#include <initializer_list>
 
 namespace zc {
 
@@ -138,14 +140,8 @@ using uint32_t = uint;
 //   how to use those macros (or any others) to distinguish between the compiler
 //   supporting feature detection and the feature being disabled vs the compiler
 //   not supporting feature detection at all.
-#if defined(__has_feature)
-#if !defined(ZC_NO_RTTI) && !__has_feature(cxx_rtti)
-#define ZC_NO_RTTI 1
-#endif
-#if !__has_feature(cxx_exceptions)
-#error "ZC requires C++ exceptions, please enable them"
-#endif
-#elif defined(__GNUC__)
+
+#if defined(__GNUC__)
 #if !defined(ZC_NO_RTTI) && !__GXX_RTTI
 #define ZC_NO_RTTI 1
 #endif
@@ -224,7 +220,6 @@ using uint32_t = uint;
 #define ZC_COLD [[gnu::cold]]
 #define ZC_PACKED [[gnu::packed]]
 #define ZC_UNROLL_LOOPS __attribute__((optimize("unroll-loops")))
-#define ZC_ASSUME(cond) __builtin_assume(cond)
 #elif defined(ZC_GCC)
 #define ZC_ALWAYS_INLINE [[gnu::always_inline]] inline
 #define ZC_NOINLINE [[gnu::noinline]]
@@ -232,12 +227,6 @@ using uint32_t = uint;
 #define ZC_COLD [[gnu::cold]]
 #define ZC_PACKED [[gnu::packed]]
 #define ZC_UNROLL_LOOPS __attribute__((optimize("unroll-loops")))
-#define ZC_ASSUME(cond)          \
-  do {                           \
-    if (!cond) ZC_UNLIKELY {     \
-        __builtin_unreachable(); \
-      }                          \
-  } while (false)
 #elif defined(ZC_MSVC)
 #define ZC_ALWAYS_INLINE __forceinline
 #define ZC_NOINLINE __declspec(noinline)
@@ -245,7 +234,6 @@ using uint32_t = uint;
 #define ZC_COLD ZC_NOP
 #define ZC_PACKED ZC_NOP
 #define ZC_UNROLL_LOOPS ZC_NOP
-#define ZC_ASSUME(cond) __assume(cond)
 #else
 #define ZC_ALWAYS_INLINE ZC_NOP
 #define ZC_NOINLINE ZC_NOP
@@ -355,9 +343,10 @@ using uint32_t = uint;
 #if defined(_MSC_VER) && !__clang__
 #define ZC_UNUSED
 #define ZC_WARN_UNUSED_RESULT
-// TODO(msvc): ZC_WARN_UNUSED_RESULT can use _Check_return_ on MSVC, but it's a prefix, so
-//   wrapping the whole prototype is needed. http://msdn.microsoft.com/en-us/library/jj159529.aspx
-//   Similarly, ZC_UNUSED could use __pragma(warning(suppress:...)), but again that's a prefix.
+// TODO(msvc): ZC_WARN_UNUSED_RESULT can use _Check_return_ on MSVC, but it's a
+//   prefix, so wrapping the whole prototype is needed.
+//   http://msdn.microsoft.com/en-us/library/jj159529.aspx Similarly, ZC_UNUSED
+//   could use __pragma(warning(suppress:...)), but again that's a prefix.
 #else
 #define ZC_UNUSED __attribute__((unused))
 #define ZC_WARN_UNUSED_RESULT __attribute__((warn_unused_result))
@@ -390,11 +379,40 @@ using uint32_t = uint;
 // allowing a syntax like `[[clang::lifetimebound(*this)]]`.
 // https://clang.llvm.org/docs/AttributeReference.html#lifetimebound
 
+// #define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)
+//
+// Allocate an array, preferably on the stack, unless it is too big.  On GCC
+// this will use variable-sized arrays.  For other compilers we could just use a
+// fixed-size array.  `minStack` is the stack array size to use if
+// variable-width arrays are not supported.  `maxStack` is the maximum stack
+// array size if variable-width arrays *are* supported.
+#if __GNUC__ && !__clang__
+#define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)         \
+  size_t name##_size = (size);                                       \
+  bool name##_isOnStack = name##_size <= (maxStack);                 \
+  type name##_stack[zc::max(1, name##_isOnStack ? name##_size : 0)]; \
+  ::zc::Array<type> name##_heap =                                    \
+      name##_isOnStack ? nullptr : zc::heapArray<type>(name##_size); \
+  ::zc::ArrayPtr<type> name =                                        \
+      name##_isOnStack ? zc::arrayPtr(name##_stack, name##_size) : name##_heap
+#else
+#define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)         \
+  size_t name##_size = (size);                                       \
+  bool name##_isOnStack = name##_size <= (minStack);                 \
+  type name##_stack[minStack];                                       \
+  ::zc::Array<type> name##_heap =                                    \
+      name##_isOnStack ? nullptr : zc::heapArray<type>(name##_size); \
+  ::zc::ArrayPtr<type> name =                                        \
+      name##_isOnStack ? zc::arrayPtr(name##_stack, name##_size) : name##_heap
+#endif
+
 #define ZC_CONCAT_(x, y) x##y
 #define ZC_CONCAT(x, y) ZC_CONCAT_(x, y)
 #define ZC_UNIQUE_NAME(prefix) ZC_CONCAT(prefix, __LINE__)
 // Create a unique identifier name.  We use concatenate __LINE__ rather than
 // __COUNTER__ so that the name can be used multiple times in the same macro.
+
+#define ZC_CONSTEXPR constexpr
 
 namespace _ {
 
@@ -465,6 +483,15 @@ ZC_NORETURN void unreachable();
 // =======================================================================================
 // Template meta programming helpers.
 
+#define ZC_HAS_TRIVIAL_CONSTRUCTOR __is_trivially_constructible
+#if __GNUC__ && !__clang__
+#define ZC_HAS_NOTHROW_CONSTRUCTOR __has_nothrow_constructor
+#define ZC_HAS_TRIVIAL_DESTRUCTOR __has_trivial_destructor
+#else
+#define ZC_HAS_NOTHROW_CONSTRUCTOR __is_nothrow_constructible
+#define ZC_HAS_TRIVIAL_DESTRUCTOR __is_trivially_destructible
+#endif
+
 template <typename T>
 struct NoInfer_ {
   using Type = T;
@@ -476,50 +503,50 @@ using NoInfer = typename NoInfer_<T>::Type;
 
 template <typename T>
 struct RemoveConst_ {
-  typedef T Type;
+  using Type = T;
 };
 template <typename T>
 struct RemoveConst_<const T> {
-  typedef T Type;
+  using Type = T;
 };
 template <typename T>
 using RemoveConst = typename RemoveConst_<T>::Type;
 
 template <typename T>
 struct Decay_ {
-  typedef T Type;
+  using Type = T;
 };
 template <typename T>
 struct Decay_<T&> {
-  typedef typename Decay_<T>::Type Type;
+  using Type = typename Decay_<T>::Type;
 };
 template <typename T>
 struct Decay_<T&&> {
-  typedef typename Decay_<T>::Type Type;
+  using Type = typename Decay_<T>::Type;
 };
 template <typename T>
 struct Decay_<T[]> {
-  typedef typename Decay_<T*>::Type Type;
+  using Type = typename Decay_<T*>::Type;
 };
 template <typename T>
 struct Decay_<const T[]> {
-  typedef typename Decay_<const T*>::Type Type;
+  using Type = typename Decay_<const T*>::Type;
 };
 template <typename T, size_t s>
 struct Decay_<T[s]> {
-  typedef typename Decay_<T*>::Type Type;
+  using Type = typename Decay_<T*>::Type;
 };
 template <typename T, size_t s>
 struct Decay_<const T[s]> {
-  typedef typename Decay_<const T*>::Type Type;
+  using Type = typename Decay_<const T*>::Type;
 };
 template <typename T>
 struct Decay_<const T> {
-  typedef typename Decay_<T>::Type Type;
+  using Type = typename Decay_<T>::Type;
 };
 template <typename T>
 struct Decay_<volatile T> {
-  typedef typename Decay_<T>::Type Type;
+  using Type = typename Decay_<T>::Type;
 };
 template <typename T>
 using Decay = typename Decay_<T>::Type;
@@ -528,7 +555,7 @@ template <bool b>
 struct EnableIf_;
 template <>
 struct EnableIf_<true> {
-  typedef void Type;
+  using Type = void;
 };
 template <bool b>
 using EnableIf = typename EnableIf_<b>::Type;
@@ -540,6 +567,44 @@ template <typename T>
 T instance() noexcept;
 // Like std::declval, but doesn't transform T into an rvalue reference.  If you
 // want that, specify instance<T&&>().
+
+struct DisallowConstCopy {
+  // Inherit from this, or declare a member variable of this type, to prevent
+  // the class from being copyable from a const reference -- instead, it will
+  // only be copyable from non-const references. This is useful for enforcing
+  // transitive constness of contained pointers.
+  //
+  // For example, say you have a type T which contains a pointer.  T has
+  // non-const methods which modify the value at that pointer, but T's const
+  // methods are designed to allow reading only. Unfortunately, if T has a
+  // regular copy constructor, someone can simply make a copy of T and then use
+  // it to modify the pointed-to value.  However, if T inherits
+  // DisallowConstCopy, then callers will only be able to copy non-const
+  // instances of T.  Ideally, there is some parallel type ImmutableT which is
+  // like a version of T that only has const methods, and can be copied from a
+  // const T.
+  //
+  // Note that due to C++ rules about implicit copy constructors and assignment
+  // operators, any type that contains or inherits from a type that disallows
+  // const copies will also automatically disallow const copies.  Hey, cool,
+  // that's exactly what we want.
+
+  DisallowConstCopy() = default;
+  DisallowConstCopy(DisallowConstCopy&) = default;
+  DisallowConstCopy(DisallowConstCopy&&) = default;
+  DisallowConstCopy& operator=(DisallowConstCopy&) = default;
+  DisallowConstCopy& operator=(DisallowConstCopy&&) = default;
+};
+
+template <typename T>
+struct DisallowConstCopyIfNotConst : public DisallowConstCopy {
+  // Inherit from this when implementing a template that contains a pointer to T
+  // and which should enforce transitive constness.  If T is a const type, this
+  // has no effect.  Otherwise, it is an alias for DisallowConstCopy.
+};
+
+template <typename T>
+struct DisallowConstCopyIfNotConst<const T> {};
 
 template <typename T>
 struct IsConst_ {
@@ -556,7 +621,7 @@ constexpr bool isConst() {
 
 template <typename T>
 struct EnableIfNotConst_ {
-  typedef T Type;
+  using Type = T;
 };
 template <typename T>
 struct EnableIfNotConst_<const T>;
@@ -569,7 +634,7 @@ struct RemoveConstOrDisable_ {
 };
 template <typename T>
 struct RemoveConstOrDisable_<const T> {
-  typedef T Type;
+  using Type = T;
 };
 template <typename T>
 using RemoveConstOrDisable = typename RemoveConstOrDisable_<T>::Type;
@@ -598,6 +663,125 @@ struct PropagateConst_<const From, To> {
 template <typename From, typename To>
 using PropagateConst = typename PropagateConst_<From, To>::Type;
 
+namespace _ {  // private
+
+template <typename T>
+T refIfLvalue(T&&);
+
+}  // namespace _
+
+#define ZC_DECLTYPE_REF(exp) decltype(::zc::_::refIfLvalue(exp))
+// Like decltype(exp), but if exp is an lvalue, produces a reference type.
+//
+//     int i;
+//     decltype(i) i1(i);                         // i1 has type int.
+//     ZC_DECLTYPE_REF(i + 1) i2(i + 1);          // i2 has type int.
+//     ZC_DECLTYPE_REF(i) i3(i);                  // i3 has type int&.
+//     ZC_DECLTYPE_REF(zc::mv(i)) i4(zc::mv(i));  // i4 has type int.
+
+template <typename T, typename U>
+struct IsSameType_ {
+  static constexpr bool value = false;
+};
+template <typename T>
+struct IsSameType_<T, T> {
+  static constexpr bool value = true;
+};
+template <typename T, typename U>
+constexpr bool isSameType() {
+  return IsSameType_<T, U>::value;
+}
+
+template <typename T>
+constexpr bool isIntegral() {
+  return false;
+}
+template <>
+constexpr bool isIntegral<char>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<signed char>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<short>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<int>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<long>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<long long>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<unsigned char>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<unsigned short>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<unsigned int>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<unsigned long>() {
+  return true;
+}
+template <>
+constexpr bool isIntegral<unsigned long long>() {
+  return true;
+}
+
+template <typename T>
+struct CanConvert_ {
+  static int sfinae(T);
+  static char sfinae(...);
+};
+
+template <typename T, typename U>
+constexpr bool canConvert() {
+  return sizeof(CanConvert_<U>::sfinae(instance<T>())) == sizeof(int);
+}
+
+#if __GNUC__ && !__clang__ && __GNUC__ < 5
+template <typename T>
+constexpr bool canMemcpy() {
+  // Returns true if T can be copied using memcpy instead of using the copy
+  // constructor or assignment operator.
+
+  // GCC 4 does not have __is_trivially_constructible and friends, and there
+  // doesn't seem to be any reliable alternative. __has_trivial_copy() and
+  // __has_trivial_assign() return the right thing at one point but later on
+  // they changed such that a deleted copy constructor was considered "trivial"
+  // (apparently technically correct, though useless). So, on GCC 4 we give up
+  // and assume we can't memcpy() at all, and must explicitly copy-construct
+  // everything.
+  return false;
+}
+#define ZC_ASSERT_CAN_MEMCPY(T)
+#else
+template <typename T>
+constexpr bool canMemcpy() {
+  // Returns true if T can be copied using memcpy instead of using the copy
+  // constructor or assignment operator.
+
+  return __is_trivially_constructible(T, const T&) &&
+         __is_trivially_assignable(T, const T&);
+}
+#define ZC_ASSERT_CAN_MEMCPY(T)     \
+  static_assert(zc::canMemcpy<T>(), \
+                "this code expects this type to be memcpy()-able");
+#endif
+
 // =======================================================================================
 // Equivalents to std::move() and std::forward(), since these are very commonly
 // needed and the std header <utility> pulls in lots of other stuff.
@@ -625,6 +809,372 @@ constexpr T cp(const T& t) noexcept {
 }
 // Useful to force a copy, particularly to pass into a function that expects
 // T&&.
+
+template <typename T, typename U, bool takeT, bool uOK = true>
+struct ChooseType_;
+template <typename T, typename U>
+struct ChooseType_<T, U, true, true> {
+  using Type = T;
+};
+template <typename T, typename U>
+struct ChooseType_<T, U, true, false> {
+  using Type = T;
+};
+template <typename T, typename U>
+struct ChooseType_<T, U, false, true> {
+  using Type = U;
+};
+
+template <typename T, typename U>
+using WiderType = typename ChooseType_<T, U, sizeof(T) >= sizeof(U)>::Type;
+
+template <typename T, typename U>
+inline constexpr auto min(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
+  return a < b ? WiderType<Decay<T>, Decay<U>>(a)
+               : WiderType<Decay<T>, Decay<U>>(b);
+}
+
+template <typename T, typename U>
+inline constexpr auto max(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
+  return a > b ? WiderType<Decay<T>, Decay<U>>(a)
+               : WiderType<Decay<T>, Decay<U>>(b);
+}
+
+template <typename T, size_t s>
+inline constexpr size_t size(T (&arr)[s]) {
+  return s;
+}
+template <typename T>
+inline constexpr size_t size(T&& arr) {
+  return arr.size();
+}
+// Returns the size of the parameter, whether the parameter is a regular C array
+// or a container with a `.size()` method.
+
+class MaxValue_ {
+ private:
+  template <typename T>
+  inline constexpr T maxSigned() const {
+    return (1ull << (sizeof(T) * 8 - 1)) - 1;
+  }
+  template <typename T>
+  inline constexpr T maxUnsigned() const {
+    return ~static_cast<T>(0u);
+  }
+
+ public:
+#define ZC_HANDLE_TYPE(T)                        \
+  inline constexpr operator signed T() const {   \
+    return MaxValue_::maxSigned<signed T>();     \
+  }                                              \
+  inline constexpr operator unsigned T() const { \
+    return MaxValue_::maxUnsigned<unsigned T>(); \
+  }
+  ZC_HANDLE_TYPE(char)
+  ZC_HANDLE_TYPE(short)
+  ZC_HANDLE_TYPE(int)
+  ZC_HANDLE_TYPE(long)
+  ZC_HANDLE_TYPE(long long)
+#undef ZC_HANDLE_TYPE
+
+  inline constexpr operator char() const {
+    // `char` is different from both `signed char` and `unsigned char`, and may
+    // be signed or unsigned on different platforms.  Ugh.
+    return char(-1) < 0 ? MaxValue_::maxSigned<char>()
+                        : MaxValue_::maxUnsigned<char>();
+  }
+};
+
+class MinValue_ {
+ private:
+  template <typename T>
+  inline constexpr T minSigned() const {
+    return 1ull << (sizeof(T) * 8 - 1);
+  }
+  template <typename T>
+  inline constexpr T minUnsigned() const {
+    return 0u;
+  }
+
+ public:
+#define ZC_HANDLE_TYPE(T)                        \
+  inline constexpr operator signed T() const {   \
+    return MinValue_::minSigned<signed T>();     \
+  }                                              \
+  inline constexpr operator unsigned T() const { \
+    return MinValue_::minUnsigned<unsigned T>(); \
+  }
+  ZC_HANDLE_TYPE(char)
+  ZC_HANDLE_TYPE(short)
+  ZC_HANDLE_TYPE(int)
+  ZC_HANDLE_TYPE(long)
+  ZC_HANDLE_TYPE(long long)
+#undef ZC_HANDLE_TYPE
+
+  inline constexpr operator char() const {
+    // `char` is different from both `signed char` and `unsigned char`, and may
+    // be signed or unsigned on different platforms.  Ugh.
+    return char(-1) < 0 ? MinValue_::minSigned<char>()
+                        : MinValue_::minUnsigned<char>();
+  }
+};
+
+static ZC_CONSTEXPR MaxValue_ maxValue = MaxValue_();
+// A special constant which, when cast to an integer type, takes on the maximum
+// possible value of that type.  This is useful to use as e.g. a parameter to a
+// function because it will be robust in the face of changes to the parameter's
+// type.
+
+static ZC_CONSTEXPR MinValue_ minValue = MinValue_();
+// A special constant which, when cast to an integer type, takes on the minimum
+// possible value of that type.  This is useful to use as e.g. a parameter to a
+// function because it will be robust in the face of changes to the parameter's
+// type.
+
+template <typename T>
+inline bool operator==(T t, MaxValue_) {
+  return t == Decay<T>(maxValue);
+}
+template <typename T>
+inline bool operator==(T t, MinValue_) {
+  return t == Decay<T>(minValue);
+}
+
+template <uint bits>
+inline constexpr unsigned long long maxValueForBits() {
+  // Get the maximum integer representable in the given number of bits.
+
+  // 1ull << 64 is unfortunately undefined.
+  return (bits == 64 ? 0 : (1ull << bits)) - 1;
+}
+
+// =======================================================================================
+// Useful fake containers
+
+template <typename T>
+class Range {
+ public:
+  inline constexpr Range(const T& begin, const T& end)
+      : begin_(begin), end_(end) {}
+  inline explicit constexpr Range(const T& end) : begin_(0), end_(end) {}
+
+  class Iterator {
+   public:
+    Iterator() = default;
+    inline Iterator(const T& value) : value(value) {}
+
+    inline const T& operator*() const { return value; }
+    inline const T& operator[](size_t index) const { return value + index; }
+    inline Iterator& operator++() {
+      ++value;
+      return *this;
+    }
+    inline Iterator operator++(int) { return Iterator(value++); }
+    inline Iterator& operator--() {
+      --value;
+      return *this;
+    }
+    inline Iterator operator--(int) { return Iterator(value--); }
+    inline Iterator& operator+=(ptrdiff_t amount) {
+      value += amount;
+      return *this;
+    }
+    inline Iterator& operator-=(ptrdiff_t amount) {
+      value -= amount;
+      return *this;
+    }
+    inline Iterator operator+(ptrdiff_t amount) const {
+      return Iterator(value + amount);
+    }
+    inline Iterator operator-(ptrdiff_t amount) const {
+      return Iterator(value - amount);
+    }
+    inline ptrdiff_t operator-(const Iterator& other) const {
+      return value - other.value;
+    }
+
+    inline bool operator==(const Iterator& other) const {
+      return value == other.value;
+    }
+    inline bool operator<=(const Iterator& other) const {
+      return value <= other.value;
+    }
+    inline bool operator>=(const Iterator& other) const {
+      return value >= other.value;
+    }
+    inline bool operator<(const Iterator& other) const {
+      return value < other.value;
+    }
+    inline bool operator>(const Iterator& other) const {
+      return value > other.value;
+    }
+
+   private:
+    T value;
+  };
+
+  inline Iterator begin() const { return Iterator(begin_); }
+  inline Iterator end() const { return Iterator(end_); }
+
+  inline auto size() const -> decltype(instance<T>() - instance<T>()) {
+    return end_ - begin_;
+  }
+
+ private:
+  T begin_;
+  T end_;
+};
+
+template <typename T, typename U>
+inline constexpr Range<WiderType<Decay<T>, Decay<U>>> range(T begin, U end) {
+  return Range<WiderType<Decay<T>, Decay<U>>>(begin, end);
+}
+
+template <typename T>
+inline constexpr Range<Decay<T>> range(T begin, T end) {
+  return Range<Decay<T>>(begin, end);
+}
+// Returns a fake iterable container containing all values of T from `begin`
+// (inclusive) to `end` (exclusive).  Example:
+//
+//     // Prints 1, 2, 3, 4, 5, 6, 7, 8, 9.
+//     for (int i: zc::range(1, 10)) { print(i); }
+
+template <typename T>
+inline constexpr Range<Decay<T>> zeroTo(T end) {
+  return Range<Decay<T>>(end);
+}
+// Returns a fake iterable container containing all values of T from zero
+// (inclusive) to `end` (exclusive).  Example:
+//
+//     // Prints 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+//     for (int i: zc::zeroTo(10)) { print(i); }
+
+template <typename T>
+inline constexpr Range<size_t> indices(T&& container) {
+  // Shortcut for iterating over the indices of a container:
+  //
+  //     for (size_t i: zc::indices(myArray)) { handle(myArray[i]); }
+
+  return range<size_t>(0, zc::size(container));
+}
+
+template <typename T>
+class Repeat {
+ public:
+  inline constexpr Repeat(const T& value, size_t count)
+      : value(value), count(count) {}
+
+  class Iterator {
+   public:
+    Iterator() = default;
+    inline Iterator(const T& value, size_t index)
+        : value(value), index(index) {}
+
+    inline const T& operator*() const { return value; }
+    inline const T& operator[](ptrdiff_t index) const { return value; }
+    inline Iterator& operator++() {
+      ++index;
+      return *this;
+    }
+    inline Iterator operator++(int) { return Iterator(value, index++); }
+    inline Iterator& operator--() {
+      --index;
+      return *this;
+    }
+    inline Iterator operator--(int) { return Iterator(value, index--); }
+    inline Iterator& operator+=(ptrdiff_t amount) {
+      index += amount;
+      return *this;
+    }
+    inline Iterator& operator-=(ptrdiff_t amount) {
+      index -= amount;
+      return *this;
+    }
+    inline Iterator operator+(ptrdiff_t amount) const {
+      return Iterator(value, index + amount);
+    }
+    inline Iterator operator-(ptrdiff_t amount) const {
+      return Iterator(value, index - amount);
+    }
+    inline ptrdiff_t operator-(const Iterator& other) const {
+      return index - other.index;
+    }
+
+    inline bool operator==(const Iterator& other) const {
+      return index == other.index;
+    }
+    inline bool operator<=(const Iterator& other) const {
+      return index <= other.index;
+    }
+    inline bool operator>=(const Iterator& other) const {
+      return index >= other.index;
+    }
+    inline bool operator<(const Iterator& other) const {
+      return index < other.index;
+    }
+    inline bool operator>(const Iterator& other) const {
+      return index > other.index;
+    }
+
+   private:
+    T value;
+    size_t index;
+  };
+
+  inline Iterator begin() const { return Iterator(value, 0); }
+  inline Iterator end() const { return Iterator(value, count); }
+
+  inline size_t size() const { return count; }
+  inline const T& operator[](ptrdiff_t) const { return value; }
+
+ private:
+  T value;
+  size_t count;
+};
+
+template <typename T>
+inline constexpr Repeat<Decay<T>> repeat(T&& value, size_t count) {
+  // Returns a fake iterable which contains `count` repeats of `value`.  Useful
+  // for e.g. creating a bunch of spaces:  `zc::repeat(' ', indent * 2)`
+
+  return Repeat<Decay<T>>(value, count);
+}
+
+// =======================================================================================
+// Manually invoking constructors and destructors
+//
+// ctor(x, ...) and dtor(x) invoke x's constructor or destructor, respectively.
+
+// We want placement new, but we don't want to #include <new>. operator new
+// cannot be defined in a namespace, and defining it globally conflicts with the
+// definition in <new>. So we have to define a dummy type and an operator new
+// that uses it.
+
+namespace _ {  // private
+
+struct PlacementNew {};
+
+}  // namespace _
+}  // namespace zc
+
+inline void* operator new(size_t, zc::_::PlacementNew, void* __p) noexcept {
+  return __p;
+}
+
+inline void operator delete(void*, zc::_::PlacementNew, void* __p) noexcept {}
+
+namespace zc {
+
+template <typename T, typename... Params>
+inline void ctor(T& location, Params&&... params) {
+  new (_::PlacementNew(), &location) T(zc::fwd<Params>(params)...);
+}
+
+template <typename T>
+inline void dtor(T& location) {
+  location.~T();
+}
 
 // =======================================================================================
 // Maybe
@@ -1337,6 +1887,390 @@ class Maybe<T&> {
 };
 
 // =======================================================================================
+// ArrayPtr
+//
+// So common that we put it in common.h rather than array.h.
+
+template <typename T>
+class Array;
+
+template <typename T>
+class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
+  // A pointer to an array.  Includes a size.  Like any pointer, it doesn't own
+  // the target data, and passing by value only copies the pointer, not the
+  // target.
+
+ public:
+  inline constexpr ArrayPtr() : ptr(nullptr), size_(0) {}
+  inline constexpr ArrayPtr(decltype(nullptr)) : ptr(nullptr), size_(0) {}
+  inline constexpr ArrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size)
+      : ptr(ptr), size_(size) {}
+  inline constexpr ArrayPtr(T* begin ZC_LIFETIMEBOUND, T* end ZC_LIFETIMEBOUND)
+      : ptr(begin), size_(end - begin) {}
+  ArrayPtr<T>& operator=(Array<T>&&) = delete;
+  ArrayPtr<T>& operator=(decltype(nullptr)) {
+    ptr = nullptr;
+    size_ = 0;
+    return *this;
+  }
+
+#if __GNUC__ && !__clang__ && __GNUC__ >= 9
+// GCC 9 added a warning when we take an initializer_list as a constructor
+// parameter and save a pointer to its content in a class member. GCC apparently
+// imagines we're going to do something dumb like this:
+//     ArrayPtr<const int> ptr = { 1, 2, 3 };
+//     foo(ptr[1]); // undefined behavior!
+// Any ZC programmer should be able to recognize that this is UB, because an
+// ArrayPtr does not own its content. That's not what this constructor is for,
+// though. This constructor is meant to allow code like this:
+//     int foo(ArrayPtr<const int> p);
+//     // ... later ...
+//     foo({1, 2, 3});
+// In this case, the initializer_list's backing array, like any temporary, lives
+// until the end of the statement `foo({1, 2, 3});`. Therefore, it lives at
+// least until the call to foo() has returned, which is exactly what we care
+// about. This usage is fine! GCC is wrong to warn.
+//
+// Amusingly, Clang's implementation has a similar type that they call ArrayRef
+// which apparently triggers this same GCC warning. My guess is that Clang will
+// not introduce a similar warning given that it triggers on their own,
+// legitimate code.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Winit-list-lifetime"
+#endif
+  inline ZC_CONSTEXPR ArrayPtr(
+      ::std::initializer_list<RemoveConstOrDisable<T>> init ZC_LIFETIMEBOUND)
+      : ptr(init.begin()), size_(init.size()) {}
+#if __GNUC__ && !__clang__ && __GNUC__ >= 9
+#pragma GCC diagnostic pop
+#endif
+
+  template <size_t size>
+  inline constexpr ArrayPtr(ZC_LIFETIMEBOUND T (&native)[size])
+      : ptr(native), size_(size) {
+    // Construct an ArrayPtr from a native C-style array.
+    //
+    // We disable this constructor for const char arrays because otherwise you
+    // would be able to implicitly convert a character literal to ArrayPtr<const
+    // char>, which sounds really great, except that the NUL terminator would be
+    // included, which probably isn't what you intended.
+    //
+    // TODO(someday): Maybe we should support character literals but explicitly
+    //   chop off the NUL terminator. This could do the wrong thing if someone
+    //   tries to construct an ArrayPtr<const char> from a non-NUL-terminated
+    //   char array, but evidence suggests that all real use cases are in fact
+    //   intending to remove the NUL terminator. It's convenient to be able to
+    //   specify ArrayPtr<const char> as a parameter type and be able to accept
+    //   strings as input in addition to arrays. Currently, you'll need
+    //   overloading to support string literals in this case, but if you
+    //   overload StringPtr, then you'll find that several conversions (e.g.
+    //   from String and from a literal char array) become ambiguous! You end up
+    //   having to overload for literal char arrays specifically which is
+    //   cumbersome.
+
+    static_assert(
+        !isSameType<T, const char>(),
+        "Can't implicitly convert literal char array to ArrayPtr because we "
+        "don't know if you meant to include the NUL terminator. We may change "
+        "this in the future to automatically drop the NUL terminator. For now, "
+        "try explicitly converting to StringPtr, which can in turn implicitly "
+        "convert to ArrayPtr<const char>.");
+    static_assert(!isSameType<T, const char16_t>(), "see above");
+    static_assert(!isSameType<T, const char32_t>(), "see above");
+  }
+
+  inline operator ArrayPtr<const T>() const {
+    return ArrayPtr<const T>(ptr, size_);
+  }
+  inline ArrayPtr<const T> asConst() const {
+    return ArrayPtr<const T>(ptr, size_);
+  }
+
+  inline constexpr size_t size() const { return size_; }
+  inline constexpr const T& operator[](size_t index) const {
+    ZC_IREQUIRE(index < size_, "Out-of-bounds ArrayPtr access.");
+    return ptr[index];
+  }
+  inline T& operator[](size_t index) {
+    ZC_IREQUIRE(index < size_, "Out-of-bounds ArrayPtr access.");
+    return ptr[index];
+  }
+
+  inline constexpr T* begin() { return ptr; }
+  inline constexpr T* end() { return ptr + size_; }
+  inline constexpr T& front() { return *ptr; }
+  inline constexpr T& back() { return *(ptr + size_ - 1); }
+  inline constexpr const T* begin() const { return ptr; }
+  inline constexpr const T* end() const { return ptr + size_; }
+  inline constexpr const T& front() const { return *ptr; }
+  inline constexpr const T& back() const { return *(ptr + size_ - 1); }
+
+  inline constexpr ArrayPtr<const T> slice(size_t start, size_t end) const {
+    ZC_IREQUIRE(start <= end && end <= size_,
+                "Out-of-bounds ArrayPtr::slice().");
+    return ArrayPtr<const T>(ptr + start, end - start);
+  }
+  inline constexpr ArrayPtr slice(size_t start, size_t end) {
+    ZC_IREQUIRE(start <= end && end <= size_,
+                "Out-of-bounds ArrayPtr::slice().");
+    return ArrayPtr(ptr + start, end - start);
+  }
+  inline constexpr ArrayPtr<const T> slice(size_t start) const {
+    ZC_IREQUIRE(start <= size_, "Out-of-bounds ArrayPtr::slice().");
+    return ArrayPtr<const T>(ptr + start, size_ - start);
+  }
+  inline constexpr ArrayPtr slice(size_t start) {
+    ZC_IREQUIRE(start <= size_, "Out-of-bounds ArrayPtr::slice().");
+    return ArrayPtr(ptr + start, size_ - start);
+  }
+  inline constexpr bool startsWith(const ArrayPtr<const T>& other) const {
+    return other.size() <= size_ && slice(0, other.size()) == other;
+  }
+  inline constexpr bool endsWith(const ArrayPtr<const T>& other) const {
+    return other.size() <= size_ && slice(size_ - other.size(), size_) == other;
+  }
+
+  inline constexpr ArrayPtr first(size_t count) { return slice(0, count); }
+  inline constexpr ArrayPtr<const T> first(size_t count) const {
+    return slice(0, count);
+  }
+
+  inline Maybe<size_t> findFirst(const T& match) const {
+    for (size_t i = 0; i < size_; i++) {
+      if (ptr[i] == match) {
+        return i;
+      }
+    }
+    return zc::none;
+  }
+  inline Maybe<size_t> findLast(const T& match) const {
+    for (size_t i = size_; i--;) {
+      if (ptr[i] == match) {
+        return i;
+      }
+    }
+    return zc::none;
+  }
+
+  constexpr ArrayPtr<PropagateConst<T, byte>> asBytes() const {
+    // Reinterpret the array as a byte array. This is explicitly legal under C++
+    // aliasing rules.
+    return {reinterpret_cast<PropagateConst<T, byte>*>(ptr), size_ * sizeof(T)};
+  }
+  inline ArrayPtr<PropagateConst<T, char>> asChars() const {
+    // Reinterpret the array as a char array. This is explicitly legal under C++
+    // aliasing rules.
+    return {reinterpret_cast<PropagateConst<T, char>*>(ptr), size_ * sizeof(T)};
+  }
+
+  inline constexpr bool operator==(decltype(nullptr)) const {
+    return size_ == 0;
+  }
+
+  inline constexpr bool operator==(const ArrayPtr& other) const {
+    if (size_ != other.size_) return false;
+#if ZC_HAS_COMPILER_FEATURE(cxx_constexpr_string_builtins)
+    if (isIntegral<RemoveConst<T>>()) {
+      if (size_ == 0) return true;
+      return __builtin_memcmp(ptr, other.ptr, size_ * sizeof(T)) == 0;
+    }
+#endif
+    for (size_t i = 0; i < size_; i++) {
+      if (ptr[i] != other[i]) return false;
+    }
+    return true;
+  }
+
+  template <typename U>
+  inline constexpr bool operator==(const ArrayPtr<U>& other) const {
+    if (size_ != other.size()) return false;
+    for (size_t i = 0; i < size_; i++) {
+      if (ptr[i] != other[i]) return false;
+    }
+    return true;
+  }
+
+  inline constexpr bool operator<(const ArrayPtr& other) const {
+    size_t comparisonSize = zc::min(size_, other.size_);
+    if constexpr (isSameType<RemoveConst<T>, char>() ||
+                  isSameType<RemoveConst<T>, unsigned char>()) {
+#if ZC_HAS_COMPILER_FEATURE(cxx_constexpr_string_builtins)
+      int ret = __builtin_memcmp(ptr, other.ptr, comparisonSize * sizeof(T));
+      if (ret != 0) {
+        return ret < 0;
+      }
+#else
+      for (size_t i = 0; i < comparisonSize; ++i) {
+        if (static_cast<unsigned char>(ptr[i]) !=
+            static_cast<unsigned char>(other.ptr[i])) {
+          return static_cast<unsigned char>(ptr[i]) <
+                 static_cast<unsigned char>(other.ptr[i]);
+        }
+      }
+#endif
+    } else {
+      for (size_t i = 0; i < comparisonSize; i++) {
+        bool ret = ptr[i] == other.ptr[i];
+        if (!ret) {
+          return ptr[i] < other.ptr[i];
+        }
+      }
+    }
+    // arrays are equal up to comparisonSize
+    return size_ < other.size_;
+  }
+
+  inline constexpr bool operator<=(const ArrayPtr& other) const {
+    return !(other < *this);
+  }
+  inline constexpr bool operator>=(const ArrayPtr& other) const {
+    return other <= *this;
+  }
+  // Note that only strongly ordered types are currently supported
+  inline constexpr bool operator>(const ArrayPtr& other) const {
+    return other < *this;
+  }
+
+  template <typename... Attachments>
+  Array<T> attach(Attachments&&... attachments) const ZC_WARN_UNUSED_RESULT;
+  // Like Array<T>::attach(), but also promotes an ArrayPtr to an Array.
+  // Generally the attachment should be an object that actually owns the array
+  // that the ArrayPtr is pointing at.
+  //
+  // You must include zc/array.h to call this.
+
+  template <typename U>
+  inline auto as() {
+    return U::from(this);
+  }
+  // Syntax sugar for invoking U::from.
+  // Used to chain conversion calls rather than wrap with function.
+
+  inline void fill(T t) {
+    // Fill the area by copying t over every element.
+
+    for (size_t i = 0; i < size_; i++) {
+      ptr[i] = t;
+    }
+    // All modern compilers are smart enough to optimize this loop for simple
+    // T's. libc++ std::fill doesn't have memset specialization either.
+  }
+
+  inline void fill(ArrayPtr<const T> other) {
+    // Fill the area by copying each element of other, in sequence, over every
+    // element.
+    const size_t otherSize = other.size();
+    ZC_IREQUIRE(otherSize > 0, "fill requires non-empty source array");
+    T* __restrict__ dst = begin();
+    const T* __restrict__ src = other.begin();
+    size_t counter = 0;
+    for (size_t s = size_, i = 0; i < s; i++) {
+      dst[i] = src[counter];
+      if (++counter == otherSize) counter = 0;
+    }
+  }
+
+  inline void copyFrom(zc::ArrayPtr<const T> other) {
+    // Copy data from the other array pointer.
+    // Arrays have to be of the same size and memory area MUST NOT overlap.
+    ZC_IREQUIRE(size_ == other.size(), "copy requires arrays of the same size");
+    ZC_IREQUIRE(!intersects(other), "copy memory area must not overlap");
+    T* __restrict__ dst = begin();
+    const T* __restrict__ src = other.begin();
+    for (size_t s = size_, i = 0; i < s; i++) {
+      dst[i] = src[i];
+    }
+  }
+
+ private:
+  T* ptr;
+  size_t size_;
+
+  inline bool intersects(zc::ArrayPtr<const T> other) const {
+    // Checks if memory area intersects with another pointer.
+
+    // Memory _does not_ intersect if one of the arrays is completely on one
+    // side of the other:
+    //    begin() >= other.end() || other.begin() >= end()
+    // Negating the expression gets the result:
+    return begin() < other.end() && other.begin() < end();
+  }
+};
+
+template <>
+inline Maybe<size_t> ArrayPtr<const char>::findFirst(const char& c) const {
+  const char* pos = reinterpret_cast<const char*>(memchr(ptr, c, size_));
+  if (pos == nullptr) {
+    return zc::none;
+  } else {
+    return pos - ptr;
+  }
+}
+
+template <>
+inline Maybe<size_t> ArrayPtr<char>::findFirst(const char& c) const {
+  char* pos = reinterpret_cast<char*>(memchr(ptr, c, size_));
+  if (pos == nullptr) {
+    return zc::none;
+  } else {
+    return pos - ptr;
+  }
+}
+
+template <>
+inline Maybe<size_t> ArrayPtr<const byte>::findFirst(const byte& c) const {
+  const byte* pos = reinterpret_cast<const byte*>(memchr(ptr, c, size_));
+  if (pos == nullptr) {
+    return zc::none;
+  } else {
+    return pos - ptr;
+  }
+}
+
+template <>
+inline Maybe<size_t> ArrayPtr<byte>::findFirst(const byte& c) const {
+  byte* pos = reinterpret_cast<byte*>(memchr(ptr, c, size_));
+  if (pos == nullptr) {
+    return zc::none;
+  } else {
+    return pos - ptr;
+  }
+}
+
+// glibc has a memrchr() for reverse search but it's non-standard, so we don't
+// bother optimizing findLast(), which isn't used much anyway.
+
+template <typename T>
+inline constexpr ArrayPtr<T> arrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size) {
+  // Use this function to construct ArrayPtrs without writing out the type name.
+  return ArrayPtr<T>(ptr, size);
+}
+
+template <typename T>
+inline constexpr ArrayPtr<T> arrayPtr(T* begin ZC_LIFETIMEBOUND,
+                                      T* end ZC_LIFETIMEBOUND) {
+  // Use this function to construct ArrayPtrs without writing out the type name.
+  return ArrayPtr<T>(begin, end);
+}
+
+template <typename T>
+inline constexpr ArrayPtr<T> arrayPtr(T& t ZC_LIFETIMEBOUND) {
+  // Construct ArrayPtr pointing to a single object instance.
+  return arrayPtr(&t, 1);
+}
+
+template <typename T, size_t s>
+inline constexpr ArrayPtr<T> arrayPtr(T (&arr)[s]) {
+  // Use this function to construct ArrayPtrs without writing out the type name.
+  return ArrayPtr<T>(arr);
+}
+
+template <typename... Params>
+auto asBytes(Params&&... params) {
+  return zc::arrayPtr(zc::fwd<Params>(params)...).asBytes();
+}
+
+// =======================================================================================
 // Casts
 
 template <typename To, typename From>
@@ -1366,6 +2300,61 @@ To& downcast(From& from) {
 
   return static_cast<To&>(from);
 }
+
+// =======================================================================================
+// Defer
+
+namespace _ {  // private
+
+template <typename Func>
+class Deferred {
+ public:
+  Deferred(Func&& func) : maybeFunc(zc::fwd<Func>(func)) {}
+  ~Deferred() noexcept(false) { run(); }
+  ZC_DISALLOW_COPY(Deferred);
+
+  Deferred(Deferred&&) = default;
+  // Since we use a zc::Maybe, the default move constructor does exactly what we
+  // want it to do.
+
+  void run() {
+    // Move `maybeFunc` to the local scope so that even if we throw, we destroy
+    // the functor we had.
+    auto maybeLocalFunc = zc::mv(maybeFunc);
+    ZC_IF_SOME(func, maybeLocalFunc) { func(); }
+  }
+
+  void cancel() { maybeFunc = zc::none; }
+
+ private:
+  zc::Maybe<Func> maybeFunc;
+  // Note that `Func` may actually be an lvalue reference because `zc::defer`
+  // takes its argument via universal reference. `zc::Maybe` has specializations
+  // for lvalue reference types, so this works out.
+};
+
+}  // namespace _
+
+template <typename Func>
+_::Deferred<Func> defer(Func&& func) {
+  // Returns an object which will invoke the given functor in its destructor.
+  // The object is not copyable but is move-constructable with the semantics
+  // you'd expect. Since the return type is private, you need to assign to an
+  // `auto` variable.
+  //
+  // The ZC_DEFER macro provides slightly more convenient syntax for the common
+  // case where you want some code to run at current scope exit.
+  //
+  // ZC_DEFER does not support move-assignment for its returned objects. If you
+  // need to reuse the variable for your deferred function object, then you will
+  // want to write your own class for that purpose.
+
+  return _::Deferred<Func>(zc::fwd<Func>(func));
+}
+
+#define ZC_DEFER(code) \
+  auto ZC_UNIQUE_NAME(_zcDefer) = ::zc::defer([&]() { code; })
+// Run the given code when the function exits, whether by return or exception.
 
 }  // namespace zc
 
