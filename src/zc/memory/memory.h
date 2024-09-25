@@ -49,10 +49,8 @@ inline constexpr bool _zc_internal_isPolymorphic(T*) {
   return __is_polymorphic(T);
 }
 
-#define ZC_DECLARE_NON_POLYMORPHIC(...)                            \
-  inline constexpr bool _zc_internal_isPolymorphic(__VA_ARGS__*) { \
-    return false;                                                  \
-  }
+#define ZC_DECLARE_NON_POLYMORPHIC(...) \
+  constexpr bool _zc_internal_isPolymorphic(__VA_ARGS__*) { return false; }
 // If you want to use zc::Own<T> for an incomplete type T that you know is not
 // polymorphic, then write `ZC_DECLARE_NON_POLYMORPHIC(T)` either at the global
 // scope or in the same namespace as T is declared.
@@ -207,16 +205,16 @@ class AtomicPtrCounter {
   // Since no other memory location is observed, memory_order_relaxed is used.
 
  public:
-  inline void dec() {
+  void dec() {
     size_t prevCount = count.fetch_sub(1, std::memory_order_relaxed);
     if (prevCount == 0) ZC_UNLIKELY {
         atomicPtrCounterAssertionFailed("unbalanced inc/dec");
       }
   }
 
-  inline void inc() { count.fetch_add(1, std::memory_order_relaxed); }
+  void inc() { count.fetch_add(1, std::memory_order_relaxed); }
 
-  inline void assertEmpty() {
+  void assertEmpty() {
     size_t c = count.load(std::memory_order_relaxed);
     if (c != 0) ZC_UNLIKELY {
         atomicPtrCounterAssertionFailed("active pointers exist");
@@ -260,29 +258,29 @@ class Own<T, decltype(nullptr)> {
 
  public:
   ZC_DISALLOW_COPY(Own);
-  inline Own() : disposer(nullptr), ptr(nullptr) {}
-  inline Own(Own&& other) noexcept : disposer(other.disposer), ptr(other.ptr) {
+  Own() : disposer(nullptr), ptr(nullptr) {}
+  Own(Own&& other) noexcept : disposer(other.disposer), ptr(other.ptr) {
     other.ptr = nullptr;
   }
-  inline Own(Own<RemoveConstOrDisable<T>>&& other) noexcept
+  Own(Own<RemoveConstOrDisable<T>>&& other) noexcept
       : disposer(other.disposer), ptr(other.ptr) {
     other.ptr = nullptr;
   }
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
-  inline Own(Own<U>&& other) noexcept
+  Own(Own<U>&& other) noexcept
       : disposer(other.disposer), ptr(cast(other.ptr)) {
     other.ptr = nullptr;
   }
   template <typename U, typename StaticDisposer,
             typename = EnableIf<canConvert<U*, T*>()>>
-  inline Own(Own<U, StaticDisposer>&& other) noexcept;
+  Own(Own<U, StaticDisposer>&& other) noexcept;
   // Convert statically-disposed Own to dynamically-disposed Own.
-  inline Own(T* ptr, const Disposer& disposer) noexcept
+  Own(T* ptr, const Disposer& disposer) noexcept
       : disposer(&disposer), ptr(ptr) {}
 
   ~Own() noexcept(false) { dispose(); }
 
-  inline Own& operator=(Own&& other) {
+  Own& operator=(Own&& other) {
     // Move-assignnment operator.
 
     // Careful, this might own `other`. Therefore we have to transfer the
@@ -298,7 +296,7 @@ class Own<T, decltype(nullptr)> {
     return *this;
   }
 
-  inline Own& operator=(decltype(nullptr)) {
+  Own& operator=(decltype(nullptr)) {
     dispose();
     return *this;
   }
@@ -331,32 +329,32 @@ class Own<T, decltype(nullptr)> {
   }
 
 #define NULLCHECK ZC_IREQUIRE(ptr != nullptr, "null Own<> dereference")
-  inline T* operator->() {
+  T* operator->() {
     NULLCHECK;
     return ptr;
   }
-  inline const T* operator->() const {
+  const T* operator->() const {
     NULLCHECK;
     return ptr;
   }
-  inline _::RefOrVoid<T> operator*() {
+  _::RefOrVoid<T> operator*() {
     NULLCHECK;
     return *ptr;
   }
-  inline _::RefOrVoid<const T> operator*() const {
+  _::RefOrVoid<const T> operator*() const {
     NULLCHECK;
     return *ptr;
   }
 #undef NULLCHECK
-  inline T* get() { return ptr; }
-  inline const T* get() const { return ptr; }
-  inline operator T*() { return ptr; }
-  inline operator const T*() const { return ptr; }
+  T* get() { return ptr; }
+  const T* get() const { return ptr; }
+  operator T*() { return ptr; }
+  operator const T*() const { return ptr; }
 
   // Surrenders ownership of the underlying object to the caller. The caller
   // must pass in the correct disposer to prove that they know how the object is
   // meant to be disposed of.
-  inline T* disown(const Disposer* d) {
+  T* disown(const Disposer* d) {
     if (d != disposer) _::throwWrongDisposerError();
     T* ptrCopy = ptr;
     ptr = nullptr;
@@ -367,12 +365,12 @@ class Own<T, decltype(nullptr)> {
   const Disposer* disposer;  // Only valid if ptr != nullptr.
   T* ptr;
 
-  inline explicit Own(decltype(nullptr)) : disposer(nullptr), ptr(nullptr) {}
+  explicit Own(decltype(nullptr)) : disposer(nullptr), ptr(nullptr) {}
 
-  inline bool operator==(decltype(nullptr)) { return ptr == nullptr; }
+  bool operator==(decltype(nullptr)) { return ptr == nullptr; }
   // Only called by Maybe<Own<T>>.
 
-  inline void dispose() {
+  void dispose() {
     // Make sure that if an exception is thrown, we are left with a null ptr, so
     // we won't possibly dispose again.
     T* ptrCopy = ptr;
@@ -383,7 +381,7 @@ class Own<T, decltype(nullptr)> {
   }
 
   template <typename U>
-  static inline T* cast(U* ptr) {
+  static T* cast(U* ptr) {
     static_assert(
         _zc_internal_isPolymorphic((T*)nullptr),
         "Casting owned pointers requires that the target type is polymorphic.");
@@ -397,13 +395,13 @@ class Own<T, decltype(nullptr)> {
 
 template <>
 template <typename U>
-inline void* Own<void>::cast(U* ptr) {
+void* Own<void>::cast(U* ptr) {
   return _::castToVoid(ptr);
 }
 
 template <>
 template <typename U>
-inline const void* Own<const void>::cast(U* ptr) {
+const void* Own<const void>::cast(U* ptr) {
   return _::castToConstVoid(ptr);
 }
 
@@ -421,21 +419,21 @@ class Own {
 
  public:
   ZC_DISALLOW_COPY(Own);
-  inline Own() : ptr(nullptr) {}
-  inline Own(Own&& other) noexcept : ptr(other.ptr) { other.ptr = nullptr; }
-  inline Own(Own<RemoveConstOrDisable<T>, StaticDisposer>&& other) noexcept
+  Own() : ptr(nullptr) {}
+  Own(Own&& other) noexcept : ptr(other.ptr) { other.ptr = nullptr; }
+  Own(Own<RemoveConstOrDisable<T>, StaticDisposer>&& other) noexcept
       : ptr(other.ptr) {
     other.ptr = nullptr;
   }
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
-  inline Own(Own<U, StaticDisposer>&& other) noexcept : ptr(cast(other.ptr)) {
+  Own(Own<U, StaticDisposer>&& other) noexcept : ptr(cast(other.ptr)) {
     other.ptr = nullptr;
   }
-  inline explicit Own(T* ptr) noexcept : ptr(ptr) {}
+  explicit Own(T* ptr) noexcept : ptr(ptr) {}
 
   ~Own() noexcept(false) { dispose(); }
 
-  inline Own& operator=(Own&& other) {
+  Own& operator=(Own&& other) {
     // Move-assignment operator.
 
     // Carefully, this might own `other`. Therefore, we have to transfer the
@@ -449,7 +447,7 @@ class Own {
     return *this;
   }
 
-  inline Own& operator=(decltype(nullptr)) {
+  Own& operator=(decltype(nullptr)) {
     dispose();
     return *this;
   }
@@ -470,33 +468,33 @@ class Own {
   }
 
 #define NULLCHECK ZC_IREQUIRE(ptr != nullptr, "null Own<> dereference")
-  inline T* operator->() {
+  T* operator->() {
     NULLCHECK;
     return ptr;
   }
-  inline const T* operator->() const {
+  const T* operator->() const {
     NULLCHECK;
     return ptr;
   }
-  inline _::RefOrVoid<T> operator*() {
+  _::RefOrVoid<T> operator*() {
     NULLCHECK;
     return *ptr;
   }
-  inline _::RefOrVoid<const T> operator*() const {
+  _::RefOrVoid<const T> operator*() const {
     NULLCHECK;
     return *ptr;
   }
 #undef NULLCHECK
-  inline T* get() { return ptr; }
-  inline const T* get() const { return ptr; }
-  inline operator T*() { return ptr; }
-  inline operator const T*() const { return ptr; }
+  T* get() { return ptr; }
+  const T* get() const { return ptr; }
+  operator T*() { return ptr; }
+  operator const T*() const { return ptr; }
 
   // Surrenders ownership of the underlying object to the caller. The caller
   // must pass in the correct disposer to prove that they know how the object is
   // meant to be disposed of.
   template <typename SD>
-  inline T* disown() {
+  T* disown() {
     static_assert(zc::isSameType<StaticDisposer, SD>(),
                   "disposer must be the same as Own's disposer");
     T* ptrCopy = ptr;
@@ -507,12 +505,12 @@ class Own {
  private:
   T* ptr;
 
-  inline explicit Own(decltype(nullptr)) : ptr(nullptr) {}
+  explicit Own(decltype(nullptr)) : ptr(nullptr) {}
 
-  inline bool operator==(decltype(nullptr)) { return ptr == nullptr; }
+  bool operator==(decltype(nullptr)) { return ptr == nullptr; }
   // Only called by Maybe<Own<T>>.
 
-  inline void dispose() {
+  void dispose() {
     // Make sure that if an exception is thrown, we are left with a null ptr, so
     // we won't possibly dispose again.
     T* ptrCopy = ptr;
@@ -537,16 +535,16 @@ namespace _ {  // private
 template <typename T, typename D>
 class OwnOwn {
  public:
-  inline OwnOwn(Own<T, D>&& value) noexcept : value(zc::mv(value)) {}
+  OwnOwn(Own<T, D>&& value) noexcept : value(zc::mv(value)) {}
 
-  inline Own<T, D>& operator*() & { return value; }
-  inline const Own<T, D>& operator*() const& { return value; }
-  inline Own<T, D>&& operator*() && { return zc::mv(value); }
-  inline const Own<T, D>&& operator*() const&& { return zc::mv(value); }
-  inline Own<T, D>* operator->() { return &value; }
-  inline const Own<T, D>* operator->() const { return &value; }
-  inline operator Own<T, D>*() { return value ? &value : nullptr; }
-  inline operator const Own<T, D>*() const { return value ? &value : nullptr; }
+  Own<T, D>& operator*() & { return value; }
+  const Own<T, D>& operator*() const& { return value; }
+  Own<T, D>&& operator*() && { return zc::mv(value); }
+  const Own<T, D>&& operator*() const&& { return zc::mv(value); }
+  Own<T, D>* operator->() { return &value; }
+  const Own<T, D>* operator->() const { return &value; }
+  operator Own<T, D>*() { return value ? &value : nullptr; }
+  operator const Own<T, D>*() const { return value ? &value : nullptr; }
 
  private:
   Own<T, D> value;
@@ -570,18 +568,18 @@ const Own<T, D>* readMaybe(const Maybe<Own<T, D>>& maybe) {
 template <typename T, typename D>
 class Maybe<Own<T, D>> {
  public:
-  inline Maybe() : ptr(nullptr) {}
-  inline Maybe(Own<T, D>&& t) noexcept : ptr(zc::mv(t)) {}
-  inline Maybe(Maybe&& other) noexcept : ptr(zc::mv(other.ptr)) {}
+  Maybe() : ptr(nullptr) {}
+  Maybe(Own<T, D>&& t) noexcept : ptr(zc::mv(t)) {}
+  Maybe(Maybe&& other) noexcept : ptr(zc::mv(other.ptr)) {}
 
   template <typename U>
-  inline Maybe(Maybe<Own<U, D>>&& other) : ptr(mv(other.ptr)) {}
+  Maybe(Maybe<Own<U, D>>&& other) : ptr(mv(other.ptr)) {}
   template <typename U>
-  inline Maybe(Own<U, D>&& other) : ptr(mv(other)) {}
+  Maybe(Own<U, D>&& other) : ptr(mv(other)) {}
 
-  inline Maybe(zc::None) noexcept : ptr(nullptr) {}
+  Maybe(zc::None) noexcept : ptr(nullptr) {}
 
-  inline Own<T, D>& emplace(Own<T, D> value) {
+  Own<T, D>& emplace(Own<T, D> value) {
     // Assign the Maybe to the given value and return the content. This avoids
     // the need to do a ZC_ASSERT_NONNULL() immediately after setting the Maybe
     // just to read it back again.
@@ -590,11 +588,11 @@ class Maybe<Own<T, D>> {
   }
 
   template <typename U = T>
-  inline operator NoInfer<Maybe<U&>>() {
+  operator NoInfer<Maybe<U&>>() {
     return ptr.get();
   }
   template <typename U = T>
-  inline operator NoInfer<Maybe<const U&>>() const {
+  operator NoInfer<Maybe<const U&>>() const {
     return ptr.get();
   }
   // Implicit conversion to `Maybe<U&>`. The weird templating is to make sure
@@ -603,26 +601,24 @@ class Maybe<Own<T, D>> {
   // SFINAE to kick in and hide these, whereas if they are not templates then
   // SFINAE isn't applied and so they are considered errors.
 
-  inline Maybe& operator=(Maybe&& other) {
+  Maybe& operator=(Maybe&& other) {
     ptr = zc::mv(other.ptr);
     return *this;
   }
 
-  inline bool operator==(zc::None) const { return ptr == nullptr; }
+  bool operator==(zc::None) const { return ptr == nullptr; }
 
   Own<T, D>& orDefault(Own<T, D>& defaultValue) {
     if (ptr == nullptr) {
       return defaultValue;
-    } else {
-      return ptr;
     }
+    return ptr;
   }
   const Own<T, D>& orDefault(const Own<T, D>& defaultValue) const {
     if (ptr == nullptr) {
       return defaultValue;
-    } else {
-      return ptr;
     }
+    return ptr;
   }
 
   template <typename F,
@@ -631,18 +627,16 @@ class Maybe<Own<T, D>> {
   Result orDefault(F&& lazyDefaultValue) && {
     if (ptr == nullptr) {
       return lazyDefaultValue();
-    } else {
-      return zc::mv(ptr);
     }
+    return zc::mv(ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) & -> Maybe<decltype(f(instance<Own<T, D>&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      return f(ptr);
     }
+    return f(ptr);
   }
 
   template <typename Func>
@@ -650,18 +644,16 @@ class Maybe<Own<T, D>> {
       Func&& f) const& -> Maybe<decltype(f(instance<const Own<T, D>&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      return f(ptr);
     }
+    return f(ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) && -> Maybe<decltype(f(instance<Own<T, D>&&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      return f(zc::mv(ptr));
     }
+    return f(zc::mv(ptr));
   }
 
   template <typename Func>
@@ -669,9 +661,8 @@ class Maybe<Own<T, D>> {
       Func&& f) const&& -> Maybe<decltype(f(instance<const Own<T, D>&&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      return f(zc::mv(ptr));
     }
+    return f(zc::mv(ptr));
   }
 
  private:
@@ -692,7 +683,7 @@ namespace _ {  // private
 template <typename T>
 class HeapDisposer final : public Disposer {
  public:
-  virtual void disposeImpl(void* pointer) const override {
+  void disposeImpl(void* pointer) const override {
     delete reinterpret_cast<T*>(pointer);
   }
 
@@ -788,8 +779,8 @@ class SpaceFor {
   // calling T's destructor later.
 
  public:
-  inline SpaceFor() {}
-  inline ~SpaceFor() {}
+  SpaceFor() {}
+  ~SpaceFor() {}
 
   template <typename... Params>
   Own<T> construct(Params&&... params) {
@@ -822,10 +813,10 @@ class Pin {
 
  public:
   template <typename... Params>
-  inline Pin(Params&&... params) : t(zc::fwd<Params>(params)...) {}
-  // Create new Pin<T> using corresponding T constructor.
+  Pin(Params&&... params) : t(zc::fwd<Params>(params)...) {}
+  // Create new Pin<T> using the corresponding T constructor.
 
-  inline Pin(Pin<T>&& other) : t(zc::mv(other.t)) {
+  Pin(Pin<T>&& other) : t(zc::mv(other.t)) {
     // Move T's ownership.
     // Undefined behavior when live pointers exist, asserted when
     // ZC_ASSERT_PTR_COUNTERS is defined.
@@ -834,32 +825,32 @@ class Pin {
 #endif
   }
 
-  inline ~Pin() {
-    // Destroy a Pin with underlying object.
+  ~Pin() {
+    // Destroy a Pin with an underlying object.
     // Undefined behavior when live pointers exist, asserted when
-    // ZC_ASSERT_PTR_COUNTERS is defined.
+    // ZC_ASSERT_PTR_COUNTERS are defined.
 #ifdef ZC_ASSERT_PTR_COUNTERS
     ptrCounter.assertEmpty();
 #endif
   }
 
-  inline T* operator->() { return get(); }
-  inline const T* operator->() const { return get(); }
+  T* operator->() { return get(); }
+  const T* operator->() const { return get(); }
 
-  inline operator Ptr<T>() { return Ptr<T>(this); }
+  operator Ptr<T>() { return Ptr<T>(this); }
   // Pin<T> can be implicitly converted to Ptr<T> to obtain new pointers.
 
-  inline Ptr<T> asPtr() { return Ptr<T>(this); }
+  Ptr<T> asPtr() { return Ptr<T>(this); }
   // Explicit convenience method to create new pointers.
 
   template <typename U, typename = EnableIf<canConvert<T*, U*>()>>
-  inline operator Ptr<U>() {
+  operator Ptr<U>() {
     return Ptr<U>(this);
   }
   // Pin<T> can be implicitly converted to pointers of compatible types.
 
   template <typename U, typename = EnableIf<canConvert<T*, U*>()>>
-  inline Ptr<U> asPtr() {
+  Ptr<U> asPtr() {
     return Ptr<U>(this);
   }
   // Explicit convenience method to create new pointers of compatible types.
@@ -871,15 +862,15 @@ class Pin {
  private:
   ZC_DISALLOW_COPY(Pin);
 
-  inline Pin(T&& t) : t(zc::mv(t)) {}
+  Pin(T&& t) : t(zc::mv(t)) {}
 
   T t;
 #ifdef ZC_ASSERT_PTR_COUNTERS
   _::PtrCounter ptrCounter;
 #endif
 
-  inline T* get() { return &t; }
-  inline const T* get() const { return &t; }
+  T* get() { return &t; }
+  const T* get() const { return &t; }
 
   template <typename>
   friend class Ptr;
@@ -893,11 +884,11 @@ class Ptr {
   // Ptr<T> is a smart alternative to T&.
   //
   // When used together with Pin<T> it keeps track of active pointers.
-  // Asserts lifetime constraints when ZC_ASSERT_PTR_COUNTERS is defined.
+  // Asserts lifetime constraints when ZC_ASSERT_PTR_COUNTERS are defined.
   // Zero-overhead alternative for T& if ZC_ASSERT_PTR_COUNTERS is not defined.
 
  public:
-  inline ~Ptr() {
+  ~Ptr() {
     if (ptr == nullptr) {
       // the value was moved out
       return;
@@ -936,7 +927,7 @@ class Ptr {
   Ptr(const Ptr& other) : ptr(other.ptr) {}
 #endif
 
-  inline void operator=(std::nullptr_t other) {
+  void operator=(std::nullptr_t other) {
     if (ptr != nullptr) {
 #ifdef ZC_ASSERT_PTR_COUNTERS
       counter->dec();
@@ -946,28 +937,24 @@ class Ptr {
     }
   }
 
-  inline T* operator->() { return get(); }
-  inline const T* operator->() const { return get(); }
+  T* operator->() { return get(); }
+  const T* operator->() const { return get(); }
 
-  inline bool operator==(const Pin<T>& other) const {
-    return get() == other.get();
-  }
-  inline bool operator==(const Ptr<T>& other) const {
-    return get() == other.get();
-  }
-  inline bool operator==(const T* const other) const { return get() == other; }
+  bool operator==(const Pin<T>& other) const { return get() == other.get(); }
+  bool operator==(const Ptr<T>& other) const { return get() == other.get(); }
+  bool operator==(const T* const other) const { return get() == other; }
 
   template <typename U>
-  inline bool operator==(const Pin<U>& other) const {
+  bool operator==(const Pin<U>& other) const {
     return get() == other.get();
   }
 
   template <typename U>
-  inline bool operator==(const Ptr<U>& other) const {
+  bool operator==(const Ptr<U>& other) const {
     return get() == other.get();
   }
 
-  inline T& asRef() { return *get(); }
+  T& asRef() { return *get(); }
   // Obtain a `T&` reference.
   // This is an unsafe operation and should be avoided unless absolutely
   // necessary. It is undefined behavior to use the reference after the object
@@ -975,21 +962,21 @@ class Ptr {
 
  private:
 #ifdef ZC_ASSERT_PTR_COUNTERS
-  inline Ptr(Pin<T>* pin) : ptr(pin->get()), counter(&pin->ptrCounter) {
+  Ptr(Pin<T>* pin) : ptr(pin->get()), counter(&pin->ptrCounter) {
     counter->inc();
   }
 #else
-  inline Ptr(Pin<T>* pin) : ptr(pin->get()) {}
+  Ptr(Pin<T>* pin) : ptr(pin->get()) {}
 #endif
 
 #ifdef ZC_ASSERT_PTR_COUNTERS
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
-  inline Ptr(Pin<U>* pin) : ptr(pin->get()), counter(&pin->ptrCounter) {
+  Ptr(Pin<U>* pin) : ptr(pin->get()), counter(&pin->ptrCounter) {
     counter->inc();
   }
 #else
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
-  inline Ptr(Pin<U>* pin) : ptr(pin->get()) {}
+  Ptr(Pin<U>* pin) : ptr(pin->get()) {}
 #endif
 
   T* ptr;
@@ -997,8 +984,8 @@ class Ptr {
   _::PtrCounter* counter;
 #endif
 
-  inline T* get() { return ptr; }
-  inline const T* get() const { return ptr; }
+  T* get() { return ptr; }
+  const T* get() const { return ptr; }
 
   template <typename>
   friend class Ptr;
@@ -1052,7 +1039,7 @@ struct OwnedBundle<First, Rest...> : public OwnedBundle<Rest...> {
 };
 
 template <typename... T>
-struct DisposableOwnedBundle final : public Disposer, public OwnedBundle<T...> {
+struct DisposableOwnedBundle final : Disposer, public OwnedBundle<T...> {
   DisposableOwnedBundle(T&&... values)
       : OwnedBundle<T...>(zc::fwd<T>(values)...) {}
   void disposeImpl(void* pointer) const override { delete this; }
@@ -1062,7 +1049,7 @@ template <typename T, typename StaticDisposer>
 class StaticDisposerAdapter final : public Disposer {
   // Adapts a static disposer to be called dynamically.
  public:
-  virtual void disposeImpl(void* pointer) const override {
+  void disposeImpl(void* pointer) const override {
     StaticDisposer::dispose(reinterpret_cast<T*>(pointer));
   }
 
@@ -1110,8 +1097,7 @@ Own<Decay<T>> attachVal(T&& value, Attachments&&... attachments) {
 
 template <typename T>
 template <typename U, typename StaticDisposer, typename>
-inline Own<T>::Own(Own<U, StaticDisposer>&& other) noexcept
-    : ptr(cast(other.ptr)) {
+Own<T>::Own(Own<U, StaticDisposer>&& other) noexcept : ptr(cast(other.ptr)) {
   if (_::castToVoid(other.ptr) != reinterpret_cast<void*>(other.ptr)) {
     // Oh dangit, there's some sort of multiple inheritance going on and
     // `StaticDisposerAdapter` won't actually work because it'll receive a

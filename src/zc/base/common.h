@@ -841,23 +841,23 @@ template <typename T, typename U>
 using WiderType = typename ChooseType_<T, U, sizeof(T) >= sizeof(U)>::Type;
 
 template <typename T, typename U>
-inline constexpr auto min(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
+constexpr auto min(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
   return a < b ? WiderType<Decay<T>, Decay<U>>(a)
                : WiderType<Decay<T>, Decay<U>>(b);
 }
 
 template <typename T, typename U>
-inline constexpr auto max(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
+constexpr auto max(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
   return a > b ? WiderType<Decay<T>, Decay<U>>(a)
                : WiderType<Decay<T>, Decay<U>>(b);
 }
 
 template <typename T, size_t s>
-inline constexpr size_t size(T (&arr)[s]) {
+constexpr size_t size(T (&arr)[s]) {
   return s;
 }
 template <typename T>
-inline constexpr size_t size(T&& arr) {
+constexpr size_t size(T&& arr) {
   return arr.size();
 }
 // Returns the size of the parameter, whether the parameter is a regular C array
@@ -866,11 +866,11 @@ inline constexpr size_t size(T&& arr) {
 class MaxValue_ {
  private:
   template <typename T>
-  inline constexpr T maxSigned() const {
+  constexpr T maxSigned() const {
     return (1ull << (sizeof(T) * 8 - 1)) - 1;
   }
   template <typename T>
-  inline constexpr T maxUnsigned() const {
+  constexpr T maxUnsigned() const {
     return ~static_cast<T>(0u);
   }
 
@@ -889,7 +889,7 @@ class MaxValue_ {
   ZC_HANDLE_TYPE(long long)
 #undef ZC_HANDLE_TYPE
 
-  inline constexpr operator char() const {
+  constexpr operator char() const {
     // `char` is different from both `signed char` and `unsigned char`, and may
     // be signed or unsigned on different platforms. Ugh.
     return char(-1) < 0 ? MaxValue_::maxSigned<char>()
@@ -900,11 +900,11 @@ class MaxValue_ {
 class MinValue_ {
  private:
   template <typename T>
-  inline constexpr T minSigned() const {
+  constexpr T minSigned() const {
     return 1ull << (sizeof(T) * 8 - 1);
   }
   template <typename T>
-  inline constexpr T minUnsigned() const {
+  constexpr T minUnsigned() const {
     return 0u;
   }
 
@@ -923,7 +923,7 @@ class MinValue_ {
   ZC_HANDLE_TYPE(long long)
 #undef ZC_HANDLE_TYPE
 
-  inline constexpr operator char() const {
+  constexpr operator char() const {
     // `char` is different from both `signed char` and `unsigned char`, and may
     // be signed or unsigned on different platforms. Ugh.
     return char(-1) < 0 ? MinValue_::minSigned<char>()
@@ -944,16 +944,16 @@ static ZC_CONSTEXPR MinValue_ minValue = MinValue_();
 // type.
 
 template <typename T>
-inline bool operator==(T t, MaxValue_) {
+bool operator==(T t, MaxValue_) {
   return t == Decay<T>(maxValue);
 }
 template <typename T>
-inline bool operator==(T t, MinValue_) {
+bool operator==(T t, MinValue_) {
   return t == Decay<T>(minValue);
 }
 
 template <uint bits>
-inline constexpr unsigned long long maxValueForBits() {
+constexpr unsigned long long maxValueForBits() {
   // Get the maximum integer representable in the given number of bits.
 
   // 1ull << 64 is unfortunately undefined.
@@ -961,14 +961,14 @@ inline constexpr unsigned long long maxValueForBits() {
 }
 
 #if __GNUC__ || __clang__ || _MSC_VER
-inline constexpr float inf() { return __builtin_huge_valf(); }
-inline constexpr float nan() { return __builtin_nanf(""); }
+constexpr float inf() { return __builtin_huge_valf(); }
+constexpr float nan() { return __builtin_nanf(""); }
 #else
 #error "Not sure how to support your compiler."
 #endif
 
-inline constexpr bool isNaN(float f) { return f != f; }
-inline constexpr bool isNaN(double f) { return f != f; }
+constexpr bool isNaN(float f) { return f != f; }
+constexpr bool isNaN(double f) { return f != f; }
 
 // =======================================================================================
 // Useful fake containers
@@ -976,69 +976,64 @@ inline constexpr bool isNaN(double f) { return f != f; }
 template <typename T>
 class Range {
  public:
-  inline constexpr Range(const T& begin, const T& end)
-      : begin_(begin), end_(end) {}
-  inline explicit constexpr Range(const T& end) : begin_(0), end_(end) {}
+  constexpr Range(const T& begin, const T& end) : begin_(begin), end_(end) {}
+  explicit constexpr Range(const T& end) : begin_(0), end_(end) {}
 
   class Iterator {
    public:
     Iterator() = default;
-    inline Iterator(const T& value) : value(value) {}
+    Iterator(const T& value) : value(value) {}
 
-    inline const T& operator*() const { return value; }
-    inline const T& operator[](size_t index) const { return value + index; }
-    inline Iterator& operator++() {
+    const T& operator*() const { return value; }
+    const T& operator[](size_t index) const { return value + index; }
+    Iterator& operator++() {
       ++value;
       return *this;
     }
-    inline Iterator operator++(int) { return Iterator(value++); }
-    inline Iterator& operator--() {
+    Iterator operator++(int) { return Iterator(value++); }
+    Iterator& operator--() {
       --value;
       return *this;
     }
-    inline Iterator operator--(int) { return Iterator(value--); }
-    inline Iterator& operator+=(ptrdiff_t amount) {
+    Iterator operator--(int) { return Iterator(value--); }
+    Iterator& operator+=(ptrdiff_t amount) {
       value += amount;
       return *this;
     }
-    inline Iterator& operator-=(ptrdiff_t amount) {
+    Iterator& operator-=(ptrdiff_t amount) {
       value -= amount;
       return *this;
     }
-    inline Iterator operator+(ptrdiff_t amount) const {
+    Iterator operator+(ptrdiff_t amount) const {
       return Iterator(value + amount);
     }
-    inline Iterator operator-(ptrdiff_t amount) const {
+    Iterator operator-(ptrdiff_t amount) const {
       return Iterator(value - amount);
     }
-    inline ptrdiff_t operator-(const Iterator& other) const {
+    ptrdiff_t operator-(const Iterator& other) const {
       return value - other.value;
     }
 
-    inline bool operator==(const Iterator& other) const {
+    bool operator==(const Iterator& other) const {
       return value == other.value;
     }
-    inline bool operator<=(const Iterator& other) const {
+    bool operator<=(const Iterator& other) const {
       return value <= other.value;
     }
-    inline bool operator>=(const Iterator& other) const {
+    bool operator>=(const Iterator& other) const {
       return value >= other.value;
     }
-    inline bool operator<(const Iterator& other) const {
-      return value < other.value;
-    }
-    inline bool operator>(const Iterator& other) const {
-      return value > other.value;
-    }
+    bool operator<(const Iterator& other) const { return value < other.value; }
+    bool operator>(const Iterator& other) const { return value > other.value; }
 
    private:
     T value;
   };
 
-  inline Iterator begin() const { return Iterator(begin_); }
-  inline Iterator end() const { return Iterator(end_); }
+  Iterator begin() const { return Iterator(begin_); }
+  Iterator end() const { return Iterator(end_); }
 
-  inline auto size() const -> decltype(instance<T>() - instance<T>()) {
+  auto size() const -> decltype(instance<T>() - instance<T>()) {
     return end_ - begin_;
   }
 
@@ -1048,12 +1043,12 @@ class Range {
 };
 
 template <typename T, typename U>
-inline constexpr Range<WiderType<Decay<T>, Decay<U>>> range(T begin, U end) {
+constexpr Range<WiderType<Decay<T>, Decay<U>>> range(T begin, U end) {
   return Range<WiderType<Decay<T>, Decay<U>>>(begin, end);
 }
 
 template <typename T>
-inline constexpr Range<Decay<T>> range(T begin, T end) {
+constexpr Range<Decay<T>> range(T begin, T end) {
   return Range<Decay<T>>(begin, end);
 }
 // Returns a fake iterable container containing all values of T from `begin`
@@ -1063,7 +1058,7 @@ inline constexpr Range<Decay<T>> range(T begin, T end) {
 //     for (int i: zc::range(1, 10)) { print(i); }
 
 template <typename T>
-inline constexpr Range<Decay<T>> zeroTo(T end) {
+constexpr Range<Decay<T>> zeroTo(T end) {
   return Range<Decay<T>>(end);
 }
 // Returns a fake iterable container containing all values of T from zero
@@ -1073,7 +1068,7 @@ inline constexpr Range<Decay<T>> zeroTo(T end) {
 //     for (int i: zc::zeroTo(10)) { print(i); }
 
 template <typename T>
-inline constexpr Range<size_t> indices(T&& container) {
+constexpr Range<size_t> indices(T&& container) {
   // Shortcut for iterating over the indices of a container:
   //
   //     for (size_t i: zc::indices(myArray)) { handle(myArray[i]); }
@@ -1084,71 +1079,65 @@ inline constexpr Range<size_t> indices(T&& container) {
 template <typename T>
 class Repeat {
  public:
-  inline constexpr Repeat(const T& value, size_t count)
-      : value(value), count(count) {}
+  constexpr Repeat(const T& value, size_t count) : value(value), count(count) {}
 
   class Iterator {
    public:
     Iterator() = default;
-    inline Iterator(const T& value, size_t index)
-        : value(value), index(index) {}
+    Iterator(const T& value, size_t index) : value(value), index(index) {}
 
-    inline const T& operator*() const { return value; }
-    inline const T& operator[](ptrdiff_t index) const { return value; }
-    inline Iterator& operator++() {
+    const T& operator*() const { return value; }
+    const T& operator[](ptrdiff_t index) const { return value; }
+    Iterator& operator++() {
       ++index;
       return *this;
     }
-    inline Iterator operator++(int) { return Iterator(value, index++); }
-    inline Iterator& operator--() {
+    Iterator operator++(int) { return Iterator(value, index++); }
+    Iterator& operator--() {
       --index;
       return *this;
     }
-    inline Iterator operator--(int) { return Iterator(value, index--); }
-    inline Iterator& operator+=(ptrdiff_t amount) {
+    Iterator operator--(int) { return Iterator(value, index--); }
+    Iterator& operator+=(ptrdiff_t amount) {
       index += amount;
       return *this;
     }
-    inline Iterator& operator-=(ptrdiff_t amount) {
+    Iterator& operator-=(ptrdiff_t amount) {
       index -= amount;
       return *this;
     }
-    inline Iterator operator+(ptrdiff_t amount) const {
+    Iterator operator+(ptrdiff_t amount) const {
       return Iterator(value, index + amount);
     }
-    inline Iterator operator-(ptrdiff_t amount) const {
+    Iterator operator-(ptrdiff_t amount) const {
       return Iterator(value, index - amount);
     }
-    inline ptrdiff_t operator-(const Iterator& other) const {
+    ptrdiff_t operator-(const Iterator& other) const {
       return index - other.index;
     }
 
-    inline bool operator==(const Iterator& other) const {
+    bool operator==(const Iterator& other) const {
       return index == other.index;
     }
-    inline bool operator<=(const Iterator& other) const {
+    bool operator<=(const Iterator& other) const {
       return index <= other.index;
     }
-    inline bool operator>=(const Iterator& other) const {
+    bool operator>=(const Iterator& other) const {
       return index >= other.index;
     }
-    inline bool operator<(const Iterator& other) const {
-      return index < other.index;
-    }
-    inline bool operator>(const Iterator& other) const {
-      return index > other.index;
-    }
+    bool operator<(const Iterator& other) const { return index < other.index; }
+    bool operator>(const Iterator& other) const { return index > other.index; }
 
    private:
     T value;
     size_t index;
   };
 
-  inline Iterator begin() const { return Iterator(value, 0); }
-  inline Iterator end() const { return Iterator(value, count); }
+  Iterator begin() const { return Iterator(value, 0); }
+  Iterator end() const { return Iterator(value, count); }
 
-  inline size_t size() const { return count; }
-  inline const T& operator[](ptrdiff_t) const { return value; }
+  size_t size() const { return count; }
+  const T& operator[](ptrdiff_t) const { return value; }
 
  private:
   T value;
@@ -1156,7 +1145,7 @@ class Repeat {
 };
 
 template <typename T>
-inline constexpr Repeat<Decay<T>> repeat(T&& value, size_t count) {
+constexpr Repeat<Decay<T>> repeat(T&& value, size_t count) {
   // Returns a fake iterable which contains `count` repeats of `value`. Useful
   // for e.g. creating a bunch of spaces:  `zc::repeat(' ', indent * 2)`
 
@@ -1189,12 +1178,12 @@ inline void operator delete(void*, zc::_::PlacementNew, void* __p) noexcept {}
 namespace zc {
 
 template <typename T, typename... Params>
-inline void ctor(T& location, Params&&... params) {
+void ctor(T& location, Params&&... params) {
   new (_::PlacementNew(), &location) T(zc::fwd<Params>(params)...);
 }
 
 template <typename T>
-inline void dtor(T& location) {
+void dtor(T& location) {
   location.~T();
 }
 
@@ -1232,22 +1221,22 @@ class NullableValue {
   // instance of T and a boolean flag indicating nullness.
 
  public:
-  inline NullableValue(NullableValue&& other) : isSet(other.isSet) {
+  NullableValue(NullableValue&& other) : isSet(other.isSet) {
     if (isSet) {
       ctor(value, zc::mv(other.value));
     }
   }
-  inline NullableValue(const NullableValue& other) : isSet(other.isSet) {
+  NullableValue(const NullableValue& other) : isSet(other.isSet) {
     if (isSet) {
       ctor(value, other.value);
     }
   }
-  inline NullableValue(NullableValue& other) : isSet(other.isSet) {
+  NullableValue(NullableValue& other) : isSet(other.isSet) {
     if (isSet) {
       ctor(value, other.value);
     }
   }
-  inline ~NullableValue()
+  ~NullableValue()
 #if _MSC_VER && !defined(__clang__)
       // TODO(msvc): MSVC has a hard time with noexcept specifier expressions
       // that are more complex
@@ -1263,17 +1252,17 @@ class NullableValue {
     }
   }
 
-  inline T& operator*() & { return value; }
-  inline const T& operator*() const& { return value; }
-  inline T&& operator*() && { return zc::mv(value); }
-  inline const T&& operator*() const&& { return zc::mv(value); }
-  inline T* operator->() { return &value; }
-  inline const T* operator->() const { return &value; }
-  inline operator T*() { return isSet ? &value : nullptr; }
-  inline operator const T*() const { return isSet ? &value : nullptr; }
+  T& operator*() & { return value; }
+  const T& operator*() const& { return value; }
+  T&& operator*() && { return zc::mv(value); }
+  const T&& operator*() const&& { return zc::mv(value); }
+  T* operator->() { return &value; }
+  const T* operator->() const { return &value; }
+  operator T*() { return isSet ? &value : nullptr; }
+  operator const T*() const { return isSet ? &value : nullptr; }
 
   template <typename... Params>
-  inline T& emplace(Params&&... params) {
+  T& emplace(Params&&... params) {
     if (isSet) {
       isSet = false;
       dtor(value);
@@ -1283,31 +1272,31 @@ class NullableValue {
     return value;
   }
 
-  inline NullableValue() : isSet(false) {}
-  inline NullableValue(T&& t) : isSet(true) { ctor(value, zc::mv(t)); }
-  inline NullableValue(T& t) : isSet(true) { ctor(value, t); }
-  inline NullableValue(const T& t) : isSet(true) { ctor(value, t); }
+  NullableValue() : isSet(false) {}
+  NullableValue(T&& t) : isSet(true) { ctor(value, zc::mv(t)); }
+  NullableValue(T& t) : isSet(true) { ctor(value, t); }
+  NullableValue(const T& t) : isSet(true) { ctor(value, t); }
   template <typename U>
-  inline NullableValue(NullableValue<U>&& other) : isSet(other.isSet) {
+  NullableValue(NullableValue<U>&& other) : isSet(other.isSet) {
     if (isSet) {
       ctor(value, zc::mv(other.value));
     }
   }
   template <typename U>
-  inline NullableValue(const NullableValue<U>& other) : isSet(other.isSet) {
+  NullableValue(const NullableValue<U>& other) : isSet(other.isSet) {
     if (isSet) {
       ctor(value, other.value);
     }
   }
   template <typename U>
-  inline NullableValue(const NullableValue<U&>& other) : isSet(other.isSet) {
+  NullableValue(const NullableValue<U&>& other) : isSet(other.isSet) {
     if (isSet) {
       ctor(value, *other.ptr);
     }
   }
-  inline NullableValue(decltype(nullptr)) : isSet(false) {}
+  NullableValue(decltype(nullptr)) : isSet(false) {}
 
-  inline NullableValue& operator=(NullableValue&& other) {
+  NullableValue& operator=(NullableValue&& other) {
     if (&other != this) {
       // Careful about throwing destructors/constructors here.
       if (isSet) {
@@ -1322,7 +1311,7 @@ class NullableValue {
     return *this;
   }
 
-  inline NullableValue& operator=(NullableValue& other) {
+  NullableValue& operator=(NullableValue& other) {
     if (&other != this) {
       // Careful about throwing destructors/constructors here.
       if (isSet) {
@@ -1337,7 +1326,7 @@ class NullableValue {
     return *this;
   }
 
-  inline NullableValue& operator=(const NullableValue& other) {
+  NullableValue& operator=(const NullableValue& other) {
     if (&other != this) {
       // Careful about throwing destructors/constructors here.
       if (isSet) {
@@ -1352,20 +1341,20 @@ class NullableValue {
     return *this;
   }
 
-  inline NullableValue& operator=(T&& other) {
+  NullableValue& operator=(T&& other) {
     emplace(zc::mv(other));
     return *this;
   }
-  inline NullableValue& operator=(T& other) {
+  NullableValue& operator=(T& other) {
     emplace(other);
     return *this;
   }
-  inline NullableValue& operator=(const T& other) {
+  NullableValue& operator=(const T& other) {
     emplace(other);
     return *this;
   }
   template <typename U>
-  inline NullableValue& operator=(NullableValue<U>&& other) {
+  NullableValue& operator=(NullableValue<U>&& other) {
     if (other.isSet) {
       emplace(zc::mv(other.value));
     } else {
@@ -1374,7 +1363,7 @@ class NullableValue {
     return *this;
   }
   template <typename U>
-  inline NullableValue& operator=(const NullableValue<U>& other) {
+  NullableValue& operator=(const NullableValue<U>& other) {
     if (other.isSet) {
       emplace(other.value);
     } else {
@@ -1383,7 +1372,7 @@ class NullableValue {
     return *this;
   }
   template <typename U>
-  inline NullableValue& operator=(const NullableValue<U&>& other) {
+  NullableValue& operator=(const NullableValue<U&>& other) {
     if (other.isSet) {
       emplace(other.value);
     } else {
@@ -1391,7 +1380,7 @@ class NullableValue {
     }
     return *this;
   }
-  inline NullableValue& operator=(decltype(nullptr)) {
+  NullableValue& operator=(decltype(nullptr)) {
     if (isSet) {
       isSet = false;
       dtor(value);
@@ -1399,7 +1388,7 @@ class NullableValue {
     return *this;
   }
 
-  inline bool operator==(decltype(nullptr)) const { return !isSet; }
+  bool operator==(decltype(nullptr)) const { return !isSet; }
 
   NullableValue(const T* t) = delete;
   NullableValue& operator=(const T* other) = delete;
@@ -1431,28 +1420,28 @@ class NullableValue {
 };
 
 template <typename T>
-inline NullableValue<T>&& readMaybe(Maybe<T>&& maybe) {
+NullableValue<T>&& readMaybe(Maybe<T>&& maybe) {
   return zc::mv(maybe.ptr);
 }
 template <typename T>
-inline T* readMaybe(Maybe<T>& maybe) {
+T* readMaybe(Maybe<T>& maybe) {
   return maybe.ptr;
 }
 template <typename T>
-inline const T* readMaybe(const Maybe<T>& maybe) {
+const T* readMaybe(const Maybe<T>& maybe) {
   return maybe.ptr;
 }
 template <typename T>
-inline T* readMaybe(Maybe<T&>&& maybe) {
+T* readMaybe(Maybe<T&>&& maybe) {
   return maybe.ptr;
 }
 template <typename T>
-inline T* readMaybe(const Maybe<T&>& maybe) {
+T* readMaybe(const Maybe<T&>& maybe) {
   return maybe.ptr;
 }
 
 template <typename T>
-inline T* readMaybe(T* ptr) {
+T* readMaybe(T* ptr) {
   return ptr;
 }
 // Allow ZC_IF_SOME to work on regular pointers.
@@ -1585,7 +1574,7 @@ class Maybe {
   Maybe(zc::None) : ptr(nullptr) {}
 
   template <typename... Params>
-  inline T& emplace(Params&&... params) {
+  T& emplace(Params&&... params) {
     // Replace this Maybe's content with a new value constructed by passing the
     // given parameters to T's constructor. This can be used to initialize a
     // Maybe without copying or even moving a T. Returns a reference to the
@@ -1594,29 +1583,29 @@ class Maybe {
     return ptr.emplace(zc::fwd<Params>(params)...);
   }
 
-  inline Maybe& operator=(T&& other) {
+  Maybe& operator=(T&& other) {
     ptr = zc::mv(other);
     return *this;
   }
-  inline Maybe& operator=(T& other) {
+  Maybe& operator=(T& other) {
     ptr = other;
     return *this;
   }
-  inline Maybe& operator=(const T& other) {
+  Maybe& operator=(const T& other) {
     ptr = other;
     return *this;
   }
 
-  inline Maybe& operator=(Maybe&& other) {
+  Maybe& operator=(Maybe&& other) {
     ptr = zc::mv(other.ptr);
     other = zc::none;
     return *this;
   }
-  inline Maybe& operator=(Maybe& other) {
+  Maybe& operator=(Maybe& other) {
     ptr = other.ptr;
     return *this;
   }
-  inline Maybe& operator=(const Maybe& other) {
+  Maybe& operator=(const Maybe& other) {
     ptr = other.ptr;
     return *this;
   }
@@ -1641,53 +1630,48 @@ class Maybe {
     return *this;
   }
 
-  inline Maybe& operator=(zc::None) {
+  Maybe& operator=(zc::None) {
     ptr = nullptr;
     return *this;
   }
-  inline bool operator==(zc::None) const { return ptr == nullptr; }
+  bool operator==(zc::None) const { return ptr == nullptr; }
 
-  inline bool operator==(const Maybe<T>& other) const {
+  bool operator==(const Maybe<T>& other) const {
     if (ptr == nullptr) {
       return other == zc::none;
-    } else {
-      return other.ptr != nullptr && *ptr == *other.ptr;
     }
+    return other.ptr != nullptr && *ptr == *other.ptr;
   }
 
   Maybe(const T* t) = delete;
   Maybe& operator=(const T* other) = delete;
   // We used to permit assigning a Maybe<T> directly from a T*, and the
-  // assignment would check for nullness. This turned out never to be useful,
+  // assignment would check for nullness. This turned out never to be useful
   // and sometimes to be dangerous.
 
   T& orDefault(T& defaultValue) & {
     if (ptr == nullptr) {
       return defaultValue;
-    } else {
-      return *ptr;
     }
+    return *ptr;
   }
   const T& orDefault(const T& defaultValue) const& {
     if (ptr == nullptr) {
       return defaultValue;
-    } else {
-      return *ptr;
     }
+    return *ptr;
   }
   T&& orDefault(T&& defaultValue) && {
     if (ptr == nullptr) {
       return zc::mv(defaultValue);
-    } else {
-      return zc::mv(*ptr);
     }
+    return zc::mv(*ptr);
   }
   const T&& orDefault(const T&& defaultValue) const&& {
     if (ptr == nullptr) {
       return zc::mv(defaultValue);
-    } else {
-      return zc::mv(*ptr);
     }
+    return zc::mv(*ptr);
   }
 
   template <typename F,
@@ -1696,9 +1680,8 @@ class Maybe {
   Result orDefault(F&& lazyDefaultValue) & {
     if (ptr == nullptr) {
       return lazyDefaultValue();
-    } else {
-      return *ptr;
     }
+    return *ptr;
   }
 
   template <typename F,
@@ -1707,9 +1690,8 @@ class Maybe {
   Result orDefault(F&& lazyDefaultValue) const& {
     if (ptr == nullptr) {
       return lazyDefaultValue();
-    } else {
-      return *ptr;
     }
+    return *ptr;
   }
 
   template <typename F,
@@ -1718,9 +1700,8 @@ class Maybe {
   Result orDefault(F&& lazyDefaultValue) && {
     if (ptr == nullptr) {
       return lazyDefaultValue();
-    } else {
-      return zc::mv(*ptr);
     }
+    return zc::mv(*ptr);
   }
 
   template <typename F,
@@ -1729,45 +1710,40 @@ class Maybe {
   Result orDefault(F&& lazyDefaultValue) const&& {
     if (ptr == nullptr) {
       return lazyDefaultValue();
-    } else {
-      return zc::mv(*ptr);
     }
+    return zc::mv(*ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) & -> Maybe<decltype(f(instance<T&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      return f(*ptr);
     }
+    return f(*ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) const& -> Maybe<decltype(f(instance<const T&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      return f(*ptr);
     }
+    return f(*ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) && -> Maybe<decltype(f(instance<T&&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      return f(zc::mv(*ptr));
     }
+    return f(zc::mv(*ptr));
   }
 
   template <typename Func>
   auto map(Func&& f) const&& -> Maybe<decltype(f(instance<const T&&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      return f(zc::mv(*ptr));
     }
+    return f(zc::mv(*ptr));
   }
 
  private:
@@ -1790,7 +1766,7 @@ class Maybe<T&> {
   constexpr Maybe(T& t) : ptr(&t) {}
   constexpr Maybe(T* t) : ptr(t) {}
 
-  inline constexpr Maybe(PropagateConst<T, Maybe>& other) : ptr(other.ptr) {}
+  constexpr Maybe(PropagateConst<T, Maybe>& other) : ptr(other.ptr) {}
   // Allow const copy only if `T` itself is const. Otherwise allow only
   // non-const copy, to protect transitive constness. Clang is happy for this
   // constructor to be declared `= default` since, after evaluation of
@@ -1803,98 +1779,92 @@ class Maybe<T&> {
   // because we want to override the move constructor, and if we override the
   // move constructor then we must define the copy constructor here.
 
-  inline constexpr Maybe(Maybe&& other) : ptr(other.ptr) {
-    other.ptr = nullptr;
-  }
+  constexpr Maybe(Maybe&& other) : ptr(other.ptr) { other.ptr = nullptr; }
 
   template <typename U>
-  inline constexpr Maybe(Maybe<U&>& other) : ptr(other.ptr) {}
+  constexpr Maybe(Maybe<U&>& other) : ptr(other.ptr) {}
   template <typename U>
-  inline constexpr Maybe(const Maybe<U&>& other)
+  constexpr Maybe(const Maybe<U&>& other)
       : ptr(const_cast<const U*>(other.ptr)) {}
   template <typename U>
-  inline constexpr Maybe(Maybe<U&>&& other) : ptr(other.ptr) {
+  constexpr Maybe(Maybe<U&>&& other) : ptr(other.ptr) {
     other.ptr = nullptr;
   }
   template <typename U>
-  inline constexpr Maybe(const Maybe<U&>&& other) = delete;
+  constexpr Maybe(const Maybe<U&>&& other) = delete;
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
   constexpr Maybe(Maybe<U>& other) : ptr(other.ptr.operator U*()) {}
   template <typename U, typename = EnableIf<canConvert<const U*, T*>()>>
   constexpr Maybe(const Maybe<U>& other) : ptr(other.ptr.operator const U*()) {}
 
-  inline constexpr Maybe(zc::None) : ptr(nullptr) {}
+  constexpr Maybe(zc::None) : ptr(nullptr) {}
 
-  inline Maybe& operator=(T& other) {
+  Maybe& operator=(T& other) {
     ptr = &other;
     return *this;
   }
-  inline Maybe& operator=(T* other) {
+  Maybe& operator=(T* other) {
     ptr = other;
     return *this;
   }
-  inline Maybe& operator=(PropagateConst<T, Maybe>& other) {
+  Maybe& operator=(PropagateConst<T, Maybe>& other) {
     ptr = other.ptr;
     return *this;
   }
-  inline Maybe& operator=(Maybe&& other) {
-    ptr = other.ptr;
-    other.ptr = nullptr;
-    return *this;
-  }
-  template <typename U>
-  inline Maybe& operator=(Maybe<U&>& other) {
-    ptr = other.ptr;
-    return *this;
-  }
-  template <typename U>
-  inline Maybe& operator=(const Maybe<const U&>& other) {
-    ptr = other.ptr;
-    return *this;
-  }
-  template <typename U>
-  inline Maybe& operator=(Maybe<U&>&& other) {
+  Maybe& operator=(Maybe&& other) {
     ptr = other.ptr;
     other.ptr = nullptr;
     return *this;
   }
   template <typename U>
-  inline Maybe& operator=(const Maybe<U&>&& other) = delete;
+  Maybe& operator=(Maybe<U&>& other) {
+    ptr = other.ptr;
+    return *this;
+  }
+  template <typename U>
+  Maybe& operator=(const Maybe<const U&>& other) {
+    ptr = other.ptr;
+    return *this;
+  }
+  template <typename U>
+  Maybe& operator=(Maybe<U&>&& other) {
+    ptr = other.ptr;
+    other.ptr = nullptr;
+    return *this;
+  }
+  template <typename U>
+  Maybe& operator=(const Maybe<U&>&& other) = delete;
 
-  inline bool operator==(zc::None) const { return ptr == nullptr; }
+  bool operator==(zc::None) const { return ptr == nullptr; }
 
   T& orDefault(T& defaultValue) {
     if (ptr == nullptr) {
       return defaultValue;
-    } else {
-      return *ptr;
     }
+    return *ptr;
   }
   const T& orDefault(const T& defaultValue) const {
     if (ptr == nullptr) {
       return defaultValue;
-    } else {
-      return *ptr;
     }
+    return *ptr;
   }
 
   template <typename Func>
   auto map(Func&& f) -> Maybe<decltype(f(instance<T&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      return f(*ptr);
     }
+    return f(*ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) const -> Maybe<decltype(f(instance<const T&>()))> {
     if (ptr == nullptr) {
       return zc::none;
-    } else {
-      const T& ref = *ptr;
-      return f(ref);
     }
+    const T& ref = *ptr;
+    return f(ref);
   }
 
  private:
@@ -1923,11 +1893,11 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
   // target.
 
  public:
-  inline constexpr ArrayPtr() : ptr(nullptr), size_(0) {}
-  inline constexpr ArrayPtr(decltype(nullptr)) : ptr(nullptr), size_(0) {}
-  inline constexpr ArrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size)
+  constexpr ArrayPtr() : ptr(nullptr), size_(0) {}
+  constexpr ArrayPtr(decltype(nullptr)) : ptr(nullptr), size_(0) {}
+  constexpr ArrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size)
       : ptr(ptr), size_(size) {}
-  inline constexpr ArrayPtr(T* begin ZC_LIFETIMEBOUND, T* end ZC_LIFETIMEBOUND)
+  constexpr ArrayPtr(T* begin ZC_LIFETIMEBOUND, T* end ZC_LIFETIMEBOUND)
       : ptr(begin), size_(end - begin) {}
   ArrayPtr<T>& operator=(Array<T>&&) = delete;
   ArrayPtr<T>& operator=(decltype(nullptr)) {
@@ -1960,7 +1930,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winit-list-lifetime"
 #endif
-  inline ZC_CONSTEXPR ArrayPtr(
+  constexpr ArrayPtr(
       ::std::initializer_list<RemoveConstOrDisable<T>> init ZC_LIFETIMEBOUND)
       : ptr(init.begin()), size_(init.size()) {}
 #if __GNUC__ && !__clang__ && __GNUC__ >= 9
@@ -1968,7 +1938,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
 #endif
 
   template <size_t size>
-  inline constexpr ArrayPtr(ZC_LIFETIMEBOUND T (&native)[size])
+  constexpr ArrayPtr(ZC_LIFETIMEBOUND T (&native)[size])
       : ptr(native), size_(size) {
     // Construct an ArrayPtr from a native C-style array.
     //
@@ -2001,63 +1971,59 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     static_assert(!isSameType<T, const char32_t>(), "see above");
   }
 
-  inline operator ArrayPtr<const T>() const {
-    return ArrayPtr<const T>(ptr, size_);
-  }
-  inline ArrayPtr<const T> asConst() const {
-    return ArrayPtr<const T>(ptr, size_);
-  }
+  operator ArrayPtr<const T>() const { return ArrayPtr<const T>(ptr, size_); }
+  ArrayPtr<const T> asConst() const { return ArrayPtr<const T>(ptr, size_); }
 
-  inline constexpr size_t size() const { return size_; }
-  inline constexpr const T& operator[](size_t index) const {
+  constexpr size_t size() const { return size_; }
+  constexpr const T& operator[](size_t index) const {
     ZC_IREQUIRE(index < size_, "Out-of-bounds ArrayPtr access.");
     return ptr[index];
   }
-  inline T& operator[](size_t index) {
+  T& operator[](size_t index) {
     ZC_IREQUIRE(index < size_, "Out-of-bounds ArrayPtr access.");
     return ptr[index];
   }
 
-  inline constexpr T* begin() { return ptr; }
-  inline constexpr T* end() { return ptr + size_; }
-  inline constexpr T& front() { return *ptr; }
-  inline constexpr T& back() { return *(ptr + size_ - 1); }
-  inline constexpr const T* begin() const { return ptr; }
-  inline constexpr const T* end() const { return ptr + size_; }
-  inline constexpr const T& front() const { return *ptr; }
-  inline constexpr const T& back() const { return *(ptr + size_ - 1); }
+  constexpr T* begin() { return ptr; }
+  constexpr T* end() { return ptr + size_; }
+  constexpr T& front() { return *ptr; }
+  constexpr T& back() { return *(ptr + size_ - 1); }
+  constexpr const T* begin() const { return ptr; }
+  constexpr const T* end() const { return ptr + size_; }
+  constexpr const T& front() const { return *ptr; }
+  constexpr const T& back() const { return *(ptr + size_ - 1); }
 
-  inline constexpr ArrayPtr<const T> slice(size_t start, size_t end) const {
+  constexpr ArrayPtr<const T> slice(size_t start, size_t end) const {
     ZC_IREQUIRE(start <= end && end <= size_,
                 "Out-of-bounds ArrayPtr::slice().");
     return ArrayPtr<const T>(ptr + start, end - start);
   }
-  inline constexpr ArrayPtr slice(size_t start, size_t end) {
+  constexpr ArrayPtr slice(size_t start, size_t end) {
     ZC_IREQUIRE(start <= end && end <= size_,
                 "Out-of-bounds ArrayPtr::slice().");
     return ArrayPtr(ptr + start, end - start);
   }
-  inline constexpr ArrayPtr<const T> slice(size_t start) const {
+  constexpr ArrayPtr<const T> slice(size_t start) const {
     ZC_IREQUIRE(start <= size_, "Out-of-bounds ArrayPtr::slice().");
     return ArrayPtr<const T>(ptr + start, size_ - start);
   }
-  inline constexpr ArrayPtr slice(size_t start) {
+  constexpr ArrayPtr slice(size_t start) {
     ZC_IREQUIRE(start <= size_, "Out-of-bounds ArrayPtr::slice().");
     return ArrayPtr(ptr + start, size_ - start);
   }
-  inline constexpr bool startsWith(const ArrayPtr<const T>& other) const {
+  constexpr bool startsWith(const ArrayPtr<const T>& other) const {
     return other.size() <= size_ && slice(0, other.size()) == other;
   }
-  inline constexpr bool endsWith(const ArrayPtr<const T>& other) const {
+  constexpr bool endsWith(const ArrayPtr<const T>& other) const {
     return other.size() <= size_ && slice(size_ - other.size(), size_) == other;
   }
 
-  inline constexpr ArrayPtr first(size_t count) { return slice(0, count); }
-  inline constexpr ArrayPtr<const T> first(size_t count) const {
+  constexpr ArrayPtr first(size_t count) { return slice(0, count); }
+  constexpr ArrayPtr<const T> first(size_t count) const {
     return slice(0, count);
   }
 
-  inline Maybe<size_t> findFirst(const T& match) const {
+  Maybe<size_t> findFirst(const T& match) const {
     for (size_t i = 0; i < size_; i++) {
       if (ptr[i] == match) {
         return i;
@@ -2065,7 +2031,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     }
     return zc::none;
   }
-  inline Maybe<size_t> findLast(const T& match) const {
+  Maybe<size_t> findLast(const T& match) const {
     for (size_t i = size_; i--;) {
       if (ptr[i] == match) {
         return i;
@@ -2079,17 +2045,15 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     // aliasing rules.
     return {reinterpret_cast<PropagateConst<T, byte>*>(ptr), size_ * sizeof(T)};
   }
-  inline ArrayPtr<PropagateConst<T, char>> asChars() const {
+  ArrayPtr<PropagateConst<T, char>> asChars() const {
     // Reinterpret the array as a char array. This is explicitly legal under C++
     // aliasing rules.
     return {reinterpret_cast<PropagateConst<T, char>*>(ptr), size_ * sizeof(T)};
   }
 
-  inline constexpr bool operator==(decltype(nullptr)) const {
-    return size_ == 0;
-  }
+  constexpr bool operator==(decltype(nullptr)) const { return size_ == 0; }
 
-  inline constexpr bool operator==(const ArrayPtr& other) const {
+  constexpr bool operator==(const ArrayPtr& other) const {
     if (size_ != other.size_) return false;
 #if ZC_HAS_COMPILER_FEATURE(cxx_constexpr_string_builtins)
     if (isIntegral<RemoveConst<T>>()) {
@@ -2104,7 +2068,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
   }
 
   template <typename U>
-  inline constexpr bool operator==(const ArrayPtr<U>& other) const {
+  constexpr bool operator==(const ArrayPtr<U>& other) const {
     if (size_ != other.size()) return false;
     for (size_t i = 0; i < size_; i++) {
       if (ptr[i] != other[i]) return false;
@@ -2112,7 +2076,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     return true;
   }
 
-  inline constexpr bool operator<(const ArrayPtr& other) const {
+  constexpr bool operator<(const ArrayPtr& other) const {
     size_t comparisonSize = zc::min(size_, other.size_);
     if constexpr (isSameType<RemoveConst<T>, char>() ||
                   isSameType<RemoveConst<T>, unsigned char>()) {
@@ -2142,33 +2106,33 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     return size_ < other.size_;
   }
 
-  inline constexpr bool operator<=(const ArrayPtr& other) const {
+  constexpr bool operator<=(const ArrayPtr& other) const {
     return !(other < *this);
   }
-  inline constexpr bool operator>=(const ArrayPtr& other) const {
+  constexpr bool operator>=(const ArrayPtr& other) const {
     return other <= *this;
   }
   // Note that only strongly ordered types are currently supported
-  inline constexpr bool operator>(const ArrayPtr& other) const {
+  constexpr bool operator>(const ArrayPtr& other) const {
     return other < *this;
   }
 
   template <typename... Attachments>
   Array<T> attach(Attachments&&... attachments) const ZC_WARN_UNUSED_RESULT;
   // Like Array<T>::attach(), but also promotes an ArrayPtr to an Array.
-  // Generally the attachment should be an object that actually owns the array
+  // Generally, the attachment should be an object that actually owns the array
   // that the ArrayPtr is pointing at.
   //
   // You must include zc/array.h to call this.
 
   template <typename U>
-  inline auto as() {
+  auto as() {
     return U::from(this);
   }
   // Syntax sugar for invoking U::from.
   // Used to chain conversion calls rather than wrap with function.
 
-  inline void fill(T t) {
+  void fill(T t) {
     // Fill the area by copying t over every element.
 
     for (size_t i = 0; i < size_; i++) {
@@ -2178,7 +2142,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     // T's. libc++ std::fill doesn't have memset specialization either.
   }
 
-  inline void fill(ArrayPtr<const T> other) {
+  void fill(ArrayPtr<const T> other) {
     // Fill the area by copying each element of other, in sequence, over every
     // element.
     const size_t otherSize = other.size();
@@ -2192,7 +2156,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     }
   }
 
-  inline void copyFrom(zc::ArrayPtr<const T> other) {
+  void copyFrom(zc::ArrayPtr<const T> other) {
     // Copy data from the other array pointer.
     // Arrays have to be of the same size and memory area MUST NOT overlap.
     ZC_IREQUIRE(size_ == other.size(), "copy requires arrays of the same size");
@@ -2208,7 +2172,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
   T* ptr;
   size_t size_;
 
-  inline bool intersects(zc::ArrayPtr<const T> other) const {
+  bool intersects(zc::ArrayPtr<const T> other) const {
     // Checks if memory area intersects with another pointer.
 
     // Memory _does not_ intersect if one of the arrays is completely on one
@@ -2224,9 +2188,8 @@ inline Maybe<size_t> ArrayPtr<const char>::findFirst(const char& c) const {
   const char* pos = reinterpret_cast<const char*>(memchr(ptr, c, size_));
   if (pos == nullptr) {
     return zc::none;
-  } else {
-    return pos - ptr;
   }
+  return pos - ptr;
 }
 
 template <>
@@ -2234,9 +2197,8 @@ inline Maybe<size_t> ArrayPtr<char>::findFirst(const char& c) const {
   char* pos = reinterpret_cast<char*>(memchr(ptr, c, size_));
   if (pos == nullptr) {
     return zc::none;
-  } else {
-    return pos - ptr;
   }
+  return pos - ptr;
 }
 
 template <>
@@ -2244,9 +2206,8 @@ inline Maybe<size_t> ArrayPtr<const byte>::findFirst(const byte& c) const {
   const byte* pos = reinterpret_cast<const byte*>(memchr(ptr, c, size_));
   if (pos == nullptr) {
     return zc::none;
-  } else {
-    return pos - ptr;
   }
+  return pos - ptr;
 }
 
 template <>
@@ -2254,35 +2215,34 @@ inline Maybe<size_t> ArrayPtr<byte>::findFirst(const byte& c) const {
   byte* pos = reinterpret_cast<byte*>(memchr(ptr, c, size_));
   if (pos == nullptr) {
     return zc::none;
-  } else {
-    return pos - ptr;
   }
+  return pos - ptr;
 }
 
 // glibc has a memrchr() for reverse search but it's non-standard, so we don't
 // bother optimizing findLast(), which isn't used much anyway.
 
 template <typename T>
-inline constexpr ArrayPtr<T> arrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size) {
+constexpr ArrayPtr<T> arrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size) {
   // Use this function to construct ArrayPtrs without writing out the type name.
   return ArrayPtr<T>(ptr, size);
 }
 
 template <typename T>
-inline constexpr ArrayPtr<T> arrayPtr(T* begin ZC_LIFETIMEBOUND,
-                                      T* end ZC_LIFETIMEBOUND) {
+constexpr ArrayPtr<T> arrayPtr(T* begin ZC_LIFETIMEBOUND,
+                               T* end ZC_LIFETIMEBOUND) {
   // Use this function to construct ArrayPtrs without writing out the type name.
   return ArrayPtr<T>(begin, end);
 }
 
 template <typename T>
-inline constexpr ArrayPtr<T> arrayPtr(T& t ZC_LIFETIMEBOUND) {
+constexpr ArrayPtr<T> arrayPtr(T& t ZC_LIFETIMEBOUND) {
   // Construct ArrayPtr pointing to a single object instance.
   return arrayPtr(&t, 1);
 }
 
 template <typename T, size_t s>
-inline constexpr ArrayPtr<T> arrayPtr(T (&arr)[s]) {
+constexpr ArrayPtr<T> arrayPtr(T (&arr)[s]) {
   // Use this function to construct ArrayPtrs without writing out the type name.
   return ArrayPtr<T>(arr);
 }
@@ -2305,13 +2265,13 @@ To implicitCast(From&& from) {
 
 template <typename To, typename From>
 To& downcast(From& from) {
-  // Down-cast a value to a sub-type, asserting that the cast is valid. In opt
+  // Down-cast a value to a subtype, asserting that the cast is valid. In opt
   // mode this is a static_cast, but in debug mode (when RTTI is enabled) a
   // dynamic_cast will be used to verify that the value really has the requested
   // type.
 
-  // Force a compile error if To is not a subtype of From.
-  if (false) {
+  // Force a compile time error if To isn't a subtype of From.
+  if constexpr (false) {
     zc::implicitCast<From*>(zc::implicitCast<To*>(nullptr));
   }
 
@@ -2367,7 +2327,7 @@ _::Deferred<Func> defer(Func&& func) {
   // The ZC_DEFER macro provides slightly more convenient syntax for the common
   // case where you want some code to run at current scope exit.
   //
-  // ZC_DEFER does not support move-assignment for its returned objects. If you
+  // ZC_DEFER doesn't support move-assignment for its returned objects. If you
   // need to reuse the variable for your deferred function object, then you will
   // want to write your own class for that purpose.
 

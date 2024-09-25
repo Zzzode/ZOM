@@ -183,7 +183,7 @@ String heapString(const char* value, size_t size) {
 template <typename T>
 static CappedArray<char, sizeof(T) * 2 + 1> hexImpl(T i) {
   // We don't use sprintf() because it's not async-signal-safe (for
-  // strPreallocated()).
+  // strPreAllocated()).
   CappedArray<char, sizeof(T) * 2 + 1> result;
   uint8_t reverse[sizeof(T) * 2]{};
   uint8_t* p = reverse;
@@ -228,7 +228,7 @@ StringPtr Stringifier::operator*(bool b) const {
 template <typename T, typename Unsigned>
 static CappedArray<char, sizeof(T) * 3 + 2> stringifyImpl(T i) {
   // We don't use sprintf() because it's not async-signal-safe (for
-  // strPreallocated()).
+  // strPreAllocated()).
   CappedArray<char, sizeof(T) * 3 + 2> result;
   bool negative = i < 0;
   // Note that if `i` is the most-negative value, negating it produces the same

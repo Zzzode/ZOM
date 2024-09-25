@@ -40,36 +40,33 @@ class Vector {
   // TODO(someday): Allow specifying a custom allocator.
 
  public:
-  inline Vector() = default;
-  inline explicit Vector(size_t capacity)
-      : builder(heapArrayBuilder<T>(capacity)) {}
-  inline Vector(Array<T>&& array) : builder(zc::mv(array)) {}
+  Vector() = default;
+  explicit Vector(size_t capacity) : builder(heapArrayBuilder<T>(capacity)) {}
+  Vector(Array<T>&& array) : builder(zc::mv(array)) {}
 
-  inline operator ArrayPtr<T>() ZC_LIFETIMEBOUND { return builder; }
-  inline operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND { return builder; }
-  inline ArrayPtr<T> asPtr() ZC_LIFETIMEBOUND { return builder.asPtr(); }
-  inline ArrayPtr<const T> asPtr() const ZC_LIFETIMEBOUND {
-    return builder.asPtr();
-  }
+  operator ArrayPtr<T>() ZC_LIFETIMEBOUND { return builder; }
+  operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND { return builder; }
+  ArrayPtr<T> asPtr() ZC_LIFETIMEBOUND { return builder.asPtr(); }
+  ArrayPtr<const T> asPtr() const ZC_LIFETIMEBOUND { return builder.asPtr(); }
 
-  inline size_t size() const { return builder.size(); }
-  inline bool empty() const { return size() == 0; }
-  inline size_t capacity() const { return builder.capacity(); }
-  inline T& operator[](size_t index) ZC_LIFETIMEBOUND { return builder[index]; }
-  inline const T& operator[](size_t index) const ZC_LIFETIMEBOUND {
+  size_t size() const { return builder.size(); }
+  bool empty() const { return size() == 0; }
+  size_t capacity() const { return builder.capacity(); }
+  T& operator[](size_t index) ZC_LIFETIMEBOUND { return builder[index]; }
+  const T& operator[](size_t index) const ZC_LIFETIMEBOUND {
     return builder[index];
   }
 
-  inline const T* begin() const ZC_LIFETIMEBOUND { return builder.begin(); }
-  inline const T* end() const ZC_LIFETIMEBOUND { return builder.end(); }
-  inline const T& front() const ZC_LIFETIMEBOUND { return builder.front(); }
-  inline const T& back() const ZC_LIFETIMEBOUND { return builder.back(); }
-  inline T* begin() ZC_LIFETIMEBOUND { return builder.begin(); }
-  inline T* end() ZC_LIFETIMEBOUND { return builder.end(); }
-  inline T& front() ZC_LIFETIMEBOUND { return builder.front(); }
-  inline T& back() ZC_LIFETIMEBOUND { return builder.back(); }
+  const T* begin() const ZC_LIFETIMEBOUND { return builder.begin(); }
+  const T* end() const ZC_LIFETIMEBOUND { return builder.end(); }
+  const T& front() const ZC_LIFETIMEBOUND { return builder.front(); }
+  const T& back() const ZC_LIFETIMEBOUND { return builder.back(); }
+  T* begin() ZC_LIFETIMEBOUND { return builder.begin(); }
+  T* end() ZC_LIFETIMEBOUND { return builder.end(); }
+  T& front() ZC_LIFETIMEBOUND { return builder.front(); }
+  T& back() ZC_LIFETIMEBOUND { return builder.back(); }
 
-  inline Array<T> releaseAsArray() {
+  Array<T> releaseAsArray() {
     // TODO(perf):  Avoid a copy/move by allowing Array<T> to point to
     // incomplete space?
     if (!builder.isFull()) {
@@ -79,57 +76,54 @@ class Vector {
   }
 
   template <typename U>
-  inline bool operator==(const U& other) const {
+  bool operator==(const U& other) const {
     return asPtr() == other;
   }
 
-  inline ArrayPtr<T> slice(size_t start, size_t end) ZC_LIFETIMEBOUND {
+  ArrayPtr<T> slice(size_t start, size_t end) ZC_LIFETIMEBOUND {
     return asPtr().slice(start, end);
   }
-  inline ArrayPtr<const T> slice(size_t start,
-                                 size_t end) const ZC_LIFETIMEBOUND {
+  ArrayPtr<const T> slice(size_t start, size_t end) const ZC_LIFETIMEBOUND {
     return asPtr().slice(start, end);
   }
 
-  inline ArrayPtr<T> first(size_t count) ZC_LIFETIMEBOUND {
-    return slice(0, count);
-  }
-  inline ArrayPtr<const T> first(size_t count) const ZC_LIFETIMEBOUND {
+  ArrayPtr<T> first(size_t count) ZC_LIFETIMEBOUND { return slice(0, count); }
+  ArrayPtr<const T> first(size_t count) const ZC_LIFETIMEBOUND {
     return slice(0, count);
   }
 
   template <typename... Params>
-  inline T& add(Params&&... params) ZC_LIFETIMEBOUND {
+  T& add(Params&&... params) ZC_LIFETIMEBOUND {
     if (builder.isFull()) grow();
     return builder.add(zc::fwd<Params>(params)...);
   }
 
   template <typename Iterator>
-  inline void addAll(Iterator begin, Iterator end) {
+  void addAll(Iterator begin, Iterator end) {
     size_t needed = builder.size() + (end - begin);
     if (needed > builder.capacity()) grow(needed);
     builder.addAll(begin, end);
   }
 
   template <typename Container>
-  inline void addAll(Container&& container) {
+  void addAll(Container&& container) {
     addAll(container.begin(), container.end());
   }
 
-  inline void removeLast() { builder.removeLast(); }
+  void removeLast() { builder.removeLast(); }
 
-  inline void resize(size_t size) {
+  void resize(size_t size) {
     if (size > builder.capacity()) grow(size);
     builder.resize(size);
   }
 
-  inline void operator=(decltype(nullptr)) { builder = nullptr; }
+  void operator=(decltype(nullptr)) { builder = nullptr; }
 
-  inline void clear() { builder.clear(); }
+  void clear() { builder.clear(); }
 
-  inline void truncate(size_t size) { builder.truncate(size); }
+  void truncate(size_t size) { builder.truncate(size); }
 
-  inline void reserve(size_t size) {
+  void reserve(size_t size) {
     if (size > builder.capacity()) {
       grow(size);
     }
@@ -152,8 +146,7 @@ class Vector {
 };
 
 template <typename T>
-inline auto ZC_STRINGIFY(const Vector<T>& v)
-    -> decltype(toCharSequence(v.asPtr())) {
+auto ZC_STRINGIFY(const Vector<T>& v) -> decltype(toCharSequence(v.asPtr())) {
   return toCharSequence(v.asPtr());
 }
 

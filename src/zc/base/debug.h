@@ -494,19 +494,17 @@ class Debug {
 #if _WIN32 || __CYGWIN__
   struct Win32Result {
     uint number;
-    inline explicit Win32Result(uint number) : number(number) {}
+    explicit Win32Result(uint number) : number(number) {}
     operator bool() const { return number == 0; }
   };
 #endif
 
-  static inline bool shouldLog(LogSeverity severity) {
+  static bool shouldLog(LogSeverity severity) {
     return severity >= minSeverity;
   }
   // Returns whether messages of the given severity should be logged.
 
-  static inline void setLogLevel(LogSeverity severity) {
-    minSeverity = severity;
-  }
+  static void setLogLevel(LogSeverity severity) { minSeverity = severity; }
   // Set the minimum message severity which will be logged.
   //
   // TODO(someday):  Expose publicly.
@@ -551,9 +549,9 @@ class Debug {
 
   class SyscallResult {
    public:
-    inline SyscallResult(int errorNumber) : errorNumber(errorNumber) {}
-    inline operator void*() { return errorNumber == 0 ? this : nullptr; }
-    inline int getErrorNumber() { return errorNumber; }
+    SyscallResult(int errorNumber) : errorNumber(errorNumber) {}
+    operator void*() { return errorNumber == 0 ? this : nullptr; }
+    int getErrorNumber() { return errorNumber; }
 
    private:
     int errorNumber;
@@ -582,7 +580,7 @@ class Debug {
       int line;
       String description;
 
-      inline Value(const char* file, int line, String&& description)
+      Value(const char* file, int line, String&& description)
           : file(file), line(line), description(mv(description)) {}
     };
 
@@ -603,7 +601,7 @@ class Debug {
   template <typename Func>
   class ContextImpl : public Context {
    public:
-    inline ContextImpl(Func& func) : func(func) {}
+    ContextImpl(Func& func) : func(func) {}
     ZC_DISALLOW_COPY_AND_MOVE(ContextImpl);
 
     Value evaluate() override { return func(); }
@@ -769,7 +767,7 @@ template <typename T>
 struct DebugExpression;
 
 template <typename T, typename = decltype(toCharSequence(instance<T&>()))>
-inline auto tryToCharSequence(T* value) {
+auto tryToCharSequence(T* value) {
   return zc::toCharSequence(*value);
 }
 inline StringPtr tryToCharSequence(...) { return "(can't stringify)"_zc; }
@@ -782,14 +780,14 @@ struct DebugComparison {
   StringPtr op;
   bool result;
 
-  inline operator bool() const { return result; }
+  operator bool() const { return result; }
 
   template <typename T>
-  inline void operator&(T&& other) = delete;
+  void operator&(T&& other) = delete;
   template <typename T>
-  inline void operator^(T&& other) = delete;
+  void operator^(T&& other) = delete;
   template <typename T>
-  inline void operator|(T&& other) = delete;
+  void operator|(T&& other) = delete;
 };
 
 template <typename Left, typename Right>
@@ -833,7 +831,7 @@ struct DebugExpression {
   DEFINE_OPERATOR(|);
 #undef DEFINE_OPERATOR
 
-  inline operator bool() {
+  operator bool() {
     // No comparison performed, we're just asserting the expression is truthy.
     // This also covers the case of the logic operators `&&` and `||` -- we
     // can't overload those because doing so would break short-circuiting

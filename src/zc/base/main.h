@@ -297,9 +297,8 @@ class MainBuilder {
   class OptionName {
    public:
     OptionName() = default;
-    inline OptionName(char shortName) : isLong(false), shortName(shortName) {}
-    inline OptionName(const char* longName)
-        : isLong(true), longName(longName) {}
+    OptionName(char shortName) : isLong(false), shortName(shortName) {}
+    OptionName(const char* longName) : isLong(true), longName(longName) {}
 
    private:
     bool isLong;
@@ -312,16 +311,15 @@ class MainBuilder {
 
   class Validity {
    public:
-    inline Validity(bool valid) {
+    Validity(bool valid) {
       if (!valid) errorMessage = heapString("invalid argument");
     }
-    inline Validity(const char* errorMessage)
+    Validity(const char* errorMessage)
         : errorMessage(heapString(errorMessage)) {}
-    inline Validity(String&& errorMessage)
-        : errorMessage(zc::mv(errorMessage)) {}
+    Validity(String&& errorMessage) : errorMessage(zc::mv(errorMessage)) {}
 
-    inline const Maybe<String>& getError() const { return errorMessage; }
-    inline Maybe<String> releaseError() { return zc::mv(errorMessage); }
+    const Maybe<String>& getError() const { return errorMessage; }
+    Maybe<String> releaseError() { return zc::mv(errorMessage); }
 
    private:
     Maybe<String> errorMessage;

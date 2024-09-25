@@ -29,8 +29,8 @@
 #include <fcntl.h>  // _O_BINARY
 #include <io.h>
 #else
-#include <errno.h>
-#include <limits.h>
+#include <cerrno>
+#include <climits>
 #endif
 
 #if !_WIN32 || __MINGW32__
@@ -88,7 +88,7 @@ inline int close(int fd) { return ::_close(fd); }
 #endif
 
 #else
-// We're on a POSIX system or MinGW which already defines the wrappers for us.
+// We're on a POSIX system or MinGW that already defines the wrappers for us.
 
 using ::close;
 using ::read;
@@ -122,7 +122,7 @@ using ::pipe;
 //
 // http://pubs.opengroup.org/onlinepubs/9699919799/basedefs/limits.h.html#tag_13_23_03_01
 #if defined(IOV_MAX)
-// Solaris, MacOS (& all other BSD-variants?) (and others?)
+// Solaris, macOS (& all other BSD-variants?) (and others?)
 static constexpr inline size_t iovMax() { return IOV_MAX; }
 #elif defined(UIO_MAX_IOV)
 // Linux

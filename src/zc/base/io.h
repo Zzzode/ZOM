@@ -21,8 +21,8 @@
 
 #pragma once
 
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 
 #include "src/zc/base/common.h"
 #include "src/zc/base/exception.h"
@@ -62,7 +62,7 @@ class InputStream {
   virtual size_t tryRead(ArrayPtr<byte> buffer, size_t minBytes) = 0;
   // Like read(), but may return fewer than minBytes on EOF.
 
-  inline void read(ArrayPtr<byte> buffer) { read(buffer, buffer.size()); }
+  void read(ArrayPtr<byte> buffer) { read(buffer, buffer.size()); }
   // Convenience method for reading an exact number of bytes.
 
   virtual void skip(size_t bytes);
@@ -87,13 +87,13 @@ class OutputStream {
   // Always writes the full size. Throws exception on error.
 
   virtual void write(ArrayPtr<const ArrayPtr<const byte>> pieces);
-  // Equivalent to write()ing each byte array in sequence, which is what the
-  // default implementation does. Override if you can do something better, e.g.
-  // use writev() to do the write in a single syscall.
+  // Equivalent to `write()`ing each byte array in sequence, which is what the
+  // default implementation does. Override if you can do something better, for
+  // example use `writev()` to do the write in a single syscall.
 };
 
 class BufferedInputStream : public InputStream {
-  // An input stream which buffers some bytes in memory to reduce system call
+  // An input stream, which buffers some bytes in memory to reduce system call
   // overhead.
   // - OR -
   // An input stream that actually reads from some in-memory data structure and
@@ -114,7 +114,7 @@ class BufferedInputStream : public InputStream {
 };
 
 class BufferedOutputStream : public OutputStream {
-  // An output stream which buffers some bytes in memory to reduce system call
+  // An output stream, which buffers some bytes in memory to reduce system call
   // overhead.
   // - OR -
   // An output stream that actually writes into some in-memory data structure
@@ -128,7 +128,7 @@ class BufferedOutputStream : public OutputStream {
   // Get a direct pointer into the write buffer. The caller may choose to fill
   // in some prefix of this buffer and then pass it to write(), in which case
   // write() may avoid a copy. It is incorrect to pass to write any slice of
-  // this buffer which is not a prefix.
+  // this buffer, which is not a prefix.
 };
 
 // =======================================================================================
@@ -282,41 +282,39 @@ class AutoCloseFd {
   // ignored.
   //
   // If your code is not exception-safe, you should not use AutoCloseFd. In
-  // this case you will have to call close() yourself and handle errors
+  // this case, you will have to call close() yourself and handle errors
   // appropriately.
 
  public:
-  inline AutoCloseFd() : fd(-1) {}
-  inline AutoCloseFd(decltype(nullptr)) : fd(-1) {}
-  inline explicit AutoCloseFd(int fd) : fd(fd) {}
-  inline AutoCloseFd(AutoCloseFd&& other) noexcept : fd(other.fd) {
-    other.fd = -1;
-  }
+  AutoCloseFd() : fd(-1) {}
+  AutoCloseFd(decltype(nullptr)) : fd(-1) {}
+  explicit AutoCloseFd(int fd) : fd(fd) {}
+  AutoCloseFd(AutoCloseFd&& other) noexcept : fd(other.fd) { other.fd = -1; }
   ZC_DISALLOW_COPY(AutoCloseFd);
   ~AutoCloseFd() noexcept(false);
 
-  inline AutoCloseFd& operator=(AutoCloseFd&& other) {
+  AutoCloseFd& operator=(AutoCloseFd&& other) {
     AutoCloseFd old(zc::mv(*this));
     fd = other.fd;
     other.fd = -1;
     return *this;
   }
 
-  inline AutoCloseFd& operator=(decltype(nullptr)) {
+  AutoCloseFd& operator=(decltype(nullptr)) {
     AutoCloseFd old(zc::mv(*this));
     return *this;
   }
 
-  inline operator int() const { return fd; }
-  inline int get() const { return fd; }
+  operator int() const { return fd; }
+  int get() const { return fd; }
 
   operator bool() const = delete;
   // Deleting this operator prevents accidental use in boolean contexts, which
   // the int conversion operator above would otherwise allow.
 
-  inline bool operator==(decltype(nullptr)) { return fd < 0; }
+  bool operator==(decltype(nullptr)) { return fd < 0; }
 
-  inline int release() {
+  int release() {
     // Release ownership of an FD. Not recommended.
     int result = fd;
     fd = -1;
@@ -343,7 +341,7 @@ class FdInputStream : public InputStream {
 
   size_t tryRead(ArrayPtr<byte> buffer, size_t minBytes) override;
 
-  inline int getFd() const { return fd; }
+  int getFd() const { return fd; }
 
  private:
   int fd;
@@ -386,38 +384,37 @@ class AutoCloseHandle {
   // appropriately.
 
  public:
-  inline AutoCloseHandle() : handle((void*)-1) {}
-  inline AutoCloseHandle(decltype(nullptr)) : handle((void*)-1) {}
-  inline explicit AutoCloseHandle(void* handle) : handle(handle) {}
-  inline AutoCloseHandle(AutoCloseHandle&& other) noexcept
-      : handle(other.handle) {
+  AutoCloseHandle() : handle((void*)-1) {}
+  AutoCloseHandle(decltype(nullptr)) : handle((void*)-1) {}
+  explicit AutoCloseHandle(void* handle) : handle(handle) {}
+  AutoCloseHandle(AutoCloseHandle&& other) noexcept : handle(other.handle) {
     other.handle = (void*)-1;
   }
   ZC_DISALLOW_COPY(AutoCloseHandle);
   ~AutoCloseHandle() noexcept(false);
 
-  inline AutoCloseHandle& operator=(AutoCloseHandle&& other) {
+  AutoCloseHandle& operator=(AutoCloseHandle&& other) {
     AutoCloseHandle old(zc::mv(*this));
     handle = other.handle;
     other.handle = (void*)-1;
     return *this;
   }
 
-  inline AutoCloseHandle& operator=(decltype(nullptr)) {
+  AutoCloseHandle& operator=(decltype(nullptr)) {
     AutoCloseHandle old(zc::mv(*this));
     return *this;
   }
 
-  inline operator void*() const { return handle; }
-  inline void* get() const { return handle; }
+  operator void*() const { return handle; }
+  void* get() const { return handle; }
 
   operator bool() const = delete;
   // Deleting this operator prevents accidental use in boolean contexts, which
   // the void* conversion operator above would otherwise allow.
 
-  inline bool operator==(decltype(nullptr)) { return handle != (void*)-1; }
+  bool operator==(decltype(nullptr)) { return handle != (void*)-1; }
 
-  inline void* release() {
+  void* release() {
     // Release ownership of an FD. Not recommended.
     void* result = handle;
     handle = (void*)-1;

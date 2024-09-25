@@ -36,8 +36,6 @@
 #ifndef ZC_UTILITY_ONE_OF_
 #define ZC_UTILITY_ONE_OF_
 
-#include <algorithm>
-
 #include "src/zc/base/common.h"
 
 namespace zc {

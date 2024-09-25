@@ -106,7 +106,7 @@ template <typename Return, typename... Params>
 class Function<Return(Params...)> {
  public:
   template <typename F>
-  inline Function(F&& f) : impl(heap<Impl<F>>(zc::fwd<F>(f))) {}
+  Function(F&& f) : impl(heap<Impl<F>>(zc::fwd<F>(f))) {}
   Function() = default;
 
   // Make sure people don't accidentally end up wrapping a reference when they
@@ -125,7 +125,7 @@ class Function<Return(Params...)> {
   Function(Function&&) = default;
   Function& operator=(Function&&) = default;
 
-  inline Return operator()(Params... params) {
+  Return operator()(Params... params) {
     return (*impl)(zc::fwd<Params>(params)...);
   }
 
@@ -163,7 +163,7 @@ template <typename Return, typename... Params>
 class ConstFunction<Return(Params...)> {
  public:
   template <typename F>
-  inline ConstFunction(F&& f) : impl(heap<Impl<F>>(zc::fwd<F>(f))) {}
+  ConstFunction(F&& f) : impl(heap<Impl<F>>(zc::fwd<F>(f))) {}
   ConstFunction() = default;
 
   // Make sure people don't accidentally end up wrapping a reference when they
@@ -182,7 +182,7 @@ class ConstFunction<Return(Params...)> {
   ConstFunction(ConstFunction&&) = default;
   ConstFunction& operator=(ConstFunction&&) = default;
 
-  inline Return operator()(Params... params) const {
+  Return operator()(Params... params) const {
     return (*impl)(zc::fwd<Params>(params)...);
   }
 
@@ -240,7 +240,7 @@ class FunctionParam<Return(Params...)> {
   FunctionParam(FunctionParam&& other) = default;
   // Magically, a plain copy works.
 
-  inline Return operator()(Params... params) {
+  Return operator()(Params... params) {
     return (*reinterpret_cast<WrapperBase*>(space))(zc::fwd<Params>(params)...);
   }
 
@@ -257,7 +257,7 @@ class FunctionParam<Return(Params...)> {
    public:
     Wrapper(Func& func) : func(func) {}
 
-    inline Return operator()(Params... params) override {
+    Return operator()(Params... params) override {
       return func(zc::fwd<Params>(params)...);
     }
 

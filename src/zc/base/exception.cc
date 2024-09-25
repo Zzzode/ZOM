@@ -73,7 +73,8 @@
 
 #if (__linux__ || __APPLE__ || __CYGWIN__)
 #include <pthread.h>
-#include <stdio.h>
+
+#include <cstdio>
 #endif
 
 #if __CYGWIN__
@@ -427,7 +428,7 @@ ArrayPtr<void* const> getStackTrace(ArrayPtr<void*> space, uint ignoreCount) {
     // can be extra-confusing, since now it claims to be in a function that was
     // not actually on the call stack. If we subtract 1 from each address,
     // though, we get a much more reasonable trace. This may cause the addresses
-    // to be invalid instruction pointers if the instructions were multi-byte,
+    // to be invalid instruction pointers if the instructions were multibyte,
     // but it appears addr2line is able to cope with this.
     addr = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(addr) - 1);
   }
@@ -618,7 +619,7 @@ StringPtr stringifyStackTraceAddresses(ArrayPtr<void* const> trace,
   // TODO(cleanup): We should improve the ZC stringification framework so that
   // there's a way to
   //   write this string directly into a larger message buffer with
-  //   strPreallocated().
+  //   strPreAllocated().
 
 #if ZC_HAS_LIBDL
   char* ptr = scratch.begin();
@@ -648,7 +649,7 @@ StringPtr stringifyStackTraceAddresses(ArrayPtr<void* const> trace,
   return StringPtr(scratch.begin(), ptr);
 #else
   // TODO(someday): Support other platforms.
-  return zc::strPreallocated(scratch, zc::delimited(trace, " "));
+  return zc::strPreAllocated(scratch, zc::delimited(trace, " "));
 #endif
 }
 
