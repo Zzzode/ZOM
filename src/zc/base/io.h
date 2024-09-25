@@ -41,18 +41,18 @@ class InputStream {
 
   size_t read(ArrayPtr<byte> buffer, size_t minBytes);
   // Reads at least minBytes and at most buffer.size(), copying them into the
-  // given buffer. Returns the size read.  Throws an exception on errors.
+  // given buffer. Returns the size read. Throws an exception on errors.
   // Implemented in terms of tryRead().
   //
   // buffer.size() is the number of bytes the caller really wants, but minBytes
   // is the minimum amount needed by the caller before it can start doing useful
-  // processing.  If the stream returns less than buffer.size(), the caller will
-  // usually call read() again later to get the rest.  Returning less than
+  // processing. If the stream returns less than buffer.size(), the caller will
+  // usually call read() again later to get the rest. Returning less than
   // buffer.size() is useful when it makes sense for the caller to parallelize
   // processing with I/O.
   //
-  // Never blocks if minBytes is zero.  If minBytes is zero and buffer.size() is
-  // non-zero, this may attempt a non-blocking read or may just return zero.  To
+  // Never blocks if minBytes is zero. If minBytes is zero and buffer.size() is
+  // non-zero, this may attempt a non-blocking read or may just return zero. To
   // force a read, use a non-zero minBytes. To detect EOF without throwing an
   // exception, use tryRead().
   //
@@ -66,7 +66,7 @@ class InputStream {
   // Convenience method for reading an exact number of bytes.
 
   virtual void skip(size_t bytes);
-  // Skips past the given number of bytes, discarding them.  The default
+  // Skips past the given number of bytes, discarding them. The default
   // implementation read()s into a scratch buffer.
 
   String readAllText(uint64_t limit = zc::maxValue);
@@ -84,11 +84,11 @@ class OutputStream {
   virtual ~OutputStream() noexcept(false);
 
   virtual void write(ArrayPtr<const byte> data) = 0;
-  // Always writes the full size.  Throws exception on error.
+  // Always writes the full size. Throws exception on error.
 
   virtual void write(ArrayPtr<const ArrayPtr<const byte>> pieces);
   // Equivalent to write()ing each byte array in sequence, which is what the
-  // default implementation does.  Override if you can do something better, e.g.
+  // default implementation does. Override if you can do something better, e.g.
   // use writev() to do the write in a single syscall.
 };
 
@@ -105,9 +105,9 @@ class BufferedInputStream : public InputStream {
 
   ArrayPtr<const byte> getReadBuffer();
   // Get a direct pointer into the read buffer, which contains the next bytes in
-  // the input.  If the caller consumes any bytes, it should then call skip() to
-  // indicate this.  This always returns a non-empty buffer or throws an
-  // exception.  Implemented in terms of tryGetReadBuffer().
+  // the input. If the caller consumes any bytes, it should then call skip() to
+  // indicate this. This always returns a non-empty buffer or throws an
+  // exception. Implemented in terms of tryGetReadBuffer().
 
   virtual ArrayPtr<const byte> tryGetReadBuffer() = 0;
   // Like getReadBuffer() but may return an empty buffer on EOF.
@@ -125,9 +125,9 @@ class BufferedOutputStream : public OutputStream {
   virtual ~BufferedOutputStream() noexcept(false);
 
   virtual ArrayPtr<byte> getWriteBuffer() = 0;
-  // Get a direct pointer into the write buffer.  The caller may choose to fill
+  // Get a direct pointer into the write buffer. The caller may choose to fill
   // in some prefix of this buffer and then pass it to write(), in which case
-  // write() may avoid a copy.  It is incorrect to pass to write any slice of
+  // write() may avoid a copy. It is incorrect to pass to write any slice of
   // this buffer which is not a prefix.
 };
 
@@ -138,21 +138,21 @@ class BufferedInputStreamWrapper : public BufferedInputStream {
   // Implements BufferedInputStream in terms of an InputStream.
   //
   // Note that the underlying stream's position is unpredictable once the
-  // wrapper is destroyed, unless the entire stream was consumed.  To read a
+  // wrapper is destroyed, unless the entire stream was consumed. To read a
   // predictable number of bytes in a buffered way without going over, you'd
   // need this wrapper to wrap some other wrapper which itself implements an
-  // artificial EOF at the desired point.  Such a stream should be trivial to
+  // artificial EOF at the desired point. Such a stream should be trivial to
   // write but is not provided by the library at this time.
 
  public:
   explicit BufferedInputStreamWrapper(InputStream& inner,
                                       ArrayPtr<byte> buffer = nullptr);
-  // Creates a buffered stream wrapping the given non-buffered stream.  No
+  // Creates a buffered stream wrapping the given non-buffered stream. No
   // guarantee is made about the position of the inner stream after a buffered
   // wrapper has been created unless the entire input is read.
   //
   // If the second parameter is non-null, the stream uses the given buffer
-  // instead of allocating its own.  This may improve performance if the buffer
+  // instead of allocating its own. This may improve performance if the buffer
   // can be reused.
 
   ZC_DISALLOW_COPY_AND_MOVE(BufferedInputStreamWrapper);
@@ -171,7 +171,7 @@ class BufferedInputStreamWrapper : public BufferedInputStream {
 };
 
 class BufferedOutputStreamWrapper : public BufferedOutputStream {
-  // Implements BufferedOutputStream in terms of an OutputStream.  Note that
+  // Implements BufferedOutputStream in terms of an OutputStream. Note that
   // writes to the underlying stream may be delayed until flush() is called or
   // the wrapper is destroyed.
 
@@ -181,7 +181,7 @@ class BufferedOutputStreamWrapper : public BufferedOutputStream {
   // Creates a buffered stream wrapping the given non-buffered stream.
   //
   // If the second parameter is non-null, the stream uses the given buffer
-  // instead of allocating its own.  This may improve performance if the buffer
+  // instead of allocating its own. This may improve performance if the buffer
   // can be reused.
 
   ZC_DISALLOW_COPY_AND_MOVE(BufferedOutputStreamWrapper);
@@ -189,7 +189,7 @@ class BufferedOutputStreamWrapper : public BufferedOutputStream {
 
   void flush();
   // Force the wrapper to write any remaining bytes in its buffer to the inner
-  // stream.  Note that this only flushes this object's buffer; this object has
+  // stream. Note that this only flushes this object's buffer; this object has
   // no idea how to flush any other buffers that may be present in the
   // underlying stream.
 
@@ -276,12 +276,12 @@ class VectorOutputStream : public BufferedOutputStream {
 class AutoCloseFd {
   // A wrapper around a file descriptor which automatically closes the
   // descriptor when destroyed. The wrapper supports move construction for
-  // transferring ownership of the descriptor.  If close() returns an error, the
+  // transferring ownership of the descriptor. If close() returns an error, the
   // destructor throws an exception, UNLESS the destructor is being called
   // during unwind from another exception, in which case the close error is
   // ignored.
   //
-  // If your code is not exception-safe, you should not use AutoCloseFd.  In
+  // If your code is not exception-safe, you should not use AutoCloseFd. In
   // this case you will have to call close() yourself and handle errors
   // appropriately.
 
@@ -377,11 +377,11 @@ class FdOutputStream : public OutputStream {
 class AutoCloseHandle {
   // A wrapper around a Win32 HANDLE which automatically closes the handle when
   // destroyed. The wrapper supports move construction for transferring
-  // ownership of the handle.  If CloseHandle() returns an error, the destructor
+  // ownership of the handle. If CloseHandle() returns an error, the destructor
   // throws an exception, UNLESS the destructor is being called during unwind
   // from another exception, in which case the close error is ignored.
   //
-  // If your code is not exception-safe, you should not use AutoCloseHandle.  In
+  // If your code is not exception-safe, you should not use AutoCloseHandle. In
   // this case you will have to call close() yourself and handle errors
   // appropriately.
 

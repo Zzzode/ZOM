@@ -396,7 +396,7 @@ void FdOutputStream::write(ArrayPtr<const ArrayPtr<const byte>> pieces) {
   ZC_STACK_ARRAY(struct iovec, iov, pieces.size(), 16, 128);
 
   for (uint i = 0; i < pieces.size(); i++) {
-    // writev() interface is not const-correct.  :(
+    // writev() interface is not const-correct. :(
     iov[i].iov_base = const_cast<byte*>(pieces[i].begin());
     iov[i].iov_len = pieces[i].size();
   }

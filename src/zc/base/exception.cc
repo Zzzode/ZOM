@@ -491,7 +491,7 @@ stringifyStackTrace(ArrayPtr<void* const> trace) {
   //   and do this all in-process, but that may involve onerous requirements
   //   like large library dependencies or using -rdynamic.
 
-  // The environment manipulation is not thread-safe, so lock a mutex.  This
+  // The environment manipulation is not thread-safe, so lock a mutex. This
   // could still be problematic if another thread is manipulating the
   // environment in unrelated code, but there's not much we can do about that.
   // This is debug-only anyway and only an issue when LD_PRELOAD is in use.
@@ -1375,7 +1375,7 @@ class ExceptionCallback::RootExceptionCallback : public ExceptionCallback {
 
   void onRecoverableException(Exception&& exception) override {
     if (_::uncaughtExceptionCount() > 0) {
-      // Bad time to throw an exception.  Just log instead.
+      // Bad time to throw an exception. Just log instead.
       //
       // TODO(someday): We should really compare uncaughtExceptionCount()
       // against the count at
@@ -1402,7 +1402,7 @@ class ExceptionCallback::RootExceptionCallback : public ExceptionCallback {
       miniposix::ssize_t n =
           miniposix::write(STDERR_FILENO, textPtr.begin(), textPtr.size());
       if (n <= 0) {
-        // stderr is broken.  Give up.
+        // stderr is broken. Give up.
         return;
       }
       textPtr = textPtr.slice(n);
@@ -1509,7 +1509,7 @@ bool UnwindDetector::isUnwinding() const {
 void UnwindDetector::catchThrownExceptionAsSecondaryFault() const {
   // TODO(someday):  Attach the secondary exception to whatever primary
   // exception is causing
-  //   the unwind.  For now we just drop it on the floor as this is probably
+  //   the unwind. For now we just drop it on the floor as this is probably
   //   fine most of the time.
   getCaughtExceptionAsKj();
 }

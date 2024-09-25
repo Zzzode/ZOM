@@ -58,7 +58,7 @@ class ArrayDisposer {
   virtual void disposeImpl(void* firstElement, size_t elementSize,
                            size_t elementCount, size_t capacity,
                            void (*destroyElement)(void*)) const = 0;
-  // Disposes of the array.  `destroyElement` invokes the destructor of each
+  // Disposes of the array. `destroyElement` invokes the destructor of each
   // element, or is nullptr if the elements have trivial destructors. `capacity`
   // is the amount of space that was allocated while `elementCount` is the
   // number of elements that were actually constructed; these are always the
@@ -80,11 +80,11 @@ class ArrayDisposer {
 
 class ExceptionSafeArrayUtil {
   // Utility class that assists in constructing or destroying elements of an
-  // array, where the constructor or destructor could throw exceptions.  In case
+  // array, where the constructor or destructor could throw exceptions. In case
   // of an exception, ExceptionSafeArrayUtil's destructor will call destructors
-  // on all elements that have been constructed but not destroyed.  Remember
+  // on all elements that have been constructed but not destroyed. Remember
   // that destructors that throw exceptions are required to use UnwindDetector
-  // to detect unwind and avoid exceptions in this case.  Therefore, no more
+  // to detect unwind and avoid exceptions in this case. Therefore, no more
   // than one exception will be thrown (and the program will not terminate).
 
  public:
@@ -106,7 +106,7 @@ class ExceptionSafeArrayUtil {
   // Construct the given number of elements.
 
   void destroyAll();
-  // Destroy all elements.  Call this immediately before ExceptionSafeArrayUtil
+  // Destroy all elements. Call this immediately before ExceptionSafeArrayUtil
   // goes out-of-scope to ensure that one element throwing an exception does not
   // prevent the others from being destroyed.
 
@@ -131,7 +131,7 @@ class DestructorOnlyArrayDisposer : public ArrayDisposer {
 };
 
 class NullArrayDisposer : public ArrayDisposer {
-  // An ArrayDisposer that does nothing.  Can be used to construct a fake Arrays
+  // An ArrayDisposer that does nothing. Can be used to construct a fake Arrays
   // that doesn't actually own its content.
 
  public:
@@ -148,7 +148,7 @@ class NullArrayDisposer : public ArrayDisposer {
 template <typename T>
 class Array {
   // An owned array which will automatically be disposed of (using an
-  // ArrayDisposer) in the destructor.  Can be moved, but not copied.  Much like
+  // ArrayDisposer) in the destructor. Can be moved, but not copied. Much like
   // Own<T>, but for arrays rather than single objects.
 
  public:
@@ -343,7 +343,7 @@ class HeapArrayDisposer final : public ArrayDisposer {
   static void* allocateImpl(size_t elementSize, size_t elementCount,
                             size_t capacity, void (*constructElement)(void*),
                             void (*destroyElement)(void*));
-  // Allocates and constructs the array.  Both function pointers are null if the
+  // Allocates and constructs the array. Both function pointers are null if the
   // constructor is trivial, otherwise destroyElement is null if the constructor
   // doesn't throw.
 
@@ -570,7 +570,7 @@ class ArrayBuilder {
     // with HeapArrayDisposer since it uses operator new() or if we created a
     // custom disposer for ArrayBuilder which stores the capacity in a prefix.
     // But that would make it hard to write cleverer heap allocators, and anyway
-    // this check might catch bugs.  Probably people should use Vector if they
+    // this check might catch bugs. Probably people should use Vector if they
     // want to build arrays without knowing the final size in advance.
     ZC_IREQUIRE(pos == endPtr, "ArrayBuilder::finish() called prematurely.");
     Array<T> result(reinterpret_cast<T*>(ptr), pos - ptr, *disposer);
@@ -605,7 +605,7 @@ class ArrayBuilder {
 
 template <typename T>
 inline ArrayBuilder<T> heapArrayBuilder(size_t size) {
-  // Like `heapArray<T>()` but does not default-construct the elements.  You
+  // Like `heapArray<T>()` but does not default-construct the elements. You
   // must construct them manually by calling `add()`.
 
   return ArrayBuilder<T>(
@@ -704,7 +704,7 @@ class CappedArray {
   ::zc::_::Mapper<ZC_DECLTYPE_REF(array)>(array)* [&]( \
       typename ::zc::_::Mapper<ZC_DECLTYPE_REF(array)>::Element elementName)
 // Applies some function to every element of an array, returning an Array of the
-// results,  with nice syntax.  Example:
+// results,  with nice syntax. Example:
 //
 //     StringPtr foo = "abcd";
 //     Array<char> bar = ZC_MAP(c, foo) -> char { return c + 1; };
@@ -841,7 +841,7 @@ template <typename T, typename Iterator, bool move>
 struct CopyConstructArray_<T, Iterator, move, true> {
   static inline T* apply(T* __restrict__ pos, Iterator start, Iterator end) {
     // Since both the copy constructor and assignment operator are trivial, we
-    // know that assignment is equivalent to copy-constructing.  So we can make
+    // know that assignment is equivalent to copy-constructing. So we can make
     // this case somewhat easier for the compiler to optimize.
     while (start != end) {
       *pos++ = *start++;
@@ -873,7 +873,7 @@ struct CopyConstructArray_<T, Iterator, false, false> {
       }
       return pos;
     } else {
-      // Crap.  This is complicated.
+      // Crap. This is complicated.
       ExceptionGuard guard(pos);
       while (start != end) {
         ctor(*guard.pos, *start++);
@@ -910,7 +910,7 @@ struct CopyConstructArray_<T, Iterator, true, false> {
       }
       return pos;
     } else {
-      // Crap.  This is complicated.
+      // Crap. This is complicated.
       ExceptionGuard guard(pos);
       while (start != end) {
         ctor(*guard.pos, zc::mv(*start++));

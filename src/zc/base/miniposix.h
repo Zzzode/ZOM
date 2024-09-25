@@ -112,7 +112,7 @@ inline int mkdir(const char* path, int mode) { return ::_mkdir(path); }
 using ::mkdir;
 using ::pipe;
 
-// Apparently, there is a maximum number of iovecs allowed per call.  I don't
+// Apparently, there is a maximum number of iovecs allowed per call. I don't
 // understand why. Most platforms define IOV_MAX but Linux defines only
 // UIO_MAXIOV and others, like Hurd, define neither.
 //

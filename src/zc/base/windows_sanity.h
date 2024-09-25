@@ -55,10 +55,10 @@
 
 namespace zc_win32_workarounds {
 // Namespace containing constant definitions intended to replace constants that
-// are defined as macros in the Windows headers. Do not refer to this namespace
+// are defined as macros in the Windows headers. Don't refer to this namespace
 // directly, we'll import it into the global scope below.
 
-#ifdef ERROR  // This could be absent if e.g. NOGDI was used.
+#ifdef ERROR  // This could be absent if, for example, NOGDI was used.
 const auto ERROR_ = ERROR;
 #undef ERROR
 const auto ERROR = ERROR_;

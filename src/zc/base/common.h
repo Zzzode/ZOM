@@ -88,7 +88,7 @@
 #endif
 #if __cplusplus >= 202002L && !(__has_include(<coroutine>) || __has_include(<experimental/coroutine>))
 #warning \
-    "Your compiler supports C++20 but your C++ standard library does not.  If your "\
+    "Your compiler supports C++20 but your C++ standard library does not. If your "\
                "system has libc++ installed (as should be the case on e.g. Mac OSX), try adding "\
                "-stdlib=libc++ to your CXXFLAGS."
 #endif
@@ -131,7 +131,7 @@ using uint32_t = uint;
 // Common macros, especially for common yet compiler-specific features.
 
 // Detect whether RTTI and exceptions are enabled, assuming they are unless we
-// have specific evidence to the contrary.  Clients can always define ZC_NO_RTTI
+// have specific evidence to the contrary. Clients can always define ZC_NO_RTTI
 // explicitly to override the check. As of version 2, exceptions are required,
 // so this produces an error otherwise.
 
@@ -158,7 +158,7 @@ using uint32_t = uint;
 #endif
 
 #if !defined(ZC_DEBUG) && !defined(ZC_NDEBUG)
-// Heuristically decide whether to enable debug mode.  If DEBUG or NDEBUG is
+// Heuristically decide whether to enable debug mode. If DEBUG or NDEBUG is
 // defined, use that. Otherwise, fall back to checking whether optimization is
 // enabled.
 #if defined(DEBUG) || defined(_DEBUG)
@@ -381,10 +381,10 @@ using uint32_t = uint;
 
 // #define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)
 //
-// Allocate an array, preferably on the stack, unless it is too big.  On GCC
-// this will use variable-sized arrays.  For other compilers we could just use a
-// fixed-size array.  `minStack` is the stack array size to use if
-// variable-width arrays are not supported.  `maxStack` is the maximum stack
+// Allocate an array, preferably on the stack, unless it is too big. On GCC
+// this will use variable-sized arrays. For other compilers we could just use a
+// fixed-size array. `minStack` is the stack array size to use if
+// variable-width arrays are not supported. `maxStack` is the maximum stack
 // array size if variable-width arrays *are* supported.
 #if __GNUC__ && !__clang__
 #define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)         \
@@ -409,7 +409,7 @@ using uint32_t = uint;
 #define ZC_CONCAT_(x, y) x##y
 #define ZC_CONCAT(x, y) ZC_CONCAT_(x, y)
 #define ZC_UNIQUE_NAME(prefix) ZC_CONCAT(prefix, __LINE__)
-// Create a unique identifier name.  We use concatenate __LINE__ rather than
+// Create a unique identifier name. We use concatenate __LINE__ rather than
 // __COUNTER__ so that the name can be used multiple times in the same macro.
 
 #define ZC_CONSTEXPR constexpr
@@ -439,7 +439,7 @@ ZC_NORETURN void unreachable();
     ::zc::_::inlineRequireFailure(__FILE__, __LINE__, #condition, \
                                   "" #__VA_ARGS__, __VA_ARGS__)
 // Version of ZC_DREQUIRE() which is safe to use in headers that are #included
-// by users.  Used to check preconditions inside inline methods. ZC_IREQUIRE is
+// by users. Used to check preconditions inside inline methods. ZC_IREQUIRE is
 // particularly useful in that it will be enabled depending on whether the
 // application is compiled in debug mode rather than whether libzc is.
 #else
@@ -450,7 +450,7 @@ ZC_NORETURN void unreachable();
     ::zc::_::inlineRequireFailure(__FILE__, __LINE__, #condition, \
                                   #__VA_ARGS__, ##__VA_ARGS__)
 // Version of ZC_DREQUIRE() which is safe to use in headers that are #included
-// by users.  Used to check preconditions inside inline methods. ZC_IREQUIRE is
+// by users. Used to check preconditions inside inline methods. ZC_IREQUIRE is
 // particularly useful in that it will be enabled depending on whether the
 // application is compiled in debug mode rather than whether libzc is.
 #endif
@@ -565,7 +565,7 @@ using EnableIf = typename EnableIf_<b>::Type;
 
 template <typename T>
 T instance() noexcept;
-// Like std::declval, but doesn't transform T into an rvalue reference.  If you
+// Like std::declval, but doesn't transform T into an rvalue reference. If you
 // want that, specify instance<T&&>().
 
 struct DisallowConstCopy {
@@ -574,33 +574,45 @@ struct DisallowConstCopy {
   // only be copyable from non-const references. This is useful for enforcing
   // transitive constness of contained pointers.
   //
-  // For example, say you have a type T which contains a pointer.  T has
+  // For example, say you have a type T which contains a pointer. T has
   // non-const methods which modify the value at that pointer, but T's const
   // methods are designed to allow reading only. Unfortunately, if T has a
   // regular copy constructor, someone can simply make a copy of T and then use
-  // it to modify the pointed-to value.  However, if T inherits
+  // it to modify the pointed-to value. However, if T inherits
   // DisallowConstCopy, then callers will only be able to copy non-const
-  // instances of T.  Ideally, there is some parallel type ImmutableT which is
+  // instances of T. Ideally, there is some parallel type ImmutableT which is
   // like a version of T that only has const methods, and can be copied from a
   // const T.
   //
   // Note that due to C++ rules about implicit copy constructors and assignment
   // operators, any type that contains or inherits from a type that disallows
-  // const copies will also automatically disallow const copies.  Hey, cool,
+  // const copies will also automatically disallow const copies. Hey, cool,
   // that's exactly what we want.
+
+#if ZC_DEBUG_TYPES
+  // Alas! Declaring a defaulted non-const copy constructor tickles a bug which
+  // causes GCC and Clang to disagree on ABI, using different calling
+  // conventions to pass this type, leading to immediate segfaults. See:
+  //     https://bugs.llvm.org/show_bug.cgi?id=23764
+  //     https://gcc.gnu.org/bugzilla/show_bug.cgi?id=58074
+  //
+  // Because of this, we can't use this technique. We guard it by
+  // CAPNP_DEBUG_TYPES so that it still applies to the Cap'n Proto developers
+  // during internal testing.
 
   DisallowConstCopy() = default;
   DisallowConstCopy(DisallowConstCopy&) = default;
   DisallowConstCopy(DisallowConstCopy&&) = default;
-  DisallowConstCopy& operator=(DisallowConstCopy&) = default;
+  DisallowConstCopy& operator=(const DisallowConstCopy&) = default;
   DisallowConstCopy& operator=(DisallowConstCopy&&) = default;
+#endif
 };
 
 template <typename T>
 struct DisallowConstCopyIfNotConst : public DisallowConstCopy {
   // Inherit from this when implementing a template that contains a pointer to T
-  // and which should enforce transitive constness.  If T is a const type, this
-  // has no effect.  Otherwise, it is an alias for DisallowConstCopy.
+  // and which should enforce transitive constness. If T is a const type, this
+  // has no effect. Otherwise, it is an alias for DisallowConstCopy.
 };
 
 template <typename T>
@@ -879,7 +891,7 @@ class MaxValue_ {
 
   inline constexpr operator char() const {
     // `char` is different from both `signed char` and `unsigned char`, and may
-    // be signed or unsigned on different platforms.  Ugh.
+    // be signed or unsigned on different platforms. Ugh.
     return char(-1) < 0 ? MaxValue_::maxSigned<char>()
                         : MaxValue_::maxUnsigned<char>();
   }
@@ -913,7 +925,7 @@ class MinValue_ {
 
   inline constexpr operator char() const {
     // `char` is different from both `signed char` and `unsigned char`, and may
-    // be signed or unsigned on different platforms.  Ugh.
+    // be signed or unsigned on different platforms. Ugh.
     return char(-1) < 0 ? MinValue_::minSigned<char>()
                         : MinValue_::minUnsigned<char>();
   }
@@ -921,13 +933,13 @@ class MinValue_ {
 
 static ZC_CONSTEXPR MaxValue_ maxValue = MaxValue_();
 // A special constant which, when cast to an integer type, takes on the maximum
-// possible value of that type.  This is useful to use as e.g. a parameter to a
+// possible value of that type. This is useful to use as e.g. a parameter to a
 // function because it will be robust in the face of changes to the parameter's
 // type.
 
 static ZC_CONSTEXPR MinValue_ minValue = MinValue_();
 // A special constant which, when cast to an integer type, takes on the minimum
-// possible value of that type.  This is useful to use as e.g. a parameter to a
+// possible value of that type. This is useful to use as e.g. a parameter to a
 // function because it will be robust in the face of changes to the parameter's
 // type.
 
@@ -947,6 +959,16 @@ inline constexpr unsigned long long maxValueForBits() {
   // 1ull << 64 is unfortunately undefined.
   return (bits == 64 ? 0 : (1ull << bits)) - 1;
 }
+
+#if __GNUC__ || __clang__ || _MSC_VER
+inline constexpr float inf() { return __builtin_huge_valf(); }
+inline constexpr float nan() { return __builtin_nanf(""); }
+#else
+#error "Not sure how to support your compiler."
+#endif
+
+inline constexpr bool isNaN(float f) { return f != f; }
+inline constexpr bool isNaN(double f) { return f != f; }
 
 // =======================================================================================
 // Useful fake containers
@@ -1035,7 +1057,7 @@ inline constexpr Range<Decay<T>> range(T begin, T end) {
   return Range<Decay<T>>(begin, end);
 }
 // Returns a fake iterable container containing all values of T from `begin`
-// (inclusive) to `end` (exclusive).  Example:
+// (inclusive) to `end` (exclusive). Example:
 //
 //     // Prints 1, 2, 3, 4, 5, 6, 7, 8, 9.
 //     for (int i: zc::range(1, 10)) { print(i); }
@@ -1045,7 +1067,7 @@ inline constexpr Range<Decay<T>> zeroTo(T end) {
   return Range<Decay<T>>(end);
 }
 // Returns a fake iterable container containing all values of T from zero
-// (inclusive) to `end` (exclusive).  Example:
+// (inclusive) to `end` (exclusive). Example:
 //
 //     // Prints 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
 //     for (int i: zc::zeroTo(10)) { print(i); }
@@ -1135,7 +1157,7 @@ class Repeat {
 
 template <typename T>
 inline constexpr Repeat<Decay<T>> repeat(T&& value, size_t count) {
-  // Returns a fake iterable which contains `count` repeats of `value`.  Useful
+  // Returns a fake iterable which contains `count` repeats of `value`. Useful
   // for e.g. creating a bunch of spaces:  `zc::repeat(' ', indent * 2)`
 
   return Repeat<Decay<T>>(value, count);
@@ -1179,7 +1201,7 @@ inline void dtor(T& location) {
 // =======================================================================================
 // Maybe
 //
-// Use in cases where you want to indicate that a value may be null.  Using
+// Use in cases where you want to indicate that a value may be null. Using
 // Maybe<T&> instead of T* forces the caller to handle the null case in order to
 // satisfy the compiler, thus reliably preventing null pointer dereferences at
 // runtime.
@@ -1194,7 +1216,7 @@ inline void dtor(T& location) {
 //    }
 //
 // ZC_IF_SOME's first parameter is a variable name which will be defined within
-// the following block.  The variable will be a reference to the Maybe's value.
+// the following block. The variable will be a reference to the Maybe's value.
 //
 // Note that Maybe<T&> actually just wraps a pointer, whereas Maybe<T> wraps a T
 // and a boolean indicating nullness.
@@ -1896,7 +1918,7 @@ class Array;
 
 template <typename T>
 class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
-  // A pointer to an array.  Includes a size.  Like any pointer, it doesn't own
+  // A pointer to an array. Includes a size. Like any pointer, it doesn't own
   // the target data, and passing by value only copies the pointer, not the
   // target.
 
@@ -2276,14 +2298,14 @@ auto asBytes(Params&&... params) {
 template <typename To, typename From>
 To implicitCast(From&& from) {
   // `implicitCast<T>(value)` casts `value` to type `T` only if the conversion
-  // is implicit.  Useful for e.g. resolving ambiguous overloads without
+  // is implicit. Useful for e.g. resolving ambiguous overloads without
   // sacrificing type-safety.
   return zc::fwd<From>(from);
 }
 
 template <typename To, typename From>
 To& downcast(From& from) {
-  // Down-cast a value to a sub-type, asserting that the cast is valid.  In opt
+  // Down-cast a value to a sub-type, asserting that the cast is valid. In opt
   // mode this is a static_cast, but in debug mode (when RTTI is enabled) a
   // dynamic_cast will be used to verify that the value really has the requested
   // type.

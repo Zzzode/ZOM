@@ -353,7 +353,7 @@ class OneOf {
   }
 
   void copyFrom(const OneOf &other) {
-    // Initialize as a copy of `other`.  Expects that `this` starts out
+    // Initialize as a copy of `other`. Expects that `this` starts out
     // uninitialized, so the tag is invalid.
     tag_ = other.tag_;
     doAll(copyVariantFrom<Variants>(other)...);
@@ -368,7 +368,7 @@ class OneOf {
   }
 
   void copyFrom(OneOf &other) {
-    // Initialize as a copy of `other`.  Expects that `this` starts out
+    // Initialize as a copy of `other`. Expects that `this` starts out
     // uninitialized, so the tag is invalid.
     tag_ = other.tag_;
     doAll(copyVariantFrom<Variants>(other)...);
@@ -383,7 +383,7 @@ class OneOf {
   }
 
   void moveFrom(OneOf &other) {
-    // Initialize as a copy of `other`.  Expects that `this` starts out
+    // Initialize as a copy of `other`. Expects that `this` starts out
     // uninitialized, so the tag is invalid.
     tag_ = other.tag_;
     doAll(moveVariantFrom<Variants>(other)...);

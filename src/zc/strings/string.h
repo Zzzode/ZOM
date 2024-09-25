@@ -88,9 +88,9 @@ namespace zc {
 // =======================================================================================
 // StringPtr -- A NUL-terminated ArrayPtr<const char> containing UTF-8 text.
 //
-// NUL bytes are allowed to appear before the end of the string.  The only
+// NUL bytes are allowed to appear before the end of the string. The only
 // requirement is that a NUL byte appear immediately after the last byte of the
-// content.  This terminator byte is not counted in the string's size.
+// content. This terminator byte is not counted in the string's size.
 
 class StringPtr {
  public:
@@ -320,11 +320,11 @@ class LiteralStringConst : public StringPtr {
 // =======================================================================================
 // String -- A NUL-terminated Array<char> containing UTF-8 text.
 //
-// NUL bytes are allowed to appear before the end of the string.  The only
+// NUL bytes are allowed to appear before the end of the string. The only
 // requirement is that a NUL byte appear immediately after the last byte of the
-// content.  This terminator byte is not counted in the string's size.
+// content. This terminator byte is not counted in the string's size.
 //
-// To allocate a String, you must call zc::heapString().  We do not implement
+// To allocate a String, you must call zc::heapString(). We do not implement
 // implicit copying to the heap because this hides potential inefficiency from
 // the developer.
 
@@ -333,10 +333,10 @@ class String {
   String() = default;
   inline String(decltype(nullptr)) : content(nullptr) {}
   inline String(char* value, size_t size, const ArrayDisposer& disposer);
-  // Does not copy.  `size` does not include NUL terminator, but `value` must be
+  // Does not copy. `size` does not include NUL terminator, but `value` must be
   // NUL-terminated.
   inline explicit String(Array<char> buffer);
-  // Does not copy.  Requires `buffer` ends with `\0`.
+  // Does not copy. Requires `buffer` ends with `\0`.
 
   inline constexpr operator ArrayPtr<char>() ZC_LIFETIMEBOUND;
   inline constexpr operator ArrayPtr<const char>() const ZC_LIFETIMEBOUND;
@@ -498,10 +498,10 @@ class ConstString {
   inline ConstString(decltype(nullptr)) : content(nullptr) {}
   inline ConstString(const char* value, size_t size,
                      const ArrayDisposer& disposer);
-  // Does not copy.  `size` does not include NUL terminator, but `value` must be
+  // Does not copy. `size` does not include NUL terminator, but `value` must be
   // NUL-terminated.
   inline explicit ConstString(Array<const char> buffer);
-  // Does not copy.  Requires `buffer` ends with `\0`.
+  // Does not copy. Requires `buffer` ends with `\0`.
   inline explicit ConstString(String&& string)
       : content(string.releaseArray()) {}
   // Does not copy. Ownership is transferred.
@@ -638,7 +638,7 @@ class ConstString {
 
 String heapString(size_t size);
 // Allocate a String of the given size on the heap, not including NUL
-// terminator.  The NUL terminator will be initialized automatically but the
+// terminator. The NUL terminator will be initialized automatically but the
 // rest of the content is not initialized.
 
 String heapString(const char* value);
@@ -686,7 +686,7 @@ char* fill(char* __restrict__ target, const First& first, Rest&&... rest) {
 
 template <typename... Params>
 String concat(Params&&... params) {
-  // Concatenate a bunch of containers into a single Array.  The containers can
+  // Concatenate a bunch of containers into a single Array. The containers can
   // be anything that is iterable and whose elements can be converted to `char`.
 
   String result = heapString(sum({params.size()...}));
@@ -726,18 +726,18 @@ char* fillLimited(char* __restrict__ target, char* limit, Delimited<T>& first,
 // As with StringTree, we special-case Delimited<T>.
 
 struct Stringifier {
-  // This is a dummy type with only one instance: STR (below).  To make an
+  // This is a dummy type with only one instance: STR (below). To make an
   // arbitrary type stringifiable, define `operator*(Stringifier, T)` to return
   // an iterable container of `char`. The container type must have a `size()`
-  // method.  Be sure to declare the operator in the same namespace as `T`
+  // method. Be sure to declare the operator in the same namespace as `T`
   // **or** in the global scope.
   //
   // A more usual way to accomplish what we're doing here would be to require
   // that you define a function like `toString(T)` and then rely on
-  // argument-dependent lookup.  However, this has the problem that it pollutes
-  // other people's namespaces and even the global namespace.  For example, some
+  // argument-dependent lookup. However, this has the problem that it pollutes
+  // other people's namespaces and even the global namespace. For example, some
   // other project may already have functions called `toString` which do
-  // something different.  Declaring `operator*` with `Stringifier` as the left
+  // something different. Declaring `operator*` with `Stringifier` as the left
   // operand cannot conflict with anything.
 
   inline ArrayPtr<const char> operator*(ArrayPtr<const char> s) const {
@@ -924,7 +924,7 @@ inline _::Delimited<ArrayPtr<const T>> operator*(const _::Stringifier&,
 }
 
 #define ZC_STRINGIFY(...) operator*(::zc::_::Stringifier, __VA_ARGS__)
-// Defines a stringifier for a custom type.  Example:
+// Defines a stringifier for a custom type. Example:
 //
 //    class Foo {...};
 //    inline StringPtr ZC_STRINGIFY(const Foo& foo) { return foo.name(); }
@@ -935,7 +935,7 @@ inline _::Delimited<ArrayPtr<const T>> operator*(const _::Stringifier&,
 // This allows Foo to be passed to str().
 //
 // The function should be declared either in the same namespace as the target
-// type or in the global namespace.  It can return any type which is an iterable
+// type or in the global namespace. It can return any type which is an iterable
 // container of chars.
 
 // =======================================================================================

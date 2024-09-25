@@ -287,7 +287,7 @@ namespace {
 // DoubleToBuffer()
 // FloatToBuffer()
 //    Copied from Protocol Buffers, (C) Google, BSD license.
-//    Kenton wrote this code originally.  The following commentary is
+//    Kenton wrote this code originally. The following commentary is
 //    from the original.
 //
 //    Description: converts a double or float to a string which, if
@@ -297,15 +297,15 @@ namespace {
 //    short as possible.
 //
 //    DoubleToBuffer() and FloatToBuffer() write the text to the given
-//    buffer and return it.  The buffer must be at least
+//    buffer and return it. The buffer must be at least
 //    kDoubleToBufferSize bytes for doubles and kFloatToBufferSize
-//    bytes for floats.  kFastToBufferSize is also guaranteed to be large
+//    bytes for floats. kFastToBufferSize is also guaranteed to be large
 //    enough to hold either.
 //
 //    We want to print the value without losing precision, but we also do
-//    not want to print more digits than necessary.  This turns out to be
-//    trickier than it sounds.  Numbers like 0.2 cannot be represented
-//    exactly in binary.  If we print 0.2 with a very large precision,
+//    not want to print more digits than necessary. This turns out to be
+//    trickier than it sounds. Numbers like 0.2 cannot be represented
+//    exactly in binary. If we print 0.2 with a very large precision,
 //    e.g. "%.50g", we get "0.2000000000000000111022302462515654042363167".
 //    On the other hand, if we set the precision too low, we lose
 //    significant digits when printing numbers that actually need them.
@@ -314,26 +314,26 @@ namespace {
 //
 //    Our strategy is to first try printing with a precision that is never
 //    over-precise, then parse the result with strtod() to see if it
-//    matches.  If not, we print again with a precision that will always
+//    matches. If not, we print again with a precision that will always
 //    give a precise result, but may use more digits than necessary.
 //
 //    An arguably better strategy would be to use the algorithm described
 //    in "How to Print Floating-Point Numbers Accurately" by Steele &
-//    White, e.g. as implemented by David M. Gay's dtoa().  It turns out,
+//    White, e.g. as implemented by David M. Gay's dtoa(). It turns out,
 //    however, that the following implementation is about as fast as
-//    DMG's code.  Furthermore, DMG's code locks mutexes, which means it
-//    will not scale well on multi-core machines.  DMG's code is slightly
+//    DMG's code. Furthermore, DMG's code locks mutexes, which means it
+//    will not scale well on multi-core machines. DMG's code is slightly
 //    more accurate (in that it will never use more digits than
 //    necessary), but this is probably irrelevant for most users.
 //
 //    Rob Pike and Ken Thompson also have an implementation of dtoa() in
-//    third_party/fmt/fltfmt.cc.  Their implementation is similar to this
+//    third_party/fmt/fltfmt.cc. Their implementation is similar to this
 //    one in that it makes guesses and then uses strtod() to check them.
 //    Their implementation is faster because they use their own code to
 //    generate the digits in the first place rather than use snprintf(),
-//    thus avoiding format string parsing overhead.  However, this makes
+//    thus avoiding format string parsing overhead. However, this makes
 //    it considerably more complicated than the following implementation,
-//    and it is embedded in a larger library.  If speed turns out to be
+//    and it is embedded in a larger library. If speed turns out to be
 //    an issue, we could re-implement this in terms of their
 //    implementation.
 // ----------------------------------------------------------------------
@@ -342,12 +342,12 @@ namespace {
 // MSVC has only _snprintf, not snprintf.
 //
 // MinGW has both snprintf and _snprintf, but they appear to be different
-// functions.  The former is buggy.  When invoked like so:
+// functions. The former is buggy. When invoked like so:
 //   char buffer[32];
 //   snprintf(buffer, 32, "%.*g\n", FLT_DIG, 1.23e10f);
-// it prints "1.23000e+10".  This is plainly wrong:  %g should never print
-// trailing zeros after the decimal point.  For some reason this bug only
-// occurs with some input values, not all.  In any case, _snprintf does the
+// it prints "1.23000e+10". This is plainly wrong:  %g should never print
+// trailing zeros after the decimal point. For some reason this bug only
+// occurs with some input values, not all. In any case, _snprintf does the
 // right thing, so we use it.
 #define snprintf _snprintf
 #endif
@@ -380,13 +380,13 @@ void DelocalizeRadix(char* buffer) {
     return;
   }
 
-  // We are now pointing at the locale-specific radix character.  Replace it
+  // We are now pointing at the locale-specific radix character. Replace it
   // with '.'.
   *buffer = '.';
   ++buffer;
 
   if (!IsValidFloatChar(*buffer) && *buffer != '\0') {
-    // It appears the radix was a multi-byte character.  We need to remove the
+    // It appears the radix was a multi-byte character. We need to remove the
     // extra bytes.
     char* target = buffer;
     do {
@@ -437,7 +437,7 @@ void RemoveE0(char* buffer) {
 
 char* DoubleToBuffer(double value, char* buffer) {
   // DBL_DIG is 15 for IEEE-754 doubles, which are used on almost all
-  // platforms these days.  Just in case some system exists where DBL_DIG
+  // platforms these days. Just in case some system exists where DBL_DIG
   // is significantly larger -- and risks overflowing our buffer -- we have
   // this assert.
   static_assert(DBL_DIG < 20, "DBL_DIG is too big.");
@@ -461,9 +461,9 @@ char* DoubleToBuffer(double value, char* buffer) {
   ZC_DASSERT(snprintf_result > 0 && snprintf_result < kDoubleToBufferSize);
 
   // We need to make parsed_value volatile in order to force the compiler to
-  // write it out to the stack.  Otherwise, it may keep the value in a
+  // write it out to the stack. Otherwise, it may keep the value in a
   // register, and if it does that, it may keep it as a long double instead
-  // of a double.  This long double may have extra bits that make it compare
+  // of a double. This long double may have extra bits that make it compare
   // unequal to "value" even though it would be exactly equal if it were
   // truncated to a double.
   volatile double parsed_value = strtod(buffer, NULL);
@@ -496,7 +496,7 @@ bool safe_strtof(const char* str, float* value) {
 
 char* FloatToBuffer(float value, char* buffer) {
   // FLT_DIG is 6 for IEEE-754 floats, which are used on almost all
-  // platforms these days.  Just in case some system exists where FLT_DIG
+  // platforms these days. Just in case some system exists where FLT_DIG
   // is significantly larger -- and risks overflowing our buffer -- we have
   // this assert.
   static_assert(FLT_DIG < 10, "FLT_DIG is too big");
@@ -548,9 +548,9 @@ namespace {
 // radix character.
 zc::String LocalizeRadix(const char* input, const char* radix_pos) {
   // Determine the locale-specific radix character by calling sprintf() to
-  // print the number 1.5, then stripping off the digits.  As far as I can
+  // print the number 1.5, then stripping off the digits. As far as I can
   // tell, this is the only portable, thread-safe way to get the C library
-  // to divuldge the locale's radix character.  No, localeconv() is NOT
+  // to divuldge the locale's radix character. No, localeconv() is NOT
   // thread-safe.
   char temp[16]{};
   int size = snprintf(temp, sizeof(temp), "%.1f", 1.5);
@@ -568,8 +568,8 @@ zc::String LocalizeRadix(const char* input, const char* radix_pos) {
 
 double NoLocaleStrtod(const char* text, char** original_endptr) {
   // We cannot simply set the locale to "C" temporarily with setlocale()
-  // as this is not thread-safe.  Instead, we try to parse in the current
-  // locale first.  If parsing stops at a '.' character, then this is a
+  // as this is not thread-safe. Instead, we try to parse in the current
+  // locale first. If parsing stops at a '.' character, then this is a
   // pretty good hint that we're actually in some other locale in which
   // '.' is not the radix character.
 
@@ -578,7 +578,7 @@ double NoLocaleStrtod(const char* text, char** original_endptr) {
   if (original_endptr != NULL) *original_endptr = temp_endptr;
   if (*temp_endptr != '.') return result;
 
-  // Parsing halted on a '.'.  Perhaps we're in a different locale?  Let's
+  // Parsing halted on a '.'. Perhaps we're in a different locale?  Let's
   // try to replace the '.' with a locale-specific radix character and
   // try again.
   zc::String localized = LocalizeRadix(text, temp_endptr);
@@ -711,7 +711,7 @@ Maybe<size_t> StringPtr::find(const StringPtr& other) const {
   // strings.
   //
   // On platforms that don't support memem, we should implement the Two-Way
-  // String-Matching algorithm with linear performance.  The Two-Way
+  // String-Matching algorithm with linear performance. The Two-Way
   // String-Matching algorithm is described in Crochemore and Perrin's CACM
   // paper (Crochemore M., Perrin D., 1991, Two-way string-matching, Journal of
   // the ACM 38(3):651-675).

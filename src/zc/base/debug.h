@@ -21,7 +21,7 @@
 
 // This file declares convenient macros for debug logging and error handling.
 // The macros make it excessively easy to extract useful context information
-// from code.  Example:
+// from code. Example:
 //
 //     ZC_ASSERT(a == b, a, b, "a and b must be the same.");
 //
@@ -35,38 +35,36 @@
 // The macros available are:
 //
 // * `ZC_LOG(severity, ...)`:  Just writes a log message, to stderr by default
-// (but you can
-//   intercept messages by implementing an ExceptionCallback).  `severity` is
-//   `INFO`, `WARNING`, `ERROR`, or `FATAL`.  By default, `INFO` logs are not
-//   written, but for command-line apps the user should be able to pass a flag
-//   like `--verbose` to enable them.  Other log levels are enabled by default.
-//   Log messages -- like exceptions -- can be intercepted by registering an
-//   ExceptionCallback.
+//   (but you can intercept messages by implementing an ExceptionCallback).
+//   `severity` is `INFO`, `WARNING`, `ERROR`, or `FATAL`. By default, `INFO`
+//   logs are not written, but for command-line apps the user should be able to
+//   pass a flag like `--verbose` to enable them. Other log levels are enabled
+//   by default. Log messages -- like exceptions -- can be intercepted by
+//   registering an ExceptionCallback.
 //
 // * `ZC_DBG(...)`:  Like `ZC_LOG`, but intended specifically for temporary log
 // lines added while
-//   debugging a particular problem.  Calls to `ZC_DBG` should always be deleted
-//   before committing code.  It is suggested that you set up a pre-commit hook
+//   debugging a particular problem. Calls to `ZC_DBG` should always be deleted
+//   before committing code. It is suggested that you set up a pre-commit hook
 //   that checks for this.
 //
 // * `ZC_ASSERT(condition, ...)`:  Throws an exception if `condition` is false,
-// or aborts if
-//   exceptions are disabled.  This macro should be used to check for bugs in
-//   the surrounding code and its dependencies, but NOT to check for invalid
-//   input.  The macro may be followed by a brace-delimited code block; if so,
-//   the block will be executed in the case where the assertion fails, before
-//   throwing the exception.  If control jumps out of the block (e.g. with
+//   or aborts if exceptions are disabled. This macro should be used to check
+//   for bugs in the surrounding code and its dependencies, but NOT to check for
+//   invalid input. The macro may be followed by a brace-delimited code block;
+//   if so, the block will be executed in the case where the assertion fails,
+//   before throwing the exception. If control jumps out of the block (e.g. with
 //   "break", "return", or "goto"), then the error is considered "recoverable"
 //   -- in this case, if exceptions are disabled, execution will continue
 //   normally rather than aborting (but if exceptions are enabled, an exception
 //   will still be thrown on exiting the block). A "break" statement in
 //   particular will jump to the code immediately after the block (it does not
-//   break any surrounding loop or switch).  Example:
+//   break any surrounding loop or switch). Example:
 //
 //       ZC_ASSERT(value >= 0, "Value cannot be negative.", value) {
-//         // Assertion failed.  Set value to zero to "recover".
+//         // Assertion failed. Set value to zero to "recover".
 //         value = 0;
-//         // Don't abort if exceptions are disabled.  Continue normally.
+//         // Don't abort if exceptions are disabled. Continue normally.
 //         // (Still throw an exception if they are enabled, though.)
 //         break;
 //       }
@@ -76,23 +74,22 @@
 //
 // * `ZC_REQUIRE(condition, ...)`:  Like `ZC_ASSERT` but used to check
 // preconditions -- e.g. to
-//   validate parameters passed from a caller.  A failure indicates that the
+//   validate parameters passed from a caller. A failure indicates that the
 //   caller is buggy.
 //
 // * `ZC_ASSUME(condition, ...)`: Like `ZC_ASSERT`, but in release mode (if
-// ZC_DEBUG is not
-//   defined; see below) instead warrants to the compiler that the condition can
-//   be assumed to hold, allowing it to optimize accordingly.  This can result
-//   in undefined behavior, so use this macro *only* if you can prove to your
-//   satisfaction that the condition is guaranteed by surrounding code, and if
-//   the condition failing to hold would in any case result in undefined
-//   behavior in its dependencies.
+//   ZC_DEBUG is not defined; see below) instead warrants to the compiler that
+//   the condition can be assumed to hold, allowing it to optimize accordingly.
+//   This can result in undefined behavior, so use this macro *only* if you can
+//   prove to your satisfaction that the condition is guaranteed by surrounding
+//   code, and if the condition failing to hold would in any case result in
+//   undefined behavior in its dependencies.
 //
 // * `ZC_SYSCALL(code, ...)`:  Executes `code` assuming it makes a system call.
-// A negative result
-//   is considered an error, with error code reported via `errno`.  EINTR is
-//   handled by retrying. Other errors are handled by throwing an exception.  If
-//   you need to examine the return code, assign it to a variable like so:
+//   A negative result is considered an error, with error code reported via
+//   `errno`. EINTR is handled by retrying. Other errors are handled by throwing
+//   an exception. If you need to examine the return code, assign it to a
+//   variable like so:
 //
 //       int fd;
 //       ZC_SYSCALL(fd = open(filename, O_RDONLY), filename);
@@ -100,38 +97,36 @@
 //   `ZC_SYSCALL` can be followed by a recovery block, just like `ZC_ASSERT`.
 //
 // * `ZC_NONBLOCKING_SYSCALL(code, ...)`:  Like ZC_SYSCALL, but will not throw
-// an exception on
-//   EAGAIN/EWOULDBLOCK.  The calling code should check the syscall's return
-//   value to see if it indicates an error; in this case, it can assume the
-//   error was EAGAIN because any other error would have caused an exception to
-//   be thrown.
+//   an exception on EAGAIN/EWOULDBLOCK. The calling code should check the
+//   syscall's return value to see if it indicates an error; in this case, it
+//   can assume the error was EAGAIN because any other error would have caused
+//   an exception to be thrown.
 //
 // * `ZC_CONTEXT(...)`:  Notes additional contextual information relevant to any
-// exceptions thrown
-//   from within the current scope.  That is, until control exits the block in
-//   which ZC_CONTEXT() is used, if any exception is generated, it will contain
-//   the given information in its context chain.  This is helpful because it can
-//   otherwise be very difficult to come up with error messages that make sense
-//   within low-level helper code.  Note that the parameters to ZC_CONTEXT() are
-//   only evaluated if an exception is thrown.  This implies that any variables
-//   used must remain valid until the end of the scope.
+//   exceptions thrown from within the current scope. That is, until control
+//   exits the block in which ZC_CONTEXT() is used, if any exception is
+//   generated, it will contain the given information in its context chain. This
+//   is helpful because it can otherwise be very difficult to come up with error
+//   messages that make sense within low-level helper code. Note that the
+//   parameters to ZC_CONTEXT() are only evaluated if an exception is thrown.
+//   This implies that any variables used must remain valid until the end of the
+//   scope.
 //
 // Notes:
 // * Do not write expressions with side-effects in the message content part of
-// the macro, as the
-//   message will not necessarily be evaluated.
-// * For every macro `FOO` above except `LOG`, there is also a `FAIL_FOO` macro
-// used to report
-//   failures that already happened.  For the macros that check a boolean
-//   condition, `FAIL_FOO` omits the first parameter and behaves like it was
-//   `false`.  `FAIL_SYSCALL` and `FAIL_RECOVERABLE_SYSCALL` take a string and
-//   an OS error number as the first two parameters. The string should be the
-//   name of the failed system call.
-// * For every macro `FOO` above except `ASSUME`, there is a `DFOO` version (or
+//   the macro, as the message will not necessarily be evaluated.
+// * For every macro `FOO` preceding except `LOG`, there's also a `FAIL_FOO`
+//   macro used to report failures that already happened. For the macros that
+//   check a boolean condition, `FAIL_FOO` omits the first parameter and behaves
+//   like it was `false`. `FAIL_SYSCALL` and `FAIL_RECOVERABLE_SYSCALL` take a
+//   string and an OS error number as the first two parameters. The string
+//   should be the name of the failed system call.
+// * For every macro `FOO` preceding except `ASSUME`, there's a `DFOO` version
+// (or
 //   `RECOVERABLE_DFOO`) which is only executed in debug mode, i.e. when
 //   ZC_DEBUG is defined. ZC_DEBUG is defined automatically by common.h when
 //   compiling without optimization (unless NDEBUG is defined), but you can also
-//   define it explicitly (e.g. -DZC_DEBUG).  Generally, production builds
+//   define it explicitly (for example -DZC_DEBUG). Generally, production builds
 //   should NOT use ZC_DEBUG as it may enable expensive checks that are unlikely
 //   to fail.
 
@@ -629,7 +624,7 @@ class Debug {
                                         ArrayPtr<String> argValues);
 
   static int getOsErrorNumber(bool nonblocking);
-  // Get the error code of the last error (e.g. from errno).  Returns -1 on
+  // Get the error code of the last error (e.g. from errno). Returns -1 on
   // EINTR.
 };
 
@@ -840,8 +835,9 @@ struct DebugExpression {
 
   inline operator bool() {
     // No comparison performed, we're just asserting the expression is truthy.
-    // This also covers the case of the logic operators && and || -- we cannot
-    // overload those because doing so would break short-circuiting behavior.
+    // This also covers the case of the logic operators `&&` and `||` -- we
+    // can't overload those because doing so would break short-circuiting
+    // behavior.
     return value;
   }
 };

@@ -29,24 +29,24 @@ namespace zc {
 
 template <typename Signature>
 class Function;
-// Function wrapper using virtual-based polymorphism.  Use this when template
-// polymorphism is not possible.  You can, for example, accept a Function as a
+// Function wrapper using virtual-based polymorphism. Use this when template
+// polymorphism is not possible. You can, for example, accept a Function as a
 // parameter:
 //
 //     void setFilter(Function<bool(const Widget&)> filter);
 //
 // The caller of `setFilter()` may then pass any callable object as the
-// parameter.  The callable object does not have to have the exact signature
+// parameter. The callable object does not have to have the exact signature
 // specified, just one that is "compatible" -- i.e. the return type is covariant
 // and the parameters are contravariant.
 //
 // Unlike `std::function`, `zc::Function`s are movable but not copyable, just
-// like `zc::Own`.  This is to avoid unexpected heap allocation or slow atomic
+// like `zc::Own`. This is to avoid unexpected heap allocation or slow atomic
 // reference counting.
 //
 // When a `Function` is constructed from an lvalue, it captures only a reference
 // to the value. When constructed from an rvalue, it invokes the value's move
-// constructor.  So, for example:
+// constructor. So, for example:
 //
 //     struct AddN {
 //       int n;
@@ -54,17 +54,17 @@ class Function;
 //     }
 //
 //     Function<int(int, int)> f1 = AddN{2};
-//     // f1 owns an instance of AddN.  It may safely be moved out
+//     // f1 owns an instance of AddN. It may safely be moved out
 //     // of the local scope.
 //
 //     AddN adder(2);
 //     Function<int(int, int)> f2 = adder;
-//     // f2 contains a reference to `adder`.  Thus, it becomes invalid
+//     // f2 contains a reference to `adder`. Thus, it becomes invalid
 //     // when `adder` goes out-of-scope.
 //
 //     AddN adder2(2);
 //     Function<int(int, int)> f3 = zc::mv(adder2);
-//     // f3 owns an instance of AddN moved from `adder2`.  f3 may safely
+//     // f3 owns an instance of AddN moved from `adder2`. f3 may safely
 //     // be moved out of the local scope.
 //
 // Additionally, a Function may be bound to a class method using
@@ -307,7 +307,7 @@ BoundMethod<T, Func, ConstFunc> boundMethod(T&& t, Func&& func,
         return s.method(zc::fwd<decltype(p)>(p)...); \
       })
 // Macro that produces a functor object which forwards to the method `obj.name`.
-// If `obj` is an lvalue, the functor will hold a reference to it.  If `obj` is
+// If `obj` is an lvalue, the functor will hold a reference to it. If `obj` is
 // an rvalue, the functor will contain a copy (by move) of it. The method is
 // allowed to be overloaded.
 

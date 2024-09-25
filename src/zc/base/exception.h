@@ -127,7 +127,7 @@ class Exception {
   }
 
   void wrapContext(const char* file, int line, String&& description);
-  // Wraps the context in a new node.  This becomes the head node returned by
+  // Wraps the context in a new node. This becomes the head node returned by
   // getContext() -- it is expected that contexts will be added in reverse order
   // as the exception passes up the callback stack.
 
@@ -223,14 +223,14 @@ String ZC_STRINGIFY(const Exception& e);
 
 enum class LogSeverity {
   INFO,  // Information describing what the code is up to, which users may
-         // request to see with a flag like `--verbose`.  Does not indicate a
-         // problem.  Not printed by default; you must call setLogLevel(INFO) to
+         // request to see with a flag like `--verbose`. Does not indicate a
+         // problem. Not printed by default; you must call setLogLevel(INFO) to
          // enable.
   WARNING,  // A problem was detected but execution can continue with correct
             // output.
   ERROR,  // Something is wrong, but execution can continue with garbage output.
   FATAL,  // Something went wrong, and execution cannot continue.
-  DBG     // Temporary debug logging.  See ZC_DBG.
+  DBG     // Temporary debug logging. See ZC_DBG.
 
   // Make sure to update the stringifier if you add a new severity level.
 };
@@ -239,16 +239,16 @@ StringPtr ZC_STRINGIFY(LogSeverity severity);
 
 class ExceptionCallback {
   // If you don't like C++ exceptions, you may implement and register an
-  // ExceptionCallback in order to perform your own exception handling.  For
+  // ExceptionCallback in order to perform your own exception handling. For
   // example, a reasonable thing to do is to have onRecoverableException() set a
   // flag indicating that an error occurred, and then check for that flag just
-  // before writing to storage and/or returning results to the user.  If the
+  // before writing to storage and/or returning results to the user. If the
   // flag is set, discard whatever you have and return an error instead.
   //
-  // ExceptionCallbacks must always be allocated on the stack.  When an
+  // ExceptionCallbacks must always be allocated on the stack. When an
   // exception is thrown, the newest ExceptionCallback on the calling thread's
-  // stack is called.  The default implementation of each method calls the
-  // next-oldest ExceptionCallback for that thread.  Thus the callbacks behave a
+  // stack is called. The default implementation of each method calls the
+  // next-oldest ExceptionCallback for that thread. Thus the callbacks behave a
   // lot like try/catch blocks, except that they are called before any stack
   // unwinding occurs.
 
@@ -259,7 +259,7 @@ class ExceptionCallback {
 
   virtual void onRecoverableException(Exception&& exception);
   // Called when an exception has been raised, but the calling code has the
-  // ability to continue by producing garbage output.  This method _should_
+  // ability to continue by producing garbage output. This method _should_
   // throw the exception, but is allowed to simply return if garbage output is
   // acceptable.
   //
@@ -269,14 +269,14 @@ class ExceptionCallback {
 
   virtual void onFatalException(Exception&& exception);
   // Called when an exception has been raised and the calling code cannot
-  // continue.  If this method returns normally, abort() will be called.  The
+  // continue. If this method returns normally, abort() will be called. The
   // method must throw the exception to avoid aborting.
   //
   // The global default implementation throws an exception.
 
   virtual void logMessage(LogSeverity severity, const char* file, int line,
                           int contextDepth, String&& text);
-  // Called when something wants to log some debug text.  `contextDepth`
+  // Called when something wants to log some debug text. `contextDepth`
   // indicates how many levels of context the message passed through; it may
   // make sense to indent the message accordingly.
   //
@@ -330,14 +330,14 @@ ExceptionCallback& getExceptionCallback();
 
 ZC_NOINLINE ZC_NORETURN void throwFatalException(zc::Exception&& exception,
                                                  uint ignoreCount = 0);
-// Invoke the exception callback to throw the given fatal exception.  If the
+// Invoke the exception callback to throw the given fatal exception. If the
 // exception callback returns, abort.
 //
 // TODO(2.0): Rename this to `throwException()`.
 
 ZC_NOINLINE void throwRecoverableException(zc::Exception&& exception,
                                            uint ignoreCount = 0);
-// Invoke the exception callback to throw the given recoverable exception.  If
+// Invoke the exception callback to throw the given recoverable exception. If
 // the exception callback returns, return normally.
 //
 // TODO(2.0): Rename this to `throwExceptionUnlessUnwinding()`. (Or, can we fix
@@ -353,7 +353,7 @@ class Runnable;
 template <typename Func>
 Maybe<Exception> runCatchingExceptions(Func&& func);
 // Executes the given function (usually, a lambda returning nothing) catching
-// any exceptions that are thrown.  Returns the Exception if there was one, or
+// any exceptions that are thrown. Returns the Exception if there was one, or
 // null if the operation completed normally. Non-ZC exceptions will be wrapped.
 //
 // TODO(2.0): Remove this. Introduce ZC_CATCH() macro which uses
@@ -373,17 +373,17 @@ zc::Exception getCaughtExceptionAsKj();
 // unwind the stack and is not meant to be caught.
 
 class UnwindDetector {
-  // Utility for detecting when a destructor is called due to unwind.  Useful
+  // Utility for detecting when a destructor is called due to unwind. Useful
   // for:
   // - Avoiding throwing exceptions in this case, which would terminate the
   // program.
   // - Detecting whether to commit or roll back a transaction.
   //
   // To use this class, either inherit privately from it or declare it as a
-  // member.  The detector works by comparing the exception state against that
+  // member. The detector works by comparing the exception state against that
   // when the constructor was called, so for an object that was actually
   // constructed during exception unwind, it will behave as if no unwind is
-  // taking place.  This is usually the desired behavior.
+  // taking place. This is usually the desired behavior.
 
  public:
   UnwindDetector();
@@ -394,7 +394,7 @@ class UnwindDetector {
 
   template <typename Func>
   void catchExceptionsIfUnwinding(Func&& func) const;
-  // Runs the given function (e.g., a lambda).  If isUnwinding() is true, any
+  // Runs the given function (e.g., a lambda). If isUnwinding() is true, any
   // exceptions are caught and treated as secondary faults, meaning they are
   // considered to be side-effects of the exception that is unwinding the stack.
   // Otherwise, exceptions are passed through normally.

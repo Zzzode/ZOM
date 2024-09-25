@@ -128,20 +128,20 @@ void throwWrongDisposerError();
 class Disposer {
   // Abstract interface for a thing that "disposes" of objects, where
   // "disposing" usually means calling the destructor followed by freeing the
-  // underlying memory.  `Own<T>` encapsulates an object pointer with
-  // corresponding Disposer.
+  // underlying memory. `Own<T>` encapsulates an object pointer with
+  // the corresponding Disposer.
   //
-  // Few developers will ever touch this interface.  It is primarily useful for
+  // Few developers will ever touch this interface. It is primarily useful for
   // those implementing custom memory allocators.
 
  protected:
   // Do not declare a destructor, as doing so will force a global initializer
-  // for each HeapDisposer instance.  Eww!
+  // for each HeapDisposer instance. Eww!
 
   virtual void disposeImpl(void* pointer) const = 0;
-  // Disposes of the object, given a pointer to the beginning of the object.  If
+  // Disposes of the object, given a pointer to the beginning of the object. If
   // the object is polymorphic, this pointer is determined by
-  // dynamic_cast<void*>().  For non-polymorphic types, Own<T> does not allow
+  // dynamic_cast<void*>(). For non-polymorphic types, Own<T> does not allow
   // any casting, so the pointer exactly matches the original one given to
   // Own<T>.
 
@@ -197,6 +197,7 @@ class NullDisposer : public Disposer {
 #endif
 
 namespace _ {
+
 #ifdef ZC_ASSERT_PTR_COUNTERS
 
 void atomicPtrCounterAssertionFailed(const char* const);
@@ -240,13 +241,12 @@ class Own;
 
 template <typename T>
 class Own<T, decltype(nullptr)> {
-  // A transferrable title to a T.  When an Own<T> goes out of scope, the
-  // object's Disposer is called to dispose of it.  An Own<T> can be efficiently
-  // passed by move, without relocating the underlying object; this transfers
-  // ownership.
+  // A transferable title to a T. When an Own<T> goes out of scope, the object's
+  // Disposer is called to dispose of it. An Own<T> can be efficiently passed by
+  // move, without relocating the underlying object; this transfers ownership.
   //
   // This is much like std::unique_ptr, except:
-  // - You cannot release().  An owned object is not necessarily allocated with
+  // - You cannot release(). An owned object is not necessarily allocated with
   // new (see next
   //   point), so it would be hard to use release() correctly.
   // - The deleter is made polymorphic by virtual call rather than by template.
@@ -285,7 +285,7 @@ class Own<T, decltype(nullptr)> {
   inline Own& operator=(Own&& other) {
     // Move-assignnment operator.
 
-    // Careful, this might own `other`.  Therefore we have to transfer the
+    // Careful, this might own `other`. Therefore we have to transfer the
     // pointers first, then dispose.
     const Disposer* disposerCopy = disposer;
     T* ptrCopy = ptr;
@@ -307,7 +307,7 @@ class Own<T, decltype(nullptr)> {
   Own<T> attach(Attachments&&... attachments) ZC_WARN_UNUSED_RESULT;
   // Returns an Own<T> which points to the same object but which also ensures
   // that all values passed to `attachments` remain alive until after this
-  // object is destroyed. Normally `attachments` are other Own<?>s pointing to
+  // object is destroyed. Normally `attachments` are other `Own<?>`s pointing to
   // objects that this one depends on.
   //
   // Note that attachments will eventually be destroyed in the order they are
@@ -316,7 +316,7 @@ class Own<T, decltype(nullptr)> {
 
   template <typename U>
   Own<U> downcast() {
-    // Downcast the pointer to Own<U>, destroying the original pointer.  If this
+    // Downcast the pointer to Own<U>, destroying the original pointer. If this
     // pointer does not actually point at an instance of U, the results are
     // undefined (throws an exception in debug mode if RTTI is enabled,
     // otherwise you're on your own).
@@ -436,9 +436,9 @@ class Own {
   ~Own() noexcept(false) { dispose(); }
 
   inline Own& operator=(Own&& other) {
-    // Move-assignnment operator.
+    // Move-assignment operator.
 
-    // Careful, this might own `other`.  Therefore we have to transfer the
+    // Carefully, this might own `other`. Therefore, we have to transfer the
     // pointers first, then dispose.
     T* ptrCopy = ptr;
     ptr = other.ptr;
@@ -456,7 +456,7 @@ class Own {
 
   template <typename U>
   Own<U, StaticDisposer> downcast() {
-    // Downcast the pointer to Own<U>, destroying the original pointer.  If this
+    // Downcast the pointer to Own<U>, destroying the original pointer. If this
     // pointer does not actually point at an instance of U, the results are
     // undefined (throws an exception in debug mode if RTTI is enabled,
     // otherwise you're on your own).
@@ -730,8 +730,8 @@ static constexpr CustomDisposer<T, F> CUSTOM_DISPOSER_INSTANCE{};
 template <typename T, typename... Params>
 Own<T> heap(Params&&... params) {
   // heap<T>(...) allocates a T on the heap, forwarding the parameters to its
-  // constructor.  The exact heap implementation is unspecified -- for now it is
-  // operator new, but you should not assume this.  (Since we know the object
+  // constructor. The exact heap implementation is unspecified -- for now it is
+  // operator new, but you should not assume this. (Since we know the object
   // size at delete time, we could actually implement an allocator that is more
   // efficient than operator new.)
 
@@ -783,7 +783,7 @@ Own<T> attachRef(T& value, Attachments&&... attachments);
 template <typename T>
 class SpaceFor {
   // A class which has the same size and alignment as T but does not call its
-  // constructor or destructor automatically.  Instead, call construct() to
+  // constructor or destructor automatically. Instead, call construct() to
   // construct a T in the space, which returns an Own<T> which will take care of
   // calling T's destructor later.
 
