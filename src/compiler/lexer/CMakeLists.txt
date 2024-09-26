@@ -1,3 +1,3 @@
 file(GLOB LEXER_SRC lexer.cc)
 
-add_executable(lexer ${LEXER_SRC})
+add_library(lexer STATIC ${LEXER_SRC})

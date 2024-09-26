@@ -1,0 +1,1 @@
+#add_library(zis STATIC typechecker.cc)
