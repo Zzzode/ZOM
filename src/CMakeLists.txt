@@ -1,4 +1,5 @@
 add_subdirectory(bnf_calculator)
 add_subdirectory(compiler)
+add_subdirectory(concurrency)
 add_subdirectory(diagnostics)
 add_subdirectory(zc)

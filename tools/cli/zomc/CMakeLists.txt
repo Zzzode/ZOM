@@ -1,2 +1,2 @@
 add_executable(zomc main.cc)
-target_link_libraries(zomc PRIVATE zc compiler)
+target_link_libraries(zomc PRIVATE zc compiler concurrency)
