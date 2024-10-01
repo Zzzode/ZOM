@@ -1,4 +1,4 @@
-if(ZOMPILER_ENABLE_ADDRESS_SANITIZER)
+if(ZOM_ENABLE_ADDRESS_SANITIZER)
   add_compile_options(-fsanitize=address)
   add_link_options(-fsanitize=address)
 
@@ -10,16 +10,34 @@ if(ZOMPILER_ENABLE_ADDRESS_SANITIZER)
   endif()
 endif()
 
-if(ZOMPILER_ENABLE_UNDEFINED_SANITIZER)
+if(ZOM_ENABLE_UNDEFINED_SANITIZER)
   add_compile_options(-fsanitize=undefined)
   add_link_options(-fsanitize=undefined)
 endif()
 
-if(ZOMPILER_ENABLE_WERROR)
+if(ZOM_ENABLE_WERROR)
   message(STATUS "Enable Werror")
   if(MSVC)
     add_compile_options(/WX)
   else()
     add_compile_options(-Werror)
+  endif()
+endif()
+
+if(ZOM_ENABLE_WALL)
+  message(STATUS "Enable Wall")
+  if(MSVC)
+    add_compile_options(/W4)
+  else()
+    add_compile_options(-Wall -Wextra)
+  endif()
+endif()
+
+if(ZOM_DISABLE_GLOB_CTOR)
+  message(
+    STATUS
+      "Disable declare global or static variables with dynamic constructors")
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options(-Wglobal-constructors)
   endif()
 endif()

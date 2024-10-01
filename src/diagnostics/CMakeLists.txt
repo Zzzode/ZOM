@@ -1,1 +1,0 @@
-add_library(diagnostic STATIC consumer.cc diagnostic.cc engine.cc)

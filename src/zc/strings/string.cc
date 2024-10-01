@@ -219,7 +219,7 @@ HEXIFY_INT(unsigned long long);
 
 namespace _ {  // private
 
-StringPtr Stringifier::operator*(decltype(nullptr)) const { return "nullptr"; }
+StringPtr Stringifier::operator*(std::nullptr_t) const { return "nullptr"; }
 
 StringPtr Stringifier::operator*(bool b) const {
   return b ? StringPtr("true") : StringPtr("false");

@@ -15,7 +15,7 @@ void Grammar::addProduction(std::unique_ptr<Production> production) {
       }
     }
   }
-  rules.push_back(std::move(production));
+  rules.push_back(zc::mv(production));
 }
 
 void Grammar::setStartSymbol(const std::string& symbol) {

@@ -16,7 +16,7 @@ std::unique_ptr<Grammar> Parser::parse() {
     if (grammar->rules.empty()) {
       grammar->setStartSymbol(production->lhs->name);
     }
-    grammar->addProduction(std::move(production));
+    grammar->addProduction(zc::mv(production));
   }
 
   return grammar;

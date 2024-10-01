@@ -18,6 +18,20 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+//
+// Copyright (c) 2024 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
 
 #ifndef ZC_MEMORY_MEMORY_H_
 #define ZC_MEMORY_MEMORY_H_
@@ -182,7 +196,7 @@ class NullDisposer : public Disposer {
  public:
   static const NullDisposer instance;
 
-  void disposeImpl(void* pointer) const override {}
+  void disposeImpl(ZC_UNUSED void* pointer) const override {}
 };
 
 // =======================================================================================
@@ -234,11 +248,11 @@ using PtrCounter = AtomicPtrCounter;
 // =======================================================================================
 // Own<T> -- An owned pointer.
 
-template <typename T, typename StaticDisposer = decltype(nullptr)>
+template <typename T, typename StaticDisposer = std::nullptr_t>
 class Own;
 
 template <typename T>
-class Own<T, decltype(nullptr)> {
+class Own<T, std::nullptr_t> {
   // A transferable title to a T. When an Own<T> goes out of scope, the object's
   // Disposer is called to dispose of it. An Own<T> can be efficiently passed by
   // move, without relocating the underlying object; this transfers ownership.
@@ -281,7 +295,7 @@ class Own<T, decltype(nullptr)> {
   ~Own() noexcept(false) { dispose(); }
 
   Own& operator=(Own&& other) {
-    // Move-assignnment operator.
+    // Move-assignment operator.
 
     // Careful, this might own `other`. Therefore we have to transfer the
     // pointers first, then dispose.
@@ -296,7 +310,7 @@ class Own<T, decltype(nullptr)> {
     return *this;
   }
 
-  Own& operator=(decltype(nullptr)) {
+  Own& operator=(std::nullptr_t) {
     dispose();
     return *this;
   }
@@ -365,9 +379,9 @@ class Own<T, decltype(nullptr)> {
   const Disposer* disposer;  // Only valid if ptr != nullptr.
   T* ptr;
 
-  explicit Own(decltype(nullptr)) : disposer(nullptr), ptr(nullptr) {}
+  explicit Own(std::nullptr_t) : disposer(nullptr), ptr(nullptr) {}
 
-  bool operator==(decltype(nullptr)) { return ptr == nullptr; }
+  bool operator==(std::nullptr_t) { return ptr == nullptr; }
   // Only called by Maybe<Own<T>>.
 
   void dispose() {
@@ -447,7 +461,7 @@ class Own {
     return *this;
   }
 
-  Own& operator=(decltype(nullptr)) {
+  Own& operator=(std::nullptr_t) {
     dispose();
     return *this;
   }
@@ -505,9 +519,9 @@ class Own {
  private:
   T* ptr;
 
-  explicit Own(decltype(nullptr)) : ptr(nullptr) {}
+  explicit Own(std::nullptr_t) : ptr(nullptr) {}
 
-  bool operator==(decltype(nullptr)) { return ptr == nullptr; }
+  bool operator==(std::nullptr_t) { return ptr == nullptr; }
   // Only called by Maybe<Own<T>>.
 
   void dispose() {
@@ -927,7 +941,7 @@ class Ptr {
   Ptr(const Ptr& other) : ptr(other.ptr) {}
 #endif
 
-  void operator=(std::nullptr_t other) {
+  void operator=(ZC_UNUSED std::nullptr_t other) {
     if (ptr != nullptr) {
 #ifdef ZC_ASSERT_PTR_COUNTERS
       counter->dec();
@@ -1042,7 +1056,7 @@ template <typename... T>
 struct DisposableOwnedBundle final : Disposer, public OwnedBundle<T...> {
   DisposableOwnedBundle(T&&... values)
       : OwnedBundle<T...>(zc::fwd<T>(values)...) {}
-  void disposeImpl(void* pointer) const override { delete this; }
+  void disposeImpl(ZC_UNUSED void* pointer) const override { delete this; }
 };
 
 template <typename T, typename StaticDisposer>
@@ -1116,4 +1130,4 @@ Own<T>::Own(Own<U, StaticDisposer>&& other) noexcept : ptr(cast(other.ptr)) {
 
 ZC_END_HEADER
 
-#endif
+#endif  // ZC_MEMORY_MEMORY_H_

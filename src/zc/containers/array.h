@@ -153,7 +153,7 @@ class Array {
 
  public:
   Array() : ptr(nullptr), size_(0), disposer(nullptr) {}
-  Array(decltype(nullptr)) : ptr(nullptr), size_(0), disposer(nullptr) {}
+  Array(std::nullptr_t) : ptr(nullptr), size_(0), disposer(nullptr) {}
   Array(Array&& other) noexcept
       : ptr(other.ptr), size_(other.size_), disposer(other.disposer) {
     other.ptr = nullptr;
@@ -266,9 +266,9 @@ class Array {
     return result;
   }
 
-  constexpr bool operator==(decltype(nullptr)) const { return size_ == 0; }
+  constexpr bool operator==(std::nullptr_t) const { return size_ == 0; }
 
-  Array& operator=(decltype(nullptr)) {
+  Array& operator=(std::nullptr_t) {
     dispose();
     return *this;
   }
@@ -400,8 +400,7 @@ class ArrayBuilder {
 
  public:
   ArrayBuilder() : ptr(nullptr), pos(nullptr), endPtr(nullptr) {}
-  ArrayBuilder(decltype(nullptr))
-      : ptr(nullptr), pos(nullptr), endPtr(nullptr) {}
+  ArrayBuilder(std::nullptr_t) : ptr(nullptr), pos(nullptr), endPtr(nullptr) {}
   explicit ArrayBuilder(RemoveConst<T>* firstElement, size_t capacity,
                         const ArrayDisposer& disposer)
       : ptr(firstElement),
@@ -473,7 +472,7 @@ class ArrayBuilder {
     other.endPtr = nullptr;
     return *this;
   }
-  ArrayBuilder& operator=(decltype(nullptr)) {
+  ArrayBuilder& operator=(std::nullptr_t) {
     dispose();
     return *this;
   }

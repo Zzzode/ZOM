@@ -235,7 +235,7 @@ class OneOf {
     return *this;
   }
 
-  inline bool operator==(decltype(nullptr)) const { return tag_ == 0; }
+  inline bool operator==(std::nullptr_t) const { return tag_ == 0; }
 
   template <typename T>
   [[nodiscard]] bool is() const {
@@ -321,7 +321,7 @@ class OneOf {
 
   template <typename... Rest>
   static inline constexpr size_t maxSize(size_t a, size_t b, Rest... rest) {
-    return maxSize(std::max(a, b), rest...);
+    return maxSize(max(a, b), rest...);
   }
 
   static constexpr auto spaceSize = maxSize(sizeof(Variants)...);
@@ -329,7 +329,7 @@ class OneOf {
   alignas(Variants...) unsigned char space[spaceSize];
 
   template <typename... T>
-  inline void doAll(T... t) {}
+  inline void doAll(ZC_UNUSED T... t) {}
 
   template <typename T>
   inline bool destroyVariant() {

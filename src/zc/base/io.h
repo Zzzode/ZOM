@@ -19,7 +19,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#pragma once
+#ifndef ZC_BASE_IO_H_
+#define ZC_BASE_IO_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -287,7 +288,7 @@ class AutoCloseFd {
 
  public:
   AutoCloseFd() : fd(-1) {}
-  AutoCloseFd(decltype(nullptr)) : fd(-1) {}
+  AutoCloseFd(std::nullptr_t) : fd(-1) {}
   explicit AutoCloseFd(int fd) : fd(fd) {}
   AutoCloseFd(AutoCloseFd&& other) noexcept : fd(other.fd) { other.fd = -1; }
   ZC_DISALLOW_COPY(AutoCloseFd);
@@ -300,7 +301,7 @@ class AutoCloseFd {
     return *this;
   }
 
-  AutoCloseFd& operator=(decltype(nullptr)) {
+  AutoCloseFd& operator=(std::nullptr_t) {
     AutoCloseFd old(zc::mv(*this));
     return *this;
   }
@@ -312,7 +313,7 @@ class AutoCloseFd {
   // Deleting this operator prevents accidental use in boolean contexts, which
   // the int conversion operator above would otherwise allow.
 
-  bool operator==(decltype(nullptr)) { return fd < 0; }
+  bool operator==(std::nullptr_t) { return fd < 0; }
 
   int release() {
     // Release ownership of an FD. Not recommended.
@@ -385,7 +386,7 @@ class AutoCloseHandle {
 
  public:
   AutoCloseHandle() : handle((void*)-1) {}
-  AutoCloseHandle(decltype(nullptr)) : handle((void*)-1) {}
+  AutoCloseHandle(std::nullptr_t) : handle((void*)-1) {}
   explicit AutoCloseHandle(void* handle) : handle(handle) {}
   AutoCloseHandle(AutoCloseHandle&& other) noexcept : handle(other.handle) {
     other.handle = (void*)-1;
@@ -400,7 +401,7 @@ class AutoCloseHandle {
     return *this;
   }
 
-  AutoCloseHandle& operator=(decltype(nullptr)) {
+  AutoCloseHandle& operator=(std::nullptr_t) {
     AutoCloseHandle old(zc::mv(*this));
     return *this;
   }
@@ -412,7 +413,7 @@ class AutoCloseHandle {
   // Deleting this operator prevents accidental use in boolean contexts, which
   // the void* conversion operator above would otherwise allow.
 
-  bool operator==(decltype(nullptr)) { return handle != (void*)-1; }
+  bool operator==(std::nullptr_t) { return handle != (void*)-1; }
 
   void* release() {
     // Release ownership of an FD. Not recommended.
@@ -464,3 +465,5 @@ class HandleOutputStream : public OutputStream {
 }  // namespace zc
 
 ZC_END_HEADER
+
+#endif  // ZC_BASE_IO_H_

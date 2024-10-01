@@ -1,5 +1,5 @@
-#ifndef BNF_CALCULATOR_PARSER_H
-#define BNF_CALCULATOR_PARSER_H
+#ifndef BNF_CALCULATOR_PARSER_H_
+#define BNF_CALCULATOR_PARSER_H_
 
 #include <memory>
 

@@ -5,10 +5,10 @@
 #include "src/bnf_calculator/calculator.h"
 #include "src/bnf_calculator/lexer.h"
 #include "src/bnf_calculator/parser.h"
-#include "src/compiler/source/location.h"
-#include "src/diagnostics/engine.h"
 #include "src/zc/base/common.h"
 #include "src/zc/utility/one_of.h"
+#include "src/zom/diagnostics/diagnostic_engine.h"
+#include "src/zom/source/location.h"
 
 using namespace bnf_calculator;
 
@@ -24,7 +24,7 @@ void printSet(const std::string& setName, const Calculator::SetMap& set) {
 }
 
 int main(int argc, char* argv[]) {
-  diagnostic::DiagnosticEngine diagnosticEngine;
+  zom::diagnostics::DiagnosticEngine diagnosticEngine;
 
   zc::OneOf<Token, Lexer> test;
   test.init<Token>(Token(TokenType::END_OF_FILE, "", 0, 0));
@@ -34,19 +34,20 @@ int main(int argc, char* argv[]) {
   }
 
   if (argc != 2) {
-    diagnosticEngine.emit(diagnostic::Diagnostic(
-        diagnostic::DiagnosticSeverity::Error,
+    diagnosticEngine.emit(zom::diagnostics::Diagnostic(
+        zom::diagnostics::DiagnosticSeverity::Error,
         "Usage: " + std::string(argv[0]) + " <input_file>",
-        compiler::source::SourceLocation("", 0, 0)));  // Default location
+        zom::source::SourceLoc("", 0, 0)));  // Default location
     return 1;
   }
 
   std::string inputFilePath = argv[1];
   std::ifstream inputFile(inputFilePath);
   if (!inputFile) ZC_UNLIKELY {
-      diagnosticEngine.emit(diagnostic::Diagnostic(
-          diagnostic::DiagnosticSeverity::Error, "Unable to open input file.",
-          compiler::source::SourceLocation(inputFilePath, 0, 0)));
+      diagnosticEngine.emit(zom::diagnostics::Diagnostic(
+          zom::diagnostics::DiagnosticSeverity::Error,
+          "Unable to open input file.",
+          zom::source::SourceLoc(inputFilePath, 0, 0)));
       return 1;
     }
 
@@ -79,9 +80,9 @@ int main(int argc, char* argv[]) {
     }
 
   } catch (const std::exception& e) {
-    diagnosticEngine.emit(diagnostic::Diagnostic(
-        diagnostic::DiagnosticSeverity::Error, e.what(),
-        compiler::source::SourceLocation(inputFilePath, 0, 0)));
+    diagnosticEngine.emit(zom::diagnostics::Diagnostic(
+        zom::diagnostics::DiagnosticSeverity::Error, e.what(),
+        zom::source::SourceLoc(inputFilePath, 0, 0)));
   }
 
   // Check for errors and report them

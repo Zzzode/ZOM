@@ -250,16 +250,16 @@ namespace zc {
                _zcContextFunc))>>())                                           \
   ZC_UNIQUE_NAME(_zcContext)(ZC_UNIQUE_NAME(_zcContextFunc))
 
-#define ZC_REQUIRE_NONNULL(value, ...)                                         \
-  (*[&] {                                                                      \
-    auto _zc_result = ::zc::_::readMaybe(value);                               \
-    if (ZC_UNLIKELY(!_zc_result)) {                                            \
-      ::zc::_::Debug::Fault(__FILE__, __LINE__, ::zc::Exception::Type::FAILED, \
-                            #value " != nullptr", "" #__VA_ARGS__,             \
-                            __VA_ARGS__)                                       \
-          .fatal();                                                            \
-    }                                                                          \
-    return _zc_result;                                                         \
+#define ZC_REQUIRE_NONNULL(value, ...)                          \
+  (*[&] {                                                       \
+    auto _zc_result = ::zc::_::readMaybe(value);                \
+    if (!_zc_result) ZC_UNLIKELY {                              \
+        ::zc::_::Debug::Fault(                                  \
+            __FILE__, __LINE__, ::zc::Exception::Type::FAILED,  \
+            #value " != nullptr", "" #__VA_ARGS__, __VA_ARGS__) \
+            .fatal();                                           \
+      }                                                         \
+    return _zc_result;                                          \
   }())
 
 #define ZC_EXCEPTION(type, ...)                        \
@@ -364,28 +364,30 @@ namespace zc {
 
 #if _MSC_VER && !defined(__clang__)
 
-#define ZC_REQUIRE_NONNULL(value, ...)                                         \
-  (*([&] {                                                                     \
-    auto _zc_result = ::zc::_::readMaybe(value);                               \
-    if (ZC_UNLIKELY(!_zc_result)) {                                            \
-      ::zc::_::Debug::Fault(__FILE__, __LINE__, ::zc::Exception::Type::FAILED, \
-                            #value " != nullptr", #__VA_ARGS__, ##__VA_ARGS__) \
-          .fatal();                                                            \
-    }                                                                          \
-    return _zc_result;                                                         \
+#define ZC_REQUIRE_NONNULL(value, ...)                         \
+  (*([&] {                                                     \
+    auto _zc_result = ::zc::_::readMaybe(value);               \
+    if (!_zc_result) ZC_UNLIKELY {                             \
+        ::zc::_::Debug::Fault(                                 \
+            __FILE__, __LINE__, ::zc::Exception::Type::FAILED, \
+            #value " != nullptr", #__VA_ARGS__, ##__VA_ARGS__) \
+            .fatal();                                          \
+      }                                                        \
+    return _zc_result;                                         \
   }()))
 
 #else
 
-#define ZC_REQUIRE_NONNULL(value, ...)                                         \
-  (*({                                                                         \
-    auto _zc_result = ::zc::_::readMaybe(value);                               \
-    if (ZC_UNLIKELY(!_zc_result)) {                                            \
-      ::zc::_::Debug::Fault(__FILE__, __LINE__, ::zc::Exception::Type::FAILED, \
-                            #value " != nullptr", #__VA_ARGS__, ##__VA_ARGS__) \
-          .fatal();                                                            \
-    }                                                                          \
-    zc::mv(_zc_result);                                                        \
+#define ZC_REQUIRE_NONNULL(value, ...)                         \
+  (*({                                                         \
+    auto _zc_result = ::zc::_::readMaybe(value);               \
+    if (!_zc_result) ZC_UNLIKELY {                             \
+        ::zc::_::Debug::Fault(                                 \
+            __FILE__, __LINE__, ::zc::Exception::Type::FAILED, \
+            #value " != nullptr", #__VA_ARGS__, ##__VA_ARGS__) \
+            .fatal();                                          \
+      }                                                        \
+    zc::mv(_zc_result);                                        \
   }))
 
 #endif
@@ -841,7 +843,7 @@ struct DebugExpression {
 };
 
 template <typename T>
-StringPtr ZC_STRINGIFY(const DebugExpression<T>& exp) {
+StringPtr ZC_STRINGIFY(ZC_UNUSED const DebugExpression<T>& exp) {
   // Hack: This will only ever be called in cases where the expression's
   // truthiness was asserted
   //   directly, and was determined to be falsy.

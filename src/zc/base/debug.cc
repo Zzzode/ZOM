@@ -364,8 +364,8 @@ void Debug::Fault::init(const char* file, int line, Win32Result osErrorNumber,
   DWORD result = FormatMessageW(
       FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
           FORMAT_MESSAGE_IGNORE_INSERTS,
-      NULL, osErrorNumber.number, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-      (LPWSTR)&ptr, 0, NULL);
+      nullptr, osErrorNumber.number, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+      (LPWSTR)&ptr, 0, nullptr);
 
   String message;
   if (result > 0) {

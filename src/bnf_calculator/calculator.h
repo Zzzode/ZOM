@@ -1,5 +1,5 @@
-#ifndef BNF_CALCULATOR_CALCULATOR_H
-#define BNF_CALCULATOR_CALCULATOR_H
+#ifndef BNF_CALCULATOR_CALCULATOR_H_
+#define BNF_CALCULATOR_CALCULATOR_H_
 
 #include <string>
 #include <unordered_map>

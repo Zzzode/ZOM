@@ -21,6 +21,8 @@
 
 #include "src/zc/containers/array.h"
 
+#include "src/zc/base/common.h"
+
 namespace zc {
 
 void ExceptionSafeArrayUtil::construct(size_t count,
@@ -46,7 +48,7 @@ const DestructorOnlyArrayDisposer DestructorOnlyArrayDisposer::instance =
 
 void DestructorOnlyArrayDisposer::disposeImpl(
     void* firstElement, size_t elementSize, size_t elementCount,
-    size_t capacity, void (*destroyElement)(void*)) const {
+    ZC_UNUSED size_t capacity, ZC_UNUSED void (*destroyElement)(void*)) const {
   if (destroyElement != nullptr) {
     ExceptionSafeArrayUtil guard(firstElement, elementSize, elementCount,
                                  destroyElement);
@@ -56,9 +58,10 @@ void DestructorOnlyArrayDisposer::disposeImpl(
 
 const NullArrayDisposer NullArrayDisposer::instance = NullArrayDisposer();
 
-void NullArrayDisposer::disposeImpl(void* firstElement, size_t elementSize,
-                                    size_t elementCount, size_t capacity,
-                                    void (*destroyElement)(void*)) const {}
+void NullArrayDisposer::disposeImpl(
+    ZC_UNUSED void* firstElement, ZC_UNUSED size_t elementSize,
+    ZC_UNUSED size_t elementCount, ZC_UNUSED size_t capacity,
+    ZC_UNUSED void (*destroyElement)(void*)) const {}
 
 namespace _ {  // private
 
@@ -98,7 +101,8 @@ void* HeapArrayDisposer::allocateImpl(size_t elementSize, size_t elementCount,
 }
 
 void HeapArrayDisposer::disposeImpl(void* firstElement, size_t elementSize,
-                                    size_t elementCount, size_t capacity,
+                                    size_t elementCount,
+                                    ZC_UNUSED size_t capacity,
                                     void (*destroyElement)(void*)) const {
   // Note that capacity is ignored since operator delete() doesn't care about
   // it.

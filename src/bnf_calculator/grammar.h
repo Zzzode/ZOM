@@ -1,5 +1,5 @@
-#ifndef BNF_CALCULATOR_GRAMMAR_H
-#define BNF_CALCULATOR_GRAMMAR_H
+#ifndef BNF_CALCULATOR_GRAMMAR_H_
+#define BNF_CALCULATOR_GRAMMAR_H_
 
 #include <memory>
 #include <string>
@@ -14,7 +14,7 @@ class Symbol {
   bool isTerminal;
 
   Symbol(std::string name, bool isTerminal)
-      : name(std::move(name)), isTerminal(isTerminal) {}
+      : name(zc::mv(name)), isTerminal(isTerminal) {}
 };
 
 class Production {

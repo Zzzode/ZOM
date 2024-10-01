@@ -19,8 +19,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#ifndef ZC_BASE_EXCEPTION_H
-#define ZC_BASE_EXCEPTION_H
+#ifndef ZC_BASE_EXCEPTION_H_
+#define ZC_BASE_EXCEPTION_H_
 
 #include "src/zc/containers/array.h"
 #include "src/zc/containers/vector.h"

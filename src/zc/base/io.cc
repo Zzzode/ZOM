@@ -250,7 +250,8 @@ ArrayInputStream::~ArrayInputStream() noexcept(false) {}
 
 ArrayPtr<const byte> ArrayInputStream::tryGetReadBuffer() { return array; }
 
-size_t ArrayInputStream::tryRead(ArrayPtr<byte> dst, size_t minBytes) {
+size_t ArrayInputStream::tryRead(ArrayPtr<byte> dst,
+                                 ZC_UNUSED size_t minBytes) {
   size_t n = zc::min(dst.size(), array.size());
   memcpy(dst.begin(), array.begin(), n);
   array = array.slice(n);
@@ -308,13 +309,14 @@ ArrayPtr<byte> VectorOutputStream::getWriteBuffer() {
 
 void VectorOutputStream::write(ArrayPtr<const byte> src) {
   auto size = src.size();
+  size_t remaining = static_cast<size_t>(vector.end() - fillPos);
+
   if (src.begin() == fillPos && fillPos != vector.end()) {
     // Oh goody, the caller wrote directly into our buffer.
-    ZC_REQUIRE(size <= vector.end() - fillPos, size, fillPos,
-               vector.end() - fillPos);
+    ZC_REQUIRE(size <= remaining, size, fillPos, vector.end() - fillPos);
     fillPos += size;
   } else {
-    if (vector.end() - fillPos < size) {
+    if (remaining < size) {
       grow(fillPos - vector.begin() + size);
     }
 

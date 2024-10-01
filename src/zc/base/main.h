@@ -19,12 +19,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#pragma once
+#ifndef ZC_BASE_MAIN_H_
+#define ZC_BASE_MAIN_H_
 
 #include <atomic>
 
 #include "src/zc/base/function.h"
-#include "src/zc/containers/array.h"
 #include "src/zc/strings/string.h"
 
 ZC_BEGIN_HEADER
@@ -465,3 +465,5 @@ class MainBuilder {
 }  // namespace zc
 
 ZC_END_HEADER
+
+#endif  // ZC_BASE_MAIN_H_

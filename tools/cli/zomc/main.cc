@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "src/compiler/pipeline.h"
+#include "src/zom/pipeline.h"
 
 int main() {
   CompilerPipeline pipeline;

@@ -9,7 +9,7 @@ ThreadPool::ThreadPool(size_t numThreads) {
           std::unique_lock<std::mutex> lock(queueMutex_);
           condition_.wait(lock, [this] { return stop_ || !tasks_.empty(); });
           if (stop_ && tasks_.empty()) return;
-          task = std::move(tasks_.front());
+          task = zc::mv(tasks_.front());
           tasks_.pop();
         }
         task();

@@ -1,11 +1,11 @@
-#ifndef BNF_CALCULATOR_LEXER_H
-#define BNF_CALCULATOR_LEXER_H
+#ifndef BNF_CALCULATOR_LEXER_H_
+#define BNF_CALCULATOR_LEXER_H_
 
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "src/diagnostics/engine.h"
+#include "src/zom/diagnostics/diagnostic_engine.h"
 
 namespace bnf_calculator {
 
@@ -29,12 +29,13 @@ struct Token {
   size_t column;
 
   Token(TokenType t, std::string v, size_t l, size_t c)
-      : type(t), value(std::move(v)), line(l), column(c) {}
+      : type(t), value(zc::mv(v)), line(l), column(c) {}
 };
 
 class Lexer {
  public:
-  Lexer(std::string input, diagnostic::DiagnosticEngine& diagnosticEngine);
+  Lexer(std::string input,
+        zom::diagnostics::DiagnosticEngine& diagnosticEngine);
   std::vector<Token> tokenize();
 
  private:
@@ -42,7 +43,7 @@ class Lexer {
   size_t position;
   size_t line;
   size_t column;
-  diagnostic::DiagnosticEngine& diagnosticEngine;
+  zom::diagnostics::DiagnosticEngine& diagnosticEngine;
 
   char peek() const;
   char peek(int offset) const;

@@ -47,24 +47,21 @@
       "name": "debug",
       "configurePreset": "debug",
       "targets": [
-        "lexer",
-        "bnf_calculator_cli"
+        "lexer"
       ]
     },
     {
       "name": "release",
       "configurePreset": "release",
       "targets": [
-        "lexer",
-        "bnf_calculator_cli"
+        "lexer"
       ]
     },
     {
       "name": "sanitizer",
       "configurePreset": "sanitizer",
       "targets": [
-        "lexer",
-        "bnf_calculator_cli"
+        "lexer"
       ]
     }
   ]

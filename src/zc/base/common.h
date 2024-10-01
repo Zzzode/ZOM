@@ -33,8 +33,8 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#ifndef ZC_BASE_COMMON_H
-#define ZC_BASE_COMMON_H
+#ifndef ZC_BASE_COMMON_H_
+#define ZC_BASE_COMMON_H_
 
 #if defined(__GNUC__) || defined(__clang__)
 #define ZC_BEGIN_SYSTEM_HEADER _Pragma("GCC system_header")
@@ -202,7 +202,6 @@ using uint32_t = uint;
 #define ZC_NORETURN [[noreturn]]
 #define ZC_NODISCARD [[nodiscard]]
 #define ZC_FALLTHROUGH [[fallthrough]]
-#define ZC_MAYBE_UNUSED [[maybe_unused]]
 #define ZC_LIKELY [[likely]]
 #define ZC_UNLIKELY [[unlikely]]
 #define ZC_NO_UNIQUE_ADDRESS [[no_unique_address]]
@@ -348,7 +347,7 @@ using uint32_t = uint;
 //   http://msdn.microsoft.com/en-us/library/jj159529.aspx Similarly, ZC_UNUSED
 //   could use __pragma(warning(suppress:...)), but again that's a prefix.
 #else
-#define ZC_UNUSED __attribute__((unused))
+#define ZC_UNUSED [[maybe_unused]]
 #define ZC_WARN_UNUSED_RESULT __attribute__((warn_unused_result))
 #endif
 
@@ -463,6 +462,12 @@ ZC_NORETURN void unreachable();
 #define ZC_UNREACHABLE ::zc::_::unreachable();
 // Put this on code paths that cannot be reached to suppress compiler warnings
 // about missing returns.
+
+#if __clang__
+#define ZC_CLANG_KNOWS_THIS_IS_UNREACHABLE_BUT_GCC_DOESNT
+#else
+#define ZC_CLANG_KNOWS_THIS_IS_UNREACHABLE_BUT_GCC_DOESNT ZC_UNREACHABLE
+#endif
 
 #if __clang__
 #define ZC_KNOWN_UNREACHABLE(code)                                       \
@@ -795,7 +800,7 @@ constexpr bool canMemcpy() {
 #endif
 
 // =======================================================================================
-// Equivalents to std::move() and std::forward(), since these are very commonly
+// Equivalents to zc::mv() and std::forward(), since these are very commonly
 // needed and the std header <utility> pulls in lots of other stuff.
 //
 // We use abbreviated names mv and fwd because these helpers (especially mv) are
@@ -846,6 +851,16 @@ constexpr auto min(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
                : WiderType<Decay<T>, Decay<U>>(b);
 }
 
+#if __has_builtin(__is_signed)
+template <class T>
+inline constexpr bool isSigned = __is_signed(T);
+#endif
+
+#if __has_builtin(__make_unsigned)
+template <class T>
+using makeUnsigned = __make_unsigned(T);
+#endif
+
 template <typename T, typename U>
 constexpr auto max(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
   return a > b ? WiderType<Decay<T>, Decay<U>>(a)
@@ -853,7 +868,7 @@ constexpr auto max(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
 }
 
 template <typename T, size_t s>
-constexpr size_t size(T (&arr)[s]) {
+constexpr size_t size(ZC_UNUSED T (&arr)[s]) {
   return s;
 }
 template <typename T>
@@ -959,6 +974,14 @@ constexpr unsigned long long maxValueForBits() {
   // 1ull << 64 is unfortunately undefined.
   return (bits == 64 ? 0 : (1ull << bits)) - 1;
 }
+
+struct ThrowOverflow {
+  // Functor which throws an exception complaining about integer overflow.
+  // Usually this is used with the interfaces in units.h, but is defined here
+  // because Cap'n Proto wants to avoid including units.h when not using
+  // CAPNP_DEBUG_TYPES.
+  [[noreturn]] void operator()() const;
+};
 
 #if __GNUC__ || __clang__ || _MSC_VER
 constexpr float inf() { return __builtin_huge_valf(); }
@@ -1087,7 +1110,7 @@ class Repeat {
     Iterator(const T& value, size_t index) : value(value), index(index) {}
 
     const T& operator*() const { return value; }
-    const T& operator[](ptrdiff_t index) const { return value; }
+    const T& operator[](ZC_UNUSED ptrdiff_t index) const { return value; }
     Iterator& operator++() {
       ++index;
       return *this;
@@ -1173,7 +1196,8 @@ inline void* operator new(size_t, zc::_::PlacementNew, void* __p) noexcept {
   return __p;
 }
 
-inline void operator delete(void*, zc::_::PlacementNew, void* __p) noexcept {}
+inline void operator delete(void*, zc::_::PlacementNew,
+                            ZC_UNUSED void* __p) noexcept {}
 
 namespace zc {
 
@@ -1294,7 +1318,7 @@ class NullableValue {
       ctor(value, *other.ptr);
     }
   }
-  NullableValue(decltype(nullptr)) : isSet(false) {}
+  NullableValue(std::nullptr_t) : isSet(false) {}
 
   NullableValue& operator=(NullableValue&& other) {
     if (&other != this) {
@@ -1380,7 +1404,7 @@ class NullableValue {
     }
     return *this;
   }
-  NullableValue& operator=(decltype(nullptr)) {
+  NullableValue& operator=(std::nullptr_t) {
     if (isSet) {
       isSet = false;
       dtor(value);
@@ -1388,7 +1412,7 @@ class NullableValue {
     return *this;
   }
 
-  bool operator==(decltype(nullptr)) const { return !isSet; }
+  bool operator==(std::nullptr_t) const { return !isSet; }
 
   NullableValue(const T* t) = delete;
   NullableValue& operator=(const T* other) = delete;
@@ -1894,13 +1918,13 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
 
  public:
   constexpr ArrayPtr() : ptr(nullptr), size_(0) {}
-  constexpr ArrayPtr(decltype(nullptr)) : ptr(nullptr), size_(0) {}
+  constexpr ArrayPtr(std::nullptr_t) : ptr(nullptr), size_(0) {}
   constexpr ArrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size)
       : ptr(ptr), size_(size) {}
   constexpr ArrayPtr(T* begin ZC_LIFETIMEBOUND, T* end ZC_LIFETIMEBOUND)
       : ptr(begin), size_(end - begin) {}
   ArrayPtr<T>& operator=(Array<T>&&) = delete;
-  ArrayPtr<T>& operator=(decltype(nullptr)) {
+  ArrayPtr<T>& operator=(std::nullptr_t) {
     ptr = nullptr;
     size_ = 0;
     return *this;
@@ -1975,6 +1999,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
   ArrayPtr<const T> asConst() const { return ArrayPtr<const T>(ptr, size_); }
 
   constexpr size_t size() const { return size_; }
+  constexpr bool empty() const { return size_ == 0u; }
   constexpr const T& operator[](size_t index) const {
     ZC_IREQUIRE(index < size_, "Out-of-bounds ArrayPtr access.");
     return ptr[index];
@@ -2051,7 +2076,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     return {reinterpret_cast<PropagateConst<T, char>*>(ptr), size_ * sizeof(T)};
   }
 
-  constexpr bool operator==(decltype(nullptr)) const { return size_ == 0; }
+  constexpr bool operator==(std::nullptr_t) const { return size_ == 0; }
 
   constexpr bool operator==(const ArrayPtr& other) const {
     if (size_ != other.size_) return false;
@@ -2264,6 +2289,29 @@ To implicitCast(From&& from) {
 }
 
 template <typename To, typename From>
+Maybe<To&> dynamicDowncastIfAvailable(From& from) {
+  // If RTTI is disabled, always returns zc::none.  Otherwise, works like
+  // dynamic_cast.  Useful in situations where dynamic_cast could allow an
+  // optimization, but isn't strictly necessary for correctness.  It is highly
+  // recommended that you try to arrange all your dynamic_casts this way, as a
+  // dynamic_cast that is necessary for correctness implies a flaw in the
+  // interface design.
+
+  // Force a compile error if To is not a subtype of From.  Cross-casting is
+  // rare; if it is needed we should have a separate cast function like
+  // dynamicCrosscastIfAvailable().
+  if (false) {
+    zc::implicitCast<From*>(zc::implicitCast<To*>(nullptr));
+  }
+
+#if ZC_NO_RTTI
+  return zc::none;
+#else
+  return dynamic_cast<To*>(&from);
+#endif
+}
+
+template <typename To, typename From>
 To& downcast(From& from) {
   // Down-cast a value to a subtype, asserting that the cast is valid. In opt
   // mode this is a static_cast, but in debug mode (when RTTI is enabled) a
@@ -2338,6 +2386,94 @@ _::Deferred<Func> defer(Func&& func) {
   auto ZC_UNIQUE_NAME(_zcDefer) = ::zc::defer([&]() { code; })
 // Run the given code when the function exits, whether by return or exception.
 
+// =======================================================================================
+// IsDisallowedInCoroutine
+
+namespace _ {
+
+template <typename T, typename = void>
+struct IsDisallowedInCoroutine {
+  static constexpr bool value = false;
+};
+
+template <typename T>
+struct IsDisallowedInCoroutine<T,
+                               typename Decay<T>::_zc_DissalowedInCoroutine> {
+  static constexpr bool value = true;
+};
+
+template <typename T>
+struct IsDisallowedInCoroutine<T*, typename T::_zc_DissalowedInCoroutine> {
+  static constexpr bool value = true;
+};
+
+template <typename T>
+constexpr bool isDisallowedInCoroutine() {
+  return IsDisallowedInCoroutine<T>::value;
+}
+
+}  // namespace _
+
+#define ZC_DISALLOW_AS_COROUTINE_PARAM                    \
+  using _zc_DissalowedInCoroutine = void;                 \
+  template <typename T>                                   \
+  friend constexpr bool zc::_::isDisallowedInCoroutine(); \
+  template <typename T, typename>                         \
+  friend struct zc::_::IsDisallowedInCoroutine
+// Place in the body of a class or struct to indicate that an instance of or
+// reference to this type cannot be passed as the parameter to a ZC coroutine.
+// This makes sense, for example, for mutex locks, or other types which should
+// never be held across a co_await.
+//
+// (Types annotated with this likely also should not be used as local variables
+// inside coroutines, but there is no way for us to enforce that.)
+//
+// struct Foo {
+//    ZC_DISALLOW_AS_COROUTINE_PARAM;
+// }
+//
+
+template <typename T, typename = EnableIf<ZC_HAS_TRIVIAL_CONSTRUCTOR(T)>>
+inline void memzero(T& t) {
+  // Zero-initialize memory region belonging to t. Type-safe wrapper around
+  // `memset`.
+  memset(&t, 0, sizeof(T));
+}
+
+namespace _ {
+template <size_t N>
+struct ByteLiteral {
+  // Helper class to implement _zcb suffix: constexpr is not allowed to cast
+  // `char*` to `unsigned char*`. To overcome this limitation every char needs
+  // to be cast individually (which is apparently ok for constexpr). This class
+  // may not contain any private members, or else you get a misleading compiler
+  // error.
+
+  constexpr ByteLiteral(const char (&init)[N]) {
+    for (size_t i = 0; i < N - 1; ++i) data[i] = (zc::byte)(init[i]);
+  }
+  constexpr size_t size() const { return N - 1; }
+  constexpr const zc::byte* begin() const { return data; }
+  zc::byte data[N - 1];  // do not store 0-terminator
+};
+
+template <>
+struct ByteLiteral<1ul> {
+  // Empty string specialization to avoid `data` array of 0 size.
+  constexpr ByteLiteral(ZC_UNUSED const char (&init)[1]) {}
+  constexpr size_t size() const { return 0; }
+  constexpr const zc::byte* begin() const { return nullptr; }
+};
+
+}  // namespace _
+
 }  // namespace zc
 
-#endif  // ZC_BASE_COMMON_H
+template <zc::_::ByteLiteral s>
+constexpr zc::ArrayPtr<const zc::byte> operator"" _zcb() {
+  // "string"_zcb creates constexpr byte array pointer to the content of the
+  // string WITHOUT the trailing 0.
+  return zc::ArrayPtr<const zc::byte>(s.begin(), s.size());
+};
+
+#endif  // ZC_BASE_COMMON_H_

@@ -95,7 +95,7 @@ namespace zc {
 class StringPtr {
  public:
   constexpr StringPtr() : content("", 1) {}
-  constexpr StringPtr(decltype(nullptr)) : content("", 1) {}
+  constexpr StringPtr(std::nullptr_t) : content("", 1) {}
   StringPtr(const char* value ZC_LIFETIMEBOUND)
       : content(value, strlen(value) + 1) {}
   constexpr StringPtr(const char* value ZC_LIFETIMEBOUND, size_t size)
@@ -109,7 +109,7 @@ class StringPtr {
   constexpr StringPtr(const String& value ZC_LIFETIMEBOUND);
   constexpr StringPtr(const ConstString& value ZC_LIFETIMEBOUND);
   StringPtr& operator=(String&& value) = delete;
-  StringPtr& operator=(decltype(nullptr)) {
+  StringPtr& operator=(std::nullptr_t) {
     content = ArrayPtr<const char>("", 1);
     return *this;
   }
@@ -166,7 +166,7 @@ class StringPtr {
   constexpr const char* begin() const { return content.begin(); }
   constexpr const char* end() const { return content.end() - 1; }
 
-  constexpr bool operator==(decltype(nullptr)) const {
+  constexpr bool operator==(std::nullptr_t) const {
     return content.size() <= 1;
   }
 
@@ -242,7 +242,7 @@ class StringPtr {
   friend class LiteralStringConst;
 
   ArrayPtr<const char> content;
-  friend class SourceLocation;
+  friend class SourceLoc;
 };
 
 template <>
@@ -324,8 +324,8 @@ class LiteralStringConst : public StringPtr {
 class String {
  public:
   String() = default;
-  String(decltype(nullptr)) : content(nullptr) {}
   String(char* value, size_t size, const ArrayDisposer& disposer);
+  /* non-explicit */ String(std::nullptr_t) : content(nullptr) {}
   // Does not copy. `size` does not include NUL terminator, but `value` must be
   // NUL-terminated.
   explicit String(Array<char> buffer);
@@ -365,7 +365,7 @@ class String {
   constexpr const char* begin() const ZC_LIFETIMEBOUND;
   constexpr const char* end() const ZC_LIFETIMEBOUND;
 
-  constexpr bool operator==(decltype(nullptr)) const {
+  constexpr bool operator==(std::nullptr_t) const {
     return content.size() <= 1;
   }
 
@@ -485,7 +485,7 @@ class String {
 class ConstString {
  public:
   ConstString() = default;
-  ConstString(decltype(nullptr)) : content(nullptr) {}
+  ConstString(std::nullptr_t) : content(nullptr) {}
   ConstString(const char* value, size_t size, const ArrayDisposer& disposer);
   // Does not copy. `size` does not include NUL terminator, but `value` must be
   // NUL-terminated.
@@ -521,7 +521,7 @@ class ConstString {
   constexpr const char* begin() const ZC_LIFETIMEBOUND;
   constexpr const char* end() const ZC_LIFETIMEBOUND;
 
-  constexpr bool operator==(decltype(nullptr)) const {
+  constexpr bool operator==(std::nullptr_t) const {
     return content.size() <= 1;
   }
 
@@ -648,7 +648,7 @@ inline size_t sum(std::initializer_list<size_t> nums) {
 }
 
 inline char* fill(char* ptr) { return ptr; }
-inline char* fillLimited(char* ptr, char* limit) { return ptr; }
+inline char* fillLimited(char* ptr, ZC_UNUSED char* limit) { return ptr; }
 
 template <typename... Rest>
 char* fill(char* __restrict__ target, const StringTree& first, Rest&&... rest);
@@ -771,7 +771,7 @@ struct Stringifier {
     return result;
   }
 
-  StringPtr operator*(decltype(nullptr)) const;
+  StringPtr operator*(std::nullptr_t) const;
   StringPtr operator*(bool b) const;
 
   CappedArray<char, 5> operator*(signed char i) const;
@@ -1188,4 +1188,4 @@ constexpr zc::LiteralStringConst operator"" _zcc(const char* str, size_t n) {
 
 ZC_END_HEADER
 
-#endif
+#endif  // ZC_STRINGS_STRING_H_
