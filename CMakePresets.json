@@ -63,6 +63,13 @@
       "targets": [
         "lexer"
       ]
+    },
+    {
+      "name": "unittest",
+      "configurePreset": "sanitizer",
+      "targets": [
+        "zomc"
+      ]
     }
   ]
 }

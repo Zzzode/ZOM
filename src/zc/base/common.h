@@ -799,6 +799,38 @@ constexpr bool canMemcpy() {
                 "this code expects this type to be memcpy()-able");
 #endif
 
+template <typename T>
+class Badge {
+  // A pattern for marking individual methods such that they can only be called
+  // from a specific caller class: Make the method public but give it a
+  // parameter of type `Badge<Caller>`. Only `Caller` can construct one, so only
+  // `Caller` can call the method.
+  //
+  //     // We only allow calls from the class `Bar`.
+  //     void foo(Badge<Bar>)
+  //
+  // The call site looks like:
+  //
+  //     foo({});
+  //
+  // This pattern also works well for declaring private constructors, but still
+  // being able to use them with `zc::heap()`, etc.
+  //
+  // Idea from: https://awesomekling.github.io/Serenity-C++-patterns-The-Badge/
+  //
+  // Note that some forms of this idea make the copy constructor private as
+  // well, in order to prohibit `Badge<NotMe>(*(Badge<NotMe>*)nullptr)`.
+  // However, that would prevent badges from being passed through forwarding
+  // functions like `zc::heap()`, which would ruin one of the main use cases for
+  // this pattern in ZC. In any case, dereferencing a null pointer is UB; there
+  // are plenty of other ways to get access to private members if you're willing
+  // to go UB. For one-off debugging purposes, you might as well use `#define
+  // private public` at the top of the file.
+ private:
+  Badge() {}
+  friend T;
+};
+
 // =======================================================================================
 // Equivalents to zc::mv() and std::forward(), since these are very commonly
 // needed and the std header <utility> pulls in lots of other stuff.
@@ -993,6 +1025,16 @@ constexpr float nan() { return __builtin_nanf(""); }
 constexpr bool isNaN(float f) { return f != f; }
 constexpr bool isNaN(double f) { return f != f; }
 
+inline int popCount(unsigned int x) {
+#if defined(_MSC_VER) && !defined(__clang__)
+  return __popcnt(x);
+  // Note: __popcnt returns unsigned int, but the value is clearly guaranteed to
+  // fit into an int
+#else
+  return __builtin_popcount(x);
+#endif
+}
+
 // =======================================================================================
 // Useful fake containers
 
@@ -1174,6 +1216,103 @@ constexpr Repeat<Decay<T>> repeat(T&& value, size_t count) {
 
   return Repeat<Decay<T>>(value, count);
 }
+
+template <typename Inner, class Mapping>
+class MappedIterator : private Mapping {
+  // An iterator that wraps some other iterator and maps the values through a
+  // mapping function. The type `Mapping` must define a method `map()` which
+  // performs this mapping.
+
+ public:
+  template <typename... Params>
+  MappedIterator(Inner inner, Params&&... params)
+      : Mapping(zc::fwd<Params>(params)...), inner(inner) {}
+
+  inline auto operator->() const { return &Mapping::map(*inner); }
+  inline decltype(auto) operator*() const { return Mapping::map(*inner); }
+  inline decltype(auto) operator[](size_t index) const {
+    return Mapping::map(inner[index]);
+  }
+  inline MappedIterator& operator++() {
+    ++inner;
+    return *this;
+  }
+  inline MappedIterator operator++(int) {
+    return MappedIterator(inner++, *this);
+  }
+  inline MappedIterator& operator--() {
+    --inner;
+    return *this;
+  }
+  inline MappedIterator operator--(int) {
+    return MappedIterator(inner--, *this);
+  }
+  inline MappedIterator& operator+=(ptrdiff_t amount) {
+    inner += amount;
+    return *this;
+  }
+  inline MappedIterator& operator-=(ptrdiff_t amount) {
+    inner -= amount;
+    return *this;
+  }
+  inline MappedIterator operator+(ptrdiff_t amount) const {
+    return MappedIterator(inner + amount, *this);
+  }
+  inline MappedIterator operator-(ptrdiff_t amount) const {
+    return MappedIterator(inner - amount, *this);
+  }
+  inline ptrdiff_t operator-(const MappedIterator& other) const {
+    return inner - other.inner;
+  }
+
+  inline bool operator==(const MappedIterator& other) const {
+    return inner == other.inner;
+  }
+  inline bool operator<=(const MappedIterator& other) const {
+    return inner <= other.inner;
+  }
+  inline bool operator>=(const MappedIterator& other) const {
+    return inner >= other.inner;
+  }
+  inline bool operator<(const MappedIterator& other) const {
+    return inner < other.inner;
+  }
+  inline bool operator>(const MappedIterator& other) const {
+    return inner > other.inner;
+  }
+
+ private:
+  Inner inner;
+};
+
+template <typename Inner, typename Mapping>
+class MappedIterable : private Mapping {
+  // An iterable that wraps some other iterable and maps the values through a
+  // mapping function. The type `Mapping` must define a method `map()` which
+  // performs this mapping.
+
+ public:
+  template <typename... Params>
+  MappedIterable(Inner inner, Params&&... params)
+      : Mapping(zc::fwd<Params>(params)...), inner(inner) {}
+
+  typedef Decay<decltype(instance<Inner>().begin())> InnerIterator;
+  typedef MappedIterator<InnerIterator, Mapping> Iterator;
+  typedef Decay<decltype(instance<const Inner>().begin())> InnerConstIterator;
+  typedef MappedIterator<InnerConstIterator, Mapping> ConstIterator;
+
+  inline Iterator begin() { return {inner.begin(), (Mapping&)*this}; }
+  inline Iterator end() { return {inner.end(), (Mapping&)*this}; }
+  inline ConstIterator begin() const {
+    return {inner.begin(), (const Mapping&)*this};
+  }
+  inline ConstIterator end() const {
+    return {inner.end(), (const Mapping&)*this};
+  }
+
+ private:
+  Inner inner;
+};
 
 // =======================================================================================
 // Manually invoking constructors and destructors

@@ -1,24 +1,35 @@
-#pragma once
-#include <memory>
-#include <string>
-#include <unordered_map>
+#ifndef ZOM_TYPECHECK_SYMBOL_TABLE_H_
+#define ZOM_TYPECHECK_SYMBOL_TABLE_H_
+
+#include "src/zc/base/common.h"
+#include "src/zc/containers/map.h"
+#include "src/zc/strings/string.h"
+
+namespace zom {
+namespace typecheck {
 
 struct Symbol {
-  std::string name;
-  std::string type;
+  zc::String name;
+  zc::String type;
   // Add more properties as needed
 };
 
 class SymbolTable {
-  std::unordered_map<std::string, std::unique_ptr<Symbol>> symbols;
-
  public:
-  void insert(std::string name, std::unique_ptr<Symbol> symbol) {
-    symbols[zc::mv(name)] = zc::mv(symbol);
+  void Insert(zc::String name, zc::Own<Symbol> symbol) {
+    symbols_.insert(zc::mv(name), zc::mv(symbol));
   }
 
-  Symbol* lookup(const std::string& name) {
-    auto it = symbols.find(name);
-    return it != symbols.end() ? it->second.get() : nullptr;
+  Symbol* Lookup(const zc::String& name) {
+    ZC_IF_SOME(it, symbols_.find(name)) { return it.get(); }
+    return nullptr;
   }
+
+ private:
+  zc::HashMap<zc::String, zc::Own<Symbol>> symbols_;
 };
+
+}  // namespace typecheck
+}  // namespace zom
+
+#endif  // ZOM_TYPECHECK_SYMBOL_TABLE_H_

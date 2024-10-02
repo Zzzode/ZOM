@@ -21,25 +21,64 @@
 
 #pragma once
 
-#include "src/zc/containers/vector.h"
-#include "src/zc/strings/string.h"
+#include "src/zc/base/common.h"
+#include "src/zc/base/exception.h"
+#include "src/zc/base/function.h"
+
+ZC_BEGIN_HEADER
 
 namespace zc {
 
-class GlobFilter {
-  // Implements glob filters for the --filter flag.
+class Thread {
+  // A thread!  Pass a lambda to the constructor, and it runs in the thread. The
+  // destructor joins the thread.  If the function throws an exception, it is
+  // rethrown from the thread's destructor (if not unwinding from another
+  // exception).
 
  public:
-  explicit GlobFilter(const char* pattern);
-  explicit GlobFilter(ArrayPtr<const char> pattern);
+  explicit Thread(Function<void()> func);
+  ZC_DISALLOW_COPY_AND_MOVE(Thread);
 
-  bool matches(StringPtr name);
+  ~Thread() noexcept(false);
+
+#if !_WIN32
+  void sendSignal(int signo);
+  // Send a Unix signal to the given thread, using pthread_kill or an
+  // equivalent.
+#endif
+
+  void detach();
+  // Don't join the thread in ~Thread().
 
  private:
-  String pattern;
-  Vector<uint> states;
+  struct ThreadState {
+    ThreadState(Function<void()> func);
 
-  void applyState(char c, uint state);
+    Function<void()> func;
+    Function<void(Function<void()>)> initializer;
+    zc::Maybe<zc::Exception> exception;
+
+    unsigned int refcount;
+    // Owned by the parent thread and the child thread.
+
+    void unref();
+  };
+  ThreadState* state;
+
+#if _WIN32
+  void* threadHandle;
+#else
+  unsigned long long threadId;  // actually pthread_t
+#endif
+  bool detached = false;
+
+#if _WIN32
+  static unsigned long __stdcall runThread(void* ptr);
+#else
+  static void* runThread(void* ptr);
+#endif
 };
 
 }  // namespace zc
+
+ZC_END_HEADER

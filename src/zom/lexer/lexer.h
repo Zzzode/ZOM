@@ -46,8 +46,9 @@ class Lexer {
  public:
   // Constructor
   Lexer(const basic::LangOptions& options,
-        const source::SourceManager& source_mgr, unsigned buffer_id,
-        diagnostics::DiagnosticEngine* diags);
+        const source::SourceManager& source_mgr,
+        diagnostics::DiagnosticEngine& diags)
+      : lang_opts_(options), source_mgr_(source_mgr), diags_(diags) {}
 
   // Main lexical analysis function
   void Lex(Token& result);
@@ -100,7 +101,7 @@ class Lexer {
 
   const basic::LangOptions& lang_opts_;
   const source::SourceManager& source_mgr_;
-  diagnostics::DiagnosticEngine* diags_;
+  diagnostics::DiagnosticEngine& diags_;
 
   // Token cache
   zc::Array<TokenDesc> token_cache_;

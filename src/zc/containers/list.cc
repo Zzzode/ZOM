@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2014 Sandstorm Development Group, Inc. and contributors
+// Copyright (c) 2021 Cloudflare, Inc. and contributors
 // Licensed under the MIT License:
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,27 +19,33 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#pragma once
+#include "src/zc/containers/list.h"
 
-#include "src/zc/containers/vector.h"
-#include "src/zc/strings/string.h"
+#include "src/zc/base/debug.h"
 
 namespace zc {
+namespace _ {
 
-class GlobFilter {
-  // Implements glob filters for the --filter flag.
+void throwDoubleAdd() {
+  zc::throwFatalException(ZC_EXCEPTION(
+      FAILED,
+      "tried to add element to zc::List but the element is already in a list"));
+}
+void throwRemovedNotPresent() {
+  zc::throwFatalException(ZC_EXCEPTION(FAILED,
+                                       "tried to remove element from zc::List "
+                                       "but the element is not in a list"));
+}
+void throwRemovedWrongList() {
+  zc::throwFatalException(
+      ZC_EXCEPTION(FAILED,
+                   "tried to remove element from zc::List but the element is "
+                   "in a different list"));
+}
+void throwDestroyedWhileInList() {
+  zc::throwFatalException(
+      ZC_EXCEPTION(FAILED, "destroyed object that is still in a zc::List"));
+}
 
- public:
-  explicit GlobFilter(const char* pattern);
-  explicit GlobFilter(ArrayPtr<const char> pattern);
-
-  bool matches(StringPtr name);
-
- private:
-  String pattern;
-  Vector<uint> states;
-
-  void applyState(char c, uint state);
-};
-
+}  // namespace _
 }  // namespace zc

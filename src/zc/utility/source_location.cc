@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2014 Sandstorm Development Group, Inc. and contributors
+// Copyright (c) 2021 Cloudflare, Inc. and contributors
 // Licensed under the MIT License:
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,27 +19,13 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#pragma once
-
-#include "src/zc/containers/vector.h"
-#include "src/zc/strings/string.h"
+#include "src/zc/utility/source_location.h"
 
 namespace zc {
 
-class GlobFilter {
-  // Implements glob filters for the --filter flag.
-
- public:
-  explicit GlobFilter(const char* pattern);
-  explicit GlobFilter(ArrayPtr<const char> pattern);
-
-  bool matches(StringPtr name);
-
- private:
-  String pattern;
-  Vector<uint> states;
-
-  void applyState(char c, uint state);
-};
+zc::String ZC_STRINGIFY(const SourceLocation& l) {
+  return zc::str(l.fileName, ":", l.lineNumber, ":", l.columnNumber, " in ",
+                 l.function);
+}
 
 }  // namespace zc

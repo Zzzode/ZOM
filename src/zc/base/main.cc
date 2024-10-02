@@ -42,7 +42,7 @@
 #if _WIN32
 #include <windows.h>
 
-#include "windows-sanity.h"
+#include "windows_sanity.h"
 #else
 #include <sys/uio.h>
 #endif

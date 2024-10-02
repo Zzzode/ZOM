@@ -1,4 +1,4 @@
-// Copyright (c) 2013-2014 Sandstorm Development Group, Inc. and contributors
+// Copyright (c) 2018 Kenton Varda and contributors
 // Licensed under the MIT License:
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -19,27 +19,48 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#pragma once
-
-#include "src/zc/containers/vector.h"
-#include "src/zc/strings/string.h"
+#include "src/zc/utility/hash.h"
 
 namespace zc {
+namespace _ {  // private
 
-class GlobFilter {
-  // Implements glob filters for the --filter flag.
+uint HashCoder::operator*(ArrayPtr<const byte> s) const {
+  // murmur2 adapted from libc++ source code.
+  //
+  // TODO(perf): Use CityHash or FarmHash on 64-bit machines? They seem
+  // optimized for x86-64; what
+  //   about ARM? Ask Vlad for advice.
 
- public:
-  explicit GlobFilter(const char* pattern);
-  explicit GlobFilter(ArrayPtr<const char> pattern);
+  constexpr uint m = 0x5bd1e995;
+  constexpr uint r = 24;
+  uint h = s.size();
+  const byte* data = s.begin();
+  uint len = s.size();
+  for (; len >= 4; data += 4, len -= 4) {
+    uint k;
+    memcpy(&k, data, sizeof(k));
+    k *= m;
+    k ^= k >> r;
+    k *= m;
+    h *= m;
+    h ^= k;
+  }
+  switch (len) {
+    case 3:
+      h ^= data[2] << 16;
+      ZC_FALLTHROUGH;
+    case 2:
+      h ^= data[1] << 8;
+      ZC_FALLTHROUGH;
+    case 1:
+      h ^= data[0];
+      h *= m;
+  }
+  h ^= h >> 13;
+  h *= m;
+  h ^= h >> 15;
+  return h;
+}
 
-  bool matches(StringPtr name);
-
- private:
-  String pattern;
-  Vector<uint> states;
-
-  void applyState(char c, uint state);
-};
-
+}  // namespace _
 }  // namespace zc

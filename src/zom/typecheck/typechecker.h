@@ -1,18 +1,27 @@
-#pragma once
+#ifndef ZOM_TYPECHECK_TYPECHECKER_H_
+#define ZOM_TYPECHECK_TYPECHECKER_H_
 
-#include "src/zom/stage.h"
+#include "src/zom/basic/stage.h"
 #include "src/zom/typecheck/symbol_table.h"
 #include "src/zom/zis/zis.h"
 
-class ConcurrentTypeChecker
-    : public CompilerStage<std::unique_ptr<ASTNode>, std::string> {
- protected:
-  void process(const std::unique_ptr<ASTNode>& input,
-               std::vector<std::string>& outputs) override;
+namespace zom {
+namespace typecheck {
 
- private:
-  SymbolTable symbolTable;
+// class TypeChecker : public basic::CompilerStage<zc::Own<zis::ZIS>, zc::String> {
+//  protected:
+//   void Process(const zc::Own<zis::ZIS>& input,
+//                zc::Vector<zc::String>& outputs) override;
+//
+//  private:
+//   SymbolTable symbol_table_;
+//
+//  public:
+//   TypeChecker() = default;
+//   ~TypeChecker() noexcept override = default;
+// };
 
- public:
-  ConcurrentTypeChecker() = default;
-};
+}  // namespace typecheck
+}  // namespace zom
+
+#endif  // ZOM_TYPECHECK_TYPECHECKER_H_

@@ -26,20 +26,21 @@ struct TokenDesc {
   unsigned length;
   source::SourceLoc loc;
 
-  TokenDesc() : kind(tok::kUnknown), start(nullptr), length(0), loc() {}
-  TokenDesc(tok k, const char* s, unsigned len, source::SourceLoc l)
+  TokenDesc() : kind(tok::kUnknown), start(nullptr), length(0) {}
+  TokenDesc(const tok k, const char* s, const unsigned len,
+            const source::SourceLoc l)
       : kind(k), start(s), length(len), loc(l) {}
 };
 
 class Token {
  public:
-  Token() : desc_() {}
-  Token(const TokenDesc& desc) : desc_(desc) {}
+  Token() = default;
+  explicit Token(const TokenDesc& desc) : desc_(desc) {}
 
-  tok kind() const { return desc_.kind; }
-  const char* start() const { return desc_.start; }
-  unsigned length() const { return desc_.length; }
-  source::SourceLoc location() const { return desc_.loc; }
+  ZC_NODISCARD tok kind() const { return desc_.kind; }
+  ZC_NODISCARD const char* start() const { return desc_.start; }
+  ZC_NODISCARD unsigned length() const { return desc_.length; }
+  ZC_NODISCARD source::SourceLoc location() const { return desc_.loc; }
 
  private:
   TokenDesc desc_;

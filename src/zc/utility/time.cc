@@ -40,7 +40,7 @@ const Clock& nullClock() {
    public:
     Date now() const override { return UNIX_EPOCH; }
   };
-  static ZC_CONSTEXPR const NullClock NULL_CLOCK = NullClock();
+  static ZC_CONSTEXPR NullClock NULL_CLOCK = NullClock();
   return NULL_CLOCK;
 }
 

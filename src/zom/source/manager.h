@@ -29,7 +29,7 @@ class SourceManager {
   struct VirtualFile {
     CharSourceRange range;
     zc::StringPtr name;
-    int line_offset;
+    int line_offset{0};
   };
 
   struct GeneratedSourceInfo {
@@ -45,7 +45,7 @@ class SourceManager {
     unsigned line;
     unsigned column;
 
-    LineAndColumn(unsigned l, unsigned c) : line(l), column(c) {}
+    LineAndColumn(const unsigned l, const unsigned c) : line(l), column(c) {}
   };
 
   SourceManager();
@@ -139,7 +139,6 @@ class SourceManager {
   void UpdateLocCache() const;
   zc::Maybe<unsigned> FindBufferContainingLocInternal(SourceLoc loc) const;
 };
-
 
 }  // namespace source
 }  // namespace zom

@@ -78,7 +78,7 @@ bool GlobFilter::matches(StringPtr name) {
   return false;
 }
 
-void GlobFilter::applyState(char c, int state) {
+void GlobFilter::applyState(char c, uint state) {
   if (state < pattern.size()) {
     switch (pattern[state]) {
       case '*':

@@ -1,1 +1,1 @@
-add_library(source STATIC location.cc)
+add_library(source STATIC location.cc manager.cc)

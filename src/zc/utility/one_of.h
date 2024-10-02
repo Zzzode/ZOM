@@ -238,7 +238,7 @@ class OneOf {
   inline bool operator==(std::nullptr_t) const { return tag_ == 0; }
 
   template <typename T>
-  [[nodiscard]] bool is() const {
+  ZC_NODISCARD bool is() const {
     return tag_ == typeIndex<T>();
   }
 
@@ -301,7 +301,7 @@ class OneOf {
   using Tag = _::Variants<sizeof...(Variants)>;
 
   Tag which() const {
-    ZC_IREQUIRE(tag_ != 0, "Can't ZC_SWITCH_ONEOF() on uninitialized value.");
+    ZC_IREQUIRE(tag_ != 0, "Can't ZC_SWITCH_ONE_OF() on uninitialized value.");
     return static_cast<Tag>(tag_ - 1);
   }
 

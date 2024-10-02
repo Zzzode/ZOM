@@ -1,13 +1,13 @@
-#pragma once
+#ifndef ZOM_PARSER_PARSER_H_
+#define ZOM_PARSER_PARSER_H_
+
+#include "src/zom/basic/stage.h"
+#include "src/zom/diagnostics/diagnostic_engine.h"
 #include "src/zom/lexer/token.h"
-#include "src/zom/stage.h"
 #include "src/zom/zis/zis.h"
 
-class ConcurrentParser : public CompilerStage<Token, std::unique_ptr<ASTNode>> {
- protected:
-  void process(const Token& input,
-               std::vector<std::unique_ptr<ASTNode>>& outputs) override;
+namespace zom {
+namespace parser {}  // namespace parser
+}  // namespace zom
 
- public:
-  ConcurrentParser() = default;
-};
+#endif
