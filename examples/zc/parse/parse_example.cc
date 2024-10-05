@@ -1,4 +1,5 @@
 #include "src/zc/base/common.h"
+#include "src/zc/base/debug.h"
 #include "src/zc/base/function.h"
 #include "src/zc/base/main.h"
 #include "src/zc/memory/arena.h"
@@ -27,30 +28,45 @@ class ExpressionParser {
     auto& factor = arena_.copy(p::oneOf(
         p::number, p::transform(p::sequence(p::exactChar<'('>(), expression,
                                             p::exactChar<')'>()),
-                                [](double f) { return f; })));
-    auto& addop = arena_.copy(p::anyOfChars("+-"));
-    auto& mulop = arena_.copy(p::anyOfChars("*/"));
+                                [](double f) {
+                                  ZC_LOG(DBG, "factor");
+                                  return f;
+                                })));
+    auto& addop = arena_.copy(p::oneOf(constResult(p::exactly('+'), '+'),
+                                       constResult(p::exactly('-'), '-')));
+    auto& mulop = arena_.copy(p::oneOf(constResult(p::exactly('*'), '*'),
+                                       constResult(p::exactly('/'), '/')));
     auto& term = arena_.copy(p::transform(
         p::sequence(factor, p::many(p::sequence(mulop, factor))),
         [](double f, const zc::Array<zc::Tuple<char, double>>& res) {
+          ZC_LOG(DBG, "in term");
+
           for (auto& m : res) {
             const char op = zc::get<0>(m);
-            if (op == '*')
+            if (op == '*') {
+              ZC_LOG(DBG, "aaaa");
               f *= zc::get<1>(m);
-            else
+            } else {
+              ZC_LOG(DBG, "bbbb");
               f /= zc::get<1>(m);
+            }
           }
           return f;
         }));
     expression_ = arena_.copy(p::transform(
-        p::sequence(term, p::many(p::sequence(addop, factor))),
+        p::sequence(term, p::many(p::sequence(addop, term))),
         [](double f, const zc::Array<zc::Tuple<char, double>>& res) -> double {
+          ZC_LOG(DBG, "in expression_");
+
           for (auto& m : res) {
             const char op = zc::get<0>(m);
-            if (op == '+')
+            if (op == '+') {
+              ZC_LOG(DBG, "cccc");
               f += zc::get<1>(m);
-            else
+            } else {
+              ZC_LOG(DBG, "dddd");
               f -= zc::get<1>(m);
+            }
           }
           return f;
         }));
