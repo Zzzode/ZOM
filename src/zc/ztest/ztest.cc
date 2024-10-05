@@ -21,20 +21,21 @@
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#include "src/zc/base/common.h"
 #endif
 
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
-#include "src/zc/utility/glob_filter.h"
 
 #include <atomic>
 
 #include "src/zc/base/io.h"
 #include "src/zc/base/main.h"
 #include "src/zc/base/miniposix.h"
-#include "src/zc/ztest/ztest.h"
+#include "src/zc/utility/glob_filter.h"
 #include "src/zc/utility/time.h"
+#include "src/zc/ztest/ztest.h"
 #ifndef _WIN32
 #include <sys/mman.h>
 #endif
@@ -240,6 +241,8 @@ class TestRunner {
     else {
       return "expected an integer";
     }
+
+    ZC_CLANG_KNOWS_THIS_IS_UNREACHABLE_BUT_GCC_DOESNT;
   }
 
   MainBuilder::Validity run() {

@@ -95,7 +95,7 @@
 #if ZC_HAS_COMPILER_FEATURE(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
 #include <sanitizer/lsan_interface.h>
 #else
-static void __lsan_ignore_object(ZC_UNUSED const void* p) {}
+static void __lsan_ignore_object(const void* p) {}
 #endif
 // TODO(cleanup): Remove the LSAN stuff per
 // https://github.com/capnproto/capnproto/pull/1255 feedback.
@@ -818,8 +818,7 @@ void printStackTraceOnCrash() { std::set_terminate(&terminateHandler); }
 #else
 namespace {
 
-[[noreturn]] void crashHandler(int signo, ZC_UNUSED siginfo_t* info,
-                               ZC_UNUSED void* context) {
+[[noreturn]] void crashHandler(int signo, siginfo_t* info, void* context) {
   void* traceSpace[32]{};
 
 #if ZC_USE_WIN32_DBGHELP

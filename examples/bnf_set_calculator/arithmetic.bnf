@@ -1,4 +1,0 @@
-<expr> ::= <term> | <expr> "+" <term>
-<term> ::= <factor> | <term> "*" <factor>
-<factor> ::= "(" <expr> ")" | <number>
-<number> ::= [0-9]+

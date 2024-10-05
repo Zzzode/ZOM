@@ -23,18 +23,21 @@
 
 namespace zc {
 
-GlobFilter::GlobFilter(const char* pattern): pattern(heapString(pattern)) {}
-GlobFilter::GlobFilter(ArrayPtr<const char> pattern): pattern(heapString(pattern)) {}
+GlobFilter::GlobFilter(const char* pattern) : pattern(heapString(pattern)) {}
+GlobFilter::GlobFilter(ArrayPtr<const char> pattern)
+    : pattern(heapString(pattern)) {}
 
 bool GlobFilter::matches(StringPtr name) {
-  // Get out your computer science books. We're implementing a non-deterministic finite automaton.
+  // Get out your computer science books. We're implementing a non-deterministic
+  // finite automaton.
   //
   // Our NDFA has one "state" corresponding to each character in the pattern.
   //
-  // As you may recall, an NDFA can be transformed into a DFA where every state in the DFA
-  // represents some combination of states in the NDFA. Therefore, we actually have to store a
-  // list of states here. (Actually, what we really want is a set of states, but because our
-  // patterns are mostly non-cyclic a list of states should work fine and be a bit more efficient.)
+  // As you may recall, an NDFA can be transformed into a DFA where every state
+  // in the DFA represents some combination of states in the NDFA. Therefore, we
+  // actually have to store a list of states here. (Actually, what we really
+  // want is a set of states, but because our patterns are mostly non-cyclic a
+  // list of states should work fine and be a bit more efficient.)
 
   // Our state list starts out pointing only at the start of the pattern.
   states.resize(0);
@@ -43,21 +46,21 @@ bool GlobFilter::matches(StringPtr name) {
   Vector<uint> scratch;
 
   // Iterate through each character in the name.
-  for (char c: name) {
-    // Pull the current set of states off to the side, so that we can populate `states` with the
-    // new set of states.
+  for (char c : name) {
+    // Pull the current set of states off to the side, so that we can populate
+    // `states` with the new set of states.
     Vector<uint> oldStates = zc::mv(states);
     states = zc::mv(scratch);
     states.resize(0);
 
-    // The pattern can omit a leading path. So if we're at a '/' then enter the state machine at
-    // the beginning on the next char.
+    // The pattern can omit a leading path. So if we're at a '/' then enter the
+    // state machine at the beginning on the next char.
     if (c == '/' || c == '\\') {
       states.add(0);
     }
 
     // Process each state.
-    for (uint state: oldStates) {
+    for (uint state : oldStates) {
       applyState(c, state);
     }
 
@@ -65,9 +68,9 @@ bool GlobFilter::matches(StringPtr name) {
     scratch = zc::mv(oldStates);
   }
 
-  // If any one state is at the end of the pattern (or at a wildcard just before the end of the
-  // pattern), we have a match.
-  for (uint state: states) {
+  // If any one state is at the end of the pattern (or at a wildcard just before
+  // the end of the pattern), we have a match.
+  for (uint state : states) {
     while (state < pattern.size() && pattern[state] == '*') {
       ++state;
     }
@@ -82,7 +85,8 @@ void GlobFilter::applyState(char c, uint state) {
   if (state < pattern.size()) {
     switch (pattern[state]) {
       case '*':
-        // At a '*', we both re-add the current state and attempt to match the *next* state.
+        // At a '*', we both re-add the current state and attempt to match the
+        // *next* state.
         if (c != '/' && c != '\\') {  // '*' doesn't match '/'.
           states.add(state);
         }

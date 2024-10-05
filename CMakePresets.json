@@ -68,7 +68,11 @@
       "name": "unittest",
       "configurePreset": "sanitizer",
       "targets": [
-        "zomc"
+        "zomc",
+        "base_common_test",
+        "parse_char_test",
+        "parse_common_test",
+        "parse_example"
       ]
     }
   ]

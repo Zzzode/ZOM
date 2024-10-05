@@ -178,7 +178,7 @@ inline uint hashCode(T&& value) {
   return _::HASHCODER * zc::fwd<T>(value);
 }
 template <typename T, size_t N>
-inline uint hashCode(ZC_UNUSED T (&arr)[N]) {
+inline uint hashCode(T (&arr)[N]) {
   static_assert(!isSameType<Decay<T>, char>(),
                 "Wrap in StringPtr if you want to hash string "
                 "contents. If you want to hash the pointer, cast to void*");

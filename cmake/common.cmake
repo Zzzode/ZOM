@@ -41,3 +41,5 @@ if(ZOM_DISABLE_GLOB_CTOR)
     add_compile_options(-Wglobal-constructors)
   endif()
 endif()
+
+add_compile_options(-Wno-sign-compare -Wno-unused-parameter)

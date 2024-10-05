@@ -196,7 +196,7 @@ class NullDisposer : public Disposer {
  public:
   static const NullDisposer instance;
 
-  void disposeImpl(ZC_UNUSED void* pointer) const override {}
+  void disposeImpl(void* pointer) const override {}
 };
 
 // =======================================================================================
@@ -941,7 +941,7 @@ class Ptr {
   Ptr(const Ptr& other) : ptr(other.ptr) {}
 #endif
 
-  void operator=(ZC_UNUSED std::nullptr_t other) {
+  void operator=(std::nullptr_t other) {
     if (ptr != nullptr) {
 #ifdef ZC_ASSERT_PTR_COUNTERS
       counter->dec();
@@ -1056,7 +1056,7 @@ template <typename... T>
 struct DisposableOwnedBundle final : Disposer, public OwnedBundle<T...> {
   DisposableOwnedBundle(T&&... values)
       : OwnedBundle<T...>(zc::fwd<T>(values)...) {}
-  void disposeImpl(ZC_UNUSED void* pointer) const override { delete this; }
+  void disposeImpl(void* pointer) const override { delete this; }
 };
 
 template <typename T, typename StaticDisposer>

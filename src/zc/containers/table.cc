@@ -631,8 +631,7 @@ void BTreeImpl::renumber(uint oldRow, uint newRow, const SearchKey& searchKey) {
   }
 }
 
-uint BTreeImpl::split(Parent& dst, ZC_UNUSED uint dstPos, Parent& src,
-                      ZC_UNUSED uint srcPos) {
+uint BTreeImpl::split(Parent& dst, uint dstPos, Parent& src, uint srcPos) {
   constexpr size_t mid = Parent::NKEYS / 2;
   uint pivot = *src.keys[mid];
   acopy(dst.keys, src.keys + mid + 1, Parent::NKEYS - mid - 1);
@@ -660,8 +659,7 @@ uint BTreeImpl::split(Leaf& dst, uint dstPos, Leaf& src, uint srcPos) {
   return pivot;
 }
 
-void BTreeImpl::merge(Parent& dst, ZC_UNUSED uint dstPos, uint pivot,
-                      Parent& src) {
+void BTreeImpl::merge(Parent& dst, uint dstPos, uint pivot, Parent& src) {
   // merge() is only legal if both nodes are half-empty. Meanwhile, B-tree
   // invariants guarantee that the node can't be more than half-empty, or we
   // would have merged it sooner. (The root can be more than half-empty, but it
@@ -695,9 +693,7 @@ void BTreeImpl::merge(Leaf& dst, uint dstPos, uint pivot, Leaf& src) {
   }
 }
 
-void BTreeImpl::move(Parent& dst, ZC_UNUSED uint dstPos, Parent& src) {
-  dst = src;
-}
+void BTreeImpl::move(Parent& dst, uint dstPos, Parent& src) { dst = src; }
 
 void BTreeImpl::move(Leaf& dst, uint dstPos, Leaf& src) {
   dst = src;

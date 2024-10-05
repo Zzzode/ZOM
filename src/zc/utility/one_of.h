@@ -329,7 +329,7 @@ class OneOf {
   alignas(Variants...) unsigned char space[spaceSize];
 
   template <typename... T>
-  inline void doAll(ZC_UNUSED T... t) {}
+  inline void doAll(T... t) {}
 
   template <typename T>
   inline bool destroyVariant() {

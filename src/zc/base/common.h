@@ -888,11 +888,6 @@ template <class T>
 inline constexpr bool isSigned = __is_signed(T);
 #endif
 
-#if __has_builtin(__make_unsigned)
-template <class T>
-using makeUnsigned = __make_unsigned(T);
-#endif
-
 template <typename T, typename U>
 constexpr auto max(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
   return a > b ? WiderType<Decay<T>, Decay<U>>(a)
@@ -900,7 +895,7 @@ constexpr auto max(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
 }
 
 template <typename T, size_t s>
-constexpr size_t size(ZC_UNUSED T (&arr)[s]) {
+constexpr size_t size(T (&arr)[s]) {
   return s;
 }
 template <typename T>
@@ -1152,7 +1147,7 @@ class Repeat {
     Iterator(const T& value, size_t index) : value(value), index(index) {}
 
     const T& operator*() const { return value; }
-    const T& operator[](ZC_UNUSED ptrdiff_t index) const { return value; }
+    const T& operator[](ptrdiff_t index) const { return value; }
     Iterator& operator++() {
       ++index;
       return *this;
@@ -1335,8 +1330,7 @@ inline void* operator new(size_t, zc::_::PlacementNew, void* __p) noexcept {
   return __p;
 }
 
-inline void operator delete(void*, zc::_::PlacementNew,
-                            ZC_UNUSED void* __p) noexcept {}
+inline void operator delete(void*, zc::_::PlacementNew, void* __p) noexcept {}
 
 namespace zc {
 
@@ -1714,6 +1708,7 @@ class Maybe {
   Maybe(Maybe&& other) : ptr(zc::mv(other.ptr)) { other = zc::none; }
   Maybe(const Maybe& other) : ptr(other.ptr) {}
   Maybe(Maybe& other) : ptr(other.ptr) {}
+  Maybe(std::nullptr_t) = delete;
 
   template <typename U>
   Maybe(Maybe<U>&& other) {
@@ -1792,6 +1787,10 @@ class Maybe {
     }
     return *this;
   }
+
+  inline Maybe& operator=(std::nullptr_t) = delete;
+
+  inline bool operator==(std::nullptr_t) const = delete;
 
   Maybe& operator=(zc::None) {
     ptr = nullptr;
@@ -2599,7 +2598,7 @@ struct ByteLiteral {
 template <>
 struct ByteLiteral<1ul> {
   // Empty string specialization to avoid `data` array of 0 size.
-  constexpr ByteLiteral(ZC_UNUSED const char (&init)[1]) {}
+  constexpr ByteLiteral(const char (&init)[1]) {}
   constexpr size_t size() const { return 0; }
   constexpr const zc::byte* begin() const { return nullptr; }
 };

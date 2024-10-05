@@ -534,19 +534,15 @@ template <typename Row, typename... Indexes>
 template <size_t index>
 class Table<Row, Indexes...>::Impl<index, true> {
  public:
-  static void reserve(ZC_UNUSED Table<Row, Indexes...>& table,
-                      ZC_UNUSED size_t size) {}
-  static void clear(ZC_UNUSED Table<Row, Indexes...>& table) {}
-  static zc::Maybe<size_t> insert(ZC_UNUSED Table<Row, Indexes...>& table,
-                                  ZC_UNUSED size_t pos, ZC_UNUSED Row& row,
-                                  ZC_UNUSED uint skip) {
+  static void reserve(Table<Row, Indexes...>& table, size_t size) {}
+  static void clear(Table<Row, Indexes...>& table) {}
+  static zc::Maybe<size_t> insert(Table<Row, Indexes...>& table, size_t pos,
+                                  Row& row, uint skip) {
     return zc::none;
   }
-  static void erase(ZC_UNUSED Table<Row, Indexes...>& table,
-                    ZC_UNUSED size_t pos, ZC_UNUSED Row& row) {}
-  static void move(ZC_UNUSED Table<Row, Indexes...>& table,
-                   ZC_UNUSED size_t oldPos, ZC_UNUSED size_t newPos,
-                   ZC_UNUSED Row& row) {}
+  static void erase(Table<Row, Indexes...>& table, size_t pos, Row& row) {}
+  static void move(Table<Row, Indexes...>& table, size_t oldPos, size_t newPos,
+                   Row& row) {}
 };
 
 template <typename Row, typename... Indexes>

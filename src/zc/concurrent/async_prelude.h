@@ -190,7 +190,7 @@ struct MaybeVoidCaller<In&, Out> {
 template <typename Out>
 struct MaybeVoidCaller<Void, Out> {
   template <typename Func>
-  static inline Out apply(Func& func, ZC_UNUSED Void&& in) {
+  static inline Out apply(Func& func, Void&& in) {
     return func();
   }
 };
@@ -213,7 +213,7 @@ struct MaybeVoidCaller<In&, Void> {
 template <>
 struct MaybeVoidCaller<Void, Void> {
   template <typename Func>
-  static inline Void apply(Func& func, ZC_UNUSED Void&& in) {
+  static inline Void apply(Func& func, Void&& in) {
     func();
     return Void();
   }
@@ -223,7 +223,7 @@ template <typename T>
 inline T&& returnMaybeVoid(T&& t) {
   return zc::fwd<T>(t);
 }
-inline void returnMaybeVoid(ZC_UNUSED Void&& v) {}
+inline void returnMaybeVoid(Void&& v) {}
 
 class ExceptionOrValue;
 class PromiseNode;

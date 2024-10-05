@@ -79,7 +79,7 @@ void setStandardIoMode(int fd) {
   }
 }
 #else
-void setStandardIoMode(ZC_UNUSED int fd) {}
+void setStandardIoMode(int fd) {}
 #endif
 
 static void writeLineToFd(int fd, StringPtr message) {

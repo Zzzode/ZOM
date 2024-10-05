@@ -595,10 +595,10 @@ class AttachmentPromiseNode final : public AttachmentPromiseNodeBase {
 #endif
 
 template <typename T, typename ReturnType, typename... ParamTypes>
-void* getMethodStartAddress(T& obj, ReturnType (T::* method)(ParamTypes...));
+void* getMethodStartAddress(T& obj, ReturnType (T::*method)(ParamTypes...));
 template <typename T, typename ReturnType, typename... ParamTypes>
 void* getMethodStartAddress(const T& obj,
-                            ReturnType (T::* method)(ParamTypes...) const);
+                            ReturnType (T::*method)(ParamTypes...) const);
 // Given an object and a pointer-to-method, return the start address of the
 // method's code. The intent is that this address can be used in a trace;
 // addr2line should map it to the start of the function's definition. For
@@ -618,10 +618,10 @@ class PtmfHelper {
   friend struct GetFunctorStartAddress;
   template <typename T, typename ReturnType, typename... ParamTypes>
   friend void* getMethodStartAddress(T& obj,
-                                     ReturnType (T::* method)(ParamTypes...));
+                                     ReturnType (T::*method)(ParamTypes...));
   template <typename T, typename ReturnType, typename... ParamTypes>
   friend void* getMethodStartAddress(const T& obj,
-                                     ReturnType (T::* method)(ParamTypes...)
+                                     ReturnType (T::*method)(ParamTypes...)
                                          const);
 
 #if __GNUG__
@@ -672,11 +672,11 @@ class PtmfHelper {
   // function with that name.
 
   template <typename R, typename C, typename... P>
-  static PtmfHelper from(R (C::* p)(NoInfer<P>...)) {
+  static PtmfHelper from(R (C::*p)(NoInfer<P>...)) {
     BODY;
   }
   template <typename R, typename C, typename... P>
-  static PtmfHelper from(R (C::* p)(NoInfer<P>...) const) {
+  static PtmfHelper from(R (C::*p)(NoInfer<P>...) const) {
     BODY;
   }
   // Create a PtmfHelper from some poniter-to-member-function which is a
@@ -693,12 +693,12 @@ class PtmfHelper {
 #endif
 
 template <typename T, typename ReturnType, typename... ParamTypes>
-void* getMethodStartAddress(T& obj, ReturnType (T::* method)(ParamTypes...)) {
+void* getMethodStartAddress(T& obj, ReturnType (T::*method)(ParamTypes...)) {
   return PtmfHelper::from<ReturnType, T, ParamTypes...>(method).apply(&obj);
 }
 template <typename T, typename ReturnType, typename... ParamTypes>
 void* getMethodStartAddress(const T& obj,
-                            ReturnType (T::* method)(ParamTypes...) const) {
+                            ReturnType (T::*method)(ParamTypes...) const) {
   return PtmfHelper::from<ReturnType, T, ParamTypes...>(method).apply(&obj);
 }
 

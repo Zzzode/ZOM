@@ -8,7 +8,8 @@
 namespace zom {
 namespace typecheck {
 
-// class TypeChecker : public basic::CompilerStage<zc::Own<zis::ZIS>, zc::String> {
+// class TypeChecker : public basic::CompilerStage<zc::Own<zis::ZIS>,
+// zc::String> {
 //  protected:
 //   void Process(const zc::Own<zis::ZIS>& input,
 //                zc::Vector<zc::String>& outputs) override;

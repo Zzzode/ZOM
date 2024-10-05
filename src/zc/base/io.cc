@@ -250,8 +250,7 @@ ArrayInputStream::~ArrayInputStream() noexcept(false) {}
 
 ArrayPtr<const byte> ArrayInputStream::tryGetReadBuffer() { return array; }
 
-size_t ArrayInputStream::tryRead(ArrayPtr<byte> dst,
-                                 ZC_UNUSED size_t minBytes) {
+size_t ArrayInputStream::tryRead(ArrayPtr<byte> dst, size_t minBytes) {
   size_t n = zc::min(dst.size(), array.size());
   memcpy(dst.begin(), array.begin(), n);
   array = array.slice(n);
@@ -395,7 +394,7 @@ void FdOutputStream::write(ArrayPtr<const ArrayPtr<const byte>> pieces) {
     pieces = pieces.slice(iovmax, pieces.size());
   }
 
-  ZC_STACK_ARRAY(struct iovec, iov, pieces.size(), 16, 128);
+  ZC_STACK_ARRAY(struct iovec, iov, pieces.size(), 16u, 128);
 
   for (uint i = 0; i < pieces.size(); i++) {
     // writev() interface is not const-correct. :(

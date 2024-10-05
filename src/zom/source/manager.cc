@@ -17,7 +17,7 @@ unsigned SourceManager::AddNewSourceBuffer(zc::Own<zc::InputStream> input) {
   return buffers_.size() - 1;
 }
 
-unsigned SourceManager::AddNewSourceBuffer(ZC_UNUSED zc::StringPtr filename) {
+unsigned SourceManager::AddNewSourceBuffer(zc::StringPtr filename) {
   // TODO: Open file, create InputStream, and call
   // AddNewSourceBuffer(InputStream)
   return 0;  // Placeholder

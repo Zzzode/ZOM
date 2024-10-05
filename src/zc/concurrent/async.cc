@@ -919,8 +919,7 @@ XThreadEvent::XThreadEvent(ExceptionOrValue& result,
       funcTracePtr(funcTracePtr),
       targetExecutor(targetExecutor.addRef()) {}
 
-void XThreadEvent::tracePromise(TraceBuilder& builder,
-                                ZC_UNUSED bool stopAtNextEvent) {
+void XThreadEvent::tracePromise(TraceBuilder& builder, bool stopAtNextEvent) {
   // We can't safely trace into another thread, so we'll stop here.
   builder.add(funcTracePtr);
 }
@@ -1236,8 +1235,7 @@ void XThreadPaf::destroy() {
 
 void XThreadPaf::onReady(Event* event) noexcept { onReadyEvent.init(event); }
 
-void XThreadPaf::tracePromise(TraceBuilder& builder,
-                              ZC_UNUSED bool stopAtNextEvent) {
+void XThreadPaf::tracePromise(TraceBuilder& builder, bool stopAtNextEvent) {
   // We can't safely trace into another thread, so we'll stop here.
   // Maybe returning the address of get() will give us a function name with
   // meaningful type information.
@@ -1829,7 +1827,7 @@ void FiberBase::traceEvent(TraceBuilder& builder) {
 
 // =======================================================================================
 
-void EventPort::setRunnable(ZC_UNUSED bool runnable) {}
+void EventPort::setRunnable(bool runnable) {}
 
 void EventPort::wake() const {
   zc::throwRecoverableException(
@@ -2185,14 +2183,14 @@ OwnPromiseNode neverDone() {
    public:
     void destroy() override {}
 
-    void onReady(ZC_UNUSED _::Event* event) noexcept override {
+    void onReady(_::Event* event) noexcept override {
       // ignore
     }
-    void get(ZC_UNUSED _::ExceptionOrValue& output) noexcept override {
+    void get(_::ExceptionOrValue& output) noexcept override {
       ZC_FAIL_REQUIRE("Not ready.");
     }
     void tracePromise(_::TraceBuilder& builder,
-                      ZC_UNUSED bool stopAtNextEvent) override {
+                      bool stopAtNextEvent) override {
       builder.add(
           _::getMethodStartAddress(zc::NEVER_DONE, &_::NeverDone::wait));
     }
@@ -2414,7 +2412,7 @@ zc::String PromiseBase::trace() {
   return zc::str(builder);
 }
 
-void PromiseNode::setSelfPointer(ZC_UNUSED OwnPromiseNode* selfPtr) noexcept {}
+void PromiseNode::setSelfPointer(OwnPromiseNode* selfPtr) noexcept {}
 
 void PromiseNode::OnReadyEvent::init(Event* newEvent) {
   if (event == _kJ_ALREADY_READY) {
@@ -2464,7 +2462,7 @@ void ImmediatePromiseNodeBase::onReady(Event* event) noexcept {
 }
 
 void ImmediatePromiseNodeBase::tracePromise(TraceBuilder& builder,
-                                            ZC_UNUSED bool stopAtNextEvent) {
+                                            bool stopAtNextEvent) {
   // Maybe returning the address of get() will give us a function name with
   // meaningful type information.
   builder.add(getMethodStartAddress(implicitCast<PromiseNode&>(*this),
@@ -3005,7 +3003,7 @@ Promise<void> yield() {
       output.as<_::Void>() = _::Void();
     }
     void tracePromise(_::TraceBuilder& builder,
-                      ZC_UNUSED bool stopAtNextEvent) override {
+                      bool stopAtNextEvent) override {
       builder.add(reinterpret_cast<void*>(&zc::yield));
     }
   };
@@ -3026,7 +3024,7 @@ Promise<void> yieldUntilQueueEmpty() {
       output.as<_::Void>() = _::Void();
     }
     void tracePromise(_::TraceBuilder& builder,
-                      ZC_UNUSED bool stopAtNextEvent) override {
+                      bool stopAtNextEvent) override {
       builder.add(reinterpret_cast<void*>(&zc::yieldUntilQueueEmpty));
     }
   };
@@ -3092,7 +3090,7 @@ void AdapterPromiseNodeBase::onReady(Event* event) noexcept {
 }
 
 void AdapterPromiseNodeBase::tracePromise(TraceBuilder& builder,
-                                          ZC_UNUSED bool stopAtNextEvent) {
+                                          bool stopAtNextEvent) {
   // Maybe returning the address of get() will give us a function name with
   // meaningful type information.
   builder.add(getMethodStartAddress(implicitCast<PromiseNode&>(*this),
@@ -3104,7 +3102,7 @@ void END_FULFILLER_STACK_START_LISTENER_STACK() {}
 // without fulfilling the promise. We end up combining two stack traces into
 // one and we use this as a separator.
 
-void WeakFulfillerBase::disposeImpl(ZC_UNUSED void* pointer) const {
+void WeakFulfillerBase::disposeImpl(void* pointer) const {
   if (inner == nullptr) {
     // Already detached.
     delete this;

@@ -39,7 +39,7 @@ Refcounted::~Refcounted() noexcept(false) {
   ZC_ASSERT(refcount == 0, "Refcounted object deleted with non-zero refcount.");
 }
 
-void Refcounted::disposeImpl(ZC_UNUSED void* pointer) const {
+void Refcounted::disposeImpl(void* pointer) const {
   if (--refcount == 0) {
     delete this;
   }
@@ -52,7 +52,7 @@ AtomicRefcounted::~AtomicRefcounted() noexcept(false) {
   ZC_ASSERT(refcount == 0, "Refcounted object deleted with non-zero refcount.");
 }
 
-void AtomicRefcounted::disposeImpl(ZC_UNUSED void* pointer) const {
+void AtomicRefcounted::disposeImpl(void* pointer) const {
 #if _MSC_VER && !defined(__clang__)
   if (ZC_MSVC_INTERLOCKED(Decrement, rel)(&refcount) == 0) {
     std::atomic_thread_fence(std::memory_order_acquire);

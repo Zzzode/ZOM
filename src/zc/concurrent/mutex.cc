@@ -178,12 +178,12 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
     case EXCLUSIVE:
       for (;;) {
         uint state = 0;
-        if (ZC_LIKELY(__atomic_compare_exchange_n(
-                &futex, &state, EXCLUSIVE_HELD, false, __ATOMIC_ACQUIRE,
-                __ATOMIC_RELAXED))) {
-          // Acquired.
-          break;
-        }
+        if (__atomic_compare_exchange_n(&futex, &state, EXCLUSIVE_HELD, false,
+                                        __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
+          ZC_LIKELY {
+            // Acquired.
+            break;
+          }
 
         // The mutex is contended.  Set the exclusive-requested bit and wait.
         if ((state & EXCLUSIVE_REQUESTED) == 0) {
@@ -223,10 +223,10 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
       uint state = __atomic_add_fetch(&futex, 1, __ATOMIC_ACQUIRE);
 
       for (;;) {
-        if (ZC_LIKELY((state & EXCLUSIVE_HELD) == 0)) {
-          // Acquired.
-          break;
-        }
+        if ((state & EXCLUSIVE_HELD) == 0) ZC_LIKELY {
+            // Acquired.
+            break;
+          }
 
 #if ZC_CONTENTION_WARNING_THRESHOLD
         if (contentionWaitStart == zc::none) {
@@ -255,17 +255,17 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
             // We may have unlocked since we timed out. So act like we just
             // unlocked the mutex and maybe send a wait signal if needed. See
             // Mutex::unlock SHARED case.
-            if (ZC_UNLIKELY(state == EXCLUSIVE_REQUESTED)) {
-              if (__atomic_compare_exchange_n(&futex, &state, 0, false,
-                                              __ATOMIC_RELAXED,
-                                              __ATOMIC_RELAXED)) {
-                // Wake all exclusive waiters.  We have to wake all of them
-                // because one of them will grab the lock while the others will
-                // re-establish the exclusive-requested bit.
-                syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr,
-                        nullptr, 0);
+            if (state == EXCLUSIVE_REQUESTED) ZC_UNLIKELY {
+                if (__atomic_compare_exchange_n(&futex, &state, 0, false,
+                                                __ATOMIC_RELAXED,
+                                                __ATOMIC_RELAXED)) {
+                  // Wake all exclusive waiters.  We have to wake all of them
+                  // because one of them will grab the lock while the others
+                  // will re-establish the exclusive-requested bit.
+                  syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX,
+                          nullptr, nullptr, 0);
+                }
               }
-            }
             return false;
           }
         }
@@ -371,22 +371,23 @@ void Mutex::unlock(Exclusivity exclusivity, Waiter* waiterToSkip) {
       uint oldState = __atomic_fetch_and(
           &futex, ~(EXCLUSIVE_HELD | EXCLUSIVE_REQUESTED), __ATOMIC_RELEASE);
 
-      if (ZC_UNLIKELY(oldState & ~EXCLUSIVE_HELD)) {
-        // Other threads are waiting.  If there are any shared waiters, they now
-        // collectively hold the lock, and we must wake them up.  If there are
-        // any exclusive waiters, we must wake them up even if readers are
-        // waiting so that at the very least they may re-establish the
-        // EXCLUSIVE_REQUESTED bit that we just removed.
-        syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr,
-                nullptr, 0);
+      if (oldState & ~EXCLUSIVE_HELD) ZC_UNLIKELY {
+          // Other threads are waiting.  If there are any shared waiters, they
+          // now collectively hold the lock, and we must wake them up.  If there
+          // are any exclusive waiters, we must wake them up even if readers are
+          // waiting so that at the very least they may re-establish the
+          // EXCLUSIVE_REQUESTED bit that we just removed.
+          syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr,
+                  nullptr, 0);
 
 #ifdef ZC_CONTENTION_WARNING_THRESHOLD
-        if (readerCount >= ZC_CONTENTION_WARNING_THRESHOLD) {
-          ZC_LOG(WARNING, "excessively many readers were waiting on this lock",
-                 readerCount, acquiredLocation, zc::getStackTrace());
-        }
+          if (readerCount >= ZC_CONTENTION_WARNING_THRESHOLD) {
+            ZC_LOG(WARNING,
+                   "excessively many readers were waiting on this lock",
+                   readerCount, acquiredLocation, zc::getStackTrace());
+          }
 #endif
-      }
+        }
       break;
     }
 
@@ -398,16 +399,16 @@ void Mutex::unlock(Exclusivity exclusivity, Waiter* waiterToSkip) {
       // The only case where anyone is waiting is if EXCLUSIVE_REQUESTED is set,
       // and the only time it makes sense to wake up that waiter is if the
       // shared count has reached zero.
-      if (ZC_UNLIKELY(state == EXCLUSIVE_REQUESTED)) {
-        if (__atomic_compare_exchange_n(&futex, &state, 0, false,
-                                        __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
-          // Wake all exclusive waiters.  We have to wake all of them because
-          // one of them will grab the lock while the others will re-establish
-          // the exclusive-requested bit.
-          syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr,
-                  nullptr, 0);
+      if (state == EXCLUSIVE_REQUESTED) ZC_UNLIKELY {
+          if (__atomic_compare_exchange_n(&futex, &state, 0, false,
+                                          __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+            // Wake all exclusive waiters.  We have to wake all of them because
+            // one of them will grab the lock while the others will re-establish
+            // the exclusive-requested bit.
+            syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr,
+                    nullptr, 0);
+          }
         }
-      }
       break;
     }
   }

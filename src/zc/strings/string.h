@@ -648,7 +648,7 @@ inline size_t sum(std::initializer_list<size_t> nums) {
 }
 
 inline char* fill(char* ptr) { return ptr; }
-inline char* fillLimited(char* ptr, ZC_UNUSED char* limit) { return ptr; }
+inline char* fillLimited(char* ptr, char* limit) { return ptr; }
 
 template <typename... Rest>
 char* fill(char* __restrict__ target, const StringTree& first, Rest&&... rest);

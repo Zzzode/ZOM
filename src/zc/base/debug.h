@@ -843,7 +843,7 @@ struct DebugExpression {
 };
 
 template <typename T>
-StringPtr ZC_STRINGIFY(ZC_UNUSED const DebugExpression<T>& exp) {
+StringPtr ZC_STRINGIFY(const DebugExpression<T>& exp) {
   // Hack: This will only ever be called in cases where the expression's
   // truthiness was asserted
   //   directly, and was determined to be falsy.
