@@ -6,6 +6,7 @@
 #include "src/zc/parse/char.h"
 #include "src/zc/parse/common.h"
 #include "src/zc/strings/string.h"
+#include "src/zc/utility/time.h"
 
 namespace examples {
 
@@ -28,10 +29,7 @@ class ExpressionParser {
     auto& factor = arena_.copy(p::oneOf(
         p::number, p::transform(p::sequence(p::exactChar<'('>(), expression,
                                             p::exactChar<')'>()),
-                                [](double f) {
-                                  ZC_LOG(DBG, "factor");
-                                  return f;
-                                })));
+                                [](double f) { return f; })));
     auto& addop = arena_.copy(p::oneOf(constResult(p::exactly('+'), '+'),
                                        constResult(p::exactly('-'), '-')));
     auto& mulop = arena_.copy(p::oneOf(constResult(p::exactly('*'), '*'),
@@ -39,15 +37,11 @@ class ExpressionParser {
     auto& term = arena_.copy(p::transform(
         p::sequence(factor, p::many(p::sequence(mulop, factor))),
         [](double f, const zc::Array<zc::Tuple<char, double>>& res) {
-          ZC_LOG(DBG, "in term");
-
           for (auto& m : res) {
             const char op = zc::get<0>(m);
             if (op == '*') {
-              ZC_LOG(DBG, "aaaa");
               f *= zc::get<1>(m);
             } else {
-              ZC_LOG(DBG, "bbbb");
               f /= zc::get<1>(m);
             }
           }
@@ -56,15 +50,11 @@ class ExpressionParser {
     expression_ = arena_.copy(p::transform(
         p::sequence(term, p::many(p::sequence(addop, term))),
         [](double f, const zc::Array<zc::Tuple<char, double>>& res) -> double {
-          ZC_LOG(DBG, "in expression_");
-
           for (auto& m : res) {
             const char op = zc::get<0>(m);
             if (op == '+') {
-              ZC_LOG(DBG, "cccc");
               f += zc::get<1>(m);
             } else {
-              ZC_LOG(DBG, "dddd");
               f -= zc::get<1>(m);
             }
           }
@@ -72,9 +62,20 @@ class ExpressionParser {
         }));
   }
 
-  zc::Maybe<double> parse(zc::StringPtr input) {
+  ZC_ALWAYS_INLINE zc::Maybe<double> parse(zc::StringPtr input) {
     ParserInput parserInput(input.begin(), input.end());
     return expression_(parserInput);
+  }
+
+  zc::Duration measureParseTime(zc::StringPtr input, int iterations = 1000) {
+    zc::Duration totalTime = 0 * zc::NANOSECONDS;
+    for (int i = 0; i < iterations; ++i) {
+      zc::TimePoint start = zc::systemPreciseMonotonicClock().now();
+      parse(input);
+      zc::TimePoint end = zc::systemPreciseMonotonicClock().now();
+      totalTime += end - start;
+    }
+    return totalTime / iterations;
   }
 
  private:
@@ -119,11 +120,16 @@ class MainClass {
 
     examples::ExpressionParser parser;
     ZC_IF_SOME(result, parser.parse(expression_)) {
+      // 计算解析时间
+      zc::Duration averageTime = parser.measureParseTime(expression_);
+
       if (verbose_) {
-        context_.exitInfo(
-            zc::str("Expression: ", expression_, "\nResult: ", result));
+        context_.exitInfo(zc::str("Expression: ", expression_,
+                                  "\nResult: ", result,
+                                  "\nAverage parsing time: ", averageTime));
       } else {
-        context_.exitInfo(zc::str(result));
+        context_.exitInfo(
+            zc::str(result, "\nAverage parsing time: ", averageTime));
       }
     }
     else {
