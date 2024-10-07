@@ -7,9 +7,15 @@
 #include <vector>
 
 class ExpressionParser {
- private:
-  std::string input;
-  size_t position;
+ public:
+  double parse(const std::string& expr) {
+    input = expr;
+    position = 0;
+    double result = parseExpression();
+    if (position < input.length())
+      throw std::runtime_error("Invalid characters at end of input");
+    return result;
+  }
 
   double parseNumber() {
     double result = 0;
@@ -45,7 +51,9 @@ class ExpressionParser {
         throw std::runtime_error("Mismatched parentheses");
       position++;
       return result;
-    } else if (std::isdigit(input[position])) {
+    }
+
+    if (std::isdigit(input[position])) {
       return parseNumber();
     }
     throw std::runtime_error("Invalid expression");
@@ -81,15 +89,9 @@ class ExpressionParser {
     return result;
   }
 
- public:
-  double parse(const std::string& expr) {
-    input = expr;
-    position = 0;
-    double result = parseExpression();
-    if (position < input.length())
-      throw std::runtime_error("Invalid characters at end of input");
-    return result;
-  }
+ private:
+  std::string input;
+  size_t position = 0;
 };
 
 template <typename Func>
@@ -105,7 +107,6 @@ double measureTime(Func&& func, int iterations = 1000) {
     times.push_back(duration.count());
   }
 
-  // 计算平均时间
   double average =
       std::accumulate(times.begin(), times.end(), 0.0) / iterations;
   return average;
@@ -121,11 +122,9 @@ int main(int argc, char* argv[]) {
   ExpressionParser parser;
 
   try {
-    // 首先计算结果以确保表达式是有效的
     double result = parser.parse(expression);
     std::cout << "Result: " << result << std::endl;
 
-    // 测量解析时间
     double averageTime = measureTime([&]() { parser.parse(expression); });
 
     std::cout << "Average parsing time: " << averageTime << " μs" << std::endl;

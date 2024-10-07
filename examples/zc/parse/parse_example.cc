@@ -62,16 +62,18 @@ class ExpressionParser {
         }));
   }
 
-  ZC_ALWAYS_INLINE zc::Maybe<double> parse(zc::StringPtr input) {
+  ZC_NODISCARD ZC_ALWAYS_INLINE zc::Maybe<double> parse(
+      const zc::StringPtr input) const {
     ParserInput parserInput(input.begin(), input.end());
     return expression_(parserInput);
   }
 
-  zc::Duration measureParseTime(zc::StringPtr input, int iterations = 1000) {
+  ZC_NODISCARD zc::Duration measureParseTime(
+      const zc::StringPtr input, const int iterations = 1000) const {
     zc::Duration totalTime = 0 * zc::NANOSECONDS;
     for (int i = 0; i < iterations; ++i) {
       zc::TimePoint start = zc::systemPreciseMonotonicClock().now();
-      parse(input);
+      auto result = parse(input);
       zc::TimePoint end = zc::systemPreciseMonotonicClock().now();
       totalTime += end - start;
     }
@@ -85,7 +87,6 @@ class ExpressionParser {
 
 }  // namespace examples
 
-// 主类定义
 class MainClass {
  public:
   explicit MainClass(zc::ProcessContext& context) : context_(context) {}
@@ -118,25 +119,20 @@ class MainClass {
       return "No expression provided.";
     }
 
-    examples::ExpressionParser parser;
+    const examples::ExpressionParser parser;
     ZC_IF_SOME(result, parser.parse(expression_)) {
-      // 计算解析时间
       zc::Duration averageTime = parser.measureParseTime(expression_);
 
       if (verbose_) {
         context_.exitInfo(zc::str("Expression: ", expression_,
                                   "\nResult: ", result,
                                   "\nAverage parsing time: ", averageTime));
-      } else {
-        context_.exitInfo(
-            zc::str(result, "\nAverage parsing time: ", averageTime));
       }
-    }
-    else {
-      return "Failed to parse the expression.";
+      context_.exitInfo(
+          zc::str(result, "\nAverage parsing time: ", averageTime));
     }
 
-    return true;
+    return "Failed to parse the expression.";
   }
 
   zc::ProcessContext& context_;
