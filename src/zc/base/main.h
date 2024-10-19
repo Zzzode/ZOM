@@ -25,6 +25,7 @@
 #include <atomic>
 
 #include "src/zc/base/function.h"
+#include "src/zc/containers/array.h"
 #include "src/zc/strings/string.h"
 
 ZC_BEGIN_HEADER

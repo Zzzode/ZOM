@@ -16,7 +16,6 @@ class CompilerMain {
         pipeline(lang_options_, source_mgr_, diag_engine_) {}
 
   zc::MainBuilder::Validity setInput(zc::StringPtr inputFile) {
-    // 从文件读取输入，这里简化为直接设置字符串
     input = zc::heapString("int x = 5; float y = 3.14;");
     return true;
   }
