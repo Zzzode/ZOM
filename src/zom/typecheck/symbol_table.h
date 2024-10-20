@@ -15,7 +15,7 @@ struct Symbol {
 };
 
 class SymbolTable {
- public:
+public:
   void Insert(zc::String name, zc::Own<Symbol> symbol) {
     symbols_.insert(zc::mv(name), zc::mv(symbol));
   }
@@ -25,7 +25,7 @@ class SymbolTable {
     return nullptr;
   }
 
- private:
+private:
   zc::HashMap<zc::String, zc::Own<Symbol>> symbols_;
 };
 

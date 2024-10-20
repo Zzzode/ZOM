@@ -7,13 +7,12 @@
 #include <vector>
 
 class ExpressionParser {
- public:
+public:
   double parse(const std::string& expr) {
     input = expr;
     position = 0;
     double result = parseExpression();
-    if (position < input.length())
-      throw std::runtime_error("Invalid characters at end of input");
+    if (position < input.length()) throw std::runtime_error("Invalid characters at end of input");
     return result;
   }
 
@@ -22,8 +21,7 @@ class ExpressionParser {
     bool decimalPoint = false;
     double fraction = 1;
 
-    while (position < input.length() &&
-           (std::isdigit(input[position]) || input[position] == '.')) {
+    while (position < input.length() && (std::isdigit(input[position]) || input[position] == '.')) {
       if (input[position] == '.') {
         if (decimalPoint) throw std::runtime_error("Invalid number");
         decimalPoint = true;
@@ -41,8 +39,7 @@ class ExpressionParser {
   }
 
   double parseFactor() {
-    if (position >= input.length())
-      throw std::runtime_error("Unexpected end of input");
+    if (position >= input.length()) throw std::runtime_error("Unexpected end of input");
 
     if (input[position] == '(') {
       position++;
@@ -53,16 +50,13 @@ class ExpressionParser {
       return result;
     }
 
-    if (std::isdigit(input[position])) {
-      return parseNumber();
-    }
+    if (std::isdigit(input[position])) { return parseNumber(); }
     throw std::runtime_error("Invalid expression");
   }
 
   double parseTerm() {
     double result = parseFactor();
-    while (position < input.length() &&
-           (input[position] == '*' || input[position] == '/')) {
+    while (position < input.length() && (input[position] == '*' || input[position] == '/')) {
       char op = input[position];
       position++;
       double factor = parseFactor();
@@ -76,8 +70,7 @@ class ExpressionParser {
 
   double parseExpression() {
     double result = parseTerm();
-    while (position < input.length() &&
-           (input[position] == '+' || input[position] == '-')) {
+    while (position < input.length() && (input[position] == '+' || input[position] == '-')) {
       char op = input[position];
       position++;
       double term = parseTerm();
@@ -89,7 +82,7 @@ class ExpressionParser {
     return result;
   }
 
- private:
+private:
   std::string input;
   size_t position = 0;
 };
@@ -107,8 +100,7 @@ double measureTime(Func&& func, int iterations = 1000) {
     times.push_back(duration.count());
   }
 
-  double average =
-      std::accumulate(times.begin(), times.end(), 0.0) / iterations;
+  double average = std::accumulate(times.begin(), times.end(), 0.0) / iterations;
   return average;
 }
 

@@ -51,20 +51,19 @@ namespace zc {
 class ArrayDisposer {
   // Much like Disposer from memory.h.
 
- protected:
+protected:
   // Do not declare a destructor, as doing so will force a global initializer
   // for HeapArrayDisposer::instance.
 
-  virtual void disposeImpl(void* firstElement, size_t elementSize,
-                           size_t elementCount, size_t capacity,
-                           void (*destroyElement)(void*)) const = 0;
+  virtual void disposeImpl(void* firstElement, size_t elementSize, size_t elementCount,
+                           size_t capacity, void (*destroyElement)(void*)) const = 0;
   // Disposes of the array. `destroyElement` invokes the destructor of each
   // element, or is nullptr if the elements have trivial destructors. `capacity`
   // is the amount of space that was allocated while `elementCount` is the
   // number of elements that were actually constructed; these are always the
   // same number for Array<T> but may be different when using ArrayBuilder<T>.
 
- public:
+public:
   template <typename T>
   void dispose(T* firstElement, size_t elementCount, size_t capacity) const;
   // Helper wrapper around disposeImpl().
@@ -72,9 +71,8 @@ class ArrayDisposer {
   // Callers must not call dispose() on the same array twice, even if the first
   // call throws an exception.
 
- private:
-  template <typename T,
-            bool hasTrivialDestructor = ZC_HAS_TRIVIAL_DESTRUCTOR(T)>
+private:
+  template <typename T, bool hasTrivialDestructor = ZC_HAS_TRIVIAL_DESTRUCTOR(T)>
   struct Dispose_;
 };
 
@@ -87,12 +85,10 @@ class ExceptionSafeArrayUtil {
   // to detect unwind and avoid exceptions in this case. Therefore, no more
   // than one exception will be thrown (and the program will not terminate).
 
- public:
-  ExceptionSafeArrayUtil(void* ptr, size_t elementSize,
-                         size_t constructedElementCount,
+public:
+  ExceptionSafeArrayUtil(void* ptr, size_t elementSize, size_t constructedElementCount,
                          void (*destroyElement)(void*))
-      : pos(reinterpret_cast<byte*>(ptr) +
-            elementSize * constructedElementCount),
+      : pos(reinterpret_cast<byte*>(ptr) + elementSize * constructedElementCount),
         elementSize(elementSize),
         constructedElementCount(constructedElementCount),
         destroyElement(destroyElement) {}
@@ -114,7 +110,7 @@ class ExceptionSafeArrayUtil {
   // Prevent ExceptionSafeArrayUtil's destructor from destroying the constructed
   // elements. Call this after you've successfully finished constructing.
 
- private:
+private:
   byte* pos;
   size_t elementSize;
   size_t constructedElementCount;
@@ -122,11 +118,10 @@ class ExceptionSafeArrayUtil {
 };
 
 class DestructorOnlyArrayDisposer : public ArrayDisposer {
- public:
+public:
   static const DestructorOnlyArrayDisposer instance;
 
-  void disposeImpl(void* firstElement, size_t elementSize, size_t elementCount,
-                   size_t capacity,
+  void disposeImpl(void* firstElement, size_t elementSize, size_t elementCount, size_t capacity,
                    void (*destroyElement)(void*)) const override;
 };
 
@@ -134,11 +129,10 @@ class NullArrayDisposer : public ArrayDisposer {
   // An ArrayDisposer that does nothing. Can be used to construct a fake Arrays
   // that doesn't actually own its content.
 
- public:
+public:
   static const NullArrayDisposer instance;
 
-  void disposeImpl(void* firstElement, size_t elementSize, size_t elementCount,
-                   size_t capacity,
+  void disposeImpl(void* firstElement, size_t elementSize, size_t elementCount, size_t capacity,
                    void (*destroyElement)(void*)) const override;
 };
 
@@ -151,11 +145,10 @@ class Array {
   // ArrayDisposer) in the destructor. Can be moved, but not copied. Much like
   // Own<T>, but for arrays rather than single objects.
 
- public:
+public:
   Array() : ptr(nullptr), size_(0), disposer(nullptr) {}
   Array(std::nullptr_t) : ptr(nullptr), size_(0), disposer(nullptr) {}
-  Array(Array&& other) noexcept
-      : ptr(other.ptr), size_(other.size_), disposer(other.disposer) {
+  Array(Array&& other) noexcept : ptr(other.ptr), size_(other.size_), disposer(other.disposer) {
     other.ptr = nullptr;
     other.size_ = 0;
   }
@@ -164,21 +157,16 @@ class Array {
     other.ptr = nullptr;
     other.size_ = 0;
   }
-  Array(T* firstElement ZC_LIFETIMEBOUND, size_t size,
-        const ArrayDisposer& disposer)
+  Array(T* firstElement ZC_LIFETIMEBOUND, size_t size, const ArrayDisposer& disposer)
       : ptr(firstElement), size_(size), disposer(&disposer) {}
 
   ZC_DISALLOW_COPY(Array);
   ~Array() noexcept { dispose(); }
 
   operator ArrayPtr<T>() ZC_LIFETIMEBOUND { return ArrayPtr<T>(ptr, size_); }
-  operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND {
-    return ArrayPtr<T>(ptr, size_);
-  }
+  operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND { return ArrayPtr<T>(ptr, size_); }
   ArrayPtr<T> asPtr() ZC_LIFETIMEBOUND { return ArrayPtr<T>(ptr, size_); }
-  ArrayPtr<const T> asPtr() const ZC_LIFETIMEBOUND {
-    return ArrayPtr<T>(ptr, size_);
-  }
+  ArrayPtr<const T> asPtr() const ZC_LIFETIMEBOUND { return ArrayPtr<T>(ptr, size_); }
 
   constexpr size_t size() const { return size_; }
   constexpr T& operator[](size_t index) ZC_LIFETIMEBOUND {
@@ -193,9 +181,7 @@ class Array {
   constexpr const T* begin() const ZC_LIFETIMEBOUND { return ptr; }
   constexpr const T* end() const ZC_LIFETIMEBOUND { return ptr + size_; }
   constexpr const T& front() const ZC_LIFETIMEBOUND { return *ptr; }
-  constexpr const T& back() const ZC_LIFETIMEBOUND {
-    return *(ptr + size_ - 1);
-  }
+  constexpr const T& back() const ZC_LIFETIMEBOUND { return *(ptr + size_ - 1); }
   constexpr T* begin() ZC_LIFETIMEBOUND { return ptr; }
   constexpr T* end() ZC_LIFETIMEBOUND { return ptr + size_; }
   constexpr T& front() ZC_LIFETIMEBOUND { return *ptr; }
@@ -224,22 +210,12 @@ class Array {
   }
 
   ArrayPtr<T> first(size_t count) ZC_LIFETIMEBOUND { return slice(0, count); }
-  ArrayPtr<const T> first(size_t count) const ZC_LIFETIMEBOUND {
-    return slice(0, count);
-  }
+  ArrayPtr<const T> first(size_t count) const ZC_LIFETIMEBOUND { return slice(0, count); }
 
-  ArrayPtr<const byte> asBytes() const ZC_LIFETIMEBOUND {
-    return asPtr().asBytes();
-  }
-  ArrayPtr<PropagateConst<T, byte>> asBytes() ZC_LIFETIMEBOUND {
-    return asPtr().asBytes();
-  }
-  ArrayPtr<const char> asChars() const ZC_LIFETIMEBOUND {
-    return asPtr().asChars();
-  }
-  ArrayPtr<PropagateConst<T, char>> asChars() ZC_LIFETIMEBOUND {
-    return asPtr().asChars();
-  }
+  ArrayPtr<const byte> asBytes() const ZC_LIFETIMEBOUND { return asPtr().asBytes(); }
+  ArrayPtr<PropagateConst<T, byte>> asBytes() ZC_LIFETIMEBOUND { return asPtr().asBytes(); }
+  ArrayPtr<const char> asChars() const ZC_LIFETIMEBOUND { return asPtr().asChars(); }
+  ArrayPtr<PropagateConst<T, char>> asChars() ZC_LIFETIMEBOUND { return asPtr().asChars(); }
 
   Array<PropagateConst<T, byte>> releaseAsBytes() {
     // Like asBytes() but transfers ownership.
@@ -247,8 +223,8 @@ class Array {
                   "releaseAsBytes() only possible on arrays with byte-size "
                   "elements (e.g. chars).");
     if (disposer == nullptr) return nullptr;
-    Array<PropagateConst<T, byte>> result(
-        reinterpret_cast<PropagateConst<T, byte>*>(ptr), size_, *disposer);
+    Array<PropagateConst<T, byte>> result(reinterpret_cast<PropagateConst<T, byte>*>(ptr), size_,
+                                          *disposer);
     ptr = nullptr;
     size_ = 0;
     return result;
@@ -259,8 +235,8 @@ class Array {
                   "releaseAsChars() only possible on arrays with char-size "
                   "elements (e.g. bytes).");
     if (disposer == nullptr) return nullptr;
-    Array<PropagateConst<T, char>> result(
-        reinterpret_cast<PropagateConst<T, char>*>(ptr), size_, *disposer);
+    Array<PropagateConst<T, char>> result(reinterpret_cast<PropagateConst<T, char>*>(ptr), size_,
+                                          *disposer);
     ptr = nullptr;
     size_ = 0;
     return result;
@@ -294,7 +270,7 @@ class Array {
   // Syntax sugar for invoking U::from.
   // Used to chain conversion calls rather than wrap with function.
 
- private:
+private:
   T* ptr;
   size_t size_;
   const ArrayDisposer* disposer;
@@ -322,7 +298,7 @@ static_assert(!canMemcpy<Array<char>>(), "canMemcpy<>() is broken");
 namespace _ {  // private
 
 class HeapArrayDisposer final : public ArrayDisposer {
- public:
+public:
   template <typename T>
   static T* allocate(size_t count);
   template <typename T>
@@ -330,20 +306,17 @@ class HeapArrayDisposer final : public ArrayDisposer {
 
   static const HeapArrayDisposer instance;
 
- private:
-  static void* allocateImpl(size_t elementSize, size_t elementCount,
-                            size_t capacity, void (*constructElement)(void*),
-                            void (*destroyElement)(void*));
+private:
+  static void* allocateImpl(size_t elementSize, size_t elementCount, size_t capacity,
+                            void (*constructElement)(void*), void (*destroyElement)(void*));
   // Allocates and constructs the array. Both function pointers are null if the
   // constructor is trivial, otherwise destroyElement is null if the constructor
   // doesn't throw.
 
-  void disposeImpl(void* firstElement, size_t elementSize, size_t elementCount,
-                   size_t capacity,
+  void disposeImpl(void* firstElement, size_t elementSize, size_t elementCount, size_t capacity,
                    void (*destroyElement)(void*)) const override;
 
-  template <typename T,
-            bool hasTrivialConstructor = ZC_HAS_TRIVIAL_CONSTRUCTOR(T),
+  template <typename T, bool hasTrivialConstructor = ZC_HAS_TRIVIAL_CONSTRUCTOR(T),
             bool hasNothrowConstructor = ZC_HAS_NOTHROW_CONSTRUCTOR(T)>
   struct Allocate_;
 };
@@ -354,8 +327,7 @@ template <typename T>
 Array<T> heapArray(size_t size) {
   // Much like `heap<T>()` from memory.h, allocates a new array on the heap.
 
-  return Array<T>(_::HeapArrayDisposer::allocate<T>(size), size,
-                  _::HeapArrayDisposer::instance);
+  return Array<T>(_::HeapArrayDisposer::allocate<T>(size), size, _::HeapArrayDisposer::instance);
 }
 
 template <typename T>
@@ -398,7 +370,7 @@ class ArrayBuilder {
   // arguments for each element, rather than starting by default-constructing
   // them.
 
- public:
+public:
   ArrayBuilder() : ptr(nullptr), pos(nullptr), endPtr(nullptr) {}
   ArrayBuilder(std::nullptr_t) : ptr(nullptr), pos(nullptr), endPtr(nullptr) {}
   explicit ArrayBuilder(RemoveConst<T>* firstElement, size_t capacity,
@@ -408,19 +380,13 @@ class ArrayBuilder {
         endPtr(firstElement + capacity),
         disposer(&disposer) {}
   ArrayBuilder(ArrayBuilder&& other)
-      : ptr(other.ptr),
-        pos(other.pos),
-        endPtr(other.endPtr),
-        disposer(other.disposer) {
+      : ptr(other.ptr), pos(other.pos), endPtr(other.endPtr), disposer(other.disposer) {
     other.ptr = nullptr;
     other.pos = nullptr;
     other.endPtr = nullptr;
   }
   ArrayBuilder(Array<T>&& other)
-      : ptr(other.ptr),
-        pos(other.ptr + other.size_),
-        endPtr(pos),
-        disposer(other.disposer) {
+      : ptr(other.ptr), pos(other.ptr + other.size_), endPtr(pos), disposer(other.disposer) {
     // Create an already-full ArrayBuilder from an Array of the same type. This
     // constructor primarily exists to enable Vector<T> to be constructed from
     // Array<T>.
@@ -431,24 +397,18 @@ class ArrayBuilder {
   ~ArrayBuilder() noexcept(false) { dispose(); }
 
   operator ArrayPtr<T>() ZC_LIFETIMEBOUND { return arrayPtr(ptr, pos); }
-  operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND {
-    return arrayPtr(ptr, pos);
-  }
+  operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND { return arrayPtr(ptr, pos); }
   ArrayPtr<T> asPtr() ZC_LIFETIMEBOUND { return arrayPtr(ptr, pos); }
-  ArrayPtr<const T> asPtr() const ZC_LIFETIMEBOUND {
-    return arrayPtr(ptr, pos);
-  }
+  ArrayPtr<const T> asPtr() const ZC_LIFETIMEBOUND { return arrayPtr(ptr, pos); }
 
   size_t size() const { return pos - ptr; }
   size_t capacity() const { return endPtr - ptr; }
   T& operator[](size_t index) ZC_LIFETIMEBOUND {
-    ZC_IREQUIRE(index < implicitCast<size_t>(pos - ptr),
-                "Out-of-bounds Array access.");
+    ZC_IREQUIRE(index < implicitCast<size_t>(pos - ptr), "Out-of-bounds Array access.");
     return ptr[index];
   }
   const T& operator[](size_t index) const ZC_LIFETIMEBOUND {
-    ZC_IREQUIRE(index < implicitCast<size_t>(pos - ptr),
-                "Out-of-bounds Array access.");
+    ZC_IREQUIRE(index < implicitCast<size_t>(pos - ptr), "Out-of-bounds Array access.");
     return ptr[index];
   }
 
@@ -486,8 +446,8 @@ class ArrayBuilder {
 
   template <typename Container>
   void addAll(Container&& container) {
-    addAll<decltype(container.begin()), !isReference<Container>()>(
-        container.begin(), container.end());
+    addAll<decltype(container.begin()), !isReference<Container>()>(container.begin(),
+                                                                   container.end());
   }
 
   template <typename Iterator, bool move = false>
@@ -507,9 +467,7 @@ class ArrayBuilder {
       // because it points to the end of the segment.
       pos = const_cast<RemoveConst<T>*>(target);
     } else {
-      while (pos > target) {
-        zc::dtor(*--pos);
-      }
+      while (pos > target) { zc::dtor(*--pos); }
     }
   }
 
@@ -519,9 +477,7 @@ class ArrayBuilder {
       // because it points to the end of the segment.
       pos = const_cast<RemoveConst<T>*>(ptr);
     } else {
-      while (pos > ptr) {
-        zc::dtor(*--pos);
-      }
+      while (pos > ptr) { zc::dtor(*--pos); }
     }
   }
 
@@ -536,9 +492,7 @@ class ArrayBuilder {
         // because it points to the end of the segment.
         pos = const_cast<RemoveConst<T>*>(target);
       } else {
-        while (pos < target) {
-          zc::ctor(*pos++);
-        }
+        while (pos < target) { zc::ctor(*pos++); }
       }
     } else {
       // truncate
@@ -547,9 +501,7 @@ class ArrayBuilder {
         // because it points to the end of the segment.
         pos = const_cast<RemoveConst<T>*>(target);
       } else {
-        while (pos > target) {
-          zc::dtor(*--pos);
-        }
+        while (pos > target) { zc::dtor(*--pos); }
       }
     }
   }
@@ -572,7 +524,7 @@ class ArrayBuilder {
 
   bool isFull() const { return pos == endPtr; }
 
- private:
+private:
   T* ptr;
   RemoveConst<T>* pos;
   T* endPtr;
@@ -598,9 +550,8 @@ ArrayBuilder<T> heapArrayBuilder(size_t size) {
   // Like `heapArray<T>()` but does not default-construct the elements. You
   // must construct them manually by calling `add()`.
 
-  return ArrayBuilder<T>(
-      _::HeapArrayDisposer::allocateUninitialized<RemoveConst<T>>(size), size,
-      _::HeapArrayDisposer::instance);
+  return ArrayBuilder<T>(_::HeapArrayDisposer::allocateUninitialized<RemoveConst<T>>(size), size,
+                         _::HeapArrayDisposer::instance);
 }
 
 // =======================================================================================
@@ -611,37 +562,27 @@ class FixedArray {
   // A fixed-width array whose storage is allocated rather than on the
   // heap.
 
- public:
+public:
   constexpr size_t size() const { return fixedSize; }
   constexpr T* begin() ZC_LIFETIMEBOUND { return content; }
   constexpr T* end() ZC_LIFETIMEBOUND { return content + fixedSize; }
   constexpr const T* begin() const ZC_LIFETIMEBOUND { return content; }
-  constexpr const T* end() const ZC_LIFETIMEBOUND {
-    return content + fixedSize;
-  }
+  constexpr const T* end() const ZC_LIFETIMEBOUND { return content + fixedSize; }
 
   constexpr operator ArrayPtr<T>() ZC_LIFETIMEBOUND { return asPtr(); }
-  constexpr operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND {
-    return asPtr();
-  }
+  constexpr operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND { return asPtr(); }
 
-  constexpr ArrayPtr<T> asPtr() ZC_LIFETIMEBOUND {
-    return arrayPtr(content, fixedSize);
-  }
+  constexpr ArrayPtr<T> asPtr() ZC_LIFETIMEBOUND { return arrayPtr(content, fixedSize); }
   constexpr ArrayPtr<const T> asPtr() const ZC_LIFETIMEBOUND {
     return arrayPtr(content, fixedSize);
   }
 
-  constexpr T& operator[](size_t index) ZC_LIFETIMEBOUND {
-    return content[index];
-  }
-  constexpr const T& operator[](size_t index) const ZC_LIFETIMEBOUND {
-    return content[index];
-  }
+  constexpr T& operator[](size_t index) ZC_LIFETIMEBOUND { return content[index]; }
+  constexpr const T& operator[](size_t index) const ZC_LIFETIMEBOUND { return content[index]; }
 
   void fill(T t) { asPtr().fill(t); }
 
- private:
+private:
   T content[fixedSize];
 };
 
@@ -652,7 +593,7 @@ class CappedArray {
   //
   // TODO(someday):  Don't construct elements past currentSize?
 
- public:
+public:
   ZC_CONSTEXPR CappedArray() : currentSize(fixedSize) {}
   explicit constexpr CappedArray(size_t s) : currentSize(s) {}
 
@@ -668,21 +609,15 @@ class CappedArray {
 
   operator ArrayPtr<T>() ZC_LIFETIMEBOUND { return asPtr(); }
   operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND { return asPtr(); }
-  ArrayPtr<T> asPtr() ZC_LIFETIMEBOUND {
-    return arrayPtr(content, currentSize);
-  }
-  ArrayPtr<const T> asPtr() const ZC_LIFETIMEBOUND {
-    return arrayPtr(content, currentSize);
-  }
+  ArrayPtr<T> asPtr() ZC_LIFETIMEBOUND { return arrayPtr(content, currentSize); }
+  ArrayPtr<const T> asPtr() const ZC_LIFETIMEBOUND { return arrayPtr(content, currentSize); }
 
   T& operator[](size_t index) ZC_LIFETIMEBOUND { return content[index]; }
-  const T& operator[](size_t index) const ZC_LIFETIMEBOUND {
-    return content[index];
-  }
+  const T& operator[](size_t index) const ZC_LIFETIMEBOUND { return content[index]; }
 
   void fill(T t) { asPtr().fill(t); }
 
- private:
+private:
   size_t currentSize;
   T content[fixedSize];
 };
@@ -708,11 +643,8 @@ struct Mapper {
   Mapper(T&& array) : array(zc::fwd<T>(array)) {}
   template <typename Func>
   auto operator*(Func&& func) -> Array<decltype(func(*array.begin()))> {
-    auto builder =
-        heapArrayBuilder<decltype(func(*array.begin()))>(array.size());
-    for (auto iter = array.begin(); iter != array.end(); ++iter) {
-      builder.add(func(*iter));
-    }
+    auto builder = heapArrayBuilder<decltype(func(*array.begin()))>(array.size());
+    for (auto iter = array.begin(); iter != array.end(); ++iter) { builder.add(func(*iter)); }
     return builder.finish();
   }
   using Element = decltype(*zc::instance<T>().begin());
@@ -725,9 +657,7 @@ struct Mapper<T (&)[s]> {
   template <typename Func>
   auto operator*(Func&& func) -> Array<decltype(func(*array))> {
     auto builder = heapArrayBuilder<decltype(func(*array))>(s);
-    for (size_t i = 0; i < s; i++) {
-      builder.add(func(array[i]));
-    }
+    for (size_t i = 0; i < s; i++) { builder.add(func(array[i])); }
     return builder.finish();
   }
   using Element = decltype(*array)&;
@@ -742,8 +672,8 @@ template <typename T>
 struct ArrayDisposer::Dispose_<T, true> {
   static void dispose(T* firstElement, size_t elementCount, size_t capacity,
                       const ArrayDisposer& disposer) {
-    disposer.disposeImpl(const_cast<RemoveConst<T>*>(firstElement), sizeof(T),
-                         elementCount, capacity, nullptr);
+    disposer.disposeImpl(const_cast<RemoveConst<T>*>(firstElement), sizeof(T), elementCount,
+                         capacity, nullptr);
   }
 };
 template <typename T>
@@ -752,14 +682,13 @@ struct ArrayDisposer::Dispose_<T, false> {
 
   static void dispose(T* firstElement, size_t elementCount, size_t capacity,
                       const ArrayDisposer& disposer) {
-    disposer.disposeImpl(const_cast<RemoveConst<T>*>(firstElement), sizeof(T),
-                         elementCount, capacity, &destruct);
+    disposer.disposeImpl(const_cast<RemoveConst<T>*>(firstElement), sizeof(T), elementCount,
+                         capacity, &destruct);
   }
 };
 
 template <typename T>
-void ArrayDisposer::dispose(T* firstElement, size_t elementCount,
-                            size_t capacity) const {
+void ArrayDisposer::dispose(T* firstElement, size_t elementCount, size_t capacity) const {
   Dispose_<T>::dispose(firstElement, elementCount, capacity, *this);
 }
 
@@ -768,8 +697,7 @@ namespace _ {  // private
 template <typename T>
 struct HeapArrayDisposer::Allocate_<T, true, true> {
   static T* allocate(size_t elementCount, size_t capacity) {
-    return reinterpret_cast<T*>(
-        allocateImpl(sizeof(T), elementCount, capacity, nullptr, nullptr));
+    return reinterpret_cast<T*>(allocateImpl(sizeof(T), elementCount, capacity, nullptr, nullptr));
   }
 };
 template <typename T>
@@ -800,16 +728,14 @@ T* HeapArrayDisposer::allocateUninitialized(size_t count) {
   return Allocate_<T, true, true>::allocate(0, count);
 }
 
-template <typename Element, typename Iterator, bool move,
-          bool = canMemcpy<Element>()>
+template <typename Element, typename Iterator, bool move, bool = canMemcpy<Element>()>
 struct CopyConstructArray_;
 
 template <typename T, bool move>
 struct CopyConstructArray_<T, T*, move, true> {
   static T* apply(T* __restrict__ pos, T* start, T* end) {
     if (end != start) {
-      memcpy(pos, start,
-             reinterpret_cast<byte*>(end) - reinterpret_cast<byte*>(start));
+      memcpy(pos, start, reinterpret_cast<byte*>(end) - reinterpret_cast<byte*>(start));
     }
     return pos + (end - start);
   }
@@ -819,9 +745,7 @@ template <typename T>
 struct CopyConstructArray_<T, const T*, false, true> {
   static T* apply(T* __restrict__ pos, const T* start, const T* end) {
     if (end != start) {
-      memcpy(pos, start,
-             reinterpret_cast<const byte*>(end) -
-                 reinterpret_cast<const byte*>(start));
+      memcpy(pos, start, reinterpret_cast<const byte*>(end) - reinterpret_cast<const byte*>(start));
     }
     return pos + (end - start);
   }
@@ -833,9 +757,7 @@ struct CopyConstructArray_<T, Iterator, move, true> {
     // Since both the copy constructor and assignment operator are trivial, we
     // know that assignment is equivalent to copy-constructing. So we can make
     // this case somewhat easier for the compiler to optimize.
-    while (start != end) {
-      *pos++ = *start++;
-    }
+    while (start != end) { *pos++ = *start++; }
     return pos;
   }
 };
@@ -847,9 +769,7 @@ struct CopyConstructArray_<T, Iterator, false, false> {
     T* pos;
     explicit ExceptionGuard(T* pos) : start(pos), pos(pos) {}
     ~ExceptionGuard() noexcept(false) {
-      while (pos > start) {
-        dtor(*--pos);
-      }
+      while (pos > start) { dtor(*--pos); }
     }
   };
 
@@ -858,9 +778,7 @@ struct CopyConstructArray_<T, Iterator, false, false> {
     if (false) implicitCast<T>(*start);
 
     if (noexcept(T(*start))) {
-      while (start != end) {
-        ctor(*pos++, *start++);
-      }
+      while (start != end) { ctor(*pos++, *start++); }
       return pos;
     } else {
       // Crap. This is complicated.
@@ -884,9 +802,7 @@ struct CopyConstructArray_<T, Iterator, true, false> {
     T* pos;
     explicit ExceptionGuard(T* pos) : start(pos), pos(pos) {}
     ~ExceptionGuard() noexcept(false) {
-      while (pos > start) {
-        dtor(*--pos);
-      }
+      while (pos > start) { dtor(*--pos); }
     }
   };
 
@@ -895,9 +811,7 @@ struct CopyConstructArray_<T, Iterator, true, false> {
     if (false) (void)implicitCast<T>(zc::mv(*start));
 
     if (noexcept(T(zc::mv(*start)))) {
-      while (start != end) {
-        ctor(*pos++, zc::mv(*start++));
-      }
+      while (start != end) { ctor(*pos++, zc::mv(*start++)); }
       return pos;
     } else {
       // Crap. This is complicated.
@@ -917,8 +831,7 @@ struct CopyConstructArray_<T, Iterator, true, false> {
 template <typename T>
 template <typename Iterator, bool move>
 void ArrayBuilder<T>::addAll(Iterator start, Iterator end) {
-  pos = _::CopyConstructArray_<RemoveConst<T>, Decay<Iterator>, move>::apply(
-      pos, start, end);
+  pos = _::CopyConstructArray_<RemoveConst<T>, Decay<Iterator>, move>::apply(pos, start, end);
 }
 
 template <typename T>
@@ -963,15 +876,13 @@ Array<T> heapArray(std::initializer_list<T> init) {
 
 template <typename T, typename... Params>
 Array<Decay<T>> arr(T&& param1, Params&&... params) {
-  ArrayBuilder<Decay<T>> builder =
-      heapArrayBuilder<Decay<T>>(sizeof...(params) + 1);
+  ArrayBuilder<Decay<T>> builder = heapArrayBuilder<Decay<T>>(sizeof...(params) + 1);
   (builder.add(zc::fwd<T>(param1)), ..., builder.add(zc::fwd<Params>(params)));
   return builder.finish();
 }
 template <typename T, typename... Params>
 Array<Decay<T>> arrOf(Params&&... params) {
-  ArrayBuilder<Decay<T>> builder =
-      heapArrayBuilder<Decay<T>>(sizeof...(params));
+  ArrayBuilder<Decay<T>> builder = heapArrayBuilder<Decay<T>>(sizeof...(params));
   (..., builder.add(zc::fwd<Params>(params)));
   return builder.finish();
 }
@@ -979,14 +890,9 @@ Array<Decay<T>> arrOf(Params&&... params) {
 namespace _ {  // private
 
 template <typename... T>
-struct ArrayDisposableOwnedBundle final : public ArrayDisposer,
-                                          public OwnedBundle<T...> {
-  ArrayDisposableOwnedBundle(T&&... values)
-      : OwnedBundle<T...>(zc::fwd<T>(values)...) {}
-  void disposeImpl(void*, size_t, size_t, size_t,
-                   void (*)(void*)) const override {
-    delete this;
-  }
+struct ArrayDisposableOwnedBundle final : public ArrayDisposer, public OwnedBundle<T...> {
+  ArrayDisposableOwnedBundle(T&&... values) : OwnedBundle<T...>(zc::fwd<T>(values)...) {}
+  void disposeImpl(void*, size_t, size_t, size_t, void (*)(void*)) const override { delete this; }
 };
 
 }  // namespace _
@@ -1025,8 +931,8 @@ Array<T> ArrayPtr<T>::attach(Attachments&&... attachments) const {
   //   out of scope.
   if (ptrCopy == nullptr) ptrCopy = reinterpret_cast<T*>(1);
 
-  auto bundle = new _::ArrayDisposableOwnedBundle<Attachments...>(
-      zc::fwd<Attachments>(attachments)...);
+  auto bundle =
+      new _::ArrayDisposableOwnedBundle<Attachments...>(zc::fwd<Attachments>(attachments)...);
   return Array<T>(ptrCopy, size_, *bundle);
 }
 

@@ -37,13 +37,13 @@ class FunctionParam;
 class TestRunner;
 
 class TestCase {
- public:
+public:
   TestCase(const char* file, uint line, const char* description);
   ~TestCase();
 
   virtual void run() = 0;
 
- protected:
+protected:
   template <typename Func>
   void doBenchmark(Func&& func) {
     // Perform a benchmark with configurable iterations. func() will be called N
@@ -54,12 +54,10 @@ class TestCase {
     // In the future, this could adaptively choose iteration count by running a
     // few iterations to find out how fast the benchmark is, then scaling.
 
-    for (size_t i = iterCount(); i-- > 0;) {
-      func();
-    }
+    for (size_t i = iterCount(); i-- > 0;) { func(); }
   }
 
- private:
+private:
   const char* file;
   uint line;
   const char* description;
@@ -72,16 +70,15 @@ class TestCase {
   friend class TestRunner;
 };
 
-#define ZC_TEST(description)                                                 \
-  /* Make sure the linker fails if tests are not in anonymous namespaces. */ \
-  extern int ZC_CONCAT(YouMustWrapTestsInAnonymousNamespace, __COUNTER__)    \
-      ZC_UNUSED;                                                             \
-  class ZC_UNIQUE_NAME(TestCase) : public ::zc::TestCase {                   \
-   public:                                                                   \
-    ZC_UNIQUE_NAME(TestCase)                                                 \
-    () : ::zc::TestCase(__FILE__, __LINE__, description) {}                  \
-    void run() override;                                                     \
-  } ZC_UNIQUE_NAME(testCase);                                                \
+#define ZC_TEST(description)                                                         \
+  /* Make sure the linker fails if tests are not in anonymous namespaces. */         \
+  extern int ZC_CONCAT(YouMustWrapTestsInAnonymousNamespace, __COUNTER__) ZC_UNUSED; \
+  class ZC_UNIQUE_NAME(TestCase) : public ::zc::TestCase {                           \
+  public:                                                                            \
+    ZC_UNIQUE_NAME(TestCase)                                                         \
+    () : ::zc::TestCase(__FILE__, __LINE__, description) {}                          \
+    void run() override;                                                             \
+  } ZC_UNIQUE_NAME(testCase);                                                        \
   void ZC_UNIQUE_NAME(TestCase)::run()
 
 #if ZC_MSVC_TRADITIONAL_CPP
@@ -91,8 +88,7 @@ class TestCase {
   if (auto _zcCondition = ::zc::_::MAGIC_ASSERT << cond) \
     ;                                                    \
   else                                                   \
-    ZC_INDIRECT_EXPAND(ZC_FAIL_EXPECT,                   \
-                       ("failed: expected " #cond, _zcCondition, __VA_ARGS__))
+    ZC_INDIRECT_EXPAND(ZC_FAIL_EXPECT, ("failed: expected " #cond, _zcCondition, __VA_ARGS__))
 #else
 #define ZC_FAIL_EXPECT(...) ZC_LOG(ERROR, ##__VA_ARGS__);
 #define ZC_EXPECT(cond, ...)                             \
@@ -104,33 +100,23 @@ class TestCase {
 
 // TODO(msvc): cast results to void like non-MSVC versions do
 #if _MSC_VER && !defined(__clang__)
-#define ZC_EXPECT_THROW_RECOVERABLE(type, code, ...)                    \
-  do {                                                                  \
-    ZC_IF_SOME(e, ::zc::runCatchingExceptions([&]() { code; })) {       \
-      ZC_INDIRECT_EXPAND(                                               \
-          ZC_EXPECT,                                                    \
-          (e.getType() == ::zc::Exception::Type::type,                  \
-           "code threw wrong exception type: " #code, e, __VA_ARGS__)); \
-    }                                                                   \
-    else {                                                              \
-      ZC_INDIRECT_EXPAND(ZC_FAIL_EXPECT,                                \
-                         ("code did not throw: " #code, __VA_ARGS__));  \
-    }                                                                   \
+#define ZC_EXPECT_THROW_RECOVERABLE(type, code, ...)                                              \
+  do {                                                                                            \
+    ZC_IF_SOME(e, ::zc::runCatchingExceptions([&]() { code; })) {                                 \
+      ZC_INDIRECT_EXPAND(ZC_EXPECT, (e.getType() == ::zc::Exception::Type::type,                  \
+                                     "code threw wrong exception type: " #code, e, __VA_ARGS__)); \
+    }                                                                                             \
+    else { ZC_INDIRECT_EXPAND(ZC_FAIL_EXPECT, ("code did not throw: " #code, __VA_ARGS__)); }     \
   } while (false)
 
-#define ZC_EXPECT_THROW_RECOVERABLE_MESSAGE(message, code, ...)          \
-  do {                                                                   \
-    ZC_IF_SOME(e, ::zc::runCatchingExceptions([&]() { code; })) {        \
-      ZC_INDIRECT_EXPAND(                                                \
-          ZC_EXPECT,                                                     \
-          (e.getDescription().contains(message),                         \
-           "exception description didn't contain expected substring", e, \
-           __VA_ARGS__));                                                \
-    }                                                                    \
-    else {                                                               \
-      ZC_INDIRECT_EXPAND(ZC_FAIL_EXPECT,                                 \
-                         ("code did not throw: " #code, __VA_ARGS__));   \
-    }                                                                    \
+#define ZC_EXPECT_THROW_RECOVERABLE_MESSAGE(message, code, ...)                                    \
+  do {                                                                                             \
+    ZC_IF_SOME(e, ::zc::runCatchingExceptions([&]() { code; })) {                                  \
+      ZC_INDIRECT_EXPAND(                                                                          \
+          ZC_EXPECT, (e.getDescription().contains(message),                                        \
+                      "exception description didn't contain expected substring", e, __VA_ARGS__)); \
+    }                                                                                              \
+    else { ZC_INDIRECT_EXPAND(ZC_FAIL_EXPECT, ("code did not throw: " #code, __VA_ARGS__)); }      \
   } while (false)
 #else
 #define ZC_EXPECT_THROW_RECOVERABLE(type, code, ...)                           \
@@ -139,21 +125,16 @@ class TestCase {
       ZC_EXPECT(e.getType() == ::zc::Exception::Type::type,                    \
                 "code threw wrong exception type: " #code, e, ##__VA_ARGS__);  \
     }                                                                          \
-    else {                                                                     \
-      ZC_FAIL_EXPECT("code did not throw: " #code, ##__VA_ARGS__);             \
-    }                                                                          \
+    else { ZC_FAIL_EXPECT("code did not throw: " #code, ##__VA_ARGS__); }      \
   } while (false)
 
-#define ZC_EXPECT_THROW_RECOVERABLE_MESSAGE(message, code, ...)                \
-  do {                                                                         \
-    ZC_IF_SOME(e, ::zc::runCatchingExceptions([&]() { (void)({ code; }); })) { \
-      ZC_EXPECT(e.getDescription().contains(message),                          \
-                "exception description didn't contain expected substring", e,  \
-                ##__VA_ARGS__);                                                \
-    }                                                                          \
-    else {                                                                     \
-      ZC_FAIL_EXPECT("code did not throw: " #code, ##__VA_ARGS__);             \
-    }                                                                          \
+#define ZC_EXPECT_THROW_RECOVERABLE_MESSAGE(message, code, ...)                               \
+  do {                                                                                        \
+    ZC_IF_SOME(e, ::zc::runCatchingExceptions([&]() { (void)({ code; }); })) {                \
+      ZC_EXPECT(e.getDescription().contains(message),                                         \
+                "exception description didn't contain expected substring", e, ##__VA_ARGS__); \
+    }                                                                                         \
+    else { ZC_FAIL_EXPECT("code did not throw: " #code, ##__VA_ARGS__); }                     \
   } while (false)
 #endif
 
@@ -173,9 +154,8 @@ class TestCase {
 // Forks the code and expects it to trigger a signal.
 // In the child resets all signal handlers as printStackTraceOnCrash sets.
 
-#define ZC_EXPECT_LOG(level, substring)                      \
-  ::zc::_::LogExpectation ZC_UNIQUE_NAME(_zcLogExpectation)( \
-      ::zc::LogSeverity::level, substring)
+#define ZC_EXPECT_LOG(level, substring) \
+  ::zc::_::LogExpectation ZC_UNIQUE_NAME(_zcLogExpectation)(::zc::LogSeverity::level, substring)
 // Expects that a log message with the given level and substring text will be
 // printed within the current scope. This message will not cause the test to
 // fail, even if it is an error.
@@ -196,14 +176,14 @@ bool expectSignal(Maybe<int> signal, FunctionParam<void()> code) noexcept;
 // to running the code in the child process.
 
 class LogExpectation : public ExceptionCallback {
- public:
+public:
   LogExpectation(LogSeverity severity, StringPtr substring);
   ~LogExpectation();
 
-  void logMessage(LogSeverity severity, const char* file, int line,
-                  int contextDepth, String&& text) override;
+  void logMessage(LogSeverity severity, const char* file, int line, int contextDepth,
+                  String&& text) override;
 
- private:
+private:
   LogSeverity severity;
   StringPtr substring;
   bool seen;

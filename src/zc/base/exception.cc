@@ -115,8 +115,7 @@ inline T* lsanIgnoreObjectAndReturn(T* ptr) {
 namespace zc {
 
 StringPtr ZC_STRINGIFY(LogSeverity severity) {
-  static const char* SEVERITY_STRINGS[] = {"info", "warning", "error", "fatal",
-                                           "debug"};
+  static const char* SEVERITY_STRINGS[] = {"info", "warning", "error", "fatal", "debug"};
 
   return SEVERITY_STRINGS[static_cast<uint>(severity)];
 }
@@ -134,17 +133,14 @@ struct Dbghelp {
   BOOL(WINAPI* symInitialize)
   (HANDLE hProcess, PCSTR UserSearchPath, BOOL fInvadeProcess);
   BOOL(WINAPI* stackWalk64)
-  (DWORD MachineType, HANDLE hProcess, HANDLE hThread,
-   LPSTACKFRAME64 StackFrame, PVOID ContextRecord,
-   PREAD_PROCESS_MEMORY_ROUTINE64 ReadMemoryRoutine,
+  (DWORD MachineType, HANDLE hProcess, HANDLE hThread, LPSTACKFRAME64 StackFrame,
+   PVOID ContextRecord, PREAD_PROCESS_MEMORY_ROUTINE64 ReadMemoryRoutine,
    PFUNCTION_TABLE_ACCESS_ROUTINE64 FunctionTableAccessRoutine,
-   PGET_MODULE_BASE_ROUTINE64 GetModuleBaseRoutine,
-   PTRANSLATE_ADDRESS_ROUTINE64 TranslateAddress);
+   PGET_MODULE_BASE_ROUTINE64 GetModuleBaseRoutine, PTRANSLATE_ADDRESS_ROUTINE64 TranslateAddress);
   PVOID(WINAPI* symFunctionTableAccess64)(HANDLE hProcess, DWORD64 AddrBase);
   DWORD64(WINAPI* symGetModuleBase64)(HANDLE hProcess, DWORD64 qwAddr);
   BOOL(WINAPI* symGetLineFromAddr64)
-  (HANDLE hProcess, DWORD64 qwAddr, PDWORD pdwDisplacement,
-   PIMAGEHLP_LINE64 Line64);
+  (HANDLE hProcess, DWORD64 qwAddr, PDWORD pdwDisplacement, PIMAGEHLP_LINE64 Line64);
 
 #if __GNUC__ && !__clang__ && __GNUC__ >= 8
 // GCC 8 warns that our reinterpret_casts of function pointers below are casting
@@ -156,32 +152,25 @@ struct Dbghelp {
 #endif
   Dbghelp()
       : lib(LoadLibraryA("dbghelp.dll")),
-        symInitialize(lib == nullptr
-                          ? nullptr
-                          : reinterpret_cast<decltype(symInitialize)>(
-                                GetProcAddress(lib, "SymInitialize"))),
-        stackWalk64(symInitialize == nullptr
-                        ? nullptr
-                        : reinterpret_cast<decltype(stackWalk64)>(
-                              GetProcAddress(lib, "StackWalk64"))),
-        symFunctionTableAccess64(
-            symInitialize == nullptr
-                ? nullptr
-                : reinterpret_cast<decltype(symFunctionTableAccess64)>(
-                      GetProcAddress(lib, "SymFunctionTableAccess64"))),
-        symGetModuleBase64(
-            symInitialize == nullptr
-                ? nullptr
-                : reinterpret_cast<decltype(symGetModuleBase64)>(
-                      GetProcAddress(lib, "SymGetModuleBase64"))),
-        symGetLineFromAddr64(
-            symInitialize == nullptr
-                ? nullptr
-                : reinterpret_cast<decltype(symGetLineFromAddr64)>(
-                      GetProcAddress(lib, "SymGetLineFromAddr64"))) {
-    if (symInitialize != nullptr) {
-      symInitialize(GetCurrentProcess(), NULL, TRUE);
-    }
+        symInitialize(lib == nullptr ? nullptr
+                                     : reinterpret_cast<decltype(symInitialize)>(
+                                           GetProcAddress(lib, "SymInitialize"))),
+        stackWalk64(symInitialize == nullptr ? nullptr
+                                             : reinterpret_cast<decltype(stackWalk64)>(
+                                                   GetProcAddress(lib, "StackWalk64"))),
+        symFunctionTableAccess64(symInitialize == nullptr
+                                     ? nullptr
+                                     : reinterpret_cast<decltype(symFunctionTableAccess64)>(
+                                           GetProcAddress(lib, "SymFunctionTableAccess64"))),
+        symGetModuleBase64(symInitialize == nullptr
+                               ? nullptr
+                               : reinterpret_cast<decltype(symGetModuleBase64)>(
+                                     GetProcAddress(lib, "SymGetModuleBase64"))),
+        symGetLineFromAddr64(symInitialize == nullptr
+                                 ? nullptr
+                                 : reinterpret_cast<decltype(symGetLineFromAddr64)>(
+                                       GetProcAddress(lib, "SymGetLineFromAddr64"))) {
+    if (symInitialize != nullptr) { symInitialize(GetCurrentProcess(), NULL, TRUE); }
   }
 #if __GNUC__ && !__clang__ && __GNUC__ >= 9
 #pragma GCC diagnostic pop
@@ -193,8 +182,8 @@ const Dbghelp& getDbghelp() {
   return dbghelp;
 }
 
-ArrayPtr<void* const> getStackTrace(ArrayPtr<void*> space, uint ignoreCount,
-                                    HANDLE thread, CONTEXT& context) {
+ArrayPtr<void* const> getStackTrace(ArrayPtr<void*> space, uint ignoreCount, HANDLE thread,
+                                    CONTEXT& context) {
   // NOTE: Apparently there is a function CaptureStackBackTrace() that is
   // equivalent to glibc's
   //   backtrace(). Somehow I missed that when I originally wrote this. However,
@@ -205,8 +194,7 @@ ArrayPtr<void* const> getStackTrace(ArrayPtr<void*> space, uint ignoreCount,
   //   all.
 
   const Dbghelp& dbghelp = getDbghelp();
-  if (dbghelp.stackWalk64 == nullptr ||
-      dbghelp.symFunctionTableAccess64 == nullptr ||
+  if (dbghelp.stackWalk64 == nullptr || dbghelp.symFunctionTableAccess64 == nullptr ||
       dbghelp.symGetModuleBase64 == nullptr) {
     return nullptr;
   }
@@ -225,9 +213,8 @@ ArrayPtr<void* const> getStackTrace(ArrayPtr<void*> space, uint ignoreCount,
 
   uint count = 0;
   for (; count < space.size(); count++) {
-    if (!dbghelp.stackWalk64(IMAGE_FILE_MACHINE_AMD64, process, thread, &frame,
-                             &context, NULL, dbghelp.symFunctionTableAccess64,
-                             dbghelp.symGetModuleBase64, NULL)) {
+    if (!dbghelp.stackWalk64(IMAGE_FILE_MACHINE_AMD64, process, thread, &frame, &context, NULL,
+                             dbghelp.symFunctionTableAccess64, dbghelp.symGetModuleBase64, NULL)) {
       break;
     }
 
@@ -272,8 +259,7 @@ struct Subprocess {
     ZC_SYSCALL(pid = fork());
     if (pid > 0) {
       // parent
-      return Subprocess(
-          {.pid = pid, .in = zc::mv(in.writeEnd), .out = zc::mv(out.readEnd)});
+      return Subprocess({.pid = pid, .in = zc::mv(in.writeEnd), .out = zc::mv(out.readEnd)});
     } else {
       // child
       in.writeEnd = nullptr;
@@ -306,9 +292,7 @@ struct Subprocess {
 
 String stringifyStackTraceWithLlvm(ArrayPtr<void* const> trace) {
   const char* llvmSymbolizer = getenv("LLVM_SYMBOLIZER");
-  if (llvmSymbolizer == nullptr) {
-    llvmSymbolizer = "llvm-symbolizer";
-  }
+  if (llvmSymbolizer == nullptr) { llvmSymbolizer = "llvm-symbolizer"; }
 
   const char* argv[] = {llvmSymbolizer, "--relativenames", nullptr};
 
@@ -328,10 +312,9 @@ String stringifyStackTraceWithLlvm(ArrayPtr<void* const> trace) {
           ZC_MAP(addr, trace) {
             Dl_info info;
             if (dladdr(addr, &info)) {
-              uintptr_t offset = reinterpret_cast<uintptr_t>(addr) -
-                                 reinterpret_cast<uintptr_t>(info.dli_fbase);
-              return zc::str("CODE ", info.dli_fname, " 0x",
-                             reinterpret_cast<void*>(offset));
+              uintptr_t offset =
+                  reinterpret_cast<uintptr_t>(addr) - reinterpret_cast<uintptr_t>(info.dli_fbase);
+              return zc::str("CODE ", info.dli_fname, " 0x", reinterpret_cast<void*>(offset));
             } else {
               return zc::str("CODE 0x", reinterpret_cast<void*>(addr));
             }
@@ -359,9 +342,7 @@ String stringifyStackTraceWithLlvm(ArrayPtr<void* const> trace) {
       zc::String lines[256];
       size_t i = 0;
       for (char line[512]{}; fgets(line, sizeof(line), out) != nullptr;) {
-        if (i < zc::size(lines)) {
-          lines[i++] = zc::str(line);
-        }
+        if (i < zc::size(lines)) { lines[i++] = zc::str(line); }
       }
       int status = subprocess.wait();
       if (WIFEXITED(status)) {
@@ -369,14 +350,13 @@ String stringifyStackTraceWithLlvm(ArrayPtr<void* const> trace) {
           if (WEXITSTATUS(status) == 2) {
             static bool logged = false;
             if (!logged) {
-              ZC_LOG(WARNING,
-                     zc::str(llvmSymbolizer,
-                             " was not found. "
-                             "To symbolize stack traces, install it in your "
-                             "$PATH or set $LLVM_SYMBOLIZER to "
-                             "the location of the binary. When running tests "
-                             "under bazel, use "
-                             "`--test_env=LLVM_SYMBOLIZER=<path>`."));
+              ZC_LOG(WARNING, zc::str(llvmSymbolizer,
+                                      " was not found. "
+                                      "To symbolize stack traces, install it in your "
+                                      "$PATH or set $LLVM_SYMBOLIZER to "
+                                      "the location of the binary. When running tests "
+                                      "under bazel, use "
+                                      "`--test_env=LLVM_SYMBOLIZER=<path>`."));
               logged = true;
             }
           } else {
@@ -390,9 +370,7 @@ String stringifyStackTraceWithLlvm(ArrayPtr<void* const> trace) {
       }
       return zc::str("\n", zc::strArray(zc::arrayPtr(lines, i), ""));
     }
-    else {
-      return zc::str("\nerror starting llvm-symbolizer");
-    }
+    else { return zc::str("\nerror starting llvm-symbolizer"); }
   } catch (...) {
     auto exception = getCaughtExceptionAsKj();
 
@@ -409,8 +387,7 @@ String stringifyStackTraceWithLlvm(ArrayPtr<void* const> trace) {
 #endif
 
 ArrayPtr<void* const> getStackTrace(ArrayPtr<void*> space, uint ignoreCount) {
-  if (getExceptionCallback().stackTraceMode() ==
-      ExceptionCallback::StackTraceMode::NONE) {
+  if (getExceptionCallback().stackTraceMode() == ExceptionCallback::StackTraceMode::NONE) {
     return nullptr;
   }
 
@@ -448,8 +425,7 @@ __attribute__((weak))
 String
 stringifyStackTrace(ArrayPtr<void* const> trace) {
   if (trace.size() == 0) return nullptr;
-  if (getExceptionCallback().stackTraceMode() !=
-      ExceptionCallback::StackTraceMode::FULL) {
+  if (getExceptionCallback().stackTraceMode() != ExceptionCallback::StackTraceMode::FULL) {
     return nullptr;
   }
 
@@ -475,9 +451,8 @@ stringifyStackTrace(ArrayPtr<void* const> trace) {
     memset(&lineInfo, 0, sizeof(lineInfo));
     lineInfo.SizeOfStruct = sizeof(lineInfo);
     DWORD displacement;
-    if (dbghelp.symGetLineFromAddr64(process,
-                                     reinterpret_cast<DWORD64>(trace[i]),
-                                     &displacement, &lineInfo)) {
+    if (dbghelp.symGetLineFromAddr64(process, reinterpret_cast<DWORD64>(trace[i]), &displacement,
+                                     &lineInfo)) {
       lines[i] = zc::str('\n', lineInfo.FileName, ':', lineInfo.LineNumber);
     }
   }
@@ -507,9 +482,7 @@ stringifyStackTrace(ArrayPtr<void* const> trace) {
     oldPreload = heapString(preload);
     unsetenv("LD_PRELOAD");
   }
-  ZC_DEFER(if (oldPreload != nullptr) {
-    setenv("LD_PRELOAD", oldPreload.cStr(), true);
-  });
+  ZC_DEFER(if (oldPreload != nullptr) { setenv("LD_PRELOAD", oldPreload.cStr(), true); });
 
   String lines[32];
   FILE* p = nullptr;
@@ -525,28 +498,22 @@ stringifyStackTrace(ArrayPtr<void* const> trace) {
   // TODO(cleanup): Use fork() and exec() or maybe our own Subprocess API (once
   // it exists), to
   //   avoid depending on a shell.
-  p = popen(str("addr2line -e /proc/", getpid(), "/exe ", strTrace).cStr(),
-            "r");
+  p = popen(str("addr2line -e /proc/", getpid(), "/exe ", strTrace).cStr(), "r");
 #elif __APPLE__
   // The Mac OS X equivalent of addr2line is atos.
   // (Internally, it uses the private CoreSymbolication.framework library.)
   p = popen(str("xcrun atos -p ", getpid(), ' ', strTrace).cStr(), "r");
 #elif __CYGWIN__
   wchar_t exeWinPath[MAX_PATH];
-  if (GetModuleFileNameW(nullptr, exeWinPath, sizeof(exeWinPath)) == 0) {
-    return nullptr;
-  }
+  if (GetModuleFileNameW(nullptr, exeWinPath, sizeof(exeWinPath)) == 0) { return nullptr; }
   char exePosixPath[MAX_PATH * 2];
-  if (cygwin_conv_path(CCP_WIN_W_TO_POSIX, exeWinPath, exePosixPath,
-                       sizeof(exePosixPath)) < 0) {
+  if (cygwin_conv_path(CCP_WIN_W_TO_POSIX, exeWinPath, exePosixPath, sizeof(exePosixPath)) < 0) {
     return nullptr;
   }
   p = popen(str("addr2line -e '", exePosixPath, "' ", strTrace).cStr(), "r");
 #endif
 
-  if (p == nullptr) {
-    return nullptr;
-  }
+  if (p == nullptr) { return nullptr; }
 
   char line[512]{};
   size_t i = 0;
@@ -554,13 +521,10 @@ stringifyStackTrace(ArrayPtr<void* const> trace) {
     // Don't include exception-handling infrastructure or promise infrastructure
     // in stack trace. addr2line output matches file names; atos output matches
     // symbol names.
-    if (strstr(line, "zc/common.c++") != nullptr ||
-        strstr(line, "zc/exception.") != nullptr ||
-        strstr(line, "zc/debug.") != nullptr ||
-        strstr(line, "zc/async.") != nullptr ||
+    if (strstr(line, "zc/common.c++") != nullptr || strstr(line, "zc/exception.") != nullptr ||
+        strstr(line, "zc/debug.") != nullptr || strstr(line, "zc/async.") != nullptr ||
         strstr(line, "zc/async-prelude.h") != nullptr ||
-        strstr(line, "zc/async-inl.h") != nullptr ||
-        strstr(line, "zc::Exception") != nullptr ||
+        strstr(line, "zc/async-inl.h") != nullptr || strstr(line, "zc::Exception") != nullptr ||
         strstr(line, "zc::_::Debug") != nullptr) {
       continue;
     }
@@ -571,8 +535,7 @@ stringifyStackTrace(ArrayPtr<void* const> trace) {
   }
 
   // Skip remaining input.
-  while (fgets(line, sizeof(line), p) != nullptr) {
-  }
+  while (fgets(line, sizeof(line), p) != nullptr) {}
 
   pclose(p);
 
@@ -595,10 +558,9 @@ String stringifyStackTraceAddresses(ArrayPtr<void* const> trace) {
         // it expects offsets. In any case, most frames are likely to be in the
         // main executable so it makes the output cleaner if we don't repeatedly
         // write its name.
-        if (reinterpret_cast<uintptr_t>(addr) >= 0x400000000000ull &&
-            dladdr(addr, &info)) {
-          uintptr_t offset = reinterpret_cast<uintptr_t>(addr) -
-                             reinterpret_cast<uintptr_t>(info.dli_fbase);
+        if (reinterpret_cast<uintptr_t>(addr) >= 0x400000000000ull && dladdr(addr, &info)) {
+          uintptr_t offset =
+              reinterpret_cast<uintptr_t>(addr) - reinterpret_cast<uintptr_t>(info.dli_fbase);
           return zc::str(info.dli_fname, '@', reinterpret_cast<void*>(offset));
         } else {
           return zc::str(addr);
@@ -611,8 +573,7 @@ String stringifyStackTraceAddresses(ArrayPtr<void* const> trace) {
 #endif
 }
 
-StringPtr stringifyStackTraceAddresses(ArrayPtr<void* const> trace,
-                                       ArrayPtr<char> scratch) {
+StringPtr stringifyStackTraceAddresses(ArrayPtr<void* const> trace, ArrayPtr<char> scratch) {
   // Version which writes into a pre-allocated buffer. This is safe for signal
   // handlers to the extent that dladdr() is safe.
   //
@@ -633,12 +594,10 @@ StringPtr stringifyStackTraceAddresses(ArrayPtr<void* const> trace,
     // expects for executables. For shared libraries it expects offsets. In any
     // case, most frames are likely to be in the main executable so it makes the
     // output cleaner if we don't repeatedly write its name.
-    if (reinterpret_cast<uintptr_t>(addr) >= 0x400000000000ull &&
-        dladdr(addr, &info)) {
-      uintptr_t offset = reinterpret_cast<uintptr_t>(addr) -
-                         reinterpret_cast<uintptr_t>(info.dli_fbase);
-      ptr = _::fillLimited(ptr, limit, zc::StringPtr(info.dli_fname), "@0x"_zc,
-                           hex(offset));
+    if (reinterpret_cast<uintptr_t>(addr) >= 0x400000000000ull && dladdr(addr, &info)) {
+      uintptr_t offset =
+          reinterpret_cast<uintptr_t>(addr) - reinterpret_cast<uintptr_t>(info.dli_fbase);
+      ptr = _::fillLimited(ptr, limit, zc::StringPtr(info.dli_fname), "@0x"_zc, hex(offset));
     } else {
       ptr = _::fillLimited(ptr, limit, toCharSequence(addr));
     }
@@ -656,8 +615,7 @@ StringPtr stringifyStackTraceAddresses(ArrayPtr<void* const> trace,
 String getStackTrace() {
   void* space[32]{};
   auto trace = getStackTrace(space, 2);
-  return zc::str(stringifyStackTraceAddresses(trace),
-                 stringifyStackTrace(trace));
+  return zc::str(stringifyStackTraceAddresses(trace), stringifyStackTrace(trace));
 }
 
 namespace {
@@ -681,8 +639,7 @@ namespace {
                         "\nstack: ", stringifyStackTraceAddresses(trace),
                         stringifyStackTrace(trace), '\n');
     } catch (...) {
-      message = zc::str("*** Fatal uncaught exception of type: ",
-                        zc::getCaughtExceptionType(),
+      message = zc::str("*** Fatal uncaught exception of type: ", zc::getCaughtExceptionType(),
                         "\nstack: ", stringifyStackTraceAddresses(trace),
                         stringifyStackTrace(trace), '\n');
     }
@@ -718,9 +675,9 @@ BOOL WINAPI breakHandler(DWORD type) {
             void* traceSpace[32];
             auto trace = getStackTrace(traceSpace, 0, thread, context);
             ResumeThread(thread);
-            auto message = zc::str("*** Received CTRL+C. stack: ",
-                                   stringifyStackTraceAddresses(trace),
-                                   stringifyStackTrace(trace), '\n');
+            auto message =
+                zc::str("*** Received CTRL+C. stack: ", stringifyStackTraceAddresses(trace),
+                        stringifyStackTrace(trace), '\n');
             FdOutputStream(STDERR_FILENO).write(message.asBytes());
           } else {
             ResumeThread(thread);
@@ -786,14 +743,11 @@ zc::StringPtr exceptionDescription(DWORD code) {
 
 LONG WINAPI sehHandler(EXCEPTION_POINTERS* info) {
   void* traceSpace[32];
-  auto trace =
-      getStackTrace(traceSpace, 0, GetCurrentThread(), *info->ContextRecord);
+  auto trace = getStackTrace(traceSpace, 0, GetCurrentThread(), *info->ContextRecord);
   auto message =
-      zc::str("*** Received structured exception #0x",
-              hex(info->ExceptionRecord->ExceptionCode), ": ",
-              exceptionDescription(info->ExceptionRecord->ExceptionCode),
-              "; stack: ", stringifyStackTraceAddresses(trace),
-              stringifyStackTrace(trace), '\n');
+      zc::str("*** Received structured exception #0x", hex(info->ExceptionRecord->ExceptionCode),
+              ": ", exceptionDescription(info->ExceptionRecord->ExceptionCode),
+              "; stack: ", stringifyStackTraceAddresses(trace), stringifyStackTrace(trace), '\n');
   FdOutputStream(STDERR_FILENO).write(message.asBytes());
   return EXCEPTION_EXECUTE_HANDLER;  // still crash
 }
@@ -840,9 +794,9 @@ namespace {
   auto trace = getStackTrace(traceSpace, 2);
 #endif
 
-  auto message = zc::str("*** Received signal #", signo, ": ", strsignal(signo),
-                         "\nstack: ", stringifyStackTraceAddresses(trace),
-                         stringifyStackTrace(trace), '\n');
+  auto message =
+      zc::str("*** Received signal #", signo, ": ", strsignal(signo),
+              "\nstack: ", stringifyStackTraceAddresses(trace), stringifyStackTrace(trace), '\n');
 
   FdOutputStream(STDERR_FILENO).write(message.asBytes());
   _exit(1);
@@ -864,9 +818,8 @@ void printStackTraceOnCrash() {
 
   stack.ss_size = 65536;
   // Note: ss_sp is char* on FreeBSD, void* on Linux and OSX.
-  stack.ss_sp = reinterpret_cast<char*>(
-      mmap(nullptr, stack.ss_size, PROT_READ | PROT_WRITE,
-           MAP_ANONYMOUS | MAP_PRIVATE | MAP_GROWSDOWN, -1, 0));
+  stack.ss_sp = reinterpret_cast<char*>(mmap(nullptr, stack.ss_size, PROT_READ | PROT_WRITE,
+                                             MAP_ANONYMOUS | MAP_PRIVATE | MAP_GROWSDOWN, -1, 0));
   ZC_SYSCALL(sigaltstack(&stack, nullptr));
 
   // Catch all relevant signals.
@@ -971,8 +924,7 @@ void resetCrashHandlers() {
 }
 
 StringPtr ZC_STRINGIFY(Exception::Type type) {
-  static const char* TYPE_STRINGS[] = {"failed", "overloaded", "disconnected",
-                                       "unimplemented"};
+  static const char* TYPE_STRINGS[] = {"failed", "overloaded", "disconnected", "unimplemented"};
 
   return TYPE_STRINGS[static_cast<uint>(type)];
 }
@@ -986,9 +938,7 @@ String ZC_STRINGIFY(const Exception& e) {
       ++contextDepth;
       contextPtr = c.next;
     }
-    else {
-      break;
-    }
+    else { break; }
   }
 
   Array<String> contextText = heapArray<String>(contextDepth);
@@ -997,36 +947,31 @@ String ZC_STRINGIFY(const Exception& e) {
   contextPtr = e.getContext();
   for (;;) {
     ZC_IF_SOME(c, contextPtr) {
-      contextText[contextDepth++] = str(trimSourceFilename(c.file), ":", c.line,
-                                        ": context: ", c.description, "\n");
+      contextText[contextDepth++] =
+          str(trimSourceFilename(c.file), ":", c.line, ": context: ", c.description, "\n");
       contextPtr = c.next;
     }
-    else {
-      break;
-    }
+    else { break; }
   }
 
   // Note that we put "remote" before "stack" because trace frames are ordered
   // callee before caller, so this is the most natural presentation ordering.
-  return str(
-      strArray(contextText, ""), e.getFile(), ":", e.getLine(), ": ",
-      e.getType(), e.getDescription() == nullptr ? "" : ": ",
-      e.getDescription(), e.getRemoteTrace().size() > 0 ? "\nremote: " : "",
-      e.getRemoteTrace(), e.getStackTrace().size() > 0 ? "\nstack: " : "",
-      stringifyStackTraceAddresses(e.getStackTrace()),
-      stringifyStackTrace(e.getStackTrace()));
+  return str(strArray(contextText, ""), e.getFile(), ":", e.getLine(), ": ", e.getType(),
+             e.getDescription() == nullptr ? "" : ": ", e.getDescription(),
+             e.getRemoteTrace().size() > 0 ? "\nremote: " : "", e.getRemoteTrace(),
+             e.getStackTrace().size() > 0 ? "\nstack: " : "",
+             stringifyStackTraceAddresses(e.getStackTrace()),
+             stringifyStackTrace(e.getStackTrace()));
 }
 
-Exception::Exception(Type type, const char* file, int line,
-                     String description) noexcept
+Exception::Exception(Type type, const char* file, int line, String description) noexcept
     : file(trimSourceFilename(file).cStr()),
       line(line),
       type(type),
       description(mv(description)),
       traceCount(0) {}
 
-Exception::Exception(Type type, String file, int line,
-                     String description) noexcept
+Exception::Exception(Type type, String file, int line, String description) noexcept
     : ownFile(zc::mv(file)),
       file(trimSourceFilename(ownFile).cStr()),
       line(line),
@@ -1045,9 +990,7 @@ Exception::Exception(const Exception& other) noexcept
     file = ownFile.cStr();
   }
 
-  if (other.remoteTrace != nullptr) {
-    remoteTrace = zc::str(other.remoteTrace);
-  }
+  if (other.remoteTrace != nullptr) { remoteTrace = zc::str(other.remoteTrace); }
 
   memcpy(trace, other.trace, sizeof(trace[0]) * traceCount);
 
@@ -1083,15 +1026,13 @@ void Exception::extendTrace(uint ignoreCount, uint limit) {
     return;
   }
 
-  ZC_STACK_ARRAY(void*, newTraceSpace,
-                 zc::min(zc::size(trace), limit) + ignoreCount + 1,
+  ZC_STACK_ARRAY(void*, newTraceSpace, zc::min(zc::size(trace), limit) + ignoreCount + 1,
                  sizeof(trace) / sizeof(trace[0]) + 8, 128);
 
   auto newTrace = zc::getStackTrace(newTraceSpace, ignoreCount + 1);
   if (newTrace.size() > ignoreCount + 2) {
     // Remove suffix that won't fit into our static-sized trace.
-    newTrace =
-        newTrace.first(zc::min(zc::size(trace) - traceCount, newTrace.size()));
+    newTrace = newTrace.first(zc::min(zc::size(trace) - traceCount, newTrace.size()));
 
     // Copy the rest into our trace.
     memcpy(trace + traceCount, newTrace.begin(), newTrace.asBytes().size());
@@ -1158,9 +1099,7 @@ void Exception::addTrace(void* ptr) {
   // TODO(cleanup): Abort here if isFullTrace is true, and see what breaks. This
   // method only makes sense to call on partial traces.
 
-  if (traceCount < zc::size(trace)) {
-    trace[traceCount++] = ptr;
-  }
+  if (traceCount < zc::size(trace)) { trace[traceCount++] = ptr; }
 }
 
 void Exception::addTraceHere() {
@@ -1173,27 +1112,20 @@ void Exception::addTraceHere() {
 #endif
 }
 
-zc::Maybe<zc::ArrayPtr<const byte>> Exception::getDetail(
-    DetailTypeId typeId) const {
+zc::Maybe<zc::ArrayPtr<const byte>> Exception::getDetail(DetailTypeId typeId) const {
   for (auto& detail : details) {
-    if (detail.id == typeId) {
-      return detail.value.asPtr();
-    }
+    if (detail.id == typeId) { return detail.value.asPtr(); }
   }
   return zc::none;
 }
 
-zc::ArrayPtr<const Exception::Detail> Exception::getDetails() const {
-  return details.asPtr();
-}
+zc::ArrayPtr<const Exception::Detail> Exception::getDetails() const { return details.asPtr(); }
 
 zc::Maybe<zc::Array<byte>> Exception::releaseDetail(DetailTypeId typeId) {
   for (auto& detail : details) {
     if (detail.id == typeId) {
       zc::Array<byte> result = zc::mv(detail.value);
-      if (&detail != &details.back()) {
-        detail = zc::mv(details.back());
-      }
+      if (&detail != &details.back()) { detail = zc::mv(details.back()); }
       details.removeLast();
       return zc::mv(result);
     }
@@ -1228,10 +1160,8 @@ void validateExceptionPointer(const ExceptionImpl* e) noexcept {
 }  // namespace
 
 class ExceptionImpl : public Exception, public std::exception {
- public:
-  inline ExceptionImpl(Exception&& other) : Exception(mv(other)) {
-    insertIntoCurrentExceptions();
-  }
+public:
+  inline ExceptionImpl(Exception&& other) : Exception(mv(other)) { insertIntoCurrentExceptions(); }
   ExceptionImpl(const ExceptionImpl& other) : Exception(other) {
     // No need to copy whatBuffer since it's just to hold the return value of
     // what().
@@ -1240,8 +1170,7 @@ class ExceptionImpl : public Exception, public std::exception {
   ~ExceptionImpl() noexcept {
     // Look for ourselves in the list.
     validateExceptionPointer(nextCurrentException);
-    for (auto* ptr = &currentException; *ptr != nullptr;
-         ptr = &(*ptr)->nextCurrentException) {
+    for (auto* ptr = &currentException; *ptr != nullptr; ptr = &(*ptr)->nextCurrentException) {
       if (*ptr == this) {
         *ptr = nextCurrentException;
         return;
@@ -1255,7 +1184,7 @@ class ExceptionImpl : public Exception, public std::exception {
 
   const char* what() const noexcept override;
 
- private:
+private:
   mutable String whatBuffer;
   ExceptionImpl* nextCurrentException = nullptr;
 
@@ -1274,8 +1203,7 @@ const char* ExceptionImpl::what() const noexcept {
   return whatBuffer.begin();
 }
 
-InFlightExceptionIterator::InFlightExceptionIterator()
-    : ptr(currentException) {}
+InFlightExceptionIterator::InFlightExceptionIterator() : ptr(currentException) {}
 
 Maybe<const Exception&> InFlightExceptionIterator::next() {
   if (ptr == nullptr) return zc::none;
@@ -1286,8 +1214,7 @@ Maybe<const Exception&> InFlightExceptionIterator::next() {
   return *result;
 }
 
-zc::Exception getDestructionReason(void* traceSeparator,
-                                   zc::Exception::Type defaultType,
+zc::Exception getDestructionReason(void* traceSeparator, zc::Exception::Type defaultType,
                                    const char* defaultFile, int defaultLine,
                                    zc::StringPtr defaultDescription) {
   InFlightExceptionIterator iter;
@@ -1321,8 +1248,7 @@ thread_local ExceptionCallback* threadLocalCallback = nullptr;
 
 void requireOnStack(void* ptr, zc::StringPtr description) {
 #if defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION) || \
-    ZC_HAS_COMPILER_FEATURE(address_sanitizer) ||        \
-    defined(__SANITIZE_ADDRESS__)
+    ZC_HAS_COMPILER_FEATURE(address_sanitizer) || defined(__SANITIZE_ADDRESS__)
   // When using libfuzzer or ASAN, this sanity check may spurriously fail, so
   // skip it.
 #else
@@ -1340,9 +1266,7 @@ ExceptionCallback::ExceptionCallback() : next(getExceptionCallback()) {
 ExceptionCallback::ExceptionCallback(ExceptionCallback& next) : next(next) {}
 
 ExceptionCallback::~ExceptionCallback() noexcept(false) {
-  if (&next != this) {
-    threadLocalCallback = &next;
-  }
+  if (&next != this) { threadLocalCallback = &next; }
 }
 
 void ExceptionCallback::onRecoverableException(Exception&& exception) {
@@ -1353,8 +1277,8 @@ void ExceptionCallback::onFatalException(Exception&& exception) {
   next.onFatalException(mv(exception));
 }
 
-void ExceptionCallback::logMessage(LogSeverity severity, const char* file,
-                                   int line, int contextDepth, String&& text) {
+void ExceptionCallback::logMessage(LogSeverity severity, const char* file, int line,
+                                   int contextDepth, String&& text) {
   next.logMessage(severity, file, line, contextDepth, mv(text));
 }
 
@@ -1371,7 +1295,7 @@ uint uncaughtExceptionCount();  // defined later in this file
 }
 
 class ExceptionCallback::RootExceptionCallback : public ExceptionCallback {
- public:
+public:
   RootExceptionCallback() : ExceptionCallback(*this) {}
 
   void onRecoverableException(Exception&& exception) override {
@@ -1388,20 +1312,17 @@ class ExceptionCallback::RootExceptionCallback : public ExceptionCallback {
     }
   }
 
-  void onFatalException(Exception&& exception) override {
-    throw ExceptionImpl(mv(exception));
-  }
+  void onFatalException(Exception&& exception) override { throw ExceptionImpl(mv(exception)); }
 
-  void logMessage(LogSeverity severity, const char* file, int line,
-                  int contextDepth, String&& text) override {
-    text = str(zc::repeat('_', contextDepth), file, ":", line, ": ", severity,
-               ": ", mv(text), '\n');
+  void logMessage(LogSeverity severity, const char* file, int line, int contextDepth,
+                  String&& text) override {
+    text =
+        str(zc::repeat('_', contextDepth), file, ":", line, ": ", severity, ": ", mv(text), '\n');
 
     StringPtr textPtr = text;
 
     while (textPtr != nullptr) {
-      miniposix::ssize_t n =
-          miniposix::write(STDERR_FILENO, textPtr.begin(), textPtr.size());
+      miniposix::ssize_t n = miniposix::write(STDERR_FILENO, textPtr.begin(), textPtr.size());
       if (n <= 0) {
         // stderr is broken. Give up.
         return;
@@ -1426,7 +1347,7 @@ class ExceptionCallback::RootExceptionCallback : public ExceptionCallback {
     };
   }
 
- private:
+private:
   void logException(LogSeverity severity, Exception&& e) {
     // We intentionally go back to the top exception callback on the stack
     // because we don't want to bypass whatever log processing is in effect.
@@ -1435,12 +1356,11 @@ class ExceptionCallback::RootExceptionCallback : public ExceptionCallback {
     // the exception callback anyway.
     getExceptionCallback().logMessage(
         severity, e.getFile(), e.getLine(), 0,
-        str(e.getType(), e.getDescription() == nullptr ? "" : ": ",
-            e.getDescription(),
-            e.getRemoteTrace().size() > 0 ? "\nremote: " : "",
-            e.getRemoteTrace(), e.getStackTrace().size() > 0 ? "\nstack: " : "",
-            stringifyStackTraceAddresses(e.getStackTrace()),
-            stringifyStackTrace(e.getStackTrace()), "\n"));
+        str(e.getType(), e.getDescription() == nullptr ? "" : ": ", e.getDescription(),
+            e.getRemoteTrace().size() > 0 ? "\nremote: " : "", e.getRemoteTrace(),
+            e.getStackTrace().size() > 0 ? "\nstack: " : "",
+            stringifyStackTraceAddresses(e.getStackTrace()), stringifyStackTrace(e.getStackTrace()),
+            "\n"));
   }
 };
 
@@ -1503,9 +1423,7 @@ uint uncaughtExceptionCount() { return std::uncaught_exceptions(); }
 
 UnwindDetector::UnwindDetector() : uncaughtCount(_::uncaughtExceptionCount()) {}
 
-bool UnwindDetector::isUnwinding() const {
-  return _::uncaughtExceptionCount() > uncaughtCount;
-}
+bool UnwindDetector::isUnwinding() const { return _::uncaughtExceptionCount() > uncaughtCount; }
 
 void UnwindDetector::catchThrownExceptionAsSecondaryFault() const {
   // TODO(someday):  Attach the secondary exception to whatever primary
@@ -1535,8 +1453,7 @@ zc::String getCaughtExceptionType() { return zc::heapString("(unknown)"); }
 
 namespace {
 
-size_t sharedSuffixLength(zc::ArrayPtr<void* const> a,
-                          zc::ArrayPtr<void* const> b) {
+size_t sharedSuffixLength(zc::ArrayPtr<void* const> a, zc::ArrayPtr<void* const> b) {
   size_t result = 0;
   while (a.size() > 0 && b.size() > 0 && a.back() == b.back()) {
     ++result;
@@ -1548,18 +1465,15 @@ size_t sharedSuffixLength(zc::ArrayPtr<void* const> a,
 
 }  // namespace
 
-zc::ArrayPtr<void* const> computeRelativeTrace(
-    zc::ArrayPtr<void* const> trace, zc::ArrayPtr<void* const> relativeTo) {
+zc::ArrayPtr<void* const> computeRelativeTrace(zc::ArrayPtr<void* const> trace,
+                                               zc::ArrayPtr<void* const> relativeTo) {
   using miniposix::ssize_t;
 
   static constexpr size_t MIN_MATCH_LEN = 4;
-  if (trace.size() < MIN_MATCH_LEN || relativeTo.size() < MIN_MATCH_LEN) {
-    return trace;
-  }
+  if (trace.size() < MIN_MATCH_LEN || relativeTo.size() < MIN_MATCH_LEN) { return trace; }
 
   zc::ArrayPtr<void* const> bestMatch = trace;
-  uint bestMatchLen =
-      MIN_MATCH_LEN - 1;  // must beat this to choose something else
+  uint bestMatchLen = MIN_MATCH_LEN - 1;  // must beat this to choose something else
 
   // `trace` and `relativeTrace` may have been truncated at different points. We
   // iterate through truncating various suffixes from one of the two and then
@@ -1567,10 +1481,8 @@ zc::ArrayPtr<void* const> computeRelativeTrace(
   for (ssize_t i = -(ssize_t)(trace.size() - MIN_MATCH_LEN);
        i <= (ssize_t)(relativeTo.size() - MIN_MATCH_LEN); i++) {
     // Negative values truncate `trace`, positive values truncate `relativeTo`.
-    zc::ArrayPtr<void* const> subtrace =
-        trace.first(trace.size() - zc::max<ssize_t>(0, -i));
-    zc::ArrayPtr<void* const> subrt =
-        relativeTo.first(relativeTo.size() - zc::max<ssize_t>(0, i));
+    zc::ArrayPtr<void* const> subtrace = trace.first(trace.size() - zc::max<ssize_t>(0, -i));
+    zc::ArrayPtr<void* const> subrt = relativeTo.first(relativeTo.size() - zc::max<ssize_t>(0, i));
 
     uint matchLen = sharedSuffixLength(subtrace, subrt);
     if (matchLen > bestMatchLen) {
@@ -1588,24 +1500,17 @@ zc::Exception getCaughtExceptionAsKj() {
   } catch (Exception& e) {
     e.truncateCommonTrace();
     return zc::mv(e);
-  } catch (CanceledException) {
-    throw;
-  } catch (std::bad_alloc& e) {
+  } catch (CanceledException) { throw; } catch (std::bad_alloc& e) {
     return Exception(Exception::Type::OVERLOADED, "(unknown)", -1,
                      str("std::bad_alloc: ", e.what()));
   } catch (std::exception& e) {
-    return Exception(Exception::Type::FAILED, "(unknown)", -1,
-                     str("std::exception: ", e.what()));
-  } catch (TopLevelProcessContext::CleanShutdownException) {
-    throw;
-  } catch (...) {
+    return Exception(Exception::Type::FAILED, "(unknown)", -1, str("std::exception: ", e.what()));
+  } catch (TopLevelProcessContext::CleanShutdownException) { throw; } catch (...) {
 #if __GNUC__ && !ZC_NO_RTTI
-    return Exception(
-        Exception::Type::FAILED, "(unknown)", -1,
-        str("unknown non-ZC exception of type: ", getCaughtExceptionType()));
-#else
     return Exception(Exception::Type::FAILED, "(unknown)", -1,
-                     str("unknown non-ZC exception"));
+                     str("unknown non-ZC exception of type: ", getCaughtExceptionType()));
+#else
+    return Exception(Exception::Type::FAILED, "(unknown)", -1, str("unknown non-ZC exception"));
 #endif
   }
 }

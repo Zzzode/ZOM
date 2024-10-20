@@ -43,10 +43,9 @@ struct LexerState {
 };
 
 class Lexer {
- public:
+public:
   // Constructor
-  Lexer(const basic::LangOptions& options,
-        const source::SourceManager& source_mgr,
+  Lexer(const basic::LangOptions& options, const source::SourceManager& source_mgr,
         diagnostics::DiagnosticEngine& diags)
       : lang_opts_(options), source_mgr_(source_mgr), diags_(diags) {}
 
@@ -65,8 +64,7 @@ class Lexer {
   void ExitMode(LexerMode mode);
 
   // Unicode support
-  static unsigned LexUnicodeEscape(const char*& cur_ptr,
-                                   diagnostics::DiagnosticEngine* diags);
+  static unsigned LexUnicodeEscape(const char*& cur_ptr, diagnostics::DiagnosticEngine* diags);
 
   // Regular expression support
   bool TryLexRegexLiteral(const char* tok_start);
@@ -78,18 +76,16 @@ class Lexer {
   bool IsCodeCompletion() const;
 
   // Error handling and diagnostics
-  diagnostics::InFlightDiagnostic Diagnose(const char* loc,
-                                           diagnostics::Diagnostic diag);
+  diagnostics::InFlightDiagnostic Diagnose(const char* loc, diagnostics::Diagnostic diag);
 
   // Comment handling
   void SetCommentRetentionMode(CommentRetentionMode mode);
 
   // Source location and range
   source::SourceLoc GetLocForStartOfToken(source::SourceLoc loc) const;
-  source::CharSourceRange GetCharSourceRangeFromSourceRange(
-      const source::SourceRange& sr) const;
+  source::CharSourceRange GetCharSourceRangeFromSourceRange(const source::SourceRange& sr) const;
 
- private:
+private:
   // Internal state
   const char* buffer_start_;
   const char* buffer_end_;

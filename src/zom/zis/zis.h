@@ -7,39 +7,39 @@ namespace zom {
 namespace zis {
 
 class ZIS {
- public:
+public:
   virtual ~ZIS() noexcept = default;  // 添加 noexcept
 };
 
 class Expression : public ZIS {
- public:
+public:
   ~Expression() noexcept override = default;  // 添加 noexcept
 };
 
 class Statement : public ZIS {
- public:
+public:
   ~Statement() noexcept override = default;  // 添加 noexcept
 };
 
 class BinaryExpression : public Expression {
- public:
+public:
   ~BinaryExpression() noexcept override = default;  // 添加 noexcept
 
- private:
+private:
   zc::Own<Expression> left_;
   zc::String op_;
   zc::Own<Expression> right_;
 };
 
 class VariableDeclaration : public Statement {
- public:
+public:
   ~VariableDeclaration() noexcept override = default;  // 添加 noexcept
 
   zc::StringPtr type() const { return type_; }
 
   zc::StringPtr name() const { return name_; }
 
- private:
+private:
   zc::String type_;
   zc::String name_;
   zc::Own<Expression> initializer_;

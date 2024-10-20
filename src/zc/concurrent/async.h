@@ -72,10 +72,10 @@ class AsyncObject {
   // (We prefer inheritance rather than composition here because inheriting an
   // empty type adds zero size to the derived class.)
 
- public:
+public:
   ~AsyncObject();
 
- private:
+private:
   ZC_NORETURN static void failed() noexcept;
 };
 
@@ -89,12 +89,12 @@ class DisallowAsyncDestructorsScope {
   // these scopes to catch whether the object contains any async objects, which
   // are not legal to pass across threads.
 
- public:
+public:
   explicit DisallowAsyncDestructorsScope(zc::StringPtr reason);
   ~DisallowAsyncDestructorsScope();
   ZC_DISALLOW_COPY_AND_MOVE(DisallowAsyncDestructorsScope);
 
- private:
+private:
   zc::StringPtr reason;
   DisallowAsyncDestructorsScope* previousValue;
 
@@ -104,12 +104,12 @@ class DisallowAsyncDestructorsScope {
 class AllowAsyncDestructorsScope {
   // Negates the effect of DisallowAsyncDestructorsScope.
 
- public:
+public:
   AllowAsyncDestructorsScope();
   ~AllowAsyncDestructorsScope();
   ZC_DISALLOW_COPY_AND_MOVE(AllowAsyncDestructorsScope);
 
- private:
+private:
   DisallowAsyncDestructorsScope* previousValue;
 };
 
@@ -197,7 +197,7 @@ class ZC_NODISCARD Promise : protected _::PromiseBase {
   //   http://promisesaplus.com/
   //   https://github.com/domenic/promises-unwrapping
 
- public:
+public:
   Promise(_::FixVoid<T> value);
   // Construct an already-fulfilled Promise from a value of type T.  For
   // non-void promises, the parameter type is simply T.  So, e.g., in a function
@@ -217,8 +217,7 @@ class ZC_NODISCARD Promise : protected _::PromiseBase {
 
   template <typename Func, typename ErrorFunc>
   PromiseForResult<Func, T> then(Func&& func, ErrorFunc&& errorHandler,
-                                 SourceLocation location = {})
-      ZC_WARN_UNUSED_RESULT;
+                                 SourceLocation location = {}) ZC_WARN_UNUSED_RESULT;
   // Register a continuation function to be executed when the promise completes.
   // The continuation
   // (`func`) takes the promised value (an rvalue of type `T`) as its parameter.
@@ -289,8 +288,7 @@ class ZC_NODISCARD Promise : protected _::PromiseBase {
   // execute.
 
   template <typename ErrorFunc>
-  Promise<T> catch_(ErrorFunc&& errorHandler,
-                    SourceLocation location = {}) ZC_WARN_UNUSED_RESULT;
+  Promise<T> catch_(ErrorFunc&& errorHandler, SourceLocation location = {}) ZC_WARN_UNUSED_RESULT;
   // Equivalent to `.then(identityFunc, errorHandler)`, where `identifyFunc` is
   // a function that just returns its input.
 
@@ -369,8 +367,7 @@ class ZC_NODISCARD Promise : protected _::PromiseBase {
   // E.g. if you have `Promise<zc::Tuple<T, U>>`, `split()` returns
   // `zc::Tuple<Promise<T>, Promise<U>>`.
 
-  Promise<T> exclusiveJoin(Promise<T>&& other,
-                           SourceLocation location = {}) ZC_WARN_UNUSED_RESULT;
+  Promise<T> exclusiveJoin(Promise<T>&& other, SourceLocation location = {}) ZC_WARN_UNUSED_RESULT;
   // Return a new promise that resolves when either the original promise
   // resolves or `other` resolves (whichever comes first).  The promise that
   // didn't resolve first is canceled.
@@ -389,10 +386,8 @@ class ZC_NODISCARD Promise : protected _::PromiseBase {
 
   template <typename ErrorFunc>
   Promise<T> eagerlyEvaluate(ErrorFunc&& errorHandler,
-                             SourceLocation location = {})
-      ZC_WARN_UNUSED_RESULT;
-  Promise<T> eagerlyEvaluate(decltype(nullptr), SourceLocation location = {})
-      ZC_WARN_UNUSED_RESULT;
+                             SourceLocation location = {}) ZC_WARN_UNUSED_RESULT;
+  Promise<T> eagerlyEvaluate(decltype(nullptr), SourceLocation location = {}) ZC_WARN_UNUSED_RESULT;
   // Force eager evaluation of this promise.  Use this if you are going to hold
   // on to the promise for awhile without consuming the result, but you want to
   // make sure that the system actually processes it.
@@ -423,7 +418,7 @@ class ZC_NODISCARD Promise : protected _::PromiseBase {
   // Requires RTTI. This method does NOT consume the promise as other methods
   // do.
 
- private:
+private:
   Promise(bool, _::OwnPromiseNode&& node) : PromiseBase(zc::mv(node)) {}
   // Second parameter prevent ambiguity with immediate-value constructor.
 
@@ -437,7 +432,7 @@ class ForkedPromise {
   // adding branches ForkedPromise can be co_await'ed directly to save on
   // allocations.
 
- public:
+public:
   inline ForkedPromise(decltype(nullptr)) {}
 
   Promise<T> addBranch();
@@ -447,11 +442,10 @@ class ForkedPromise {
   bool hasBranches();
   // Returns true if there are any branches that haven't been canceled.
 
- private:
+private:
   Own<_::ForkHub<_::FixVoid<T>>> hub;
 
-  inline ForkedPromise(bool, Own<_::ForkHub<_::FixVoid<T>>>&& hub)
-      : hub(zc::mv(hub)) {}
+  inline ForkedPromise(bool, Own<_::ForkHub<_::FixVoid<T>>>&& hub) : hub(zc::mv(hub)) {}
 
   friend class Promise<T>;
   friend class EventLoop;
@@ -538,8 +532,7 @@ zc::String getAsyncTrace();
 // format is the same as zc::getStackTrace() from exception.c++.
 
 template <typename Func>
-PromiseForResult<Func, void> retryOnDisconnect(Func&& func)
-    ZC_WARN_UNUSED_RESULT;
+PromiseForResult<Func, void> retryOnDisconnect(Func&& func) ZC_WARN_UNUSED_RESULT;
 // Promises to run `func()` asynchronously, retrying once if it fails with a
 // DISCONNECTED exception. If the retry also fails, the exception is passed
 // through.
@@ -549,8 +542,7 @@ PromiseForResult<Func, void> retryOnDisconnect(Func&& func)
 
 template <typename Func>
 PromiseForResult<Func, WaitScope&> startFiber(size_t stackSize, Func&& func,
-                                              SourceLocation location = {})
-    ZC_WARN_UNUSED_RESULT;
+                                              SourceLocation location = {}) ZC_WARN_UNUSED_RESULT;
 // Executes `func()` in a fiber, returning a promise for the eventual result.
 // `func()` will be passed a `WaitScope&` as its parameter, allowing it to call
 // `.wait()` on promises. Thus, `func()` can be written in a synchronous,
@@ -577,7 +569,7 @@ class FiberPool final {
   // with fibers at the expense of memory usage. Fibers in this pool will always
   // use the max amount of memory used until the pool is destroyed.
 
- public:
+public:
   explicit FiberPool(size_t stackSize);
   ~FiberPool() noexcept(false);
   ZC_DISALLOW_COPY_AND_MOVE(FiberPool);
@@ -595,8 +587,8 @@ class FiberPool final {
   //   (the flag has no effect on other operating systems).
 
   template <typename Func>
-  PromiseForResult<Func, WaitScope&> startFiber(
-      Func&& func, SourceLocation location = {}) const ZC_WARN_UNUSED_RESULT;
+  PromiseForResult<Func, WaitScope&> startFiber(Func&& func, SourceLocation location = {}) const
+      ZC_WARN_UNUSED_RESULT;
   // Executes `func()` in a fiber from this pool, returning a promise for the
   // eventual result. `func()` will be passed a `WaitScope&` as its parameter,
   // allowing it to call `.wait()` on promises. Thus, `func()` can be written in
@@ -625,7 +617,7 @@ class FiberPool final {
   // Get the number of stacks currently in the freelist. Does not count stacks
   // that are active.
 
- private:
+private:
   class Impl;
   Own<Impl> impl;
 
@@ -634,8 +626,7 @@ class FiberPool final {
 };
 
 template <typename T>
-Promise<Array<T>> joinPromises(Array<Promise<T>>&& promises,
-                               SourceLocation location = {});
+Promise<Array<T>> joinPromises(Array<Promise<T>>&& promises, SourceLocation location = {});
 // Join an array of promises into a promise for an array. Trailing continuations
 // on promises are not evaluated until all promises have settled. Exceptions are
 // propagated only after the last promise has settled.
@@ -645,8 +636,7 @@ Promise<Array<T>> joinPromises(Array<Promise<T>>&& promises,
 //   Deprecate this function.
 
 template <typename T>
-Promise<Array<T>> joinPromisesFailFast(Array<Promise<T>>&& promises,
-                                       SourceLocation location = {});
+Promise<Array<T>> joinPromisesFailFast(Array<Promise<T>>&& promises, SourceLocation location = {});
 // Join an array of promises into a promise for an array. Trailing continuations
 // on promises are evaluated eagerly. If any promise results in an exception,
 // the exception is immediately propagated to the returned join promise.
@@ -665,8 +655,8 @@ struct CaptureForCoroutine {
   explicit CaptureForCoroutine(Functor&& f) : maybeFunctor(zc::mv(f)) {}
 
   template <typename... Args>
-  static auto coInvoke(Functor functor, Args&&... args)
-      -> decltype(functor(zc::fwd<Args>(args)...)) {
+  static auto coInvoke(Functor functor,
+                       Args&&... args) -> decltype(functor(zc::fwd<Args>(args)...)) {
     // Since the functor is now in the local scope and no longer a member
     // variable, it will be persisted in the coroutine state.
 
@@ -677,9 +667,7 @@ struct CaptureForCoroutine {
 
   template <typename... Args>
   auto operator()(Args&&... args) {
-    if (maybeFunctor == zc::none) {
-      throwMultipleCoCaptureInvocations();
-    }
+    if (maybeFunctor == zc::none) { throwMultipleCoCaptureInvocations(); }
     auto localFunctor = zc::mv(*zc::_::readMaybe(maybeFunctor));
     maybeFunctor = zc::none;
     return coInvoke(zc::mv(localFunctor), zc::fwd<Args>(args)...);
@@ -769,7 +757,7 @@ class PromiseRejector : private AsyncObject {
   // Superclass of PromiseFulfiller containing the non-typed methods. Useful
   // when you only really need to be able to reject a promise, and you need to
   // operate on fulfillers of different types.
- public:
+public:
   virtual void reject(Exception&& exception) = 0;
   virtual bool isWaiting() = 0;
 };
@@ -779,7 +767,7 @@ class PromiseFulfiller : public PromiseRejector {
   // A callback which can be used to fulfill a promise.  Only the first call to
   // fulfill() or reject() matters; subsequent calls are ignored.
 
- public:
+public:
   virtual void fulfill(T&& value) = 0;
   // Fulfill the promise with the given value.
 
@@ -805,7 +793,7 @@ class PromiseFulfiller<void> : public PromiseRejector {
   // Specialization of PromiseFulfiller for void promises.  See
   // PromiseFulfiller<T>.
 
- public:
+public:
   virtual void fulfill(_::Void&& value = _::Void()) = 0;
   // Call with zero parameters.  The parameter is a dummy that only exists so
   // that subclasses don't have to specialize for <void>.
@@ -866,20 +854,16 @@ class CrossThreadPromiseFulfiller : public zc::PromiseFulfiller<T> {
   // Like PromiseFulfiller<T> but the methods are `const`, indicating they can
   // safely be called from another thread.
 
- public:
+public:
   virtual void fulfill(T&& value) const = 0;
   virtual void reject(Exception&& exception) const = 0;
   virtual bool isWaiting() const = 0;
 
-  void fulfill(T&& value) override {
-    return constThis()->fulfill(zc::fwd<T>(value));
-  }
-  void reject(Exception&& exception) override {
-    return constThis()->reject(zc::mv(exception));
-  }
+  void fulfill(T&& value) override { return constThis()->fulfill(zc::fwd<T>(value)); }
+  void reject(Exception&& exception) override { return constThis()->reject(zc::mv(exception)); }
   bool isWaiting() override { return constThis()->isWaiting(); }
 
- private:
+private:
   const CrossThreadPromiseFulfiller* constThis() { return this; }
 };
 
@@ -888,20 +872,16 @@ class CrossThreadPromiseFulfiller<void> : public zc::PromiseFulfiller<void> {
   // Specialization of CrossThreadPromiseFulfiller for void promises.  See
   // CrossThreadPromiseFulfiller<T>.
 
- public:
+public:
   virtual void fulfill(_::Void&& value = _::Void()) const = 0;
   virtual void reject(Exception&& exception) const = 0;
   virtual bool isWaiting() const = 0;
 
-  void fulfill(_::Void&& value) override {
-    return constThis()->fulfill(zc::mv(value));
-  }
-  void reject(Exception&& exception) override {
-    return constThis()->reject(zc::mv(exception));
-  }
+  void fulfill(_::Void&& value) override { return constThis()->fulfill(zc::mv(value)); }
+  void reject(Exception&& exception) override { return constThis()->reject(zc::mv(exception)); }
   bool isWaiting() override { return constThis()->isWaiting(); }
 
- private:
+private:
   const CrossThreadPromiseFulfiller* constThis() { return this; }
 };
 
@@ -949,7 +929,7 @@ class Canceler : private AsyncObject {
   // holds pointers to objects that have been destroyed, this might cause
   // segfaults. Thus, it is safer to use a Canceler.
 
- public:
+public:
   inline Canceler() {}
   ~Canceler() noexcept(false);
   ZC_DISALLOW_COPY_AND_MOVE(Canceler);
@@ -974,9 +954,9 @@ class Canceler : private AsyncObject {
   // Indicates if any previously-wrapped promises are still executing. (If this
   // returns true, then cancel() would be a no-op.)
 
- private:
+private:
   class AdapterBase {
-   public:
+  public:
     AdapterBase(Canceler& canceler);
     ~AdapterBase() noexcept(false);
 
@@ -984,7 +964,7 @@ class Canceler : private AsyncObject {
 
     void unlink();
 
-   private:
+  private:
     Maybe<Maybe<AdapterBase&>&> prev;
     Maybe<AdapterBase&> next;
     friend class Canceler;
@@ -992,17 +972,13 @@ class Canceler : private AsyncObject {
 
   template <typename T>
   class AdapterImpl : public AdapterBase {
-   public:
-    AdapterImpl(PromiseFulfiller<T>& fulfiller, Canceler& canceler,
-                Promise<T> inner)
+  public:
+    AdapterImpl(PromiseFulfiller<T>& fulfiller, Canceler& canceler, Promise<T> inner)
         : AdapterBase(canceler),
           fulfiller(fulfiller),
           inner(inner
-                    .then([&fulfiller](
-                              T&& value) { fulfiller.fulfill(zc::mv(value)); },
-                          [&fulfiller](Exception&& e) {
-                            fulfiller.reject(zc::mv(e));
-                          })
+                    .then([&fulfiller](T&& value) { fulfiller.fulfill(zc::mv(value)); },
+                          [&fulfiller](Exception&& e) { fulfiller.reject(zc::mv(e)); })
                     .eagerlyEvaluate(nullptr)) {}
 
     void cancel(Exception&& e) override {
@@ -1010,7 +986,7 @@ class Canceler : private AsyncObject {
       inner = nullptr;
     }
 
-   private:
+  private:
     PromiseFulfiller<T>& fulfiller;
     Promise<void> inner;
   };
@@ -1020,15 +996,14 @@ class Canceler : private AsyncObject {
 
 template <>
 class Canceler::AdapterImpl<void> : public AdapterBase {
- public:
-  AdapterImpl(zc::PromiseFulfiller<void>& fulfiller, Canceler& canceler,
-              zc::Promise<void> inner);
+public:
+  AdapterImpl(zc::PromiseFulfiller<void>& fulfiller, Canceler& canceler, zc::Promise<void> inner);
   void cancel(zc::Exception&& e) override;
   // These must be defined in async.c++ to prevent translation units compiled by
   // MSVC from trying to link with symbols defined in async.c++ merely because
   // they included async.h.
 
- private:
+private:
   zc::PromiseFulfiller<void>& fulfiller;
   zc::Promise<void> inner;
 };
@@ -1049,9 +1024,9 @@ class TaskSet : private AsyncObject {
   // if the daemon itself is destroyed, the TaskSet is destroyed as well, and
   // everything the daemon is doing is canceled.
 
- public:
+public:
   class ErrorHandler {
-   public:
+  public:
     virtual void taskFailed(zc::Exception&& exception) = 0;
   };
 
@@ -1082,7 +1057,7 @@ class TaskSet : private AsyncObject {
   //
   // Calling this will always trigger onEmpty(), if anyone is listening.
 
- private:
+private:
   class Task;
   using OwnTask = Own<Task, _::PromiseDisposer>;
 
@@ -1104,7 +1079,7 @@ class Executor {
   // calls on the current thread's event loop. You may then pass the reference
   // to other threads to enable them to call back to this one.
 
- public:
+public:
   Executor(EventLoop& loop, Badge<EventLoop>);
   ~Executor() noexcept(false);
 
@@ -1136,8 +1111,7 @@ class Executor {
   //   for "try" versions...
 
   template <typename Func>
-  PromiseForResult<Func, void> executeAsync(Func&& func,
-                                            SourceLocation location = {}) const;
+  PromiseForResult<Func, void> executeAsync(Func&& func, SourceLocation location = {}) const;
   // Call from any thread to request that the given function be executed on the
   // executor's thread, returning a promise for the result.
   //
@@ -1186,8 +1160,8 @@ class Executor {
   // E-Order in the same way as Cap'n Proto.)
 
   template <typename Func>
-  _::UnwrapPromise<PromiseForResult<Func, void>> executeSync(
-      Func&& func, SourceLocation location = {}) const;
+  _::UnwrapPromise<PromiseForResult<Func, void>> executeSync(Func&& func,
+                                                             SourceLocation location = {}) const;
   // Schedules `func()` to execute on the executor thread, and then blocks the
   // requesting thread until `func()` completes. If `func()` returns a Promise,
   // then the wait will continue until that promise resolves, and the final
@@ -1202,7 +1176,7 @@ class Executor {
   // thread, after the executor thread has signaled completion. The return value
   // is transferred between threads.
 
- private:
+private:
   struct Impl;
   Own<Impl> impl;
   // To avoid including mutex.h...
@@ -1235,7 +1209,7 @@ class EventPort {
   // some other (non-ZC) event loop framework, allowing the two to coexist in a
   // single thread.
 
- public:
+public:
   virtual bool wait() = 0;
   // Wait for an external event to arrive, sleeping if necessary.  Once at least
   // one event has arrived, queue it to the event loop (e.g. by fulfilling a
@@ -1319,7 +1293,7 @@ class EventLoop {
   // Most applications that do I/O will prefer to use `setupAsyncIo()` from
   // `async-io.h` rather than allocate an `EventLoop` directly.
 
- public:
+public:
   EventLoop();
   // Construct an `EventLoop` which does not receive external events at all.
 
@@ -1350,7 +1324,7 @@ class EventLoop {
   // to run later in the current thread, use `zc::evalLater()`, which will be
   // more efficient.
 
- private:
+private:
   zc::Maybe<EventPort&> port;
   // If null, this thread doesn't receive I/O events from the OS. It can
   // potentially receive events from other threads via the Executor.
@@ -1385,8 +1359,7 @@ class EventLoop {
   friend void _::detach(zc::Promise<void>&& promise);
   friend void _::waitImpl(_::OwnPromiseNode&& node, _::ExceptionOrValue& result,
                           WaitScope& waitScope, SourceLocation location);
-  friend bool _::pollImpl(_::PromiseNode& node, WaitScope& waitScope,
-                          SourceLocation location);
+  friend bool _::pollImpl(_::PromiseNode& node, WaitScope& waitScope, SourceLocation location);
   friend class _::Event;
   friend class WaitScope;
   friend class Executor;
@@ -1409,7 +1382,7 @@ class WaitScope {
   // a particular
   //   promise to complete.  See `Promise::wait()` for an extended discussion.
 
- public:
+public:
   inline explicit WaitScope(EventLoop& loop) : loop(loop) { loop.enterScope(); }
   inline ~WaitScope() {
     if (fiber == zc::none) loop.leaveScope();
@@ -1429,9 +1402,7 @@ class WaitScope {
   //
   // This has no effect when used in a fiber.
 
-  void runEventCallbacksOnStackPool(zc::Maybe<const FiberPool&> pool) {
-    runningStacksPool = pool;
-  }
+  void runEventCallbacksOnStackPool(zc::Maybe<const FiberPool&> pool) { runningStacksPool = pool; }
   // Arranges to switch stacks while event callbacks are executing. This is an
   // optimization that is useful for programs that use extremely high thread
   // counts, where each thread has its own event loop, but each thread has
@@ -1465,32 +1436,26 @@ class WaitScope {
   //
   // This method may be removed in the future.
 
- private:
+private:
   EventLoop& loop;
   uint busyPollInterval = zc::maxValue;
 
   zc::Maybe<_::FiberBase&> fiber;
   zc::Maybe<const FiberPool&> runningStacksPool;
 
-  explicit WaitScope(EventLoop& loop, _::FiberBase& fiber)
-      : loop(loop), fiber(fiber) {}
+  explicit WaitScope(EventLoop& loop, _::FiberBase& fiber) : loop(loop), fiber(fiber) {}
 
   template <typename Func>
   inline void runOnStackPool(Func&& func) {
-    ZC_IF_SOME(pool, runningStacksPool) {
-      pool.runSynchronously(zc::fwd<Func>(func));
-    }
-    else {
-      func();
-    }
+    ZC_IF_SOME(pool, runningStacksPool) { pool.runSynchronously(zc::fwd<Func>(func)); }
+    else { func(); }
   }
 
   friend class EventLoop;
   friend class _::FiberBase;
   friend void _::waitImpl(_::OwnPromiseNode&& node, _::ExceptionOrValue& result,
                           WaitScope& waitScope, SourceLocation location);
-  friend bool _::pollImpl(_::PromiseNode& node, WaitScope& waitScope,
-                          SourceLocation location);
+  friend bool _::pollImpl(_::PromiseNode& node, WaitScope& waitScope, SourceLocation location);
 };
 
 }  // namespace zc

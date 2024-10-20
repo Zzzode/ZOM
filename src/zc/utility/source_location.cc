@@ -24,8 +24,7 @@
 namespace zc {
 
 zc::String ZC_STRINGIFY(const SourceLocation& l) {
-  return zc::str(l.fileName, ":", l.lineNumber, ":", l.columnNumber, " in ",
-                 l.function);
+  return zc::str(l.fileName, ":", l.lineNumber, ":", l.columnNumber, " in ", l.function);
 }
 
 }  // namespace zc

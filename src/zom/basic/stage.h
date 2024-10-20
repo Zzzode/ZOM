@@ -9,24 +9,18 @@ namespace basic {
 
 template <typename Input, typename Output>
 class CompilerStage {
- public:
-  explicit CompilerStage(zc::TaskSet::ErrorHandler& error_handler)
-      : tasks_(error_handler) {}
+public:
+  explicit CompilerStage(zc::TaskSet::ErrorHandler& error_handler) : tasks_(error_handler) {}
 
   virtual ~CompilerStage() = default;
 
   zc::Promise<void> Process(Input input) {
-    return zc::evalLater([this, input = zc::mv(input)]() mutable {
-             return this->ProcessImpl(zc::mv(input));
-           })
+    return zc::evalLater(
+               [this, input = zc::mv(input)]() mutable { return this->ProcessImpl(zc::mv(input)); })
         .then([this](zc::Vector<Output>&& outputs) {
-          for (auto& output : outputs) {
-            output_queue_.add(zc::mv(output));
-          }
+          for (auto& output : outputs) { output_queue_.add(zc::mv(output)); }
         })
-        .eagerlyEvaluate([](zc::Exception&& e) {
-          ZC_LOG(ERROR, "Error processing input", e);
-        });
+        .eagerlyEvaluate([](zc::Exception&& e) { ZC_LOG(ERROR, "Error processing input", e); });
   }
 
   zc::Maybe<Output> GetOutput() {
@@ -40,10 +34,10 @@ class CompilerStage {
 
   zc::Promise<void> OnEmpty() { return tasks_.onEmpty(); }
 
- protected:
+protected:
   virtual zc::Promise<zc::Vector<Output>> ProcessImpl(Input input) = 0;
 
- private:
+private:
   zc::TaskSet tasks_;
   zc::Vector<Output> output_queue_;
 };

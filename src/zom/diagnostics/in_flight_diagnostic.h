@@ -10,9 +10,8 @@ namespace zom {
 namespace diagnostics {
 
 class InFlightDiagnostic {
- public:
-  InFlightDiagnostic(DiagnosticEngine& engine, source::SourceLoc loc,
-                     Diagnostic&& diag)
+public:
+  InFlightDiagnostic(DiagnosticEngine& engine, source::SourceLoc loc, Diagnostic&& diag)
       : engine_(&engine), loc_(loc), diag_(zc::mv(diag)), emitted_(false) {}
 
   // 添加移动构造函数和移动赋值运算符
@@ -22,9 +21,7 @@ class InFlightDiagnostic {
   ZC_DISALLOW_COPY(InFlightDiagnostic);
 
   ~InFlightDiagnostic() {
-    if (!emitted_) {
-      Emit();
-    }
+    if (!emitted_) { Emit(); }
   }
 
   void Emit() {
@@ -40,7 +37,7 @@ class InFlightDiagnostic {
     return *this;
   }
 
- private:
+private:
   DiagnosticEngine* engine_;
   source::SourceLoc loc_;
   Diagnostic diag_;

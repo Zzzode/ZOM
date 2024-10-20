@@ -39,7 +39,7 @@ namespace parse {
 // Exact char/string.
 
 class ExactString_ {
- public:
+public:
   constexpr inline ExactString_(const char* str) : str(str) {}
 
   template <typename Input>
@@ -55,13 +55,11 @@ class ExactString_ {
     return Tuple<>();
   }
 
- private:
+private:
   const char* str;
 };
 
-constexpr inline ExactString_ exactString(const char* str) {
-  return ExactString_(str);
-}
+constexpr inline ExactString_ exactString(const char* str) { return ExactString_(str); }
 
 template <char c>
 constexpr ExactlyConst_<char, c> exactChar() {
@@ -74,11 +72,10 @@ constexpr ExactlyConst_<char, c> exactChar() {
 // Char ranges / sets
 
 class CharGroup_ {
- public:
+public:
   constexpr inline CharGroup_() : bits{0, 0, 0, 0} {}
 
-  constexpr inline CharGroup_ orRange(unsigned char first,
-                                      unsigned char last) const {
+  constexpr inline CharGroup_ orRange(unsigned char first, unsigned char last) const {
     return CharGroup_(bits[0] | (oneBits(last + 1) & ~oneBits(first)),
                       bits[1] | (oneBits(last - 63) & ~oneBits(first - 64)),
                       bits[2] | (oneBits(last - 127) & ~oneBits(first - 128)),
@@ -90,13 +87,13 @@ class CharGroup_ {
   }
 
   constexpr inline CharGroup_ orChar(unsigned char c) const {
-    return CharGroup_(bits[0] | bit(c), bits[1] | bit(c - 64),
-                      bits[2] | bit(c - 128), bits[3] | bit(c - 256));
+    return CharGroup_(bits[0] | bit(c), bits[1] | bit(c - 64), bits[2] | bit(c - 128),
+                      bits[3] | bit(c - 256));
   }
 
   constexpr inline CharGroup_ orGroup(CharGroup_ other) const {
-    return CharGroup_(bits[0] | other.bits[0], bits[1] | other.bits[1],
-                      bits[2] | other.bits[2], bits[3] | other.bits[3]);
+    return CharGroup_(bits[0] | other.bits[0], bits[1] | other.bits[1], bits[2] | other.bits[2],
+                      bits[3] | other.bits[3]);
   }
 
   constexpr inline CharGroup_ invert() const {
@@ -126,11 +123,10 @@ class CharGroup_ {
     }
   }
 
- private:
+private:
   typedef unsigned long long Bits64;
 
-  constexpr inline CharGroup_(Bits64 a, Bits64 b, Bits64 c, Bits64 d)
-      : bits{a, b, c, d} {}
+  constexpr inline CharGroup_(Bits64 a, Bits64 b, Bits64 c, Bits64 d) : bits{a, b, c, d} {}
   Bits64 bits[4];
 
   static constexpr inline Bits64 oneBits(int count) {
@@ -180,9 +176,7 @@ constexpr inline CharGroup_ anyOfChars(const char* chars) {
 namespace _ {  // private
 
 struct ArrayToString {
-  inline String operator()(const Array<char>& arr) const {
-    return heapString(arr);
-  }
+  inline String operator()(const Array<char>& arr) const { return heapString(arr); }
 };
 
 }  // namespace _
@@ -203,17 +197,14 @@ constexpr auto digit = charRange('0', '9');
 constexpr auto alphaNumeric = alpha.orGroup(digit);
 constexpr auto nameStart = alpha.orChar('_');
 constexpr auto nameChar = alphaNumeric.orChar('_');
-constexpr auto hexDigit =
-    charRange('0', '9').orRange('a', 'f').orRange('A', 'F');
+constexpr auto hexDigit = charRange('0', '9').orRange('a', 'f').orRange('A', 'F');
 constexpr auto octDigit = charRange('0', '7');
 constexpr auto whitespaceChar = anyOfChars(" \f\n\r\t\v");
-constexpr auto controlChar =
-    charRange(0, 0x1f).invert().orGroup(whitespaceChar).invert();
+constexpr auto controlChar = charRange(0, 0x1f).invert().orGroup(whitespaceChar).invert();
 
 constexpr auto whitespace = many(anyOfChars(" \f\n\r\t\v"));
 
-constexpr auto discardWhitespace =
-    discard(many(discard(anyOfChars(" \f\n\r\t\v"))));
+constexpr auto discardWhitespace = discard(many(discard(anyOfChars(" \f\n\r\t\v"))));
 // Like discard(whitespace) but avoids some memory allocation.
 
 // =======================================================================================
@@ -233,8 +224,7 @@ struct IdentifierToString {
 
 }  // namespace _
 
-constexpr auto identifier =
-    transform(sequence(nameStart, many(nameChar)), _::IdentifierToString());
+constexpr auto identifier = transform(sequence(nameStart, many(nameChar)), _::IdentifierToString());
 // Parses an identifier (e.g. a C variable name).
 
 // =======================================================================================
@@ -250,29 +240,22 @@ inline char parseDigit(char c) {
 
 template <uint base>
 struct ParseInteger {
-  inline uint64_t operator()(const Array<char>& digits) const {
-    return operator()('0', digits);
-  }
+  inline uint64_t operator()(const Array<char>& digits) const { return operator()('0', digits); }
   uint64_t operator()(char first, const Array<char>& digits) const {
     uint64_t result = parseDigit(first);
-    for (char digit : digits) {
-      result = result * base + parseDigit(digit);
-    }
+    for (char digit : digits) { result = result * base + parseDigit(digit); }
     return result;
   }
 };
 
 }  // namespace _
 
-constexpr auto integer = sequence(
-    oneOf(transform(
-              sequence(exactChar<'0'>(), exactChar<'x'>(), oneOrMore(hexDigit)),
-              _::ParseInteger<16>()),
-          transform(sequence(exactChar<'0'>(), many(octDigit)),
-                    _::ParseInteger<8>()),
-          transform(sequence(charRange('1', '9'), many(digit)),
-                    _::ParseInteger<10>())),
-    notLookingAt(alpha.orAny("_.")));
+constexpr auto integer =
+    sequence(oneOf(transform(sequence(exactChar<'0'>(), exactChar<'x'>(), oneOrMore(hexDigit)),
+                             _::ParseInteger<16>()),
+                   transform(sequence(exactChar<'0'>(), many(octDigit)), _::ParseInteger<8>()),
+                   transform(sequence(charRange('1', '9'), many(digit)), _::ParseInteger<10>())),
+             notLookingAt(alpha.orAny("_.")));
 
 // =======================================================================================
 // Numbers (i.e. floats)
@@ -280,18 +263,15 @@ constexpr auto integer = sequence(
 namespace _ {  // private
 
 struct ParseFloat {
-  double operator()(
-      const Array<char>& digits, const Maybe<Array<char>>& fraction,
-      const Maybe<Tuple<Maybe<char>, Array<char>>>& exponent) const;
+  double operator()(const Array<char>& digits, const Maybe<Array<char>>& fraction,
+                    const Maybe<Tuple<Maybe<char>, Array<char>>>& exponent) const;
 };
 
 }  // namespace _
 
 constexpr auto number = transform(
-    sequence(oneOrMore(digit),
-             optional(sequence(exactChar<'.'>(), many(digit))),
-             optional(sequence(discard(anyOfChars("eE")),
-                               optional(anyOfChars("+-")), many(digit))),
+    sequence(oneOrMore(digit), optional(sequence(exactChar<'.'>(), many(digit))),
+             optional(sequence(discard(anyOfChars("eE")), optional(anyOfChars("+-")), many(digit))),
              notLookingAt(alpha.orAny("_."))),
     _::ParseFloat());
 
@@ -336,8 +316,7 @@ struct ParseHexByte {
 };
 
 struct ParseOctEscape {
-  inline char operator()(char first, Maybe<char> second,
-                         Maybe<char> third) const {
+  inline char operator()(char first, Maybe<char> second, Maybe<char> third) const {
     char result = first - '0';
     ZC_IF_SOME(digit1, second) {
       result = (result << 3) | (digit1 - '0');
@@ -349,32 +328,28 @@ struct ParseOctEscape {
 
 }  // namespace _
 
-constexpr auto escapeSequence = sequence(
-    exactChar<'\\'>(),
-    oneOf(transform(anyOfChars("abfnrtv'\"\\\?"), _::InterpretEscape()),
-          transform(sequence(exactChar<'x'>(), hexDigit, hexDigit),
-                    _::ParseHexEscape()),
-          transform(sequence(octDigit, optional(octDigit), optional(octDigit)),
-                    _::ParseOctEscape())));
+constexpr auto escapeSequence =
+    sequence(exactChar<'\\'>(),
+             oneOf(transform(anyOfChars("abfnrtv'\"\\\?"), _::InterpretEscape()),
+                   transform(sequence(exactChar<'x'>(), hexDigit, hexDigit), _::ParseHexEscape()),
+                   transform(sequence(octDigit, optional(octDigit), optional(octDigit)),
+                             _::ParseOctEscape())));
 // A parser that parses a C-string-style escape sequence (starting with a
 // backslash).  Returns a char.
 
 constexpr auto doubleQuotedString = charsToString(
-    sequence(exactChar<'\"'>(),
-             many(oneOf(anyOfChars("\\\n\"").invert(), escapeSequence)),
+    sequence(exactChar<'\"'>(), many(oneOf(anyOfChars("\\\n\"").invert(), escapeSequence)),
              exactChar<'\"'>()));
 // Parses a C-style double-quoted string.
 
 constexpr auto singleQuotedString = charsToString(
-    sequence(exactChar<'\''>(),
-             many(oneOf(anyOfChars("\\\n\'").invert(), escapeSequence)),
+    sequence(exactChar<'\''>(), many(oneOf(anyOfChars("\\\n\'").invert(), escapeSequence)),
              exactChar<'\''>()));
 // Parses a C-style single-quoted string.
 
 constexpr auto doubleQuotedHexBinary = sequence(
     exactChar<'0'>(), exactChar<'x'>(), exactChar<'\"'>(),
-    oneOrMore(transform(sequence(discardWhitespace, hexDigit, hexDigit),
-                        _::ParseHexByte())),
+    oneOrMore(transform(sequence(discardWhitespace, hexDigit, hexDigit), _::ParseHexByte())),
     discardWhitespace, exactChar<'\"'>());
 // Parses a double-quoted hex binary literal. Returns Array<byte>.
 

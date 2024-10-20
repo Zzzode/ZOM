@@ -23,8 +23,8 @@ unsigned SourceManager::AddNewSourceBuffer(zc::StringPtr filename) {
   return 0;  // Placeholder
 }
 
-unsigned SourceManager::AddMemBufferCopy(
-    zc::ArrayPtr<const zc::byte> input_data, zc::StringPtr buf_identifier) {
+unsigned SourceManager::AddMemBufferCopy(zc::ArrayPtr<const zc::byte> input_data,
+                                         zc::StringPtr buf_identifier) {
   BufferInfo info;
   info.identifier = zc::heapString(buf_identifier);
   info.content = zc::heapArray<zc::byte>(input_data);
@@ -32,8 +32,8 @@ unsigned SourceManager::AddMemBufferCopy(
   return buffers_.size() - 1;
 }
 
-void SourceManager::CreateVirtualFile(SourceLoc loc, zc::StringPtr name,
-                                      int line_offset, unsigned length) {
+void SourceManager::CreateVirtualFile(SourceLoc loc, zc::StringPtr name, int line_offset,
+                                      unsigned length) {
   VirtualFile vf;
   vf.range = CharSourceRange{loc, length};
   vf.name = name;
@@ -41,24 +41,19 @@ void SourceManager::CreateVirtualFile(SourceLoc loc, zc::StringPtr name,
   virtual_files_.add(zc::mv(vf));
 }
 
-const SourceManager::VirtualFile* SourceManager::GetVirtualFile(
-    SourceLoc loc) const {
+const SourceManager::VirtualFile* SourceManager::GetVirtualFile(SourceLoc loc) const {
   for (const auto& vf : virtual_files_) {
-    if (vf.range.Contains(loc)) {
-      return &vf;
-    }
+    if (vf.range.Contains(loc)) { return &vf; }
   }
   return nullptr;
 }
 
-SourceLoc SourceManager::GetLocForOffset(unsigned buffer_id,
-                                         unsigned offset) const {
+SourceLoc SourceManager::GetLocForOffset(unsigned buffer_id, unsigned offset) const {
   if (buffer_id >= buffers_.size()) return SourceLoc();
   return SourceLoc::GetFromOpaqueValue((buffer_id << 24) | offset);
 }
 
-SourceManager::LineAndColumn SourceManager::GetLineAndColumn(
-    SourceLoc loc) const {
+SourceManager::LineAndColumn SourceManager::GetLineAndColumn(SourceLoc loc) const {
   unsigned buffer_id = FindBufferContainingLoc(loc);
   if (buffer_id == -1U) return {0, 0};
 
@@ -75,12 +70,10 @@ bool SourceManager::IsBefore(SourceLoc first, SourceLoc second) const {
 
   if (buffer_id1 != buffer_id2) return buffer_id1 < buffer_id2;
 
-  return (first.GetOpaqueValue() & 0xFFFFFF) <
-         (second.GetOpaqueValue() & 0xFFFFFF);
+  return (first.GetOpaqueValue() & 0xFFFFFF) < (second.GetOpaqueValue() & 0xFFFFFF);
 }
 
-zc::ArrayPtr<const zc::byte> SourceManager::GetEntireTextForBuffer(
-    unsigned buffer_id) const {
+zc::ArrayPtr<const zc::byte> SourceManager::GetEntireTextForBuffer(unsigned buffer_id) const {
   if (buffer_id >= buffers_.size()) return nullptr;
   return buffers_[buffer_id].content;
 }
@@ -90,8 +83,7 @@ unsigned SourceManager::FindBufferContainingLoc(SourceLoc loc) const {
 
   UpdateLocCache();
 
-  auto it = std::lower_bound(loc_cache_.sorted_buffers.begin(),
-                             loc_cache_.sorted_buffers.end(),
+  auto it = std::lower_bound(loc_cache_.sorted_buffers.begin(), loc_cache_.sorted_buffers.end(),
                              loc.GetOpaqueValue() >> 24);
   if (it == loc_cache_.sorted_buffers.begin()) return -1U;
   return *(it - 1);
@@ -101,9 +93,7 @@ void SourceManager::UpdateLocCache() const {
   if (loc_cache_.num_buffers_original == buffers_.size()) return;
 
   loc_cache_.sorted_buffers.clear();
-  for (unsigned i = 0; i < buffers_.size(); ++i) {
-    loc_cache_.sorted_buffers.add(i);
-  }
+  for (unsigned i = 0; i < buffers_.size(); ++i) { loc_cache_.sorted_buffers.add(i); }
   std::sort(loc_cache_.sorted_buffers.begin(), loc_cache_.sorted_buffers.end());
   loc_cache_.num_buffers_original = buffers_.size();
 }

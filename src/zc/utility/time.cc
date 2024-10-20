@@ -37,7 +37,7 @@ namespace zc {
 
 const Clock& nullClock() {
   class NullClock final : public Clock {
-   public:
+  public:
     Date now() const override { return UNIX_EPOCH; }
   };
   static ZC_CONSTEXPR NullClock NULL_CLOCK = NullClock();
@@ -52,13 +52,12 @@ static constexpr int64_t WIN32_EPOCH_OFFSET = 116444736000000000ull;
 // Number of 100ns intervals from Jan 1, 1601 to Jan 1, 1970.
 
 static Date toKjDate(FILETIME t) {
-  int64_t value =
-      (static_cast<uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime;
+  int64_t value = (static_cast<uint64_t>(t.dwHighDateTime) << 32) | t.dwLowDateTime;
   return (value - WIN32_EPOCH_OFFSET) * (100 * zc::NANOSECONDS) + UNIX_EPOCH;
 }
 
 class Win32CoarseClock : public Clock {
- public:
+public:
   Date now() const override {
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
@@ -69,10 +68,10 @@ class Win32CoarseClock : public Clock {
 class Win32PreciseClock : public Clock {
   typedef VOID WINAPI GetSystemTimePreciseAsFileTimeFunc(LPFILETIME);
 
- public:
+public:
   Date now() const override {
-    static GetSystemTimePreciseAsFileTimeFunc* const
-        getSystemTimePreciseAsFileTimePtr = getGetSystemTimePreciseAsFileTime();
+    static GetSystemTimePreciseAsFileTimeFunc* const getSystemTimePreciseAsFileTimePtr =
+        getGetSystemTimePreciseAsFileTime();
     FILETIME ft;
     if (getSystemTimePreciseAsFileTimePtr == nullptr) {
       // We can't use QueryPerformanceCounter() to get any more precision
@@ -85,9 +84,8 @@ class Win32PreciseClock : public Clock {
     return toKjDate(ft);
   }
 
- private:
-  static GetSystemTimePreciseAsFileTimeFunc*
-  getGetSystemTimePreciseAsFileTime() {
+private:
+  static GetSystemTimePreciseAsFileTimeFunc* getGetSystemTimePreciseAsFileTime() {
     // Dynamically look up the function GetSystemTimePreciseAsFileTimeFunc().
     // This was only introduced as of Windows 8, so it might be missing.
 #if __GNUC__ && !__clang__ && __GNUC__ >= 8
@@ -98,13 +96,13 @@ class Win32PreciseClock : public Clock {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wcast-function-type"
 #endif
-    return reinterpret_cast<GetSystemTimePreciseAsFileTimeFunc*>(GetProcAddress(
-        GetModuleHandleA("kernel32.dll"), "GetSystemTimePreciseAsFileTime"));
+    return reinterpret_cast<GetSystemTimePreciseAsFileTimeFunc*>(
+        GetProcAddress(GetModuleHandleA("kernel32.dll"), "GetSystemTimePreciseAsFileTime"));
   }
 };
 
 class Win32CoarseMonotonicClock : public MonotonicClock {
- public:
+public:
   TimePoint now() const override {
     return zc::origin<TimePoint>() + GetTickCount64() * zc::MILLISECONDS;
   }
@@ -118,7 +116,7 @@ class Win32PreciseMonotonicClock : public MonotonicClock {
   //   isn't as difficult. Is there any benefit to dynamically checking for
   //   these and using them if available?
 
- public:
+public:
   TimePoint now() const override {
     static const QpcProperties props;
 
@@ -129,7 +127,7 @@ class Win32PreciseMonotonicClock : public MonotonicClock {
     return zc::origin<TimePoint>() + ns * zc::NANOSECONDS;
   }
 
- private:
+private:
   struct QpcProperties {
     uint64_t origin;
     // What QueryPerformanceCounter() would have returned at the time when
@@ -154,8 +152,7 @@ class Win32PreciseMonotonicClock : public MonotonicClock {
     }
   };
 
-  static inline uint64_t mulDiv64(uint64_t value, uint64_t numer,
-                                  uint64_t denom) {
+  static inline uint64_t mulDiv64(uint64_t value, uint64_t numer, uint64_t denom) {
     // Inspired by:
     //   https://github.com/rust-lang/rust/pull/22788/files#diff-24f054cd23f65af3b574c6ce8aa5a837R54
     // Computes (value*numer)/denom without overflow, as long as both
@@ -191,7 +188,7 @@ const MonotonicClock& systemPreciseMonotonicClock() {
 namespace {
 
 class PosixClock : public Clock {
- public:
+public:
   constexpr PosixClock(clockid_t clockId) : clockId(clockId) {}
 
   Date now() const override {
@@ -200,22 +197,21 @@ class PosixClock : public Clock {
     return UNIX_EPOCH + ts.tv_sec * zc::SECONDS + ts.tv_nsec * zc::NANOSECONDS;
   }
 
- private:
+private:
   clockid_t clockId;
 };
 
 class PosixMonotonicClock : public MonotonicClock {
- public:
+public:
   constexpr PosixMonotonicClock(clockid_t clockId) : clockId(clockId) {}
 
   TimePoint now() const override {
     struct timespec ts;
     ZC_SYSCALL(clock_gettime(clockId, &ts));
-    return zc::origin<TimePoint>() + ts.tv_sec * zc::SECONDS +
-           ts.tv_nsec * zc::NANOSECONDS;
+    return zc::origin<TimePoint>() + ts.tv_sec * zc::SECONDS + ts.tv_nsec * zc::NANOSECONDS;
   }
 
- private:
+private:
   clockid_t clockId;
 };
 
@@ -277,9 +273,7 @@ CappedArray<char, _::TIME_STR_LEN> ZC_STRINGIFY(Date d) {
 CappedArray<char, _::TIME_STR_LEN> ZC_STRINGIFY(Duration d) {
   bool negative = d < 0 * zc::SECONDS;
   uint64_t ns = d / zc::NANOSECONDS;
-  if (negative) {
-    ns = -ns;
-  }
+  if (negative) { ns = -ns; }
 
   auto digits = zc::toCharSequence(ns);
   ArrayPtr<char> arr = digits;
@@ -308,15 +302,11 @@ CappedArray<char, _::TIME_STR_LEN> ZC_STRINGIFY(Duration d) {
   CappedArray<char, _::TIME_STR_LEN> result;
   char* begin = result.begin();
   char* end;
-  if (negative) {
-    *begin++ = '-';
-  }
+  if (negative) { *begin++ = '-'; }
   if (d % unit == 0 * zc::NANOSECONDS) {
     end = _::fillLimited(begin, result.end(), arr.first(point), suffix);
   } else {
-    while (arr.back() == '0') {
-      arr = arr.first(arr.size() - 1);
-    }
+    while (arr.back() == '0') { arr = arr.first(arr.size() - 1); }
     ZC_DASSERT(arr.size() > point);
     end = _::fillLimited(begin, result.end(), arr.first(point), "."_zc,
                          arr.slice(point, arr.size()), suffix);

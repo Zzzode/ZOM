@@ -53,7 +53,7 @@ class Vector {
 
   // TODO(someday): Allow specifying a custom allocator.
 
- public:
+public:
   Vector() = default;
   explicit Vector(size_t capacity) : builder(heapArrayBuilder<T>(capacity)) {}
   Vector(Array<T>&& array) : builder(zc::mv(array)) {}
@@ -67,9 +67,7 @@ class Vector {
   bool empty() const { return size() == 0; }
   size_t capacity() const { return builder.capacity(); }
   T& operator[](size_t index) ZC_LIFETIMEBOUND { return builder[index]; }
-  const T& operator[](size_t index) const ZC_LIFETIMEBOUND {
-    return builder[index];
-  }
+  const T& operator[](size_t index) const ZC_LIFETIMEBOUND { return builder[index]; }
 
   const T* begin() const ZC_LIFETIMEBOUND { return builder.begin(); }
   const T* end() const ZC_LIFETIMEBOUND { return builder.end(); }
@@ -83,9 +81,7 @@ class Vector {
   Array<T> releaseAsArray() {
     // TODO(perf):  Avoid a copy/move by allowing Array<T> to point to
     // incomplete space?
-    if (!builder.isFull()) {
-      setCapacity(size());
-    }
+    if (!builder.isFull()) { setCapacity(size()); }
     return builder.finish();
   }
 
@@ -94,17 +90,13 @@ class Vector {
     return asPtr() == other;
   }
 
-  ArrayPtr<T> slice(size_t start, size_t end) ZC_LIFETIMEBOUND {
-    return asPtr().slice(start, end);
-  }
+  ArrayPtr<T> slice(size_t start, size_t end) ZC_LIFETIMEBOUND { return asPtr().slice(start, end); }
   ArrayPtr<const T> slice(size_t start, size_t end) const ZC_LIFETIMEBOUND {
     return asPtr().slice(start, end);
   }
 
   ArrayPtr<T> first(size_t count) ZC_LIFETIMEBOUND { return slice(0, count); }
-  ArrayPtr<const T> first(size_t count) const ZC_LIFETIMEBOUND {
-    return slice(0, count);
-  }
+  ArrayPtr<const T> first(size_t count) const ZC_LIFETIMEBOUND { return slice(0, count); }
 
   template <typename... Params>
   T& add(Params&&... params) ZC_LIFETIMEBOUND {
@@ -138,21 +130,17 @@ class Vector {
   void truncate(size_t size) { builder.truncate(size); }
 
   void reserve(size_t size) {
-    if (size > builder.capacity()) {
-      grow(size);
-    }
+    if (size > builder.capacity()) { grow(size); }
   }
 
- private:
+private:
   ArrayBuilder<T> builder;
 
   void grow(size_t minCapacity = 0) {
     setCapacity(zc::max(minCapacity, capacity() == 0 ? 4 : capacity() * 2));
   }
   void setCapacity(size_t newSize) {
-    if (builder.size() > newSize) {
-      builder.truncate(newSize);
-    }
+    if (builder.size() > newSize) { builder.truncate(newSize); }
     ArrayBuilder<T> newBuilder = heapArrayBuilder<T>(newSize);
     newBuilder.addAll(zc::mv(builder));
     builder = zc::mv(newBuilder);

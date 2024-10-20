@@ -57,12 +57,8 @@ namespace miniposix {
 
 typedef int ssize_t;
 
-inline ssize_t read(int fd, void* buffer, size_t size) {
-  return ::_read(fd, buffer, size);
-}
-inline ssize_t write(int fd, const void* buffer, size_t size) {
-  return ::_write(fd, buffer, size);
-}
+inline ssize_t read(int fd, void* buffer, size_t size) { return ::_read(fd, buffer, size); }
+inline ssize_t write(int fd, const void* buffer, size_t size) { return ::_write(fd, buffer, size); }
 inline int close(int fd) { return ::_close(fd); }
 
 #ifndef F_OK
@@ -70,8 +66,7 @@ inline int close(int fd) { return ::_close(fd); }
 #endif
 
 #ifndef S_ISREG
-#define S_ISREG(mode) \
-  (((mode) & S_IFMT) == S_IFREG)  // stat() regular file test
+#define S_ISREG(mode) (((mode) & S_IFMT) == S_IFREG)  // stat() regular file test
 #endif
 #ifndef S_ISDIR
 #define S_ISDIR(mode) (((mode) & S_IFMT) == S_IFDIR)  // stat() directory test
@@ -101,9 +96,7 @@ using ::write;
 // We're on Windows, including MinGW. pipe() and mkdir() are non-standard even
 // on MinGW.
 
-inline int pipe(int fds[2]) {
-  return ::_pipe(fds, 8192, _O_BINARY | _O_NOINHERIT);
-}
+inline int pipe(int fds[2]) { return ::_pipe(fds, 8192, _O_BINARY | _O_NOINHERIT); }
 inline int mkdir(const char* path, int mode) { return ::_mkdir(path); }
 
 #else

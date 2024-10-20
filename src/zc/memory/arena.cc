@@ -27,11 +27,9 @@
 
 namespace zc {
 
-Arena::Arena(size_t chunkSizeHint)
-    : nextChunkSize(zc::max(sizeof(ChunkHeader), chunkSizeHint)) {}
+Arena::Arena(size_t chunkSizeHint) : nextChunkSize(zc::max(sizeof(ChunkHeader), chunkSizeHint)) {}
 
-Arena::Arena(ArrayPtr<byte> scratch)
-    : nextChunkSize(zc::max(sizeof(ChunkHeader), scratch.size())) {
+Arena::Arena(ArrayPtr<byte> scratch) : nextChunkSize(zc::max(sizeof(ChunkHeader), scratch.size())) {
   if (scratch.size() > sizeof(ChunkHeader)) {
     ChunkHeader* chunk = reinterpret_cast<ChunkHeader*>(scratch.begin());
     chunk->end = scratch.end();
@@ -103,8 +101,7 @@ void* Arena::allocateBytes(size_t amount, uint alignment, bool hasDisposer) {
   if (hasDisposer) {
     // Reserve space for the ObjectHeader, but don't add it to the object list
     // yet.
-    result = alignTo(reinterpret_cast<byte*>(result) + sizeof(ObjectHeader),
-                     alignment);
+    result = alignTo(reinterpret_cast<byte*>(result) + sizeof(ObjectHeader), alignment);
   }
 
   ZC_DASSERT(reinterpret_cast<uintptr_t>(result) % alignment == 0);
@@ -138,9 +135,7 @@ void* Arena::allocateBytesInternal(size_t amount, uint alignment) {
   amount += alignTo(sizeof(ChunkHeader), alignment);
 
   // Make sure we're going to allocate enough space.
-  while (nextChunkSize < amount) {
-    nextChunkSize *= 2;
-  }
+  while (nextChunkSize < amount) { nextChunkSize *= 2; }
 
   // Allocate.
   byte* bytes = reinterpret_cast<byte*>(operator new(nextChunkSize));
@@ -159,8 +154,7 @@ void* Arena::allocateBytesInternal(size_t amount, uint alignment) {
 }
 
 StringPtr Arena::copyString(StringPtr content) {
-  char* data =
-      reinterpret_cast<char*>(allocateBytes(content.size() + 1, 1, false));
+  char* data = reinterpret_cast<char*>(allocateBytes(content.size() + 1, 1, false));
   memcpy(data, content.cStr(), content.size() + 1);
   return StringPtr(data, content.size());
 }

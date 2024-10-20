@@ -53,10 +53,8 @@ class Promise;
 class WaitScope;
 class TaskSet;
 
-Promise<void> joinPromises(Array<Promise<void>>&& promises,
-                           SourceLocation location = {});
-Promise<void> joinPromisesFailFast(Array<Promise<void>>&& promises,
-                                   SourceLocation location = {});
+Promise<void> joinPromises(Array<Promise<void>>&& promises, SourceLocation location = {});
+Promise<void> joinPromisesFailFast(Array<Promise<void>>&& promises, SourceLocation location = {});
 // Out-of-line <void> specialization of template function defined in async.h.
 
 namespace _ {  // private
@@ -75,8 +73,7 @@ template <typename T>
 Promise<T> reducePromiseType(T*, ...);
 template <typename T>
 Promise<T> reducePromiseType(Promise<T>*, ...);
-template <typename T, typename Reduced = decltype(T::reducePromise(
-                          zc::instance<Promise<T>>()))>
+template <typename T, typename Reduced = decltype(T::reducePromise(zc::instance<Promise<T>>()))>
 Reduced reducePromiseType(T*, bool);
 
 template <typename T>
@@ -98,14 +95,14 @@ using UnwrapPromise = typename UnwrapPromise_<T>::Type;
 class PropagateException {
   // A functor which accepts a zc::Exception as a parameter and returns a broken
   // promise of arbitrary type which simply propagates the exception.
- public:
+public:
   class Bottom {
-   public:
+  public:
     Bottom(Exception&& exception) : exception(zc::mv(exception)) {}
 
     Exception asException() { return zc::mv(exception); }
 
-   private:
+  private:
     Exception exception;
   };
 
@@ -244,11 +241,11 @@ template <typename T, bool FreeOnDestroy>
 class ForkBranch;
 
 class PromiseBase {
- public:
+public:
   zc::String trace();
   // Dump debug info about this promise.
 
- private:
+private:
   OwnPromiseNode node;
 
   PromiseBase() = default;
@@ -260,25 +257,23 @@ class PromiseBase {
 };
 
 void detach(zc::Promise<void>&& promise);
-void waitImpl(_::OwnPromiseNode&& node, _::ExceptionOrValue& result,
-              WaitScope& waitScope, SourceLocation location);
-bool pollImpl(_::PromiseNode& node, WaitScope& waitScope,
+void waitImpl(_::OwnPromiseNode&& node, _::ExceptionOrValue& result, WaitScope& waitScope,
               SourceLocation location);
+bool pollImpl(_::PromiseNode& node, WaitScope& waitScope, SourceLocation location);
 OwnPromiseNode readyNow();
 OwnPromiseNode neverDone();
 
 class ReadyNow {
- public:
+public:
   operator Promise<void>() const;
 };
 
 class NeverDone {
- public:
+public:
   template <typename T>
   operator Promise<T>() const;
 
-  ZC_NORETURN void wait(WaitScope& waitScope,
-                        SourceLocation location = {}) const;
+  ZC_NORETURN void wait(WaitScope& waitScope, SourceLocation location = {}) const;
 };
 
 }  // namespace _

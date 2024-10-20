@@ -30,14 +30,11 @@ namespace parse {
 
 namespace _ {  // private
 
-double ParseFloat::operator()(
-    const Array<char>& digits, const Maybe<Array<char>>& fraction,
-    const Maybe<Tuple<Maybe<char>, Array<char>>>& exponent) const {
+double ParseFloat::operator()(const Array<char>& digits, const Maybe<Array<char>>& fraction,
+                              const Maybe<Tuple<Maybe<char>, Array<char>>>& exponent) const {
   size_t bufSize = digits.size();
   ZC_IF_SOME(f, fraction) { bufSize += 1 + f.size(); }
-  ZC_IF_SOME(e, exponent) {
-    bufSize += 1 + (get<0>(e) != zc::none) + get<1>(e).size();
-  }
+  ZC_IF_SOME(e, exponent) { bufSize += 1 + (get<0>(e) != zc::none) + get<1>(e).size(); }
 
   ZC_STACK_ARRAY(char, buf, bufSize + 1u, 128u, 128);
 

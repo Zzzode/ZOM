@@ -37,23 +37,17 @@ TEST(CommonParsers, AnyParser) {
 
   Maybe<char> result = parser(input);
   ZC_IF_SOME(c, result) { EXPECT_EQ('f', c); }
-  else {
-    ADD_FAILURE() << "Expected 'c', got null.";
-  }
+  else { ADD_FAILURE() << "Expected 'c', got null."; }
   EXPECT_FALSE(input.atEnd());
 
   result = parser(input);
   ZC_IF_SOME(c, result) { EXPECT_EQ('o', c); }
-  else {
-    ADD_FAILURE() << "Expected 'o', got null.";
-  }
+  else { ADD_FAILURE() << "Expected 'o', got null."; }
   EXPECT_FALSE(input.atEnd());
 
   result = parser(input);
   ZC_IF_SOME(c, result) { EXPECT_EQ('o', c); }
-  else {
-    ADD_FAILURE() << "Expected 'o', got null.";
-  }
+  else { ADD_FAILURE() << "Expected 'o', got null."; }
   EXPECT_TRUE(input.atEnd());
 
   result = parser(input);
@@ -114,9 +108,7 @@ TEST(CommonParsers, ConstResultParser) {
   Input input(text.begin(), text.end());
   Maybe<int> result = parser(input);
   ZC_IF_SOME(i, result) { EXPECT_EQ(123, i); }
-  else {
-    ADD_FAILURE() << "Expected 123, got null.";
-  }
+  else { ADD_FAILURE() << "Expected 123, got null."; }
   EXPECT_TRUE(input.atEnd());
 }
 
@@ -135,8 +127,7 @@ TEST(CommonParsers, SequenceParser) {
 
   {
     Input input(text.begin(), text.end());
-    Maybe<Tuple<>> result =
-        sequence(exactly('f'), exactly('o'), exactly('o'))(input);
+    Maybe<Tuple<>> result = sequence(exactly('f'), exactly('o'), exactly('o'))(input);
     EXPECT_TRUE(result != zc::none);
     EXPECT_TRUE(input.atEnd());
   }
@@ -150,36 +141,31 @@ TEST(CommonParsers, SequenceParser) {
 
   {
     Input input(text.begin(), text.end());
-    Maybe<Tuple<>> result =
-        sequence(exactly('x'), exactly('o'), exactly('o'))(input);
+    Maybe<Tuple<>> result = sequence(exactly('x'), exactly('o'), exactly('o'))(input);
     EXPECT_TRUE(result == zc::none);
     EXPECT_FALSE(input.atEnd());
   }
 
   {
     Input input(text.begin(), text.end());
-    Maybe<Tuple<>> result =
-        sequence(sequence(exactly('f'), exactly('o')), exactly('o'))(input);
+    Maybe<Tuple<>> result = sequence(sequence(exactly('f'), exactly('o')), exactly('o'))(input);
     EXPECT_TRUE(result != zc::none);
     EXPECT_TRUE(input.atEnd());
   }
 
   {
     Input input(text.begin(), text.end());
-    Maybe<Tuple<>> result =
-        sequence(sequence(exactly('f')), exactly('o'), exactly('o'))(input);
+    Maybe<Tuple<>> result = sequence(sequence(exactly('f')), exactly('o'), exactly('o'))(input);
     EXPECT_TRUE(result != zc::none);
     EXPECT_TRUE(input.atEnd());
   }
 
   {
     Input input(text.begin(), text.end());
-    Maybe<int> result = sequence(transform(exactly('f'), []() { return 123; }),
-                                 exactly('o'), exactly('o'))(input);
+    Maybe<int> result =
+        sequence(transform(exactly('f'), []() { return 123; }), exactly('o'), exactly('o'))(input);
     ZC_IF_SOME(i, result) { EXPECT_EQ(123, i); }
-    else {
-      ADD_FAILURE() << "Expected 123, got null.";
-    }
+    else { ADD_FAILURE() << "Expected 123, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 }
@@ -193,9 +179,7 @@ TEST(CommonParsers, ManyParserCountOnly) {
     Input input(text.begin(), text.begin() + 3);
     Maybe<int> result = parser(input);
     ZC_IF_SOME(i, result) { EXPECT_EQ(2, i); }
-    else {
-      ADD_FAILURE() << "Expected 2, got null.";
-    }
+    else { ADD_FAILURE() << "Expected 2, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -203,9 +187,7 @@ TEST(CommonParsers, ManyParserCountOnly) {
     Input input(text.begin(), text.begin() + 5);
     Maybe<int> result = parser(input);
     ZC_IF_SOME(i, result) { EXPECT_EQ(4, i); }
-    else {
-      ADD_FAILURE() << "Expected 4, got null.";
-    }
+    else { ADD_FAILURE() << "Expected 4, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -213,9 +195,7 @@ TEST(CommonParsers, ManyParserCountOnly) {
     Input input(text.begin(), text.end());
     Maybe<int> result = parser(input);
     ZC_IF_SOME(i, result) { EXPECT_EQ(4, i); }
-    else {
-      ADD_FAILURE() << "Expected 4, got null.";
-    }
+    else { ADD_FAILURE() << "Expected 4, got null."; }
     EXPECT_FALSE(input.atEnd());
   }
 }
@@ -236,9 +216,7 @@ TEST(CommonParsers, TimesParser) {
     Input input(text.begin(), text.begin() + 5);
     Maybe<Array<char>> result = parser(input);
     ZC_IF_SOME(s, result) { EXPECT_EQ("ooba", heapString(s)); }
-    else {
-      ADD_FAILURE() << "Expected string, got null.";
-    }
+    else { ADD_FAILURE() << "Expected string, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -246,9 +224,7 @@ TEST(CommonParsers, TimesParser) {
     Input input(text.begin(), text.end());
     Maybe<Array<char>> result = parser(input);
     ZC_IF_SOME(s, result) { EXPECT_EQ("ooba", heapString(s)); }
-    else {
-      ADD_FAILURE() << "Expected string, got null.";
-    }
+    else { ADD_FAILURE() << "Expected string, got null."; }
     EXPECT_FALSE(input.atEnd());
   }
 }
@@ -298,18 +274,15 @@ TEST(CommonParsers, ManyParserSubResult) {
     Input input(text.begin(), text.end());
     Maybe<Array<char>> result = parser(input);
     ZC_IF_SOME(chars, result) { EXPECT_EQ(text, heapString(chars)); }
-    else {
-      ADD_FAILURE() << "Expected char array, got null.";
-    }
+    else { ADD_FAILURE() << "Expected char array, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 }
 
 TEST(CommonParsers, OptionalParser) {
-  auto parser =
-      sequence(transform(exactly('b'), []() -> uint { return 123; }),
-               optional(transform(exactly('a'), []() -> uint { return 456; })),
-               transform(exactly('r'), []() -> uint { return 789; }));
+  auto parser = sequence(transform(exactly('b'), []() -> uint { return 123; }),
+                         optional(transform(exactly('a'), []() -> uint { return 456; })),
+                         transform(exactly('r'), []() -> uint { return 789; }));
 
   {
     StringPtr text = "bar";
@@ -318,14 +291,10 @@ TEST(CommonParsers, OptionalParser) {
     ZC_IF_SOME(value, result) {
       EXPECT_EQ(123u, get<0>(value));
       ZC_IF_SOME(value2, get<1>(value)) { EXPECT_EQ(456u, value2); }
-      else {
-        ADD_FAILURE() << "Expected 456, got null.";
-      }
+      else { ADD_FAILURE() << "Expected 456, got null."; }
       EXPECT_EQ(789u, get<2>(value));
     }
-    else {
-      ADD_FAILURE() << "Expected result tuple, got null.";
-    }
+    else { ADD_FAILURE() << "Expected result tuple, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -338,9 +307,7 @@ TEST(CommonParsers, OptionalParser) {
       EXPECT_TRUE(get<1>(value) == zc::none);
       EXPECT_EQ(789u, get<2>(value));
     }
-    else {
-      ADD_FAILURE() << "Expected result tuple, got null.";
-    }
+    else { ADD_FAILURE() << "Expected result tuple, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -353,20 +320,17 @@ TEST(CommonParsers, OptionalParser) {
 }
 
 TEST(CommonParsers, OneOfParser) {
-  auto parser =
-      oneOf(transform(sequence(exactly('f'), exactly('o'), exactly('o')),
-                      []() -> StringPtr { return "foo"; }),
-            transform(sequence(exactly('b'), exactly('a'), exactly('r')),
-                      []() -> StringPtr { return "bar"; }));
+  auto parser = oneOf(transform(sequence(exactly('f'), exactly('o'), exactly('o')),
+                                []() -> StringPtr { return "foo"; }),
+                      transform(sequence(exactly('b'), exactly('a'), exactly('r')),
+                                []() -> StringPtr { return "bar"; }));
 
   {
     StringPtr text = "foo";
     Input input(text.begin(), text.end());
     Maybe<StringPtr> result = parser(input);
     ZC_IF_SOME(s, result) { EXPECT_EQ("foo", s); }
-    else {
-      ADD_FAILURE() << "Expected 'foo', got null.";
-    }
+    else { ADD_FAILURE() << "Expected 'foo', got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -375,9 +339,7 @@ TEST(CommonParsers, OneOfParser) {
     Input input(text.begin(), text.end());
     Maybe<StringPtr> result = parser(input);
     ZC_IF_SOME(s, result) { EXPECT_EQ("bar", s); }
-    else {
-      ADD_FAILURE() << "Expected 'bar', got null.";
-    }
+    else { ADD_FAILURE() << "Expected 'bar', got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 }
@@ -386,8 +348,7 @@ TEST(CommonParsers, TransformParser) {
   StringPtr text = "foo";
 
   auto parser = transformWithLocation(
-      sequence(exactly('f'), exactly('o'), exactly('o')),
-      [](Span<const char*> location) -> int {
+      sequence(exactly('f'), exactly('o'), exactly('o')), [](Span<const char*> location) -> int {
         EXPECT_EQ("foo", StringPtr(location.begin(), location.end()));
         return 123;
       });
@@ -396,31 +357,26 @@ TEST(CommonParsers, TransformParser) {
     Input input(text.begin(), text.end());
     Maybe<int> result = parser(input);
     ZC_IF_SOME(i, result) { EXPECT_EQ(123, i); }
-    else {
-      ADD_FAILURE() << "Expected 123, got null.";
-    }
+    else { ADD_FAILURE() << "Expected 123, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 }
 
 TEST(CommonParsers, TransformOrRejectParser) {
-  auto parser =
-      transformOrReject(many(any), [](Array<char> chars) -> Maybe<int> {
-        if (heapString(chars) == "foo") {
-          return 123;
-        } else {
-          return zc::none;
-        }
-      });
+  auto parser = transformOrReject(many(any), [](Array<char> chars) -> Maybe<int> {
+    if (heapString(chars) == "foo") {
+      return 123;
+    } else {
+      return zc::none;
+    }
+  });
 
   {
     StringPtr text = "foo";
     Input input(text.begin(), text.end());
     Maybe<int> result = parser(input);
     ZC_IF_SOME(i, result) { EXPECT_EQ(123, i); }
-    else {
-      ADD_FAILURE() << "Expected 123, got null.";
-    }
+    else { ADD_FAILURE() << "Expected 123, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -445,12 +401,10 @@ TEST(CommonParsers, References) {
   // Don't use auto for the parsers here in order to verify that the templates
   // are properly choosing whether to use references or copies.
 
-  Transform_<Exactly_<char>, TransformFunc> parser1 =
-      transform(exactly('f'), TransformFunc(12));
+  Transform_<Exactly_<char>, TransformFunc> parser1 = transform(exactly('f'), TransformFunc(12));
 
   auto otherParser = exactly('o');
-  Transform_<Exactly_<char>&, TransformFunc> parser2 =
-      transform(otherParser, TransformFunc(34));
+  Transform_<Exactly_<char>&, TransformFunc> parser2 = transform(otherParser, TransformFunc(34));
 
   auto otherParser2 = exactly('b');
   Transform_<Exactly_<char>, TransformFunc> parser3 =
@@ -464,9 +418,7 @@ TEST(CommonParsers, References) {
     Input input(text.begin(), text.end());
     Maybe<int> result = parser(input);
     ZC_IF_SOME(i, result) { EXPECT_EQ(12 + 34 + 56, i); }
-    else {
-      ADD_FAILURE() << "Expected 12 + 34 + 56, got null.";
-    }
+    else { ADD_FAILURE() << "Expected 12 + 34 + 56, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 }

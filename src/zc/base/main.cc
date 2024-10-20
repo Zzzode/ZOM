@@ -52,8 +52,7 @@ namespace zc {
 // =======================================================================================
 
 TopLevelProcessContext::TopLevelProcessContext(StringPtr programName)
-    : programName(programName),
-      cleanShutdown(getenv("ZC_CLEAN_SHUTDOWN") != nullptr) {
+    : programName(programName), cleanShutdown(getenv("ZC_CLEAN_SHUTDOWN") != nullptr) {
   printStackTraceOnCrash();
 }
 
@@ -61,9 +60,7 @@ StringPtr TopLevelProcessContext::getProgramName() { return programName; }
 
 void TopLevelProcessContext::exit() {
   int exitCode = hadErrors.load() ? 1 : 0;
-  if (cleanShutdown) {
-    throw CleanShutdownException{exitCode};
-  }
+  if (cleanShutdown) { throw CleanShutdownException{exitCode}; }
   _exit(exitCode);
 }
 
@@ -88,18 +85,13 @@ static void writeLineToFd(int fd, StringPtr message) {
   // newline.  We use writev() to do this in a single system call without any
   // copying (OS permitting).
 
-  if (message.size() == 0) {
-    return;
-  }
+  if (message.size() == 0) { return; }
 
 #if _WIN32
-  ZC_STACK_ARRAY(char, newlineExpansionBuffer, 2 * (message.size() + 1), 128,
-                 512);
+  ZC_STACK_ARRAY(char, newlineExpansionBuffer, 2 * (message.size() + 1), 128, 512);
   char* p = newlineExpansionBuffer.begin();
   for (char ch : message) {
-    if (ch == '\n') {
-      *(p++) = '\r';
-    }
+    if (ch == '\n') { *(p++) = '\r'; }
     *(p++) = ch;
   }
   if (!message.endsWith("\n")) {
@@ -117,14 +109,12 @@ static void writeLineToFd(int fd, StringPtr message) {
 
   DWORD writtenSize;
   if (redirectedToFile) {
-    WriteFile(handle, newlineExpansionBuffer.begin(), newlineExpandedSize,
-              &writtenSize, nullptr);
+    WriteFile(handle, newlineExpansionBuffer.begin(), newlineExpandedSize, &writtenSize, nullptr);
   } else {
     ZC_STACK_ARRAY(wchar_t, buffer, newlineExpandedSize, 128, 512);
 
-    size_t finalSize =
-        MultiByteToWideChar(CP_UTF8, 0, newlineExpansionBuffer.begin(),
-                            newlineExpandedSize, buffer.begin(), buffer.size());
+    size_t finalSize = MultiByteToWideChar(CP_UTF8, 0, newlineExpansionBuffer.begin(),
+                                           newlineExpandedSize, buffer.begin(), buffer.size());
 
     ZC_ASSERT(finalSize <= buffer.size());
 
@@ -205,8 +195,7 @@ void TopLevelProcessContext::increaseLoggingVerbosity() {
 
 // =======================================================================================
 
-int runMainAndExit(ProcessContext& context, MainFunc&& func, int argc,
-                   char* argv[]) {
+int runMainAndExit(ProcessContext& context, MainFunc&& func, int argc, char* argv[]) {
   setStandardIoMode(STDIN_FILENO);
   setStandardIoMode(STDOUT_FILENO);
   setStandardIoMode(STDERR_FILENO);
@@ -215,26 +204,21 @@ int runMainAndExit(ProcessContext& context, MainFunc&& func, int argc,
     ZC_ASSERT(argc > 0);
 
     ZC_STACK_ARRAY(StringPtr, params, argc - 1, 8, 32);
-    for (int i = 1; i < argc; i++) {
-      params[i - 1] = argv[i];
-    }
+    for (int i = 1; i < argc; i++) { params[i - 1] = argv[i]; }
 
-    ZC_IF_SOME(exception,
-               runCatchingExceptions([&]() { func(argv[0], params); })) {
+    ZC_IF_SOME(exception, runCatchingExceptions([&]() { func(argv[0], params); })) {
       context.error(str("*** Uncaught exception ***\n", exception));
     }
     context.exit();
-  } catch (const TopLevelProcessContext::CleanShutdownException& e) {
-    return e.exitCode;
-  }
+  } catch (const TopLevelProcessContext::CleanShutdownException& e) { return e.exitCode; }
   ZC_CLANG_KNOWS_THIS_IS_UNREACHABLE_BUT_GCC_DOESNT
 }
 
 // =======================================================================================
 
 struct MainBuilder::Impl {
-  inline Impl(ProcessContext& context, StringPtr version,
-              StringPtr briefDescription, StringPtr extendedDescription)
+  inline Impl(ProcessContext& context, StringPtr version, StringPtr briefDescription,
+              StringPtr extendedDescription)
       : context(context),
         version(version),
         briefDescription(briefDescription),
@@ -280,8 +264,7 @@ struct MainBuilder::Impl {
 
   Maybe<Function<Validity()>> finalCallback;
 
-  Option& addOption(std::initializer_list<OptionName> names, bool hasArg,
-                    StringPtr helpText) {
+  Option& addOption(std::initializer_list<OptionName> names, bool hasArg, StringPtr helpText) {
     ZC_REQUIRE(names.size() > 0, "option must have at least one name");
 
     Option& option = arena.allocate<Option>();
@@ -290,15 +273,12 @@ struct MainBuilder::Impl {
     for (auto& name : names) {
       option.names[i++] = name;
       if (name.isLong) {
-        ZC_REQUIRE(longOptions
-                       .insert(std::make_pair(
-                           StringPtr(name.longName).asArray(), &option))
-                       .second,
-                   "duplicate option", name.longName);
-      } else {
         ZC_REQUIRE(
-            shortOptions.insert(std::make_pair(name.shortName, &option)).second,
-            "duplicate option", name.shortName);
+            longOptions.insert(std::make_pair(StringPtr(name.longName).asArray(), &option)).second,
+            "duplicate option", name.longName);
+      } else {
+        ZC_REQUIRE(shortOptions.insert(std::make_pair(name.shortName, &option)).second,
+                   "duplicate option", name.shortName);
       }
     }
     option.hasArg = hasArg;
@@ -317,11 +297,9 @@ struct MainBuilder::Impl {
   }
 };
 
-MainBuilder::MainBuilder(ProcessContext& context, StringPtr version,
-                         StringPtr briefDescription,
+MainBuilder::MainBuilder(ProcessContext& context, StringPtr version, StringPtr briefDescription,
                          StringPtr extendedDescription)
-    : impl(
-          heap<Impl>(context, version, briefDescription, extendedDescription)) {
+    : impl(heap<Impl>(context, version, briefDescription, extendedDescription)) {
   addOption({"verbose"}, ZC_BIND_METHOD(*impl, increaseVerbosity),
             "Log informational messages to stderr; useful for debugging.");
   addOption({"version"}, ZC_BIND_METHOD(*impl, printVersion),
@@ -331,83 +309,70 @@ MainBuilder::MainBuilder(ProcessContext& context, StringPtr version,
 MainBuilder::~MainBuilder() noexcept(false) {}
 
 MainBuilder& MainBuilder::addOption(std::initializer_list<OptionName> names,
-                                    Function<Validity()> callback,
-                                    StringPtr helpText) {
-  impl->addOption(names, false, helpText).func =
-      &impl->arena.copy(zc::mv(callback));
+                                    Function<Validity()> callback, StringPtr helpText) {
+  impl->addOption(names, false, helpText).func = &impl->arena.copy(zc::mv(callback));
   return *this;
 }
 
-MainBuilder& MainBuilder::addOptionWithArg(
-    std::initializer_list<OptionName> names,
-    Function<Validity(StringPtr)> callback, StringPtr argumentTitle,
-    StringPtr helpText) {
+MainBuilder& MainBuilder::addOptionWithArg(std::initializer_list<OptionName> names,
+                                           Function<Validity(StringPtr)> callback,
+                                           StringPtr argumentTitle, StringPtr helpText) {
   auto& opt = impl->addOption(names, true, helpText);
   opt.funcWithArg = &impl->arena.copy(zc::mv(callback));
   opt.argTitle = argumentTitle;
   return *this;
 }
 
-MainBuilder& MainBuilder::addSubCommand(StringPtr name,
-                                        Function<MainFunc()> getSubParser,
+MainBuilder& MainBuilder::addSubCommand(StringPtr name, Function<MainFunc()> getSubParser,
                                         StringPtr helpText) {
-  ZC_REQUIRE(impl->args.size() == 0,
-             "cannot have sub-commands when expecting arguments");
+  ZC_REQUIRE(impl->args.size() == 0, "cannot have sub-commands when expecting arguments");
   ZC_REQUIRE(impl->finalCallback == zc::none,
              "cannot have a final callback when accepting sub-commands");
   ZC_REQUIRE(impl->subCommands
-                 .insert(std::make_pair(
-                     name, Impl::SubCommand{zc::mv(getSubParser), helpText}))
+                 .insert(std::make_pair(name, Impl::SubCommand{zc::mv(getSubParser), helpText}))
                  .second,
              "duplicate sub-command", name);
   return *this;
 }
 
-MainBuilder& MainBuilder::expectArg(StringPtr title,
-                                    Function<Validity(StringPtr)> callback) {
-  ZC_REQUIRE(impl->subCommands.empty(),
-             "cannot have sub-commands when expecting arguments");
+MainBuilder& MainBuilder::expectArg(StringPtr title, Function<Validity(StringPtr)> callback) {
+  ZC_REQUIRE(impl->subCommands.empty(), "cannot have sub-commands when expecting arguments");
   impl->args.add(Impl::Arg{title, zc::mv(callback), 1, 1});
   return *this;
 }
-MainBuilder& MainBuilder::expectOptionalArg(
-    StringPtr title, Function<Validity(StringPtr)> callback) {
-  ZC_REQUIRE(impl->subCommands.empty(),
-             "cannot have sub-commands when expecting arguments");
+MainBuilder& MainBuilder::expectOptionalArg(StringPtr title,
+                                            Function<Validity(StringPtr)> callback) {
+  ZC_REQUIRE(impl->subCommands.empty(), "cannot have sub-commands when expecting arguments");
   impl->args.add(Impl::Arg{title, zc::mv(callback), 0, 1});
   return *this;
 }
-MainBuilder& MainBuilder::expectZeroOrMoreArgs(
-    StringPtr title, Function<Validity(StringPtr)> callback) {
-  ZC_REQUIRE(impl->subCommands.empty(),
-             "cannot have sub-commands when expecting arguments");
+MainBuilder& MainBuilder::expectZeroOrMoreArgs(StringPtr title,
+                                               Function<Validity(StringPtr)> callback) {
+  ZC_REQUIRE(impl->subCommands.empty(), "cannot have sub-commands when expecting arguments");
   impl->args.add(Impl::Arg{title, zc::mv(callback), 0, UINT_MAX});
   return *this;
 }
-MainBuilder& MainBuilder::expectOneOrMoreArgs(
-    StringPtr title, Function<Validity(StringPtr)> callback) {
-  ZC_REQUIRE(impl->subCommands.empty(),
-             "cannot have sub-commands when expecting arguments");
+MainBuilder& MainBuilder::expectOneOrMoreArgs(StringPtr title,
+                                              Function<Validity(StringPtr)> callback) {
+  ZC_REQUIRE(impl->subCommands.empty(), "cannot have sub-commands when expecting arguments");
   impl->args.add(Impl::Arg{title, zc::mv(callback), 1, UINT_MAX});
   return *this;
 }
 
 MainBuilder& MainBuilder::callAfterParsing(Function<Validity()> callback) {
-  ZC_REQUIRE(impl->finalCallback == zc::none,
-             "callAfterParsing() can only be called once");
-  ZC_REQUIRE(impl->subCommands.empty(),
-             "cannot have a final callback when accepting sub-commands");
+  ZC_REQUIRE(impl->finalCallback == zc::none, "callAfterParsing() can only be called once");
+  ZC_REQUIRE(impl->subCommands.empty(), "cannot have a final callback when accepting sub-commands");
   impl->finalCallback = zc::mv(callback);
   return *this;
 }
 
 class MainBuilder::MainImpl {
- public:
+public:
   MainImpl(Own<Impl>&& impl) : impl(zc::mv(impl)) {}
 
   void operator()(StringPtr programName, ArrayPtr<const StringPtr> params);
 
- private:
+private:
   Own<Impl> impl;
 
   ZC_NORETURN void usageError(StringPtr programName, StringPtr message);
@@ -417,8 +382,7 @@ class MainBuilder::MainImpl {
 
 MainFunc MainBuilder::build() { return MainImpl(zc::mv(impl)); }
 
-void MainBuilder::MainImpl::operator()(StringPtr programName,
-                                       ArrayPtr<const StringPtr> params) {
+void MainBuilder::MainImpl::operator()(StringPtr programName, ArrayPtr<const StringPtr> params) {
   Vector<StringPtr> arguments;
 
   for (size_t i = 0; i < params.size(); i++) {
@@ -435,9 +399,7 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
         name = param.slice(2, pos);
         maybeArg = param.slice(pos + 1);
       }
-      else {
-        name = param.slice(2);
-      }
+      else { name = param.slice(2); }
       auto iter = impl->longOptions.find(name);
       if (iter == impl->longOptions.end()) {
         if (param == "--help") {
@@ -455,17 +417,15 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
               usageError(programName, str(param, ": ", error));
             }
           }
-          else if (i + 1 < params.size() && !(params[i + 1].startsWith("-") &&
-                                              params[i + 1].size() > 1)) {
+          else if (i + 1 < params.size() &&
+                   !(params[i + 1].startsWith("-") && params[i + 1].size() > 1)) {
             // "--foo blah": "blah" is the argument.
             ++i;
             ZC_IF_SOME(error, (*option.funcWithArg)(params[i]).releaseError()) {
               usageError(programName, str(param, "=", params[i], ": ", error));
             }
           }
-          else {
-            usageError(programName, str("--", name, ": missing argument"));
-          }
+          else { usageError(programName, str("--", name, ": missing argument")); }
         } else {
           // No argument expected.
           if (maybeArg == zc::none) {
@@ -473,8 +433,7 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
               usageError(programName, str(param, ": ", error));
             }
           } else {
-            usageError(programName,
-                       str("--", name, ": option does not accept an argument"));
+            usageError(programName, str("--", name, ": option does not accept an argument"));
           }
         }
       }
@@ -497,14 +456,11 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
               }
               break;
             } else if (i + 1 < params.size() &&
-                       !(params[i + 1].startsWith("-") &&
-                         params[i + 1].size() > 1)) {
+                       !(params[i + 1].startsWith("-") && params[i + 1].size() > 1)) {
               // Next parameter is argument.
               ++i;
-              ZC_IF_SOME(error,
-                         (*option.funcWithArg)(params[i]).releaseError()) {
-                usageError(programName,
-                           str("-", c, " ", params[i], ": ", error));
+              ZC_IF_SOME(error, (*option.funcWithArg)(params[i]).releaseError()) {
+                usageError(programName, str("-", c, " ", params[i], ": ", error));
               }
               break;
             } else {
@@ -523,8 +479,7 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
       auto iter = impl->subCommands.find(param);
       if (iter != impl->subCommands.end()) {
         MainFunc subMain = iter->second.func();
-        subMain(str(programName, ' ', param),
-                params.slice(i + 1, params.size()));
+        subMain(str(programName, ' ', param), params.slice(i + 1, params.size()));
         return;
       } else if (param == "help") {
         if (i + 1 < params.size()) {
@@ -533,21 +488,18 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
             // Run the sub-command with "--help" as the argument.
             MainFunc subMain = iter->second.func();
             StringPtr dummyArg = "--help";
-            subMain(str(programName, ' ', params[i + 1]),
-                    arrayPtr(&dummyArg, 1));
+            subMain(str(programName, ' ', params[i + 1]), arrayPtr(&dummyArg, 1));
             return;
           } else if (params[i + 1] == "help") {
             uint count = 0;
-            for (uint j = i + 2; j < params.size() &&
-                                 (params[j] == "help" || params[j] == "--help");
-                 j++) {
+            for (uint j = i + 2;
+                 j < params.size() && (params[j] == "help" || params[j] == "--help"); j++) {
               ++count;
             }
 
             switch (count) {
               case 0:
-                impl->context.exitInfo(
-                    "Help about help?  We must go deeper...");
+                impl->context.exitInfo("Help about help?  We must go deeper...");
                 break;
               case 1:
                 impl->context.exitInfo(
@@ -556,8 +508,7 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
                     "help so you can get help on help.");
                 break;
               case 2:
-                impl->context.exitInfo(
-                    "Help, I'm trapped in a help text factory!");
+                impl->context.exitInfo("Help, I'm trapped in a help text factory!");
                 break;
               default:
                 if (count < 10) {
@@ -587,16 +538,12 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
   // Handle arguments.
   // ------------------------------------
 
-  if (!impl->subCommands.empty()) {
-    usageError(programName, "missing command");
-  }
+  if (!impl->subCommands.empty()) { usageError(programName, "missing command"); }
 
   // Count the number of required arguments, so that we know how to distribute
   // the optional args.
   uint requiredArgCount = 0;
-  for (auto& argSpec : impl->args) {
-    requiredArgCount += argSpec.minCount;
-  }
+  for (auto& argSpec : impl->args) { requiredArgCount += argSpec.minCount; }
 
   // Now go through each argument spec and consume arguments with it.
   StringPtr* argPos = arguments.begin();
@@ -616,8 +563,7 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
 
     // If we have more arguments than we need, and this argument spec will
     // accept extras, give them to it.
-    for (; i < argSpec.maxCount && arguments.end() - argPos > requiredArgCount;
-         ++i) {
+    for (; i < argSpec.maxCount && arguments.end() - argPos > requiredArgCount; ++i) {
       ZC_IF_SOME(error, argSpec.callback(*argPos).releaseError()) {
         usageError(programName, str(*argPos, ": ", error));
       }
@@ -636,16 +582,14 @@ void MainBuilder::MainImpl::operator()(StringPtr programName,
   }
 }
 
-void MainBuilder::MainImpl::usageError(StringPtr programName,
-                                       StringPtr message) {
-  impl->context.exitError(zc::str(programName, ": ", message, "\nTry '",
-                                  programName,
+void MainBuilder::MainImpl::usageError(StringPtr programName, StringPtr message) {
+  impl->context.exitError(zc::str(programName, ": ", message, "\nTry '", programName,
                                   " --help' for more information."));
   ZC_CLANG_KNOWS_THIS_IS_UNREACHABLE_BUT_GCC_DOESNT
 }
 
 class MainBuilder::Impl::OptionDisplayOrder {
- public:
+public:
   bool operator()(const Option* a, const Option* b) const {
     if (a == b) return false;
 
@@ -654,9 +598,7 @@ class MainBuilder::Impl::OptionDisplayOrder {
 
     for (auto& name : a->names) {
       if (name.isLong) {
-        if (aShort == '\0') {
-          aShort = name.longName[0];
-        }
+        if (aShort == '\0') { aShort = name.longName[0]; }
       } else {
         aShort = name.shortName;
         break;
@@ -664,9 +606,7 @@ class MainBuilder::Impl::OptionDisplayOrder {
     }
     for (auto& name : b->names) {
       if (name.isLong) {
-        if (bShort == '\0') {
-          bShort = name.longName[0];
-        }
+        if (bShort == '\0') { bShort = name.longName[0]; }
       } else {
         bShort = name.shortName;
         break;
@@ -701,15 +641,10 @@ void MainBuilder::MainImpl::printHelp(StringPtr programName) {
 
   std::set<const Impl::Option*, Impl::OptionDisplayOrder> sortedOptions;
 
-  for (auto& entry : impl->shortOptions) {
-    sortedOptions.insert(entry.second);
-  }
-  for (auto& entry : impl->longOptions) {
-    sortedOptions.insert(entry.second);
-  }
+  for (auto& entry : impl->shortOptions) { sortedOptions.insert(entry.second); }
+  for (auto& entry : impl->longOptions) { sortedOptions.insert(entry.second); }
 
-  text.addAll(str("Usage: ", programName,
-                  sortedOptions.empty() ? "" : " [<option>...]"));
+  text.addAll(str("Usage: ", programName, sortedOptions.empty() ? "" : " [<option>...]"));
 
   if (impl->subCommands.empty()) {
     for (auto& arg : impl->args) {
@@ -730,22 +665,17 @@ void MainBuilder::MainImpl::printHelp(StringPtr programName) {
   if (!impl->subCommands.empty()) {
     text.addAll(StringPtr("\nCommands:\n"));
     size_t maxLen = 0;
-    for (auto& command : impl->subCommands) {
-      maxLen = zc::max(maxLen, command.first.size());
-    }
+    for (auto& command : impl->subCommands) { maxLen = zc::max(maxLen, command.first.size()); }
     for (auto& command : impl->subCommands) {
       text.addAll(StringPtr("  "));
       text.addAll(command.first);
-      for (size_t i = command.first.size(); i < maxLen; i++) {
-        text.add(' ');
-      }
+      for (size_t i = command.first.size(); i < maxLen; i++) { text.add(' '); }
       text.addAll(StringPtr("  "));
       text.addAll(command.second.helpText);
       text.add('\n');
     }
-    text.addAll(
-        str("\nSee '", programName,
-            " help <command>' for more information on a specific command.\n"));
+    text.addAll(str("\nSee '", programName,
+                    " help <command>' for more information on a specific command.\n"));
   }
 
   if (!sortedOptions.empty()) {
@@ -762,22 +692,17 @@ void MainBuilder::MainImpl::printHelp(StringPtr programName) {
         }
         if (name.isLong) {
           text.addAll(str("--", name.longName));
-          if (opt->hasArg) {
-            text.addAll(str("=", opt->argTitle));
-          }
+          if (opt->hasArg) { text.addAll(str("=", opt->argTitle)); }
         } else {
           text.addAll(str("-", name.shortName));
-          if (opt->hasArg) {
-            text.addAll(opt->argTitle);
-          }
+          if (opt->hasArg) { text.addAll(opt->argTitle); }
         }
       }
       text.add('\n');
       wrapText(text, "        ", opt->helpText);
     }
 
-    text.addAll(
-        StringPtr("    --help\n        Display this help text and exit.\n"));
+    text.addAll(StringPtr("    --help\n        Display this help text and exit.\n"));
   }
 
   if (impl->extendedDescription.size() > 0) {
@@ -790,8 +715,7 @@ void MainBuilder::MainImpl::printHelp(StringPtr programName) {
   ZC_CLANG_KNOWS_THIS_IS_UNREACHABLE_BUT_GCC_DOESNT
 }
 
-void MainBuilder::MainImpl::wrapText(Vector<char>& output, StringPtr indent,
-                                     StringPtr text) {
+void MainBuilder::MainImpl::wrapText(Vector<char>& output, StringPtr indent, StringPtr text) {
   uint width = 80 - indent.size();
 
   while (text.size() > 0) {
@@ -827,9 +751,7 @@ void MainBuilder::MainImpl::wrapText(Vector<char>& output, StringPtr indent,
     output.add('\n');
 
     // Skip spaces after the text that was printed.
-    while (text[wrapPos] == ' ') {
-      ++wrapPos;
-    }
+    while (text[wrapPos] == ' ') { ++wrapPos; }
     if (text[wrapPos] == '\n') {
       // Huh, apparently there were a whole bunch of spaces at the end of the
       // line followed by a newline.  Skip the newline as well so we don't print

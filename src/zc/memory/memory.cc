@@ -40,8 +40,7 @@ void atomicPtrCounterAssertionFailed(char const* reason) {
 }
 
 void throwWrongDisposerError() {
-  ZC_FAIL_REQUIRE(
-      "When disowning an object, disposer must be equal to Own's disposer");
+  ZC_FAIL_REQUIRE("When disowning an object, disposer must be equal to Own's disposer");
 }
 
 }  // namespace _

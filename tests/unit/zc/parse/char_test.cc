@@ -77,9 +77,7 @@ TEST(CharParsers, CharRange) {
     Input input(text.begin(), text.end());
     Maybe<char> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ('a', value); }
-    else {
-      ADD_FAILURE() << "Expected parse result, got null.";
-    }
+    else { ADD_FAILURE() << "Expected parse result, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -88,9 +86,7 @@ TEST(CharParsers, CharRange) {
     Input input(text.begin(), text.end());
     Maybe<char> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ('n', value); }
-    else {
-      ADD_FAILURE() << "Expected parse result, got null.";
-    }
+    else { ADD_FAILURE() << "Expected parse result, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -99,9 +95,7 @@ TEST(CharParsers, CharRange) {
     Input input(text.begin(), text.end());
     Maybe<char> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ('z', value); }
-    else {
-      ADD_FAILURE() << "Expected parse result, got null.";
-    }
+    else { ADD_FAILURE() << "Expected parse result, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -138,9 +132,7 @@ TEST(CharParsers, AnyOfChars) {
     Input input(text.begin(), text.end());
     Maybe<char> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ('a', value); }
-    else {
-      ADD_FAILURE() << "Expected parse result, got null.";
-    }
+    else { ADD_FAILURE() << "Expected parse result, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -149,9 +141,7 @@ TEST(CharParsers, AnyOfChars) {
     Input input(text.begin(), text.end());
     Maybe<char> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ('n', value); }
-    else {
-      ADD_FAILURE() << "Expected parse result, got null.";
-    }
+    else { ADD_FAILURE() << "Expected parse result, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -160,9 +150,7 @@ TEST(CharParsers, AnyOfChars) {
     Input input(text.begin(), text.end());
     Maybe<char> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ('B', value); }
-    else {
-      ADD_FAILURE() << "Expected parse result, got null.";
-    }
+    else { ADD_FAILURE() << "Expected parse result, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -192,17 +180,14 @@ TEST(CharParsers, AnyOfChars) {
 }
 
 TEST(CharParsers, CharGroupCombo) {
-  constexpr auto parser =
-      many(charRange('0', '9').orRange('a', 'z').orRange('A', 'Z').orAny("-_"));
+  constexpr auto parser = many(charRange('0', '9').orRange('a', 'z').orRange('A', 'Z').orAny("-_"));
 
   {
     StringPtr text = "foo1-bar2_baz3@qux";
     Input input(text.begin(), text.end());
     Maybe<Array<char>> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ("foo1-bar2_baz3", str(value)); }
-    else {
-      ADD_FAILURE() << "Expected parse result, got null.";
-    }
+    else { ADD_FAILURE() << "Expected parse result, got null."; }
     EXPECT_FALSE(input.atEnd());
   }
 }
@@ -215,9 +200,7 @@ TEST(CharParsers, Identifier) {
     Input input(text.begin(), text.end());
     Maybe<String> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ("helloWorld123", value); }
-    else {
-      ADD_FAILURE() << "Expected string, got null.";
-    }
+    else { ADD_FAILURE() << "Expected string, got null."; }
     EXPECT_FALSE(input.atEnd());
   }
 }
@@ -230,9 +213,7 @@ TEST(CharParsers, Integer) {
     Input input(text.begin(), text.end());
     Maybe<uint64_t> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ(12349u, value); }
-    else {
-      ADD_FAILURE() << "Expected integer, got null.";
-    }
+    else { ADD_FAILURE() << "Expected integer, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -241,9 +222,7 @@ TEST(CharParsers, Integer) {
     Input input(text.begin(), text.end());
     Maybe<uint64_t> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ(0x1aF0u, value); }
-    else {
-      ADD_FAILURE() << "Expected integer, got null.";
-    }
+    else { ADD_FAILURE() << "Expected integer, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -252,9 +231,7 @@ TEST(CharParsers, Integer) {
     Input input(text.begin(), text.end());
     Maybe<uint64_t> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ(064270u, value); }
-    else {
-      ADD_FAILURE() << "Expected integer, got null.";
-    }
+    else { ADD_FAILURE() << "Expected integer, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 }
@@ -267,9 +244,7 @@ TEST(CharParsers, Number) {
     Input input(text.begin(), text.end());
     Maybe<double> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ(12345, value); }
-    else {
-      ADD_FAILURE() << "Expected number, got null.";
-    }
+    else { ADD_FAILURE() << "Expected number, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -278,9 +253,7 @@ TEST(CharParsers, Number) {
     Input input(text.begin(), text.end());
     Maybe<double> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ(123.25, value); }
-    else {
-      ADD_FAILURE() << "Expected number, got null.";
-    }
+    else { ADD_FAILURE() << "Expected number, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -289,9 +262,7 @@ TEST(CharParsers, Number) {
     Input input(text.begin(), text.end());
     Maybe<double> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ(123e10, value); }
-    else {
-      ADD_FAILURE() << "Expected number, got null.";
-    }
+    else { ADD_FAILURE() << "Expected number, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -300,9 +271,7 @@ TEST(CharParsers, Number) {
     Input input(text.begin(), text.end());
     Maybe<double> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ(123.25E+10, value); }
-    else {
-      ADD_FAILURE() << "Expected number, got null.";
-    }
+    else { ADD_FAILURE() << "Expected number, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -311,9 +280,7 @@ TEST(CharParsers, Number) {
     Input input(text.begin(), text.end());
     Maybe<double> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ(25e-2, value); }
-    else {
-      ADD_FAILURE() << "Expected number, got null.";
-    }
+    else { ADD_FAILURE() << "Expected number, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 }
@@ -326,23 +293,16 @@ TEST(CharParsers, DoubleQuotedString) {
     Input input(text.begin(), text.end());
     Maybe<String> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ("hello", value); }
-    else {
-      ADD_FAILURE() << "Expected \"hello\", got null.";
-    }
+    else { ADD_FAILURE() << "Expected \"hello\", got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
   {
-    StringPtr text =
-        "\"test\\a\\b\\f\\n\\r\\t\\v\\\'\\\"\\\?\\x01\\x20\\2\\34\\156\"";
+    StringPtr text = "\"test\\a\\b\\f\\n\\r\\t\\v\\\'\\\"\\\?\\x01\\x20\\2\\34\\156\"";
     Input input(text.begin(), text.end());
     Maybe<String> result = parser(input);
-    ZC_IF_SOME(value, result) {
-      EXPECT_EQ("test\a\b\f\n\r\t\v\'\"\?\x01\x20\2\34\156", value);
-    }
-    else {
-      ADD_FAILURE() << "Expected string, got null.";
-    }
+    ZC_IF_SOME(value, result) { EXPECT_EQ("test\a\b\f\n\r\t\v\'\"\?\x01\x20\2\34\156", value); }
+    else { ADD_FAILURE() << "Expected string, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -351,9 +311,7 @@ TEST(CharParsers, DoubleQuotedString) {
     Input input(text.begin(), text.end());
     Maybe<String> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ("foo'bar", value); }
-    else {
-      ADD_FAILURE() << "Expected string, got null.";
-    }
+    else { ADD_FAILURE() << "Expected string, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 }
@@ -366,9 +324,7 @@ TEST(CharParsers, SingleQuotedString) {
     Input input(text.begin(), text.end());
     Maybe<String> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ("hello", value); }
-    else {
-      ADD_FAILURE() << "Expected \"hello\", got null.";
-    }
+    else { ADD_FAILURE() << "Expected \"hello\", got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -376,12 +332,8 @@ TEST(CharParsers, SingleQuotedString) {
     StringPtr text = "\'test\\a\\b\\f\\n\\r\\t\\v\\\'\\\"\\\?\x01\2\34\156\'";
     Input input(text.begin(), text.end());
     Maybe<String> result = parser(input);
-    ZC_IF_SOME(value, result) {
-      EXPECT_EQ("test\a\b\f\n\r\t\v\'\"\?\x01\2\34\156", value);
-    }
-    else {
-      ADD_FAILURE() << "Expected string, got null.";
-    }
+    ZC_IF_SOME(value, result) { EXPECT_EQ("test\a\b\f\n\r\t\v\'\"\?\x01\2\34\156", value); }
+    else { ADD_FAILURE() << "Expected string, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -390,9 +342,7 @@ TEST(CharParsers, SingleQuotedString) {
     Input input(text.begin(), text.end());
     Maybe<String> result = parser(input);
     ZC_IF_SOME(value, result) { EXPECT_EQ("foo\"bar", value); }
-    else {
-      ADD_FAILURE() << "Expected string, got null.";
-    }
+    else { ADD_FAILURE() << "Expected string, got null."; }
     EXPECT_TRUE(input.atEnd());
   }
 }

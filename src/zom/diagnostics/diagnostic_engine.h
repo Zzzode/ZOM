@@ -9,20 +9,14 @@ namespace zom {
 namespace diagnostics {
 
 class DiagnosticEngine {
- public:
+public:
   DiagnosticEngine(source::SourceManager& sourceMgr) : sourceMgr_(sourceMgr) {}
 
-  void AddConsumer(zc::Own<DiagnosticConsumer> consumer) {
-    consumers_.add(zc::mv(consumer));
-  }
+  void AddConsumer(zc::Own<DiagnosticConsumer> consumer) { consumers_.add(zc::mv(consumer)); }
 
   void Emit(const source::SourceLoc& loc, const Diagnostic& diagnostic) {
-    if (diagnostic.kind() == DiagnosticKind::kError) {
-      state_.SetHadAnyError();
-    }
-    for (auto& consumer : consumers_) {
-      consumer->HandleDiagnostic(loc, diagnostic);
-    }
+    if (diagnostic.kind() == DiagnosticKind::kError) { state_.SetHadAnyError(); }
+    for (auto& consumer : consumers_) { consumer->HandleDiagnostic(loc, diagnostic); }
   }
 
   bool HasErrors() const { return state_.HadAnyError(); }
@@ -33,7 +27,7 @@ class DiagnosticEngine {
   DiagnosticState& getState() { return state_; }
   const DiagnosticState& getState() const { return state_; }
 
- private:
+private:
   source::SourceManager& sourceMgr_;
   zc::Vector<zc::Own<DiagnosticConsumer>> consumers_;
   DiagnosticState state_;

@@ -25,8 +25,7 @@
 
 namespace zc {
 
-void ExceptionSafeArrayUtil::construct(size_t count,
-                                       void (*constructElement)(void*)) {
+void ExceptionSafeArrayUtil::construct(size_t count, void (*constructElement)(void*)) {
   while (count > 0) {
     constructElement(pos);
     pos += elementSize;
@@ -46,21 +45,19 @@ void ExceptionSafeArrayUtil::destroyAll() {
 const DestructorOnlyArrayDisposer DestructorOnlyArrayDisposer::instance =
     DestructorOnlyArrayDisposer();
 
-void DestructorOnlyArrayDisposer::disposeImpl(
-    void* firstElement, size_t elementSize, size_t elementCount,
-    size_t capacity, void (*destroyElement)(void*)) const {
+void DestructorOnlyArrayDisposer::disposeImpl(void* firstElement, size_t elementSize,
+                                              size_t elementCount, size_t capacity,
+                                              void (*destroyElement)(void*)) const {
   if (destroyElement != nullptr) {
-    ExceptionSafeArrayUtil guard(firstElement, elementSize, elementCount,
-                                 destroyElement);
+    ExceptionSafeArrayUtil guard(firstElement, elementSize, elementCount, destroyElement);
     guard.destroyAll();
   }
 }
 
 const NullArrayDisposer NullArrayDisposer::instance = NullArrayDisposer();
 
-void NullArrayDisposer::disposeImpl(void* firstElement, size_t elementSize,
-                                    size_t elementCount, size_t capacity,
-                                    void (*destroyElement)(void*)) const {}
+void NullArrayDisposer::disposeImpl(void* firstElement, size_t elementSize, size_t elementCount,
+                                    size_t capacity, void (*destroyElement)(void*)) const {}
 
 namespace _ {  // private
 
@@ -75,8 +72,7 @@ struct AutoDeleter {
   inline ~AutoDeleter() { operator delete(ptr); }
 };
 
-void* HeapArrayDisposer::allocateImpl(size_t elementSize, size_t elementCount,
-                                      size_t capacity,
+void* HeapArrayDisposer::allocateImpl(size_t elementSize, size_t elementCount, size_t capacity,
                                       void (*constructElement)(void*),
                                       void (*destroyElement)(void*)) {
   AutoDeleter result(operator new(elementSize * capacity));
@@ -99,16 +95,14 @@ void* HeapArrayDisposer::allocateImpl(size_t elementSize, size_t elementCount,
   return result.release();
 }
 
-void HeapArrayDisposer::disposeImpl(void* firstElement, size_t elementSize,
-                                    size_t elementCount, size_t capacity,
-                                    void (*destroyElement)(void*)) const {
+void HeapArrayDisposer::disposeImpl(void* firstElement, size_t elementSize, size_t elementCount,
+                                    size_t capacity, void (*destroyElement)(void*)) const {
   // Note that capacity is ignored since operator delete() doesn't care about
   // it.
   AutoDeleter deleter(firstElement);
 
   if (destroyElement != nullptr) {
-    ExceptionSafeArrayUtil guard(firstElement, elementSize, elementCount,
-                                 destroyElement);
+    ExceptionSafeArrayUtil guard(firstElement, elementSize, elementCount, destroyElement);
     guard.destroyAll();
   }
 }

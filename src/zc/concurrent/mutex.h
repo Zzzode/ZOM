@@ -63,15 +63,14 @@ class Mutex {
 
   struct Waiter;
 
- public:
+public:
   Mutex();
   ~Mutex();
   ZC_DISALLOW_COPY_AND_MOVE(Mutex);
 
   enum Exclusivity { EXCLUSIVE, SHARED };
 
-  bool lock(Exclusivity exclusivity, Maybe<Duration> timeout,
-            LockSourceLocationArg location);
+  bool lock(Exclusivity exclusivity, Maybe<Duration> timeout, LockSourceLocationArg location);
   void unlock(Exclusivity exclusivity, Waiter* waiterToSkip = nullptr);
 
   void assertLockedByCaller(Exclusivity exclusivity) const;
@@ -80,12 +79,11 @@ class Mutex {
   // enough to catch problems in unit tests).  In non-debug builds, do nothing.
 
   class Predicate {
-   public:
+  public:
     virtual bool check() = 0;
   };
 
-  void wait(Predicate& predicate, Maybe<Duration> timeout,
-            LockSourceLocationArg location);
+  void wait(Predicate& predicate, Maybe<Duration> timeout, LockSourceLocationArg location);
   // If predicate.check() returns false, unlock the mutex until
   // predicate.check() returns true, or when the timeout (if any) expires. The
   // mutex is always re-locked when this returns regardless of whether the
@@ -105,7 +103,7 @@ class Mutex {
   // for mutex-test.c++ so it can validate certain invariants.
 #endif
 
- private:
+private:
 #if ZC_USE_FUTEX
   uint futex;
   // bit 31 (msb) = set if exclusive lock held
@@ -168,7 +166,7 @@ class Mutex {
 class Once {
   // Internal implementation details.  See `Lazy<T>`.
 
- public:
+public:
 #if ZC_USE_FUTEX
   inline Once(bool startInitialized = false)
       : futex(startInitialized ? INITIALIZED : UNINITIALIZED) {}
@@ -179,14 +177,13 @@ class Once {
   ZC_DISALLOW_COPY_AND_MOVE(Once);
 
   class Initializer {
-   public:
+  public:
     virtual void run() = 0;
   };
 
   void runOnce(Initializer& init, LockSourceLocationArg location);
 
-#if _WIN32 || \
-    __CYGWIN__  // TODO(perf): Can we make this inline on win32 somehow?
+#if _WIN32 || __CYGWIN__  // TODO(perf): Can we make this inline on win32 somehow?
   bool isInitialized() noexcept;
 
 #else
@@ -205,16 +202,11 @@ class Once {
   // call this when not already initialized, or when runOnce() or
   // isInitialized() might be called concurrently in another thread.
 
- private:
+private:
 #if ZC_USE_FUTEX
   uint futex;
 
-  enum State {
-    UNINITIALIZED,
-    INITIALIZING,
-    INITIALIZING_WITH_WAITERS,
-    INITIALIZED
-  };
+  enum State { UNINITIALIZED, INITIALIZING, INITIALIZING_WITH_WAITERS, INITIALIZED };
 
 #elif _WIN32 || __CYGWIN__
   uintptr_t initOnce;  // Actually an INIT_ONCE, but don't want to #include
@@ -237,7 +229,7 @@ class Locked {
   // Return type for `MutexGuarded<T>::lock()`.  `Locked<T>` provides access to
   // the bounded object and unlocks the mutex when it goes out of scope.
 
- public:
+public:
   ZC_DISALLOW_COPY(Locked);
   inline Locked() : mutex(nullptr), ptr(nullptr) {}
   inline Locked(Locked&& other) : mutex(other.mutex), ptr(other.ptr) {
@@ -245,13 +237,11 @@ class Locked {
     other.ptr = nullptr;
   }
   inline ~Locked() {
-    if (mutex != nullptr)
-      mutex->unlock(isConst<T>() ? _::Mutex::SHARED : _::Mutex::EXCLUSIVE);
+    if (mutex != nullptr) mutex->unlock(isConst<T>() ? _::Mutex::SHARED : _::Mutex::EXCLUSIVE);
   }
 
   inline Locked& operator=(Locked&& other) {
-    if (mutex != nullptr)
-      mutex->unlock(isConst<T>() ? _::Mutex::SHARED : _::Mutex::EXCLUSIVE);
+    if (mutex != nullptr) mutex->unlock(isConst<T>() ? _::Mutex::SHARED : _::Mutex::EXCLUSIVE);
     mutex = other.mutex;
     ptr = other.ptr;
     other.mutex = nullptr;
@@ -260,8 +250,7 @@ class Locked {
   }
 
   inline void release() {
-    if (mutex != nullptr)
-      mutex->unlock(isConst<T>() ? _::Mutex::SHARED : _::Mutex::EXCLUSIVE);
+    if (mutex != nullptr) mutex->unlock(isConst<T>() ? _::Mutex::SHARED : _::Mutex::EXCLUSIVE);
     mutex = nullptr;
     ptr = nullptr;
   }
@@ -299,7 +288,7 @@ class Locked {
     mutex->wait(impl, timeout, location);
   }
 
- private:
+private:
   _::Mutex* mutex;
   T* ptr;
 
@@ -311,7 +300,7 @@ class Locked {
   friend class ExternalMutexGuarded;
 
 #if ZC_MUTEX_TEST
- public:
+public:
 #endif
   void induceSpuriousWakeupForTest() { mutex->induceSpuriousWakeupForTest(); }
   // Utility method for mutex-test.c++ which causes a spurious thread wakeup on
@@ -336,7 +325,7 @@ class MutexGuarded {
   // lock, thread B requests a write lock (and starts waiting), and then thread
   // A tries to take another read lock recursively, the result is deadlock.
 
- public:
+public:
   template <typename... Params>
   explicit MutexGuarded(Params&&... params);
   // Initialize the mutex-bounded object by passing the given parameters to its
@@ -357,13 +346,13 @@ class MutexGuarded {
   // Lock the value for shared access.  Multiple shared locks can be taken
   // concurrently, but cannot be held at the same time as a non-shared lock.
 
-  Maybe<Locked<T>> lockExclusiveWithTimeout(
-      Duration timeout, LockSourceLocationArg location = {}) const;
+  Maybe<Locked<T>> lockExclusiveWithTimeout(Duration timeout,
+                                            LockSourceLocationArg location = {}) const;
   // Attempts to exclusively lock the object. If the timeout elapses before the
   // lock is acquired, this returns null.
 
-  Maybe<Locked<const T>> lockSharedWithTimeout(
-      Duration timeout, LockSourceLocationArg location = {}) const;
+  Maybe<Locked<const T>> lockSharedWithTimeout(Duration timeout,
+                                               LockSourceLocationArg location = {}) const;
   // Attempts to lock the value for shared access. If the timeout elapses before
   // the lock is acquired, this returns null.
 
@@ -380,10 +369,8 @@ class MutexGuarded {
   // calling thread.
 
   template <typename Cond, typename Func>
-  auto when(Cond&& condition, Func&& callback,
-            Maybe<Duration> timeout = zc::none,
-            LockSourceLocationArg location = {}) const
-      -> decltype(callback(instance<T&>())) {
+  auto when(Cond&& condition, Func&& callback, Maybe<Duration> timeout = zc::none,
+            LockSourceLocationArg location = {}) const -> decltype(callback(instance<T&>())) {
     // Waits until condition(state) returns true, then calls callback(state)
     // under lock.
     //
@@ -410,7 +397,7 @@ class MutexGuarded {
     return callback(value);
   }
 
- private:
+private:
   mutable _::Mutex mutex;
   mutable T value;
 };
@@ -449,16 +436,12 @@ class ExternalMutexGuarded {
   // constructor and move
   //   assignment operator that do not follow any pointers, therefore do not
   //   need to take a lock.
- public:
-  ExternalMutexGuarded(LockSourceLocationArg location = {})
-      : location(location) {}
+public:
+  ExternalMutexGuarded(LockSourceLocationArg location = {}) : location(location) {}
 
   template <typename U, typename... Params>
-  ExternalMutexGuarded(Locked<U> lock, Params&&... params,
-                       LockSourceLocationArg location = {})
-      : mutex(lock.mutex),
-        value(zc::fwd<Params>(params)...),
-        location(location) {}
+  ExternalMutexGuarded(Locked<U> lock, Params&&... params, LockSourceLocationArg location = {})
+      : mutex(lock.mutex), value(zc::fwd<Params>(params)...), location(location) {}
   // Construct the value in-place. This constructor requires passing ownership
   // of the lock into the constructor. Normally this should be a lock that you
   // take on the line calling the constructor, like:
@@ -481,9 +464,7 @@ class ExternalMutexGuarded {
   }
 
   ExternalMutexGuarded(ExternalMutexGuarded&& other)
-      : mutex(other.mutex),
-        value(zc::mv(other.value)),
-        location(other.location) {
+      : mutex(other.mutex), value(zc::mv(other.value)), location(other.location) {
     other.mutex = nullptr;
   }
   ExternalMutexGuarded& operator=(ExternalMutexGuarded&& other) {
@@ -523,7 +504,7 @@ class ExternalMutexGuarded {
     return result;
   }
 
- private:
+private:
   _::Mutex* mutex = nullptr;
   T value;
   ZC_NO_UNIQUE_ADDRESS LockSourceLocation location;
@@ -535,7 +516,7 @@ template <typename T>
 class Lazy {
   // A lazily-initialized value.
 
- public:
+public:
   template <typename Func>
   T& get(Func&& init, LockSourceLocationArg location = {});
   template <typename Func>
@@ -550,7 +531,7 @@ class Lazy {
   // subsequent calls behave as if `get()` hadn't been called at all yet -- in
   // other words, subsequent calls retry initialization until it succeeds.
 
- private:
+private:
   mutable _::Once once;
   mutable SpaceFor<T> space;
   mutable Own<T> value;
@@ -564,19 +545,16 @@ class Lazy {
 
 template <typename T>
 template <typename... Params>
-inline MutexGuarded<T>::MutexGuarded(Params&&... params)
-    : value(zc::fwd<Params>(params)...) {}
+inline MutexGuarded<T>::MutexGuarded(Params&&... params) : value(zc::fwd<Params>(params)...) {}
 
 template <typename T>
-inline Locked<T> MutexGuarded<T>::lockExclusive(
-    LockSourceLocationArg location) const {
+inline Locked<T> MutexGuarded<T>::lockExclusive(LockSourceLocationArg location) const {
   mutex.lock(_::Mutex::EXCLUSIVE, zc::none, location);
   return Locked<T>(mutex, value);
 }
 
 template <typename T>
-inline Locked<const T> MutexGuarded<T>::lockShared(
-    LockSourceLocationArg location) const {
+inline Locked<const T> MutexGuarded<T>::lockShared(LockSourceLocationArg location) const {
   mutex.lock(_::Mutex::SHARED, zc::none, location);
   return Locked<const T>(mutex, value);
 }
@@ -626,13 +604,12 @@ inline T& MutexGuarded<T>::getAlreadyLockedExclusive() const {
 template <typename T>
 template <typename Func>
 class Lazy<T>::InitImpl : public _::Once::Initializer {
- public:
-  inline InitImpl(const Lazy<T>& lazy, Func&& func)
-      : lazy(lazy), func(zc::fwd<Func>(func)) {}
+public:
+  inline InitImpl(const Lazy<T>& lazy, Func&& func) : lazy(lazy), func(zc::fwd<Func>(func)) {}
 
   void run() override { lazy.value = func(lazy.space); }
 
- private:
+private:
   const Lazy<T>& lazy;
   Func func;
 };
@@ -649,8 +626,7 @@ inline T& Lazy<T>::get(Func&& init, LockSourceLocationArg location) {
 
 template <typename T>
 template <typename Func>
-inline const T& Lazy<T>::get(Func&& init,
-                             LockSourceLocationArg location) const {
+inline const T& Lazy<T>::get(Func&& init, LockSourceLocationArg location) const {
   if (!once.isInitialized()) {
     InitImpl<Func> initImpl(*this, zc::fwd<Func>(init));
     once.runOnce(initImpl, location);

@@ -67,8 +67,7 @@ inline bool doubleAlmostEqual(double a, double b) {
 #define EXPECT_GT(x, y) ZC_EXPECT((x) > (y), x, y)
 #define EXPECT_STREQ(x, y) ZC_EXPECT(::strcmp(x, y) == 0, x, y)
 #define EXPECT_FLOAT_EQ(x, y) ZC_EXPECT(::zc::_::floatAlmostEqual(y, x), y, x);
-#define EXPECT_DOUBLE_EQ(x, y) \
-  ZC_EXPECT(::zc::_::doubleAlmostEqual(y, x), y, x);
+#define EXPECT_DOUBLE_EQ(x, y) ZC_EXPECT(::zc::_::doubleAlmostEqual(y, x), y, x);
 
 #define ASSERT_FALSE(x) ZC_ASSERT(!(x))
 #define ASSERT_TRUE(x) ZC_ASSERT(x)
@@ -80,28 +79,24 @@ inline bool doubleAlmostEqual(double a, double b) {
 #define ASSERT_GT(x, y) ZC_ASSERT((x) > (y), x, y)
 #define ASSERT_STREQ(x, y) ZC_ASSERT(::strcmp(x, y) == 0, x, y)
 #define ASSERT_FLOAT_EQ(x, y) ZC_ASSERT(::zc::_::floatAlmostEqual(y, x), y, x);
-#define ASSERT_DOUBLE_EQ(x, y) \
-  ZC_ASSERT(::zc::_::doubleAlmostEqual(y, x), y, x);
+#define ASSERT_DOUBLE_EQ(x, y) ZC_ASSERT(::zc::_::doubleAlmostEqual(y, x), y, x);
 
 class AddFailureAdapter {
- public:
+public:
   AddFailureAdapter(const char* file, int line) : file(file), line(line) {}
 
   ~AddFailureAdapter() {
-    if (!handled) {
-      _::Debug::log(file, line, LogSeverity::ERROR, "expectation failed");
-    }
+    if (!handled) { _::Debug::log(file, line, LogSeverity::ERROR, "expectation failed"); }
   }
 
   template <typename T>
   void operator<<(T&& info) {
     handled = true;
-    _::Debug::log(file, line, LogSeverity::ERROR,
-                  "\"expectation failed\", info", "expectation failed",
-                  zc::fwd<T>(info));
+    _::Debug::log(file, line, LogSeverity::ERROR, "\"expectation failed\", info",
+                  "expectation failed", zc::fwd<T>(info));
   }
 
- private:
+private:
   bool handled = false;
   const char* file;
   int line;
@@ -109,8 +104,7 @@ class AddFailureAdapter {
 
 #define ADD_FAILURE() ::zc::AddFailureAdapter(__FILE__, __LINE__)
 
-#define EXPECT_ANY_THROW(code) \
-  ZC_EXPECT(::zc::runCatchingExceptions([&]() { code; }) != zc::none)
+#define EXPECT_ANY_THROW(code) ZC_EXPECT(::zc::runCatchingExceptions([&]() { code; }) != zc::none)
 
 #define EXPECT_NONFATAL_FAILURE(code) \
   EXPECT_TRUE(zc::runCatchingExceptions([&]() { code; }) != zc::none);

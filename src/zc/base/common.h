@@ -73,8 +73,7 @@
 
 #ifndef ZC_NO_COMPILER_CHECK
 #if __cplusplus < 202002L && !__CDT_PARSER__
-#error \
-    "This code requires C++20. Either your compiler does not support it or it is not enabled."
+#error "This code requires C++20. Either your compiler does not support it or it is not enabled."
 #ifdef __GNUC__
 // Compiler claims compatibility with GCC, so presumably supports -std.
 #error "Pass -std=c++20 on the compiler command line to enable C++20."
@@ -267,55 +266,36 @@ using uint32_t = uint;
 #define ZC_DEBUG_TRAP() __trap(42)
 #elif defined(__DMC__) && defined(_M_IX86)
 #define ZC_DEBUG_TRAP() \
-  do {                  \
-    __asm int 3h;       \
-  } while (0)
+  do { __asm int 3h; } while (0)
 #elif defined(__i386__) || defined(__x86_64__)
-#define ZC_DEBUG_TRAP()                \
-  do {                                 \
-    __asm__ __volatile__("int $0x03"); \
-  } while (0)
+#define ZC_DEBUG_TRAP() \
+  do { __asm__ __volatile__("int $0x03"); } while (0)
 #elif defined(__thumb__)
-#define ZC_DEBUG_TRAP()                   \
-  do {                                    \
-    __asm__ __volatile__(".inst 0xde01"); \
-  } while (0)
+#define ZC_DEBUG_TRAP() \
+  do { __asm__ __volatile__(".inst 0xde01"); } while (0)
 #elif defined(__aarch64__)
-#define ZC_DEBUG_TRAP()                       \
-  do {                                        \
-    __asm__ __volatile__(".inst 0xd4200000"); \
-  } while (0)
+#define ZC_DEBUG_TRAP() \
+  do { __asm__ __volatile__(".inst 0xd4200000"); } while (0)
 #elif defined(__arm__)
-#define ZC_DEBUG_TRAP()                       \
-  do {                                        \
-    __asm__ __volatile__(".inst 0xe7f001f0"); \
-  } while (0)
+#define ZC_DEBUG_TRAP() \
+  do { __asm__ __volatile__(".inst 0xe7f001f0"); } while (0)
 #elif defined(__alpha__) && !defined(__osf__)
-#define ZC_DEBUG_TRAP()          \
-  do {                           \
-    __asm__ __volatile__("bpt"); \
-  } while (0)
+#define ZC_DEBUG_TRAP() \
+  do { __asm__ __volatile__("bpt"); } while (0)
 #elif defined(_54_)
-#define ZC_DEBUG_TRAP()            \
-  do {                             \
-    __asm__ __volatile__("ESTOP"); \
-  } while (0)
+#define ZC_DEBUG_TRAP() \
+  do { __asm__ __volatile__("ESTOP"); } while (0)
 #elif defined(_55_)
-#define ZC_DEBUG_TRAP()                                                      \
-  do {                                                                       \
-    __asm__ __volatile__(                                                    \
-        ";\n .if (.MNEMONIC)\n ESTOP_1\n .else\n ESTOP_1()\n .endif\n NOP"); \
+#define ZC_DEBUG_TRAP()                                                                       \
+  do {                                                                                        \
+    __asm__ __volatile__(";\n .if (.MNEMONIC)\n ESTOP_1\n .else\n ESTOP_1()\n .endif\n NOP"); \
   } while (0)
 #elif defined(_64P_)
-#define ZC_DEBUG_TRAP()             \
-  do {                              \
-    __asm__ __volatile__("SWBP 0"); \
-  } while (0)
+#define ZC_DEBUG_TRAP() \
+  do { __asm__ __volatile__("SWBP 0"); } while (0)
 #elif defined(_6x_)
-#define ZC_DEBUG_TRAP()                             \
-  do {                                              \
-    __asm__ __volatile__("NOP\n .word 0x10000000"); \
-  } while (0)
+#define ZC_DEBUG_TRAP() \
+  do { __asm__ __volatile__("NOP\n .word 0x10000000"); } while (0)
 #elif defined(__STDC_HOSTED__) && (__STDC_HOSTED__ == 0) && defined(__GNUC__)
 #define ZC_DEBUG_TRAP() __builtin_trap()
 #else
@@ -386,22 +366,20 @@ using uint32_t = uint;
 // variable-width arrays are not supported. `maxStack` is the maximum stack
 // array size if variable-width arrays *are* supported.
 #if __GNUC__ && !__clang__
-#define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)         \
-  size_t name##_size = (size);                                       \
-  bool name##_isOnStack = name##_size <= (maxStack);                 \
-  type name##_stack[zc::max(1, name##_isOnStack ? name##_size : 0)]; \
-  ::zc::Array<type> name##_heap =                                    \
-      name##_isOnStack ? nullptr : zc::heapArray<type>(name##_size); \
-  ::zc::ArrayPtr<type> name =                                        \
+#define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)                                     \
+  size_t name##_size = (size);                                                                   \
+  bool name##_isOnStack = name##_size <= (maxStack);                                             \
+  type name##_stack[zc::max(1, name##_isOnStack ? name##_size : 0)];                             \
+  ::zc::Array<type> name##_heap = name##_isOnStack ? nullptr : zc::heapArray<type>(name##_size); \
+  ::zc::ArrayPtr<type> name =                                                                    \
       name##_isOnStack ? zc::arrayPtr(name##_stack, name##_size) : name##_heap
 #else
-#define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)         \
-  size_t name##_size = (size);                                       \
-  bool name##_isOnStack = name##_size <= (minStack);                 \
-  type name##_stack[minStack];                                       \
-  ::zc::Array<type> name##_heap =                                    \
-      name##_isOnStack ? nullptr : zc::heapArray<type>(name##_size); \
-  ::zc::ArrayPtr<type> name =                                        \
+#define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)                                     \
+  size_t name##_size = (size);                                                                   \
+  bool name##_isOnStack = name##_size <= (minStack);                                             \
+  type name##_stack[minStack];                                                                   \
+  ::zc::Array<type> name##_heap = name##_isOnStack ? nullptr : zc::heapArray<type>(name##_size); \
+  ::zc::ArrayPtr<type> name =                                                                    \
       name##_isOnStack ? zc::arrayPtr(name##_stack, name##_size) : name##_heap
 #endif
 
@@ -415,39 +393,34 @@ using uint32_t = uint;
 
 namespace _ {
 
-ZC_NORETURN void inlineRequireFailure(const char* file, int line,
-                                      const char* expectation,
-                                      const char* macroArgs,
-                                      const char* message = nullptr);
+ZC_NORETURN void inlineRequireFailure(const char* file, int line, const char* expectation,
+                                      const char* macroArgs, const char* message = nullptr);
 
 ZC_NORETURN void unreachable();
 
 }  // namespace _
 
-#if _MSC_VER && !defined(__clang__) && \
-    (!defined(_MSVC_TRADITIONAL) || _MSVC_TRADITIONAL)
+#if _MSC_VER && !defined(__clang__) && (!defined(_MSVC_TRADITIONAL) || _MSVC_TRADITIONAL)
 #define ZC_MSVC_TRADITIONAL_CPP 1
 #endif
 
 #ifdef ZC_DEBUG
 #if ZC_MSVC_TRADITIONAL_CPP
-#define ZC_IREQUIRE(condition, ...)                               \
-  if (ZC_LIKELY(condition))                                       \
-    ;                                                             \
-  else                                                            \
-    ::zc::_::inlineRequireFailure(__FILE__, __LINE__, #condition, \
-                                  "" #__VA_ARGS__, __VA_ARGS__)
+#define ZC_IREQUIRE(condition, ...) \
+  if (ZC_LIKELY(condition))         \
+    ;                               \
+  else                              \
+    ::zc::_::inlineRequireFailure(__FILE__, __LINE__, #condition, "" #__VA_ARGS__, __VA_ARGS__)
 // Version of ZC_DREQUIRE() which is safe to use in headers that are #included
 // by users. Used to check preconditions inside inline methods. ZC_IREQUIRE is
 // particularly useful in that it will be enabled depending on whether the
 // application is compiled in debug mode rather than whether libzc is.
 #else
-#define ZC_IREQUIRE(condition, ...)                               \
-  if (condition)                                                  \
-    ZC_LIKELY;                                                    \
-  else                                                            \
-    ::zc::_::inlineRequireFailure(__FILE__, __LINE__, #condition, \
-                                  #__VA_ARGS__, ##__VA_ARGS__)
+#define ZC_IREQUIRE(condition, ...) \
+  if (condition)                    \
+    ZC_LIKELY;                      \
+  else                              \
+    ::zc::_::inlineRequireFailure(__FILE__, __LINE__, #condition, #__VA_ARGS__, ##__VA_ARGS__)
 // Version of ZC_DREQUIRE() which is safe to use in headers that are #included
 // by users. Used to check preconditions inside inline methods. ZC_IREQUIRE is
 // particularly useful in that it will be enabled depending on whether the
@@ -470,19 +443,17 @@ ZC_NORETURN void unreachable();
 #endif
 
 #if __clang__
-#define ZC_KNOWN_UNREACHABLE(code)                                       \
-  do {                                                                   \
-    _Pragma("clang diagnostic push")                                     \
-        _Pragma("clang diagnostic ignored \"-Wunreachable-code\"") code; \
-    _Pragma("clang diagnostic pop")                                      \
+#define ZC_KNOWN_UNREACHABLE(code)                                                              \
+  do {                                                                                          \
+    _Pragma("clang diagnostic push") _Pragma("clang diagnostic ignored \"-Wunreachable-code\"") \
+        code;                                                                                   \
+    _Pragma("clang diagnostic pop")                                                             \
   } while (false)
 // Suppress "unreachable code" warnings on intentionally unreachable code.
 #else
 // TODO(someday): Add support for non-clang compilers.
 #define ZC_KNOWN_UNREACHABLE(code) \
-  do {                             \
-    code;                          \
-  } while (false)
+  do { code; } while (false)
 #endif
 
 // =======================================================================================
@@ -791,12 +762,10 @@ constexpr bool canMemcpy() {
   // Returns true if T can be copied using memcpy instead of using the copy
   // constructor or assignment operator.
 
-  return __is_trivially_constructible(T, const T&) &&
-         __is_trivially_assignable(T, const T&);
+  return __is_trivially_constructible(T, const T&) && __is_trivially_assignable(T, const T&);
 }
-#define ZC_ASSERT_CAN_MEMCPY(T)     \
-  static_assert(zc::canMemcpy<T>(), \
-                "this code expects this type to be memcpy()-able");
+#define ZC_ASSERT_CAN_MEMCPY(T) \
+  static_assert(zc::canMemcpy<T>(), "this code expects this type to be memcpy()-able");
 #endif
 
 template <typename T>
@@ -826,7 +795,7 @@ class Badge {
   // are plenty of other ways to get access to private members if you're willing
   // to go UB. For one-off debugging purposes, you might as well use `#define
   // private public` at the top of the file.
- private:
+private:
   Badge() {}
   friend T;
 };
@@ -879,8 +848,7 @@ using WiderType = typename ChooseType_<T, U, sizeof(T) >= sizeof(U)>::Type;
 
 template <typename T, typename U>
 constexpr auto min(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
-  return a < b ? WiderType<Decay<T>, Decay<U>>(a)
-               : WiderType<Decay<T>, Decay<U>>(b);
+  return a < b ? WiderType<Decay<T>, Decay<U>>(a) : WiderType<Decay<T>, Decay<U>>(b);
 }
 
 #if __has_builtin(__is_signed)
@@ -890,8 +858,7 @@ inline constexpr bool isSigned = __is_signed(T);
 
 template <typename T, typename U>
 constexpr auto max(T&& a, U&& b) -> WiderType<Decay<T>, Decay<U>> {
-  return a > b ? WiderType<Decay<T>, Decay<U>>(a)
-               : WiderType<Decay<T>, Decay<U>>(b);
+  return a > b ? WiderType<Decay<T>, Decay<U>>(a) : WiderType<Decay<T>, Decay<U>>(b);
 }
 
 template <typename T, size_t s>
@@ -906,7 +873,7 @@ constexpr size_t size(T&& arr) {
 // or a container with a `.size()` method.
 
 class MaxValue_ {
- private:
+private:
   template <typename T>
   constexpr T maxSigned() const {
     return (1ull << (sizeof(T) * 8 - 1)) - 1;
@@ -916,14 +883,10 @@ class MaxValue_ {
     return ~static_cast<T>(0u);
   }
 
- public:
-#define ZC_HANDLE_TYPE(T)                        \
-  inline constexpr operator signed T() const {   \
-    return MaxValue_::maxSigned<signed T>();     \
-  }                                              \
-  inline constexpr operator unsigned T() const { \
-    return MaxValue_::maxUnsigned<unsigned T>(); \
-  }
+public:
+#define ZC_HANDLE_TYPE(T)                                                                 \
+  inline constexpr operator signed T() const { return MaxValue_::maxSigned<signed T>(); } \
+  inline constexpr operator unsigned T() const { return MaxValue_::maxUnsigned<unsigned T>(); }
   ZC_HANDLE_TYPE(char)
   ZC_HANDLE_TYPE(short)
   ZC_HANDLE_TYPE(int)
@@ -934,13 +897,12 @@ class MaxValue_ {
   constexpr operator char() const {
     // `char` is different from both `signed char` and `unsigned char`, and may
     // be signed or unsigned on different platforms. Ugh.
-    return char(-1) < 0 ? MaxValue_::maxSigned<char>()
-                        : MaxValue_::maxUnsigned<char>();
+    return char(-1) < 0 ? MaxValue_::maxSigned<char>() : MaxValue_::maxUnsigned<char>();
   }
 };
 
 class MinValue_ {
- private:
+private:
   template <typename T>
   constexpr T minSigned() const {
     return 1ull << (sizeof(T) * 8 - 1);
@@ -950,14 +912,10 @@ class MinValue_ {
     return 0u;
   }
 
- public:
-#define ZC_HANDLE_TYPE(T)                        \
-  inline constexpr operator signed T() const {   \
-    return MinValue_::minSigned<signed T>();     \
-  }                                              \
-  inline constexpr operator unsigned T() const { \
-    return MinValue_::minUnsigned<unsigned T>(); \
-  }
+public:
+#define ZC_HANDLE_TYPE(T)                                                                 \
+  inline constexpr operator signed T() const { return MinValue_::minSigned<signed T>(); } \
+  inline constexpr operator unsigned T() const { return MinValue_::minUnsigned<unsigned T>(); }
   ZC_HANDLE_TYPE(char)
   ZC_HANDLE_TYPE(short)
   ZC_HANDLE_TYPE(int)
@@ -968,8 +926,7 @@ class MinValue_ {
   constexpr operator char() const {
     // `char` is different from both `signed char` and `unsigned char`, and may
     // be signed or unsigned on different platforms. Ugh.
-    return char(-1) < 0 ? MinValue_::minSigned<char>()
-                        : MinValue_::minUnsigned<char>();
+    return char(-1) < 0 ? MinValue_::minSigned<char>() : MinValue_::minUnsigned<char>();
   }
 };
 
@@ -1035,12 +992,12 @@ inline int popCount(unsigned int x) {
 
 template <typename T>
 class Range {
- public:
+public:
   constexpr Range(const T& begin, const T& end) : begin_(begin), end_(end) {}
   explicit constexpr Range(const T& end) : begin_(0), end_(end) {}
 
   class Iterator {
-   public:
+  public:
     Iterator() = default;
     Iterator(const T& value) : value(value) {}
 
@@ -1064,40 +1021,26 @@ class Range {
       value -= amount;
       return *this;
     }
-    Iterator operator+(ptrdiff_t amount) const {
-      return Iterator(value + amount);
-    }
-    Iterator operator-(ptrdiff_t amount) const {
-      return Iterator(value - amount);
-    }
-    ptrdiff_t operator-(const Iterator& other) const {
-      return value - other.value;
-    }
+    Iterator operator+(ptrdiff_t amount) const { return Iterator(value + amount); }
+    Iterator operator-(ptrdiff_t amount) const { return Iterator(value - amount); }
+    ptrdiff_t operator-(const Iterator& other) const { return value - other.value; }
 
-    bool operator==(const Iterator& other) const {
-      return value == other.value;
-    }
-    bool operator<=(const Iterator& other) const {
-      return value <= other.value;
-    }
-    bool operator>=(const Iterator& other) const {
-      return value >= other.value;
-    }
+    bool operator==(const Iterator& other) const { return value == other.value; }
+    bool operator<=(const Iterator& other) const { return value <= other.value; }
+    bool operator>=(const Iterator& other) const { return value >= other.value; }
     bool operator<(const Iterator& other) const { return value < other.value; }
     bool operator>(const Iterator& other) const { return value > other.value; }
 
-   private:
+  private:
     T value;
   };
 
   Iterator begin() const { return Iterator(begin_); }
   Iterator end() const { return Iterator(end_); }
 
-  auto size() const -> decltype(instance<T>() - instance<T>()) {
-    return end_ - begin_;
-  }
+  auto size() const -> decltype(instance<T>() - instance<T>()) { return end_ - begin_; }
 
- private:
+private:
   T begin_;
   T end_;
 };
@@ -1138,11 +1081,11 @@ constexpr Range<size_t> indices(T&& container) {
 
 template <typename T>
 class Repeat {
- public:
+public:
   constexpr Repeat(const T& value, size_t count) : value(value), count(count) {}
 
   class Iterator {
-   public:
+  public:
     Iterator() = default;
     Iterator(const T& value, size_t index) : value(value), index(index) {}
 
@@ -1166,29 +1109,17 @@ class Repeat {
       index -= amount;
       return *this;
     }
-    Iterator operator+(ptrdiff_t amount) const {
-      return Iterator(value, index + amount);
-    }
-    Iterator operator-(ptrdiff_t amount) const {
-      return Iterator(value, index - amount);
-    }
-    ptrdiff_t operator-(const Iterator& other) const {
-      return index - other.index;
-    }
+    Iterator operator+(ptrdiff_t amount) const { return Iterator(value, index + amount); }
+    Iterator operator-(ptrdiff_t amount) const { return Iterator(value, index - amount); }
+    ptrdiff_t operator-(const Iterator& other) const { return index - other.index; }
 
-    bool operator==(const Iterator& other) const {
-      return index == other.index;
-    }
-    bool operator<=(const Iterator& other) const {
-      return index <= other.index;
-    }
-    bool operator>=(const Iterator& other) const {
-      return index >= other.index;
-    }
+    bool operator==(const Iterator& other) const { return index == other.index; }
+    bool operator<=(const Iterator& other) const { return index <= other.index; }
+    bool operator>=(const Iterator& other) const { return index >= other.index; }
     bool operator<(const Iterator& other) const { return index < other.index; }
     bool operator>(const Iterator& other) const { return index > other.index; }
 
-   private:
+  private:
     T value;
     size_t index;
   };
@@ -1199,7 +1130,7 @@ class Repeat {
   size_t size() const { return count; }
   const T& operator[](ptrdiff_t) const { return value; }
 
- private:
+private:
   T value;
   size_t count;
 };
@@ -1218,30 +1149,24 @@ class MappedIterator : private Mapping {
   // mapping function. The type `Mapping` must define a method `map()` which
   // performs this mapping.
 
- public:
+public:
   template <typename... Params>
   MappedIterator(Inner inner, Params&&... params)
       : Mapping(zc::fwd<Params>(params)...), inner(inner) {}
 
   inline auto operator->() const { return &Mapping::map(*inner); }
   inline decltype(auto) operator*() const { return Mapping::map(*inner); }
-  inline decltype(auto) operator[](size_t index) const {
-    return Mapping::map(inner[index]);
-  }
+  inline decltype(auto) operator[](size_t index) const { return Mapping::map(inner[index]); }
   inline MappedIterator& operator++() {
     ++inner;
     return *this;
   }
-  inline MappedIterator operator++(int) {
-    return MappedIterator(inner++, *this);
-  }
+  inline MappedIterator operator++(int) { return MappedIterator(inner++, *this); }
   inline MappedIterator& operator--() {
     --inner;
     return *this;
   }
-  inline MappedIterator operator--(int) {
-    return MappedIterator(inner--, *this);
-  }
+  inline MappedIterator operator--(int) { return MappedIterator(inner--, *this); }
   inline MappedIterator& operator+=(ptrdiff_t amount) {
     inner += amount;
     return *this;
@@ -1256,27 +1181,15 @@ class MappedIterator : private Mapping {
   inline MappedIterator operator-(ptrdiff_t amount) const {
     return MappedIterator(inner - amount, *this);
   }
-  inline ptrdiff_t operator-(const MappedIterator& other) const {
-    return inner - other.inner;
-  }
+  inline ptrdiff_t operator-(const MappedIterator& other) const { return inner - other.inner; }
 
-  inline bool operator==(const MappedIterator& other) const {
-    return inner == other.inner;
-  }
-  inline bool operator<=(const MappedIterator& other) const {
-    return inner <= other.inner;
-  }
-  inline bool operator>=(const MappedIterator& other) const {
-    return inner >= other.inner;
-  }
-  inline bool operator<(const MappedIterator& other) const {
-    return inner < other.inner;
-  }
-  inline bool operator>(const MappedIterator& other) const {
-    return inner > other.inner;
-  }
+  inline bool operator==(const MappedIterator& other) const { return inner == other.inner; }
+  inline bool operator<=(const MappedIterator& other) const { return inner <= other.inner; }
+  inline bool operator>=(const MappedIterator& other) const { return inner >= other.inner; }
+  inline bool operator<(const MappedIterator& other) const { return inner < other.inner; }
+  inline bool operator>(const MappedIterator& other) const { return inner > other.inner; }
 
- private:
+private:
   Inner inner;
 };
 
@@ -1286,7 +1199,7 @@ class MappedIterable : private Mapping {
   // mapping function. The type `Mapping` must define a method `map()` which
   // performs this mapping.
 
- public:
+public:
   template <typename... Params>
   MappedIterable(Inner inner, Params&&... params)
       : Mapping(zc::fwd<Params>(params)...), inner(inner) {}
@@ -1298,14 +1211,10 @@ class MappedIterable : private Mapping {
 
   inline Iterator begin() { return {inner.begin(), (Mapping&)*this}; }
   inline Iterator end() { return {inner.end(), (Mapping&)*this}; }
-  inline ConstIterator begin() const {
-    return {inner.begin(), (const Mapping&)*this};
-  }
-  inline ConstIterator end() const {
-    return {inner.end(), (const Mapping&)*this};
-  }
+  inline ConstIterator begin() const { return {inner.begin(), (const Mapping&)*this}; }
+  inline ConstIterator end() const { return {inner.end(), (const Mapping&)*this}; }
 
- private:
+private:
   Inner inner;
 };
 
@@ -1326,9 +1235,7 @@ struct PlacementNew {};
 }  // namespace _
 }  // namespace zc
 
-inline void* operator new(size_t, zc::_::PlacementNew, void* __p) noexcept {
-  return __p;
-}
+inline void* operator new(size_t, zc::_::PlacementNew, void* __p) noexcept { return __p; }
 
 inline void operator delete(void*, zc::_::PlacementNew, void* __p) noexcept {}
 
@@ -1377,21 +1284,15 @@ class NullableValue {
   // Class whose interface behaves much like T*, but actually contains an
   // instance of T and a boolean flag indicating nullness.
 
- public:
+public:
   NullableValue(NullableValue&& other) : isSet(other.isSet) {
-    if (isSet) {
-      ctor(value, zc::mv(other.value));
-    }
+    if (isSet) { ctor(value, zc::mv(other.value)); }
   }
   NullableValue(const NullableValue& other) : isSet(other.isSet) {
-    if (isSet) {
-      ctor(value, other.value);
-    }
+    if (isSet) { ctor(value, other.value); }
   }
   NullableValue(NullableValue& other) : isSet(other.isSet) {
-    if (isSet) {
-      ctor(value, other.value);
-    }
+    if (isSet) { ctor(value, other.value); }
   }
   ~NullableValue()
 #if _MSC_VER && !defined(__clang__)
@@ -1404,9 +1305,7 @@ class NullableValue {
       noexcept(noexcept(instance<T&>().~T()))
 #endif
   {
-    if (isSet) {
-      dtor(value);
-    }
+    if (isSet) { dtor(value); }
   }
 
   T& operator*() & { return value; }
@@ -1435,21 +1334,15 @@ class NullableValue {
   NullableValue(const T& t) : isSet(true) { ctor(value, t); }
   template <typename U>
   NullableValue(NullableValue<U>&& other) : isSet(other.isSet) {
-    if (isSet) {
-      ctor(value, zc::mv(other.value));
-    }
+    if (isSet) { ctor(value, zc::mv(other.value)); }
   }
   template <typename U>
   NullableValue(const NullableValue<U>& other) : isSet(other.isSet) {
-    if (isSet) {
-      ctor(value, other.value);
-    }
+    if (isSet) { ctor(value, other.value); }
   }
   template <typename U>
   NullableValue(const NullableValue<U&>& other) : isSet(other.isSet) {
-    if (isSet) {
-      ctor(value, *other.ptr);
-    }
+    if (isSet) { ctor(value, *other.ptr); }
   }
   NullableValue(std::nullptr_t) : isSet(false) {}
 
@@ -1553,7 +1446,7 @@ class NullableValue {
   // assignment would check for nullness. This turned out never to be useful,
   // and sometimes to be dangerous.
 
- private:
+private:
   bool isSet;
 
 #if _MSC_VER && !defined(__clang__)
@@ -1606,8 +1499,7 @@ T* readMaybe(T* ptr) {
 #if __GNUC__ || __clang__
 // Both clang and GCC understand the GCC set of pragma directives.
 #define ZC_SILENCE_DANGLING_ELSE_BEGIN \
-  _Pragma("GCC diagnostic push")       \
-      _Pragma("GCC diagnostic ignored \"-Wdangling-else\"")
+  _Pragma("GCC diagnostic push") _Pragma("GCC diagnostic ignored \"-Wdangling-else\"")
 #define ZC_SILENCE_DANGLING_ELSE_END _Pragma("GCC diagnostic pop")
 #else  // __GNUC__
 // I guess we'll find out if MSVC needs similar warning suppression.
@@ -1676,9 +1568,7 @@ static constexpr None none;
 #define ZC_UNWRAP_OR_RETURN(value, ...)          \
   (*({                                           \
     auto _zc_result = ::zc::_::readMaybe(value); \
-    if (!_zc_result) {                           \
-      return __VA_ARGS__;                        \
-    }                                            \
+    if (!_zc_result) { return __VA_ARGS__; }     \
     zc::mv(_zc_result);                          \
   }))
 
@@ -1700,7 +1590,7 @@ class Maybe {
   // IF YOU CHANGE THIS CLASS:  Note that there is a specialization of it in
   // memory.h.
 
- public:
+public:
   Maybe() : ptr(nullptr) {}
   Maybe(T&& t) : ptr(zc::mv(t)) {}
   Maybe(T& t) : ptr(t) {}
@@ -1774,17 +1664,13 @@ class Maybe {
       ptr.emplace(zc::mv(val));
       other = zc::none;
     }
-    else {
-      ptr = nullptr;
-    }
+    else { ptr = nullptr; }
     return *this;
   }
   template <typename U>
   Maybe& operator=(const Maybe<U>& other) {
     ZC_IF_SOME(val, other) { ptr.emplace(val); }
-    else {
-      ptr = nullptr;
-    }
+    else { ptr = nullptr; }
     return *this;
   }
 
@@ -1799,9 +1685,7 @@ class Maybe {
   bool operator==(zc::None) const { return ptr == nullptr; }
 
   bool operator==(const Maybe<T>& other) const {
-    if (ptr == nullptr) {
-      return other == zc::none;
-    }
+    if (ptr == nullptr) { return other == zc::none; }
     return other.ptr != nullptr && *ptr == *other.ptr;
   }
 
@@ -1812,103 +1696,75 @@ class Maybe {
   // and sometimes to be dangerous.
 
   T& orDefault(T& defaultValue) & {
-    if (ptr == nullptr) {
-      return defaultValue;
-    }
+    if (ptr == nullptr) { return defaultValue; }
     return *ptr;
   }
   const T& orDefault(const T& defaultValue) const& {
-    if (ptr == nullptr) {
-      return defaultValue;
-    }
+    if (ptr == nullptr) { return defaultValue; }
     return *ptr;
   }
   T&& orDefault(T&& defaultValue) && {
-    if (ptr == nullptr) {
-      return zc::mv(defaultValue);
-    }
+    if (ptr == nullptr) { return zc::mv(defaultValue); }
     return zc::mv(*ptr);
   }
   const T&& orDefault(const T&& defaultValue) const&& {
-    if (ptr == nullptr) {
-      return zc::mv(defaultValue);
-    }
+    if (ptr == nullptr) { return zc::mv(defaultValue); }
     return zc::mv(*ptr);
   }
 
   template <typename F,
-            typename Result = decltype(instance<bool>() ? instance<T&>()
-                                                        : instance<F>()())>
+            typename Result = decltype(instance<bool>() ? instance<T&>() : instance<F>()())>
   Result orDefault(F&& lazyDefaultValue) & {
-    if (ptr == nullptr) {
-      return lazyDefaultValue();
-    }
+    if (ptr == nullptr) { return lazyDefaultValue(); }
     return *ptr;
   }
 
   template <typename F,
-            typename Result = decltype(instance<bool>() ? instance<const T&>()
-                                                        : instance<F>()())>
+            typename Result = decltype(instance<bool>() ? instance<const T&>() : instance<F>()())>
   Result orDefault(F&& lazyDefaultValue) const& {
-    if (ptr == nullptr) {
-      return lazyDefaultValue();
-    }
+    if (ptr == nullptr) { return lazyDefaultValue(); }
     return *ptr;
   }
 
   template <typename F,
-            typename Result = decltype(instance<bool>() ? instance<T&&>()
-                                                        : instance<F>()())>
+            typename Result = decltype(instance<bool>() ? instance<T&&>() : instance<F>()())>
   Result orDefault(F&& lazyDefaultValue) && {
-    if (ptr == nullptr) {
-      return lazyDefaultValue();
-    }
+    if (ptr == nullptr) { return lazyDefaultValue(); }
     return zc::mv(*ptr);
   }
 
   template <typename F,
-            typename Result = decltype(instance<bool>() ? instance<const T&&>()
-                                                        : instance<F>()())>
+            typename Result = decltype(instance<bool>() ? instance<const T&&>() : instance<F>()())>
   Result orDefault(F&& lazyDefaultValue) const&& {
-    if (ptr == nullptr) {
-      return lazyDefaultValue();
-    }
+    if (ptr == nullptr) { return lazyDefaultValue(); }
     return zc::mv(*ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) & -> Maybe<decltype(f(instance<T&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+    if (ptr == nullptr) { return zc::none; }
     return f(*ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) const& -> Maybe<decltype(f(instance<const T&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+    if (ptr == nullptr) { return zc::none; }
     return f(*ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) && -> Maybe<decltype(f(instance<T&&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+    if (ptr == nullptr) { return zc::none; }
     return f(zc::mv(*ptr));
   }
 
   template <typename Func>
   auto map(Func&& f) const&& -> Maybe<decltype(f(instance<const T&&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+    if (ptr == nullptr) { return zc::none; }
     return f(zc::mv(*ptr));
   }
 
- private:
+private:
   _::NullableValue<T> ptr;
 
   template <typename U>
@@ -1923,7 +1779,7 @@ class Maybe {
 
 template <typename T>
 class Maybe<T&> {
- public:
+public:
   constexpr Maybe() : ptr(nullptr) {}
   constexpr Maybe(T& t) : ptr(&t) {}
   constexpr Maybe(T* t) : ptr(t) {}
@@ -1946,8 +1802,7 @@ class Maybe<T&> {
   template <typename U>
   constexpr Maybe(Maybe<U&>& other) : ptr(other.ptr) {}
   template <typename U>
-  constexpr Maybe(const Maybe<U&>& other)
-      : ptr(const_cast<const U*>(other.ptr)) {}
+  constexpr Maybe(const Maybe<U&>& other) : ptr(const_cast<const U*>(other.ptr)) {}
   template <typename U>
   constexpr Maybe(Maybe<U&>&& other) : ptr(other.ptr) {
     other.ptr = nullptr;
@@ -2000,36 +1855,28 @@ class Maybe<T&> {
   bool operator==(zc::None) const { return ptr == nullptr; }
 
   T& orDefault(T& defaultValue) {
-    if (ptr == nullptr) {
-      return defaultValue;
-    }
+    if (ptr == nullptr) { return defaultValue; }
     return *ptr;
   }
   const T& orDefault(const T& defaultValue) const {
-    if (ptr == nullptr) {
-      return defaultValue;
-    }
+    if (ptr == nullptr) { return defaultValue; }
     return *ptr;
   }
 
   template <typename Func>
   auto map(Func&& f) -> Maybe<decltype(f(instance<T&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+    if (ptr == nullptr) { return zc::none; }
     return f(*ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) const -> Maybe<decltype(f(instance<const T&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+    if (ptr == nullptr) { return zc::none; }
     const T& ref = *ptr;
     return f(ref);
   }
 
- private:
+private:
   T* ptr;
 
   template <typename U>
@@ -2054,11 +1901,10 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
   // the target data, and passing by value only copies the pointer, not the
   // target.
 
- public:
+public:
   constexpr ArrayPtr() : ptr(nullptr), size_(0) {}
   constexpr ArrayPtr(std::nullptr_t) : ptr(nullptr), size_(0) {}
-  constexpr ArrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size)
-      : ptr(ptr), size_(size) {}
+  constexpr ArrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size) : ptr(ptr), size_(size) {}
   constexpr ArrayPtr(T* begin ZC_LIFETIMEBOUND, T* end ZC_LIFETIMEBOUND)
       : ptr(begin), size_(end - begin) {}
   ArrayPtr<T>& operator=(Array<T>&&) = delete;
@@ -2092,16 +1938,14 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winit-list-lifetime"
 #endif
-  constexpr ArrayPtr(
-      ::std::initializer_list<RemoveConstOrDisable<T>> init ZC_LIFETIMEBOUND)
+  constexpr ArrayPtr(::std::initializer_list<RemoveConstOrDisable<T>> init ZC_LIFETIMEBOUND)
       : ptr(init.begin()), size_(init.size()) {}
 #if __GNUC__ && !__clang__ && __GNUC__ >= 9
 #pragma GCC diagnostic pop
 #endif
 
   template <size_t size>
-  constexpr ArrayPtr(ZC_LIFETIMEBOUND T (&native)[size])
-      : ptr(native), size_(size) {
+  constexpr ArrayPtr(ZC_LIFETIMEBOUND T (&native)[size]) : ptr(native), size_(size) {
     // Construct an ArrayPtr from a native C-style array.
     //
     // We disable this constructor for const char arrays because otherwise you
@@ -2122,13 +1966,12 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     //   having to overload for literal char arrays specifically which is
     //   cumbersome.
 
-    static_assert(
-        !isSameType<T, const char>(),
-        "Can't implicitly convert literal char array to ArrayPtr because we "
-        "don't know if you meant to include the NUL terminator. We may change "
-        "this in the future to automatically drop the NUL terminator. For now, "
-        "try explicitly converting to StringPtr, which can in turn implicitly "
-        "convert to ArrayPtr<const char>.");
+    static_assert(!isSameType<T, const char>(),
+                  "Can't implicitly convert literal char array to ArrayPtr because we "
+                  "don't know if you meant to include the NUL terminator. We may change "
+                  "this in the future to automatically drop the NUL terminator. For now, "
+                  "try explicitly converting to StringPtr, which can in turn implicitly "
+                  "convert to ArrayPtr<const char>.");
     static_assert(!isSameType<T, const char16_t>(), "see above");
     static_assert(!isSameType<T, const char32_t>(), "see above");
   }
@@ -2157,13 +2000,11 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
   constexpr const T& back() const { return *(ptr + size_ - 1); }
 
   constexpr ArrayPtr<const T> slice(size_t start, size_t end) const {
-    ZC_IREQUIRE(start <= end && end <= size_,
-                "Out-of-bounds ArrayPtr::slice().");
+    ZC_IREQUIRE(start <= end && end <= size_, "Out-of-bounds ArrayPtr::slice().");
     return ArrayPtr<const T>(ptr + start, end - start);
   }
   constexpr ArrayPtr slice(size_t start, size_t end) {
-    ZC_IREQUIRE(start <= end && end <= size_,
-                "Out-of-bounds ArrayPtr::slice().");
+    ZC_IREQUIRE(start <= end && end <= size_, "Out-of-bounds ArrayPtr::slice().");
     return ArrayPtr(ptr + start, end - start);
   }
   constexpr ArrayPtr<const T> slice(size_t start) const {
@@ -2182,23 +2023,17 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
   }
 
   constexpr ArrayPtr first(size_t count) { return slice(0, count); }
-  constexpr ArrayPtr<const T> first(size_t count) const {
-    return slice(0, count);
-  }
+  constexpr ArrayPtr<const T> first(size_t count) const { return slice(0, count); }
 
   Maybe<size_t> findFirst(const T& match) const {
     for (size_t i = 0; i < size_; i++) {
-      if (ptr[i] == match) {
-        return i;
-      }
+      if (ptr[i] == match) { return i; }
     }
     return zc::none;
   }
   Maybe<size_t> findLast(const T& match) const {
     for (size_t i = size_; i--;) {
-      if (ptr[i] == match) {
-        return i;
-      }
+      if (ptr[i] == match) { return i; }
     }
     return zc::none;
   }
@@ -2245,40 +2080,28 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
                   isSameType<RemoveConst<T>, unsigned char>()) {
 #if ZC_HAS_COMPILER_FEATURE(cxx_constexpr_string_builtins)
       int ret = __builtin_memcmp(ptr, other.ptr, comparisonSize * sizeof(T));
-      if (ret != 0) {
-        return ret < 0;
-      }
+      if (ret != 0) { return ret < 0; }
 #else
       for (size_t i = 0; i < comparisonSize; ++i) {
-        if (static_cast<unsigned char>(ptr[i]) !=
-            static_cast<unsigned char>(other.ptr[i])) {
-          return static_cast<unsigned char>(ptr[i]) <
-                 static_cast<unsigned char>(other.ptr[i]);
+        if (static_cast<unsigned char>(ptr[i]) != static_cast<unsigned char>(other.ptr[i])) {
+          return static_cast<unsigned char>(ptr[i]) < static_cast<unsigned char>(other.ptr[i]);
         }
       }
 #endif
     } else {
       for (size_t i = 0; i < comparisonSize; i++) {
         bool ret = ptr[i] == other.ptr[i];
-        if (!ret) {
-          return ptr[i] < other.ptr[i];
-        }
+        if (!ret) { return ptr[i] < other.ptr[i]; }
       }
     }
     // arrays are equal up to comparisonSize
     return size_ < other.size_;
   }
 
-  constexpr bool operator<=(const ArrayPtr& other) const {
-    return !(other < *this);
-  }
-  constexpr bool operator>=(const ArrayPtr& other) const {
-    return other <= *this;
-  }
+  constexpr bool operator<=(const ArrayPtr& other) const { return !(other < *this); }
+  constexpr bool operator>=(const ArrayPtr& other) const { return other <= *this; }
   // Note that only strongly ordered types are currently supported
-  constexpr bool operator>(const ArrayPtr& other) const {
-    return other < *this;
-  }
+  constexpr bool operator>(const ArrayPtr& other) const { return other < *this; }
 
   template <typename... Attachments>
   Array<T> attach(Attachments&&... attachments) const ZC_WARN_UNUSED_RESULT;
@@ -2298,9 +2121,7 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
   void fill(T t) {
     // Fill the area by copying t over every element.
 
-    for (size_t i = 0; i < size_; i++) {
-      ptr[i] = t;
-    }
+    for (size_t i = 0; i < size_; i++) { ptr[i] = t; }
     // All modern compilers are smart enough to optimize this loop for simple
     // T's. libc++ std::fill doesn't have memset specialization either.
   }
@@ -2326,12 +2147,10 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
     ZC_IREQUIRE(!intersects(other), "copy memory area must not overlap");
     T* __restrict__ dst = begin();
     const T* __restrict__ src = other.begin();
-    for (size_t s = size_, i = 0; i < s; i++) {
-      dst[i] = src[i];
-    }
+    for (size_t s = size_, i = 0; i < s; i++) { dst[i] = src[i]; }
   }
 
- private:
+private:
   T* ptr;
   size_t size_;
 
@@ -2349,36 +2168,28 @@ class ArrayPtr : public DisallowConstCopyIfNotConst<T> {
 template <>
 inline Maybe<size_t> ArrayPtr<const char>::findFirst(const char& c) const {
   const char* pos = reinterpret_cast<const char*>(memchr(ptr, c, size_));
-  if (pos == nullptr) {
-    return zc::none;
-  }
+  if (pos == nullptr) { return zc::none; }
   return pos - ptr;
 }
 
 template <>
 inline Maybe<size_t> ArrayPtr<char>::findFirst(const char& c) const {
   char* pos = reinterpret_cast<char*>(memchr(ptr, c, size_));
-  if (pos == nullptr) {
-    return zc::none;
-  }
+  if (pos == nullptr) { return zc::none; }
   return pos - ptr;
 }
 
 template <>
 inline Maybe<size_t> ArrayPtr<const byte>::findFirst(const byte& c) const {
   const byte* pos = reinterpret_cast<const byte*>(memchr(ptr, c, size_));
-  if (pos == nullptr) {
-    return zc::none;
-  }
+  if (pos == nullptr) { return zc::none; }
   return pos - ptr;
 }
 
 template <>
 inline Maybe<size_t> ArrayPtr<byte>::findFirst(const byte& c) const {
   byte* pos = reinterpret_cast<byte*>(memchr(ptr, c, size_));
-  if (pos == nullptr) {
-    return zc::none;
-  }
+  if (pos == nullptr) { return zc::none; }
   return pos - ptr;
 }
 
@@ -2392,8 +2203,7 @@ constexpr ArrayPtr<T> arrayPtr(T* ptr ZC_LIFETIMEBOUND, size_t size) {
 }
 
 template <typename T>
-constexpr ArrayPtr<T> arrayPtr(T* begin ZC_LIFETIMEBOUND,
-                               T* end ZC_LIFETIMEBOUND) {
+constexpr ArrayPtr<T> arrayPtr(T* begin ZC_LIFETIMEBOUND, T* end ZC_LIFETIMEBOUND) {
   // Use this function to construct ArrayPtrs without writing out the type name.
   return ArrayPtr<T>(begin, end);
 }
@@ -2438,9 +2248,7 @@ Maybe<To&> dynamicDowncastIfAvailable(From& from) {
   // Force a compile error if To is not a subtype of From.  Cross-casting is
   // rare; if it is needed we should have a separate cast function like
   // dynamicCrosscastIfAvailable().
-  if (false) {
-    zc::implicitCast<From*>(zc::implicitCast<To*>(nullptr));
-  }
+  if (false) { zc::implicitCast<From*>(zc::implicitCast<To*>(nullptr)); }
 
 #if ZC_NO_RTTI
   return zc::none;
@@ -2457,13 +2265,10 @@ To& downcast(From& from) {
   // type.
 
   // Force a compile time error if To isn't a subtype of From.
-  if constexpr (false) {
-    zc::implicitCast<From*>(zc::implicitCast<To*>(nullptr));
-  }
+  if constexpr (false) { zc::implicitCast<From*>(zc::implicitCast<To*>(nullptr)); }
 
 #if !ZC_NO_RTTI
-  ZC_IREQUIRE(dynamic_cast<To*>(&from) != nullptr,
-              "Value cannot be downcast() to requested type.");
+  ZC_IREQUIRE(dynamic_cast<To*>(&from) != nullptr, "Value cannot be downcast() to requested type.");
 #endif
 
   return static_cast<To&>(from);
@@ -2476,7 +2281,7 @@ namespace _ {  // private
 
 template <typename Func>
 class Deferred {
- public:
+public:
   Deferred(Func&& func) : maybeFunc(zc::fwd<Func>(func)) {}
   ~Deferred() noexcept(false) { run(); }
   ZC_DISALLOW_COPY(Deferred);
@@ -2494,7 +2299,7 @@ class Deferred {
 
   void cancel() { maybeFunc = zc::none; }
 
- private:
+private:
   zc::Maybe<Func> maybeFunc;
   // Note that `Func` may actually be an lvalue reference because `zc::defer`
   // takes its argument via universal reference. `zc::Maybe` has specializations
@@ -2520,8 +2325,7 @@ _::Deferred<Func> defer(Func&& func) {
   return _::Deferred<Func>(zc::fwd<Func>(func));
 }
 
-#define ZC_DEFER(code) \
-  auto ZC_UNIQUE_NAME(_zcDefer) = ::zc::defer([&]() { code; })
+#define ZC_DEFER(code) auto ZC_UNIQUE_NAME(_zcDefer) = ::zc::defer([&]() { code; })
 // Run the given code when the function exits, whether by return or exception.
 
 // =======================================================================================
@@ -2535,8 +2339,7 @@ struct IsDisallowedInCoroutine {
 };
 
 template <typename T>
-struct IsDisallowedInCoroutine<T,
-                               typename Decay<T>::_zc_DissalowedInCoroutine> {
+struct IsDisallowedInCoroutine<T, typename Decay<T>::_zc_DissalowedInCoroutine> {
   static constexpr bool value = true;
 };
 

@@ -35,7 +35,7 @@ class Thread {
   // rethrown from the thread's destructor (if not unwinding from another
   // exception).
 
- public:
+public:
   explicit Thread(Function<void()> func);
   ZC_DISALLOW_COPY_AND_MOVE(Thread);
 
@@ -50,7 +50,7 @@ class Thread {
   void detach();
   // Don't join the thread in ~Thread().
 
- private:
+private:
   struct ThreadState {
     ThreadState(Function<void()> func);
 

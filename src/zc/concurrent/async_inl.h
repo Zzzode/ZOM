@@ -47,15 +47,12 @@ template <typename T>
 class ExceptionOr;
 
 class ExceptionOrValue {
- public:
-  ExceptionOrValue(bool, Exception&& exception)
-      : exception(zc::mv(exception)) {}
+public:
+  ExceptionOrValue(bool, Exception&& exception) : exception(zc::mv(exception)) {}
   ZC_DISALLOW_COPY(ExceptionOrValue);
 
   void addException(Exception&& exception) {
-    if (this->exception == zc::none) {
-      this->exception = zc::mv(exception);
-    }
+    if (this->exception == zc::none) { this->exception = zc::mv(exception); }
   }
 
   template <typename T>
@@ -69,7 +66,7 @@ class ExceptionOrValue {
 
   Maybe<Exception> exception;
 
- protected:
+protected:
   // Allow subclasses to have move constructor / assignment.
   ExceptionOrValue() = default;
   ExceptionOrValue(ExceptionOrValue&& other) = default;
@@ -78,11 +75,10 @@ class ExceptionOrValue {
 
 template <typename T>
 class ExceptionOr : public ExceptionOrValue {
- public:
+public:
   ExceptionOr() = default;
   ExceptionOr(T&& value) : value(zc::mv(value)) {}
-  ExceptionOr(bool, Exception&& exception)
-      : ExceptionOrValue(false, zc::mv(exception)) {}
+  ExceptionOr(bool, Exception&& exception) : ExceptionOrValue(false, zc::mv(exception)) {}
   ExceptionOr(ExceptionOr&&) = default;
   ExceptionOr& operator=(ExceptionOr&&) = default;
 
@@ -92,14 +88,10 @@ class ExceptionOr : public ExceptionOrValue {
 template <typename T>
 inline T convertToReturn(ExceptionOr<T>&& result) {
   ZC_IF_SOME(value, result.value) {
-    ZC_IF_SOME(exception, result.exception) {
-      throwRecoverableException(zc::mv(exception));
-    }
+    ZC_IF_SOME(exception, result.exception) { throwRecoverableException(zc::mv(exception)); }
     return _::returnMaybeVoid(zc::mv(value));
   }
-  else ZC_IF_SOME(exception, result.exception) {
-    throwFatalException(zc::mv(exception));
-  }
+  else ZC_IF_SOME(exception, result.exception) { throwFatalException(zc::mv(exception)); }
   else {
     // Result contained neither a value nor an exception?
     ZC_UNREACHABLE;
@@ -110,13 +102,9 @@ inline void convertToReturn(ExceptionOr<Void>&& result) {
   // Override <void> case to use throwRecoverableException().
 
   if (result.value != zc::none) {
-    ZC_IF_SOME(exception, result.exception) {
-      throwRecoverableException(zc::mv(exception));
-    }
+    ZC_IF_SOME(exception, result.exception) { throwRecoverableException(zc::mv(exception)); }
   } else
-    ZC_IF_SOME(exception, result.exception) {
-      throwRecoverableException(zc::mv(exception));
-    }
+    ZC_IF_SOME(exception, result.exception) { throwRecoverableException(zc::mv(exception)); }
   else {
     // Result contained neither a value nor an exception?
     ZC_UNREACHABLE;
@@ -125,14 +113,12 @@ inline void convertToReturn(ExceptionOr<Void>&& result) {
 
 class TraceBuilder {
   // Helper for methods that build a call trace.
- public:
+public:
   TraceBuilder(ArrayPtr<void*> space)
       : start(space.begin()), current(space.begin()), limit(space.end()) {}
 
   inline void add(void* addr) {
-    if (current < limit) {
-      *current++ = addr;
-    }
+    if (current < limit) { *current++ = addr; }
   }
 
   inline bool full() const { return current == limit; }
@@ -141,7 +127,7 @@ class TraceBuilder {
 
   String toString();
 
- private:
+private:
   void** start;
   void** current;
   void** limit;
@@ -156,7 +142,7 @@ class Event : private AsyncObject {
   // An event waiting to be executed.  Not for direct use by applications --
   // promises use this internally.
 
- public:
+public:
   Event(SourceLocation location);
   Event(zc::EventLoop& loop, SourceLocation location);
   ~Event() noexcept;
@@ -217,14 +203,14 @@ class Event : private AsyncObject {
   String traceEvent();
   // Helper that builds a trace and stringifies it.
 
- protected:
+protected:
   virtual Maybe<Own<Event>> fire() = 0;
   // Fire the event.  Possibly returns a pointer to itself, which will be
   // discarded by the caller.  This is the only way that an event can delete
   // itself as a result of firing, as doing so from within fire() will throw an
   // exception.
 
- private:
+private:
   friend class zc::EventLoop;
   EventLoop& loop;
   Event* next;
@@ -242,7 +228,7 @@ class PromiseArenaMember {
   // `TaskSet::Task`, ForkHub, and potentially other objects that commonly live
   // on the end of a promise chain can also leverage this.
 
- public:
+public:
   virtual void destroy() = 0;
   // Destroys and frees the node.
   //
@@ -258,7 +244,7 @@ class PromiseArenaMember {
   // 2. XThreadEvents sometimes leave it up to a different thread to actually
   // delete the object.
 
- private:
+private:
   PromiseArena* arena = nullptr;
   // If non-null, then this PromiseNode is the last node allocated within the
   // given arena, and therefore owns the arena. After this node is destroyed,
@@ -283,7 +269,7 @@ class PromiseNode : public PromiseArenaMember, private AsyncObject {
   // to ExceptionOr<T>, but are only so down-cast in the few places that really
   // need to be templated.  Luckily this is all internal implementation details.
 
- public:
+public:
   virtual void onReady(Event* event) noexcept = 0;
   // Arms the given event when ready.
   //
@@ -346,11 +332,11 @@ class PromiseNode : public PromiseArenaMember, private AsyncObject {
     return T(false, zc::mv(node));
   }
 
- protected:
+protected:
   class OnReadyEvent {
     // Helper class for implementing onReady().
 
-   public:
+  public:
     void init(Event* newEvent);
 
     void arm();
@@ -362,13 +348,13 @@ class PromiseNode : public PromiseArenaMember, private AsyncObject {
       if (event != nullptr && !builder.full()) event->traceEvent(builder);
     }
 
-   private:
+  private:
     Event* event = nullptr;
   };
 };
 
 class PromiseDisposer {
- public:
+public:
   template <typename T>
   static constexpr bool canArenaAllocate() {
     // We can only use arena allocation for types that fit in an arena and have
@@ -405,17 +391,15 @@ class PromiseDisposer {
       ptr = reinterpret_cast<T*>(arena + 1) - 1;
       ctor(*ptr, zc::fwd<Params>(params)...);
       ptr->arena = arena;
-      ZC_IREQUIRE(
-          reinterpret_cast<void*>(ptr) ==
-              reinterpret_cast<void*>(static_cast<PromiseArenaMember*>(ptr)),
-          "PromiseArenaMember must be the leftmost inherited type.");
+      ZC_IREQUIRE(reinterpret_cast<void*>(ptr) ==
+                      reinterpret_cast<void*>(static_cast<PromiseArenaMember*>(ptr)),
+                  "PromiseArenaMember must be the leftmost inherited type.");
     }
     return zc::Own<T, D>(ptr);
   }
 
   template <typename T, typename D = PromiseDisposer, typename... Params>
-  static zc::Own<T, D> appendPromise(OwnPromiseNode&& next,
-                                     Params&&... params) noexcept {
+  static zc::Own<T, D> appendPromise(OwnPromiseNode&& next, Params&&... params) noexcept {
     // Append a promise to the arena that currently ends with `next`. `next` is
     // also still passed as the first parameter to the new object's constructor.
     //
@@ -427,8 +411,7 @@ class PromiseDisposer {
     PromiseArena* arena = next->arena;
 
     if (!canArenaAllocate<T>() || arena == nullptr ||
-        reinterpret_cast<byte*>(next.get()) - reinterpret_cast<byte*>(arena) <
-            sizeof(T)) {
+        reinterpret_cast<byte*>(next.get()) - reinterpret_cast<byte*>(arena) < sizeof(T)) {
       // No arena available, or not enough space, or weird alignment needed.
       // Start new arena.
       return alloc<T, D>(zc::mv(next), zc::fwd<Params>(params)...);
@@ -447,10 +430,9 @@ class PromiseDisposer {
       T* ptr = reinterpret_cast<T*>(next.get()) - 1;
       ctor(*ptr, zc::mv(next), zc::fwd<Params>(params)...);
       ptr->arena = arena;
-      ZC_IREQUIRE(
-          reinterpret_cast<void*>(ptr) ==
-              reinterpret_cast<void*>(static_cast<PromiseArenaMember*>(ptr)),
-          "PromiseArenaMember must be the leftmost inherited type.");
+      ZC_IREQUIRE(reinterpret_cast<void*>(ptr) ==
+                      reinterpret_cast<void*>(static_cast<PromiseArenaMember*>(ptr)),
+                  "PromiseArenaMember must be the leftmost inherited type.");
       return zc::Own<T, D>(ptr);
     }
   }
@@ -493,7 +475,7 @@ inline NeverDone::operator Promise<T>() const {
 // -------------------------------------------------------------------
 
 class ImmediatePromiseNodeBase : public PromiseNode {
- public:
+public:
   ImmediatePromiseNodeBase();
   ~ImmediatePromiseNodeBase() noexcept(false);
 
@@ -506,49 +488,45 @@ class ImmediatePromiseNode final : public ImmediatePromiseNodeBase {
   // A promise that has already been resolved to an immediate value or
   // exception.
 
- public:
+public:
   ImmediatePromiseNode(ExceptionOr<T>&& result) : result(zc::mv(result)) {}
   void destroy() override { freePromise(this); }
 
-  void get(ExceptionOrValue& output) noexcept override {
-    output.as<T>() = zc::mv(result);
-  }
+  void get(ExceptionOrValue& output) noexcept override { output.as<T>() = zc::mv(result); }
 
- private:
+private:
   ExceptionOr<T> result;
 };
 
 class ImmediateBrokenPromiseNode final : public ImmediatePromiseNodeBase {
- public:
+public:
   ImmediateBrokenPromiseNode(Exception&& exception);
   void destroy() override;
 
   void get(ExceptionOrValue& output) noexcept override;
 
- private:
+private:
   Exception exception;
 };
 
 template <typename T, T value>
 class ConstPromiseNode : public ImmediatePromiseNodeBase {
- public:
+public:
   void destroy() override {}
-  void get(ExceptionOrValue& output) noexcept override {
-    output.as<T>() = value;
-  }
+  void get(ExceptionOrValue& output) noexcept override { output.as<T>() = value; }
 };
 
 // -------------------------------------------------------------------
 
 class AttachmentPromiseNodeBase : public PromiseNode {
- public:
+public:
   AttachmentPromiseNodeBase(OwnPromiseNode&& dependency);
 
   void onReady(Event* event) noexcept override;
   void get(ExceptionOrValue& output) noexcept override;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- private:
+private:
   OwnPromiseNode dependency;
 
   void dropDependency();
@@ -562,10 +540,9 @@ class AttachmentPromiseNode final : public AttachmentPromiseNodeBase {
   // A PromiseNode that holds on to some object (usually, an Own<T>, but could
   // be any movable object) until the promise resolves.
 
- public:
+public:
   AttachmentPromiseNode(OwnPromiseNode&& dependency, Attachment&& attachment)
-      : AttachmentPromiseNodeBase(zc::mv(dependency)),
-        attachment(zc::mv<Attachment>(attachment)) {}
+      : AttachmentPromiseNodeBase(zc::mv(dependency)), attachment(zc::mv<Attachment>(attachment)) {}
   void destroy() override { freePromise(this); }
 
   ~AttachmentPromiseNode() noexcept(false) {
@@ -574,7 +551,7 @@ class AttachmentPromiseNode final : public AttachmentPromiseNodeBase {
     dropDependency();
   }
 
- private:
+private:
   Attachment attachment;
 };
 
@@ -597,8 +574,7 @@ class AttachmentPromiseNode final : public AttachmentPromiseNodeBase {
 template <typename T, typename ReturnType, typename... ParamTypes>
 void* getMethodStartAddress(T& obj, ReturnType (T::*method)(ParamTypes...));
 template <typename T, typename ReturnType, typename... ParamTypes>
-void* getMethodStartAddress(const T& obj,
-                            ReturnType (T::*method)(ParamTypes...) const);
+void* getMethodStartAddress(const T& obj, ReturnType (T::*method)(ParamTypes...) const);
 // Given an object and a pointer-to-method, return the start address of the
 // method's code. The intent is that this address can be used in a trace;
 // addr2line should map it to the start of the function's definition. For
@@ -617,12 +593,9 @@ class PtmfHelper {
   template <typename... ParamTypes>
   friend struct GetFunctorStartAddress;
   template <typename T, typename ReturnType, typename... ParamTypes>
-  friend void* getMethodStartAddress(T& obj,
-                                     ReturnType (T::*method)(ParamTypes...));
+  friend void* getMethodStartAddress(T& obj, ReturnType (T::*method)(ParamTypes...));
   template <typename T, typename ReturnType, typename... ParamTypes>
-  friend void* getMethodStartAddress(const T& obj,
-                                     ReturnType (T::*method)(ParamTypes...)
-                                         const);
+  friend void* getMethodStartAddress(const T& obj, ReturnType (T::*method)(ParamTypes...) const);
 
 #if __GNUG__
 
@@ -697,8 +670,7 @@ void* getMethodStartAddress(T& obj, ReturnType (T::*method)(ParamTypes...)) {
   return PtmfHelper::from<ReturnType, T, ParamTypes...>(method).apply(&obj);
 }
 template <typename T, typename ReturnType, typename... ParamTypes>
-void* getMethodStartAddress(const T& obj,
-                            ReturnType (T::*method)(ParamTypes...) const) {
+void* getMethodStartAddress(const T& obj, ReturnType (T::*method)(ParamTypes...) const) {
   return PtmfHelper::from<ReturnType, T, ParamTypes...>(method).apply(&obj);
 }
 
@@ -722,8 +694,7 @@ struct GetFunctorStartAddress {
   template <typename Func>
   static void* apply(Func&& func) {
     typedef decltype(func(instance<ParamTypes>()...)) ReturnType;
-    return PtmfHelper::from<ReturnType, Decay<Func>, ParamTypes...>(
-               &Decay<Func>::operator())
+    return PtmfHelper::from<ReturnType, Decay<Func>, ParamTypes...>(&Decay<Func>::operator())
         .apply(&func);
   }
 };
@@ -734,15 +705,14 @@ struct GetFunctorStartAddress<Void&&> : public GetFunctorStartAddress<> {};
 // that the function actually has no parameters.
 
 class TransformPromiseNodeBase : public PromiseNode {
- public:
-  TransformPromiseNodeBase(OwnPromiseNode&& dependency,
-                           void* continuationTracePtr);
+public:
+  TransformPromiseNodeBase(OwnPromiseNode&& dependency, void* continuationTracePtr);
 
   void onReady(Event* event) noexcept override;
   void get(ExceptionOrValue& output) noexcept override;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- private:
+private:
   OwnPromiseNode dependency;
   void* continuationTracePtr;
 
@@ -771,9 +741,9 @@ class TransformPromiseNode final : public TransformPromiseNodeBase {
   // A PromiseNode that transforms the result of another PromiseNode through an
   // application-provided function (implements `then()`).
 
- public:
-  TransformPromiseNode(OwnPromiseNode&& dependency, Func&& func,
-                       ErrorFunc&& errorHandler, void* continuationTracePtr)
+public:
+  TransformPromiseNode(OwnPromiseNode&& dependency, Func&& func, ErrorFunc&& errorHandler,
+                       void* continuationTracePtr)
       : TransformPromiseNodeBase(zc::mv(dependency), continuationTracePtr),
         func(zc::fwd<Func>(func)),
         errorHandler(zc::fwd<ErrorFunc>(errorHandler)) {}
@@ -786,7 +756,7 @@ class TransformPromiseNode final : public TransformPromiseNodeBase {
     dropDependency();
   }
 
- private:
+private:
   Func func;
   ErrorFunc errorHandler;
 
@@ -798,13 +768,11 @@ class TransformPromiseNode final : public TransformPromiseNodeBase {
     getDepResult(depResult);
     ZC_IF_SOME(depException, depResult.exception) {
       output.as<T>() =
-          handle<T>(MaybeVoidCaller<Exception,
-                                    FixVoid<ReturnType<ErrorFunc, Exception>>>::
-                        apply(errorHandler, zc::mv(depException)));
+          handle<T>(MaybeVoidCaller<Exception, FixVoid<ReturnType<ErrorFunc, Exception>>>::apply(
+              errorHandler, zc::mv(depException)));
     }
     else ZC_IF_SOME(depValue, depResult.value) {
-      output.as<T>() =
-          handle(MaybeVoidCaller<DepT, T>::apply(func, zc::mv(depValue)));
+      output.as<T>() = handle(MaybeVoidCaller<DepT, T>::apply(func, zc::mv(depValue)));
     }
   }
 };
@@ -814,9 +782,8 @@ class SimpleTransformPromiseNode final : public TransformPromiseNodeBase {
   // TransformPromiseNodeBase variant using default error handler to reduce
   // templating.
 
- public:
-  SimpleTransformPromiseNode(OwnPromiseNode&& dependency, Func&& func,
-                             void* continuationTracePtr)
+public:
+  SimpleTransformPromiseNode(OwnPromiseNode&& dependency, Func&& func, void* continuationTracePtr)
       : TransformPromiseNodeBase(zc::mv(dependency), continuationTracePtr),
         func(zc::fwd<Func>(func)) {}
 
@@ -829,7 +796,7 @@ class SimpleTransformPromiseNode final : public TransformPromiseNodeBase {
     dropDependency();
   }
 
- private:
+private:
   Func func;
 
   void getImpl(ExceptionOrValue& output) override {
@@ -841,8 +808,7 @@ class SimpleTransformPromiseNode final : public TransformPromiseNodeBase {
       output.as<T>() = ExceptionOr<T>(false, zc::mv(depException));
     }
     else ZC_IF_SOME(depValue, depResult.value) {
-      output.as<T>() =
-          handle(MaybeVoidCaller<DepT, T>::apply(func, zc::mv(depValue)));
+      output.as<T>() = handle(MaybeVoidCaller<DepT, T>::apply(func, zc::mv(depValue)));
     }
   }
 };
@@ -853,7 +819,7 @@ class ForkHubBase;
 using OwnForkHubBase = Own<ForkHubBase, ForkHubBase>;
 
 class ForkBranchBase : public PromiseNode {
- public:
+public:
   ForkBranchBase(OwnForkHubBase&& hub);
   ~ForkBranchBase() noexcept(false);
 
@@ -864,13 +830,13 @@ class ForkBranchBase : public PromiseNode {
   void onReady(Event* event) noexcept override;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- protected:
+protected:
   inline ExceptionOrValue& getHubResultRef();
 
   void releaseHub(ExceptionOrValue& output);
   // Release the hub.  If an exception is thrown, add it to `output`.
 
- private:
+private:
   OnReadyEvent onReadyEvent;
 
   OwnForkHubBase hub;
@@ -913,10 +879,9 @@ Maybe<Arc<T>> copyOrAddRef(Maybe<Arc<T>>& t) {
 // branches that receives a const reference.
 template <typename T, bool FreeOnDestroy>
 class ForkBranch final : public ForkBranchBase {
- public:
+public:
   ForkBranch(OwnForkHubBase&& hub) : ForkBranchBase(zc::mv(hub)) {}
-  ForkBranch(ForkedPromise<UnfixVoid<T>>& promise)
-      : ForkBranchBase(promise.hub->addRef()) {}
+  ForkBranch(ForkedPromise<UnfixVoid<T>>& promise) : ForkBranchBase(promise.hub->addRef()) {}
 
   void destroy() override {
     if (FreeOnDestroy) freePromise(this);
@@ -924,12 +889,8 @@ class ForkBranch final : public ForkBranchBase {
 
   void get(ExceptionOrValue& output) noexcept override {
     ExceptionOr<T>& hubResult = getHubResultRef().template as<T>();
-    ZC_IF_SOME(value, hubResult.value) {
-      output.as<T>().value = copyOrAddRef(value);
-    }
-    else {
-      output.as<T>().value = zc::none;
-    }
+    ZC_IF_SOME(value, hubResult.value) { output.as<T>().value = copyOrAddRef(value); }
+    else { output.as<T>().value = zc::none; }
     output.exception = hubResult.exception;
     releaseHub(output);
   }
@@ -940,7 +901,7 @@ class SplitBranch final : public ForkBranchBase {
   // A PromiseNode that implements one branch of a fork -- i.e. one of the
   // branches that receives a const reference.
 
- public:
+public:
   SplitBranch(OwnForkHubBase&& hub) : ForkBranchBase(zc::mv(hub)) {}
   void destroy() override { freePromise(this); }
 
@@ -951,9 +912,7 @@ class SplitBranch final : public ForkBranchBase {
     ZC_IF_SOME(value, hubResult.value) {
       output.as<Element>().value = zc::mv(zc::get<index>(value));
     }
-    else {
-      output.as<Element>().value = zc::none;
-    }
+    else { output.as<Element>().value = zc::none; }
     output.exception = hubResult.exception;
     releaseHub(output);
   }
@@ -962,9 +921,8 @@ class SplitBranch final : public ForkBranchBase {
 // -------------------------------------------------------------------
 
 class ForkHubBase : public PromiseArenaMember, protected Event {
- public:
-  ForkHubBase(OwnPromiseNode&& inner, ExceptionOrValue& resultRef,
-              SourceLocation location);
+public:
+  ForkHubBase(OwnPromiseNode&& inner, ExceptionOrValue& resultRef, SourceLocation location);
 
   inline ExceptionOrValue& getResultRef() { return resultRef; }
 
@@ -976,12 +934,10 @@ class ForkHubBase : public PromiseArenaMember, protected Event {
   }
 
   static void dispose(ForkHubBase* obj) {
-    if (--obj->refcount == 0) {
-      PromiseDisposer::dispose(obj);
-    }
+    if (--obj->refcount == 0) { PromiseDisposer::dispose(obj); }
   }
 
- private:
+private:
   uint refcount = 1;
   // We manually implement refcounting for ForkHubBase so that we can use it
   // together with PromiseDisposer's arena allocation.
@@ -1006,7 +962,7 @@ class ForkHub final : public ForkHubBase {
   // Promise::fork() replaces the promise's outer node with a ForkHub, and
   // subsequent calls add branches to that hub (if possible).
 
- public:
+public:
   ForkHub(OwnPromiseNode&& inner, SourceLocation location)
       : ForkHubBase(zc::mv(inner), result, location) {}
   void destroy() override { freePromise(this); }
@@ -1020,29 +976,23 @@ class ForkHub final : public ForkHubBase {
     return splitImpl(MakeIndexes<tupleSize<T>()>(), location);
   }
 
- private:
+private:
   ExceptionOr<T> result;
 
   template <size_t... indexes>
-  _::SplitTuplePromise<T> splitImpl(Indexes<indexes...>,
-                                    SourceLocation location) {
+  _::SplitTuplePromise<T> splitImpl(Indexes<indexes...>, SourceLocation location) {
     return zc::tuple(addSplit<indexes>(location)...);
   }
 
   template <size_t index>
-  ReducePromises<typename SplitBranch<T, index>::Element> addSplit(
-      SourceLocation location) {
-    return _::PromiseNode::to<
-        ReducePromises<typename SplitBranch<T, index>::Element>>(maybeChain(
-        allocPromise<SplitBranch<T, index>>(addRef()),
-        implicitCast<typename SplitBranch<T, index>::Element*>(nullptr),
-        location));
+  ReducePromises<typename SplitBranch<T, index>::Element> addSplit(SourceLocation location) {
+    return _::PromiseNode::to<ReducePromises<typename SplitBranch<T, index>::Element>>(
+        maybeChain(allocPromise<SplitBranch<T, index>>(addRef()),
+                   implicitCast<typename SplitBranch<T, index>::Element*>(nullptr), location));
   }
 };
 
-inline ExceptionOrValue& ForkBranchBase::getHubResultRef() {
-  return hub->getResultRef();
-}
+inline ExceptionOrValue& ForkBranchBase::getHubResultRef() { return hub->getResultRef(); }
 
 // -------------------------------------------------------------------
 
@@ -1052,7 +1002,7 @@ class ChainPromiseNode final : public PromiseNode, public Event {
   // `Event` is only a public base class because otherwise we can't cast
   // Own<ChainPromiseNode> to Own<Event>.  Ugh, templates and private...
 
- public:
+public:
   explicit ChainPromiseNode(OwnPromiseNode inner, SourceLocation location);
   ~ChainPromiseNode() noexcept(false);
   void destroy() override;
@@ -1062,7 +1012,7 @@ class ChainPromiseNode final : public PromiseNode, public Event {
   void get(ExceptionOrValue& output) noexcept override;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- private:
+private:
   enum State { STEP1, STEP2 };
 
   State state;
@@ -1079,20 +1029,16 @@ class ChainPromiseNode final : public PromiseNode, public Event {
 };
 
 template <typename T>
-OwnPromiseNode maybeChain(OwnPromiseNode&& node, Promise<T>*,
-                          SourceLocation location) {
-  return PromiseDisposer::appendPromise<ChainPromiseNode>(zc::mv(node),
-                                                          location);
+OwnPromiseNode maybeChain(OwnPromiseNode&& node, Promise<T>*, SourceLocation location) {
+  return PromiseDisposer::appendPromise<ChainPromiseNode>(zc::mv(node), location);
 }
 
 template <typename T>
-OwnPromiseNode&& maybeChain(OwnPromiseNode&& node, T*,
-                            SourceLocation location) {
+OwnPromiseNode&& maybeChain(OwnPromiseNode&& node, T*, SourceLocation location) {
   return zc::mv(node);
 }
 
-template <typename T,
-          typename Result = decltype(T::reducePromise(instance<Promise<T>>()))>
+template <typename T, typename Result = decltype(T::reducePromise(instance<Promise<T>>()))>
 inline Result maybeReduce(Promise<T>&& promise, bool) {
   return T::reducePromise(zc::mv(promise));
 }
@@ -1105,9 +1051,8 @@ inline Promise<T> maybeReduce(Promise<T>&& promise, ...) {
 // -------------------------------------------------------------------
 
 class ExclusiveJoinPromiseNode final : public PromiseNode {
- public:
-  ExclusiveJoinPromiseNode(OwnPromiseNode left, OwnPromiseNode right,
-                           SourceLocation location);
+public:
+  ExclusiveJoinPromiseNode(OwnPromiseNode left, OwnPromiseNode right, SourceLocation location);
   ~ExclusiveJoinPromiseNode() noexcept(false);
   void destroy() override;
 
@@ -1115,11 +1060,10 @@ class ExclusiveJoinPromiseNode final : public PromiseNode {
   void get(ExceptionOrValue& output) noexcept override;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- private:
+private:
   class Branch : public Event {
-   public:
-    Branch(ExclusiveJoinPromiseNode& joinNode, OwnPromiseNode dependency,
-           SourceLocation location);
+  public:
+    Branch(ExclusiveJoinPromiseNode& joinNode, OwnPromiseNode dependency, SourceLocation location);
     ~Branch() noexcept(false);
 
     bool get(ExceptionOrValue& output);
@@ -1128,7 +1072,7 @@ class ExclusiveJoinPromiseNode final : public PromiseNode {
     Maybe<Own<Event>> fire() override;
     void traceEvent(TraceBuilder& builder) override;
 
-   private:
+  private:
     ExclusiveJoinPromiseNode& joinNode;
     OwnPromiseNode dependency;
 
@@ -1148,10 +1092,9 @@ enum class ArrayJoinBehavior {
 };
 
 class ArrayJoinPromiseNodeBase : public PromiseNode {
- public:
-  ArrayJoinPromiseNodeBase(Array<OwnPromiseNode> promises,
-                           ExceptionOrValue* resultParts, size_t partSize,
-                           SourceLocation location,
+public:
+  ArrayJoinPromiseNodeBase(Array<OwnPromiseNode> promises, ExceptionOrValue* resultParts,
+                           size_t partSize, SourceLocation location,
                            ArrayJoinBehavior joinBehavior);
   ~ArrayJoinPromiseNodeBase() noexcept(false);
 
@@ -1159,11 +1102,11 @@ class ArrayJoinPromiseNodeBase : public PromiseNode {
   void get(ExceptionOrValue& output) noexcept override final;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override final;
 
- protected:
+protected:
   virtual void getNoError(ExceptionOrValue& output) noexcept = 0;
   // Called to compile the result only in the case where there were no errors.
 
- private:
+private:
   const ArrayJoinBehavior joinBehavior;
 
   uint countLeft;
@@ -1171,15 +1114,15 @@ class ArrayJoinPromiseNodeBase : public PromiseNode {
   bool armed = false;
 
   class Branch final : public Event {
-   public:
-    Branch(ArrayJoinPromiseNodeBase& joinNode, OwnPromiseNode dependency,
-           ExceptionOrValue& output, SourceLocation location);
+  public:
+    Branch(ArrayJoinPromiseNodeBase& joinNode, OwnPromiseNode dependency, ExceptionOrValue& output,
+           SourceLocation location);
     ~Branch() noexcept(false);
 
     Maybe<Own<Event>> fire() override;
     void traceEvent(TraceBuilder& builder) override;
 
-   private:
+  private:
     ArrayJoinPromiseNodeBase& joinNode;
     OwnPromiseNode dependency;
     ExceptionOrValue& output;
@@ -1192,17 +1135,15 @@ class ArrayJoinPromiseNodeBase : public PromiseNode {
 
 template <typename T>
 class ArrayJoinPromiseNode final : public ArrayJoinPromiseNodeBase {
- public:
-  ArrayJoinPromiseNode(Array<OwnPromiseNode> promises,
-                       Array<ExceptionOr<T>> resultParts,
+public:
+  ArrayJoinPromiseNode(Array<OwnPromiseNode> promises, Array<ExceptionOr<T>> resultParts,
                        SourceLocation location, ArrayJoinBehavior joinBehavior)
-      : ArrayJoinPromiseNodeBase(zc::mv(promises), resultParts.begin(),
-                                 sizeof(ExceptionOr<T>), location,
-                                 joinBehavior),
+      : ArrayJoinPromiseNodeBase(zc::mv(promises), resultParts.begin(), sizeof(ExceptionOr<T>),
+                                 location, joinBehavior),
         resultParts(zc::mv(resultParts)) {}
   void destroy() override { freePromise(this); }
 
- protected:
+protected:
   void getNoError(ExceptionOrValue& output) noexcept override {
     auto builder = heapArrayBuilder<T>(resultParts.size());
     for (auto& part : resultParts) {
@@ -1214,23 +1155,22 @@ class ArrayJoinPromiseNode final : public ArrayJoinPromiseNodeBase {
     output.as<Array<T>>() = builder.finish();
   }
 
- private:
+private:
   Array<ExceptionOr<T>> resultParts;
 };
 
 template <>
 class ArrayJoinPromiseNode<void> final : public ArrayJoinPromiseNodeBase {
- public:
-  ArrayJoinPromiseNode(Array<OwnPromiseNode> promises,
-                       Array<ExceptionOr<_::Void>> resultParts,
+public:
+  ArrayJoinPromiseNode(Array<OwnPromiseNode> promises, Array<ExceptionOr<_::Void>> resultParts,
                        SourceLocation location, ArrayJoinBehavior joinBehavior);
   ~ArrayJoinPromiseNode();
   void destroy() override;
 
- protected:
+protected:
   void getNoError(ExceptionOrValue& output) noexcept override;
 
- private:
+private:
   Array<ExceptionOr<_::Void>> resultParts;
 };
 
@@ -1240,14 +1180,14 @@ class EagerPromiseNodeBase : public PromiseNode, protected Event {
   // A PromiseNode that eagerly evaluates its dependency even if its dependent
   // does not eagerly evaluate it.
 
- public:
+public:
   EagerPromiseNodeBase(OwnPromiseNode&& dependency, ExceptionOrValue& resultRef,
                        SourceLocation location);
 
   void onReady(Event* event) noexcept override;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- private:
+private:
   OwnPromiseNode dependency;
   OnReadyEvent onReadyEvent;
 
@@ -1259,16 +1199,14 @@ class EagerPromiseNodeBase : public PromiseNode, protected Event {
 
 template <typename T>
 class EagerPromiseNode final : public EagerPromiseNodeBase {
- public:
+public:
   EagerPromiseNode(OwnPromiseNode&& dependency, SourceLocation location)
       : EagerPromiseNodeBase(zc::mv(dependency), result, location) {}
   void destroy() override { freePromise(this); }
 
-  void get(ExceptionOrValue& output) noexcept override {
-    output.as<T>() = zc::mv(result);
-  }
+  void get(ExceptionOrValue& output) noexcept override { output.as<T>() = zc::mv(result); }
 
- private:
+private:
   ExceptionOr<T> result;
 };
 
@@ -1276,21 +1214,20 @@ template <typename T>
 OwnPromiseNode spark(OwnPromiseNode&& node, SourceLocation location) {
   // Forces evaluation of the given node to begin as soon as possible, even if
   // no one is waiting on it.
-  return PromiseDisposer::appendPromise<EagerPromiseNode<T>>(zc::mv(node),
-                                                             location);
+  return PromiseDisposer::appendPromise<EagerPromiseNode<T>>(zc::mv(node), location);
 }
 
 // -------------------------------------------------------------------
 
 class AdapterPromiseNodeBase : public PromiseNode {
- public:
+public:
   void onReady(Event* event) noexcept override;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- protected:
+protected:
   inline void setReady() { onReadyEvent.arm(); }
 
- private:
+private:
   OnReadyEvent onReadyEvent;
 };
 
@@ -1299,11 +1236,10 @@ class AdapterPromiseNode final : public AdapterPromiseNodeBase,
                                  private PromiseFulfiller<UnfixVoid<T>> {
   // A PromiseNode that wraps a PromiseAdapter.
 
- public:
+public:
   template <typename... Params>
   AdapterPromiseNode(Params&&... params)
-      : adapter(static_cast<PromiseFulfiller<UnfixVoid<T>>&>(*this),
-                zc::fwd<Params>(params)...) {}
+      : adapter(static_cast<PromiseFulfiller<UnfixVoid<T>>&>(*this), zc::fwd<Params>(params)...) {}
   void destroy() override { freePromise(this); }
 
   void get(ExceptionOrValue& output) noexcept override {
@@ -1311,7 +1247,7 @@ class AdapterPromiseNode final : public AdapterPromiseNodeBase,
     output.as<T>() = zc::mv(result);
   }
 
- private:
+private:
   ExceptionOr<T> result;
   bool waiting = true;
   Adapter adapter;
@@ -1340,11 +1276,9 @@ class AdapterPromiseNode final : public AdapterPromiseNodeBase,
 class FiberBase : public PromiseNode, private Event {
   // Base class for the outer PromiseNode representing a fiber.
 
- public:
-  explicit FiberBase(size_t stackSize, _::ExceptionOrValue& result,
-                     SourceLocation location);
-  explicit FiberBase(const FiberPool& pool, _::ExceptionOrValue& result,
-                     SourceLocation location);
+public:
+  explicit FiberBase(size_t stackSize, _::ExceptionOrValue& result, SourceLocation location);
+  explicit FiberBase(const FiberPool& pool, _::ExceptionOrValue& result, SourceLocation location);
   ~FiberBase() noexcept(false);
 
   void start() { armDepthFirst(); }
@@ -1355,11 +1289,11 @@ class FiberBase : public PromiseNode, private Event {
   void onReady(_::Event* event) noexcept override;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- protected:
+protected:
   bool isFinished() { return state == FINISHED; }
   void cancel();
 
- private:
+private:
   enum { WAITING, RUNNING, CANCELED, FINISHED } state;
 
   _::PromiseNode* currentInner = nullptr;
@@ -1377,13 +1311,12 @@ class FiberBase : public PromiseNode, private Event {
   friend class FiberStack;
   friend void _::waitImpl(_::OwnPromiseNode&& node, _::ExceptionOrValue& result,
                           WaitScope& waitScope, SourceLocation location);
-  friend bool _::pollImpl(_::PromiseNode& node, WaitScope& waitScope,
-                          SourceLocation location);
+  friend bool _::pollImpl(_::PromiseNode& node, WaitScope& waitScope, SourceLocation location);
 };
 
 template <typename Func>
 class Fiber final : public FiberBase {
- public:
+public:
   explicit Fiber(size_t stackSize, Func&& func, SourceLocation location)
       : FiberBase(stackSize, result, location), func(zc::fwd<Func>(func)) {}
   explicit Fiber(const FiberPool& pool, Func&& func, SourceLocation location)
@@ -1391,15 +1324,14 @@ class Fiber final : public FiberBase {
   ~Fiber() noexcept(false) { cancel(); }
   void destroy() override { freePromise(this); }
 
-  typedef FixVoid<decltype(zc::instance<Func&>()(zc::instance<WaitScope&>()))>
-      ResultType;
+  typedef FixVoid<decltype(zc::instance<Func&>()(zc::instance<WaitScope&>()))> ResultType;
 
   void get(ExceptionOrValue& output) noexcept override {
     ZC_IREQUIRE(isFinished());
     output.as<ResultType>() = zc::mv(result);
   }
 
- private:
+private:
   Func func;
   ExceptionOr<ResultType> result;
 
@@ -1415,21 +1347,18 @@ class Fiber final : public FiberBase {
 
 template <typename T>
 Promise<T>::Promise(_::FixVoid<T> value)
-    : PromiseBase(_::allocPromise<_::ImmediatePromiseNode<_::FixVoid<T>>>(
-          zc::mv(value))) {}
+    : PromiseBase(_::allocPromise<_::ImmediatePromiseNode<_::FixVoid<T>>>(zc::mv(value))) {}
 
 template <typename T>
 Promise<T>::Promise(zc::Exception&& exception)
-    : PromiseBase(
-          _::allocPromise<_::ImmediateBrokenPromiseNode>(zc::mv(exception))) {}
+    : PromiseBase(_::allocPromise<_::ImmediateBrokenPromiseNode>(zc::mv(exception))) {}
 
 template <typename T>
 template <typename Func>
 PromiseForResult<Func, T> Promise<T>::then(Func&& func) {
   typedef _::FixVoid<_::ReturnType<Func, T>> ResultT;
 
-  void* continuationTracePtr =
-      _::GetFunctorStartAddress<_::FixVoid<T>&&>::apply(func);
+  void* continuationTracePtr = _::GetFunctorStartAddress<_::FixVoid<T>&&>::apply(func);
 
   _::OwnPromiseNode intermediate =
       _::PromiseDisposer::appendPromise<_::SimpleTransformPromiseNode<T, Func>>(
@@ -1442,20 +1371,17 @@ PromiseForResult<Func, T> Promise<T>::then(Func&& func) {
 
 template <typename T>
 template <typename Func, typename ErrorFunc>
-PromiseForResult<Func, T> Promise<T>::then(Func&& func,
-                                           ErrorFunc&& errorHandler,
+PromiseForResult<Func, T> Promise<T>::then(Func&& func, ErrorFunc&& errorHandler,
                                            SourceLocation location) {
   typedef _::FixVoid<_::ReturnType<Func, T>> ResultT;
 
-  void* continuationTracePtr =
-      _::GetFunctorStartAddress<_::FixVoid<T>&&>::apply(func);
-  _::OwnPromiseNode intermediate = _::PromiseDisposer::appendPromise<
-      _::TransformPromiseNode<T, Func, ErrorFunc>>(
-      zc::mv(node), zc::fwd<Func>(func), zc::fwd<ErrorFunc>(errorHandler),
-      continuationTracePtr);
+  void* continuationTracePtr = _::GetFunctorStartAddress<_::FixVoid<T>&&>::apply(func);
+  _::OwnPromiseNode intermediate =
+      _::PromiseDisposer::appendPromise<_::TransformPromiseNode<T, Func, ErrorFunc>>(
+          zc::mv(node), zc::fwd<Func>(func), zc::fwd<ErrorFunc>(errorHandler),
+          continuationTracePtr);
   auto result = _::PromiseNode::to<_::ChainPromises<_::ReturnType<Func, T>>>(
-      _::maybeChain(zc::mv(intermediate), implicitCast<ResultT*>(nullptr),
-                    location));
+      _::maybeChain(zc::mv(intermediate), implicitCast<ResultT*>(nullptr), location));
   return _::maybeReduce(zc::mv(result), false);
 }
 
@@ -1485,8 +1411,7 @@ struct IdentityFunc<Promise<void>> {
 
 template <typename T>
 template <typename ErrorFunc>
-Promise<T> Promise<T>::catch_(ErrorFunc&& errorHandler,
-                              SourceLocation location) {
+Promise<T> Promise<T>::catch_(ErrorFunc&& errorHandler, SourceLocation location) {
   // then()'s ErrorFunc can only return a Promise if Func also returns a
   // Promise. In this case, Func is being filled in automatically. We want to
   // make sure ErrorFunc can return a Promise, but we don't want the extra
@@ -1497,15 +1422,12 @@ Promise<T> Promise<T>::catch_(ErrorFunc&& errorHandler,
 
   // The reason catch_() isn't simply implemented in terms of then() is because
   // we want the trace pointer to be based on ErrorFunc rather than Func.
-  void* continuationTracePtr =
-      _::GetFunctorStartAddress<zc::Exception&&>::apply(errorHandler);
-  _::OwnPromiseNode intermediate = _::PromiseDisposer::appendPromise<
-      _::TransformPromiseNode<T, Func, ErrorFunc>>(
-      zc::mv(node), Func(), zc::fwd<ErrorFunc>(errorHandler),
-      continuationTracePtr);
+  void* continuationTracePtr = _::GetFunctorStartAddress<zc::Exception&&>::apply(errorHandler);
+  _::OwnPromiseNode intermediate =
+      _::PromiseDisposer::appendPromise<_::TransformPromiseNode<T, Func, ErrorFunc>>(
+          zc::mv(node), Func(), zc::fwd<ErrorFunc>(errorHandler), continuationTracePtr);
   auto result = _::PromiseNode::to<_::ChainPromises<_::ReturnType<Func, T>>>(
-      _::maybeChain(zc::mv(intermediate), implicitCast<ResultT*>(nullptr),
-                    location));
+      _::maybeChain(zc::mv(intermediate), implicitCast<ResultT*>(nullptr), location));
   return _::maybeReduce(zc::mv(result), false);
 }
 
@@ -1525,8 +1447,7 @@ template <typename T>
 ForkedPromise<T> Promise<T>::fork(SourceLocation location) {
   return ForkedPromise<T>(
       false,
-      _::PromiseDisposer::alloc<_::ForkHub<_::FixVoid<T>>, _::ForkHubBase>(
-          zc::mv(node), location));
+      _::PromiseDisposer::alloc<_::ForkHub<_::FixVoid<T>>, _::ForkHubBase>(zc::mv(node), location));
 }
 
 template <typename T>
@@ -1541,44 +1462,38 @@ bool ForkedPromise<T>::hasBranches() {
 
 template <typename T>
 _::SplitTuplePromise<T> Promise<T>::split(SourceLocation location) {
-  return _::PromiseDisposer::alloc<_::ForkHub<_::FixVoid<T>>, _::ForkHubBase>(
-             zc::mv(node), location)
+  return _::PromiseDisposer::alloc<_::ForkHub<_::FixVoid<T>>, _::ForkHubBase>(zc::mv(node),
+                                                                              location)
       ->split(location);
 }
 
 template <typename T>
-Promise<T> Promise<T>::exclusiveJoin(Promise<T>&& other,
-                                     SourceLocation location) {
-  return Promise(false,
-                 _::PromiseDisposer::appendPromise<_::ExclusiveJoinPromiseNode>(
-                     zc::mv(node), zc::mv(other.node), location));
+Promise<T> Promise<T>::exclusiveJoin(Promise<T>&& other, SourceLocation location) {
+  return Promise(false, _::PromiseDisposer::appendPromise<_::ExclusiveJoinPromiseNode>(
+                            zc::mv(node), zc::mv(other.node), location));
 }
 
 template <typename T>
 template <typename... Attachments>
 Promise<T> Promise<T>::attach(Attachments&&... attachments) {
-  return Promise(false, _::PromiseDisposer::appendPromise<
-                            _::AttachmentPromiseNode<Tuple<Attachments...>>>(
-                            zc::mv(node),
-                            zc::tuple(zc::fwd<Attachments>(attachments)...)));
+  return Promise(false,
+                 _::PromiseDisposer::appendPromise<_::AttachmentPromiseNode<Tuple<Attachments...>>>(
+                     zc::mv(node), zc::tuple(zc::fwd<Attachments>(attachments)...)));
 }
 
 template <typename T>
 template <typename ErrorFunc>
-Promise<T> Promise<T>::eagerlyEvaluate(ErrorFunc&& errorHandler,
-                                       SourceLocation location) {
+Promise<T> Promise<T>::eagerlyEvaluate(ErrorFunc&& errorHandler, SourceLocation location) {
   // See catch_() for commentary.
-  return Promise(
-      false, _::spark<_::FixVoid<T>>(then(_::IdentityFunc<decltype(errorHandler(
-                                              instance<Exception&&>()))>(),
-                                          zc::fwd<ErrorFunc>(errorHandler))
-                                         .node,
-                                     location));
+  return Promise(false, _::spark<_::FixVoid<T>>(
+                            then(_::IdentityFunc<decltype(errorHandler(instance<Exception&&>()))>(),
+                                 zc::fwd<ErrorFunc>(errorHandler))
+                                .node,
+                            location));
 }
 
 template <typename T>
-Promise<T> Promise<T>::eagerlyEvaluate(decltype(nullptr),
-                                       SourceLocation location) {
+Promise<T> Promise<T>::eagerlyEvaluate(decltype(nullptr), SourceLocation location) {
   return Promise(false, _::spark<_::FixVoid<T>>(zc::mv(node), location));
 }
 
@@ -1606,27 +1521,24 @@ inline PromiseForResult<Func, void> evalLast(Func&& func) {
 template <typename Func>
 inline PromiseForResult<Func, void> evalNow(Func&& func) {
   PromiseForResult<Func, void> result = nullptr;
-  ZC_IF_SOME(e, zc::runCatchingExceptions([&]() { result = func(); })) {
-    result = zc::mv(e);
-  }
+  ZC_IF_SOME(e, zc::runCatchingExceptions([&]() { result = func(); })) { result = zc::mv(e); }
   return result;
 }
 
 template <typename Func>
 struct RetryOnDisconnect_ {
   static inline PromiseForResult<Func, void> apply(Func&& func) {
-    return evalLater(
-        [func = zc::mv(func)]() mutable -> PromiseForResult<Func, void> {
-          auto promise = evalNow(func);
-          return promise.catch_([func = zc::mv(func)](zc::Exception&& e) mutable
-                                -> PromiseForResult<Func, void> {
+    return evalLater([func = zc::mv(func)]() mutable -> PromiseForResult<Func, void> {
+      auto promise = evalNow(func);
+      return promise.catch_(
+          [func = zc::mv(func)](zc::Exception&& e) mutable -> PromiseForResult<Func, void> {
             if (e.getType() == zc::Exception::Type::DISCONNECTED) {
               return func();
             } else {
               return zc::mv(e);
             }
           });
-        });
+    });
   }
 };
 template <typename Func>
@@ -1635,14 +1547,13 @@ struct RetryOnDisconnect_<Func&> {
   // references in a lambda is different. :(
   static inline PromiseForResult<Func, void> apply(Func& func) {
     auto promise = evalLater(func);
-    return promise.catch_(
-        [&func](zc::Exception&& e) -> PromiseForResult<Func, void> {
-          if (e.getType() == zc::Exception::Type::DISCONNECTED) {
-            return func();
-          } else {
-            return zc::mv(e);
-          }
-        });
+    return promise.catch_([&func](zc::Exception&& e) -> PromiseForResult<Func, void> {
+      if (e.getType() == zc::Exception::Type::DISCONNECTED) {
+        return func();
+      } else {
+        return zc::mv(e);
+      }
+    });
   }
 };
 
@@ -1652,33 +1563,26 @@ inline PromiseForResult<Func, void> retryOnDisconnect(Func&& func) {
 }
 
 template <typename Func>
-inline PromiseForResult<Func, WaitScope&> startFiber(size_t stackSize,
-                                                     Func&& func,
+inline PromiseForResult<Func, WaitScope&> startFiber(size_t stackSize, Func&& func,
                                                      SourceLocation location) {
   typedef _::FixVoid<_::ReturnType<Func, WaitScope&>> ResultT;
 
-  auto intermediate =
-      _::allocPromise<_::Fiber<Func>>(stackSize, zc::fwd<Func>(func), location);
+  auto intermediate = _::allocPromise<_::Fiber<Func>>(stackSize, zc::fwd<Func>(func), location);
   intermediate->start();
-  auto result =
-      _::PromiseNode::to<_::ChainPromises<_::ReturnType<Func, WaitScope&>>>(
-          _::maybeChain(zc::mv(intermediate), implicitCast<ResultT*>(nullptr),
-                        location));
+  auto result = _::PromiseNode::to<_::ChainPromises<_::ReturnType<Func, WaitScope&>>>(
+      _::maybeChain(zc::mv(intermediate), implicitCast<ResultT*>(nullptr), location));
   return _::maybeReduce(zc::mv(result), false);
 }
 
 template <typename Func>
-inline PromiseForResult<Func, WaitScope&> FiberPool::startFiber(
-    Func&& func, SourceLocation location) const {
+inline PromiseForResult<Func, WaitScope&> FiberPool::startFiber(Func&& func,
+                                                                SourceLocation location) const {
   typedef _::FixVoid<_::ReturnType<Func, WaitScope&>> ResultT;
 
-  auto intermediate =
-      _::allocPromise<_::Fiber<Func>>(*this, zc::fwd<Func>(func), location);
+  auto intermediate = _::allocPromise<_::Fiber<Func>>(*this, zc::fwd<Func>(func), location);
   intermediate->start();
-  auto result =
-      _::PromiseNode::to<_::ChainPromises<_::ReturnType<Func, WaitScope&>>>(
-          _::maybeChain(zc::mv(intermediate), implicitCast<ResultT*>(nullptr),
-                        location));
+  auto result = _::PromiseNode::to<_::ChainPromises<_::ReturnType<Func, WaitScope&>>>(
+      _::maybeChain(zc::mv(intermediate), implicitCast<ResultT*>(nullptr), location));
   return _::maybeReduce(zc::mv(result), false);
 }
 
@@ -1695,23 +1599,17 @@ void Promise<void>::detach(ErrorFunc&& errorHandler) {
 }
 
 template <typename T>
-Promise<Array<T>> joinPromises(Array<Promise<T>>&& promises,
-                               SourceLocation location) {
-  return _::PromiseNode::to<Promise<Array<T>>>(
-      _::allocPromise<_::ArrayJoinPromiseNode<T>>(
-          ZC_MAP(p, promises) { return _::PromiseNode::from(zc::mv(p)); },
-          heapArray<_::ExceptionOr<T>>(promises.size()), location,
-          _::ArrayJoinBehavior::LAZY));
+Promise<Array<T>> joinPromises(Array<Promise<T>>&& promises, SourceLocation location) {
+  return _::PromiseNode::to<Promise<Array<T>>>(_::allocPromise<_::ArrayJoinPromiseNode<T>>(
+      ZC_MAP(p, promises) { return _::PromiseNode::from(zc::mv(p)); },
+      heapArray<_::ExceptionOr<T>>(promises.size()), location, _::ArrayJoinBehavior::LAZY));
 }
 
 template <typename T>
-Promise<Array<T>> joinPromisesFailFast(Array<Promise<T>>&& promises,
-                                       SourceLocation location) {
-  return _::PromiseNode::to<Promise<Array<T>>>(
-      _::allocPromise<_::ArrayJoinPromiseNode<T>>(
-          ZC_MAP(p, promises) { return _::PromiseNode::from(zc::mv(p)); },
-          heapArray<_::ExceptionOr<T>>(promises.size()), location,
-          _::ArrayJoinBehavior::EAGER));
+Promise<Array<T>> joinPromisesFailFast(Array<Promise<T>>&& promises, SourceLocation location) {
+  return _::PromiseNode::to<Promise<Array<T>>>(_::allocPromise<_::ArrayJoinPromiseNode<T>>(
+      ZC_MAP(p, promises) { return _::PromiseNode::from(zc::mv(p)); },
+      heapArray<_::ExceptionOr<T>>(promises.size()), location, _::ArrayJoinBehavior::EAGER));
 }
 
 // =======================================================================================
@@ -1719,7 +1617,7 @@ Promise<Array<T>> joinPromisesFailFast(Array<Promise<T>>&& promises,
 namespace _ {  // private
 
 class WeakFulfillerBase : protected zc::Disposer {
- protected:
+protected:
   WeakFulfillerBase() : inner(nullptr) {}
   virtual ~WeakFulfillerBase() noexcept(false) {}
 
@@ -1732,15 +1630,14 @@ class WeakFulfillerBase : protected zc::Disposer {
     inner = ptr;
   };
 
- private:
+private:
   mutable PromiseRejector* inner;
 
   void disposeImpl(void* pointer) const override;
 };
 
 template <typename T>
-class WeakFulfiller final : public PromiseFulfiller<T>,
-                            public WeakFulfillerBase {
+class WeakFulfiller final : public PromiseFulfiller<T>, public WeakFulfillerBase {
   // A wrapper around PromiseFulfiller which can be detached.
   //
   // There are a couple non-trivialities here:
@@ -1758,7 +1655,7 @@ class WeakFulfiller final : public PromiseFulfiller<T>,
   //   owned pointer to the fulfiller and detach() is called when the promise is
   //   destroyed.
 
- public:
+public:
   ZC_DISALLOW_COPY_AND_MOVE(WeakFulfiller);
 
   static zc::Own<WeakFulfiller> make() {
@@ -1767,20 +1664,14 @@ class WeakFulfiller final : public PromiseFulfiller<T>,
   }
 
   void fulfill(FixVoid<T>&& value) override {
-    if (getInner<T>() != nullptr) {
-      getInner<T>()->fulfill(zc::mv(value));
-    }
+    if (getInner<T>() != nullptr) { getInner<T>()->fulfill(zc::mv(value)); }
   }
 
   void reject(Exception&& exception) override {
-    if (getInner<T>() != nullptr) {
-      getInner<T>()->reject(zc::mv(exception));
-    }
+    if (getInner<T>() != nullptr) { getInner<T>()->reject(zc::mv(exception)); }
   }
 
-  bool isWaiting() override {
-    return getInner<T>() != nullptr && getInner<T>()->isWaiting();
-  }
+  bool isWaiting() override { return getInner<T>() != nullptr && getInner<T>()->isWaiting(); }
 
   void attach(PromiseFulfiller<T>& newInner) { setInner<T>(&newInner); }
 
@@ -1794,22 +1685,21 @@ class WeakFulfiller final : public PromiseFulfiller<T>,
     }
   }
 
- private:
+private:
   WeakFulfiller() {}
 };
 
 template <typename T>
 class PromiseAndFulfillerAdapter {
- public:
-  PromiseAndFulfillerAdapter(PromiseFulfiller<T>& fulfiller,
-                             WeakFulfiller<T>& wrapper)
+public:
+  PromiseAndFulfillerAdapter(PromiseFulfiller<T>& fulfiller, WeakFulfiller<T>& wrapper)
       : fulfiller(fulfiller), wrapper(wrapper) {
     wrapper.attach(fulfiller);
   }
 
   ~PromiseAndFulfillerAdapter() noexcept(false) { wrapper.detach(fulfiller); }
 
- private:
+private:
   PromiseFulfiller<T>& fulfiller;
   WeakFulfiller<T>& wrapper;
 };
@@ -1823,9 +1713,7 @@ bool PromiseFulfiller<T>::rejectIfThrows(Func&& func) {
     reject(zc::mv(exception));
     return false;
   }
-  else {
-    return true;
-  }
+  else { return true; }
 }
 
 template <typename Func>
@@ -1834,20 +1722,17 @@ bool PromiseFulfiller<void>::rejectIfThrows(Func&& func) {
     reject(zc::mv(exception));
     return false;
   }
-  else {
-    return true;
-  }
+  else { return true; }
 }
 
 template <typename T, typename Adapter, typename... Params>
 _::ReducePromises<T> newAdaptedPromise(Params&&... adapterConstructorParams) {
-  _::OwnPromiseNode intermediate(
-      _::allocPromise<_::AdapterPromiseNode<_::FixVoid<T>, Adapter>>(
-          zc::fwd<Params>(adapterConstructorParams)...));
+  _::OwnPromiseNode intermediate(_::allocPromise<_::AdapterPromiseNode<_::FixVoid<T>, Adapter>>(
+      zc::fwd<Params>(adapterConstructorParams)...));
   // We can't capture SourceLocation in this function's arguments since it is a
   // vararg template. :(
-  return _::PromiseNode::to<_::ReducePromises<T>>(_::maybeChain(
-      zc::mv(intermediate), implicitCast<T*>(nullptr), SourceLocation()));
+  return _::PromiseNode::to<_::ReducePromises<T>>(
+      _::maybeChain(zc::mv(intermediate), implicitCast<T*>(nullptr), SourceLocation()));
 }
 
 template <typename T>
@@ -1855,8 +1740,7 @@ PromiseFulfillerPair<T> newPromiseAndFulfiller(SourceLocation location) {
   auto wrapper = _::WeakFulfiller<T>::make();
 
   _::OwnPromiseNode intermediate(
-      _::allocPromise<_::AdapterPromiseNode<_::FixVoid<T>,
-                                            _::PromiseAndFulfillerAdapter<T>>>(
+      _::allocPromise<_::AdapterPromiseNode<_::FixVoid<T>, _::PromiseAndFulfillerAdapter<T>>>(
           *wrapper));
   auto promise = _::PromiseNode::to<_::ReducePromises<T>>(
       _::maybeChain(zc::mv(intermediate), implicitCast<T*>(nullptr), location));
@@ -1869,16 +1753,15 @@ PromiseFulfillerPair<T> newPromiseAndFulfiller(SourceLocation location) {
 
 namespace _ {  // (private)
 
-class XThreadEvent
-    : public PromiseNode,  // it's a PromiseNode in the requesting thread
-      private Event {      // it's an event in the target thread
- public:
-  XThreadEvent(ExceptionOrValue& result, const Executor& targetExecutor,
-               EventLoop& loop, void* funcTracePtr, SourceLocation location);
+class XThreadEvent : public PromiseNode,  // it's a PromiseNode in the requesting thread
+                     private Event {      // it's an event in the target thread
+public:
+  XThreadEvent(ExceptionOrValue& result, const Executor& targetExecutor, EventLoop& loop,
+               void* funcTracePtr, SourceLocation location);
 
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- protected:
+protected:
   void ensureDoneOrCanceled();
   // MUST be called in destructor of subclasses to make sure the object is not
   // destroyed while still being accessed by the other thread. (This can't be
@@ -1892,7 +1775,7 @@ class XThreadEvent
   // implements PromiseNode ----------------------------------------------------
   void onReady(Event* event) noexcept override;
 
- private:
+private:
   ExceptionOrValue& result;
   void* funcTracePtr;
 
@@ -1981,11 +1864,9 @@ class XThreadEvent
 template <typename Func, typename = _::FixVoid<_::ReturnType<Func, void>>>
 class XThreadEventImpl final : public XThreadEvent {
   // Implementation for a function that does not return a Promise.
- public:
-  XThreadEventImpl(Func&& func, const Executor& target, EventLoop& loop,
-                   SourceLocation location)
-      : XThreadEvent(result, target, loop,
-                     GetFunctorStartAddress<>::apply(func), location),
+public:
+  XThreadEventImpl(Func&& func, const Executor& target, EventLoop& loop, SourceLocation location)
+      : XThreadEvent(result, target, loop, GetFunctorStartAddress<>::apply(func), location),
         func(zc::fwd<Func>(func)) {}
   ~XThreadEventImpl() noexcept(false) { ensureDoneOrCanceled(); }
   void destroy() override { freePromise(this); }
@@ -1993,17 +1874,14 @@ class XThreadEventImpl final : public XThreadEvent {
   typedef _::FixVoid<_::ReturnType<Func, void>> ResultT;
 
   zc::Maybe<_::OwnPromiseNode> execute() override {
-    result.value =
-        MaybeVoidCaller<Void, FixVoid<decltype(func())>>::apply(func, Void());
+    result.value = MaybeVoidCaller<Void, FixVoid<decltype(func())>>::apply(func, Void());
     return zc::none;
   }
 
   // implements PromiseNode ----------------------------------------------------
-  void get(ExceptionOrValue& output) noexcept override {
-    output.as<ResultT>() = zc::mv(result);
-  }
+  void get(ExceptionOrValue& output) noexcept override { output.as<ResultT>() = zc::mv(result); }
 
- private:
+private:
   Func func;
   ExceptionOr<ResultT> result;
   friend Executor;
@@ -2012,11 +1890,9 @@ class XThreadEventImpl final : public XThreadEvent {
 template <typename Func, typename T>
 class XThreadEventImpl<Func, Promise<T>> final : public XThreadEvent {
   // Implementation for a function that DOES return a Promise.
- public:
-  XThreadEventImpl(Func&& func, const Executor& target, EventLoop& loop,
-                   SourceLocation location)
-      : XThreadEvent(result, target, loop,
-                     GetFunctorStartAddress<>::apply(func), location),
+public:
+  XThreadEventImpl(Func&& func, const Executor& target, EventLoop& loop, SourceLocation location)
+      : XThreadEvent(result, target, loop, GetFunctorStartAddress<>::apply(func), location),
         func(zc::fwd<Func>(func)) {}
   ~XThreadEventImpl() noexcept(false) { ensureDoneOrCanceled(); }
   void destroy() override { freePromise(this); }
@@ -2030,11 +1906,9 @@ class XThreadEventImpl<Func, Promise<T>> final : public XThreadEvent {
   }
 
   // implements PromiseNode ----------------------------------------------------
-  void get(ExceptionOrValue& output) noexcept override {
-    output.as<ResultT>() = zc::mv(result);
-  }
+  void get(ExceptionOrValue& output) noexcept override { output.as<ResultT>() = zc::mv(result); }
 
- private:
+private:
   Func func;
   ExceptionOr<ResultT> result;
   friend Executor;
@@ -2045,20 +1919,18 @@ class XThreadEventImpl<Func, Promise<T>> final : public XThreadEvent {
 template <typename Func>
 _::UnwrapPromise<PromiseForResult<Func, void>> Executor::executeSync(
     Func&& func, SourceLocation location) const {
-  _::XThreadEventImpl<Func> event(zc::fwd<Func>(func), *this, getLoop(),
-                                  location);
+  _::XThreadEventImpl<Func> event(zc::fwd<Func>(func), *this, getLoop(), location);
   send(event, true);
   return convertToReturn(zc::mv(event.result));
 }
 
 template <typename Func>
-PromiseForResult<Func, void> Executor::executeAsync(
-    Func&& func, SourceLocation location) const {
+PromiseForResult<Func, void> Executor::executeAsync(Func&& func, SourceLocation location) const {
   // HACK: We call getLoop() here, rather than have XThreadEvent's constructor
   // do it, so that if it
   //   throws we don't crash due to `allocPromise()` being `noexcept`.
-  auto event = _::allocPromise<_::XThreadEventImpl<Func>>(
-      zc::fwd<Func>(func), *this, getLoop(), location);
+  auto event =
+      _::allocPromise<_::XThreadEventImpl<Func>>(zc::fwd<Func>(func), *this, getLoop(), location);
   send(*event, false);
   return _::PromiseNode::to<PromiseForResult<Func, void>>(zc::mv(event));
 }
@@ -2071,7 +1943,7 @@ template <typename T>
 class XThreadFulfiller;
 
 class XThreadPaf : public PromiseNode {
- public:
+public:
   XThreadPaf();
   virtual ~XThreadPaf() noexcept(false);
   void destroy() override;
@@ -2080,7 +1952,7 @@ class XThreadPaf : public PromiseNode {
   void onReady(Event* event) noexcept override;
   void tracePromise(TraceBuilder& builder, bool stopAtNextEvent) override;
 
- private:
+private:
   enum {
     WAITING,
     // Not yet fulfilled, and the waiter is still waiting.
@@ -2141,13 +2013,11 @@ class XThreadPaf : public PromiseNode {
 
 template <typename T>
 class XThreadPafImpl final : public XThreadPaf {
- public:
+public:
   // implements PromiseNode ----------------------------------------------------
-  void get(ExceptionOrValue& output) noexcept override {
-    output.as<FixVoid<T>>() = zc::mv(result);
-  }
+  void get(ExceptionOrValue& output) noexcept override { output.as<FixVoid<T>>() = zc::mv(result); }
 
- private:
+private:
   ExceptionOr<FixVoid<T>> result;
 
   friend class XThreadFulfiller<T>;
@@ -2160,7 +2030,7 @@ class XThreadPaf::FulfillScope {
   // - Only one call is carried out, even if multiple threads try to fulfill
   // concurrently.
   // - The waiting thread is correctly signaled.
- public:
+public:
   FulfillScope(XThreadPaf** pointer);
   // Atomically nulls out *pointer and takes ownership of the pointer.
 
@@ -2175,31 +2045,25 @@ class XThreadPaf::FulfillScope {
     return static_cast<XThreadPafImpl<T>*>(obj);
   }
 
- private:
+private:
   XThreadPaf* obj;
 };
 
 template <typename T>
 class XThreadFulfiller final : public CrossThreadPromiseFulfiller<T> {
- public:
+public:
   XThreadFulfiller(XThreadPafImpl<T>* target) : target(target) {}
 
   ~XThreadFulfiller() noexcept(false) {
-    if (target != nullptr) {
-      reject(XThreadPaf::unfulfilledException());
-    }
+    if (target != nullptr) { reject(XThreadPaf::unfulfilledException()); }
   }
   void fulfill(FixVoid<T>&& value) const override {
     XThreadPaf::FulfillScope scope(&target);
-    if (scope.shouldFulfill()) {
-      scope.getTarget<T>()->result = zc::mv(value);
-    }
+    if (scope.shouldFulfill()) { scope.getTarget<T>()->result = zc::mv(value); }
   }
   void reject(Exception&& exception) const override {
     XThreadPaf::FulfillScope scope(&target);
-    if (scope.shouldFulfill()) {
-      scope.getTarget<T>()->result.addException(zc::mv(exception));
-    }
+    if (scope.shouldFulfill()) { scope.getTarget<T>()->result.addException(zc::mv(exception)); }
   }
   bool isWaiting() const override {
     ZC_IF_SOME(t, target) {
@@ -2211,18 +2075,16 @@ class XThreadFulfiller final : public CrossThreadPromiseFulfiller<T> {
       return __atomic_load_n(&t.state, __ATOMIC_RELAXED) == XThreadPaf::WAITING;
 #endif
     }
-    else {
-      return false;
-    }
+    else { return false; }
   }
 
- private:
+private:
   mutable XThreadPaf* target;  // accessed using atomic ops
 };
 
 template <typename T>
 class XThreadFulfiller<zc::Promise<T>> {
- public:
+public:
   static_assert(sizeof(T) < 0,
                 "newCrosssThreadPromiseAndFulfiller<Promise<T>>() is not "
                 "currently supported");
@@ -2236,11 +2098,9 @@ class XThreadFulfiller<zc::Promise<T>> {
 
 template <typename T>
 PromiseCrossThreadFulfillerPair<T> newPromiseAndCrossThreadFulfiller() {
-  zc::Own<_::XThreadPafImpl<T>, _::PromiseDisposer> node(
-      new _::XThreadPafImpl<T>);
+  zc::Own<_::XThreadPafImpl<T>, _::PromiseDisposer> node(new _::XThreadPafImpl<T>);
   auto fulfiller = zc::heap<_::XThreadFulfiller<T>>(node);
-  return {_::PromiseNode::to<_::ReducePromises<T>>(zc::mv(node)),
-          zc::mv(fulfiller)};
+  return {_::PromiseNode::to<_::ReducePromises<T>>(zc::mv(node)), zc::mv(fulfiller)};
 }
 
 }  // namespace zc
@@ -2291,8 +2151,7 @@ template <class T, class... Args>
 struct coroutine_traits<zc::Promise<T>, Args...> {
   // `Args...` are the coroutine's parameter types.
 
-  static_assert((!zc::_::isDisallowedInCoroutine<Args>() && ...),
-                "Disallowed type in coroutine");
+  static_assert((!zc::_::isDisallowedInCoroutine<Args>() && ...), "Disallowed type in coroutine");
 
   static_assert((::zc::_::NoWaitScope<Args> && ...),
                 "Coroutines are not allowed to accept `WaitScope` parameters.");
@@ -2329,9 +2188,9 @@ namespace zc::_ {
 namespace stdcoro = ZC_COROUTINE_STD_NAMESPACE;
 
 class CoroutineBase : public PromiseNode, public Event {
- public:
-  CoroutineBase(stdcoro::coroutine_handle<> coroutine,
-                ExceptionOrValue& resultRef, SourceLocation location);
+public:
+  CoroutineBase(stdcoro::coroutine_handle<> coroutine, ExceptionOrValue& resultRef,
+                SourceLocation location);
   ~CoroutineBase() noexcept(false);
   ZC_DISALLOW_COPY_AND_MOVE(CoroutineBase);
   void destroy() override;
@@ -2356,7 +2215,7 @@ class CoroutineBase : public PromiseNode, public Event {
 
   void unhandled_exception();
 
- protected:
+protected:
   class AwaiterBase;
 
   bool isWaiting() { return waiting; }
@@ -2365,7 +2224,7 @@ class CoroutineBase : public PromiseNode, public Event {
     waiting = false;
   }
 
- private:
+private:
   // -------------------------------------------------------
   // PromiseNode implementation
 
@@ -2424,8 +2283,7 @@ class CoroutineMixin;
 // CRTP mixin, covered later.
 
 template <typename T>
-class Coroutine final : public CoroutineBase,
-                        public CoroutineMixin<Coroutine<T>, T> {
+class Coroutine final : public CoroutineBase, public CoroutineMixin<Coroutine<T>, T> {
   // The standard calls this the `promise_type` object. We can call this the
   // "coroutine implementation object" since the word promise means different
   // things in ZC and std styles. This is where we implement how a
@@ -2444,11 +2302,10 @@ class Coroutine final : public CoroutineBase,
   // and the await-expression's type are both `zc::Promise` instantiations --
   // see further comments under `await_transform()`.
 
- public:
+public:
   using Handle = stdcoro::coroutine_handle<Coroutine<T>>;
 
-  Coroutine(SourceLocation location = {})
-      : Coroutine(Handle::from_promise(*this), location) {}
+  Coroutine(SourceLocation location = {}) : Coroutine(Handle::from_promise(*this), location) {}
 
   Coroutine(stdcoro::coroutine_handle<> handle, SourceLocation location = {})
       : CoroutineBase(handle, result, location) {}
@@ -2462,7 +2319,7 @@ class Coroutine final : public CoroutineBase,
     return PromiseNode::to<Promise<T>>(OwnPromiseNode(this));
   }
 
- public:
+public:
   template <typename U>
   class Awaiter;
 
@@ -2506,27 +2363,23 @@ class Coroutine final : public CoroutineBase,
     }
   }
 
- private:
+private:
   // -------------------------------------------------------
   // PromiseNode implementation
 
-  void get(ExceptionOrValue& output) noexcept override {
-    output.as<FixVoid<T>>() = zc::mv(result);
-  }
+  void get(ExceptionOrValue& output) noexcept override { output.as<FixVoid<T>>() = zc::mv(result); }
 
   ExceptionOr<FixVoid<T>> result;
 };
 
 template <typename Self, typename T>
 class CoroutineMixin {
- public:
-  void return_value(T value) {
-    static_cast<Self*>(this)->fulfill(zc::mv(value));
-  }
+public:
+  void return_value(T value) { static_cast<Self*>(this)->fulfill(zc::mv(value)); }
 };
 template <typename Self>
 class CoroutineMixin<Self, void> {
- public:
+public:
   void return_void() { static_cast<Self*>(this)->fulfill(_::Void()); }
 };
 // The Coroutines spec has no `_::FixVoid<T>` equivalent to unify valueful and
@@ -2536,7 +2389,7 @@ class CoroutineMixin<Self, void> {
 // return_* functions live in a CRTP mixin.
 
 class CoroutineBase::AwaiterBase {
- public:
+public:
   explicit AwaiterBase(OwnPromiseNode&& node);
 
   AwaiterBase(AwaiterBase&&);
@@ -2551,11 +2404,11 @@ class CoroutineBase::AwaiterBase {
   // false here. Fortunately, await_suspend() has a trick up its sleeve to
   // enable suspension-less co_awaits.
 
- protected:
+protected:
   void getImpl(ExceptionOrValue& result, void* awaitedAt);
   bool awaitSuspendImpl(CoroutineBase& coroutineEvent);
 
- private:
+private:
   UnwindDetector unwindDetector;
   OwnPromiseNode node;
 
@@ -2579,7 +2432,7 @@ class Coroutine<T>::Awaiter : public AwaiterBase {
   // the coroutine, which transitively calls await_resume() to unwrap the
   // awaited promise result.
 
- public:
+public:
   explicit Awaiter(OwnPromiseNode&& node) : AwaiterBase(zc::mv(node)) {}
 
   ZC_NOINLINE U await_resume() {
@@ -2606,7 +2459,7 @@ class Coroutine<T>::Awaiter : public AwaiterBase {
     return awaitSuspendImpl(coroutine.promise());
   }
 
- private:
+private:
   ExceptionOr<FixVoid<U>> result;
 };
 
@@ -2615,9 +2468,8 @@ class Coroutine<T>::Awaiter : public AwaiterBase {
 template <typename T>
 template <typename U>
 class Coroutine<T>::ForkedPromiseAwaiter {
- public:
-  ForkedPromiseAwaiter(ForkedPromise<U>& promise)
-      : node(promise), awaiter(OwnPromiseNode(&node)) {}
+public:
+  ForkedPromiseAwaiter(ForkedPromise<U>& promise) : node(promise), awaiter(OwnPromiseNode(&node)) {}
 
   template <typename V>
   inline bool await_suspend(stdcoro::coroutine_handle<V> coroutine) {
@@ -2628,7 +2480,7 @@ class Coroutine<T>::ForkedPromiseAwaiter {
 
   inline bool await_ready() const { return awaiter.await_ready(); }
 
- private:
+private:
   ForkBranch<_::FixVoid<U>, false> node;
   Awaiter<U> awaiter;
 };

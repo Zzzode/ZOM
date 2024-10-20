@@ -80,8 +80,7 @@ Array<byte> readAll(InputStream& input, uint64_t limit, bool nulTerminate) {
     size_t n = input.tryRead(part, part.size());
     limit -= n;
     if (n < part.size()) {
-      auto result =
-          heapArray<byte>(parts.size() * BLOCK_SIZE + n + nulTerminate);
+      auto result = heapArray<byte>(parts.size() * BLOCK_SIZE + n + nulTerminate);
       byte* pos = result.begin();
       for (auto& p : parts) {
         memcpy(pos, p.begin(), BLOCK_SIZE);
@@ -103,14 +102,10 @@ Array<byte> readAll(InputStream& input, uint64_t limit, bool nulTerminate) {
 String InputStream::readAllText(uint64_t limit) {
   return String(readAll(*this, limit, true).releaseAsChars());
 }
-Array<byte> InputStream::readAllBytes(uint64_t limit) {
-  return readAll(*this, limit, false);
-}
+Array<byte> InputStream::readAllBytes(uint64_t limit) { return readAll(*this, limit, false); }
 
 void OutputStream::write(ArrayPtr<const ArrayPtr<const byte>> pieces) {
-  for (auto piece : pieces) {
-    write(piece);
-  }
+  for (auto piece : pieces) { write(piece); }
 }
 
 ArrayPtr<const byte> BufferedInputStream::getReadBuffer() {
@@ -121,8 +116,7 @@ ArrayPtr<const byte> BufferedInputStream::getReadBuffer() {
 
 // =======================================================================================
 
-BufferedInputStreamWrapper::BufferedInputStreamWrapper(InputStream& inner,
-                                                       ArrayPtr<byte> buffer)
+BufferedInputStreamWrapper::BufferedInputStreamWrapper(InputStream& inner, ArrayPtr<byte> buffer)
     : inner(inner),
       ownedBuffer(buffer == nullptr ? heapArray<byte>(8192) : nullptr),
       buffer(buffer == nullptr ? ownedBuffer : buffer) {}
@@ -138,8 +132,7 @@ ArrayPtr<const byte> BufferedInputStreamWrapper::tryGetReadBuffer() {
   return bufferAvailable;
 }
 
-size_t BufferedInputStreamWrapper::tryRead(ArrayPtr<byte> dst,
-                                           size_t minBytes) {
+size_t BufferedInputStreamWrapper::tryRead(ArrayPtr<byte> dst, size_t minBytes) {
   size_t maxBytes = dst.size();
   if (minBytes <= bufferAvailable.size()) {
     // Serve from current buffer.
@@ -189,8 +182,7 @@ void BufferedInputStreamWrapper::skip(size_t bytes) {
 
 // -------------------------------------------------------------------
 
-BufferedOutputStreamWrapper::BufferedOutputStreamWrapper(OutputStream& inner,
-                                                         ArrayPtr<byte> buffer)
+BufferedOutputStreamWrapper::BufferedOutputStreamWrapper(OutputStream& inner, ArrayPtr<byte> buffer)
     : inner(inner),
       ownedBuffer(buffer == nullptr ? heapArray<byte>(8192) : nullptr),
       buffer(buffer == nullptr ? ownedBuffer : buffer),
@@ -267,20 +259,16 @@ void ArrayInputStream::skip(size_t bytes) {
 
 // -------------------------------------------------------------------
 
-ArrayOutputStream::ArrayOutputStream(ArrayPtr<byte> array)
-    : array(array), fillPos(array.begin()) {}
+ArrayOutputStream::ArrayOutputStream(ArrayPtr<byte> array) : array(array), fillPos(array.begin()) {}
 ArrayOutputStream::~ArrayOutputStream() noexcept(false) {}
 
-ArrayPtr<byte> ArrayOutputStream::getWriteBuffer() {
-  return arrayPtr(fillPos, array.end());
-}
+ArrayPtr<byte> ArrayOutputStream::getWriteBuffer() { return arrayPtr(fillPos, array.end()); }
 
 void ArrayOutputStream::write(ArrayPtr<const byte> src) {
   auto size = src.size();
   if (src.begin() == fillPos && fillPos != array.end()) {
     // Oh goody, the caller wrote directly into our buffer.
-    ZC_REQUIRE(size <= array.end() - fillPos, size, fillPos,
-               array.end() - fillPos);
+    ZC_REQUIRE(size <= array.end() - fillPos, size, fillPos, array.end() - fillPos);
     fillPos += size;
   } else {
     ZC_REQUIRE(size <= (size_t)(array.end() - fillPos),
@@ -299,9 +287,7 @@ VectorOutputStream::~VectorOutputStream() noexcept(false) {}
 
 ArrayPtr<byte> VectorOutputStream::getWriteBuffer() {
   // Grow if needed.
-  if (fillPos == vector.end()) {
-    grow(vector.size() + 1);
-  }
+  if (fillPos == vector.end()) { grow(vector.size() + 1); }
 
   return arrayPtr(fillPos, vector.end());
 }
@@ -315,9 +301,7 @@ void VectorOutputStream::write(ArrayPtr<const byte> src) {
     ZC_REQUIRE(size <= remaining, size, fillPos, vector.end() - fillPos);
     fillPos += size;
   } else {
-    if (remaining < size) {
-      grow(fillPos - vector.begin() + size);
-    }
+    if (remaining < size) { grow(fillPos - vector.begin() + size); }
 
     memcpy(fillPos, src.begin(), size);
     fillPos += size;
@@ -357,9 +341,7 @@ size_t FdInputStream::tryRead(ArrayPtr<byte> buffer, size_t minBytes) {
   while (pos < min) {
     miniposix::ssize_t n;
     ZC_SYSCALL(n = miniposix::read(fd, pos, max - pos), fd);
-    if (n == 0) {
-      break;
-    }
+    if (n == 0) { break; }
     pos += n;
   }
 
@@ -406,9 +388,7 @@ void FdOutputStream::write(ArrayPtr<const ArrayPtr<const byte>> pieces) {
 
   // Advance past any leading empty buffers so that a write full of only empty
   // buffers does not cause a syscall at all.
-  while (current < iov.end() && current->iov_len == 0) {
-    ++current;
-  }
+  while (current < iov.end() && current->iov_len == 0) { ++current; }
 
   while (current < iov.end()) {
     // Issue the write.
@@ -437,9 +417,7 @@ void FdOutputStream::write(ArrayPtr<const ArrayPtr<const byte>> pieces) {
 #if _WIN32
 
 AutoCloseHandle::~AutoCloseHandle() noexcept(false) {
-  if (handle != (void*)-1) {
-    ZC_WIN32(CloseHandle(handle));
-  }
+  if (handle != (void*)-1) { ZC_WIN32(CloseHandle(handle)); }
 }
 
 HandleInputStream::~HandleInputStream() noexcept(false) {}
@@ -451,11 +429,8 @@ size_t HandleInputStream::tryRead(ArrayPtr<byte> buffer, size_t minBytes) {
 
   while (pos < min) {
     DWORD n;
-    ZC_WIN32(ReadFile(handle, pos, zc::min(max - pos, DWORD(zc::maxValue)), &n,
-                      nullptr));
-    if (n == 0) {
-      break;
-    }
+    ZC_WIN32(ReadFile(handle, pos, zc::min(max - pos, DWORD(zc::maxValue)), &n, nullptr));
+    if (n == 0) { break; }
     pos += n;
   }
 
@@ -470,8 +445,7 @@ void HandleOutputStream::write(ArrayPtr<const byte> buffer) {
 
   while (size > 0) {
     DWORD n;
-    ZC_WIN32(WriteFile(handle, pos, zc::min(size, DWORD(zc::maxValue)), &n,
-                       nullptr));
+    ZC_WIN32(WriteFile(handle, pos, zc::min(size, DWORD(zc::maxValue)), &n, nullptr));
     ZC_ASSERT(n > 0, "write() returned zero.");
     pos += n;
     size -= n;

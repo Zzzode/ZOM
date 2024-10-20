@@ -59,8 +59,7 @@ struct TypeByIndex_<0, First, Rest...> {
   typedef First Type;
 };
 template <size_t index, typename First, typename... Rest>
-struct TypeByIndex_<index, First, Rest...>
-    : public TypeByIndex_<index - 1, Rest...> {};
+struct TypeByIndex_<index, First, Rest...> : public TypeByIndex_<index - 1, Rest...> {};
 template <size_t index>
 struct TypeByIndex_<index> {
   static_assert(index != index, "Index out-of-range.");
@@ -115,29 +114,25 @@ struct TupleElement<index, T&> {
 
 template <uint index, typename... T>
 struct TupleElement<index, Tuple<T...>> {
-  static_assert(
-      sizeof(Tuple<T...>*) == 0,
-      "Tuples cannot contain other tuples -- they should be flattened.");
+  static_assert(sizeof(Tuple<T...>*) == 0,
+                "Tuples cannot contain other tuples -- they should be flattened.");
 };
 
 template <typename Indexes, typename... Types>
 struct TupleImpl;
 
 template <size_t... indexes, typename... Types>
-struct TupleImpl<Indexes<indexes...>, Types...>
-    : public TupleElement<indexes, Types>... {
+struct TupleImpl<Indexes<indexes...>, Types...> : public TupleElement<indexes, Types>... {
   // Implementation of Tuple.  The only reason we need this rather than rolling
   // this into class Tuple (below) is so that we can get "indexes" as an
   // unpackable list.
 
-  static_assert(sizeof...(indexes) == sizeof...(Types),
-                "Incorrect use of TupleImpl.");
+  static_assert(sizeof...(indexes) == sizeof...(Types), "Incorrect use of TupleImpl.");
 
   TupleImpl() = default;
 
   template <typename... Params>
-  inline TupleImpl(Params&&... params)
-      : TupleElement<indexes, Types>(zc::fwd<Params>(params))... {
+  inline TupleImpl(Params&&... params) : TupleElement<indexes, Types>(zc::fwd<Params>(params))... {
     // Work around Clang 3.2 bug 16303 where this is not detected.
     // (Unfortunately, Clang sometimes segfaults instead.)
     static_assert(sizeof...(params) == sizeof...(indexes),
@@ -162,7 +157,7 @@ template <typename... T>
 class Tuple {
   // The actual Tuple class (used for tuples of size other than 1).
 
- public:
+public:
   Tuple() = default;
 
   template <typename... U>
@@ -172,7 +167,7 @@ class Tuple {
   template <typename... U>
   constexpr inline Tuple(const Tuple<U...>& other) : impl(other) {}
 
- private:
+private:
   template <typename... Params>
   constexpr Tuple(Params&&... params) : impl(zc::fwd<Params>(params)...) {}
 
@@ -183,8 +178,7 @@ class Tuple {
   template <size_t index, typename... U>
   friend inline TypeByIndex<index, U...>&& getImpl(Tuple<U...>&& tuple);
   template <size_t index, typename... U>
-  friend inline const TypeByIndex<index, U...>& getImpl(
-      const Tuple<U...>& tuple);
+  friend inline const TypeByIndex<index, U...>& getImpl(const Tuple<U...>& tuple);
   friend struct MakeTupleFunc;
   friend struct MakeRefTupleFunc;
 };
@@ -204,25 +198,19 @@ template <size_t index, typename... T>
 inline TypeByIndex<index, T...>& getImpl(Tuple<T...>& tuple) {
   // Get member of a Tuple by index, e.g. `get<2>(myTuple)`.
   static_assert(index < sizeof...(T), "Tuple element index out-of-bounds.");
-  return implicitCast<TupleElement<index, TypeByIndex<index, T...>>&>(
-             tuple.impl)
-      .value;
+  return implicitCast<TupleElement<index, TypeByIndex<index, T...>>&>(tuple.impl).value;
 }
 template <size_t index, typename... T>
 inline TypeByIndex<index, T...>&& getImpl(Tuple<T...>&& tuple) {
   // Get member of a Tuple by index, e.g. `get<2>(myTuple)`.
   static_assert(index < sizeof...(T), "Tuple element index out-of-bounds.");
-  return zc::mv(
-      implicitCast<TupleElement<index, TypeByIndex<index, T...>>&>(tuple.impl)
-          .value);
+  return zc::mv(implicitCast<TupleElement<index, TypeByIndex<index, T...>>&>(tuple.impl).value);
 }
 template <size_t index, typename... T>
 inline const TypeByIndex<index, T...>& getImpl(const Tuple<T...>& tuple) {
   // Get member of a Tuple by index, e.g. `get<2>(myTuple)`.
   static_assert(index < sizeof...(T), "Tuple element index out-of-bounds.");
-  return implicitCast<const TupleElement<index, TypeByIndex<index, T...>>&>(
-             tuple.impl)
-      .value;
+  return implicitCast<const TupleElement<index, TypeByIndex<index, T...>>&>(tuple.impl).value;
 }
 template <size_t index, typename T>
 inline T&& getImpl(T&& value) {
@@ -243,29 +231,21 @@ struct ExpandAndApplyResult_;
 template <typename Func, typename First, typename... Rest, typename... T>
 struct ExpandAndApplyResult_<Func, Tuple<T...>, First, Rest...>
     : public ExpandAndApplyResult_<Func, Tuple<T..., First>, Rest...> {};
-template <typename Func, typename... FirstTypes, typename... Rest,
-          typename... T>
+template <typename Func, typename... FirstTypes, typename... Rest, typename... T>
 struct ExpandAndApplyResult_<Func, Tuple<T...>, Tuple<FirstTypes...>, Rest...>
-    : public ExpandAndApplyResult_<Func, Tuple<T...>, FirstTypes&&...,
-                                   Rest...> {};
-template <typename Func, typename... FirstTypes, typename... Rest,
-          typename... T>
+    : public ExpandAndApplyResult_<Func, Tuple<T...>, FirstTypes&&..., Rest...> {};
+template <typename Func, typename... FirstTypes, typename... Rest, typename... T>
 struct ExpandAndApplyResult_<Func, Tuple<T...>, Tuple<FirstTypes...>&, Rest...>
-    : public ExpandAndApplyResult_<Func, Tuple<T...>, FirstTypes&..., Rest...> {
-};
-template <typename Func, typename... FirstTypes, typename... Rest,
-          typename... T>
-struct ExpandAndApplyResult_<Func, Tuple<T...>, const Tuple<FirstTypes...>&,
-                             Rest...>
-    : public ExpandAndApplyResult_<Func, Tuple<T...>, const FirstTypes&...,
-                                   Rest...> {};
+    : public ExpandAndApplyResult_<Func, Tuple<T...>, FirstTypes&..., Rest...> {};
+template <typename Func, typename... FirstTypes, typename... Rest, typename... T>
+struct ExpandAndApplyResult_<Func, Tuple<T...>, const Tuple<FirstTypes...>&, Rest...>
+    : public ExpandAndApplyResult_<Func, Tuple<T...>, const FirstTypes&..., Rest...> {};
 template <typename Func, typename... T>
 struct ExpandAndApplyResult_<Func, Tuple<T...>> {
   typedef decltype(instance<Func>()(instance<T&&>()...)) Type;
 };
 template <typename Func, typename... T>
-using ExpandAndApplyResult =
-    typename ExpandAndApplyResult_<Func, Tuple<>, T...>::Type;
+using ExpandAndApplyResult = typename ExpandAndApplyResult_<Func, Tuple<>, T...>::Type;
 // Computes the expected return type of `expandAndApply()`.
 
 template <typename Func>
@@ -280,63 +260,54 @@ struct ExpandAndApplyFunc {
   ExpandAndApplyFunc(Func&& func, First&& first)
       : func(zc::fwd<Func>(func)), first(zc::fwd<First>(first)) {}
   template <typename... T>
-  auto operator()(T&&... params)
-      -> decltype(this->func(zc::fwd<First>(first), zc::fwd<T>(params)...)) {
+  auto operator()(T&&... params) -> decltype(this->func(zc::fwd<First>(first),
+                                                        zc::fwd<T>(params)...)) {
     return this->func(zc::fwd<First>(first), zc::fwd<T>(params)...);
   }
 };
 
 template <typename Func, typename First, typename... Rest>
-inline auto expandAndApply(Func&& func, First&& first, Rest&&... rest)
-    -> ExpandAndApplyResult<Func, First, Rest...> {
-  return expandAndApply(ExpandAndApplyFunc<Func, First, Rest...>(
-                            zc::fwd<Func>(func), zc::fwd<First>(first)),
-                        zc::fwd<Rest>(rest)...);
+inline auto expandAndApply(Func&& func, First&& first,
+                           Rest&&... rest) -> ExpandAndApplyResult<Func, First, Rest...> {
+  return expandAndApply(
+      ExpandAndApplyFunc<Func, First, Rest...>(zc::fwd<Func>(func), zc::fwd<First>(first)),
+      zc::fwd<Rest>(rest)...);
 }
 
 template <typename Func, typename... FirstTypes, typename... Rest>
 inline auto expandAndApply(Func&& func, Tuple<FirstTypes...>&& first,
-                           Rest&&... rest)
-    -> ExpandAndApplyResult<Func, FirstTypes&&..., Rest...> {
-  return expandAndApplyWithIndexes(MakeIndexes<sizeof...(FirstTypes)>(),
-                                   zc::fwd<Func>(func), zc::mv(first),
-                                   zc::fwd<Rest>(rest)...);
+                           Rest&&... rest) -> ExpandAndApplyResult<Func, FirstTypes&&..., Rest...> {
+  return expandAndApplyWithIndexes(MakeIndexes<sizeof...(FirstTypes)>(), zc::fwd<Func>(func),
+                                   zc::mv(first), zc::fwd<Rest>(rest)...);
 }
 
 template <typename Func, typename... FirstTypes, typename... Rest>
 inline auto expandAndApply(Func&& func, Tuple<FirstTypes...>& first,
-                           Rest&&... rest)
-    -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
-  return expandAndApplyWithIndexes(MakeIndexes<sizeof...(FirstTypes)>(),
-                                   zc::fwd<Func>(func), first,
+                           Rest&&... rest) -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
+  return expandAndApplyWithIndexes(MakeIndexes<sizeof...(FirstTypes)>(), zc::fwd<Func>(func), first,
                                    zc::fwd<Rest>(rest)...);
 }
 
 template <typename Func, typename... FirstTypes, typename... Rest>
 inline auto expandAndApply(Func&& func, const Tuple<FirstTypes...>& first,
-                           Rest&&... rest)
-    -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
-  return expandAndApplyWithIndexes(MakeIndexes<sizeof...(FirstTypes)>(),
-                                   zc::fwd<Func>(func), first,
+                           Rest&&... rest) -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
+  return expandAndApplyWithIndexes(MakeIndexes<sizeof...(FirstTypes)>(), zc::fwd<Func>(func), first,
                                    zc::fwd<Rest>(rest)...);
 }
 
-template <typename Func, typename... FirstTypes, typename... Rest,
-          size_t... indexes>
-inline auto expandAndApplyWithIndexes(
-    Indexes<indexes...>, Func&& func, Tuple<FirstTypes...>&& first,
-    Rest&&... rest) -> ExpandAndApplyResult<Func, FirstTypes&&..., Rest...> {
+template <typename Func, typename... FirstTypes, typename... Rest, size_t... indexes>
+inline auto expandAndApplyWithIndexes(Indexes<indexes...>, Func&& func,
+                                      Tuple<FirstTypes...>&& first, Rest&&... rest)
+    -> ExpandAndApplyResult<Func, FirstTypes&&..., Rest...> {
   return expandAndApply(zc::fwd<Func>(func), zc::mv(getImpl<indexes>(first))...,
                         zc::fwd<Rest>(rest)...);
 }
 
-template <typename Func, typename... FirstTypes, typename... Rest,
-          size_t... indexes>
-inline auto expandAndApplyWithIndexes(
-    Indexes<indexes...>, Func&& func, const Tuple<FirstTypes...>& first,
-    Rest&&... rest) -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
-  return expandAndApply(zc::fwd<Func>(func), getImpl<indexes>(first)...,
-                        zc::fwd<Rest>(rest)...);
+template <typename Func, typename... FirstTypes, typename... Rest, size_t... indexes>
+inline auto expandAndApplyWithIndexes(Indexes<indexes...>, Func&& func,
+                                      const Tuple<FirstTypes...>& first, Rest&&... rest)
+    -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
+  return expandAndApply(zc::fwd<Func>(func), getImpl<indexes>(first)..., zc::fwd<Rest>(rest)...);
 }
 
 struct MakeTupleFunc {
@@ -385,9 +356,8 @@ using Tuple = typename Tuple_<T...>::Type;
 // flattened and concatenated.
 
 template <typename... Params>
-inline auto tuple(Params&&... params)
-    -> decltype(_::expandAndApply(_::MakeTupleFunc(),
-                                  zc::fwd<Params>(params)...)) {
+inline auto tuple(Params&&... params) -> decltype(_::expandAndApply(_::MakeTupleFunc(),
+                                                                    zc::fwd<Params>(params)...)) {
   // Construct a new tuple from the given values.  Any tuples in the argument
   // list will be flattened into the result.
   return _::expandAndApply(_::MakeTupleFunc(), zc::fwd<Params>(params)...);
@@ -395,8 +365,7 @@ inline auto tuple(Params&&... params)
 
 template <typename... Params>
 inline auto refTuple(Params&&... params)
-    -> decltype(_::expandAndApply(_::MakeRefTupleFunc(),
-                                  zc::fwd<Params>(params)...)) {
+    -> decltype(_::expandAndApply(_::MakeRefTupleFunc(), zc::fwd<Params>(params)...)) {
   // Like tuple(), but if the params include lvalue references, they will be
   // captured as references. rvalue references will still be captured as whole
   // values (moved).
@@ -404,8 +373,7 @@ inline auto refTuple(Params&&... params)
 }
 
 template <size_t index, typename Tuple>
-inline auto get(Tuple&& tuple)
-    -> decltype(_::getImpl<index>(zc::fwd<Tuple>(tuple))) {
+inline auto get(Tuple&& tuple) -> decltype(_::getImpl<index>(zc::fwd<Tuple>(tuple))) {
   // Unpack and return the tuple element at the given index.  The index is
   // specified as a template parameter, e.g. `zc::get<3>(myTuple)`.
   return _::getImpl<index>(zc::fwd<Tuple>(tuple));
@@ -413,8 +381,7 @@ inline auto get(Tuple&& tuple)
 
 template <typename Func, typename... Params>
 inline auto apply(Func&& func, Params&&... params)
-    -> decltype(_::expandAndApply(zc::fwd<Func>(func),
-                                  zc::fwd<Params>(params)...)) {
+    -> decltype(_::expandAndApply(zc::fwd<Func>(func), zc::fwd<Params>(params)...)) {
   // Apply a function to some arguments, expanding tuples into separate
   // arguments.
   return _::expandAndApply(zc::fwd<Func>(func), zc::fwd<Params>(params)...);
@@ -484,8 +451,7 @@ struct TypeOfIndex_<0, T> {
   typedef T Type;
 };
 template <size_t i, typename T, typename... U>
-struct TypeOfIndex_<i, _::Tuple<T, U...>>
-    : public TypeOfIndex_<i - 1, _::Tuple<U...>> {};
+struct TypeOfIndex_<i, _::Tuple<T, U...>> : public TypeOfIndex_<i - 1, _::Tuple<U...>> {};
 template <typename T, typename... U>
 struct TypeOfIndex_<0, _::Tuple<T, U...>> {
   typedef T Type;

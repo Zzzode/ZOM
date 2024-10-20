@@ -80,8 +80,7 @@ namespace zc {
 
 // Our STL string SFINAE trick does not work with GCC 4.7, but it works with
 // Clang and GCC 4.8, so we'll just preprocess it out if not supported.
-#if __clang__ || __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8) || \
-    _MSC_VER
+#if __clang__ || __GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8) || _MSC_VER
 #define ZC_COMPILER_SUPPORTS_STL_STRING_INTEROP 1
 #endif
 
@@ -93,17 +92,14 @@ namespace zc {
 // content. This terminator byte is not counted in the string's size.
 
 class StringPtr {
- public:
+public:
   constexpr StringPtr() : content("", 1) {}
   constexpr StringPtr(std::nullptr_t) : content("", 1) {}
-  StringPtr(const char* value ZC_LIFETIMEBOUND)
-      : content(value, strlen(value) + 1) {}
-  constexpr StringPtr(const char* value ZC_LIFETIMEBOUND, size_t size)
-      : content(value, size + 1) {
+  StringPtr(const char* value ZC_LIFETIMEBOUND) : content(value, strlen(value) + 1) {}
+  constexpr StringPtr(const char* value ZC_LIFETIMEBOUND, size_t size) : content(value, size + 1) {
     ZC_IREQUIRE(value[size] == '\0', "StringPtr must be NUL-terminated.");
   }
-  constexpr StringPtr(const char* begin ZC_LIFETIMEBOUND,
-                      const char* end ZC_LIFETIMEBOUND)
+  constexpr StringPtr(const char* begin ZC_LIFETIMEBOUND, const char* end ZC_LIFETIMEBOUND)
       : StringPtr(begin, end - begin) {}
   constexpr StringPtr(String&& value ZC_LIFETIMEBOUND) : StringPtr(value) {}
   constexpr StringPtr(const String& value ZC_LIFETIMEBOUND);
@@ -119,27 +115,22 @@ class StringPtr {
       : StringPtr(reinterpret_cast<const char*>(value)) {}
   StringPtr(const char8_t* value ZC_LIFETIMEBOUND, size_t size)
       : StringPtr(reinterpret_cast<const char*>(value), size) {}
-  StringPtr(const char8_t* begin ZC_LIFETIMEBOUND,
-            const char8_t* end ZC_LIFETIMEBOUND)
-      : StringPtr(reinterpret_cast<const char*>(begin),
-                  reinterpret_cast<const char*>(end)) {}
+  StringPtr(const char8_t* begin ZC_LIFETIMEBOUND, const char8_t* end ZC_LIFETIMEBOUND)
+      : StringPtr(reinterpret_cast<const char*>(begin), reinterpret_cast<const char*>(end)) {}
   // zc strings are and always have been UTF-8, so screw this C++20 char8_t
   // stuff.
 #endif
 
 #if ZC_COMPILER_SUPPORTS_STL_STRING_INTEROP
   template <typename T,
-            typename = EnableIf<
-                canConvert<decltype(instance<T>().c_str()), const char*>()>,
+            typename = EnableIf<canConvert<decltype(instance<T>().c_str()), const char*>()>,
             typename = decltype(instance<T>().size())>
-  constexpr StringPtr(const T& t ZC_LIFETIMEBOUND)
-      : StringPtr(t.c_str(), t.size()) {}
+  constexpr StringPtr(const T& t ZC_LIFETIMEBOUND) : StringPtr(t.c_str(), t.size()) {}
   // Allow implicit conversion from any class that has a c_str() and a size()
   // method (namely, std::string). We use a template trick to detect std::string
   // in order to avoid including the header for those who don't want it.
   template <typename T,
-            typename = EnableIf<
-                canConvert<decltype(instance<T>().c_str()), const char*>()>,
+            typename = EnableIf<canConvert<decltype(instance<T>().c_str()), const char*>()>,
             typename = decltype(instance<T>().size())>
   constexpr operator T() const {
     return {cStr(), size()};
@@ -166,21 +157,13 @@ class StringPtr {
   constexpr const char* begin() const { return content.begin(); }
   constexpr const char* end() const { return content.end() - 1; }
 
-  constexpr bool operator==(std::nullptr_t) const {
-    return content.size() <= 1;
-  }
+  constexpr bool operator==(std::nullptr_t) const { return content.size() <= 1; }
 
   constexpr bool operator==(const StringPtr& other) const;
   constexpr bool operator<(const StringPtr& other) const;
-  constexpr bool operator>(const StringPtr& other) const {
-    return other < *this;
-  }
-  constexpr bool operator<=(const StringPtr& other) const {
-    return !(other < *this);
-  }
-  constexpr bool operator>=(const StringPtr& other) const {
-    return !(*this < other);
-  }
+  constexpr bool operator>(const StringPtr& other) const { return other < *this; }
+  constexpr bool operator<=(const StringPtr& other) const { return !(other < *this); }
+  constexpr bool operator>=(const StringPtr& other) const { return !(*this < other); }
 
   constexpr StringPtr slice(size_t start) const;
   constexpr ArrayPtr<const char> slice(size_t start, size_t end) const;
@@ -190,12 +173,8 @@ class StringPtr {
   constexpr ArrayPtr<const char> first(size_t count) const;
   // Return string prefix.
 
-  constexpr bool startsWith(const StringPtr& other) const {
-    return asArray().startsWith(other);
-  }
-  constexpr bool endsWith(const StringPtr& other) const {
-    return asArray().endsWith(other);
-  }
+  constexpr bool startsWith(const StringPtr& other) const { return asArray().startsWith(other); }
+  constexpr bool endsWith(const StringPtr& other) const { return asArray().endsWith(other); }
 
   Maybe<size_t> findFirst(char c) const { return asArray().findFirst(c); }
   Maybe<size_t> findLast(char c) const { return asArray().findLast(c); }
@@ -206,9 +185,7 @@ class StringPtr {
   // In keeping with std::string::find, if other is the empty string, return 0
   // since the empty string is a substring of any string.
 
-  bool contains(const StringPtr& other) const {
-    return find(other) != zc::none;
-  }
+  bool contains(const StringPtr& other) const { return find(other) != zc::none; }
 
   template <typename T>
   T parseAs() const;
@@ -235,9 +212,8 @@ class StringPtr {
   // Syntax sugar for invoking T::from.
   // Used to chain conversion calls rather than wrap with function.
 
- private:
-  explicit constexpr StringPtr(ArrayPtr<const char> content)
-      : content(content) {}
+private:
+  explicit constexpr StringPtr(ArrayPtr<const char> content) : content(content) {}
   friend constexpr StringPtr(::operator"" _zc)(const char* str, size_t n);
   friend class LiteralStringConst;
 
@@ -300,14 +276,12 @@ template <>
 Maybe<double> StringPtr::tryParseAs<double>() const;
 
 class LiteralStringConst : public StringPtr {
- public:
+public:
   operator ConstString() const;
 
- private:
-  explicit constexpr LiteralStringConst(ArrayPtr<const char> content)
-      : StringPtr(content) {}
-  friend constexpr LiteralStringConst(::operator"" _zcc)(const char* str,
-                                                         size_t n);
+private:
+  explicit constexpr LiteralStringConst(ArrayPtr<const char> content) : StringPtr(content) {}
+  friend constexpr LiteralStringConst(::operator"" _zcc)(const char* str, size_t n);
 };
 
 // =======================================================================================
@@ -322,7 +296,7 @@ class LiteralStringConst : public StringPtr {
 // the developer.
 
 class String {
- public:
+public:
   String() = default;
   String(char* value, size_t size, const ArrayDisposer& disposer);
   /* non-explicit */ String(std::nullptr_t) : content(nullptr) {}
@@ -335,12 +309,8 @@ class String {
   constexpr operator ArrayPtr<const char>() const ZC_LIFETIMEBOUND;
   constexpr ArrayPtr<char> asArray() ZC_LIFETIMEBOUND;
   constexpr ArrayPtr<const char> asArray() const ZC_LIFETIMEBOUND;
-  constexpr ArrayPtr<byte> asBytes() ZC_LIFETIMEBOUND {
-    return asArray().asBytes();
-  }
-  constexpr ArrayPtr<const byte> asBytes() const ZC_LIFETIMEBOUND {
-    return asArray().asBytes();
-  }
+  constexpr ArrayPtr<byte> asBytes() ZC_LIFETIMEBOUND { return asArray().asBytes(); }
+  constexpr ArrayPtr<const byte> asBytes() const ZC_LIFETIMEBOUND { return asArray().asBytes(); }
   // Result does not include NUL terminator.
 
   StringPtr asPtr() const ZC_LIFETIMEBOUND {
@@ -365,90 +335,46 @@ class String {
   constexpr const char* begin() const ZC_LIFETIMEBOUND;
   constexpr const char* end() const ZC_LIFETIMEBOUND;
 
-  constexpr bool operator==(std::nullptr_t) const {
-    return content.size() <= 1;
-  }
+  constexpr bool operator==(std::nullptr_t) const { return content.size() <= 1; }
 
-  bool operator==(const StringPtr& other) const {
-    return StringPtr(*this) == other;
-  }
-  bool operator<(const StringPtr& other) const {
-    return StringPtr(*this) < other;
-  }
-  bool operator>(const StringPtr& other) const {
-    return StringPtr(*this) > other;
-  }
-  bool operator<=(const StringPtr& other) const {
-    return StringPtr(*this) <= other;
-  }
-  bool operator>=(const StringPtr& other) const {
-    return StringPtr(*this) >= other;
-  }
+  bool operator==(const StringPtr& other) const { return StringPtr(*this) == other; }
+  bool operator<(const StringPtr& other) const { return StringPtr(*this) < other; }
+  bool operator>(const StringPtr& other) const { return StringPtr(*this) > other; }
+  bool operator<=(const StringPtr& other) const { return StringPtr(*this) <= other; }
+  bool operator>=(const StringPtr& other) const { return StringPtr(*this) >= other; }
 
-  bool operator==(const String& other) const {
-    return StringPtr(*this) == StringPtr(other);
-  }
-  bool operator<(const String& other) const {
-    return StringPtr(*this) < StringPtr(other);
-  }
-  bool operator>(const String& other) const {
-    return StringPtr(*this) > StringPtr(other);
-  }
-  bool operator<=(const String& other) const {
-    return StringPtr(*this) <= StringPtr(other);
-  }
-  bool operator>=(const String& other) const {
-    return StringPtr(*this) >= StringPtr(other);
-  }
+  bool operator==(const String& other) const { return StringPtr(*this) == StringPtr(other); }
+  bool operator<(const String& other) const { return StringPtr(*this) < StringPtr(other); }
+  bool operator>(const String& other) const { return StringPtr(*this) > StringPtr(other); }
+  bool operator<=(const String& other) const { return StringPtr(*this) <= StringPtr(other); }
+  bool operator>=(const String& other) const { return StringPtr(*this) >= StringPtr(other); }
   // Note that if we don't overload for `const String&` specifically, then C++20
   // will decide that comparisons between two strings are ambiguous. (Clang
   // turns this into a warning, -Wambiguous-reversed-operator, due to the
   // stupidity...)
 
-  bool operator==(const ConstString& other) const {
-    return StringPtr(*this) == StringPtr(other);
-  }
-  bool operator<(const ConstString& other) const {
-    return StringPtr(*this) < StringPtr(other);
-  }
-  bool operator>(const ConstString& other) const {
-    return StringPtr(*this) > StringPtr(other);
-  }
-  bool operator<=(const ConstString& other) const {
-    return StringPtr(*this) <= StringPtr(other);
-  }
-  bool operator>=(const ConstString& other) const {
-    return StringPtr(*this) >= StringPtr(other);
-  }
+  bool operator==(const ConstString& other) const { return StringPtr(*this) == StringPtr(other); }
+  bool operator<(const ConstString& other) const { return StringPtr(*this) < StringPtr(other); }
+  bool operator>(const ConstString& other) const { return StringPtr(*this) > StringPtr(other); }
+  bool operator<=(const ConstString& other) const { return StringPtr(*this) <= StringPtr(other); }
+  bool operator>=(const ConstString& other) const { return StringPtr(*this) >= StringPtr(other); }
 
-  constexpr bool startsWith(const StringPtr& other) const {
-    return asArray().startsWith(other);
-  }
-  constexpr bool endsWith(const StringPtr& other) const {
-    return asArray().endsWith(other);
-  }
+  constexpr bool startsWith(const StringPtr& other) const { return asArray().startsWith(other); }
+  constexpr bool endsWith(const StringPtr& other) const { return asArray().endsWith(other); }
 
-  Maybe<size_t> find(const StringPtr& other) const {
-    return asPtr().find(other);
-  }
+  Maybe<size_t> find(const StringPtr& other) const { return asPtr().find(other); }
   // Return the index at which other appears in this string.
   //
   // In keeping with std::string::find, if other is the empty string, return 0
   // since the empty string is a substring of any string.
 
-  bool contains(const StringPtr& other) const {
-    return asPtr().contains(other);
-  }
+  bool contains(const StringPtr& other) const { return asPtr().contains(other); }
 
-  StringPtr slice(size_t start) const ZC_LIFETIMEBOUND {
-    return StringPtr(*this).slice(start);
-  }
+  StringPtr slice(size_t start) const ZC_LIFETIMEBOUND { return StringPtr(*this).slice(start); }
   ArrayPtr<const char> slice(size_t start, size_t end) const ZC_LIFETIMEBOUND {
     return StringPtr(*this).slice(start, end);
   }
-  ArrayPtr<const char> first(size_t count) const ZC_LIFETIMEBOUND {
-    return slice(0, count);
-  }
+  ArrayPtr<const char> first(size_t count) const ZC_LIFETIMEBOUND { return slice(0, count); }
 
   Maybe<size_t> findFirst(char c) const { return asArray().findFirst(c); }
   Maybe<size_t> findLast(char c) const { return asArray().findLast(c); }
@@ -471,7 +397,7 @@ class String {
   // Syntax sugar for invoking T::from.
   // Used to chain conversion calls rather than wrap with function.
 
- private:
+private:
   Array<char> content;
 };
 
@@ -483,7 +409,7 @@ class String {
 // transferring ownership of the buffer.
 
 class ConstString {
- public:
+public:
   ConstString() = default;
   ConstString(std::nullptr_t) : content(nullptr) {}
   ConstString(const char* value, size_t size, const ArrayDisposer& disposer);
@@ -496,9 +422,7 @@ class ConstString {
 
   constexpr operator ArrayPtr<const char>() const ZC_LIFETIMEBOUND;
   constexpr ArrayPtr<const char> asArray() const ZC_LIFETIMEBOUND;
-  constexpr ArrayPtr<const byte> asBytes() const ZC_LIFETIMEBOUND {
-    return asArray().asBytes();
-  }
+  constexpr ArrayPtr<const byte> asBytes() const ZC_LIFETIMEBOUND { return asArray().asBytes(); }
   // Result does not include NUL terminator.
 
   StringPtr asPtr() const ZC_LIFETIMEBOUND {
@@ -521,84 +445,42 @@ class ConstString {
   constexpr const char* begin() const ZC_LIFETIMEBOUND;
   constexpr const char* end() const ZC_LIFETIMEBOUND;
 
-  constexpr bool operator==(std::nullptr_t) const {
-    return content.size() <= 1;
-  }
+  constexpr bool operator==(std::nullptr_t) const { return content.size() <= 1; }
 
-  bool operator==(const StringPtr& other) const {
-    return StringPtr(*this) == other;
-  }
-  bool operator<(const StringPtr& other) const {
-    return StringPtr(*this) < other;
-  }
-  bool operator>(const StringPtr& other) const {
-    return StringPtr(*this) > other;
-  }
-  bool operator<=(const StringPtr& other) const {
-    return StringPtr(*this) <= other;
-  }
-  bool operator>=(const StringPtr& other) const {
-    return StringPtr(*this) >= other;
-  }
+  bool operator==(const StringPtr& other) const { return StringPtr(*this) == other; }
+  bool operator<(const StringPtr& other) const { return StringPtr(*this) < other; }
+  bool operator>(const StringPtr& other) const { return StringPtr(*this) > other; }
+  bool operator<=(const StringPtr& other) const { return StringPtr(*this) <= other; }
+  bool operator>=(const StringPtr& other) const { return StringPtr(*this) >= other; }
 
-  bool operator==(const String& other) const {
-    return StringPtr(*this) == StringPtr(other);
-  }
-  bool operator<(const String& other) const {
-    return StringPtr(*this) < StringPtr(other);
-  }
-  bool operator>(const String& other) const {
-    return StringPtr(*this) > StringPtr(other);
-  }
-  bool operator<=(const String& other) const {
-    return StringPtr(*this) <= StringPtr(other);
-  }
-  bool operator>=(const String& other) const {
-    return StringPtr(*this) >= StringPtr(other);
-  }
+  bool operator==(const String& other) const { return StringPtr(*this) == StringPtr(other); }
+  bool operator<(const String& other) const { return StringPtr(*this) < StringPtr(other); }
+  bool operator>(const String& other) const { return StringPtr(*this) > StringPtr(other); }
+  bool operator<=(const String& other) const { return StringPtr(*this) <= StringPtr(other); }
+  bool operator>=(const String& other) const { return StringPtr(*this) >= StringPtr(other); }
 
-  bool operator==(const ConstString& other) const {
-    return StringPtr(*this) == StringPtr(other);
-  }
-  bool operator<(const ConstString& other) const {
-    return StringPtr(*this) < StringPtr(other);
-  }
-  bool operator>(const ConstString& other) const {
-    return StringPtr(*this) > StringPtr(other);
-  }
-  bool operator<=(const ConstString& other) const {
-    return StringPtr(*this) <= StringPtr(other);
-  }
-  bool operator>=(const ConstString& other) const {
-    return StringPtr(*this) >= StringPtr(other);
-  }
+  bool operator==(const ConstString& other) const { return StringPtr(*this) == StringPtr(other); }
+  bool operator<(const ConstString& other) const { return StringPtr(*this) < StringPtr(other); }
+  bool operator>(const ConstString& other) const { return StringPtr(*this) > StringPtr(other); }
+  bool operator<=(const ConstString& other) const { return StringPtr(*this) <= StringPtr(other); }
+  bool operator>=(const ConstString& other) const { return StringPtr(*this) >= StringPtr(other); }
   // Note that if we don't overload for `const ConstString&` specifically, then
   // C++20 will decide that comparisons between two strings are ambiguous.
   // (Clang turns this into a warning, `-Wambiguous-reversed-operator`, due to
   // the stupidity...)
 
-  constexpr bool startsWith(const StringPtr& other) const {
-    return asArray().startsWith(other);
-  }
-  constexpr bool endsWith(const StringPtr& other) const {
-    return asArray().endsWith(other);
-  }
+  constexpr bool startsWith(const StringPtr& other) const { return asArray().startsWith(other); }
+  constexpr bool endsWith(const StringPtr& other) const { return asArray().endsWith(other); }
 
-  Maybe<size_t> find(const StringPtr& other) const {
-    return asPtr().find(other);
-  }
+  Maybe<size_t> find(const StringPtr& other) const { return asPtr().find(other); }
   // Return the index at which other appears in this string.
   //
   // In keeping with std::string::find, if other is the empty string, return 0
   // since the empty string is a substring of any string.
 
-  bool contains(const StringPtr& other) const {
-    return asPtr().contains(other);
-  }
+  bool contains(const StringPtr& other) const { return asPtr().contains(other); }
 
-  StringPtr slice(size_t start) const ZC_LIFETIMEBOUND {
-    return StringPtr(*this).slice(start);
-  }
+  StringPtr slice(size_t start) const ZC_LIFETIMEBOUND { return StringPtr(*this).slice(start); }
   ArrayPtr<const char> slice(size_t start, size_t end) const ZC_LIFETIMEBOUND {
     return StringPtr(*this).slice(start, end);
   }
@@ -617,7 +499,7 @@ class ConstString {
     return StringPtr(*this).tryParseAs<T>();
   }
 
- private:
+private:
   Array<const char> content;
 };
 
@@ -641,9 +523,7 @@ namespace _ {  // private
 
 inline size_t sum(std::initializer_list<size_t> nums) {
   size_t result = 0;
-  for (auto num : nums) {
-    result += num;
-  }
+  for (auto num : nums) { result += num; }
   return result;
 }
 
@@ -653,8 +533,7 @@ inline char* fillLimited(char* ptr, char* limit) { return ptr; }
 template <typename... Rest>
 char* fill(char* __restrict__ target, const StringTree& first, Rest&&... rest);
 template <typename... Rest>
-char* fillLimited(char* __restrict__ target, char* limit,
-                  const StringTree& first, Rest&&... rest);
+char* fillLimited(char* __restrict__ target, char* limit, const StringTree& first, Rest&&... rest);
 // Make str() work with stringifiers that return StringTree by patching fill().
 //
 // Defined in string-tree.h.
@@ -663,9 +542,7 @@ template <typename First, typename... Rest>
 char* fill(char* __restrict__ target, const First& first, Rest&&... rest) {
   auto i = first.begin();
   auto end = first.end();
-  while (i != end) {
-    *target++ = *i++;
-  }
+  while (i != end) { *target++ = *i++; }
   return fill(target, zc::fwd<Rest>(rest)...);
 }
 
@@ -682,8 +559,7 @@ String concat(Params&&... params) {
 inline String concat(String&& arr) { return zc::mv(arr); }
 
 template <typename First, typename... Rest>
-char* fillLimited(char* __restrict__ target, char* limit, const First& first,
-                  Rest&&... rest) {
+char* fillLimited(char* __restrict__ target, char* limit, const First& first, Rest&&... rest) {
   auto i = first.begin();
   auto end = first.end();
   while (i != end) {
@@ -701,13 +577,11 @@ class Delimited;
 template <typename T, typename... Rest>
 char* fill(char* __restrict__ target, Delimited<T>&& first, Rest&&... rest);
 template <typename T, typename... Rest>
-char* fillLimited(char* __restrict__ target, char* limit, Delimited<T>&& first,
-                  Rest&&... rest);
+char* fillLimited(char* __restrict__ target, char* limit, Delimited<T>&& first, Rest&&... rest);
 template <typename T, typename... Rest>
 char* fill(char* __restrict__ target, Delimited<T>& first, Rest&&... rest);
 template <typename T, typename... Rest>
-char* fillLimited(char* __restrict__ target, char* limit, Delimited<T>& first,
-                  Rest&&... rest);
+char* fillLimited(char* __restrict__ target, char* limit, Delimited<T>& first, Rest&&... rest);
 // As with StringTree, we special-case Delimited<T>.
 
 struct Stringifier {
@@ -727,21 +601,14 @@ struct Stringifier {
 
   ArrayPtr<const char> operator*(ArrayPtr<const char> s) const { return s; }
   ArrayPtr<const char> operator*(ArrayPtr<char> s) const { return s; }
-  ArrayPtr<const char> operator*(const Array<const char>& s) const
-      ZC_LIFETIMEBOUND {
-    return s;
-  }
-  ArrayPtr<const char> operator*(const Array<char>& s) const ZC_LIFETIMEBOUND {
+  ArrayPtr<const char> operator*(const Array<const char>& s) const ZC_LIFETIMEBOUND { return s; }
+  ArrayPtr<const char> operator*(const Array<char>& s) const ZC_LIFETIMEBOUND { return s; }
+  template <size_t n>
+  ArrayPtr<const char> operator*(const CappedArray<char, n>& s) const ZC_LIFETIMEBOUND {
     return s;
   }
   template <size_t n>
-  ArrayPtr<const char> operator*(const CappedArray<char, n>& s) const
-      ZC_LIFETIMEBOUND {
-    return s;
-  }
-  template <size_t n>
-  ArrayPtr<const char> operator*(const FixedArray<char, n>& s) const
-      ZC_LIFETIMEBOUND {
+  ArrayPtr<const char> operator*(const FixedArray<char, n>& s) const ZC_LIFETIMEBOUND {
     return s;
   }
   ArrayPtr<const char> operator*(const char* s) const ZC_LIFETIMEBOUND {
@@ -752,15 +619,9 @@ struct Stringifier {
     return operator*(reinterpret_cast<const char*>(s));
   }
 #endif
-  ArrayPtr<const char> operator*(const String& s) const ZC_LIFETIMEBOUND {
-    return s.asArray();
-  }
-  ArrayPtr<const char> operator*(const StringPtr& s) const {
-    return s.asArray();
-  }
-  ArrayPtr<const char> operator*(const ConstString& s) const {
-    return s.asArray();
-  }
+  ArrayPtr<const char> operator*(const String& s) const ZC_LIFETIMEBOUND { return s.asArray(); }
+  ArrayPtr<const char> operator*(const StringPtr& s) const { return s.asArray(); }
+  ArrayPtr<const char> operator*(const ConstString& s) const { return s.asArray(); }
 
   Range<char> operator*(const Range<char>& r) const { return r; }
   Repeat<char> operator*(const Repeat<char>& r) const { return r; }
@@ -777,17 +638,13 @@ struct Stringifier {
   CappedArray<char, 5> operator*(signed char i) const;
   CappedArray<char, 5> operator*(unsigned char i) const;
   CappedArray<char, sizeof(short) * 3 + 2> operator*(short i) const;
-  CappedArray<char, sizeof(unsigned short) * 3 + 2> operator*(
-      unsigned short i) const;
+  CappedArray<char, sizeof(unsigned short) * 3 + 2> operator*(unsigned short i) const;
   CappedArray<char, sizeof(int) * 3 + 2> operator*(int i) const;
-  CappedArray<char, sizeof(unsigned int) * 3 + 2> operator*(
-      unsigned int i) const;
+  CappedArray<char, sizeof(unsigned int) * 3 + 2> operator*(unsigned int i) const;
   CappedArray<char, sizeof(long) * 3 + 2> operator*(long i) const;
-  CappedArray<char, sizeof(unsigned long) * 3 + 2> operator*(
-      unsigned long i) const;
+  CappedArray<char, sizeof(unsigned long) * 3 + 2> operator*(unsigned long i) const;
   CappedArray<char, sizeof(long long) * 3 + 2> operator*(long long i) const;
-  CappedArray<char, sizeof(unsigned long long) * 3 + 2> operator*(
-      unsigned long long i) const;
+  CappedArray<char, sizeof(unsigned long long) * 3 + 2> operator*(unsigned long long i) const;
   CappedArray<char, 24> operator*(float f) const;
   CappedArray<char, 32> operator*(double f) const;
   CappedArray<char, sizeof(const void*) * 2 + 1> operator*(const void* s) const;
@@ -884,8 +741,8 @@ StringPtr strPreAllocated(ArrayPtr<char> buffer, Params&&... params) {
   // stringify a delimited array, you must use zc::delimited(arr, delim) rather
   // than the deprecated zc::strArray(arr, delim).
 
-  char* end = _::fillLimited(buffer.begin(), buffer.end() - 1,
-                             toCharSequence(zc::fwd<Params>(params))...);
+  char* end =
+      _::fillLimited(buffer.begin(), buffer.end() - 1, toCharSequence(zc::fwd<Params>(params))...);
   *end = '\0';
   return StringPtr(buffer.begin(), end);
 }
@@ -895,10 +752,8 @@ _::Delimited<ArrayPtr<T>> operator*(const _::Stringifier&, ArrayPtr<T> arr) {
   return _::Delimited<ArrayPtr<T>>(arr, ", ");
 }
 
-template <typename T,
-          typename = decltype(toCharSequence(zc::instance<const T&>()))>
-_::Delimited<ArrayPtr<const T>> operator*(const _::Stringifier&,
-                                          const Array<T>& arr) {
+template <typename T, typename = decltype(toCharSequence(zc::instance<const T&>()))>
+_::Delimited<ArrayPtr<const T>> operator*(const _::Stringifier&, const Array<T>& arr) {
   return _::Delimited<ArrayPtr<const T>>(arr, ", ");
 }
 
@@ -920,8 +775,7 @@ _::Delimited<ArrayPtr<const T>> operator*(const _::Stringifier&,
 // =======================================================================================
 // Inline implementation details.
 
-constexpr StringPtr::StringPtr(const String& value)
-    : content(value.cStr(), value.size() + 1) {}
+constexpr StringPtr::StringPtr(const String& value) : content(value.cStr(), value.size() + 1) {}
 constexpr StringPtr::StringPtr(const ConstString& value)
     : content(value.cStr(), value.size() + 1) {}
 
@@ -944,13 +798,10 @@ constexpr bool StringPtr::operator<(const StringPtr& other) const {
 constexpr StringPtr StringPtr::slice(size_t start) const {
   return StringPtr(content.slice(start, content.size()));
 }
-constexpr ArrayPtr<const char> StringPtr::slice(size_t start,
-                                                size_t end) const {
+constexpr ArrayPtr<const char> StringPtr::slice(size_t start, size_t end) const {
   return content.slice(start, end);
 }
-constexpr ArrayPtr<const char> StringPtr::first(size_t count) const {
-  return slice(0, count);
-}
+constexpr ArrayPtr<const char> StringPtr::first(size_t count) const { return slice(0, count); }
 
 inline LiteralStringConst::operator ConstString() const {
   return ConstString(begin(), size(), NullArrayDisposer::instance);
@@ -967,57 +818,39 @@ ConstString StringPtr::attach(Attachments&&... attachments) const {
 }
 
 constexpr String::operator ArrayPtr<char>() {
-  return content == nullptr ? ArrayPtr<char>(nullptr)
-                            : content.first(content.size() - 1);
+  return content == nullptr ? ArrayPtr<char>(nullptr) : content.first(content.size() - 1);
 }
 constexpr String::operator ArrayPtr<const char>() const {
-  return content == nullptr ? ArrayPtr<const char>(nullptr)
-                            : content.first(content.size() - 1);
+  return content == nullptr ? ArrayPtr<const char>(nullptr) : content.first(content.size() - 1);
 }
 constexpr ConstString::operator ArrayPtr<const char>() const {
-  return content == nullptr ? ArrayPtr<const char>(nullptr)
-                            : content.first(content.size() - 1);
+  return content == nullptr ? ArrayPtr<const char>(nullptr) : content.first(content.size() - 1);
 }
 
 constexpr ArrayPtr<char> String::asArray() {
-  return content == nullptr ? ArrayPtr<char>(nullptr)
-                            : content.first(content.size() - 1);
+  return content == nullptr ? ArrayPtr<char>(nullptr) : content.first(content.size() - 1);
 }
 constexpr ArrayPtr<const char> String::asArray() const {
-  return content == nullptr ? ArrayPtr<const char>(nullptr)
-                            : content.first(content.size() - 1);
+  return content == nullptr ? ArrayPtr<const char>(nullptr) : content.first(content.size() - 1);
 }
 constexpr ArrayPtr<const char> ConstString::asArray() const {
-  return content == nullptr ? ArrayPtr<const char>(nullptr)
-                            : content.first(content.size() - 1);
+  return content == nullptr ? ArrayPtr<const char>(nullptr) : content.first(content.size() - 1);
 }
 
-constexpr const char* String::cStr() const {
-  return content == nullptr ? "" : content.begin();
-}
+constexpr const char* String::cStr() const { return content == nullptr ? "" : content.begin(); }
 constexpr const char* ConstString::cStr() const {
   return content == nullptr ? "" : content.begin();
 }
 
-constexpr size_t String::size() const {
-  return content == nullptr ? 0 : content.size() - 1;
-}
-constexpr size_t ConstString::size() const {
-  return content == nullptr ? 0 : content.size() - 1;
-}
+constexpr size_t String::size() const { return content == nullptr ? 0 : content.size() - 1; }
+constexpr size_t ConstString::size() const { return content == nullptr ? 0 : content.size() - 1; }
 
 constexpr char String::operator[](size_t index) const { return content[index]; }
 constexpr char& String::operator[](size_t index) { return content[index]; }
-constexpr char ConstString::operator[](size_t index) const {
-  return content[index];
-}
+constexpr char ConstString::operator[](size_t index) const { return content[index]; }
 
-constexpr char* String::begin() {
-  return content == nullptr ? nullptr : content.begin();
-}
-constexpr char* String::end() {
-  return content == nullptr ? nullptr : content.end() - 1;
-}
+constexpr char* String::begin() { return content == nullptr ? nullptr : content.begin(); }
+constexpr char* String::end() { return content == nullptr ? nullptr : content.end() - 1; }
 constexpr const char* String::begin() const {
   return content == nullptr ? nullptr : content.begin();
 }
@@ -1035,31 +868,21 @@ inline String::String(char* value, size_t size, const ArrayDisposer& disposer)
     : content(value, size + 1, disposer) {
   ZC_IREQUIRE(value[size] == '\0', "String must be NUL-terminated.");
 }
-inline ConstString::ConstString(const char* value, size_t size,
-                                const ArrayDisposer& disposer)
+inline ConstString::ConstString(const char* value, size_t size, const ArrayDisposer& disposer)
     : content(value, size + 1, disposer) {
   ZC_IREQUIRE(value[size] == '\0', "String must be NUL-terminated.");
 }
 
 inline String::String(Array<char> buffer) : content(zc::mv(buffer)) {
-  ZC_IREQUIRE(content.size() > 0 && content.back() == '\0',
-              "String must be NUL-terminated.");
+  ZC_IREQUIRE(content.size() > 0 && content.back() == '\0', "String must be NUL-terminated.");
 }
-inline ConstString::ConstString(Array<const char> buffer)
-    : content(zc::mv(buffer)) {
-  ZC_IREQUIRE(content.size() > 0 && content.back() == '\0',
-              "String must be NUL-terminated.");
+inline ConstString::ConstString(Array<const char> buffer) : content(zc::mv(buffer)) {
+  ZC_IREQUIRE(content.size() > 0 && content.back() == '\0', "String must be NUL-terminated.");
 }
 
-inline String heapString(const char* value) {
-  return heapString(value, strlen(value));
-}
-inline String heapString(StringPtr value) {
-  return heapString(value.begin(), value.size());
-}
-inline String heapString(const String& value) {
-  return heapString(value.begin(), value.size());
-}
+inline String heapString(const char* value) { return heapString(value, strlen(value)); }
+inline String heapString(StringPtr value) { return heapString(value.begin(), value.size()); }
+inline String heapString(const String& value) { return heapString(value.begin(), value.size()); }
 inline String heapString(ArrayPtr<const char> value) {
   return heapString(value.begin(), value.size());
 }
@@ -1068,9 +891,8 @@ namespace _ {  // private
 
 template <typename T>
 class Delimited {
- public:
-  Delimited(T array, zc::StringPtr delimiter)
-      : array(zc::fwd<T>(array)), delimiter(delimiter) {}
+public:
+  Delimited(T array, zc::StringPtr delimiter) : array(zc::fwd<T>(array)), delimiter(delimiter) {}
 
   // TODO(someday): In theory we should support iteration as a character
   //   sequence, but the iterator will be pretty complicated.
@@ -1124,7 +946,7 @@ class Delimited {
     return target;
   }
 
- private:
+private:
   using StringifiedItem = decltype(toCharSequence(*instance<T>().begin()));
   T array;
   StringPtr delimiter;
@@ -1143,8 +965,7 @@ char* fill(char* __restrict__ target, Delimited<T>&& first, Rest&&... rest) {
   return fill(target, zc::fwd<Rest>(rest)...);
 }
 template <typename T, typename... Rest>
-char* fillLimited(char* __restrict__ target, char* limit, Delimited<T>&& first,
-                  Rest&&... rest) {
+char* fillLimited(char* __restrict__ target, char* limit, Delimited<T>&& first, Rest&&... rest) {
   target = first.flattenTo(target, limit);
   return fillLimited(target, limit, zc::fwd<Rest>(rest)...);
 }
@@ -1154,8 +975,7 @@ char* fill(char* __restrict__ target, Delimited<T>& first, Rest&&... rest) {
   return fill(target, zc::fwd<Rest>(rest)...);
 }
 template <typename T, typename... Rest>
-char* fillLimited(char* __restrict__ target, char* limit, Delimited<T>& first,
-                  Rest&&... rest) {
+char* fillLimited(char* __restrict__ target, char* limit, Delimited<T>& first, Rest&&... rest) {
   target = first.flattenTo(target, limit);
   return fillLimited(target, limit, zc::fwd<Rest>(rest)...);
 }

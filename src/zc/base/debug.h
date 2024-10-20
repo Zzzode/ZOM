@@ -159,178 +159,156 @@ namespace zc {
 
 #define ZC_EXPAND(X) X
 
-#define ZC_LOG(severity, ...)                                          \
-  for (bool _zc_shouldLog =                                            \
-           ::zc::_::Debug::shouldLog(::zc::LogSeverity::severity);     \
-       _zc_shouldLog; _zc_shouldLog = false)                           \
-  ::zc::_::Debug::log(__FILE__, __LINE__, ::zc::LogSeverity::severity, \
-                      "" #__VA_ARGS__, __VA_ARGS__)
+#define ZC_LOG(severity, ...)                                                                      \
+  for (bool _zc_shouldLog = ::zc::_::Debug::shouldLog(::zc::LogSeverity::severity); _zc_shouldLog; \
+       _zc_shouldLog = false)                                                                      \
+  ::zc::_::Debug::log(__FILE__, __LINE__, ::zc::LogSeverity::severity, "" #__VA_ARGS__, __VA_ARGS__)
 
 #define ZC_DBG(...) ZC_EXPAND(ZC_LOG(DBG, __VA_ARGS__))
 
-#define ZC_REQUIRE(cond, ...)                                          \
-  if (auto _zcCondition = ::zc::_::MAGIC_ASSERT << cond) {             \
-  } else                                                               \
-    for (::zc::_::Debug::Fault f(                                      \
-             __FILE__, __LINE__, ::zc::Exception::Type::FAILED, #cond, \
-             "_zcCondition," #__VA_ARGS__, _zcCondition, __VA_ARGS__); \
+#define ZC_REQUIRE(cond, ...)                                                              \
+  if (auto _zcCondition = ::zc::_::MAGIC_ASSERT << cond) {                                 \
+  } else                                                                                   \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, ::zc::Exception::Type::FAILED, #cond, \
+                                 "_zcCondition," #__VA_ARGS__, _zcCondition, __VA_ARGS__); \
          ; f.fatal())
 
-#define ZC_FAIL_REQUIRE(...)                                           \
-  for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                     \
-                               ::zc::Exception::Type::FAILED, nullptr, \
-                               "" #__VA_ARGS__, __VA_ARGS__);          \
+#define ZC_FAIL_REQUIRE(...)                                                               \
+  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, ::zc::Exception::Type::FAILED, nullptr, \
+                               "" #__VA_ARGS__, __VA_ARGS__);                              \
        ; f.fatal())
 
-#define ZC_SYSCALL(call, ...)                                              \
-  if (auto _zcSyscallResult =                                              \
-          ::zc::_::Debug::syscall([&]() { return (call); }, false)) {      \
-  } else                                                                   \
-    for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                       \
-                                 _zcSyscallResult.getErrorNumber(), #call, \
-                                 "" #__VA_ARGS__, __VA_ARGS__);            \
+#define ZC_SYSCALL(call, ...)                                                                  \
+  if (auto _zcSyscallResult = ::zc::_::Debug::syscall([&]() { return (call); }, false)) {      \
+  } else                                                                                       \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcSyscallResult.getErrorNumber(), #call, \
+                                 "" #__VA_ARGS__, __VA_ARGS__);                                \
          ; f.fatal())
 
-#define ZC_NONBLOCKING_SYSCALL(call, ...)                                  \
-  if (auto _zcSyscallResult =                                              \
-          ::zc::_::Debug::syscall([&]() { return (call); }, true)) {       \
-  } else                                                                   \
-    for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                       \
-                                 _zcSyscallResult.getErrorNumber(), #call, \
-                                 "" #__VA_ARGS__, __VA_ARGS__);            \
+#define ZC_NONBLOCKING_SYSCALL(call, ...)                                                      \
+  if (auto _zcSyscallResult = ::zc::_::Debug::syscall([&]() { return (call); }, true)) {       \
+  } else                                                                                       \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcSyscallResult.getErrorNumber(), #call, \
+                                 "" #__VA_ARGS__, __VA_ARGS__);                                \
          ; f.fatal())
 
-#define ZC_FAIL_SYSCALL(code, errorNumber, ...)                       \
-  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, errorNumber, code, \
-                               "" #__VA_ARGS__, __VA_ARGS__);         \
+#define ZC_FAIL_SYSCALL(code, errorNumber, ...)                                        \
+  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, errorNumber, code, "" #__VA_ARGS__, \
+                               __VA_ARGS__);                                           \
        ; f.fatal())
 
 #if _WIN32 || __CYGWIN__
 
-#define ZC_WIN32(call, ...)                                                 \
-  if (auto _zcWin32Result = ::zc::_::Debug::win32Call(call)) {              \
-  } else                                                                    \
-    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcWin32Result, #call, \
-                                 "" #__VA_ARGS__, __VA_ARGS__);             \
+#define ZC_WIN32(call, ...)                                                                  \
+  if (auto _zcWin32Result = ::zc::_::Debug::win32Call(call)) {                               \
+  } else                                                                                     \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcWin32Result, #call, "" #__VA_ARGS__, \
+                                 __VA_ARGS__);                                               \
          ; f.fatal())
 
-#define ZC_WINSOCK(call, ...)                                               \
-  if (auto _zcWin32Result = ::zc::_::Debug::winsockCall(call)) {            \
-  } else                                                                    \
-    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcWin32Result, #call, \
-                                 "" #__VA_ARGS__, __VA_ARGS__);             \
+#define ZC_WINSOCK(call, ...)                                                                \
+  if (auto _zcWin32Result = ::zc::_::Debug::winsockCall(call)) {                             \
+  } else                                                                                     \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcWin32Result, #call, "" #__VA_ARGS__, \
+                                 __VA_ARGS__);                                               \
          ; f.fatal())
 
-#define ZC_FAIL_WIN32(code, errorNumber, ...)                                  \
-  for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                             \
-                               ::zc::_::Debug::Win32Result(errorNumber), code, \
-                               "" #__VA_ARGS__, __VA_ARGS__);                  \
+#define ZC_FAIL_WIN32(code, errorNumber, ...)                                                      \
+  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, ::zc::_::Debug::Win32Result(errorNumber), code, \
+                               "" #__VA_ARGS__, __VA_ARGS__);                                      \
        ; f.fatal())
 
 #endif
 
-#define ZC_UNIMPLEMENTED(...)                                                 \
-  for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                            \
-                               ::zc::Exception::Type::UNIMPLEMENTED, nullptr, \
-                               "" #__VA_ARGS__, __VA_ARGS__);                 \
+#define ZC_UNIMPLEMENTED(...)                                                                     \
+  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, ::zc::Exception::Type::UNIMPLEMENTED, nullptr, \
+                               "" #__VA_ARGS__, __VA_ARGS__);                                     \
        ; f.fatal())
 
 // TODO(msvc):  MSVC mis-deduces `ContextImpl<decltype(func)>` as
 // `ContextImpl<int>` in some edge cases, such as inside nested lambdas inside
 // member functions. Wrapping the type in `decltype(instance<...>())` helps it
 // deduce the context function's type correctly.
-#define ZC_CONTEXT(...)                                                        \
-  auto ZC_UNIQUE_NAME(_zcContextFunc) =                                        \
-      [&]() -> ::zc::_::Debug::Context::Value {                                \
-    return ::zc::_::Debug::Context::Value(                                     \
-        __FILE__, __LINE__,                                                    \
-        ::zc::_::Debug::makeDescription("" #__VA_ARGS__, __VA_ARGS__));        \
-  };                                                                           \
-  decltype(::zc::instance<::zc::_::Debug::ContextImpl<decltype(ZC_UNIQUE_NAME( \
-               _zcContextFunc))>>())                                           \
+#define ZC_CONTEXT(...)                                                                     \
+  auto ZC_UNIQUE_NAME(_zcContextFunc) = [&]() -> ::zc::_::Debug::Context::Value {           \
+    return ::zc::_::Debug::Context::Value(                                                  \
+        __FILE__, __LINE__, ::zc::_::Debug::makeDescription("" #__VA_ARGS__, __VA_ARGS__)); \
+  };                                                                                        \
+  decltype(::zc::instance<                                                                  \
+           ::zc::_::Debug::ContextImpl<decltype(ZC_UNIQUE_NAME(_zcContextFunc))>>())        \
   ZC_UNIQUE_NAME(_zcContext)(ZC_UNIQUE_NAME(_zcContextFunc))
 
-#define ZC_REQUIRE_NONNULL(value, ...)                          \
-  (*[&] {                                                       \
-    auto _zc_result = ::zc::_::readMaybe(value);                \
-    if (!_zc_result) ZC_UNLIKELY {                              \
-        ::zc::_::Debug::Fault(                                  \
-            __FILE__, __LINE__, ::zc::Exception::Type::FAILED,  \
-            #value " != nullptr", "" #__VA_ARGS__, __VA_ARGS__) \
-            .fatal();                                           \
-      }                                                         \
-    return _zc_result;                                          \
+#define ZC_REQUIRE_NONNULL(value, ...)                                            \
+  (*[&] {                                                                         \
+    auto _zc_result = ::zc::_::readMaybe(value);                                  \
+    if (!_zc_result) ZC_UNLIKELY {                                                \
+        ::zc::_::Debug::Fault(__FILE__, __LINE__, ::zc::Exception::Type::FAILED,  \
+                              #value " != nullptr", "" #__VA_ARGS__, __VA_ARGS__) \
+            .fatal();                                                             \
+      }                                                                           \
+    return _zc_result;                                                            \
   }())
 
-#define ZC_EXCEPTION(type, ...)                        \
-  ::zc::Exception(                                     \
-      ::zc::Exception::Type::type, __FILE__, __LINE__, \
-      ::zc::_::Debug::makeDescription("" #__VA_ARGS__, __VA_ARGS__))
+#define ZC_EXCEPTION(type, ...)                                    \
+  ::zc::Exception(::zc::Exception::Type::type, __FILE__, __LINE__, \
+                  ::zc::_::Debug::makeDescription("" #__VA_ARGS__, __VA_ARGS__))
 
 #else
 
-#define ZC_LOG(severity, ...)                                          \
-  for (bool _zc_shouldLog =                                            \
-           ::zc::_::Debug::shouldLog(::zc::LogSeverity::severity);     \
-       _zc_shouldLog; _zc_shouldLog = false)                           \
-  ::zc::_::Debug::log(__FILE__, __LINE__, ::zc::LogSeverity::severity, \
-                      #__VA_ARGS__, ##__VA_ARGS__)
+#define ZC_LOG(severity, ...)                                                                      \
+  for (bool _zc_shouldLog = ::zc::_::Debug::shouldLog(::zc::LogSeverity::severity); _zc_shouldLog; \
+       _zc_shouldLog = false)                                                                      \
+  ::zc::_::Debug::log(__FILE__, __LINE__, ::zc::LogSeverity::severity, #__VA_ARGS__, ##__VA_ARGS__)
 
 #define ZC_DBG(...) ZC_LOG(DBG, ##__VA_ARGS__)
 
-#define ZC_REQUIRE(cond, ...)                                            \
-  if (auto _zcCondition = ::zc::_::MAGIC_ASSERT << cond) {               \
-  } else                                                                 \
-    for (::zc::_::Debug::Fault f(                                        \
-             __FILE__, __LINE__, ::zc::Exception::Type::FAILED, #cond,   \
-             "_zcCondition," #__VA_ARGS__, _zcCondition, ##__VA_ARGS__); \
+#define ZC_REQUIRE(cond, ...)                                                                \
+  if (auto _zcCondition = ::zc::_::MAGIC_ASSERT << cond) {                                   \
+  } else                                                                                     \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, ::zc::Exception::Type::FAILED, #cond,   \
+                                 "_zcCondition," #__VA_ARGS__, _zcCondition, ##__VA_ARGS__); \
          ; f.fatal())
 
-#define ZC_FAIL_REQUIRE(...)                                           \
-  for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                     \
-                               ::zc::Exception::Type::FAILED, nullptr, \
-                               #__VA_ARGS__, ##__VA_ARGS__);           \
+#define ZC_FAIL_REQUIRE(...)                                                               \
+  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, ::zc::Exception::Type::FAILED, nullptr, \
+                               #__VA_ARGS__, ##__VA_ARGS__);                               \
        ; f.fatal())
 
-#define ZC_SYSCALL(call, ...)                                              \
-  if (auto _zcSyscallResult =                                              \
-          ::zc::_::Debug::syscall([&]() { return (call); }, false)) {      \
-  } else                                                                   \
-    for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                       \
-                                 _zcSyscallResult.getErrorNumber(), #call, \
-                                 #__VA_ARGS__, ##__VA_ARGS__);             \
+#define ZC_SYSCALL(call, ...)                                                                  \
+  if (auto _zcSyscallResult = ::zc::_::Debug::syscall([&]() { return (call); }, false)) {      \
+  } else                                                                                       \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcSyscallResult.getErrorNumber(), #call, \
+                                 #__VA_ARGS__, ##__VA_ARGS__);                                 \
          ; f.fatal())
 
-#define ZC_NONBLOCKING_SYSCALL(call, ...)                                  \
-  if (auto _zcSyscallResult =                                              \
-          ::zc::_::Debug::syscall([&]() { return (call); }, true)) {       \
-  } else                                                                   \
-    for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                       \
-                                 _zcSyscallResult.getErrorNumber(), #call, \
-                                 #__VA_ARGS__, ##__VA_ARGS__);             \
+#define ZC_NONBLOCKING_SYSCALL(call, ...)                                                      \
+  if (auto _zcSyscallResult = ::zc::_::Debug::syscall([&]() { return (call); }, true)) {       \
+  } else                                                                                       \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcSyscallResult.getErrorNumber(), #call, \
+                                 #__VA_ARGS__, ##__VA_ARGS__);                                 \
          ; f.fatal())
 
-#define ZC_FAIL_SYSCALL(code, errorNumber, ...)                       \
-  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, errorNumber, code, \
-                               #__VA_ARGS__, ##__VA_ARGS__);          \
+#define ZC_FAIL_SYSCALL(code, errorNumber, ...)                                     \
+  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, errorNumber, code, #__VA_ARGS__, \
+                               ##__VA_ARGS__);                                      \
        ; f.fatal())
 
 #if _WIN32 || __CYGWIN__
 
-#define ZC_WIN32(call, ...)                                                 \
-  if (auto _zcWin32Result = ::zc::_::Debug::win32Call(call)) {              \
-  } else                                                                    \
-    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcWin32Result, #call, \
-                                 #__VA_ARGS__, ##__VA_ARGS__);              \
+#define ZC_WIN32(call, ...)                                                               \
+  if (auto _zcWin32Result = ::zc::_::Debug::win32Call(call)) {                            \
+  } else                                                                                  \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcWin32Result, #call, #__VA_ARGS__, \
+                                 ##__VA_ARGS__);                                          \
          ; f.fatal())
 // Invoke a Win32 syscall that returns either BOOL or HANDLE, and throw an
 // exception if it fails.
 
-#define ZC_WINSOCK(call, ...)                                               \
-  if (auto _zcWin32Result = ::zc::_::Debug::winsockCall(call)) {            \
-  } else                                                                    \
-    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcWin32Result, #call, \
-                                 #__VA_ARGS__, ##__VA_ARGS__);              \
+#define ZC_WINSOCK(call, ...)                                                             \
+  if (auto _zcWin32Result = ::zc::_::Debug::winsockCall(call)) {                          \
+  } else                                                                                  \
+    for (::zc::_::Debug::Fault f(__FILE__, __LINE__, _zcWin32Result, #call, #__VA_ARGS__, \
+                                 ##__VA_ARGS__);                                          \
          ; f.fatal())
 // Like ZC_WIN32 but for winsock calls which return `int` with SOCKET_ERROR
 // indicating failure.
@@ -338,70 +316,62 @@ namespace zc {
 // Unfortunately, it's impossible to distinguish these from BOOL-returning Win32
 // calls by type, since BOOL is in fact an alias for `int`. :(
 
-#define ZC_FAIL_WIN32(code, errorNumber, ...)                                  \
-  for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                             \
-                               ::zc::_::Debug::Win32Result(errorNumber), code, \
-                               #__VA_ARGS__, ##__VA_ARGS__);                   \
+#define ZC_FAIL_WIN32(code, errorNumber, ...)                                                      \
+  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, ::zc::_::Debug::Win32Result(errorNumber), code, \
+                               #__VA_ARGS__, ##__VA_ARGS__);                                       \
        ; f.fatal())
 
 #endif
 
-#define ZC_UNIMPLEMENTED(...)                                                 \
-  for (::zc::_::Debug::Fault f(__FILE__, __LINE__,                            \
-                               ::zc::Exception::Type::UNIMPLEMENTED, nullptr, \
-                               #__VA_ARGS__, ##__VA_ARGS__);                  \
+#define ZC_UNIMPLEMENTED(...)                                                                     \
+  for (::zc::_::Debug::Fault f(__FILE__, __LINE__, ::zc::Exception::Type::UNIMPLEMENTED, nullptr, \
+                               #__VA_ARGS__, ##__VA_ARGS__);                                      \
        ; f.fatal())
 
-#define ZC_CONTEXT(...)                                                 \
-  auto ZC_UNIQUE_NAME(_zcContextFunc) =                                 \
-      [&]() -> ::zc::_::Debug::Context::Value {                         \
-    return ::zc::_::Debug::Context::Value(                              \
-        __FILE__, __LINE__,                                             \
-        ::zc::_::Debug::makeDescription(#__VA_ARGS__, ##__VA_ARGS__));  \
-  };                                                                    \
-  ::zc::_::Debug::ContextImpl<decltype(ZC_UNIQUE_NAME(_zcContextFunc))> \
-  ZC_UNIQUE_NAME(_zcContext)(ZC_UNIQUE_NAME(_zcContextFunc))
+#define ZC_CONTEXT(...)                                                                    \
+  auto ZC_UNIQUE_NAME(_zcContextFunc) = [&]() -> ::zc::_::Debug::Context::Value {          \
+    return ::zc::_::Debug::Context::Value(                                                 \
+        __FILE__, __LINE__, ::zc::_::Debug::makeDescription(#__VA_ARGS__, ##__VA_ARGS__)); \
+  };                                                                                       \
+  ::zc::_::Debug::ContextImpl<decltype(ZC_UNIQUE_NAME(_zcContextFunc))> ZC_UNIQUE_NAME(    \
+      _zcContext)(ZC_UNIQUE_NAME(_zcContextFunc))
 
 #if _MSC_VER && !defined(__clang__)
 
-#define ZC_REQUIRE_NONNULL(value, ...)                         \
-  (*([&] {                                                     \
-    auto _zc_result = ::zc::_::readMaybe(value);               \
-    if (!_zc_result) ZC_UNLIKELY {                             \
-        ::zc::_::Debug::Fault(                                 \
-            __FILE__, __LINE__, ::zc::Exception::Type::FAILED, \
-            #value " != nullptr", #__VA_ARGS__, ##__VA_ARGS__) \
-            .fatal();                                          \
-      }                                                        \
-    return _zc_result;                                         \
+#define ZC_REQUIRE_NONNULL(value, ...)                                           \
+  (*([&] {                                                                       \
+    auto _zc_result = ::zc::_::readMaybe(value);                                 \
+    if (!_zc_result) ZC_UNLIKELY {                                               \
+        ::zc::_::Debug::Fault(__FILE__, __LINE__, ::zc::Exception::Type::FAILED, \
+                              #value " != nullptr", #__VA_ARGS__, ##__VA_ARGS__) \
+            .fatal();                                                            \
+      }                                                                          \
+    return _zc_result;                                                           \
   }()))
 
 #else
 
-#define ZC_REQUIRE_NONNULL(value, ...)                         \
-  (*({                                                         \
-    auto _zc_result = ::zc::_::readMaybe(value);               \
-    if (!_zc_result) ZC_UNLIKELY {                             \
-        ::zc::_::Debug::Fault(                                 \
-            __FILE__, __LINE__, ::zc::Exception::Type::FAILED, \
-            #value " != nullptr", #__VA_ARGS__, ##__VA_ARGS__) \
-            .fatal();                                          \
-      }                                                        \
-    zc::mv(_zc_result);                                        \
+#define ZC_REQUIRE_NONNULL(value, ...)                                           \
+  (*({                                                                           \
+    auto _zc_result = ::zc::_::readMaybe(value);                                 \
+    if (!_zc_result) ZC_UNLIKELY {                                               \
+        ::zc::_::Debug::Fault(__FILE__, __LINE__, ::zc::Exception::Type::FAILED, \
+                              #value " != nullptr", #__VA_ARGS__, ##__VA_ARGS__) \
+            .fatal();                                                            \
+      }                                                                          \
+    zc::mv(_zc_result);                                                          \
   }))
 
 #endif
 
-#define ZC_EXCEPTION(type, ...)                        \
-  ::zc::Exception(                                     \
-      ::zc::Exception::Type::type, __FILE__, __LINE__, \
-      ::zc::_::Debug::makeDescription(#__VA_ARGS__, ##__VA_ARGS__))
+#define ZC_EXCEPTION(type, ...)                                    \
+  ::zc::Exception(::zc::Exception::Type::type, __FILE__, __LINE__, \
+                  ::zc::_::Debug::makeDescription(#__VA_ARGS__, ##__VA_ARGS__))
 
 #endif
 
-#define ZC_SYSCALL_HANDLE_ERRORS(call)                                   \
-  if (int _zcSyscallError =                                              \
-          ::zc::_::Debug::syscallError([&]() { return (call); }, false)) \
+#define ZC_SYSCALL_HANDLE_ERRORS(call)                                                     \
+  if (int _zcSyscallError = ::zc::_::Debug::syscallError([&]() { return (call); }, false)) \
     switch (int error ZC_UNUSED = _zcSyscallError)
 // Like ZC_SYSCALL, but doesn't throw. Instead, the block after the macro is a
 // switch block on the error. Additionally, the int value `error` is defined
@@ -488,7 +458,7 @@ namespace zc {
 namespace _ {  // private
 
 class Debug {
- public:
+public:
   Debug() = delete;
 
   typedef LogSeverity Severity;  // backwards-compatibility
@@ -501,9 +471,7 @@ class Debug {
   };
 #endif
 
-  static bool shouldLog(LogSeverity severity) {
-    return severity >= minSeverity;
-  }
+  static bool shouldLog(LogSeverity severity) { return severity >= minSeverity; }
   // Returns whether messages of the given severity should be logged.
 
   static void setLogLevel(LogSeverity severity) { minSeverity = severity; }
@@ -512,50 +480,47 @@ class Debug {
   // TODO(someday):  Expose publicly.
 
   template <typename... Params>
-  static void log(const char* file, int line, LogSeverity severity,
-                  const char* macroArgs, Params&&... params);
+  static void log(const char* file, int line, LogSeverity severity, const char* macroArgs,
+                  Params&&... params);
 
   class Fault {
-   public:
+  public:
     template <typename Code, typename... Params>
-    Fault(const char* file, int line, Code code, const char* condition,
-          const char* macroArgs, Params&&... params);
-    Fault(const char* file, int line, Exception::Type type,
-          const char* condition, const char* macroArgs);
+    Fault(const char* file, int line, Code code, const char* condition, const char* macroArgs,
+          Params&&... params);
+    Fault(const char* file, int line, Exception::Type type, const char* condition,
+          const char* macroArgs);
     Fault(const char* file, int line, int osErrorNumber, const char* condition,
           const char* macroArgs);
 #if _WIN32 || __CYGWIN__
-    Fault(const char* file, int line, Win32Result osErrorNumber,
-          const char* condition, const char* macroArgs);
+    Fault(const char* file, int line, Win32Result osErrorNumber, const char* condition,
+          const char* macroArgs);
 #endif
     ~Fault() noexcept(false);
 
     ZC_NOINLINE ZC_NORETURN void fatal();
     // Throw the exception.
 
-   private:
-    void init(const char* file, int line, Exception::Type type,
-              const char* condition, const char* macroArgs,
-              ArrayPtr<String> argValues);
-    void init(const char* file, int line, int osErrorNumber,
-              const char* condition, const char* macroArgs,
-              ArrayPtr<String> argValues);
+  private:
+    void init(const char* file, int line, Exception::Type type, const char* condition,
+              const char* macroArgs, ArrayPtr<String> argValues);
+    void init(const char* file, int line, int osErrorNumber, const char* condition,
+              const char* macroArgs, ArrayPtr<String> argValues);
 #if _WIN32 || __CYGWIN__
-    void init(const char* file, int line, Win32Result osErrorNumber,
-              const char* condition, const char* macroArgs,
-              ArrayPtr<String> argValues);
+    void init(const char* file, int line, Win32Result osErrorNumber, const char* condition,
+              const char* macroArgs, ArrayPtr<String> argValues);
 #endif
 
     Exception* exception;
   };
 
   class SyscallResult {
-   public:
+  public:
     SyscallResult(int errorNumber) : errorNumber(errorNumber) {}
     operator void*() { return errorNumber == 0 ? this : nullptr; }
     int getErrorNumber() { return errorNumber; }
 
-   private:
+  private:
     int errorNumber;
   };
 
@@ -572,7 +537,7 @@ class Debug {
 #endif
 
   class Context : public ExceptionCallback {
-   public:
+  public:
     Context();
     ZC_DISALLOW_COPY_AND_MOVE(Context);
     virtual ~Context() noexcept(false);
@@ -590,10 +555,10 @@ class Debug {
 
     virtual void onRecoverableException(Exception&& exception) override;
     virtual void onFatalException(Exception&& exception) override;
-    virtual void logMessage(LogSeverity severity, const char* file, int line,
-                            int contextDepth, String&& text) override;
+    virtual void logMessage(LogSeverity severity, const char* file, int line, int contextDepth,
+                            String&& text) override;
 
-   private:
+  private:
     bool logged;
     Maybe<Value> value;
 
@@ -602,26 +567,25 @@ class Debug {
 
   template <typename Func>
   class ContextImpl : public Context {
-   public:
+  public:
     ContextImpl(Func& func) : func(func) {}
     ZC_DISALLOW_COPY_AND_MOVE(ContextImpl);
 
     Value evaluate() override { return func(); }
 
-   private:
+  private:
     Func& func;
   };
 
   template <typename... Params>
   static String makeDescription(const char* macroArgs, Params&&... params);
 
- private:
+private:
   static LogSeverity minSeverity;
 
-  static void logInternal(const char* file, int line, LogSeverity severity,
-                          const char* macroArgs, ArrayPtr<String> argValues);
-  static String makeDescriptionInternal(const char* macroArgs,
-                                        ArrayPtr<String> argValues);
+  static void logInternal(const char* file, int line, LogSeverity severity, const char* macroArgs,
+                          ArrayPtr<String> argValues);
+  static String makeDescriptionInternal(const char* macroArgs, ArrayPtr<String> argValues);
 
   static int getOsErrorNumber(bool nonblocking);
   // Get the error code of the last error (e.g. from errno). Returns -1 on
@@ -629,31 +593,27 @@ class Debug {
 };
 
 template <typename... Params>
-void Debug::log(const char* file, int line, LogSeverity severity,
-                const char* macroArgs, Params&&... params) {
+void Debug::log(const char* file, int line, LogSeverity severity, const char* macroArgs,
+                Params&&... params) {
   String argValues[sizeof...(Params)] = {str(params)...};
-  logInternal(file, line, severity, macroArgs,
-              arrayPtr(argValues, sizeof...(Params)));
+  logInternal(file, line, severity, macroArgs, arrayPtr(argValues, sizeof...(Params)));
 }
 
 template <>
-inline void Debug::log<>(const char* file, int line, LogSeverity severity,
-                         const char* macroArgs) {
+inline void Debug::log<>(const char* file, int line, LogSeverity severity, const char* macroArgs) {
   logInternal(file, line, severity, macroArgs, nullptr);
 }
 
 template <typename Code, typename... Params>
-Debug::Fault::Fault(const char* file, int line, Code code,
-                    const char* condition, const char* macroArgs,
-                    Params&&... params)
+Debug::Fault::Fault(const char* file, int line, Code code, const char* condition,
+                    const char* macroArgs, Params&&... params)
     : exception(nullptr) {
   String argValues[sizeof...(Params)] = {str(params)...};
-  init(file, line, code, condition, macroArgs,
-       arrayPtr(argValues, sizeof...(Params)));
+  init(file, line, code, condition, macroArgs, arrayPtr(argValues, sizeof...(Params)));
 }
 
-inline Debug::Fault::Fault(const char* file, int line, int osErrorNumber,
-                           const char* condition, const char* macroArgs)
+inline Debug::Fault::Fault(const char* file, int line, int osErrorNumber, const char* condition,
+                           const char* macroArgs)
     : exception(nullptr) {
   init(file, line, osErrorNumber, condition, macroArgs, nullptr);
 }
@@ -665,9 +625,8 @@ inline Debug::Fault::Fault(const char* file, int line, zc::Exception::Type type,
 }
 
 #if _WIN32 || __CYGWIN__
-inline Debug::Fault::Fault(const char* file, int line,
-                           Win32Result osErrorNumber, const char* condition,
-                           const char* macroArgs)
+inline Debug::Fault::Fault(const char* file, int line, Win32Result osErrorNumber,
+                           const char* condition, const char* macroArgs)
     : exception(nullptr) {
   init(file, line, osErrorNumber, condition, macroArgs, nullptr);
 }
@@ -692,9 +651,7 @@ Debug::SyscallResult Debug::syscall(Call&& call, bool nonblocking) {
     // getOsErrorNumber() returns -1 to indicate EINTR.
     // Also, if nonblocking is true, then it returns 0 on EAGAIN, which will
     // then be treated as a non-error.
-    if (errorNum != -1) {
-      return SyscallResult(errorNum);
-    }
+    if (errorNum != -1) { return SyscallResult(errorNum); }
   }
   return SyscallResult(0);
 }
@@ -706,9 +663,7 @@ int Debug::syscallError(Call&& call, bool nonblocking) {
     // getOsErrorNumber() returns -1 to indicate EINTR.
     // Also, if nonblocking is true, then it returns 0 on EAGAIN, which will
     // then be treated as a non-error.
-    if (errorNum != -1) {
-      return errorNum;
-    }
+    if (errorNum != -1) { return errorNum; }
   }
   return 0;
 }
@@ -716,8 +671,7 @@ int Debug::syscallError(Call&& call, bool nonblocking) {
 template <typename... Params>
 String Debug::makeDescription(const char* macroArgs, Params&&... params) {
   String argValues[sizeof...(Params)] = {str(params)...};
-  return makeDescriptionInternal(macroArgs,
-                                 arrayPtr(argValues, sizeof...(Params)));
+  return makeDescriptionInternal(macroArgs, arrayPtr(argValues, sizeof...(Params)));
 }
 
 template <>
@@ -794,8 +748,7 @@ struct DebugComparison {
 
 template <typename Left, typename Right>
 String ZC_STRINGIFY(DebugComparison<Left, Right>& cmp) {
-  return _::concat(tryToCharSequence(&cmp.left), cmp.op,
-                   tryToCharSequence(&cmp.right));
+  return _::concat(tryToCharSequence(&cmp.left), cmp.op, tryToCharSequence(&cmp.right));
 }
 
 template <typename T>

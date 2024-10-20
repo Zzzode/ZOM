@@ -57,20 +57,15 @@ class SourceLocation {
   };
   // Neat little trick to make sure we can never call SourceLocation with
   // explicit arguments.
- public:
+public:
 #if !ZC_COMPILER_SUPPORTS_SOURCE_LOCATION
-  constexpr SourceLocation()
-      : fileName("??"), function("??"), lineNumber(0), columnNumber(0) {}
+  constexpr SourceLocation() : fileName("??"), function("??"), lineNumber(0), columnNumber(0) {}
   // Constructs a dummy source location that's not pointing at anything.
 #else
   constexpr SourceLocation(Badge = Badge{}, const char* file = __builtin_FILE(),
-                           const char* func = __builtin_FUNCTION(),
-                           uint line = __builtin_LINE(),
+                           const char* func = __builtin_FUNCTION(), uint line = __builtin_LINE(),
                            uint column = ZC_CALLER_COLUMN())
-      : fileName(file),
-        function(func),
-        lineNumber(line),
-        columnNumber(column) {}
+      : fileName(file), function(func), lineNumber(line), columnNumber(column) {}
 #endif
 
 #if ZC_COMPILER_SUPPORTS_SOURCE_LOCATION
@@ -80,8 +75,8 @@ class SourceLocation {
   constexpr bool operator==(const SourceLocation& o) const {
     // Pointer equality is fine here based on how SourceLocation operates & how
     // compilers will intern all duplicate string constants.
-    return fileName == o.fileName && function == o.function &&
-           lineNumber == o.lineNumber && columnNumber == o.columnNumber;
+    return fileName == o.fileName && function == o.function && lineNumber == o.lineNumber &&
+           columnNumber == o.columnNumber;
   }
 #endif
 
@@ -100,8 +95,7 @@ class NoopSourceLocation {
   // wrong compilation context.
 };
 
-ZC_UNUSED static zc::String ZC_STRINGIFY(
-    ZC_UNUSED const NoopSourceLocation& l) {
+ZC_UNUSED static zc::String ZC_STRINGIFY(ZC_UNUSED const NoopSourceLocation& l) {
   return zc::String();
 }
 }  // namespace zc

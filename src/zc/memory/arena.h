@@ -40,7 +40,7 @@ class Arena {
   // allocation in a multithreaded context, consider allocating thread-local
   // arenas.
 
- public:
+public:
   explicit Arena(size_t chunkSizeHint = 1024);
   // Create an Arena.  `chunkSizeHint` hints at where to start when allocating
   // chunks, but is only a hint -- the Arena will, for example, allocate
@@ -88,7 +88,7 @@ class Arena {
   // Make a copy of the given string inside the arena, and return a pointer to
   // the copy.
 
- private:
+private:
   struct ChunkHeader {
     ChunkHeader* next;
     byte* pos;  // first unallocated byte in this chunk
@@ -127,9 +127,9 @@ class Arena {
   static void destroyArray(void* pointer) {
     size_t elementCount = *reinterpret_cast<size_t*>(pointer);
     constexpr size_t prefixSize = zc::max(alignof(T), sizeof(size_t));
-    DestructorOnlyArrayDisposer::instance.disposeImpl(
-        reinterpret_cast<byte*>(pointer) + prefixSize, sizeof(T), elementCount,
-        elementCount, &destroyObject<T>);
+    DestructorOnlyArrayDisposer::instance.disposeImpl(reinterpret_cast<byte*>(pointer) + prefixSize,
+                                                      sizeof(T), elementCount, elementCount,
+                                                      &destroyObject<T>);
   }
 
   template <typename T>
@@ -143,27 +143,22 @@ class Arena {
 
 template <typename T, typename... Params>
 T& Arena::allocate(Params&&... params) {
-  T& result = *reinterpret_cast<T*>(
-      allocateBytes(sizeof(T), alignof(T), !ZC_HAS_TRIVIAL_DESTRUCTOR(T)));
+  T& result =
+      *reinterpret_cast<T*>(allocateBytes(sizeof(T), alignof(T), !ZC_HAS_TRIVIAL_DESTRUCTOR(T)));
   if (!ZC_HAS_TRIVIAL_CONSTRUCTOR(T) || sizeof...(Params) > 0) {
     ctor(result, zc::fwd<Params>(params)...);
   }
-  if (!ZC_HAS_TRIVIAL_DESTRUCTOR(T)) {
-    setDestructor(&result, &destroyObject<T>);
-  }
+  if (!ZC_HAS_TRIVIAL_DESTRUCTOR(T)) { setDestructor(&result, &destroyObject<T>); }
   return result;
 }
 
 template <typename T>
 ArrayPtr<T> Arena::allocateArray(size_t size) {
   if (ZC_HAS_TRIVIAL_DESTRUCTOR(T)) {
-    ArrayPtr<T> result = arrayPtr(reinterpret_cast<T*>(allocateBytes(
-                                      sizeof(T) * size, alignof(T), false)),
-                                  size);
+    ArrayPtr<T> result =
+        arrayPtr(reinterpret_cast<T*>(allocateBytes(sizeof(T) * size, alignof(T), false)), size);
     if (!ZC_HAS_TRIVIAL_CONSTRUCTOR(T)) {
-      for (size_t i = 0; i < size; i++) {
-        ctor(result[i]);
-      }
+      for (size_t i = 0; i < size; i++) { ctor(result[i]); }
     }
     return result;
   } else {
@@ -171,8 +166,8 @@ ArrayPtr<T> Arena::allocateArray(size_t size) {
     constexpr size_t prefixSize = zc::max(alignof(T), sizeof(size_t));
     void* base = allocateBytes(sizeof(T) * size + prefixSize, alignof(T), true);
     size_t& tag = *reinterpret_cast<size_t*>(base);
-    ArrayPtr<T> result = arrayPtr(
-        reinterpret_cast<T*>(reinterpret_cast<byte*>(base) + prefixSize), size);
+    ArrayPtr<T> result =
+        arrayPtr(reinterpret_cast<T*>(reinterpret_cast<byte*>(base) + prefixSize), size);
     setDestructor(base, &destroyArray<T>);
 
     if (ZC_HAS_TRIVIAL_CONSTRUCTOR(T)) {
@@ -193,8 +188,7 @@ ArrayPtr<T> Arena::allocateArray(size_t size) {
 
 template <typename T, typename... Params>
 Own<T> Arena::allocateOwn(Params&&... params) {
-  T& result =
-      *reinterpret_cast<T*>(allocateBytes(sizeof(T), alignof(T), false));
+  T& result = *reinterpret_cast<T*>(allocateBytes(sizeof(T), alignof(T), false));
   if (!ZC_HAS_TRIVIAL_CONSTRUCTOR(T) || sizeof...(Params) > 0) {
     ctor(result, zc::fwd<Params>(params)...);
   }
@@ -204,17 +198,15 @@ Own<T> Arena::allocateOwn(Params&&... params) {
 template <typename T>
 Array<T> Arena::allocateOwnArray(size_t size) {
   ArrayBuilder<T> result = allocateOwnArrayBuilder<T>(size);
-  for (size_t i = 0; i < size; i++) {
-    result.add();
-  }
+  for (size_t i = 0; i < size; i++) { result.add(); }
   return result.finish();
 }
 
 template <typename T>
 ArrayBuilder<T> Arena::allocateOwnArrayBuilder(size_t capacity) {
-  return ArrayBuilder<T>(reinterpret_cast<T*>(allocateBytes(
-                             sizeof(T) * capacity, alignof(T), false)),
-                         capacity, DestructorOnlyArrayDisposer::instance);
+  return ArrayBuilder<T>(
+      reinterpret_cast<T*>(allocateBytes(sizeof(T) * capacity, alignof(T), false)), capacity,
+      DestructorOnlyArrayDisposer::instance);
 }
 
 }  // namespace zc

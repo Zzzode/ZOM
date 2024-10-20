@@ -35,9 +35,7 @@ ZC_TEST("zc::size() on native arrays") {
   int arr[] = {12, 34, 56, 78};
 
   size_t expected = 0;
-  for (size_t i : indices(arr)) {
-    ZC_EXPECT(i == expected++);
-  }
+  for (size_t i : indices(arr)) { ZC_EXPECT(i == expected++); }
   ZC_EXPECT(expected == 4u);
 }
 
@@ -67,13 +65,9 @@ TEST(Common, Maybe) {
     EXPECT_FALSE(m == zc::none);
     EXPECT_TRUE(m != zc::none);
     ZC_IF_SOME(v, m) { EXPECT_EQ(123, v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     ZC_IF_SOME(v, mv(m)) { EXPECT_EQ(123, v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     EXPECT_EQ(123, m.orDefault(456));
     bool ranLazy = false;
     EXPECT_EQ(123, m.orDefault([&] {
@@ -93,9 +87,7 @@ TEST(Common, Maybe) {
       EXPECT_NE(&ref, &ref2);
       EXPECT_EQ(ref2, 123);
     }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
   }
 
   {
@@ -103,13 +95,9 @@ TEST(Common, Maybe) {
     EXPECT_FALSE(m == zc::none);
     EXPECT_TRUE(m != zc::none);
     ZC_IF_SOME(v, m) { EXPECT_EQ(123, v->i); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     ZC_IF_SOME(v, mv(m)) { EXPECT_EQ(123, v->i); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     // We have moved the zc::Own away, so this should give us the default and
     // leave the Maybe empty.
     EXPECT_EQ(456, m.orDefault(heap<CopyOrMove>(456))->i);
@@ -141,8 +129,7 @@ TEST(Common, Maybe) {
   {
     Maybe<int> empty;
     int defaultValue = 5;
-    auto& ref1 =
-        empty.orDefault([&defaultValue]() -> int& { return defaultValue; });
+    auto& ref1 = empty.orDefault([&defaultValue]() -> int& { return defaultValue; });
     EXPECT_EQ(&ref1, &defaultValue);
 
     auto ref2 = empty.orDefault([&]() -> int { return defaultValue; });
@@ -154,13 +141,9 @@ TEST(Common, Maybe) {
     EXPECT_FALSE(m == zc::none);
     EXPECT_TRUE(m != zc::none);
     ZC_IF_SOME(v, m) { EXPECT_EQ(0, v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     ZC_IF_SOME(v, mv(m)) { EXPECT_EQ(0, v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     EXPECT_EQ(0, m.orDefault(456));
     bool ranLazy = false;
     EXPECT_EQ(0, m.orDefault([&] {
@@ -197,13 +180,9 @@ TEST(Common, Maybe) {
     EXPECT_FALSE(m == zc::none);
     EXPECT_TRUE(m != zc::none);
     ZC_IF_SOME(v, m) { EXPECT_EQ(&i, &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     ZC_IF_SOME(v, mv(m)) { EXPECT_EQ(&i, &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     EXPECT_EQ(234, m.orDefault(456));
   }
 
@@ -227,13 +206,9 @@ TEST(Common, Maybe) {
     EXPECT_FALSE(m == zc::none);
     EXPECT_TRUE(m != zc::none);
     ZC_IF_SOME(v, m) { EXPECT_EQ(&i, &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     ZC_IF_SOME(v, mv(m)) { EXPECT_EQ(&i, &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     EXPECT_EQ(234, m.orDefault(456));
   }
 
@@ -243,13 +218,9 @@ TEST(Common, Maybe) {
     EXPECT_FALSE(m == zc::none);
     EXPECT_TRUE(m != zc::none);
     ZC_IF_SOME(v, m) { EXPECT_EQ(&i, &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     ZC_IF_SOME(v, mv(m)) { EXPECT_EQ(&i, &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     EXPECT_EQ(234, m.orDefault(456));
   }
 
@@ -274,13 +245,9 @@ TEST(Common, Maybe) {
     EXPECT_FALSE(m == zc::none);
     EXPECT_TRUE(m != zc::none);
     ZC_IF_SOME(v, m) { EXPECT_EQ(&ZC_ASSERT_NONNULL(mi), &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     ZC_IF_SOME(v, mv(m)) { EXPECT_EQ(&ZC_ASSERT_NONNULL(mi), &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     EXPECT_EQ(234, m.orDefault(456));
   }
 
@@ -297,13 +264,9 @@ TEST(Common, Maybe) {
     EXPECT_FALSE(m == zc::none);
     EXPECT_TRUE(m != zc::none);
     ZC_IF_SOME(v, m) { EXPECT_EQ(&ZC_ASSERT_NONNULL(mi), &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     ZC_IF_SOME(v, mv(m)) { EXPECT_EQ(&ZC_ASSERT_NONNULL(mi), &v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     EXPECT_EQ(234, m.orDefault(456));
   }
 
@@ -328,13 +291,9 @@ TEST(Common, Maybe) {
     Maybe<uint> m2(m);
     Maybe<uint> m3(zc::mv(m));
     ZC_IF_SOME(v, m2) { EXPECT_EQ(123, v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
     ZC_IF_SOME(v, m3) { EXPECT_EQ(123, v); }
-    else {
-      ADD_FAILURE();
-    }
+    else { ADD_FAILURE(); }
   }
 
   {
@@ -352,10 +311,9 @@ TEST(Common, Maybe) {
     CopyOrMove x(123);
     Maybe<CopyOrMove&> m(x);
     Maybe<CopyOrMove> m2 = zc::mv(m);
-    ZC_EXPECT(m == zc::none);  // m is moved out of and cleared
-    ZC_EXPECT(x.i == 123);     // but what m *referenced* was not moved out of
-    ZC_EXPECT(ZC_ASSERT_NONNULL(m2).i ==
-              123);  // m2 is a copy of what m referenced
+    ZC_EXPECT(m == zc::none);                   // m is moved out of and cleared
+    ZC_EXPECT(x.i == 123);                      // but what m *referenced* was not moved out of
+    ZC_EXPECT(ZC_ASSERT_NONNULL(m2).i == 123);  // m2 is a copy of what m referenced
   }
 
   {
@@ -426,18 +384,14 @@ TEST(Common, MaybeConstness) {
   //  violation.
 
   ZC_IF_SOME(i2, cmi) { EXPECT_EQ(&i, &i2); }
-  else {
-    ADD_FAILURE();
-  }
+  else { ADD_FAILURE(); }
 
   Maybe<const int&> mci = mi;
   const Maybe<const int&> cmci = mci;
   const Maybe<const int&> cmci2 = cmci;
 
   ZC_IF_SOME(i2, cmci2) { EXPECT_EQ(&i, &i2); }
-  else {
-    ADD_FAILURE();
-  }
+  else { ADD_FAILURE(); }
 }
 
 #if __GNUC__
@@ -524,23 +478,23 @@ TEST(Common, MaybeUnwrapOrReturn) {
 #endif
 
 class Foo {
- public:
+public:
   ZC_DISALLOW_COPY_AND_MOVE(Foo);
   virtual ~Foo() {}
 
- protected:
+protected:
   Foo() = default;
 };
 
 class Bar : public Foo {
- public:
+public:
   Bar() = default;
   ZC_DISALLOW_COPY_AND_MOVE(Bar);
   virtual ~Bar() {}
 };
 
 class Baz : public Foo {
- public:
+public:
   Baz() = delete;
   ZC_DISALLOW_COPY_AND_MOVE(Baz);
   virtual ~Baz() {}
@@ -560,9 +514,7 @@ TEST(Common, Downcast) {
   EXPECT_TRUE(dynamicDowncastIfAvailable<Baz>(foo) == zc::none);
 #else
   ZC_IF_SOME(m, dynamicDowncastIfAvailable<Bar>(foo)) { EXPECT_EQ(&bar, &m); }
-  else {
-    ZC_FAIL_ASSERT("Dynamic downcast returned null.");
-  }
+  else { ZC_FAIL_ASSERT("Dynamic downcast returned null."); }
   EXPECT_TRUE(dynamicDowncastIfAvailable<Baz>(foo) == zc::none);
 #endif
 }
@@ -807,18 +759,13 @@ struct ArrayComparisonTest {
   Array<A> left;
   Array<B> right;
   TestOrdering expectedResult;
-  ArrayComparisonTest(std::initializer_list<A> left,
-                      std::initializer_list<B> right,
+  ArrayComparisonTest(std::initializer_list<A> left, std::initializer_list<B> right,
                       TestOrdering expectedResult)
-      : left(heapArray(left)),
-        right(heapArray(right)),
-        expectedResult(expectedResult) {}
+      : left(heapArray(left)), right(heapArray(right)), expectedResult(expectedResult) {}
 
   template <size_t N, size_t M>
   ArrayComparisonTest(A (&left)[N], B (&right)[M], TestOrdering expectedResult)
-      : left(heapArray(left, N)),
-        right(heapArray(right, M)),
-        expectedResult(expectedResult) {}
+      : left(heapArray(left, N)), right(heapArray(right, M)), expectedResult(expectedResult) {}
 };
 
 ZC_TEST("ArrayPtr comparators for nullptr type") {
@@ -852,8 +799,7 @@ ZC_TEST("ArrayPtr comparators for same int type") {
   };
 
   for (auto const& testCase : testCases) {
-    strongComparisonsTests(testCase.left.asPtr(), testCase.right.asPtr(),
-                           testCase.expectedResult);
+    strongComparisonsTests(testCase.left.asPtr(), testCase.right.asPtr(), testCase.expectedResult);
   }
 }
 ZC_TEST("ArrayPtr comparators for same int type") {
@@ -873,17 +819,15 @@ ZC_TEST("ArrayPtr comparators for same int type") {
   };
 
   for (auto const& testCase : testCases) {
-    strongComparisonsTests(testCase.left.asPtr(), testCase.right.asPtr(),
-                           testCase.expectedResult);
+    strongComparisonsTests(testCase.left.asPtr(), testCase.right.asPtr(), testCase.expectedResult);
   }
 }
 
 ZC_TEST("ArrayPtr equality comparisons for different int type") {
   using Test = ArrayComparisonTest<const int, const short>;
   Test testCases[] = {
-      {{1, 2}, {1, 2}, EQUAL},   {{1, 2}, {1, 3}, LESS},
-      {{1, 3}, {1, 2}, GREATER}, {{1}, {1, 2}, LESS},
-      {{2}, {1, 2}, GREATER},
+      {{1, 2}, {1, 2}, EQUAL}, {{1, 2}, {1, 3}, LESS}, {{1, 3}, {1, 2}, GREATER},
+      {{1}, {1, 2}, LESS},     {{2}, {1, 2}, GREATER},
   };
 
   for (auto const& testCase : testCases) {
@@ -896,9 +840,8 @@ ZC_TEST("ArrayPtr comparators for doubles (testing partial orderings)") {
   using Test = ArrayComparisonTest<const double, const double>;
   const double d = nan();
   Test testCases[] = {
-      {{0.0}, {0.0}, EQUAL},         {{1.0}, {0.0}, NOTEQUAL},
-      {{0.0}, {1.0}, NOTEQUAL},      {{0, 0, 0.0}, {0.0}, NOTEQUAL},
-      {{0.0, 0.0}, {1.0}, NOTEQUAL}, {{d}, {d}, UNORDERED},
+      {{0.0}, {0.0}, EQUAL},          {{1.0}, {0.0}, NOTEQUAL},      {{0.0}, {1.0}, NOTEQUAL},
+      {{0, 0, 0.0}, {0.0}, NOTEQUAL}, {{0.0, 0.0}, {1.0}, NOTEQUAL}, {{d}, {d}, UNORDERED},
   };
 
   for (auto const& testCase : testCases) {
@@ -916,8 +859,7 @@ ZC_TEST("ArrayPtr comparator for arrays of the same string type") {
   };
 
   for (auto const& testCase : testCases) {
-    strongComparisonsTests(testCase.left.asPtr(), testCase.right.asPtr(),
-                           testCase.expectedResult);
+    strongComparisonsTests(testCase.left.asPtr(), testCase.right.asPtr(), testCase.expectedResult);
   }
 }
 
@@ -929,8 +871,7 @@ ZC_TEST("ArrayPtr equality comparisons for UTF-8") {
   };
 
   for (auto const& testCase : testCases) {
-    strongComparisonsTests(testCase.left.asPtr(), testCase.right.asPtr(),
-                           testCase.expectedResult);
+    strongComparisonsTests(testCase.left.asPtr(), testCase.right.asPtr(), testCase.expectedResult);
     strongComparisonsTests(testCase.left.asBytes(), testCase.right.asBytes(),
                            testCase.expectedResult);
   }
@@ -986,22 +927,17 @@ ZC_TEST("asBytes Tests") {
     auto simpleIntsPtr = asBytes(simpleInts);
     static_assert(isSameType<decltype(simpleIntsPtr), ArrayPtr<const byte>>());
     ZC_EXPECT(simpleIntsPtr.size(), sizeof(simpleInts));
-    ZC_EXPECT(memcmp(simpleIntsPtr.begin(), simpleInts, sizeof(simpleInts)) ==
-              0);
+    ZC_EXPECT(memcmp(simpleIntsPtr.begin(), simpleInts, sizeof(simpleInts)) == 0);
   }
 }
 
 ZC_TEST("zc::range()") {
   uint expected = 5;
-  for (uint i : range(5, 10)) {
-    ZC_EXPECT(i == expected++);
-  }
+  for (uint i : range(5, 10)) { ZC_EXPECT(i == expected++); }
   ZC_EXPECT(expected == 10);
 
   expected = 0;
-  for (uint i : range(0, 8)) {
-    ZC_EXPECT(i == expected++);
-  }
+  for (uint i : range(0, 8)) { ZC_EXPECT(i == expected++); }
   ZC_EXPECT(expected == 8);
 }
 
@@ -1093,16 +1029,12 @@ ZC_TEST("zc::ArrayPtr startsWith / endsWith / findFirst / findLast") {
 ZC_TEST("zc::ArrayPtr fill") {
   int64_t int64Array[] = {12, 34, 56, 34, 12};
   arrayPtr(int64Array).fill(42);
-  for (auto i : int64Array) {
-    ZC_EXPECT(i == 42);
-  }
+  for (auto i : int64Array) { ZC_EXPECT(i == 42); }
 
   // test small sizes separately, since compilers do a memset optimization
   byte byteArray[256]{};
   arrayPtr(byteArray).fill(42);
-  for (auto b : byteArray) {
-    ZC_EXPECT(b == 42);
-  }
+  for (auto b : byteArray) { ZC_EXPECT(b == 42); }
 
   // test an object
   struct SomeObject {
@@ -1156,11 +1088,11 @@ struct DisallowedInCoroutineStruct {
   ZC_DISALLOW_AS_COROUTINE_PARAM;
 };
 class DisallowedInCoroutinePublic {
- public:
+public:
   ZC_DISALLOW_AS_COROUTINE_PARAM;
 };
 class DisallowedInCoroutinePrivate {
- private:
+private:
   ZC_DISALLOW_AS_COROUTINE_PARAM;
 };
 struct AllowedInCoroutine {};
@@ -1248,9 +1180,7 @@ ZC_TEST("memzero<T>()") {
   ZeroTest arr[256];
   memset(arr, 0xff, 256 * sizeof(ZeroTest));
   memzero(arr);
-  for (auto& t : arr) {
-    ZC_EXPECT(t.pi == 0);
-  }
+  for (auto& t : arr) { ZC_EXPECT(t.pi == 0); }
 }
 
 }  // namespace

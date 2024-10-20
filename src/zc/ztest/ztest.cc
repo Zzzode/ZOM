@@ -78,7 +78,7 @@ size_t TestCase::iterCount() { return benchmarkIterCount; }
 namespace {
 
 class TestExceptionCallback : public ExceptionCallback {
- public:
+public:
   TestExceptionCallback(const ProcessContext& context)
       : context(context), mainThreadCallback(zc::none) {}
 
@@ -89,22 +89,18 @@ class TestExceptionCallback : public ExceptionCallback {
     ZC_IF_SOME(callback, mainThreadCallback) { callback.fail(); }
   }
 
-  void logMessage(LogSeverity severity, const char* file, int line,
-                  int contextDepth, String&& text) override {
+  void logMessage(LogSeverity severity, const char* file, int line, int contextDepth,
+                  String&& text) override {
     void* traceSpace[32]{};
     auto trace = getStackTrace(traceSpace, 2);
 
-    if (text.size() == 0) {
-      text = zc::heapString("expectation failed");
-    }
+    if (text.size() == 0) { text = zc::heapString("expectation failed"); }
 
-    text = zc::str(zc::repeat('_', contextDepth), file, ':', line, ": ",
-                   zc::mv(text));
+    text = zc::str(zc::repeat('_', contextDepth), file, ':', line, ": ", zc::mv(text));
 
     if (severity == LogSeverity::ERROR || severity == LogSeverity::FATAL) {
       fail();
-      context.error(zc::str(text,
-                            "\nstack: ", stringifyStackTraceAddresses(trace),
+      context.error(zc::str(text, "\nstack: ", stringifyStackTraceAddresses(trace),
                             stringifyStackTrace(trace)));
     } else {
       context.warning(text);
@@ -124,7 +120,7 @@ class TestExceptionCallback : public ExceptionCallback {
     };
   }
 
- private:
+private:
   const ProcessContext& context;
   // In the case where a thread spawns a thread, we report failure to the main
   // thread's TestExceptionCallback, which I assume stays alive as long as all
@@ -147,7 +143,7 @@ TimePoint readClock() { return systemPreciseMonotonicClock().now(); }
 }  // namespace
 
 class TestRunner {
- public:
+public:
   explicit TestRunner(ProcessContext& context)
       : context(context), useColor(isatty(STDOUT_FILENO)) {}
 
@@ -155,8 +151,7 @@ class TestRunner {
     return MainBuilder(context, "ZC Test Runner (version not applicable)",
                        "Run all tests that have been linked into the binary "
                        "with this test runner.")
-        .addOptionWithArg({'f', "filter"}, ZC_BIND_METHOD(*this, setFilter),
-                          "<file>[:<line>]",
+        .addOptionWithArg({'f', "filter"}, ZC_BIND_METHOD(*this, setFilter), "<file>[:<line>]",
                           "Run only the specified test case(s). You may use a "
                           "'*' wildcard in <file>. You may "
                           "also omit any prefix of <file>'s path; test from "
@@ -168,8 +163,7 @@ class TestRunner {
                    "List all test cases that would run, but don't run them. If "
                    "--filter is specified "
                    "then only the match tests will be listed.")
-        .addOptionWithArg({'b', "benchmark"},
-                          ZC_BIND_METHOD(*this, setBenchmarkIters), "<iters>",
+        .addOptionWithArg({'b', "benchmark"}, ZC_BIND_METHOD(*this, setBenchmarkIters), "<iters>",
                           "Specifies that any benchmarks in the tests should "
                           "run for <iters> iterations. "
                           "If not specified, then count is 1, which simply "
@@ -195,9 +189,7 @@ class TestRunner {
           // A range.
           const char* part2 = end + 1;
           maxLine = strtoul(part2, &end, 0);
-          if (end > part2 && *end == '\0') {
-            parsedRange = true;
-          }
+          if (end > part2 && *end == '\0') { parsedRange = true; }
         } else if (*end == '\0') {
           parsedRange = true;
           maxLine = minLine;
@@ -217,10 +209,9 @@ class TestRunner {
 
     zc::GlobFilter filter(filePattern);
 
-    for (TestCase* testCase = testCasesHead; testCase != nullptr;
-         testCase = testCase->next) {
-      if (!testCase->matchedFilter && filter.matches(testCase->file) &&
-          testCase->line >= minLine && testCase->line <= maxLine) {
+    for (TestCase* testCase = testCasesHead; testCase != nullptr; testCase = testCase->next) {
+      if (!testCase->matchedFilter && filter.matches(testCase->file) && testCase->line >= minLine &&
+          testCase->line <= maxLine) {
         testCase->matchedFilter = true;
       }
     }
@@ -238,22 +229,17 @@ class TestRunner {
       benchmarkIterCount = i;
       return true;
     }
-    else {
-      return "expected an integer";
-    }
+    else { return "expected an integer"; }
 
     ZC_CLANG_KNOWS_THIS_IS_UNREACHABLE_BUT_GCC_DOESNT;
   }
 
   MainBuilder::Validity run() {
-    if (testCasesHead == nullptr) {
-      return "no tests were declared";
-    }
+    if (testCasesHead == nullptr) { return "no tests were declared"; }
 
     // Find the common path prefix of all filenames, so we can strip it off.
     ArrayPtr<const char> commonPrefix = StringPtr(testCasesHead->file);
-    for (TestCase* testCase = testCasesHead; testCase != nullptr;
-         testCase = testCase->next) {
+    for (TestCase* testCase = testCasesHead; testCase != nullptr; testCase = testCase->next) {
       for (size_t i : zc::indices(commonPrefix)) {
         if (testCase->file[i] != commonPrefix[i]) {
           commonPrefix = commonPrefix.first(i);
@@ -263,19 +249,17 @@ class TestRunner {
     }
 
     // Back off the prefix to the last '/'.
-    while (commonPrefix.size() > 0 && commonPrefix.back() != '/' &&
-           commonPrefix.back() != '\\') {
+    while (commonPrefix.size() > 0 && commonPrefix.back() != '/' && commonPrefix.back() != '\\') {
       commonPrefix = commonPrefix.first(commonPrefix.size() - 1);
     }
 
     // Run the testts.
     uint passCount = 0;
     uint failCount = 0;
-    for (TestCase* testCase = testCasesHead; testCase != nullptr;
-         testCase = testCase->next) {
+    for (TestCase* testCase = testCasesHead; testCase != nullptr; testCase = testCase->next) {
       if (!hasFilter || testCase->matchedFilter) {
-        auto name = zc::str(testCase->file + commonPrefix.size(), ':',
-                            testCase->line, ": ", testCase->description);
+        auto name = zc::str(testCase->file + commonPrefix.size(), ':', testCase->line, ": ",
+                            testCase->description);
 
         write(BLUE, "[ TEST ]", name);
 
@@ -291,8 +275,7 @@ class TestRunner {
           }
           auto end = readClock();
 
-          auto message =
-              zc::str(name, " (", (end - start) / zc::MICROSECONDS, " μs)");
+          auto message = zc::str(name, " (", (end - start) / zc::MICROSECONDS, " μs)");
 
           if (currentFailed) {
             write(RED, "[ FAIL ]", message);
@@ -312,7 +295,7 @@ class TestRunner {
     ZC_UNREACHABLE;
   }
 
- private:
+private:
   ProcessContext& context;
   bool useColor;
   bool hasFilter = false;
@@ -320,9 +303,7 @@ class TestRunner {
 
   enum Color { RED, GREEN, BLUE };
 
-  void write(StringPtr text) {
-    FdOutputStream(STDOUT_FILENO).write(text.asBytes());
-  }
+  void write(StringPtr text) { FdOutputStream(STDOUT_FILENO).write(text.asBytes()); }
 
   void write(Color color, StringPtr prefix, StringPtr message) {
     StringPtr startColor, endColor;

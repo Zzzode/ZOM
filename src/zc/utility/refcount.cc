@@ -40,9 +40,7 @@ Refcounted::~Refcounted() noexcept(false) {
 }
 
 void Refcounted::disposeImpl(void* pointer) const {
-  if (--refcount == 0) {
-    delete this;
-  }
+  if (--refcount == 0) { delete this; }
 }
 
 // =======================================================================================
@@ -77,11 +75,8 @@ bool AtomicRefcounted::addRefWeakInternal() const {
       return false;
     }
 
-    unsigned long old =
-        ZC_MSVC_INTERLOCKED(CompareExchange, nf)(&refcount, orig + 1, orig);
-    if (old == orig) {
-      return true;
-    }
+    unsigned long old = ZC_MSVC_INTERLOCKED(CompareExchange, nf)(&refcount, orig + 1, orig);
+    if (old == orig) { return true; }
     orig = old;
   }
 #else
@@ -94,8 +89,8 @@ bool AtomicRefcounted::addRefWeakInternal() const {
       return false;
     }
 
-    if (__atomic_compare_exchange_n(&refcount, &orig, orig + 1, true,
-                                    __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+    if (__atomic_compare_exchange_n(&refcount, &orig, orig + 1, true, __ATOMIC_RELAXED,
+                                    __ATOMIC_RELAXED)) {
       // Successfully incremented refcount without letting it hit zero.
       return true;
     }

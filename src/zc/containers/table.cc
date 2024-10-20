@@ -47,9 +47,7 @@ static inline uint lg(uint value) {
 #endif
 }
 
-void throwDuplicateTableRow() {
-  ZC_FAIL_REQUIRE("inserted row already exists in table");
-}
+void throwDuplicateTableRow() { ZC_FAIL_REQUIRE("inserted row already exists in table"); }
 
 void logHashTableInconsistency() {
   ZC_LOG(ERROR,
@@ -71,17 +69,14 @@ static inline size_t chooseHashTableSize(uint size) {
   return 1 << (lg(size) + 1);
 }
 
-zc::Array<HashBucket> rehash(zc::ArrayPtr<const HashBucket> oldBuckets,
-                             size_t targetSize) {
+zc::Array<HashBucket> rehash(zc::ArrayPtr<const HashBucket> oldBuckets, size_t targetSize) {
   // Rehash the whole table.
 
   ZC_REQUIRE(targetSize < (1 << 30), "hash table has reached maximum size");
 
   size_t size = chooseHashTableSize(targetSize);
 
-  if (size < oldBuckets.size()) {
-    size = oldBuckets.size();
-  }
+  if (size < oldBuckets.size()) { size = oldBuckets.size(); }
 
   auto newBuckets = zc::heapArray<HashBucket>(size);
   memset(newBuckets.begin(), 0, sizeof(HashBucket) * size);
@@ -92,8 +87,7 @@ zc::Array<HashBucket> rehash(zc::ArrayPtr<const HashBucket> oldBuckets,
   for (auto& oldBucket : oldBuckets) {
     if (oldBucket.isOccupied()) {
       ++entryCount;
-      for (uint i = oldBucket.hash % newBuckets.size();;
-           i = probeHash(newBuckets, i)) {
+      for (uint i = oldBucket.hash % newBuckets.size();; i = probeHash(newBuckets, i)) {
         auto& newBucket = newBuckets[i];
         if (newBucket.isEmpty()) {
           newBucket = oldBucket;
@@ -137,9 +131,7 @@ BTreeImpl::BTreeImpl()
       endLeaf(0) {}
 
 BTreeImpl::~BTreeImpl() noexcept(false) {
-  if (tree != &EMPTY_NODE) {
-    aligned_free(tree);
-  }
+  if (tree != &EMPTY_NODE) { aligned_free(tree); }
 }
 
 BTreeImpl::BTreeImpl(BTreeImpl&& other) : BTreeImpl() { *this = zc::mv(other); }
@@ -147,9 +139,7 @@ BTreeImpl::BTreeImpl(BTreeImpl&& other) : BTreeImpl() { *this = zc::mv(other); }
 BTreeImpl& BTreeImpl::operator=(BTreeImpl&& other) {
   ZC_DASSERT(&other != this);
 
-  if (tree != &EMPTY_NODE) {
-    aligned_free(tree);
-  }
+  if (tree != &EMPTY_NODE) { aligned_free(tree); }
   tree = other.tree;
   treeCapacity = other.treeCapacity;
   height = other.height;
@@ -174,8 +164,8 @@ const BTreeImpl::NodeUnion BTreeImpl::EMPTY_NODE = {{{0, {0}}}};
 void BTreeImpl::verify(size_t size, FunctionParam<bool(uint, uint)> f) {
   ZC_ASSERT(verifyNode(size, f, 0, height, nullptr) == size);
 }
-size_t BTreeImpl::verifyNode(size_t size, FunctionParam<bool(uint, uint)>& f,
-                             uint pos, uint height, MaybeUint maxRow) {
+size_t BTreeImpl::verifyNode(size_t size, FunctionParam<bool(uint, uint)>& f, uint pos, uint height,
+                             MaybeUint maxRow) {
   if (height > 0) {
     auto& parent = tree[pos].parent;
 
@@ -183,11 +173,10 @@ size_t BTreeImpl::verifyNode(size_t size, FunctionParam<bool(uint, uint)>& f,
     size_t total = 0;
     for (auto i : zc::zeroTo(n)) {
       ZC_ASSERT(*parent.keys[i] < size, n, i);
-      total +=
-          verifyNode(size, f, parent.children[i], height - 1, parent.keys[i]);
+      total += verifyNode(size, f, parent.children[i], height - 1, parent.keys[i]);
       if (i > 0) {
-        ZC_ASSERT(f(*parent.keys[i - 1], *parent.keys[i]), n, i,
-                  parent.keys[i - 1], parent.keys[i]);
+        ZC_ASSERT(f(*parent.keys[i - 1], *parent.keys[i]), n, i, parent.keys[i - 1],
+                  parent.keys[i]);
       }
     }
     total += verifyNode(size, f, parent.children[n], height - 1, maxRow);
@@ -201,13 +190,10 @@ size_t BTreeImpl::verifyNode(size_t size, FunctionParam<bool(uint, uint)>& f,
     for (auto i : zc::zeroTo(n)) {
       ZC_ASSERT(*leaf.rows[i] < size, n, i);
       if (i > 0) {
-        ZC_ASSERT(f(*leaf.rows[i - 1], *leaf.rows[i]), n, i, leaf.rows[i - 1],
-                  leaf.rows[i]);
+        ZC_ASSERT(f(*leaf.rows[i - 1], *leaf.rows[i]), n, i, leaf.rows[i - 1], leaf.rows[i]);
       }
     }
-    if (maxRow != nullptr) {
-      ZC_ASSERT(leaf.rows[n - 1] == maxRow, n);
-    }
+    if (maxRow != nullptr) { ZC_ASSERT(leaf.rows[n - 1] == maxRow, n); }
     return n;
   }
 }
@@ -250,11 +236,9 @@ void BTreeImpl::reserve(size_t size) {
   uint height = lg(leaves | 1) / lg(branchingFactor) + 1;
 
   size_t newSize = leaves + parents + 1 +  // + 1 for the root
-                   height + 2;  // minimum freelist size needed by insert()
+                   height + 2;             // minimum freelist size needed by insert()
 
-  if (treeCapacity < newSize) {
-    growTree(newSize);
-  }
+  if (treeCapacity < newSize) { growTree(newSize); }
 }
 
 void BTreeImpl::clear() {
@@ -262,8 +246,7 @@ void BTreeImpl::clear() {
     azero(tree, treeCapacity);
     height = 0;
     freelistHead = 1;
-    freelistSize =
-        treeCapacity - 1;  // subtract one to account for the root node
+    freelistSize = treeCapacity - 1;  // subtract one to account for the root node
     beginLeaf = 0;
     endLeaf = 0;
   }
@@ -282,8 +265,7 @@ void BTreeImpl::growTree(uint minCapacity) {
   // requires freeing using _aligned_free()). WATCH OUT: The argument order for
   // _aligned_malloc() is opposite of aligned_alloc()!
   NodeUnion* newTree = reinterpret_cast<NodeUnion*>(
-      _aligned_malloc(newCapacity * sizeof(BTreeImpl::NodeUnion),
-                      sizeof(BTreeImpl::NodeUnion)));
+      _aligned_malloc(newCapacity * sizeof(BTreeImpl::NodeUnion), sizeof(BTreeImpl::NodeUnion)));
   ZC_ASSERT(newTree != nullptr, "memory allocation failed", newCapacity);
 #else
   // macOS, OpenBSD, and Android lack aligned_alloc(), but have
@@ -291,9 +273,7 @@ void BTreeImpl::growTree(uint minCapacity) {
   void* allocPtr;
   int error = posix_memalign(&allocPtr, sizeof(BTreeImpl::NodeUnion),
                              newCapacity * sizeof(BTreeImpl::NodeUnion));
-  if (error != 0) {
-    ZC_FAIL_SYSCALL("posix_memalign", error);
-  }
+  if (error != 0) { ZC_FAIL_SYSCALL("posix_memalign", error); }
   NodeUnion* newTree = reinterpret_cast<NodeUnion*>(allocPtr);
 #endif
 
@@ -401,16 +381,14 @@ BTreeImpl::Iterator BTreeImpl::insert(const SearchKey& searchKey) {
   uint indexInParent = 0;
 
   for (auto i ZC_UNUSED : zeroTo(height)) {
-    Parent& node =
-        insertHelper(searchKey, tree[pos].parent, parent, indexInParent, pos);
+    Parent& node = insertHelper(searchKey, tree[pos].parent, parent, indexInParent, pos);
 
     parent = &node;
     indexInParent = searchKey.search(node);
     pos = node.children[indexInParent];
   }
 
-  Leaf& leaf =
-      insertHelper(searchKey, tree[pos].leaf, parent, indexInParent, pos);
+  Leaf& leaf = insertHelper(searchKey, tree[pos].leaf, parent, indexInParent, pos);
 
   // Fun fact: Unlike erase(), there's no need to climb back up the tree
   // modifying keys, because either the newly-inserted node will not be the last
@@ -421,8 +399,8 @@ BTreeImpl::Iterator BTreeImpl::insert(const SearchKey& searchKey) {
 }
 
 template <typename Node>
-Node& BTreeImpl::insertHelper(const SearchKey& searchKey, Node& node,
-                              Parent* parent, uint indexInParent, uint pos) {
+Node& BTreeImpl::insertHelper(const SearchKey& searchKey, Node& node, Parent* parent,
+                              uint indexInParent, uint pos) {
   if (node.isFull()) {
     // This node is full. Need to split.
     if (parent == nullptr) {
@@ -485,15 +463,13 @@ void BTreeImpl::erase(uint row, const SearchKey& searchKey) {
   MaybeUint* fixup = nullptr;
 
   for (auto i ZC_UNUSED : zeroTo(height)) {
-    Parent& node =
-        eraseHelper(tree[pos].parent, parent, indexInParent, pos, fixup);
+    Parent& node = eraseHelper(tree[pos].parent, parent, indexInParent, pos, fixup);
 
     parent = &node;
     indexInParent = searchKey.search(node);
     pos = node.children[indexInParent];
 
-    if (indexInParent < zc::size(node.keys) &&
-        node.keys[indexInParent] == row) {
+    if (indexInParent < zc::size(node.keys) && node.keys[indexInParent] == row) {
       // Oh look, the row is a key in this node! We'll need to come back and fix
       // this up later. Note that any particular row can only appear as *one*
       // key value anywhere in the tree, so we only need one fixup pointer,
@@ -532,8 +508,8 @@ void BTreeImpl::erase(uint row, const SearchKey& searchKey) {
 }
 
 template <typename Node>
-Node& BTreeImpl::eraseHelper(Node& node, Parent* parent, uint indexInParent,
-                             uint pos, MaybeUint*& fixup) {
+Node& BTreeImpl::eraseHelper(Node& node, Parent* parent, uint indexInParent, uint pos,
+                             MaybeUint*& fixup) {
   if (parent != nullptr && !node.isMostlyFull()) {
     // This is not the root, but it's only half-full. Rebalance.
     ZC_DASSERT(node.isHalfFull());
@@ -567,8 +543,7 @@ Node& BTreeImpl::eraseHelper(Node& node, Parent* parent, uint indexInParent,
           return sib;
         }
       }
-    } else if (indexInParent < Parent::NKEYS &&
-               parent->keys[indexInParent] != nullptr) {
+    } else if (indexInParent < Parent::NKEYS && parent->keys[indexInParent] != nullptr) {
       // There's a sibling to the right.
       uint sibPos = parent->children[indexInParent + 1];
       Node& sib = tree[sibPos];
@@ -615,8 +590,7 @@ void BTreeImpl::renumber(uint oldRow, uint newRow, const SearchKey& searchKey) {
     auto& node = tree[pos].parent;
     uint indexInParent = searchKey.search(node);
     pos = node.children[indexInParent];
-    if (indexInParent < zc::size(node.keys) &&
-        node.keys[indexInParent] == oldRow) {
+    if (indexInParent < zc::size(node.keys) && node.keys[indexInParent] == oldRow) {
       node.keys[indexInParent] = newRow;
     }
     ZC_DASSERT(pos != 0);
@@ -709,8 +683,8 @@ void BTreeImpl::move(Leaf& dst, uint dstPos, Leaf& src) {
   }
 }
 
-void BTreeImpl::rotateLeft(Parent& left, Parent& right, Parent& parent,
-                           uint indexInParent, MaybeUint*& fixup) {
+void BTreeImpl::rotateLeft(Parent& left, Parent& right, Parent& parent, uint indexInParent,
+                           MaybeUint*& fixup) {
   // Steal one item from the right node and move it to the left node.
 
   // Like merge(), this is only called on an exactly-half-empty node.
@@ -728,8 +702,8 @@ void BTreeImpl::rotateLeft(Parent& left, Parent& right, Parent& parent,
   right.children[Parent::NCHILDREN - 1] = 0;
 }
 
-void BTreeImpl::rotateLeft(Leaf& left, Leaf& right, Parent& parent,
-                           uint indexInParent, MaybeUint*& fixup) {
+void BTreeImpl::rotateLeft(Leaf& left, Leaf& right, Parent& parent, uint indexInParent,
+                           MaybeUint*& fixup) {
   // Steal one item from the right node and move it to the left node.
 
   // Like merge(), this is only called on an exactly-half-empty node.
@@ -743,8 +717,7 @@ void BTreeImpl::rotateLeft(Leaf& left, Leaf& right, Parent& parent,
   right.rows[Leaf::NROWS - 1] = nullptr;
 }
 
-void BTreeImpl::rotateRight(Parent& left, Parent& right, Parent& parent,
-                            uint indexInParent) {
+void BTreeImpl::rotateRight(Parent& left, Parent& right, Parent& parent, uint indexInParent) {
   // Steal one item from the left node and move it to the right node.
 
   // Like merge(), this is only called on an exactly-half-empty node.
@@ -764,8 +737,7 @@ void BTreeImpl::rotateRight(Parent& left, Parent& right, Parent& parent,
   left.children[back + 1] = 0;
 }
 
-void BTreeImpl::rotateRight(Leaf& left, Leaf& right, Parent& parent,
-                            uint indexInParent) {
+void BTreeImpl::rotateRight(Leaf& left, Leaf& right, Parent& parent, uint indexInParent) {
   // Steal one item from the left node and move it to the right node.
 
   // Like mergeFrom(), this is only called on an exactly-half-empty node.
@@ -822,15 +794,13 @@ void BTreeImpl::Parent::eraseAfter(uint i) {
 
 const InsertionOrderIndex::Link InsertionOrderIndex::EMPTY_LINK = {0, 0};
 
-InsertionOrderIndex::InsertionOrderIndex()
-    : capacity(0), links(const_cast<Link*>(&EMPTY_LINK)) {}
+InsertionOrderIndex::InsertionOrderIndex() : capacity(0), links(const_cast<Link*>(&EMPTY_LINK)) {}
 InsertionOrderIndex::InsertionOrderIndex(InsertionOrderIndex&& other)
     : capacity(other.capacity), links(other.links) {
   other.capacity = 0;
   other.links = const_cast<Link*>(&EMPTY_LINK);
 }
-InsertionOrderIndex& InsertionOrderIndex::operator=(
-    InsertionOrderIndex&& other) {
+InsertionOrderIndex& InsertionOrderIndex::operator=(InsertionOrderIndex&& other) {
   ZC_DASSERT(&other != this);
   capacity = other.capacity;
   links = other.links;
@@ -879,9 +849,7 @@ void InsertionOrderIndex::clear() {
 }
 
 zc::Maybe<size_t> InsertionOrderIndex::insertImpl(size_t pos) {
-  if (pos >= capacity) {
-    reserve(pos + 1);
-  }
+  if (pos >= capacity) { reserve(pos + 1); }
 
   links[pos + 1].prev = links[0].prev;
   links[pos + 1].next = 0;

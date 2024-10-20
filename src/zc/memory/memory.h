@@ -98,8 +98,7 @@ using RefOrVoid = typename RefOrVoid_<T>::Type;
 // This is a hack needed to avoid defining Own<void> as a totally separate
 // class.
 
-template <typename T,
-          bool isPolymorphic = _zc_internal_isPolymorphic((T*)nullptr)>
+template <typename T, bool isPolymorphic = _zc_internal_isPolymorphic((T*)nullptr)>
 struct CastToVoid_;
 
 template <typename T>
@@ -146,7 +145,7 @@ class Disposer {
   // Few developers will ever touch this interface. It is primarily useful for
   // those implementing custom memory allocators.
 
- protected:
+protected:
   // Do not declare a destructor, as doing so will force a global initializer
   // for each HeapDisposer instance. Eww!
 
@@ -157,7 +156,7 @@ class Disposer {
   // any casting, so the pointer exactly matches the original one given to
   // Own<T>.
 
- public:
+public:
   template <typename T>
   void dispose(T* object) const;
   // Helper wrapper around disposeImpl().
@@ -168,9 +167,8 @@ class Disposer {
   // Callers must not call dispose() on the same pointer twice, even if the
   // first call throws an exception.
 
- private:
-  template <typename T,
-            bool polymorphic = _zc_internal_isPolymorphic((T*)nullptr)>
+private:
+  template <typename T, bool polymorphic = _zc_internal_isPolymorphic((T*)nullptr)>
   struct Dispose_;
 };
 
@@ -178,22 +176,19 @@ template <typename T>
 class DestructorOnlyDisposer : public Disposer {
   // A disposer that merely calls the type's destructor and nothing else.
 
- public:
+public:
   static const DestructorOnlyDisposer instance;
 
-  void disposeImpl(void* pointer) const override {
-    reinterpret_cast<T*>(pointer)->~T();
-  }
+  void disposeImpl(void* pointer) const override { reinterpret_cast<T*>(pointer)->~T(); }
 };
 
 template <typename T>
-const DestructorOnlyDisposer<T> DestructorOnlyDisposer<T>::instance =
-    DestructorOnlyDisposer<T>();
+const DestructorOnlyDisposer<T> DestructorOnlyDisposer<T>::instance = DestructorOnlyDisposer<T>();
 
 class NullDisposer : public Disposer {
   // A disposer that does nothing.
 
- public:
+public:
   static const NullDisposer instance;
 
   void disposeImpl(void* pointer) const override {}
@@ -218,7 +213,7 @@ class AtomicPtrCounter {
   // AtomicPtrCounter uses atomic operations to keep track of active pointers.
   // Since no other memory location is observed, memory_order_relaxed is used.
 
- public:
+public:
   void dec() {
     size_t prevCount = count.fetch_sub(1, std::memory_order_relaxed);
     if (prevCount == 0) ZC_UNLIKELY {
@@ -235,7 +230,7 @@ class AtomicPtrCounter {
       }
   }
 
- private:
+private:
   std::atomic<size_t> count = 0;
 };
 
@@ -270,27 +265,21 @@ class Own<T, std::nullptr_t> {
   //   anyway if you force everyone to use a custom deleter then you've lost any
   //   benefit to interoperating with the "standard" unique_ptr.
 
- public:
+public:
   ZC_DISALLOW_COPY(Own);
   Own() : disposer(nullptr), ptr(nullptr) {}
-  Own(Own&& other) noexcept : disposer(other.disposer), ptr(other.ptr) {
-    other.ptr = nullptr;
-  }
-  Own(Own<RemoveConstOrDisable<T>>&& other) noexcept
-      : disposer(other.disposer), ptr(other.ptr) {
+  Own(Own&& other) noexcept : disposer(other.disposer), ptr(other.ptr) { other.ptr = nullptr; }
+  Own(Own<RemoveConstOrDisable<T>>&& other) noexcept : disposer(other.disposer), ptr(other.ptr) {
     other.ptr = nullptr;
   }
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
-  Own(Own<U>&& other) noexcept
-      : disposer(other.disposer), ptr(cast(other.ptr)) {
+  Own(Own<U>&& other) noexcept : disposer(other.disposer), ptr(cast(other.ptr)) {
     other.ptr = nullptr;
   }
-  template <typename U, typename StaticDisposer,
-            typename = EnableIf<canConvert<U*, T*>()>>
+  template <typename U, typename StaticDisposer, typename = EnableIf<canConvert<U*, T*>()>>
   Own(Own<U, StaticDisposer>&& other) noexcept;
   // Convert statically-disposed Own to dynamically-disposed Own.
-  Own(T* ptr, const Disposer& disposer) noexcept
-      : disposer(&disposer), ptr(ptr) {}
+  Own(T* ptr, const Disposer& disposer) noexcept : disposer(&disposer), ptr(ptr) {}
 
   ~Own() noexcept(false) { dispose(); }
 
@@ -304,9 +293,7 @@ class Own<T, std::nullptr_t> {
     disposer = other.disposer;
     ptr = other.ptr;
     other.ptr = nullptr;
-    if (ptrCopy != nullptr) {
-      disposerCopy->dispose(const_cast<RemoveConst<T>*>(ptrCopy));
-    }
+    if (ptrCopy != nullptr) { disposerCopy->dispose(const_cast<RemoveConst<T>*>(ptrCopy)); }
     return *this;
   }
 
@@ -375,7 +362,7 @@ class Own<T, std::nullptr_t> {
     return ptrCopy;
   }
 
- private:
+private:
   const Disposer* disposer;  // Only valid if ptr != nullptr.
   T* ptr;
 
@@ -396,9 +383,8 @@ class Own<T, std::nullptr_t> {
 
   template <typename U>
   static T* cast(U* ptr) {
-    static_assert(
-        _zc_internal_isPolymorphic((T*)nullptr),
-        "Casting owned pointers requires that the target type is polymorphic.");
+    static_assert(_zc_internal_isPolymorphic((T*)nullptr),
+                  "Casting owned pointers requires that the target type is polymorphic.");
     return ptr;
   }
 
@@ -431,12 +417,11 @@ class Own {
   // destruction is costing non-negligible resources. You should avoid this
   // unless you have a specific need, because it precludes a lot of power.
 
- public:
+public:
   ZC_DISALLOW_COPY(Own);
   Own() : ptr(nullptr) {}
   Own(Own&& other) noexcept : ptr(other.ptr) { other.ptr = nullptr; }
-  Own(Own<RemoveConstOrDisable<T>, StaticDisposer>&& other) noexcept
-      : ptr(other.ptr) {
+  Own(Own<RemoveConstOrDisable<T>, StaticDisposer>&& other) noexcept : ptr(other.ptr) {
     other.ptr = nullptr;
   }
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
@@ -455,9 +440,7 @@ class Own {
     T* ptrCopy = ptr;
     ptr = other.ptr;
     other.ptr = nullptr;
-    if (ptrCopy != nullptr) {
-      StaticDisposer::dispose(ptrCopy);
-    }
+    if (ptrCopy != nullptr) { StaticDisposer::dispose(ptrCopy); }
     return *this;
   }
 
@@ -516,7 +499,7 @@ class Own {
     return ptrCopy;
   }
 
- private:
+private:
   T* ptr;
 
   explicit Own(std::nullptr_t) : ptr(nullptr) {}
@@ -548,7 +531,7 @@ namespace _ {  // private
 
 template <typename T, typename D>
 class OwnOwn {
- public:
+public:
   OwnOwn(Own<T, D>&& value) noexcept : value(zc::mv(value)) {}
 
   Own<T, D>& operator*() & { return value; }
@@ -560,7 +543,7 @@ class OwnOwn {
   operator Own<T, D>*() { return value ? &value : nullptr; }
   operator const Own<T, D>*() const { return value ? &value : nullptr; }
 
- private:
+private:
   Own<T, D> value;
 };
 
@@ -581,7 +564,7 @@ const Own<T, D>* readMaybe(const Maybe<Own<T, D>>& maybe) {
 
 template <typename T, typename D>
 class Maybe<Own<T, D>> {
- public:
+public:
   Maybe() : ptr(nullptr) {}
   Maybe(Own<T, D>&& t) noexcept : ptr(zc::mv(t)) {}
   Maybe(Maybe&& other) noexcept : ptr(zc::mv(other.ptr)) {}
@@ -623,63 +606,46 @@ class Maybe<Own<T, D>> {
   bool operator==(zc::None) const { return ptr == nullptr; }
 
   Own<T, D>& orDefault(Own<T, D>& defaultValue) {
-    if (ptr == nullptr) {
-      return defaultValue;
-    }
+    if (ptr == nullptr) { return defaultValue; }
     return ptr;
   }
   const Own<T, D>& orDefault(const Own<T, D>& defaultValue) const {
-    if (ptr == nullptr) {
-      return defaultValue;
-    }
+    if (ptr == nullptr) { return defaultValue; }
     return ptr;
   }
 
   template <typename F,
-            typename Result = decltype(instance<bool>() ? instance<Own<T, D>>()
-                                                        : instance<F>()())>
+            typename Result = decltype(instance<bool>() ? instance<Own<T, D>>() : instance<F>()())>
   Result orDefault(F&& lazyDefaultValue) && {
-    if (ptr == nullptr) {
-      return lazyDefaultValue();
-    }
+    if (ptr == nullptr) { return lazyDefaultValue(); }
     return zc::mv(ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) & -> Maybe<decltype(f(instance<Own<T, D>&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+    if (ptr == nullptr) { return zc::none; }
     return f(ptr);
   }
 
   template <typename Func>
-  auto map(
-      Func&& f) const& -> Maybe<decltype(f(instance<const Own<T, D>&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+  auto map(Func&& f) const& -> Maybe<decltype(f(instance<const Own<T, D>&>()))> {
+    if (ptr == nullptr) { return zc::none; }
     return f(ptr);
   }
 
   template <typename Func>
   auto map(Func&& f) && -> Maybe<decltype(f(instance<Own<T, D>&&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+    if (ptr == nullptr) { return zc::none; }
     return f(zc::mv(ptr));
   }
 
   template <typename Func>
-  auto map(
-      Func&& f) const&& -> Maybe<decltype(f(instance<const Own<T, D>&&>()))> {
-    if (ptr == nullptr) {
-      return zc::none;
-    }
+  auto map(Func&& f) const&& -> Maybe<decltype(f(instance<const Own<T, D>&&>()))> {
+    if (ptr == nullptr) { return zc::none; }
     return f(zc::mv(ptr));
   }
 
- private:
+private:
   Own<T, D> ptr;
 
   template <typename U>
@@ -696,18 +662,15 @@ namespace _ {  // private
 
 template <typename T>
 class HeapDisposer final : public Disposer {
- public:
-  void disposeImpl(void* pointer) const override {
-    delete reinterpret_cast<T*>(pointer);
-  }
+public:
+  void disposeImpl(void* pointer) const override { delete reinterpret_cast<T*>(pointer); }
 
   static const HeapDisposer instance;
 };
 
 #if _MSC_VER && _MSC_VER < 1920 && !defined(__clang__)
 template <typename T>
-__declspec(selectany) const HeapDisposer<T> HeapDisposer<T>::instance =
-    HeapDisposer<T>();
+__declspec(selectany) const HeapDisposer<T> HeapDisposer<T>::instance = HeapDisposer<T>();
 // On MSVC 2017 we suddenly started seeing a linker error on one specific
 // specialization of `HeapDisposer::instance` when seemingly-unrelated code was
 // modified. Explicitly specifying
@@ -721,10 +684,8 @@ const HeapDisposer<T> HeapDisposer<T>::instance = HeapDisposer<T>();
 
 template <typename T, void (*F)(T*)>
 class CustomDisposer : public Disposer {
- public:
-  void disposeImpl(void* pointer) const override {
-    (*F)(reinterpret_cast<T*>(pointer));
-  }
+public:
+  void disposeImpl(void* pointer) const override { (*F)(reinterpret_cast<T*>(pointer)); }
 };
 
 template <typename T, void (*F)(T*)>
@@ -740,8 +701,7 @@ Own<T> heap(Params&&... params) {
   // size at delete time, we could actually implement an allocator that is more
   // efficient than operator new.)
 
-  return Own<T>(new T(zc::fwd<Params>(params)...),
-                _::HeapDisposer<T>::instance);
+  return Own<T>(new T(zc::fwd<Params>(params)...), _::HeapDisposer<T>::instance);
 }
 
 template <typename T>
@@ -792,7 +752,7 @@ class SpaceFor {
   // construct a T in the space, which returns an Own<T> which will take care of
   // calling T's destructor later.
 
- public:
+public:
   SpaceFor() {}
   ~SpaceFor() {}
 
@@ -802,7 +762,7 @@ class SpaceFor {
     return Own<T>(&value, DestructorOnlyDisposer<T>::instance);
   }
 
- private:
+private:
   union {
     T value;
   };
@@ -825,7 +785,7 @@ class Pin {
   // these operations are asserted. Zero-overhead replacement for T if
   // ZC_ASSERT_PTR_COUNTERS is not defined.
 
- public:
+public:
   template <typename... Params>
   Pin(Params&&... params) : t(zc::fwd<Params>(params)...) {}
   // Create new Pin<T> using the corresponding T constructor.
@@ -873,7 +833,7 @@ class Pin {
   void* operator new[](size_t count) = delete;
   // Pin<T> can't be heap allocated, only local or data field usage is ok.
 
- private:
+private:
   ZC_DISALLOW_COPY(Pin);
 
   Pin(T&& t) : t(zc::mv(t)) {}
@@ -901,7 +861,7 @@ class Ptr {
   // Asserts lifetime constraints when ZC_ASSERT_PTR_COUNTERS are defined.
   // Zero-overhead alternative for T& if ZC_ASSERT_PTR_COUNTERS is not defined.
 
- public:
+public:
   ~Ptr() {
     if (ptr == nullptr) {
       // the value was moved out
@@ -913,9 +873,7 @@ class Ptr {
   }
 
 #ifdef ZC_ASSERT_PTR_COUNTERS
-  Ptr(Ptr&& other) : ptr(other.ptr), counter(other.counter) {
-    other.ptr = nullptr;
-  }
+  Ptr(Ptr&& other) : ptr(other.ptr), counter(other.counter) { other.ptr = nullptr; }
 #else
   Ptr(Ptr&& other) : ptr(other.ptr) { other.ptr = nullptr; }
 #endif
@@ -934,9 +892,7 @@ class Ptr {
 
 // Ptr<T> can be freely copied.
 #ifdef ZC_ASSERT_PTR_COUNTERS
-  Ptr(const Ptr& other) : ptr(other.ptr), counter(other.counter) {
-    counter->inc();
-  }
+  Ptr(const Ptr& other) : ptr(other.ptr), counter(other.counter) { counter->inc(); }
 #else
   Ptr(const Ptr& other) : ptr(other.ptr) {}
 #endif
@@ -974,11 +930,9 @@ class Ptr {
   // necessary. It is undefined behavior to use the reference after the object
   // managed by this Ptr<T> ceased to exist.
 
- private:
+private:
 #ifdef ZC_ASSERT_PTR_COUNTERS
-  Ptr(Pin<T>* pin) : ptr(pin->get()), counter(&pin->ptrCounter) {
-    counter->inc();
-  }
+  Ptr(Pin<T>* pin) : ptr(pin->get()), counter(&pin->ptrCounter) { counter->inc(); }
 #else
   Ptr(Pin<T>* pin) : ptr(pin->get()) {}
 #endif
@@ -1042,8 +996,7 @@ struct OwnedBundle<> {};
 template <typename First, typename... Rest>
 struct OwnedBundle<First, Rest...> : public OwnedBundle<Rest...> {
   OwnedBundle(First&& first, Rest&&... rest)
-      : OwnedBundle<Rest...>(zc::fwd<Rest>(rest)...),
-        first(zc::fwd<First>(first)) {}
+      : OwnedBundle<Rest...>(zc::fwd<Rest>(rest)...), first(zc::fwd<First>(first)) {}
 
   // Note that it's intentional that `first` is destroyed before `rest`. This
   // way, doing ptr.attach(foo, bar, baz) is equivalent to
@@ -1054,15 +1007,14 @@ struct OwnedBundle<First, Rest...> : public OwnedBundle<Rest...> {
 
 template <typename... T>
 struct DisposableOwnedBundle final : Disposer, public OwnedBundle<T...> {
-  DisposableOwnedBundle(T&&... values)
-      : OwnedBundle<T...>(zc::fwd<T>(values)...) {}
+  DisposableOwnedBundle(T&&... values) : OwnedBundle<T...>(zc::fwd<T>(values)...) {}
   void disposeImpl(void* pointer) const override { delete this; }
 };
 
 template <typename T, typename StaticDisposer>
 class StaticDisposerAdapter final : public Disposer {
   // Adapts a static disposer to be called dynamically.
- public:
+public:
   void disposeImpl(void* pointer) const override {
     StaticDisposer::dispose(reinterpret_cast<T*>(pointer));
   }
@@ -1097,8 +1049,7 @@ Own<T> Own<T>::attach(Attachments&&... attachments) {
 
 template <typename T, typename... Attachments>
 Own<T> attachRef(T& value, Attachments&&... attachments) {
-  auto bundle = new _::DisposableOwnedBundle<Attachments...>(
-      zc::fwd<Attachments>(attachments)...);
+  auto bundle = new _::DisposableOwnedBundle<Attachments...>(zc::fwd<Attachments>(attachments)...);
   return Own<T>(&value, *bundle);
 }
 
@@ -1118,8 +1069,7 @@ Own<T>::Own(Own<U, StaticDisposer>&& other) noexcept : ptr(cast(other.ptr)) {
     // pointer pointing to the top of the object, which isn't exactly the same
     // as the `U*` pointer it wants. We have no choice but to allocate a dynamic
     // disposer here.
-    disposer =
-        new _::DisposableOwnedBundle<Own<U, StaticDisposer>>(zc::mv(other));
+    disposer = new _::DisposableOwnedBundle<Own<U, StaticDisposer>>(zc::mv(other));
   } else {
     disposer = &_::StaticDisposerAdapter<U, StaticDisposer>::instance;
     other.ptr = nullptr;

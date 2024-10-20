@@ -18,9 +18,8 @@ enum class CompilationStage {
 };
 
 class CompilerPipeline {
- public:
-  CompilerPipeline(const basic::LangOptions& options,
-                   source::SourceManager& source_mgr,
+public:
+  CompilerPipeline(const basic::LangOptions& options, source::SourceManager& source_mgr,
                    diagnostics::DiagnosticEngine& diags)
       : options_(options),
         source_mgr_(source_mgr),
@@ -31,12 +30,10 @@ class CompilerPipeline {
         stage_(CompilationStage::kNotStarted) {}
 
   void Process(const zc::String& input);
-  ZC_NODISCARD const zc::Vector<zc::String>& results() const {
-    return results_;
-  }
+  ZC_NODISCARD const zc::Vector<zc::String>& results() const { return results_; }
   ZC_NODISCARD CompilationStage stage() const { return stage_; }
 
- private:
+private:
   ZC_UNUSED const LangOptions& options_;
   source::SourceManager& source_mgr_;
   diagnostics::DiagnosticEngine& diags_;

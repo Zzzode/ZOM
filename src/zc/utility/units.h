@@ -56,21 +56,11 @@ struct Id {
   inline constexpr Id() : value(0) {}
   inline constexpr explicit Id(int value) : value(value) {}
 
-  inline constexpr bool operator==(const Id& other) const {
-    return value == other.value;
-  }
-  inline constexpr bool operator<=(const Id& other) const {
-    return value <= other.value;
-  }
-  inline constexpr bool operator>=(const Id& other) const {
-    return value >= other.value;
-  }
-  inline constexpr bool operator<(const Id& other) const {
-    return value < other.value;
-  }
-  inline constexpr bool operator>(const Id& other) const {
-    return value > other.value;
-  }
+  inline constexpr bool operator==(const Id& other) const { return value == other.value; }
+  inline constexpr bool operator<=(const Id& other) const { return value <= other.value; }
+  inline constexpr bool operator>=(const Id& other) const { return value >= other.value; }
+  inline constexpr bool operator<(const Id& other) const { return value < other.value; }
+  inline constexpr bool operator>(const Id& other) const { return value > other.value; }
 };
 
 // =======================================================================================
@@ -113,14 +103,12 @@ class UnitRatio {
   // unit.  Use this type by multiplying it by a Quantity, or dividing a
   // Quantity by it.
 
-  static_assert(isIntegralOrBounded<Number>(),
-                "Underlying type for UnitRatio must be integer.");
+  static_assert(isIntegralOrBounded<Number>(), "Underlying type for UnitRatio must be integer.");
 
- public:
+public:
   inline UnitRatio() {}
 
-  constexpr UnitRatio(Number unit1PerUnit2, decltype(unsafe))
-      : unit1PerUnit2(unit1PerUnit2) {}
+  constexpr UnitRatio(Number unit1PerUnit2, decltype(unsafe)) : unit1PerUnit2(unit1PerUnit2) {}
   // This constructor was intended to be private, but GCC complains about it
   // being private in a bunch of places that don't appear to even call it, so I
   // made it public.  Oh well.
@@ -130,43 +118,43 @@ class UnitRatio {
       : unit1PerUnit2(other.unit1PerUnit2) {}
 
   template <typename OtherNumber>
-  inline constexpr UnitRatio<decltype(Number() + OtherNumber()), Unit1, Unit2>
-  operator+(UnitRatio<OtherNumber, Unit1, Unit2> other) const {
+  inline constexpr UnitRatio<decltype(Number() + OtherNumber()), Unit1, Unit2> operator+(
+      UnitRatio<OtherNumber, Unit1, Unit2> other) const {
     return UnitRatio<decltype(Number() + OtherNumber()), Unit1, Unit2>(
         unit1PerUnit2 + other.unit1PerUnit2, unsafe);
   }
   template <typename OtherNumber>
-  inline constexpr UnitRatio<decltype(Number() - OtherNumber()), Unit1, Unit2>
-  operator-(UnitRatio<OtherNumber, Unit1, Unit2> other) const {
+  inline constexpr UnitRatio<decltype(Number() - OtherNumber()), Unit1, Unit2> operator-(
+      UnitRatio<OtherNumber, Unit1, Unit2> other) const {
     return UnitRatio<decltype(Number() - OtherNumber()), Unit1, Unit2>(
         unit1PerUnit2 - other.unit1PerUnit2, unsafe);
   }
 
   template <typename OtherNumber, typename Unit3>
-  inline constexpr UnitRatio<decltype(Number() * OtherNumber()), Unit3, Unit2>
-  operator*(UnitRatio<OtherNumber, Unit3, Unit1> other) const {
+  inline constexpr UnitRatio<decltype(Number() * OtherNumber()), Unit3, Unit2> operator*(
+      UnitRatio<OtherNumber, Unit3, Unit1> other) const {
     // U1 / U2 * U3 / U1 = U3 / U2
     return UnitRatio<decltype(Number() * OtherNumber()), Unit3, Unit2>(
         unit1PerUnit2 * other.unit1PerUnit2, unsafe);
   }
   template <typename OtherNumber, typename Unit3>
-  inline constexpr UnitRatio<decltype(Number() * OtherNumber()), Unit1, Unit3>
-  operator*(UnitRatio<OtherNumber, Unit2, Unit3> other) const {
+  inline constexpr UnitRatio<decltype(Number() * OtherNumber()), Unit1, Unit3> operator*(
+      UnitRatio<OtherNumber, Unit2, Unit3> other) const {
     // U1 / U2 * U2 / U3 = U1 / U3
     return UnitRatio<decltype(Number() * OtherNumber()), Unit1, Unit3>(
         unit1PerUnit2 * other.unit1PerUnit2, unsafe);
   }
 
   template <typename OtherNumber, typename Unit3>
-  inline constexpr UnitRatio<decltype(Number() * OtherNumber()), Unit3, Unit2>
-  operator/(UnitRatio<OtherNumber, Unit1, Unit3> other) const {
+  inline constexpr UnitRatio<decltype(Number() * OtherNumber()), Unit3, Unit2> operator/(
+      UnitRatio<OtherNumber, Unit1, Unit3> other) const {
     // (U1 / U2) / (U1 / U3) = U3 / U2
     return UnitRatio<decltype(Number() * OtherNumber()), Unit3, Unit2>(
         unit1PerUnit2 / other.unit1PerUnit2, unsafe);
   }
   template <typename OtherNumber, typename Unit3>
-  inline constexpr UnitRatio<decltype(Number() * OtherNumber()), Unit1, Unit3>
-  operator/(UnitRatio<OtherNumber, Unit3, Unit2> other) const {
+  inline constexpr UnitRatio<decltype(Number() * OtherNumber()), Unit1, Unit3> operator/(
+      UnitRatio<OtherNumber, Unit3, Unit2> other) const {
     // (U1 / U2) / (U3 / U2) = U1 / U3
     return UnitRatio<decltype(Number() * OtherNumber()), Unit1, Unit3>(
         unit1PerUnit2 / other.unit1PerUnit2, unsafe);
@@ -179,12 +167,11 @@ class UnitRatio {
   }
 
   template <typename OtherNumber>
-  inline constexpr bool operator==(
-      const UnitRatio<OtherNumber, Unit1, Unit2>& other) const {
+  inline constexpr bool operator==(const UnitRatio<OtherNumber, Unit1, Unit2>& other) const {
     return unit1PerUnit2 == other.unit1PerUnit2;
   }
 
- private:
+private:
   Number unit1PerUnit2;
 
   template <typename OtherNumber, typename OtherUnit>
@@ -193,15 +180,13 @@ class UnitRatio {
   friend class UnitRatio;
 
   template <typename N1, typename N2, typename U1, typename U2, typename>
-  friend inline constexpr UnitRatio<decltype(N1() * N2()), U1, U2> operator*(
-      N1, UnitRatio<N2, U1, U2>);
+  friend inline constexpr UnitRatio<decltype(N1() * N2()), U1, U2> operator*(N1,
+                                                                             UnitRatio<N2, U1, U2>);
 };
 
-template <
-    typename N1, typename N2, typename U1, typename U2,
-    typename = EnableIf<isIntegralOrBounded<N1>() && isIntegralOrBounded<N2>()>>
-inline constexpr UnitRatio<decltype(N1() * N2()), U1, U2> operator*(
-    N1 n, UnitRatio<N2, U1, U2> r) {
+template <typename N1, typename N2, typename U1, typename U2,
+          typename = EnableIf<isIntegralOrBounded<N1>() && isIntegralOrBounded<N2>()>>
+inline constexpr UnitRatio<decltype(N1() * N2()), U1, U2> operator*(N1 n, UnitRatio<N2, U1, U2> r) {
   return UnitRatio<decltype(N1() * N2()), U1, U2>(n * r.unit1PerUnit2, unsafe);
 }
 
@@ -253,10 +238,9 @@ class Quantity {
   //     waitFor(3 * MINUTES);
   //   }
 
-  static_assert(isIntegralOrBounded<Number>(),
-                "Underlying type for Quantity must be integer.");
+  static_assert(isIntegralOrBounded<Number>(), "Underlying type for Quantity must be integer.");
 
- public:
+public:
   inline constexpr Quantity() = default;
 
   inline constexpr Quantity(MaxValue_) : value(maxValue) {}
@@ -273,8 +257,7 @@ class Quantity {
   // made it public.  Oh well.
 
   template <typename OtherNumber>
-  inline constexpr Quantity(const Quantity<OtherNumber, Unit>& other)
-      : value(other.value) {}
+  inline constexpr Quantity(const Quantity<OtherNumber, Unit>& other) : value(other.value) {}
 
   template <typename OtherNumber>
   inline Quantity& operator=(const Quantity<OtherNumber, Unit>& other) {
@@ -285,23 +268,19 @@ class Quantity {
   template <typename OtherNumber>
   inline constexpr Quantity<decltype(Number() + OtherNumber()), Unit> operator+(
       const Quantity<OtherNumber, Unit>& other) const {
-    return Quantity<decltype(Number() + OtherNumber()), Unit>(
-        value + other.value, unsafe);
+    return Quantity<decltype(Number() + OtherNumber()), Unit>(value + other.value, unsafe);
   }
   template <typename OtherNumber>
   inline constexpr Quantity<decltype(Number() - OtherNumber()), Unit> operator-(
       const Quantity<OtherNumber, Unit>& other) const {
-    return Quantity<decltype(Number() - OtherNumber()), Unit>(
-        value - other.value, unsafe);
+    return Quantity<decltype(Number() - OtherNumber()), Unit>(value - other.value, unsafe);
   }
-  template <typename OtherNumber,
-            typename = EnableIf<isIntegralOrBounded<OtherNumber>()>>
+  template <typename OtherNumber, typename = EnableIf<isIntegralOrBounded<OtherNumber>()>>
   inline constexpr Quantity<decltype(Number() * OtherNumber()), Unit> operator*(
       OtherNumber other) const {
     return Quantity<decltype(Number() * other), Unit>(value * other, unsafe);
   }
-  template <typename OtherNumber,
-            typename = EnableIf<isIntegralOrBounded<OtherNumber>()>>
+  template <typename OtherNumber, typename = EnableIf<isIntegralOrBounded<OtherNumber>()>>
   inline constexpr Quantity<decltype(Number() / OtherNumber()), Unit> operator/(
       OtherNumber other) const {
     return Quantity<decltype(Number() / other), Unit>(value / other, unsafe);
@@ -314,59 +293,51 @@ class Quantity {
   template <typename OtherNumber>
   inline constexpr Quantity<decltype(Number() % OtherNumber()), Unit> operator%(
       const Quantity<OtherNumber, Unit>& other) const {
-    return Quantity<decltype(Number() % OtherNumber()), Unit>(
-        value % other.value, unsafe);
+    return Quantity<decltype(Number() % OtherNumber()), Unit>(value % other.value, unsafe);
   }
 
   template <typename OtherNumber, typename OtherUnit>
-  inline constexpr Quantity<decltype(Number() * OtherNumber()), OtherUnit>
-  operator*(UnitRatio<OtherNumber, OtherUnit, Unit> ratio) const {
-    return Quantity<decltype(Number() * OtherNumber()), OtherUnit>(
-        value * ratio.unit1PerUnit2, unsafe);
+  inline constexpr Quantity<decltype(Number() * OtherNumber()), OtherUnit> operator*(
+      UnitRatio<OtherNumber, OtherUnit, Unit> ratio) const {
+    return Quantity<decltype(Number() * OtherNumber()), OtherUnit>(value * ratio.unit1PerUnit2,
+                                                                   unsafe);
   }
   template <typename OtherNumber, typename OtherUnit>
-  inline constexpr Quantity<decltype(Number() / OtherNumber()), OtherUnit>
-  operator/(UnitRatio<OtherNumber, Unit, OtherUnit> ratio) const {
-    return Quantity<decltype(Number() / OtherNumber()), OtherUnit>(
-        value / ratio.unit1PerUnit2, unsafe);
+  inline constexpr Quantity<decltype(Number() / OtherNumber()), OtherUnit> operator/(
+      UnitRatio<OtherNumber, Unit, OtherUnit> ratio) const {
+    return Quantity<decltype(Number() / OtherNumber()), OtherUnit>(value / ratio.unit1PerUnit2,
+                                                                   unsafe);
   }
   template <typename OtherNumber, typename OtherUnit>
   inline constexpr Quantity<decltype(Number() % OtherNumber()), Unit> operator%(
       UnitRatio<OtherNumber, Unit, OtherUnit> ratio) const {
-    return Quantity<decltype(Number() % OtherNumber()), Unit>(
-        value % ratio.unit1PerUnit2, unsafe);
+    return Quantity<decltype(Number() % OtherNumber()), Unit>(value % ratio.unit1PerUnit2, unsafe);
   }
   template <typename OtherNumber, typename OtherUnit>
-  inline constexpr UnitRatio<decltype(Number() / OtherNumber()), Unit,
-                             OtherUnit>
-  operator/(Quantity<OtherNumber, OtherUnit> other) const {
-    return UnitRatio<decltype(Number() / OtherNumber()), Unit, OtherUnit>(
-        value / other.value, unsafe);
+  inline constexpr UnitRatio<decltype(Number() / OtherNumber()), Unit, OtherUnit> operator/(
+      Quantity<OtherNumber, OtherUnit> other) const {
+    return UnitRatio<decltype(Number() / OtherNumber()), Unit, OtherUnit>(value / other.value,
+                                                                          unsafe);
   }
 
   template <typename OtherNumber>
-  inline constexpr bool operator==(
-      const Quantity<OtherNumber, Unit>& other) const {
+  inline constexpr bool operator==(const Quantity<OtherNumber, Unit>& other) const {
     return value == other.value;
   }
   template <typename OtherNumber>
-  inline constexpr bool operator<=(
-      const Quantity<OtherNumber, Unit>& other) const {
+  inline constexpr bool operator<=(const Quantity<OtherNumber, Unit>& other) const {
     return value <= other.value;
   }
   template <typename OtherNumber>
-  inline constexpr bool operator>=(
-      const Quantity<OtherNumber, Unit>& other) const {
+  inline constexpr bool operator>=(const Quantity<OtherNumber, Unit>& other) const {
     return value >= other.value;
   }
   template <typename OtherNumber>
-  inline constexpr bool operator<(
-      const Quantity<OtherNumber, Unit>& other) const {
+  inline constexpr bool operator<(const Quantity<OtherNumber, Unit>& other) const {
     return value < other.value;
   }
   template <typename OtherNumber>
-  inline constexpr bool operator>(
-      const Quantity<OtherNumber, Unit>& other) const {
+  inline constexpr bool operator>(const Quantity<OtherNumber, Unit>& other) const {
     return value > other.value;
   }
 
@@ -391,7 +362,7 @@ class Quantity {
     return *this;
   }
 
- private:
+private:
   Number value;
 
   template <typename OtherNumber, typename OtherUnit>
@@ -429,8 +400,7 @@ inline constexpr auto operator*(Number1 a, Quantity<Number2, Unit> b)
 
 template <typename Number1, typename Number2, typename Unit, typename Unit2>
 inline constexpr auto operator*(UnitRatio<Number1, Unit2, Unit> ratio,
-                                Quantity<Number2, Unit> measure)
-    -> decltype(measure * ratio) {
+                                Quantity<Number2, Unit> measure) -> decltype(measure * ratio) {
   return measure * ratio;
 }
 
@@ -455,7 +425,7 @@ class Absolute {
   //   Absolute by a UnitRatio to change its units, which is actually totally
   //   logical and kind of neat.
 
- public:
+public:
   inline constexpr Absolute(MaxValue_) : value(maxValue) {}
   inline constexpr Absolute(MinValue_) : value(minValue) {}
   // Allow initialization from maxValue and minValue.
@@ -464,15 +434,9 @@ class Absolute {
   // duplicate constructor definition, so we specify MaxValue_ and MinValue_
   // types explicitly.
 
-  inline constexpr Absolute operator+(const T& other) const {
-    return Absolute(value + other);
-  }
-  inline constexpr Absolute operator-(const T& other) const {
-    return Absolute(value - other);
-  }
-  inline constexpr T operator-(const Absolute& other) const {
-    return value - other.value;
-  }
+  inline constexpr Absolute operator+(const T& other) const { return Absolute(value + other); }
+  inline constexpr Absolute operator-(const T& other) const { return Absolute(value - other); }
+  inline constexpr T operator-(const Absolute& other) const { return value - other.value; }
 
   inline Absolute& operator+=(const T& other) {
     value += other;
@@ -483,23 +447,13 @@ class Absolute {
     return *this;
   }
 
-  inline constexpr bool operator==(const Absolute& other) const {
-    return value == other.value;
-  }
-  inline constexpr bool operator<=(const Absolute& other) const {
-    return value <= other.value;
-  }
-  inline constexpr bool operator>=(const Absolute& other) const {
-    return value >= other.value;
-  }
-  inline constexpr bool operator<(const Absolute& other) const {
-    return value < other.value;
-  }
-  inline constexpr bool operator>(const Absolute& other) const {
-    return value > other.value;
-  }
+  inline constexpr bool operator==(const Absolute& other) const { return value == other.value; }
+  inline constexpr bool operator<=(const Absolute& other) const { return value <= other.value; }
+  inline constexpr bool operator>=(const Absolute& other) const { return value >= other.value; }
+  inline constexpr bool operator<(const Absolute& other) const { return value < other.value; }
+  inline constexpr bool operator>(const Absolute& other) const { return value > other.value; }
 
- private:
+private:
   T value;
 
   explicit constexpr Absolute(T value) : value(value) {}
@@ -509,8 +463,7 @@ class Absolute {
 };
 
 template <typename T, typename Label>
-inline constexpr Absolute<T, Label> operator+(const T& a,
-                                              const Absolute<T, Label>& b) {
+inline constexpr Absolute<T, Label> operator+(const T& a, const Absolute<T, Label>& b) {
   return b + a;
 }
 
@@ -553,8 +506,7 @@ inline constexpr uint bitCount() {
 
 template <uint bitCountBitCount>
 struct AtLeastUInt_ {
-  static_assert(bitCountBitCount < 7,
-                "don't know how to represent integers over 64 bits");
+  static_assert(bitCountBitCount < 7, "don't know how to represent integers over 64 bits");
 };
 template <>
 struct AtLeastUInt_<0> {
@@ -596,17 +548,16 @@ template <uint value>
 class BoundedConst {
   // A constant integer value on which we can do bit size analysis.
 
- public:
+public:
   BoundedConst() = default;
 
   inline constexpr uint unwrap() const { return value; }
 
-#define OP(op, check)                                            \
-  template <uint other>                                          \
-  inline constexpr BoundedConst<(value op other)> operator op(   \
-      BoundedConst<other>) const {                               \
-    static_assert(check, "overflow in BoundedConst arithmetic"); \
-    return BoundedConst<(value op other)>();                     \
+#define OP(op, check)                                                                      \
+  template <uint other>                                                                    \
+  inline constexpr BoundedConst<(value op other)> operator op(BoundedConst<other>) const { \
+    static_assert(check, "overflow in BoundedConst arithmetic");                           \
+    return BoundedConst<(value op other)>();                                               \
   }
 #define COMPARE_OP(op)                                           \
   template <uint other>                                          \
@@ -673,13 +624,11 @@ static constexpr uint64_t boundedLShift() {
 }
 
 template <uint a, uint b>
-inline constexpr BoundedConst<zc::min(a, b)> min(BoundedConst<a>,
-                                                 BoundedConst<b>) {
+inline constexpr BoundedConst<zc::min(a, b)> min(BoundedConst<a>, BoundedConst<b>) {
   return bounded<zc::min(a, b)>();
 }
 template <uint a, uint b>
-inline constexpr BoundedConst<zc::max(a, b)> max(BoundedConst<a>,
-                                                 BoundedConst<b>) {
+inline constexpr BoundedConst<zc::max(a, b)> max(BoundedConst<a>, BoundedConst<b>) {
   return bounded<zc::max(a, b)>();
 }
 // We need to override min() and max() between constants because the ternary
@@ -689,7 +638,7 @@ inline constexpr BoundedConst<zc::max(a, b)> max(BoundedConst<a>,
 
 template <uint64_t maxN, typename T>
 class Bounded {
- public:
+public:
   static_assert(maxN <= T(zc::maxValue), "possible overflow detected");
 
   Bounded() = default;
@@ -700,8 +649,7 @@ class Bounded {
     static_assert(OtherInt(maxValue) <= maxN, "possible overflow detected");
   }
   template <uint64_t otherMax, typename OtherT>
-  inline constexpr Bounded(const Bounded<otherMax, OtherT>& other)
-      : value(other.value) {
+  inline constexpr Bounded(const Bounded<otherMax, OtherT>& other) : value(other.value) {
     static_assert(otherMax <= maxN, "possible overflow detected");
   }
   template <uint otherValue>
@@ -731,18 +679,16 @@ class Bounded {
 
   inline constexpr T unwrap() const { return value; }
 
-#define OP(op, newMax)                                                      \
-  template <uint64_t otherMax, typename otherT>                             \
-  inline constexpr Bounded<newMax, decltype(T() op otherT())> operator op(  \
-      const Bounded<otherMax, otherT>& other) const {                       \
-    return Bounded<newMax, decltype(T() op otherT())>(value op other.value, \
-                                                      unsafe);              \
+#define OP(op, newMax)                                                               \
+  template <uint64_t otherMax, typename otherT>                                      \
+  inline constexpr Bounded<newMax, decltype(T() op otherT())> operator op(           \
+      const Bounded<otherMax, otherT>& other) const {                                \
+    return Bounded<newMax, decltype(T() op otherT())>(value op other.value, unsafe); \
   }
-#define COMPARE_OP(op)                                                      \
-  template <uint64_t otherMax, typename OtherT>                             \
-  inline constexpr bool operator op(const Bounded<otherMax, OtherT>& other) \
-      const {                                                               \
-    return value op other.value;                                            \
+#define COMPARE_OP(op)                                                              \
+  template <uint64_t otherMax, typename OtherT>                                     \
+  inline constexpr bool operator op(const Bounded<otherMax, OtherT>& other) const { \
+    return value op other.value;                                                    \
   }
 
   OP(+, (boundedAdd<maxN, otherMax>()))
@@ -796,14 +742,12 @@ class Bounded {
     if (value < other.value) {
       return nullptr;
     } else {
-      return Bounded<maxN, decltype(T() - OtherT())>(value - other.value,
-                                                     unsafe);
+      return Bounded<maxN, decltype(T() - OtherT())>(value - other.value, unsafe);
     }
   }
 
   template <uint otherValue>
-  inline Maybe<Bounded<maxN - otherValue, T>> trySubtract(
-      BoundedConst<otherValue>) const {
+  inline Maybe<Bounded<maxN - otherValue, T>> trySubtract(BoundedConst<otherValue>) const {
     // Subtract a number, calling func() if the result would underflow.
     if (value < otherValue) {
       return nullptr;
@@ -821,7 +765,7 @@ class Bounded {
   // Only use these as a last resort, with ample commentary on why you think
   // it's safe.
 
- private:
+private:
   T value;
 
   template <uint64_t, typename>
@@ -838,24 +782,19 @@ inline constexpr Bounded<1, uint8_t> bounded(bool value) {
 }
 
 template <uint bits, typename Number>
-inline constexpr Bounded<maxValueForBits<bits>(), Number> assumeBits(
-    Number value) {
+inline constexpr Bounded<maxValueForBits<bits>(), Number> assumeBits(Number value) {
   return Bounded<maxValueForBits<bits>(), Number>(value, unsafe);
 }
 
 template <uint bits, uint64_t maxN, typename T>
-inline constexpr Bounded<maxValueForBits<bits>(), T> assumeBits(
-    Bounded<maxN, T> value) {
+inline constexpr Bounded<maxValueForBits<bits>(), T> assumeBits(Bounded<maxN, T> value) {
   return Bounded<maxValueForBits<bits>(), T>(value, unsafe);
 }
 
 template <uint bits, typename Number, typename Unit>
 inline constexpr auto assumeBits(Quantity<Number, Unit> value)
-    -> Quantity<decltype(assumeBits<bits>(value /
-                                          unit<Quantity<Number, Unit>>())),
-                Unit> {
-  return Quantity<
-      decltype(assumeBits<bits>(value / unit<Quantity<Number, Unit>>())), Unit>(
+    -> Quantity<decltype(assumeBits<bits>(value / unit<Quantity<Number, Unit>>())), Unit> {
+  return Quantity<decltype(assumeBits<bits>(value / unit<Quantity<Number, Unit>>())), Unit>(
       assumeBits<bits>(value / unit<Quantity<Number, Unit>>()), unsafe);
 }
 
@@ -871,46 +810,38 @@ inline constexpr Bounded<newMaxN, T> assumeMax(Bounded<maxN, T> value) {
 
 template <uint64_t maxN, typename Number, typename Unit>
 inline constexpr auto assumeMax(Quantity<Number, Unit> value)
-    -> Quantity<decltype(assumeMax<maxN>(value /
-                                         unit<Quantity<Number, Unit>>())),
-                Unit> {
-  return Quantity<
-      decltype(assumeMax<maxN>(value / unit<Quantity<Number, Unit>>())), Unit>(
+    -> Quantity<decltype(assumeMax<maxN>(value / unit<Quantity<Number, Unit>>())), Unit> {
+  return Quantity<decltype(assumeMax<maxN>(value / unit<Quantity<Number, Unit>>())), Unit>(
       assumeMax<maxN>(value / unit<Quantity<Number, Unit>>()), unsafe);
 }
 
 template <uint maxN, typename Number>
-inline constexpr Bounded<maxN, Number> assumeMax(BoundedConst<maxN>,
-                                                 Number value) {
+inline constexpr Bounded<maxN, Number> assumeMax(BoundedConst<maxN>, Number value) {
   return assumeMax<maxN>(value);
 }
 
 template <uint newMaxN, uint64_t maxN, typename T>
-inline constexpr Bounded<newMaxN, T> assumeMax(BoundedConst<maxN>,
-                                               Bounded<maxN, T> value) {
+inline constexpr Bounded<newMaxN, T> assumeMax(BoundedConst<maxN>, Bounded<maxN, T> value) {
   return assumeMax<maxN>(value);
 }
 
 template <uint maxN, typename Number, typename Unit>
 inline constexpr auto assumeMax(Quantity<BoundedConst<maxN>, Unit>,
-                                Quantity<Number, Unit> value)
-    -> decltype(assumeMax<maxN>(value)) {
+                                Quantity<Number, Unit> value) -> decltype(assumeMax<maxN>(value)) {
   return assumeMax<maxN>(value);
 }
 
 template <uint64_t newMax, uint64_t maxN, typename T, typename ErrorFunc>
-inline Bounded<newMax, T> assertMax(Bounded<maxN, T> value,
-                                    ErrorFunc&& errorFunc) {
+inline Bounded<newMax, T> assertMax(Bounded<maxN, T> value, ErrorFunc&& errorFunc) {
   // Assert that the bounded value is less than or equal to the given maximum,
   // calling errorFunc() if not.
   static_assert(newMax < maxN, "this bounded size assertion is redundant");
   return value.template assertMax<newMax>(zc::fwd<ErrorFunc>(errorFunc));
 }
 
-template <uint64_t newMax, uint64_t maxN, typename T, typename Unit,
-          typename ErrorFunc>
-inline Quantity<Bounded<newMax, T>, Unit> assertMax(
-    Quantity<Bounded<maxN, T>, Unit> value, ErrorFunc&& errorFunc) {
+template <uint64_t newMax, uint64_t maxN, typename T, typename Unit, typename ErrorFunc>
+inline Quantity<Bounded<newMax, T>, Unit> assertMax(Quantity<Bounded<maxN, T>, Unit> value,
+                                                    ErrorFunc&& errorFunc) {
   // Assert that the bounded value is less than or equal to the given maximum,
   // calling errorFunc() if not.
   static_assert(newMax < maxN, "this bounded size assertion is redundant");
@@ -920,39 +851,33 @@ inline Quantity<Bounded<newMax, T>, Unit> assertMax(
 }
 
 template <uint newMax, uint64_t maxN, typename T, typename ErrorFunc>
-inline Bounded<newMax, T> assertMax(BoundedConst<newMax>,
-                                    Bounded<maxN, T> value,
+inline Bounded<newMax, T> assertMax(BoundedConst<newMax>, Bounded<maxN, T> value,
                                     ErrorFunc&& errorFunc) {
   return assertMax<newMax>(value, zc::mv(errorFunc));
 }
 
-template <uint newMax, uint64_t maxN, typename T, typename Unit,
-          typename ErrorFunc>
-inline Quantity<Bounded<newMax, T>, Unit> assertMax(
-    Quantity<BoundedConst<newMax>, Unit>,
-    Quantity<Bounded<maxN, T>, Unit> value, ErrorFunc&& errorFunc) {
+template <uint newMax, uint64_t maxN, typename T, typename Unit, typename ErrorFunc>
+inline Quantity<Bounded<newMax, T>, Unit> assertMax(Quantity<BoundedConst<newMax>, Unit>,
+                                                    Quantity<Bounded<maxN, T>, Unit> value,
+                                                    ErrorFunc&& errorFunc) {
   return assertMax<newMax>(value, zc::mv(errorFunc));
 }
 
-template <uint64_t newBits, uint64_t maxN, typename T,
-          typename ErrorFunc = ThrowOverflow>
-inline Bounded<maxValueForBits<newBits>(), T> assertMaxBits(
-    Bounded<maxN, T> value, ErrorFunc&& errorFunc = ErrorFunc()) {
+template <uint64_t newBits, uint64_t maxN, typename T, typename ErrorFunc = ThrowOverflow>
+inline Bounded<maxValueForBits<newBits>(), T> assertMaxBits(Bounded<maxN, T> value,
+                                                            ErrorFunc&& errorFunc = ErrorFunc()) {
   // Assert that the bounded value requires no more than the given number of
   // bits, calling errorFunc() if not.
-  return assertMax<maxValueForBits<newBits>()>(value,
-                                               zc::fwd<ErrorFunc>(errorFunc));
+  return assertMax<maxValueForBits<newBits>()>(value, zc::fwd<ErrorFunc>(errorFunc));
 }
 
 template <uint64_t newBits, uint64_t maxN, typename T, typename Unit,
           typename ErrorFunc = ThrowOverflow>
 inline Quantity<Bounded<maxValueForBits<newBits>(), T>, Unit> assertMaxBits(
-    Quantity<Bounded<maxN, T>, Unit> value,
-    ErrorFunc&& errorFunc = ErrorFunc()) {
+    Quantity<Bounded<maxN, T>, Unit> value, ErrorFunc&& errorFunc = ErrorFunc()) {
   // Assert that the bounded value requires no more than the given number of
   // bits, calling errorFunc() if not.
-  return assertMax<maxValueForBits<newBits>()>(value,
-                                               zc::fwd<ErrorFunc>(errorFunc));
+  return assertMax<maxValueForBits<newBits>()>(value, zc::fwd<ErrorFunc>(errorFunc));
 }
 
 template <typename newT, uint64_t maxN, typename T>
@@ -967,51 +892,40 @@ inline constexpr Quantity<Bounded<maxN, newT>, Unit> upgradeBound(
 }
 
 template <uint64_t maxN, typename T, typename Other, typename ErrorFunc>
-inline auto subtractChecked(Bounded<maxN, T> value, Other other,
-                            ErrorFunc&& errorFunc)
+inline auto subtractChecked(Bounded<maxN, T> value, Other other, ErrorFunc&& errorFunc)
     -> decltype(value.subtractChecked(other, zc::fwd<ErrorFunc>(errorFunc))) {
   return value.subtractChecked(other, zc::fwd<ErrorFunc>(errorFunc));
 }
 
 template <typename T, typename U, typename Unit, typename ErrorFunc>
-inline auto subtractChecked(Quantity<T, Unit> value, Quantity<U, Unit> other,
-                            ErrorFunc&& errorFunc)
-    -> Quantity<decltype(subtractChecked(T(), U(),
-                                         zc::fwd<ErrorFunc>(errorFunc))),
-                Unit> {
-  return subtractChecked(value / unit<Quantity<T, Unit>>(),
-                         other / unit<Quantity<U, Unit>>(),
+inline auto subtractChecked(Quantity<T, Unit> value, Quantity<U, Unit> other, ErrorFunc&& errorFunc)
+    -> Quantity<decltype(subtractChecked(T(), U(), zc::fwd<ErrorFunc>(errorFunc))), Unit> {
+  return subtractChecked(value / unit<Quantity<T, Unit>>(), other / unit<Quantity<U, Unit>>(),
                          zc::fwd<ErrorFunc>(errorFunc)) *
          unit<Quantity<T, Unit>>();
 }
 
 template <uint64_t maxN, typename T, typename Other>
-inline auto trySubtract(Bounded<maxN, T> value,
-                        Other other) -> decltype(value.trySubtract(other)) {
+inline auto trySubtract(Bounded<maxN, T> value, Other other) -> decltype(value.trySubtract(other)) {
   return value.trySubtract(other);
 }
 
 template <typename T, typename U, typename Unit>
 inline auto trySubtract(Quantity<T, Unit> value, Quantity<U, Unit> other)
     -> Maybe<Quantity<decltype(subtractChecked(T(), U(), int())), Unit>> {
-  return trySubtract(value / unit<Quantity<T, Unit>>(),
-                     other / unit<Quantity<U, Unit>>())
+  return trySubtract(value / unit<Quantity<T, Unit>>(), other / unit<Quantity<U, Unit>>())
       .map([](decltype(subtractChecked(T(), U(), int())) x) {
         return x * unit<Quantity<T, Unit>>();
       });
 }
 
 template <uint64_t aN, uint64_t bN, typename A, typename B>
-inline constexpr Bounded<zc::min(aN, bN), WiderType<A, B>> min(
-    Bounded<aN, A> a, Bounded<bN, B> b) {
-  return Bounded<zc::min(aN, bN), WiderType<A, B>>(
-      zc::min(a.unwrap(), b.unwrap()), unsafe);
+inline constexpr Bounded<zc::min(aN, bN), WiderType<A, B>> min(Bounded<aN, A> a, Bounded<bN, B> b) {
+  return Bounded<zc::min(aN, bN), WiderType<A, B>>(zc::min(a.unwrap(), b.unwrap()), unsafe);
 }
 template <uint64_t aN, uint64_t bN, typename A, typename B>
-inline constexpr Bounded<zc::max(aN, bN), WiderType<A, B>> max(
-    Bounded<aN, A> a, Bounded<bN, B> b) {
-  return Bounded<zc::max(aN, bN), WiderType<A, B>>(
-      zc::max(a.unwrap(), b.unwrap()), unsafe);
+inline constexpr Bounded<zc::max(aN, bN), WiderType<A, B>> max(Bounded<aN, A> a, Bounded<bN, B> b) {
+  return Bounded<zc::max(aN, bN), WiderType<A, B>>(zc::max(a.unwrap(), b.unwrap()), unsafe);
 }
 // We need to override min() and max() because:
 // 1) WiderType<> might not choose the correct bounds.
@@ -1022,32 +936,28 @@ inline constexpr Bounded<zc::max(aN, bN), WiderType<A, B>> max(
 // -------------------------------------------------------------------
 // Operators between Bounded and BoundedConst
 
-#define OP(op, newMax)                                                     \
-  template <uint64_t maxN, uint cvalue, typename T>                        \
-  inline constexpr Bounded<(newMax), decltype(T() op uint())> operator op( \
-      Bounded<maxN, T> value, BoundedConst<cvalue>) {                      \
-    return Bounded<(newMax), decltype(T() op uint())>(                     \
-        value.unwrap() op cvalue, unsafe);                                 \
+#define OP(op, newMax)                                                                            \
+  template <uint64_t maxN, uint cvalue, typename T>                                               \
+  inline constexpr Bounded<(newMax), decltype(T() op uint())> operator op(Bounded<maxN, T> value, \
+                                                                          BoundedConst<cvalue>) { \
+    return Bounded<(newMax), decltype(T() op uint())>(value.unwrap() op cvalue, unsafe);          \
   }
 
-#define REVERSE_OP(op, newMax)                                             \
-  template <uint64_t maxN, uint cvalue, typename T>                        \
-  inline constexpr Bounded<(newMax), decltype(uint() op T())> operator op( \
-      BoundedConst<cvalue>, Bounded<maxN, T> value) {                      \
-    return Bounded<(newMax), decltype(uint() op T())>(                     \
-        cvalue op value.unwrap(), unsafe);                                 \
+#define REVERSE_OP(op, newMax)                                                           \
+  template <uint64_t maxN, uint cvalue, typename T>                                      \
+  inline constexpr Bounded<(newMax), decltype(uint() op T())> operator op(               \
+      BoundedConst<cvalue>, Bounded<maxN, T> value) {                                    \
+    return Bounded<(newMax), decltype(uint() op T())>(cvalue op value.unwrap(), unsafe); \
   }
 
-#define COMPARE_OP(op)                                        \
-  template <uint64_t maxN, uint cvalue, typename T>           \
-  inline constexpr bool operator op(Bounded<maxN, T> value,   \
-                                    BoundedConst<cvalue>) {   \
-    return value.unwrap() op cvalue;                          \
-  }                                                           \
-  template <uint64_t maxN, uint cvalue, typename T>           \
-  inline constexpr bool operator op(BoundedConst<cvalue>,     \
-                                    Bounded<maxN, T> value) { \
-    return cvalue op value.unwrap();                          \
+#define COMPARE_OP(op)                                                              \
+  template <uint64_t maxN, uint cvalue, typename T>                                 \
+  inline constexpr bool operator op(Bounded<maxN, T> value, BoundedConst<cvalue>) { \
+    return value.unwrap() op cvalue;                                                \
+  }                                                                                 \
+  template <uint64_t maxN, uint cvalue, typename T>                                 \
+  inline constexpr bool operator op(BoundedConst<cvalue>, Bounded<maxN, T> value) { \
+    return cvalue op value.unwrap();                                                \
   }
 
 OP(+, (boundedAdd<maxN, cvalue>()))
@@ -1086,8 +996,8 @@ COMPARE_OP(>=)
 #undef COMPARE_OP
 
 template <uint64_t maxN, uint cvalue, typename T>
-inline constexpr Bounded<cvalue, decltype(uint() - T())> operator-(
-    BoundedConst<cvalue>, Bounded<maxN, T> value) {
+inline constexpr Bounded<cvalue, decltype(uint() - T())> operator-(BoundedConst<cvalue>,
+                                                                   Bounded<maxN, T> value) {
   // We allow subtraction of a variable from a constant only if the constant is
   // greater than or equal to the maximum possible value of the variable. Since
   // the variable could be zero, the result can be as large as the constant.
@@ -1096,28 +1006,23 @@ inline constexpr Bounded<cvalue, decltype(uint() - T())> operator-(
   // never a guarantee it won't underflow (unless the constant is zero, which is
   // silly).
   static_assert(cvalue >= maxN, "possible underflow detected");
-  return Bounded<cvalue, decltype(uint() - T())>(cvalue - value.unwrap(),
-                                                 unsafe);
+  return Bounded<cvalue, decltype(uint() - T())>(cvalue - value.unwrap(), unsafe);
 }
 
 template <uint64_t aN, uint b, typename A>
-inline constexpr Bounded<zc::min(aN, b), A> min(Bounded<aN, A> a,
-                                                BoundedConst<b>) {
+inline constexpr Bounded<zc::min(aN, b), A> min(Bounded<aN, A> a, BoundedConst<b>) {
   return Bounded<zc::min(aN, b), A>(zc::min(b, a.unwrap()), unsafe);
 }
 template <uint64_t aN, uint b, typename A>
-inline constexpr Bounded<zc::min(aN, b), A> min(BoundedConst<b>,
-                                                Bounded<aN, A> a) {
+inline constexpr Bounded<zc::min(aN, b), A> min(BoundedConst<b>, Bounded<aN, A> a) {
   return Bounded<zc::min(aN, b), A>(zc::min(a.unwrap(), b), unsafe);
 }
 template <uint64_t aN, uint b, typename A>
-inline constexpr Bounded<zc::max(aN, b), A> max(Bounded<aN, A> a,
-                                                BoundedConst<b>) {
+inline constexpr Bounded<zc::max(aN, b), A> max(Bounded<aN, A> a, BoundedConst<b>) {
   return Bounded<zc::max(aN, b), A>(zc::max(b, a.unwrap()), unsafe);
 }
 template <uint64_t aN, uint b, typename A>
-inline constexpr Bounded<zc::max(aN, b), A> max(BoundedConst<b>,
-                                                Bounded<aN, A> a) {
+inline constexpr Bounded<zc::max(aN, b), A> max(BoundedConst<b>, Bounded<aN, A> a) {
   return Bounded<zc::max(aN, b), A>(zc::max(a.unwrap(), b), unsafe);
 }
 // We need to override min() between a Bounded and a constant since:
@@ -1129,9 +1034,8 @@ inline constexpr Bounded<zc::max(aN, b), A> max(BoundedConst<b>,
 
 template <uint64_t maxN, typename T>
 class SafeUnwrapper {
- public:
-  inline explicit constexpr SafeUnwrapper(Bounded<maxN, T> value)
-      : value(value.unwrap()) {}
+public:
+  inline explicit constexpr SafeUnwrapper(Bounded<maxN, T> value) : value(value.unwrap()) {}
 
   template <typename U, typename = EnableIf<isIntegral<U>()>>
   inline constexpr operator U() const {
@@ -1144,7 +1048,7 @@ class SafeUnwrapper {
     return value;
   }
 
- private:
+private:
   T value;
 };
 
@@ -1158,7 +1062,7 @@ inline constexpr SafeUnwrapper<maxN, T> unbound(Bounded<maxN, T> bounded) {
 
 template <uint64_t value>
 class SafeConstUnwrapper {
- public:
+public:
   template <typename T, typename = EnableIf<isIntegral<T>()>>
   inline constexpr operator T() const {
     static_assert(value <= T(maxValue), "this operation will truncate");
@@ -1202,26 +1106,22 @@ inline constexpr auto unboundMaxBits(T value)
   return unboundMax<maxValueForBits<bits>()>(value);
 }
 
-#define OP(op)                                                        \
-  template <uint64_t maxN, typename T, typename U>                    \
-  inline constexpr auto operator op(T a, SafeUnwrapper<maxN, U> b)    \
-      ->decltype(a op(T) b) {                                         \
-    return a op(AtLeastUInt<sizeof(T) * 8>) b;                        \
-  }                                                                   \
-  template <uint64_t maxN, typename T, typename U>                    \
-  inline constexpr auto operator op(SafeUnwrapper<maxN, U> b, T a)    \
-      ->decltype((T)b op a) {                                         \
-    return (AtLeastUInt<sizeof(T) * 8>)b op a;                        \
-  }                                                                   \
-  template <uint64_t value, typename T>                               \
-  inline constexpr auto operator op(T a, SafeConstUnwrapper<value> b) \
-      ->decltype(a op(T) b) {                                         \
-    return a op(AtLeastUInt<sizeof(T) * 8>) b;                        \
-  }                                                                   \
-  template <uint64_t value, typename T>                               \
-  inline constexpr auto operator op(SafeConstUnwrapper<value> b, T a) \
-      ->decltype((T)b op a) {                                         \
-    return (AtLeastUInt<sizeof(T) * 8>)b op a;                        \
+#define OP(op)                                                                               \
+  template <uint64_t maxN, typename T, typename U>                                           \
+  inline constexpr auto operator op(T a, SafeUnwrapper<maxN, U> b)->decltype(a op(T) b) {    \
+    return a op(AtLeastUInt<sizeof(T) * 8>) b;                                               \
+  }                                                                                          \
+  template <uint64_t maxN, typename T, typename U>                                           \
+  inline constexpr auto operator op(SafeUnwrapper<maxN, U> b, T a)->decltype((T)b op a) {    \
+    return (AtLeastUInt<sizeof(T) * 8>)b op a;                                               \
+  }                                                                                          \
+  template <uint64_t value, typename T>                                                      \
+  inline constexpr auto operator op(T a, SafeConstUnwrapper<value> b)->decltype(a op(T) b) { \
+    return a op(AtLeastUInt<sizeof(T) * 8>) b;                                               \
+  }                                                                                          \
+  template <uint64_t value, typename T>                                                      \
+  inline constexpr auto operator op(SafeConstUnwrapper<value> b, T a)->decltype((T)b op a) { \
+    return (AtLeastUInt<sizeof(T) * 8>)b op a;                                               \
   }
 
 OP(+)
@@ -1246,74 +1146,63 @@ OP(>)
 
 template <uint64_t maxN, typename T>
 class Range<Bounded<maxN, T>> {
- public:
+public:
   inline constexpr Range(Bounded<maxN, T> begin, Bounded<maxN, T> end)
       : inner(unbound(begin), unbound(end)) {}
   inline explicit constexpr Range(Bounded<maxN, T> end) : inner(unbound(end)) {}
 
   class Iterator {
-   public:
+  public:
     Iterator() = default;
-    inline explicit Iterator(typename Range<T>::Iterator inner)
-        : inner(inner) {}
+    inline explicit Iterator(typename Range<T>::Iterator inner) : inner(inner) {}
 
-    inline Bounded<maxN, T> operator*() const {
-      return Bounded<maxN, T>(*inner, unsafe);
-    }
+    inline Bounded<maxN, T> operator*() const { return Bounded<maxN, T>(*inner, unsafe); }
     inline Iterator& operator++() {
       ++inner;
       return *this;
     }
 
-    inline bool operator==(const Iterator& other) const {
-      return inner == other.inner;
-    }
+    inline bool operator==(const Iterator& other) const { return inner == other.inner; }
 
-   private:
+  private:
     typename Range<T>::Iterator inner;
   };
 
   inline Iterator begin() const { return Iterator(inner.begin()); }
   inline Iterator end() const { return Iterator(inner.end()); }
 
- private:
+private:
   Range<T> inner;
 };
 
 template <typename T, typename U>
 class Range<Quantity<T, U>> {
- public:
+public:
   inline constexpr Range(Quantity<T, U> begin, Quantity<T, U> end)
       : inner(begin / unit<Quantity<T, U>>(), end / unit<Quantity<T, U>>()) {}
-  inline explicit constexpr Range(Quantity<T, U> end)
-      : inner(end / unit<Quantity<T, U>>()) {}
+  inline explicit constexpr Range(Quantity<T, U> end) : inner(end / unit<Quantity<T, U>>()) {}
 
   class Iterator {
-   public:
+  public:
     Iterator() = default;
-    inline explicit Iterator(typename Range<T>::Iterator inner)
-        : inner(inner) {}
+    inline explicit Iterator(typename Range<T>::Iterator inner) : inner(inner) {}
 
-    inline Quantity<T, U> operator*() const {
-      return *inner * unit<Quantity<T, U>>();
-    }
+    inline Quantity<T, U> operator*() const { return *inner * unit<Quantity<T, U>>(); }
     inline Iterator& operator++() {
       ++inner;
       return *this;
     }
 
-    inline bool operator==(const Iterator& other) const {
-      return inner == other.inner;
-    }
+    inline bool operator==(const Iterator& other) const { return inner == other.inner; }
 
-   private:
+  private:
     typename Range<T>::Iterator inner;
   };
 
   inline Iterator begin() const { return Iterator(inner.begin()); }
   inline Iterator end() const { return Iterator(inner.end()); }
 
- private:
+private:
   Range<T> inner;
 };
 

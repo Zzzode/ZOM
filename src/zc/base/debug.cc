@@ -136,9 +136,9 @@ Exception::Type typeOfErrno(const int error) {
 
 enum DescriptionStyle { LOG, ASSERTION, SYSCALL };
 
-String makeDescriptionImpl(DescriptionStyle style, const char* code,
-                           int errorNumber, const char* sysErrorString,
-                           const char* macroArgs, ArrayPtr<String> argValues) {
+String makeDescriptionImpl(DescriptionStyle style, const char* code, int errorNumber,
+                           const char* sysErrorString, const char* macroArgs,
+                           ArrayPtr<String> argValues) {
   ZC_STACK_ARRAY(ArrayPtr<const char>, argNames, argValues.size(), 8, 64);
 
   if (argValues.size() > 0) {
@@ -163,9 +163,7 @@ String makeDescriptionImpl(DescriptionStyle style, const char* code,
         } else if (c == '\"') {
           quoted = true;
         } else if (c == ',' && depth == 0) {
-          if (index < argValues.size()) {
-            argNames[index++] = arrayPtr(start, pos - 1);
-          }
+          if (index < argValues.size()) { argNames[index++] = arrayPtr(start, pos - 1); }
           while (isspace(*pos)) ++pos;
           start = pos;
           if (*pos == '\0') {
@@ -175,15 +173,12 @@ String makeDescriptionImpl(DescriptionStyle style, const char* code,
         }
       }
     }
-    if (index < argValues.size()) {
-      argNames[index++] = arrayPtr(start, pos - 1);
-    }
+    if (index < argValues.size()) { argNames[index++] = arrayPtr(start, pos - 1); }
 
     if (index != argValues.size()) {
-      getExceptionCallback().logMessage(
-          LogSeverity::ERROR, __FILE__, __LINE__, 0,
-          str("Failed to parse logging macro args into ", argValues.size(),
-              " names: ", macroArgs, '\n'));
+      getExceptionCallback().logMessage(LogSeverity::ERROR, __FILE__, __LINE__, 0,
+                                        str("Failed to parse logging macro args into ",
+                                            argValues.size(), " names: ", macroArgs, '\n'));
     }
   }
 
@@ -200,9 +195,7 @@ String makeDescriptionImpl(DescriptionStyle style, const char* code,
     }
   }
 
-  if (style == ASSERTION && code == nullptr) {
-    style = LOG;
-  }
+  if (style == ASSERTION && code == nullptr) { style = LOG; }
 
   {
     StringPtr expected = "expected ";
@@ -250,8 +243,7 @@ String makeDescriptionImpl(DescriptionStyle style, const char* code,
     }
 
     auto needsLabel = [](const ArrayPtr<const char>& argName) -> bool {
-      return argName.size() > 0 && argName[0] != '\"' &&
-             !argName.startsWith("zc::str("_zcc);
+      return argName.size() > 0 && argName[0] != '\"' && !argName.startsWith("zc::str("_zcc);
     };
 
     for (size_t i = 0; i < argValues.size(); i++) {
@@ -260,18 +252,13 @@ String makeDescriptionImpl(DescriptionStyle style, const char* code,
         // the previous item, in brackets. Also, if it's just "[false]" (meaning
         // we didn't manage to extract a comparison), don't add it at all.
         if (argValues[i] != "false") {
-          totalSize +=
-              openBracket.size() + argValues[i].size() + closeBracket.size();
+          totalSize += openBracket.size() + argValues[i].size() + closeBracket.size();
         }
         continue;
       }
 
-      if (i > 0 || style != LOG) {
-        totalSize += delim.size();
-      }
-      if (needsLabel(argNames[i])) {
-        totalSize += argNames[i].size() + sep.size();
-      }
+      if (i > 0 || style != LOG) { totalSize += delim.size(); }
+      if (needsLabel(argNames[i])) { totalSize += argNames[i].size() + sep.size(); }
       totalSize += argValues[i].size();
     }
 
@@ -300,12 +287,8 @@ String makeDescriptionImpl(DescriptionStyle style, const char* code,
         continue;
       }
 
-      if (i > 0 || style != LOG) {
-        pos = _::fill(pos, delim);
-      }
-      if (needsLabel(argNames[i])) {
-        pos = _::fill(pos, argNames[i], sep);
-      }
+      if (i > 0 || style != LOG) { pos = _::fill(pos, delim); }
+      if (needsLabel(argNames[i])) { pos = _::fill(pos, argNames[i], sep); }
       pos = _::fill(pos, argValues[i]);
     }
 
@@ -315,8 +298,8 @@ String makeDescriptionImpl(DescriptionStyle style, const char* code,
 
 }  // namespace
 
-void Debug::logInternal(const char* file, int line, LogSeverity severity,
-                        const char* macroArgs, ArrayPtr<String> argValues) {
+void Debug::logInternal(const char* file, int line, LogSeverity severity, const char* macroArgs,
+                        ArrayPtr<String> argValues) {
   getExceptionCallback().logMessage(
       severity, trimSourceFilename(file).cStr(), line, 0,
       makeDescriptionImpl(LOG, nullptr, 0, nullptr, macroArgs, argValues));
@@ -338,34 +321,29 @@ void Debug::Fault::fatal() {
   ZC_KNOWN_UNREACHABLE(abort());
 }
 
-void Debug::Fault::init(const char* file, int line, Exception::Type type,
-                        const char* condition, const char* macroArgs,
-                        ArrayPtr<String> argValues) {
-  exception = new Exception(type, file, line,
-                            makeDescriptionImpl(ASSERTION, condition, 0,
-                                                nullptr, macroArgs, argValues));
+void Debug::Fault::init(const char* file, int line, Exception::Type type, const char* condition,
+                        const char* macroArgs, ArrayPtr<String> argValues) {
+  exception =
+      new Exception(type, file, line,
+                    makeDescriptionImpl(ASSERTION, condition, 0, nullptr, macroArgs, argValues));
 }
 
-void Debug::Fault::init(const char* file, int line, int osErrorNumber,
-                        const char* condition, const char* macroArgs,
-                        ArrayPtr<String> argValues) {
-  exception =
-      new Exception(typeOfErrno(osErrorNumber), file, line,
-                    makeDescriptionImpl(SYSCALL, condition, osErrorNumber,
-                                        nullptr, macroArgs, argValues));
+void Debug::Fault::init(const char* file, int line, int osErrorNumber, const char* condition,
+                        const char* macroArgs, ArrayPtr<String> argValues) {
+  exception = new Exception(
+      typeOfErrno(osErrorNumber), file, line,
+      makeDescriptionImpl(SYSCALL, condition, osErrorNumber, nullptr, macroArgs, argValues));
 }
 
 #if _WIN32 || __CYGWIN__
 void Debug::Fault::init(const char* file, int line, Win32Result osErrorNumber,
-                        const char* condition, const char* macroArgs,
-                        ArrayPtr<String> argValues) {
+                        const char* condition, const char* macroArgs, ArrayPtr<String> argValues) {
   LPVOID ptr;
   // TODO(someday): Why doesn't this work for winsock errors?
   DWORD result = FormatMessageW(
-      FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-          FORMAT_MESSAGE_IGNORE_INSERTS,
-      nullptr, osErrorNumber.number, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-      (LPWSTR)&ptr, 0, nullptr);
+      FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+      nullptr, osErrorNumber.number, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&ptr, 0,
+      nullptr);
 
   String message;
   if (result > 0) {
@@ -374,21 +352,18 @@ void Debug::Fault::init(const char* file, int line, Win32Result osErrorNumber,
     size_t len = wcslen(desc);
     if (len > 0 && desc[len - 1] == '\n') --len;
     if (len > 0 && desc[len - 1] == '\r') --len;
-    message = zc::str('#', osErrorNumber.number, ' ',
-                      decodeWideString(arrayPtr(desc, len)));
+    message = zc::str('#', osErrorNumber.number, ' ', decodeWideString(arrayPtr(desc, len)));
   } else {
     message = zc::str("win32 error code: ", osErrorNumber.number);
   }
 
-  exception =
-      new Exception(typeOfWin32Error(osErrorNumber.number), file, line,
-                    makeDescriptionImpl(SYSCALL, condition, 0, message.cStr(),
-                                        macroArgs, argValues));
+  exception = new Exception(
+      typeOfWin32Error(osErrorNumber.number), file, line,
+      makeDescriptionImpl(SYSCALL, condition, 0, message.cStr(), macroArgs, argValues));
 }
 #endif
 
-String Debug::makeDescriptionInternal(const char* macroArgs,
-                                      ArrayPtr<String> argValues) {
+String Debug::makeDescriptionInternal(const char* macroArgs, ArrayPtr<String> argValues) {
   return makeDescriptionImpl(LOG, nullptr, 0, nullptr, macroArgs, argValues);
 }
 
@@ -410,9 +385,7 @@ Debug::Context::Context() : logged(false) {}
 Debug::Context::~Context() noexcept(false) {}
 
 Debug::Context::Value Debug::Context::ensureInitialized() {
-  ZC_IF_SOME(v, value) {
-    return Value(v.file, v.line, heapString(v.description));
-  }
+  ZC_IF_SOME(v, value) { return Value(v.file, v.line, heapString(v.description)); }
   else {
     Value result = evaluate();
     value = Value(result.file, result.line, heapString(result.description));
@@ -430,12 +403,12 @@ void Debug::Context::onFatalException(Exception&& exception) {
   exception.wrapContext(v.file, v.line, mv(v.description));
   next.onFatalException(zc::mv(exception));
 }
-void Debug::Context::logMessage(LogSeverity severity, const char* file,
-                                int line, int contextDepth, String&& text) {
+void Debug::Context::logMessage(LogSeverity severity, const char* file, int line, int contextDepth,
+                                String&& text) {
   if (!logged) {
     Value v = ensureInitialized();
-    next.logMessage(LogSeverity::INFO, trimSourceFilename(v.file).cStr(),
-                    v.line, 0, str("context: ", mv(v.description), '\n'));
+    next.logMessage(LogSeverity::INFO, trimSourceFilename(v.file).cStr(), v.line, 0,
+                    str("context: ", mv(v.description), '\n'));
     logged = true;
   }
 

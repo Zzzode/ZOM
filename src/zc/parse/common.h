@@ -59,15 +59,13 @@ template <typename Element, typename Iterator>
 class IteratorInput {
   // A parser input implementation based on an iterator range.
 
- public:
+public:
   IteratorInput(Iterator begin, Iterator end)
       : parent(nullptr), pos(begin), end(end), best(begin) {}
   explicit IteratorInput(IteratorInput& parent)
       : parent(&parent), pos(parent.pos), end(parent.end), best(parent.pos) {}
   ~IteratorInput() {
-    if (parent != nullptr) {
-      parent->best = zc::max(zc::max(pos, best), parent->best);
-    }
+    if (parent != nullptr) { parent->best = zc::max(zc::max(pos, best), parent->best); }
   }
   ZC_DISALLOW_COPY_AND_MOVE(IteratorInput);
 
@@ -92,7 +90,7 @@ class IteratorInput {
 
   Iterator getPosition() { return pos; }
 
- private:
+private:
   IteratorInput* parent;
   Iterator pos;
   Iterator end;
@@ -128,7 +126,7 @@ class ParserRef {
   // grammar here and there to prevent the parser types from becoming
   // ridiculous.  Using too many of them can hurt performance, though.
 
- public:
+public:
   ParserRef() : parser(nullptr), wrapper(nullptr) {}
   ParserRef(const ParserRef&) = default;
   ParserRef(ParserRef&&) = default;
@@ -138,14 +136,12 @@ class ParserRef {
   template <typename Other>
   constexpr ParserRef(Other&& other)
       : parser(&other), wrapper(&WrapperImplInstance<Decay<Other>>::instance) {
-    static_assert(zc::isReference<Other>(),
-                  "ParserRef should not be assigned to a temporary.");
+    static_assert(zc::isReference<Other>(), "ParserRef should not be assigned to a temporary.");
   }
 
   template <typename Other>
   inline ParserRef& operator=(Other&& other) {
-    static_assert(zc::isReference<Other>(),
-                  "ParserRef should not be assigned to a temporary.");
+    static_assert(zc::isReference<Other>(), "ParserRef should not be assigned to a temporary.");
     parser = &other;
     wrapper = &WrapperImplInstance<Decay<Other>>::instance;
     return *this;
@@ -157,7 +153,7 @@ class ParserRef {
     return wrapper->parse(parser, input);
   }
 
- private:
+private:
   struct Wrapper {
     virtual Maybe<Output> parse(const void* parser, Input& input) const = 0;
   };
@@ -175,8 +171,7 @@ class ParserRef {
     //   we have to make this just const instead.
     static const WrapperImpl<ParserImpl> instance;
 #else
-    static constexpr WrapperImpl<ParserImpl> instance =
-        WrapperImpl<ParserImpl>();
+    static constexpr WrapperImpl<ParserImpl> instance = WrapperImpl<ParserImpl>();
 #endif
   };
 
@@ -188,16 +183,14 @@ template <typename Input, typename Output>
 template <typename ParserImpl>
 #if _MSC_VER && !__clang__
 const typename ParserRef<Input, Output>::template WrapperImpl<ParserImpl>
-    ParserRef<Input, Output>::WrapperImplInstance<ParserImpl>::instance =
-        WrapperImpl<ParserImpl>();
+    ParserRef<Input, Output>::WrapperImplInstance<ParserImpl>::instance = WrapperImpl<ParserImpl>();
 #else
 constexpr typename ParserRef<Input, Output>::template WrapperImpl<ParserImpl>
     ParserRef<Input, Output>::WrapperImplInstance<ParserImpl>::instance;
 #endif
 
 template <typename Input, typename ParserImpl>
-constexpr ParserRef<Input, OutputType<ParserImpl, Input>> ref(
-    ParserImpl& impl) {
+constexpr ParserRef<Input, OutputType<ParserImpl, Input>> ref(ParserImpl& impl) {
   // Constructs a ParserRef.  You must specify the input type explicitly, e.g.
   // `ref<MyInput>(myParser)`.
 
@@ -209,10 +202,9 @@ constexpr ParserRef<Input, OutputType<ParserImpl, Input>> ref(
 // Output = one token
 
 class Any_ {
- public:
+public:
   template <typename Input>
-  Maybe<Decay<decltype(instance<Input>().consume())>> operator()(
-      Input& input) const {
+  Maybe<Decay<decltype(instance<Input>().consume())>> operator()(Input& input) const {
     if (input.atEnd()) {
       return zc::none;
     } else {
@@ -230,7 +222,7 @@ constexpr Any_ any = Any_();
 
 template <typename T>
 class Exactly_ {
- public:
+public:
   explicit constexpr Exactly_(T&& expected) : expected(expected) {}
 
   template <typename Input>
@@ -243,7 +235,7 @@ class Exactly_ {
     }
   }
 
- private:
+private:
   T expected;
 };
 
@@ -261,7 +253,7 @@ constexpr Exactly_<T> exactly(T&& expected) {
 
 template <typename T, T expected>
 class ExactlyConst_ {
- public:
+public:
   explicit constexpr ExactlyConst_() {}
 
   template <typename Input>
@@ -290,10 +282,9 @@ constexpr ExactlyConst_<T, expected> exactlyConst() {
 
 template <typename SubParser, typename Result>
 class ConstResult_ {
- public:
+public:
   explicit constexpr ConstResult_(SubParser&& subParser, Result&& result)
-      : subParser(zc::fwd<SubParser>(subParser)),
-        result(zc::fwd<Result>(result)) {}
+      : subParser(zc::fwd<SubParser>(subParser)), result(zc::fwd<Result>(result)) {}
 
   template <typename Input>
   Maybe<Result> operator()(Input& input) const {
@@ -304,18 +295,16 @@ class ConstResult_ {
     }
   }
 
- private:
+private:
   SubParser subParser;
   Result result;
 };
 
 template <typename SubParser, typename Result>
-constexpr ConstResult_<SubParser, Result> constResult(SubParser&& subParser,
-                                                      Result&& result) {
+constexpr ConstResult_<SubParser, Result> constResult(SubParser&& subParser, Result&& result) {
   // Constructs a parser which returns exactly `result` if `subParser` is
   // successful.
-  return ConstResult_<SubParser, Result>(zc::fwd<SubParser>(subParser),
-                                         zc::fwd<Result>(result));
+  return ConstResult_<SubParser, Result>(zc::fwd<SubParser>(subParser), zc::fwd<Result>(result));
 }
 
 template <typename SubParser>
@@ -333,7 +322,7 @@ class Sequence_;
 
 template <typename FirstSubParser, typename... SubParsers>
 class Sequence_<FirstSubParser, SubParsers...> {
- public:
+public:
   template <typename T, typename... U>
   explicit constexpr Sequence_(T&& firstSubParser, U&&... rest)
       : first(zc::fwd<T>(firstSubParser)), rest(zc::fwd<U>(rest)...) {}
@@ -370,36 +359,34 @@ class Sequence_<FirstSubParser, SubParsers...> {
 #endif
   {
     ZC_IF_SOME(firstResult, first(input)) {
-      return rest.parseNext(input, zc::fwd<InitialParams>(initialParams)...,
-                            zc::mv(firstResult));
+      return rest.parseNext(input, zc::fwd<InitialParams>(initialParams)..., zc::mv(firstResult));
     }
     else {
       // TODO(msvc): MSVC depends on return type deduction to compile this
       // function, so we need to
       //   help it deduce the right type on this code path.
-      return Maybe<decltype(tuple(
-          zc::fwd<InitialParams>(initialParams)...,
-          instance<OutputType<FirstSubParser, Input>>(),
-          instance<OutputType<SubParsers, Input>>()...))>{zc::none};
+      return Maybe<decltype(tuple(zc::fwd<InitialParams>(initialParams)...,
+                                  instance<OutputType<FirstSubParser, Input>>(),
+                                  instance<OutputType<SubParsers, Input>>()...))>{zc::none};
     }
   }
 
- private:
+private:
   FirstSubParser first;
   Sequence_<SubParsers...> rest;
 };
 
 template <>
 class Sequence_<> {
- public:
+public:
   template <typename Input>
   Maybe<Tuple<>> operator()(Input& input) const {
     return parseNext(input);
   }
 
   template <typename Input, typename... Params>
-  auto parseNext(Input& input, Params&&... params) const
-      -> Maybe<decltype(tuple(zc::fwd<Params>(params)...))> {
+  auto parseNext(Input& input,
+                 Params&&... params) const -> Maybe<decltype(tuple(zc::fwd<Params>(params)...))> {
     return tuple(zc::fwd<Params>(params)...);
   }
 };
@@ -422,15 +409,14 @@ class Many_ {
   template <typename Input, typename Output = OutputType<SubParser, Input>>
   struct Impl;
 
- public:
-  explicit constexpr Many_(SubParser&& subParser)
-      : subParser(zc::fwd<SubParser>(subParser)) {}
+public:
+  explicit constexpr Many_(SubParser&& subParser) : subParser(zc::fwd<SubParser>(subParser)) {}
 
   template <typename Input>
-  auto operator()(Input& input) const
-      -> decltype(Impl<Input>::apply(instance<const SubParser&>(), input));
+  auto operator()(Input& input) const -> decltype(Impl<Input>::apply(instance<const SubParser&>(),
+                                                                     input));
 
- private:
+private:
   SubParser subParser;
 };
 
@@ -448,14 +434,10 @@ struct Many_<SubParser, atLeastOne>::Impl {
         subInput.advanceParent();
         results.add(zc::mv(subResult));
       }
-      else {
-        break;
-      }
+      else { break; }
     }
 
-    if (atLeastOne && results.empty()) {
-      return zc::none;
-    }
+    if (atLeastOne && results.empty()) { return zc::none; }
 
     return results.releaseAsArray();
   }
@@ -480,9 +462,7 @@ struct Many_<SubParser, atLeastOne>::Impl<Input, Tuple<>> {
       }
     }
 
-    if (atLeastOne && count == 0) {
-      return zc::none;
-    }
+    if (atLeastOne && count == 0) { return zc::none; }
 
     return count;
   }
@@ -519,16 +499,15 @@ class Times_ {
   template <typename Input, typename Output = OutputType<SubParser, Input>>
   struct Impl;
 
- public:
+public:
   explicit constexpr Times_(SubParser&& subParser, uint count)
       : subParser(zc::fwd<SubParser>(subParser)), count(count) {}
 
   template <typename Input>
-  auto operator()(Input& input) const
-      -> decltype(Impl<Input>::apply(instance<const SubParser&>(),
-                                     instance<uint>(), input));
+  auto operator()(Input& input) const -> decltype(Impl<Input>::apply(instance<const SubParser&>(),
+                                                                     instance<uint>(), input));
 
- private:
+private:
   SubParser subParser;
   uint count;
 };
@@ -536,20 +515,15 @@ class Times_ {
 template <typename SubParser>
 template <typename Input, typename Output>
 struct Times_<SubParser>::Impl {
-  static Maybe<Array<Output>> apply(const SubParser& subParser, uint count,
-                                    Input& input) {
+  static Maybe<Array<Output>> apply(const SubParser& subParser, uint count, Input& input) {
     auto results = heapArrayBuilder<OutputType<SubParser, Input>>(count);
 
     while (results.size() < count) {
       if (input.atEnd()) {
         return zc::none;
       } else
-        ZC_IF_SOME(subResult, subParser(input)) {
-          results.add(zc::mv(subResult));
-        }
-      else {
-        return zc::none;
-      }
+        ZC_IF_SOME(subResult, subParser(input)) { results.add(zc::mv(subResult)); }
+      else { return zc::none; }
     }
 
     return results.finish();
@@ -561,8 +535,7 @@ template <typename Input>
 struct Times_<SubParser>::Impl<Input, Tuple<>> {
   // If the sub-parser output is Tuple<>, just return a count.
 
-  static Maybe<Tuple<>> apply(const SubParser& subParser, uint count,
-                              Input& input) {
+  static Maybe<Tuple<>> apply(const SubParser& subParser, uint count, Input& input) {
     uint actualCount = 0;
 
     while (actualCount < count) {
@@ -582,10 +555,8 @@ struct Times_<SubParser>::Impl<Input, Tuple<>> {
 template <typename SubParser>
 template <typename Input>
 auto Times_<SubParser>::operator()(Input& input) const
-    -> decltype(Impl<Input>::apply(instance<const SubParser&>(),
-                                   instance<uint>(), input)) {
-  return Impl<Input, OutputType<SubParser, Input>>::apply(subParser, count,
-                                                          input);
+    -> decltype(Impl<Input>::apply(instance<const SubParser&>(), instance<uint>(), input)) {
+  return Impl<Input, OutputType<SubParser, Input>>::apply(subParser, count, input);
 }
 
 template <typename SubParser>
@@ -600,9 +571,8 @@ constexpr Times_<SubParser> times(SubParser&& subParser, uint count) {
 
 template <typename SubParser>
 class Optional_ {
- public:
-  explicit constexpr Optional_(SubParser&& subParser)
-      : subParser(zc::fwd<SubParser>(subParser)) {}
+public:
+  explicit constexpr Optional_(SubParser&& subParser) : subParser(zc::fwd<SubParser>(subParser)) {}
 
   template <typename Input>
   Maybe<Maybe<OutputType<SubParser, Input>>> operator()(Input& input) const {
@@ -613,12 +583,10 @@ class Optional_ {
       subInput.advanceParent();
       return Result(zc::mv(subResult));
     }
-    else {
-      return Result(zc::none);
-    }
+    else { return Result(zc::none); }
   }
 
- private:
+private:
   SubParser subParser;
 };
 
@@ -639,11 +607,9 @@ class OneOf_;
 
 template <typename FirstSubParser, typename... SubParsers>
 class OneOf_<FirstSubParser, SubParsers...> {
- public:
-  explicit constexpr OneOf_(FirstSubParser&& firstSubParser,
-                            SubParsers&&... rest)
-      : first(zc::fwd<FirstSubParser>(firstSubParser)),
-        rest(zc::fwd<SubParsers>(rest)...) {}
+public:
+  explicit constexpr OneOf_(FirstSubParser&& firstSubParser, SubParsers&&... rest)
+      : first(zc::fwd<FirstSubParser>(firstSubParser)), rest(zc::fwd<SubParsers>(rest)...) {}
 
   template <typename Input>
   Maybe<OutputType<FirstSubParser, Input>> operator()(Input& input) const {
@@ -661,14 +627,14 @@ class OneOf_<FirstSubParser, SubParsers...> {
     return rest(input);
   }
 
- private:
+private:
   FirstSubParser first;
   OneOf_<SubParsers...> rest;
 };
 
 template <>
 class OneOf_<> {
- public:
+public:
   template <typename Input>
   decltype(zc::none) operator()(Input& input) const {
     return zc::none;
@@ -690,108 +656,86 @@ constexpr OneOf_<SubParsers...> oneOf(SubParsers&&... parsers) {
 
 template <typename Position>
 struct Span {
- public:
+public:
   inline const Position& begin() const { return begin_; }
   inline const Position& end() const { return end_; }
 
   Span() = default;
-  inline constexpr Span(Position&& begin, Position&& end)
-      : begin_(mv(begin)), end_(mv(end)) {}
+  inline constexpr Span(Position&& begin, Position&& end) : begin_(mv(begin)), end_(mv(end)) {}
 
- private:
+private:
   Position begin_;
   Position end_;
 };
 
 template <typename Position>
 constexpr Span<Decay<Position>> span(Position&& start, Position&& end) {
-  return Span<Decay<Position>>(zc::fwd<Position>(start),
-                               zc::fwd<Position>(end));
+  return Span<Decay<Position>>(zc::fwd<Position>(start), zc::fwd<Position>(end));
 }
 
 template <typename SubParser, typename TransformFunc>
 class Transform_ {
- public:
-  explicit constexpr Transform_(SubParser&& subParser,
-                                TransformFunc&& transform)
-      : subParser(zc::fwd<SubParser>(subParser)),
-        transform(zc::fwd<TransformFunc>(transform)) {}
+public:
+  explicit constexpr Transform_(SubParser&& subParser, TransformFunc&& transform)
+      : subParser(zc::fwd<SubParser>(subParser)), transform(zc::fwd<TransformFunc>(transform)) {}
 
   template <typename Input>
-  Maybe<decltype(zc::apply(instance<TransformFunc&>(),
-                           instance<OutputType<SubParser, Input>&&>()))>
+  Maybe<decltype(zc::apply(instance<TransformFunc&>(), instance<OutputType<SubParser, Input>&&>()))>
   operator()(Input& input) const {
-    ZC_IF_SOME(subResult, subParser(input)) {
-      return zc::apply(transform, zc::mv(subResult));
-    }
-    else {
-      return zc::none;
-    }
+    ZC_IF_SOME(subResult, subParser(input)) { return zc::apply(transform, zc::mv(subResult)); }
+    else { return zc::none; }
   }
 
- private:
+private:
   SubParser subParser;
   TransformFunc transform;
 };
 
 template <typename SubParser, typename TransformFunc>
 class TransformOrReject_ {
- public:
-  explicit constexpr TransformOrReject_(SubParser&& subParser,
-                                        TransformFunc&& transform)
-      : subParser(zc::fwd<SubParser>(subParser)),
-        transform(zc::fwd<TransformFunc>(transform)) {}
+public:
+  explicit constexpr TransformOrReject_(SubParser&& subParser, TransformFunc&& transform)
+      : subParser(zc::fwd<SubParser>(subParser)), transform(zc::fwd<TransformFunc>(transform)) {}
 
   template <typename Input>
-  decltype(zc::apply(instance<TransformFunc&>(),
-                     instance<OutputType<SubParser, Input>&&>()))
+  decltype(zc::apply(instance<TransformFunc&>(), instance<OutputType<SubParser, Input>&&>()))
   operator()(Input& input) const {
-    ZC_IF_SOME(subResult, subParser(input)) {
-      return zc::apply(transform, zc::mv(subResult));
-    }
-    else {
-      return zc::none;
-    }
+    ZC_IF_SOME(subResult, subParser(input)) { return zc::apply(transform, zc::mv(subResult)); }
+    else { return zc::none; }
   }
 
- private:
+private:
   SubParser subParser;
   TransformFunc transform;
 };
 
 template <typename SubParser, typename TransformFunc>
 class TransformWithLocation_ {
- public:
-  explicit constexpr TransformWithLocation_(SubParser&& subParser,
-                                            TransformFunc&& transform)
-      : subParser(zc::fwd<SubParser>(subParser)),
-        transform(zc::fwd<TransformFunc>(transform)) {}
+public:
+  explicit constexpr TransformWithLocation_(SubParser&& subParser, TransformFunc&& transform)
+      : subParser(zc::fwd<SubParser>(subParser)), transform(zc::fwd<TransformFunc>(transform)) {}
 
   template <typename Input>
-  Maybe<decltype(zc::apply(
-      instance<TransformFunc&>(),
-      instance<Span<Decay<decltype(instance<Input&>().getPosition())>>>(),
-      instance<OutputType<SubParser, Input>&&>()))>
+  Maybe<decltype(zc::apply(instance<TransformFunc&>(),
+                           instance<Span<Decay<decltype(instance<Input&>().getPosition())>>>(),
+                           instance<OutputType<SubParser, Input>&&>()))>
   operator()(Input& input) const {
     auto start = input.getPosition();
     ZC_IF_SOME(subResult, subParser(input)) {
-      return zc::apply(
-          transform, Span<decltype(start)>(zc::mv(start), input.getPosition()),
-          zc::mv(subResult));
+      return zc::apply(transform, Span<decltype(start)>(zc::mv(start), input.getPosition()),
+                       zc::mv(subResult));
     }
-    else {
-      return zc::none;
-    }
+    else { return zc::none; }
   }
 
- private:
+private:
   SubParser subParser;
   TransformFunc transform;
 };
 
 template <typename SubParser, typename TransformFunc>
-constexpr Transform_<SubParser, TransformFunc> transform(
-    SubParser&& subParser, TransformFunc&& functor) {
+constexpr Transform_<SubParser, TransformFunc> transform(SubParser&& subParser,
+                                                         TransformFunc&& functor) {
   // Constructs a parser which executes some other parser and then transforms
   // the result by invoking `functor` on it.  Typically `functor` is a lambda.
   // It is invoked using `zc::apply`, meaning tuples will be unpacked as
@@ -801,23 +745,23 @@ constexpr Transform_<SubParser, TransformFunc> transform(
 }
 
 template <typename SubParser, typename TransformFunc>
-constexpr TransformOrReject_<SubParser, TransformFunc> transformOrReject(
-    SubParser&& subParser, TransformFunc&& functor) {
+constexpr TransformOrReject_<SubParser, TransformFunc> transformOrReject(SubParser&& subParser,
+                                                                         TransformFunc&& functor) {
   // Like `transform()` except that `functor` returns a `Maybe`.  If it returns
   // null, parsing fails, otherwise the parser's result is the content of the
   // `Maybe`.
-  return TransformOrReject_<SubParser, TransformFunc>(
-      zc::fwd<SubParser>(subParser), zc::fwd<TransformFunc>(functor));
+  return TransformOrReject_<SubParser, TransformFunc>(zc::fwd<SubParser>(subParser),
+                                                      zc::fwd<TransformFunc>(functor));
 }
 
 template <typename SubParser, typename TransformFunc>
-constexpr TransformWithLocation_<SubParser, TransformFunc>
-transformWithLocation(SubParser&& subParser, TransformFunc&& functor) {
+constexpr TransformWithLocation_<SubParser, TransformFunc> transformWithLocation(
+    SubParser&& subParser, TransformFunc&& functor) {
   // Like `transform` except that `functor` also takes a `Span` as its first
   // parameter specifying the location of the parsed content.  The span's
   // position type is whatever the parser input's getPosition() returns.
-  return TransformWithLocation_<SubParser, TransformFunc>(
-      zc::fwd<SubParser>(subParser), zc::fwd<TransformFunc>(functor));
+  return TransformWithLocation_<SubParser, TransformFunc>(zc::fwd<SubParser>(subParser),
+                                                          zc::fwd<TransformFunc>(functor));
 }
 
 // -------------------------------------------------------------------
@@ -826,7 +770,7 @@ transformWithLocation(SubParser&& subParser, TransformFunc&& functor) {
 
 template <typename SubParser>
 class NotLookingAt_ {
- public:
+public:
   explicit constexpr NotLookingAt_(SubParser&& subParser)
       : subParser(zc::fwd<SubParser>(subParser)) {}
 
@@ -841,7 +785,7 @@ class NotLookingAt_ {
     }
   }
 
- private:
+private:
   SubParser subParser;
 };
 
@@ -858,7 +802,7 @@ constexpr NotLookingAt_<SubParser> notLookingAt(SubParser&& subParser) {
 // Output = Tuple<>, only succeeds if at end-of-input
 
 class EndOfInput_ {
- public:
+public:
   template <typename Input>
   Maybe<Tuple<>> operator()(Input& input) const {
     if (input.atEnd()) {

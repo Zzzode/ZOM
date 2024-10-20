@@ -49,31 +49,15 @@ struct HashCoder {
   // operand cannot conflict with anything.
 
   uint operator*(ArrayPtr<const byte> s) const;
-  inline uint operator*(ArrayPtr<byte> s) const {
-    return operator*(s.asConst());
-  }
+  inline uint operator*(ArrayPtr<byte> s) const { return operator*(s.asConst()); }
 
-  inline uint operator*(ArrayPtr<const char> s) const {
-    return operator*(s.asBytes());
-  }
-  inline uint operator*(ArrayPtr<char> s) const {
-    return operator*(s.asBytes());
-  }
-  inline uint operator*(const Array<const char>& s) const {
-    return operator*(s.asBytes());
-  }
-  inline uint operator*(const Array<char>& s) const {
-    return operator*(s.asBytes());
-  }
-  inline uint operator*(const String& s) const {
-    return operator*(s.asBytes());
-  }
-  inline uint operator*(const StringPtr& s) const {
-    return operator*(s.asBytes());
-  }
-  inline uint operator*(const ConstString& s) const {
-    return operator*(s.asBytes());
-  }
+  inline uint operator*(ArrayPtr<const char> s) const { return operator*(s.asBytes()); }
+  inline uint operator*(ArrayPtr<char> s) const { return operator*(s.asBytes()); }
+  inline uint operator*(const Array<const char>& s) const { return operator*(s.asBytes()); }
+  inline uint operator*(const Array<char>& s) const { return operator*(s.asBytes()); }
+  inline uint operator*(const String& s) const { return operator*(s.asBytes()); }
+  inline uint operator*(const StringPtr& s) const { return operator*(s.asBytes()); }
+  inline uint operator*(const ConstString& s) const { return operator*(s.asBytes()); }
 
   inline uint operator*(decltype(nullptr)) const { return 0; }
   inline uint operator*(bool b) const { return b; }
@@ -119,11 +103,9 @@ struct HashCoder {
     return operator*(ptr.get());
   }
 
-  template <typename T, typename = decltype(instance<const HashCoder&>() *
-                                            instance<const T&>())>
+  template <typename T, typename = decltype(instance<const HashCoder&>() * instance<const T&>())>
   uint operator*(ArrayPtr<T> arr) const;
-  template <typename T, typename = decltype(instance<const HashCoder&>() *
-                                            instance<const T&>())>
+  template <typename T, typename = decltype(instance<const HashCoder&>() * instance<const T&>())>
   uint operator*(const Array<T>& arr) const;
   template <typename T, typename = EnableIf<__is_enum(T)>>
   inline uint operator*(T e) const;
@@ -285,9 +267,7 @@ inline uint intHash64(uint64_t i) {
   // code is consistent with a 32-bit integer. Otherwise, if you have, say, a
   // `HashMap<uint64_t, T>` and you write `map.find(1)` it won't work, because
   // `1` is type `int` and will be hashed as a 32-bit integer.
-  if (i <= UINT32_MAX) {
-    return intHash32(i);
-  }
+  if (i <= UINT32_MAX) { return intHash32(i); }
 
 #if __CRC32__
   return __builtin_ia32_crc32di(0, i);

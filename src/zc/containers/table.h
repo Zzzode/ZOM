@@ -161,7 +161,7 @@ class Table {
   //     // Optional. Implements Table::ordered<Index>().
   //   };
 
- public:
+public:
   Table();
   Table(Indexes&&... indexes);
 
@@ -275,14 +275,12 @@ class Table {
   // release them this
   //   way.
 
-  template <typename Predicate,
-            typename = decltype(instance<Predicate>()(instance<Row&>()))>
+  template <typename Predicate, typename = decltype(instance<Predicate>()(instance<Row&>()))>
   size_t eraseAll(Predicate&& predicate);
   // Erase all rows for which predicate(row) returns true. This scans over the
   // entire table.
 
-  template <typename Collection,
-            typename = decltype(instance<Collection>().begin()), bool = true>
+  template <typename Collection, typename = decltype(instance<Collection>().begin()), bool = true>
   size_t eraseAll(Collection&& collection);
   // Erase all rows in the given iterable collection of rows. This carefully
   // marks rows for deletion in a first pass then deletes them in a second.
@@ -300,8 +298,7 @@ class Table {
   template <size_t index = 0>
   _::TableIterable<Row, TypeOfIndex<index, Tuple<Indexes...>>&> ordered();
   template <size_t index = 0>
-  _::TableIterable<const Row, const TypeOfIndex<index, Tuple<Indexes...>>&>
-  ordered() const;
+  _::TableIterable<const Row, const TypeOfIndex<index, Tuple<Indexes...>>&> ordered() const;
   template <size_t index = 0, typename... Params>
   auto seek(Params&&... params);
   template <size_t index = 0, typename... Params>
@@ -330,7 +327,7 @@ class Table {
   //   ones will, but we have to do some annoying things inside to regroup the
   //   arguments.
 
- private:
+private:
   Vector<Row> rows;
   Tuple<Indexes...> indexes;
 
@@ -431,8 +428,7 @@ namespace _ {  // private
 
 ZC_NORETURN void throwDuplicateTableRow();
 
-template <typename Dst, typename Src,
-          typename = decltype(instance<Src>().size())>
+template <typename Dst, typename Src, typename = decltype(instance<Src>().size())>
 inline void tryReserveSize(Dst& dst, Src&& src) {
   dst.reserve(dst.size() + src.size());
 }
@@ -443,34 +439,34 @@ inline void tryReserveSize(Params&&...) {}
 
 template <typename Row>
 class TableMapping {
- public:
+public:
   TableMapping(Row* table) : table(table) {}
   Row& map(size_t i) const { return table[i]; }
 
- private:
+private:
   Row* table;
 };
 
 template <typename Row>
 class TableUnmapping {
- public:
+public:
   TableUnmapping(Row* table) : table(table) {}
   size_t map(Row& row) const { return &row - table; }
   size_t map(Row* row) const { return row - table; }
 
- private:
+private:
   Row* table;
 };
 
 template <typename Iterator>
 class IterRange {
- public:
+public:
   inline IterRange(Iterator b, Iterator e) : b(b), e(e) {}
 
   inline Iterator begin() const { return b; }
   inline Iterator end() const { return e; }
 
- private:
+private:
   Iterator b;
   Iterator e;
 };
@@ -485,7 +481,7 @@ inline IterRange<Decay<Iterator>> iterRange(Iterator b, Iterator e) {
 template <typename Row, typename... Indexes>
 template <size_t index>
 class Table<Row, Indexes...>::Impl<index, false> {
- public:
+public:
   static void reserve(Table<Row, Indexes...>& table, size_t size) {
     get<index>(table.indexes).reserve(size);
     Impl<index + 1>::reserve(table, size);
@@ -496,21 +492,15 @@ class Table<Row, Indexes...>::Impl<index, false> {
     Impl<index + 1>::clear(table);
   }
 
-  static zc::Maybe<size_t> insert(Table<Row, Indexes...>& table, size_t pos,
-                                  Row& row, uint skip) {
-    if (skip == index) {
-      return Impl<index + 1>::insert(table, pos, row, skip);
-    }
+  static zc::Maybe<size_t> insert(Table<Row, Indexes...>& table, size_t pos, Row& row, uint skip) {
+    if (skip == index) { return Impl<index + 1>::insert(table, pos, row, skip); }
     auto& indexObj = get<index>(table.indexes);
-    ZC_IF_SOME(existing, indexObj.insert(table.rows.asPtr(), pos,
-                                         indexObj.keyForRow(row))) {
+    ZC_IF_SOME(existing, indexObj.insert(table.rows.asPtr(), pos, indexObj.keyForRow(row))) {
       return existing;
     }
 
     bool success = false;
-    ZC_DEFER(if (!success) {
-      indexObj.erase(table.rows.asPtr(), pos, indexObj.keyForRow(row));
-    });
+    ZC_DEFER(if (!success) { indexObj.erase(table.rows.asPtr(), pos, indexObj.keyForRow(row)); });
     auto result = Impl<index + 1>::insert(table, pos, row, skip);
     success = result == zc::none;
     return result;
@@ -522,8 +512,7 @@ class Table<Row, Indexes...>::Impl<index, false> {
     Impl<index + 1>::erase(table, pos, row);
   }
 
-  static void move(Table<Row, Indexes...>& table, size_t oldPos, size_t newPos,
-                   Row& row) {
+  static void move(Table<Row, Indexes...>& table, size_t oldPos, size_t newPos, Row& row) {
     auto& indexObj = get<index>(table.indexes);
     indexObj.move(table.rows.asPtr(), oldPos, newPos, indexObj.keyForRow(row));
     Impl<index + 1>::move(table, oldPos, newPos, row);
@@ -533,16 +522,14 @@ class Table<Row, Indexes...>::Impl<index, false> {
 template <typename Row, typename... Indexes>
 template <size_t index>
 class Table<Row, Indexes...>::Impl<index, true> {
- public:
+public:
   static void reserve(Table<Row, Indexes...>& table, size_t size) {}
   static void clear(Table<Row, Indexes...>& table) {}
-  static zc::Maybe<size_t> insert(Table<Row, Indexes...>& table, size_t pos,
-                                  Row& row, uint skip) {
+  static zc::Maybe<size_t> insert(Table<Row, Indexes...>& table, size_t pos, Row& row, uint skip) {
     return zc::none;
   }
   static void erase(Table<Row, Indexes...>& table, size_t pos, Row& row) {}
-  static void move(Table<Row, Indexes...>& table, size_t oldPos, size_t newPos,
-                   Row& row) {}
+  static void move(Table<Row, Indexes...>& table, size_t oldPos, size_t newPos, Row& row) {}
 };
 
 template <typename Row, typename... Indexes>
@@ -606,18 +593,14 @@ template <typename Row, typename... Indexes>
 template <typename Collection>
 void Table<Row, Indexes...>::insertAll(Collection&& collection) {
   _::tryReserveSize(*this, collection);
-  for (auto& row : collection) {
-    insert(zc::mv(row));
-  }
+  for (auto& row : collection) { insert(zc::mv(row)); }
 }
 
 template <typename Row, typename... Indexes>
 template <typename Collection>
 void Table<Row, Indexes...>::insertAll(Collection& collection) {
   _::tryReserveSize(*this, collection);
-  for (auto& row : collection) {
-    insert(row);
-  }
+  for (auto& row : collection) { insert(row); }
 }
 
 template <typename Row, typename... Indexes>
@@ -627,9 +610,7 @@ Row& Table<Row, Indexes...>::upsert(Row&& row, UpdateFunc&& update) {
     update(rows[existing], zc::mv(row));
     return rows[existing];
   }
-  else {
-    return rows.add(zc::mv(row));
-  }
+  else { return rows.add(zc::mv(row)); }
 }
 template <typename Row, typename... Indexes>
 template <typename UpdateFunc>
@@ -640,66 +621,50 @@ Row& Table<Row, Indexes...>::upsert(const Row& row, UpdateFunc&& update) {
 template <typename Row, typename... Indexes>
 template <typename Index, typename... Params>
 zc::Maybe<Row&> Table<Row, Indexes...>::find(Params&&... params) {
-  return find<indexOfType<Index, Tuple<Indexes...>>()>(
-      zc::fwd<Params>(params)...);
+  return find<indexOfType<Index, Tuple<Indexes...>>()>(zc::fwd<Params>(params)...);
 }
 template <typename Row, typename... Indexes>
 template <size_t index, typename... Params>
 zc::Maybe<Row&> Table<Row, Indexes...>::find(Params&&... params) {
-  ZC_IF_SOME(
-      pos, get<index>(indexes).find(rows.asPtr(), zc::fwd<Params>(params)...)) {
+  ZC_IF_SOME(pos, get<index>(indexes).find(rows.asPtr(), zc::fwd<Params>(params)...)) {
     return rows[pos];
   }
-  else {
-    return zc::none;
-  }
+  else { return zc::none; }
 }
 template <typename Row, typename... Indexes>
 template <typename Index, typename... Params>
 zc::Maybe<const Row&> Table<Row, Indexes...>::find(Params&&... params) const {
-  return find<indexOfType<Index, Tuple<Indexes...>>()>(
-      zc::fwd<Params>(params)...);
+  return find<indexOfType<Index, Tuple<Indexes...>>()>(zc::fwd<Params>(params)...);
 }
 template <typename Row, typename... Indexes>
 template <size_t index, typename... Params>
 zc::Maybe<const Row&> Table<Row, Indexes...>::find(Params&&... params) const {
-  ZC_IF_SOME(
-      pos, get<index>(indexes).find(rows.asPtr(), zc::fwd<Params>(params)...)) {
+  ZC_IF_SOME(pos, get<index>(indexes).find(rows.asPtr(), zc::fwd<Params>(params)...)) {
     return rows[pos];
   }
-  else {
-    return zc::none;
-  }
+  else { return zc::none; }
 }
 
 template <typename Row, typename... Indexes>
 template <typename Func, typename... Params>
 class Table<Row, Indexes...>::FindOrCreateImpl {
- public:
+public:
   template <size_t index>
-  static Row& apply(Table<Row, Indexes...>& table, Params&&... params,
-                    Func&& createFunc) {
+  static Row& apply(Table<Row, Indexes...>& table, Params&&... params, Func&& createFunc) {
     auto pos = table.rows.size();
-    ZC_IF_SOME(
-        existing,
-        get<index>(table.indexes).insert(table.rows.asPtr(), pos, params...)) {
+    ZC_IF_SOME(existing, get<index>(table.indexes).insert(table.rows.asPtr(), pos, params...)) {
       return table.rows[existing];
     }
     else {
       bool success = false;
       ZC_DEFER({
-        if (!success) {
-          get<index>(table.indexes).erase(table.rows.asPtr(), pos, params...);
-        }
+        if (!success) { get<index>(table.indexes).erase(table.rows.asPtr(), pos, params...); }
       });
       auto& newRow = table.rows.add(createFunc());
       ZC_DEFER({
-        if (!success) {
-          table.rows.removeLast();
-        }
+        if (!success) { table.rows.removeLast(); }
       });
-      if (Table<Row, Indexes...>::template Impl<>::insert(table, pos, newRow,
-                                                          index) == zc::none) {
+      if (Table<Row, Indexes...>::template Impl<>::insert(table, pos, newRow, index) == zc::none) {
         success = true;
       } else {
         _::throwDuplicateTableRow();
@@ -725,8 +690,8 @@ struct Table<Row, Indexes...>::FindOrCreateHack<_::Tuple<T...>, U>
 template <typename Row, typename... Indexes>
 template <typename Index, typename First, typename... Rest>
 Row& Table<Row, Indexes...>::findOrCreate(First&& first, Rest&&... rest) {
-  return findOrCreate<indexOfType<Index, Tuple<Indexes...>>()>(
-      zc::fwd<First>(first), zc::fwd<Rest>(rest)...);
+  return findOrCreate<indexOfType<Index, Tuple<Indexes...>>()>(zc::fwd<First>(first),
+                                                               zc::fwd<Rest>(rest)...);
 }
 template <typename Row, typename... Indexes>
 template <size_t index, typename First, typename... Rest>
@@ -738,31 +703,28 @@ Row& Table<Row, Indexes...>::findOrCreate(First&& first, Rest&&... rest) {
 template <typename Row, typename... Indexes>
 template <typename Index, typename BeginKey, typename EndKey>
 auto Table<Row, Indexes...>::range(BeginKey&& begin, EndKey&& end) {
-  return range<indexOfType<Index, Tuple<Indexes...>>()>(
-      zc::fwd<BeginKey>(begin), zc::fwd<EndKey>(end));
+  return range<indexOfType<Index, Tuple<Indexes...>>()>(zc::fwd<BeginKey>(begin),
+                                                        zc::fwd<EndKey>(end));
 }
 template <typename Row, typename... Indexes>
 template <size_t index, typename BeginKey, typename EndKey>
 auto Table<Row, Indexes...>::range(BeginKey&& begin, EndKey&& end) {
-  auto inner = _::iterRange(
-      get<index>(indexes).seek(rows.asPtr(), zc::fwd<BeginKey>(begin)),
-      get<index>(indexes).seek(rows.asPtr(), zc::fwd<EndKey>(end)));
+  auto inner = _::iterRange(get<index>(indexes).seek(rows.asPtr(), zc::fwd<BeginKey>(begin)),
+                            get<index>(indexes).seek(rows.asPtr(), zc::fwd<EndKey>(end)));
   return _::TableIterable<Row, decltype(inner)>(zc::mv(inner), rows.begin());
 }
 template <typename Row, typename... Indexes>
 template <typename Index, typename BeginKey, typename EndKey>
 auto Table<Row, Indexes...>::range(BeginKey&& begin, EndKey&& end) const {
-  return range<indexOfType<Index, Tuple<Indexes...>>()>(
-      zc::fwd<BeginKey>(begin), zc::fwd<EndKey>(end));
+  return range<indexOfType<Index, Tuple<Indexes...>>()>(zc::fwd<BeginKey>(begin),
+                                                        zc::fwd<EndKey>(end));
 }
 template <typename Row, typename... Indexes>
 template <size_t index, typename BeginKey, typename EndKey>
 auto Table<Row, Indexes...>::range(BeginKey&& begin, EndKey&& end) const {
-  auto inner = _::iterRange(
-      get<index>(indexes).seek(rows.asPtr(), zc::fwd<BeginKey>(begin)),
-      get<index>(indexes).seek(rows.asPtr(), zc::fwd<EndKey>(end)));
-  return _::TableIterable<const Row, decltype(inner)>(zc::mv(inner),
-                                                      rows.begin());
+  auto inner = _::iterRange(get<index>(indexes).seek(rows.asPtr(), zc::fwd<BeginKey>(begin)),
+                            get<index>(indexes).seek(rows.asPtr(), zc::fwd<EndKey>(end)));
+  return _::TableIterable<const Row, decltype(inner)>(zc::mv(inner), rows.begin());
 }
 
 template <typename Row, typename... Indexes>
@@ -772,14 +734,12 @@ _::TableIterable<Row, Index&> Table<Row, Indexes...>::ordered() {
 }
 template <typename Row, typename... Indexes>
 template <size_t index>
-_::TableIterable<Row, TypeOfIndex<index, Tuple<Indexes...>>&>
-Table<Row, Indexes...>::ordered() {
+_::TableIterable<Row, TypeOfIndex<index, Tuple<Indexes...>>&> Table<Row, Indexes...>::ordered() {
   return {get<index>(indexes), rows.begin()};
 }
 template <typename Row, typename... Indexes>
 template <typename Index>
-_::TableIterable<const Row, const Index&> Table<Row, Indexes...>::ordered()
-    const {
+_::TableIterable<const Row, const Index&> Table<Row, Indexes...>::ordered() const {
   return ordered<indexOfType<Index, Tuple<Indexes...>>()>();
 }
 template <typename Row, typename... Indexes>
@@ -792,61 +752,52 @@ Table<Row, Indexes...>::ordered() const {
 template <typename Row, typename... Indexes>
 template <typename Index, typename... Params>
 auto Table<Row, Indexes...>::seek(Params&&... params) {
-  return seek<indexOfType<Index, Tuple<Indexes...>>()>(
-      zc::fwd<Params>(params)...);
+  return seek<indexOfType<Index, Tuple<Indexes...>>()>(zc::fwd<Params>(params)...);
 }
 template <typename Row, typename... Indexes>
 template <size_t index, typename... Params>
 auto Table<Row, Indexes...>::seek(Params&&... params) {
-  auto inner =
-      get<index>(indexes).seek(rows.asPtr(), zc::fwd<Params>(params)...);
+  auto inner = get<index>(indexes).seek(rows.asPtr(), zc::fwd<Params>(params)...);
   return _::TableIterator<Row, decltype(inner)>(zc::mv(inner), rows.begin());
 }
 template <typename Row, typename... Indexes>
 template <typename Index, typename... Params>
 auto Table<Row, Indexes...>::seek(Params&&... params) const {
-  return seek<indexOfType<Index, Tuple<Indexes...>>()>(
-      zc::fwd<Params>(params)...);
+  return seek<indexOfType<Index, Tuple<Indexes...>>()>(zc::fwd<Params>(params)...);
 }
 template <typename Row, typename... Indexes>
 template <size_t index, typename... Params>
 auto Table<Row, Indexes...>::seek(Params&&... params) const {
-  auto inner =
-      get<index>(indexes).seek(rows.asPtr(), zc::fwd<Params>(params)...);
+  auto inner = get<index>(indexes).seek(rows.asPtr(), zc::fwd<Params>(params)...);
   return _::TableIterator<Row, decltype(inner)>(zc::mv(inner), rows.begin());
 }
 
 template <typename Row, typename... Indexes>
 template <typename Index, typename... Params>
 bool Table<Row, Indexes...>::eraseMatch(Params&&... params) {
-  return eraseMatch<indexOfType<Index, Tuple<Indexes...>>()>(
-      zc::fwd<Params>(params)...);
+  return eraseMatch<indexOfType<Index, Tuple<Indexes...>>()>(zc::fwd<Params>(params)...);
 }
 template <typename Row, typename... Indexes>
 template <size_t index, typename... Params>
 bool Table<Row, Indexes...>::eraseMatch(Params&&... params) {
-  ZC_IF_SOME(
-      pos, get<index>(indexes).find(rows.asPtr(), zc::fwd<Params>(params)...)) {
+  ZC_IF_SOME(pos, get<index>(indexes).find(rows.asPtr(), zc::fwd<Params>(params)...)) {
     eraseImpl(pos);
     return true;
   }
-  else {
-    return false;
-  }
+  else { return false; }
 }
 
 template <typename Row, typename... Indexes>
 template <typename Index, typename BeginKey, typename EndKey>
 size_t Table<Row, Indexes...>::eraseRange(BeginKey&& begin, EndKey&& end) {
-  return eraseRange<indexOfType<Index, Tuple<Indexes...>>()>(
-      zc::fwd<BeginKey>(begin), zc::fwd<EndKey>(end));
+  return eraseRange<indexOfType<Index, Tuple<Indexes...>>()>(zc::fwd<BeginKey>(begin),
+                                                             zc::fwd<EndKey>(end));
 }
 template <typename Row, typename... Indexes>
 template <size_t index, typename BeginKey, typename EndKey>
 size_t Table<Row, Indexes...>::eraseRange(BeginKey&& begin, EndKey&& end) {
-  auto inner = _::iterRange(
-      get<index>(indexes).seek(rows.asPtr(), zc::fwd<BeginKey>(begin)),
-      get<index>(indexes).seek(rows.asPtr(), zc::fwd<EndKey>(end)));
+  auto inner = _::iterRange(get<index>(indexes).seek(rows.asPtr(), zc::fwd<BeginKey>(begin)),
+                            get<index>(indexes).seek(rows.asPtr(), zc::fwd<EndKey>(end)));
   return eraseAllImpl(inner);
 }
 
@@ -858,8 +809,7 @@ void Table<Row, Indexes...>::verify() {
 
 template <typename Row, typename... Indexes>
 void Table<Row, Indexes...>::erase(Row& row) {
-  ZC_TABLE_IREQUIRE(&row >= rows.begin() && &row < rows.end(),
-                    "row is not a member of this table");
+  ZC_TABLE_IREQUIRE(&row >= rows.begin() && &row < rows.end(), "row is not a member of this table");
   eraseImpl(&row - rows.begin());
 }
 template <typename Row, typename... Indexes>
@@ -875,8 +825,7 @@ void Table<Row, Indexes...>::eraseImpl(size_t pos) {
 
 template <typename Row, typename... Indexes>
 Row Table<Row, Indexes...>::release(Row& row) {
-  ZC_TABLE_IREQUIRE(&row >= rows.begin() && &row < rows.end(),
-                    "row is not a member of this table");
+  ZC_TABLE_IREQUIRE(&row >= rows.begin() && &row < rows.end(), "row is not a member of this table");
   size_t pos = &row - rows.begin();
   Impl<>::erase(*this, pos, row);
   Row result = zc::mv(row);
@@ -909,8 +858,8 @@ size_t Table<Row, Indexes...>::eraseAll(Predicate&& predicate) {
 template <typename Row, typename... Indexes>
 template <typename Collection, typename, bool>
 size_t Table<Row, Indexes...>::eraseAll(Collection&& collection) {
-  return eraseAllImpl(MappedIterable<Collection&, _::TableUnmapping<Row>>(
-      collection, rows.begin()));
+  return eraseAllImpl(
+      MappedIterable<Collection&, _::TableUnmapping<Row>>(collection, rows.begin()));
 }
 
 template <typename Row, typename... Indexes>
@@ -933,9 +882,7 @@ size_t Table<Row, Indexes...>::eraseAllImpl(Collection&& collection) {
   }
 
   // Now we can execute the sequence of erasures.
-  for (size_t pos : erased) {
-    eraseImpl(pos);
-  }
+  for (size_t pos : erased) { eraseImpl(pos); }
 
   return erased.size();
 }
@@ -984,12 +931,10 @@ inline size_t probeHash(const zc::Array<HashBucket>& buckets, size_t i) {
   }
 }
 
-zc::Array<HashBucket> rehash(zc::ArrayPtr<const HashBucket> oldBuckets,
-                             size_t targetSize);
+zc::Array<HashBucket> rehash(zc::ArrayPtr<const HashBucket> oldBuckets, size_t targetSize);
 
 inline uint chooseBucket(uint hash, uint count) {
-  ZC_IASSERT(zc::popCount(count) == 1,
-             "hash bucket count must be power of two!");
+  ZC_IASSERT(zc::popCount(count) == 1, "hash bucket count must be power of two!");
   return hash & (count - 1);
 }
 
@@ -997,7 +942,7 @@ inline uint chooseBucket(uint hash, uint count) {
 
 template <typename Callbacks>
 class HashIndex {
- public:
+public:
   HashIndex() = default;
   template <typename... Params>
   HashIndex(Params&&... params) : cb(zc::fwd<Params>(params)...) {}
@@ -1008,15 +953,12 @@ class HashIndex {
   }
 
   void reserve(size_t size) {
-    if (buckets.size() < size * 2) {
-      rehash(size);
-    }
+    if (buckets.size() < size * 2) { rehash(size); }
   }
 
   void clear() {
     erasedCount = 0;
-    if (buckets.size() > 0)
-      memset(buckets.begin(), 0, buckets.asBytes().size());
+    if (buckets.size() > 0) memset(buckets.begin(), 0, buckets.asBytes().size());
   }
 
   template <typename Row>
@@ -1025,8 +967,7 @@ class HashIndex {
   }
 
   template <typename Row, typename... Params>
-  zc::Maybe<size_t> insert(zc::ArrayPtr<Row> table, size_t pos,
-                           Params&&... params) {
+  zc::Maybe<size_t> insert(zc::ArrayPtr<Row> table, size_t pos, Params&&... params) {
     if (buckets.size() * 2 < (table.size() + 1 + erasedCount) * 3) {
       // Load factor is more than 2/3, let's rehash so that it's 1/3, i.e.
       // double the buckets. Note that rehashing also cleans up erased entries,
@@ -1039,8 +980,7 @@ class HashIndex {
 
     uint hashCode = cb.hashCode(params...);
     Maybe<_::HashBucket&> erasedSlot;
-    for (uint i = _::chooseBucket(hashCode, buckets.size());;
-         i = _::probeHash(buckets, i)) {
+    for (uint i = _::chooseBucket(hashCode, buckets.size());; i = _::probeHash(buckets, i)) {
       auto& bucket = buckets[i];
       if (bucket.isEmpty()) {
         // no duplicates found
@@ -1048,18 +988,13 @@ class HashIndex {
           --erasedCount;
           s = {hashCode, uint(pos)};
         }
-        else {
-          bucket = {hashCode, uint(pos)};
-        }
+        else { bucket = {hashCode, uint(pos)}; }
         return zc::none;
       } else if (bucket.isErased()) {
         // We can fill in the erased slot. However, we have to keep searching to
         // make sure there are no duplicates before we do that.
-        if (erasedSlot == zc::none) {
-          erasedSlot = bucket;
-        }
-      } else if (bucket.hash == hashCode &&
-                 cb.matches(bucket.getRow(table), params...)) {
+        if (erasedSlot == zc::none) { erasedSlot = bucket; }
+      } else if (bucket.hash == hashCode && cb.matches(bucket.getRow(table), params...)) {
         // duplicate row
         return size_t(bucket.getPos());
       }
@@ -1069,8 +1004,7 @@ class HashIndex {
   template <typename Row, typename... Params>
   void erase(zc::ArrayPtr<Row> table, size_t pos, Params&&... params) {
     uint hashCode = cb.hashCode(params...);
-    for (uint i = _::chooseBucket(hashCode, buckets.size());;
-         i = _::probeHash(buckets, i)) {
+    for (uint i = _::chooseBucket(hashCode, buckets.size());; i = _::probeHash(buckets, i)) {
       auto& bucket = buckets[i];
       if (bucket.isPos(pos)) {
         // found it
@@ -1086,11 +1020,9 @@ class HashIndex {
   }
 
   template <typename Row, typename... Params>
-  void move(zc::ArrayPtr<Row> table, size_t oldPos, size_t newPos,
-            Params&&... params) {
+  void move(zc::ArrayPtr<Row> table, size_t oldPos, size_t newPos, Params&&... params) {
     uint hashCode = cb.hashCode(params...);
-    for (uint i = _::chooseBucket(hashCode, buckets.size());;
-         i = _::probeHash(buckets, i)) {
+    for (uint i = _::chooseBucket(hashCode, buckets.size());; i = _::probeHash(buckets, i)) {
       auto& bucket = buckets[i];
       if (bucket.isPos(oldPos)) {
         // found it
@@ -1109,16 +1041,14 @@ class HashIndex {
     if (buckets.size() == 0) return zc::none;
 
     uint hashCode = cb.hashCode(params...);
-    for (uint i = _::chooseBucket(hashCode, buckets.size());;
-         i = _::probeHash(buckets, i)) {
+    for (uint i = _::chooseBucket(hashCode, buckets.size());; i = _::probeHash(buckets, i)) {
       auto& bucket = buckets[i];
       if (bucket.isEmpty()) {
         // not found.
         return zc::none;
       } else if (bucket.isErased()) {
         // skip, keep searching
-      } else if (bucket.hash == hashCode &&
-                 cb.matches(bucket.getRow(table), params...)) {
+      } else if (bucket.hash == hashCode && cb.matches(bucket.getRow(table), params...)) {
         // found
         return size_t(bucket.getPos());
       }
@@ -1127,7 +1057,7 @@ class HashIndex {
 
   // No begin() nor end() because hash tables are not usefully ordered.
 
- private:
+private:
   Callbacks cb;
   size_t erasedCount = 0;
   Array<_::HashBucket> buckets;
@@ -1172,7 +1102,7 @@ inline void azero(T* ptr, size_t size) {
 // TODO(cleanup): These are generally useful, put them somewhere.
 
 class BTreeImpl {
- public:
+public:
   class Iterator;
   class MaybeUint;
   struct NodeUnion;
@@ -1188,7 +1118,7 @@ class BTreeImpl {
     // only needs to be called once per tree node, rather than once per
     // comparison.
 
-   public:
+  public:
     virtual uint search(const Parent& parent) const = 0;
     virtual uint search(const Leaf& leaf) const = 0;
     // Binary search for the first key/row in the parent/leaf that is equal to
@@ -1232,7 +1162,7 @@ class BTreeImpl {
 
   void verify(size_t size, FunctionParam<bool(uint, uint)>);
 
- private:
+private:
   NodeUnion* tree;  // allocated with aligned_alloc aligned to cache lines
   uint treeCapacity;
   uint height;  // height of *parent* tree -- does not include the leaf level
@@ -1255,25 +1185,23 @@ class BTreeImpl {
   inline void merge(Leaf& dst, uint dstPos, uint pivot, Leaf& src);
   inline void move(Parent& dst, uint dstPos, Parent& src);
   inline void move(Leaf& dst, uint dstPos, Leaf& src);
-  inline void rotateLeft(Parent& left, Parent& right, Parent& parent,
-                         uint indexInParent, MaybeUint*& fixup);
-  inline void rotateLeft(Leaf& left, Leaf& right, Parent& parent,
-                         uint indexInParent, MaybeUint*& fixup);
-  inline void rotateRight(Parent& left, Parent& right, Parent& parent,
-                          uint indexInParent);
-  inline void rotateRight(Leaf& left, Leaf& right, Parent& parent,
-                          uint indexInParent);
+  inline void rotateLeft(Parent& left, Parent& right, Parent& parent, uint indexInParent,
+                         MaybeUint*& fixup);
+  inline void rotateLeft(Leaf& left, Leaf& right, Parent& parent, uint indexInParent,
+                         MaybeUint*& fixup);
+  inline void rotateRight(Parent& left, Parent& right, Parent& parent, uint indexInParent);
+  inline void rotateRight(Leaf& left, Leaf& right, Parent& parent, uint indexInParent);
 
   template <typename Node>
-  inline Node& insertHelper(const SearchKey& searchKey, Node& node,
-                            Parent* parent, uint indexInParent, uint pos);
+  inline Node& insertHelper(const SearchKey& searchKey, Node& node, Parent* parent,
+                            uint indexInParent, uint pos);
 
   template <typename Node>
-  inline Node& eraseHelper(Node& node, Parent* parent, uint indexInParent,
-                           uint pos, MaybeUint*& fixup);
+  inline Node& eraseHelper(Node& node, Parent* parent, uint indexInParent, uint pos,
+                           MaybeUint*& fixup);
 
-  size_t verifyNode(size_t size, FunctionParam<bool(uint, uint)>&, uint pos,
-                    uint height, MaybeUint maxRow);
+  size_t verifyNode(size_t size, FunctionParam<bool(uint, uint)>&, uint pos, uint height,
+                    MaybeUint maxRow);
 
   static const NodeUnion EMPTY_NODE;
 };
@@ -1281,7 +1209,7 @@ class BTreeImpl {
 class BTreeImpl::MaybeUint {
   // A nullable uint, using the value zero to mean null and shifting all other
   // values up by 1.
- public:
+public:
   MaybeUint() = default;
   inline MaybeUint(uint i) : i(i + 1) {}
   inline MaybeUint(decltype(nullptr)) : i(0) {}
@@ -1312,7 +1240,7 @@ class BTreeImpl::MaybeUint {
 
   zc::String toString() const;
 
- private:
+private:
   uint i;
 };
 
@@ -1469,32 +1397,23 @@ static_assert(sizeof(BTreeImpl::Freelisted) == 64,
 static_assert(sizeof(BTreeImpl::NodeUnion) == 64,
               "BTreeImpl::NodeUnion should be optimized to fit a cache line");
 
-bool BTreeImpl::Leaf::isFull() const {
-  return rows[Leaf::NROWS - 1] != nullptr;
-}
-bool BTreeImpl::Leaf::isMostlyFull() const {
-  return rows[Leaf::NROWS / 2] != nullptr;
-}
+bool BTreeImpl::Leaf::isFull() const { return rows[Leaf::NROWS - 1] != nullptr; }
+bool BTreeImpl::Leaf::isMostlyFull() const { return rows[Leaf::NROWS / 2] != nullptr; }
 bool BTreeImpl::Leaf::isHalfFull() const {
   ZC_TABLE_IASSERT(rows[Leaf::NROWS / 2 - 1] != nullptr);
   return rows[Leaf::NROWS / 2] == nullptr;
 }
 
-bool BTreeImpl::Parent::isFull() const {
-  return keys[Parent::NKEYS - 1] != nullptr;
-}
-bool BTreeImpl::Parent::isMostlyFull() const {
-  return keys[Parent::NKEYS / 2] != nullptr;
-}
+bool BTreeImpl::Parent::isFull() const { return keys[Parent::NKEYS - 1] != nullptr; }
+bool BTreeImpl::Parent::isMostlyFull() const { return keys[Parent::NKEYS / 2] != nullptr; }
 bool BTreeImpl::Parent::isHalfFull() const {
   ZC_TABLE_IASSERT(keys[Parent::NKEYS / 2 - 1] != nullptr);
   return keys[Parent::NKEYS / 2] == nullptr;
 }
 
 class BTreeImpl::Iterator {
- public:
-  Iterator(const NodeUnion* tree, const Leaf* leaf, uint row)
-      : tree(tree), leaf(leaf), row(row) {}
+public:
+  Iterator(const NodeUnion* tree, const Leaf* leaf, uint row) : tree(tree), leaf(leaf), row(row) {}
 
   size_t operator*() const {
     ZC_TABLE_IREQUIRE(row < Leaf::NROWS && leaf->rows[row] != nullptr,
@@ -1558,15 +1477,13 @@ class BTreeImpl::Iterator {
     const_cast<Leaf*>(leaf)->rows[row] = newRow;
   }
 
- private:
+private:
   const NodeUnion* tree;
   const Leaf* leaf;
   uint row;
 };
 
-inline BTreeImpl::Iterator BTreeImpl::begin() const {
-  return {tree, &tree[beginLeaf].leaf, 0};
-}
+inline BTreeImpl::Iterator BTreeImpl::begin() const { return {tree, &tree[beginLeaf].leaf, 0}; }
 inline BTreeImpl::Iterator BTreeImpl::end() const {
   auto& leaf = tree[endLeaf].leaf;
   return {tree, &leaf, leaf.size()};
@@ -1576,16 +1493,14 @@ inline BTreeImpl::Iterator BTreeImpl::end() const {
 
 template <typename Callbacks>
 class TreeIndex {
- public:
+public:
   TreeIndex() = default;
   template <typename... Params>
   TreeIndex(Params&&... params) : cb(zc::fwd<Params>(params)...) {}
 
   template <typename Row>
   void verify(zc::ArrayPtr<Row> table) {
-    impl.verify(table.size(), [&](uint i, uint j) {
-      return cb.isBefore(table[i], table[j]);
-    });
+    impl.verify(table.size(), [&](uint i, uint j) { return cb.isBefore(table[i], table[j]); });
   }
 
   inline void reserve(size_t size) { impl.reserve(size); }
@@ -1599,8 +1514,7 @@ class TreeIndex {
   }
 
   template <typename Row, typename... Params>
-  zc::Maybe<size_t> insert(zc::ArrayPtr<Row> table, size_t pos,
-                           Params&&... params) {
+  zc::Maybe<size_t> insert(zc::ArrayPtr<Row> table, size_t pos, Params&&... params) {
     auto iter = impl.insert(searchKey(table, params...));
 
     if (!iter.isEnd() && cb.matches(table[*iter], params...)) {
@@ -1617,8 +1531,7 @@ class TreeIndex {
   }
 
   template <typename Row, typename... Params>
-  void move(zc::ArrayPtr<Row> table, size_t oldPos, size_t newPos,
-            Params&&... params) {
+  void move(zc::ArrayPtr<Row> table, size_t oldPos, size_t newPos, Params&&... params) {
     impl.renumber(oldPos, newPos, searchKey(table, params...));
   }
 
@@ -1634,18 +1547,17 @@ class TreeIndex {
   }
 
   template <typename Row, typename... Params>
-  _::BTreeImpl::Iterator seek(zc::ArrayPtr<Row> table,
-                              Params&&... params) const {
+  _::BTreeImpl::Iterator seek(zc::ArrayPtr<Row> table, Params&&... params) const {
     return impl.search(searchKey(table, params...));
   }
 
- private:
+private:
   Callbacks cb;
   _::BTreeImpl impl;
 
   template <typename Predicate>
   class SearchKeyImpl : public _::BTreeImpl::SearchKey {
-   public:
+  public:
     SearchKeyImpl(Predicate&& predicate) : predicate(zc::mv(predicate)) {}
 
     uint search(const _::BTreeImpl::Parent& parent) const override {
@@ -1656,7 +1568,7 @@ class TreeIndex {
     }
     bool isAfter(uint rowIndex) const override { return predicate(rowIndex); }
 
-   private:
+  private:
     Predicate predicate;
   };
 
@@ -1667,13 +1579,10 @@ class TreeIndex {
   }
 
   template <typename Row, typename... Params>
-  inline auto searchKeyForErase(zc::ArrayPtr<Row>& table, uint pos,
-                                Params&... params) const {
+  inline auto searchKeyForErase(zc::ArrayPtr<Row>& table, uint pos, Params&... params) const {
     // When erasing, the table entry for the erased row may already be invalid,
     // so we must avoid accessing it.
-    auto predicate = [&, pos](uint i) {
-      return i != pos && cb.isBefore(table[i], params...);
-    };
+    auto predicate = [&, pos](uint i) { return i != pos && cb.isBefore(table[i], params...); };
     return SearchKeyImpl<decltype(predicate)>(zc::mv(predicate));
   }
 };
@@ -1688,7 +1597,7 @@ class InsertionOrderIndex {
 
   struct Link;
 
- public:
+public:
   InsertionOrderIndex();
   InsertionOrderIndex(const InsertionOrderIndex&) = delete;
   InsertionOrderIndex& operator=(const InsertionOrderIndex&) = delete;
@@ -1697,7 +1606,7 @@ class InsertionOrderIndex {
   ~InsertionOrderIndex() noexcept(false);
 
   class Iterator {
-   public:
+  public:
     Iterator(const Link* links, uint pos) : links(links), pos(pos) {}
 
     inline size_t operator*() const {
@@ -1724,11 +1633,9 @@ class InsertionOrderIndex {
       return result;
     }
 
-    inline bool operator==(const Iterator& other) const {
-      return pos == other.pos;
-    }
+    inline bool operator==(const Iterator& other) const { return pos == other.pos; }
 
-   private:
+  private:
     const Link* links;
     uint pos;
   };
@@ -1744,8 +1651,7 @@ class InsertionOrderIndex {
   inline Iterator end() const { return Iterator(links, 0); }
 
   template <typename Row>
-  zc::Maybe<size_t> insert(zc::ArrayPtr<Row> table, size_t pos,
-                           const Row& row) {
+  zc::Maybe<size_t> insert(zc::ArrayPtr<Row> table, size_t pos, const Row& row) {
     return insertImpl(pos);
   }
 
@@ -1755,12 +1661,11 @@ class InsertionOrderIndex {
   }
 
   template <typename Row>
-  void move(zc::ArrayPtr<Row> table, size_t oldPos, size_t newPos,
-            const Row& row) {
+  void move(zc::ArrayPtr<Row> table, size_t oldPos, size_t newPos, const Row& row) {
     return moveImpl(oldPos, newPos);
   }
 
- private:
+private:
   struct Link {
     uint next;
     uint prev;

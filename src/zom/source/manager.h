@@ -25,7 +25,7 @@ namespace zom {
 namespace source {
 
 class SourceManager {
- public:
+public:
   struct VirtualFile {
     CharSourceRange range;
     zc::StringPtr name;
@@ -60,8 +60,7 @@ class SourceManager {
                             zc::StringPtr buf_identifier = "");
 
   // Virtual file management
-  void CreateVirtualFile(SourceLoc loc, zc::StringPtr name, int line_offset,
-                         unsigned length);
+  void CreateVirtualFile(SourceLoc loc, zc::StringPtr name, int line_offset, unsigned length);
   const VirtualFile* GetVirtualFile(SourceLoc loc) const;
 
   // Generated source info
@@ -86,23 +85,19 @@ class SourceManager {
   zc::StringPtr GetFilename(unsigned buffer_id) const;
 
   // Line and column operations
-  zc::Maybe<unsigned> ResolveFromLineCol(unsigned buffer_id, unsigned line,
-                                         unsigned col) const;
-  zc::Maybe<unsigned> ResolveOffsetForEndOfLine(unsigned buffer_id,
-                                                unsigned line) const;
+  zc::Maybe<unsigned> ResolveFromLineCol(unsigned buffer_id, unsigned line, unsigned col) const;
+  zc::Maybe<unsigned> ResolveOffsetForEndOfLine(unsigned buffer_id, unsigned line) const;
   zc::Maybe<unsigned> GetLineLength(unsigned buffer_id, unsigned line) const;
-  SourceLoc GetLocForLineCol(unsigned buffer_id, unsigned line,
-                             unsigned col) const;
+  SourceLoc GetLocForLineCol(unsigned buffer_id, unsigned line, unsigned col) const;
 
   // External source support
   unsigned GetExternalSourceBufferID(zc::StringPtr path);
-  SourceLoc GetLocFromExternalSource(zc::StringPtr path, unsigned line,
-                                     unsigned col);
+  SourceLoc GetLocFromExternalSource(zc::StringPtr path, unsigned line, unsigned col);
 
   // Diagnostics
-  void GetMessage(SourceLoc loc, zom::diagnostics::DiagnosticKind kind,
-                  const zc::String& msg, zc::ArrayPtr<SourceRange> ranges,
-                  zc::ArrayPtr<FixIt> fix_its, zc::OutputStream& os) const;
+  void GetMessage(SourceLoc loc, zom::diagnostics::DiagnosticKind kind, const zc::String& msg,
+                  zc::ArrayPtr<SourceRange> ranges, zc::ArrayPtr<FixIt> fix_its,
+                  zc::OutputStream& os) const;
 
   // Verification
   void VerifyAllBuffers() const;
@@ -116,7 +111,7 @@ class SourceManager {
   char ExtractCharAfter(SourceLoc loc) const;
   SourceLoc GetLocForEndOfToken(SourceLoc loc) const;
 
- private:
+private:
   struct BufferInfo {
     zc::Own<zc::InputStream> input;
     zc::String identifier;

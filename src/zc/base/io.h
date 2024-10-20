@@ -37,7 +37,7 @@ namespace zc {
 // Abstract interfaces
 
 class InputStream {
- public:
+public:
   virtual ~InputStream() noexcept(false);
 
   size_t read(ArrayPtr<byte> buffer, size_t minBytes);
@@ -81,7 +81,7 @@ class InputStream {
 };
 
 class OutputStream {
- public:
+public:
   virtual ~OutputStream() noexcept(false);
 
   virtual void write(ArrayPtr<const byte> data) = 0;
@@ -101,7 +101,7 @@ class BufferedInputStream : public InputStream {
   // wants to give its caller a direct pointer to that memory to potentially
   // avoid a copy.
 
- public:
+public:
   virtual ~BufferedInputStream() noexcept(false);
 
   ArrayPtr<const byte> getReadBuffer();
@@ -122,7 +122,7 @@ class BufferedOutputStream : public OutputStream {
   // and wants to give its caller a direct pointer to that memory to potentially
   // avoid a copy.
 
- public:
+public:
   virtual ~BufferedOutputStream() noexcept(false);
 
   virtual ArrayPtr<byte> getWriteBuffer() = 0;
@@ -145,9 +145,8 @@ class BufferedInputStreamWrapper : public BufferedInputStream {
   // artificial EOF at the desired point. Such a stream should be trivial to
   // write but is not provided by the library at this time.
 
- public:
-  explicit BufferedInputStreamWrapper(InputStream& inner,
-                                      ArrayPtr<byte> buffer = nullptr);
+public:
+  explicit BufferedInputStreamWrapper(InputStream& inner, ArrayPtr<byte> buffer = nullptr);
   // Creates a buffered stream wrapping the given non-buffered stream. No
   // guarantee is made about the position of the inner stream after a buffered
   // wrapper has been created unless the entire input is read.
@@ -164,7 +163,7 @@ class BufferedInputStreamWrapper : public BufferedInputStream {
   size_t tryRead(ArrayPtr<byte> buffer, size_t minBytes) override;
   void skip(size_t bytes) override;
 
- private:
+private:
   InputStream& inner;
   Array<byte> ownedBuffer;
   ArrayPtr<byte> buffer;
@@ -176,9 +175,8 @@ class BufferedOutputStreamWrapper : public BufferedOutputStream {
   // writes to the underlying stream may be delayed until flush() is called or
   // the wrapper is destroyed.
 
- public:
-  explicit BufferedOutputStreamWrapper(OutputStream& inner,
-                                       ArrayPtr<byte> buffer = nullptr);
+public:
+  explicit BufferedOutputStreamWrapper(OutputStream& inner, ArrayPtr<byte> buffer = nullptr);
   // Creates a buffered stream wrapping the given non-buffered stream.
   //
   // If the second parameter is non-null, the stream uses the given buffer
@@ -199,7 +197,7 @@ class BufferedOutputStreamWrapper : public BufferedOutputStream {
 
   void write(ArrayPtr<const byte> data) override;
 
- private:
+private:
   OutputStream& inner;
   Array<byte> ownedBuffer;
   ArrayPtr<byte> buffer;
@@ -211,7 +209,7 @@ class BufferedOutputStreamWrapper : public BufferedOutputStream {
 // Array I/O
 
 class ArrayInputStream : public BufferedInputStream {
- public:
+public:
   explicit ArrayInputStream(ArrayPtr<const byte> array);
   ZC_DISALLOW_COPY_AND_MOVE(ArrayInputStream);
   ~ArrayInputStream() noexcept(false);
@@ -221,12 +219,12 @@ class ArrayInputStream : public BufferedInputStream {
   size_t tryRead(ArrayPtr<byte> buffer, size_t minBytes) override;
   void skip(size_t bytes) override;
 
- private:
+private:
   ArrayPtr<const byte> array;
 };
 
 class ArrayOutputStream : public BufferedOutputStream {
- public:
+public:
   explicit ArrayOutputStream(ArrayPtr<byte> array);
   ZC_DISALLOW_COPY_AND_MOVE(ArrayOutputStream);
   ~ArrayOutputStream() noexcept(false);
@@ -241,13 +239,13 @@ class ArrayOutputStream : public BufferedOutputStream {
 
   void write(ArrayPtr<const byte> data) override;
 
- private:
+private:
   ArrayPtr<byte> array;
   byte* fillPos;
 };
 
 class VectorOutputStream : public BufferedOutputStream {
- public:
+public:
   explicit VectorOutputStream(size_t initialCapacity = 4096);
   ZC_DISALLOW_COPY_AND_MOVE(VectorOutputStream);
   ~VectorOutputStream() noexcept(false);
@@ -264,7 +262,7 @@ class VectorOutputStream : public BufferedOutputStream {
 
   void write(ArrayPtr<const byte> data) override;
 
- private:
+private:
   Array<byte> vector;
   byte* fillPos;
 
@@ -286,7 +284,7 @@ class AutoCloseFd {
   // this case, you will have to call close() yourself and handle errors
   // appropriately.
 
- public:
+public:
   AutoCloseFd() : fd(-1) {}
   AutoCloseFd(std::nullptr_t) : fd(-1) {}
   explicit AutoCloseFd(int fd) : fd(fd) {}
@@ -322,7 +320,7 @@ class AutoCloseFd {
     return result;
   }
 
- private:
+private:
   int fd;
 };
 
@@ -334,7 +332,7 @@ inline auto ZC_STRINGIFY(const AutoCloseFd& fd)
 class FdInputStream : public InputStream {
   // An InputStream wrapping a file descriptor.
 
- public:
+public:
   explicit FdInputStream(int fd) : fd(fd) {}
   explicit FdInputStream(AutoCloseFd fd) : fd(fd), autoclose(mv(fd)) {}
   ZC_DISALLOW_COPY_AND_MOVE(FdInputStream);
@@ -344,7 +342,7 @@ class FdInputStream : public InputStream {
 
   int getFd() const { return fd; }
 
- private:
+private:
   int fd;
   AutoCloseFd autoclose;
 };
@@ -352,7 +350,7 @@ class FdInputStream : public InputStream {
 class FdOutputStream : public OutputStream {
   // An OutputStream wrapping a file descriptor.
 
- public:
+public:
   explicit FdOutputStream(int fd) : fd(fd) {}
   explicit FdOutputStream(AutoCloseFd fd) : fd(fd), autoclose(mv(fd)) {}
   ZC_DISALLOW_COPY_AND_MOVE(FdOutputStream);
@@ -363,7 +361,7 @@ class FdOutputStream : public OutputStream {
 
   inline int getFd() const { return fd; }
 
- private:
+private:
   int fd;
   AutoCloseFd autoclose;
 };
@@ -384,7 +382,7 @@ class AutoCloseHandle {
   // this case you will have to call close() yourself and handle errors
   // appropriately.
 
- public:
+public:
   AutoCloseHandle() : handle((void*)-1) {}
   AutoCloseHandle(std::nullptr_t) : handle((void*)-1) {}
   explicit AutoCloseHandle(void* handle) : handle(handle) {}
@@ -422,23 +420,22 @@ class AutoCloseHandle {
     return result;
   }
 
- private:
+private:
   void* handle;  // -1 (aka INVALID_HANDLE_VALUE) if not valid.
 };
 
 class HandleInputStream : public InputStream {
   // An InputStream wrapping a Win32 HANDLE.
 
- public:
+public:
   explicit HandleInputStream(void* handle) : handle(handle) {}
-  explicit HandleInputStream(AutoCloseHandle handle)
-      : handle(handle), autoclose(mv(handle)) {}
+  explicit HandleInputStream(AutoCloseHandle handle) : handle(handle), autoclose(mv(handle)) {}
   ZC_DISALLOW_COPY_AND_MOVE(HandleInputStream);
   ~HandleInputStream() noexcept(false);
 
   size_t tryRead(ArrayPtr<byte> buffer, size_t minBytes) override;
 
- private:
+private:
   void* handle;
   AutoCloseHandle autoclose;
 };
@@ -446,16 +443,15 @@ class HandleInputStream : public InputStream {
 class HandleOutputStream : public OutputStream {
   // An OutputStream wrapping a Win32 HANDLE.
 
- public:
+public:
   explicit HandleOutputStream(void* handle) : handle(handle) {}
-  explicit HandleOutputStream(AutoCloseHandle handle)
-      : handle(handle), autoclose(mv(handle)) {}
+  explicit HandleOutputStream(AutoCloseHandle handle) : handle(handle), autoclose(mv(handle)) {}
   ZC_DISALLOW_COPY_AND_MOVE(HandleOutputStream);
   ~HandleOutputStream() noexcept(false);
 
   void write(ArrayPtr<const byte> data) override;
 
- private:
+private:
   void* handle;
   AutoCloseHandle autoclose;
 };

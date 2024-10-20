@@ -61,13 +61,12 @@
 namespace zc {
 #ifdef ZC_USE_FUTEX
 struct BlockedOnMutexAcquisition {
-  constexpr BlockedOnMutexAcquisition(const _::Mutex& mutex,
-                                      LockSourceLocationArg) {}
+  constexpr BlockedOnMutexAcquisition(const _::Mutex& mutex, LockSourceLocationArg) {}
 };
 
 struct BlockedOnCondVarWait {
-  constexpr BlockedOnCondVarWait(const _::Mutex& mutex, const void* waiter,
-                                 LockSourceLocationArg) {}
+  constexpr BlockedOnCondVarWait(const _::Mutex& mutex, const void* waiter, LockSourceLocationArg) {
+  }
 };
 
 struct BlockedOnOnceInit {
@@ -117,12 +116,10 @@ bool Mutex::checkPredicate(Waiter& waiter) {
   // predicate passes, but also when it throws, in which case we want to
   // propagate the exception to the waiting thread.
 
-  if (waiter.exception != zc::none)
-    return true;  // don't run again after an exception
+  if (waiter.exception != zc::none) return true;  // don't run again after an exception
 
   bool result = false;
-  ZC_IF_SOME(exception, zc::runCatchingExceptions(
-                            [&]() { result = waiter.predicate.check(); })) {
+  ZC_IF_SOME(exception, zc::runCatchingExceptions([&]() { result = waiter.predicate.check(); })) {
     // Exception thrown.
     result = true;
     waiter.exception = zc::heap(zc::mv(exception));
@@ -134,8 +131,7 @@ bool Mutex::checkPredicate(Waiter& waiter) {
 namespace {
 
 TimePoint toTimePoint(struct timespec ts) {
-  return zc::origin<TimePoint>() + ts.tv_sec * zc::SECONDS +
-         ts.tv_nsec * zc::NANOSECONDS;
+  return zc::origin<TimePoint>() + ts.tv_sec * zc::SECONDS + ts.tv_nsec * zc::NANOSECONDS;
 }
 TimePoint now() {
   struct timespec now;
@@ -165,8 +161,7 @@ Mutex::~Mutex() {
   ZC_ASSERT(futex == 0, "Mutex destroyed while locked.") { break; }
 }
 
-bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
-                 LockSourceLocationArg location) {
+bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout, LockSourceLocationArg location) {
   BlockedOnReason blockReason = BlockedOnMutexAcquisition{*this, location};
   ZC_DEFER(setCurrentThreadIsNoLongerWaiting());
 
@@ -178,8 +173,8 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
     case EXCLUSIVE:
       for (;;) {
         uint state = 0;
-        if (__atomic_compare_exchange_n(&futex, &state, EXCLUSIVE_HELD, false,
-                                        __ATOMIC_ACQUIRE, __ATOMIC_RELAXED))
+        if (__atomic_compare_exchange_n(&futex, &state, EXCLUSIVE_HELD, false, __ATOMIC_ACQUIRE,
+                                        __ATOMIC_RELAXED))
           ZC_LIKELY {
             // Acquired.
             break;
@@ -187,9 +182,8 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
 
         // The mutex is contended.  Set the exclusive-requested bit and wait.
         if ((state & EXCLUSIVE_REQUESTED) == 0) {
-          if (!__atomic_compare_exchange_n(
-                  &futex, &state, state | EXCLUSIVE_REQUESTED, false,
-                  __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+          if (!__atomic_compare_exchange_n(&futex, &state, state | EXCLUSIVE_REQUESTED, false,
+                                           __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
             // Oops, the state changed before we could set the request bit.
             // Start over.
             continue;
@@ -200,8 +194,7 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
 
         setCurrentThreadIsWaitingFor(&blockReason);
 
-        auto result = syscall(SYS_futex, &futex, FUTEX_WAIT_PRIVATE, state,
-                              specp, nullptr, 0);
+        auto result = syscall(SYS_futex, &futex, FUTEX_WAIT_PRIVATE, state, specp, nullptr, 0);
         if (result < 0) {
           if (errno == ETIMEDOUT) {
             setCurrentThreadIsNoLongerWaiting();
@@ -243,8 +236,7 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
         // The mutex is exclusively locked by another thread.  Since we
         // incremented the counter already, we just have to wait for it to be
         // unlocked.
-        auto result = syscall(SYS_futex, &futex, FUTEX_WAIT_PRIVATE, state,
-                              specp, nullptr, 0);
+        auto result = syscall(SYS_futex, &futex, FUTEX_WAIT_PRIVATE, state, specp, nullptr, 0);
         if (result < 0) {
           // If we timeout though, we need to signal that we're not waiting
           // anymore.
@@ -256,14 +248,12 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
             // unlocked the mutex and maybe send a wait signal if needed. See
             // Mutex::unlock SHARED case.
             if (state == EXCLUSIVE_REQUESTED) ZC_UNLIKELY {
-                if (__atomic_compare_exchange_n(&futex, &state, 0, false,
-                                                __ATOMIC_RELAXED,
+                if (__atomic_compare_exchange_n(&futex, &state, 0, false, __ATOMIC_RELAXED,
                                                 __ATOMIC_RELAXED)) {
                   // Wake all exclusive waiters.  We have to wake all of them
                   // because one of them will grab the lock while the others
                   // will re-establish the exclusive-requested bit.
-                  syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX,
-                          nullptr, nullptr, 0);
+                  syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
                 }
               }
             return false;
@@ -277,12 +267,10 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
         if (__atomic_load_n(&printContendedReader, __ATOMIC_RELAXED)) {
           // Double-checked lock avoids the CPU needing to acquire the lock in
           // most cases.
-          if (__atomic_exchange_n(&printContendedReader, false,
-                                  __ATOMIC_RELAXED)) {
-            auto contentionDuration =
-                zc::systemPreciseMonotonicClock().now() - start;
-            ZC_LOG(WARNING, "Acquired contended lock", location,
-                   contentionDuration, zc::getStackTrace());
+          if (__atomic_exchange_n(&printContendedReader, false, __ATOMIC_RELAXED)) {
+            auto contentionDuration = zc::systemPreciseMonotonicClock().now() - start;
+            ZC_LOG(WARNING, "Acquired contended lock", location, contentionDuration,
+                   zc::getStackTrace());
           }
         }
       }
@@ -297,8 +285,7 @@ bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
 void Mutex::unlock(Exclusivity exclusivity, Waiter* waiterToSkip) {
   switch (exclusivity) {
     case EXCLUSIVE: {
-      ZC_DASSERT(futex & EXCLUSIVE_HELD,
-                 "Unlocked a mutex that wasn't locked.");
+      ZC_DASSERT(futex & EXCLUSIVE_HELD, "Unlocked a mutex that wasn't locked.");
 
 #ifdef ZC_CONTENTION_WARNING_THRESHOLD
       auto acquiredLocation = releasingExclusive();
@@ -319,8 +306,7 @@ void Mutex::unlock(Exclusivity exclusivity, Waiter* waiterToSkip) {
               // thread isn't already processing a timeout, so we need to do an
               // atomic CAS rather than just a store.
               uint expected = 0;
-              if (__atomic_compare_exchange_n(&waiter.futex, &expected, 1,
-                                              false, __ATOMIC_RELEASE,
+              if (__atomic_compare_exchange_n(&waiter.futex, &expected, 1, false, __ATOMIC_RELEASE,
                                               __ATOMIC_RELAXED)) {
                 // Good, we set it to 1, transferring ownership of the mutex.
                 // Continue on below.
@@ -341,8 +327,7 @@ void Mutex::unlock(Exclusivity exclusivity, Waiter* waiterToSkip) {
             } else {
               __atomic_store_n(&waiter.futex, 1, __ATOMIC_RELEASE);
             }
-            syscall(SYS_futex, &waiter.futex, FUTEX_WAKE_PRIVATE, INT_MAX,
-                    nullptr, nullptr, 0);
+            syscall(SYS_futex, &waiter.futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
 
             // We transferred ownership of the lock to this waiter, so we're
             // done now.
@@ -368,8 +353,8 @@ void Mutex::unlock(Exclusivity exclusivity, Waiter* waiterToSkip) {
 #endif
 
       // Didn't wake any waiters, so wake normally.
-      uint oldState = __atomic_fetch_and(
-          &futex, ~(EXCLUSIVE_HELD | EXCLUSIVE_REQUESTED), __ATOMIC_RELEASE);
+      uint oldState =
+          __atomic_fetch_and(&futex, ~(EXCLUSIVE_HELD | EXCLUSIVE_REQUESTED), __ATOMIC_RELEASE);
 
       if (oldState & ~EXCLUSIVE_HELD) ZC_UNLIKELY {
           // Other threads are waiting.  If there are any shared waiters, they
@@ -377,14 +362,12 @@ void Mutex::unlock(Exclusivity exclusivity, Waiter* waiterToSkip) {
           // are any exclusive waiters, we must wake them up even if readers are
           // waiting so that at the very least they may re-establish the
           // EXCLUSIVE_REQUESTED bit that we just removed.
-          syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr,
-                  nullptr, 0);
+          syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
 
 #ifdef ZC_CONTENTION_WARNING_THRESHOLD
           if (readerCount >= ZC_CONTENTION_WARNING_THRESHOLD) {
-            ZC_LOG(WARNING,
-                   "excessively many readers were waiting on this lock",
-                   readerCount, acquiredLocation, zc::getStackTrace());
+            ZC_LOG(WARNING, "excessively many readers were waiting on this lock", readerCount,
+                   acquiredLocation, zc::getStackTrace());
           }
 #endif
         }
@@ -392,21 +375,19 @@ void Mutex::unlock(Exclusivity exclusivity, Waiter* waiterToSkip) {
     }
 
     case SHARED: {
-      ZC_DASSERT(futex & SHARED_COUNT_MASK,
-                 "Unshared a mutex that wasn't shared.");
+      ZC_DASSERT(futex & SHARED_COUNT_MASK, "Unshared a mutex that wasn't shared.");
       uint state = __atomic_sub_fetch(&futex, 1, __ATOMIC_RELEASE);
 
       // The only case where anyone is waiting is if EXCLUSIVE_REQUESTED is set,
       // and the only time it makes sense to wake up that waiter is if the
       // shared count has reached zero.
       if (state == EXCLUSIVE_REQUESTED) ZC_UNLIKELY {
-          if (__atomic_compare_exchange_n(&futex, &state, 0, false,
-                                          __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+          if (__atomic_compare_exchange_n(&futex, &state, 0, false, __ATOMIC_RELAXED,
+                                          __ATOMIC_RELAXED)) {
             // Wake all exclusive waiters.  We have to wake all of them because
             // one of them will grab the lock while the others will re-establish
             // the exclusive-requested bit.
-            syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr,
-                    nullptr, 0);
+            syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
           }
         }
       break;
@@ -417,8 +398,7 @@ void Mutex::unlock(Exclusivity exclusivity, Waiter* waiterToSkip) {
 void Mutex::assertLockedByCaller(Exclusivity exclusivity) const {
   switch (exclusivity) {
     case EXCLUSIVE:
-      ZC_ASSERT(futex & EXCLUSIVE_HELD,
-                "Tried to call getAlreadyLocked*() but lock is not held.");
+      ZC_ASSERT(futex & EXCLUSIVE_HELD, "Tried to call getAlreadyLocked*() but lock is not held.");
       break;
     case SHARED:
       ZC_ASSERT(futex & SHARED_COUNT_MASK,
@@ -427,11 +407,9 @@ void Mutex::assertLockedByCaller(Exclusivity exclusivity) const {
   }
 }
 
-void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout,
-                 LockSourceLocationArg location) {
+void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout, LockSourceLocationArg location) {
   // Add waiter to list.
-  Waiter waiter{zc::none, waitersTail, predicate,
-                zc::none, 0,           timeout != zc::none};
+  Waiter waiter{zc::none, waitersTail, predicate, zc::none, 0, timeout != zc::none};
   addWaiter(waiter);
 
   BlockedOnReason blockReason = BlockedOnCondVarWait{*this, &waiter, location};
@@ -469,8 +447,7 @@ void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout,
       // specified as an absolute time based on CLOCK_MONOTONIC. Otherwise,
       // FUTEX_WAIT_PRIVATE interprets it as a relative time, forcing us to
       // recompute the time after every iteration.
-      ZC_SYSCALL_HANDLE_ERRORS(syscall(SYS_futex, &waiter.futex,
-                                       FUTEX_WAIT_BITSET_PRIVATE, 0, tsp,
+      ZC_SYSCALL_HANDLE_ERRORS(syscall(SYS_futex, &waiter.futex, FUTEX_WAIT_BITSET_PRIVATE, 0, tsp,
                                        nullptr, FUTEX_BITSET_MATCH_ANY)) {
         case EAGAIN:
           // Indicates that the futex was already non-zero by the time the
@@ -484,8 +461,8 @@ void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout,
           // must atomically take control of our destiny.
           ZC_ASSERT(timeout != zc::none);
           uint expected = 0;
-          if (__atomic_compare_exchange_n(&waiter.futex, &expected, 1, false,
-                                          __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE)) {
+          if (__atomic_compare_exchange_n(&waiter.futex, &expected, 1, false, __ATOMIC_ACQUIRE,
+                                          __ATOMIC_ACQUIRE)) {
             // OK, we set our own futex to 1. That means no other thread will,
             // and so we won't be receiving a mutex ownership transfer. We have
             // to lock the mutex ourselves.
@@ -536,8 +513,7 @@ void Mutex::induceSpuriousWakeupForTest() {
   for (;;) {
     ZC_IF_SOME(waiter, nextWaiter) {
       nextWaiter = waiter.next;
-      syscall(SYS_futex, &waiter.futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr,
-              nullptr, 0);
+      syscall(SYS_futex, &waiter.futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
     }
     else {
       // No more waiters.
@@ -554,8 +530,8 @@ uint Mutex::numReadersWaitingForTest() const {
 void Once::runOnce(Initializer& init, LockSourceLocationArg location) {
 startOver:
   uint state = UNINITIALIZED;
-  if (__atomic_compare_exchange_n(&futex, &state, INITIALIZING, false,
-                                  __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+  if (__atomic_compare_exchange_n(&futex, &state, INITIALIZING, false, __ATOMIC_RELAXED,
+                                  __ATOMIC_RELAXED)) {
     // It's our job to initialize!
     {
       ZC_ON_SCOPE_FAILURE({
@@ -563,18 +539,15 @@ startOver:
         if (__atomic_exchange_n(&futex, UNINITIALIZED, __ATOMIC_RELEASE) ==
             INITIALIZING_WITH_WAITERS) {
           // Someone was waiting for us to finish.
-          syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr,
-                  nullptr, 0);
+          syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
         }
       });
 
       init.run();
     }
-    if (__atomic_exchange_n(&futex, INITIALIZED, __ATOMIC_RELEASE) ==
-        INITIALIZING_WITH_WAITERS) {
+    if (__atomic_exchange_n(&futex, INITIALIZED, __ATOMIC_RELEASE) == INITIALIZING_WITH_WAITERS) {
       // Someone was waiting for us to finish.
-      syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr,
-              0);
+      syscall(SYS_futex, &futex, FUTEX_WAKE_PRIVATE, INT_MAX, nullptr, nullptr, 0);
     }
   } else {
     BlockedOnReason blockReason = BlockedOnOnceInit{*this, location};
@@ -586,8 +559,7 @@ startOver:
       } else if (state == INITIALIZING) {
         // Initialization is taking place in another thread.  Indicate that
         // we're waiting.
-        if (!__atomic_compare_exchange_n(&futex, &state,
-                                         INITIALIZING_WITH_WAITERS, true,
+        if (!__atomic_compare_exchange_n(&futex, &state, INITIALIZING_WITH_WAITERS, true,
                                          __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE)) {
           // State changed, retry.
           continue;
@@ -598,8 +570,8 @@ startOver:
 
       // Wait for initialization.
       setCurrentThreadIsWaitingFor(&blockReason);
-      syscall(SYS_futex, &futex, FUTEX_WAIT_PRIVATE, INITIALIZING_WITH_WAITERS,
-              nullptr, nullptr, 0);
+      syscall(SYS_futex, &futex, FUTEX_WAIT_PRIVATE, INITIALIZING_WITH_WAITERS, nullptr, nullptr,
+              0);
       state = __atomic_load_n(&futex, __ATOMIC_ACQUIRE);
 
       if (state == UNINITIALIZED) {
@@ -613,8 +585,8 @@ startOver:
 
 void Once::reset() {
   uint state = INITIALIZED;
-  if (!__atomic_compare_exchange_n(&futex, &state, UNINITIALIZED, false,
-                                   __ATOMIC_RELEASE, __ATOMIC_RELAXED)) {
+  if (!__atomic_compare_exchange_n(&futex, &state, UNINITIALIZED, false, __ATOMIC_RELEASE,
+                                   __ATOMIC_RELAXED)) {
     ZC_FAIL_REQUIRE("reset() called while not initialized.");
   }
 }
@@ -628,17 +600,14 @@ void Once::reset() {
 #define coercedCondvar(var) (*reinterpret_cast<CONDITION_VARIABLE*>(&var))
 
 Mutex::Mutex() {
-  static_assert(sizeof(SRWLOCK) == sizeof(srwLock),
-                "SRWLOCK is not a pointer?");
+  static_assert(sizeof(SRWLOCK) == sizeof(srwLock), "SRWLOCK is not a pointer?");
   InitializeSRWLock(&coercedSrwLock);
 }
 Mutex::~Mutex() {}
 
-bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
-                 NoopSourceLocation) {
+bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout, NoopSourceLocation) {
   if (timeout != zc::none) {
-    ZC_UNIMPLEMENTED(
-        "Locking a mutex with a timeout is only supported on Linux.");
+    ZC_UNIMPLEMENTED("Locking a mutex with a timeout is only supported on Linux.");
   }
   switch (exclusivity) {
     case EXCLUSIVE:
@@ -711,8 +680,7 @@ void Mutex::assertLockedByCaller(Exclusivity exclusivity) const {
   // anyway, we just don't bother.
 }
 
-void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout,
-                 NoopSourceLocation) {
+void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout, NoopSourceLocation) {
   // Add waiter to list.
   Waiter waiter{zc::none, waitersTail, predicate, zc::none, 0};
   static_assert(sizeof(waiter.condvar) == sizeof(CONDITION_VARIABLE),
@@ -746,17 +714,14 @@ void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout,
     clock = &systemPreciseMonotonicClock();
     endTime = clock->now() + t;
   }
-  else {
-    sleepMs = INFINITE;
-  }
+  else { sleepMs = INFINITE; }
 
   while (!predicate.check()) {
     // SleepConditionVariableSRW() will temporarily release the lock, so we need
     // to signal other waiters that are now ready.
     wakeReadyWaiter(&waiter);
 
-    if (SleepConditionVariableSRW(&coercedCondvar(waiter.condvar),
-                                  &coercedSrwLock, sleepMs, 0)) {
+    if (SleepConditionVariableSRW(&coercedCondvar(waiter.condvar), &coercedSrwLock, sleepMs, 0)) {
       // Normal result. Continue loop to check predicate.
     } else {
       DWORD error = GetLastError();
@@ -813,14 +778,12 @@ void Mutex::induceSpuriousWakeupForTest() {
   }
 }
 
-static BOOL WINAPI nullInitializer(PINIT_ONCE initOnce, PVOID parameter,
-                                   PVOID* context) {
+static BOOL WINAPI nullInitializer(PINIT_ONCE initOnce, PVOID parameter, PVOID* context) {
   return true;
 }
 
 Once::Once(bool startInitialized) {
-  static_assert(sizeof(INIT_ONCE) == sizeof(initOnce),
-                "INIT_ONCE is not a pointer?");
+  static_assert(sizeof(INIT_ONCE) == sizeof(initOnce), "INIT_ONCE is not a pointer?");
   InitOnceInitialize(&coercedInitOnce);
   if (startInitialized) {
     InitOnceExecuteOnce(&coercedInitOnce, &nullInitializer, nullptr, nullptr);
@@ -837,8 +800,7 @@ void Once::runOnce(Initializer& init, NoopSourceLocation) {
 
   if (needInit) {
     {
-      ZC_ON_SCOPE_FAILURE(
-          InitOnceComplete(&coercedInitOnce, INIT_ONCE_INIT_FAILED, nullptr));
+      ZC_ON_SCOPE_FAILURE(InitOnceComplete(&coercedInitOnce, INIT_ONCE_INIT_FAILED, nullptr));
       init.run();
     }
 
@@ -848,8 +810,7 @@ void Once::runOnce(Initializer& init, NoopSourceLocation) {
 
 bool Once::isInitialized() noexcept {
   BOOL junk;
-  return InitOnceBeginInitialize(&coercedInitOnce, INIT_ONCE_CHECK_ONLY, &junk,
-                                 nullptr);
+  return InitOnceBeginInitialize(&coercedInitOnce, INIT_ONCE_CHECK_ONLY, &junk, nullptr);
 }
 
 void Once::reset() { InitOnceInitialize(&coercedInitOnce); }
@@ -858,20 +819,16 @@ void Once::reset() { InitOnceInitialize(&coercedInitOnce); }
 // =======================================================================================
 // Generic pthreads-based implementation
 
-#define ZC_PTHREAD_CALL(code)               \
-  {                                         \
-    int pthreadError = code;                \
-    if (pthreadError != 0) {                \
-      ZC_FAIL_SYSCALL(#code, pthreadError); \
-    }                                       \
+#define ZC_PTHREAD_CALL(code)                                        \
+  {                                                                  \
+    int pthreadError = code;                                         \
+    if (pthreadError != 0) { ZC_FAIL_SYSCALL(#code, pthreadError); } \
   }
 
-#define ZC_PTHREAD_CLEANUP(code)                    \
-  {                                                 \
-    int pthreadError = code;                        \
-    if (pthreadError != 0) {                        \
-      ZC_LOG(ERROR, #code, strerror(pthreadError)); \
-    }                                               \
+#define ZC_PTHREAD_CLEANUP(code)                                             \
+  {                                                                          \
+    int pthreadError = code;                                                 \
+    if (pthreadError != 0) { ZC_LOG(ERROR, #code, strerror(pthreadError)); } \
   }
 
 Mutex::Mutex() : mutex(PTHREAD_RWLOCK_INITIALIZER) {
@@ -884,11 +841,9 @@ Mutex::Mutex() : mutex(PTHREAD_RWLOCK_INITIALIZER) {
 }
 Mutex::~Mutex() { ZC_PTHREAD_CLEANUP(pthread_rwlock_destroy(&mutex)); }
 
-bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout,
-                 NoopSourceLocation) {
+bool Mutex::lock(Exclusivity exclusivity, Maybe<Duration> timeout, NoopSourceLocation) {
   if (timeout != zc::none) {
-    ZC_UNIMPLEMENTED(
-        "Locking a mutex with a timeout is only supported on Linux.");
+    ZC_UNIMPLEMENTED("Locking a mutex with a timeout is only supported on Linux.");
   }
   switch (exclusivity) {
     case EXCLUSIVE:
@@ -945,8 +900,7 @@ void Mutex::assertLockedByCaller(Exclusivity exclusivity) const {
       // A read lock should fail if the mutex is already held for writing.
       if (pthread_rwlock_tryrdlock(&mutex) == 0) {
         pthread_rwlock_unlock(&mutex);
-        ZC_FAIL_ASSERT(
-            "Tried to call getAlreadyLocked*() but lock is not held.");
+        ZC_FAIL_ASSERT("Tried to call getAlreadyLocked*() but lock is not held.");
       }
       break;
     case SHARED:
@@ -955,15 +909,13 @@ void Mutex::assertLockedByCaller(Exclusivity exclusivity) const {
       // reading.
       if (pthread_rwlock_trywrlock(&mutex) == 0) {
         pthread_rwlock_unlock(&mutex);
-        ZC_FAIL_ASSERT(
-            "Tried to call getAlreadyLocked*() but lock is not held.");
+        ZC_FAIL_ASSERT("Tried to call getAlreadyLocked*() but lock is not held.");
       }
       break;
   }
 }
 
-void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout,
-                 NoopSourceLocation) {
+void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout, NoopSourceLocation) {
   // Add waiter to list.
   Waiter waiter{zc::none,
                 waitersTail,
@@ -1032,13 +984,10 @@ void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout,
       // wait. However, macOS happens to provide an alternative relative-time
       // wait function, so I guess we'll use that. It does require recomputing
       // the time every iteration...
-      struct timespec ts =
-          toRelativeTimespec(zc::max(toTimePoint(t) - now(), 0 * zc::SECONDS));
-      int error = pthread_cond_timedwait_relative_np(&waiter.condvar,
-                                                     &waiter.stupidMutex, &ts);
+      struct timespec ts = toRelativeTimespec(zc::max(toTimePoint(t) - now(), 0 * zc::SECONDS));
+      int error = pthread_cond_timedwait_relative_np(&waiter.condvar, &waiter.stupidMutex, &ts);
 #else
-      int error =
-          pthread_cond_timedwait(&waiter.condvar, &waiter.stupidMutex, &t);
+      int error = pthread_cond_timedwait(&waiter.condvar, &waiter.stupidMutex, &t);
 #endif
       if (error != 0) {
         if (error == ETIMEDOUT) {
@@ -1048,9 +997,7 @@ void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout,
         }
       }
     }
-    else {
-      ZC_PTHREAD_CALL(pthread_cond_wait(&waiter.condvar, &waiter.stupidMutex));
-    }
+    else { ZC_PTHREAD_CALL(pthread_cond_wait(&waiter.condvar, &waiter.stupidMutex)); }
 
     // We have to be very careful about lock ordering here. We need to unlock
     // stupidMutex before re-locking the main mutex, because another thread may
@@ -1074,9 +1021,7 @@ void Mutex::wait(Predicate& predicate, Maybe<Duration> timeout,
       zc::throwFatalException(zc::mv(*exception));
     }
 
-    if (timedOut) {
-      return;
-    }
+    if (timedOut) { return; }
   }
 }
 
@@ -1097,8 +1042,7 @@ void Mutex::induceSpuriousWakeupForTest() {
 }
 
 Once::Once(bool startInitialized)
-    : state(startInitialized ? INITIALIZED : UNINITIALIZED),
-      mutex(PTHREAD_MUTEX_INITIALIZER) {
+    : state(startInitialized ? INITIALIZED : UNINITIALIZED), mutex(PTHREAD_MUTEX_INITIALIZER) {
 #if defined(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__) && \
     __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ < 1070
   // In older versions of MacOS, mutexes initialized statically cannot be
@@ -1112,9 +1056,7 @@ void Once::runOnce(Initializer& init, NoopSourceLocation) {
   ZC_PTHREAD_CALL(pthread_mutex_lock(&mutex));
   ZC_DEFER(ZC_PTHREAD_CALL(pthread_mutex_unlock(&mutex)));
 
-  if (state != UNINITIALIZED) {
-    return;
-  }
+  if (state != UNINITIALIZED) { return; }
 
   init.run();
 
@@ -1123,8 +1065,8 @@ void Once::runOnce(Initializer& init, NoopSourceLocation) {
 
 void Once::reset() {
   State oldState = INITIALIZED;
-  if (!__atomic_compare_exchange_n(&state, &oldState, UNINITIALIZED, false,
-                                   __ATOMIC_RELEASE, __ATOMIC_RELAXED)) {
+  if (!__atomic_compare_exchange_n(&state, &oldState, UNINITIALIZED, false, __ATOMIC_RELEASE,
+                                   __ATOMIC_RELAXED)) {
     ZC_FAIL_REQUIRE("reset() called while not initialized.");
   }
 }

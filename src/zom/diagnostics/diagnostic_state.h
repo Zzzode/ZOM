@@ -10,7 +10,7 @@ namespace zom {
 namespace diagnostics {
 
 class DiagnosticState {
- public:
+public:
   DiagnosticState();
 
   ZC_DISALLOW_COPY(DiagnosticState);
@@ -19,9 +19,7 @@ class DiagnosticState {
   DiagnosticState& operator=(DiagnosticState&&) = default;
 
   // 控制诊断行为的标志
-  bool show_diagnostics_after_fatal_error() const {
-    return show_diagnostics_after_fatal_error_;
-  }
+  bool show_diagnostics_after_fatal_error() const { return show_diagnostics_after_fatal_error_; }
   void set_show_diagnostics_after_fatal_error(bool value) {
     show_diagnostics_after_fatal_error_ = value;
   }
@@ -38,12 +36,11 @@ class DiagnosticState {
   void SetHadAnyError() { had_any_error_ = true; }
 
   // 辅助函数
-  static source::CharSourceRange ToCharSourceRange(
-      const source::SourceManager& sm, source::SourceRange range);
-  static char ExtractCharAfter(const source::SourceManager& sm,
-                               source::SourceLoc loc);
+  static source::CharSourceRange ToCharSourceRange(const source::SourceManager& sm,
+                                                   source::SourceRange range);
+  static char ExtractCharAfter(const source::SourceManager& sm, source::SourceLoc loc);
 
- private:
+private:
   bool show_diagnostics_after_fatal_error_ = false;
   bool suppress_warnings_ = false;
   bool had_any_error_ = false;

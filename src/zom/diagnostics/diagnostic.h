@@ -18,13 +18,10 @@ struct FixIt {
 };
 
 class Diagnostic {
- public:
+public:
   Diagnostic(DiagnosticKind kind, uint32_t id, zc::StringPtr message,
              const zom::source::CharSourceRange& location)
-      : kind_(kind),
-        id_(id),
-        message_(zc::heapString(message)),
-        location_(location) {}
+      : kind_(kind), id_(id), message_(zc::heapString(message)), location_(location) {}
 
   // 添加移动构造函数和移动赋值运算符
   Diagnostic(Diagnostic&& other) noexcept = default;
@@ -36,18 +33,14 @@ class Diagnostic {
   uint32_t id() const { return id_; }
   zc::StringPtr message() const { return message_; }
   const zom::source::CharSourceRange& source_range() const { return location_; }
-  const zc::Vector<zc::Own<Diagnostic>>& child_diagnostics() const {
-    return child_diagnostics_;
-  }
+  const zc::Vector<zc::Own<Diagnostic>>& child_diagnostics() const { return child_diagnostics_; }
   const zc::Vector<FixIt>& fix_its() const { return fix_its_; }
 
   void AddChildDiagnostic(zc::Own<Diagnostic> child);
   void AddFixIt(const FixIt& fix_it);
-  void set_category(zc::StringPtr new_category) {
-    category_ = zc::heapString(new_category);
-  }
+  void set_category(zc::StringPtr new_category) { category_ = zc::heapString(new_category); }
 
- private:
+private:
   DiagnosticKind kind_;
   uint32_t id_;
   zc::String message_;
@@ -58,10 +51,9 @@ class Diagnostic {
 };
 
 class DiagnosticConsumer {
- public:
+public:
   virtual ~DiagnosticConsumer() = default;
-  virtual void HandleDiagnostic(const source::SourceLoc& loc,
-                                const Diagnostic& diagnostic) = 0;
+  virtual void HandleDiagnostic(const source::SourceLoc& loc, const Diagnostic& diagnostic) = 0;
 };
 
 }  // namespace diagnostics

@@ -42,7 +42,7 @@ class Exception {
   // thrown, but we hide that fact from the interface to avoid #including
   // <exception>.
 
- public:
+public:
   enum class Type {
     // What kind of failure?
 
@@ -77,10 +77,8 @@ class Exception {
     // - Update Cap'n Proto's RPC protocol's Exception.Type enum.
   };
 
-  Exception(Type type, const char* file, int line,
-            String description = nullptr) noexcept;
-  Exception(Type type, String file, int line,
-            String description = nullptr) noexcept;
+  Exception(Type type, const char* file, int line, String description = nullptr) noexcept;
+  Exception(Type type, String file, int line, String description = nullptr) noexcept;
   Exception(const Exception& other) noexcept;
   Exception(Exception&& other) = default;
   ~Exception() noexcept;
@@ -89,9 +87,7 @@ class Exception {
   int getLine() const { return line; }
   Type getType() const { return type; }
   StringPtr getDescription() const { return description; }
-  ArrayPtr<void* const> getStackTrace() const {
-    return arrayPtr(trace, traceCount);
-  }
+  ArrayPtr<void* const> getStackTrace() const { return arrayPtr(trace, traceCount); }
 
   void setDescription(zc::String&& desc) { description = zc::mv(desc); }
 
@@ -110,20 +106,14 @@ class Exception {
     String description;
     Maybe<Own<Context>> next;
 
-    Context(const char* file, int line, String&& description,
-            Maybe<Own<Context>>&& next)
-        : file(file),
-          line(line),
-          description(mv(description)),
-          next(mv(next)) {}
+    Context(const char* file, int line, String&& description, Maybe<Own<Context>>&& next)
+        : file(file), line(line), description(mv(description)), next(mv(next)) {}
     Context(const Context& other) noexcept;
   };
 
   inline Maybe<const Context&> getContext() const {
     ZC_IF_SOME(c, context) { return *c; }
-    else {
-      return zc::none;
-    }
+    else { return zc::none; }
   }
 
   void wrapContext(const char* file, int line, String&& description);
@@ -177,7 +167,7 @@ class Exception {
   // commonly has to convert a JavaScript exception to ZC and back. The
   // exception is serialized using V8 serialization.
 
- private:
+private:
   String ownFile;
   const char* file;
   int line;
@@ -222,15 +212,15 @@ String ZC_STRINGIFY(const Exception& e);
 // =======================================================================================
 
 enum class LogSeverity {
-  INFO,  // Information describing what the code is up to, which users may
-         // request to see with a flag like `--verbose`. Does not indicate a
-         // problem. Not printed by default; you must call setLogLevel(INFO) to
-         // enable.
+  INFO,     // Information describing what the code is up to, which users may
+            // request to see with a flag like `--verbose`. Does not indicate a
+            // problem. Not printed by default; you must call setLogLevel(INFO) to
+            // enable.
   WARNING,  // A problem was detected but execution can continue with correct
             // output.
-  ERROR,  // Something is wrong, but execution can continue with garbage output.
-  FATAL,  // Something went wrong, and execution cannot continue.
-  DBG     // Temporary debug logging. See ZC_DBG.
+  ERROR,    // Something is wrong, but execution can continue with garbage output.
+  FATAL,    // Something went wrong, and execution cannot continue.
+  DBG       // Temporary debug logging. See ZC_DBG.
 
   // Make sure to update the stringifier if you add a new severity level.
 };
@@ -252,7 +242,7 @@ class ExceptionCallback {
   // lot like try/catch blocks, except that they are called before any stack
   // unwinding occurs.
 
- public:
+public:
   ExceptionCallback();
   ZC_DISALLOW_COPY_AND_MOVE(ExceptionCallback);
   virtual ~ExceptionCallback() noexcept(false);
@@ -274,8 +264,8 @@ class ExceptionCallback {
   //
   // The global default implementation throws an exception.
 
-  virtual void logMessage(LogSeverity severity, const char* file, int line,
-                          int contextDepth, String&& text);
+  virtual void logMessage(LogSeverity severity, const char* file, int line, int contextDepth,
+                          String&& text);
   // Called when something wants to log some debug text. `contextDepth`
   // indicates how many levels of context the message passed through; it may
   // make sense to indent the message accordingly.
@@ -313,10 +303,10 @@ class ExceptionCallback {
   // thread's ExceptionCallback. The initializer function itself receives, as
   // its parameter, the thread's main function, which it must call.
 
- protected:
+protected:
   ExceptionCallback& next;
 
- private:
+private:
   ExceptionCallback(ExceptionCallback& next);
 
   class RootExceptionCallback;
@@ -328,15 +318,13 @@ class ExceptionCallback {
 ExceptionCallback& getExceptionCallback();
 // Returns the current exception callback.
 
-ZC_NOINLINE ZC_NORETURN void throwFatalException(zc::Exception&& exception,
-                                                 uint ignoreCount = 0);
+ZC_NOINLINE ZC_NORETURN void throwFatalException(zc::Exception&& exception, uint ignoreCount = 0);
 // Invoke the exception callback to throw the given fatal exception. If the
 // exception callback returns, abort.
 //
 // TODO(2.0): Rename this to `throwException()`.
 
-ZC_NOINLINE void throwRecoverableException(zc::Exception&& exception,
-                                           uint ignoreCount = 0);
+ZC_NOINLINE void throwRecoverableException(zc::Exception&& exception, uint ignoreCount = 0);
 // Invoke the exception callback to throw the given recoverable exception. If
 // the exception callback returns, return normally.
 //
@@ -385,7 +373,7 @@ class UnwindDetector {
   // constructed during exception unwind, it will behave as if no unwind is
   // taking place. This is usually the desired behavior.
 
- public:
+public:
   UnwindDetector();
 
   bool isUnwinding() const;
@@ -399,7 +387,7 @@ class UnwindDetector {
   // considered to be side-effects of the exception that is unwinding the stack.
   // Otherwise, exceptions are passed through normally.
 
- private:
+private:
   uint uncaughtCount;
 
   void catchThrownExceptionAsSecondaryFault() const;
@@ -410,9 +398,7 @@ Maybe<Exception> runCatchingExceptions(Func&& func) {
   try {
     func();
     return zc::none;
-  } catch (...) {
-    return getCaughtExceptionAsKj();
-  }
+  } catch (...) { return getCaughtExceptionAsKj(); }
 }
 
 template <typename Func>
@@ -420,9 +406,7 @@ void UnwindDetector::catchExceptionsIfUnwinding(Func&& func) const {
   if (isUnwinding()) {
     try {
       func();
-    } catch (...) {
-      catchThrownExceptionAsSecondaryFault();
-    }
+    } catch (...) { catchThrownExceptionAsSecondaryFault(); }
   } else {
     func();
   }
@@ -441,8 +425,7 @@ void UnwindDetector::catchExceptionsIfUnwinding(Func&& func) const {
 
 // =======================================================================================
 
-ZC_NOINLINE ArrayPtr<void* const> getStackTrace(ArrayPtr<void*> space,
-                                                uint ignoreCount);
+ZC_NOINLINE ArrayPtr<void* const> getStackTrace(ArrayPtr<void*> space, uint ignoreCount);
 // Attempt to get the current stack trace, returning a list of pointers to
 // instructions. The returned array is a slice of `space`. Provide a larger
 // `space` to get a deeper stack trace. If the platform doesn't support stack
@@ -463,8 +446,7 @@ String stringifyStackTrace(ArrayPtr<void* const>);
 // may involve executing suprocesses.
 
 String stringifyStackTraceAddresses(ArrayPtr<void* const> trace);
-StringPtr stringifyStackTraceAddresses(ArrayPtr<void* const> trace,
-                                       ArrayPtr<char> scratch);
+StringPtr stringifyStackTraceAddresses(ArrayPtr<void* const> trace, ArrayPtr<char> scratch);
 // Construct a string containing just enough information about a stack trace to
 // be able to convert it to file and line numbers later using offline tools.
 // This produces a sequence of space-separated code location identifiers. Each
@@ -509,17 +491,16 @@ class InFlightExceptionIterator {
   //
   // This class is safe to use in a signal handler.
 
- public:
+public:
   InFlightExceptionIterator();
 
   Maybe<const Exception&> next();
 
- private:
+private:
   const Exception* ptr;
 };
 
-zc::Exception getDestructionReason(void* traceSeparator,
-                                   zc::Exception::Type defaultType,
+zc::Exception getDestructionReason(void* traceSeparator, zc::Exception::Type defaultType,
                                    const char* defaultFile, int defaultLine,
                                    zc::StringPtr defaultDescription);
 // Returns an exception that attempts to capture why a destructor has been
@@ -531,8 +512,8 @@ zc::Exception getDestructionReason(void* traceSeparator,
 // which acts as a separator between the original stack trace and any new trace
 // frames added later.
 
-zc::ArrayPtr<void* const> computeRelativeTrace(
-    zc::ArrayPtr<void* const> trace, zc::ArrayPtr<void* const> relativeTo);
+zc::ArrayPtr<void* const> computeRelativeTrace(zc::ArrayPtr<void* const> trace,
+                                               zc::ArrayPtr<void* const> relativeTo);
 // Given two traces expected to have started from the same root, try to find the
 // part of `trace` that is different from `relativeTo`, considering that either
 // or both traces might be truncated.

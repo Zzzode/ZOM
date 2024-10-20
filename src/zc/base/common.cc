@@ -43,12 +43,10 @@ namespace _ {  // private
 void inlineRequireFailure(const char* file, int line, const char* expectation,
                           const char* macroArgs, const char* message) {
   if (message == nullptr) {
-    Debug::Fault f(file, line, zc::Exception::Type::FAILED, expectation,
-                   macroArgs);
+    Debug::Fault f(file, line, zc::Exception::Type::FAILED, expectation, macroArgs);
     f.fatal();
   } else {
-    Debug::Fault f(file, line, zc::Exception::Type::FAILED, expectation,
-                   macroArgs, message);
+    Debug::Fault f(file, line, zc::Exception::Type::FAILED, expectation, macroArgs, message);
     f.fatal();
   }
 }

@@ -23,7 +23,7 @@ namespace zom {
 namespace source {
 
 class SourceLoc {
- public:
+public:
   SourceLoc() : value_(0) {}
 
   ZC_NODISCARD bool IsValid() const { return value_ != 0; }
@@ -57,86 +57,65 @@ class SourceLoc {
   bool operator>(const SourceLoc& rhs) const { return value_ > rhs.value_; }
   bool operator>=(const SourceLoc& rhs) const { return value_ >= rhs.value_; }
 
- private:
+private:
   unsigned value_;
 };
 
 class SourceRange {
- public:
+public:
   SourceRange() = default;
-  SourceRange(const SourceLoc start, const SourceLoc end)
-      : start_(start), end_(end) {}
+  SourceRange(const SourceLoc start, const SourceLoc end) : start_(start), end_(end) {}
 
   ZC_NODISCARD SourceLoc start() const { return start_; }
   ZC_NODISCARD SourceLoc end() const { return end_; }
 
-  ZC_NODISCARD bool IsValid() const {
-    return start_.IsValid() && end_.IsValid();
-  }
+  ZC_NODISCARD bool IsValid() const { return start_.IsValid() && end_.IsValid(); }
   ZC_NODISCARD bool IsInvalid() const { return !IsValid(); }
 
-  ZC_NODISCARD bool Contains(SourceLoc loc) const {
-    return start_ <= loc && loc <= end_;
-  }
+  ZC_NODISCARD bool Contains(SourceLoc loc) const { return start_ <= loc && loc <= end_; }
 
   ZC_NODISCARD bool Overlaps(const SourceRange& other) const {
     return Contains(other.start()) || other.Contains(start_);
   }
 
   void Widen(SourceRange other) {
-    if (other.start() < start_) {
-      start_ = other.start();
-    }
-    if (other.end() > end_) {
-      end_ = other.end();
-    }
+    if (other.start() < start_) { start_ = other.start(); }
+    if (other.end() > end_) { end_ = other.end(); }
   }
 
   ZC_NODISCARD zc::String ToString() const {
-    return zc::str("SourceRange(", start_.ToString(), ", ", end_.ToString(),
-                   ")");
+    return zc::str("SourceRange(", start_.ToString(), ", ", end_.ToString(), ")");
   }
 
   void Print(zc::OutputStream& os) const { os.write(ToString().asBytes()); }
 
- private:
+private:
   SourceLoc start_;
   SourceLoc end_;
 };
 
 class CharSourceRange {
- public:
+public:
   CharSourceRange() = default;
-  CharSourceRange(const SourceLoc start, const SourceLoc end,
-                  const bool is_token_range = true)
+  CharSourceRange(const SourceLoc start, const SourceLoc end, const bool is_token_range = true)
       : start_(start), end_(end), is_token_range_(is_token_range) {
-    ZC_IREQUIRE(start <= end,
-                "Start location must be before or equal to end location.");
+    ZC_IREQUIRE(start <= end, "Start location must be before or equal to end location.");
   }
 
-  CharSourceRange(const SourceLoc start, const unsigned length,
-                  const bool is_token_range = true)
-      : start_(start),
-        end_(ComputeEnd(start, length)),
-        is_token_range_(is_token_range) {}
+  CharSourceRange(const SourceLoc start, const unsigned length, const bool is_token_range = true)
+      : start_(start), end_(ComputeEnd(start, length)), is_token_range_(is_token_range) {}
 
-  static CharSourceRange GetTokenRange(const SourceLoc start,
-                                       const SourceLoc end) {
+  static CharSourceRange GetTokenRange(const SourceLoc start, const SourceLoc end) {
     return CharSourceRange(start, end, true);
   }
 
-  static CharSourceRange GetCharRange(const SourceLoc start,
-                                      const SourceLoc end) {
+  static CharSourceRange GetCharRange(const SourceLoc start, const SourceLoc end) {
     return CharSourceRange(start, end, false);
   }
-  ZC_NODISCARD bool Contains(SourceLoc loc) const {
-    return start_ <= loc && loc < end_;
-  }
+  ZC_NODISCARD bool Contains(SourceLoc loc) const { return start_ <= loc && loc < end_; }
 
   ZC_NODISCARD unsigned length() const {
-    if (start_.IsInvalid() || end_.IsInvalid()) {
-      return 0;
-    }
+    if (start_.IsInvalid() || end_.IsInvalid()) { return 0; }
     return end_.GetOpaqueValue() - start_.GetOpaqueValue();
   }
   ZC_NODISCARD SourceLoc start() const { return start_; }
@@ -144,16 +123,14 @@ class CharSourceRange {
   ZC_NODISCARD bool IsTokenRange() const { return is_token_range_; }
   ZC_NODISCARD bool IsCharRange() const { return !is_token_range_; }
 
-  ZC_NODISCARD SourceRange GetAsRange() const {
-    return SourceRange(start_, end_);
-  }
+  ZC_NODISCARD SourceRange GetAsRange() const { return SourceRange(start_, end_); }
 
   ZC_NODISCARD zc::String ToString() const {
-    return zc::str("CharSourceRange(", start_.ToString(), ", ", end_.ToString(),
-                   ", ", is_token_range_ ? "token" : "char", ")");
+    return zc::str("CharSourceRange(", start_.ToString(), ", ", end_.ToString(), ", ",
+                   is_token_range_ ? "token" : "char", ")");
   }
 
- private:
+private:
   SourceLoc start_;
   SourceLoc end_;
   bool is_token_range_{false};
@@ -180,8 +157,8 @@ class CharSourceRange {
 using CompileTimeSourceLocation = zc::SourceLocation;
 
 inline zc::String ZC_STRINGIFY(const CompileTimeSourceLocation& loc) {
-  return zc::str("File: ", loc.fileName, ", Function: ", loc.function,
-                 ", Line: ", loc.lineNumber, ", Column: ", loc.columnNumber);
+  return zc::str("File: ", loc.fileName, ", Function: ", loc.function, ", Line: ", loc.lineNumber,
+                 ", Column: ", loc.columnNumber);
 }
 
 }  // namespace source

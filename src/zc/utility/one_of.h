@@ -41,19 +41,16 @@
 namespace zc {
 namespace _ {
 
-template <uint32_t i, template <uint32_t> class Fail, typename Key,
-          typename... Variants>
+template <uint32_t i, template <uint32_t> class Fail, typename Key, typename... Variants>
 struct TypeIndex_;
 
-template <uint32_t i, template <uint32_t> class Fail, typename Key,
-          typename First, typename... Rest>
+template <uint32_t i, template <uint32_t> class Fail, typename Key, typename First,
+          typename... Rest>
 struct TypeIndex_<i, Fail, Key, First, Rest...> {
-  static constexpr uint32_t value =
-      TypeIndex_<i + 1, Fail, Key, Rest...>::value;
+  static constexpr uint32_t value = TypeIndex_<i + 1, Fail, Key, Rest...>::value;
 };
 
-template <uint32_t i, template <uint32_t> class Fail, typename Key,
-          typename... Rest>
+template <uint32_t i, template <uint32_t> class Fail, typename Key, typename... Rest>
 struct TypeIndex_<i, Fail, Key, Key, Rest...> {
   static constexpr uint32_t value = i;
 };
@@ -85,14 +82,7 @@ enum class Variants2 { _variant0, _variant1 };
 enum class Variants3 { _variant0, _variant1, _variant2 };
 enum class Variants4 { _variant0, _variant1, _variant2, _variant3 };
 enum class Variants5 { _variant0, _variant1, _variant2, _variant3, _variant4 };
-enum class Variants6 {
-  _variant0,
-  _variant1,
-  _variant2,
-  _variant3,
-  _variant4,
-  _variant5
-};
+enum class Variants6 { _variant0, _variant1, _variant2, _variant3, _variant4, _variant5 };
 enum class Variants7 {
   _variant0,
   _variant1,
@@ -208,7 +198,7 @@ class OneOf {
   // are types that appear in `Variants`. Used with SFINAE to enable subset
   // constructors.
 
- public:
+public:
   inline OneOf() : tag_(0) {}
 
   OneOf(const OneOf &other) { copyFrom(other); }
@@ -314,7 +304,7 @@ class OneOf {
   const OneOf *_switchSubject() const & { return this; }
   _::NullableValue<OneOf> _switchSubject() && { return zc::mv(*this); }
 
- private:
+private:
   uint32_t tag_;
 
   static inline constexpr size_t maxSize(size_t a) { return a; }
@@ -344,9 +334,7 @@ class OneOf {
 
   template <typename T>
   inline bool copyVariantFrom(const OneOf &other) {
-    if (other.is<T>()) {
-      ctor(*reinterpret_cast<T *>(space), other.get<T>());
-    }
+    if (other.is<T>()) { ctor(*reinterpret_cast<T *>(space), other.get<T>()); }
     return false;
   }
 
@@ -359,9 +347,7 @@ class OneOf {
 
   template <typename T>
   inline bool copyVariantFrom(OneOf &other) {
-    if (other.is<T>()) {
-      ctor(*reinterpret_cast<T *>(space), other.get<T>());
-    }
+    if (other.is<T>()) { ctor(*reinterpret_cast<T *>(space), other.get<T>()); }
     return false;
   }
 
@@ -374,9 +360,7 @@ class OneOf {
 
   template <typename T>
   inline bool moveVariantFrom(OneOf &other) {
-    if (other.is<T>()) {
-      ctor(*reinterpret_cast<T *>(space), zc::mv(other.get<T>()));
-    }
+    if (other.is<T>()) { ctor(*reinterpret_cast<T *>(space), zc::mv(other.get<T>())); }
     return false;
   }
 
@@ -405,21 +389,17 @@ void OneOf<Variants...>::allHandled() {
   // variants. This will fail to compile if new variants are added in the
   // future.
 
-  static_assert(i == sizeof...(Variants),
-                "new OneOf variants need to be handled here");
+  static_assert(i == sizeof...(Variants), "new OneOf variants need to be handled here");
   ZC_UNREACHABLE;
 }
 
-#define ZC_SWITCH_ONE_OF(value)                               \
-  switch (auto _zc_switch_subject = (value)._switchSubject(); \
-          _zc_switch_subject->which())
+#define ZC_SWITCH_ONE_OF(value) \
+  switch (auto _zc_switch_subject = (value)._switchSubject(); _zc_switch_subject->which())
 #if !_MSC_VER || defined(__clang__)
-#define ZC_CASE_ONE_OF(name, ...)                                      \
-  break;                                                               \
-  case ::zc::Decay<decltype(*_zc_switch_subject)>::template tagFor<    \
-      __VA_ARGS__>():                                                  \
-    for (auto &name = _zc_switch_subject->template get<__VA_ARGS__>(), \
-              *_zc_switch_done = &name;                                \
+#define ZC_CASE_ONE_OF(name, ...)                                                                \
+  break;                                                                                         \
+  case ::zc::Decay<decltype(*_zc_switch_subject)>::template tagFor<__VA_ARGS__>():               \
+    for (auto &name = _zc_switch_subject->template get<__VA_ARGS__>(), *_zc_switch_done = &name; \
          _zc_switch_done; _zc_switch_done = nullptr)
 #else
 // TODO(msvc): The latest MSVC which ships with VS2019 now ICEs on the
@@ -427,14 +407,11 @@ void OneOf<Variants...>::allHandled() {
 // `->template get<>()` syntax to an outer `if`. (This unfortunately allows
 // wonky syntax like `ZC_CASE_ONE_OF(a, B) { } else { }`.)
 // https://developercommunity.visualstudio.com/content/problem/1143733/internal-compiler-error-on-v1670.html
-#define ZC_CASE_ONE_OF(name, ...)                                   \
-  break;                                                            \
-  case ::zc::Decay<decltype(*_zc_switch_subject)>::template tagFor< \
-      __VA_ARGS__>():                                               \
-    if (auto *_zc_switch_done =                                     \
-            &_zc_switch_subject->template get<__VA_ARGS__>())       \
-      for (auto &name = *_zc_switch_done; _zc_switch_done;          \
-           _zc_switch_done = nullptr)
+#define ZC_CASE_ONE_OF(name, ...)                                                  \
+  break;                                                                           \
+  case ::zc::Decay<decltype(*_zc_switch_subject)>::template tagFor<__VA_ARGS__>(): \
+    if (auto *_zc_switch_done = &_zc_switch_subject->template get<__VA_ARGS__>())  \
+      for (auto &name = *_zc_switch_done; _zc_switch_done; _zc_switch_done = nullptr)
 #endif
 #define ZC_CASE_ONE_OF_DEFAULT \
   break;                       \

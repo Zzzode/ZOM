@@ -41,47 +41,31 @@ bool isHex(const char* s) {
 }
 
 long long parseSigned(const StringPtr& s, long long min, long long max) {
-  ZC_REQUIRE(s != nullptr, "String does not contain valid number", s) {
-    return 0;
-  }
+  ZC_REQUIRE(s != nullptr, "String does not contain valid number", s) { return 0; }
   char* endPtr;
   errno = 0;
   auto value = strtoll(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
-  ZC_REQUIRE(endPtr == s.end(), "String does not contain valid number", s) {
-    return 0;
-  }
+  ZC_REQUIRE(endPtr == s.end(), "String does not contain valid number", s) { return 0; }
   ZC_REQUIRE(errno != ERANGE, "Value out-of-range", s) { return 0; }
-  ZC_REQUIRE(value >= min && value <= max, "Value out-of-range", value, min,
-             max) {
-    return 0;
-  }
+  ZC_REQUIRE(value >= min && value <= max, "Value out-of-range", value, min, max) { return 0; }
   return value;
 }
 
-Maybe<long long> tryParseSigned(const StringPtr& s, long long min,
-                                long long max) {
-  if (s == nullptr) {
-    return zc::none;
-  }  // String does not contain valid number.
+Maybe<long long> tryParseSigned(const StringPtr& s, long long min, long long max) {
+  if (s == nullptr) { return zc::none; }  // String does not contain valid number.
   char* endPtr;
   errno = 0;
   auto value = strtoll(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
-  if (endPtr != s.end() || errno == ERANGE || value < min || max < value) {
-    return zc::none;
-  }
+  if (endPtr != s.end() || errno == ERANGE || value < min || max < value) { return zc::none; }
   return value;
 }
 
 unsigned long long parseUnsigned(const StringPtr& s, unsigned long long max) {
-  ZC_REQUIRE(s != nullptr, "String does not contain valid number", s) {
-    return 0;
-  }
+  ZC_REQUIRE(s != nullptr, "String does not contain valid number", s) { return 0; }
   char* endPtr;
   errno = 0;
   auto value = strtoull(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
-  ZC_REQUIRE(endPtr == s.end(), "String does not contain valid number", s) {
-    return 0;
-  }
+  ZC_REQUIRE(endPtr == s.end(), "String does not contain valid number", s) { return 0; }
   ZC_REQUIRE(errno != ERANGE, "Value out-of-range", s) { return 0; }
   ZC_REQUIRE(value <= max, "Value out-of-range", value, max) { return 0; }
   // strtoull("-1") does not fail with ERANGE
@@ -89,17 +73,12 @@ unsigned long long parseUnsigned(const StringPtr& s, unsigned long long max) {
   return value;
 }
 
-Maybe<unsigned long long> tryParseUnsigned(const StringPtr& s,
-                                           unsigned long long max) {
-  if (s == nullptr) {
-    return zc::none;
-  }  // String does not contain valid number.
+Maybe<unsigned long long> tryParseUnsigned(const StringPtr& s, unsigned long long max) {
+  if (s == nullptr) { return zc::none; }  // String does not contain valid number.
   char* endPtr;
   errno = 0;
   auto value = strtoull(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
-  if (endPtr != s.end() || errno == ERANGE || max < value || s[0] == '-') {
-    return zc::none;
-  }
+  if (endPtr != s.end() || errno == ERANGE || max < value || s[0] == '-') { return zc::none; }
   return value;
 }
 
@@ -173,9 +152,7 @@ String heapString(size_t size) {
 
 String heapString(const char* value, size_t size) {
   char* buffer = _::HeapArrayDisposer::allocate<char>(size + 1);
-  if (size != 0u) {
-    memcpy(buffer, value, size);
-  }
+  if (size != 0u) { memcpy(buffer, value, size); }
   buffer[size] = '\0';
   return String(buffer, size, _::HeapArrayDisposer::instance);
 }
@@ -197,17 +174,13 @@ static CappedArray<char, sizeof(T) * 2 + 1> hexImpl(T i) {
   }
 
   char* p2 = result.begin();
-  while (p > reverse) {
-    *p2++ = "0123456789abcdef"[*--p];
-  }
+  while (p > reverse) { *p2++ = "0123456789abcdef"[*--p]; }
   result.setSize(p2 - result.begin());
   return result;
 }
 
-#define HEXIFY_INT(type)                                \
-  CappedArray<char, sizeof(type) * 2 + 1> hex(type i) { \
-    return hexImpl<type>(i);                            \
-  }
+#define HEXIFY_INT(type) \
+  CappedArray<char, sizeof(type) * 2 + 1> hex(type i) { return hexImpl<type>(i); }
 
 HEXIFY_INT(unsigned char);
 HEXIFY_INT(unsigned short);
@@ -250,17 +223,14 @@ static CappedArray<char, sizeof(T) * 3 + 2> stringifyImpl(T i) {
 
   char* p2 = result.begin();
   if (negative) *p2++ = '-';
-  while (p > reverse) {
-    *p2++ = '0' + *--p;
-  }
+  while (p > reverse) { *p2++ = '0' + *--p; }
   result.setSize(p2 - result.begin());
   return result;
 }
 
-#define STRINGIFY_INT(type, unsigned)                                    \
-  CappedArray<char, sizeof(type) * 3 + 2> Stringifier::operator*(type i) \
-      const {                                                            \
-    return stringifyImpl<type, unsigned>(i);                             \
+#define STRINGIFY_INT(type, unsigned)                                            \
+  CappedArray<char, sizeof(type) * 3 + 2> Stringifier::operator*(type i) const { \
+    return stringifyImpl<type, unsigned>(i);                                     \
   }
 
 STRINGIFY_INT(signed char, uint);
@@ -276,8 +246,7 @@ STRINGIFY_INT(unsigned long long, unsigned long long);
 
 #undef STRINGIFY_INT
 
-CappedArray<char, sizeof(const void*) * 2 + 1> Stringifier::operator*(
-    const void* i) const {
+CappedArray<char, sizeof(const void*) * 2 + 1> Stringifier::operator*(const void* i) const {
   return hexImpl<uintptr_t>(reinterpret_cast<uintptr_t>(i));
 }
 
@@ -389,9 +358,7 @@ void DelocalizeRadix(char* buffer) {
     // It appears the radix was a multi-byte character. We need to remove the
     // extra bytes.
     char* target = buffer;
-    do {
-      ++buffer;
-    } while (!IsValidFloatChar(*buffer) && *buffer != '\0');
+    do { ++buffer; } while (!IsValidFloatChar(*buffer) && *buffer != '\0');
     memmove(target, buffer, strlen(buffer) + 1);
   }
 }
@@ -401,9 +368,7 @@ void RemovePlus(char* buffer) {
 
   for (;;) {
     buffer = strchr(buffer, '+');
-    if (buffer == NULL) {
-      return;
-    }
+    if (buffer == NULL) { return; }
     memmove(buffer, buffer + 1, strlen(buffer + 1) + 1);
   }
 }
@@ -429,9 +394,7 @@ void RemoveE0(char* buffer) {
   if (*ptr2 < '0' || *ptr2 > '9') --ptr2;
 
   // Move bytes backwards.
-  if (ptr2 > ptr) {
-    memmove(ptr, ptr2, strlen(ptr2) + 1);
-  }
+  if (ptr2 > ptr) { memmove(ptr, ptr2, strlen(ptr2) + 1); }
 }
 #endif
 
@@ -453,8 +416,7 @@ char* DoubleToBuffer(double value, char* buffer) {
     return buffer;
   }
 
-  int snprintf_result ZC_UNUSED =
-      snprintf(buffer, kDoubleToBufferSize, "%.*g", DBL_DIG, value);
+  int snprintf_result ZC_UNUSED = snprintf(buffer, kDoubleToBufferSize, "%.*g", DBL_DIG, value);
 
   // The snprintf should never overflow because the buffer is significantly
   // larger than the precision we asked for.
@@ -512,8 +474,7 @@ char* FloatToBuffer(float value, char* buffer) {
     return buffer;
   }
 
-  int snprintf_result ZC_UNUSED =
-      snprintf(buffer, kFloatToBufferSize, "%.*g", FLT_DIG, value);
+  int snprintf_result ZC_UNUSED = snprintf(buffer, kFloatToBufferSize, "%.*g", FLT_DIG, value);
 
   // The snprintf should never overflow because the buffer is significantly
   // larger than the precision we asked for.
@@ -559,8 +520,7 @@ zc::String LocalizeRadix(const char* input, const char* radix_pos) {
   ZC_ASSERT(size <= 6);
 
   // Now replace the '.' in the input with it.
-  return zc::str(zc::arrayPtr(input, radix_pos),
-                 zc::arrayPtr(temp + 1, size - 2),
+  return zc::str(zc::arrayPtr(input, radix_pos), zc::arrayPtr(temp + 1, size - 2),
                  zc::StringPtr(radix_pos + 1));
 }
 
@@ -592,8 +552,7 @@ double NoLocaleStrtod(const char* text, char** original_endptr) {
       // size_diff is non-zero if the localized radix has multiple bytes.
       int size_diff = localized.size() - strlen(text);
       // const_cast is necessary to match the strtod() interface.
-      *original_endptr = const_cast<char*>(
-          text + (localized_endptr - localized_cstr - size_diff));
+      *original_endptr = const_cast<char*>(text + (localized_endptr - localized_cstr - size_diff));
     }
   }
 
@@ -619,16 +578,11 @@ CappedArray<char, kDoubleToBufferSize> Stringifier::operator*(double f) const {
 }
 
 double parseDouble(const StringPtr& s) {
-  ZC_REQUIRE(s != nullptr, "String does not contain valid number", s) {
-    return 0;
-  }
+  ZC_REQUIRE(s != nullptr, "String does not contain valid number", s) { return 0; }
   char* endPtr;
   errno = 0;
   auto value = _::NoLocaleStrtod(s.begin(), &endPtr);
-  ZC_REQUIRE(endPtr == s.end(), "String does not contain valid floating number",
-             s) {
-    return 0;
-  }
+  ZC_REQUIRE(endPtr == s.end(), "String does not contain valid floating number", s) { return 0; }
 #if _WIN32 || __CYGWIN__ || __BIONIC__
   // When Windows' strtod() parses "nan", it returns a value with the sign bit
   // set. But, our preferred canonical value for NaN does not have the sign bit
@@ -650,19 +604,13 @@ double parseDouble(const StringPtr& s) {
 }
 
 Maybe<double> tryParseDouble(const StringPtr& s) {
-  if (s == nullptr) {
-    return zc::none;
-  }
+  if (s == nullptr) { return zc::none; }
   char* endPtr;
   errno = 0;
   auto value = _::NoLocaleStrtod(s.begin(), &endPtr);
-  if (endPtr != s.end()) {
-    return zc::none;
-  }
+  if (endPtr != s.end()) { return zc::none; }
 #if _WIN32 || __CYGWIN__ || __BIONIC__
-  if (isNaN(value)) {
-    return zc::nan();
-  }
+  if (isNaN(value)) { return zc::nan(); }
 #endif
   return value;
 }
@@ -688,12 +636,8 @@ Maybe<float> StringPtr::tryParseAs<float>() const {
 }
 
 Maybe<size_t> StringPtr::find(const StringPtr& other) const {
-  if (other.size() == 0) {
-    return size_t(0);
-  }
-  if (size() == 0) {
-    return zc::none;
-  }
+  if (other.size() == 0) { return size_t(0); }
+  if (size() == 0) { return zc::none; }
   if (other.size() > size()) {
     // We won't find the entirety of other if other is longer than this.
     return zc::none;
@@ -727,9 +671,7 @@ Maybe<size_t> StringPtr::find(const StringPtr& other) const {
   // description of
   //   the algorithm with some C code.
   for (size_t i = 0; i + other.size() <= size(); ++i) {
-    if (slice(i).startsWith(other)) {
-      return i;
-    }
+    if (slice(i).startsWith(other)) { return i; }
   }
 
   return zc::none;

@@ -28,8 +28,7 @@ namespace _ {
 
 void throwDoubleAdd() {
   zc::throwFatalException(ZC_EXCEPTION(
-      FAILED,
-      "tried to add element to zc::List but the element is already in a list"));
+      FAILED, "tried to add element to zc::List but the element is already in a list"));
 }
 void throwRemovedNotPresent() {
   zc::throwFatalException(ZC_EXCEPTION(FAILED,
@@ -37,14 +36,12 @@ void throwRemovedNotPresent() {
                                        "but the element is not in a list"));
 }
 void throwRemovedWrongList() {
-  zc::throwFatalException(
-      ZC_EXCEPTION(FAILED,
-                   "tried to remove element from zc::List but the element is "
-                   "in a different list"));
+  zc::throwFatalException(ZC_EXCEPTION(FAILED,
+                                       "tried to remove element from zc::List but the element is "
+                                       "in a different list"));
 }
 void throwDestroyedWhileInList() {
-  zc::throwFatalException(
-      ZC_EXCEPTION(FAILED, "destroyed object that is still in a zc::List"));
+  zc::throwFatalException(ZC_EXCEPTION(FAILED, "destroyed object that is still in a zc::List"));
 }
 
 }  // namespace _

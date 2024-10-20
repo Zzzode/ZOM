@@ -110,11 +110,10 @@ static std::atomic<T>* reinterpretAtomic(T* ptr) {
 }
 #define __atomic_store_n(ptr, val, order) \
   std::atomic_store_explicit(reinterpretAtomic(ptr), val, order)
-#define __atomic_load_n(ptr, order) \
-  std::atomic_load_explicit(reinterpretAtomic(ptr), order)
-#define __atomic_compare_exchange_n(ptr, expected, desired, weak, succ, fail) \
-  std::atomic_compare_exchange_strong_explicit(reinterpretAtomic(ptr),        \
-                                               expected, desired, succ, fail)
+#define __atomic_load_n(ptr, order) std::atomic_load_explicit(reinterpretAtomic(ptr), order)
+#define __atomic_compare_exchange_n(ptr, expected, desired, weak, succ, fail)                   \
+  std::atomic_compare_exchange_strong_explicit(reinterpretAtomic(ptr), expected, desired, succ, \
+                                               fail)
 #define __atomic_exchange_n(ptr, val, order) \
   std::atomic_exchange_explicit(reinterpretAtomic(ptr), val, order)
 #define __ATOMIC_RELAXED std::memory_order_relaxed
@@ -126,8 +125,7 @@ namespace zc {
 
 namespace {
 
-thread_local DisallowAsyncDestructorsScope* disallowAsyncDestructorsScope =
-    nullptr;
+thread_local DisallowAsyncDestructorsScope* disallowAsyncDestructorsScope = nullptr;
 
 }  // namespace
 
@@ -150,11 +148,9 @@ void AsyncObject::failed() noexcept {
                           disallowAsyncDestructorsScope->reason));
 }
 
-DisallowAsyncDestructorsScope::DisallowAsyncDestructorsScope(
-    zc::StringPtr reason)
+DisallowAsyncDestructorsScope::DisallowAsyncDestructorsScope(zc::StringPtr reason)
     : reason(reason), previousValue(disallowAsyncDestructorsScope) {
-  requireOnStack(
-      this, "DisallowAsyncDestructorsScope must be allocated on the stack.");
+  requireOnStack(this, "DisallowAsyncDestructorsScope must be allocated on the stack.");
   disallowAsyncDestructorsScope = this;
 }
 
@@ -164,8 +160,7 @@ DisallowAsyncDestructorsScope::~DisallowAsyncDestructorsScope() {
 
 AllowAsyncDestructorsScope::AllowAsyncDestructorsScope()
     : previousValue(disallowAsyncDestructorsScope) {
-  requireOnStack(this,
-                 "AllowAsyncDestructorsScope must be allocated on the stack.");
+  requireOnStack(this, "AllowAsyncDestructorsScope must be allocated on the stack.");
   disallowAsyncDestructorsScope = nullptr;
 }
 AllowAsyncDestructorsScope::~AllowAsyncDestructorsScope() {
@@ -187,7 +182,7 @@ EventLoop& currentEventLoop() {
 }
 
 class RootEvent : public _::Event {
- public:
+public:
   RootEvent(_::PromiseNode* node, void* traceAddr, SourceLocation location)
       : Event(location), node(node), traceAddr(traceAddr) {}
 
@@ -203,7 +198,7 @@ class RootEvent : public _::Event {
     builder.add(traceAddr);
   }
 
- private:
+private:
   _::PromiseNode* node;
   void* traceAddr;
 };
@@ -218,10 +213,9 @@ void END_CANCELER_STACK_START_CANCELEE_STACK() {}
 
 Canceler::~Canceler() noexcept(false) {
   if (isEmpty()) return;
-  cancel(getDestructionReason(
-      reinterpret_cast<void*>(&END_CANCELER_STACK_START_CANCELEE_STACK),
-      Exception::Type::DISCONNECTED, __FILE__, __LINE__,
-      "operation canceled"_zc));
+  cancel(getDestructionReason(reinterpret_cast<void*>(&END_CANCELER_STACK_START_CANCELEE_STACK),
+                              Exception::Type::DISCONNECTED, __FILE__, __LINE__,
+                              "operation canceled"_zc));
 }
 
 void Canceler::cancel(StringPtr cancelReason) {
@@ -230,8 +224,7 @@ void Canceler::cancel(StringPtr cancelReason) {
   // in-flight, it would use that exception, totally discarding the reason given
   // by the caller. This would probably be unexpected. The caller can always use
   // getDestructionReason() themselves if desired.
-  cancel(Exception(Exception::Type::DISCONNECTED, __FILE__, __LINE__,
-                   zc::str(cancelReason)));
+  cancel(Exception(Exception::Type::DISCONNECTED, __FILE__, __LINE__, zc::str(cancelReason)));
 }
 
 void Canceler::cancel(const Exception& exception) {
@@ -240,23 +233,18 @@ void Canceler::cancel(const Exception& exception) {
       a.unlink();
       a.cancel(zc::cp(exception));
     }
-    else {
-      break;
-    }
+    else { break; }
   }
 }
 
 void Canceler::release() {
   for (;;) {
     ZC_IF_SOME(a, list) { a.unlink(); }
-    else {
-      break;
-    }
+    else { break; }
   }
 }
 
-Canceler::AdapterBase::AdapterBase(Canceler& canceler)
-    : prev(canceler.list), next(canceler.list) {
+Canceler::AdapterBase::AdapterBase(Canceler& canceler) : prev(canceler.list), next(canceler.list) {
   canceler.list = *this;
   ZC_IF_SOME(n, next) { n.prev = next; }
 }
@@ -270,16 +258,13 @@ void Canceler::AdapterBase::unlink() {
   prev = zc::none;
 }
 
-Canceler::AdapterImpl<void>::AdapterImpl(zc::PromiseFulfiller<void>& fulfiller,
-                                         Canceler& canceler,
+Canceler::AdapterImpl<void>::AdapterImpl(zc::PromiseFulfiller<void>& fulfiller, Canceler& canceler,
                                          zc::Promise<void> inner)
     : AdapterBase(canceler),
       fulfiller(fulfiller),
       inner(inner
                 .then([&fulfiller]() { fulfiller.fulfill(); },
-                      [&fulfiller](zc::Exception&& e) {
-                        fulfiller.reject(zc::mv(e));
-                      })
+                      [&fulfiller](zc::Exception&& e) { fulfiller.reject(zc::mv(e)); })
                 .eagerlyEvaluate(nullptr)) {}
 
 void Canceler::AdapterImpl<void>::cancel(zc::Exception&& e) {
@@ -293,7 +278,7 @@ TaskSet::TaskSet(TaskSet::ErrorHandler& errorHandler, SourceLocation location)
     : errorHandler(errorHandler), location(location) {}
 
 class TaskSet::Task final : public _::PromiseArenaMember, public _::Event {
- public:
+public:
   Task(_::OwnPromiseNode&& nodeParam, TaskSet& taskSet)
       : Event(taskSet.location), taskSet(taskSet), node(zc::mv(nodeParam)) {
     node->setSelfPointer(&node);
@@ -322,15 +307,14 @@ class TaskSet::Task final : public _::PromiseArenaMember, public _::Event {
     return zc::str("task: ", builder);
   }
 
- protected:
+protected:
   Maybe<Own<Event>> fire() override {
     // Get the result.
     _::ExceptionOr<_::Void> result;
     node->get(result);
 
     // Delete the node, catching any exceptions.
-    ZC_IF_SOME(exception,
-               zc::runCatchingExceptions([this]() { node = nullptr; })) {
+    ZC_IF_SOME(exception, zc::runCatchingExceptions([this]() { node = nullptr; })) {
       result.addException(zc::mv(exception));
     }
 
@@ -348,9 +332,7 @@ class TaskSet::Task final : public _::PromiseArenaMember, public _::Event {
     }
 
     // Call the error handler if there was an exception.
-    ZC_IF_SOME(e, result.exception) {
-      taskSet.errorHandler.taskFailed(zc::mv(e));
-    }
+    ZC_IF_SOME(e, result.exception) { taskSet.errorHandler.taskFailed(zc::mv(e)); }
 
     return Own<Event>(mv(self));
   }
@@ -358,11 +340,10 @@ class TaskSet::Task final : public _::PromiseArenaMember, public _::Event {
   void traceEvent(_::TraceBuilder& builder) override {
     // Pointing out the ErrorHandler's taskFailed() implementation will usually
     // identify the particular TaskSet that contains this event.
-    builder.add(_::getMethodStartAddress(taskSet.errorHandler,
-                                         &ErrorHandler::taskFailed));
+    builder.add(_::getMethodStartAddress(taskSet.errorHandler, &ErrorHandler::taskFailed));
   }
 
- private:
+private:
   TaskSet& taskSet;
   _::OwnPromiseNode node;
 };
@@ -370,8 +351,7 @@ class TaskSet::Task final : public _::PromiseArenaMember, public _::Event {
 TaskSet::~TaskSet() noexcept(false) { destroyTasks(); }
 
 void TaskSet::add(Promise<void>&& promise) {
-  auto task = _::PromiseDisposer::appendPromise<Task>(
-      _::PromiseNode::from(zc::mv(promise)), *this);
+  auto task = _::PromiseDisposer::appendPromise<Task>(_::PromiseNode::from(zc::mv(promise)), *this);
   ZC_IF_SOME(head, tasks) {
     head->prev = &task->next;
     task->next = zc::mv(tasks);
@@ -389,9 +369,7 @@ zc::String TaskSet::trace() {
       traces.add(task->trace());
       ptr = &task->next;
     }
-    else {
-      break;
-    }
+    else { break; }
   }
 
   return zc::strArray(traces, "\n");
@@ -399,9 +377,7 @@ zc::String TaskSet::trace() {
 
 Promise<void> TaskSet::onEmpty() {
   ZC_IF_SOME(fulfiller, emptyFulfiller) {
-    if (fulfiller->isWaiting()) {
-      ZC_FAIL_REQUIRE("onEmpty() can only be called once at a time");
-    }
+    if (fulfiller->isWaiting()) { ZC_FAIL_REQUIRE("onEmpty() can only be called once at a time"); }
   }
 
   if (tasks == zc::none) {
@@ -430,14 +406,10 @@ void TaskSet::destroyTasks() {
     // If an exception occurs, ensure the remaining tasks still get unlinked.
     // Here, we assume it is not necessary to catch further exceptions, since we
     // require destructors to guard against exceptions when unwinding.
-    while (tasks != zc::none) {
-      auto removed = ZC_REQUIRE_NONNULL(tasks)->pop();
-    }
+    while (tasks != zc::none) { auto removed = ZC_REQUIRE_NONNULL(tasks)->pop(); }
   });
 
-  while (tasks != zc::none) {
-    auto removed = ZC_REQUIRE_NONNULL(tasks)->pop();
-  }
+  while (tasks != zc::none) { auto removed = ZC_REQUIRE_NONNULL(tasks)->pop(); }
 }
 
 // =======================================================================================
@@ -475,7 +447,7 @@ class FiberStack final {
   // A class containing a fiber stack impl. This is separate from fiber
   // promises since it lets us move the stack itself around and reuse it.
 
- public:
+public:
   FiberStack(size_t stackSize);
   ~FiberStack() noexcept(false);
 
@@ -497,7 +469,7 @@ class FiberStack final {
     builder.add(getMethodStartAddress(*this, &FiberStack::trace));
   }
 
- private:
+private:
   size_t stackSize;
   OneOf<FiberBase*, SynchronousFunc*> main;
 
@@ -536,7 +508,7 @@ static const size_t CACHE_LINE_SIZE = 64;
 #endif
 
 class FiberPool::Impl final : private Disposer {
- public:
+public:
   Impl(size_t stackSize) : stackSize(stackSize) {}
   ~Impl() noexcept(false) {
 #if USE_CORE_LOCAL_FREELISTS
@@ -545,9 +517,7 @@ class FiberPool::Impl final : private Disposer {
 
       for (uint i : zc::zeroTo(nproc)) {
         for (auto stack : coreLocalFreelists[i].stacks) {
-          if (stack != nullptr) {
-            delete stack;
-          }
+          if (stack != nullptr) { delete stack; }
         }
       }
     }
@@ -556,9 +526,7 @@ class FiberPool::Impl final : private Disposer {
     // Make sure we're not leaking anything from the global freelist either.
     auto lock = freelist.lockExclusive();
     auto dangling = zc::mv(*lock);
-    for (auto& stack : dangling) {
-      delete stack;
-    }
+    for (auto& stack : dangling) { delete stack; }
   }
 
   void setMaxFreelist(size_t count) { maxFreelist = count; }
@@ -579,9 +547,7 @@ class FiberPool::Impl final : private Disposer {
     void* allocPtr;
     size_t totalSize = nproc * sizeof(CoreLocalFreelist);
     int error = posix_memalign(&allocPtr, CACHE_LINE_SIZE, totalSize);
-    if (error != 0) {
-      ZC_FAIL_SYSCALL("posix_memalign", error);
-    }
+    if (error != 0) { ZC_FAIL_SYSCALL("posix_memalign", error); }
     memset(allocPtr, 0, totalSize);
     coreLocalFreelists = reinterpret_cast<CoreLocalFreelist*>(allocPtr);
 #endif
@@ -595,8 +561,7 @@ class FiberPool::Impl final : private Disposer {
 #if USE_CORE_LOCAL_FREELISTS
     ZC_IF_SOME(core, lookupCoreLocalFreelist()) {
       for (auto& stackPtr : core.stacks) {
-        _::FiberStack* result =
-            __atomic_exchange_n(&stackPtr, nullptr, __ATOMIC_ACQUIRE);
+        _::FiberStack* result = __atomic_exchange_n(&stackPtr, nullptr, __ATOMIC_ACQUIRE);
         if (result != nullptr) {
           // Found a stack in this slot!
           return {result, *this};
@@ -619,7 +584,7 @@ class FiberPool::Impl final : private Disposer {
     return {result, *this};
   }
 
- private:
+private:
   size_t stackSize;
   size_t maxFreelist = zc::maxValue;
   MutexGuarded<std::deque<_::FiberStack*>> freelist;
@@ -698,8 +663,7 @@ class FiberPool::Impl final : private Disposer {
   }
 };
 
-FiberPool::FiberPool(size_t stackSize)
-    : impl(zc::heap<FiberPool::Impl>(stackSize)) {}
+FiberPool::FiberPool(size_t stackSize) : impl(zc::heap<FiberPool::Impl>(stackSize)) {}
 FiberPool::~FiberPool() noexcept(false) {}
 
 void FiberPool::setMaxFreelist(size_t count) { impl->setMaxFreelist(count); }
@@ -720,15 +684,13 @@ void FiberPool::runSynchronously(zc::FunctionParam<void()> func) const {
     stack->reset();  // safe to reuse
   }
 
-  ZC_IF_SOME(e, syncFunc.exception) {
-    zc::throwRecoverableException(zc::mv(e));
-  }
+  ZC_IF_SOME(e, syncFunc.exception) { zc::throwRecoverableException(zc::mv(e)); }
 }
 
 namespace _ {  // private
 
 class LoggingErrorHandler : public TaskSet::ErrorHandler {
- public:
+public:
   static LoggingErrorHandler instance;
 
   void taskFailed(zc::Exception&& exception) override {
@@ -773,8 +735,7 @@ struct Executor::Impl {
     // this.
 
     bool isDispatchNeeded() const {
-      return !start.empty() || !cancel.empty() || !replies.empty() ||
-             !fulfilled.empty();
+      return !start.empty() || !cancel.empty() || !replies.empty() || !fulfilled.empty();
     }
 
     void dispatchAll(Vector<_::XThreadEvent*>& eventsToCancelOutsideLock) {
@@ -820,8 +781,7 @@ struct Executor::Impl {
   // After modifying state from another thread, the loop's port.wake() must be
   // called.
 
-  void processAsyncCancellations(
-      Vector<_::XThreadEvent*>& eventsToCancelOutsideLock) {
+  void processAsyncCancellations(Vector<_::XThreadEvent*>& eventsToCancelOutsideLock) {
     // After calling dispatchAll() or dispatchCancels() with the lock held, it
     // may be that some cancellations require dropping the lock before
     // destroying the promiseNode. In that case those cancellations will be
@@ -836,9 +796,7 @@ struct Executor::Impl {
 
     // Now we need to mark all the events "done" under lock.
     auto lock = state.lockExclusive();
-    for (auto& event : eventsToCancelOutsideLock) {
-      event->setDoneState();
-    }
+    for (auto& event : eventsToCancelOutsideLock) { event->setDoneState(); }
   }
 
   void disconnect() {
@@ -866,9 +824,7 @@ struct Executor::Impl {
     }
 
     for (auto& event : s.executing) {
-      ZC_ASSERT(event.state == _::XThreadEvent::EXECUTING, event.state) {
-        break;
-      }
+      ZC_ASSERT(event.state == _::XThreadEvent::EXECUTING, event.state) { break; }
       s.executing.remove(event);
       event.promiseNode = zc::none;
       event.setDisconnected();
@@ -877,9 +833,7 @@ struct Executor::Impl {
     }
 
     for (auto& event : s.cancel) {
-      ZC_ASSERT(event.state == _::XThreadEvent::CANCELING, event.state) {
-        break;
-      }
+      ZC_ASSERT(event.state == _::XThreadEvent::CANCELING, event.state) { break; }
       s.cancel.remove(event);
       event.promiseNode = zc::none;
       event.setDoneState();
@@ -888,11 +842,8 @@ struct Executor::Impl {
     // The replies list "should" be empty, because any locally-initiated tasks
     // should have been canceled before destroying the EventLoop.
     if (!s.replies.empty()) {
-      ZC_LOG(ERROR,
-             "EventLoop destroyed with cross-thread event replies outstanding");
-      for (auto& event : s.replies) {
-        s.replies.remove(event);
-      }
+      ZC_LOG(ERROR, "EventLoop destroyed with cross-thread event replies outstanding");
+      for (auto& event : s.replies) { s.replies.remove(event); }
     }
 
     // Similarly for cross-thread fulfillers. The waiting tasks should have been
@@ -911,9 +862,8 @@ struct Executor::Impl {
 
 namespace _ {  // (private)
 
-XThreadEvent::XThreadEvent(ExceptionOrValue& result,
-                           const Executor& targetExecutor, EventLoop& loop,
-                           void* funcTracePtr, SourceLocation location)
+XThreadEvent::XThreadEvent(ExceptionOrValue& result, const Executor& targetExecutor,
+                           EventLoop& loop, void* funcTracePtr, SourceLocation location)
     : Event(loop, location),
       result(result),
       funcTracePtr(funcTracePtr),
@@ -954,9 +904,7 @@ void XThreadEvent::ensureDoneOrCanceled() {
 
         Maybe<Executor&> maybeSelfExecutor = zc::none;
         if (threadLocalEventLoop != nullptr) {
-          ZC_IF_SOME(e, threadLocalEventLoop->executor) {
-            maybeSelfExecutor = *e;
-          }
+          ZC_IF_SOME(e, threadLocalEventLoop->executor) { maybeSelfExecutor = *e; }
         }
 
         ZC_IF_SOME(selfExecutor, maybeSelfExecutor) {
@@ -981,8 +929,7 @@ void XThreadEvent::ensureDoneOrCanceled() {
             lock = {};
 
             Vector<_::XThreadEvent*> eventsToCancelOutsideLock;
-            ZC_DEFER(selfExecutor.impl->processAsyncCancellations(
-                eventsToCancelOutsideLock));
+            ZC_DEFER(selfExecutor.impl->processAsyncCancellations(eventsToCancelOutsideLock));
 
             auto selfLock = selfExecutor.impl->state.lockExclusive();
             selfLock->waitingForCancel = false;
@@ -1000,8 +947,7 @@ void XThreadEvent::ensureDoneOrCanceled() {
             lock = {};
             {
               Vector<_::XThreadEvent*> eventsToCancelOutsideLock;
-              ZC_DEFER(selfExecutor.impl->processAsyncCancellations(
-                  eventsToCancelOutsideLock));
+              ZC_DEFER(selfExecutor.impl->processAsyncCancellations(eventsToCancelOutsideLock));
 
               auto selfLock = selfExecutor.impl->state.lockExclusive();
               selfLock->waitingForCancel = true;
@@ -1134,14 +1080,11 @@ void XThreadEvent::done() {
   }
 }
 
-inline void XThreadEvent::setDoneState() {
-  __atomic_store_n(&state, DONE, __ATOMIC_RELEASE);
-}
+inline void XThreadEvent::setDoneState() { __atomic_store_n(&state, DONE, __ATOMIC_RELEASE); }
 
 void XThreadEvent::setDisconnected() {
   result.addException(ZC_EXCEPTION(
-      DISCONNECTED,
-      "Executor's event loop exited before cross-thread event could complete"));
+      DISCONNECTED, "Executor's event loop exited before cross-thread event could complete"));
 }
 
 class XThreadEvent::DelayedDoneHack : public Disposer {
@@ -1162,7 +1105,7 @@ class XThreadEvent::DelayedDoneHack : public Disposer {
   // this case, the event isn't deleting itself, but rather releasing itself
   // back to the other thread.
 
- protected:
+protected:
   void disposeImpl(void* pointer) const override {
     reinterpret_cast<XThreadEvent*>(pointer)->done();
   }
@@ -1173,19 +1116,15 @@ Maybe<Own<Event>> XThreadEvent::fire() {
 
   ZC_IF_SOME(n, promiseNode) {
     n->get(result);
-    promiseNode =
-        zc::none;  // make sure to destroy in the thread that created it
+    promiseNode = zc::none;  // make sure to destroy in the thread that created it
     return Own<Event>(this, DISPOSER);
   }
   else {
-    ZC_IF_SOME(exception,
-               zc::runCatchingExceptions([&]() { promiseNode = execute(); })) {
+    ZC_IF_SOME(exception, zc::runCatchingExceptions([&]() { promiseNode = execute(); })) {
       result.addException(zc::mv(exception));
     };
     ZC_IF_SOME(n, promiseNode) { n->onReady(this); }
-    else {
-      return Own<Event>(this, DISPOSER);
-    }
+    else { return Own<Event>(this, DISPOSER); }
   }
 
   return zc::none;
@@ -1200,8 +1139,7 @@ void XThreadEvent::traceEvent(TraceBuilder& builder) {
 
 void XThreadEvent::onReady(Event* event) noexcept { onReadyEvent.init(event); }
 
-XThreadPaf::XThreadPaf()
-    : state(WAITING), executor(getCurrentThreadExecutor()) {}
+XThreadPaf::XThreadPaf() : state(WAITING), executor(getCurrentThreadExecutor()) {}
 XThreadPaf::~XThreadPaf() noexcept(false) {}
 
 void XThreadPaf::destroy() {
@@ -1211,22 +1149,22 @@ void XThreadPaf::destroy() {
     // Common case: Promise was fully fulfilled and dispatched, no need for
     // locking.
     delete this;
-  } else if (__atomic_compare_exchange_n(&state, &oldState, CANCELED, false,
-                                         __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE)) {
+  } else if (__atomic_compare_exchange_n(&state, &oldState, CANCELED, false, __ATOMIC_ACQUIRE,
+                                         __ATOMIC_ACQUIRE)) {
     // State transitioned from WAITING to CANCELED, so now it's the fulfiller's
     // job to destroy the object.
   } else {
     // Whoops, another thread is already in the process of fulfilling this
     // promise. We'll have to wait for it to finish and transition the state to
     // FULFILLED.
-    executor.impl->state.when(
-        [&](auto&) { return state == FULFILLED || state == DISPATCHED; },
-        [&](Executor::Impl::State& exState) {
-          if (state == FULFILLED) {
-            // The object is on the queue but was not yet dispatched. Remove it.
-            exState.fulfilled.remove(*this);
-          }
-        });
+    executor.impl->state.when([&](auto&) { return state == FULFILLED || state == DISPATCHED; },
+                              [&](Executor::Impl::State& exState) {
+                                if (state == FULFILLED) {
+                                  // The object is on the queue but was not yet dispatched. Remove
+                                  // it.
+                                  exState.fulfilled.remove(*this);
+                                }
+                              });
 
     // It's ours now, delete it.
     delete this;
@@ -1239,19 +1177,16 @@ void XThreadPaf::tracePromise(TraceBuilder& builder, bool stopAtNextEvent) {
   // We can't safely trace into another thread, so we'll stop here.
   // Maybe returning the address of get() will give us a function name with
   // meaningful type information.
-  builder.add(getMethodStartAddress(implicitCast<PromiseNode&>(*this),
-                                    &PromiseNode::get));
+  builder.add(getMethodStartAddress(implicitCast<PromiseNode&>(*this), &PromiseNode::get));
 }
 
 XThreadPaf::FulfillScope::FulfillScope(XThreadPaf** pointer) {
-  obj = __atomic_exchange_n(pointer, static_cast<XThreadPaf*>(nullptr),
-                            __ATOMIC_ACQUIRE);
+  obj = __atomic_exchange_n(pointer, static_cast<XThreadPaf*>(nullptr), __ATOMIC_ACQUIRE);
   auto oldState = WAITING;
   if (obj == nullptr) {
     // Already fulfilled (possibly by another thread).
-  } else if (__atomic_compare_exchange_n(&obj->state, &oldState, FULFILLING,
-                                         false, __ATOMIC_ACQUIRE,
-                                         __ATOMIC_ACQUIRE)) {
+  } else if (__atomic_compare_exchange_n(&obj->state, &oldState, FULFILLING, false,
+                                         __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE)) {
     // Transitioned to FULFILLING, good.
   } else {
     // The waiting thread must have canceled.
@@ -1293,30 +1228,24 @@ XThreadPaf::FulfillScope::~FulfillScope() noexcept {  // intentionally noexcept
 zc::Exception XThreadPaf::unfulfilledException() {
   // TODO(cleanup): Share code with regular PromiseAndFulfiller for stack
   // tracing here.
-  return zc::Exception(
-      zc::Exception::Type::FAILED, __FILE__, __LINE__,
-      zc::heapString("cross-thread PromiseFulfiller was destroyed without "
-                     "fulfilling the promise."));
+  return zc::Exception(zc::Exception::Type::FAILED, __FILE__, __LINE__,
+                       zc::heapString("cross-thread PromiseFulfiller was destroyed without "
+                                      "fulfilling the promise."));
 }
 
 class ExecutorImpl : public Executor, public AtomicRefcounted {
- public:
+public:
   using Executor::Executor;
 
-  zc::Own<const Executor> addRef() const override {
-    return zc::atomicAddRef(*this);
-  }
+  zc::Own<const Executor> addRef() const override { return zc::atomicAddRef(*this); }
 };
 
 }  // namespace _
 
-Executor::Executor(EventLoop& loop, Badge<EventLoop>)
-    : impl(zc::heap<Impl>(loop)) {}
+Executor::Executor(EventLoop& loop, Badge<EventLoop>) : impl(zc::heap<Impl>(loop)) {}
 Executor::~Executor() noexcept(false) {}
 
-bool Executor::isLive() const {
-  return impl->state.lockShared()->loop != zc::none;
-}
+bool Executor::isLive() const { return impl->state.lockShared()->loop != zc::none; }
 
 void Executor::send(_::XThreadEvent& event, bool sync) const {
   ZC_ASSERT(event.state == _::XThreadEvent::UNUSED);
@@ -1324,8 +1253,7 @@ void Executor::send(_::XThreadEvent& event, bool sync) const {
   if (sync) {
     EventLoop* thisThread = threadLocalEventLoop;
     if (thisThread != nullptr &&
-        thisThread->executor.map([this](auto& e) { return e == this; })
-            .orDefault(false)) {
+        thisThread->executor.map([this](auto& e) { return e == this; }).orDefault(false)) {
       // Invoking a sync request on our own thread. Just execute it directly; if
       // we try to queue it to the loop, we'll deadlock.
       auto promiseNode = event.execute();
@@ -1396,15 +1324,10 @@ bool Executor::poll() {
 
 EventLoop& Executor::getLoop() const {
   ZC_IF_SOME(l, impl->state.lockShared()->loop) { return l; }
-  else {
-    zc::throwFatalException(
-        ZC_EXCEPTION(DISCONNECTED, "Executor's event loop has exited"));
-  }
+  else { zc::throwFatalException(ZC_EXCEPTION(DISCONNECTED, "Executor's event loop has exited")); }
 }
 
-const Executor& getCurrentThreadExecutor() {
-  return currentEventLoop().getExecutor();
-}
+const Executor& getCurrentThreadExecutor() { return currentEventLoop().getExecutor(); }
 
 // =======================================================================================
 // Fiber implementation.

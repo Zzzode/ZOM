@@ -24,8 +24,7 @@
 namespace zc {
 
 GlobFilter::GlobFilter(const char* pattern) : pattern(heapString(pattern)) {}
-GlobFilter::GlobFilter(ArrayPtr<const char> pattern)
-    : pattern(heapString(pattern)) {}
+GlobFilter::GlobFilter(ArrayPtr<const char> pattern) : pattern(heapString(pattern)) {}
 
 bool GlobFilter::matches(StringPtr name) {
   // Get out your computer science books. We're implementing a non-deterministic
@@ -55,14 +54,10 @@ bool GlobFilter::matches(StringPtr name) {
 
     // The pattern can omit a leading path. So if we're at a '/' then enter the
     // state machine at the beginning on the next char.
-    if (c == '/' || c == '\\') {
-      states.add(0);
-    }
+    if (c == '/' || c == '\\') { states.add(0); }
 
     // Process each state.
-    for (uint state : oldStates) {
-      applyState(c, state);
-    }
+    for (uint state : oldStates) { applyState(c, state); }
 
     // Store the previous state vector for reuse.
     scratch = zc::mv(oldStates);
@@ -71,12 +66,8 @@ bool GlobFilter::matches(StringPtr name) {
   // If any one state is at the end of the pattern (or at a wildcard just before
   // the end of the pattern), we have a match.
   for (uint state : states) {
-    while (state < pattern.size() && pattern[state] == '*') {
-      ++state;
-    }
-    if (state == pattern.size()) {
-      return true;
-    }
+    while (state < pattern.size() && pattern[state] == '*') { ++state; }
+    if (state == pattern.size()) { return true; }
   }
   return false;
 }
@@ -95,16 +86,12 @@ void GlobFilter::applyState(char c, uint state) {
 
       case '?':
         // A '?' matches one character (never a '/').
-        if (c != '/' && c != '\\') {
-          states.add(state + 1);
-        }
+        if (c != '/' && c != '\\') { states.add(state + 1); }
         break;
 
       default:
         // Any other character matches only itself.
-        if (c == pattern[state]) {
-          states.add(state + 1);
-        }
+        if (c == pattern[state]) { states.add(state + 1); }
         break;
     }
   }

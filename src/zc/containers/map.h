@@ -40,7 +40,7 @@ class HashMap {
   // the right. For example, if the key type is `String`, you can pass
   // `StringPtr` to `find()`.
 
- public:
+public:
   void reserve(size_t size);
   // Pre-allocates space for a map of the given size.
 
@@ -115,15 +115,15 @@ class HashMap {
   Entry release(Entry& row);
   // Erase an entry and return its content by move.
 
-  template <typename Predicate, typename = decltype(instance<Predicate>()(
-                                    instance<Key&>(), instance<Value&>()))>
+  template <typename Predicate,
+            typename = decltype(instance<Predicate>()(instance<Key&>(), instance<Value&>()))>
   size_t eraseAll(Predicate&& predicate);
   // Erase all values for which predicate(key, value) returns true. This scans
   // over the entire map.
 
- private:
+private:
   class Callbacks {
-   public:
+  public:
     inline const Key& keyForRow(const Entry& entry) const { return entry.key; }
     inline Key& keyForRow(Entry& entry) const { return entry.key; }
 
@@ -152,7 +152,7 @@ class TreeMap {
   // against any type which you might want to pass to find() (with `Key` always
   // on the left of the comparison).
 
- public:
+public:
   void reserve(size_t size);
   // Pre-allocates space for a map of the given size.
 
@@ -230,8 +230,8 @@ class TreeMap {
   Entry release(Entry& row);
   // Erase an entry and return its content by move.
 
-  template <typename Predicate, typename = decltype(instance<Predicate>()(
-                                    instance<Key&>(), instance<Value&>()))>
+  template <typename Predicate,
+            typename = decltype(instance<Predicate>()(instance<Key&>(), instance<Value&>()))>
   size_t eraseAll(Predicate&& predicate);
   // Erase all values for which predicate(key, value) returns true. This scans
   // over the entire map.
@@ -240,9 +240,9 @@ class TreeMap {
   size_t eraseRange(K1&& k1, K2&& k2);
   // Erases all entries with keys between k1 (inclusive) and k2 (exclusive).
 
- private:
+private:
   class Callbacks {
-   public:
+  public:
     inline const Key& keyForRow(const Entry& entry) const { return entry.key; }
     inline Key& keyForRow(Entry& entry) const { return entry.key; }
 
@@ -270,7 +270,7 @@ class TreeMap {
 namespace _ {  // private
 
 class HashSetCallbacks {
- public:
+public:
   template <typename Row>
   inline Row& keyForRow(Row& row) const {
     return row;
@@ -287,7 +287,7 @@ class HashSetCallbacks {
 };
 
 class TreeSetCallbacks {
- public:
+public:
   template <typename Row>
   inline Row& keyForRow(Row& row) const {
     return row;
@@ -309,7 +309,7 @@ template <typename Element>
 class HashSet : public Table<Element, HashIndex<_::HashSetCallbacks>> {
   // A simple hashtable-based set, using zc::hashCode() and operator==().
 
- public:
+public:
   // Everything is inherited.
 
   template <typename... Params>
@@ -322,7 +322,7 @@ template <typename Element>
 class TreeSet : public Table<Element, TreeIndex<_::TreeSetCallbacks>> {
   // A simple b-tree-based set, using operator<() and operator==().
 
- public:
+public:
   // Everything is inherited.
 };
 
@@ -365,8 +365,7 @@ const typename HashMap<Key, Value>::Entry* HashMap<Key, Value>::end() const {
 }
 
 template <typename Key, typename Value>
-typename HashMap<Key, Value>::Entry& HashMap<Key, Value>::insert(Key key,
-                                                                 Value value) {
+typename HashMap<Key, Value>::Entry& HashMap<Key, Value>::insert(Key key, Value value) {
   return table.insert(Entry{zc::mv(key), zc::mv(value)});
 }
 
@@ -378,8 +377,8 @@ void HashMap<Key, Value>::insertAll(Collection&& collection) {
 
 template <typename Key, typename Value>
 template <typename UpdateFunc>
-typename HashMap<Key, Value>::Entry& HashMap<Key, Value>::upsert(
-    Key key, Value value, UpdateFunc&& update) {
+typename HashMap<Key, Value>::Entry& HashMap<Key, Value>::upsert(Key key, Value value,
+                                                                 UpdateFunc&& update) {
   return table.upsert(Entry{zc::mv(key), zc::mv(value)},
                       [&](Entry& existingEntry, Entry&& newEntry) {
                         update(existingEntry.value, zc::mv(newEntry.value));
@@ -387,8 +386,7 @@ typename HashMap<Key, Value>::Entry& HashMap<Key, Value>::upsert(
 }
 
 template <typename Key, typename Value>
-typename HashMap<Key, Value>::Entry& HashMap<Key, Value>::upsert(Key key,
-                                                                 Value value) {
+typename HashMap<Key, Value>::Entry& HashMap<Key, Value>::upsert(Key key, Value value) {
   return table.upsert(Entry{zc::mv(key), zc::mv(value)},
                       [&](Entry& existingEntry, Entry&& newEntry) {
                         existingEntry.value = zc::mv(newEntry.value);
@@ -403,8 +401,7 @@ zc::Maybe<Value&> HashMap<Key, Value>::find(KeyLike&& key) {
 template <typename Key, typename Value>
 template <typename KeyLike>
 zc::Maybe<const Value&> HashMap<Key, Value>::find(KeyLike&& key) const {
-  return table.find(key).map(
-      [](const Entry& e) -> const Value& { return e.value; });
+  return table.find(key).map([](const Entry& e) -> const Value& { return e.value; });
 }
 
 template <typename Key, typename Value>
@@ -415,20 +412,19 @@ Value& HashMap<Key, Value>::findOrCreate(KeyLike&& key, Func&& createEntry) {
 
 template <typename Key, typename Value>
 template <typename KeyLike>
-zc::Maybe<typename HashMap<Key, Value>::Entry&> HashMap<Key, Value>::findEntry(
-    KeyLike&& key) {
+zc::Maybe<typename HashMap<Key, Value>::Entry&> HashMap<Key, Value>::findEntry(KeyLike&& key) {
   return table.find(zc::fwd<KeyLike>(key));
 }
 template <typename Key, typename Value>
 template <typename KeyLike>
-zc::Maybe<const typename HashMap<Key, Value>::Entry&>
-HashMap<Key, Value>::findEntry(KeyLike&& key) const {
+zc::Maybe<const typename HashMap<Key, Value>::Entry&> HashMap<Key, Value>::findEntry(
+    KeyLike&& key) const {
   return table.find(zc::fwd<KeyLike>(key));
 }
 template <typename Key, typename Value>
 template <typename KeyLike, typename Func>
-typename HashMap<Key, Value>::Entry& HashMap<Key, Value>::findOrCreateEntry(
-    KeyLike&& key, Func&& createEntry) {
+typename HashMap<Key, Value>::Entry& HashMap<Key, Value>::findOrCreateEntry(KeyLike&& key,
+                                                                            Func&& createEntry) {
   return table.findOrCreate(zc::fwd<KeyLike>(key), zc::fwd<Func>(createEntry));
 }
 
@@ -451,8 +447,7 @@ typename HashMap<Key, Value>::Entry HashMap<Key, Value>::release(Entry& entry) {
 template <typename Key, typename Value>
 template <typename Predicate, typename>
 size_t HashMap<Key, Value>::eraseAll(Predicate&& predicate) {
-  return table.eraseAll(
-      [&](Entry& entry) { return predicate(entry.key, entry.value); });
+  return table.eraseAll([&](Entry& entry) { return predicate(entry.key, entry.value); });
 }
 
 // -----------------------------------------------------------------------------
@@ -493,8 +488,7 @@ auto TreeMap<Key, Value>::end() const {
 }
 
 template <typename Key, typename Value>
-typename TreeMap<Key, Value>::Entry& TreeMap<Key, Value>::insert(Key key,
-                                                                 Value value) {
+typename TreeMap<Key, Value>::Entry& TreeMap<Key, Value>::insert(Key key, Value value) {
   return table.insert(Entry{zc::mv(key), zc::mv(value)});
 }
 
@@ -506,8 +500,8 @@ void TreeMap<Key, Value>::insertAll(Collection&& collection) {
 
 template <typename Key, typename Value>
 template <typename UpdateFunc>
-typename TreeMap<Key, Value>::Entry& TreeMap<Key, Value>::upsert(
-    Key key, Value value, UpdateFunc&& update) {
+typename TreeMap<Key, Value>::Entry& TreeMap<Key, Value>::upsert(Key key, Value value,
+                                                                 UpdateFunc&& update) {
   return table.upsert(Entry{zc::mv(key), zc::mv(value)},
                       [&](Entry& existingEntry, Entry&& newEntry) {
                         update(existingEntry.value, zc::mv(newEntry.value));
@@ -515,8 +509,7 @@ typename TreeMap<Key, Value>::Entry& TreeMap<Key, Value>::upsert(
 }
 
 template <typename Key, typename Value>
-typename TreeMap<Key, Value>::Entry& TreeMap<Key, Value>::upsert(Key key,
-                                                                 Value value) {
+typename TreeMap<Key, Value>::Entry& TreeMap<Key, Value>::upsert(Key key, Value value) {
   return table.upsert(Entry{zc::mv(key), zc::mv(value)},
                       [&](Entry& existingEntry, Entry&& newEntry) {
                         existingEntry.value = zc::mv(newEntry.value);
@@ -531,8 +524,7 @@ zc::Maybe<Value&> TreeMap<Key, Value>::find(KeyLike&& key) {
 template <typename Key, typename Value>
 template <typename KeyLike>
 zc::Maybe<const Value&> TreeMap<Key, Value>::find(KeyLike&& key) const {
-  return table.find(key).map(
-      [](const Entry& e) -> const Value& { return e.value; });
+  return table.find(key).map([](const Entry& e) -> const Value& { return e.value; });
 }
 
 template <typename Key, typename Value>
@@ -543,20 +535,19 @@ Value& TreeMap<Key, Value>::findOrCreate(KeyLike&& key, Func&& createEntry) {
 
 template <typename Key, typename Value>
 template <typename KeyLike>
-zc::Maybe<typename TreeMap<Key, Value>::Entry&> TreeMap<Key, Value>::findEntry(
-    KeyLike&& key) {
+zc::Maybe<typename TreeMap<Key, Value>::Entry&> TreeMap<Key, Value>::findEntry(KeyLike&& key) {
   return table.find(zc::fwd<KeyLike>(key));
 }
 template <typename Key, typename Value>
 template <typename KeyLike>
-zc::Maybe<const typename TreeMap<Key, Value>::Entry&>
-TreeMap<Key, Value>::findEntry(KeyLike&& key) const {
+zc::Maybe<const typename TreeMap<Key, Value>::Entry&> TreeMap<Key, Value>::findEntry(
+    KeyLike&& key) const {
   return table.find(zc::fwd<KeyLike>(key));
 }
 template <typename Key, typename Value>
 template <typename KeyLike, typename Func>
-typename TreeMap<Key, Value>::Entry& TreeMap<Key, Value>::findOrCreateEntry(
-    KeyLike&& key, Func&& createEntry) {
+typename TreeMap<Key, Value>::Entry& TreeMap<Key, Value>::findOrCreateEntry(KeyLike&& key,
+                                                                            Func&& createEntry) {
   return table.findOrCreate(zc::fwd<KeyLike>(key), zc::fwd<Func>(createEntry));
 }
 
@@ -590,8 +581,7 @@ typename TreeMap<Key, Value>::Entry TreeMap<Key, Value>::release(Entry& entry) {
 template <typename Key, typename Value>
 template <typename Predicate, typename>
 size_t TreeMap<Key, Value>::eraseAll(Predicate&& predicate) {
-  return table.eraseAll(
-      [&](Entry& entry) { return predicate(entry.key, entry.value); });
+  return table.eraseAll([&](Entry& entry) { return predicate(entry.key, entry.value); });
 }
 
 template <typename Key, typename Value>

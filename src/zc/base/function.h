@@ -104,7 +104,7 @@ class FunctionParam;
 
 template <typename Return, typename... Params>
 class Function<Return(Params...)> {
- public:
+public:
   template <typename F>
   Function(F&& f) : impl(heap<Impl<F>>(zc::fwd<F>(f))) {}
   Function() = default;
@@ -125,9 +125,7 @@ class Function<Return(Params...)> {
   Function(Function&&) = default;
   Function& operator=(Function&&) = default;
 
-  Return operator()(Params... params) {
-    return (*impl)(zc::fwd<Params>(params)...);
-  }
+  Return operator()(Params... params) { return (*impl)(zc::fwd<Params>(params)...); }
 
   Function reference() {
     // Forms a new Function of the same type that delegates to this Function by
@@ -137,22 +135,20 @@ class Function<Return(Params...)> {
     return *impl;
   }
 
- private:
+private:
   class Iface {
-   public:
+  public:
     virtual Return operator()(Params... params) = 0;
   };
 
   template <typename F>
   class Impl final : public Iface {
-   public:
+  public:
     explicit Impl(F&& f) : f(zc::fwd<F>(f)) {}
 
-    Return operator()(Params... params) override {
-      return f(zc::fwd<Params>(params)...);
-    }
+    Return operator()(Params... params) override { return f(zc::fwd<Params>(params)...); }
 
-   private:
+  private:
     F f;
   };
 
@@ -161,7 +157,7 @@ class Function<Return(Params...)> {
 
 template <typename Return, typename... Params>
 class ConstFunction<Return(Params...)> {
- public:
+public:
   template <typename F>
   ConstFunction(F&& f) : impl(heap<Impl<F>>(zc::fwd<F>(f))) {}
   ConstFunction() = default;
@@ -182,9 +178,7 @@ class ConstFunction<Return(Params...)> {
   ConstFunction(ConstFunction&&) = default;
   ConstFunction& operator=(ConstFunction&&) = default;
 
-  Return operator()(Params... params) const {
-    return (*impl)(zc::fwd<Params>(params)...);
-  }
+  Return operator()(Params... params) const { return (*impl)(zc::fwd<Params>(params)...); }
 
   ConstFunction reference() const {
     // Forms a new ConstFunction of the same type that delegates to this
@@ -194,22 +188,20 @@ class ConstFunction<Return(Params...)> {
     return *impl;
   }
 
- private:
+private:
   class Iface {
-   public:
+  public:
     virtual Return operator()(Params... params) const = 0;
   };
 
   template <typename F>
   class Impl final : public Iface {
-   public:
+  public:
     explicit Impl(F&& f) : f(zc::fwd<F>(f)) {}
 
-    Return operator()(Params... params) const override {
-      return f(zc::fwd<Params>(params)...);
-    }
+    Return operator()(Params... params) const override { return f(zc::fwd<Params>(params)...); }
 
-   private:
+  private:
     F f;
   };
 
@@ -218,7 +210,7 @@ class ConstFunction<Return(Params...)> {
 
 template <typename Return, typename... Params>
 class FunctionParam<Return(Params...)> {
- public:
+public:
   template <typename Func>
   FunctionParam(Func&& func) {
     typedef Wrapper<Decay<Func>> WrapperType;
@@ -226,8 +218,7 @@ class FunctionParam<Return(Params...)> {
     // All instances of Wrapper<Func> are two pointers in size: a vtable, and a
     // Func&. So if we allocate space for two pointers, we can construct a
     // Wrapper<Func> in it!
-    static_assert(sizeof(WrapperType) == sizeof(space),
-                  "expected WrapperType to be two pointers");
+    static_assert(sizeof(WrapperType) == sizeof(space), "expected WrapperType to be two pointers");
 
     // Even if `func` is an rvalue reference, it's OK to use it as an lvalue
     // here, because FunctionParam is used strictly for parameters. If we
@@ -244,24 +235,22 @@ class FunctionParam<Return(Params...)> {
     return (*reinterpret_cast<WrapperBase*>(space))(zc::fwd<Params>(params)...);
   }
 
- private:
+private:
   alignas(void*) char space[2 * sizeof(void*)];
 
   class WrapperBase {
-   public:
+  public:
     virtual Return operator()(Params... params) = 0;
   };
 
   template <typename Func>
   class Wrapper : public WrapperBase {
-   public:
+  public:
     Wrapper(Func& func) : func(func) {}
 
-    Return operator()(Params... params) override {
-      return func(zc::fwd<Params>(params)...);
-    }
+    Return operator()(Params... params) override { return func(zc::fwd<Params>(params)...); }
 
-   private:
+  private:
     Func& func;
   };
 };
@@ -270,7 +259,7 @@ namespace _ {  // private
 
 template <typename T, typename Func, typename ConstFunc>
 class BoundMethod {
- public:
+public:
   BoundMethod(T&& t, Func&& func, ConstFunc&& constFunc)
       : t(zc::fwd<T>(t)), func(zc::mv(func)), constFunc(zc::mv(constFunc)) {}
 
@@ -283,29 +272,23 @@ class BoundMethod {
     return constFunc(t, zc::fwd<Params>(params)...);
   }
 
- private:
+private:
   T t;
   Func func;
   ConstFunc constFunc;
 };
 
 template <typename T, typename Func, typename ConstFunc>
-BoundMethod<T, Func, ConstFunc> boundMethod(T&& t, Func&& func,
-                                            ConstFunc&& constFunc) {
+BoundMethod<T, Func, ConstFunc> boundMethod(T&& t, Func&& func, ConstFunc&& constFunc) {
   return {zc::fwd<T>(t), zc::fwd<Func>(func), zc::fwd<ConstFunc>(constFunc)};
 }
 
 }  // namespace _
 
-#define ZC_BIND_METHOD(obj, method)                  \
-  ::zc::_::boundMethod(                              \
-      obj,                                           \
-      [](auto& s, auto&&... p) mutable {             \
-        return s.method(zc::fwd<decltype(p)>(p)...); \
-      },                                             \
-      [](auto& s, auto&&... p) {                     \
-        return s.method(zc::fwd<decltype(p)>(p)...); \
-      })
+#define ZC_BIND_METHOD(obj, method)                                                           \
+  ::zc::_::boundMethod(                                                                       \
+      obj, [](auto& s, auto&&... p) mutable { return s.method(zc::fwd<decltype(p)>(p)...); }, \
+      [](auto& s, auto&&... p) { return s.method(zc::fwd<decltype(p)>(p)...); })
 // Macro that produces a functor object which forwards to the method `obj.name`.
 // If `obj` is an lvalue, the functor will hold a reference to it. If `obj` is
 // an rvalue, the functor will contain a copy (by move) of it. The method is

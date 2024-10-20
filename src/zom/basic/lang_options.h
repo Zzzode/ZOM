@@ -11,9 +11,7 @@ struct LangOptions {
   // more...
 
   LangOptions()
-      : use_unicode(true),
-        allow_dollar_identifiers(false),
-        support_regex_literals(true) {}
+      : use_unicode(true), allow_dollar_identifiers(false), support_regex_literals(true) {}
 };
 
 }  // namespace basic

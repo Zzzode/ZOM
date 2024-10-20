@@ -86,7 +86,7 @@ class List {
   // the iterator points to without breaking the iteration. However, removing
   // any *other* element could invalidate the iterator.
 
- public:
+public:
   List() = default;
   ZC_DISALLOW_COPY_AND_MOVE(List);
 
@@ -107,9 +107,7 @@ class List {
     (element.*link).next = head;
     (element.*link).prev = &head;
     ZC_IF_SOME(oldHead, head) { (oldHead.*link).prev = &(element.*link).next; }
-    else {
-      tail = &(element.*link).next;
-    }
+    else { tail = &(element.*link).next; }
     head = element;
     ++listSize;
   }
@@ -117,9 +115,7 @@ class List {
   void remove(T& element) {
     if ((element.*link).prev == nullptr) _::throwRemovedNotPresent();
     *((element.*link).prev) = (element.*link).next;
-    ZC_IF_SOME(n, (element.*link).next) {
-      (n.*link).prev = (element.*link).prev;
-    }
+    ZC_IF_SOME(n, (element.*link).next) { (n.*link).prev = (element.*link).prev; }
     else {
       if (tail != &((element.*link).next)) _::throwRemovedWrongList();
       tail = (element.*link).prev;
@@ -140,7 +136,7 @@ class List {
   T& front() { return *begin(); }
   const T& front() const { return *begin(); }
 
- private:
+private:
   Maybe<T&> head;
   Maybe<T&>* tail = &head;
   size_t listSize = 0;
@@ -148,7 +144,7 @@ class List {
 
 template <typename T>
 class ListLink {
- public:
+public:
   ListLink() : next(zc::none), prev(nullptr) {}
   ~ListLink() noexcept {
     // Intentionally `noexcept` because we want to crash if a dangling pointer
@@ -159,7 +155,7 @@ class ListLink {
 
   bool isLinked() const { return prev != nullptr; }
 
- private:
+private:
   Maybe<T&> next;
   Maybe<T&>* prev;
 
@@ -171,7 +167,7 @@ class ListLink {
 
 template <typename T, typename MaybeConstT, ListLink<T> T::*link>
 class ListIterator {
- public:
+public:
   ListIterator() = default;
 
   MaybeConstT& operator*() {
@@ -193,10 +189,7 @@ class ListIterator {
 
   inline ListIterator& operator++() {
     current = next;
-    next = current
-               .map([](MaybeConstT& obj) -> zc::Maybe<MaybeConstT&> {
-                 return (obj.*link).next;
-               })
+    next = current.map([](MaybeConstT& obj) -> zc::Maybe<MaybeConstT&> { return (obj.*link).next; })
                .orDefault(zc::none);
     return *this;
   }
@@ -210,7 +203,7 @@ class ListIterator {
     return _::readMaybe(current) == _::readMaybe(other.current);
   }
 
- private:
+private:
   Maybe<MaybeConstT&> current;
 
   Maybe<MaybeConstT&> next;
@@ -219,10 +212,7 @@ class ListIterator {
 
   explicit ListIterator(Maybe<MaybeConstT&> start)
       : current(start),
-        next(start
-                 .map([](MaybeConstT& obj) -> zc::Maybe<MaybeConstT&> {
-                   return (obj.*link).next;
-                 })
+        next(start.map([](MaybeConstT& obj) -> zc::Maybe<MaybeConstT&> { return (obj.*link).next; })
                  .orDefault(zc::none)) {}
   friend class List<T, link>;
 };

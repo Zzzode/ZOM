@@ -71,7 +71,7 @@ class Refcounted : private Disposer {
   //   virtual function call for every refcount is sad in its own way.  A Ref<T>
   //   type to replace Own<T> could also be nice.
 
- public:
+public:
   Refcounted() = default;
   virtual ~Refcounted() noexcept(false);
   ZC_DISALLOW_COPY_AND_MOVE(Refcounted);
@@ -80,7 +80,7 @@ class Refcounted : private Disposer {
   // Check if there are multiple references to this object. This is sometimes
   // useful for deciding whether it's safe to modify the object vs. make a copy.
 
- private:
+private:
   mutable uint refcount = 0;
   // "mutable" because disposeImpl() is const.  Bleh.
 
@@ -134,8 +134,7 @@ Own<T> addRef(T& object) {
   // implement a non-static addRef() method which wraps this and returns the
   // appropriate type.
 
-  ZC_IREQUIRE(object.Refcounted::refcount > 0,
-              "Object not allocated with zc::refcounted().");
+  ZC_IREQUIRE(object.Refcounted::refcount > 0, "Object not allocated with zc::refcounted().");
   return Refcounted::addRefInternal(&object);
 }
 
@@ -176,7 +175,7 @@ class Rc {
   //     To improve the transparency of the code, zc::Own<T> shouldn't be used
   //     to call addRef() without zc::Rc.
 
- public:
+public:
   ZC_DISALLOW_COPY(Rc);
   Rc() {}
   Rc(decltype(nullptr)) {}
@@ -212,15 +211,9 @@ class Rc {
     return Rc<U>(own.template downcast<U>());
   }
 
-  inline bool operator==(const Rc<T>& other) const {
-    return own.get() == other.own.get();
-  }
-  inline bool operator==(decltype(nullptr)) const {
-    return own.get() == nullptr;
-  }
-  inline bool operator!=(decltype(nullptr)) const {
-    return own.get() != nullptr;
-  }
+  inline bool operator==(const Rc<T>& other) const { return own.get() == other.own.get(); }
+  inline bool operator==(decltype(nullptr)) const { return own.get() == nullptr; }
+  inline bool operator!=(decltype(nullptr)) const { return own.get() != nullptr; }
 
   inline T* operator->() { return own.get(); }
   inline const T* operator->() const { return own.get(); }
@@ -228,7 +221,7 @@ class Rc {
   inline T* get() { return own.get(); }
   inline const T* get() const { return own.get(); }
 
- private:
+private:
   Rc(T* t) : own(t, *t) {}
   Rc(Own<T>&& t) : own(zc::mv(t)) {}
 
@@ -249,7 +242,7 @@ class EnableAddRefToThis {
   // references to themselves.
   // Can be used both with Refcounted and AtomicRefcounted objects.
 
- protected:
+protected:
   auto addRefToThis() const {
     const Self* self = static_cast<const Self*>(this);
     return Self::addRcRefInternal(self);
@@ -267,7 +260,7 @@ class RefcountedWrapper : public Refcounted {
   // construct references with type Own<T> that appears to point directly to the
   // underlying object.
 
- public:
+public:
   template <typename... Params>
   RefcountedWrapper(Params&&... params) : wrapped(zc::fwd<Params>(params)...) {}
 
@@ -281,7 +274,7 @@ class RefcountedWrapper : public Refcounted {
     return Own<T>(&wrapped, *this);
   }
 
- private:
+private:
   T wrapped;
 };
 
@@ -290,7 +283,7 @@ class RefcountedWrapper<Own<T>> : public Refcounted {
   // Specialization for when the wrapped type is itself Own<T>. We don't want
   // this to result in Own<Own<T>>.
 
- public:
+public:
   RefcountedWrapper(Own<T> wrapped) : wrapped(zc::mv(wrapped)) {}
 
   T& getWrapped() { return *wrapped; }
@@ -303,7 +296,7 @@ class RefcountedWrapper<Own<T>> : public Refcounted {
     return Own<T>(wrapped.get(), *this);
   }
 
- private:
+private:
   Own<T> wrapped;
 };
 
@@ -334,7 +327,7 @@ template <typename T>
 class Arc;
 
 class AtomicRefcounted : private zc::Disposer {
- public:
+public:
   AtomicRefcounted() = default;
   virtual ~AtomicRefcounted() noexcept(false);
   ZC_DISALLOW_COPY_AND_MOVE(AtomicRefcounted);
@@ -347,7 +340,7 @@ class AtomicRefcounted : private zc::Disposer {
 #endif
   }
 
- private:
+private:
 #if _MSC_VER && !defined(__clang__)
   mutable volatile long refcount = 0;
 #else
@@ -467,7 +460,7 @@ class Arc {
   //
   // Usage is similar to zc::Rc<T>.
 
- public:
+public:
   ZC_DISALLOW_COPY(Arc);
   Arc() {}
   Arc(decltype(nullptr)) {}
@@ -503,15 +496,9 @@ class Arc {
     return Arc<U>(own.template downcast<U>());
   }
 
-  inline bool operator==(const Arc<T>& other) const {
-    return own.get() == other.own.get();
-  }
-  inline bool operator==(decltype(nullptr)) const {
-    return own.get() == nullptr;
-  }
-  inline bool operator!=(decltype(nullptr)) const {
-    return own.get() != nullptr;
-  }
+  inline bool operator==(const Arc<T>& other) const { return own.get() == other.own.get(); }
+  inline bool operator==(decltype(nullptr)) const { return own.get() == nullptr; }
+  inline bool operator!=(decltype(nullptr)) const { return own.get() != nullptr; }
 
   inline T* operator->() { return own.get(); }
   inline const T* operator->() const { return own.get(); }
@@ -519,7 +506,7 @@ class Arc {
   inline T* get() { return own.get(); }
   inline const T* get() const { return own.get(); }
 
- private:
+private:
   Arc(T* t) : own(t, *t) {}
   Arc(Own<T>&& t) : own(zc::mv(t)) {}
 

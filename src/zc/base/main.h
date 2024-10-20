@@ -35,7 +35,7 @@ namespace zc {
 class ProcessContext {
   // Context for command-line programs.
 
- public:
+public:
   virtual StringPtr getProgramName() = 0;
   // Get argv[0] as passed to main().
 
@@ -153,7 +153,7 @@ class TopLevelProcessContext final : public ProcessContext {
   // errors to stderr, and its `exit()` method actually calls the C
   // `quick_exit()` function.
 
- public:
+public:
   explicit TopLevelProcessContext(StringPtr programName);
 
   struct CleanShutdownException {
@@ -173,7 +173,7 @@ class TopLevelProcessContext final : public ProcessContext {
   ZC_NORETURN void exitInfo(StringPtr message) override;
   void increaseLoggingVerbosity() override;
 
- private:
+private:
   StringPtr programName;
   bool cleanShutdown;
   // hadErrors is mutable because we need to modify it in
@@ -181,11 +181,9 @@ class TopLevelProcessContext final : public ProcessContext {
   mutable std::atomic_bool hadErrors = false;
 };
 
-typedef Function<void(StringPtr programName, ArrayPtr<const StringPtr> params)>
-    MainFunc;
+typedef Function<void(StringPtr programName, ArrayPtr<const StringPtr> params)> MainFunc;
 
-int runMainAndExit(ProcessContext& context, MainFunc&& func, int argc,
-                   char* argv[]);
+int runMainAndExit(ProcessContext& context, MainFunc&& func, int argc, char* argv[]);
 // Runs the given main function and then exits using the given context. If an
 // exception is thrown, this will catch it, report it via the context and exit
 // with an error code.
@@ -282,19 +280,18 @@ class MainBuilder {
   //       zc::ProcessContext& context;
   //     };
 
- public:
-  MainBuilder(ProcessContext& context, StringPtr version,
-              StringPtr briefDescription,
+public:
+  MainBuilder(ProcessContext& context, StringPtr version, StringPtr briefDescription,
               StringPtr extendedDescription = nullptr);
   ~MainBuilder() noexcept(false);
 
   class OptionName {
-   public:
+  public:
     OptionName() = default;
     OptionName(char shortName) : isLong(false), shortName(shortName) {}
     OptionName(const char* longName) : isLong(true), longName(longName) {}
 
-   private:
+  private:
     bool isLong;
     union {
       char shortName;
@@ -304,24 +301,23 @@ class MainBuilder {
   };
 
   class Validity {
-   public:
+  public:
     Validity(bool valid) {
       if (!valid) errorMessage = heapString("invalid argument");
     }
-    Validity(const char* errorMessage)
-        : errorMessage(heapString(errorMessage)) {}
+    Validity(const char* errorMessage) : errorMessage(heapString(errorMessage)) {}
     Validity(String&& errorMessage) : errorMessage(zc::mv(errorMessage)) {}
 
     const Maybe<String>& getError() const { return errorMessage; }
     Maybe<String> releaseError() { return zc::mv(errorMessage); }
 
-   private:
+  private:
     Maybe<String> errorMessage;
     friend class MainBuilder;
   };
 
-  MainBuilder& addOption(std::initializer_list<OptionName> names,
-                         Function<Validity()> callback, StringPtr helpText);
+  MainBuilder& addOption(std::initializer_list<OptionName> names, Function<Validity()> callback,
+                         StringPtr helpText);
   // Defines a new option (flag). `names` is a list of characters and strings
   // that can be used to specify the option on the command line.
   // Single-character names are used with "-" while string names are used with
@@ -353,8 +349,8 @@ class MainBuilder {
   // Note that help text is automatically word-wrapped.
 
   MainBuilder& addOptionWithArg(std::initializer_list<OptionName> names,
-                                Function<Validity(StringPtr)> callback,
-                                StringPtr argumentTitle, StringPtr helpText);
+                                Function<Validity(StringPtr)> callback, StringPtr argumentTitle,
+                                StringPtr helpText);
   // Like `addOption()`, but adds an option which accepts an argument.
   // `argumentTitle` is used in the help text. The argument text is passed to
   // the callback.
@@ -397,14 +393,10 @@ class MainBuilder {
   // command name on a single line. It will not be wrapped. Users can use the
   // built-in "help" command to get extended help on a particular command.
 
-  MainBuilder& expectArg(StringPtr title,
-                         Function<Validity(StringPtr)> callback);
-  MainBuilder& expectOptionalArg(StringPtr title,
-                                 Function<Validity(StringPtr)> callback);
-  MainBuilder& expectZeroOrMoreArgs(StringPtr title,
-                                    Function<Validity(StringPtr)> callback);
-  MainBuilder& expectOneOrMoreArgs(StringPtr title,
-                                   Function<Validity(StringPtr)> callback);
+  MainBuilder& expectArg(StringPtr title, Function<Validity(StringPtr)> callback);
+  MainBuilder& expectOptionalArg(StringPtr title, Function<Validity(StringPtr)> callback);
+  MainBuilder& expectZeroOrMoreArgs(StringPtr title, Function<Validity(StringPtr)> callback);
+  MainBuilder& expectOneOrMoreArgs(StringPtr title, Function<Validity(StringPtr)> callback);
   // Set callbacks to handle arguments. `expectArg()` and `expectOptionalArg()`
   // specify positional arguments with special handling, while
   // `expect{Zero,One}OrMoreArgs()` specifies a handler for an argument list
@@ -449,7 +441,7 @@ class MainBuilder {
   // Build the "main" function, which simply parses the arguments. Once this
   // returns, the `MainBuilder` is no longer valid.
 
- private:
+private:
   struct Impl;
   Own<Impl> impl;
 
