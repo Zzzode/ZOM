@@ -9,10 +9,10 @@ class CompilerMain {
 public:
   explicit CompilerMain(zc::ProcessContext& context)
       : context(context),
-        lang_options_(),
-        source_mgr_(),
-        diag_engine_(source_mgr_),
-        pipeline(lang_options_, source_mgr_, diag_engine_) {}
+        langOptions(),
+        sourceMgr(),
+        diagEngine(sourceMgr),
+        pipeline(langOptions, sourceMgr, diagEngine) {}
 
   zc::MainBuilder::Validity setInput(zc::StringPtr inputFile) {
     input = zc::heapString("int x = 5; float y = 3.14;");
@@ -21,15 +21,13 @@ public:
 
   zc::MainBuilder::Validity run() {
     if (input.size() == 0) { return "No input provided"; }
-    pipeline.Process(input);
+    pipeline.process(input);
     return true;
   }
 
   zc::MainBuilder::Validity showResults() {
-    const zc::Vector<zc::String>& results = pipeline.results();
-    for (const auto& result : results) {
-      context.warning(result);  // 使用 warning 来输出结果
-    }
+    const zc::Vector<zc::String>& results = pipeline.getResults();
+    for (const auto& result : results) { context.warning(result); }
     return true;
   }
 
@@ -44,9 +42,9 @@ public:
 
 private:
   zc::ProcessContext& context;
-  zom::basic::LangOptions lang_options_;
-  zom::source::SourceManager source_mgr_;
-  zom::diagnostics::DiagnosticEngine diag_engine_;
+  zom::basic::LangOptions langOptions;
+  zom::source::SourceManager sourceMgr;
+  zom::diagnostics::DiagnosticEngine diagEngine;
   zom::basic::CompilerPipeline pipeline;
   zc::String input;
 };

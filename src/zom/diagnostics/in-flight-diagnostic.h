@@ -21,19 +21,19 @@ public:
   ZC_DISALLOW_COPY(InFlightDiagnostic);
 
   ~InFlightDiagnostic() {
-    if (!emitted_) { Emit(); }
+    if (!emitted_) { emit(); }
   }
 
-  void Emit() {
+  void emit() {
     if (!emitted_) {
-      engine_->Emit(loc_, zc::mv(diag_));
+      engine_->emit(loc_, zc::mv(diag_));
       emitted_ = true;
     }
   }
 
   // Add methods to modify the diagnostic, e.g., add fix-its
-  InFlightDiagnostic& AddFixIt(const FixIt& fixit) {
-    diag_.AddFixIt(fixit);
+  InFlightDiagnostic& addFixIt(const FixIt& fixit) {
+    diag_.addFixIt(fixit);
     return *this;
   }
 

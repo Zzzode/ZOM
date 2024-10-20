@@ -5,23 +5,23 @@
 namespace zom {
 namespace diagnostics {
 
-DiagnosticState::DiagnosticState() : ignored_diagnostics_(kNumDiags) {}
+DiagnosticState::DiagnosticState() : ignoredDiagnostics(kNumDiags) {}
 
-void DiagnosticState::IgnoreDiagnostic(uint32_t diag_id) {
-  if (diag_id < kNumDiags) { ignored_diagnostics_[diag_id] = true; }
+void DiagnosticState::ignoreDiagnostic(uint32_t diagId) {
+  if (diagId < kNumDiags) { ignoredDiagnostics[diagId] = true; }
 }
 
-bool DiagnosticState::IsDiagnosticIgnored(uint32_t diag_id) const {
-  return diag_id < kNumDiags && ignored_diagnostics_[diag_id];
+bool DiagnosticState::isDiagnosticIgnored(uint32_t diagId) const {
+  return diagId < kNumDiags && ignoredDiagnostics[diagId];
 }
 
-source::CharSourceRange DiagnosticState::ToCharSourceRange(const source::SourceManager& sm,
+source::CharSourceRange DiagnosticState::toCharSourceRange(const source::SourceManager& sm,
                                                            source::SourceRange range) {
-  return sm.GetCharSourceRange(range);
+  return sm.getCharSourceRange(range);
 }
 
-char DiagnosticState::ExtractCharAfter(const source::SourceManager& sm, source::SourceLoc loc) {
-  return sm.ExtractCharAfter(loc);
+char DiagnosticState::extractCharAfter(const source::SourceManager& sm, source::SourceLoc loc) {
+  return sm.extractCharAfter(loc);
 }
 
 }  // namespace diagnostics

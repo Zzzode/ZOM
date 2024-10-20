@@ -26,23 +26,23 @@ public:
   ~BinaryExpression() noexcept override = default;  // 添加 noexcept
 
 private:
-  zc::Own<Expression> left_;
-  zc::String op_;
-  zc::Own<Expression> right_;
+  zc::Own<Expression> left;
+  zc::String op;
+  zc::Own<Expression> right;
 };
 
 class VariableDeclaration : public Statement {
 public:
   ~VariableDeclaration() noexcept override = default;  // 添加 noexcept
 
-  zc::StringPtr type() const { return type_; }
+  zc::StringPtr getType() const { return type; }
 
-  zc::StringPtr name() const { return name_; }
+  zc::StringPtr getName() const { return name; }
 
 private:
-  zc::String type_;
-  zc::String name_;
-  zc::Own<Expression> initializer_;
+  zc::String type;
+  zc::String name;
+  zc::Own<Expression> initializer;
 };
 
 // Add more AST node types as needed

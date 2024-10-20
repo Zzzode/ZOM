@@ -19,32 +19,30 @@ public:
   DiagnosticState& operator=(DiagnosticState&&) = default;
 
   // 控制诊断行为的标志
-  bool show_diagnostics_after_fatal_error() const { return show_diagnostics_after_fatal_error_; }
-  void set_show_diagnostics_after_fatal_error(bool value) {
-    show_diagnostics_after_fatal_error_ = value;
-  }
+  bool getShowDiagnosticsAfterFatalError() const { return showDiagnosticsAfterFatalError; }
+  void setShowDiagnosticsAfterFatalError(bool value) { showDiagnosticsAfterFatalError = value; }
 
-  bool suppress_warnings() const { return suppress_warnings_; }
-  void set_suppress_warnings(bool value) { suppress_warnings_ = value; }
+  bool getSuppressWarnings() const { return suppressWarnings; }
+  void setSuppressWarnings(bool value) { suppressWarnings = value; }
 
   // 忽略特定诊断
-  void IgnoreDiagnostic(uint32_t diag_id);
-  bool IsDiagnosticIgnored(uint32_t diag_id) const;
+  void ignoreDiagnostic(uint32_t diag_id);
+  bool isDiagnosticIgnored(uint32_t diag_id) const;
 
   // 错误追踪
-  bool HadAnyError() const { return had_any_error_; }
-  void SetHadAnyError() { had_any_error_ = true; }
+  bool getHadAnyError() const { return hadAnyError; }
+  void setHadAnyError() { hadAnyError = true; }
 
   // 辅助函数
-  static source::CharSourceRange ToCharSourceRange(const source::SourceManager& sm,
+  static source::CharSourceRange toCharSourceRange(const source::SourceManager& sm,
                                                    source::SourceRange range);
-  static char ExtractCharAfter(const source::SourceManager& sm, source::SourceLoc loc);
+  static char extractCharAfter(const source::SourceManager& sm, source::SourceLoc loc);
 
 private:
-  bool show_diagnostics_after_fatal_error_ = false;
-  bool suppress_warnings_ = false;
-  bool had_any_error_ = false;
-  zc::Vector<bool> ignored_diagnostics_;
+  bool showDiagnosticsAfterFatalError = false;
+  bool suppressWarnings = false;
+  bool hadAnyError = false;
+  zc::Vector<bool> ignoredDiagnostics;
 
   static constexpr uint32_t kNumDiags = 1000;  // 假设有1000个诊断ID
 };

@@ -45,101 +45,101 @@ struct LexerState {
 class Lexer {
 public:
   // Constructor
-  Lexer(const basic::LangOptions& options, const source::SourceManager& source_mgr,
+  Lexer(const basic::LangOptions& options, const source::SourceManager& sourceMgr,
         diagnostics::DiagnosticEngine& diags)
-      : lang_opts_(options), source_mgr_(source_mgr), diags_(diags) {}
+      : langOpts(options), sourceMgr(sourceMgr), diags(diags) {}
 
   // Main lexical analysis function
-  void Lex(Token& result);
+  void lex(Token& result);
 
   // Preview the next token
-  const Token& PeekNextToken() const;
+  const Token& peekNextToken() const;
 
   // State management
-  LexerState GetStateForBeginningOfToken(const Token& tok) const;
-  void RestoreState(LexerState s, bool enable_diagnostics = false);
+  LexerState getStateForBeginningOfToken(const Token& tok) const;
+  void restoreState(LexerState s, bool enableDiagnostics = false);
 
   // Mode switching
-  void EnterMode(LexerMode mode);
-  void ExitMode(LexerMode mode);
+  void enterMode(LexerMode mode);
+  void exitMode(LexerMode mode);
 
   // Unicode support
-  static unsigned LexUnicodeEscape(const char*& cur_ptr, diagnostics::DiagnosticEngine* diags);
+  static unsigned lexUnicodeEscape(const char*& curPtr, diagnostics::DiagnosticEngine* diags);
 
   // Regular expression support
-  bool TryLexRegexLiteral(const char* tok_start);
+  bool tryLexRegexLiteral(const char* tokStart);
 
   // String interpolation support
-  void LexStringLiteral(unsigned custom_delimiter_len = 0);
+  void lexStringLiteral(unsigned customDelimiterLen = 0);
 
   // Code completion support
-  bool IsCodeCompletion() const;
+  bool isCodeCompletion() const;
 
   // Error handling and diagnostics
-  diagnostics::InFlightDiagnostic Diagnose(const char* loc, diagnostics::Diagnostic diag);
+  diagnostics::InFlightDiagnostic diagnose(const char* loc, diagnostics::Diagnostic diag);
 
   // Comment handling
-  void SetCommentRetentionMode(CommentRetentionMode mode);
+  void setCommentRetentionMode(CommentRetentionMode mode);
 
   // Source location and range
-  source::SourceLoc GetLocForStartOfToken(source::SourceLoc loc) const;
-  source::CharSourceRange GetCharSourceRangeFromSourceRange(const source::SourceRange& sr) const;
+  source::SourceLoc getLocForStartOfToken(source::SourceLoc loc) const;
+  source::CharSourceRange getCharSourceRangeFromSourceRange(const source::SourceRange& sr) const;
 
 private:
   // Internal state
-  const char* buffer_start_;
-  const char* buffer_end_;
-  const char* cur_ptr_;
+  const char* bufferStart;
+  const char* bufferEnd;
+  const char* curPtr;
 
-  Token next_token_;
-  LexerMode current_mode_;
-  CommentRetentionMode comment_mode_;
+  Token nextToken;
+  LexerMode currentMode;
+  CommentRetentionMode commentMode;
 
-  const basic::LangOptions& lang_opts_;
-  const source::SourceManager& source_mgr_;
-  diagnostics::DiagnosticEngine& diags_;
+  const basic::LangOptions& langOpts;
+  const source::SourceManager& sourceMgr;
+  diagnostics::DiagnosticEngine& diags;
 
   // Token cache
-  zc::Array<TokenDesc> token_cache_;
+  zc::Array<TokenDesc> tokenCache;
 
   // Internal methods
-  void FormToken(tok kind, const char* tok_start);
-  void LexImpl();
-  void ScanToken();
-  void HandleNewline();
-  void SkipTrivia();
-  void LexIdentifier();
-  void LexNumber();
-  void LexStringLiteralImpl();
-  void LexEscapedIdentifier();
-  void LexOperator();
+  void formToken(tok kind, const char* tokStart);
+  void lexImpl();
+  void scanToken();
+  void handleNewline();
+  void skipTrivia();
+  void lexIdentifier();
+  void lexNumber();
+  void lexStringLiteralImpl();
+  void lexEscapedIdentifier();
+  void lexOperator();
 
   // Unicode handling
-  uint32_t LexUnicodeScalarValue();
+  uint32_t lexUnicodeScalarValue();
 
   // Comment handling
-  void LexComment();
+  void lexComment();
 
   // Preprocessor directive handling
-  void LexPreprocessorDirective();
+  void lexPreprocessorDirective();
 
   // Multibyte character handling
-  bool TryLexMultibyteCharacter();
+  bool tryLexMultibyteCharacter();
 
   // Error recovery
-  void RecoverFromLexingError();
+  void recoverFromLexingError();
 
   // Buffer management
-  void RefillBuffer();
+  void refillBuffer();
 
   // State checks
-  bool IsAtStartOfLine() const;
-  bool IsAtEndOfFile() const;
+  bool isAtStartOfLine() const;
+  bool isAtEndOfFile() const;
 
   // Helper functions
-  bool IsIdentifierStart(char c) const;
-  bool IsIdentifierContinuation(char c) const;
-  bool IsOperatorStart(char c) const;
+  bool isIdentifierStart(char c) const;
+  bool isIdentifierContinuation(char c) const;
+  bool isOperatorStart(char c) const;
 };
 
 }  // namespace lexer

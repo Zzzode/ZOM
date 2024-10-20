@@ -10,27 +10,27 @@ namespace diagnostics {
 
 class DiagnosticEngine {
 public:
-  DiagnosticEngine(source::SourceManager& sourceMgr) : sourceMgr_(sourceMgr) {}
+  DiagnosticEngine(source::SourceManager& sourceMgr) : sourceMgr(sourceMgr) {}
 
-  void AddConsumer(zc::Own<DiagnosticConsumer> consumer) { consumers_.add(zc::mv(consumer)); }
+  void addConsumer(zc::Own<DiagnosticConsumer> consumer) { consumers.add(zc::mv(consumer)); }
 
-  void Emit(const source::SourceLoc& loc, const Diagnostic& diagnostic) {
-    if (diagnostic.kind() == DiagnosticKind::kError) { state_.SetHadAnyError(); }
-    for (auto& consumer : consumers_) { consumer->HandleDiagnostic(loc, diagnostic); }
+  void emit(const source::SourceLoc& loc, const Diagnostic& diagnostic) {
+    if (diagnostic.getKind() == DiagnosticKind::kError) { state.setHadAnyError(); }
+    for (auto& consumer : consumers) { consumer->handleDiagnostic(loc, diagnostic); }
   }
 
-  bool HasErrors() const { return state_.HadAnyError(); }
+  bool hasErrors() const { return state.getHadAnyError(); }
 
-  source::SourceManager& getSourceManager() { return sourceMgr_; }
+  source::SourceManager& getSourceManager() { return sourceMgr; }
 
   // 添加对 DiagnosticState 的访问方法
-  DiagnosticState& getState() { return state_; }
-  const DiagnosticState& getState() const { return state_; }
+  DiagnosticState& getState() { return state; }
+  const DiagnosticState& getState() const { return state; }
 
 private:
-  source::SourceManager& sourceMgr_;
-  zc::Vector<zc::Own<DiagnosticConsumer>> consumers_;
-  DiagnosticState state_;
+  source::SourceManager& sourceMgr;
+  zc::Vector<zc::Own<DiagnosticConsumer>> consumers;
+  DiagnosticState state;
 };
 
 }  // namespace diagnostics

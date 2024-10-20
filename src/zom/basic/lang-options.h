@@ -5,13 +5,12 @@ namespace zom {
 namespace basic {
 
 struct LangOptions {
-  bool use_unicode;
-  bool allow_dollar_identifiers;
-  bool support_regex_literals;
+  bool useUnicode;
+  bool allowDollarIdentifiers;
+  bool supportRegexLiterals;
   // more...
 
-  LangOptions()
-      : use_unicode(true), allow_dollar_identifiers(false), support_regex_literals(true) {}
+  LangOptions() : useUnicode(true), allowDollarIdentifiers(false), supportRegexLiterals(true) {}
 };
 
 }  // namespace basic

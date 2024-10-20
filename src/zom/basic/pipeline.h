@@ -21,35 +21,35 @@ class CompilerPipeline {
 public:
   CompilerPipeline(const basic::LangOptions& options, source::SourceManager& source_mgr,
                    diagnostics::DiagnosticEngine& diags)
-      : options_(options),
-        source_mgr_(source_mgr),
-        diags_(diags),
-        lexer_(options, source_mgr, diags),
-        // parser_(diags),
+      : options(options),
+        sourceMgr(source_mgr),
+        diags(diags),
+        lexer(options, source_mgr, diags),
+        // parser(diags),
         // type_checker_(diags),
-        stage_(CompilationStage::kNotStarted) {}
+        stage(CompilationStage::kNotStarted) {}
 
-  void Process(const zc::String& input);
-  ZC_NODISCARD const zc::Vector<zc::String>& results() const { return results_; }
-  ZC_NODISCARD CompilationStage stage() const { return stage_; }
+  void process(const zc::String& input);
+  ZC_NODISCARD const zc::Vector<zc::String>& getResults() const { return results; }
+  ZC_NODISCARD CompilationStage getStage() const { return stage; }
 
 private:
-  ZC_UNUSED const LangOptions& options_;
-  source::SourceManager& source_mgr_;
-  diagnostics::DiagnosticEngine& diags_;
+  ZC_UNUSED const LangOptions& options;
+  source::SourceManager& sourceMgr;
+  diagnostics::DiagnosticEngine& diags;
 
-  lexer::Lexer lexer_;
-  // parser::Parser parser_;
+  lexer::Lexer lexer;
+  // parser::Parser parser;
   // typecheck::TypeChecker type_checker_;
 
   // ir::IntermediateRepresentation ir_;
-  zc::Vector<zc::String> results_;
-  CompilationStage stage_;
+  zc::Vector<zc::String> results;
+  CompilationStage stage;
 
-  void RunLexer();
-  void RunParser();
-  void RunTypeChecker();
-  void GenerateResults();
+  void runLexer();
+  void runParser();
+  void runTypeChecker();
+  void generateResults();
 };
 
 }  // namespace basic

@@ -24,132 +24,132 @@ namespace source {
 
 class SourceLoc {
 public:
-  SourceLoc() : value_(0) {}
+  SourceLoc() : value(0) {}
 
-  ZC_NODISCARD bool IsValid() const { return value_ != 0; }
-  ZC_NODISCARD bool IsInvalid() const { return !IsValid(); }
+  ZC_NODISCARD bool isValid() const { return value != 0; }
+  ZC_NODISCARD bool isInvalid() const { return !isValid(); }
 
-  ZC_NODISCARD unsigned GetOpaqueValue() const { return value_; }
-  static SourceLoc GetFromOpaqueValue(const unsigned value) {
+  ZC_NODISCARD unsigned getOpaqueValue() const { return value; }
+  static SourceLoc getFromOpaqueValue(const unsigned value) {
     SourceLoc loc;
-    loc.value_ = value;
+    loc.value = value;
     return loc;
   }
 
-  ZC_NODISCARD SourceLoc GetAdvancedLoc(unsigned offset) const {
-    return GetFromOpaqueValue(GetOpaqueValue() + offset);
+  ZC_NODISCARD SourceLoc getAdvancedLoc(unsigned offset) const {
+    return getFromOpaqueValue(getOpaqueValue() + offset);
   }
 
-  ZC_NODISCARD zc::String ToString() const {
-    if (IsValid()) {
-      return zc::str("SourceLoc(file_id=", GetOpaqueValue() >> 24,
-                     " offset=", GetOpaqueValue() & 0xFFFFFF, ")");
+  ZC_NODISCARD zc::String toString() const {
+    if (isValid()) {
+      return zc::str("SourceLoc(file_id=", getOpaqueValue() >> 24,
+                     " offset=", getOpaqueValue() & 0xFFFFFF, ")");
     }
     return zc::str("SourceLoc(invalid)");
   }
 
-  void Print(zc::OutputStream& os) const { os.write(ToString().asBytes()); }
+  void print(zc::OutputStream& os) const { os.write(toString().asBytes()); }
 
-  bool operator==(const SourceLoc& rhs) const { return value_ == rhs.value_; }
+  bool operator==(const SourceLoc& rhs) const { return value == rhs.value; }
   bool operator!=(const SourceLoc& rhs) const { return !operator==(rhs); }
-  bool operator<(const SourceLoc& rhs) const { return value_ < rhs.value_; }
-  bool operator<=(const SourceLoc& rhs) const { return value_ <= rhs.value_; }
-  bool operator>(const SourceLoc& rhs) const { return value_ > rhs.value_; }
-  bool operator>=(const SourceLoc& rhs) const { return value_ >= rhs.value_; }
+  bool operator<(const SourceLoc& rhs) const { return value < rhs.value; }
+  bool operator<=(const SourceLoc& rhs) const { return value <= rhs.value; }
+  bool operator>(const SourceLoc& rhs) const { return value > rhs.value; }
+  bool operator>=(const SourceLoc& rhs) const { return value >= rhs.value; }
 
 private:
-  unsigned value_;
+  unsigned value;
 };
 
 class SourceRange {
 public:
   SourceRange() = default;
-  SourceRange(const SourceLoc start, const SourceLoc end) : start_(start), end_(end) {}
+  SourceRange(const SourceLoc start, const SourceLoc end) : start(start), end(end) {}
 
-  ZC_NODISCARD SourceLoc start() const { return start_; }
-  ZC_NODISCARD SourceLoc end() const { return end_; }
+  ZC_NODISCARD SourceLoc getStart() const { return start; }
+  ZC_NODISCARD SourceLoc getEnd() const { return end; }
 
-  ZC_NODISCARD bool IsValid() const { return start_.IsValid() && end_.IsValid(); }
-  ZC_NODISCARD bool IsInvalid() const { return !IsValid(); }
+  ZC_NODISCARD bool isValid() const { return start.isValid() && end.isValid(); }
+  ZC_NODISCARD bool isInvalid() const { return !isValid(); }
 
-  ZC_NODISCARD bool Contains(SourceLoc loc) const { return start_ <= loc && loc <= end_; }
+  ZC_NODISCARD bool contains(SourceLoc loc) const { return start <= loc && loc <= end; }
 
-  ZC_NODISCARD bool Overlaps(const SourceRange& other) const {
-    return Contains(other.start()) || other.Contains(start_);
+  ZC_NODISCARD bool overlaps(const SourceRange& other) const {
+    return contains(other.getStart()) || other.contains(start);
   }
 
-  void Widen(SourceRange other) {
-    if (other.start() < start_) { start_ = other.start(); }
-    if (other.end() > end_) { end_ = other.end(); }
+  void widen(SourceRange other) {
+    if (other.getStart() < start) { start = other.getStart(); }
+    if (other.getEnd() > end) { end = other.getEnd(); }
   }
 
-  ZC_NODISCARD zc::String ToString() const {
-    return zc::str("SourceRange(", start_.ToString(), ", ", end_.ToString(), ")");
+  ZC_NODISCARD zc::String toString() const {
+    return zc::str("SourceRange(", start.toString(), ", ", end.toString(), ")");
   }
 
-  void Print(zc::OutputStream& os) const { os.write(ToString().asBytes()); }
+  void print(zc::OutputStream& os) const { os.write(toString().asBytes()); }
 
 private:
-  SourceLoc start_;
-  SourceLoc end_;
+  SourceLoc start;
+  SourceLoc end;
 };
 
 class CharSourceRange {
 public:
   CharSourceRange() = default;
-  CharSourceRange(const SourceLoc start, const SourceLoc end, const bool is_token_range = true)
-      : start_(start), end_(end), is_token_range_(is_token_range) {
+  CharSourceRange(const SourceLoc start, const SourceLoc end, const bool isTokenRange = true)
+      : start(start), end(end), isTokenRange(isTokenRange) {
     ZC_IREQUIRE(start <= end, "Start location must be before or equal to end location.");
   }
 
-  CharSourceRange(const SourceLoc start, const unsigned length, const bool is_token_range = true)
-      : start_(start), end_(ComputeEnd(start, length)), is_token_range_(is_token_range) {}
+  CharSourceRange(const SourceLoc start, const unsigned length, const bool isTokenRange = true)
+      : start(start), end(computeEnd(start, length)), isTokenRange(isTokenRange) {}
 
-  static CharSourceRange GetTokenRange(const SourceLoc start, const SourceLoc end) {
+  static CharSourceRange getTokenRange(const SourceLoc start, const SourceLoc end) {
     return CharSourceRange(start, end, true);
   }
 
-  static CharSourceRange GetCharRange(const SourceLoc start, const SourceLoc end) {
+  static CharSourceRange getCharRange(const SourceLoc start, const SourceLoc end) {
     return CharSourceRange(start, end, false);
   }
-  ZC_NODISCARD bool Contains(SourceLoc loc) const { return start_ <= loc && loc < end_; }
+  ZC_NODISCARD bool contains(SourceLoc loc) const { return start <= loc && loc < end; }
 
   ZC_NODISCARD unsigned length() const {
-    if (start_.IsInvalid() || end_.IsInvalid()) { return 0; }
-    return end_.GetOpaqueValue() - start_.GetOpaqueValue();
+    if (start.isInvalid() || end.isInvalid()) { return 0; }
+    return end.getOpaqueValue() - start.getOpaqueValue();
   }
-  ZC_NODISCARD SourceLoc start() const { return start_; }
-  ZC_NODISCARD SourceLoc end() const { return end_; }
-  ZC_NODISCARD bool IsTokenRange() const { return is_token_range_; }
-  ZC_NODISCARD bool IsCharRange() const { return !is_token_range_; }
+  ZC_NODISCARD SourceLoc getStart() const { return start; }
+  ZC_NODISCARD SourceLoc getEnd() const { return end; }
+  ZC_NODISCARD bool getIsTokenRange() const { return isTokenRange; }
+  ZC_NODISCARD bool getIsCharRange() const { return !isTokenRange; }
 
-  ZC_NODISCARD SourceRange GetAsRange() const { return SourceRange(start_, end_); }
+  ZC_NODISCARD SourceRange getAsRange() const { return SourceRange(start, end); }
 
-  ZC_NODISCARD zc::String ToString() const {
-    return zc::str("CharSourceRange(", start_.ToString(), ", ", end_.ToString(), ", ",
-                   is_token_range_ ? "token" : "char", ")");
+  ZC_NODISCARD zc::String toString() const {
+    return zc::str("CharSourceRange(", start.toString(), ", ", end.toString(), ", ",
+                   isTokenRange ? "token" : "char", ")");
   }
 
 private:
-  SourceLoc start_;
-  SourceLoc end_;
-  bool is_token_range_{false};
+  SourceLoc start;
+  SourceLoc end;
+  bool isTokenRange{false};
 
-  static SourceLoc ComputeEnd(SourceLoc start, unsigned length) {
-    ZC_IREQUIRE(!start.IsInvalid(), "Invalid start location.");
+  static SourceLoc computeEnd(SourceLoc start, unsigned length) {
+    ZC_IREQUIRE(!start.isInvalid(), "Invalid start location.");
     ZC_IREQUIRE(length > 0, "Length must be greater than zero.");
 
-    unsigned start_value = start.GetOpaqueValue();
-    unsigned end_value = start_value + length;
+    unsigned startvalue = start.getOpaqueValue();
+    unsigned endvalue = startvalue + length;
 
     // Check for overflow
-    ZC_IREQUIRE(end_value >= start_value, "Overflow in length calculation.");
+    ZC_IREQUIRE(endvalue >= startvalue, "Overflow in length calculation.");
 
     // Check if the end position is within valid range
     // Assuming SourceLoc uses 24 bits for offset
-    ZC_IREQUIRE(end_value <= 0xFFFFFF, "End position exceeds valid range.");
+    ZC_IREQUIRE(endvalue <= 0xFFFFFF, "End position exceeds valid range.");
 
-    return SourceLoc::GetFromOpaqueValue(end_value);
+    return SourceLoc::getFromOpaqueValue(endvalue);
   }
 };
 

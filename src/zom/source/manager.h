@@ -29,7 +29,7 @@ public:
   struct VirtualFile {
     CharSourceRange range;
     zc::StringPtr name;
-    int line_offset{0};
+    int lineOffset{0};
   };
 
   struct GeneratedSourceInfo {
@@ -38,7 +38,7 @@ public:
 
   struct FixIt {
     SourceRange range;
-    zc::String replacement_text;
+    zc::String replacementText;
   };
 
   struct LineAndColumn {
@@ -54,85 +54,85 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(SourceManager);
 
   // Buffer management
-  unsigned AddNewSourceBuffer(zc::Own<zc::InputStream> input);
-  unsigned AddNewSourceBuffer(zc::StringPtr filename);
-  unsigned AddMemBufferCopy(zc::ArrayPtr<const zc::byte> input_data,
-                            zc::StringPtr buf_identifier = "");
+  unsigned addNewSourceBuffer(zc::Own<zc::InputStream> input);
+  unsigned addNewSourceBuffer(zc::StringPtr filename);
+  unsigned addMemBufferCopy(zc::ArrayPtr<const zc::byte> inputData,
+                            zc::StringPtr bufIdentifier = "");
 
   // Virtual file management
-  void CreateVirtualFile(SourceLoc loc, zc::StringPtr name, int line_offset, unsigned length);
-  const VirtualFile* GetVirtualFile(SourceLoc loc) const;
+  void createVirtualFile(SourceLoc loc, zc::StringPtr name, int lineOffset, unsigned length);
+  const VirtualFile* getVirtualFile(SourceLoc loc) const;
 
   // Generated source info
-  void SetGeneratedSourceInfo(unsigned buffer_id, GeneratedSourceInfo info);
-  const GeneratedSourceInfo* GetGeneratedSourceInfo(unsigned buffer_id) const;
+  void setGeneratedSourceInfo(unsigned bufferId, GeneratedSourceInfo info);
+  const GeneratedSourceInfo* getGeneratedSourceInfo(unsigned bufferId) const;
 
   // Location and range operations
-  SourceLoc GetLocForOffset(unsigned buffer_id, unsigned offset) const;
-  LineAndColumn GetLineAndColumn(SourceLoc loc) const;
-  unsigned GetLineNumber(SourceLoc loc) const;
-  bool IsBefore(SourceLoc first, SourceLoc second) const;
-  bool IsAtOrBefore(SourceLoc first, SourceLoc second) const;
-  bool ContainsTokenLoc(SourceRange range, SourceLoc loc) const;
-  bool Encloses(SourceRange enclosing, SourceRange inner) const;
+  SourceLoc getLocForOffset(unsigned bufferId, unsigned offset) const;
+  LineAndColumn getLineAndColumn(SourceLoc loc) const;
+  unsigned getLineNumber(SourceLoc loc) const;
+  bool isBefore(SourceLoc first, SourceLoc second) const;
+  bool isAtOrBefore(SourceLoc first, SourceLoc second) const;
+  bool containsTokenLoc(SourceRange range, SourceLoc loc) const;
+  bool encloses(SourceRange enclosing, SourceRange inner) const;
 
   // Content retrieval
-  zc::ArrayPtr<const zc::byte> GetEntireTextForBuffer(unsigned buffer_id) const;
-  zc::ArrayPtr<const zc::byte> ExtractText(SourceRange range) const;
+  zc::ArrayPtr<const zc::byte> getEntireTextForBuffer(unsigned bufferId) const;
+  zc::ArrayPtr<const zc::byte> extractText(SourceRange range) const;
 
   // Buffer identification
-  unsigned FindBufferContainingLoc(SourceLoc loc) const;
-  zc::StringPtr GetFilename(unsigned buffer_id) const;
+  unsigned findBufferContainingLoc(SourceLoc loc) const;
+  zc::StringPtr getFilename(unsigned bufferId) const;
 
   // Line and column operations
-  zc::Maybe<unsigned> ResolveFromLineCol(unsigned buffer_id, unsigned line, unsigned col) const;
-  zc::Maybe<unsigned> ResolveOffsetForEndOfLine(unsigned buffer_id, unsigned line) const;
-  zc::Maybe<unsigned> GetLineLength(unsigned buffer_id, unsigned line) const;
-  SourceLoc GetLocForLineCol(unsigned buffer_id, unsigned line, unsigned col) const;
+  zc::Maybe<unsigned> resolveFromLineCol(unsigned bufferId, unsigned line, unsigned col) const;
+  zc::Maybe<unsigned> resolveOffsetForEndOfLine(unsigned bufferId, unsigned line) const;
+  zc::Maybe<unsigned> getLineLength(unsigned bufferId, unsigned line) const;
+  SourceLoc getLocForLineCol(unsigned bufferId, unsigned line, unsigned col) const;
 
   // External source support
-  unsigned GetExternalSourceBufferID(zc::StringPtr path);
-  SourceLoc GetLocFromExternalSource(zc::StringPtr path, unsigned line, unsigned col);
+  unsigned getExternalSourceBufferID(zc::StringPtr path);
+  SourceLoc getLocFromExternalSource(zc::StringPtr path, unsigned line, unsigned col);
 
   // Diagnostics
-  void GetMessage(SourceLoc loc, zom::diagnostics::DiagnosticKind kind, const zc::String& msg,
-                  zc::ArrayPtr<SourceRange> ranges, zc::ArrayPtr<FixIt> fix_its,
+  void getMessage(SourceLoc loc, zom::diagnostics::DiagnosticKind kind, const zc::String& msg,
+                  zc::ArrayPtr<SourceRange> ranges, zc::ArrayPtr<FixIt> fixIts,
                   zc::OutputStream& os) const;
 
   // Verification
-  void VerifyAllBuffers() const;
+  void verifyAllBuffers() const;
 
   // Regex literal support
-  void RecordRegexLiteralStartLoc(SourceLoc loc);
-  bool IsRegexLiteralStart(SourceLoc loc) const;
+  void recordRegexLiteralStartLoc(SourceLoc loc);
+  bool isRegexLiteralStart(SourceLoc loc) const;
 
   // New methods based on the provided information
-  CharSourceRange GetCharSourceRange(SourceRange range) const;
-  char ExtractCharAfter(SourceLoc loc) const;
-  SourceLoc GetLocForEndOfToken(SourceLoc loc) const;
+  CharSourceRange getCharSourceRange(SourceRange range) const;
+  char extractCharAfter(SourceLoc loc) const;
+  SourceLoc getLocForEndOfToken(SourceLoc loc) const;
 
 private:
   struct BufferInfo {
     zc::Own<zc::InputStream> input;
     zc::String identifier;
     zc::Vector<zc::byte> content;
-    GeneratedSourceInfo gen_info;
+    GeneratedSourceInfo genInfo;
   };
 
-  zc::Vector<BufferInfo> buffers_;
-  zc::Vector<VirtualFile> virtual_files_;
-  zc::Vector<SourceLoc> regex_literal_start_locs_;
+  zc::Vector<BufferInfo> buffers;
+  zc::Vector<VirtualFile> virtualFiles;
+  zc::Vector<SourceLoc> regexLiteralStartLocs;
 
   struct BufferLocCache {
-    zc::Vector<unsigned> sorted_buffers;
-    unsigned num_buffers_original = 0;
-    zc::Maybe<unsigned> last_buffer_id;
+    zc::Vector<unsigned> sortedBuffers;
+    unsigned numBuffersOriginal = 0;
+    zc::Maybe<unsigned> lastBufferId;
   };
 
-  mutable BufferLocCache loc_cache_;
+  mutable BufferLocCache locCache;
 
-  void UpdateLocCache() const;
-  zc::Maybe<unsigned> FindBufferContainingLocInternal(SourceLoc loc) const;
+  void updateLocCache() const;
+  zc::Maybe<unsigned> findBufferContainingLocInternal(SourceLoc loc) const;
 };
 
 }  // namespace source

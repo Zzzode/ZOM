@@ -34,15 +34,15 @@ struct TokenDesc {
 class Token {
 public:
   Token() = default;
-  explicit Token(const TokenDesc& desc) : desc_(desc) {}
+  explicit Token(const TokenDesc& desc) : desc(desc) {}
 
-  ZC_NODISCARD tok kind() const { return desc_.kind; }
-  ZC_NODISCARD const char* start() const { return desc_.start; }
-  ZC_NODISCARD unsigned length() const { return desc_.length; }
-  ZC_NODISCARD source::SourceLoc location() const { return desc_.loc; }
+  ZC_NODISCARD tok getKind() const { return desc.kind; }
+  ZC_NODISCARD const char* getStart() const { return desc.start; }
+  ZC_NODISCARD unsigned getLength() const { return desc.length; }
+  ZC_NODISCARD source::SourceLoc getLocation() const { return desc.loc; }
 
 private:
-  TokenDesc desc_;
+  TokenDesc desc;
 };
 
 }  // namespace lexer

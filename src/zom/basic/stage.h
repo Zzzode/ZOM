@@ -14,7 +14,7 @@ public:
 
   virtual ~CompilerStage() = default;
 
-  zc::Promise<void> Process(Input input) {
+  zc::Promise<void> process(Input input) {
     return zc::evalLater(
                [this, input = zc::mv(input)]() mutable { return this->ProcessImpl(zc::mv(input)); })
         .then([this](zc::Vector<Output>&& outputs) {

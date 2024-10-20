@@ -17,16 +17,16 @@ struct Symbol {
 class SymbolTable {
 public:
   void Insert(zc::String name, zc::Own<Symbol> symbol) {
-    symbols_.insert(zc::mv(name), zc::mv(symbol));
+    symbols.insert(zc::mv(name), zc::mv(symbol));
   }
 
   Symbol* Lookup(const zc::String& name) {
-    ZC_IF_SOME(it, symbols_.find(name)) { return it.get(); }
+    ZC_IF_SOME(it, symbols.find(name)) { return it.get(); }
     return nullptr;
   }
 
 private:
-  zc::HashMap<zc::String, zc::Own<Symbol>> symbols_;
+  zc::HashMap<zc::String, zc::Own<Symbol>> symbols;
 };
 
 }  // namespace typecheck

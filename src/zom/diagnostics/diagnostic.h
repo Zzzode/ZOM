@@ -14,46 +14,45 @@ enum class DiagnosticKind { kNote, kRemark, kWarning, kError, kFatal };
 
 struct FixIt {
   zom::source::CharSourceRange range;
-  zc::String replacement_text;
+  zc::String replacementText;
 };
 
 class Diagnostic {
 public:
   Diagnostic(DiagnosticKind kind, uint32_t id, zc::StringPtr message,
              const zom::source::CharSourceRange& location)
-      : kind_(kind), id_(id), message_(zc::heapString(message)), location_(location) {}
+      : kind(kind), id(id), message(zc::heapString(message)), location(location) {}
 
-  // 添加移动构造函数和移动赋值运算符
   Diagnostic(Diagnostic&& other) noexcept = default;
   Diagnostic& operator=(Diagnostic&& other) noexcept = default;
 
   ZC_DISALLOW_COPY(Diagnostic);
 
-  DiagnosticKind kind() const { return kind_; }
-  uint32_t id() const { return id_; }
-  zc::StringPtr message() const { return message_; }
-  const zom::source::CharSourceRange& source_range() const { return location_; }
-  const zc::Vector<zc::Own<Diagnostic>>& child_diagnostics() const { return child_diagnostics_; }
-  const zc::Vector<FixIt>& fix_its() const { return fix_its_; }
+  DiagnosticKind getKind() const { return kind; }
+  uint32_t getId() const { return id; }
+  zc::StringPtr getMessage() const { return message; }
+  const zom::source::CharSourceRange& getSourceRange() const { return location; }
+  const zc::Vector<zc::Own<Diagnostic>>& getChildDiagnostics() const { return childDiagnostics; }
+  const zc::Vector<FixIt>& getFixIts() const { return fixIts; }
 
-  void AddChildDiagnostic(zc::Own<Diagnostic> child);
-  void AddFixIt(const FixIt& fix_it);
-  void set_category(zc::StringPtr new_category) { category_ = zc::heapString(new_category); }
+  void addChildDiagnostic(zc::Own<Diagnostic> child);
+  void addFixIt(const FixIt& fixIt);
+  void setCategory(zc::StringPtr newCategory) { category = zc::heapString(newCategory); }
 
 private:
-  DiagnosticKind kind_;
-  uint32_t id_;
-  zc::String message_;
-  zom::source::CharSourceRange location_;
-  zc::String category_;
-  zc::Vector<zc::Own<Diagnostic>> child_diagnostics_;
-  zc::Vector<FixIt> fix_its_;
+  DiagnosticKind kind;
+  uint32_t id;
+  zc::String message;
+  zom::source::CharSourceRange location;
+  zc::String category;
+  zc::Vector<zc::Own<Diagnostic>> childDiagnostics;
+  zc::Vector<FixIt> fixIts;
 };
 
 class DiagnosticConsumer {
 public:
   virtual ~DiagnosticConsumer() = default;
-  virtual void HandleDiagnostic(const source::SourceLoc& loc, const Diagnostic& diagnostic) = 0;
+  virtual void handleDiagnostic(const source::SourceLoc& loc, const Diagnostic& diagnostic) = 0;
 };
 
 }  // namespace diagnostics

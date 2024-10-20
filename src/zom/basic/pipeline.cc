@@ -5,52 +5,52 @@
 namespace zom {
 namespace basic {
 
-void CompilerPipeline::Process(const zc::String& input) {
+void CompilerPipeline::process(const zc::String& input) {
   // 重置状态
-  stage_ = CompilationStage::kNotStarted;
+  stage = CompilationStage::kNotStarted;
   // ir_ = ir::IntermediateRepresentation();
-  results_.clear();
+  results.clear();
 
   // 添加输入到 SourceManager
-  ZC_UNUSED unsigned buffer_id = source_mgr_.AddMemBufferCopy(input.asBytes());
+  ZC_UNUSED unsigned bufferId = sourceMgr.addMemBufferCopy(input.asBytes());
 
   // 运行编译管道
-  RunLexer();
-  if (diags_.HasErrors()) return;
+  runLexer();
+  if (diags.hasErrors()) return;
 
-  RunParser();
-  if (diags_.HasErrors()) return;
+  runParser();
+  if (diags.hasErrors()) return;
 
-  RunTypeChecker();
-  if (diags_.HasErrors()) return;
+  runTypeChecker();
+  if (diags.hasErrors()) return;
 
-  GenerateResults();
+  generateResults();
 
-  stage_ = CompilationStage::kCompilationComplete;
+  stage = CompilationStage::kCompilationComplete;
 }
 
-void CompilerPipeline::RunLexer() {
+void CompilerPipeline::runLexer() {
   zc::Vector<lexer::Token> tokens;
-  // lexer_.Lex(tokens);
+  // lexer.Lex(tokens);
   // ir_.setTokens(zc::mv(tokens));
-  stage_ = CompilationStage::kLexingComplete;
+  stage = CompilationStage::kLexingComplete;
 }
 
-void CompilerPipeline::RunParser() {
-  // auto ast = parser_.Parse(ir_.getTokens());
+void CompilerPipeline::runParser() {
+  // auto ast = parser.Parse(ir_.getTokens());
   // ir_.setAST(zc::mv(ast));
-  stage_ = CompilationStage::kParsingComplete;
+  stage = CompilationStage::kParsingComplete;
 }
 
-void CompilerPipeline::RunTypeChecker() {
+void CompilerPipeline::runTypeChecker() {
   // type_checker_.Check(ir_.getAST());
-  stage_ = CompilationStage::kTypeCheckingComplete;
+  stage = CompilationStage::kTypeCheckingComplete;
 }
 
-void CompilerPipeline::GenerateResults() {
+void CompilerPipeline::generateResults() {
   // 这里应该实现结果生成的逻辑
   // 例如，可以将 AST 或类型信息转换为字符串表示
-  results_.add(zc::str("Compilation completed successfully."));
+  results.add(zc::str("Compilation completed successfully."));
   // 添加更多结果...
 }
 

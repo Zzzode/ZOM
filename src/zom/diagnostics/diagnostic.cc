@@ -6,9 +6,9 @@
 namespace zom {
 namespace diagnostics {
 
-void Diagnostic::AddChildDiagnostic(zc::Own<Diagnostic> child) {}
+void Diagnostic::addChildDiagnostic(zc::Own<Diagnostic> child) {}
 
-void Diagnostic::AddFixIt(const FixIt& fix_it) {}
+void Diagnostic::addFixIt(const FixIt& fix_it) {}
 
 }  // namespace diagnostics
 }  // namespace zom
