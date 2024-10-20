@@ -26,7 +26,7 @@
 // to implement fibers, so this check isn't appropriate for us.
 
 #if _WIN32 || __CYGWIN__
-#include "src/zc/base/win32_api_version.h"
+#include "src/zc/base/win32-api-version.h"
 #elif __APPLE__
 // getcontext() and friends are marked deprecated on MacOS but seemingly no
 // replacement is provided. It appears as if they deprecated it solely because
@@ -50,7 +50,7 @@
 #include "src/zc/concurrent/mutex.h"
 #include "src/zc/containers/list.h"
 #include "src/zc/containers/vector.h"
-#include "src/zc/utility/one_of.h"
+#include "src/zc/utility/one-of.h"
 
 #if __linux__
 #include <sys/prctl.h>

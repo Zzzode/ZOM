@@ -33,7 +33,7 @@
 // instead. Do setup
 //   in the constructor, teardown in the destructor.
 
-#include "src/zc/base/windows_sanity.h"  // work-around macro conflict with `ERROR`
+#include "src/zc/base/windows-sanity.h"  // work-around macro conflict with `ERROR`
 #include "src/zc/ztest/ztest.h"
 
 ZC_BEGIN_HEADER

@@ -22,7 +22,7 @@
 #pragma once
 
 #include "src/zc/base/exception.h"
-#include "src/zc/concurrent/async_prelude.h"
+#include "src/zc/concurrent/async-prelude.h"
 #include "src/zc/utility/refcount.h"
 
 ZC_BEGIN_HEADER
@@ -1461,6 +1461,6 @@ private:
 }  // namespace zc
 
 #define ZC_ASYNC_H_INCLUDED
-#include "src/zc/concurrent/async_inl.h"
+#include "src/zc/concurrent/async-inl.h"
 
 ZC_END_HEADER

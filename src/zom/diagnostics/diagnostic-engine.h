@@ -2,7 +2,7 @@
 #define ZOM_DIAGNOSTIC_ENGINE_H_
 
 #include "src/zom/diagnostics/diagnostic.h"
-#include "src/zom/diagnostics/diagnostic_state.h"
+#include "src/zom/diagnostics/diagnostic-state.h"
 #include "src/zom/source/manager.h"
 
 namespace zom {

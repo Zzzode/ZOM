@@ -23,7 +23,7 @@
 #define ZC_ZTEST_ZTEST_H_
 
 #include "src/zc/base/debug.h"
-#include "src/zc/base/windows_sanity.h"  // work-around macro conflict with `ERROR`
+#include "src/zc/base/windows-sanity.h"  // work-around macro conflict with `ERROR`
 
 ZC_BEGIN_HEADER
 

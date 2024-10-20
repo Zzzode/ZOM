@@ -17,7 +17,7 @@
 
 #include "src/zc/base/io.h"
 #include "src/zc/strings/string.h"
-#include "src/zc/utility/source_location.h"
+#include "src/zc/utility/source-location.h"
 
 namespace zom {
 namespace source {

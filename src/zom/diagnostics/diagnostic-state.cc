@@ -1,4 +1,4 @@
-#include "src/zom/diagnostics/diagnostic_state.h"
+#include "src/zom/diagnostics/diagnostic-state.h"
 
 #include "src/zom/source/manager.h"
 

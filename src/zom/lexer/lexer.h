@@ -12,9 +12,9 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "src/zom/basic/lang_options.h"
-#include "src/zom/diagnostics/diagnostic_engine.h"
-#include "src/zom/diagnostics/in_flight_diagnostic.h"
+#include "src/zom/basic/lang-options.h"
+#include "src/zom/diagnostics/diagnostic-engine.h"
+#include "src/zom/diagnostics/in-flight-diagnostic.h"
 #include "src/zom/lexer/token.h"
 #include "src/zom/source/manager.h"
 

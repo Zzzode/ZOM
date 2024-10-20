@@ -24,7 +24,7 @@
 #include <inttypes.h>
 
 #include "src/zc/memory/memory.h"
-#include "src/zc/utility/source_location.h"
+#include "src/zc/utility/source-location.h"
 #include "src/zc/utility/time.h"
 
 ZC_BEGIN_HEADER

@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "glob_filter.h"
+#include "src/zc/utility/glob-filter.h"
 
 namespace zc {
 

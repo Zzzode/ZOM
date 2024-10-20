@@ -2,7 +2,7 @@
 #define ZOM_TYPECHECK_TYPECHECKER_H_
 
 #include "src/zom/basic/stage.h"
-#include "src/zom/typecheck/symbol_table.h"
+#include "src/zom/typecheck/symbol-table.h"
 #include "src/zom/zis/zis.h"
 
 namespace zom {

@@ -1,2 +1,1 @@
-add_subdirectory(bnf_calculator)
 add_subdirectory(unit)

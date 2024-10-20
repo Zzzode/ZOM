@@ -69,10 +69,10 @@
       "configurePreset": "sanitizer",
       "targets": [
         "zomc",
-        "base_common_test",
-        "parse_char_test",
-        "parse_common_test",
-        "parse_example"
+        "base-common-test",
+        "parse-char-test",
+        "parse-common-test",
+        "parse-example"
       ]
     }
   ]

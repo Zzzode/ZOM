@@ -3,7 +3,7 @@
 
 #include "src/zc/base/common.h"
 #include "src/zom/diagnostics/diagnostic.h"
-#include "src/zom/diagnostics/diagnostic_engine.h"
+#include "src/zom/diagnostics/diagnostic-engine.h"
 #include "src/zom/source/location.h"
 
 namespace zom {

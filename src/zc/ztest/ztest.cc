@@ -33,7 +33,7 @@
 #include "src/zc/base/io.h"
 #include "src/zc/base/main.h"
 #include "src/zc/base/miniposix.h"
-#include "src/zc/utility/glob_filter.h"
+#include "src/zc/utility/glob-filter.h"
 #include "src/zc/utility/time.h"
 #include "src/zc/ztest/ztest.h"
 #ifndef _WIN32
