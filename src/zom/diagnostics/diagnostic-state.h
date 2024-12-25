@@ -1,8 +1,8 @@
 #ifndef ZOM_DIAGNOSTICS_DIAGNOSTIC_STATE_H_
 #define ZOM_DIAGNOSTICS_DIAGNOSTIC_STATE_H_
 
-#include "src/zc/base/common.h"
-#include "src/zc/containers/vector.h"
+#include "src/zc/core/common.h"
+#include "src/zc/core/vector.h"
 #include "src/zom/source/location.h"
 #include "src/zom/source/manager.h"
 

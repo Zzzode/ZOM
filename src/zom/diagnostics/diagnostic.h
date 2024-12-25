@@ -1,10 +1,10 @@
 #ifndef ZOM_DIAGNOSTIC_DIAGNOSTIC_H_
 #define ZOM_DIAGNOSTIC_DIAGNOSTIC_H_
 
-#include "src/zc/base/common.h"
-#include "src/zc/containers/vector.h"
-#include "src/zc/memory/memory.h"
-#include "src/zc/strings/string.h"
+#include "src/zc/core/common.h"
+#include "src/zc/core/memory.h"
+#include "src/zc/core/string.h"
+#include "src/zc/core/vector.h"
 #include "src/zom/source/location.h"
 
 namespace zom {

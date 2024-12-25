@@ -21,26 +21,25 @@
 
 // Parser combinator framework!
 //
-// This file declares several functions which construct parsers, usually taking
-// other parsers as input, thus making them parser combinators.
+// This file declares several functions which construct parsers, usually taking other parsers as
+// input, thus making them parser combinators.
 //
-// A valid parser is any functor which takes a reference to an input cursor
-// (defined below) as its input and returns a Maybe.  The parser returns null on
-// parse failure, or returns the parsed result on success.
+// A valid parser is any functor which takes a reference to an input cursor (defined below) as its
+// input and returns a Maybe.  The parser returns null on parse failure, or returns the parsed
+// result on success.
 //
-// An "input cursor" is any type which implements the same interface as
-// IteratorInput, below.  Such a type acts as a pointer to the current input
-// location.  When a parser returns successfully, it will have updated the input
-// cursor to point to the position just past the end of what was parsed. On
-// failure, the cursor position is unspecified.
+// An "input cursor" is any type which implements the same interface as IteratorInput, below.  Such
+// a type acts as a pointer to the current input location.  When a parser returns successfully, it
+// will have updated the input cursor to point to the position just past the end of what was parsed.
+// On failure, the cursor position is unspecified.
 
 #pragma once
 
-#include "src/zc/base/common.h"
-#include "src/zc/containers/array.h"
-#include "src/zc/containers/tuple.h"
-#include "src/zc/containers/vector.h"
-#include "src/zc/memory/memory.h"
+#include "src/zc/core/array.h"
+#include "src/zc/core/common.h"
+#include "src/zc/core/memory.h"
+#include "src/zc/core/tuple.h"
+#include "src/zc/core/vector.h"
 
 #if _MSC_VER && _MSC_VER < 1920 && !__clang__
 #define ZC_MSVC_BROKEN_DECLTYPE 1
@@ -107,24 +106,21 @@ template <typename Parser, typename Input>
 using OutputType = typename OutputType_<
 #if ZC_MSVC_BROKEN_DECLTYPE
     std::result_of_t<Parser(Input)>
-// The instance<T&>() based version below results in many compiler errors on
-// MSVC2017.
+// The instance<T&>() based version below results in many compiler errors on MSVC2017.
 #else
     decltype(instance<Parser&>()(instance<Input&>()))
 #endif
     >::Type;
-// Synonym for the output type of a parser, given the parser type and the input
-// type.
+// Synonym for the output type of a parser, given the parser type and the input type.
 
 // =======================================================================================
 
 template <typename Input, typename Output>
 class ParserRef {
-  // Acts as a reference to some other parser, with simplified type.  The
-  // referenced parser is polymorphic by virtual call rather than templates. For
-  // grammars of non-trivial size, it is important to inject refs into the
-  // grammar here and there to prevent the parser types from becoming
-  // ridiculous.  Using too many of them can hurt performance, though.
+  // Acts as a reference to some other parser, with simplified type.  The referenced parser
+  // is polymorphic by virtual call rather than templates.  For grammars of non-trivial size,
+  // it is important to inject refs into the grammar here and there to prevent the parser types
+  // from becoming ridiculous.  Using too many of them can hurt performance, though.
 
 public:
   ParserRef() : parser(nullptr), wrapper(nullptr) {}
@@ -147,9 +143,9 @@ public:
     return *this;
   }
 
-  ZC_ALWAYS_INLINE Maybe<Output> operator()(Input& input) const {
-    // Always inline in the hopes that this allows branch prediction to kick in
-    // so the virtual call doesn't hurt so much.
+  ZC_ALWAYS_INLINE(Maybe<Output> operator()(Input& input) const) {
+    // Always inline in the hopes that this allows branch prediction to kick in so the virtual call
+    // doesn't hurt so much.
     return wrapper->parse(parser, input);
   }
 
@@ -166,8 +162,7 @@ private:
   template <typename ParserImpl>
   struct WrapperImplInstance {
 #if _MSC_VER && !__clang__
-    // TODO(msvc): MSVC currently fails to initialize vtable pointers for
-    // constexpr values so
+    // TODO(msvc): MSVC currently fails to initialize vtable pointers for constexpr values so
     //   we have to make this just const instead.
     static const WrapperImpl<ParserImpl> instance;
 #else
@@ -241,8 +236,8 @@ private:
 
 template <typename T>
 constexpr Exactly_<T> exactly(T&& expected) {
-  // Constructs a parser which succeeds when the input is exactly the token
-  // specified.  The result is always the empty tuple.
+  // Constructs a parser which succeeds when the input is exactly the token specified.  The
+  // result is always the empty tuple.
 
   return Exactly_<T>(zc::fwd<T>(expected));
 }
@@ -269,10 +264,9 @@ public:
 
 template <typename T, T expected>
 constexpr ExactlyConst_<T, expected> exactlyConst() {
-  // Constructs a parser which succeeds when the input is exactly the token
-  // specified.  The result is always the empty tuple.  This parser is templated
-  // on the token value which may cause it to perform better -- or worse.  Be
-  // sure to measure.
+  // Constructs a parser which succeeds when the input is exactly the token specified.  The
+  // result is always the empty tuple.  This parser is templated on the token value which may cause
+  // it to perform better -- or worse.  Be sure to measure.
 
   return ExactlyConst_<T, expected>();
 }
@@ -302,8 +296,7 @@ private:
 
 template <typename SubParser, typename Result>
 constexpr ConstResult_<SubParser, Result> constResult(SubParser&& subParser, Result&& result) {
-  // Constructs a parser which returns exactly `result` if `subParser` is
-  // successful.
+  // Constructs a parser which returns exactly `result` if `subParser` is successful.
   return ConstResult_<SubParser, Result>(zc::fwd<SubParser>(subParser), zc::fwd<Result>(result));
 }
 
@@ -327,18 +320,15 @@ public:
   explicit constexpr Sequence_(T&& firstSubParser, U&&... rest)
       : first(zc::fwd<T>(firstSubParser)), rest(zc::fwd<U>(rest)...) {}
 
-  // TODO(msvc): The trailing return types on `operator()` and `parseNext()`
-  // expose at least two
+  // TODO(msvc): The trailing return types on `operator()` and `parseNext()` expose at least two
   //   bugs in MSVC:
   //
   //     1. An ICE.
-  //     2. 'error C2672: 'operator __surrogate_func': no matching overloaded
-  //     function found)',
-  //        which crops up in numerous places when trying to build the capnp
-  //        command line tools.
+  //     2. 'error C2672: 'operator __surrogate_func': no matching overloaded function found)',
+  //        which crops up in numerous places when trying to build the capnp command line tools.
   //
-  //   The only workaround I found for both bugs is to omit the trailing return
-  //   types and instead rely on C++14's return type deduction.
+  //   The only workaround I found for both bugs is to omit the trailing return types and instead
+  //   rely on C++14's return type deduction.
 
   template <typename Input>
   auto operator()(Input& input) const
@@ -362,8 +352,7 @@ public:
       return rest.parseNext(input, zc::fwd<InitialParams>(initialParams)..., zc::mv(firstResult));
     }
     else {
-      // TODO(msvc): MSVC depends on return type deduction to compile this
-      // function, so we need to
+      // TODO(msvc): MSVC depends on return type deduction to compile this function, so we need to
       //   help it deduce the right type on this code path.
       return Maybe<decltype(tuple(zc::fwd<InitialParams>(initialParams)...,
                                   instance<OutputType<FirstSubParser, Input>>(),
@@ -393,16 +382,15 @@ public:
 
 template <typename... SubParsers>
 constexpr Sequence_<SubParsers...> sequence(SubParsers&&... subParsers) {
-  // Constructs a parser that executes each of the parameter parsers in sequence
-  // and returns a tuple of their results.
+  // Constructs a parser that executes each of the parameter parsers in sequence and returns a
+  // tuple of their results.
 
   return Sequence_<SubParsers...>(zc::fwd<SubParsers>(subParsers)...);
 }
 
 // -------------------------------------------------------------------
 // many()
-// Output = Array of output of sub-parser, or just a uint count if the
-// sub-parser returns Tuple<>.
+// Output = Array of output of sub-parser, or just a uint count if the sub-parser returns Tuple<>.
 
 template <typename SubParser, bool atLeastOne>
 class Many_ {
@@ -477,9 +465,8 @@ auto Many_<SubParser, atLeastOne>::operator()(Input& input) const
 
 template <typename SubParser>
 constexpr Many_<SubParser, false> many(SubParser&& subParser) {
-  // Constructs a parser that repeatedly executes the given parser until it
-  // fails, returning an Array of the results (or a uint count if `subParser`
-  // returns an empty tuple).
+  // Constructs a parser that repeatedly executes the given parser until it fails, returning an
+  // Array of the results (or a uint count if `subParser` returns an empty tuple).
   return Many_<SubParser, false>(zc::fwd<SubParser>(subParser));
 }
 
@@ -491,8 +478,7 @@ constexpr Many_<SubParser, true> oneOrMore(SubParser&& subParser) {
 
 // -------------------------------------------------------------------
 // times()
-// Output = Array of output of sub-parser, or Tuple<> if sub-parser returns
-// Tuple<>.
+// Output = Array of output of sub-parser, or Tuple<> if sub-parser returns Tuple<>.
 
 template <typename SubParser>
 class Times_ {
@@ -592,15 +578,15 @@ private:
 
 template <typename SubParser>
 constexpr Optional_<SubParser> optional(SubParser&& subParser) {
-  // Constructs a parser that accepts zero or one of the given sub-parser,
-  // returning a Maybe of the sub-parser's result.
+  // Constructs a parser that accepts zero or one of the given sub-parser, returning a Maybe
+  // of the sub-parser's result.
   return Optional_<SubParser>(zc::fwd<SubParser>(subParser));
 }
 
 // -------------------------------------------------------------------
 // oneOf()
-// All SubParsers must have same output type, which becomes the output type of
-// the OneOfParser.
+// All SubParsers must have same output type, which becomes the output type of the
+// OneOfParser.
 
 template <typename... SubParsers>
 class OneOf_;
@@ -643,16 +629,16 @@ public:
 
 template <typename... SubParsers>
 constexpr OneOf_<SubParsers...> oneOf(SubParsers&&... parsers) {
-  // Constructs a parser that accepts one of a set of options.  The parser
-  // behaves as the first sub-parser in the list which returns successfully. All
-  // of the sub-parsers must return the same type.
+  // Constructs a parser that accepts one of a set of options.  The parser behaves as the first
+  // sub-parser in the list which returns successfully.  All of the sub-parsers must return the
+  // same type.
   return OneOf_<SubParsers...>(zc::fwd<SubParsers>(parsers)...);
 }
 
 // -------------------------------------------------------------------
 // transform()
-// Output = Result of applying transform functor to input value.  If input is a
-// tuple, it is unpacked to form the transformation parameters.
+// Output = Result of applying transform functor to input value.  If input is a tuple, it is
+// unpacked to form the transformation parameters.
 
 template <typename Position>
 struct Span {
@@ -736,10 +722,9 @@ private:
 template <typename SubParser, typename TransformFunc>
 constexpr Transform_<SubParser, TransformFunc> transform(SubParser&& subParser,
                                                          TransformFunc&& functor) {
-  // Constructs a parser which executes some other parser and then transforms
-  // the result by invoking `functor` on it.  Typically `functor` is a lambda.
-  // It is invoked using `zc::apply`, meaning tuples will be unpacked as
-  // arguments.
+  // Constructs a parser which executes some other parser and then transforms the result by invoking
+  // `functor` on it.  Typically `functor` is a lambda.  It is invoked using `zc::apply`,
+  // meaning tuples will be unpacked as arguments.
   return Transform_<SubParser, TransformFunc>(zc::fwd<SubParser>(subParser),
                                               zc::fwd<TransformFunc>(functor));
 }
@@ -747,9 +732,8 @@ constexpr Transform_<SubParser, TransformFunc> transform(SubParser&& subParser,
 template <typename SubParser, typename TransformFunc>
 constexpr TransformOrReject_<SubParser, TransformFunc> transformOrReject(SubParser&& subParser,
                                                                          TransformFunc&& functor) {
-  // Like `transform()` except that `functor` returns a `Maybe`.  If it returns
-  // null, parsing fails, otherwise the parser's result is the content of the
-  // `Maybe`.
+  // Like `transform()` except that `functor` returns a `Maybe`.  If it returns null, parsing fails,
+  // otherwise the parser's result is the content of the `Maybe`.
   return TransformOrReject_<SubParser, TransformFunc>(zc::fwd<SubParser>(subParser),
                                                       zc::fwd<TransformFunc>(functor));
 }
@@ -757,9 +741,9 @@ constexpr TransformOrReject_<SubParser, TransformFunc> transformOrReject(SubPars
 template <typename SubParser, typename TransformFunc>
 constexpr TransformWithLocation_<SubParser, TransformFunc> transformWithLocation(
     SubParser&& subParser, TransformFunc&& functor) {
-  // Like `transform` except that `functor` also takes a `Span` as its first
-  // parameter specifying the location of the parsed content.  The span's
-  // position type is whatever the parser input's getPosition() returns.
+  // Like `transform` except that `functor` also takes a `Span` as its first parameter specifying
+  // the location of the parsed content.  The span's position type is whatever the parser input's
+  // getPosition() returns.
   return TransformWithLocation_<SubParser, TransformFunc>(zc::fwd<SubParser>(subParser),
                                                           zc::fwd<TransformFunc>(functor));
 }
@@ -791,9 +775,8 @@ private:
 
 template <typename SubParser>
 constexpr NotLookingAt_<SubParser> notLookingAt(SubParser&& subParser) {
-  // Constructs a parser which fails at any position where the given parser
-  // succeeds.  Otherwise, it succeeds without consuming any input and returns
-  // an empty tuple.
+  // Constructs a parser which fails at any position where the given parser succeeds.  Otherwise,
+  // it succeeds without consuming any input and returns an empty tuple.
   return NotLookingAt_<SubParser>(zc::fwd<SubParser>(subParser));
 }
 

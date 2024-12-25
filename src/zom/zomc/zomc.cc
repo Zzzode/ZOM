@@ -1,5 +1,5 @@
-#include "src/zc/base/main.h"
-#include "src/zc/strings/string.h"
+#include "src/zc/core/main.h"
+#include "src/zc/core/string.h"
 #include "src/zom/basic/lang-options.h"
 #include "src/zom/basic/pipeline.h"
 #include "src/zom/diagnostics/diagnostic-engine.h"

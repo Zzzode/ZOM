@@ -1,9 +1,9 @@
 #ifndef ZOM_DIAGNOSTICS_IN_FLIGHT_DIAGNOSTIC_H_
 #define ZOM_DIAGNOSTICS_IN_FLIGHT_DIAGNOSTIC_H_
 
-#include "src/zc/base/common.h"
-#include "src/zom/diagnostics/diagnostic.h"
+#include "src/zc/core/common.h"
 #include "src/zom/diagnostics/diagnostic-engine.h"
+#include "src/zom/diagnostics/diagnostic.h"
 #include "src/zom/source/location.h"
 
 namespace zom {

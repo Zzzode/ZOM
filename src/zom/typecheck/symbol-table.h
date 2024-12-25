@@ -1,9 +1,9 @@
 #ifndef ZOM_TYPECHECK_SYMBOL_TABLE_H_
 #define ZOM_TYPECHECK_SYMBOL_TABLE_H_
 
-#include "src/zc/base/common.h"
-#include "src/zc/containers/map.h"
-#include "src/zc/strings/string.h"
+#include "src/zc/core/common.h"
+#include "src/zc/core/map.h"
+#include "src/zc/core/string.h"
 
 namespace zom {
 namespace typecheck {

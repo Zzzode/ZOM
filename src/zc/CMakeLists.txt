@@ -1,29 +1,30 @@
 set(ZC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-file(GLOB BASE_SRC ${ZC_DIR}/base/*.cc)
-file(GLOB CONCURRENT_SRC ${ZC_DIR}/concurrent/*.cc)
-file(GLOB CONTAINERS_SRC ${ZC_DIR}/containers/*.cc)
-file(GLOB MEMORY_SRC ${ZC_DIR}/memory/*.cc)
-file(GLOB PARSE_SRC ${ZC_DIR}/parse/*.cc)
-file(GLOB STRINGS_SRC ${ZC_DIR}/strings/*.cc)
-file(GLOB UTILITY_SRC ${ZC_DIR}/utility/*.cc)
-file(GLOB ZTEST_SRC ${ZC_DIR}/ztest/*.cc)
+check_include_prefixes(DIRECTORIES ${ZC_DIR} PREFIXES "src/zc")
 
-add_library(base STATIC ${BASE_SRC})
-add_library(concurrent STATIC ${CONCURRENT_SRC})
-add_library(containers STATIC ${CONTAINERS_SRC})
-add_library(memory STATIC ${MEMORY_SRC})
-add_library(parse STATIC ${PARSE_SRC})
-add_library(strings STATIC ${STRINGS_SRC})
-add_library(utility STATIC ${UTILITY_SRC})
-add_library(ztest STATIC ${ZTEST_SRC})
+file(GLOB ZC_ASYNC_SRC ${ZC_DIR}/async/*.cc)
+file(GLOB ZC_CORE_SRC ${ZC_DIR}/core/*.cc)
+file(GLOB ZC_HTTP_SRC ${ZC_DIR}/http/*.cc)
+file(GLOB ZC_PARSE_SRC ${ZC_DIR}/parse/*.cc)
+file(GLOB ZC_TLS_SRC ${ZC_DIR}/tls/*.cc)
+file(GLOB ZC_ZIP_SRC ${ZC_DIR}/zip/*.cc)
+file(GLOB ZC_ZTEST_SRC ${ZC_DIR}/ztest/*.cc)
+
+add_library(async STATIC ${ZC_ASYNC_SRC})
+add_library(core STATIC ${ZC_CORE_SRC})
+add_library(http STATIC ${ZC_HTTP_SRC})
+add_library(parse STATIC ${ZC_PARSE_SRC})
+add_library(tls STATIC ${ZC_TLS_SRC})
+add_library(zip STATIC ${ZC_ZIP_SRC})
+add_library(ztest STATIC ${ZC_ZTEST_SRC})
 add_library(
   zc STATIC
-  $<TARGET_OBJECTS:base>
-  $<TARGET_OBJECTS:concurrent>
-  $<TARGET_OBJECTS:containers>
-  $<TARGET_OBJECTS:memory>
+  $<TARGET_OBJECTS:async>
+  $<TARGET_OBJECTS:core>
+  $<TARGET_OBJECTS:http>
   $<TARGET_OBJECTS:parse>
-  $<TARGET_OBJECTS:strings>
-  $<TARGET_OBJECTS:utility>
+  $<TARGET_OBJECTS:tls>
+  $<TARGET_OBJECTS:zip>
   $<TARGET_OBJECTS:ztest>)
+
+set_target_include_directories(${ZOM_ROOT} async core http parse tls zip ztest)

@@ -21,8 +21,9 @@
 
 #include "src/zc/parse/char.h"
 
-#include "src/zc/strings/string.h"
-#include "src/zc/ztest/gtest.h"
+#include <src/zc/ztest/gtest.h>
+
+#include "src/zc/core/string.h"
 
 namespace zc {
 namespace parse {

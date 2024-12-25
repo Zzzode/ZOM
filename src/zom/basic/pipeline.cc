@@ -1,6 +1,6 @@
 #include "src/zom/basic/pipeline.h"
 
-#include "src/zc/base/common.h"
+#include "src/zc/core/common.h"
 
 namespace zom {
 namespace basic {

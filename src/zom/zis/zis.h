@@ -1,7 +1,7 @@
 #ifndef ZOM_ZIS_ZIS_H_
 #define ZOM_ZIS_ZIS_H_
 
-#include "src/zc/strings/string.h"
+#include "src/zc/core/string.h"
 
 namespace zom {
 namespace zis {

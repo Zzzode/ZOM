@@ -1,8 +1,8 @@
 #pragma once
 
-#include "src/zc/base/debug.h"
-#include "src/zc/concurrent/async.h"
-#include "src/zc/containers/vector.h"
+#include "src/zc/async/async.h"
+#include "src/zc/core/debug.h"
+#include "src/zc/core/vector.h"
 
 namespace zom {
 namespace basic {

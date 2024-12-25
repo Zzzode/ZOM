@@ -1,12 +1,13 @@
-#include "src/zc/base/common.h"
-#include "src/zc/base/debug.h"
-#include "src/zc/base/function.h"
-#include "src/zc/base/main.h"
-#include "src/zc/memory/arena.h"
+#include "src/zc/core/arena.h"
+#include "src/zc/core/common.h"
+#include "src/zc/core/debug.h"
+#include "src/zc/core/function.h"
+#include "src/zc/core/main.h"
+#include "src/zc/core/string.h"
+#include "src/zc/core/time.h"
+#include "src/zc/core/tuple.h"
 #include "src/zc/parse/char.h"
 #include "src/zc/parse/common.h"
-#include "src/zc/strings/string.h"
-#include "src/zc/utility/time.h"
 
 namespace examples {
 
@@ -61,7 +62,7 @@ public:
                      }));
   }
 
-  ZC_NODISCARD ZC_ALWAYS_INLINE zc::Maybe<double> parse(const zc::StringPtr input) const {
+  ZC_NODISCARD ZC_ALWAYS_INLINE(zc::Maybe<double> parse(const zc::StringPtr input) const) {
     ParserInput parserInput(input.begin(), input.end());
     return expression_(parserInput);
   }

@@ -2,24 +2,24 @@
 
 ## Overview
 
-The `zc` library is a selectively ported and adapted version of the `kj` library from
-the [Cap'n Proto project](https://github.com/capnproto/capnproto.git). The original `kj` library, located in the
-`c++/src/kj` directory, has been partially ported to fit the specific needs of my project. This library retains the core
+The `zc` library is a selectively ported and adapted version of the `zc` library from
+the [Cap'n Proto project](https://github.com/capnproto/capnproto.git). The original `zc` library, located in the
+`c++/src/zc` directory, has been partially ported to fit the specific needs of my project. This library retains the core
 functionalities while making necessary adaptations for better integration with my project.
 
 ## Acknowledgments
 
-I would like to extend my heartfelt gratitude and admiration to the `kj` library team for their exceptional work. The
-`kj` library is a testament to their expertise and dedication, and it has had a significant impact on the C++ community.
+I would like to extend my heartfelt gratitude and admiration to the `zc` library team for their exceptional work. The
+`zc` library is a testament to their expertise and dedication, and it has had a significant impact on the C++ community.
 Their contributions have provided a solid foundation upon which this project is built.
 
 ## License Information
 
-The original `kj` library is licensed under the MIT License, and I have retained the original license as is.
+The original `zc` library is licensed under the MIT License, and I have retained the original license as is.
 Additionally, this project is licensed under the Apache 2.0 License. Below, you will find both the original MIT License
-from the `kj` library and the Apache 2.0 License for this project.
+from the `zc` library and the Apache 2.0 License for this project.
 
-### MIT License (Original `kj` Library)
+### MIT License (Original `zc` Library)
 
 ```
 Copyright (c) 2013-2017 Sandstorm Development Group, Inc.; Cloudflare, Inc.;
@@ -66,80 +66,10 @@ License for the specific language governing permissions and limitations under
 the License.
 ```
 
-## Directory Structure
-
-The `zc` library is organized as follows:
-
-```
-src/zc
-├── base
-│   ├── common.cc
-│   ├── common.h
-│   ├── debug.cc
-│   ├── debug.h
-│   ├── exception.cc
-│   ├── exception.h
-│   ├── function.h
-│   ├── io.cc
-│   ├── io.h
-│   ├── main.cc
-│   ├── main.h
-│   ├── miniposix.h
-│   ├── win32_api_version.h
-│   └── windows_sanity.h
-├── CMakeLists.txt
-├── concurrent
-│   ├── async.cc
-│   ├── async.h
-│   ├── async_inl.h
-│   ├── async_prelude.h
-│   ├── mutex.cc
-│   ├── mutex.h
-│   ├── thread.cc
-│   └── thread.h
-├── containers
-│   ├── array.cc
-│   ├── array.h
-│   ├── list.cc
-│   ├── list.h
-│   ├── map.h
-│   ├── table.cc
-│   ├── table.h
-│   ├── tuple.h
-│   └── vector.h
-├── memory
-│   ├── arena.cc
-│   ├── arena.h
-│   ├── memory.cc
-│   └── memory.h
-├── README.md
-├── strings
-│   ├── string.cc
-│   └── string.h
-├── utility
-│   ├── glob_filter.cc
-│   ├── glob_filter.h
-│   ├── hash.cc
-│   ├── hash.h
-│   ├── one_of.h
-│   ├── refcount.cc
-│   ├── refcount.h
-│   ├── source_location.cc
-│   ├── source_location.h
-│   ├── time.cc
-│   ├── time.h
-│   ├── units.cc
-│   └── units.h
-└── ztest
-    ├── gtest.h
-    ├── ztest.cc
-    └── ztest.h
-```
-
 ## Conclusion
 
-The `zc` library aims to leverage the robust and efficient design of the `kj` library while tailoring it to meet the
-specific requirements of my project. I once again thank the `kj` library team for their outstanding work and
+The `zc` library aims to leverage the robust and efficient design of the `zc` library while tailoring it to meet the
+specific requirements of my project. I once again thank the `zc` library team for their outstanding work and
 contributions to the open source community.
 
 For any questions or contributions, please feel free to contact me or submit a pull request.

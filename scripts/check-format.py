@@ -69,7 +69,7 @@ def get_changed_files():
         # This is the first commit, use git show
         result = subprocess.run(["git", "fetch"], capture_output=True, text=True)
         result = subprocess.run(
-            ["git", "diff", "--name-only", "--diff-filter=d", "origin/dev", "--", "."],
+            ["git", "diff", "--name-only", "--diff-filter=d", "origin/main", "--", "."],
             capture_output=True,
             text=True,
         )

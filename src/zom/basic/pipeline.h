@@ -1,7 +1,7 @@
 #ifndef ZOM_BASIC_PIPELINE_H_
 #define ZOM_BASIC_PIPELINE_H_
 
-#include "src/zc/concurrent/mutex.h"
+#include "src/zc/core/mutex.h"
 #include "src/zom/lexer/lexer.h"
 #include "src/zom/parser/parser.h"
 #include "src/zom/typecheck/typechecker.h"

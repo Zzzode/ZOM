@@ -20,21 +20,17 @@
 // THE SOFTWARE.
 
 #pragma once
-
-// This file defines compatibility macros converting Google Test tests into ZC
-// tests.
+// This file defines compatibility macros converting Google Test tests into ZC tests.
 //
-// This is only intended to cover the most common functionality. Many tests will
-// likely need additional tweaks. For instance:
-// - Using operator<< to print information on failure is not supported. Instead,
-// switch to
+// This is only intended to cover the most common functionality. Many tests will likely need
+// additional tweaks. For instance:
+// - Using operator<< to print information on failure is not supported. Instead, switch to
 //   ZC_ASSERT/ZC_EXPECT and pass in stuff to print as additional parameters.
-// - Test fixtures are not supported. Allocate your "test fixture" on the stack
-// instead. Do setup
+// - Test fixtures are not supported. Allocate your "test fixture" on the stack instead. Do setup
 //   in the constructor, teardown in the destructor.
 
-#include "src/zc/base/windows-sanity.h"  // work-around macro conflict with `ERROR`
-#include "src/zc/ztest/ztest.h"
+#include <src/zc/core/windows-sanity.h>  // work-around macro conflict with `ERROR`
+#include <src/zc/ztest/test.h>
 
 ZC_BEGIN_HEADER
 

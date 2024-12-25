@@ -15,9 +15,9 @@
 #ifndef ZOM_SOURCE_SOURCE_MANAGER_H_
 #define ZOM_SOURCE_SOURCE_MANAGER_H_
 
-#include "src/zc/base/common.h"
-#include "src/zc/memory/memory.h"
-#include "src/zc/strings/string.h"
+#include "src/zc/core/common.h"
+#include "src/zc/core/memory.h"
+#include "src/zc/core/string.h"
 #include "src/zom/diagnostics/diagnostic.h"
 #include "src/zom/source/location.h"
 

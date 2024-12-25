@@ -19,10 +19,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/parse/common.h"
+#include "src/zc/core/common.h"
 
-#include "src/zc/strings/string.h"
-#include "src/zc/ztest/gtest.h"
+#include <src/zc/ztest/gtest.h>
+
+#include "src/zc/core/string.h"
 
 namespace zc {
 namespace parse {
@@ -51,7 +52,7 @@ TEST(CommonParsers, AnyParser) {
   EXPECT_TRUE(input.atEnd());
 
   result = parser(input);
-  EXPECT_TRUE(result == zc::none);
+  EXPECT_TRUE(result == nullptr);
   EXPECT_TRUE(input.atEnd());
 }
 
@@ -60,21 +61,21 @@ TEST(CommonParsers, ExactElementParser) {
   Input input(text.begin(), text.end());
 
   Maybe<Tuple<>> result = exactly('f')(input);
-  EXPECT_TRUE(result != zc::none);
+  EXPECT_TRUE(result != nullptr);
   EXPECT_FALSE(input.atEnd());
 
   result = exactly('o')(input);
-  EXPECT_TRUE(result != zc::none);
+  EXPECT_TRUE(result != nullptr);
   EXPECT_FALSE(input.atEnd());
 
   result = exactly('x')(input);
-  EXPECT_TRUE(result == zc::none);
+  EXPECT_TRUE(result == nullptr);
   EXPECT_FALSE(input.atEnd());
 
   auto parser = exactly('o');
   ParserRef<Input, Tuple<>> wrapped = ref<Input>(parser);
   result = wrapped(input);
-  EXPECT_TRUE(result != zc::none);
+  EXPECT_TRUE(result != nullptr);
   EXPECT_TRUE(input.atEnd());
 }
 
@@ -83,21 +84,21 @@ TEST(CommonParsers, ExactlyConstParser) {
   Input input(text.begin(), text.end());
 
   Maybe<Tuple<>> result = exactlyConst<char, 'f'>()(input);
-  EXPECT_TRUE(result != zc::none);
+  EXPECT_TRUE(result != nullptr);
   EXPECT_FALSE(input.atEnd());
 
   result = exactlyConst<char, 'o'>()(input);
-  EXPECT_TRUE(result != zc::none);
+  EXPECT_TRUE(result != nullptr);
   EXPECT_FALSE(input.atEnd());
 
   result = exactlyConst<char, 'x'>()(input);
-  EXPECT_TRUE(result == zc::none);
+  EXPECT_TRUE(result == nullptr);
   EXPECT_FALSE(input.atEnd());
 
   auto parser = exactlyConst<char, 'o'>();
   ParserRef<Input, Tuple<>> wrapped = ref<Input>(parser);
   result = wrapped(input);
-  EXPECT_TRUE(result != zc::none);
+  EXPECT_TRUE(result != nullptr);
   EXPECT_TRUE(input.atEnd());
 }
 
@@ -118,7 +119,7 @@ TEST(CommonParsers, DiscardParser) {
   StringPtr text = "o";
   Input input(text.begin(), text.end());
   Maybe<Tuple<>> result = parser(input);
-  EXPECT_TRUE(result != zc::none);
+  EXPECT_TRUE(result != nullptr);
   EXPECT_TRUE(input.atEnd());
 }
 
@@ -128,35 +129,35 @@ TEST(CommonParsers, SequenceParser) {
   {
     Input input(text.begin(), text.end());
     Maybe<Tuple<>> result = sequence(exactly('f'), exactly('o'), exactly('o'))(input);
-    EXPECT_TRUE(result != zc::none);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_TRUE(input.atEnd());
   }
 
   {
     Input input(text.begin(), text.end());
     Maybe<Tuple<>> result = sequence(exactly('f'), exactly('o'))(input);
-    EXPECT_TRUE(result != zc::none);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_FALSE(input.atEnd());
   }
 
   {
     Input input(text.begin(), text.end());
     Maybe<Tuple<>> result = sequence(exactly('x'), exactly('o'), exactly('o'))(input);
-    EXPECT_TRUE(result == zc::none);
+    EXPECT_TRUE(result == nullptr);
     EXPECT_FALSE(input.atEnd());
   }
 
   {
     Input input(text.begin(), text.end());
     Maybe<Tuple<>> result = sequence(sequence(exactly('f'), exactly('o')), exactly('o'))(input);
-    EXPECT_TRUE(result != zc::none);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_TRUE(input.atEnd());
   }
 
   {
     Input input(text.begin(), text.end());
     Maybe<Tuple<>> result = sequence(sequence(exactly('f')), exactly('o'), exactly('o'))(input);
-    EXPECT_TRUE(result != zc::none);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -208,7 +209,7 @@ TEST(CommonParsers, TimesParser) {
   {
     Input input(text.begin(), text.begin() + 4);
     Maybe<Array<char>> result = parser(input);
-    EXPECT_TRUE(result == zc::none);
+    EXPECT_TRUE(result == nullptr);
     EXPECT_TRUE(input.atEnd());
   }
 
@@ -237,21 +238,21 @@ TEST(CommonParsers, TimesParserCountOnly) {
   {
     Input input(text.begin(), text.begin() + 4);
     Maybe<Tuple<>> result = parser(input);
-    EXPECT_TRUE(result == zc::none);
+    EXPECT_TRUE(result == nullptr);
     EXPECT_TRUE(input.atEnd());
   }
 
   {
     Input input(text.begin(), text.begin() + 5);
     Maybe<Tuple<>> result = parser(input);
-    EXPECT_TRUE(result != zc::none);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_TRUE(input.atEnd());
   }
 
   {
     Input input(text.begin(), text.end());
     Maybe<Tuple<>> result = parser(input);
-    EXPECT_TRUE(result != zc::none);
+    EXPECT_TRUE(result != nullptr);
     EXPECT_FALSE(input.atEnd());
   }
 
@@ -260,7 +261,7 @@ TEST(CommonParsers, TimesParserCountOnly) {
   {
     Input input(text.begin(), text.end());
     Maybe<Tuple<>> result = parser(input);
-    EXPECT_TRUE(result == zc::none);
+    EXPECT_TRUE(result == nullptr);
     EXPECT_FALSE(input.atEnd());
   }
 }
@@ -315,7 +316,7 @@ TEST(CommonParsers, OptionalParser) {
     StringPtr text = "bzr";
     Input input(text.begin(), text.end());
     Maybe<Tuple<uint, Maybe<uint>, uint>> result = parser(input);
-    EXPECT_TRUE(result == zc::none);
+    EXPECT_TRUE(result == nullptr);
   }
 }
 
@@ -367,7 +368,7 @@ TEST(CommonParsers, TransformOrRejectParser) {
     if (heapString(chars) == "foo") {
       return 123;
     } else {
-      return zc::none;
+      return nullptr;
     }
   });
 
@@ -384,7 +385,7 @@ TEST(CommonParsers, TransformOrRejectParser) {
     StringPtr text = "bar";
     Input input(text.begin(), text.end());
     Maybe<int> result = parser(input);
-    EXPECT_TRUE(result == zc::none);
+    EXPECT_TRUE(result == nullptr);
     EXPECT_TRUE(input.atEnd());
   }
 }
@@ -398,8 +399,8 @@ TEST(CommonParsers, References) {
     int operator()() const { return value; }
   };
 
-  // Don't use auto for the parsers here in order to verify that the templates
-  // are properly choosing whether to use references or copies.
+  // Don't use auto for the parsers here in order to verify that the templates are properly choosing
+  // whether to use references or copies.
 
   Transform_<Exactly_<char>, TransformFunc> parser1 = transform(exactly('f'), TransformFunc(12));
 
@@ -429,14 +430,14 @@ TEST(CommonParsers, NotLookingAt) {
   {
     StringPtr text = "a";
     Input input(text.begin(), text.end());
-    EXPECT_TRUE(parser(input) == zc::none);
+    EXPECT_TRUE(parser(input) == nullptr);
     EXPECT_FALSE(input.atEnd());
   }
 
   {
     StringPtr text = "b";
     Input input(text.begin(), text.end());
-    EXPECT_TRUE(parser(input) != zc::none);
+    EXPECT_TRUE(parser(input) != nullptr);
     EXPECT_FALSE(input.atEnd());
   }
 }
@@ -447,10 +448,10 @@ TEST(CommonParsers, EndOfInput) {
   {
     StringPtr text = "a";
     Input input(text.begin(), text.end());
-    EXPECT_TRUE(parser(input) == zc::none);
-    EXPECT_TRUE(parser(input) == zc::none);
+    EXPECT_TRUE(parser(input) == nullptr);
+    EXPECT_TRUE(parser(input) == nullptr);
     input.next();
-    EXPECT_FALSE(parser(input) == zc::none);
+    EXPECT_FALSE(parser(input) == nullptr);
   }
 }
 

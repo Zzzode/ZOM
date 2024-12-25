@@ -1,7 +1,7 @@
 #include "src/zom/diagnostics/diagnostic.h"
 
-#include "src/zc/base/common.h"
-#include "src/zc/memory/memory.h"
+#include "src/zc/core/common.h"
+#include "src/zc/core/memory.h"
 
 namespace zom {
 namespace diagnostics {

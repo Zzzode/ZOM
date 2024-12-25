@@ -23,7 +23,7 @@
 
 #include <cstdlib>
 
-#include "src/zc/base/debug.h"
+#include "src/zc/core/debug.h"
 
 namespace zc {
 namespace parse {
@@ -36,7 +36,7 @@ double ParseFloat::operator()(const Array<char>& digits, const Maybe<Array<char>
   ZC_IF_SOME(f, fraction) { bufSize += 1 + f.size(); }
   ZC_IF_SOME(e, exponent) { bufSize += 1 + (get<0>(e) != zc::none) + get<1>(e).size(); }
 
-  ZC_STACK_ARRAY(char, buf, bufSize + 1u, 128u, 128);
+  ZC_STACK_ARRAY(char, buf, bufSize + 1, 128, 128);
 
   char* pos = buf.begin();
   memcpy(pos, digits.begin(), digits.size());
@@ -56,8 +56,7 @@ double ParseFloat::operator()(const Array<char>& digits, const Maybe<Array<char>
   *pos++ = '\0';
   ZC_DASSERT(pos == buf.end());
 
-  // The above construction should always produce a valid double, so this should
-  // never throw...
+  // The above construction should always produce a valid double, so this should never throw...
   return StringPtr(buf.begin(), bufSize).parseAs<double>();
 }
 

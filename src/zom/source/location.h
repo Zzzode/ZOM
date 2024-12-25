@@ -15,9 +15,9 @@
 #ifndef ZOM_SOURCE_LOCATION_H_
 #define ZOM_SOURCE_LOCATION_H_
 
-#include "src/zc/base/io.h"
-#include "src/zc/strings/string.h"
-#include "src/zc/utility/source-location.h"
+#include "src/zc/core/io.h"
+#include "src/zc/core/source-location.h"
+#include "src/zc/core/string.h"
 
 namespace zom {
 namespace source {

@@ -12,6 +12,8 @@
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build-${presetName}",
       "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
@@ -47,6 +49,7 @@
       "name": "debug",
       "configurePreset": "debug",
       "targets": [
+        "zc",
         "lexer"
       ]
     },
@@ -54,6 +57,7 @@
       "name": "release",
       "configurePreset": "release",
       "targets": [
+        "zc",
         "lexer"
       ]
     },
@@ -61,6 +65,7 @@
       "name": "sanitizer",
       "configurePreset": "sanitizer",
       "targets": [
+        "zc",
         "lexer"
       ]
     },

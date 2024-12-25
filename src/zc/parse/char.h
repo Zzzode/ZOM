@@ -19,16 +19,15 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-// This file contains parsers useful for character stream inputs, including
-// parsers to parse common kinds of tokens like identifiers, numbers, and quoted
-// strings.
+// This file contains parsers useful for character stream inputs, including parsers to parse
+// common kinds of tokens like identifiers, numbers, and quoted strings.
 
 #pragma once
 
 #include <inttypes.h>
 
+#include "src/zc/core/string.h"
 #include "src/zc/parse/common.h"
-#include "src/zc/strings/string.h"
 
 ZC_BEGIN_HEADER
 
@@ -63,8 +62,8 @@ constexpr inline ExactString_ exactString(const char* str) { return ExactString_
 
 template <char c>
 constexpr ExactlyConst_<char, c> exactChar() {
-  // Returns a parser that matches exactly the character given by the template
-  // argument (returning no result).
+  // Returns a parser that matches exactly the character given by the template argument (returning
+  // no result).
   return ExactlyConst_<char, c>();
 }
 
@@ -138,13 +137,12 @@ private:
 };
 
 constexpr inline CharGroup_ charRange(char first, char last) {
-  // Create a parser which accepts any character in the range from `first` to
-  // `last`, inclusive. For example: `charRange('a', 'z')` matches all
-  // lower-case letters.  The parser's result is the character matched.
+  // Create a parser which accepts any character in the range from `first` to `last`, inclusive.
+  // For example: `charRange('a', 'z')` matches all lower-case letters.  The parser's result is the
+  // character matched.
   //
-  // The returned object has methods which can be used to match more characters.
-  // The following produces a parser which accepts any letter as well as '_',
-  // '+', '-', and '.'.
+  // The returned object has methods which can be used to match more characters.  The following
+  // produces a parser which accepts any letter as well as '_', '+', '-', and '.'.
   //
   //     charRange('a', 'z').orRange('A', 'Z').orChar('_').orAny("+-.")
   //
@@ -155,17 +153,15 @@ constexpr inline CharGroup_ charRange(char first, char last) {
 
 #if _MSC_VER && !defined(__clang__)
 #define anyOfChars(chars) CharGroup_().orAny(chars)
-// TODO(msvc): MSVC ICEs on the proper definition of `anyOfChars()`, which in
-// turn prevents us from
-//   building the compiler or schema parser. We don't know why this happens, but
-//   Harris found that this horrible, horrible hack makes things work. This is
-//   awful, but it's better than nothing. Hopefully, MSVC will get fixed soon
-//   and we'll be able to remove this.
+// TODO(msvc): MSVC ICEs on the proper definition of `anyOfChars()`, which in turn prevents us from
+//   building the compiler or schema parser. We don't know why this happens, but Harris found that
+//   this horrible, horrible hack makes things work. This is awful, but it's better than nothing.
+//   Hopefully, MSVC will get fixed soon and we'll be able to remove this.
 #else
 constexpr inline CharGroup_ anyOfChars(const char* chars) {
-  // Returns a parser that accepts any of the characters in the given string
-  // (which should usually be a literal).  The returned parser is of the same
-  // type as returned by `charRange()` -- see that function for more info.
+  // Returns a parser that accepts any of the characters in the given string (which should usually
+  // be a literal).  The returned parser is of the same type as returned by `charRange()` -- see
+  // that function for more info.
 
   return CharGroup_().orAny(chars);
 }
@@ -184,8 +180,7 @@ struct ArrayToString {
 template <typename SubParser>
 constexpr inline auto charsToString(SubParser&& subParser)
     -> decltype(transform(zc::fwd<SubParser>(subParser), _::ArrayToString())) {
-  // Wraps a parser that returns Array<char> such that it returns String
-  // instead.
+  // Wraps a parser that returns Array<char> such that it returns String instead.
   return parse::transform(zc::fwd<SubParser>(subParser), _::ArrayToString());
 }
 
@@ -334,8 +329,8 @@ constexpr auto escapeSequence =
                    transform(sequence(exactChar<'x'>(), hexDigit, hexDigit), _::ParseHexEscape()),
                    transform(sequence(octDigit, optional(octDigit), optional(octDigit)),
                              _::ParseOctEscape())));
-// A parser that parses a C-string-style escape sequence (starting with a
-// backslash).  Returns a char.
+// A parser that parses a C-string-style escape sequence (starting with a backslash).  Returns
+// a char.
 
 constexpr auto doubleQuotedString = charsToString(
     sequence(exactChar<'\"'>(), many(oneOf(anyOfChars("\\\n\"").invert(), escapeSequence)),
