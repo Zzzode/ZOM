@@ -22,7 +22,7 @@
 #include "src/zc/core/glob-filter.h"
 
 #include "src/zc/core/common.h"
-#include "src/zc/core/test.h"
+#include "src/zc/ztest/test.h"
 
 namespace zc {
 namespace _ {

@@ -192,69 +192,51 @@ std::string fileLine(std::string file, int line) {
   return file;
 }
 
+// clang-format off
 TEST(Debug, Log) {
   int line;
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_LOG(WARNING, "Hello world!");
-        line = __LINE__;
-      },
-      "log message: " + fileLine(__FILE__, line) + ":+0: warning: Hello world!\n");
+  EXPECT_LOG_EQ([&](){
+    ZC_LOG(WARNING, "Hello world!"); line = __LINE__;
+  }, "log message: " + fileLine(__FILE__, line) + ":+0: warning: Hello world!\n");
 
   int i = 123;
   const char* str = "foo";
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_LOG(ERROR, i, str);
-        line = __LINE__;
-      },
-      "log message: " + fileLine(__FILE__, line) + ":+0: error: i = 123; str = foo\n");
+  EXPECT_LOG_EQ([&](){
+    ZC_LOG(ERROR, i, str); line = __LINE__;
+  }, "log message: " + fileLine(__FILE__, line) + ":+0: error: i = 123; str = foo\n");
 
   // zc::str() expressions are included literally.
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_LOG(ERROR, zc::str(i, str), "x");
-        line = __LINE__;
-      },
-      "log message: " + fileLine(__FILE__, line) + ":+0: error: 123foo; x\n");
+  EXPECT_LOG_EQ([&](){
+    ZC_LOG(ERROR, zc::str(i, str), "x"); line = __LINE__;
+  }, "log message: " + fileLine(__FILE__, line) + ":+0: error: 123foo; x\n");
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_DBG("Some debug text.");
-        line = __LINE__;
-      },
-      "log message: " + fileLine(__FILE__, line) + ":+0: debug: Some debug text.\n");
+  EXPECT_LOG_EQ([&](){
+    ZC_DBG("Some debug text."); line = __LINE__;
+  }, "log message: " + fileLine(__FILE__, line) + ":+0: debug: Some debug text.\n");
 
   // INFO logging is disabled by default.
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_LOG(INFO, "Info.");
-        line = __LINE__;
-      },
-      "");
+  EXPECT_LOG_EQ([&](){
+    ZC_LOG(INFO, "Info."); line = __LINE__;
+  }, "");
 
   // Enable it.
   Debug::setLogLevel(Debug::Severity::INFO);
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_LOG(INFO, "Some text.");
-        line = __LINE__;
-      },
-      "log message: " + fileLine(__FILE__, line) + ":+0: info: Some text.\n");
+  EXPECT_LOG_EQ([&](){
+    ZC_LOG(INFO, "Some text."); line = __LINE__;
+  }, "log message: " + fileLine(__FILE__, line) + ":+0: info: Some text.\n");
 
   // Back to default.
   Debug::setLogLevel(Debug::Severity::WARNING);
 
-  EXPECT_LOG_EQ([&]() { ZC_ASSERT(1 == 1); }, "");
+  EXPECT_LOG_EQ([&](){
+    ZC_ASSERT(1 == 1);
+  }, "");
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        EXPECT_FATAL(ZC_ASSERT(1 == 2));
-        line = __LINE__;
-      },
-      "fatal exception: " + fileLine(__FILE__, line) + ": failed: expected 1 == 2 [1 == 2]\n");
+  EXPECT_LOG_EQ([&](){
+    EXPECT_FATAL(ZC_ASSERT(1 == 2)); line = __LINE__;
+  }, "fatal exception: " + fileLine(__FILE__, line) + ": failed: expected 1 == 2 [1 == 2]\n");
 
   ZC_ASSERT(1 == 1) {
     ADD_FAILURE() << "Shouldn't call recovery code when check passes.";
@@ -262,50 +244,37 @@ TEST(Debug, Log) {
   };
 
   bool recovered = false;
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_ASSERT(1 == 2, "1 is not 2") {
-          recovered = true;
-          break;
-        }
-        line = __LINE__;
-      },
-      ("recoverable exception: " + fileLine(__FILE__, line) +
-       ": "
-       "failed: expected 1 == 2 [1 == 2]; 1 is not 2\n"));
+  EXPECT_LOG_EQ([&](){
+    ZC_ASSERT(1 == 2, "1 is not 2") { recovered = true; break; } line = __LINE__;
+  }, (
+    "recoverable exception: " + fileLine(__FILE__, line) + ": "
+    "failed: expected 1 == 2 [1 == 2]; 1 is not 2\n"
+  ));
   EXPECT_TRUE(recovered);
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        EXPECT_FATAL(ZC_ASSERT(1 == 2, i, "hi", str));
-        line = __LINE__;
-      },
-      ("fatal exception: " + fileLine(__FILE__, line) +
-       ": "
-       "failed: expected 1 == 2 [1 == 2]; i = 123; hi; str = foo\n"));
+  EXPECT_LOG_EQ([&](){
+    EXPECT_FATAL(ZC_ASSERT(1 == 2, i, "hi", str)); line = __LINE__;
+  }, (
+    "fatal exception: " + fileLine(__FILE__, line) + ": "
+        "failed: expected 1 == 2 [1 == 2]; i = 123; hi; str = foo\n"
+  ));
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        EXPECT_FATAL(ZC_REQUIRE(1 == 2, i, "hi", str));
-        line = __LINE__;
-      },
-      ("fatal exception: " + fileLine(__FILE__, line) +
-       ": "
-       "failed: expected 1 == 2 [1 == 2]; i = 123; hi; str = foo\n"));
+  EXPECT_LOG_EQ([&](){
+    EXPECT_FATAL(ZC_REQUIRE(1 == 2, i, "hi", str)); line = __LINE__;
+  }, (
+    "fatal exception: " + fileLine(__FILE__, line) + ": "
+        "failed: expected 1 == 2 [1 == 2]; i = 123; hi; str = foo\n"
+  ));
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        EXPECT_FATAL(ZC_FAIL_ASSERT("foo"));
-        line = __LINE__;
-      },
-      "fatal exception: " + fileLine(__FILE__, line) + ": failed: foo\n");
+  EXPECT_LOG_EQ([&](){
+    EXPECT_FATAL(ZC_FAIL_ASSERT("foo")); line = __LINE__;
+  }, "fatal exception: " + fileLine(__FILE__, line) + ": failed: foo\n");
 }
 
 TEST(Debug, Exception) {
   int i = 123;
 
-  int line = __LINE__;
-  Exception exception = ZC_EXCEPTION(DISCONNECTED, "foo", i);
+  int line = __LINE__; Exception exception = ZC_EXCEPTION(DISCONNECTED, "foo", i);
 
   EXPECT_EQ(Exception::Type::DISCONNECTED, exception.getType());
   EXPECT_TRUE(zc::StringPtr(__FILE__).endsWith(exception.getFile()));
@@ -318,47 +287,53 @@ TEST(Debug, Catch) {
 
   {
     // Catch recoverable as zc::Exception.
-    Maybe<Exception> exception = zc::runCatchingExceptions([&]() {
-      line = __LINE__;
-      ZC_FAIL_ASSERT("foo") { break; }
+    Maybe<Exception> exception = zc::runCatchingExceptions([&](){
+      line = __LINE__; ZC_FAIL_ASSERT("foo") { break; }
     });
 
     ZC_IF_SOME(e, exception) {
       String what = str(e);
-      ZC_IF_SOME(eol, what.findFirst('\n')) { what = zc::str(what.first(eol)); }
+      ZC_IF_SOME(eol, what.findFirst('\n')) {
+        what = zc::str(what.first(eol));
+      }
       std::string text(what.cStr());
       EXPECT_EQ(fileLine(__FILE__, line) + ": failed: foo", text);
+    } else {
+      ADD_FAILURE() << "Expected exception.";
     }
-    else { ADD_FAILURE() << "Expected exception."; }
   }
 
   {
     // Catch fatal as zc::Exception.
-    Maybe<Exception> exception = zc::runCatchingExceptions([&]() {
-      line = __LINE__;
-      ZC_FAIL_ASSERT("foo");
+    Maybe<Exception> exception = zc::runCatchingExceptions([&](){
+      line = __LINE__; ZC_FAIL_ASSERT("foo");
     });
 
     ZC_IF_SOME(e, exception) {
       String what = str(e);
-      ZC_IF_SOME(eol, what.findFirst('\n')) { what = zc::str(what.first(eol)); }
+      ZC_IF_SOME(eol, what.findFirst('\n')) {
+        what = zc::str(what.first(eol));
+      }
       std::string text(what.cStr());
       EXPECT_EQ(fileLine(__FILE__, line) + ": failed: foo", text);
+    } else {
+      ADD_FAILURE() << "Expected exception.";
     }
-    else { ADD_FAILURE() << "Expected exception."; }
   }
 
   {
     // Catch as std::exception.
     try {
-      line = __LINE__;
-      ZC_FAIL_ASSERT("foo");
+      line = __LINE__; ZC_FAIL_ASSERT("foo");
       ZC_KNOWN_UNREACHABLE(ADD_FAILURE() << "Expected exception.");
     } catch (const std::exception& e) {
       zc::StringPtr what = e.what();
       std::string text;
-      ZC_IF_SOME(eol, what.findFirst('\n')) { text.assign(what.cStr(), eol); }
-      else { text.assign(what.cStr()); }
+      ZC_IF_SOME(eol, what.findFirst('\n')) {
+        text.assign(what.cStr(), eol);
+      } else {
+        text.assign(what.cStr());
+      }
       EXPECT_EQ(fileLine(__FILE__, line) + ": failed: foo", text);
     }
   }
@@ -375,59 +350,52 @@ TEST(Debug, Syscall) {
   int i = 123;
   const char* str = "foo";
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_SYSCALL(mockSyscall(0));
-        ZC_SYSCALL(mockSyscall(1));
-      },
-      "");
+  EXPECT_LOG_EQ([&](){
+    ZC_SYSCALL(mockSyscall(0));
+    ZC_SYSCALL(mockSyscall(1));
+  }, "");
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        EXPECT_FATAL(ZC_SYSCALL(mockSyscall(-1, EBADF), i, "bar", str));
-        line = __LINE__;
-      },
-      ("fatal exception: " + fileLine(__FILE__, line) +
-       ": failed: mockSyscall(-1, EBADF): " + strerror(EBADF) + "; i = 123; bar; str = foo\n"));
+  EXPECT_LOG_EQ([&](){
+    EXPECT_FATAL(ZC_SYSCALL(mockSyscall(-1, EBADF), i, "bar", str)); line = __LINE__;
+  }, (
+    "fatal exception: " + fileLine(__FILE__, line) +
+        ": failed: mockSyscall(-1, EBADF): " + strerror(EBADF) +
+        "; i = 123; bar; str = foo\n"
+  ));
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        EXPECT_FATAL(ZC_SYSCALL(mockSyscall(-1, ECONNRESET), i, "bar", str));
-        line = __LINE__;
-      },
-      ("fatal exception: " + fileLine(__FILE__, line) +
-       ": disconnected: mockSyscall(-1, ECONNRESET): " + strerror(ECONNRESET) +
-       "; i = 123; bar; str = foo\n"));
+  EXPECT_LOG_EQ([&](){
+    EXPECT_FATAL(ZC_SYSCALL(mockSyscall(-1, ECONNRESET), i, "bar", str)); line = __LINE__;
+  }, (
+    "fatal exception: " + fileLine(__FILE__, line) +
+        ": disconnected: mockSyscall(-1, ECONNRESET): " + strerror(ECONNRESET) +
+        "; i = 123; bar; str = foo\n"
+  ));
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        EXPECT_FATAL(ZC_SYSCALL(mockSyscall(-1, ENOMEM), i, "bar", str));
-        line = __LINE__;
-      },
-      ("fatal exception: " + fileLine(__FILE__, line) + ": overloaded: mockSyscall(-1, ENOMEM): " +
-       strerror(ENOMEM) + "; i = 123; bar; str = foo\n"));
+  EXPECT_LOG_EQ([&](){
+    EXPECT_FATAL(ZC_SYSCALL(mockSyscall(-1, ENOMEM), i, "bar", str)); line = __LINE__;
+  }, (
+    "fatal exception: " + fileLine(__FILE__, line) +
+        ": overloaded: mockSyscall(-1, ENOMEM): " + strerror(ENOMEM) +
+        "; i = 123; bar; str = foo\n"
+  ));
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        EXPECT_FATAL(ZC_SYSCALL(mockSyscall(-1, ENOSYS), i, "bar", str));
-        line = __LINE__;
-      },
-      ("fatal exception: " + fileLine(__FILE__, line) +
-       ": unimplemented: mockSyscall(-1, ENOSYS): " + strerror(ENOSYS) +
-       "; i = 123; bar; str = foo\n"));
+  EXPECT_LOG_EQ([&](){
+    EXPECT_FATAL(ZC_SYSCALL(mockSyscall(-1, ENOSYS), i, "bar", str)); line = __LINE__;
+  }, (
+    "fatal exception: " + fileLine(__FILE__, line) +
+        ": unimplemented: mockSyscall(-1, ENOSYS): " + strerror(ENOSYS) +
+        "; i = 123; bar; str = foo\n"
+  ));
 
   int result = 0;
   bool recovered = false;
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_SYSCALL(result = mockSyscall(-2, EBADF), i, "bar", str) {
-          recovered = true;
-          break;
-        }
-        line = __LINE__;
-      },
-      ("recoverable exception: " + fileLine(__FILE__, line) +
-       ": failed: mockSyscall(-2, EBADF): " + strerror(EBADF) + "; i = 123; bar; str = foo\n"));
+  EXPECT_LOG_EQ([&](){
+    ZC_SYSCALL(result = mockSyscall(-2, EBADF), i, "bar", str) { recovered = true; break; } line = __LINE__;
+  }, (
+    "recoverable exception: " + fileLine(__FILE__, line) +
+        ": failed: mockSyscall(-2, EBADF): " + strerror(EBADF) +
+        "; i = 123; bar; str = foo\n"
+  ));
   EXPECT_EQ(-2, result);
   EXPECT_TRUE(recovered);
 }
@@ -438,63 +406,49 @@ TEST(Debug, Context) {
   int cline;
   int cline2;
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_CONTEXT("foo");
-        cline = __LINE__;
+  EXPECT_LOG_EQ([&](){
+    ZC_CONTEXT("foo"); cline = __LINE__;
 
-        ZC_LOG(WARNING, "blah");
-        line = __LINE__;
-        EXPECT_FATAL(ZC_FAIL_ASSERT("bar"));
-        line2 = __LINE__;
-      },
-      ("log message: " + fileLine(__FILE__, cline) +
-       ":+0: info: context: foo\n\n"
-       "log message: " +
-       fileLine(__FILE__, line) +
-       ":+1: warning: blah\n"
-       "fatal exception: " +
-       fileLine(__FILE__, cline) + ": context: foo\n" + fileLine(__FILE__, line2) +
-       ": failed: bar\n"));
+    ZC_LOG(WARNING, "blah"); line = __LINE__;
+    EXPECT_FATAL(ZC_FAIL_ASSERT("bar")); line2 = __LINE__;
+  }, (
+    "log message: " + fileLine(__FILE__, cline) + ":+0: info: context: foo\n\n"
+        "log message: " + fileLine(__FILE__, line) + ":+1: warning: blah\n"
+        "fatal exception: " + fileLine(__FILE__, cline) + ": context: foo\n"
+         + fileLine(__FILE__, line2) + ": failed: bar\n"
+  ));
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_CONTEXT("foo");
-        cline = __LINE__;
-        {
-          int i = 123;
-          const char* str = "qux";
-          ZC_CONTEXT("baz", i, "corge", str);
-          cline2 = __LINE__;
+  EXPECT_LOG_EQ([&](){
+    ZC_CONTEXT("foo"); cline = __LINE__;
+    {
+      int i = 123;
+      const char* str = "qux";
+      ZC_CONTEXT("baz", i, "corge", str); cline2 = __LINE__;
 
-          EXPECT_FATAL(ZC_FAIL_ASSERT("bar"));
-          line = __LINE__;
-        }
-      },
-      ("fatal exception: " + fileLine(__FILE__, cline) + ": context: foo\n" +
-       fileLine(__FILE__, cline2) + ": context: baz; i = 123; corge; str = qux\n" +
-       fileLine(__FILE__, line) + ": failed: bar\n"));
+      EXPECT_FATAL(ZC_FAIL_ASSERT("bar")); line = __LINE__;
+    }
+  }, (
+    "fatal exception: " + fileLine(__FILE__, cline) + ": context: foo\n"
+        + fileLine(__FILE__, cline2) + ": context: baz; i = 123; corge; str = qux\n"
+        + fileLine(__FILE__, line) + ": failed: bar\n"
+  ));
 
-  EXPECT_LOG_EQ(
-      [&]() {
-        ZC_CONTEXT("foo");
-        cline = __LINE__;
-        {
-          int i = 123;
-          const char* str = "qux";
-          ZC_CONTEXT("baz", i, "corge", str);
-          cline2 = __LINE__;
-        }
-        {
-          ZC_CONTEXT("grault");
-          cline2 = __LINE__;
-          EXPECT_FATAL(ZC_FAIL_ASSERT("bar"));
-          line = __LINE__;
-        }
-      },
-      ("fatal exception: " + fileLine(__FILE__, cline) + ": context: foo\n" +
-       fileLine(__FILE__, cline2) + ": context: grault\n" + fileLine(__FILE__, line) +
-       ": failed: bar\n"));
+  EXPECT_LOG_EQ([&](){
+    ZC_CONTEXT("foo"); cline = __LINE__;
+    {
+      int i = 123;
+      const char* str = "qux";
+      ZC_CONTEXT("baz", i, "corge", str); cline2 = __LINE__;
+    }
+    {
+      ZC_CONTEXT("grault"); cline2 = __LINE__;
+      EXPECT_FATAL(ZC_FAIL_ASSERT("bar")); line = __LINE__;
+    }
+  }, (
+    "fatal exception: " + fileLine(__FILE__, cline) + ": context: foo\n"
+        + fileLine(__FILE__, cline2) + ": context: grault\n"
+        + fileLine(__FILE__, line) + ": failed: bar\n"
+  ));
 }
 
 ZC_TEST("magic assert stringification") {
@@ -516,7 +470,7 @@ ZC_TEST("magic assert stringification") {
     }));
 
     ZC_EXPECT(exception.getDescription() ==
-              "expected foo == bar [hello == world!]; foo.size() = 5; bar.size() = 6");
+        "expected foo == bar [hello == world!]; foo.size() = 5; bar.size() = 6");
   }
 
   {
@@ -525,7 +479,7 @@ ZC_TEST("magic assert stringification") {
     }));
 
     ZC_EXPECT(exception.getDescription() ==
-              "expected zc::str(\"hello\") == zc::str(\"world!\") [hello == world!]");
+        "expected zc::str(\"hello\") == zc::str(\"world!\") [hello == world!]");
   }
 
   {
@@ -561,6 +515,7 @@ ZC_TEST("magic assert stringification") {
     ZC_EXPECT(exception.getDescription() == "expected foo & 2");
   }
 }
+// clang-format on
 
 }  // namespace
 }  // namespace _

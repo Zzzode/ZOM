@@ -844,10 +844,9 @@ zc::StringPtr trimSourceFilename(zc::StringPtr filename) {
   // unfortunately end up with backslashes.
 
   static constexpr const char* ROOTS[] = {
-      "ekam-provider/canonical/",  // Ekam source file.
-      "ekam-provider/c++header/",  // Ekam include file.
-      "src/",                      // Non-Ekam source root.
-      "tmp/",                      // Non-Ekam generated code.
+      "src/",    // Non-ZOM source root.
+      "tests/",  // Non-ZOM test root.
+      "tmp/",    // Non-ZOM generated code.
 #if _WIN32
       "src\\",  // Win32 source root.
       "tmp\\",  // Win32 generated code.
@@ -863,6 +862,7 @@ retry:
     ) {
       // We're at the start of a directory name. Check for valid prefixes.
       for (zc::StringPtr root : ROOTS) {
+        ZC_UNUSED const zc::StringPtr sss = filename.slice(i);
         if (filename.slice(i).startsWith(root)) {
           filename = filename.slice(i + root.size());
 

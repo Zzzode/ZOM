@@ -157,7 +157,7 @@ TEST(Async, HandleException) {
 
   promise = promise.then([](int i) { return i + 1; },
                          [&](Exception&& e) {
-                           EXPECT_EQ(line, e.getLine());
+                           EXPECT_EQ(line, e.getLine() + 1);
                            return 345;
                          });
 
@@ -177,7 +177,7 @@ TEST(Async, PropagateException) {
 
   promise = promise.then([](int i) { return i + 2; },
                          [&](Exception&& e) {
-                           EXPECT_EQ(line, e.getLine());
+                           EXPECT_EQ(line, e.getLine() + 1);
                            return 345;
                          });
 
@@ -197,7 +197,7 @@ TEST(Async, PropagateExceptionTypeChange) {
 
   promise2 = promise2.then([](StringPtr s) -> StringPtr { return "bar"; },
                            [&](Exception&& e) -> StringPtr {
-                             EXPECT_EQ(line, e.getLine());
+                             EXPECT_EQ(line, e.getLine() + 1);
                              return "baz";
                            });
 
@@ -1906,7 +1906,6 @@ ZC_TEST("EventLoopLocal") {
 
   auto rc1 = zc::refcounted<Refcounted>();
   auto rc2 = zc::refcounted<Refcounted>();
-  ;
 
   {
     EventLoop loop1, loop2;

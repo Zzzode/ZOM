@@ -23,3 +23,23 @@ jobs:
       - name: Check Code Format
         run: |
           python3 scripts/check-format.py
+
+  check-unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build clang
+
+    - name: Configure CMake
+      run: cmake --preset sanitizer
+
+    - name: Build
+      run: cmake --build --preset sanitizer
+
+    - name: Run tests
+      run: ctest --preset allTests

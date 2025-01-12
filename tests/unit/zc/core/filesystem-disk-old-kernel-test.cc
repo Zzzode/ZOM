@@ -106,7 +106,7 @@ SetupSeccompForFilesystemTest setupSeccompForFilesystemTest;
 #define HOLES_NOT_SUPPORTED
 
 // OK, now run all the regular filesystem tests!
-#include "filesystem-disk-test.c++"
+#include "tests/unit/zc/core/filesystem-disk-test.cc"
 
 #endif
 #endif

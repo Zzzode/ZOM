@@ -34,10 +34,10 @@ namespace {
 
 TEST(Exception, TrimSourceFilename) {
 #if _WIN32
-  EXPECT_TRUE(trimSourceFilename(__FILE__) == "zc/exception-test.c++" ||
-              trimSourceFilename(__FILE__) == "zc\\exception-test.c++");
+  EXPECT_TRUE(trimSourceFilename(__FILE__) == "unit/zc/core/exception-test.cc" ||
+              trimSourceFilename(__FILE__) == "unit\\zc\\core\\exception-test.cc");
 #else
-  EXPECT_EQ(trimSourceFilename(__FILE__), "zc/exception-test.c++");
+  EXPECT_EQ(trimSourceFilename(__FILE__), "unit/zc/core/exception-test.cc");
 #endif
 }
 
@@ -172,7 +172,7 @@ ZC_TEST("getStackTrace() returns correct line number, not line + 1") {
   //    at random.
 
   auto trace = testStackTrace();
-  auto wrong = zc::str("exception-test.c++:", __LINE__);
+  auto wrong = zc::str("exception-test.cc:", __LINE__);
 
   ZC_ASSERT(!trace.contains(wrong), trace, wrong);
 }

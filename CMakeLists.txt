@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.19.0)
+cmake_minimum_required(VERSION 3.25.0)
 
-project(COMPILER)
+project(ZOM)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

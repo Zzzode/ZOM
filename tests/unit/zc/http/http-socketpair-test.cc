@@ -22,4 +22,4 @@
 // Run http-test, but use real OS socketpairs to connect rather than using in-process pipes.
 // This is essentially an integration test between ZC HTTP and ZC OS socket handling.
 #define ZC_HTTP_TEST_USE_OS_PIPE 1
-#include "http-test.c++"
+#include "tests/unit/zc/http/http-test.cc"

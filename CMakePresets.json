@@ -2,7 +2,7 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 19,
+    "minor": 25,
     "patch": 0
   },
   "configurePresets": [
@@ -39,8 +39,8 @@
       "displayName": "Sanitizers",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "ZOMPILER_ENABLE_ADDRESS_SANITIZER": "ON",
-        "ZOMPILER_ENABLE_UNDEFINED_SANITIZER": "ON"
+        "ZOM_ENABLE_ADDRESS_SANITIZER": "ON",
+        "ZOM_ENABLE_UNDEFINED_SANITIZER": "ON"
       }
     }
   ],
@@ -65,20 +65,28 @@
       "name": "sanitizer",
       "configurePreset": "sanitizer",
       "targets": [
-        "zc",
-        "lexer"
+        "all",
+        "buildAllTests"
       ]
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "sanitizer",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true,
+        "jobs": 8
+      }
     },
     {
-      "name": "unittest",
-      "configurePreset": "sanitizer",
-      "targets": [
-        "zomc",
-        "base-common-test",
-        "parse-char-test",
-        "parse-common-test",
-        "parse-example"
-      ]
+      "name": "allTests",
+      "inherits": "default",
+      "description": "Run all tests"
     }
   ]
 }

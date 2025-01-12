@@ -24,6 +24,7 @@
 #include <src/zc/ztest/gtest.h>
 
 #include "src/zc/core/string.h"
+#include "src/zc/parse/common.h"
 
 namespace zc {
 namespace parse {
@@ -368,7 +369,7 @@ TEST(CommonParsers, TransformOrRejectParser) {
     if (heapString(chars) == "foo") {
       return 123;
     } else {
-      return nullptr;
+      return zc::none;
     }
   });
 
@@ -451,7 +452,7 @@ TEST(CommonParsers, EndOfInput) {
     EXPECT_TRUE(parser(input) == nullptr);
     EXPECT_TRUE(parser(input) == nullptr);
     input.next();
-    EXPECT_FALSE(parser(input) == nullptr);
+    EXPECT_FALSE(parser(input) == zc::none);
   }
 }
 
