@@ -5,7 +5,7 @@
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "zomlang/source/location.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zom {
 namespace diagnostics {

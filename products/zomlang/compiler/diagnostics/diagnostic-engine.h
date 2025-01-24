@@ -1,9 +1,9 @@
 #ifndef ZOM_DIAGNOSTIC_ENGINE_H_
 #define ZOM_DIAGNOSTIC_ENGINE_H_
 
-#include "zomlang/diagnostics/diagnostic-state.h"
-#include "zomlang/diagnostics/diagnostic.h"
-#include "zomlang/source/manager.h"
+#include "zomlang/compiler/diagnostics/diagnostic-state.h"
+#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/source/manager.h"
 
 namespace zom {
 namespace diagnostics {

@@ -1,4 +1,4 @@
-#include "zomlang/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/diagnostic.h"
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"

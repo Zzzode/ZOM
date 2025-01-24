@@ -12,11 +12,11 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/basic/lang-options.h"
-#include "zomlang/diagnostics/diagnostic-engine.h"
-#include "zomlang/diagnostics/in-flight-diagnostic.h"
-#include "zomlang/lexer/token.h"
-#include "zomlang/source/manager.h"
+#include "zomlang/compiler/basic/lang-options.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
+#include "zomlang/compiler/lexer/token.h"
+#include "zomlang/compiler/source/manager.h"
 
 namespace zom {
 namespace lexer {

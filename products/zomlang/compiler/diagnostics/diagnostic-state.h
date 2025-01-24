@@ -3,8 +3,8 @@
 
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
-#include "zomlang/source/location.h"
-#include "zomlang/source/manager.h"
+#include "zomlang/compiler/source/location.h"
+#include "zomlang/compiler/source/manager.h"
 
 namespace zom {
 namespace diagnostics {

@@ -2,9 +2,9 @@
 #define ZOM_DIAGNOSTICS_IN_FLIGHT_DIAGNOSTIC_H_
 
 #include "zc/core/common.h"
-#include "zomlang/diagnostics/diagnostic-engine.h"
-#include "zomlang/diagnostics/diagnostic.h"
-#include "zomlang/source/location.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zom {
 namespace diagnostics {

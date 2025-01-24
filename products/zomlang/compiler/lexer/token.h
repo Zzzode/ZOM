@@ -1,7 +1,7 @@
 #ifndef ZOM_LEXER_TOKEN_H_
 #define ZOM_LEXER_TOKEN_H_
 
-#include "zomlang/source/location.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zom {
 namespace lexer {

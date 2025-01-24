@@ -1,9 +1,9 @@
 #ifndef ZOM_TYPECHECK_TYPECHECKER_H_
 #define ZOM_TYPECHECK_TYPECHECKER_H_
 
-#include "zomlang/basic/stage.h"
-#include "zomlang/typecheck/symbol-table.h"
-#include "zomlang/zis/zis.h"
+#include "zomlang/compiler/basic/stage.h"
+#include "zomlang/compiler/typecheck/symbol-table.h"
+#include "zomlang/compiler/zis/zis.h"
 
 namespace zom {
 namespace typecheck {

@@ -1,6 +1,6 @@
-#include "zomlang/diagnostics/diagnostic-state.h"
+#include "zomlang/compiler/diagnostics/diagnostic-state.h"
 
-#include "zomlang/source/manager.h"
+#include "zomlang/compiler/source/manager.h"
 
 namespace zom {
 namespace diagnostics {

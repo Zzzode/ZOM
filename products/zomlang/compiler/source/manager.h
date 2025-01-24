@@ -18,8 +18,8 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
-#include "zomlang/diagnostics/diagnostic.h"
-#include "zomlang/source/location.h"
+#include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zom {
 namespace source {

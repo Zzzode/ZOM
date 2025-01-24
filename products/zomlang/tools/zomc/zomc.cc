@@ -1,9 +1,9 @@
 #include "zc/core/main.h"
 #include "zc/core/string.h"
-#include "zomlang/basic/lang-options.h"
-#include "zomlang/basic/pipeline.h"
-#include "zomlang/diagnostics/diagnostic-engine.h"
-#include "zomlang/source/manager.h"
+#include "zomlang/compiler/basic/lang-options.h"
+#include "zomlang/compiler/basic/pipeline.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/source/manager.h"
 
 class CompilerMain {
 public:

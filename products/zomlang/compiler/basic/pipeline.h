@@ -2,9 +2,9 @@
 #define ZOM_BASIC_PIPELINE_H_
 
 #include "zc/core/mutex.h"
-#include "zomlang/lexer/lexer.h"
-#include "zomlang/parser/parser.h"
-#include "zomlang/typecheck/typechecker.h"
+#include "zomlang/compiler/lexer/lexer.h"
+#include "zomlang/compiler/parser/parser.h"
+#include "zomlang/compiler/typecheck/typechecker.h"
 
 namespace zom {
 namespace basic {
