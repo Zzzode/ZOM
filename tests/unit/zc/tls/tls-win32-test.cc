@@ -22,14 +22,14 @@
 #if ZC_HAS_OPENSSL
 
 #if _WIN32
-#include <src/zc/core/win32-api-version.h>
+#include <zc/core/win32-api-version.h>
 #endif
 
 #include <openssl/opensslv.h>
 #include <stdlib.h>
 
-#include "src/zc/core/http.h"
-#include "src/zc/tls/tls.h"
+#include "zc/core/http.h"
+#include "zc/tls/tls.h"
 
 #if _WIN32
 #include <winsock2.h>
@@ -38,8 +38,8 @@
 #include <sys/socket.h>
 #endif
 
-#include <src/zc/async/async-io.h>
-#include <src/zc/ztest/test.h>
+#include <zc/async/async-io.h>
+#include <zc/ztest/test.h>
 
 namespace zc {
 namespace {

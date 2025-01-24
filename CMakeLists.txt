@@ -10,13 +10,15 @@ set(CMAKE_INCLUDE_DIRECTORIES_PROJECT_BEFORE ON)
 
 set(ZOM_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(ZOM_CMAKE_DIR ${ZOM_ROOT}/cmake)
+set(INCLUDE_DIRS ${ZOM_ROOT}/products ${ZOM_ROOT}/libraries)
 
-include(${ZOM_CMAKE_DIR}/options.cmake)
-include(${ZOM_CMAKE_DIR}/common.cmake)
-include(${ZOM_CMAKE_DIR}/checks.cmake)
-include(${ZOM_CMAKE_DIR}/functions.cmake)
+include(${ZOM_CMAKE_DIR}/utils/options.cmake)
+include(${ZOM_CMAKE_DIR}/utils/common.cmake)
+include(${ZOM_CMAKE_DIR}/utils/checks.cmake)
+include(${ZOM_CMAKE_DIR}/utils/functions.cmake)
 
-add_subdirectory(src)
+add_subdirectory(libraries)
+add_subdirectory(products)
 add_subdirectory(examples)
 
 enable_testing()

@@ -1,6 +1,6 @@
 set(ZC_TEST_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
-check_include_prefixes(DIRECTORIES ${ZC_TEST_DIR} PREFIXES "src/zc")
+check_include_prefixes(DIRECTORIES ${ZC_TEST_DIR} PREFIXES "zc")
 
 # 获取所有子目录，除了 zip
 file(
@@ -55,7 +55,7 @@ foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
   message(STATUS "Test ${UNIQUE_TEST_NAME} added")
   add_executable(${UNIQUE_TEST_NAME} EXCLUDE_FROM_ALL ${TEST_SOURCE})
   target_link_libraries(${UNIQUE_TEST_NAME} PRIVATE zc ztest)
-  target_include_directories(${UNIQUE_TEST_NAME} PRIVATE ${ZOM_ROOT})
+  target_include_directories(${UNIQUE_TEST_NAME} PRIVATE ${ZOM_ROOT}/tests/unit/zc ${ZOM_ROOT}/libraries)
 
   target_compile_options(${UNIQUE_TEST_NAME} PRIVATE -Wno-global-constructors)
 

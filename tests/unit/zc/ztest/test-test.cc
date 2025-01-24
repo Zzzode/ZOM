@@ -19,15 +19,15 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/ztest/test.h"
+#include "zc/ztest/test.h"
 
 #include <signal.h>
 
 #include <cstdlib>
 #include <stdexcept>
 
-#include "src/zc/core/common.h"
-#include "src/zc/core/function.h"
+#include "zc/core/common.h"
+#include "zc/core/function.h"
 
 #ifndef _WIN32
 #include <unistd.h>

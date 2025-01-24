@@ -1,13 +1,13 @@
-#include "src/zc/core/arena.h"
-#include "src/zc/core/common.h"
-#include "src/zc/core/debug.h"
-#include "src/zc/core/function.h"
-#include "src/zc/core/main.h"
-#include "src/zc/core/string.h"
-#include "src/zc/core/time.h"
-#include "src/zc/core/tuple.h"
-#include "src/zc/parse/char.h"
-#include "src/zc/parse/common.h"
+#include "zc/core/arena.h"
+#include "zc/core/common.h"
+#include "zc/core/debug.h"
+#include "zc/core/function.h"
+#include "zc/core/main.h"
+#include "zc/core/string.h"
+#include "zc/core/time.h"
+#include "zc/core/tuple.h"
+#include "zc/parse/char.h"
+#include "zc/parse/common.h"
 
 namespace examples {
 

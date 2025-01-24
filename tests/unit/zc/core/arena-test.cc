@@ -19,12 +19,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/arena.h"
+#include "zc/core/arena.h"
 
-#include <src/zc/ztest/gtest.h>
 #include <stdint.h>
+#include <zc/ztest/gtest.h>
 
-#include "src/zc/core/debug.h"
+#include "zc/core/debug.h"
 
 namespace zc {
 namespace {

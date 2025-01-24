@@ -4,4 +4,4 @@ add_executable(parse-example parse/parse-example.cc)
 add_executable(parse-example-non-zc parse/parse-example-non-zc.cc)
 
 target_link_libraries(parse-example zc)
-target_include_directories(parse-example PRIVATE ${ZOM_ROOT})
+target_include_directories(parse-example PRIVATE ${INCLUDE_DIRS})

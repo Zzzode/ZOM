@@ -19,11 +19,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/thread.h"
+#include "zc/core/thread.h"
 
 #include <atomic>
 
-#include "src/zc/ztest/test.h"
+#include "zc/ztest/test.h"
 
 #if _WIN32
 #define NOGDI

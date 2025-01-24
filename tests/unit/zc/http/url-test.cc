@@ -19,10 +19,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/http/url.h"
+#include "zc/http/url.h"
 
-#include <src/zc/core/debug.h>
-#include <src/zc/ztest/test.h>
+#include <zc/core/debug.h>
+#include <zc/ztest/test.h>
 
 namespace zc {
 namespace {

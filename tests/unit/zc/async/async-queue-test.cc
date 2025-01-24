@@ -19,11 +19,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/async/async-queue.h"
+#include "zc/async/async-queue.h"
 
-#include <src/zc/async/async-io.h>
-#include <src/zc/core/vector.h>
-#include <src/zc/ztest/test.h>
+#include <zc/async/async-io.h>
+#include <zc/core/vector.h>
+#include <zc/ztest/test.h>
 
 namespace zc {
 namespace {

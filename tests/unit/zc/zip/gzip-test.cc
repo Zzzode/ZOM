@@ -21,11 +21,11 @@
 
 #if ZC_HAS_ZLIB
 
-#include "src/zc/zip/gzip.h"
+#include "zc/zip/gzip.h"
 
-#include <src/zc/core/debug.h>
-#include <src/zc/ztest/test.h>
 #include <stdlib.h>
+#include <zc/core/debug.h>
+#include <zc/ztest/test.h>
 
 namespace zc {
 namespace {

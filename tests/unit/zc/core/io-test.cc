@@ -23,12 +23,12 @@
 #define _GNU_SOURCE
 #endif
 
-#include "src/zc/core/io.h"
+#include "zc/core/io.h"
 
-#include <src/zc/ztest/gtest.h>
+#include <zc/ztest/gtest.h>
 
-#include "src/zc/core/debug.h"
-#include "src/zc/core/miniposix.h"
+#include "zc/core/debug.h"
+#include "zc/core/miniposix.h"
 
 namespace zc {
 namespace {

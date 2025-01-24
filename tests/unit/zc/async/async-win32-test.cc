@@ -21,11 +21,11 @@
 
 #if _WIN32
 
-#include "src/zc/async/async-win32.h"
+#include "zc/async/async-win32.h"
 
-#include "src/zc/core/mutex.h"
-#include "src/zc/core/thread.h"
-#include "src/zc/ztest/test.h"
+#include "zc/core/mutex.h"
+#include "zc/core/thread.h"
+#include "zc/ztest/test.h"
 
 namespace zc {
 namespace {

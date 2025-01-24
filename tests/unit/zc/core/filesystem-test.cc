@@ -19,11 +19,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/filesystem.h"
+#include "zc/core/filesystem.h"
 
 #include <wchar.h>
 
-#include "src/zc/ztest/test.h"
+#include "zc/ztest/test.h"
 
 #if __linux__
 #include <unistd.h>

@@ -28,15 +28,15 @@
 
 #include <string>
 
-#include "src/zc/core/debug.h"
-#include "src/zc/core/encoding.h"
-#include "src/zc/core/filesystem.h"
-#include "src/zc/core/string.h"
-#include "src/zc/ztest/test.h"
+#include "zc/core/debug.h"
+#include "zc/core/encoding.h"
+#include "zc/core/filesystem.h"
+#include "zc/core/string.h"
+#include "zc/ztest/test.h"
 #if _WIN32
 #include <windows.h>
 
-#include "src/zc/core/windows-sanity.h"
+#include "zc/core/windows-sanity.h"
 #else
 #include <dirent.h>
 #include <errno.h>

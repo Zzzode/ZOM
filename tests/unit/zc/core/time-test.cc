@@ -20,19 +20,19 @@
 // THE SOFTWARE.
 
 #if _WIN32
-#include "src/zc/core/win32-api-version.h"
+#include "zc/core/win32-api-version.h"
 #endif
 
-#include <src/zc/core/time.h>
-#include <src/zc/ztest/test.h>
+#include <zc/core/time.h>
+#include <zc/ztest/test.h>
 
-#include "src/zc/core/debug.h"
-#include "src/zc/core/time.h"
+#include "zc/core/debug.h"
+#include "zc/core/time.h"
 
 #if _WIN32
 #include <windows.h>
 
-#include "src/zc/core/windows-sanity.h"
+#include "zc/core/windows-sanity.h"
 #else
 #include <unistd.h>
 #endif

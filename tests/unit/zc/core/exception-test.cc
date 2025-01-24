@@ -19,14 +19,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/exception.h"
+#include "zc/core/exception.h"
 
-#include <src/zc/ztest/gtest.h>
 #include <stdint.h>
+#include <zc/ztest/gtest.h>
 
 #include <stdexcept>
 
-#include "src/zc/core/debug.h"
+#include "zc/core/debug.h"
 
 namespace zc {
 namespace _ {  // private

@@ -21,7 +21,7 @@
 
 #if _WIN32
 
-#include "src/zc/async/async-win32.h"
+#include "zc/async/async-win32.h"
 
 #define ZC_XTHREAD_TEST_SETUP_LOOP \
   Win32IocpEventPort port;         \
@@ -29,20 +29,20 @@
   WaitScope waitScope(loop)
 
 #if _WIN32
-#include "src/zc/core/win32-api-version.h"
+#include "zc/core/win32-api-version.h"
 #endif
 
-#include <src/zc/ztest/test.h>
+#include <zc/ztest/test.h>
 
-#include "src/zc/async/async.h"
-#include "src/zc/core/debug.h"
-#include "src/zc/core/mutex.h"
-#include "src/zc/core/thread.h"
+#include "zc/async/async.h"
+#include "zc/core/debug.h"
+#include "zc/core/mutex.h"
+#include "zc/core/thread.h"
 
 #if _WIN32
 #include <windows.h>
 
-#include "src/zc/core/windows-sanity.h"
+#include "zc/core/windows-sanity.h"
 inline void delay() { Sleep(10); }
 #else
 #include <unistd.h>

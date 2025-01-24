@@ -19,11 +19,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/parse/char.h"
+#include "zc/parse/char.h"
 
-#include <src/zc/ztest/gtest.h>
+#include <zc/ztest/gtest.h>
 
-#include "src/zc/core/string.h"
+#include "zc/core/string.h"
 
 namespace zc {
 namespace parse {

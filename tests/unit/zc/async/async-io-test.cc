@@ -21,26 +21,26 @@
 
 #if _WIN32
 // Request Vista-level APIs.
-#include "src/zc/core/win32-api-version.h"
+#include "zc/core/win32-api-version.h"
 #elif !defined(_GNU_SOURCE)
 #define _GNU_SOURCE
 #endif
 
-#include <src/zc/core/filesystem.h>
-#include <src/zc/core/time.h>
-#include <src/zc/ztest/gtest.h>
 #include <sys/types.h>
+#include <zc/core/filesystem.h>
+#include <zc/core/time.h>
+#include <zc/ztest/gtest.h>
 
-#include "src/zc/async/async-io-internal.h"
-#include "src/zc/async/async-io.h"
-#include "src/zc/core/cidr.h"
-#include "src/zc/core/debug.h"
-#include "src/zc/core/io.h"
-#include "src/zc/core/miniposix.h"
+#include "zc/async/async-io-internal.h"
+#include "zc/async/async-io.h"
+#include "zc/core/cidr.h"
+#include "zc/core/debug.h"
+#include "zc/core/io.h"
+#include "zc/core/miniposix.h"
 #if _WIN32
 #include <ws2tcpip.h>
 
-#include "src/zc/core/windows-sanity.h"
+#include "zc/core/windows-sanity.h"
 #define inet_pton InetPtonA
 #define inet_ntop InetNtopA
 #else
@@ -711,7 +711,7 @@ TEST(AsyncIo, ScmRightsTruncatedOdd) {
         "buggy and leaks file descriptors when an SCM_RIGHTS message is truncated. FreeBSD was "
         "known to do this until late 2018, while MacOS still has this bug as of this writing in "
         "2019. However, ZC works around the problem on those platforms. You need to enable the "
-        "same work-around for your OS -- search for 'SCM_RIGHTS' in src/zc/async-io-unix.c++.");
+        "same work-around for your OS -- search for 'SCM_RIGHTS' in zc/async-io-unix.c++.");
   }
   ZC_ASSERT(n == 0);
 }
@@ -799,7 +799,7 @@ TEST(AsyncIo, ScmRightsTruncatedEven) {
         "buggy and leaks file descriptors when an SCM_RIGHTS message is truncated. FreeBSD was "
         "known to do this until late 2018, while MacOS still has this bug as of this writing in "
         "2019. However, ZC works around the problem on those platforms. You need to enable the "
-        "same work-around for your OS -- search for 'SCM_RIGHTS' in src/zc/async-io-unix.c++.");
+        "same work-around for your OS -- search for 'SCM_RIGHTS' in zc/async-io-unix.c++.");
   }
   ZC_ASSERT(n == 0);
 }

@@ -19,10 +19,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/tls/readiness-io.h"
+#include "zc/tls/readiness-io.h"
 
-#include <src/zc/ztest/test.h>
 #include <stdlib.h>
+#include <zc/ztest/test.h>
 
 namespace zc {
 namespace {

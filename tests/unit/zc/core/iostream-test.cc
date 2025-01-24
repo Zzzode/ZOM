@@ -19,9 +19,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/iostream.h"
+#include "zc/core/iostream.h"
 
-#include <src/zc/ztest/gtest.h>
+#include <zc/ztest/gtest.h>
 
 #include <sstream>
 

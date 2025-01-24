@@ -19,15 +19,15 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/string.h"
+#include "zc/core/string.h"
 
 #include <locale.h>
-#include <src/zc/ztest/gtest.h>
 #include <stdint.h>
+#include <zc/ztest/gtest.h>
 
 #include <string>
 
-#include "src/zc/core/vector.h"
+#include "zc/core/vector.h"
 
 namespace zc {
 namespace _ {  // private

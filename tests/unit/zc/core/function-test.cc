@@ -19,9 +19,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/function.h"
+#include "zc/core/function.h"
 
-#include <src/zc/ztest/gtest.h>
+#include <zc/ztest/gtest.h>
 
 namespace zc {
 namespace {

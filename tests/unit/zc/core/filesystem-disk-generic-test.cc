@@ -43,10 +43,10 @@
 #include <syscall.h>
 #include <unistd.h>
 
-#include "src/zc/core/debug.h"
-#include "src/zc/core/filesystem.h"
-#include "src/zc/core/miniposix.h"
-#include "src/zc/core/vector.h"
+#include "zc/core/debug.h"
+#include "zc/core/filesystem.h"
+#include "zc/core/miniposix.h"
+#include "zc/core/vector.h"
 
 #undef __linux__
 #undef O_CLOEXEC
@@ -64,7 +64,7 @@
 
 #define HOLES_NOT_SUPPORTED
 
-#include "src/zc/core/filesystem-disk-unix.cc"
-#include "tests/unit/zc/core/filesystem-disk-test.cc"
+#include "core/filesystem-disk-test.cc"
+#include "zc/core/filesystem-disk-unix.cc"
 
 #endif  // __linux__

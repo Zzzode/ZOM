@@ -19,16 +19,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/memory.h"
+#include "zc/core/memory.h"
 
 #include <signal.h>
-#include <src/zc/ztest/gtest.h>
+#include <zc/ztest/gtest.h>
 
-#include "src/zc/core/common.h"
-#include "src/zc/core/debug.h"
-#include "src/zc/core/function.h"
-#include "src/zc/core/string.h"
-#include "src/zc/ztest/test.h"
+#include "zc/core/common.h"
+#include "zc/core/debug.h"
+#include "zc/core/function.h"
+#include "zc/core/string.h"
+#include "zc/ztest/test.h"
 
 namespace zc {
 namespace {

@@ -19,16 +19,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/table.h"
+#include "zc/core/table.h"
 
-#include <src/zc/ztest/test.h>
 #include <stdlib.h>
+#include <zc/ztest/test.h>
 
 #include <set>
 #include <unordered_set>
 
-#include "src/zc/core/hash.h"
-#include "src/zc/core/time.h"
+#include "zc/core/hash.h"
+#include "zc/core/time.h"
 
 namespace zc {
 namespace _ {

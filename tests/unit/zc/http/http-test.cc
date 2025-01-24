@@ -19,17 +19,17 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/common.h"
+#include "zc/core/common.h"
 #define ZC_TESTING_ZC 1
 
-#include <src/zc/core/debug.h>
-#include <src/zc/core/encoding.h>
-#include <src/zc/core/vector.h>
-#include <src/zc/ztest/test.h>
+#include <zc/core/debug.h>
+#include <zc/core/encoding.h>
+#include <zc/core/vector.h>
+#include <zc/ztest/test.h>
 
 #include <map>
 
-#include "src/zc/http/http.h"
+#include "zc/http/http.h"
 
 #if ZC_HTTP_TEST_USE_OS_PIPE
 // Run the test using OS-level socketpairs. (See http-socketpair-test.c++.)

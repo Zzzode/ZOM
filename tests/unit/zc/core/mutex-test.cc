@@ -20,20 +20,20 @@
 // THE SOFTWARE.
 
 #if _WIN32
-#include "src/zc/core/win32-api-version.h"
+#include "zc/core/win32-api-version.h"
 #define NOGDI  // NOGDI is needed to make EXPECT_EQ(123u, *lock) compile for some reason
 #endif
 
-#include "src/zc/core/time.h"
+#include "zc/core/time.h"
 
 #define ZC_MUTEX_TEST 1
 
-#include <src/zc/ztest/gtest.h>
 #include <stdlib.h>
+#include <zc/ztest/gtest.h>
 
-#include "src/zc/core/debug.h"
-#include "src/zc/core/mutex.h"
-#include "src/zc/core/thread.h"
+#include "zc/core/debug.h"
+#include "zc/core/mutex.h"
+#include "zc/core/thread.h"
 
 #if _WIN32
 #include <windows.h>

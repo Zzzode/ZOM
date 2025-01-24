@@ -1,0 +1,57 @@
+name: ZOM Work Flows
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  BUILD_TYPE: Release
+  CLANG_FORMAT_VERSION: 18.1.8
+
+jobs:
+  check-format:
+    runs-on: ubuntu-22.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: |
+          curl -Lo clang-format.tar.xz \
+            https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.CLANG_FORMAT_VERSION }}/clang+llvm-${{ env.CLANG_FORMAT_VERSION }}-aarch64-linux-gnu.tar.xz
+
+          mkdir -p /tmp/clang-format
+          tar -xf clang-format.tar.xz --wildcards --strip-components=1 -C /tmp/clang-format 'clang+llvm*/bin/clang-format'
+
+          echo "/tmp/clang-format/bin" >> $GITHUB_PATH
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.10'
+
+      - name: Check Code Format
+        run: |
+          clang-format --version  # 验证版本
+          python3 scripts/check-format.py
+
+  check-unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake ninja-build clang
+
+    - name: Configure CMake
+      run: cmake --preset sanitizer
+
+    - name: Build
+      run: cmake --build --preset sanitizer
+
+    - name: Run tests
+      run: ctest --preset allTests

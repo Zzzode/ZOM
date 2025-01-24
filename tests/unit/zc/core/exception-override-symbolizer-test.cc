@@ -21,15 +21,15 @@
 
 #if __GNUC__ && !_WIN32
 
-#include <src/zc/core/exception.h>
-#include <src/zc/ztest/gtest.h>
 #include <stdint.h>
+#include <zc/core/exception.h>
+#include <zc/ztest/gtest.h>
 
 #include <stdexcept>
 
-#include "src/zc/core/array.h"
-#include "src/zc/core/common.h"
-#include "src/zc/core/debug.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/debug.h"
 
 namespace zc {
 

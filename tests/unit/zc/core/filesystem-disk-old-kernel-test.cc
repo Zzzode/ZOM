@@ -37,11 +37,11 @@
 
 #include <linux/filter.h>
 #include <linux/seccomp.h>
-#include <src/zc/core/debug.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
 #include <syscall.h>
 #include <unistd.h>
+#include <zc/core/debug.h>
 
 #ifdef SECCOMP_SET_MODE_FILTER
 
@@ -106,7 +106,7 @@ SetupSeccompForFilesystemTest setupSeccompForFilesystemTest;
 #define HOLES_NOT_SUPPORTED
 
 // OK, now run all the regular filesystem tests!
-#include "tests/unit/zc/core/filesystem-disk-test.cc"
+#include "core/filesystem-disk-test.cc"
 
 #endif
 #endif

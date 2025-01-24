@@ -19,12 +19,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include "src/zc/core/tuple.h"
+#include "zc/core/tuple.h"
 
-#include <src/zc/ztest/gtest.h>
+#include <zc/ztest/gtest.h>
 
-#include "src/zc/core/memory.h"
-#include "src/zc/core/string.h"
+#include "zc/core/memory.h"
+#include "zc/core/string.h"
 
 namespace zc {
 

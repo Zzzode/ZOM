@@ -21,28 +21,28 @@
 
 #if !_WIN32
 
-#include "src/zc/async/async-unix.h"
+#include "zc/async/async-unix.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <pthread.h>
-#include <src/zc/ztest/gtest.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <zc/ztest/gtest.h>
 
 #include <algorithm>
 #include <atomic>
 
-#include "src/zc/core/debug.h"
-#include "src/zc/core/io.h"
-#include "src/zc/core/mutex.h"
-#include "src/zc/core/thread.h"
+#include "zc/core/debug.h"
+#include "zc/core/io.h"
+#include "zc/core/mutex.h"
+#include "zc/core/thread.h"
 
 #if ZC_USE_EPOLL
 #include <sys/epoll.h>

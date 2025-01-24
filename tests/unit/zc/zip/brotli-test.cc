@@ -21,11 +21,11 @@
 
 #if ZC_HAS_BROTLI
 
-#include "src/zc/zip/brotli.h"
+#include "zc/zip/brotli.h"
 
-#include <src/zc/core/debug.h>
-#include <src/zc/ztest/test.h>
 #include <stdlib.h>
+#include <zc/core/debug.h>
+#include <zc/ztest/test.h>
 
 namespace zc {
 namespace {

@@ -23,20 +23,20 @@
 #define _GNU_SOURCE
 #endif
 
-#include "src/zc/core/debug.h"
+#include "zc/core/debug.h"
 
 #include <errno.h>
 #include <signal.h>
-#include <src/zc/ztest/gtest.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zc/ztest/gtest.h>
 
 #include <exception>
 #include <string>
 
-#include "src/zc/core/exception.h"
-#include "src/zc/core/miniposix.h"
+#include "zc/core/exception.h"
+#include "zc/core/miniposix.h"
 
 #if !_WIN32
 #include <sys/wait.h>
