@@ -11,3 +11,4 @@ option(ZOM_DISABLE_GLOB_CTOR
        ON)
 option(BUILD_STATIC_LIB "Build ZOM as a static library" ON)
 option(BUILD_CLI "Build ZOM CLI" ON)
+option(ZOM_ENABLE_UNITTESTS "Enable ZOM unittests" ON)

@@ -64,7 +64,7 @@
 
 #define HOLES_NOT_SUPPORTED
 
-#include "core/filesystem-disk-test.cc"
 #include "zc/core/filesystem-disk-unix.cc"
+#include "zc/unittests/core/filesystem-disk-test.cc"
 
 #endif  // __linux__

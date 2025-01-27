@@ -118,23 +118,22 @@ return ElementsWithAssociatedValues;
 void TypeChecker::typeCheckEnumDecl(EnumDecl *ED) {
 // Check the raw type.
 if (ED->hasRawType()) {
-TypeResolutionOptions options(TypeResolverContext::EnumRawType);
-if (typeCheckType(ED->getRawType(), ED, options) ||
-!ED->getRawType()->isValid()) {
-ED->setInvalid();
-return;
-}
+  TypeResolutionOptions options(TypeResolverContext::EnumRawType);
+  if (typeCheckType(ED->getRawType(), ED, options) || !ED->getRawType()->isValid()) {
+    ED->setInvalid();
+    return;
+  }
 
-    // Check that the raw type is a valid enum raw type.
-    if (!isValidEnumRawType(ED->getRawType(), ED)) {
-      ED->setInvalid();
-      return;
-    }
+  // Check that the raw type is a valid enum raw type.
+  if (!isValidEnumRawType(ED->getRawType(), ED)) {
+    ED->setInvalid();
+    return;
+  }
 }
 
 // Check the elements.
 for (auto elt : ED->getAllElements()) {
-typeCheckEnumElement(elt);
+  typeCheckEnumElement(elt);
 }
 
 // ...

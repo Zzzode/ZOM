@@ -69,7 +69,7 @@ the License.
 ## Conclusion
 
 The `zc` library aims to leverage the robust and efficient design of the `zc` library while tailoring it to meet the
-specific requirements of my project. I once again thank the `zc` library team for their outstanding work and
+specific requirements of my project. I once again thank the `kj` library team for their outstanding work and
 contributions to the open source community.
 
 For any questions or contributions, please feel free to contact me or submit a pull request.

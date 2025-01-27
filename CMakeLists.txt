@@ -20,6 +20,3 @@ include(${ZOM_CMAKE_DIR}/utils/functions.cmake)
 add_subdirectory(libraries)
 add_subdirectory(products)
 add_subdirectory(examples)
-
-enable_testing()
-add_subdirectory(tests)

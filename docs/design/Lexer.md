@@ -1,6 +1,3 @@
-好的，我会为你设计一个高效且完备的 Lexer 模块，包含高效的状态转换能力。这个设计将包括多个文件，以确保模块化和可维护性。我们将使用
-C++17 标准来实现这个 Lexer。
-
 首先，让我们定义整体结构：
 
 1. `Token.h` - 定义 Token 结构
@@ -19,16 +16,16 @@ C++17 标准来实现这个 Lexer。
 #include <string>
 
 enum class TokenType {
-IDENTIFIER,
-KEYWORD,
-NUMBER,
-STRING,
-OPERATOR,
-PUNCTUATION,
-COMMENT,
-WHITESPACE,
-END_OF_FILE,
-ERROR
+    IDENTIFIER,
+    KEYWORD,
+    NUMBER,
+    STRING,
+    OPERATOR,
+    PUNCTUATION,
+    COMMENT,
+    WHITESPACE,
+    END_OF_FILE,
+    ERROR
 };
 
 struct Token {
@@ -253,30 +250,30 @@ TransitionTable::TransitionTable() {
    }
     // Set specific transitions
 
-    setTransition(State::START, ' ', State::START, 
+    setTransition(State::START, ' ', State::START,
         [](Lexer& l, char) { l.emitToken(TokenType::WHITESPACE); });
 
-    setTransition(State::START, '\n', State::START, 
+    setTransition(State::START, '\n', State::START,
         [](Lexer& l, char) { l.incrementLine(); l.emitToken(TokenType::WHITESPACE); });
 
     for (char c = 'a'; c <= 'z'; ++c) {
-        setTransition(State::START, c, State::IN_IDENTIFIER, 
+        setTransition(State::START, c, State::IN_IDENTIFIER,
             [](Lexer& l, char c) { l.addToLexeme(c); });
     }
     for (char c = 'A'; c <= 'Z'; ++c) {
-        setTransition(State::START, c, State::IN_IDENTIFIER, 
+        setTransition(State::START, c, State::IN_IDENTIFIER,
             [](Lexer& l, char c) { l.addToLexeme(c); });
     }
 
     for (char c = '0'; c <= '9'; ++c) {
-        setTransition(State::START, c, State::IN_NUMBER, 
+        setTransition(State::START, c, State::IN_NUMBER,
             [](Lexer& l, char c) { l.addToLexeme(c); });
     }
 
-    setTransition(State::START, '"', State::IN_STRING, 
+    setTransition(State::START, '"', State::IN_STRING,
         [](Lexer& l, char c) { l.addToLexeme(c); });
 
-    setTransition(State::START, '/', State::IN_COMMENT, 
+    setTransition(State::START, '/', State::IN_COMMENT,
         [](Lexer& l, char c) { l.addToLexeme(c); });
 
     // Add more transitions for other states...
@@ -312,9 +309,9 @@ Lexer lexer(input);
 auto tokens = lexer.tokenize();
 
     for (const auto& token : tokens) {
-        std::cout << "Type: " << static_cast<int>(token.type) 
-                  << ", Lexeme: " << token.lexeme 
-                  << ", Line: " << token.line 
+        std::cout << "Type: " << static_cast<int>(token.type)
+                  << ", Lexeme: " << token.lexeme
+                  << ", Line: " << token.line
                   << ", Column: " << token.column << std::endl;
     }
 

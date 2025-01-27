@@ -39,23 +39,23 @@ foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
   if(TEST_NAME MATCHES "win32")
     set(IS_PLATFORM_SPECIFIC TRUE)
     if(NOT WIN32)
-      message(STATUS "Skipping Windows-specific test: ${TEST_NAME}")
+      # message(STATUS "Skipping Windows-specific test: ${TEST_NAME}")
       continue()
     endif()
   elseif(TEST_NAME MATCHES "unix")
     set(IS_PLATFORM_SPECIFIC TRUE)
     if(NOT UNIX)
-      message(STATUS "Skipping Unix-specific test: ${TEST_NAME}")
+      # message(STATUS "Skipping Unix-specific test: ${TEST_NAME}")
       continue()
     endif()
   endif()
 
   set(UNIQUE_TEST_NAME "${TEST_DIR_NAME}-${TEST_NAME}")
 
-  message(STATUS "Test ${UNIQUE_TEST_NAME} added")
+  # message(STATUS "Test ${UNIQUE_TEST_NAME} added")
   add_executable(${UNIQUE_TEST_NAME} EXCLUDE_FROM_ALL ${TEST_SOURCE})
   target_link_libraries(${UNIQUE_TEST_NAME} PRIVATE zc ztest)
-  target_include_directories(${UNIQUE_TEST_NAME} PRIVATE ${ZOM_ROOT}/tests/unit/zc ${ZOM_ROOT}/libraries)
+  target_include_directories(${UNIQUE_TEST_NAME} PRIVATE ${ZOM_ROOT}/libraries)
 
   target_compile_options(${UNIQUE_TEST_NAME} PRIVATE -Wno-global-constructors)
 
@@ -63,5 +63,9 @@ foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
 
   list(APPEND ALL_TESTS ${UNIQUE_TEST_NAME})
 endforeach()
+
+get_property(test_list DIRECTORY PROPERTY TESTS)
+list(LENGTH test_list NUM_TESTS)
+message(STATUS "Total CTest Tests Configured: ${NUM_TESTS}")
 
 add_custom_target(buildAllTests DEPENDS ${ALL_TESTS})

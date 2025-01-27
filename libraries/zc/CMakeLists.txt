@@ -28,3 +28,5 @@ add_library(
   $<TARGET_OBJECTS:ztest>)
 
 set_target_include_directories(${ZOM_ROOT}/libraries async core http parse tls zip ztest)
+
+add_subdirectory(unittests)

@@ -844,12 +844,9 @@ zc::StringPtr trimSourceFilename(zc::StringPtr filename) {
   // unfortunately end up with backslashes.
 
   static constexpr const char* ROOTS[] = {
-      "src/",    // Non-ZOM source root.
-      "tests/",  // Non-ZOM test root.
-      "tmp/",    // Non-ZOM generated code.
+      "zc/",  // ZC root.
 #if _WIN32
-      "src\\",  // Win32 source root.
-      "tmp\\",  // Win32 generated code.
+      "zc\\",  // Win32 source root.
 #endif
   };
 

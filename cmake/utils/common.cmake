@@ -42,4 +42,9 @@ if (ZOM_DISABLE_GLOB_CTOR)
   endif ()
 endif ()
 
+if (ZOM_ENABLE_UNITTESTS)
+  message(STATUS "Enable Unitttests")
+  enable_testing()
+endif()
+
 add_compile_options(-Wno-sign-compare -Wno-unused-parameter)

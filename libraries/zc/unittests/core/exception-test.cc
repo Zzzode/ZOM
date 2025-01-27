@@ -34,10 +34,10 @@ namespace {
 
 TEST(Exception, TrimSourceFilename) {
 #if _WIN32
-  EXPECT_TRUE(trimSourceFilename(__FILE__) == "unit/zc/core/exception-test.cc" ||
-              trimSourceFilename(__FILE__) == "unit\\zc\\core\\exception-test.cc");
+  EXPECT_TRUE(trimSourceFilename(__FILE__) == "unittests/core/exception-test.cc" ||
+              trimSourceFilename(__FILE__) == "unittests\\core\\exception-test.cc");
 #else
-  EXPECT_EQ(trimSourceFilename(__FILE__), "unit/zc/core/exception-test.cc");
+  EXPECT_EQ(trimSourceFilename(__FILE__), "unittests/core/exception-test.cc");
 #endif
 }
 
