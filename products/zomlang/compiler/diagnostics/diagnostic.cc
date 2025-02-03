@@ -3,12 +3,12 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 
-namespace zom {
-namespace diagnostics {
+namespace zomlang {
+namespace compiler {
 
 void Diagnostic::addChildDiagnostic(zc::Own<Diagnostic> child) {}
 
 void Diagnostic::addFixIt(const FixIt& fix_it) {}
 
-}  // namespace diagnostics
-}  // namespace zom
+}  // namespace compiler
+}  // namespace zomlang

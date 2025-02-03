@@ -19,8 +19,8 @@
 #include "zc/core/source-location.h"
 #include "zc/core/string.h"
 
-namespace zom {
-namespace source {
+namespace zomlang {
+namespace compiler {
 
 class SourceLoc {
 public:
@@ -161,7 +161,7 @@ inline zc::String ZC_STRINGIFY(const CompileTimeSourceLocation& loc) {
                  ", Column: ", loc.columnNumber);
 }
 
-}  // namespace source
-}  // namespace zom
+}  // namespace compiler
+}  // namespace zomlang
 
 #endif  // ZOM_SOURCE_LOCATION_H_

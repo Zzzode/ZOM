@@ -1,5 +1,5 @@
 #include "zomlang/compiler/parser/parser.h"
 
-namespace zom {
+namespace zomlang {
 namespace parser {}  // namespace parser
-}  // namespace zom
+}  // namespace zomlang

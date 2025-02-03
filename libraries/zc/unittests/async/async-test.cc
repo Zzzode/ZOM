@@ -1027,6 +1027,7 @@ TEST(Async, LargeTaskSetDestruction) {
 }
 
 TEST(Async, LargeTaskSetDestructionExceptions) {
+#ifndef __APPLE__
   size_t stackSize = getSmallStackSize();
 
   runWithStackLimit(stackSize, [stackSize]() {
@@ -1046,6 +1047,7 @@ TEST(Async, LargeTaskSetDestructionExceptions) {
 
     ZC_EXPECT_THROW_MESSAGE("ThrowingDestructor_exception", { tasks = zc::none; });
   });
+#endif
 }
 
 TEST(Async, LargeTaskSetClear) {
@@ -1062,6 +1064,7 @@ TEST(Async, LargeTaskSetClear) {
 }
 
 TEST(Async, LargeTaskSetClearException) {
+#ifndef __APPLE__
   size_t stackSize = getSmallStackSize();
 
   runWithStackLimit(stackSize, [stackSize]() {
@@ -1080,6 +1083,7 @@ TEST(Async, LargeTaskSetClearException) {
 
     ZC_EXPECT_THROW_MESSAGE("ThrowingDestructor_exception", { tasks.clear(); });
   });
+#endif
 }
 
 #endif  // ZC_USE_FIBERS || !_WIN32

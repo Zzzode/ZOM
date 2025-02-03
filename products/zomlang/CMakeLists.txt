@@ -1,3 +1,5 @@
 add_subdirectory(compiler)
 add_subdirectory(runtime)
-add_subdirectory(tools)
+add_subdirectory(utils)
+
+add_subdirectory(unittests)

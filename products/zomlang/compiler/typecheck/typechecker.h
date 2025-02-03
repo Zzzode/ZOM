@@ -1,14 +1,13 @@
 #ifndef ZOM_TYPECHECK_TYPECHECKER_H_
 #define ZOM_TYPECHECK_TYPECHECKER_H_
 
-#include "zomlang/compiler/basic/stage.h"
 #include "zomlang/compiler/typecheck/symbol-table.h"
 #include "zomlang/compiler/zis/zis.h"
 
-namespace zom {
+namespace zomlang {
 namespace typecheck {
 
-// class TypeChecker : public basic::CompilerStage<zc::Own<zis::ZIS>,
+// class TypeChecker : public CompilerStage<zc::Own<zis::ZIS>,
 // zc::String> {
 //  protected:
 //   void process(const zc::Own<zis::ZIS>& input,
@@ -23,6 +22,6 @@ namespace typecheck {
 // };
 
 }  // namespace typecheck
-}  // namespace zom
+}  // namespace zomlang
 
 #endif  // ZOM_TYPECHECK_TYPECHECKER_H_

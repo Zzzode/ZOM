@@ -12,14 +12,16 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/basic/lang-options.h"
+#pragma once
+
+#include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
 #include "zomlang/compiler/lexer/token.h"
 #include "zomlang/compiler/source/manager.h"
 
-namespace zom {
-namespace lexer {
+namespace zomlang {
+namespace compiler {
 
 enum class LexerMode {
   kNormal,
@@ -29,9 +31,9 @@ enum class LexerMode {
 };
 
 enum class CommentRetentionMode {
-  kNone,               // 不保留任何注释
-  kAttachToNextToken,  // 将注释附加到下一个标记
-  kReturnAsTokens      // 将注释作为单独的标记返回
+  kNone,               // Leave no comments
+  kAttachToNextToken,  // Append a comment to the next tag
+  kReturnAsTokens      // Return comments as separate tags
 };
 
 struct LexerState {
@@ -45,8 +47,7 @@ struct LexerState {
 class Lexer {
 public:
   // Constructor
-  Lexer(const basic::LangOptions& options, const source::SourceManager& sourceMgr,
-        diagnostics::DiagnosticEngine& diags)
+  Lexer(const LangOptions& options, const SourceManager& sourceMgr, DiagnosticEngine& diags)
       : langOpts(options), sourceMgr(sourceMgr), diags(diags) {}
 
   // Main lexical analysis function
@@ -64,7 +65,7 @@ public:
   void exitMode(LexerMode mode);
 
   // Unicode support
-  static unsigned lexUnicodeEscape(const char*& curPtr, diagnostics::DiagnosticEngine* diags);
+  static unsigned lexUnicodeEscape(const char*& curPtr, DiagnosticEngine* diags);
 
   // Regular expression support
   bool tryLexRegexLiteral(const char* tokStart);
@@ -76,14 +77,14 @@ public:
   bool isCodeCompletion() const;
 
   // Error handling and diagnostics
-  diagnostics::InFlightDiagnostic diagnose(const char* loc, diagnostics::Diagnostic diag);
+  InFlightDiagnostic diagnose(const char* loc, Diagnostic diag);
 
   // Comment handling
   void setCommentRetentionMode(CommentRetentionMode mode);
 
   // Source location and range
-  source::SourceLoc getLocForStartOfToken(source::SourceLoc loc) const;
-  source::CharSourceRange getCharSourceRangeFromSourceRange(const source::SourceRange& sr) const;
+  SourceLoc getLocForStartOfToken(SourceLoc loc) const;
+  CharSourceRange getCharSourceRangeFromSourceRange(const SourceRange& sr) const;
 
 private:
   // Internal state
@@ -95,9 +96,9 @@ private:
   LexerMode currentMode;
   CommentRetentionMode commentMode;
 
-  const basic::LangOptions& langOpts;
-  const source::SourceManager& sourceMgr;
-  diagnostics::DiagnosticEngine& diags;
+  const LangOptions& langOpts;
+  const SourceManager& sourceMgr;
+  DiagnosticEngine& diags;
 
   // Token cache
   zc::Array<TokenDesc> tokenCache;
@@ -142,5 +143,5 @@ private:
   bool isOperatorStart(char c) const;
 };
 
-}  // namespace lexer
-}  // namespace zom
+}  // namespace compiler
+}  // namespace zomlang

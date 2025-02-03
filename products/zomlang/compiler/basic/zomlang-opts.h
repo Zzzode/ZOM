@@ -1,8 +1,8 @@
 #ifndef ZOM_BASIC_LANG_OPTIONS_H_
 #define ZOM_BASIC_LANG_OPTIONS_H_
 
-namespace zom {
-namespace basic {
+namespace zomlang {
+namespace compiler {
 
 struct LangOptions {
   bool useUnicode;
@@ -13,7 +13,7 @@ struct LangOptions {
   LangOptions() : useUnicode(true), allowDollarIdentifiers(false), supportRegexLiterals(true) {}
 };
 
-}  // namespace basic
-}  // namespace zom
+}  // namespace compiler
+}  // namespace zomlang
 
 #endif  // ZOM_BASIC_LANG_OPTIONS_H_

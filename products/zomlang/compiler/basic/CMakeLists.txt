@@ -1,1 +1,1 @@
-add_library(basic STATIC pipeline.cc)
+add_library(basic STATIC compiler.cc)

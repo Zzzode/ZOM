@@ -4,6 +4,6 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/zis/zis.h"
 
-namespace zom {
+namespace zomlang {
 namespace typecheck {}  // namespace typecheck
-}  // namespace zom
+}  // namespace zomlang

@@ -2,8 +2,8 @@
 
 #include "zomlang/compiler/source/manager.h"
 
-namespace zom {
-namespace diagnostics {
+namespace zomlang {
+namespace compiler {
 
 DiagnosticState::DiagnosticState() : ignoredDiagnostics(kNumDiags) {}
 
@@ -15,14 +15,13 @@ bool DiagnosticState::isDiagnosticIgnored(uint32_t diagId) const {
   return diagId < kNumDiags && ignoredDiagnostics[diagId];
 }
 
-source::CharSourceRange DiagnosticState::toCharSourceRange(const source::SourceManager& sm,
-                                                           source::SourceRange range) {
-  return sm.getCharSourceRange(range);
-}
+// CharSourceRange DiagnosticState::toCharSourceRange(const SourceManager& sm, SourceRange range) {
+//   return sm.getCharSourceRange(range);
+// }
 
-char DiagnosticState::extractCharAfter(const source::SourceManager& sm, source::SourceLoc loc) {
-  return sm.extractCharAfter(loc);
-}
+// char DiagnosticState::extractCharAfter(const SourceManager& sm, SourceLoc loc) {
+//   return sm.extractCharAfter(loc);
+// }
 
-}  // namespace diagnostics
-}  // namespace zom
+}  // namespace compiler
+}  // namespace zomlang

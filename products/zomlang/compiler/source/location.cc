@@ -1,5 +1,5 @@
 #include "zomlang/compiler/source/location.h"
 
-namespace zom {
-namespace source {}  // namespace source
-}  // namespace zom
+namespace zomlang {
+namespace compiler {}  // namespace compiler
+}  // namespace zomlang

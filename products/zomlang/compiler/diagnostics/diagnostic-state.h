@@ -6,8 +6,8 @@
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/source/manager.h"
 
-namespace zom {
-namespace diagnostics {
+namespace zomlang {
+namespace compiler {
 
 class DiagnosticState {
 public:
@@ -34,9 +34,8 @@ public:
   void setHadAnyError() { hadAnyError = true; }
 
   // 辅助函数
-  static source::CharSourceRange toCharSourceRange(const source::SourceManager& sm,
-                                                   source::SourceRange range);
-  static char extractCharAfter(const source::SourceManager& sm, source::SourceLoc loc);
+  static CharSourceRange toCharSourceRange(const SourceManager& sm, SourceRange range);
+  static char extractCharAfter(const SourceManager& sm, SourceLoc loc);
 
 private:
   bool showDiagnosticsAfterFatalError = false;
@@ -47,7 +46,7 @@ private:
   static constexpr uint32_t kNumDiags = 1000;  // 假设有1000个诊断ID
 };
 
-}  // namespace diagnostics
-}  // namespace zom
+}  // namespace compiler
+}  // namespace zomlang
 
 #endif  // ZOM_DIAGNOSTICS_DIAGNOSTIC_STATE_H_

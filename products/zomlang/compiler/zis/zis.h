@@ -3,7 +3,7 @@
 
 #include "zc/core/string.h"
 
-namespace zom {
+namespace zomlang {
 namespace zis {
 
 class ZIS {
@@ -48,6 +48,6 @@ private:
 // Add more AST node types as needed
 
 }  // namespace zis
-}  // namespace zom
+}  // namespace zomlang
 
 #endif  // ZOM_ZIS_ZIS_H_

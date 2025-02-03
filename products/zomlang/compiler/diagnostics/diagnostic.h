@@ -7,20 +7,20 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/source/location.h"
 
-namespace zom {
-namespace diagnostics {
+namespace zomlang {
+namespace compiler {
 
 enum class DiagnosticKind { kNote, kRemark, kWarning, kError, kFatal };
 
 struct FixIt {
-  zom::source::CharSourceRange range;
+  CharSourceRange range;
   zc::String replacementText;
 };
 
 class Diagnostic {
 public:
   Diagnostic(DiagnosticKind kind, uint32_t id, zc::StringPtr message,
-             const zom::source::CharSourceRange& location)
+             const CharSourceRange& location)
       : kind(kind), id(id), message(zc::heapString(message)), location(location) {}
 
   Diagnostic(Diagnostic&& other) noexcept = default;
@@ -31,7 +31,7 @@ public:
   DiagnosticKind getKind() const { return kind; }
   uint32_t getId() const { return id; }
   zc::StringPtr getMessage() const { return message; }
-  const zom::source::CharSourceRange& getSourceRange() const { return location; }
+  const CharSourceRange& getSourceRange() const { return location; }
   const zc::Vector<zc::Own<Diagnostic>>& getChildDiagnostics() const { return childDiagnostics; }
   const zc::Vector<FixIt>& getFixIts() const { return fixIts; }
 
@@ -43,7 +43,7 @@ private:
   DiagnosticKind kind;
   uint32_t id;
   zc::String message;
-  zom::source::CharSourceRange location;
+  CharSourceRange location;
   zc::String category;
   zc::Vector<zc::Own<Diagnostic>> childDiagnostics;
   zc::Vector<FixIt> fixIts;
@@ -52,10 +52,10 @@ private:
 class DiagnosticConsumer {
 public:
   virtual ~DiagnosticConsumer() = default;
-  virtual void handleDiagnostic(const source::SourceLoc& loc, const Diagnostic& diagnostic) = 0;
+  virtual void handleDiagnostic(const SourceLoc& loc, const Diagnostic& diagnostic) = 0;
 };
 
-}  // namespace diagnostics
-}  // namespace zom
+}  // namespace compiler
+}  // namespace zomlang
 
 #endif  // ZOM_DIAGNOSTIC_DIAGNOSTIC_H_

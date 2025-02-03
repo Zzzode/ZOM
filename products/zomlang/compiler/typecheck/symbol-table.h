@@ -5,7 +5,7 @@
 #include "zc/core/map.h"
 #include "zc/core/string.h"
 
-namespace zom {
+namespace zomlang {
 namespace typecheck {
 
 struct Symbol {
@@ -30,6 +30,6 @@ private:
 };
 
 }  // namespace typecheck
-}  // namespace zom
+}  // namespace zomlang
 
 #endif  // ZOM_TYPECHECK_SYMBOL_TABLE_H_

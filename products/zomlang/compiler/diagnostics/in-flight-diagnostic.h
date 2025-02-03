@@ -6,12 +6,12 @@
 #include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/source/location.h"
 
-namespace zom {
-namespace diagnostics {
+namespace zomlang {
+namespace compiler {
 
 class InFlightDiagnostic {
 public:
-  InFlightDiagnostic(DiagnosticEngine& engine, source::SourceLoc loc, Diagnostic&& diag)
+  InFlightDiagnostic(DiagnosticEngine& engine, SourceLoc loc, Diagnostic&& diag)
       : engine_(&engine), loc_(loc), diag_(zc::mv(diag)), emitted_(false) {}
 
   // 添加移动构造函数和移动赋值运算符
@@ -39,12 +39,12 @@ public:
 
 private:
   DiagnosticEngine* engine_;
-  source::SourceLoc loc_;
+  SourceLoc loc_;
   Diagnostic diag_;
   bool emitted_;
 };
 
-}  // namespace diagnostics
-}  // namespace zom
+}  // namespace compiler
+}  // namespace zomlang
 
 #endif  // ZOM_DIAGNOSTICS_IN_FLIGHT_DIAGNOSTIC_H_

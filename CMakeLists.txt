@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.25.0)
 
-project(ZOM)
+project("ZOM" CXX)
+
+set(VERSION 0.0.1-dev)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

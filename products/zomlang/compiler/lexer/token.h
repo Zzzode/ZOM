@@ -3,8 +3,8 @@
 
 #include "zomlang/compiler/source/location.h"
 
-namespace zom {
-namespace lexer {
+namespace zomlang {
+namespace compiler {
 
 enum class tok {
   kUnknown,
@@ -24,10 +24,10 @@ struct TokenDesc {
   tok kind;
   const char* start;
   unsigned length;
-  source::SourceLoc loc;
+  SourceLoc loc;
 
   TokenDesc() : kind(tok::kUnknown), start(nullptr), length(0) {}
-  TokenDesc(const tok k, const char* s, const unsigned len, const source::SourceLoc l)
+  TokenDesc(const tok k, const char* s, const unsigned len, const SourceLoc l)
       : kind(k), start(s), length(len), loc(l) {}
 };
 
@@ -39,13 +39,13 @@ public:
   ZC_NODISCARD tok getKind() const { return desc.kind; }
   ZC_NODISCARD const char* getStart() const { return desc.start; }
   ZC_NODISCARD unsigned getLength() const { return desc.length; }
-  ZC_NODISCARD source::SourceLoc getLocation() const { return desc.loc; }
+  ZC_NODISCARD SourceLoc getLocation() const { return desc.loc; }
 
 private:
   TokenDesc desc;
 };
 
-}  // namespace lexer
-}  // namespace zom
+}  // namespace compiler
+}  // namespace zomlang
 
 #endif  // ZOM_LEXER_TOKEN_H_
