@@ -47,12 +47,12 @@ ZC_TEST("ModuleLoader basic") {
 
   zc::Own<const zc::Directory> dir1 = dir->openSubdir(zc::Path("dir1"), zc::WriteMode::CREATE);
   clock.expectChanged(*dir);
-  dir1->openFile(zc::Path("mod.zl"), zc::WriteMode::CREATE);
+  dir1->openFile(zc::Path("mod.zom"), zc::WriteMode::CREATE);
   clock.expectChanged(*dir1);
 
   zc::Own<const zc::Directory> dir2 = dir->openSubdir(zc::Path("dir2"), zc::WriteMode::CREATE);
   clock.expectChanged(*dir);
-  dir2->openFile(zc::Path("mod.zl"), zc::WriteMode::CREATE);
+  dir2->openFile(zc::Path("mod.zom"), zc::WriteMode::CREATE);
   clock.expectChanged(*dir2);
 
   ModuleLoader loader;
@@ -61,15 +61,15 @@ ZC_TEST("ModuleLoader basic") {
   auto subdir1 = dir->openSubdir(zc::Path("dir1"));
   clock.expectUnchanged(*dir);
   clock.expectUnchanged(*subdir1);
-  auto mod1 = loader.loadModule(*subdir1, zc::Path("mod.zl"));
+  auto mod1 = loader.loadModule(*subdir1, zc::Path("mod.zom"));
   ZC_EXPECT(mod1 != zc::none);
 
   // Testing reloading
-  auto mod2 = loader.loadModule(*subdir1, zc::Path("mod.zl"));
+  auto mod2 = loader.loadModule(*subdir1, zc::Path("mod.zom"));
   ZC_EXPECT(mod2 != zc::none);
 
-  auto maybeModule1 = loader.loadModule(*subdir1, zc::Path("mod.zl"));
-  auto maybeModule2 = loader.loadModule(*subdir1, zc::Path("mod.zl"));
+  auto maybeModule1 = loader.loadModule(*subdir1, zc::Path("mod.zom"));
+  auto maybeModule2 = loader.loadModule(*subdir1, zc::Path("mod.zom"));
   ZC_EXPECT(maybeModule1 != zc::none);
   ZC_EXPECT(maybeModule2 != zc::none);
 
@@ -78,7 +78,7 @@ ZC_TEST("ModuleLoader basic") {
     // Test files with the same name in different directories
     auto subdir2 = dir->openSubdir(zc::Path("dir2"));
     clock.expectUnchanged(*dir);
-    auto maybeModule3 = loader.loadModule(*subdir2, zc::Path("mod.zl"));
+    auto maybeModule3 = loader.loadModule(*subdir2, zc::Path("mod.zom"));
     ZC_EXPECT(maybeModule3 != zc::none);
     ZC_IF_SOME(module3, maybeModule3) { ZC_EXPECT(module1 != module3); }
   }
@@ -92,19 +92,19 @@ ZC_TEST("ModuleLoader LoadDuplicateFiles") {
 
   auto dir1 = dir->openSubdir(zc::Path("dir1"), zc::WriteMode::CREATE);
   clock.expectChanged(*dir);
-  auto file1 = dir1->openFile(zc::Path("test.zl"), zc::WriteMode::CREATE);
+  auto file1 = dir1->openFile(zc::Path("test.zom"), zc::WriteMode::CREATE);
 
   auto dir2 = dir->openSubdir(zc::Path("dir2"), zc::WriteMode::CREATE);
   clock.expectChanged(*dir);
-  auto file2 = dir2->openFile(zc::Path("test.zl"), zc::WriteMode::CREATE);
+  auto file2 = dir2->openFile(zc::Path("test.zom"), zc::WriteMode::CREATE);
 
   ModuleLoader loader;
   auto readableDir1 = dir->openSubdir(zc::Path("dir1"));
   clock.expectUnchanged(*dir);
   clock.expectUnchanged(*readableDir1);
 
-  auto maybeModule1 = loader.loadModule(*readableDir1, zc::Path("test.zl"));
-  auto maybeModule2 = loader.loadModule(*readableDir1, zc::Path("test.zl"));
+  auto maybeModule1 = loader.loadModule(*readableDir1, zc::Path("test.zom"));
+  auto maybeModule2 = loader.loadModule(*readableDir1, zc::Path("test.zom"));
   ZC_EXPECT(maybeModule1 != zc::none);
   ZC_EXPECT(maybeModule2 != zc::none);
 

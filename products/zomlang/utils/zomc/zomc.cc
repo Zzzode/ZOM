@@ -69,11 +69,10 @@ public:
   // "compile" command
 
   zc::MainBuilder::Validity addSource(const zc::StringPtr file) {
-    ZC_IF_SOME(module, driver->addSourceFile(file)) {
-      (void)(module);
-      return true;
-    }
-    return "no such file";
+    if (!file.endsWith(".zom")) { return "source file must have .zom extension"; }
+    zc::Maybe<Module&> module = driver->addSourceFile(file);
+    if (module == zc::none) return "failed to load source file";
+    return true;
   }
 
   zc::MainBuilder::Validity setEmitType(zc::StringPtr emitType) { return true; }
