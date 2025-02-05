@@ -16,13 +16,11 @@ add_library(
   $<TARGET_OBJECTS:parser>
   $<TARGET_OBJECTS:source>
   $<TARGET_OBJECTS:typecheck>)
-
 target_link_libraries(frontend PUBLIC zc)
-# target_link_libraries( frontend PRIVATE MLIRIR MLIRPass MLIRExecutionEngine
-# MLIRLLVMIR LLVMCore LLVMSupport LLVMBitWriter LLVMARM64CodeGen)
 
 set_target_include_directories(
   "${INCLUDE_DIRS}"
+  frontend
   basic
   diagnostics
   driver

@@ -23,16 +23,14 @@ endif()
 
 set(ALL_TEST_SOURCES ${REGULAR_TEST_SOURCES} ${ZIP_TEST_SOURCES})
 
-set(ALL_TESTS)
-
 foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
   get_filename_component(TEST_NAME ${TEST_SOURCE} NAME_WE)
   get_filename_component(TEST_DIR ${TEST_SOURCE} DIRECTORY)
   get_filename_component(TEST_DIR_NAME ${TEST_DIR} NAME)
 
   if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    if(TEST_SOURCE MATCHES "core/filesystem-disk-generic-test.cc" OR
-      TEST_SOURCE MATCHES "core/filesystem-disk-old-kernel-test.cc")
+    if(TEST_SOURCE MATCHES "core/filesystem-disk-generic-test.cc"
+       OR TEST_SOURCE MATCHES "core/filesystem-disk-old-kernel-test.cc")
       message(STATUS "Skipping Linux-specific test: ${TEST_SOURCE}")
       continue()
     endif()
@@ -42,29 +40,24 @@ foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
   if(TEST_NAME MATCHES "win32")
     set(IS_PLATFORM_SPECIFIC TRUE)
     if(NOT WIN32)
-      # message(STATUS "Skipping Windows-specific test: ${TEST_NAME}")
       continue()
     endif()
   elseif(TEST_NAME MATCHES "unix")
     set(IS_PLATFORM_SPECIFIC TRUE)
     if(NOT UNIX)
-      # message(STATUS "Skipping Unix-specific test: ${TEST_NAME}")
       continue()
     endif()
   endif()
 
   set(UNIQUE_TEST_NAME "${TEST_DIR_NAME}-${TEST_NAME}")
 
-  # message(STATUS "Test ${UNIQUE_TEST_NAME} added")
-  add_executable(${UNIQUE_TEST_NAME} EXCLUDE_FROM_ALL ${TEST_SOURCE})
-  target_link_libraries(${UNIQUE_TEST_NAME} PRIVATE zc ztest)
+  add_executable(${UNIQUE_TEST_NAME} ${TEST_SOURCE})
+  target_link_libraries(${UNIQUE_TEST_NAME} PRIVATE ztest)
   target_include_directories(${UNIQUE_TEST_NAME} PRIVATE ${ZOM_ROOT}/libraries)
 
   target_compile_options(${UNIQUE_TEST_NAME} PRIVATE -Wno-global-constructors)
 
   add_test(NAME ${UNIQUE_TEST_NAME} COMMAND ${UNIQUE_TEST_NAME})
-
-  list(APPEND ALL_TESTS ${UNIQUE_TEST_NAME})
+  add_coverage_to_test(${UNIQUE_TEST_NAME})
+  add_test_to_coverage(${UNIQUE_TEST_NAME})
 endforeach()
-
-add_custom_target(zcTests DEPENDS ${ALL_TESTS})

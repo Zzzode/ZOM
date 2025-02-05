@@ -47,4 +47,21 @@ if (ZOM_ENABLE_UNITTESTS)
   enable_testing()
 endif()
 
+if(ZOM_ENABLE_COVERAGE)
+  if(ZOM_ENABLE_ADDRESS_SANITIZER OR ZOM_ENABLE_UNDEFINED_SANITIZER)
+    message(FATAL_ERROR "Coverage cannot be used with sanitizers")
+  endif()
+
+  message(STATUS "Enable Coverage")
+
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    message(WARN "This compiler is not supported for zom")
+    add_compile_options(--coverage)
+    add_link_options(--coverage)
+  elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-fprofile-instr-generate -fcoverage-mapping -fno-inline)
+    add_link_options(-fprofile-instr-generate -fcoverage-mapping)
+  endif()
+endif()
+
 add_compile_options(-Wno-sign-compare -Wno-unused-parameter)

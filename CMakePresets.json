@@ -42,6 +42,17 @@
         "ZOM_ENABLE_ADDRESS_SANITIZER": "ON",
         "ZOM_ENABLE_UNDEFINED_SANITIZER": "ON"
       }
+    },
+    {
+      "name": "coverage",
+      "inherits": "debug",
+      "displayName": "Coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ZOM_ENABLE_COVERAGE": "ON",
+        "ZOM_ENABLE_ADDRESS_SANITIZER": "OFF",
+        "ZOM_ENABLE_UNDEFINED_SANITIZER": "OFF"
+      }
     }
   ],
   "buildPresets": [
@@ -65,9 +76,14 @@
       "name": "sanitizer",
       "configurePreset": "sanitizer",
       "targets": [
-        "all",
-        "zcTests",
-        "zomlangCompilerTests"
+        "all"
+      ]
+    },
+    {
+      "name": "coverage",
+      "configurePreset": "coverage",
+      "targets": [
+        "all"
       ]
     }
   ],
@@ -88,6 +104,19 @@
       "name": "allTests",
       "inherits": "default",
       "description": "Run all tests"
+    },
+    {
+      "name": "coverageTests",
+      "configurePreset": "coverage",
+      "description": "Run all tests with coverage",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true,
+        "jobs": 8
+      }
     }
   ]
 }

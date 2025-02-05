@@ -2,9 +2,9 @@ name: ZOM CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   BUILD_TYPE: Release
@@ -29,7 +29,7 @@ jobs:
       - name: Set up Python 3.10
         uses: actions/setup-python@v3
         with:
-          python-version: '3.10'
+          python-version: "3.10"
 
       - name: Check Code Format
         run: |
@@ -50,18 +50,31 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build clang
+          sudo apt-get install -y cmake ninja-build clang lcov llvm
 
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install cmake ninja clang-format
+          brew install cmake ninja clang-format lcov llvm
 
       - name: Configure CMake
-        run: cmake --preset sanitizer
+        run: cmake --preset coverage
 
-      - name: Build
-        run: cmake --build --preset sanitizer
+      - name: Build tests
+        run: cmake --build --preset coverage --target all
 
       - name: Run tests
-        run: ctest --preset allTests
+        run: ctest --preset coverageTests
+
+      - name: Generate coverage report
+        if : matrix.os == 'ubuntu-latest'
+        run: cmake --build --preset coverage --target coverage
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: Zzzode/ZOM
+          directory: ${{github.workspace}}/build-coverage/coverage
+          fail_ci_if_error: true
