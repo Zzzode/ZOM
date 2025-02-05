@@ -1,4 +1,4 @@
-name: ZOM Work Flows
+name: ZOM CI
 
 on:
   push:
@@ -37,21 +37,31 @@ jobs:
           python3 scripts/check-format.py
 
   check-unit-tests:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y cmake ninja-build clang
+      - name: Install dependencies (Ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang
 
-    - name: Configure CMake
-      run: cmake --preset sanitizer
+      - name: Install dependencies (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install cmake ninja clang-format
 
-    - name: Build
-      run: cmake --build --preset sanitizer
+      - name: Configure CMake
+        run: cmake --preset sanitizer
 
-    - name: Run tests
-      run: ctest --preset allTests
+      - name: Build
+        run: cmake --build --preset sanitizer
+
+      - name: Run tests
+        run: ctest --preset allTests

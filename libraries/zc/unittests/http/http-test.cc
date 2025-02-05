@@ -2439,6 +2439,13 @@ ZC_TEST("WebSocket pump disconnect on receive") {
 }
 
 ZC_TEST("WebSocket abort propagates through pipe") {
+#if ZC_HTTP_TEST_USE_OS_PIPE && !__linux__
+  // On Windows and Mac, OS event delivery is not always immediate, and that seems to make this
+  // test flakey. On Linux, events are always immediately delivered. For now, we compile the test
+  // but we don't run it outside of Linux. We do run the in-memory-pipes version on all OSs since
+  // that mode shouldn't depend on kernel behavior at all.
+  return;
+#endif
   // Pumping one end of a WebSocket pipe into another WebSocket which later becomes aborted will
   // cancel the pump promise with a DISCONNECTED exception.
 
@@ -5287,7 +5294,11 @@ ZC_TEST("newHttpService from HttpClient WebSockets disconnect") {
 
     ZC_EXPECT(frontPipe.ends[0]->readAllText().wait(waitScope) == "");
 
+#if !__APPLE__ || !ZC_HTTP_TEST_USE_OS_PIPE
+    // On macOS, we can't shutdown the write side of the pipe, so we can't test the disconnect
+    // case.
     frontPipe.ends[0]->shutdownWrite();
+#endif
     listenTask.wait(waitScope);
   }
 
