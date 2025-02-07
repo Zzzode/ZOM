@@ -50,12 +50,30 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build clang lcov llvm
+          sudo apt-get install -y cmake ninja-build clang
 
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
+        run: brew install cmake ninja
+
+      - name: Configure CMake
+        run: cmake --preset sanitizer
+
+      - name: Build tests
+        run: cmake --build --preset sanitizer
+
+      - name: Run tests
+        run: ctest --preset allTests
+
+  generate-coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies (Ubuntu)
         run: |
-          brew install cmake ninja clang-format lcov llvm
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang lcov llvm
 
       - name: Configure CMake
         run: cmake --preset coverage
@@ -63,15 +81,10 @@ jobs:
       - name: Build tests
         run: cmake --build --preset coverage --target all
 
-      - name: Run tests
-        run: ctest --preset coverageTests
-
       - name: Generate coverage report
-        if : matrix.os == 'ubuntu-latest'
         run: cmake --build --preset coverage --target coverage
 
       - name: Upload coverage to Codecov
-        if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}

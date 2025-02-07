@@ -14,7 +14,6 @@ set(ZOM_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(ZOM_CMAKE_DIR ${ZOM_ROOT}/cmake)
 set(INCLUDE_DIRS ${ZOM_ROOT}/products ${ZOM_ROOT}/libraries)
 
-
 include(${ZOM_CMAKE_DIR}/utils/options.cmake)
 include(${ZOM_CMAKE_DIR}/utils/common.cmake)
 include(${ZOM_CMAKE_DIR}/utils/checks.cmake)
