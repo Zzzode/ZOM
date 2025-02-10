@@ -122,5 +122,115 @@ ZC_TEST("ModuleLoader LoadDuplicateFiles") {
   }
 }
 
+ZC_TEST("ModuleLoader TestModuleIdsUnique") {
+  TestClock clock;
+
+  auto dir = newInMemoryDirectory(clock);
+  clock.expectChanged(*dir);
+
+  auto subdir1 = dir->openSubdir(zc::Path("dir1"), zc::WriteMode::CREATE);
+  auto file1 = subdir1->openFile(zc::Path("mod1.zom"), zc::WriteMode::CREATE);
+  auto subdir2 = dir->openSubdir(zc::Path("dir2"), zc::WriteMode::CREATE);
+  auto file2 = subdir2->openFile(zc::Path("mod2.zom"), zc::WriteMode::CREATE);
+
+  source::ModuleLoader loader;
+
+  // Load two different modules
+  auto maybeMod1 = loader.loadModule(*subdir1, zc::Path("mod1.zom"));
+  auto maybeMod2 = loader.loadModule(*subdir2, zc::Path("mod2.zom"));
+
+  ZC_EXPECT(maybeMod1 != zc::none);
+  ZC_EXPECT(maybeMod2 != zc::none);
+
+  ZC_IF_SOME(mod1, maybeMod1) {
+    ZC_IF_SOME(mod2, maybeMod2) {
+      ZC_EXPECT(mod1.getModuleId() != mod2.getModuleId());  // IDs should differ
+    }
+  }
+
+  // Reload same module
+  auto maybeMod1Reload = loader.loadModule(*subdir1, zc::Path("mod1.zom"));
+  ZC_IF_SOME(mod1, maybeMod1) {
+    ZC_IF_SOME(mod1Reload, maybeMod1Reload) {
+      ZC_EXPECT(mod1.getModuleId() == mod1Reload.getModuleId());  // Same ID
+    }
+  }
+}
+
+ZC_TEST("ModuleLoader TestFileContentChange") {
+  TestClock clock;
+
+  auto dir = newInMemoryDirectory(clock);
+  auto subdir = dir->openSubdir(zc::Path("src"), zc::WriteMode::CREATE);
+
+  // Create an initial file
+  {
+    auto file = subdir->openFile(zc::Path("test.zom"), zc::WriteMode::CREATE);
+    file->writeAll("content v1");
+    clock.expectChanged(*subdir);
+  }
+
+  source::ModuleLoader loader;
+  auto maybeMod1 = loader.loadModule(*subdir, zc::Path("test.zom"));
+  ZC_EXPECT(maybeMod1 != zc::none);
+
+  // Modify file content
+  {
+    auto file = subdir->openFile(zc::Path("test.zom"), zc::WriteMode::MODIFY);
+    file->writeAll("content v2");  // Different content
+    clock.expectChanged(*file);
+  }
+
+  auto maybeMod2 = loader.loadModule(*subdir, zc::Path("test.zom"));
+  ZC_EXPECT(maybeMod2 != zc::none);
+
+  // Verify new module created
+  ZC_IF_SOME(mod1, maybeMod1) {
+    ZC_IF_SOME(mod2, maybeMod2) {
+      ZC_EXPECT(mod1 != mod2);  // Should be different modules
+    }
+  }
+}
+
+ZC_TEST("ModuleLoader TestInvalidPath") {
+  TestClock clock;
+
+  auto dir = newInMemoryDirectory(clock);
+  source::ModuleLoader loader;
+
+  // Try loading a non-existent file
+  auto subdir = dir->openSubdir(zc::Path("src"), zc::WriteMode::CREATE);
+  auto result = loader.loadModule(*subdir, zc::Path("ghost.zom"));
+  ZC_EXPECT(result == zc::none);  // Should fail to load
+}
+
+ZC_TEST("ModuleLoader TestSameContentDifferentPaths") {
+  TestClock clock;
+
+  auto dir = newInMemoryDirectory(clock);
+
+  // Create two files with the same content
+  auto subdir1 = dir->openSubdir(zc::Path("dir1"), zc::WriteMode::CREATE);
+  auto file1 = subdir1->openFile(zc::Path("file.zom"), zc::WriteMode::CREATE);
+  file1->writeAll("same content");
+
+  auto subdir2 = dir->openSubdir(zc::Path("dir2"), zc::WriteMode::CREATE);
+  auto file2 = subdir2->openFile(zc::Path("file.zom"), zc::WriteMode::CREATE);
+  file2->writeAll("same content");
+
+  source::ModuleLoader loader;
+
+  auto maybeMod1 = loader.loadModule(*subdir1, zc::Path("file.zom"));
+  auto maybeMod2 = loader.loadModule(*subdir2, zc::Path("file.zom"));
+
+  ZC_EXPECT(maybeMod1 != zc::none);
+  ZC_EXPECT(maybeMod2 != zc::none);
+
+  // Should be considered different modules despite the same content
+  ZC_IF_SOME(mod1, maybeMod1) {
+    ZC_IF_SOME(mod2, maybeMod2) { ZC_EXPECT(mod1 != mod2); }
+  }
+}
+
 }  // namespace compiler
 }  // namespace zomlang
