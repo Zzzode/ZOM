@@ -27,7 +27,7 @@ class TestClock final : public zc::Clock {
 public:
   void tick() { time += 1 * zc::SECONDS; }
 
-  zc::Date now() const override { return time; }
+  [[nodiscard]] zc::Date now() const override { return time; }
 
   void expectChanged(const zc::FsNode& file) {
     ZC_EXPECT(file.stat().lastModified == time);
@@ -55,7 +55,7 @@ ZC_TEST("ModuleLoader basic") {
   dir2->openFile(zc::Path("mod.zom"), zc::WriteMode::CREATE);
   clock.expectChanged(*dir2);
 
-  ModuleLoader loader;
+  source::ModuleLoader loader;
 
   // Testing for normal loading
   auto subdir1 = dir->openSubdir(zc::Path("dir1"));
@@ -98,7 +98,7 @@ ZC_TEST("ModuleLoader LoadDuplicateFiles") {
   clock.expectChanged(*dir);
   auto file2 = dir2->openFile(zc::Path("test.zom"), zc::WriteMode::CREATE);
 
-  ModuleLoader loader;
+  source::ModuleLoader loader;
   auto readableDir1 = dir->openSubdir(zc::Path("dir1"));
   clock.expectUnchanged(*dir);
   clock.expectUnchanged(*readableDir1);
@@ -110,6 +110,15 @@ ZC_TEST("ModuleLoader LoadDuplicateFiles") {
 
   ZC_IF_SOME(module1, maybeModule1) {
     ZC_IF_SOME(module2, maybeModule2) { ZC_EXPECT(module1 == module2); }
+  }
+
+  // Test loading file with same name from different directory
+  auto readableDir2 = dir->openSubdir(zc::Path("dir2"));
+  clock.expectUnchanged(*dir);
+  auto maybeModule3 = loader.loadModule(*readableDir2, zc::Path("test.zom"));
+  ZC_EXPECT(maybeModule3 != zc::none);
+  ZC_IF_SOME(module3, maybeModule3) {
+    ZC_IF_SOME(module1, maybeModule1) { ZC_EXPECT(module1 != module3); }
   }
 }
 

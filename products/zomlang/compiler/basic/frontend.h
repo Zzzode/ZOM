@@ -16,28 +16,24 @@
 
 #include "zc/core/memory.h"
 #include "zc/core/mutex.h"
-#include "zomlang/compiler/source/module.h"
 
 namespace zomlang {
 namespace compiler {
 
-class Module;
 class Diagnostic;
 
-class Compiler {
-public:
-  Compiler() noexcept;
-  ~Compiler() noexcept(false);
+namespace source {
+class Module;
+}
 
-  void parseModules() const noexcept;
-  zc::Array<Diagnostic> getDiagnostics() const noexcept;
+namespace zis {
+class ZIS;
+}
 
-private:
-  class Impl;
-  zc::MutexGuarded<zc::Own<Impl>> impl;
+namespace basic {
 
-  class CompiledModule;
-};
+zc::Maybe<zis::ZIS> performParse(source::Module& module);
 
+}  // namespace basic
 }  // namespace compiler
 }  // namespace zomlang

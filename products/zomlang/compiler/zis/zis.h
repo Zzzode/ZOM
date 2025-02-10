@@ -4,26 +4,27 @@
 #include "zc/core/string.h"
 
 namespace zomlang {
+namespace compiler {
 namespace zis {
 
 class ZIS {
 public:
-  virtual ~ZIS() noexcept = default;  // 添加 noexcept
+  virtual ~ZIS() noexcept = default;
 };
 
 class Expression : public ZIS {
 public:
-  ~Expression() noexcept override = default;  // 添加 noexcept
+  ~Expression() noexcept override = default;
 };
 
 class Statement : public ZIS {
 public:
-  ~Statement() noexcept override = default;  // 添加 noexcept
+  ~Statement() noexcept override = default;
 };
 
 class BinaryExpression : public Expression {
 public:
-  ~BinaryExpression() noexcept override = default;  // 添加 noexcept
+  ~BinaryExpression() noexcept override = default;
 
 private:
   zc::Own<Expression> left;
@@ -33,7 +34,7 @@ private:
 
 class VariableDeclaration : public Statement {
 public:
-  ~VariableDeclaration() noexcept override = default;  // 添加 noexcept
+  ~VariableDeclaration() noexcept override = default;
 
   zc::StringPtr getType() const { return type; }
 
@@ -45,9 +46,10 @@ private:
   zc::Own<Expression> initializer;
 };
 
-// Add more AST node types as needed
+// Add more ZIS node types as needed
 
 }  // namespace zis
+}  // namespace compiler
 }  // namespace zomlang
 
 #endif  // ZOM_ZIS_ZIS_H_

@@ -18,10 +18,13 @@
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
 #include "zomlang/compiler/lexer/token.h"
-#include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
+
+namespace source {
+class SourceManager;
+}
 
 enum class LexerMode {
   kNormal,
@@ -47,7 +50,7 @@ struct LexerState {
 class Lexer {
 public:
   // Constructor
-  Lexer(const LangOptions& options, const SourceManager& sourceMgr, DiagnosticEngine& diags)
+  Lexer(const LangOptions& options, const source::SourceManager& sourceMgr, DiagnosticEngine& diags)
       : langOpts(options), sourceMgr(sourceMgr), diags(diags) {}
 
   // Main lexical analysis function
@@ -97,7 +100,7 @@ private:
   CommentRetentionMode commentMode;
 
   const LangOptions& langOpts;
-  const SourceManager& sourceMgr;
+  const source::SourceManager& sourceMgr;
   DiagnosticEngine& diags;
 
   // Token cache

@@ -22,8 +22,9 @@
 
 namespace zomlang {
 namespace compiler {
+namespace utils {
 
-static const char VERSION_STRING[] = "ZomLang Version " VERSION;
+static constexpr char VERSION_STRING[] = "ZomLang Version " VERSION;
 
 class CompilerMain {
 public:
@@ -64,14 +65,14 @@ public:
         .callAfterParsing(ZC_BIND_METHOD(*this, emitOutput));
   }
 
-public:
   // =====================================================================================
   // "compile" command
 
   zc::MainBuilder::Validity addSource(const zc::StringPtr file) {
     if (!file.endsWith(".zom")) { return "source file must have .zom extension"; }
-    zc::Maybe<Module&> module = driver->addSourceFile(file);
-    if (module == zc::none) return "failed to load source file";
+    if (const zc::Maybe<const source::Module&> module = driver->addSourceFile(file);
+        module == zc::none)
+      return "failed to load source file";
     return true;
   }
 
@@ -85,11 +86,12 @@ public:
 
 private:
   zc::ProcessContext& context;
-  zc::Own<CompilerDriver> driver;
-  zc::SpaceFor<CompilerDriver> driverSpace;
+  zc::Own<driver::CompilerDriver> driver;
+  zc::SpaceFor<driver::CompilerDriver> driverSpace;
 };
 
+}  // namespace utils
 }  // namespace compiler
 }  // namespace zomlang
 
-ZC_MAIN(zomlang::compiler::CompilerMain)
+ZC_MAIN(zomlang::compiler::utils::CompilerMain)

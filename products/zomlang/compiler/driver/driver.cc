@@ -15,59 +15,57 @@
 #include "zomlang/compiler/driver/driver.h"
 
 #include "zc/core/filesystem.h"
-#include "zomlang/compiler/basic/compiler.h"
+#include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/source/manager.h"
+#include "zomlang/compiler/source/module.h"
 
 namespace zomlang {
 namespace compiler {
+namespace driver {
 
-// CompilerDriver::Impl
+// ========== CompilerDriver::Impl
 
 class CompilerDriver::Impl {
 public:
   Impl() noexcept;
   ~Impl() noexcept(false);
 
+  ZC_DISALLOW_COPY_AND_MOVE(Impl);
+
   struct OutputDirective {
     zc::ArrayPtr<zc::byte> name;
     zc::Maybe<zc::Path> dir;
 
     ZC_DISALLOW_COPY(OutputDirective);
-    OutputDirective(OutputDirective&&) = default;
-    OutputDirective(zc::ArrayPtr<zc::byte> name, zc::Maybe<zc::Path> dir)
+    OutputDirective(OutputDirective&&) noexcept = default;
+    OutputDirective(const zc::ArrayPtr<zc::byte> name, zc::Maybe<zc::Path> dir)
         : name(name), dir(zc::mv(dir)) {}
   };
 
-  zc::Maybe<Module&> addSourceFileImpl(zc::StringPtr file);
+  zc::Maybe<const source::Module&> addSourceFileImpl(zc::StringPtr file);
 
 private:
-  zc::Own<Compiler> compiler;
-  zc::Own<ModuleLoader> loader;
-  zc::Own<SourceManager> sourceManager;
-
+  zc::Own<source::ModuleLoader> loader;
   zc::Vector<OutputDirective> outputs;
 };
 
-CompilerDriver::Impl::Impl() noexcept
-    : compiler(zc::heap<Compiler>()),
-      loader(zc::heap<ModuleLoader>()),
-      sourceManager(zc::heap<SourceManager>()) {}
+CompilerDriver::Impl::Impl() noexcept : loader(zc::heap<source::ModuleLoader>()) {}
 
-CompilerDriver::Impl::~Impl() noexcept(false) {}
+CompilerDriver::Impl::~Impl() noexcept(false) = default;
 
-zc::Maybe<Module&> CompilerDriver::Impl::addSourceFileImpl(const zc::StringPtr file) {
-  const auto [dir, path] = sourceManager->getDirWithPath(file);
-  return loader->loadModule(dir, path);
+zc::Maybe<const source::Module&> CompilerDriver::Impl::addSourceFileImpl(const zc::StringPtr file) {
+  return loader->loadModule(file);
 }
 
-// CompilerDriver
+// ========== CompilerDriver
 
 CompilerDriver::CompilerDriver() noexcept : impl(zc::heap<Impl>()) {}
-CompilerDriver::~CompilerDriver() noexcept(false) {}
+CompilerDriver::~CompilerDriver() noexcept(false) = default;
 
-zc::Maybe<Module&> CompilerDriver::addSourceFile(const zc::StringPtr file) {
+zc::Maybe<const source::Module&> CompilerDriver::addSourceFile(const zc::StringPtr file) {
   return impl->addSourceFileImpl(file);
 }
 
+}  // namespace driver
 }  // namespace compiler
 }  // namespace zomlang

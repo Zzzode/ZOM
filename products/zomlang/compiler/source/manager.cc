@@ -21,156 +21,9 @@
 
 namespace zomlang {
 namespace compiler {
+namespace source {
 
-namespace {
-
-struct FileKey {
-  const zc::ReadableDirectory& baseDir;
-  zc::PathPtr path;
-  zc::Maybe<const zc::ReadableFile&> file;
-  uint64_t hashCode;
-  uint64_t size;
-  zc::Date lastModified;
-
-  FileKey(const zc::ReadableDirectory& baseDir, const zc::PathPtr path)
-      : baseDir(baseDir),
-        path(path),
-        file(zc::none),
-        hashCode(0),
-        size(0),
-        lastModified(zc::UNIX_EPOCH) {}
-
-  FileKey(const zc::ReadableDirectory& baseDir, const zc::PathPtr path,
-          const zc::ReadableFile& file)
-      : FileKey(baseDir, path, file, file.stat()) {}
-
-  FileKey(const zc::ReadableDirectory& baseDir, const zc::PathPtr path,
-          const zc::ReadableFile& file, const zc::FsNode::Metadata& meta)
-      : baseDir(baseDir),
-        path(path),
-        file(file),
-        hashCode(meta.hashCode),
-        size(meta.size),
-        lastModified(meta.lastModified) {}
-
-  bool operator==(const FileKey& other) const {
-    if (&baseDir == &other.baseDir && path == other.path) return true;
-
-    if (hashCode != other.hashCode || size != other.size || lastModified != other.lastModified)
-      return false;
-
-    if (path.size() > 0 && other.path.size() > 0 &&
-        path[path.size() - 1] != other.path[other.path.size() - 1])
-      return false;
-
-    const auto mapping1 = ZC_ASSERT_NONNULL(file).mmap(0, size);
-    const auto mapping2 = ZC_ASSERT_NONNULL(other.file).mmap(0, size);
-    return mapping1 == mapping2;
-  }
-};
-
-struct FileKeyHash {
-  size_t operator()(const FileKey& key) const {
-    constexpr size_t prime = 0x9e3779b97f4a7c15;
-    size_t seed = key.hashCode;
-
-    for (auto& part : key.path) {
-      seed ^= zc::hashCode<zc::StringPtr>(part) + prime + (seed << 6) + (seed >> 2);
-    }
-
-    seed = (seed ^ (key.size * prime)) * prime;
-    seed = (seed ^ ((key.lastModified - zc::UNIX_EPOCH) / zc::MILLISECONDS * prime)) * prime;
-
-    if constexpr (sizeof(size_t) < sizeof(decltype(key.hashCode))) { return (seed >> 32) ^ seed; }
-    return seed;
-  }
-};
-
-}  // namespace
-
-// ========== ModuleLoader
-
-ModuleLoader::ModuleLoader() : impl(zc::heap<Impl>()) {}
-ModuleLoader::~ModuleLoader() noexcept(false) {}
-
-// ========== ModuleLoader::Impl
-
-class ModuleLoader::Impl {
-public:
-  Impl() noexcept = default;
-  ~Impl() noexcept(false) = default;
-
-  zc::Maybe<Module&> loadModule(const zc::ReadableDirectory& dir, zc::PathPtr path);
-
-private:
-  std::unordered_map<FileKey, zc::Own<Module>, FileKeyHash> modules;
-  uint64_t nextModuleId;
-};
-
-zc::Maybe<Module&> ModuleLoader::loadModule(const zc::ReadableDirectory& dir,
-                                            const zc::PathPtr path) {
-  return impl->loadModule(dir, path);
-}
-
-// ModuleLoader::ModuleImpl
-class ModuleLoader::ModuleImpl final : public Module {
-public:
-  ModuleImpl(Impl& loader, zc::Own<const zc::ReadableFile> file,
-             const zc::ReadableDirectory& sourceDir, zc::Path pathParam, const uint64_t id)
-      : loader(loader),
-        file(zc::mv(file)),
-        sourceDir(sourceDir),
-        path(zc::mv(pathParam)),
-        sourceNameStr(path.toString()),
-        moduleId(id),
-        compiled(false) {
-    ZC_REQUIRE(path.size() > 0);
-  }
-
-  ~ModuleImpl() noexcept(false) override {};
-
-  /// @brief Returns the source name of this module.
-  zc::StringPtr getSourceName() override;
-  /// @brief Returns true if this module is compiled.
-  bool isCompiled() override;
-  /// @brief Retrieves the unique ID of the module
-  uint64_t getModuleId() const override { return moduleId; }
-
-private:
-  ZC_UNUSED Impl& loader;
-  zc::Own<const zc::ReadableFile> file;
-  ZC_UNUSED const zc::ReadableDirectory& sourceDir;
-  zc::Path path;
-  zc::String sourceNameStr;
-  uint64_t moduleId;
-  bool compiled;
-};
-
-zc::StringPtr ModuleLoader::ModuleImpl::getSourceName() { return sourceNameStr; }
-bool ModuleLoader::ModuleImpl::isCompiled() { return compiled; }
-
-zc::Maybe<Module&> ModuleLoader::Impl::loadModule(const zc::ReadableDirectory& dir,
-                                                  zc::PathPtr path) {
-  ZC_IF_SOME(file, dir.tryOpenFile(path)) {
-    zc::Path pathCopy = path.clone();
-    auto key = FileKey(dir, pathCopy, *file);
-    if (const auto it = modules.find(key); it != modules.end()) { return *it->second; }
-
-    uint64_t id = nextModuleId++;
-    zc::Own<ModuleImpl> module =
-        zc::heap<ModuleImpl>(*this, zc::mv(file), dir, zc::mv(pathCopy), id);
-
-    auto& result = *module;
-    const auto [fst, snd] = modules.insert(std::make_pair(zc::mv(key), zc::mv(module)));
-    if (snd) { return result; }
-    // Now that we have the file open, we noticed a collision. Return the old file.
-    return *fst->second;
-  }
-
-  return zc::none;
-}
-
-// SourceManager::Impl
+// ========== SourceManager::Impl
 
 class SourceManager::Impl {
 public:
@@ -186,11 +39,11 @@ public:
     zc::Array<FixIt> fixIts;
   };
 
-  Impl() noexcept;
+  explicit Impl(const zc::Filesystem& disk, zc::Own<const zc::ReadableFile> file,
+                const zc::ReadableDirectory& sourceDir, zc::Path path) noexcept;
   ~Impl() noexcept(false);
 
   // Buffer management
-  DirWithPath getDirWithPath(zc::StringPtr file);
   uint64_t addNewSourceBuffer(zc::Own<zc::InputStream> input, zc::Own<Module> module);
   uint64_t addMemBufferCopy(const zc::ArrayPtr<const zc::byte> inputData,
                             const zc::StringPtr& bufIdentifier, Module* module);
@@ -248,7 +101,15 @@ public:
   zc::Maybe<const Module&> getModuleForBuffer(uint64_t bufferId) const;
 
 private:
-  zc::Own<zc::Filesystem> disk;
+  /// The filesystem to use for reading files.
+  const zc::Filesystem& disk;
+
+  /// The source file being compiled.
+  zc::Own<const zc::ReadableFile> file;
+  /// The source directory being compiled.
+  ZC_UNUSED const zc::ReadableDirectory& sourceDir;
+  /// Path to the source file being compiled.
+  const zc::Path path;
 
   zc::Vector<VirtualFile> virtualFiles;
   zc::Vector<SourceLoc> regexLiteralStartLocs;
@@ -264,21 +125,11 @@ private:
 
 // SourceManager::Impl
 
-SourceManager::Impl::Impl() noexcept : disk(zc::newDiskFilesystem()) {}
+SourceManager::Impl::Impl(const zc::Filesystem& disk, zc::Own<const zc::ReadableFile> file,
+                          const zc::ReadableDirectory& sourceDir, zc::Path path) noexcept
+    : disk(disk), file(zc::mv(file)), sourceDir(sourceDir), path(zc::mv(path)) {}
 
 SourceManager::Impl::~Impl() noexcept(false) = default;
-
-SourceManager::DirWithPath SourceManager::Impl::getDirWithPath(const zc::StringPtr filePath) {
-  const zc::PathPtr cwd = disk->getCurrentPath();
-  zc::Path path = cwd.evalNative(filePath);
-
-  ZC_REQUIRE(path.size() > 0);
-  zc::Path sourcePath =
-      path.startsWith(cwd) ? path.slice(cwd.size(), path.size()).clone() : zc::mv(path);
-  const zc::ReadableDirectory& dir = path.startsWith(cwd) ? disk->getCurrent() : disk->getRoot();
-
-  return DirWithPath{dir, zc::mv(sourcePath)};
-}
 
 void SourceManager::Impl::createVirtualFile(const SourceLoc& loc, zc::StringPtr name,
                                             int lineOffset, unsigned length) {
@@ -293,18 +144,17 @@ void SourceManager::Impl::getMessage(const SourceLoc& loc, DiagnosticKind kind,
                                      const zc::String& msg, zc::ArrayPtr<SourceRange> ranges,
                                      zc::ArrayPtr<FixIt> fixIts, zc::OutputStream& os) const {}
 
+// ================================================================================
 // SourceManager
 
-SourceManager::SourceManager() noexcept : impl(zc::heap<Impl>()) {}
+SourceManager::SourceManager(const zc::Filesystem& disk, zc::Own<const zc::ReadableFile> file,
+                             const zc::ReadableDirectory& sourceDir, zc::Path path) noexcept
+    : impl(zc::heap<Impl>(disk, zc::mv(file), sourceDir, zc::mv(path))) {}
 
 SourceManager::~SourceManager() noexcept(false) = default;
 
-SourceManager::DirWithPath SourceManager::getDirWithPath(const zc::StringPtr file) {
-  return impl->getDirWithPath(file);
-}
-
 void SourceManager::createVirtualFile(const SourceLoc& loc, const zc::StringPtr name,
-                                      int lineOffset, unsigned length) {
+                                      const int lineOffset, const unsigned length) {
   impl->createVirtualFile(loc, name, lineOffset, length);
 }
 
@@ -314,5 +164,6 @@ void SourceManager::getMessage(const SourceLoc& loc, DiagnosticKind kind, const 
   impl->getMessage(loc, kind, msg, ranges, fixIts, os);
 }
 
+}  // namespace source
 }  // namespace compiler
 }  // namespace zomlang

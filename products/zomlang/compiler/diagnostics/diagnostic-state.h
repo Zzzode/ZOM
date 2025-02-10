@@ -4,19 +4,22 @@
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/source/location.h"
-#include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
 
+namespace source {
+class SourceManager;
+}
+
 class DiagnosticState {
 public:
   DiagnosticState();
+  DiagnosticState(DiagnosticState&&) noexcept = default;
 
   ZC_DISALLOW_COPY(DiagnosticState);
 
-  DiagnosticState(DiagnosticState&&) = default;
-  DiagnosticState& operator=(DiagnosticState&&) = default;
+  DiagnosticState& operator=(DiagnosticState&&) noexcept = default;
 
   // 控制诊断行为的标志
   bool getShowDiagnosticsAfterFatalError() const { return showDiagnosticsAfterFatalError; }
@@ -34,8 +37,8 @@ public:
   void setHadAnyError() { hadAnyError = true; }
 
   // 辅助函数
-  static CharSourceRange toCharSourceRange(const SourceManager& sm, SourceRange range);
-  static char extractCharAfter(const SourceManager& sm, SourceLoc loc);
+  static CharSourceRange toCharSourceRange(const source::SourceManager& sm, SourceRange range);
+  static char extractCharAfter(const source::SourceManager& sm, SourceLoc loc);
 
 private:
   bool showDiagnosticsAfterFatalError = false;

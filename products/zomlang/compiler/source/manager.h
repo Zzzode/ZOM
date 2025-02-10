@@ -23,24 +23,9 @@
 
 namespace zomlang {
 namespace compiler {
+namespace source {
 
 class Module;
-
-class ModuleLoader {
-public:
-  ModuleLoader();
-  ~ModuleLoader() noexcept(false);
-  ZC_DISALLOW_COPY_AND_MOVE(ModuleLoader);
-
-  zc::Maybe<Module&> loadModule(const zc::ReadableDirectory& dir, zc::PathPtr path);
-
-private:
-  class Impl;
-  zc::Own<Impl> impl;
-
-  class ModuleImpl;
-  friend class SourceManager;
-};
 
 struct LineAndColumn {
   unsigned line;
@@ -50,25 +35,19 @@ struct LineAndColumn {
 
 class SourceManager {
 public:
-  SourceManager() noexcept;
+  explicit SourceManager(const zc::Filesystem& disk, zc::Own<const zc::ReadableFile> file,
+                         const zc::ReadableDirectory& sourceDir, zc::Path path) noexcept;
   ~SourceManager() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(SourceManager);
 
-  struct DirWithPath {
-    const zc::ReadableDirectory& dir;
-    zc::Path path;
-  };
-
   // Buffer management
-  DirWithPath getDirWithPath(zc::StringPtr file);
   uint64_t addNewSourceBuffer(zc::Own<zc::InputStream> input, zc::Own<Module> module);
-  uint64_t addMemBufferCopy(const zc::ArrayPtr<const zc::byte> inputData,
+  uint64_t addMemBufferCopy(zc::ArrayPtr<const zc::byte> inputData,
                             const zc::StringPtr& bufIdentifier, Module* module);
 
   // Virtual file management
-  void createVirtualFile(const SourceLoc& loc, const zc::StringPtr name, int lineOffset,
-                         unsigned length);
+  void createVirtualFile(const SourceLoc& loc, zc::StringPtr name, int lineOffset, unsigned length);
   const struct VirtualFile* getVirtualFile(const SourceLoc& loc) const;
 
   // Generated source info
@@ -123,5 +102,6 @@ private:
   zc::Own<Impl> impl;
 };
 
+}  // namespace source
 }  // namespace compiler
 }  // namespace zomlang

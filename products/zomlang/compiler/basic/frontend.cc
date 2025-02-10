@@ -12,36 +12,14 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/basic/compiler.h"
+#include "zomlang/compiler/basic/frontend.h"
 
 #include "zc/core/map.h"
+#include "zomlang/compiler/source/module.h"
+#include "zomlang/compiler/zis/zis.h"
 
 namespace zomlang {
 namespace compiler {
-
-// Compiler::CompiledModule
-
-class Compiler::CompiledModule {
-public:
-  CompiledModule() noexcept = default;
-  ~CompiledModule() noexcept(false) = default;
-};
-
-// Compiler::Impl
-
-class Compiler::Impl {
-public:
-  void parseModulesImpl();
-};
-
-void Compiler::Impl::parseModulesImpl() {}
-
-// Compiler
-
-Compiler::Compiler() noexcept : impl(zc::heap<Impl>()) {}
-Compiler::~Compiler() noexcept(false) {}
-
-void Compiler::parseModules() const noexcept { impl.lockExclusive()->get()->parseModulesImpl(); }
-
+namespace basic {}  // namespace basic
 }  // namespace compiler
 }  // namespace zomlang

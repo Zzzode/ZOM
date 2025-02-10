@@ -1,3 +1,3 @@
-file(GLOB BASIC_SRC compiler.cc)
+file(GLOB BASIC_SRC frontend.cc)
 
 add_library(basic STATIC ${BASIC_SRC})

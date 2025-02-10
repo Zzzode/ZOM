@@ -15,22 +15,28 @@
 #pragma once
 
 #include "zc/core/string.h"
-#include "zomlang/compiler/source/module.h"
 
 namespace zomlang {
 namespace compiler {
+
+namespace source {
+class Module;
+}
+
+namespace driver {
 
 class CompilerDriver {
 public:
   CompilerDriver() noexcept;
   ~CompilerDriver() noexcept(false);
 
-  zc::Maybe<Module&> addSourceFile(zc::StringPtr file);
+  zc::Maybe<const source::Module&> addSourceFile(zc::StringPtr file);
 
 private:
   class Impl;
   zc::Own<Impl> impl;
 };
 
+}  // namespace driver
 }  // namespace compiler
 }  // namespace zomlang
