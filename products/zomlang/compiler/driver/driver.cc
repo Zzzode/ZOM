@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Zode.Z. All rights reserved
+// Copyright (c) 2024-2025 Zode.Z. All rights reserved
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,20 +15,26 @@
 #include "zomlang/compiler/driver/driver.h"
 
 #include "zc/core/filesystem.h"
-#include "zomlang/compiler/basic/frontend.h"
+#include "zomlang/compiler/diagnostics/consoling-diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/source/manager.h"
-#include "zomlang/compiler/source/module.h"
 
 namespace zomlang {
 namespace compiler {
 namespace driver {
 
-// ========== CompilerDriver::Impl
+// ================================================================================
+// CompilerDriver::Impl
 
 class CompilerDriver::Impl {
 public:
-  Impl() noexcept;
-  ~Impl() noexcept(false);
+  Impl() noexcept
+      : sourceManager(zc::heap<source::SourceManager>()),
+        diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)) {
+    diagnosticEngine->addConsumer(zc::heap<diagnostics::ConsolingDiagnosticConsumer>());
+  }
+  ~Impl() noexcept(false) = default;
 
   ZC_DISALLOW_COPY_AND_MOVE(Impl);
 
@@ -42,28 +48,42 @@ public:
         : name(name), dir(zc::mv(dir)) {}
   };
 
-  zc::Maybe<const source::Module&> addSourceFileImpl(zc::StringPtr file);
+  zc::Maybe<source::BufferId> addSourceFileImpl(zc::StringPtr file);
+
+  const diagnostics::DiagnosticEngine& getDiagnosticEngine() const;
 
 private:
-  zc::Own<source::ModuleLoader> loader;
-  zc::Vector<OutputDirective> outputs;
+  /// Source manager to manage source files.
+  zc::Own<source::SourceManager> sourceManager;
+  /// Diagnostic engine to report diagnostics.
+  zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;
 };
 
-CompilerDriver::Impl::Impl() noexcept : loader(zc::heap<source::ModuleLoader>()) {}
-
-CompilerDriver::Impl::~Impl() noexcept(false) = default;
-
-zc::Maybe<const source::Module&> CompilerDriver::Impl::addSourceFileImpl(const zc::StringPtr file) {
-  return loader->loadModule(file);
+zc::Maybe<source::BufferId> CompilerDriver::Impl::addSourceFileImpl(const zc::StringPtr file) {
+  const zc::Maybe<source::BufferId> bufferId = sourceManager->getFileSystemSourceBufferID(file);
+  if (bufferId == zc::none) {
+    diagnosticEngine->diagnose<diagnostics::DiagID::InvalidPath>(source::SourceLoc(), file);
+  }
+  return bufferId;
 }
 
-// ========== CompilerDriver
+ZC_ALWAYS_INLINE(const diagnostics::DiagnosticEngine& CompilerDriver::Impl::getDiagnosticEngine()
+                     const) {
+  return *diagnosticEngine;
+}
+
+// ================================================================================
+// CompilerDriver
 
 CompilerDriver::CompilerDriver() noexcept : impl(zc::heap<Impl>()) {}
 CompilerDriver::~CompilerDriver() noexcept(false) = default;
 
-zc::Maybe<const source::Module&> CompilerDriver::addSourceFile(const zc::StringPtr file) {
+zc::Maybe<source::BufferId> CompilerDriver::addSourceFile(const zc::StringPtr file) {
   return impl->addSourceFileImpl(file);
+}
+
+const diagnostics::DiagnosticEngine& CompilerDriver::getDiagnosticEngine() const {
+  return impl->getDiagnosticEngine();
 }
 
 }  // namespace driver
