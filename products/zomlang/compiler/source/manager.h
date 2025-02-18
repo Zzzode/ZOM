@@ -15,87 +15,124 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zc/core/filesystem.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
-#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
 namespace source {
 
-class Module;
+class SourceLoc;
+class SourceRange;
+class CharSourceRange;
 
 struct LineAndColumn {
-  unsigned line;
-  unsigned column;
-  LineAndColumn(const unsigned l, const unsigned c) : line(l), column(c) {}
+  uint32_t line;
+  uint32_t column;
+  LineAndColumn(const uint32_t l, const uint32_t c) : line(l), column(c) {}
 };
+
+class BufferId {
+public:
+  explicit BufferId(uint64_t val) noexcept;
+  ~BufferId() noexcept(false);
+
+  BufferId(const BufferId& other);
+  BufferId& operator=(const BufferId& other);
+
+  BufferId(BufferId&& other) noexcept;
+  BufferId& operator=(BufferId&& other) noexcept;
+
+  operator uint64_t() const;
+
+  bool operator==(const BufferId& other) const;
+  bool operator!=(const BufferId& other) const;
+  bool operator<(const BufferId& other) const;
+  bool operator>(const BufferId& other) const;
+  bool operator<=(const BufferId& other) const;
+  bool operator>=(const BufferId& other) const;
+
+  bool isValid() const;
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+struct VirtualFile;
 
 class SourceManager {
 public:
-  explicit SourceManager(const zc::Filesystem& disk, zc::Own<const zc::ReadableFile> file,
-                         const zc::ReadableDirectory& sourceDir, zc::Path path) noexcept;
+  SourceManager() noexcept;
   ~SourceManager() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(SourceManager);
 
-  // Buffer management
-  uint64_t addNewSourceBuffer(zc::Own<zc::InputStream> input, zc::Own<Module> module);
-  uint64_t addMemBufferCopy(zc::ArrayPtr<const zc::byte> inputData,
-                            const zc::StringPtr& bufIdentifier, Module* module);
+  /// Buffer management
+  BufferId addNewSourceBuffer(zc::Array<zc::byte> inputData, zc::StringPtr bufIdentifier);
+  BufferId addMemBufferCopy(zc::ArrayPtr<const zc::byte> inputData, zc::StringPtr bufIdentifier);
 
-  // Virtual file management
+  /// Virtual file management
   void createVirtualFile(const SourceLoc& loc, zc::StringPtr name, int lineOffset, unsigned length);
-  const struct VirtualFile* getVirtualFile(const SourceLoc& loc) const;
+  const zc::Maybe<const VirtualFile&> getVirtualFile(const SourceLoc& loc) const;
 
-  // Generated source info
-  void setGeneratedSourceInfo(uint64_t bufferId, const struct GeneratedSourceInfo& info);
-  const struct GeneratedSourceInfo* getGeneratedSourceInfo(uint64_t bufferId) const;
+  /// Generated source info
+  void setGeneratedSourceInfo(BufferId bufferId, const struct GeneratedSourceInfo& info);
+  const GeneratedSourceInfo* getGeneratedSourceInfo(BufferId bufferId) const;
 
-  // Location and range operations
-  SourceLoc getLocForOffset(uint64_t bufferId, unsigned offset) const;
+  /// Returns the SourceLoc for the beginning of the specified buffer
+  /// (at offset zero).
+  ///
+  /// Note that the resulting location might not point at the first token: it
+  /// might point at whitespace or a comment.
+  SourceLoc getLocForBufferStart(BufferId bufferId) const;
+
+  /// Returns the offset in bytes for the given valid source location.
+  unsigned getLocOffsetInBuffer(SourceLoc Loc, BufferId bufferId) const;
+
+  /// Location and range operations
+  SourceLoc getLocForOffset(BufferId bufferId, unsigned offset) const;
   LineAndColumn getLineAndColumn(const SourceLoc& loc) const;
+  LineAndColumn getPresumedLineAndColumnForLoc(SourceLoc Loc,
+                                               BufferId bufferId = BufferId(0)) const;
   unsigned getLineNumber(const SourceLoc& loc) const;
   bool isBefore(const SourceLoc& first, const SourceLoc& second) const;
   bool isAtOrBefore(const SourceLoc& first, const SourceLoc& second) const;
   bool containsTokenLoc(const SourceRange& range, const SourceLoc& loc) const;
   bool encloses(const SourceRange& enclosing, const SourceRange& inner) const;
 
-  // Content retrieval
-  zc::ArrayPtr<const zc::byte> getEntireTextForBuffer(uint64_t bufferId) const;
-  zc::ArrayPtr<const zc::byte> extractText(const SourceRange& range) const;
+  /// Returns a buffer identifier for the given location.
+  zc::StringPtr getDisplayNameForLoc(const SourceLoc& loc) const;
 
-  // Buffer identification
-  uint64_t findBufferContainingLoc(const SourceLoc& loc) const;
-  zc::StringPtr getFilename(uint64_t bufferId) const;
+  /// Content retrieval
+  zc::ArrayPtr<const zc::byte> getEntireTextForBuffer(BufferId bufferId) const;
+  zc::ArrayPtr<const zc::byte> extractText(const SourceRange& range,
+                                           zc::Maybe<BufferId> bufferId) const;
 
-  // Line and column operations
-  zc::Maybe<unsigned> resolveFromLineCol(uint64_t bufferId, unsigned line, unsigned col) const;
-  zc::Maybe<unsigned> resolveOffsetForEndOfLine(uint64_t bufferId, unsigned line) const;
-  zc::Maybe<unsigned> getLineLength(uint64_t bufferId, unsigned line) const;
-  SourceLoc getLocForLineCol(uint64_t bufferId, unsigned line, unsigned col) const;
+  /// Buffer identification
+  zc::Maybe<BufferId> findBufferContainingLoc(const SourceLoc& loc) const;
+  zc::StringPtr getFilename(BufferId bufferId) const;
 
-  // External source support
-  uint64_t getExternalSourceBufferID(const zc::StringPtr& path);
-  SourceLoc getLocFromExternalSource(const zc::StringPtr& path, unsigned line, unsigned col);
+  /// Line and column operations
+  zc::Maybe<unsigned> resolveFromLineCol(BufferId bufferId, unsigned line, unsigned col) const;
+  zc::Maybe<unsigned> resolveOffsetForEndOfLine(BufferId bufferId, unsigned line) const;
+  zc::Maybe<unsigned> getLineLength(BufferId bufferId, unsigned line) const;
+  SourceLoc getLocForLineCol(BufferId bufferId, unsigned line, unsigned col) const;
 
-  // Diagnostics
-  void getMessage(const SourceLoc& loc, DiagnosticKind kind, const zc::String& msg,
-                  zc::ArrayPtr<SourceRange> ranges, zc::ArrayPtr<FixIt> fixIts,
-                  zc::OutputStream& os) const;
+  /// External source support
+  zc::Maybe<BufferId> getFileSystemSourceBufferID(zc::StringPtr path);
+  SourceLoc getLocFromExternalSource(zc::StringPtr path, unsigned line, unsigned col);
 
-  // Verification
+  zc::StringPtr getIdentifierForBuffer(BufferId bufferId) const;
+
+  CharSourceRange getRangeForBuffer(BufferId bufferId) const;
+
+  /// Verification
   void verifyAllBuffers() const;
 
-  // Regex literal support
+  /// Regex literal support
   void recordRegexLiteralStartLoc(const SourceLoc& loc);
   bool isRegexLiteralStart(const SourceLoc& loc) const;
-
-  // Module management
-  void setModuleForBuffer(uint64_t bufferId, zc::Own<Module> module);
-  zc::Maybe<const Module&> getModuleForBuffer(uint64_t bufferId) const;
 
 private:
   class Impl;

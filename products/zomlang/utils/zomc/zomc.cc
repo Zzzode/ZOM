@@ -15,6 +15,7 @@
 #include "zc/core/main.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/driver/driver.h"
+#include "zomlang/compiler/source/manager.h"
 
 #ifndef VERSION
 #define VERSION "(unknown)"
@@ -69,10 +70,11 @@ public:
   // "compile" command
 
   zc::MainBuilder::Validity addSource(const zc::StringPtr file) {
-    if (!file.endsWith(".zom")) { return "source file must have .zom extension"; }
-    if (const zc::Maybe<const source::Module&> module = driver->addSourceFile(file);
-        module == zc::none)
-      return "failed to load source file";
+    if (!file.endsWith(".zom")) { return "Error: zomc: source file must have .zom extension"; }
+    if (const zc::Maybe<source::BufferId> bufferId = driver->addSourceFile(file);
+        bufferId == zc::none) {
+      return zc::str("Failed to load source file.");
+    }
     return true;
   }
 

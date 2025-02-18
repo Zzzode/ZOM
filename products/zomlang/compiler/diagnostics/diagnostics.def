@@ -12,29 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#pragma once
-
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/lexer/token.h"
-
-namespace zomlang {
-namespace compiler {
-namespace parser {
-
-class Parser {
-public:
-  Parser(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept;
-  ~Parser() noexcept(false) = default;
-
-  ZC_DISALLOW_COPY_AND_MOVE(Parser);
-
-  void parse(zc::ArrayPtr<const lexer::Token> tokens);
-
-private:
-  class Impl;
-  zc::Own<Impl> impl;
-};
-
-}  // namespace parser
-}  // namespace compiler
-}  // namespace zomlang
+DIAG(InvalidPath,           Error,   "Cannot open file path at '{0}', no such file or directory.", 1)
+DIAG(InvalidChar,           Error,   "Invalid character: '{0}'", 1)
+DIAG(UnterminatedString,    Error,   "Unterminated string literal", 0)
+DIAG(TypeMismatch,          Error,   "Type mismatch: expected {0}, got {1}", 2)

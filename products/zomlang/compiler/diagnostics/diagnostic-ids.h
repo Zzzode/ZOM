@@ -12,31 +12,42 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/diagnostics/diagnostic-state.h"
+#pragma once
 
-#include "zomlang/compiler/source/manager.h"
+#include <cstdint>
+
+#include "zc/core/common.h"
 
 namespace zomlang {
 namespace compiler {
 namespace diagnostics {
 
-DiagnosticState::DiagnosticState() : ignoredDiagnostics(kNumDiags) {}
+enum class DiagID : uint32_t {
+#define DIAG(Name, ...) Name,
+#include "zomlang/compiler/diagnostics/diagnostics.def"
 
-void DiagnosticState::ignoreDiagnostic(uint32_t diagId) {
-  if (diagId < kNumDiags) { ignoredDiagnostics[diagId] = true; }
+#undef DIAG
+  NumDiags
+};
+
+enum class DiagSeverity : uint8_t { Note, Remark, Warning, Error, Fatal };
+
+constexpr const char* toString(const DiagSeverity severity) {
+  switch (severity) {
+    case DiagSeverity::Note:
+      return "Note";
+    case DiagSeverity::Remark:
+      return "Remark";
+    case DiagSeverity::Warning:
+      return "Warning";
+    case DiagSeverity::Error:
+      return "Error";
+    case DiagSeverity::Fatal:
+      return "Fatal";
+  }
+
+  ZC_UNREACHABLE;
 }
-
-bool DiagnosticState::isDiagnosticIgnored(uint32_t diagId) const {
-  return diagId < kNumDiags && ignoredDiagnostics[diagId];
-}
-
-// CharSourceRange DiagnosticState::toCharSourceRange(const SourceManager& sm, SourceRange range) {
-//   return sm.getCharSourceRange(range);
-// }
-
-// char DiagnosticState::extractCharAfter(const SourceManager& sm, SourceLoc loc) {
-//   return sm.extractCharAfter(loc);
-// }
 
 }  // namespace diagnostics
 }  // namespace compiler

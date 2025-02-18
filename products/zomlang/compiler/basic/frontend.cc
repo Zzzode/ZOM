@@ -15,7 +15,6 @@
 #include "zomlang/compiler/basic/frontend.h"
 
 #include "zc/core/map.h"
-#include "zomlang/compiler/source/module.h"
 #include "zomlang/compiler/zis/zis.h"
 
 namespace zomlang {
