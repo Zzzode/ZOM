@@ -12,29 +12,14 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#pragma once
-
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/lexer/token.h"
+#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 
 namespace zomlang {
 namespace compiler {
-namespace parser {
+namespace diagnostics {
 
-class Parser {
-public:
-  Parser(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept;
-  ~Parser() noexcept(false) = default;
+DiagnosticConsumer::~DiagnosticConsumer() noexcept(false) = default;
 
-  ZC_DISALLOW_COPY_AND_MOVE(Parser);
-
-  void parse(zc::ArrayPtr<const lexer::Token> tokens);
-
-private:
-  class Impl;
-  zc::Own<Impl> impl;
-};
-
-}  // namespace parser
+}  // namespace diagnostics
 }  // namespace compiler
 }  // namespace zomlang

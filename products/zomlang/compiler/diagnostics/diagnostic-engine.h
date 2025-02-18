@@ -1,42 +1,77 @@
-#ifndef ZOM_DIAGNOSTIC_ENGINE_H_
-#define ZOM_DIAGNOSTIC_ENGINE_H_
+// Copyright (c) 2024-2025 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
 
-#include "zomlang/compiler/diagnostics/diagnostic-state.h"
+#pragma once
+
+#include "zc/core/common.h"
+#include "zc/core/io.h"
+#include "zc/core/memory.h"
+#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/diagnostic-info.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
 
 namespace source {
 class SourceManager;
-}
+class SourceLoc;
+}  // namespace source
+
+namespace diagnostics {
+
+enum class DiagID : uint32_t;
+
+class Diagnostic;
+class DiagnosticConsumer;
+class DiagnosticState;
+
+class InFlightDiagnostic;
 
 class DiagnosticEngine {
 public:
-  explicit DiagnosticEngine(source::SourceManager& sourceMgr) : sourceMgr(sourceMgr) {}
+  explicit DiagnosticEngine(source::SourceManager& sourceManager);
+  ~DiagnosticEngine();
 
-  void addConsumer(zc::Own<DiagnosticConsumer> consumer) { consumers.add(zc::mv(consumer)); }
+  ZC_DISALLOW_COPY_AND_MOVE(DiagnosticEngine);
 
-  void emit(const SourceLoc& loc, const Diagnostic& diagnostic) {
-    if (diagnostic.getKind() == DiagnosticKind::kError) { state.setHadAnyError(); }
-    for (auto& consumer : consumers) { consumer->handleDiagnostic(loc, diagnostic); }
+  void addConsumer(zc::Own<DiagnosticConsumer> consumer);
+  void emit(const Diagnostic& diagnostic);
+
+  ZC_NODISCARD bool hasErrors() const;
+  ZC_NODISCARD source::SourceManager& getSourceManager() const;
+  ZC_NODISCARD const DiagnosticState& getState() const;
+
+  DiagnosticState& getState();
+
+  template <DiagID ID, typename... Args>
+  InFlightDiagnostic diagnose(source::SourceLoc loc, Args&&... args) {
+    static_assert(sizeof...(args) == DiagnosticTraits<ID>::argCount,
+                  "Incorrect number of diagnostic arguments");
+    return InFlightDiagnostic(*this, Diagnostic(ID, loc, zc::fwd<Args>(args)...));
   }
 
-  ZC_NODISCARD bool hasErrors() const { return state.getHadAnyError(); }
-
-  ZC_NODISCARD source::SourceManager& getSourceManager() const { return sourceMgr; }
-
-  // 添加对 DiagnosticState 的访问方法
-  DiagnosticState& getState() { return state; }
-  ZC_NODISCARD const DiagnosticState& getState() const { return state; }
+  static void formatDiagnosticMessage(zc::OutputStream& out, zc::StringPtr message,
+                                      zc::ArrayPtr<const DiagnosticArgument> args);
 
 private:
-  source::SourceManager& sourceMgr;
-  zc::Vector<zc::Own<DiagnosticConsumer>> consumers;
-  DiagnosticState state;
+  struct Impl;
+  zc::Own<Impl> impl;
 };
 
+}  // namespace diagnostics
 }  // namespace compiler
 }  // namespace zomlang
-
-#endif  // ZOM_DIAGNOSTIC_ENGINE_H_

@@ -1,5 +1,4 @@
-#ifndef ZOM_ZIS_ZIS_H_
-#define ZOM_ZIS_ZIS_H_
+#pragma once
 
 #include "zc/core/string.h"
 
@@ -51,5 +50,3 @@ private:
 }  // namespace zis
 }  // namespace compiler
 }  // namespace zomlang
-
-#endif  // ZOM_ZIS_ZIS_H_

@@ -14,27 +14,25 @@
 
 #pragma once
 
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/lexer/token.h"
+#include "zc/core/memory.h"
+#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 
 namespace zomlang {
 namespace compiler {
-namespace parser {
+namespace diagnostics {
 
-class Parser {
+class ConsolingDiagnosticConsumer final : public DiagnosticConsumer {
 public:
-  Parser(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept;
-  ~Parser() noexcept(false) = default;
+  ConsolingDiagnosticConsumer();
+  ~ConsolingDiagnosticConsumer() noexcept(false) override;
 
-  ZC_DISALLOW_COPY_AND_MOVE(Parser);
-
-  void parse(zc::ArrayPtr<const lexer::Token> tokens);
+  void handleDiagnostic(const source::SourceManager& sm, const Diagnostic& diagnostic) override;
 
 private:
-  class Impl;
+  struct Impl;
   zc::Own<Impl> impl;
 };
 
-}  // namespace parser
+}  // namespace diagnostics
 }  // namespace compiler
 }  // namespace zomlang

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 Zode.Z. All rights reserved
+// Copyright (c) 2024-2025 Zode.Z. All rights reserved
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,12 +15,13 @@
 #pragma once
 
 #include "zc/core/string.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 
 namespace zomlang {
 namespace compiler {
 
 namespace source {
-class Module;
+class BufferId;
 }
 
 namespace driver {
@@ -30,7 +31,9 @@ public:
   CompilerDriver() noexcept;
   ~CompilerDriver() noexcept(false);
 
-  zc::Maybe<const source::Module&> addSourceFile(zc::StringPtr file);
+  zc::Maybe<source::BufferId> addSourceFile(zc::StringPtr file);
+
+  const diagnostics::DiagnosticEngine& getDiagnosticEngine() const;
 
 private:
   class Impl;

@@ -1,61 +1,79 @@
-#ifndef ZOM_DIAGNOSTIC_DIAGNOSTIC_H_
-#define ZOM_DIAGNOSTIC_DIAGNOSTIC_H_
+// Copyright (c) 2024-2025 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+#pragma once
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/lexer/token.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
 
-enum class DiagnosticKind { kNote, kRemark, kWarning, kError, kFatal };
+namespace source {
+class SourceLoc;
+}
+
+namespace diagnostics {
 
 struct FixIt {
-  CharSourceRange range;
+  source::CharSourceRange range;
   zc::String replacementText;
 };
 
+using DiagnosticArgument = zc::OneOf<zc::StringPtr,  // Str
+                                     lexer::Token    // Token
+                                     >;
+
 class Diagnostic {
 public:
-  Diagnostic(DiagnosticKind kind, uint32_t id, zc::StringPtr message,
-             const CharSourceRange& location)
-      : kind(kind), id(id), message(zc::heapString(message)), location(location) {}
+  template <typename... Args>
+  explicit Diagnostic(const DiagID id, const source::SourceLoc loc, Args&&... args)
+      : id(id), location(loc) {
+    (diagnosticArgs.add(zc::fwd<Args>(args)), ...);
+  }
+  ~Diagnostic();
 
   Diagnostic(Diagnostic&& other) noexcept = default;
   Diagnostic& operator=(Diagnostic&& other) noexcept = default;
 
   ZC_DISALLOW_COPY(Diagnostic);
 
-  DiagnosticKind getKind() const { return kind; }
-  uint32_t getId() const { return id; }
-  zc::StringPtr getMessage() const { return message; }
-  const CharSourceRange& getSourceRange() const { return location; }
-  const zc::Vector<zc::Own<Diagnostic>>& getChildDiagnostics() const { return childDiagnostics; }
-  const zc::Vector<FixIt>& getFixIts() const { return fixIts; }
+  ZC_NODISCARD DiagID getId() const;
+  ZC_NODISCARD const zc::Vector<zc::Own<Diagnostic>>& getChildDiagnostics() const;
+  ZC_NODISCARD const zc::Vector<zc::Own<FixIt>>& getFixIts() const;
+  ZC_NODISCARD const source::SourceLoc& getLoc() const;
+  ZC_NODISCARD zc::ArrayPtr<const DiagnosticArgument> getArgs() const;
+  ZC_NODISCARD zc::ArrayPtr<const source::CharSourceRange> getRanges() const;
 
   void addChildDiagnostic(zc::Own<Diagnostic> child);
-  void addFixIt(const FixIt& fixIt);
-  void setCategory(zc::StringPtr newCategory) { category = zc::heapString(newCategory); }
+  void addFixIt(zc::Own<FixIt> fixIt);
 
 private:
-  DiagnosticKind kind;
-  uint32_t id;
-  zc::String message;
-  CharSourceRange location;
-  zc::String category;
+  DiagID id;
+  source::SourceLoc location;
+  zc::Vector<DiagnosticArgument> diagnosticArgs;
   zc::Vector<zc::Own<Diagnostic>> childDiagnostics;
-  zc::Vector<FixIt> fixIts;
+  zc::Vector<zc::Own<FixIt>> fixIts;
+  zc::Vector<source::CharSourceRange> ranges;
 };
 
-class DiagnosticConsumer {
-public:
-  virtual ~DiagnosticConsumer() = default;
-  virtual void handleDiagnostic(const SourceLoc& loc, const Diagnostic& diagnostic) = 0;
-};
-
+}  // namespace diagnostics
 }  // namespace compiler
 }  // namespace zomlang
-
-#endif  // ZOM_DIAGNOSTIC_DIAGNOSTIC_H_
