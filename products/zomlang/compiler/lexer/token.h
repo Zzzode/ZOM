@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <cstdint>
-
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
@@ -27,7 +25,7 @@ class SourceLoc;
 
 namespace lexer {
 
-enum class tok {
+enum class TokenKind {
   kUnknown,
   kIdentifier,
   kKeyword,
@@ -44,21 +42,21 @@ enum class tok {
 class Token {
 public:
   Token() = default;
-  explicit Token(const tok k, zc::StringPtr t, const source::SourceLoc l)
+  explicit Token(const TokenKind k, zc::StringPtr t, const source::SourceLoc l)
       : kind(k), text(t), loc(l) {}
   ~Token() = default;
 
-  void setKind(const tok k) { kind = k; }
+  void setKind(const TokenKind k) { kind = k; }
   void setText(zc::StringPtr t) { text = t; }
   void setLocation(const source::SourceLoc l) { loc = l; }
 
-  ZC_NODISCARD tok getKind() const { return kind; }
+  ZC_NODISCARD TokenKind getKind() const { return kind; }
   ZC_NODISCARD zc::StringPtr getText() const { return text; }
   ZC_NODISCARD unsigned getLength() const { return text.size(); }
   ZC_NODISCARD source::SourceLoc getLocation() const { return loc; }
 
 private:
-  tok kind;
+  TokenKind kind;
   zc::StringPtr text;
   source::SourceLoc loc;
 };

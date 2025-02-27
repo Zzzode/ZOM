@@ -54,7 +54,7 @@ struct Lexer::Impl {
   /// Utility functions
   const char* getBufferPtrForSourceLoc(source::SourceLoc loc) const;
 
-  void formToken(tok kind, const char* tokStart) {
+  void formToken(TokenKind kind, const char* tokStart) {
     // Original implementation...
   }
 
@@ -126,7 +126,7 @@ void Lexer::lex(Token& result) {
   result = impl->nextToken;
 
   if (impl->isAtEndOfFile()) {
-    result.setKind(tok::kEOF);
+    result.setKind(TokenKind::kEOF);
     return;
   }
   impl->lexImpl();

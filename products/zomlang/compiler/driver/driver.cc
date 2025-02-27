@@ -15,8 +15,8 @@
 #include "zomlang/compiler/driver/driver.h"
 
 #include "zc/core/filesystem.h"
-#include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/source/module.h"
 
@@ -29,8 +29,11 @@ namespace driver {
 
 class CompilerDriver::Impl {
 public:
-  Impl() noexcept;
-  ~Impl() noexcept(false);
+  Impl() noexcept
+      : sourceManager(zc::heap<source::SourceManager>()),
+        loader(zc::heap<source::ModuleLoader>(*sourceManager)),
+        diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)) {}
+  ~Impl() noexcept(false) = default;
 
   ZC_DISALLOW_COPY_AND_MOVE(Impl);
 
@@ -47,25 +50,21 @@ public:
   zc::Maybe<const source::Module&> addSourceFileImpl(zc::StringPtr file);
 
 private:
-  /// Module loader to transform sources to a module representation.
-  zc::Own<source::ModuleLoader> loader;
   /// Source manager to manage source files.
   zc::Own<source::SourceManager> sourceManager;
+  /// Module loader to transform sources to a module representation.
+  zc::Own<source::ModuleLoader> loader;
   /// Diagnostic engine to report diagnostics.
   zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;
 };
 
-CompilerDriver::Impl::Impl() noexcept
-    : loader(zc::heap<source::ModuleLoader>()),
-      sourceManager(zc::heap<source::SourceManager>()),
-      diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)) {}
-
-CompilerDriver::Impl::~Impl() noexcept(false) = default;
-
 zc::Maybe<const source::Module&> CompilerDriver::Impl::addSourceFileImpl(const zc::StringPtr file) {
-  uint64_t bufferId = sourceManager->getExternalSourceBufferID(file);
-  const zc::StringPtr moduleName = sourceManager->getIdentifierForBuffer(bufferId);
-  return loader->loadModule(moduleName, bufferId);
+  ZC_IF_SOME(bufferId, sourceManager->getExternalSourceBufferID(file)) {
+    const zc::StringPtr moduleName = sourceManager->getIdentifierForBuffer(bufferId);
+    auto moduleFile = zc::heap<source::ModuleFile>(file, bufferId);
+  }
+  diagnosticEngine->diagnose<diagnostics::DiagID::InvalidPath>(source::SourceLoc(), file);
+  return zc::none;
 }
 
 // ================================================================================

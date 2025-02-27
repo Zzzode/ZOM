@@ -14,70 +14,35 @@
 
 #include "zomlang/compiler/diagnostics/diagnostic.h"
 
-#include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/source/location.h"
+#include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
 namespace diagnostics {
 
 // ================================================================================
-// Diagnostic::Impl
-
-struct Diagnostic::Impl {
-  Impl(DiagnosticKind kind, uint32_t id, zc::String message,
-       const source::CharSourceRange& location)
-      : kind(kind), id(id), message(zc::mv(message)), location(location) {}
-
-  DiagnosticKind kind;
-  uint32_t id;
-  zc::String message;
-  source::CharSourceRange location;
-  zc::String category;
-  zc::Vector<zc::Own<Diagnostic>> childDiagnostics;
-  zc::Vector<zc::Own<FixIt>> fixIts;
-};
-
-// ================================================================================
 // Diagnostic
-
-Diagnostic::Diagnostic(DiagnosticKind kind, uint32_t id, zc::StringPtr message,
-                       const source::CharSourceRange& location)
-    : impl(zc::heap<Impl>(kind, id, zc::heapString(message), location)) {}
 
 Diagnostic::~Diagnostic() = default;
 
-Diagnostic::Diagnostic(Diagnostic&&) noexcept = default;
-Diagnostic& Diagnostic::operator=(Diagnostic&&) noexcept = default;
+DiagID Diagnostic::getId() const { return id; }
 
-DiagnosticKind Diagnostic::getKind() const { return impl->kind; }
-uint32_t Diagnostic::getId() const { return impl->id; }
-zc::StringPtr Diagnostic::getMessage() const { return impl->message; }
-const source::CharSourceRange& Diagnostic::getSourceRange() const { return impl->location; }
 const zc::Vector<zc::Own<Diagnostic>>& Diagnostic::getChildDiagnostics() const {
-  return impl->childDiagnostics;
+  return childDiagnostics;
 }
-const zc::Vector<zc::Own<FixIt>>& Diagnostic::getFixIts() const { return impl->fixIts; }
+
+const zc::Vector<zc::Own<FixIt>>& Diagnostic::getFixIts() const { return fixIts; }
+const source::SourceLoc& Diagnostic::getLoc() const { return location; }
 
 void Diagnostic::addChildDiagnostic(zc::Own<Diagnostic> child) {
-  impl->childDiagnostics.add(zc::mv(child));
+  childDiagnostics.add(zc::mv(child));
 }
 
-void Diagnostic::addFixIt(zc::Own<FixIt> fixIt) { impl->fixIts.add(zc::mv(fixIt)); }
-
-void Diagnostic::setCategory(zc::StringPtr newCategory) {
-  impl->category = zc::heapString(newCategory);
-}
-
-// ================================================================================
-// DiagnosticConsumer::Impl
-
-struct DiagnosticConsumer::Impl {
-  // Extensible consumer state retention
-};
-
-DiagnosticConsumer::~DiagnosticConsumer() = default;
+void Diagnostic::addFixIt(zc::Own<FixIt> fixIt) { fixIts.add(zc::mv(fixIt)); }
 
 }  // namespace diagnostics
 }  // namespace compiler

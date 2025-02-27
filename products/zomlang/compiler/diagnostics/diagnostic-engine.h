@@ -15,6 +15,11 @@
 #pragma once
 
 #include "zc/core/memory.h"
+#include "zc/core/one-of.h"
+#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/diagnostic-info.h"
+#include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
@@ -25,6 +30,8 @@ class SourceLoc;
 }  // namespace source
 
 namespace diagnostics {
+
+enum class DiagID : uint32_t;
 
 class Diagnostic;
 class DiagnosticConsumer;
@@ -40,13 +47,20 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(DiagnosticEngine);
 
   void addConsumer(zc::Own<DiagnosticConsumer> consumer);
-  void emit(const source::SourceLoc& loc, const Diagnostic& diagnostic);
+  void emit(const Diagnostic& diagnostic);
+
   ZC_NODISCARD bool hasErrors() const;
   ZC_NODISCARD source::SourceManager& getSourceManager() const;
   ZC_NODISCARD const DiagnosticState& getState() const;
 
   DiagnosticState& getState();
-  InFlightDiagnostic diagnose(const source::SourceLoc& loc);
+
+  template <DiagID ID, typename... Args>
+  InFlightDiagnostic diagnose(source::SourceLoc loc, Args&&... args) {
+    static_assert(sizeof...(args) == DiagnosticTraits<ID>::argCount,
+                  "Incorrect number of diagnostic arguments");
+    return InFlightDiagnostic(*this, Diagnostic(ID, loc, zc::fwd<Args>(args)...));
+  }
 
 private:
   struct Impl;

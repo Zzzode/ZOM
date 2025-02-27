@@ -14,27 +14,22 @@
 
 #pragma once
 
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/lexer/token.h"
+#include <cstdint>
 
 namespace zomlang {
 namespace compiler {
-namespace parser {
+namespace diagnostics {
 
-class Parser {
-public:
-  Parser(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept;
-  ~Parser() noexcept(false) = default;
+enum class DiagID : uint32_t {
+#define DIAG(Name, ...) Name,
+#include "zomlang/compiler/diagnostics/diagnostics.def"
 
-  ZC_DISALLOW_COPY_AND_MOVE(Parser);
-
-  void parse(zc::ArrayPtr<const lexer::Token> tokens);
-
-private:
-  class Impl;
-  zc::Own<Impl> impl;
+#undef DIAG
+  NumDiags
 };
 
-}  // namespace parser
+enum class DiagSeverity : uint8_t { Note, Remark, Warning, Error, Fatal };
+
+}  // namespace diagnostics
 }  // namespace compiler
 }  // namespace zomlang

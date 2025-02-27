@@ -72,7 +72,7 @@ public:
     if (!file.endsWith(".zom")) { return "Error: zomc: source file must have .zom extension"; }
     if (const zc::Maybe<const source::Module&> module = driver->addSourceFile(file);
         module == zc::none)
-      return zc::str("Error: zomc: failed to load '", file);
+      return zc::str("Error: zomc: failed to load '", file, "'");
     return true;
   }
 

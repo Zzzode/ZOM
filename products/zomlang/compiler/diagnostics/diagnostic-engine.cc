@@ -14,8 +14,8 @@
 
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 
+#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-state.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
 
 namespace zomlang {
 namespace compiler {
@@ -37,9 +37,8 @@ void DiagnosticEngine::addConsumer(zc::Own<DiagnosticConsumer> consumer) {
   impl->consumers.add(zc::mv(consumer));
 }
 
-void DiagnosticEngine::emit(const source::SourceLoc& loc, const Diagnostic& diagnostic) {
-  if (diagnostic.getKind() == DiagnosticKind::kError) { impl->state.setHadAnyError(); }
-  for (auto& consumer : impl->consumers) { consumer->handleDiagnostic(loc, diagnostic); }
+void DiagnosticEngine::emit(const Diagnostic& diagnostic) {
+  for (auto& consumer : impl->consumers) { consumer->handleDiagnostic(diagnostic); }
 }
 
 bool DiagnosticEngine::hasErrors() const { return impl->state.getHadAnyError(); }

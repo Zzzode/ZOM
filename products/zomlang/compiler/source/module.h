@@ -19,47 +19,91 @@
 
 namespace zomlang {
 namespace compiler {
+
+namespace diagnostics {
+class DiagnosticEngine;
+}
+
 namespace source {
 
 class SourceManager;
+class ModuleFile;
+class CharSourceRange;
 
 class Module {
 public:
-  Module(zc::StringPtr moduleName, uint64_t id) noexcept;
+  /// Module types
+  enum class Kind {
+    MainModule,   // 主模块
+    Library,      // 库模块
+    ClangModule,  // Clang 兼容模块
+    Synthesized,  // 编译器生成
+    Plugin        // 插件模块
+  };
+
+  /// Module compilation phase
+  enum class Phase {
+    Parsed,       // 已解析
+    TypeChecked,  // 类型检查完成
+    ZISGen,       // 生成 ZIS
+    IRGen,        // 生成 IR
+    Optimized,    // 优化完成
+    Emitted       // 代码生成完成
+  };
+
+  Module(Kind kind, zc::String name) noexcept;
   ~Module() noexcept(false);
 
-  /// Creates a new module from the given file.
-  static zc::Own<Module> create(zc::StringPtr moduleName, uint64_t id);
+  void addSourceFile(zc::Own<ModuleFile> file);
+  const zc::Vector<zc::Own<ModuleFile>>& sourceFiles() const;
 
-  /// Returns the source name of this module.
-  zc::StringPtr getModuleName();
-  /// Returns the source content of this module.
-  ZC_NODISCARD bool isCompiled() const;
-  /// Retrieves the unique ID of the module
-  ZC_NODISCARD uint64_t getModuleId() const;
-  /// Returns the source manager.
-  SourceManager& getSourceManager();
-  /// Marks the module as compiled.
-  void markCompiled();
+  void addDependency(Module& dep, bool isPublic);
+  const zc::Vector<Module*>& getDependencies() const;
 
-  bool operator==(const Module& rhs) const { return getModuleId() == rhs.getModuleId(); }
-  bool operator!=(const Module& rhs) const { return getModuleId() != rhs.getModuleId(); }
+  Phase currentPhase() const;
+  void advanceToPhase(Phase newPhase);
+
+  Kind getModuleKind() const;
+  zc::StringPtr getModuleName() const;
 
 private:
-  class Impl;
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class ModuleFile {
+public:
+  ModuleFile(zc::StringPtr filename, uint64_t bufferId);
+
+  zc::String filename() const;
+  zc::ArrayPtr<const zc::byte> getContent(const SourceManager& sm) const;
+  CharSourceRange entireRange() const;
+
+private:
+  struct Impl;
   zc::Own<Impl> impl;
 };
 
 class ModuleLoader {
 public:
-  ModuleLoader();
+  struct SearchPath {
+    zc::Path path;
+    bool isSystem;  // System directories have higher priority
+  };
+
+  explicit ModuleLoader(SourceManager& sm) noexcept;
   ~ModuleLoader() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ModuleLoader);
 
-  /// Loads a module from the given path.
-  zc::Maybe<const Module&> loadModule(const zc::ReadableDirectory& dir, zc::PathPtr path);
-  zc::Maybe<const Module&> loadModule(const zc::StringPtr moduleName, const uint64_t moduleId);
+  /// Add a module search path
+  void addSearchPath(zc::Path path, bool isSystem = false);
+
+  const zc::Path resolveModulePath(zc::StringPtr modulePath);
+
+  /// Loading dependencies recursively
+  zc::Maybe<const Module&> loadModule(zc::StringPtr moduleName, uint64_t bufferId,
+                                      Module::Kind kind, diagnostics::DiagnosticEngine& diag);
 
 private:
   class Impl;

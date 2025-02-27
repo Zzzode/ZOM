@@ -18,6 +18,8 @@
 
 #include "zc/core/debug.h"
 #include "zc/core/filesystem.h"
+#include "zc/core/map.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
@@ -93,58 +95,39 @@ struct FileKeyHash {
 // ================================================================================
 // Module::Impl
 
-class Module::Impl {
-public:
-  Impl(zc::StringPtr moduleName, uint64_t id) noexcept;
-  ~Impl() noexcept(false) = default;
+struct Module::Impl {
+  Kind kind;
+  zc::String name;
+  zc::Vector<zc::Own<ModuleFile>> files;
+  zc::Vector<const Module*> deps;
 
-  ZC_DISALLOW_COPY_AND_MOVE(Impl);
-
-  /// Returns the source name of this module.
-  zc::StringPtr getModuleName();
-  /// Returns true if this module is compiled.
-  ZC_NODISCARD bool isCompiled() const;
-  /// Retrieves the unique ID of the module
-  ZC_NODISCARD uint64_t getModuleId() const;
-  void markCompiled();
-
-private:
-  zc::String moduleName;
-  const uint64_t moduleId;
-
-  bool compiled;
+  Impl(Kind kind, zc::String name) : kind(kind), name(zc::mv(name)) {}
 };
 
-Module::Impl::Impl(zc::StringPtr moduleName, const uint64_t id) noexcept
-    : moduleName(zc::str(moduleName)), moduleId(id), compiled(false) {
-  ZC_REQUIRE(moduleName.size() > 0);
-}
+// ================================================================================
+// ModuleFile::Impl
 
-zc::StringPtr Module::Impl::getModuleName() { return moduleName; }
-bool Module::Impl::isCompiled() const { return compiled; }
-uint64_t Module::Impl::getModuleId() const { return moduleId; }
-void Module::Impl::markCompiled() { compiled = true; }
+struct ModuleFile::Impl {
+  zc::String filename;
+  uint64_t bufferId;
+
+  Impl(zc::String name, const uint64_t bid) : filename(zc::mv(name)), bufferId(bid) {}
+};
+
+zc::ArrayPtr<const zc::byte> ModuleFile::getContent(const SourceManager& sm) const {
+  return sm.getEntireTextForBuffer(impl->bufferId);
+}
 
 // ================================================================================
 // Module
 
-Module::Module(zc::StringPtr moduleName, uint64_t id) noexcept
-    : impl(zc::heap<Impl>(moduleName, id)) {};
+Module::Module(Kind kind, zc::String name) noexcept : impl(zc::heap<Impl>(kind, zc::mv(name))) {};
 Module::~Module() noexcept(false) = default;
-
-// static
-zc::Own<Module> Module::create(zc::StringPtr moduleName, uint64_t id) {
-  return zc::heap<Module>(moduleName, id);
-}
-zc::StringPtr Module::getModuleName() { return impl->getModuleName(); }
-bool Module::isCompiled() const { return impl->isCompiled(); }
-uint64_t Module::getModuleId() const { return impl->getModuleId(); }
-void Module::markCompiled() { impl->markCompiled(); }
 
 // ================================================================================
 // ModuleLoader
 
-ModuleLoader::ModuleLoader() : impl(zc::heap<Impl>()) {}
+ModuleLoader::ModuleLoader(SourceManager& sm) noexcept : impl(zc::heap<Impl>(sm)) {}
 ModuleLoader::~ModuleLoader() noexcept(false) = default;
 
 // ================================================================================
@@ -152,57 +135,35 @@ ModuleLoader::~ModuleLoader() noexcept(false) = default;
 
 class ModuleLoader::Impl {
 public:
-  Impl() noexcept : nextModuleId(0) {}
+  explicit Impl(SourceManager& sm) noexcept : sm(sm) {}
   ~Impl() noexcept(false) = default;
 
-  zc::Maybe<const Module&> loadModule(const zc::ReadableDirectory& dir, zc::PathPtr path);
-  zc::Maybe<const Module&> loadModule(const zc::StringPtr moduleName, const uint64_t moduleId);
+  zc::Maybe<const Module&> loadModule(zc::StringPtr moduleName, uint64_t bufferId,
+                                      Module::Kind kind, diagnostics::DiagnosticEngine& diag);
 
 private:
-  std::unordered_map<FileKey, zc::Own<Module>, FileKeyHash> modules;
-  uint64_t nextModuleId;
+  SourceManager& sm;
+  zc::Vector<SearchPath> searchPaths;
+  /// Module caching
+  zc::HashMap<zc::StringPtr, Module&> loadedModules;
 };
 
-zc::Maybe<const Module&> ModuleLoader::loadModule(const zc::ReadableDirectory& dir,
-                                                  const zc::PathPtr path) {
-  return impl->loadModule(dir, path);
+zc::Maybe<const Module&> ModuleLoader::Impl::loadModule(zc::StringPtr moduleName,
+                                                        const uint64_t bufferId, Module::Kind kind,
+                                                        diagnostics::DiagnosticEngine& diag) {
+  ZC_IF_SOME(module, loadedModules.find(moduleName)) { return module; }
+
+  if (diag.hasErrors()) { return zc::none; }
+
+  auto module = zc::heap<ModuleFile>(moduleName, bufferId);
+  loadedModules.insert(moduleName, *module);
+  return *module;
 }
 
 zc::Maybe<const Module&> ModuleLoader::loadModule(const zc::StringPtr moduleName,
-                                                  const uint64_t moduleId) {
-  return impl->loadModule(moduleName, moduleId);
-}
-
-zc::Maybe<const Module&> ModuleLoader::Impl::loadModule(const zc::ReadableDirectory& dir,
-                                                        zc::PathPtr path) {
-  ZC_IF_SOME(file, dir.tryOpenFile(path)) {
-    const zc::Path pathCopy = path.clone();
-    auto key = FileKey(dir, pathCopy, *file);
-    if (const auto it = modules.find(key); it != modules.end()) { return *it->second; }
-
-    const uint64_t id = nextModuleId++;
-    zc::Own<Module> module = Module::create(path.toString(), id);
-
-    auto& result = *module;
-    const auto [fst, snd] = modules.insert(std::make_pair(zc::mv(key), zc::mv(module)));
-    if (snd) { return result; }
-    // Now that we have the file open, we noticed a collision. Return the old file.
-    return *fst->second;
-  }
-
-  return zc::none;
-}
-
-zc::Maybe<const Module&> ModuleLoader::Impl::loadModule(const zc::StringPtr moduleName,
-                                                        const uint64_t moduleId) {
-  zc::Own<Module> module = Module::create(moduleName, moduleId);
-  return zc::none;
-
-  // auto& result = *module;
-  // const auto [fst, snd] = modules.insert(std::make_pair(zc::mv(key), zc::mv(module)));
-  // if (snd) { return result; }
-  // // Now that we have the file open, we noticed a collision. Return the old file.
-  // return *fst->second;
+                                                  const uint64_t bufferId, const Module::Kind kind,
+                                                  diagnostics::DiagnosticEngine& diag) {
+  return impl->loadModule(moduleName, bufferId, kind, diag);
 }
 
 }  // namespace source

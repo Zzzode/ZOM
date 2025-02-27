@@ -16,21 +16,16 @@
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/diagnostics/diagnostic-info.h"
+#include "zomlang/compiler/lexer/token.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
-
-namespace source {
-class CharSourceRange;
-class SourceLoc;
-}  // namespace source
-
 namespace diagnostics {
-
-enum class DiagnosticKind : uint8_t { kNote, kRemark, kWarning, kError, kFatal };
 
 struct FixIt {
   source::CharSourceRange range;
@@ -38,40 +33,39 @@ struct FixIt {
 };
 
 class Diagnostic {
+  using DiagnosticArgument = zc::OneOf<zc::StringPtr,      // Str
+                                       source::SourceLoc,  // Loc
+                                       lexer::Token        // Token
+                                       >;
+
 public:
-  Diagnostic(DiagnosticKind kind, uint32_t id, zc::StringPtr message,
-             const source::CharSourceRange& location);
+  template <typename... Args>
+  explicit Diagnostic(const DiagID id, const source::SourceLoc loc, Args&&... args)
+      : id(id), location(loc) {
+    (diagnosticArgs.add(zc::fwd<Args>(args)), ...);
+  }
   ~Diagnostic();
 
-  Diagnostic(Diagnostic&& other) noexcept;
-  Diagnostic& operator=(Diagnostic&& other) noexcept;
+  Diagnostic(Diagnostic&& other) noexcept = default;
+  Diagnostic& operator=(Diagnostic&& other) noexcept = default;
 
   ZC_DISALLOW_COPY(Diagnostic);
 
-  ZC_NODISCARD DiagnosticKind getKind() const;
-  ZC_NODISCARD uint32_t getId() const;
-  ZC_NODISCARD zc::StringPtr getMessage() const;
-  ZC_NODISCARD const source::CharSourceRange& getSourceRange() const;
+  ZC_NODISCARD DiagID getId() const;
   ZC_NODISCARD const zc::Vector<zc::Own<Diagnostic>>& getChildDiagnostics() const;
   ZC_NODISCARD const zc::Vector<zc::Own<FixIt>>& getFixIts() const;
+  ZC_NODISCARD const source::SourceLoc& getLoc() const;
 
   void addChildDiagnostic(zc::Own<Diagnostic> child);
   void addFixIt(zc::Own<FixIt> fixIt);
-  void setCategory(zc::StringPtr newCategory);
 
 private:
-  struct Impl;
-  zc::Own<Impl> impl;
-};
-
-class DiagnosticConsumer {
-public:
-  virtual ~DiagnosticConsumer();
-  virtual void handleDiagnostic(const source::SourceLoc& loc, const Diagnostic& diagnostic) = 0;
-
-protected:
-  struct Impl;
-  zc::Own<Impl> impl;
+  DiagID id;
+  source::SourceLoc location;
+  zc::Vector<DiagnosticArgument> diagnosticArgs;
+  zc::Vector<zc::Own<Diagnostic>> childDiagnostics;
+  zc::Vector<zc::Own<FixIt>> fixIts;
+  zc::Vector<source::CharSourceRange> ranges;
 };
 
 }  // namespace diagnostics

@@ -17,7 +17,6 @@
 #include <algorithm>
 #include <functional>
 
-#include "manager.h"
 #include "zc/core/debug.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/map.h"
@@ -113,13 +112,8 @@ public:
   CharSourceRange getRangeForBuffer(uint64_t bufferId) const;
 
   // External source support
-  uint64_t getExternalSourceBufferID(zc::StringPtr path);
+  zc::Maybe<uint64_t> getExternalSourceBufferID(zc::StringPtr path);
   SourceLoc getLocFromExternalSource(zc::StringPtr path, unsigned line, unsigned col);
-
-  // Diagnostics
-  void getMessage(const SourceLoc& loc, diagnostics::DiagnosticKind kind, zc::StringPtr msg,
-                  zc::ArrayPtr<SourceRange> ranges, zc::ArrayPtr<diagnostics::FixIt> fixIts,
-                  zc::OutputStream& os) const;
 
   // Verification
   void verifyAllBuffers() const;
@@ -203,19 +197,19 @@ SourceManager::Impl::~Impl() noexcept(false) = default;
 
 uint64_t SourceManager::Impl::addNewSourceBuffer(zc::Array<zc::byte> inputData,
                                                  const zc::StringPtr bufIdentifier) {
-  auto buffer =
-      zc::heap<Buffer>(buffers.size() + 1, zc::heapString(bufIdentifier), zc::mv(inputData));
+  const uint64_t bufferId = buffers.size() + 1;
+  auto buffer = zc::heap<Buffer>(bufferId, zc::heapString(bufIdentifier), zc::mv(inputData));
   buffers.add(zc::mv(buffer));
-  idToBuffer.insert(buffer->id, *buffers.back());
-  return buffer->id;
+  idToBuffer.insert(bufferId, *buffers.back());
+  return bufferId;
 }
 
 uint64_t SourceManager::Impl::addMemBufferCopy(const zc::ArrayPtr<const zc::byte> inputData,
                                                const zc::StringPtr bufIdentifier) {
-  auto buffer =
-      zc::heap<Buffer>(buffers.size() + 1, zc::heapString(bufIdentifier), zc::heapArray(inputData));
+  const uint64_t bufferId = buffers.size() + 1;
+  auto buffer = zc::heap<Buffer>(bufferId, zc::heapString(bufIdentifier), zc::heapArray(inputData));
   buffers.add(zc::mv(buffer));
-  idToBuffer.insert(buffer->id, *buffers.back());
+  idToBuffer.insert(bufferId, *buffers.back());
   return buffer->id;
 }
 
@@ -319,13 +313,11 @@ zc::StringPtr SourceManager::Impl::getIdentifierForBuffer(uint64_t bufferId) {
 
 CharSourceRange SourceManager::Impl::getRangeForBuffer(uint64_t bufferId) const {
   const Buffer& buffer = ZC_ASSERT_NONNULL(idToBuffer.find(bufferId));
-  SourceLoc start{buffer.getBufferStart()};
+  const SourceLoc start{buffer.getBufferStart()};
   return CharSourceRange(start, buffer.getBufferSize());
 }
 
-uint64_t SourceManager::Impl::getExternalSourceBufferID(const zc::StringPtr path) {
-  ZC_IF_SOME(bufferId, pathToBufferId.find(path)) { return bufferId; }
-
+zc::Maybe<uint64_t> SourceManager::Impl::getExternalSourceBufferID(const zc::StringPtr path) {
   const zc::PathPtr cwd = fs->getCurrentPath();
   zc::Path nativePath = cwd.evalNative(path);
   ZC_REQUIRE(path.size() > 0);
@@ -335,32 +327,31 @@ uint64_t SourceManager::Impl::getExternalSourceBufferID(const zc::StringPtr path
                                   ? nativePath.slice(cwd.size(), nativePath.size()).clone()
                                   : zc::mv(nativePath);
 
+  // Check if the path is already in the cache
+  ZC_IF_SOME(bufferId, pathToBufferId.find(path)) { return bufferId; }
+
   ZC_IF_SOME(file, dir.tryOpenFile(sourcePath)) {
     zc::Array<zc::byte> data = file->readAllBytes();
     const uint64_t bufferId = addNewSourceBuffer(zc::mv(data), sourcePath.toString());
     pathToBufferId.insert(sourcePath.toString(), bufferId);
+
+    return bufferId;
   }
 
-  ZC_FAIL_ASSERT("Cannot open file path at ", path, ", no such file or directory.");
-  ZC_KNOWN_UNREACHABLE();
+  // If the file is not found, return an invalid buffer ID
+  constexpr uint64_t InvalidBufferId = 0;
+  return InvalidBufferId;
 }
 
-SourceLoc SourceManager::Impl::getLocFromExternalSource(zc::StringPtr path, unsigned line,
-                                                        unsigned col) {
-  const uint64_t bufferId = getExternalSourceBufferID(path);
-  if (bufferId == 0) return {};
-
-  ZC_IF_SOME(offset, resolveFromLineCol(bufferId, line, col)) {
-    return getLocForOffset(bufferId, offset);
+SourceLoc SourceManager::Impl::getLocFromExternalSource(const zc::StringPtr path,
+                                                        const unsigned line, const unsigned col) {
+  ZC_IF_SOME(bufferId, getExternalSourceBufferID(path)) {
+    ZC_IF_SOME(offset, resolveFromLineCol(bufferId, line, col)) {
+      return getLocForOffset(bufferId, offset);
+    }
   }
-
   return {};
 }
-
-void SourceManager::Impl::getMessage(const SourceLoc& loc, diagnostics::DiagnosticKind kind,
-                                     const zc::StringPtr msg, zc::ArrayPtr<SourceRange> ranges,
-                                     zc::ArrayPtr<diagnostics::FixIt> fixIts,
-                                     zc::OutputStream& os) const {}
 
 // ================================================================================
 // SourceManager
@@ -368,7 +359,7 @@ void SourceManager::Impl::getMessage(const SourceLoc& loc, diagnostics::Diagnost
 SourceManager::SourceManager() noexcept : impl(zc::heap<Impl>()) {}
 SourceManager::~SourceManager() noexcept(false) = default;
 
-uint64_t SourceManager::getExternalSourceBufferID(const zc::StringPtr path) {
+zc::Maybe<uint64_t> SourceManager::getExternalSourceBufferID(const zc::StringPtr path) {
   return impl->getExternalSourceBufferID(path);
 }
 
@@ -409,13 +400,6 @@ unsigned SourceManager::getLocOffsetInBuffer(SourceLoc Loc, uint64_t bufferId) c
 
 SourceLoc SourceManager::getLocForBufferStart(uint64_t bufferId) const {
   return impl->getLocForBufferStart(bufferId);
-}
-
-void SourceManager::getMessage(const SourceLoc& loc, diagnostics::DiagnosticKind kind,
-                               const zc::StringPtr msg, zc::ArrayPtr<SourceRange> ranges,
-                               zc::ArrayPtr<diagnostics::FixIt> fixIts,
-                               zc::OutputStream& os) const {
-  impl->getMessage(loc, kind, msg, ranges, fixIts, os);
 }
 
 }  // namespace source

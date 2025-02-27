@@ -39,7 +39,7 @@ public:
     return getFromOpaqueValue(getOpaqueValue() + offset);
   }
 
-  ZC_NODISCARD zc::String toString(SourceManager& sourceManager, uint64_t& lastBufferId) const;
+  ZC_NODISCARD zc::String toString(SourceManager& sm, uint64_t& lastBufferId) const;
   void print(zc::OutputStream& os, SourceManager& sm) const;
 
   bool operator==(const SourceLoc& rhs) const { return ptr == rhs.ptr; }
@@ -75,13 +75,13 @@ public:
     if (other.getEnd() > end) { end = other.getEnd(); }
   }
 
-  ZC_NODISCARD zc::String toString(SourceManager& sm, uint64_t& lastBufferId) const {
+  ZC_NODISCARD zc::String toString(SourceManager& sm, uint64_t lastBufferId = ~0ULL) const {
     return zc::str("SourceRange(", start.toString(sm, lastBufferId), ", ",
                    end.toString(sm, lastBufferId), ")");
   }
 
   void print(zc::OutputStream& os, SourceManager& sm) const {
-    uint64_t tmp = ~0ULL;
+    constexpr uint64_t tmp = ~0ULL;
     os.write(toString(sm, tmp).asBytes());
   }
 
@@ -121,7 +121,7 @@ public:
 
   ZC_NODISCARD SourceRange getAsRange() const { return SourceRange(start, end); }
 
-  ZC_NODISCARD zc::String toString(SourceManager& sm, uint64_t& lastBufferId) const {
+  ZC_NODISCARD zc::String toString(SourceManager& sm, uint64_t lastBufferId = ~0ULL) const {
     return zc::str("CharSourceRange(", start.toString(sm, lastBufferId), ", ",
                    end.toString(sm, lastBufferId), ", ", isTokenRange ? "token" : "char", ")");
   }
