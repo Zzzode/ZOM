@@ -37,9 +37,10 @@ struct FixIt {
   zc::String replacementText;
 };
 
-using DiagnosticArgument = zc::OneOf<zc::StringPtr,  // Str
-                                     lexer::Token    // Token
-                                     >;
+/// Diagnostic argument
+///
+/// Can be either a string or a token
+using DiagnosticArgument = zc::OneOf<zc::StringPtr, lexer::Token>;
 
 class Diagnostic {
 public:

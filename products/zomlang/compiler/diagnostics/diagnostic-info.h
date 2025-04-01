@@ -38,7 +38,9 @@ struct DiagnosticTraits;
     static constexpr zc::StringPtr message = Message##_zcc;          \
     static constexpr size_t argCount = Args;                         \
   };
-#include "zomlang/compiler/diagnostics/diagnostics.def"
+#include "zomlang/compiler/diagnostics/diagnostics-common.def"
+#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+#include "zomlang/compiler/diagnostics/diagnostics-sema.def"
 #undef DIAG
 
 namespace detail {
@@ -60,7 +62,9 @@ constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
 #define DIAG(Name, ...) \
   case DiagID::Name:    \
     return detail::getDiagnosticInfoImpl<DiagID::Name>();
-#include "zomlang/compiler/diagnostics/diagnostics.def"
+#include "zomlang/compiler/diagnostics/diagnostics-common.def"
+#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+#include "zomlang/compiler/diagnostics/diagnostics-sema.def"
 
 #undef DIAG
     default:

@@ -24,10 +24,14 @@ namespace diagnostics {
 
 enum class DiagID : uint32_t {
 #define DIAG(Name, ...) Name,
-#include "zomlang/compiler/diagnostics/diagnostics.def"
-
+  Common = 1000,
+#include "zomlang/compiler/diagnostics/diagnostics-common.def"
+  Parse = 2000,
+#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+  Semantic = 3000,
+#include "zomlang/compiler/diagnostics/diagnostics-sema.def"
+  CodeGen = 4000,
 #undef DIAG
-  NumDiags
 };
 
 enum class DiagSeverity : uint8_t { Note, Remark, Warning, Error, Fatal };
