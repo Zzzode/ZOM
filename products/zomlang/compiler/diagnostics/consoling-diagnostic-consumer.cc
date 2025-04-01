@@ -126,20 +126,30 @@ void ConsolingDiagnosticConsumer::handleDiagnostic(const source::SourceManager& 
   zc::std::StdOutputStream& output =
       info.severity >= DiagSeverity::Error ? impl->stdErr : impl->stdOut;
 
-  // Output diagnostic head (may with color)
+  // Output location information (if any)
+  if (diagnostic.getLoc().isValid()) {
+    diagnostic.getLoc().print(output, sm);
+    output.write(": "_zcb);
+  }
+
+  // Output diagnostic level (with color)
   if (impl->useColors) { output.write(getColorForSeverity(info.severity).asBytes()); }
-  output.write(zc::str(toString(info.severity), ": ").asBytes());
+  output.write(zc::str(toString(info.severity)).asBytes());
+
+  // Output error code (gray)
+  if (impl->useColors) { output.write("\033[90m"_zcb); }
+  output.write(zc::str(" [ZOM", static_cast<int>(diagnostic.getId()), ']').asBytes());
   if (impl->useColors) { output.write(RESET_COLOR.asBytes()); }
+  output.write(": "_zcb);
 
-  // 2. Output location information
-  if (diagnostic.getLoc().isValid()) { diagnostic.getLoc().print(output, sm); }
-
-  // 3. Output formatted messages
+  // Output formatted messages
   DiagnosticEngine::formatDiagnosticMessage(output, info.message, diagnostic.getArgs());
   output.write("\n"_zcb);
 
-  // 4. Output source code context (if any)
+  // Output source code context (if any)
   if (diagnostic.getLoc().isValid()) { impl->printSourceLine(output, sm, diagnostic); }
+
+  output.write("\n"_zcb);
 }
 
 }  // namespace diagnostics

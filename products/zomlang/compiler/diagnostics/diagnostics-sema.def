@@ -12,7 +12,4 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-DIAG(InvalidPath,           Error,   "Cannot open file path at '{0}', no such file or directory.", 1)
-DIAG(InvalidChar,           Error,   "Invalid character: '{0}'", 1)
-DIAG(UnterminatedString,    Error,   "Unterminated string literal", 0)
 DIAG(TypeMismatch,          Error,   "Type mismatch: expected {0}, got {1}", 2)
