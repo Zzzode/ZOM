@@ -17,6 +17,7 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
@@ -59,7 +60,11 @@ private:
   zc::Own<Impl> impl;
 };
 
-struct VirtualFile;
+struct VirtualFile {
+  CharSourceRange range;
+  zc::StringPtr name;
+  int lineOffset;
+};
 
 class SourceManager {
 public:
@@ -93,8 +98,7 @@ public:
   /// Location and range operations
   SourceLoc getLocForOffset(BufferId bufferId, unsigned offset) const;
   LineAndColumn getLineAndColumn(const SourceLoc& loc) const;
-  LineAndColumn getPresumedLineAndColumnForLoc(SourceLoc Loc,
-                                               BufferId bufferId = BufferId(0)) const;
+  LineAndColumn getPresumedLineAndColumnForLoc(SourceLoc Loc, BufferId bufferId) const;
   unsigned getLineNumber(const SourceLoc& loc) const;
   bool isBefore(const SourceLoc& first, const SourceLoc& second) const;
   bool isAtOrBefore(const SourceLoc& first, const SourceLoc& second) const;
@@ -135,7 +139,7 @@ public:
   bool isRegexLiteralStart(const SourceLoc& loc) const;
 
 private:
-  class Impl;
+  struct Impl;
   zc::Own<Impl> impl;
 };
 
