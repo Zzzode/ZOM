@@ -135,7 +135,7 @@ public:
   bool isRegexLiteralStart(const SourceLoc& loc) const;
 
 private:
-  class Impl;
+  struct Impl;
   zc::Own<Impl> impl;
 };
 

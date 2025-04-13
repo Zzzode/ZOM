@@ -27,8 +27,7 @@ namespace driver {
 // ================================================================================
 // CompilerDriver::Impl
 
-class CompilerDriver::Impl {
-public:
+struct CompilerDriver::Impl {
   Impl() noexcept
       : sourceManager(zc::heap<source::SourceManager>()),
         diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)) {
@@ -48,29 +47,11 @@ public:
         : name(name), dir(zc::mv(dir)) {}
   };
 
-  zc::Maybe<source::BufferId> addSourceFileImpl(zc::StringPtr file);
-
-  const diagnostics::DiagnosticEngine& getDiagnosticEngine() const;
-
-private:
   /// Source manager to manage source files.
   zc::Own<source::SourceManager> sourceManager;
   /// Diagnostic engine to report diagnostics.
   zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;
 };
-
-zc::Maybe<source::BufferId> CompilerDriver::Impl::addSourceFileImpl(const zc::StringPtr file) {
-  const zc::Maybe<source::BufferId> bufferId = sourceManager->getFileSystemSourceBufferID(file);
-  if (bufferId == zc::none) {
-    diagnosticEngine->diagnose<diagnostics::DiagID::InvalidPath>(source::SourceLoc(), file);
-  }
-  return bufferId;
-}
-
-ZC_ALWAYS_INLINE(const diagnostics::DiagnosticEngine& CompilerDriver::Impl::getDiagnosticEngine()
-                     const) {
-  return *diagnosticEngine;
-}
 
 // ================================================================================
 // CompilerDriver
@@ -79,11 +60,16 @@ CompilerDriver::CompilerDriver() noexcept : impl(zc::heap<Impl>()) {}
 CompilerDriver::~CompilerDriver() noexcept(false) = default;
 
 zc::Maybe<source::BufferId> CompilerDriver::addSourceFile(const zc::StringPtr file) {
-  return impl->addSourceFileImpl(file);
+  const zc::Maybe<source::BufferId> bufferId =
+      impl->sourceManager->getFileSystemSourceBufferID(file);
+  if (bufferId == zc::none) {
+    impl->diagnosticEngine->diagnose<diagnostics::DiagID::InvalidPath>(source::SourceLoc(), file);
+  }
+  return bufferId;
 }
 
 const diagnostics::DiagnosticEngine& CompilerDriver::getDiagnosticEngine() const {
-  return impl->getDiagnosticEngine();
+  return *impl->diagnosticEngine;
 }
 
 }  // namespace driver
