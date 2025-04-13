@@ -38,6 +38,9 @@ struct BufferId::Impl {
   Impl(uint64_t val) : value(val) {}
 };
 
+// ================================================================================
+// BufferId
+
 BufferId::BufferId(uint64_t val) noexcept : impl(zc::heap<Impl>(val)) {}
 BufferId::~BufferId() noexcept(false) = default;
 
@@ -64,104 +67,87 @@ bool BufferId::isValid() const { return impl->value != 0; }
 // ================================================================================
 // SourceManager::Impl
 
-struct VirtualFile {
-  CharSourceRange range;
-  zc::StringPtr name;
-  int lineOffset;
+struct GeneratedSourceInfo {
+  CharSourceRange originalSourceRange;
+  CharSourceRange generatedSourceRange;
 };
 
-class SourceManager::Impl {
-public:
-  struct GeneratedSourceInfo {
-    CharSourceRange originalSourceRange;
-    CharSourceRange generatedSourceRange;
-  };
+struct Buffer {
+  /// Unique Id
+  const BufferId id;
+  /// Path in file system
+  zc::String identifier;
+  /// Content of buffer
+  zc::Array<zc::byte> data;
+  /// The original source location of this buffer.
+  GeneratedSourceInfo generatedInfo;
+  /// The offset in bytes of the first character in the buffer.
+  mutable zc::Vector<unsigned> lineStartOffsets;
 
-  struct Buffer {
-    /// Unique Id
-    const BufferId id;
-    /// Path in file system
-    zc::String identifier;
-    /// Content of buffer
-    zc::Array<zc::byte> data;
-    /// The original source location of this buffer.
-    GeneratedSourceInfo generatedInfo;
-    /// The offset in bytes of the first character in the buffer.
-    mutable zc::Vector<unsigned> lineStartOffsets;
+  Buffer(const BufferId id, zc::String identifier, zc::Array<zc::byte> data)
+      : id(id), identifier(zc::mv(identifier)), data(zc::mv(data)) {}
 
-    Buffer(const BufferId id, zc::String identifier, zc::Array<zc::byte> data)
-        : id(id), identifier(zc::mv(identifier)), data(zc::mv(data)) {}
+  const zc::byte* getBufferStart() const { return data.begin(); }
+  const zc::byte* getBufferEnd() const { return data.end(); }
 
-    const zc::byte* getBufferStart() const { return data.begin(); }
-    const zc::byte* getBufferEnd() const { return data.end(); }
+  ZC_NODISCARD size_t getBufferSize() const { return data.size(); }
+};
 
-    ZC_NODISCARD size_t getBufferSize() const { return data.size(); }
-  };
+/// Compare the source location ranges for two impl->buffers, as an ordering to
+/// use for fast searches.
+struct BufferIDRangeComparator {
+  const SourceManager& sourceManager;
 
-  Impl() noexcept;
-  ~Impl() noexcept(false);
+  bool operator()(BufferId lhsID, BufferId rhsID) const {
+    auto lhsRange = sourceManager.getRangeForBuffer(lhsID);
+    auto rhsRange = sourceManager.getRangeForBuffer(rhsID);
 
-  /// Buffer management
-  BufferId addNewSourceBuffer(zc::Array<zc::byte> inputData, zc::StringPtr bufIdentifier);
-  BufferId addMemBufferCopy(zc::ArrayPtr<const zc::byte> inputData, zc::StringPtr bufIdentifier);
+    // If the source impl->buffers are identical, we want the higher-numbered
+    // source impl->buffers to occur first. This is important when uniquing.
+    if (lhsRange == rhsRange) return lhsID > rhsID;
 
-  /// Virtual file management
-  void createVirtualFile(const SourceLoc& loc, zc::StringPtr name, int lineOffset, unsigned length);
-  const zc::Maybe<const VirtualFile&> getVirtualFile(const SourceLoc& loc) const;
+    std::less<const zc::byte*> pointerCompare;
+    return pointerCompare(lhsRange.getStart().getOpaqueValue(),
+                          rhsRange.getStart().getOpaqueValue());
+  }
 
-  /// Generated source info
-  void setGeneratedSourceInfo(BufferId bufferId, const GeneratedSourceInfo& info);
-  const GeneratedSourceInfo* getGeneratedSourceInfo(BufferId bufferId) const;
+  bool operator()(BufferId lhsID, SourceLoc rhsLoc) const {
+    auto lhsRange = sourceManager.getRangeForBuffer(lhsID);
 
-  SourceLoc getLocForBufferStart(BufferId bufferId) const;
+    std::less<const zc::byte*> pointerCompare;
+    return pointerCompare(lhsRange.getEnd().getOpaqueValue(), rhsLoc.getOpaqueValue());
+  }
 
-  /// Returns the offset in bytes for the given valid source location.
-  unsigned getLocOffsetInBuffer(SourceLoc loc, BufferId bufferId) const;
+  bool operator()(SourceLoc lhsLoc, BufferId rhsID) const {
+    auto rhsRange = sourceManager.getRangeForBuffer(rhsID);
 
-  /// Location and range operations
-  SourceLoc getLocForOffset(BufferId bufferId, unsigned offset) const;
-  LineAndColumn getLineAndColumn(const SourceLoc& loc) const;
-  LineAndColumn getPresumedLineAndColumnForLoc(SourceLoc Loc,
-                                               BufferId bufferId = BufferId(0)) const;
-  unsigned getLineNumber(const SourceLoc& loc) const;
-  bool isBefore(const SourceLoc& first, const SourceLoc& second) const;
-  bool isAtOrBefore(const SourceLoc& first, const SourceLoc& second) const;
-  bool containsTokenLoc(const SourceRange& range, const SourceLoc& loc) const;
-  bool encloses(const SourceRange& enclosing, const SourceRange& inner) const;
+    std::less<const zc::byte*> pointerCompare;
+    return pointerCompare(lhsLoc.getOpaqueValue(), rhsRange.getEnd().getOpaqueValue());
+  }
+};
 
-  /// Returns a buffer identifier for the given location.
-  zc::StringPtr getDisplayNameForLoc(const SourceLoc& loc) const;
+/// Determine whether the source ranges for two impl->buffers are equivalent.
+struct BufferIDSameRange {
+  const SourceManager& sourceMgr;
 
-  /// Content retrieval
-  zc::ArrayPtr<const zc::byte> getEntireTextForBuffer(BufferId bufferId) const;
-  zc::ArrayPtr<const zc::byte> extractText(const SourceRange& range) const;
+  bool operator()(BufferId lhsID, BufferId rhsID) const {
+    auto lhsRange = sourceMgr.getRangeForBuffer(lhsID);
+    auto rhsRange = sourceMgr.getRangeForBuffer(rhsID);
 
-  /// Buffer identification
-  zc::Maybe<BufferId> findBufferContainingLoc(const SourceLoc& loc) const;
-  zc::StringPtr getFilename(BufferId bufferId) const;
+    return lhsRange == rhsRange;
+  }
+};
 
-  /// Line and column operations
-  zc::Maybe<unsigned> resolveFromLineCol(BufferId bufferId, unsigned line, unsigned col) const;
-  zc::Maybe<unsigned> resolveOffsetForEndOfLine(BufferId bufferId, unsigned line) const;
-  zc::Maybe<unsigned> getLineLength(BufferId bufferId, unsigned line) const;
-  SourceLoc getLocForLineCol(BufferId bufferId, unsigned line, unsigned col) const;
+struct BufferLocCache {
+  zc::Vector<BufferId> sortedBuffers;
+  uint64_t numBuffersOriginal = 0;
+  zc::Maybe<BufferId> lastBufferId;
+};
 
-  zc::StringPtr getIdentifierForBuffer(BufferId bufferId) const;
+struct SourceManager::Impl {
+  Impl() noexcept : fs(zc::newDiskFilesystem()) {}
+  ~Impl() noexcept(false) = default;
 
-  CharSourceRange getRangeForBuffer(BufferId bufferId) const;
-
-  /// External source support
-  zc::Maybe<BufferId> getFileSystemSourceBufferID(zc::StringPtr path);
-  SourceLoc getLocFromExternalSource(zc::StringPtr path, unsigned line, unsigned col);
-
-  /// Verification
-  void verifyAllBuffers() const;
-
-  /// Regex literal support
-  void recordRegexLiteralStartLoc(const SourceLoc loc);
-  bool isRegexLiteralStart(const SourceLoc& loc) const;
-
-private:
   /// The filesystem to use for reading files.
   zc::Own<const zc::Filesystem> fs;
   /// File a path to BufferID mapping cache
@@ -176,66 +162,17 @@ private:
   /// Fast lookup from buffer ID to buffer.
   zc::HashMap<BufferId, const Buffer&> idToBuffer;
 
-  mutable struct BufferLocCache {
-    zc::Vector<BufferId> sortedBuffers;
-    uint64_t numBuffersOriginal = 0;
-    zc::Maybe<BufferId> lastBufferId;
-  } locCache;
-
-  /// Compare the source location ranges for two buffers, as an ordering to
-  /// use for fast searches.
-  struct BufferIDRangeComparator {
-    const SourceManager::Impl& sourceManager;
-
-    bool operator()(BufferId lhsID, BufferId rhsID) const {
-      auto lhsRange = sourceManager.getRangeForBuffer(lhsID);
-      auto rhsRange = sourceManager.getRangeForBuffer(rhsID);
-
-      // If the source buffers are identical, we want the higher-numbered
-      // source buffers to occur first. This is important when uniquing.
-      if (lhsRange == rhsRange) return lhsID > rhsID;
-
-      std::less<const zc::byte*> pointerCompare;
-      return pointerCompare(lhsRange.getStart().getOpaqueValue(),
-                            rhsRange.getStart().getOpaqueValue());
-    }
-
-    bool operator()(BufferId lhsID, SourceLoc rhsLoc) const {
-      auto lhsRange = sourceManager.getRangeForBuffer(lhsID);
-
-      std::less<const zc::byte*> pointerCompare;
-      return pointerCompare(lhsRange.getEnd().getOpaqueValue(), rhsLoc.getOpaqueValue());
-    }
-
-    bool operator()(SourceLoc lhsLoc, BufferId rhsID) const {
-      auto rhsRange = sourceManager.getRangeForBuffer(rhsID);
-
-      std::less<const zc::byte*> pointerCompare;
-      return pointerCompare(lhsLoc.getOpaqueValue(), rhsRange.getEnd().getOpaqueValue());
-    }
-  };
-
-  /// Determine whether the source ranges for two buffers are equivalent.
-  struct BufferIDSameRange {
-    const SourceManager::Impl& sourceMgr;
-
-    bool operator()(BufferId lhsID, BufferId rhsID) const {
-      auto lhsRange = sourceMgr.getRangeForBuffer(lhsID);
-      auto rhsRange = sourceMgr.getRangeForBuffer(rhsID);
-
-      return lhsRange == rhsRange;
-    }
-  };
+  mutable BufferLocCache locCache;
 };
 
 // ================================================================================
-// SourceManager::Impl
+// SourceManager
 
-SourceManager::Impl::Impl() noexcept : fs(zc::newDiskFilesystem()) {}
-SourceManager::Impl::~Impl() noexcept(false) = default;
+SourceManager::SourceManager() noexcept : impl(zc::heap<Impl>()) {}
+SourceManager::~SourceManager() noexcept(false) = default;
 
-LineAndColumn SourceManager::Impl::getPresumedLineAndColumnForLoc(SourceLoc loc,
-                                                                  BufferId bufferId) const {
+LineAndColumn SourceManager::getPresumedLineAndColumnForLoc(SourceLoc loc,
+                                                            BufferId bufferId) const {
   ZC_IREQUIRE(loc.isValid(), "Invalid source location");
 
   // Handle line number offset of virtual files
@@ -244,7 +181,7 @@ LineAndColumn SourceManager::Impl::getPresumedLineAndColumnForLoc(SourceLoc loc,
 
   // Get the actual buffer ID
   ZC_IF_SOME(actualBufferId, bufferId.isValid() ? bufferId : findBufferContainingLoc(loc)) {
-    const Buffer& buffer = ZC_ASSERT_NONNULL(idToBuffer.find(actualBufferId));
+    const Buffer& buffer = ZC_ASSERT_NONNULL(impl->idToBuffer.find(actualBufferId));
 
     // Calculate the row number and column number
     unsigned line = 1;
@@ -271,61 +208,60 @@ LineAndColumn SourceManager::Impl::getPresumedLineAndColumnForLoc(SourceLoc loc,
   ZC_UNREACHABLE;
 }
 
-BufferId SourceManager::Impl::addNewSourceBuffer(zc::Array<zc::byte> inputData,
-                                                 const zc::StringPtr bufIdentifier) {
-  const BufferId bufferId(buffers.size() + 1);
+BufferId SourceManager::addNewSourceBuffer(zc::Array<zc::byte> inputData,
+                                           const zc::StringPtr bufIdentifier) {
+  const BufferId bufferId(impl->buffers.size() + 1);
   zc::Own<Buffer> buffer =
       zc::heap<Buffer>(bufferId, zc::heapString(bufIdentifier), zc::mv(inputData));
-  buffers.add(zc::mv(buffer));
-  idToBuffer.insert(bufferId, *buffers.back());
+  impl->buffers.add(zc::mv(buffer));
+  impl->idToBuffer.insert(bufferId, *impl->buffers.back());
   return bufferId;
 }
 
-BufferId SourceManager::Impl::addMemBufferCopy(const zc::ArrayPtr<const zc::byte> inputData,
-                                               const zc::StringPtr bufIdentifier) {
-  const BufferId bufferId(buffers.size() + 1);
+BufferId SourceManager::addMemBufferCopy(const zc::ArrayPtr<const zc::byte> inputData,
+                                         const zc::StringPtr bufIdentifier) {
+  const BufferId bufferId(impl->buffers.size() + 1);
   zc::Own<Buffer> buffer =
       zc::heap<Buffer>(bufferId, zc::heapString(bufIdentifier), zc::heapArray(inputData));
-  buffers.add(zc::mv(buffer));
-  idToBuffer.insert(bufferId, *buffers.back());
-  return buffer->id;
+  impl->buffers.add(zc::mv(buffer));
+  impl->idToBuffer.insert(bufferId, *impl->buffers.back());
+  return bufferId;
 }
 
-void SourceManager::Impl::createVirtualFile(const SourceLoc& loc, zc::StringPtr name,
-                                            int lineOffset, unsigned length) {
+void SourceManager::createVirtualFile(const SourceLoc& loc, zc::StringPtr name, int lineOffset,
+                                      unsigned length) {
   VirtualFile vf;
   vf.range = CharSourceRange{loc, length};
   vf.name = name;
   vf.lineOffset = lineOffset;
-  virtualFiles.add(zc::mv(vf));
+  impl->virtualFiles.add(zc::mv(vf));
 }
 
-const zc::Maybe<const VirtualFile&> SourceManager::Impl::getVirtualFile(
-    const SourceLoc& loc) const {
+const zc::Maybe<const VirtualFile&> SourceManager::getVirtualFile(const SourceLoc& loc) const {
   if (loc.isInvalid()) { return zc::none; }
 
-  for (const VirtualFile& vf : virtualFiles) {
+  for (const VirtualFile& vf : impl->virtualFiles) {
     if (vf.range.contains(loc)) return vf;
   }
 
   return zc::none;
 }
 
-SourceLoc SourceManager::Impl::getLocForBufferStart(BufferId bufferId) const {
+SourceLoc SourceManager::getLocForBufferStart(BufferId bufferId) const {
   return getRangeForBuffer(bufferId).getStart();
 }
 
-unsigned SourceManager::Impl::getLocOffsetInBuffer(SourceLoc loc, BufferId bufferId) const {
+unsigned SourceManager::getLocOffsetInBuffer(SourceLoc loc, BufferId bufferId) const {
   ZC_ASSERT(loc.isValid(), "invalid loc");
   return 0;
 }
 
-SourceLoc SourceManager::Impl::getLocForOffset(BufferId bufferId, unsigned offset) const {
+SourceLoc SourceManager::getLocForOffset(BufferId bufferId, unsigned offset) const {
   return getLocForBufferStart(bufferId).getAdvancedLoc(offset);
 }
 
 /// Returns a buffer identifier for the given location.
-zc::StringPtr SourceManager::Impl::getDisplayNameForLoc(const SourceLoc& loc) const {
+zc::StringPtr SourceManager::getDisplayNameForLoc(const SourceLoc& loc) const {
   // Respect #line first
   ZC_IF_SOME(vf, getVirtualFile(loc)) { return vf.name; }
 
@@ -334,50 +270,54 @@ zc::StringPtr SourceManager::Impl::getDisplayNameForLoc(const SourceLoc& loc) co
   return getIdentifierForBuffer(bufferId);
 }
 
-zc::ArrayPtr<const zc::byte> SourceManager::Impl::getEntireTextForBuffer(BufferId bufferId) const {
-  return ZC_ASSERT_NONNULL(idToBuffer.find(bufferId)).data;
+zc::ArrayPtr<const zc::byte> SourceManager::getEntireTextForBuffer(BufferId bufferId) const {
+  return ZC_ASSERT_NONNULL(impl->idToBuffer.find(bufferId)).data;
 }
 
-zc::Maybe<BufferId> SourceManager::Impl::findBufferContainingLoc(const SourceLoc& loc) const {
+zc::Maybe<BufferId> SourceManager::findBufferContainingLoc(const SourceLoc& loc) const {
   if (loc.isInvalid()) return zc::none;
 
   const zc::byte* ptr = loc.getOpaqueValue();
-  const uint64_t numBuffers = buffers.size();
+  const uint64_t numBuffers = impl->buffers.size();
 
   // If the cache is out-of-date, update it now.
-  if (numBuffers != locCache.numBuffersOriginal) {
-    locCache.sortedBuffers.clear();
-    for (const zc::Own<Buffer>& buf : buffers) { locCache.sortedBuffers.add(buf->id); }
-    locCache.numBuffersOriginal = numBuffers;
+  if (numBuffers != impl->locCache.numBuffersOriginal) {
+    impl->locCache.sortedBuffers.clear();
+    for (const zc::Own<Buffer>& buf : impl->buffers) { impl->locCache.sortedBuffers.add(buf->id); }
+    impl->locCache.numBuffersOriginal = numBuffers;
 
     // Sort the buffer IDs by source range.
-    std::sort(locCache.sortedBuffers.begin(), locCache.sortedBuffers.end(),
+    std::sort(impl->locCache.sortedBuffers.begin(), impl->locCache.sortedBuffers.end(),
               BufferIDRangeComparator{*this});
 
-    // Remove lower-numbered buffers with the same source ranges as higher-
-    // numbered buffers. We want later alias buffers to be found first.
-    BufferId* newEnd = std::unique(locCache.sortedBuffers.begin(), locCache.sortedBuffers.end(),
-                                   BufferIDSameRange{*this});
-    locCache.sortedBuffers.truncate(locCache.sortedBuffers.end() - newEnd - 1);
+    // Remove lower-numbered impl->buffers with the same source ranges as higher-
+    // numbered impl->buffers. We want later alias impl->buffers to be found first.
+    BufferId* newEnd = std::unique(impl->locCache.sortedBuffers.begin(),
+                                   impl->locCache.sortedBuffers.end(), BufferIDSameRange{*this});
+    // Calculate the number of unique elements (i.e., the new size)
+    auto newSize = std::distance(impl->locCache.sortedBuffers.begin(), newEnd);
+    // Truncate the vector to the new size
+    impl->locCache.sortedBuffers.truncate(newSize);
     // Forget the last buffer we looked at; it might have been replaced.
-    locCache.lastBufferId = zc::none;
+    impl->locCache.lastBufferId = zc::none;
   }
 
   // Check the last buffer we looked in.
-  ZC_IF_SOME(lastId, locCache.lastBufferId) {
-    const Buffer& lastBuf = ZC_ASSERT_NONNULL(idToBuffer.find(lastId));
+  ZC_IF_SOME(lastId, impl->locCache.lastBufferId) {
+    const Buffer& lastBuf = ZC_ASSERT_NONNULL(impl->idToBuffer.find(lastId));
     if (ptr >= lastBuf.data.begin() && ptr < lastBuf.data.end()) { return lastId; }
   }
 
   // Search the sorted list of buffer IDs.
-  auto it = std::upper_bound(locCache.sortedBuffers.begin(), locCache.sortedBuffers.end(), loc,
-                             BufferIDRangeComparator{*this});
+  auto it =
+      std::upper_bound(impl->locCache.sortedBuffers.begin(), impl->locCache.sortedBuffers.end(),
+                       loc, BufferIDRangeComparator{*this});
 
-  if (it != locCache.sortedBuffers.begin()) {
+  if (it != impl->locCache.sortedBuffers.begin()) {
     const BufferId candidateId = *(it - 1);
-    ZC_IF_SOME(candidate, idToBuffer.find(candidateId)) {
+    ZC_IF_SOME(candidate, impl->idToBuffer.find(candidateId)) {
       if (ptr >= candidate.data.begin() && ptr < candidate.data.end()) {
-        locCache.lastBufferId = candidateId;
+        impl->locCache.lastBufferId = candidateId;
         return candidateId;
       }
     }
@@ -386,8 +326,8 @@ zc::Maybe<BufferId> SourceManager::Impl::findBufferContainingLoc(const SourceLoc
   return zc::none;
 }
 
-zc::Maybe<unsigned> SourceManager::Impl::resolveFromLineCol(BufferId bufferId, unsigned line,
-                                                            unsigned col) const {
+zc::Maybe<unsigned> SourceManager::resolveFromLineCol(BufferId bufferId, unsigned line,
+                                                      unsigned col) const {
   const zc::ArrayPtr<const zc::byte> buffer = getEntireTextForBuffer(bufferId);
 
   unsigned currentLine = 1;
@@ -406,33 +346,34 @@ zc::Maybe<unsigned> SourceManager::Impl::resolveFromLineCol(BufferId bufferId, u
   return zc::none;
 }
 
-zc::StringPtr SourceManager::Impl::getIdentifierForBuffer(BufferId bufferId) const {
-  return ZC_ASSERT_NONNULL(idToBuffer.find(bufferId)).identifier;
+zc::StringPtr SourceManager::getIdentifierForBuffer(BufferId bufferId) const {
+  return ZC_ASSERT_NONNULL(impl->idToBuffer.find(bufferId)).identifier;
 }
 
-CharSourceRange SourceManager::Impl::getRangeForBuffer(BufferId bufferId) const {
-  const Buffer& buffer = ZC_ASSERT_NONNULL(idToBuffer.find(bufferId));
+CharSourceRange SourceManager::getRangeForBuffer(BufferId bufferId) const {
+  const Buffer& buffer = ZC_ASSERT_NONNULL(impl->idToBuffer.find(bufferId));
   const SourceLoc start{buffer.getBufferStart()};
   return CharSourceRange(start, buffer.getBufferSize());
 }
 
-zc::Maybe<BufferId> SourceManager::Impl::getFileSystemSourceBufferID(const zc::StringPtr path) {
-  const zc::PathPtr cwd = fs->getCurrentPath();
+zc::Maybe<BufferId> SourceManager::getFileSystemSourceBufferID(const zc::StringPtr path) {
+  const zc::PathPtr cwd = impl->fs->getCurrentPath();
   zc::Path nativePath = cwd.evalNative(path);
   ZC_REQUIRE(path.size() > 0);
 
-  const zc::ReadableDirectory& dir = nativePath.startsWith(cwd) ? fs->getCurrent() : fs->getRoot();
+  const zc::ReadableDirectory& dir =
+      nativePath.startsWith(cwd) ? impl->fs->getCurrent() : impl->fs->getRoot();
   const zc::Path sourcePath = nativePath.startsWith(cwd)
                                   ? nativePath.slice(cwd.size(), nativePath.size()).clone()
                                   : zc::mv(nativePath);
 
   // Check if the path is already in the cache
-  ZC_IF_SOME(bufferId, pathToBufferId.find(path)) { return bufferId; }
+  ZC_IF_SOME(bufferId, impl->pathToBufferId.find(path)) { return bufferId; }
 
   ZC_IF_SOME(file, dir.tryOpenFile(sourcePath)) {
     zc::Array<zc::byte> data = file->readAllBytes();
     const BufferId bufferId = addNewSourceBuffer(zc::mv(data), sourcePath.toString());
-    pathToBufferId.insert(sourcePath.toString(), bufferId);
+    impl->pathToBufferId.insert(sourcePath.toString(), bufferId);
     return bufferId;
   }
 
@@ -440,72 +381,14 @@ zc::Maybe<BufferId> SourceManager::Impl::getFileSystemSourceBufferID(const zc::S
   return zc::none;
 }
 
-SourceLoc SourceManager::Impl::getLocFromExternalSource(const zc::StringPtr path,
-                                                        const unsigned line, const unsigned col) {
+SourceLoc SourceManager::getLocFromExternalSource(const zc::StringPtr path, const unsigned line,
+                                                  const unsigned col) {
   ZC_IF_SOME(bufferId, getFileSystemSourceBufferID(path)) {
     ZC_IF_SOME(offset, resolveFromLineCol(bufferId, line, col)) {
       return getLocForOffset(bufferId, offset);
     }
   }
   return {};
-}
-
-// ================================================================================
-// SourceManager
-
-SourceManager::SourceManager() noexcept : impl(zc::heap<Impl>()) {}
-SourceManager::~SourceManager() noexcept(false) = default;
-
-LineAndColumn SourceManager::getPresumedLineAndColumnForLoc(SourceLoc Loc,
-                                                            BufferId bufferId) const {
-  return impl->getPresumedLineAndColumnForLoc(Loc, bufferId);
-}
-
-zc::Maybe<BufferId> SourceManager::getFileSystemSourceBufferID(const zc::StringPtr path) {
-  return impl->getFileSystemSourceBufferID(path);
-}
-
-SourceLoc SourceManager::getLocFromExternalSource(zc::StringPtr path, unsigned line, unsigned col) {
-  return impl->getLocFromExternalSource(path, line, col);
-}
-
-zc::StringPtr SourceManager::getIdentifierForBuffer(BufferId bufferId) const {
-  return impl->getIdentifierForBuffer(bufferId);
-}
-
-CharSourceRange SourceManager::getRangeForBuffer(BufferId bufferId) const {
-  return impl->getRangeForBuffer(bufferId);
-}
-
-BufferId SourceManager::addNewSourceBuffer(zc::Array<zc::byte> inputData,
-                                           const zc::StringPtr bufIdentifier) {
-  return impl->addNewSourceBuffer(zc::mv(inputData), bufIdentifier);
-}
-
-BufferId SourceManager::addMemBufferCopy(const zc::ArrayPtr<const zc::byte> inputData,
-                                         const zc::StringPtr bufIdentifier) {
-  return impl->addMemBufferCopy(inputData, bufIdentifier);
-}
-
-zc::ArrayPtr<const zc::byte> SourceManager::getEntireTextForBuffer(BufferId bufferId) const {
-  return impl->getEntireTextForBuffer(bufferId);
-}
-
-zc::Maybe<BufferId> SourceManager::findBufferContainingLoc(const SourceLoc& loc) const {
-  return impl->findBufferContainingLoc(loc);
-}
-
-void SourceManager::createVirtualFile(const SourceLoc& loc, const zc::StringPtr name,
-                                      const int lineOffset, const unsigned length) {
-  impl->createVirtualFile(loc, name, lineOffset, length);
-}
-
-unsigned SourceManager::getLocOffsetInBuffer(SourceLoc Loc, BufferId bufferId) const {
-  return impl->getLocOffsetInBuffer(Loc, bufferId);
-}
-
-SourceLoc SourceManager::getLocForBufferStart(BufferId bufferId) const {
-  return impl->getLocForBufferStart(bufferId);
 }
 
 }  // namespace source

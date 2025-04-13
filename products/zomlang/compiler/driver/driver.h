@@ -31,12 +31,17 @@ public:
   CompilerDriver() noexcept;
   ~CompilerDriver() noexcept(false);
 
+  /// Add a source file to the compiler.
+  /// @param file The path to the source file to add
+  /// @return The buffer ID of the added file, or none if the file could not be added
   zc::Maybe<source::BufferId> addSourceFile(zc::StringPtr file);
 
+  /// Get the diagnostic engine used by the compiler.
+  /// @return A reference to the diagnostic engine
   const diagnostics::DiagnosticEngine& getDiagnosticEngine() const;
 
 private:
-  class Impl;
+  struct Impl;
   zc::Own<Impl> impl;
 };
 
