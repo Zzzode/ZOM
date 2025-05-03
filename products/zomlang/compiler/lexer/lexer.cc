@@ -14,8 +14,7 @@
 
 #include "zomlang/compiler/lexer/lexer.h"
 
-#include <zomlang/compiler/basic/frontend.h>
-
+#include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -25,7 +24,7 @@ namespace lexer {
 
 struct Lexer::Impl {
   // Reference members
-  const LangOptions& langOpts;
+  const basic::LangOptions& langOpts;
   const source::SourceManager& sourceMgr;
   diagnostics::DiagnosticEngine& diags;
 
@@ -42,7 +41,7 @@ struct Lexer::Impl {
   LexerMode currentMode;
   CommentRetentionMode commentMode;
 
-  Impl(const LangOptions& options, const source::SourceManager& sm,
+  Impl(const basic::LangOptions& options, const source::SourceManager& sm,
        diagnostics::DiagnosticEngine& d, uint64_t bufferId)
       : langOpts(options),
         sourceMgr(sm),
@@ -109,7 +108,7 @@ struct Lexer::Impl {
   bool isOperatorStart(char c) const { /*...*/ return false; }
 };
 
-Lexer::Lexer(const LangOptions& options, const source::SourceManager& sourceMgr,
+Lexer::Lexer(const basic::LangOptions& options, const source::SourceManager& sourceMgr,
              diagnostics::DiagnosticEngine& diags, uint64_t bufferId)
     : impl(zc::heap<Impl>(options, sourceMgr, diags, bufferId)) {}
 Lexer::~Lexer() = default;

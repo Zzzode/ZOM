@@ -14,53 +14,58 @@
 
 #pragma once
 
+#include "zc/core/memory.h"
 #include "zc/core/string.h"
 
 namespace zomlang {
 namespace compiler {
-namespace zis {
+namespace ast {
 
-class ZIS {
+class AST {
 public:
-  virtual ~ZIS() noexcept = default;
+  virtual ~AST() noexcept = default;
 };
 
-class Expression : public ZIS {
+class Expression : public AST {
 public:
   ~Expression() noexcept override = default;
 };
 
-class Statement : public ZIS {
+class Statement : public AST {
 public:
   ~Statement() noexcept override = default;
 };
 
 class BinaryExpression : public Expression {
 public:
-  ~BinaryExpression() noexcept override = default;
+  BinaryExpression(zc::Own<Expression> left, zc::String op, zc::Own<Expression> right);
+  ~BinaryExpression() noexcept override;
+
+  const Expression* getLeft() const;
+  zc::StringPtr getOp() const;
+  const Expression* getRight() const;
 
 private:
-  zc::Own<Expression> left;
-  zc::String op;
-  zc::Own<Expression> right;
+  struct Impl;
+  zc::Own<Impl> impl;
 };
 
 class VariableDeclaration : public Statement {
 public:
-  ~VariableDeclaration() noexcept override = default;
+  VariableDeclaration(zc::String type, zc::String name, zc::Own<Expression> initializer);
+  ~VariableDeclaration() noexcept override;
 
-  zc::StringPtr getType() const { return type; }
-
-  zc::StringPtr getName() const { return name; }
+  zc::StringPtr getType() const;
+  zc::StringPtr getName() const;
+  const Expression* getInitializer() const;
 
 private:
-  zc::String type;
-  zc::String name;
-  zc::Own<Expression> initializer;
+  struct Impl;
+  zc::Own<Impl> impl;
 };
 
-// Add more ZIS node types as needed
+// Add more AST node types as needed
 
-}  // namespace zis
+}  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang

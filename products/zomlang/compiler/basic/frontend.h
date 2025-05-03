@@ -15,22 +15,31 @@
 #pragma once
 
 #include "zc/core/memory.h"
-#include "zc/core/mutex.h"
 
 namespace zomlang {
 namespace compiler {
 
 namespace source {
 class Module;
+class SourceManager;
+class BufferId;
+}  // namespace source
+
+namespace diagnostics {
+class DiagnosticEngine;
 }
 
-namespace zis {
-class ZIS;
+namespace ast {
+class AST;
 }
 
 namespace basic {
 
-zc::Maybe<zis::ZIS> performParse(source::Module& module);
+struct LangOptions;
+
+zc::Maybe<zc::Own<ast::AST>> performParse(source::SourceManager& sm,
+                                          diagnostics::DiagnosticEngine& diags,
+                                          const LangOptions& langOpts, source::BufferId bufferId);
 
 }  // namespace basic
 }  // namespace compiler

@@ -19,19 +19,24 @@
 
 namespace zomlang {
 namespace compiler {
+
+namespace ast {
+class AST;
+}
+
 namespace parser {
 
 class Parser {
 public:
   Parser(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept;
-  ~Parser() noexcept(false) = default;
+  ~Parser() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Parser);
 
-  void parse(zc::ArrayPtr<const lexer::Token> tokens);
+  zc::Maybe<zc::Own<ast::AST>> parse(zc::ArrayPtr<const lexer::Token> tokens);
 
 private:
-  class Impl;
+  struct Impl;
   zc::Own<Impl> impl;
 };
 

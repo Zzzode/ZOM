@@ -15,40 +15,40 @@
 #include "zomlang/compiler/source/manager.h"
 
 #include "zc/core/common.h"
-#include "zc/core/filesystem.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
+namespace source {
 
 ZC_TEST("SourceManager: Basic Memory Buffer Operations") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   // Empty Buffer Test
-  source::BufferId emptyId = manager.addMemBufferCopy({}, "empty.zom");
+  BufferId emptyId = manager.addMemBufferCopy({}, "empty.zom");
   ZC_EXPECT(manager.getEntireTextForBuffer(emptyId).size() == 0);
 
   // Common Text Test
   zc::StringPtr content = "Hello\nWorld\n"_zc;
-  source::BufferId bufferId = manager.addMemBufferCopy(content.asBytes(), "test.txt");
+  BufferId bufferId = manager.addMemBufferCopy(content.asBytes(), "test.txt");
   zc::ArrayPtr<const zc::byte> text = manager.getEntireTextForBuffer(bufferId);
   ZC_EXPECT(text.size() == 12);
   ZC_EXPECT(text == content.asBytes());
 }
 
 ZC_TEST("SourceManager: File System Operations") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   // Test non-existent file
-  zc::Maybe<source::BufferId> nonexistentResult = manager.getFileSystemSourceBufferID("non.txt");
+  zc::Maybe<BufferId> nonexistentResult = manager.getFileSystemSourceBufferID("non.txt");
   ZC_EXPECT(nonexistentResult == zc::none);
 
   // Test duplicate loading
   zc::StringPtr content = "test content"_zc;
-  source::BufferId id1 = manager.addMemBufferCopy(content.asBytes(), "same.txt");
-  source::BufferId id2 = manager.addMemBufferCopy(content.asBytes(), "same.txt");
+  BufferId id1 = manager.addMemBufferCopy(content.asBytes(), "same.txt");
+  BufferId id2 = manager.addMemBufferCopy(content.asBytes(), "same.txt");
   // Same path but potentially different content should get different IDs (though content is same
   // here) Or perhaps the intent was: Same path should ideally return the same ID if content is
   // identical and caching is implemented? Keeping the original logic: Expect different IDs as
@@ -57,54 +57,54 @@ ZC_TEST("SourceManager: File System Operations") {
 }
 
 ZC_TEST("SourceManager: Buffer Identification") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   // Test BufferId uniqueness
-  source::BufferId id1 = manager.addMemBufferCopy("content1"_zcb, "file1.txt");
-  source::BufferId id2 = manager.addMemBufferCopy("content2"_zcb, "file2.txt");
+  BufferId id1 = manager.addMemBufferCopy("content1"_zcb, "file1.txt");
+  BufferId id2 = manager.addMemBufferCopy("content2"_zcb, "file2.txt");
 
   ZC_EXPECT(id1 != id2);
   ZC_EXPECT(manager.getIdentifierForBuffer(id1) != manager.getIdentifierForBuffer(id2));
 }
 
 ZC_TEST("SourceManager: Source Location Navigation") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   zc::StringPtr content =
       "Line1\n"
       "Line2\n"
       "Line3\n"_zc;
 
-  source::BufferId bufferId = manager.addMemBufferCopy(content.asBytes(), "nav.txt");
+  BufferId bufferId = manager.addMemBufferCopy(content.asBytes(), "nav.txt");
 
-  source::SourceLoc loc = manager.getLocForBufferStart(bufferId);
-  source::LineAndColumn lineCol = manager.getPresumedLineAndColumnForLoc(loc, bufferId);
+  SourceLoc loc = manager.getLocForBufferStart(bufferId);
+  LineAndColumn lineCol = manager.getPresumedLineAndColumnForLoc(loc, bufferId);
   ZC_EXPECT(lineCol.line == 1);
   ZC_EXPECT(lineCol.column == 1);
 
-  source::SourceLoc loc2 = manager.getLocForOffset(bufferId, 6);
-  source::LineAndColumn lineCol2 = manager.getPresumedLineAndColumnForLoc(loc2, bufferId);
+  SourceLoc loc2 = manager.getLocForOffset(bufferId, 6);
+  LineAndColumn lineCol2 = manager.getPresumedLineAndColumnForLoc(loc2, bufferId);
   ZC_EXPECT(lineCol2.line == 2);
   ZC_EXPECT(lineCol2.column == 1);
 
-  source::SourceLoc loc3 = manager.getLocForOffset(bufferId, 14);
-  source::LineAndColumn lineCol3 = manager.getPresumedLineAndColumnForLoc(loc3, bufferId);
+  SourceLoc loc3 = manager.getLocForOffset(bufferId, 14);
+  LineAndColumn lineCol3 = manager.getPresumedLineAndColumnForLoc(loc3, bufferId);
   ZC_EXPECT(lineCol3.line == 3);
   ZC_EXPECT(lineCol3.column == 3);
 }
 
 ZC_TEST("SourceManager: Source Ranges") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   zc::StringPtr content = "Hello World"_zc;
-  source::BufferId bufferId = manager.addMemBufferCopy(content.asBytes(), "range.txt");
+  BufferId bufferId = manager.addMemBufferCopy(content.asBytes(), "range.txt");
 
-  source::CharSourceRange range = manager.getRangeForBuffer(bufferId);
+  CharSourceRange range = manager.getRangeForBuffer(bufferId);
   ZC_EXPECT(range.length() == 11);
 }
 
 ZC_TEST("SourceManager: Virtual File Layering") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   zc::StringPtr content = "base content\nfor testing\n"_zc;
   auto bufferId = manager.addMemBufferCopy(content.asBytes(), "base.txt");
@@ -119,7 +119,7 @@ ZC_TEST("SourceManager: Virtual File Layering") {
 }
 
 ZC_TEST("SourceManager: Virtual File Interactions") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   zc::StringPtr content = "content\nfor\nvirtual\nfile\n"_zc;
   auto bufferId = manager.addMemBufferCopy(content.asBytes(), "base.txt");
@@ -135,7 +135,7 @@ ZC_TEST("SourceManager: Virtual File Interactions") {
 }
 
 ZC_TEST("SourceManager: Line Column Operations") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   zc::StringPtr content = "L1\nLine2\n\nIndented\n"_zc;
   auto bufferId = manager.addMemBufferCopy(content.asBytes(), "lines.txt");
@@ -156,7 +156,7 @@ ZC_TEST("SourceManager: Line Column Operations") {
 }
 
 ZC_TEST("SourceManager: Content Retrieval") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   zc::StringPtr content = "First Line\nSecond Line\n"_zc;
   auto bufferId = manager.addMemBufferCopy(content.asBytes(), "content.txt");
@@ -167,21 +167,21 @@ ZC_TEST("SourceManager: Content Retrieval") {
 }
 
 ZC_TEST("SourceManager: Edge Cases and Error Handling") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   // Test invalid BufferId
-  source::BufferId invalidId(999999);
+  BufferId invalidId(999999);
   ZC_EXPECT_THROW_MESSAGE("expected impl->idToBuffer.find(bufferId) != nullptr",
                           manager.getEntireTextForBuffer(invalidId));
 
   // Test invalid location
-  source::SourceLoc invalidLoc;
+  SourceLoc invalidLoc;
   ZC_EXPECT_THROW_MESSAGE("Invalid source location",
                           manager.getPresumedLineAndColumnForLoc(invalidLoc, invalidId));
 }
 
 ZC_TEST("SourceManager: Performance") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   // Create a large file for performance testing
   zc::Array<zc::byte> largeContent = zc::heapArray<zc::byte>(1024 * 1024, 'x');
@@ -195,7 +195,7 @@ ZC_TEST("SourceManager: Performance") {
 }
 
 ZC_TEST("SourceManager: Special Characters") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   // Includes more special characters: Unicode, Tab, Newline, Space, Null character, CRLF
   zc::StringPtr content =
@@ -237,7 +237,7 @@ ZC_TEST("SourceManager: Special Characters") {
 }
 
 ZC_TEST("SourceManager: Content Comparison") {
-  source::SourceManager manager;
+  SourceManager manager;
 
   zc::StringPtr content1 = "Hello World"_zc;
   zc::StringPtr content2 = "Hello World"_zc;
@@ -253,5 +253,6 @@ ZC_TEST("SourceManager: Content Comparison") {
   ZC_EXPECT(text1.size() == content1.size());
 }
 
+}  // namespace source
 }  // namespace compiler
 }  // namespace zomlang
