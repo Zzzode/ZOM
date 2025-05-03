@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/lexer/token.h"
 
@@ -32,7 +31,9 @@ class DiagnosticEngine;
 class InFlightDiagnostic;
 }  // namespace diagnostics
 
+namespace basic {
 struct LangOptions;
+}
 
 namespace lexer {
 
@@ -53,7 +54,7 @@ struct LexerState {
 
 class Lexer {
 public:
-  Lexer(const LangOptions& options, const source::SourceManager& sourceMgr,
+  Lexer(const basic::LangOptions& options, const source::SourceManager& sourceMgr,
         diagnostics::DiagnosticEngine& diags, uint64_t bufferId);
   ~Lexer();
 

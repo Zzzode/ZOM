@@ -910,7 +910,7 @@ inline constexpr Bounded<zc::max(aN, bN), WiderType<A, B>> max(Bounded<aN, A> a,
 // We need to override min() and max() because:
 // 1) WiderType<> might not choose the correct bounds.
 // 2) One of the two sides of the ternary operator in the default implementation would fail to
-//    typecheck even though it is OK in practice.
+//    checker even though it is OK in practice.
 
 // -------------------------------------------------------------------
 // Operators between Bounded and BoundedConst

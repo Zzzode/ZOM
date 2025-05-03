@@ -17,6 +17,7 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zc/core/vector.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
@@ -137,6 +138,8 @@ public:
   /// Regex literal support
   void recordRegexLiteralStartLoc(const SourceLoc& loc);
   bool isRegexLiteralStart(const SourceLoc& loc) const;
+
+  const zc::Vector<BufferId> getManagedBufferIds() const;
 
 private:
   struct Impl;

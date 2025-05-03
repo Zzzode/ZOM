@@ -14,11 +14,50 @@
 
 #include "zomlang/compiler/basic/frontend.h"
 
-#include "zc/core/map.h"
-#include "zomlang/compiler/zis/zis.h"
+#include "zc/core/vector.h"
+#include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/lexer/lexer.h"
+#include "zomlang/compiler/parser/parser.h"
+#include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
-namespace basic {}  // namespace basic
+namespace basic {
+
+// Implementation of performParse
+zc::Maybe<zc::Own<ast::AST>> performParse(source::SourceManager& sm,
+                                          diagnostics::DiagnosticEngine& diags,
+                                          const LangOptions& langOpts, source::BufferId bufferId) {
+  // 1. Lexing
+  lexer::Lexer lexer(langOpts, sm, diags, bufferId);
+  zc::Vector<lexer::Token> tokens;
+  lexer::Token currentToken;
+  do {
+    lexer.lex(currentToken);
+    tokens.add(currentToken);
+  } while (currentToken.getKind() != lexer::TokenKind::kEOF);
+
+  // Check for lexing errors before parsing
+  if (diags.hasErrors()) {
+    return zc::none;  // Don't proceed if lexing failed
+  }
+
+  // 2. Parsing
+  parser::Parser parser(diags, bufferId);
+  // Assuming Parser::parse now returns the AST or null on failure
+  zc::Maybe<zc::Own<ast::AST>> ast = parser.parse(tokens.asPtr());
+
+  // Check for parsing errors
+  if (diags.hasErrors()) {
+    return zc::none;  // Return none if parsing reported errors
+  }
+
+  // Return the parsed AST (or none if parser returned none)
+  return zc::mv(ast);
+}
+
+}  // namespace basic
 }  // namespace compiler
 }  // namespace zomlang

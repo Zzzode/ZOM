@@ -12,12 +12,12 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/typecheck/typechecker.h"
+#include "zomlang/compiler/checker/checker.h"
 
 #include "zc/core/common.h"
 #include "zc/core/string.h"
-#include "zomlang/compiler/zis/zis.h"
+#include "zomlang/compiler/ast/ast.h"
 
 namespace zomlang {
-namespace typecheck {}  // namespace typecheck
+namespace checker {}  // namespace checker
 }  // namespace zomlang

@@ -19,7 +19,7 @@
 #include "zc/core/string.h"
 
 namespace zomlang {
-namespace typecheck {
+namespace checker {
 
 struct Symbol {
   zc::String name;
@@ -42,5 +42,5 @@ private:
   zc::HashMap<zc::String, zc::Own<Symbol>> symbols;
 };
 
-}  // namespace typecheck
+}  // namespace checker
 }  // namespace zomlang
