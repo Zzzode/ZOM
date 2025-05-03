@@ -391,6 +391,13 @@ SourceLoc SourceManager::getLocFromExternalSource(const zc::StringPtr path, cons
   return {};
 }
 
+const zc::Vector<BufferId> SourceManager::getManagedBufferIds() const {
+  zc::Vector<BufferId> ids;
+  ids.reserve(impl->buffers.size());
+  for (const auto& buffer : impl->buffers) { ids.add(buffer->id); }
+  return ids;
+}
+
 }  // namespace source
 }  // namespace compiler
 }  // namespace zomlang

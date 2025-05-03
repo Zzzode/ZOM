@@ -14,16 +14,16 @@
 
 #pragma once
 
-#include "zomlang/compiler/typecheck/symbol-table.h"
-#include "zomlang/compiler/zis/zis.h"
+#include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/checker/symbol-table.h"
 
 namespace zomlang {
-namespace typecheck {
+namespace checker {
 
-// class TypeChecker : public CompilerStage<zc::Own<zis::ZIS>,
+// class TypeChecker : public CompilerStage<zc::Own<ast::AST>,
 // zc::String> {
 //  protected:
-//   void process(const zc::Own<zis::ZIS>& input,
+//   void process(const zc::Own<ast::AST>& input,
 //                zc::Vector<zc::String>& outputs) override;
 //
 //  private:
@@ -34,5 +34,5 @@ namespace typecheck {
 //   ~TypeChecker() noexcept override = default;
 // };
 
-}  // namespace typecheck
+}  // namespace checker
 }  // namespace zomlang

@@ -4,27 +4,28 @@ add_subdirectory(driver)
 add_subdirectory(lexer)
 add_subdirectory(parser)
 add_subdirectory(source)
-add_subdirectory(typecheck)
-add_subdirectory(zis)
+add_subdirectory(checker)
+add_subdirectory(ast)
 
 add_library(
   frontend STATIC
+  $<TARGET_OBJECTS:ast>
   $<TARGET_OBJECTS:basic>
+  $<TARGET_OBJECTS:checker>
   $<TARGET_OBJECTS:diagnostics>
   $<TARGET_OBJECTS:driver>
   $<TARGET_OBJECTS:lexer>
   $<TARGET_OBJECTS:parser>
-  $<TARGET_OBJECTS:source>
-  $<TARGET_OBJECTS:typecheck>)
+  $<TARGET_OBJECTS:source>)
 target_link_libraries(frontend PUBLIC zc)
 
 set_target_include_directories(
   "${INCLUDE_DIRS}"
-  frontend
+  ast
   basic
+  checker
   diagnostics
   driver
   lexer
   parser
-  source
-  typecheck)
+  source)

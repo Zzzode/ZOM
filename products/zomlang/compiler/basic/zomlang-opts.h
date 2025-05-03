@@ -16,6 +16,7 @@
 
 namespace zomlang {
 namespace compiler {
+namespace basic {
 
 struct LangOptions {
   bool useUnicode;
@@ -26,5 +27,6 @@ struct LangOptions {
   LangOptions() : useUnicode(true), allowDollarIdentifiers(false), supportRegexLiterals(true) {}
 };
 
+}  // namespace basic
 }  // namespace compiler
 }  // namespace zomlang

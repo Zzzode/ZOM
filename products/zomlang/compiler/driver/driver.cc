@@ -15,6 +15,13 @@
 #include "zomlang/compiler/driver/driver.h"
 
 #include "zc/core/filesystem.h"
+#include "zc/core/map.h"
+#include "zc/core/mutex.h"
+#include "zc/core/thread.h"
+#include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/basic/frontend.h"
+#include "zomlang/compiler/basic/thread-pool.h"
+#include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/consoling-diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
@@ -28,8 +35,9 @@ namespace driver {
 // CompilerDriver::Impl
 
 struct CompilerDriver::Impl {
-  Impl() noexcept
-      : sourceManager(zc::heap<source::SourceManager>()),
+  Impl(const basic::LangOptions& opts) noexcept
+      : langOpts(opts),
+        sourceManager(zc::heap<source::SourceManager>()),
         diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)) {
     diagnosticEngine->addConsumer(zc::heap<diagnostics::ConsolingDiagnosticConsumer>());
   }
@@ -47,16 +55,21 @@ struct CompilerDriver::Impl {
         : name(name), dir(zc::mv(dir)) {}
   };
 
+  /// Language options.
+  const basic::LangOptions& langOpts;
   /// Source manager to manage source files.
   zc::Own<source::SourceManager> sourceManager;
   /// Diagnostic engine to report diagnostics.
   zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;
+  /// Mutex-guarded map from BufferId to parsed AST.
+  zc::MutexGuarded<zc::HashMap<source::BufferId, zc::Own<ast::AST>>> astMutex;
 };
 
 // ================================================================================
 // CompilerDriver
 
-CompilerDriver::CompilerDriver() noexcept : impl(zc::heap<Impl>()) {}
+CompilerDriver::CompilerDriver(const basic::LangOptions& langOpts) noexcept
+    : impl(zc::heap<Impl>(langOpts)) {}
 CompilerDriver::~CompilerDriver() noexcept(false) = default;
 
 zc::Maybe<source::BufferId> CompilerDriver::addSourceFile(const zc::StringPtr file) {
@@ -70,6 +83,34 @@ zc::Maybe<source::BufferId> CompilerDriver::addSourceFile(const zc::StringPtr fi
 
 const diagnostics::DiagnosticEngine& CompilerDriver::getDiagnosticEngine() const {
   return *impl->diagnosticEngine;
+}
+
+bool CompilerDriver::parseSources() {
+  // Get BufferIds directly from SourceManager
+  zc::Vector<source::BufferId> bufferIds = impl->sourceManager->getManagedBufferIds();
+
+  basic::ThreadPool threadPool(16);
+
+  for (const source::BufferId& bufferId : bufferIds) {  // Iterate over the retrieved vector
+    // Create a thread for each buffer ID
+    threadPool.enqueue([this, bufferId]() -> void {
+      // Perform lexing and parsing for the buffer.
+      zc::Maybe<zc::Own<ast::AST>> maybeAst = basic::performParse(
+          *impl->sourceManager, *impl->diagnosticEngine, impl->langOpts, bufferId);
+
+      // Store the result if successful
+      ZC_IF_SOME(ast, maybeAst) {
+        // Lock the mutex to safely access the shared map
+        auto lockedAsts = impl->astMutex.lockExclusive();
+        // Insert or update the AST in the map
+        lockedAsts->upsert(bufferId, zc::mv(ast));
+      }
+      // Errors during parsing should be reported via the DiagnosticEngine
+    });
+  }
+
+  // Return true if no errors were reported
+  return !impl->diagnosticEngine->hasErrors();
 }
 
 }  // namespace driver

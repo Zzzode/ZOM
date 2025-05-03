@@ -14,6 +14,7 @@
 
 #include "zc/core/main.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/driver/driver.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -30,7 +31,8 @@ static constexpr char VERSION_STRING[] = "ZomLang Version " VERSION;
 class CompilerMain {
 public:
   explicit CompilerMain(zc::ProcessContext& context) : context(context) {
-    driver = driverSpace.construct();
+    basic::LangOptions langOpts;
+    driver = driverSpace.construct(langOpts);
   }
 
   zc::MainFunc getMain() {
@@ -84,7 +86,25 @@ public:
 
   zc::MainBuilder::Validity enableDumpAST() { return true; }
 
-  zc::MainBuilder::Validity emitOutput() { return true; }
+  zc::MainBuilder::Validity emitOutput() {
+    // Trigger the parallel parsing process
+    bool success = driver->parseSources();
+
+    if (!success || driver->getDiagnosticEngine().hasErrors()) {
+      // Handle parsing errors, maybe return an error message
+      return zc::str("Compilation failed due to parsing errors.");
+    }
+
+    // Parsing succeeded, proceed with further steps (e.g., type checking, IR gen)
+    // if (dumpASTEnabled) { // Check if dump AST flag is set
+    //    const auto& asts = driver->getASTs();
+    //    // Iterate through asts and dump them
+    // }
+
+    // ... rest of the emit logic based on emitType ...
+
+    return true;
+  }
 
 private:
   zc::ProcessContext& context;

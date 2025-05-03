@@ -15,6 +15,7 @@
 #pragma once
 
 #include "zc/core/string.h"
+#include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 
 namespace zomlang {
@@ -28,7 +29,7 @@ namespace driver {
 
 class CompilerDriver {
 public:
-  CompilerDriver() noexcept;
+  CompilerDriver(const basic::LangOptions& langOpts) noexcept;
   ~CompilerDriver() noexcept(false);
 
   /// Add a source file to the compiler.
@@ -39,6 +40,13 @@ public:
   /// Get the diagnostic engine used by the compiler.
   /// @return A reference to the diagnostic engine
   const diagnostics::DiagnosticEngine& getDiagnosticEngine() const;
+
+  /// Parses all added source files into ASTs.
+  /// @return True if parsing succeeded without fatal errors, false otherwise.
+  bool parseSources();
+
+  /// Potentially add a method to get the ASTs later
+  // zc::HashMap<source::BufferId, zc::Own<ast::TranslationUnit>>& getASTs();
 
 private:
   struct Impl;

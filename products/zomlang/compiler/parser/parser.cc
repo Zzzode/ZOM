@@ -14,25 +14,36 @@
 
 #include "zomlang/compiler/parser/parser.h"
 
+#include "zomlang/compiler/ast/ast.h"
+
 namespace zomlang {
 namespace compiler {
 namespace parser {
 
 // ================================================================================
 // Parser::Impl
-class Parser::Impl {
-public:
-  Impl(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept;
+struct Parser::Impl {
+  Impl(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept
+      : bufferId(bufferId), diagnosticEngine(diagnosticEngine) {}
   ~Impl() noexcept(false) = default;
 
   ZC_DISALLOW_COPY_AND_MOVE(Impl);
 
-  void parse(zc::ArrayPtr<const lexer::Token> tokens);
-
-private:
   uint64_t bufferId;
   diagnostics::DiagnosticEngine& diagnosticEngine;
 };
+
+// ================================================================================
+// Parser
+
+Parser::Parser(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept
+    : impl(zc::heap<Impl>(diagnosticEngine, bufferId)) {}
+
+Parser::~Parser() noexcept(false) = default;
+
+zc::Maybe<zc::Own<ast::AST>> Parser::parse(zc::ArrayPtr<const lexer::Token> tokens) {
+  return zc::none;
+}
 
 }  // namespace parser
 }  // namespace compiler
