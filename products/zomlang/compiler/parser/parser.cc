@@ -15,6 +15,9 @@
 #include "zomlang/compiler/parser/parser.h"
 
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/lexer/lexer.h"
+#include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
@@ -23,25 +26,32 @@ namespace parser {
 // ================================================================================
 // Parser::Impl
 struct Parser::Impl {
-  Impl(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept
-      : bufferId(bufferId), diagnosticEngine(diagnosticEngine) {}
+  Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
+       const basic::LangOptions& langOpts, const source::BufferId& bufferId) noexcept
+      : bufferId(bufferId),
+        diagnosticEngine(diagnosticEngine),
+        lexer(sourceMgr, diagnosticEngine, langOpts, bufferId) {}
   ~Impl() noexcept(false) = default;
 
   ZC_DISALLOW_COPY_AND_MOVE(Impl);
 
-  uint64_t bufferId;
+  const source::BufferId& bufferId;
   diagnostics::DiagnosticEngine& diagnosticEngine;
+  const lexer::Lexer lexer;
 };
 
 // ================================================================================
 // Parser
 
-Parser::Parser(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept
-    : impl(zc::heap<Impl>(diagnosticEngine, bufferId)) {}
+Parser::Parser(const source::SourceManager& sourceMgr,
+               diagnostics::DiagnosticEngine& diagnosticEngine, const basic::LangOptions& langOpts,
+               const source::BufferId& bufferId) noexcept
+    : impl(zc::heap<Impl>(sourceMgr, diagnosticEngine, langOpts, bufferId)) {}
 
 Parser::~Parser() noexcept(false) = default;
 
-zc::Maybe<zc::Own<ast::AST>> Parser::parse(zc::ArrayPtr<const lexer::Token> tokens) {
+zc::Maybe<zc::Own<ast::AST>> Parser::parse() {
+  // TODO: Implement parsing logic using impl->lexer.lex()
   return zc::none;
 }
 

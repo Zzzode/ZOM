@@ -14,8 +14,8 @@
 
 #pragma once
 
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/lexer/token.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
 
 namespace zomlang {
 namespace compiler {
@@ -24,16 +24,32 @@ namespace ast {
 class AST;
 }
 
+namespace basic {
+struct LangOptions;
+}
+
+namespace diagnostics {
+class DiagnosticEngine;
+}
+
+namespace source {
+class BufferId;
+class SourceManager;
+}  // namespace source
+
 namespace parser {
 
 class Parser {
 public:
-  Parser(diagnostics::DiagnosticEngine& diagnosticEngine, uint64_t bufferId) noexcept;
+  Parser(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
+         const basic::LangOptions& langOpts, const source::BufferId& bufferId) noexcept;
   ~Parser() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Parser);
 
-  zc::Maybe<zc::Own<ast::AST>> parse(zc::ArrayPtr<const lexer::Token> tokens);
+  /// \brief Parse the source file and return the AST.
+  /// \return The AST if parsing succeeded, zc::Nothing otherwise.
+  zc::Maybe<zc::Own<ast::AST>> parse();
 
 private:
   struct Impl;

@@ -14,36 +14,176 @@
 
 #pragma once
 
+#include "zc/core/string.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
-
-namespace source {
-class SourceLoc;
-}  // namespace source
-
 namespace lexer {
 
 enum class TokenKind {
   kUnknown,
+
+  // Identifiers
   kIdentifier,
-  kKeyword,
-  kInteger,
-  kFloat,
-  kString,
+
+  // Keywords
+  kKeywords,
+  kAbstractKeyword,     // abstract
+  kAccessorKeyword,     // accessor
+  kAnyKeyword,          // any
+  kAssertsKeyword,      // asserts
+  kAssertKeyword,       // assert
+  kAsyncKeyword,        // async
+  kAwaitKeyword,        // await
+  kBigIntKeyword,       // bigint
+  kBooleanKeyword,      // boolean
+  kBreakKeyword,        // break
+  kCaseKeyword,         // case
+  kCatchKeyword,        // catch
+  kClassKeyword,        // class
+  kContinueKeyword,     // continue
+  kConstructorKeyword,  // constructor
+  kDebuggerKeyword,     // debugger
+  kDeclareKeyword,      // declare
+  kDefaultKeyword,      // default
+  kDeleteKeyword,       // delete
+  kDoKeyword,           // do
+  kExtendsKeyword,      // extends
+  kFinallyKeyword,      // finally
+  kFromKeyword,         // from
+  kFunKeyword,          // fun
+  kGetKeyword,          // get
+  kGlobalKeyword,       // global
+  kImmediateKeyword,    // immediate
+  kImplementsKeyword,   // implements
+  kInKeyword,           // in
+  kInferKeyword,        // infer
+  kInstanceOfKeyword,   // instanceof
+  kInterfaceKeyword,    // interface
+  kIntrinsicKeyword,    // intrinsic
+  kIsKeyword,           // is
+  kKeyOfKeyword,        // keyof
+  kMatchKeyword,        // match
+  kModuleKeyword,       // module
+  kMutableKeyword,      // mutable
+  kNamespaceKeyword,    // namespace
+  kNeverKeyword,        // never
+  kNewKeyword,          // new
+  kNumberKeyword,       // number
+  kObjectKeyword,       // object
+  kOfKeyword,           // of
+  kOptionalKeyword,     // optional
+  kOutKeyword,          // out
+  kOverrideKeyword,     // override
+  kPackageKeyword,      // package
+  kPrivateKeyword,      // private
+  kProtectedKeyword,    // protected
+  kPublicKeyword,       // public
+  kReadonlyKeyword,     // readonly
+  kRequireKeyword,      // require
+  kSatisfiesKeyword,    // satisfies
+  kSetKeyword,          // set
+  kStaticKeyword,       // static
+  kSuperKeyword,        // super
+  kSwitchKeyword,       // switch
+  kSymbolKeyword,       // symbol
+  kThisKeyword,         // this
+  kThrowKeyword,        // throw
+  kTryKeyword,          // try
+  kTypeOfKeyword,       // typeof
+  kUndefinedKeyword,    // undefined
+  kUniqueKeyword,       // unique
+  kUsingKeyword,        // using
+  kVarKeyword,          // var
+  kVoidKeyword,         // void
+  kWithKeyword,         // with
+  kYieldKeyword,        // yield
+
+  // Literals
+  kIntegerLiteral,
+  kFloatLiteral,
+  kStringLiteral,
+
+  // Operators
   kOperator,
+  kArrow,                                    // ->
+  kColon,                                    // :
+  kDot,                                      // .
+  kDotDotDot,                                // ...
+  kLessThan,                                 // <
+  kGreaterThan,                              // >
+  kLessThanEquals,                           // <=
+  kGreaterThanEquals,                        // >=
+  kEqualsEquals,                             // ==
+  kExclamationEquals,                        // !=
+  kEqualsEqualsEquals,                       // ===
+  kExclamationEqualsEquals,                  // !==
+  kEqualsGreaterThan,                        // =>
+  kPlus,                                     // +
+  kMinus,                                    // -
+  kAsteriskAsterisk,                         // **
+  kAsterisk,                                 // *
+  kSlash,                                    // /
+  kPercent,                                  // %
+  kPlusPlus,                                 // ++
+  kMinusMinus,                               // --
+  kLessThanLessThan,                         // <<
+  kLessThanSlash,                            // </
+  kGreaterThanGreaterThan,                   // >>
+  kGreaterThanGreaterThanGreaterThan,        // >>>
+  kAmpersand,                                // &
+  kBar,                                      // |
+  kCaret,                                    // ^
+  kExclamation,                              // !
+  kTilde,                                    // ~
+  kAmpersandAmpersand,                       // &&
+  kBarBar,                                   // ||
+  kQuestion,                                 // ?
+  kQuestionQuestion,                         // ??
+  kQuestionDot,                              // ?.
+  kEquals,                                   // =
+  kPlusEquals,                               // +=
+  kMinusEquals,                              // -=
+  kAsteriskEquals,                           // *=
+  kAsteriskAsteriskEquals,                   // **=
+  kSlashEquals,                              // /=
+  kPercentEquals,                            // %=
+  kLessThanLessThanEquals,                   // <<=
+  kGreaterThanGreaterThanEquals,             // >>=
+  kGreaterThanGreaterThanGreaterThanEquals,  // >>>=
+  kAmpersandEquals,                          // &=
+  kBarEquals,                                // |=
+  kCaretEquals,                              // ^=
+  kBarBarEquals,                             // ||=
+  kAmpersandAmpersandEquals,                 // &&=
+  kQuestionQuestionEquals,                   // ??=
+  kAt,                                       // @
+  kHash,                                     // #
+  kBacktick,                                 // `
+
+  // Punctuation
   kPunctuation,
+  kLeftParen,     // (
+  kRightParen,    // )
+  kLeftBrace,     // {
+  kRightBrace,    // }
+  kSemicolon,     // ;
+  kComma,         // ,
+  kLeftBracket,   // [
+  kRightBracket,  // ]
+
   kComment,
-  kEOF,
+
   // Add more token types as needed...
+
+  kEOF,
 };
 
 class Token {
 public:
   Token() = default;
-  explicit Token(const TokenKind k, zc::StringPtr t, const source::SourceLoc l)
-      : kind(k), text(t), loc(l) {}
+  Token(const TokenKind k, zc::StringPtr t, const source::SourceLoc l) : kind(k), text(t), loc(l) {}
   ~Token() = default;
 
   void setKind(const TokenKind k) { kind = k; }

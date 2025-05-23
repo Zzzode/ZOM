@@ -20,7 +20,6 @@ namespace zomlang {
 namespace compiler {
 
 namespace source {
-class Module;
 class SourceManager;
 class BufferId;
 }  // namespace source
@@ -37,9 +36,16 @@ namespace basic {
 
 struct LangOptions;
 
-zc::Maybe<zc::Own<ast::AST>> performParse(source::SourceManager& sm,
-                                          diagnostics::DiagnosticEngine& diags,
-                                          const LangOptions& langOpts, source::BufferId bufferId);
+/// \brief Perform lexing and parsing of a given source file.
+/// \param sm The source manager.
+/// \param diagnosticEngine The diagnostic engine.
+/// \param langOpts The language options.
+/// \param bufferId The buffer id of the source file.
+/// \return The AST if successful, zc::Nothing otherwise.
+zc::Maybe<zc::Own<ast::AST>> performParse(const source::SourceManager& sm,
+                                          diagnostics::DiagnosticEngine& diagnosticEngine,
+                                          const LangOptions& langOpts,
+                                          const source::BufferId& bufferId);
 
 }  // namespace basic
 }  // namespace compiler
