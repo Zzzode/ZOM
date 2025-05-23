@@ -57,6 +57,12 @@ public:
 
   DiagnosticState& getState();
 
+  /// \brief Report a diagnostic at the given location.
+  ///
+  /// \param loc The location of the diagnostic.
+  /// \param id The diagnostic ID.
+  /// \param args The diagnostic arguments.
+  /// \return The in-flight diagnostic.
   template <DiagID ID, typename... Args>
   InFlightDiagnostic diagnose(source::SourceLoc loc, Args&&... args) {
     static_assert(sizeof...(args) == DiagnosticTraits<ID>::argCount,

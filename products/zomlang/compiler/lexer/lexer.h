@@ -14,16 +14,16 @@
 
 #pragma once
 
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/lexer/token.h"
+#include <cstdint>
+
+#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
 
 namespace source {
+class BufferId;
 class SourceManager;
-class SourceLoc;
-class CharSourceRange;
 }  // namespace source
 
 namespace diagnostics {
@@ -36,6 +36,9 @@ struct LangOptions;
 }
 
 namespace lexer {
+
+// Forward declarations
+class Token;
 
 enum class LexerMode : uint8_t { kNormal, kStringInterpolation, kRegexLiteral };
 
@@ -54,15 +57,16 @@ struct LexerState {
 
 class Lexer {
 public:
-  Lexer(const basic::LangOptions& options, const source::SourceManager& sourceMgr,
-        diagnostics::DiagnosticEngine& diags, uint64_t bufferId);
+  Lexer(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
+        const basic::LangOptions& options, const source::BufferId& bufferId);
   ~Lexer();
 
   ZC_DISALLOW_COPY_AND_MOVE(Lexer);
 
-  /// For a source location in the current buffer, returns the corresponding
-  /// pointer.
-  ZC_NODISCARD const char* getBufferPtrForSourceLoc(source::SourceLoc Loc) const;
+  /// \brief For a source location in the current buffer, returns the corresponding pointer.
+  /// \param Loc The source location.
+  /// \return The corresponding pointer.
+  ZC_NODISCARD const zc::byte* getBufferPtrForSourceLoc(source::SourceLoc Loc) const;
 
   /// Main lexical analysis function
   void lex(Token& result);
@@ -79,10 +83,10 @@ public:
   void exitMode(LexerMode mode);
 
   /// Unicode support
-  static unsigned lexUnicodeEscape(const char*& curPtr, diagnostics::DiagnosticEngine& diags);
+  static unsigned lexUnicodeEscape(const zc::byte*& curPtr, diagnostics::DiagnosticEngine& diags);
 
   /// Regular expression support
-  bool tryLexRegexLiteral(const char* tokStart);
+  bool tryLexRegexLiteral(const zc::byte* tokStart);
 
   /// String interpolation support
   void lexStringLiteral(unsigned customDelimiterLen = 0);
