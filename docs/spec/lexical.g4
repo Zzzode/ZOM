@@ -1,45 +1,132 @@
 lexer grammar lexical;
 
-// Unicode Format Control Characters: These are the characters that are used to represent Unicode
-// format control characters.
+// ================================================================================ Unicode Format-Control Characters
 ZWNJ: '\u200C'; // ZERO WIDTH NON-JOINER
 ZWJ: '\u200D'; // ZERO WIDTH JOINER
 ZWNBSP: '\uFEFF'; // ZERO WIDTH NO-BREAK SPACE
 
-// Whitespace: These are the characters that are ignored by the parser. They are used to separate
-// tokens in a program.
+// ================================================================================ Whitespace
 TAB: '\u0009'; // CHARACTER TABULATION
 VT: '\u000B'; // LINE TABULATION
 FF: '\u000C'; // FORM FEED
 
-// Line Terminator: These are the characters that terminate a line of code. They are used to
-// separate statements in a program.
+// ================================================================================ Line Terminators
 LF: '\u000A'; // LINE FEED
 CR: '\u000D'; // CARRIAGE RETURN
 LS: '\u2028'; // LINE SEPARATOR
 PS: '\u2029'; // PARAGRAPH SEPARATOR
 
+// ================================================================================ Comments
+MULTI_LINE_COMMENT: '/*' .*? '*/' -> channel(HIDDEN);
+SINGLE_LINE_COMMENT: '//' ~[\r\n]* -> channel(HIDDEN);
+
+// ================================================================================ Tokens
+
+// ================================================================================ Identifiers
 DOLLAR: '$';
 UNDERSCORE: '_';
 BACKSLASH: '\\';
 ANSI_LETTER: [a-zA-Z];
+UNICODE_ID_START: [\p{ID_Start}];
+UNICODE_ID_CONTINUE: [\p{ID_Continue}];
+SINGLE_ESCAPE_CHAR_FRAG: ['"\\bfnrtv];
+HEX_4_DIGITS_FRAG: HEX_DIGIT HEX_DIGIT HEX_DIGIT HEX_DIGIT;
+HEX_ESCAPE_SEQUENCE: 'x' HEX_DIGIT HEX_DIGIT;
+UNICODE_ESCAPE_SEQUENCE:
+	'u' HEX_4_DIGITS_FRAG
+	| 'u{' HEX_DIGIT+ '}' {
+		String text = getText();
+		String hexValue = text.substring(2, text.length() - 1);
+		try {
+			int codePoint = Integer.parseInt(hexValue, 16);
+			if (codePoint > 0x10FFFF) {
+				throw new LexerNoViableAltException(this);
+			}
+		} catch (NumberFormatException e) {
+			throw new LexerNoViableAltException(this);
+		}
+	};
 
-// Unicode Identifier Characters Corresponds to any Unicode code point with the Unicode property
-// “ID_Start”
-UNICODE_ID_START: [\p{L}\p{Nl}]; // L: Letter, Nl: Letter_Number
+// ================================================================================ Keywords
+ABSTRACT: 'abstract';
+ACCESSOR: 'accessor';
+ANY: 'any';
+ASSERTS: 'asserts';
+ASSERT: 'assert';
+ASYNC: 'async';
+AWAIT: 'await';
+BIGINT: 'bigint';
+BOOLEAN: 'boolean';
+BREAK: 'break';
+CASE: 'case';
+CATCH: 'catch';
+CLASS: 'class';
+CONTINUE: 'continue';
+CONSTRUCTOR: 'constructor';
+DEBUGGER: 'debugger';
+DECLARE: 'declare';
+DEFAULT: 'default';
+DELETE: 'delete';
+DO: 'do';
+EXTENDS: 'extends';
+FINALLY: 'finally';
+FROM: 'from';
+FUN: 'fun';
+GET: 'get';
+GLOBAL: 'global';
+IMMEDIATE: 'immediate';
+IMPLEMENTS: 'implements';
+IN: 'in';
+INFER: 'infer';
+INSTANCEOF: 'instanceof';
+INTERFACE: 'interface';
+INTRINSIC: 'intrinsic';
+IS: 'is';
+KEYOF: 'keyof';
+MATCH: 'match';
+MODULE: 'module';
+MUTABLE: 'mutable';
+NAMESPACE: 'namespace';
+NEVER: 'never';
+NEW: 'new';
+NUMBER: 'number';
+OBJECT: 'object';
+OF: 'of';
+OPTIONAL: 'optional';
+OUT: 'out';
+OVERRIDE: 'override';
+PACKAGE: 'package';
+PRIVATE: 'private';
+PROTECTED: 'protected';
+PUBLIC: 'public';
+READONLY: 'readonly';
+REQUIRE: 'require';
+SATISFIES: 'satisfies';
+SET: 'set';
+STATIC: 'static';
+SUPER: 'super';
+SWITCH: 'switch';
+SYMBOL: 'symbol';
+THIS: 'this';
+THROW: 'throw';
+TRY: 'try';
+TYPEOF: 'typeof';
+UNDEFINED: 'undefined';
+UNIQUE: 'unique';
+USING: 'using';
+VAR: 'var';
+VOID: 'void';
+WITH: 'with';
+YIELD: 'yield';
 
-// Corresponds to any Unicode code point with the Unicode property “ID_Continue”
-UNICODE_ID_CONTINUE: [\p{L}\p{Nl}\p{Mn}\p{Mc}\p{Nd}\p{Pc}];
-// Mn: Nonspacing_Mark, Mc: Spacing_Mark, Nd: Decimal_Number, Pc: Connector_Punctuation
-
-// Punctuators
+// ================================================================================ Punctuators
 OPTIONAL_CHAINING: '?.';
-// Note: [lookahead ∉ DecimalDigit] needs semantic predicate in parser or combined lexer/parser rule.
-
 LPAREN: '(';
 RPAREN: ')';
 LBRACK: '[';
 RBRACK: ']';
+LBRACE: '{';
+RBRACE: '}';
 PERIOD: '.';
 ELLIPSIS: '...';
 SEMICOLON: ';';
@@ -92,46 +179,13 @@ ARROW: '=>';
 DIV: '/';
 DIV_ASSIGN: '/=';
 
-RBRACE: '}';
-
-// Escape Sequence Definitions from EBNF
-
-// Helper Fragments
-fragment HEX_DIGIT: [0-9a-fA-F];
-
-// SingleEscapeCharacter :: one of ' " \ b f n r t v
-fragment SINGLE_ESCAPE_CHAR_FRAG: ['"\\bfnrtv]; // Escaped for ANTLR string literals
-
-// Hex4Digits :: HexDigit HexDigit HexDigit HexDigit
-fragment HEX_4_DIGITS_FRAG: HEX_DIGIT HEX_DIGIT HEX_DIGIT HEX_DIGIT;
-
-// Actual Escape Sequence Tokens
-// HexEscapeSequence :: x HexDigit HexDigit
-HEX_ESCAPE_SEQUENCE: 'x' HEX_DIGIT HEX_DIGIT;
-
-// UnicodeEscapeSequence :: u Hex4Digits | u{ CodePoint }
-// Note: CodePoint in u{CodePoint} can be 1 to 6 hex digits.
-// For simplicity, using HEX_DIGIT+ here. A more precise rule might be needed for CodePoint.
-UNICODE_ESCAPE_SEQUENCE: 'u' HEX_4_DIGITS_FRAG | 'u{' HEX_DIGIT+ '}';
-
-// CharacterEscapeSequence :: SingleEscapeCharacter | NonEscapeCharacter
-// For lexical purposes, SingleEscapeCharacter is represented by SINGLE_ESCAPE_CHAR_FRAG.
-// NonEscapeCharacter ('SourceCharacter but not one of EscapeCharacter or LineTerminator')
-// is context-dependent and not easily a standalone token. It's usually handled
-// as "any other character" within a string literal rule, for example.
-
-// The EBNF 'EscapeSequence' rule combines these elements:
-// EscapeSequence ::
-//   CharacterEscapeSequence
-//   0 [lookahead ∉ DecimalDigit]
-//   HexEscapeSequence
-//   UnicodeEscapeSequence
-// This overall structure is typically part of a larger token like a String Literal.
-// For example, a StringLiteral rule would be like:
-// STRING_LITERAL: '"' ( STRING_CHAR | EMBEDDED_ESCAPE )* '"';
-// where EMBEDDED_ESCAPE would use HEX_ESCAPE, UNICODE_ESCAPE, SINGLE_ESCAPE_CHAR_FRAG, etc.
-// The '0' [lookahead ∉ DecimalDigit] (interpreted as octal escape \0 not followed by digit)
-// would also be part of such an EMBEDDED_ESCAPE rule, possibly with a semantic predicate.
-
-// The EBNF 'EscapeCharacter' (SingleEscapeCharacter | DecimalDigit | x | u) is a helper
-// concept for defining NonEscapeCharacter and isn't typically a standalone token itself.
+// ================================================================================ LITERALS
+NULL: 'null';
+TRUE: 'true';
+FALSE: 'false';
+DECIMAL_DIGIT: [0-9];
+NON_ZERO_DIGIT: [1-9];
+EXPONENT_INDICATOR: [eE];
+BINARY_DIGIT: [01];
+HEX_DIGIT: [0-9a-fA-F];
+OCTAL_DIGIT: [0-7];
