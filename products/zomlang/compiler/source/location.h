@@ -150,7 +150,7 @@ private:
   }
 };
 
-/// Use zc::SourceLocation to indicate the source code location at compile time
+/// Use `zc::SourceLocation` to indicate the source code location at compile time
 using CompileTimeSourceLocation = zc::SourceLocation;
 
 inline zc::String ZC_STRINGIFY(const CompileTimeSourceLocation& loc) {
