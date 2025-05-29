@@ -51,6 +51,7 @@ UNICODE_ESCAPE_SEQUENCE:
 ABSTRACT: 'abstract';
 ACCESSOR: 'accessor';
 ANY: 'any';
+AS: 'as';
 ASSERTS: 'asserts';
 ASSERT: 'assert';
 ASYNC: 'async';
@@ -69,6 +70,8 @@ DEFAULT: 'default';
 DELETE: 'delete';
 DO: 'do';
 EXTENDS: 'extends';
+EXPORT: 'export';
+FALSE: 'false';
 FINALLY: 'finally';
 FROM: 'from';
 FUN: 'fun';
@@ -76,6 +79,7 @@ GET: 'get';
 GLOBAL: 'global';
 IMMEDIATE: 'immediate';
 IMPLEMENTS: 'implements';
+IMPORT: 'import';
 IN: 'in';
 INFER: 'infer';
 INSTANCEOF: 'instanceof';
@@ -90,6 +94,7 @@ NAMESPACE: 'namespace';
 NEVER: 'never';
 NEW: 'new';
 NUMBER: 'number';
+NULL: 'null';
 OBJECT: 'object';
 OF: 'of';
 OPTIONAL: 'optional';
@@ -109,6 +114,7 @@ SWITCH: 'switch';
 SYMBOL: 'symbol';
 THIS: 'this';
 THROW: 'throw';
+TRUE: 'true';
 TRY: 'try';
 TYPEOF: 'typeof';
 UNDEFINED: 'undefined';
@@ -180,12 +186,26 @@ DIV: '/';
 DIV_ASSIGN: '/=';
 
 // ================================================================================ LITERALS
-NULL: 'null';
-TRUE: 'true';
-FALSE: 'false';
+
 DECIMAL_DIGIT: [0-9];
 NON_ZERO_DIGIT: [1-9];
 EXPONENT_INDICATOR: [eE];
 BINARY_DIGIT: [01];
 HEX_DIGIT: [0-9a-fA-F];
 OCTAL_DIGIT: [0-7];
+ZERO: '0';
+BINARY_PREFIX: '0' [bB];
+OCTAL_PREFIX: '0' [oO];
+HEX_PREFIX: '0' [xX];
+
+//// ================================================================================ STRING LITERALS
+SQUOTE: '\'';
+DQUOTE: '"';
+DOUBLE_STRING_ALLOWED_CHAR: ~["\\\r\n\u2028\u2029]; // Any char except ", \, or LineTerminator
+SINGLE_STRING_ALLOWED_CHAR: ~['\\\r\n\u2028\u2029]; // Any char except ', \, or LineTerminator
+SINGLE_ESCAPE_CHARACTER: SQUOTE | DQUOTE | BACKSLASH | 'b' | 'f' | 'n' | 'r' | 't' | 'v';
+NON_ESCAPE_CHARACTER: ~['"\\bfnrtvxu0-9LF\u000A\u000D\u2028\u2029]; // Any source character not part of an escape sequence
+
+// ================================================================================== DECLARATIONS
+
+LET_OR_CONST: 'let' | 'const';

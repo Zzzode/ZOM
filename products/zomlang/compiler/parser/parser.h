@@ -20,10 +20,6 @@
 namespace zomlang {
 namespace compiler {
 
-namespace ast {
-class AST;
-}
-
 namespace basic {
 struct LangOptions;
 }
@@ -37,6 +33,19 @@ class BufferId;
 class SourceManager;
 }  // namespace source
 
+// Forward declarations for AST nodes that will be used by the parser.
+// These should be defined in ast.h
+namespace ast {
+class Node;
+class SourceFile;
+class ImplementationModule;
+class ImplementationModuleElement;
+class ImportDeclaration;
+class ExportDeclaration;
+class ModulePath;
+class ImplementationElement;
+}  // namespace ast
+
 namespace parser {
 
 class Parser {
@@ -49,9 +58,18 @@ public:
 
   /// \brief Parse the source file and return the AST.
   /// \return The AST if parsing succeeded, zc::Nothing otherwise.
-  zc::Maybe<zc::Own<ast::AST>> parse();
+  zc::Maybe<zc::Own<ast::Node>> parse();
 
 private:
+  zc::Maybe<zc::Own<ast::SourceFile>> parseSourceFile();
+  zc::Maybe<zc::Own<ast::ImplementationModule>> parseImplementationModule();
+  zc::Maybe<zc::Own<ast::ImplementationModuleElement>> parseImplementationModuleElement();
+  zc::Maybe<zc::Own<ast::ImportDeclaration>> parseImportDeclaration();
+  zc::Maybe<zc::Own<ast::ExportDeclaration>> parseExportDeclaration();
+  zc::Maybe<zc::Own<ast::ModulePath>> parseModulePath();
+  zc::Maybe<zc::Own<ast::ImplementationElement>> parseImplementationElement();
+  // TODO: Add parseExportImplementationElement if it's a distinct AST node
+
   struct Impl;
   zc::Own<Impl> impl;
 };

@@ -17,7 +17,6 @@
 #include "zc/core/filesystem.h"
 #include "zc/core/map.h"
 #include "zc/core/mutex.h"
-#include "zc/core/thread.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/thread-pool.h"
@@ -62,7 +61,7 @@ struct CompilerDriver::Impl {
   /// Diagnostic engine to report diagnostics.
   zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;
   /// Mutex-guarded map from BufferId to parsed AST.
-  zc::MutexGuarded<zc::HashMap<source::BufferId, zc::Own<ast::AST>>> astMutex;
+  zc::MutexGuarded<zc::HashMap<source::BufferId, zc::Own<ast::Node>>> astMutex;
 };
 
 // ================================================================================
@@ -95,7 +94,7 @@ bool CompilerDriver::parseSources() {
     // Create a thread for each buffer ID
     threadPool.enqueue([this, bufferId]() -> void {
       // Perform lexing and parsing for the buffer.
-      zc::Maybe<zc::Own<ast::AST>> maybeAst = basic::performParse(
+      zc::Maybe<zc::Own<ast::Node>> maybeAst = basic::performParse(
           *impl->sourceManager, *impl->diagnosticEngine, impl->langOpts, bufferId);
 
       // Store the result if successful

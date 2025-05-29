@@ -26,14 +26,14 @@ namespace compiler {
 namespace basic {
 
 /// Implementation of performParse
-zc::Maybe<zc::Own<ast::AST>> performParse(const source::SourceManager& sm,
-                                          diagnostics::DiagnosticEngine& diagnosticEngine,
-                                          const LangOptions& langOpts,
-                                          const source::BufferId& bufferId) {
+zc::Maybe<zc::Own<ast::Node>> performParse(const source::SourceManager& sm,
+                                           diagnostics::DiagnosticEngine& diagnosticEngine,
+                                           const LangOptions& langOpts,
+                                           const source::BufferId& bufferId) {
   // Create a Parser instance
   parser::Parser parser(sm, diagnosticEngine, langOpts, bufferId);
   // Assuming Parser::parse now returns the AST or null on failure
-  zc::Maybe<zc::Own<ast::AST>> ast = parser.parse();
+  zc::Maybe<zc::Own<ast::Node>> ast = parser.parse();
 
   // Check for parsing errors
   if (diagnosticEngine.hasErrors()) {
