@@ -16,28 +16,35 @@
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/string.h"
+#include "zomlang/compiler/ast/ast.h"
 
 namespace zomlang {
 namespace compiler {
-
-namespace source {
-class SourceRange;
-}  // namespace source
-
 namespace ast {
 
-class Node {
+class Expression : public Node {
 public:
-  explicit Node(source::SourceRange range) noexcept;
-  virtual ~Node() noexcept(false);
+  Expression() noexcept;
+  ~Expression() noexcept(false);
 
-  ZC_DISALLOW_COPY_AND_MOVE(Node);
+  ZC_DISALLOW_COPY_AND_MOVE(Expression);
+};
 
-  [[nodiscard]] const source::SourceRange sourceRange() const;
+class BinaryExpression : public Expression {
+public:
+  BinaryExpression(zc::Own<Expression> left, zc::String op, zc::Own<Expression> right);
+  ~BinaryExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(BinaryExpression);
+
+  const Expression* getLeft() const;
+  const zc::StringPtr getOp() const;
+  const Expression* getRight() const;
 
 private:
   struct Impl;
-  zc::Own<Impl> impl;
+  const zc::Own<Impl> impl;
 };
 
 }  // namespace ast

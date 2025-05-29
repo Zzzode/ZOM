@@ -15,67 +15,24 @@
 #include "zomlang/compiler/ast/ast.h"
 
 #include "zc/core/memory.h"
-#include "zc/core/string.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
 
 // ================================================================================
-// BinaryExpression::Impl
+// Node::Impl
 
-struct BinaryExpression::Impl {
-  zc::Own<Expression> left;
-  zc::String op;
-  zc::Own<Expression> right;
-
-  Impl(zc::Own<Expression> l, zc::String o, zc::Own<Expression> r)
-      : left(zc::mv(l)), op(zc::mv(o)), right(zc::mv(r)) {}
+struct Node::Impl {
+  const source::SourceRange range;
 };
 
-// ================================================================================
-// BinaryExpression
+Node::Node(source::SourceRange range) noexcept : impl(zc::heap<Impl>(range)) {}
+Node::~Node() noexcept(false) = default;
 
-BinaryExpression::BinaryExpression(zc::Own<Expression> left, zc::String op,
-                                   zc::Own<Expression> right)
-    : impl(zc::heap<Impl>(zc::mv(left), zc::mv(op), zc::mv(right))) {}
-
-BinaryExpression::~BinaryExpression() noexcept = default;
-
-const Expression* BinaryExpression::getLeft() const { return impl->left.get(); }
-
-zc::StringPtr BinaryExpression::getOp() const { return impl->op; }
-
-const Expression* BinaryExpression::getRight() const { return impl->right.get(); }
-
-// ================================================================================
-// VariableDeclaration::Impl
-
-struct VariableDeclaration::Impl {
-  zc::String type;
-  zc::String name;
-  zc::Own<Expression> initializer;
-
-  Impl(zc::String t, zc::String n, zc::Own<Expression> init)
-      : type(zc::mv(t)), name(zc::mv(n)), initializer(zc::mv(init)) {}
-};
-
-// ================================================================================
-// VariableDeclaration
-
-VariableDeclaration::VariableDeclaration(zc::String type, zc::String name,
-                                         zc::Own<Expression> initializer)
-    : impl(zc::heap<Impl>(zc::mv(type), zc::mv(name), zc::mv(initializer))) {}
-
-VariableDeclaration::~VariableDeclaration() noexcept = default;
-
-zc::StringPtr VariableDeclaration::getType() const { return impl->type; }
-
-zc::StringPtr VariableDeclaration::getName() const { return impl->name; }
-
-const Expression* VariableDeclaration::getInitializer() const {
-  return impl->initializer.get();  // 返回裸指针
-}
+// Node sourceRange method implementation
+const source::SourceRange Node::sourceRange() const { return impl->range; }
 
 }  // namespace ast
 }  // namespace compiler

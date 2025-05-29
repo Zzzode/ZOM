@@ -32,6 +32,7 @@ enum class TokenKind {
   kAbstractKeyword,     // abstract
   kAccessorKeyword,     // accessor
   kAnyKeyword,          // any
+  kAsKeyword,           // as
   kAssertsKeyword,      // asserts
   kAssertKeyword,       // assert
   kAsyncKeyword,        // async
@@ -50,6 +51,7 @@ enum class TokenKind {
   kDeleteKeyword,       // delete
   kDoKeyword,           // do
   kExtendsKeyword,      // extends
+  kExportKeyword,       // export
   kFinallyKeyword,      // finally
   kFromKeyword,         // from
   kFunKeyword,          // fun
@@ -57,6 +59,7 @@ enum class TokenKind {
   kGlobalKeyword,       // global
   kImmediateKeyword,    // immediate
   kImplementsKeyword,   // implements
+  kImportKeyword,       // import
   kInKeyword,           // in
   kInferKeyword,        // infer
   kInstanceOfKeyword,   // instanceof

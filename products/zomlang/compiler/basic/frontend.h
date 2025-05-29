@@ -29,7 +29,7 @@ class DiagnosticEngine;
 }
 
 namespace ast {
-class AST;
+class Node;
 }
 
 namespace basic {
@@ -41,11 +41,11 @@ struct LangOptions;
 /// \param diagnosticEngine The diagnostic engine.
 /// \param langOpts The language options.
 /// \param bufferId The buffer id of the source file.
-/// \return The AST if successful, zc::Nothing otherwise.
-zc::Maybe<zc::Own<ast::AST>> performParse(const source::SourceManager& sm,
-                                          diagnostics::DiagnosticEngine& diagnosticEngine,
-                                          const LangOptions& langOpts,
-                                          const source::BufferId& bufferId);
+/// \return The ASTNode if successful, zc::Nothing otherwise.
+zc::Maybe<zc::Own<ast::Node>> performParse(const source::SourceManager& sm,
+                                           diagnostics::DiagnosticEngine& diagnosticEngine,
+                                           const LangOptions& langOpts,
+                                           const source::BufferId& bufferId);
 
 }  // namespace basic
 }  // namespace compiler
