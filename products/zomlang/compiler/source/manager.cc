@@ -15,6 +15,7 @@
 #include "zomlang/compiler/source/manager.h"
 
 #include <algorithm>
+#include <functional>
 
 #include "zc/core/common.h"
 #include "zc/core/debug.h"

@@ -15,13 +15,17 @@
 #include "zomlang/compiler/parser/parser.h"
 
 #include "zc/core/common.h"
+#include "zc/core/memory.h"
+#include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/factory.h"
 #include "zomlang/compiler/ast/module.h"
 #include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/lexer/lexer.h"
 #include "zomlang/compiler/lexer/token.h"
+#include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
@@ -35,6 +39,7 @@ struct Parser::Impl {
   Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
        const basic::LangOptions& langOpts, const source::BufferId& bufferId) noexcept
       : bufferId(bufferId),
+        sourceMgr(sourceMgr),
         diagnosticEngine(diagnosticEngine),
         lexer(sourceMgr, diagnosticEngine, langOpts, bufferId) {}
   ~Impl() noexcept(false) = default;
@@ -49,9 +54,12 @@ struct Parser::Impl {
   void initializeToken() { consumeToken(); }
 
   const source::BufferId& bufferId;
+  const source::SourceManager& sourceMgr;
   diagnostics::DiagnosticEngine& diagnosticEngine;
   lexer::Lexer lexer;  // Made non-const to allow lexing
   lexer::Token currentToken;
+
+  ParsingContext context;
 };
 
 // ================================================================================
@@ -64,12 +72,31 @@ Parser::Parser(const source::SourceManager& sourceMgr,
 
 Parser::~Parser() noexcept(false) = default;
 
-// Helper function to create a diagnostic for unexpected tokens
-// diagnostics::InFlightDiagnostic Parser::Impl::diagnoseUnexpectedToken(const lexer::Token& token,
-// lexer::TokenKind expectedKind) {
-//   return diagnosticEngine.report(token.getLocation(), diag::err_unexpected_token)
-//          << token.getText() << expectedKind; // Assuming TokenKind can be streamed
-// }
+bool Parser::isListTerminator(ParsingContext context) const {
+  const lexer::Token& currentToken = impl->peekToken();
+  switch (context) {
+    case ParsingContext::kSourceElements:
+      return currentToken.is(lexer::TokenKind::kEOF);
+    default:
+      return false;
+  }
+}
+
+bool Parser::isListElement(ParsingContext context, bool inErrorRecovery) const {
+  const lexer::Token& currentToken = impl->peekToken();
+  switch (context) {
+    case ParsingContext::kSourceElements:
+      return !currentToken.is(lexer::TokenKind::kEOF);
+    default:
+      return false;
+  }
+}
+
+bool Parser::abortParsingListOrMoveToNextToken(ParsingContext context) {
+  // Simple error recovery: skip the current token and try again
+  impl->consumeToken();
+  return false;  // Continue parsing
+}
 
 zc::Maybe<zc::Own<ast::Node>> Parser::parse() {
   impl->initializeToken();  // Initialize the first token
@@ -78,69 +105,53 @@ zc::Maybe<zc::Own<ast::Node>> Parser::parse() {
 }
 
 zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
-  // sourceFile: implementationSourceFile;
-  ZC_IF_SOME(implementationModule, parseImplementationModule()) { (void)implementationModule; }
-  else {
-    // TODO: Add error reporting if parseImplementationModule fails
-    return zc::none;
-  }
-  // TODO: Create and return SourceFile AST node
-  // return zc::heap<ast::SourceFile>(zc::move(implementationModule.value()));
-  return zc::none;  // Placeholder
-}
+  // sourceFile: module;
+  // module: moduleBody?;
+  // moduleBody: moduleItemList;
+  // moduleItemList: moduleItem+;
+  // moduleItem:
+  //   statementListItem
+  //   | exportDeclaration
+  //   | importDeclaration;
 
-zc::Maybe<zc::Own<ast::ImplementationModule>> Parser::parseImplementationModule() {
-  // implementationModule: implementationModuleElements?;
-  // TODO: Implement logic to parse optional implementationModuleElements
-  return zc::none;  // Placeholder
-}
+  const lexer::Token& currentToken = impl->peekToken();
+  ZC_UNUSED const source::SourceLoc& startPos = currentToken.getLocation();
 
-zc::Maybe<zc::Own<ast::ImplementationModuleElement>> Parser::parseImplementationModuleElement() {
-  // implementationModuleElement:
-  //  importDeclaration
-  //  | exportDeclaration
-  //  | implementationElement
-  //  | exportImplementationElement;
-  // TODO: Implement logic based on the current token
-  return zc::none;  // Placeholder
+  zc::Vector<zc::Own<ast::Statement>> statements = parseList<ast::Statement>(
+      ParsingContext::kSourceElements, ZC_BIND_METHOD(*this, parseStatement));
+  // Create the source file node
+  const zc::StringPtr fileName = impl->sourceMgr.getIdentifierForBuffer(impl->bufferId);
+  zc::Own<ast::SourceFile> sourceFile =
+      ast::factory::createSourceFile(fileName, zc::mv(statements));
+
+  return sourceFile;
 }
 
 zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
   // importDeclaration: IMPORT modulePath ( AS identifierName )?;
   // TODO: Check for IMPORT token, parse modulePath and optional alias
-  return zc::none;  // Placeholder
+  return zc::none;
 }
 
 zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
   // exportDeclaration: EXPORT (exportModule | exportRename);
   // TODO: Check for EXPORT token, then parse exportModule or exportRename
-  return zc::none;  // Placeholder
+  return zc::none;
 }
 
 zc::Maybe<zc::Own<ast::ModulePath>> Parser::parseModulePath() {
   // modulePath: bindingIdentifier ( PERIOD bindingIdentifier )*;
   // TODO: Parse one or more bindingIdentifiers separated by PERIOD
-  return zc::none;  // Placeholder
+  return zc::none;
 }
 
-zc::Maybe<zc::Own<ast::ImplementationElement>> Parser::parseImplementationElement() {
-  // implementationElement:
-  //   lexicalDeclaration
-  //   | functionDeclaration
-  //   | classDeclaration
-  //   | interfaceDeclaration
-  //   | typeAliasDeclaration
-  //   | enumDeclaration;
-  // TODO: Implement logic based on the current token to parse different kinds of declarations
-  return zc::none;  // Placeholder
-}
+zc::Maybe<zc::Own<ast::Statement>> Parser::parseStatement() {
+  // statement:
+  //   expressionStatement
+  //   | declarationStatement
 
-// TODO: Add definition for parseExportImplementationElement if it's a distinct AST node
-// zc::Maybe<zc::Own<ast::ExportImplementationElement>> Parser::parseExportImplementationElement() {
-//   // exportImplementationElement: EXPORT implementationElement;
-//   // TODO: Check for EXPORT token, then parse implementationElement
-//   return zc::none; // Placeholder
-// }
+  return zc::none;
+}
 
 }  // namespace parser
 }  // namespace compiler

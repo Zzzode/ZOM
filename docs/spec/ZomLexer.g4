@@ -77,6 +77,7 @@ FROM: 'from';
 FUN: 'fun';
 GET: 'get';
 GLOBAL: 'global';
+IF: 'if';
 IMMEDIATE: 'immediate';
 IMPLEMENTS: 'implements';
 IMPORT: 'import';
@@ -122,6 +123,7 @@ UNIQUE: 'unique';
 USING: 'using';
 VAR: 'var';
 VOID: 'void';
+WHEN: 'when';
 WITH: 'with';
 YIELD: 'yield';
 

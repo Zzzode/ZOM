@@ -15,7 +15,10 @@
 #pragma once
 
 #include "zc/core/common.h"
+#include "zc/core/function.h"
 #include "zc/core/memory.h"
+#include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/statement.h"
 
 namespace zomlang {
 namespace compiler {
@@ -31,12 +34,12 @@ class DiagnosticEngine;
 namespace source {
 class BufferId;
 class SourceManager;
+class SourceRange;
 }  // namespace source
 
 // Forward declarations for AST nodes that will be used by the parser.
 // These should be defined in ast.h
 namespace ast {
-class Node;
 class SourceFile;
 class ImplementationModule;
 class ImplementationModuleElement;
@@ -48,6 +51,15 @@ class ImplementationElement;
 
 namespace parser {
 
+enum ParsingContext {
+  kSourceElements = 0,  // Parsing source elements (statements, declarations, etc.)
+  kBlockElements,       // Parsing block elements (statements, declarations, etc.)
+  kClassMembers,        // Parsing class members (fields, methods, etc.)
+  kEnumMembers,         // Parsing enum members (values, etc.)
+  kCount,
+};
+
+/// \brief The parser class.
 class Parser {
 public:
   Parser(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
@@ -61,13 +73,36 @@ public:
   zc::Maybe<zc::Own<ast::Node>> parse();
 
 private:
+  void finishNode(ast::Node* node, const source::SourceRange& range);
+
+  template <typename Node>
+  zc::Vector<zc::Own<Node>> parseList(ParsingContext context,
+                                      zc::Function<zc::Maybe<zc::Own<Node>>()> parseElement) {
+    zc::Vector<zc::Own<Node>> result;
+
+    while (!isListTerminator(context)) {
+      if (isListElement(context, /*inErrorRecovery*/ false)) {
+        ZC_IF_SOME(element, parseElement()) { result.add(zc::mv(element)); }
+        continue;
+      }
+
+      if (abortParsingListOrMoveToNextToken(context)) { break; }
+    }
+
+    return result;
+  }
+
+  bool isListTerminator(ParsingContext context) const;
+  bool isListElement(ParsingContext context, bool inErrorRecovery) const;
+
+  bool abortParsingListOrMoveToNextToken(ParsingContext context);
+
+private:
   zc::Maybe<zc::Own<ast::SourceFile>> parseSourceFile();
-  zc::Maybe<zc::Own<ast::ImplementationModule>> parseImplementationModule();
-  zc::Maybe<zc::Own<ast::ImplementationModuleElement>> parseImplementationModuleElement();
   zc::Maybe<zc::Own<ast::ImportDeclaration>> parseImportDeclaration();
   zc::Maybe<zc::Own<ast::ExportDeclaration>> parseExportDeclaration();
   zc::Maybe<zc::Own<ast::ModulePath>> parseModulePath();
-  zc::Maybe<zc::Own<ast::ImplementationElement>> parseImplementationElement();
+  zc::Maybe<zc::Own<ast::Statement>> parseStatement();
   // TODO: Add parseExportImplementationElement if it's a distinct AST node
 
   struct Impl;

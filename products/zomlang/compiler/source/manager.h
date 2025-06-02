@@ -116,7 +116,7 @@ public:
 
   /// Buffer identification
   zc::Maybe<BufferId> findBufferContainingLoc(const SourceLoc& loc) const;
-  zc::StringPtr getFilename(BufferId bufferId) const;
+  zc::StringPtr getFileName(BufferId bufferId) const;
 
   /// Line and column operations
   zc::Maybe<unsigned> resolveFromLineCol(BufferId bufferId, unsigned line, unsigned col) const;
