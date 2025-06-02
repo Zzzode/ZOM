@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
@@ -22,31 +21,21 @@
 namespace zomlang {
 namespace compiler {
 namespace ast {
+/// Forward declaration
+class SourceFile;
+class Statement;
 
-class Expression : public Node {
-public:
-  Expression() noexcept;
-  ~Expression() noexcept(false);
+namespace factory {
+/// Create a new SourceFile Node.
+zc::Own<SourceFile> createSourceFile(const zc::StringPtr fileName,
+                                     zc::Vector<zc::Own<ast::Statement>>&& statements);
 
-  ZC_DISALLOW_COPY_AND_MOVE(Expression);
-};
+template <typename T>
+const ast::NodeList<T> createNodeList(zc::Vector<zc::Own<T>>&& list) {
+  return ast::NodeList<T>(zc::mv(list));
+}
 
-class BinaryExpression : public Expression {
-public:
-  BinaryExpression(zc::Own<Expression> left, zc::String op, zc::Own<Expression> right);
-  ~BinaryExpression() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(BinaryExpression);
-
-  const Expression* getLeft() const;
-  const zc::StringPtr getOp() const;
-  const Expression* getRight() const;
-
-private:
-  struct Impl;
-  const zc::Own<Impl> impl;
-};
-
+}  // namespace factory
 }  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang

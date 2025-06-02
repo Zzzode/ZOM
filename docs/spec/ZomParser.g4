@@ -122,7 +122,7 @@ nullLiteral: NULL;
 booleanLiteral: TRUE | FALSE;
 
 //// =============================================================================== NUMERIC LITERALS
-numbericLiteralSeparator: UNDERSCORE;
+numericLiteralSeparator: UNDERSCORE;
 
 numericLiteral:
 	decimalLiteral
@@ -137,10 +137,10 @@ decimalLiteral:
 
 decimalIntegerLiteral:
 	ZERO
-	| NON_ZERO_DIGIT (numbericLiteralSeparator? decimalDigits)?; // Assumes lexer token for '1'..'9'
+	| NON_ZERO_DIGIT (numericLiteralSeparator? decimalDigits)?; // Assumes lexer token for '1'..'9'
 
 decimalDigits:
-	DECIMAL_DIGIT (numbericLiteralSeparator? DECIMAL_DIGIT)*; // Assumes lexer token for '0'..'9'
+	DECIMAL_DIGIT (numericLiteralSeparator? DECIMAL_DIGIT)*; // Assumes lexer token for '0'..'9'
 
 exponentPart:
 	EXPONENT_INDICATOR signedInteger; // Assumes lexer token for 'e'|'E'
@@ -149,14 +149,14 @@ signedInteger: (PLUS | MINUS)? decimalDigits;
 
 binaryIntegerLiteral: BINARY_PREFIX binaryDigits;
 binaryDigits:
-	BINARY_DIGIT (numbericLiteralSeparator? BINARY_DIGIT)*;
+	BINARY_DIGIT (numericLiteralSeparator? BINARY_DIGIT)*;
 
 octalIntegerLiteral: OCTAL_PREFIX octalDigits;
 octalDigits:
-	OCTAL_DIGIT (numbericLiteralSeparator? OCTAL_DIGIT)*;
+	OCTAL_DIGIT (numericLiteralSeparator? OCTAL_DIGIT)*;
 
 hexIntegerLiteral: HEX_PREFIX hexDigits;
-hexDigits: HEX_DIGIT (numbericLiteralSeparator? HEX_DIGIT)*;
+hexDigits: HEX_DIGIT (numericLiteralSeparator? HEX_DIGIT)*;
 
 //// =============================================================================== STRING LITERALS
 stringLiteral:
@@ -219,7 +219,67 @@ codePoint:
     }
 };
 
+// ================================================================================ EXPRESSIONS
+expression: assignmentExpression (COMMA assignmentExpression)*;
+
+// ================================================================================ STATEMENTS
+statement:
+	blockStatement
+	| emptyStatement
+	| expressionStatement
+	| ifStatement
+	| matchStatement
+	| breakableStatement
+	| continueStatement
+	| breakStatement
+	| returnStatement
+	| debuggerStatement;
+
+statementListItem: statement | declaration;
+
+matchStatement: MATCH LPAREN expression RPAREN matchBlock;
+matchBlock:
+	LBRACE matchClauses RBRACE
+	| LBRACE matchClauses defaultClause RBRACE
+	| LBRACE defaultClause RBRACE;
+
+matchClauses: matchClause*;
+matchClause: WHEN pattern guardClause? ARROW expression | block;
+
+guardClause: IF expression;
+defaultClause: DEFAULT ARROW statementList;
+
+pattern:
+	wildcardPattern
+	| identifierPattern
+	| tuplePattern
+	| structurePattern
+	| arrayPattern
+	| typeCastPattern
+	| expressionPattern
+	| enumPattern;
+
+wildcardPattern: UNDERSCORE typeAnnotation?;
+identifierPattern: bindingIdentifier typeAnnotation?;
+tuplePattern: LPAREN tupleElements? RPAREN;
+tupleElements: tupleElement (COMMA tupleElement)*;
+tupleElement: bindingIdentifier typeAnnotation?;
+structurePattern: objectType;
+arrayPattern: arrayBindingPattern;
+typeCastPattern: isPattern | asPattern;
+isPattern: IS type;
+asPattern: pattern AS type;
+expressionPattern: expression;
+enumPattern: typeReference? PERIOD propertyName tuplePattern;
+
 // ================================================================================ DECLARATIONS
+declaration:
+	functionDeclaration
+	| classDeclaration
+	| interfaceDeclaration
+	| typeAliasDeclaration
+	| enumDeclaration
+	| lexicalDeclaration;
 
 //// ============================================================================== LET AND CONST DECLARATIONS
 lexicalDeclaration: LET_OR_CONST bindingList;
@@ -268,19 +328,15 @@ memberAccessorDeclaration:
 // ================================================================================ INTERFACES
 
 // ================================================================================ SCRIPTS AND MODULES
-sourceFile: implementationSourceFile;
+sourceFile: module;
 
-implementationSourceFile: implementationModule;
-
-implementationModule: implementationModuleElements?;
-
-implementationModuleElements: implementationModuleElement+;
-
-implementationModuleElement:
-	importDeclaration
+module: moduleBody?;
+moduleBody: moduleItemList;
+moduleItemList: moduleItem+;
+moduleItem:
+	statementListItem
 	| exportDeclaration
-	| implementationElement
-	| exportImplementationElement;
+	| importDeclaration;
 
 importDeclaration: IMPORT modulePath ( AS identifierName)?;
 
@@ -292,13 +348,3 @@ exportModule: bindingIdentifier;
 
 exportRename:
 	bindingIdentifier AS bindingIdentifier FROM modulePath;
-
-implementationElement:
-	lexicalDeclaration
-	| functionDeclaration
-	| classDeclaration
-	| interfaceDeclaration
-	| typeAliasDeclaration
-	| enumDeclaration;
-
-exportImplementationElement: EXPORT implementationElement;

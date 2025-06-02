@@ -23,6 +23,11 @@ namespace compiler {
 namespace ast {
 
 // ================================================================================
+// Statement
+Statement::Statement() noexcept = default;
+Statement::~Statement() noexcept(false) = default;
+
+// ================================================================================
 // VariableDeclaration::Impl
 
 struct VariableDeclaration::Impl {

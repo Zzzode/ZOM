@@ -15,6 +15,9 @@
 #include "zomlang/compiler/ast/module.h"
 
 #include "zc/core/memory.h"
+#include "zc/core/string.h"
+#include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/statement.h"
 
 namespace zomlang {
 namespace compiler {
@@ -23,32 +26,22 @@ namespace ast {
 // ================================================================================
 // SourceFile::Impl
 struct SourceFile::Impl {
-  // TODO: Define members for SourceFile::Impl
+  Impl(const zc::StringPtr fileName, zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
+      : fileName(fileName), statements(zc::mv(statements)) {}
+
+  /// Identifier of the module buffer.
+  const zc::StringPtr fileName;
+  /// List of toplevel statements in the module.
+  const NodeList<ast::Statement> statements;
 };
 
 // ================================================================================
 // SourceFile
-SourceFile::SourceFile() noexcept : impl(zc::heap<Impl>()) {}
+SourceFile::SourceFile(const zc::StringPtr fileName,
+                       zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
+    : impl(zc::heap<Impl>(fileName, zc::mv(statements))) {}
 
 SourceFile::~SourceFile() noexcept(false) = default;
-
-// ================================================================================
-// ImplementationModule::Impl
-struct ImplementationModule::Impl {
-  // TODO: Define members for ImplementationModule::Impl
-};
-
-// ================================================================================
-// ImplementationModule
-ImplementationModule::ImplementationModule() noexcept : impl(zc::heap<Impl>()) {}
-
-ImplementationModule::~ImplementationModule() noexcept(false) = default;
-
-// ================================================================================
-// ImplementationModuleElement
-ImplementationModuleElement::ImplementationModuleElement() noexcept = default;
-
-ImplementationModuleElement::~ImplementationModuleElement() noexcept(false) = default;
 
 // ================================================================================
 // ImportDeclaration
@@ -67,12 +60,6 @@ ExportDeclaration::~ExportDeclaration() noexcept(false) = default;
 ModulePath::ModulePath() noexcept = default;
 
 ModulePath::~ModulePath() noexcept(false) = default;
-
-// ================================================================================
-// ImplementationElement
-ImplementationElement::ImplementationElement() noexcept = default;
-
-ImplementationElement::~ImplementationElement() noexcept(false) = default;
 
 }  // namespace ast
 }  // namespace compiler

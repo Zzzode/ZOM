@@ -16,7 +16,8 @@
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
-#include "zomlang/compiler/ast/ast.h"  // For Node
+#include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/statement.h"
 
 namespace zomlang {
 namespace compiler {
@@ -24,8 +25,8 @@ namespace ast {
 
 class SourceFile : public Node {
 public:
-  // TODO: Define constructor and methods for SourceFile
-  SourceFile() noexcept;
+  explicit SourceFile(const zc::StringPtr fileName,
+                      zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept;
   ~SourceFile() noexcept(false) override;
 
   ZC_DISALLOW_COPY_AND_MOVE(SourceFile);
@@ -35,29 +36,7 @@ private:
   const zc::Own<Impl> impl;
 };
 
-class ImplementationModule : public Node {
-public:
-  // TODO: Define constructor and methods for ImplementationModule
-  ImplementationModule() noexcept;
-  ~ImplementationModule() noexcept(false) override;
-
-  ZC_DISALLOW_COPY_AND_MOVE(ImplementationModule);
-
-private:
-  struct Impl;
-  const zc::Own<Impl> impl;
-};
-
-class ImplementationModuleElement : public Node {
-public:
-  ImplementationModuleElement() noexcept;
-  // TODO: Define constructor and methods for ImplementationModuleElement
-  ~ImplementationModuleElement() noexcept(false) override;
-
-  ZC_DISALLOW_COPY_AND_MOVE(ImplementationModuleElement);
-};
-
-class ImportDeclaration : public ImplementationModuleElement {
+class ImportDeclaration : public Statement {
 public:
   ImportDeclaration() noexcept;
   // TODO: Define constructor and methods for ImportDeclaration
@@ -66,7 +45,7 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(ImportDeclaration);
 };
 
-class ExportDeclaration : public ImplementationModuleElement {
+class ExportDeclaration : public Statement {
 public:
   ExportDeclaration() noexcept;
   // TODO: Define constructor and methods for ExportDeclaration
@@ -75,8 +54,7 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(ExportDeclaration);
 };
 
-class ModulePath
-    : public Node {  // Or potentially not an Node node itself, but part of Import/Export
+class ModulePath : public Node {
 public:
   // TODO: Define constructor and methods for ModulePath
   ModulePath() noexcept;
@@ -84,22 +62,6 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ModulePath);
 };
-
-class ImplementationElement : public ImplementationModuleElement {
-public:
-  // TODO: Define constructor and methods for ImplementationElement
-  ImplementationElement() noexcept;
-  ~ImplementationElement() noexcept(false) override;
-
-  ZC_DISALLOW_COPY_AND_MOVE(ImplementationElement);
-};
-
-// TODO: Add ExportImplementationElement if it's a distinct Node node
-// class ExportImplementationElement : public ImplementationModuleElement {
-// public:
-//   // TODO: Define constructor and methods for ExportImplementationElement
-//   ~ExportImplementationElement() noexcept(false) ;
-// };
 
 }  // namespace ast
 }  // namespace compiler

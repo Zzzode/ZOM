@@ -15,6 +15,7 @@
 #include "zomlang/compiler/ast/ast.h"
 
 #include "zc/core/memory.h"
+#include "zc/core/vector.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
@@ -25,13 +26,14 @@ namespace ast {
 // Node::Impl
 
 struct Node::Impl {
-  const source::SourceRange range;
+  source::SourceRange range;
 };
 
-Node::Node(source::SourceRange range) noexcept : impl(zc::heap<Impl>(range)) {}
+Node::Node() noexcept : impl(zc::heap<Impl>()) {}
 Node::~Node() noexcept(false) = default;
 
 // Node sourceRange method implementation
+void Node::setSourceRange(const source::SourceRange& range) { impl->range = range; }
 const source::SourceRange Node::sourceRange() const { return impl->range; }
 
 }  // namespace ast

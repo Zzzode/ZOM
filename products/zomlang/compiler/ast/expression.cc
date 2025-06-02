@@ -22,6 +22,11 @@ namespace compiler {
 namespace ast {
 
 // ================================================================================
+// Expression
+Expression::Expression() noexcept = default;
+Expression::~Expression() noexcept(false) = default;
+
+// ================================================================================
 // BinaryExpression::Impl
 
 struct BinaryExpression::Impl {

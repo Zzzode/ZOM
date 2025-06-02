@@ -193,6 +193,8 @@ public:
   void setText(zc::StringPtr t) { text = t; }
   void setLocation(const source::SourceLoc l) { loc = l; }
 
+  ZC_NODISCARD bool is(TokenKind k) const { return kind == k; }
+
   ZC_NODISCARD TokenKind getKind() const { return kind; }
   ZC_NODISCARD zc::StringPtr getText() const { return text; }
   ZC_NODISCARD unsigned getLength() const { return text.size(); }
