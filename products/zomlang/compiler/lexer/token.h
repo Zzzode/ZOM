@@ -112,7 +112,7 @@ enum class TokenKind {
   kOperator,
   kArrow,                                    // ->
   kColon,                                    // :
-  kDot,                                      // .
+  kPeriod,                                   // .
   kDotDotDot,                                // ...
   kLessThan,                                 // <
   kGreaterThan,                              // >

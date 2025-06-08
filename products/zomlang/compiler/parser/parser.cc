@@ -109,39 +109,178 @@ zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
   // module: moduleBody?;
   // moduleBody: moduleItemList;
   // moduleItemList: moduleItem+;
+
+  source::SourceLoc startLoc = impl->peekToken().getLocation();
+
+  zc::Vector<zc::Own<ast::Statement>> statements = parseList<ast::Statement>(
+      ParsingContext::kSourceElements, ZC_BIND_METHOD(*this, parseModuleItem));
+
+  source::SourceLoc endLoc = impl->peekToken().getLocation();
+
+  // Create the source file node
+  const zc::StringPtr fileName = impl->sourceMgr.getIdentifierForBuffer(impl->bufferId);
+  zc::Own<ast::SourceFile> sourceFile =
+      ast::factory::createSourceFile(fileName, zc::mv(statements));
+  sourceFile->setSourceRange(source::SourceRange(startLoc, endLoc));
+
+  return sourceFile;
+}
+
+zc::Maybe<zc::Own<ast::Statement>> Parser::parseModuleItem() {
   // moduleItem:
   //   statementListItem
   //   | exportDeclaration
   //   | importDeclaration;
 
   const lexer::Token& currentToken = impl->peekToken();
-  ZC_UNUSED const source::SourceLoc& startPos = currentToken.getLocation();
 
-  zc::Vector<zc::Own<ast::Statement>> statements = parseList<ast::Statement>(
-      ParsingContext::kSourceElements, ZC_BIND_METHOD(*this, parseStatement));
-  // Create the source file node
-  const zc::StringPtr fileName = impl->sourceMgr.getIdentifierForBuffer(impl->bufferId);
-  zc::Own<ast::SourceFile> sourceFile =
-      ast::factory::createSourceFile(fileName, zc::mv(statements));
+  // Check for import declaration
+  if (currentToken.is(lexer::TokenKind::kImportKeyword)) {
+    ZC_IF_SOME(importDecl, parseImportDeclaration()) { return zc::mv(importDecl); }
+  }
 
-  return sourceFile;
+  // Check for export declaration
+  if (currentToken.is(lexer::TokenKind::kExportKeyword)) {
+    ZC_IF_SOME(exportDecl, parseExportDeclaration()) { return zc::mv(exportDecl); }
+  }
+
+  // Otherwise, parse as statement (statementListItem)
+  return parseStatement();
 }
 
 zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
   // importDeclaration: IMPORT modulePath ( AS identifierName )?;
-  // TODO: Check for IMPORT token, parse modulePath and optional alias
-  return zc::none;
-}
+  const lexer::Token& currentToken = impl->peekToken();
 
-zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
-  // exportDeclaration: EXPORT (exportModule | exportRename);
-  // TODO: Check for EXPORT token, then parse exportModule or exportRename
+  // Expect IMPORT token
+  if (!currentToken.is(lexer::TokenKind::kImportKeyword)) { return zc::none; }
+
+  source::SourceLoc startLoc = currentToken.getLocation();
+  impl->consumeToken();  // consume IMPORT
+
+  // Parse modulePath
+  ZC_IF_SOME(modulePath, parseModulePath()) {
+    zc::Maybe<zc::StringPtr> alias = zc::none;
+
+    // Check for optional AS clause
+    const lexer::Token& nextToken = impl->peekToken();
+    if (nextToken.is(lexer::TokenKind::kAsKeyword)) {
+      impl->consumeToken();  // consume AS
+
+      // Parse identifier name (alias)
+      const lexer::Token& aliasToken = impl->peekToken();
+      if (aliasToken.is(lexer::TokenKind::kIdentifier)) {
+        alias = aliasToken.getText();
+        impl->consumeToken();  // consume identifier
+      } else {
+        // Error: expected identifier after AS
+        return zc::none;
+      }
+    }
+
+    source::SourceLoc endLoc = impl->peekToken().getLocation();
+
+    // Create ImportDeclaration with modulePath and optional alias
+    auto importDecl = ast::factory::createImportDeclaration(zc::mv(modulePath), alias);
+    importDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
+    return importDecl;
+  }
+
   return zc::none;
 }
 
 zc::Maybe<zc::Own<ast::ModulePath>> Parser::parseModulePath() {
   // modulePath: bindingIdentifier ( PERIOD bindingIdentifier )*;
-  // TODO: Parse one or more bindingIdentifiers separated by PERIOD
+  const lexer::Token& currentToken = impl->peekToken();
+
+  // Expect first bindingIdentifier
+  if (!currentToken.is(lexer::TokenKind::kIdentifier)) { return zc::none; }
+
+  source::SourceLoc startLoc = currentToken.getLocation();
+  zc::Vector<zc::StringPtr> identifiers;
+  identifiers.add(currentToken.getText());
+  impl->consumeToken();  // consume first identifier
+
+  // Parse optional additional identifiers separated by PERIOD
+  while (true) {
+    const lexer::Token& nextToken = impl->peekToken();
+    if (nextToken.is(lexer::TokenKind::kPeriod)) {
+      impl->consumeToken();  // consume PERIOD
+
+      const lexer::Token& idToken = impl->peekToken();
+      if (idToken.is(lexer::TokenKind::kIdentifier)) {
+        identifiers.add(idToken.getText());
+        impl->consumeToken();  // consume identifier
+      } else {
+        // Error: expected identifier after period
+        return zc::none;
+      }
+    } else {
+      break;  // No more periods, done parsing module path
+    }
+  }
+
+  source::SourceLoc endLoc = impl->peekToken().getLocation();
+
+  // Create ModulePath with collected identifiers
+  auto modulePath = ast::factory::createModulePath(zc::mv(identifiers));
+  modulePath->setSourceRange(source::SourceRange(startLoc, endLoc));
+  return modulePath;
+}
+
+zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
+  // exportDeclaration: EXPORT (exportModule | exportRename);
+  // exportModule: bindingIdentifier;
+  // exportRename: bindingIdentifier AS bindingIdentifier FROM modulePath;
+  const lexer::Token& currentToken = impl->peekToken();
+
+  // Expect EXPORT token
+  if (!currentToken.is(lexer::TokenKind::kExportKeyword)) { return zc::none; }
+
+  source::SourceLoc startLoc = currentToken.getLocation();
+  impl->consumeToken();  // consume EXPORT
+
+  const lexer::Token& nextToken = impl->peekToken();
+  if (nextToken.is(lexer::TokenKind::kIdentifier)) {
+    zc::StringPtr identifier = nextToken.getText();
+    impl->consumeToken();  // consume identifier
+
+    // Check if this is exportRename (identifier AS identifier FROM modulePath)
+    const lexer::Token& followingToken = impl->peekToken();
+    if (followingToken.is(lexer::TokenKind::kAsKeyword)) {
+      impl->consumeToken();  // consume AS
+
+      const lexer::Token& secondIdToken = impl->peekToken();
+      if (secondIdToken.is(lexer::TokenKind::kIdentifier)) {
+        zc::StringPtr alias = secondIdToken.getText();
+        impl->consumeToken();  // consume second identifier
+
+        const lexer::Token& fromToken = impl->peekToken();
+        if (fromToken.is(lexer::TokenKind::kFromKeyword)) {
+          impl->consumeToken();  // consume FROM
+
+          // Parse modulePath
+          ZC_IF_SOME(modulePath, parseModulePath()) {
+            source::SourceLoc endLoc = impl->peekToken().getLocation();
+
+            // Create ExportDeclaration with rename info
+            auto exportDecl =
+                ast::factory::createExportDeclaration(identifier, alias, zc::mv(modulePath));
+            exportDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
+            return exportDecl;
+          }
+        }
+      }
+    } else {
+      // Simple exportModule: just bindingIdentifier
+      source::SourceLoc endLoc = impl->peekToken().getLocation();
+
+      auto exportDecl = ast::factory::createExportDeclaration(identifier);
+      exportDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
+      return exportDecl;
+    }
+  }
+
   return zc::none;
 }
 

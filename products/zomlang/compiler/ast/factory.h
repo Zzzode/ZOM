@@ -20,10 +20,18 @@
 
 namespace zomlang {
 namespace compiler {
+
+namespace source {
+class SourceRange;
+}  // namespace source
+
 namespace ast {
 /// Forward declaration
 class SourceFile;
 class Statement;
+class ModulePath;
+class ImportDeclaration;
+class ExportDeclaration;
 
 namespace factory {
 /// Create a new SourceFile Node.
@@ -34,6 +42,27 @@ template <typename T>
 const ast::NodeList<T> createNodeList(zc::Vector<zc::Own<T>>&& list) {
   return ast::NodeList<T>(zc::mv(list));
 }
+
+template <typename T, typename... Args>
+zc::Own<T> createNodeWithRange(const source::SourceRange& range, Args&&... args) {
+  zc::Own<T> node = zc::heap<T>(zc::fwd<Args>(args)...);
+  node->setSourceRange(range);
+  return zc::mv(node);
+}
+
+/// Create a ModulePath node
+zc::Own<ModulePath> createModulePath(zc::Vector<zc::StringPtr>&& identifiers);
+
+/// Create an ImportDeclaration node
+zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath>&& modulePath,
+                                                   zc::Maybe<zc::StringPtr> alias = zc::none);
+
+/// Create a simple ExportDeclaration node (export identifier)
+zc::Own<ExportDeclaration> createExportDeclaration(zc::StringPtr identifier);
+
+/// Create a rename ExportDeclaration node (export identifier as alias from modulePath)
+zc::Own<ExportDeclaration> createExportDeclaration(zc::StringPtr identifier, zc::StringPtr alias,
+                                                   zc::Own<ModulePath>&& modulePath);
 
 }  // namespace factory
 }  // namespace ast

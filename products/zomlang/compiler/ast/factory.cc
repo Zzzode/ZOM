@@ -26,6 +26,24 @@ zc::Own<SourceFile> createSourceFile(const zc::StringPtr fileName,
   return zc::heap<SourceFile>(fileName, zc::mv(statements));
 }
 
+zc::Own<ModulePath> createModulePath(zc::Vector<zc::StringPtr>&& identifiers) {
+  return zc::heap<ModulePath>(zc::mv(identifiers));
+}
+
+zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath>&& modulePath,
+                                                   zc::Maybe<zc::StringPtr> alias) {
+  return zc::heap<ImportDeclaration>(zc::mv(modulePath), alias);
+}
+
+zc::Own<ExportDeclaration> createExportDeclaration(zc::StringPtr identifier) {
+  return zc::heap<ExportDeclaration>(identifier);
+}
+
+zc::Own<ExportDeclaration> createExportDeclaration(zc::StringPtr identifier, zc::StringPtr alias,
+                                                   zc::Own<ModulePath>&& modulePath) {
+  return zc::heap<ExportDeclaration>(identifier, alias, zc::mv(modulePath));
+}
+
 }  // namespace factory
 }  // namespace ast
 }  // namespace compiler
