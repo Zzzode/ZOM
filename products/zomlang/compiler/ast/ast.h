@@ -35,7 +35,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(Node);
 
-  void setSourceRange(const source::SourceRange& range);
+  void setSourceRange(const source::SourceRange&& range);
   [[nodiscard]] const source::SourceRange sourceRange() const;
 
 private:

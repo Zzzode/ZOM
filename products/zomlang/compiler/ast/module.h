@@ -23,6 +23,8 @@ namespace zomlang {
 namespace compiler {
 namespace ast {
 
+class ModulePath;
+
 class SourceFile : public Node {
 public:
   explicit SourceFile(const zc::StringPtr fileName,
@@ -38,29 +40,56 @@ private:
 
 class ImportDeclaration : public Statement {
 public:
-  ImportDeclaration() noexcept;
-  // TODO: Define constructor and methods for ImportDeclaration
+  ImportDeclaration(zc::Own<ModulePath>&& modulePath,
+                    zc::Maybe<zc::StringPtr> alias = zc::none) noexcept;
   ~ImportDeclaration() noexcept(false) override;
 
+  const ModulePath& getModulePath() const;
+  zc::Maybe<zc::StringPtr> getAlias() const;
+
   ZC_DISALLOW_COPY_AND_MOVE(ImportDeclaration);
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
 };
 
 class ExportDeclaration : public Statement {
 public:
-  ExportDeclaration() noexcept;
-  // TODO: Define constructor and methods for ExportDeclaration
+  // 简单导出：export identifier
+  explicit ExportDeclaration(zc::StringPtr identifier) noexcept;
+
+  // 重命名导出：export identifier as alias from modulePath
+  ExportDeclaration(zc::StringPtr identifier, zc::StringPtr alias,
+                    zc::Own<ModulePath>&& modulePath) noexcept;
+
   ~ExportDeclaration() noexcept(false) override;
 
+  zc::StringPtr getIdentifier() const;
+  bool isRename() const;
+  zc::Maybe<zc::StringPtr> getAlias() const;
+  zc::Maybe<const ModulePath&> getModulePath() const;
+
   ZC_DISALLOW_COPY_AND_MOVE(ExportDeclaration);
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
 };
 
 class ModulePath : public Node {
 public:
-  // TODO: Define constructor and methods for ModulePath
-  ModulePath() noexcept;
+  explicit ModulePath(zc::Vector<zc::StringPtr>&& identifiers) noexcept;
   ~ModulePath() noexcept(false) override;
 
+  const zc::Vector<zc::StringPtr>& getIdentifiers() const;
+  zc::String toString() const;
+
   ZC_DISALLOW_COPY_AND_MOVE(ModulePath);
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
 };
 
 }  // namespace ast

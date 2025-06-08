@@ -103,6 +103,7 @@ private:
   zc::Maybe<zc::Own<ast::ExportDeclaration>> parseExportDeclaration();
   zc::Maybe<zc::Own<ast::ModulePath>> parseModulePath();
   zc::Maybe<zc::Own<ast::Statement>> parseStatement();
+  zc::Maybe<zc::Own<ast::Statement>> parseModuleItem();
   // TODO: Add parseExportImplementationElement if it's a distinct AST node
 
   struct Impl;

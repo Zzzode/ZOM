@@ -303,7 +303,7 @@ struct Lexer::Impl {
           curPtr += 2;
           formToken(TokenKind::kDotDotDot, tokStart);
         } else {
-          formToken(TokenKind::kDot, tokStart);
+          formToken(TokenKind::kPeriod, tokStart);
         }
         break;
       case ';':
