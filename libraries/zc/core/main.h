@@ -160,7 +160,7 @@ private:
   StringPtr programName;
   bool cleanShutdown;
   // hadErrors is mutable because we need to modify it in const-for-multithreadedness methods.
-  mutable std::atomic_bool hadErrors = false;
+  mutable ::std::atomic_bool hadErrors = false;
 };
 
 typedef Function<void(StringPtr programName, ArrayPtr<const StringPtr> params)> MainFunc;
@@ -286,7 +286,7 @@ public:
     friend class MainBuilder;
   };
 
-  MainBuilder& addOption(std::initializer_list<OptionName> names, Function<Validity()> callback,
+  MainBuilder& addOption(::std::initializer_list<OptionName> names, Function<Validity()> callback,
                          StringPtr helpText);
   // Defines a new option (flag).  `names` is a list of characters and strings that can be used to
   // specify the option on the command line.  Single-character names are used with "-" while string
@@ -315,7 +315,7 @@ public:
   //
   // Note that help text is automatically word-wrapped.
 
-  MainBuilder& addOptionWithArg(std::initializer_list<OptionName> names,
+  MainBuilder& addOptionWithArg(::std::initializer_list<OptionName> names,
                                 Function<Validity(StringPtr)> callback, StringPtr argumentTitle,
                                 StringPtr helpText);
   // Like `addOption()`, but adds an option which accepts an argument.  `argumentTitle` is used in

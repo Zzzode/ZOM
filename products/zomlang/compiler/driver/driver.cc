@@ -84,6 +84,11 @@ const diagnostics::DiagnosticEngine& CompilerDriver::getDiagnosticEngine() const
   return *impl->diagnosticEngine;
 }
 
+const zc::HashMap<source::BufferId, zc::Own<ast::Node>>& CompilerDriver::getASTs() const {
+  auto lockedAsts = impl->astMutex.lockShared();
+  return *lockedAsts;
+}
+
 bool CompilerDriver::parseSources() {
   // Get BufferIds directly from SourceManager
   zc::Vector<source::BufferId> bufferIds = impl->sourceManager->getManagedBufferIds();

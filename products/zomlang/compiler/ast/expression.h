@@ -25,7 +25,7 @@ namespace ast {
 
 class Expression : public Node {
 public:
-  Expression() noexcept;
+  explicit Expression(SyntaxKind kind = SyntaxKind::kExpression) noexcept;
   ~Expression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Expression);

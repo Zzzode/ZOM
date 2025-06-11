@@ -23,7 +23,7 @@ namespace ast {
 
 // ================================================================================
 // Expression
-Expression::Expression() noexcept = default;
+Expression::Expression(SyntaxKind kind) noexcept : Node(kind) {}
 Expression::~Expression() noexcept(false) = default;
 
 // ================================================================================
@@ -43,7 +43,8 @@ struct BinaryExpression::Impl {
 
 BinaryExpression::BinaryExpression(zc::Own<Expression> left, zc::String op,
                                    zc::Own<Expression> right)
-    : impl(zc::heap<Impl>(zc::mv(left), zc::mv(op), zc::mv(right))) {}
+    : Expression(SyntaxKind::kBinaryExpression),
+      impl(zc::heap<Impl>(zc::mv(left), zc::mv(op), zc::mv(right))) {}
 
 BinaryExpression::~BinaryExpression() noexcept(false) = default;
 

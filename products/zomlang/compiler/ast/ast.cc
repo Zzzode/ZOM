@@ -26,14 +26,28 @@ namespace ast {
 
 struct Node::Impl {
   source::SourceRange range;
+  SyntaxKind kind;
 };
 
-Node::Node() noexcept : impl(zc::heap<Impl>()) {}
+Node::Node(SyntaxKind kind) noexcept : impl(zc::heap<Impl>()) { impl->kind = kind; }
 Node::~Node() noexcept(false) = default;
 
 // Node sourceRange method implementation
 void Node::setSourceRange(const source::SourceRange&& range) { impl->range = zc::mv(range); }
 const source::SourceRange Node::sourceRange() const { return impl->range; }
+
+// Node kind method implementations
+SyntaxKind Node::getKind() const { return impl->kind; }
+
+bool Node::isStatement() const {
+  return impl->kind == SyntaxKind::kStatement || impl->kind == SyntaxKind::kImportDeclaration ||
+         impl->kind == SyntaxKind::kExportDeclaration ||
+         impl->kind == SyntaxKind::kVariableDeclaration;
+}
+
+bool Node::isExpression() const {
+  return impl->kind == SyntaxKind::kExpression || impl->kind == SyntaxKind::kBinaryExpression;
+}
 
 }  // namespace ast
 }  // namespace compiler
