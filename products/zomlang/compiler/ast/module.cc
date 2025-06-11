@@ -39,8 +39,9 @@ struct SourceFile::Impl {
 // ================================================================================
 // SourceFile
 SourceFile::SourceFile(const zc::StringPtr fileName,
-                       zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
-    : impl(zc::heap<Impl>(fileName, zc::mv(statements))) {}
+                        zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
+    : Node(SyntaxKind::kSourceFile),
+      impl(zc::heap<Impl>(fileName, zc::mv(statements))) {}
 
 SourceFile::~SourceFile() noexcept(false) = default;
 
@@ -57,8 +58,9 @@ struct ImportDeclaration::Impl {
 // ================================================================================
 // ImportDeclaration
 ImportDeclaration::ImportDeclaration(zc::Own<ModulePath>&& modulePath,
-                                     zc::Maybe<zc::StringPtr> alias) noexcept
-    : impl(zc::heap<Impl>(zc::mv(modulePath), alias)) {}
+                                      zc::Maybe<zc::StringPtr> alias) noexcept
+    : Statement(SyntaxKind::kImportDeclaration),
+      impl(zc::heap<Impl>(zc::mv(modulePath), alias)) {}
 
 ImportDeclaration::~ImportDeclaration() noexcept(false) = default;
 
@@ -95,11 +97,14 @@ struct ExportDeclaration::Impl {
 // ================================================================================
 // ExportDeclaration
 ExportDeclaration::ExportDeclaration(zc::StringPtr identifier) noexcept
-    : impl(zc::heap<Impl>(identifier)) {}
+    : Statement(SyntaxKind::kExportDeclaration),
+      impl(zc::heap<Impl>(identifier)) {}
 
-ExportDeclaration::ExportDeclaration(zc::StringPtr identifier, zc::StringPtr alias,
-                                     zc::Own<ModulePath>&& modulePath) noexcept
-    : impl(zc::heap<Impl>(identifier, alias, zc::mv(modulePath))) {}
+ExportDeclaration::ExportDeclaration(zc::StringPtr identifier,
+                                      zc::StringPtr alias,
+                                      zc::Own<ModulePath>&& modulePath) noexcept
+    : Statement(SyntaxKind::kExportDeclaration),
+      impl(zc::heap<Impl>(identifier, alias, zc::mv(modulePath))) {}
 
 ExportDeclaration::~ExportDeclaration() noexcept(false) = default;
 
@@ -141,7 +146,8 @@ struct ModulePath::Impl {
 // ================================================================================
 // ModulePath
 ModulePath::ModulePath(zc::Vector<zc::StringPtr>&& identifiers) noexcept
-    : impl(zc::heap<Impl>(zc::mv(identifiers))) {}
+    : Node(SyntaxKind::kModulePath),
+      impl(zc::heap<Impl>(zc::mv(identifiers))) {}
 
 ModulePath::~ModulePath() noexcept(false) = default;
 

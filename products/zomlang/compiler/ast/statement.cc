@@ -24,7 +24,7 @@ namespace ast {
 
 // ================================================================================
 // Statement
-Statement::Statement() noexcept = default;
+Statement::Statement(SyntaxKind kind) noexcept : Node(kind) {}
 Statement::~Statement() noexcept(false) = default;
 
 // ================================================================================
@@ -44,7 +44,8 @@ struct VariableDeclaration::Impl {
 
 VariableDeclaration::VariableDeclaration(zc::String type, zc::String name,
                                          zc::Own<Expression> initializer)
-    : impl(zc::heap<Impl>(zc::mv(type), zc::mv(name), zc::mv(initializer))) {}
+    : Statement(SyntaxKind::kVariableDeclaration),
+      impl(zc::heap<Impl>(zc::mv(type), zc::mv(name), zc::mv(initializer))) {}
 
 VariableDeclaration::~VariableDeclaration() noexcept(false) = default;
 

@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "zc/core/map.h"
+#include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -23,6 +25,10 @@ namespace compiler {
 
 namespace source {
 class BufferId;
+}
+
+namespace ast {
+class Node;
 }
 
 namespace driver {
@@ -45,8 +51,9 @@ public:
   /// @return True if parsing succeeded without fatal errors, false otherwise.
   bool parseSources();
 
-  /// Potentially add a method to get the ASTs later
-  // zc::HashMap<source::BufferId, zc::Own<ast::TranslationUnit>>& getASTs();
+  /// Get the parsed ASTs
+  /// @return A reference to the map of buffer IDs to AST nodes
+  const zc::HashMap<source::BufferId, zc::Own<ast::Node>>& getASTs() const;
 
 private:
   struct Impl;

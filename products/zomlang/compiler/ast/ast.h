@@ -27,16 +27,43 @@ class SourceRange;
 
 namespace ast {
 
+// Syntax kind enumeration for all AST node types
+enum class SyntaxKind {
+  // Base types
+  kNode,
+  kStatement,
+  kExpression,
+
+  // Specific node types
+  kSourceFile,
+  kModulePath,
+
+  // Statement types
+  kImportDeclaration,
+  kExportDeclaration,
+  kVariableDeclaration,
+
+  // Expression types
+  kBinaryExpression,
+};
+
 // Base class for all AST nodes
 class Node {
 public:
-  Node() noexcept;
+  explicit Node(SyntaxKind kind) noexcept;
   virtual ~Node() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Node);
 
   void setSourceRange(const source::SourceRange&& range);
   [[nodiscard]] const source::SourceRange sourceRange() const;
+
+  // Get the syntax kind of this node
+  [[nodiscard]] SyntaxKind getKind() const;
+
+  // Type checking helpers
+  [[nodiscard]] bool isStatement() const;
+  [[nodiscard]] bool isExpression() const;
 
 private:
   struct Impl;

@@ -27,7 +27,7 @@ class Expression;
 
 class Statement : public Node {
 public:
-  Statement() noexcept;
+  explicit Statement(SyntaxKind kind = SyntaxKind::kStatement) noexcept;
   ~Statement() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Statement);

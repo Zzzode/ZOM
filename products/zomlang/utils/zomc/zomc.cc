@@ -12,8 +12,10 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+#include "zc/core/iostream.h"
 #include "zc/core/main.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/dumper.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/driver/driver.h"
 #include "zomlang/compiler/source/manager.h"
@@ -64,6 +66,8 @@ public:
                           "Set output type (ast|ir|binary)")
         .addOption({'d', "dump-ast"}, ZC_BIND_METHOD(*this, enableDumpAST),
                    "Dump the Abstract Syntax Tree to stdout.")
+        .addOptionWithArg({"dump-format"}, ZC_BIND_METHOD(*this, setDumpFormat), "<format>",
+                          "Set AST dump format (text|json|xml), default is text.")
         .expectOneOrMoreArgs("<source>", ZC_BIND_METHOD(*this, addSource))
         .callAfterParsing(ZC_BIND_METHOD(*this, emitOutput));
   }
@@ -84,7 +88,23 @@ public:
 
   zc::MainBuilder::Validity addOutput(zc::StringPtr spec) { return true; }
 
-  zc::MainBuilder::Validity enableDumpAST() { return true; }
+  zc::MainBuilder::Validity enableDumpAST() {
+    dumpASTEnabled = true;
+    return true;
+  }
+
+  zc::MainBuilder::Validity setDumpFormat(zc::StringPtr format) {
+    if (format == "text") {
+      dumpFormat = ast::DumpFormat::kText;
+    } else if (format == "json") {
+      dumpFormat = ast::DumpFormat::kJSON;
+    } else if (format == "xml") {
+      dumpFormat = ast::DumpFormat::kXML;
+    } else {
+      return zc::str("Invalid dump format: ", format, ". Valid formats are: text, json, xml");
+    }
+    return true;
+  }
 
   zc::MainBuilder::Validity emitOutput() {
     // Trigger the parallel parsing process
@@ -96,10 +116,28 @@ public:
     }
 
     // Parsing succeeded, proceed with further steps (e.g., type checking, IR gen)
-    // if (dumpASTEnabled) { // Check if dump AST flag is set
-    //    const auto& asts = driver->getASTs();
-    //    // Iterate through asts and dump them
-    // }
+    if (dumpASTEnabled) {
+      const auto& asts = driver->getASTs();
+      zc::std::StdOutputStream stdOut(::std::cout);
+      ast::ASTDumper dumper(stdOut, dumpFormat);
+
+      // Iterate through asts and dump them
+      for (const auto& entry : asts) {
+        const source::BufferId& bufferId = entry.key;
+        const ast::Node& astNode = *entry.value;
+
+        // Print file header
+        if (dumpFormat == ast::DumpFormat::kText) {
+          stdOut.write(
+              zc::str("\n=== AST for BufferId: ", static_cast<uint64_t>(bufferId), " ===\n")
+                  .asBytes());
+        }
+
+        dumper.dump(astNode);
+
+        if (dumpFormat == ast::DumpFormat::kText) { stdOut.write("\n"_zcb); }
+      }
+    }
 
     // ... rest of the emit logic based on emitType ...
 
@@ -110,6 +148,8 @@ private:
   zc::ProcessContext& context;
   zc::Own<driver::CompilerDriver> driver;
   zc::SpaceFor<driver::CompilerDriver> driverSpace;
+  bool dumpASTEnabled = false;
+  ast::DumpFormat dumpFormat = ast::DumpFormat::kText;
 };
 
 }  // namespace utils
