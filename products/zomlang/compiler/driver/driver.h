@@ -17,6 +17,7 @@
 #include "zc/core/map.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 
@@ -35,7 +36,8 @@ namespace driver {
 
 class CompilerDriver {
 public:
-  CompilerDriver(const basic::LangOptions& langOpts) noexcept;
+  CompilerDriver(const basic::LangOptions& langOpts,
+                 const basic::CompilerOptions& compilerOpts) noexcept;
   ~CompilerDriver() noexcept(false);
 
   /// Add a source file to the compiler.
@@ -54,6 +56,10 @@ public:
   /// Get the parsed ASTs
   /// @return A reference to the map of buffer IDs to AST nodes
   const zc::HashMap<source::BufferId, zc::Own<ast::Node>>& getASTs() const;
+
+  /// Get the compiler options used by the driver.
+  /// @return A reference to the compiler options
+  const basic::CompilerOptions& getCompilerOptions() const;
 
 private:
   struct Impl;

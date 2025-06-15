@@ -65,11 +65,9 @@ struct Lexer::Impl {
   const zc::byte* getBufferPtrForSourceLoc(source::SourceLoc loc) const;
 
   void formToken(TokenKind kind, const zc::byte* tokStart) {
-    const zc::ArrayPtr<const char> textPtr =
-        zc::ArrayPtr<const zc::byte>(tokStart, curPtr).asChars();
-    zc::StringPtr text(textPtr.begin(), textPtr.end());
-    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-    nextToken = Token(kind, text, loc);
+    source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
+    nextToken = Token(kind, source::SourceRange(startLoc, endLoc));
   }
 
   /// Lexing implementation
@@ -366,14 +364,13 @@ struct Lexer::Impl {
     while (curPtr < bufferEnd && isIdentifierContinuation(*curPtr)) { curPtr++; }
 
     // Check if it's a keyword
-    const zc::ArrayPtr<const char> textPtr =
-        zc::ArrayPtr<const zc::byte>(tokStart, curPtr).asChars();
-    zc::StringPtr text(textPtr.begin(), textPtr.end());
+    zc::String text = zc::str(zc::ArrayPtr<const zc::byte>(tokStart, curPtr));
 
     TokenKind kind = TokenKind::kIdentifier;
     if (text == "fun") {
       kind = TokenKind::kFunKeyword;
     } else if (text == "i32" || text == "str" || text == "bool" || text == "f64") {
+      // These are now just identifiers, type checking will handle them
       kind = TokenKind::kIdentifier;
     }
 

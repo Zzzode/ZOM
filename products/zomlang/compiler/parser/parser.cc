@@ -18,7 +18,6 @@
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
-#include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/factory.h"
 #include "zomlang/compiler/ast/module.h"
 #include "zomlang/compiler/ast/statement.h"
@@ -41,7 +40,10 @@ struct Parser::Impl {
       : bufferId(bufferId),
         sourceMgr(sourceMgr),
         diagnosticEngine(diagnosticEngine),
-        lexer(sourceMgr, diagnosticEngine, langOpts, bufferId) {}
+        lexer(sourceMgr, diagnosticEngine, langOpts, bufferId) {
+    // Initialize the first token, which is kUnknown
+    initializeToken();
+  }
   ~Impl() noexcept(false) = default;
 
   ZC_DISALLOW_COPY_AND_MOVE(Impl);
@@ -86,7 +88,7 @@ bool Parser::isListElement(ParsingContext context, bool inErrorRecovery) const {
   const lexer::Token& currentToken = impl->peekToken();
   switch (context) {
     case ParsingContext::kSourceElements:
-      return !currentToken.is(lexer::TokenKind::kEOF);
+      return !currentToken.is(lexer::TokenKind::kSemicolon) && isStartOfStatement();
     default:
       return false;
   }
@@ -99,7 +101,7 @@ bool Parser::abortParsingListOrMoveToNextToken(ParsingContext context) {
 }
 
 zc::Maybe<zc::Own<ast::Node>> Parser::parse() {
-  impl->initializeToken();  // Initialize the first token
+  impl->consumeToken();
   ZC_IF_SOME(sourceFileNode, parseSourceFile()) { return zc::mv(sourceFileNode); }
   return zc::none;
 }
@@ -118,9 +120,9 @@ zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
   source::SourceLoc endLoc = impl->peekToken().getLocation();
 
   // Create the source file node
-  const zc::StringPtr fileName = impl->sourceMgr.getIdentifierForBuffer(impl->bufferId);
+  zc::StringPtr fileName = impl->sourceMgr.getIdentifierForBuffer(impl->bufferId);
   zc::Own<ast::SourceFile> sourceFile =
-      ast::factory::createSourceFile(fileName, zc::mv(statements));
+      ast::factory::createSourceFile(zc::str(fileName), zc::mv(statements));
   sourceFile->setSourceRange(source::SourceRange(startLoc, endLoc));
 
   return sourceFile;
@@ -160,7 +162,7 @@ zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
 
   // Parse modulePath
   ZC_IF_SOME(modulePath, parseModulePath()) {
-    zc::Maybe<zc::StringPtr> alias = zc::none;
+    zc::Maybe<zc::String> alias = zc::none;
 
     // Check for optional AS clause
     const lexer::Token& nextToken = impl->peekToken();
@@ -170,7 +172,7 @@ zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
       // Parse identifier name (alias)
       const lexer::Token& aliasToken = impl->peekToken();
       if (aliasToken.is(lexer::TokenKind::kIdentifier)) {
-        alias = aliasToken.getText();
+        alias = aliasToken.getText(impl->sourceMgr);
         impl->consumeToken();  // consume identifier
       } else {
         // Error: expected identifier after AS
@@ -181,7 +183,7 @@ zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
     source::SourceLoc endLoc = impl->peekToken().getLocation();
 
     // Create ImportDeclaration with modulePath and optional alias
-    auto importDecl = ast::factory::createImportDeclaration(zc::mv(modulePath), alias);
+    auto importDecl = ast::factory::createImportDeclaration(zc::mv(modulePath), zc::mv(alias));
     importDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
     return importDecl;
   }
@@ -197,8 +199,8 @@ zc::Maybe<zc::Own<ast::ModulePath>> Parser::parseModulePath() {
   if (!currentToken.is(lexer::TokenKind::kIdentifier)) { return zc::none; }
 
   source::SourceLoc startLoc = currentToken.getLocation();
-  zc::Vector<zc::StringPtr> identifiers;
-  identifiers.add(currentToken.getText());
+  zc::Vector<zc::String> identifiers;
+  identifiers.add(currentToken.getText(impl->sourceMgr));
   impl->consumeToken();  // consume first identifier
 
   // Parse optional additional identifiers separated by PERIOD
@@ -209,7 +211,7 @@ zc::Maybe<zc::Own<ast::ModulePath>> Parser::parseModulePath() {
 
       const lexer::Token& idToken = impl->peekToken();
       if (idToken.is(lexer::TokenKind::kIdentifier)) {
-        identifiers.add(idToken.getText());
+        identifiers.add(idToken.getText(impl->sourceMgr));
         impl->consumeToken();  // consume identifier
       } else {
         // Error: expected identifier after period
@@ -242,7 +244,7 @@ zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
 
   const lexer::Token& nextToken = impl->peekToken();
   if (nextToken.is(lexer::TokenKind::kIdentifier)) {
-    zc::StringPtr identifier = nextToken.getText();
+    zc::String identifier = nextToken.getText(impl->sourceMgr);
     impl->consumeToken();  // consume identifier
 
     // Check if this is exportRename (identifier AS identifier FROM modulePath)
@@ -252,7 +254,7 @@ zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
 
       const lexer::Token& secondIdToken = impl->peekToken();
       if (secondIdToken.is(lexer::TokenKind::kIdentifier)) {
-        zc::StringPtr alias = secondIdToken.getText();
+        zc::String alias = secondIdToken.getText(impl->sourceMgr);
         impl->consumeToken();  // consume second identifier
 
         const lexer::Token& fromToken = impl->peekToken();
@@ -264,8 +266,8 @@ zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
             source::SourceLoc endLoc = impl->peekToken().getLocation();
 
             // Create ExportDeclaration with rename info
-            auto exportDecl =
-                ast::factory::createExportDeclaration(identifier, alias, zc::mv(modulePath));
+            auto exportDecl = ast::factory::createExportDeclaration(
+                zc::mv(identifier), zc::mv(alias), zc::mv(modulePath));
             exportDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
             return exportDecl;
           }
@@ -275,7 +277,7 @@ zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
       // Simple exportModule: just bindingIdentifier
       source::SourceLoc endLoc = impl->peekToken().getLocation();
 
-      auto exportDecl = ast::factory::createExportDeclaration(identifier);
+      auto exportDecl = ast::factory::createExportDeclaration(zc::mv(identifier));
       exportDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
       return exportDecl;
     }
@@ -290,6 +292,184 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseStatement() {
   //   | declarationStatement
 
   return zc::none;
+}
+
+bool Parser::isStartOfStatement() const {
+  const lexer::Token& currentToken = impl->peekToken();
+
+  switch (currentToken.getKind()) {
+    // Punctuation that can start statements
+    case lexer::TokenKind::kAt:         // @decorator
+    case lexer::TokenKind::kSemicolon:  // empty statement
+    case lexer::TokenKind::kLeftBrace:  // block statement
+    // Keywords that start statements
+    case lexer::TokenKind::kLetKeyword:       // let declaration
+    case lexer::TokenKind::kVarKeyword:       // var declaration
+    case lexer::TokenKind::kFunKeyword:       // function declaration
+    case lexer::TokenKind::kClassKeyword:     // class declaration
+    case lexer::TokenKind::kBreakKeyword:     // break statement
+    case lexer::TokenKind::kContinueKeyword:  // continue statement
+    case lexer::TokenKind::kReturnKeyword:    // return statement
+    case lexer::TokenKind::kThrowKeyword:     // throw statement
+    case lexer::TokenKind::kTryKeyword:       // try statement
+    case lexer::TokenKind::kMatchKeyword:     // match statement
+    case lexer::TokenKind::kDebuggerKeyword:  // debugger statement
+    case lexer::TokenKind::kDoKeyword:        // do statement
+    case lexer::TokenKind::kWithKeyword:      // with statement
+    case lexer::TokenKind::kSwitchKeyword:    // switch statement
+      return true;
+
+    // Keywords that might start statements depending on context
+    case lexer::TokenKind::kImportKeyword:
+      return isStartOfDeclaration();
+
+    case lexer::TokenKind::kConstKeyword:
+    case lexer::TokenKind::kExportKeyword:
+      return isStartOfDeclaration();
+
+    // Access modifiers and other contextual keywords
+    case lexer::TokenKind::kAsyncKeyword:
+    case lexer::TokenKind::kDeclareKeyword:
+    case lexer::TokenKind::kInterfaceKeyword:
+    case lexer::TokenKind::kModuleKeyword:
+    case lexer::TokenKind::kNamespaceKeyword:
+    case lexer::TokenKind::kGlobalKeyword:
+      return true;
+
+    case lexer::TokenKind::kAccessorKeyword:
+    case lexer::TokenKind::kPublicKeyword:
+    case lexer::TokenKind::kPrivateKeyword:
+    case lexer::TokenKind::kProtectedKeyword:
+    case lexer::TokenKind::kStaticKeyword:
+    case lexer::TokenKind::kReadonlyKeyword:
+    case lexer::TokenKind::kAbstractKeyword:
+    case lexer::TokenKind::kOverrideKeyword:
+      return isStartOfDeclaration();
+
+    // Using keyword for using declarations
+    case lexer::TokenKind::kUsingKeyword:
+      return true;
+
+    default:
+      // Check if it's the start of an expression (which can be an expression statement)
+      return isStartOfExpression();
+  }
+}
+
+bool Parser::isStartOfLeftHandSideExpression() const {
+  const lexer::Token& currentToken = impl->peekToken();
+
+  switch (currentToken.getKind()) {
+    // Keywords that can start left-hand side expressions
+    case lexer::TokenKind::kThisKeyword:
+    case lexer::TokenKind::kSuperKeyword:
+    case lexer::TokenKind::kNewKeyword:
+      return true;
+
+    // Literals
+    case lexer::TokenKind::kIntegerLiteral:
+    case lexer::TokenKind::kFloatLiteral:
+    case lexer::TokenKind::kStringLiteral:
+      return true;
+
+    // Grouping and collection literals
+    case lexer::TokenKind::kLeftParen:    // Parenthesized expressions
+    case lexer::TokenKind::kLeftBracket:  // Array literals
+    case lexer::TokenKind::kLeftBrace:    // Object literals
+      return true;
+
+    // Function and class expressions
+    case lexer::TokenKind::kFunKeyword:
+    case lexer::TokenKind::kClassKeyword:
+      return true;
+
+    // Division operators (for regex literals)
+    case lexer::TokenKind::kSlash:
+    case lexer::TokenKind::kSlashEquals:
+      return true;
+
+    // Identifiers
+    case lexer::TokenKind::kIdentifier:
+      return true;
+
+    // Import expressions (dynamic imports)
+    case lexer::TokenKind::kImportKeyword:
+      // TODO: Implement lookAhead(nextTokenIsOpenParenOrLessThanOrDot)
+      return true;
+
+    default:
+      return false;
+  }
+}
+
+bool Parser::isStartOfExpression() const {
+  // First check if it's a left-hand side expression
+  if (isStartOfLeftHandSideExpression()) { return true; }
+
+  const lexer::Token& currentToken = impl->peekToken();
+
+  switch (currentToken.getKind()) {
+    // Unary operators
+    case lexer::TokenKind::kPlus:
+    case lexer::TokenKind::kMinus:
+    case lexer::TokenKind::kTilde:
+    case lexer::TokenKind::kExclamation:
+    case lexer::TokenKind::kDeleteKeyword:
+    case lexer::TokenKind::kTypeOfKeyword:
+    case lexer::TokenKind::kVoidKeyword:
+    case lexer::TokenKind::kPlusPlus:
+    case lexer::TokenKind::kMinusMinus:
+    case lexer::TokenKind::kLessThan:  // Type assertions
+    case lexer::TokenKind::kAwaitKeyword:
+    case lexer::TokenKind::kYieldKeyword:
+    case lexer::TokenKind::kAt:  // Decorators
+      return true;
+
+    default:
+      // Error tolerance: if we see the start of some binary operator,
+      // we consider that the start of an expression
+      // TODO: Implement isBinaryOperator() check
+      return false;
+  }
+}
+
+bool Parser::isStartOfDeclaration() const {
+  const lexer::Token& currentToken = impl->peekToken();
+
+  switch (currentToken.getKind()) {
+    // Declaration keywords
+    case lexer::TokenKind::kLetKeyword:
+    case lexer::TokenKind::kVarKeyword:
+    case lexer::TokenKind::kFunKeyword:
+    case lexer::TokenKind::kClassKeyword:
+    case lexer::TokenKind::kInterfaceKeyword:
+    case lexer::TokenKind::kModuleKeyword:
+    case lexer::TokenKind::kNamespaceKeyword:
+    case lexer::TokenKind::kDeclareKeyword:
+    case lexer::TokenKind::kGlobalKeyword:
+      return true;
+
+    // Access modifiers
+    case lexer::TokenKind::kPublicKeyword:
+    case lexer::TokenKind::kPrivateKeyword:
+    case lexer::TokenKind::kProtectedKeyword:
+    case lexer::TokenKind::kStaticKeyword:
+    case lexer::TokenKind::kReadonlyKeyword:
+    case lexer::TokenKind::kAccessorKeyword:
+      return true;
+
+    // Import/Export
+    case lexer::TokenKind::kImportKeyword:
+    case lexer::TokenKind::kExportKeyword:
+      return true;
+
+    // Async functions
+    case lexer::TokenKind::kAsyncKeyword:
+      return true;
+
+    default:
+      return false;
+  }
 }
 
 }  // namespace parser

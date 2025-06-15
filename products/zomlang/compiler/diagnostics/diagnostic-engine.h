@@ -70,7 +70,8 @@ public:
     return InFlightDiagnostic(*this, Diagnostic(ID, loc, zc::fwd<Args>(args)...));
   }
 
-  static void formatDiagnosticMessage(zc::OutputStream& out, zc::StringPtr message,
+  static void formatDiagnosticMessage(const source::SourceManager& sm, zc::OutputStream& out,
+                                      zc::StringPtr message,
                                       zc::ArrayPtr<const DiagnosticArgument> args);
 
 private:

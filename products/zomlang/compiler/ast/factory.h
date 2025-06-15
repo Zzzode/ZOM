@@ -35,7 +35,7 @@ class ExportDeclaration;
 
 namespace factory {
 /// Create a new SourceFile Node.
-zc::Own<SourceFile> createSourceFile(const zc::StringPtr fileName,
+zc::Own<SourceFile> createSourceFile(zc::String&& fileName,
                                      zc::Vector<zc::Own<ast::Statement>>&& statements);
 
 template <typename T>
@@ -51,17 +51,17 @@ zc::Own<T> createNodeWithRange(const source::SourceRange& range, Args&&... args)
 }
 
 /// Create a ModulePath node
-zc::Own<ModulePath> createModulePath(zc::Vector<zc::StringPtr>&& identifiers);
+zc::Own<ModulePath> createModulePath(zc::Vector<zc::String>&& identifiers);
 
 /// Create an ImportDeclaration node
 zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath>&& modulePath,
-                                                   zc::Maybe<zc::StringPtr> alias = zc::none);
+                                                   zc::Maybe<zc::String> alias = zc::none);
 
 /// Create a simple ExportDeclaration node (export identifier)
-zc::Own<ExportDeclaration> createExportDeclaration(zc::StringPtr identifier);
+zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier);
 
 /// Create a rename ExportDeclaration node (export identifier as alias from modulePath)
-zc::Own<ExportDeclaration> createExportDeclaration(zc::StringPtr identifier, zc::StringPtr alias,
+zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier, zc::String&& alias,
                                                    zc::Own<ModulePath>&& modulePath);
 
 }  // namespace factory

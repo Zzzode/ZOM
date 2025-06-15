@@ -15,4 +15,68 @@
 #ifndef COMPILER_OPTS_H
 #define COMPILER_OPTS_H
 
+#include "zc/core/string.h"
+#include "zomlang/compiler/ast/dumper.h"
+
+namespace zomlang {
+namespace compiler {
+namespace basic {
+
+/// \brief Configuration options for the compiler frontend and backend.
+/// This class encapsulates all compiler-specific options that control
+/// compilation behavior, separate from language-specific options.
+struct CompilerOptions {
+  /// \brief Output and emission options
+  struct EmissionOptions {
+    enum class Type {
+      AST,
+      IR,
+      Binary,
+    };
+
+    /// Whether to dump AST to stdout (deprecated, use outputType == Type::AST instead)
+    bool dumpASTEnabled = false;
+    /// Format for AST dumping
+    ast::DumpFormat dumpFormat = ast::DumpFormat::kText;
+    /// Output file path
+    zc::String outputPath;
+    /// Emission type
+    Type outputType = Type::Binary;
+    /// Syntax only compilation
+    bool syntaxOnly = false;
+
+    EmissionOptions() = default;
+  };
+
+  /// \brief Optimization options
+  struct OptimizationOptions {
+    /// Optimization level (0-3)
+    int level = 0;
+    /// Enable debug information
+    bool enableDebugInfo = false;
+
+    OptimizationOptions() = default;
+  };
+
+  /// \brief Diagnostic options
+  struct DiagnosticOptions {
+    /// Treat warnings as errors
+    bool warningsAsErrors = false;
+    /// Maximum number of errors before stopping
+    int maxErrors = 20;
+
+    DiagnosticOptions() = default;
+  };
+
+  EmissionOptions emission;
+  OptimizationOptions optimization;
+  DiagnosticOptions diagnostics;
+
+  CompilerOptions() = default;
+};
+
+}  // namespace basic
+}  // namespace compiler
+}  // namespace zomlang
+
 #endif  // COMPILER_OPTS_H

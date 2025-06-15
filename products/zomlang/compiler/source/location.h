@@ -60,6 +60,10 @@ public:
 
   ZC_NODISCARD SourceLoc getStart() const { return start; }
   ZC_NODISCARD SourceLoc getEnd() const { return end; }
+  ZC_NODISCARD unsigned getLength() const {
+    if (start.isInvalid() || end.isInvalid()) { return 0; }
+    return end.getOpaqueValue() - start.getOpaqueValue();
+  }
 
   ZC_NODISCARD bool isValid() const { return start.isValid() && end.isValid(); }
   ZC_NODISCARD bool isInvalid() const { return !isValid(); }
@@ -75,12 +79,15 @@ public:
     if (other.getEnd() > end) { end = other.getEnd(); }
   }
 
-  ZC_NODISCARD zc::String toString(SourceManager& sm, uint64_t lastBufferId = ~0ULL) const {
+  ZC_NODISCARD zc::String toString(const SourceManager& sm, uint64_t lastBufferId = ~0ULL) const {
     return zc::str("SourceRange(", start.toString(sm, lastBufferId), ", ",
                    end.toString(sm, lastBufferId), ")");
   }
 
-  void print(zc::OutputStream& os, SourceManager& sm) const {
+  /// Get the raw text content between start and end locations
+  ZC_NODISCARD zc::String getText(const SourceManager& sm) const;
+
+  void print(zc::OutputStream& os, const SourceManager& sm) const {
     constexpr uint64_t tmp = ~0ULL;
     os.write(toString(sm, tmp).asBytes());
   }
@@ -125,6 +132,9 @@ public:
     return zc::str("CharSourceRange(", start.toString(sm, lastBufferId), ", ",
                    end.toString(sm, lastBufferId), ", ", isTokenRange ? "token" : "char", ")");
   }
+
+  /// Get the raw text content between start and end locations
+  ZC_NODISCARD zc::String getText(SourceManager& sm) const;
 
   bool operator==(const CharSourceRange& other) const {
     return start == other.start && end == other.end;

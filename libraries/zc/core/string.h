@@ -316,6 +316,7 @@ public:
   inline constexpr const char* end() const ZC_LIFETIMEBOUND;
 
   inline constexpr bool operator==(decltype(nullptr)) const { return content.size() <= 1; }
+  inline constexpr bool operator!=(decltype(nullptr)) const { return content.size() > 1; }
 
   inline bool operator==(const StringPtr& other) const { return StringPtr(*this) == other; }
   inline bool operator<(const StringPtr& other) const { return StringPtr(*this) < other; }
