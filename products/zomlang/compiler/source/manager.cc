@@ -390,6 +390,55 @@ SourceLoc SourceManager::getLocFromExternalSource(const zc::StringPtr path, cons
   return {};
 }
 
+zc::ArrayPtr<const zc::byte> SourceManager::extractText(const SourceRange& range,
+                                                        zc::Maybe<BufferId> bufferId) const {
+  if (range.isInvalid()) { return zc::ArrayPtr<const zc::byte>(); }
+
+  const SourceLoc start = range.getStart();
+  const SourceLoc end = range.getEnd();
+
+  // Find the buffer containing the range
+  ZC_IF_SOME(providedBufferId, bufferId) {
+    // Use the provided buffer ID
+    ZC_IF_SOME(buffer, impl->idToBuffer.find(providedBufferId)) {
+      const zc::byte* bufferStart = buffer.getBufferStart();
+      const zc::byte* bufferEnd = buffer.getBufferEnd();
+      const zc::byte* rangeStart = start.getOpaqueValue();
+      const zc::byte* rangeEnd = end.getOpaqueValue();
+
+      // Validate that the range is within the buffer
+      if (rangeStart < bufferStart || rangeEnd > bufferEnd || rangeStart > rangeEnd) {
+        return zc::ArrayPtr<const zc::byte>();
+      }
+
+      // Return the text slice
+      const size_t length = rangeEnd - rangeStart;
+      return zc::ArrayPtr<const zc::byte>(rangeStart, length);
+    }
+    return zc::ArrayPtr<const zc::byte>();
+  }
+
+  // Find buffer automatically
+  ZC_IF_SOME(foundBufferId, findBufferContainingLoc(start)) {
+    ZC_IF_SOME(buffer, impl->idToBuffer.find(foundBufferId)) {
+      const zc::byte* bufferStart = buffer.getBufferStart();
+      const zc::byte* bufferEnd = buffer.getBufferEnd();
+      const zc::byte* rangeStart = start.getOpaqueValue();
+      const zc::byte* rangeEnd = end.getOpaqueValue();
+
+      // Validate that the range is within the buffer
+      if (rangeStart < bufferStart || rangeEnd > bufferEnd || rangeStart > rangeEnd) {
+        return zc::ArrayPtr<const zc::byte>();
+      }
+
+      // Return the text slice
+      const size_t length = rangeEnd - rangeStart;
+      return zc::ArrayPtr<const zc::byte>(rangeStart, length);
+    }
+  }
+  return zc::ArrayPtr<const zc::byte>();
+}
+
 const zc::Vector<BufferId> SourceManager::getManagedBufferIds() const {
   zc::Vector<BufferId> ids;
   ids.reserve(impl->buffers.size());

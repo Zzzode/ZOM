@@ -21,27 +21,27 @@ namespace compiler {
 namespace ast {
 namespace factory {
 
-zc::Own<SourceFile> createSourceFile(const zc::StringPtr fileName,
+zc::Own<SourceFile> createSourceFile(zc::String&& fileName,
                                      zc::Vector<zc::Own<ast::Statement>>&& statements) {
-  return zc::heap<SourceFile>(fileName, zc::mv(statements));
+  return zc::heap<SourceFile>(zc::mv(fileName), zc::mv(statements));
 }
 
-zc::Own<ModulePath> createModulePath(zc::Vector<zc::StringPtr>&& identifiers) {
+zc::Own<ModulePath> createModulePath(zc::Vector<zc::String>&& identifiers) {
   return zc::heap<ModulePath>(zc::mv(identifiers));
 }
 
 zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath>&& modulePath,
-                                                   zc::Maybe<zc::StringPtr> alias) {
-  return zc::heap<ImportDeclaration>(zc::mv(modulePath), alias);
+                                                   zc::Maybe<zc::String> alias) {
+  return zc::heap<ImportDeclaration>(zc::mv(modulePath), zc::mv(alias));
 }
 
-zc::Own<ExportDeclaration> createExportDeclaration(zc::StringPtr identifier) {
-  return zc::heap<ExportDeclaration>(identifier);
+zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier) {
+  return zc::heap<ExportDeclaration>(zc::mv(identifier));
 }
 
-zc::Own<ExportDeclaration> createExportDeclaration(zc::StringPtr identifier, zc::StringPtr alias,
+zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier, zc::String&& alias,
                                                    zc::Own<ModulePath>&& modulePath) {
-  return zc::heap<ExportDeclaration>(identifier, alias, zc::mv(modulePath));
+  return zc::heap<ExportDeclaration>(zc::mv(identifier), zc::mv(alias), zc::mv(modulePath));
 }
 
 }  // namespace factory

@@ -16,6 +16,7 @@
 #include "zc/core/main.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/dumper.h"
+#include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/driver/driver.h"
 #include "zomlang/compiler/source/manager.h"
@@ -33,8 +34,7 @@ static constexpr char VERSION_STRING[] = "ZomLang Version " VERSION;
 class CompilerMain {
 public:
   explicit CompilerMain(zc::ProcessContext& context) : context(context) {
-    basic::LangOptions langOpts;
-    driver = driverSpace.construct(langOpts);
+    driver = driverSpace.construct(langOpts, compilerOpts);
   }
 
   zc::MainFunc getMain() {
@@ -61,13 +61,23 @@ public:
   void addCompileOptions(zc::MainBuilder& builder) {
     builder
         .addOptionWithArg({'o', "output"}, ZC_BIND_METHOD(*this, addOutput), "<dir>",
-                          "Specify the output path.")
-        .addOptionWithArg({'e', "emit"}, ZC_BIND_METHOD(*this, setEmitType), "<type>",
-                          "Set output type (ast|ir|binary)")
-        .addOption({'d', "dump-ast"}, ZC_BIND_METHOD(*this, enableDumpAST),
-                   "Dump the Abstract Syntax Tree to stdout.")
-        .addOptionWithArg({"dump-format"}, ZC_BIND_METHOD(*this, setDumpFormat), "<format>",
-                          "Set AST dump format (text|json|xml), default is text.")
+                          "Specify the output directory or file path.")
+        .addOptionWithArg({"emit"}, ZC_BIND_METHOD(*this, setEmitType), "<type>",
+                          "Set output type: ast, ir, binary (default: binary)")
+        .addOptionWithArg({"format"}, ZC_BIND_METHOD(*this, setOutputFormat), "<format>",
+                          "Set output format: text, json, xml (default: text)")
+        .addOption({"dump-ast"}, ZC_BIND_METHOD(*this, enableASTDump),
+                   "Dump AST to stdout (shorthand for --emit=ast)")
+        .addOption({"syntax-only"}, ZC_BIND_METHOD(*this, enableSyntaxOnly),
+                   "Only perform syntax checking, no code generation")
+        .addOptionWithArg({'O', "optimize"}, ZC_BIND_METHOD(*this, setOptimizationLevel), "<level>",
+                          "Set optimization level: 0, 1, 2, 3 (default: 0)")
+        .addOption({"no-unicode"}, ZC_BIND_METHOD(*this, disableUnicode),
+                   "Disable Unicode support in identifiers")
+        .addOption({"allow-dollar-identifiers"}, ZC_BIND_METHOD(*this, enableDollarIdentifiers),
+                   "Allow dollar signs in identifiers")
+        .addOption({"no-regex-literals"}, ZC_BIND_METHOD(*this, disableRegexLiterals),
+                   "Disable regex literal syntax")
         .expectOneOrMoreArgs("<source>", ZC_BIND_METHOD(*this, addSource))
         .callAfterParsing(ZC_BIND_METHOD(*this, emitOutput));
   }
@@ -77,6 +87,7 @@ public:
 
   zc::MainBuilder::Validity addSource(const zc::StringPtr file) {
     if (!file.endsWith(".zom")) { return "Error: zomc: source file must have .zom extension"; }
+
     if (const zc::Maybe<source::BufferId> bufferId = driver->addSourceFile(file);
         bufferId == zc::none) {
       return zc::str("Failed to load source file.");
@@ -84,25 +95,76 @@ public:
     return true;
   }
 
-  zc::MainBuilder::Validity setEmitType(zc::StringPtr emitType) { return true; }
-
-  zc::MainBuilder::Validity addOutput(zc::StringPtr spec) { return true; }
-
-  zc::MainBuilder::Validity enableDumpAST() {
-    dumpASTEnabled = true;
+  zc::MainBuilder::Validity addOutput(zc::StringPtr spec) {
+    compilerOpts.emission.outputPath = zc::str(spec);
     return true;
   }
 
-  zc::MainBuilder::Validity setDumpFormat(zc::StringPtr format) {
-    if (format == "text") {
-      dumpFormat = ast::DumpFormat::kText;
-    } else if (format == "json") {
-      dumpFormat = ast::DumpFormat::kJSON;
-    } else if (format == "xml") {
-      dumpFormat = ast::DumpFormat::kXML;
+  zc::MainBuilder::Validity setEmitType(zc::StringPtr type) {
+    if (type == "ast") {
+      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::Type::AST;
+      compilerOpts.emission.dumpASTEnabled = true;
+    } else if (type == "ir") {
+      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::Type::IR;
+    } else if (type == "binary") {
+      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::Type::Binary;
     } else {
-      return zc::str("Invalid dump format: ", format, ". Valid formats are: text, json, xml");
+      return zc::str("Invalid output type: ", type, ". Valid types are: ast, ir, binary");
     }
+    return true;
+  }
+
+  zc::MainBuilder::Validity setOutputFormat(zc::StringPtr format) {
+    if (format == "text") {
+      compilerOpts.emission.dumpFormat = ast::DumpFormat::kText;
+    } else if (format == "json") {
+      compilerOpts.emission.dumpFormat = ast::DumpFormat::kJSON;
+    } else if (format == "xml") {
+      compilerOpts.emission.dumpFormat = ast::DumpFormat::kXML;
+    } else {
+      return zc::str("Invalid format: ", format, ". Valid formats are: text, json, xml");
+    }
+    return true;
+  }
+
+  zc::MainBuilder::Validity enableASTDump() {
+    compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::Type::AST;
+    compilerOpts.emission.dumpASTEnabled = true;
+    return true;
+  }
+
+  zc::MainBuilder::Validity enableSyntaxOnly() {
+    compilerOpts.emission.syntaxOnly = true;
+    return true;
+  }
+
+  zc::MainBuilder::Validity setOptimizationLevel(zc::StringPtr level) {
+    if (level == "0") {
+      compilerOpts.optimization.level = 0;
+    } else if (level == "1") {
+      compilerOpts.optimization.level = 1;
+    } else if (level == "2") {
+      compilerOpts.optimization.level = 2;
+    } else if (level == "3") {
+      compilerOpts.optimization.level = 3;
+    } else {
+      return zc::str("Invalid optimization level: ", level, ". Valid levels are: 0, 1, 2, 3");
+    }
+    return true;
+  }
+
+  zc::MainBuilder::Validity disableUnicode() {
+    langOpts.useUnicode = false;
+    return true;
+  }
+
+  zc::MainBuilder::Validity enableDollarIdentifiers() {
+    langOpts.allowDollarIdentifiers = true;
+    return true;
+  }
+
+  zc::MainBuilder::Validity disableRegexLiterals() {
+    langOpts.supportRegexLiterals = false;
     return true;
   }
 
@@ -111,45 +173,72 @@ public:
     bool success = driver->parseSources();
 
     if (!success || driver->getDiagnosticEngine().hasErrors()) {
-      // Handle parsing errors, maybe return an error message
       return zc::str("Compilation failed due to parsing errors.");
     }
 
-    // Parsing succeeded, proceed with further steps (e.g., type checking, IR gen)
-    if (dumpASTEnabled) {
-      const auto& asts = driver->getASTs();
-      zc::std::StdOutputStream stdOut(::std::cout);
-      ast::ASTDumper dumper(stdOut, dumpFormat);
-
-      // Iterate through asts and dump them
-      for (const auto& entry : asts) {
-        const source::BufferId& bufferId = entry.key;
-        const ast::Node& astNode = *entry.value;
-
-        // Print file header
-        if (dumpFormat == ast::DumpFormat::kText) {
-          stdOut.write(
-              zc::str("\n=== AST for BufferId: ", static_cast<uint64_t>(bufferId), " ===\n")
-                  .asBytes());
-        }
-
-        dumper.dump(astNode);
-
-        if (dumpFormat == ast::DumpFormat::kText) { stdOut.write("\n"_zcb); }
-      }
+    // If syntax-only mode, we're done after parsing
+    const auto& options = driver->getCompilerOptions();
+    if (options.emission.syntaxOnly) {
+      context.warning("Syntax check completed successfully.");
+      return true;
     }
 
-    // ... rest of the emit logic based on emitType ...
+    // Proceed with output generation based on type
+    switch (options.emission.outputType) {
+      case basic::CompilerOptions::EmissionOptions::Type::AST:
+        return emitAST();
 
+      case basic::CompilerOptions::EmissionOptions::Type::IR:
+        return emitIR();
+
+      case basic::CompilerOptions::EmissionOptions::Type::Binary:
+        return emitBinary();
+
+      default:
+        return zc::str("Unknown output type specified.");
+    }
+  }
+
+  zc::MainBuilder::Validity emitAST() {
+    const auto& asts = driver->getASTs();
+    const auto& options = driver->getCompilerOptions();
+
+    zc::std::StdOutputStream stdOut(::std::cout);
+    ast::ASTDumper dumper(stdOut, options.emission.dumpFormat);
+
+    for (const auto& entry : asts) {
+      const source::BufferId& bufferId = entry.key;
+      const ast::Node& astNode = *entry.value;
+
+      // Print file header for text format
+      if (options.emission.dumpFormat == ast::DumpFormat::kText) {
+        stdOut.write(zc::str("\n=== AST for BufferId: ", static_cast<uint64_t>(bufferId), " ===\n")
+                         .asBytes());
+      }
+
+      dumper.dump(astNode);
+
+      if (options.emission.dumpFormat == ast::DumpFormat::kText) { stdOut.write("\n"_zcb); }
+    }
     return true;
+  }
+
+  zc::MainBuilder::Validity emitIR() {
+    // TODO: Implement IR generation and output
+    return zc::str("IR emission is not yet implemented.");
+  }
+
+  zc::MainBuilder::Validity emitBinary() {
+    // TODO: Implement binary generation
+    return "Binary emission is not yet implemented.";
   }
 
 private:
   zc::ProcessContext& context;
   zc::Own<driver::CompilerDriver> driver;
   zc::SpaceFor<driver::CompilerDriver> driverSpace;
-  bool dumpASTEnabled = false;
-  ast::DumpFormat dumpFormat = ast::DumpFormat::kText;
+  basic::CompilerOptions compilerOpts;
+  basic::LangOptions langOpts;
 };
 
 }  // namespace utils

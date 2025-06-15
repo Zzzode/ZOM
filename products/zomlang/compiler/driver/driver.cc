@@ -18,6 +18,7 @@
 #include "zc/core/map.h"
 #include "zc/core/mutex.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/thread-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
@@ -34,8 +35,9 @@ namespace driver {
 // CompilerDriver::Impl
 
 struct CompilerDriver::Impl {
-  Impl(const basic::LangOptions& opts) noexcept
+  Impl(const basic::LangOptions& opts, const basic::CompilerOptions& compOpts) noexcept
       : langOpts(opts),
+        compilerOpts(compOpts),
         sourceManager(zc::heap<source::SourceManager>()),
         diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)) {
     diagnosticEngine->addConsumer(zc::heap<diagnostics::ConsolingDiagnosticConsumer>());
@@ -54,8 +56,10 @@ struct CompilerDriver::Impl {
         : name(name), dir(zc::mv(dir)) {}
   };
 
-  /// Language options.
+  /// Language options
   const basic::LangOptions& langOpts;
+  /// Compiler options
+  const basic::CompilerOptions& compilerOpts;
   /// Source manager to manage source files.
   zc::Own<source::SourceManager> sourceManager;
   /// Diagnostic engine to report diagnostics.
@@ -67,8 +71,9 @@ struct CompilerDriver::Impl {
 // ================================================================================
 // CompilerDriver
 
-CompilerDriver::CompilerDriver(const basic::LangOptions& langOpts) noexcept
-    : impl(zc::heap<Impl>(langOpts)) {}
+CompilerDriver::CompilerDriver(const basic::LangOptions& langOpts,
+                               const basic::CompilerOptions& compilerOpts) noexcept
+    : impl(zc::heap<Impl>(langOpts, compilerOpts)) {}
 CompilerDriver::~CompilerDriver() noexcept(false) = default;
 
 zc::Maybe<source::BufferId> CompilerDriver::addSourceFile(const zc::StringPtr file) {
@@ -115,6 +120,10 @@ bool CompilerDriver::parseSources() {
 
   // Return true if no errors were reported
   return !impl->diagnosticEngine->hasErrors();
+}
+
+const basic::CompilerOptions& CompilerDriver::getCompilerOptions() const {
+  return impl->compilerOpts;
 }
 
 }  // namespace driver

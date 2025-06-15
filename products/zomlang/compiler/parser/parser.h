@@ -106,6 +106,12 @@ private:
   zc::Maybe<zc::Own<ast::Statement>> parseModuleItem();
   // TODO: Add parseExportImplementationElement if it's a distinct AST node
 
+  /// Helper functions for parsing
+  bool isStartOfStatement() const;
+  bool isStartOfLeftHandSideExpression() const;
+  bool isStartOfExpression() const;
+  bool isStartOfDeclaration() const;
+
   struct Impl;
   zc::Own<Impl> impl;
 };

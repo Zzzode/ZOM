@@ -143,7 +143,7 @@ void ConsolingDiagnosticConsumer::handleDiagnostic(const source::SourceManager& 
   output.write(": "_zcb);
 
   // Output formatted messages
-  DiagnosticEngine::formatDiagnosticMessage(output, info.message, diagnostic.getArgs());
+  DiagnosticEngine::formatDiagnosticMessage(sm, output, info.message, diagnostic.getArgs());
   output.write("\n"_zcb);
 
   // Output source code context (if any)

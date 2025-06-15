@@ -27,21 +27,20 @@ namespace ast {
 // ================================================================================
 // SourceFile::Impl
 struct SourceFile::Impl {
-  Impl(const zc::StringPtr fileName, zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
-      : fileName(fileName), statements(zc::mv(statements)) {}
+  Impl(zc::String&& fileName, zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
+      : fileName(zc::mv(fileName)), statements(zc::mv(statements)) {}
 
   /// Identifier of the module buffer.
-  const zc::StringPtr fileName;
+  const zc::String fileName;
   /// List of toplevel statements in the module.
   const NodeList<ast::Statement> statements;
 };
 
 // ================================================================================
 // SourceFile
-SourceFile::SourceFile(const zc::StringPtr fileName,
-                        zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
-    : Node(SyntaxKind::kSourceFile),
-      impl(zc::heap<Impl>(fileName, zc::mv(statements))) {}
+SourceFile::SourceFile(zc::String&& fileName,
+                       zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
+    : Node(SyntaxKind::kSourceFile), impl(zc::heap<Impl>(zc::mv(fileName), zc::mv(statements))) {}
 
 SourceFile::~SourceFile() noexcept(false) = default;
 
@@ -58,9 +57,8 @@ struct ImportDeclaration::Impl {
 // ================================================================================
 // ImportDeclaration
 ImportDeclaration::ImportDeclaration(zc::Own<ModulePath>&& modulePath,
-                                      zc::Maybe<zc::StringPtr> alias) noexcept
-    : Statement(SyntaxKind::kImportDeclaration),
-      impl(zc::heap<Impl>(zc::mv(modulePath), alias)) {}
+                                     zc::Maybe<zc::String> alias) noexcept
+    : Statement(SyntaxKind::kImportDeclaration), impl(zc::heap<Impl>(zc::mv(modulePath), alias)) {}
 
 ImportDeclaration::~ImportDeclaration() noexcept(false) = default;
 
@@ -72,39 +70,37 @@ zc::Maybe<zc::StringPtr> ImportDeclaration::getAlias() const { return impl->alia
 // ExportDeclaration::Impl
 struct ExportDeclaration::Impl {
   struct SimpleExport {
-    zc::StringPtr identifier;
+    zc::String identifier;
 
-    explicit SimpleExport(zc::StringPtr identifier) : identifier(identifier) {}
+    explicit SimpleExport(zc::String&& identifier) : identifier(zc::mv(identifier)) {}
   };
 
   struct RenameExport {
-    zc::StringPtr identifier;
-    zc::StringPtr alias;
+    zc::String identifier;
+    zc::String alias;
     zc::Own<ModulePath> modulePath;
 
-    RenameExport(zc::StringPtr identifier, zc::StringPtr alias, zc::Own<ModulePath>&& modulePath)
-        : identifier(identifier), alias(alias), modulePath(zc::mv(modulePath)) {}
+    RenameExport(zc::String&& identifier, zc::String&& alias, zc::Own<ModulePath>&& modulePath)
+        : identifier(zc::mv(identifier)), alias(zc::mv(alias)), modulePath(zc::mv(modulePath)) {}
   };
 
   zc::OneOf<SimpleExport, RenameExport> exportType;
 
-  explicit Impl(zc::StringPtr identifier) : exportType(SimpleExport(identifier)) {}
+  explicit Impl(zc::String identifier) : exportType(SimpleExport(zc::mv(identifier))) {}
 
-  Impl(zc::StringPtr identifier, zc::StringPtr alias, zc::Own<ModulePath>&& modulePath)
-      : exportType(RenameExport(identifier, alias, zc::mv(modulePath))) {}
+  Impl(zc::String identifier, zc::String alias, zc::Own<ModulePath>&& modulePath)
+      : exportType(RenameExport(zc::mv(identifier), zc::mv(alias), zc::mv(modulePath))) {}
 };
 
 // ================================================================================
 // ExportDeclaration
-ExportDeclaration::ExportDeclaration(zc::StringPtr identifier) noexcept
-    : Statement(SyntaxKind::kExportDeclaration),
-      impl(zc::heap<Impl>(identifier)) {}
+ExportDeclaration::ExportDeclaration(zc::String&& identifier) noexcept
+    : Statement(SyntaxKind::kExportDeclaration), impl(zc::heap<Impl>(zc::mv(identifier))) {}
 
-ExportDeclaration::ExportDeclaration(zc::StringPtr identifier,
-                                      zc::StringPtr alias,
-                                      zc::Own<ModulePath>&& modulePath) noexcept
+ExportDeclaration::ExportDeclaration(zc::String&& identifier, zc::String&& alias,
+                                     zc::Own<ModulePath>&& modulePath) noexcept
     : Statement(SyntaxKind::kExportDeclaration),
-      impl(zc::heap<Impl>(identifier, alias, zc::mv(modulePath))) {}
+      impl(zc::heap<Impl>(zc::mv(identifier), zc::mv(alias), zc::mv(modulePath))) {}
 
 ExportDeclaration::~ExportDeclaration() noexcept(false) = default;
 
@@ -121,7 +117,7 @@ bool ExportDeclaration::isRename() const { return impl->exportType.is<Impl::Rena
 zc::Maybe<zc::StringPtr> ExportDeclaration::getAlias() const {
   ZC_SWITCH_ONEOF(impl->exportType) {
     ZC_CASE_ONEOF(simple, Impl::SimpleExport) { return zc::none; }
-    ZC_CASE_ONEOF(rename, Impl::RenameExport) { return rename.alias; }
+    ZC_CASE_ONEOF(rename, Impl::RenameExport) { return rename.alias.asPtr(); }
   }
   ZC_UNREACHABLE;
 }
@@ -137,21 +133,21 @@ zc::Maybe<const ModulePath&> ExportDeclaration::getModulePath() const {
 // ================================================================================
 // ModulePath::Impl
 struct ModulePath::Impl {
-  explicit Impl(zc::Vector<zc::StringPtr>&& identifiers) noexcept
-      : identifiers(zc::mv(identifiers)) {}
+  explicit Impl(zc::Vector<zc::String>&& identifiers) noexcept : identifiers(zc::mv(identifiers)) {}
 
-  const zc::Vector<zc::StringPtr> identifiers;
+  const zc::Vector<zc::String> identifiers;
 };
 
 // ================================================================================
 // ModulePath
-ModulePath::ModulePath(zc::Vector<zc::StringPtr>&& identifiers) noexcept
-    : Node(SyntaxKind::kModulePath),
-      impl(zc::heap<Impl>(zc::mv(identifiers))) {}
+ModulePath::ModulePath(zc::Vector<zc::String>&& identifiers) noexcept
+    : Node(SyntaxKind::kModulePath), impl(zc::heap<Impl>(zc::mv(identifiers))) {}
 
 ModulePath::~ModulePath() noexcept(false) = default;
 
-const zc::Vector<zc::StringPtr>& ModulePath::getIdentifiers() const { return impl->identifiers; }
+zc::ArrayPtr<const zc::String> ModulePath::getIdentifiers() const {
+  return impl->identifiers.asPtr();
+}
 
 zc::String ModulePath::toString() const {
   zc::String result;

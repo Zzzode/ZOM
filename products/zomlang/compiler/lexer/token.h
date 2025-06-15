@@ -44,6 +44,7 @@ enum class TokenKind {
   kCatchKeyword,        // catch
   kClassKeyword,        // class
   kContinueKeyword,     // continue
+  kConstKeyword,        // const
   kConstructorKeyword,  // constructor
   kDebuggerKeyword,     // debugger
   kDeclareKeyword,      // declare
@@ -67,6 +68,7 @@ enum class TokenKind {
   kIntrinsicKeyword,    // intrinsic
   kIsKeyword,           // is
   kKeyOfKeyword,        // keyof
+  kLetKeyword,          // let
   kMatchKeyword,        // match
   kModuleKeyword,       // module
   kMutableKeyword,      // mutable
@@ -85,6 +87,7 @@ enum class TokenKind {
   kPublicKeyword,       // public
   kReadonlyKeyword,     // readonly
   kRequireKeyword,      // require
+  kReturnKeyword,       // return
   kSatisfiesKeyword,    // satisfies
   kSetKeyword,          // set
   kStaticKeyword,       // static
@@ -185,25 +188,46 @@ enum class TokenKind {
 
 class Token {
 public:
-  Token() = default;
-  Token(const TokenKind k, zc::StringPtr t, const source::SourceLoc l) : kind(k), text(t), loc(l) {}
+  Token() : kind(TokenKind::kUnknown) {}
+  Token(TokenKind k, source::SourceRange r) : kind(k), range(r) {}
+
+  // Copy constructor
+  Token(const Token& other) : kind(other.kind), range(other.range) {}
+
+  // Move constructor (defaulted is fine as source::SourceRange is movable)
+  Token(Token&& other) noexcept = default;
+
   ~Token() = default;
 
-  void setKind(const TokenKind k) { kind = k; }
-  void setText(zc::StringPtr t) { text = t; }
-  void setLocation(const source::SourceLoc l) { loc = l; }
+  // Copy assignment operator
+  Token& operator=(const Token& other) {
+    if (this != &other) {
+      kind = other.kind;
+      range = other.range;
+    }
+    return *this;
+  }
+
+  // Move assignment operator (defaulted is fine)
+  Token& operator=(Token&& other) noexcept = default;
+
+  void setKind(TokenKind k) { kind = k; }
+  void setRange(source::SourceRange r) { range = r; }
 
   ZC_NODISCARD bool is(TokenKind k) const { return kind == k; }
 
   ZC_NODISCARD TokenKind getKind() const { return kind; }
-  ZC_NODISCARD zc::StringPtr getText() const { return text; }
-  ZC_NODISCARD unsigned getLength() const { return text.size(); }
-  ZC_NODISCARD source::SourceLoc getLocation() const { return loc; }
+  ZC_NODISCARD source::SourceLoc getLocation() const { return range.getStart(); }
+  ZC_NODISCARD source::SourceRange getRange() const { return range; }
+
+  /// Get the raw text content of this token
+  ZC_NODISCARD zc::String getText(const source::SourceManager& sm) const {
+    return range.getText(sm);
+  }
 
 private:
   TokenKind kind;
-  zc::StringPtr text;
-  source::SourceLoc loc;
+  source::SourceRange range;
 };
 
 }  // namespace lexer

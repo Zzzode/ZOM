@@ -27,7 +27,7 @@ class ModulePath;
 
 class SourceFile : public Node {
 public:
-  explicit SourceFile(const zc::StringPtr fileName,
+  explicit SourceFile(zc::String&& fileName,
                       zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept;
   ~SourceFile() noexcept(false) override;
 
@@ -41,7 +41,7 @@ private:
 class ImportDeclaration : public Statement {
 public:
   ImportDeclaration(zc::Own<ModulePath>&& modulePath,
-                    zc::Maybe<zc::StringPtr> alias = zc::none) noexcept;
+                    zc::Maybe<zc::String> alias = zc::none) noexcept;
   ~ImportDeclaration() noexcept(false) override;
 
   const ModulePath& getModulePath() const;
@@ -56,11 +56,9 @@ private:
 
 class ExportDeclaration : public Statement {
 public:
-  // 简单导出：export identifier
-  explicit ExportDeclaration(zc::StringPtr identifier) noexcept;
+  explicit ExportDeclaration(zc::String&& identifier) noexcept;
 
-  // 重命名导出：export identifier as alias from modulePath
-  ExportDeclaration(zc::StringPtr identifier, zc::StringPtr alias,
+  ExportDeclaration(zc::String&& identifier, zc::String&& alias,
                     zc::Own<ModulePath>&& modulePath) noexcept;
 
   ~ExportDeclaration() noexcept(false) override;
@@ -79,10 +77,10 @@ private:
 
 class ModulePath : public Node {
 public:
-  explicit ModulePath(zc::Vector<zc::StringPtr>&& identifiers) noexcept;
+  explicit ModulePath(zc::Vector<zc::String>&& identifiers) noexcept;
   ~ModulePath() noexcept(false) override;
 
-  const zc::Vector<zc::StringPtr>& getIdentifiers() const;
+  zc::ArrayPtr<const zc::String> getIdentifiers() const;
   zc::String toString() const;
 
   ZC_DISALLOW_COPY_AND_MOVE(ModulePath);

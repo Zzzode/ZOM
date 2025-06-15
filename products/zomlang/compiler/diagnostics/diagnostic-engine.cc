@@ -55,7 +55,8 @@ DiagnosticState& DiagnosticEngine::getState() { return impl->state; }
 const DiagnosticState& DiagnosticEngine::getState() const { return impl->state; }
 
 // static
-void DiagnosticEngine::formatDiagnosticMessage(zc::OutputStream& out, zc::StringPtr format,
+void DiagnosticEngine::formatDiagnosticMessage(const source::SourceManager& sm,
+                                               zc::OutputStream& out, zc::StringPtr format,
                                                zc::ArrayPtr<const DiagnosticArgument> args) {
   struct ParamPos {
     size_t start;
@@ -101,7 +102,7 @@ void DiagnosticEngine::formatDiagnosticMessage(zc::OutputStream& out, zc::String
     ZC_SWITCH_ONEOF(arg) {
       ZC_CASE_ONEOF(str, zc::StringPtr) { out.write(str.asBytes()); }
       ZC_CASE_ONEOF(token, lexer::Token) {
-        auto tokenText = token.getText();
+        auto tokenText = token.getText(sm);
         out.write(tokenText.asBytes());
       }
     }
