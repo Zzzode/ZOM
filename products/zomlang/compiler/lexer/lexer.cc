@@ -20,8 +20,10 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
 #include "zomlang/compiler/lexer/token.h"
+#include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
@@ -335,7 +337,9 @@ struct Lexer::Impl {
         } else if (c == '\'') {
           lexSingleQuoteString();
         } else {
-          formToken(TokenKind::kUnknown, tokStart);
+          // Report invalid character error and attempt recovery
+          reportInvalidCharacter(c, tokStart);
+          recoverFromInvalidCharacter();
         }
         break;
     }
@@ -470,6 +474,7 @@ struct Lexer::Impl {
     // Go back one character, as the first character has already been read
     const zc::byte* tokStart = curPtr - 1;
     TokenKind kind = TokenKind::kIntegerLiteral;
+    bool hasValidDigits = false;
 
     // Check for binary, octal, or hex literals
     if (*tokStart == '0' && curPtr < bufferEnd) {
@@ -478,16 +483,20 @@ struct Lexer::Impl {
         // Binary literal
         curPtr++;  // Skip 'b' or 'B'
         while (curPtr < bufferEnd && (*curPtr == '0' || *curPtr == '1' || *curPtr == '_')) {
+          if (*curPtr != '_') hasValidDigits = true;
           curPtr++;
         }
+        if (!hasValidDigits) { reportInvalidNumberLiteral("binary"_zc, tokStart); }
         formToken(TokenKind::kIntegerLiteral, tokStart);
         return;
       } else if (nextChar == 'o' || nextChar == 'O') {
         // Octal literal
         curPtr++;  // Skip 'o' or 'O'
         while (curPtr < bufferEnd && ((*curPtr >= '0' && *curPtr <= '7') || *curPtr == '_')) {
+          if (*curPtr != '_') { hasValidDigits = true; }
           curPtr++;
         }
+        if (!hasValidDigits) { reportInvalidNumberLiteral("octal"_zc, tokStart); }
         formToken(TokenKind::kIntegerLiteral, tokStart);
         return;
       } else if (nextChar == 'x' || nextChar == 'X') {
@@ -495,15 +504,20 @@ struct Lexer::Impl {
         curPtr++;  // Skip 'x' or 'X'
         while (curPtr < bufferEnd && (isdigit(*curPtr) || (*curPtr >= 'a' && *curPtr <= 'f') ||
                                       (*curPtr >= 'A' && *curPtr <= 'F') || *curPtr == '_')) {
+          if (*curPtr != '_') { hasValidDigits = true; }
           curPtr++;
         }
+        if (!hasValidDigits) { reportInvalidNumberLiteral("hexadecimal"_zc, tokStart); }
         formToken(TokenKind::kIntegerLiteral, tokStart);
         return;
       }
     }
 
     // Read decimal integer part (allowing numeric separators)
-    while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) { curPtr++; }
+    while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) {
+      if (isdigit(*curPtr)) { hasValidDigits = true; }
+      curPtr++;
+    }
 
     // Check if it's a floating-point number
     if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd && isdigit(*(curPtr + 1))) {
@@ -518,7 +532,10 @@ struct Lexer::Impl {
       if (curPtr < bufferEnd && (*curPtr == '+' || *curPtr == '-')) {
         curPtr++;  // Skip sign
       }
+      const zc::byte* expStart = curPtr;
       while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) { curPtr++; }
+      // Check if exponent has digits
+      if (curPtr == expStart) { reportInvalidNumberLiteral("exponent"_zc, tokStart); }
       kind = TokenKind::kFloatLiteral;
     }
 
@@ -529,43 +546,70 @@ struct Lexer::Impl {
     const zc::byte* tokStart = curPtr - 1;
     // Remember which quote character we're using
     zc::byte quoteChar = *(tokStart);
+    bool foundClosingQuote = false;
 
     // Skip the starting quote, look for the ending quote
     while (curPtr < bufferEnd) {
       zc::byte c = *curPtr++;
       if (c == quoteChar) {
         // Found the ending quote
+        foundClosingQuote = true;
         break;
       } else if (c == '\\' && curPtr < bufferEnd) {
         // Handle escape character
-        curPtr++;  // Skip escape character
+        zc::byte escaped = *curPtr++;
+        // Validate common escape sequences
+        if (escaped != 'n' && escaped != 't' && escaped != 'r' && escaped != '\\' &&
+            escaped != '"' && escaped != '\'' && escaped != '0' && escaped != 'u' &&
+            escaped != 'x') {
+          reportInvalidEscapeSequence(escaped, curPtr - 2);
+        }
       } else if (c == '\n' || c == '\r') {
         // String cannot span multiple lines (unless escaped)
-        // An error can be reported here, but for now, handle it simply
+        reportUnterminatedString(tokStart);
+        // Recover by treating as unterminated string
+        curPtr--;  // Back up to the newline
         break;
       }
     }
+
+    // Check if we reached end of file without closing quote
+    if (!foundClosingQuote && curPtr >= bufferEnd) { reportUnterminatedString(tokStart); }
 
     formToken(TokenKind::kStringLiteral, tokStart);
   }
 
   void lexSingleQuoteString() {
     const zc::byte* tokStart = curPtr - 1;
+    bool foundClosingQuote = false;
 
     // Skip the starting quote, look for the ending quote
     while (curPtr < bufferEnd) {
       zc::byte c = *curPtr++;
       if (c == '\'') {
         // Found the ending quote
+        foundClosingQuote = true;
         break;
       } else if (c == '\\' && curPtr < bufferEnd) {
         // Handle escape character
-        curPtr++;  // Skip escape character
+        zc::byte escaped = *curPtr++;
+        // Validate common escape sequences
+        if (escaped != 'n' && escaped != 't' && escaped != 'r' && escaped != '\\' &&
+            escaped != '"' && escaped != '\'' && escaped != '0' && escaped != 'u' &&
+            escaped != 'x') {
+          reportInvalidEscapeSequence(escaped, curPtr - 2);
+        }
       } else if (c == '\n' || c == '\r') {
         // String cannot span multiple lines (unless escaped)
+        reportUnterminatedString(tokStart);
+        // Recover by treating as unterminated string
+        curPtr--;  // Back up to the newline
         break;
       }
     }
+
+    // Check if we reached end of file without closing quote
+    if (!foundClosingQuote && curPtr >= bufferEnd) { reportUnterminatedString(tokStart); }
 
     formToken(TokenKind::kStringLiteral, tokStart);
   }
@@ -606,6 +650,11 @@ struct Lexer::Impl {
       curPtr++;
     }
 
+    // Check if we reached end of file without closing comment
+    if (curPtr + 1 >= bufferEnd && !(*curPtr == '*' && *(curPtr + 1) == '/')) {
+      reportUnterminatedComment(tokStart);
+    }
+
     if (commentMode == CommentRetentionMode::kReturnAsTokens) {
       formToken(TokenKind::kComment, tokStart);
     }
@@ -618,8 +667,52 @@ struct Lexer::Impl {
   /// Multibyte character handling
   bool tryLexMultibyteCharacter() { /*...*/ return false; }
 
-  /// Error recovery
-  void recoverFromLexingError() { /*...*/ }
+  /// Error recovery and diagnostics
+  void reportInvalidCharacter(zc::byte invalidChar, const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, zc::str(invalidChar));
+  }
+
+  void reportUnterminatedString(const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    diagnosticEngine.diagnose<diagnostics::DiagID::UnterminatedString>(loc);
+  }
+
+  void reportUnterminatedComment(const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    // Use InvalidChar diagnostic for unterminated comments since there's no specific one
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, "/*"_zc);
+  }
+
+  void reportInvalidNumberLiteral(zc::StringPtr numberType, const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    // For now, just report as invalid character with the number type
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, numberType);
+  }
+
+  void reportInvalidEscapeSequence(zc::byte escaped, const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, zc::str(escaped));
+  }
+
+  void recoverFromInvalidCharacter() {
+    // Skip the invalid character and continue lexing
+    if (curPtr < bufferEnd) { curPtr++; }
+    // Form an unknown token to maintain token stream continuity
+    formToken(TokenKind::kUnknown, curPtr - 1);
+  }
+
+  void recoverFromLexingError() {
+    // General error recovery: skip to next whitespace or known delimiter
+    while (curPtr < bufferEnd) {
+      zc::byte c = *curPtr;
+      if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ';' || c == ',' || c == '{' ||
+          c == '}' || c == '(' || c == ')' || c == '[' || c == ']') {
+        break;
+      }
+      curPtr++;
+    }
+  }
 
   /// Buffer management
   void refillBuffer() { /*...*/ }
