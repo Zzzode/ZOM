@@ -100,7 +100,8 @@ void DiagnosticEngine::formatDiagnosticMessage(const source::SourceManager& sm,
     // Output parameters
     const auto& arg = args[param.index];
     ZC_SWITCH_ONEOF(arg) {
-      ZC_CASE_ONEOF(str, zc::StringPtr) { out.write(str.asBytes()); }
+      ZC_CASE_ONEOF(strPtr, zc::StringPtr) { out.write(strPtr.asBytes()); }
+      ZC_CASE_ONEOF(str, zc::String) { out.write(str.asBytes()); }
       ZC_CASE_ONEOF(token, lexer::Token) {
         auto tokenText = token.getText(sm);
         out.write(tokenText.asBytes());
