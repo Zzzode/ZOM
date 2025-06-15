@@ -58,6 +58,7 @@ enum class TokenKind {
   kFunKeyword,          // fun
   kGetKeyword,          // get
   kGlobalKeyword,       // global
+  kIfKeyword,           // if
   kImmediateKeyword,    // immediate
   kImplementsKeyword,   // implements
   kImportKeyword,       // import
@@ -103,13 +104,21 @@ enum class TokenKind {
   kUsingKeyword,        // using
   kVarKeyword,          // var
   kVoidKeyword,         // void
+  kWhenKeyword,         // when
   kWithKeyword,         // with
   kYieldKeyword,        // yield
+
+  // Boolean and null literals
+  kTrueKeyword,         // true
+  kFalseKeyword,        // false
+  kNullKeyword,         // null
 
   // Literals
   kIntegerLiteral,
   kFloatLiteral,
   kStringLiteral,
+  kBooleanLiteral,      // true/false
+  kNullLiteral,         // null
 
   // Operators
   kOperator,
