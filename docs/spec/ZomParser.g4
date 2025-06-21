@@ -683,8 +683,7 @@ callSignature:
 		(ARROW | ERROR_RETURN) type
 	)?;
 parameterList: parameter (COMMA parameter)*;
-parameter: bindingIdentifier typeAnnotation? initilizer?;
-initilizer: ASSIGN expression;
+parameter: bindingIdentifier typeAnnotation? initializer?;
 functionBody: statementList?;
 
 arrayBindingPattern: LBRACK bindingElementList? RBRACK;
@@ -724,9 +723,9 @@ enumBody: enumMember (COMMA enumMember)*;
 enumMember: propertyName (ASSIGN expression)?;
 
 // ================================================================================ CLASS MEMBER ACCESSORS
-accessibityModifier: PUBLIC | PRIVATE | PROTECTED;
+accessibilityModifier: PUBLIC | PRIVATE | PROTECTED;
 initDeclaration:
-	accessibityModifier? INIT callSignature LBRACE functionBody RBRACE;
+	accessibilityModifier? INIT callSignature LBRACE functionBody RBRACE;
 deinitDeclaration: DEINIT LBRACE functionBody RBRACE;
 getAccessor:
 	GET propertyName LPAREN RPAREN typeAnnotation? LBRACE functionBody RBRACE;
@@ -775,13 +774,13 @@ propertyMemberDeclaration:
 	| memberAccessorDeclaration;
 
 memberVariableDeclaration:
-	accessibityModifier? STATIC? propertyName typeAnnotation? initilizer?;
+	accessibilityModifier? STATIC? propertyName typeAnnotation? initializer?;
 
 memberFunctionDeclaration:
-	accessibityModifier? STATIC? propertyName callSignature? LBRACE functionBody RBRACE;
+	accessibilityModifier? STATIC? propertyName callSignature? LBRACE functionBody RBRACE;
 
 memberAccessorDeclaration:
-	accessibityModifier? STATIC? (getAccessor | setAccessor);
+	accessibilityModifier? STATIC? (getAccessor | setAccessor);
 
 // ================================================================================ INTERFACES
 
