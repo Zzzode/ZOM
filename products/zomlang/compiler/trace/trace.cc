@@ -44,27 +44,6 @@ TraceEvent::TraceEvent(TraceEventType t, TraceCategory cat, zc::StringPtr n, zc:
 }
 
 // ================================================================================
-// ScopeTracer
-
-ScopeTracer::ScopeTracer(TraceCategory cat, zc::StringPtr n, zc::StringPtr details)
-    : category(cat), name(zc::str(n)), active(false) {
-  TraceManager& manager = TraceManager::getInstance();
-  if (manager.isEnabled(category)) {
-    active = true;
-    manager.addEvent(TraceEventType::kEnter, category, name, details);
-    manager.incrementDepth();
-  }
-}
-
-ScopeTracer::~ScopeTracer() {
-  if (active) {
-    TraceManager& manager = TraceManager::getInstance();
-    manager.decrementDepth();
-    manager.addEvent(TraceEventType::kExit, category, name);
-  }
-}
-
-// ================================================================================
 // TraceManager::Impl
 
 struct TraceManager::Impl {
@@ -202,6 +181,85 @@ size_t TraceManager::getEventCount() const {
   auto lock = impl->events.lockShared();
   return lock->size();
 }
+
+// ================================================================================
+// Trace functions
+
+/// Compile-time trace enablement check
+constexpr bool kTraceEnabled = ZOM_TRACE_ENABLED;
+
+void traceEvent(TraceCategory category, zc::StringPtr name, zc::StringPtr details) {
+  if constexpr (kTraceEnabled) {
+    if (TraceManager::getInstance().isEnabled(category)) {
+      TraceManager::getInstance().addEvent(TraceEventType::kInstant, category, name, details);
+    }
+  }
+}
+
+void traceCounter(TraceCategory category, zc::StringPtr name, zc::StringPtr details) {
+  if constexpr (kTraceEnabled) {
+    if (TraceManager::getInstance().isEnabled(category)) {
+      TraceManager::getInstance().addEvent(TraceEventType::kCounter, category, name, details);
+    }
+  }
+}
+
+// ================================================================================
+// ScopeTracer::Impl
+
+struct ScopeTracer::Impl {
+  bool enabled;
+  TraceCategory category;
+  zc::String name;
+  zc::String details;
+
+  Impl(TraceCategory cat, zc::StringPtr n, zc::StringPtr d)
+      : enabled(false), category(cat), name(zc::str(n)) {
+    if (d != nullptr) { details = zc::str(d); }
+
+    if constexpr (kTraceEnabled) {
+      if (TraceManager::getInstance().isEnabled(category)) {
+        enabled = true;
+        TraceManager::getInstance().incrementDepth();
+        TraceManager::getInstance().addEvent(TraceEventType::kEnter, category, name, details);
+      }
+    }
+  }
+
+  ~Impl() {
+    if constexpr (kTraceEnabled) {
+      if (enabled) {
+        TraceManager::getInstance().addEvent(TraceEventType::kExit, category, name, details);
+        TraceManager::getInstance().decrementDepth();
+      }
+    }
+  }
+};
+
+// ================================================================================
+// ScopeTracer
+
+ScopeTracer::ScopeTracer(TraceCategory category, zc::StringPtr name, zc::StringPtr details)
+    : impl(zc::heap<Impl>(category, name, details)) {}
+
+ScopeTracer::~ScopeTracer() = default;
+
+// ================================================================================
+// FunctionTracer::Impl
+
+struct FunctionTracer::Impl {
+  ScopeTracer scopeTracer;
+
+  Impl(TraceCategory category, zc::StringPtr functionName) : scopeTracer(category, functionName) {}
+};
+
+// ================================================================================
+// FunctionTracer
+
+FunctionTracer::FunctionTracer(TraceCategory category, zc::StringPtr functionName)
+    : impl(zc::heap<Impl>(category, functionName)) {}
+
+FunctionTracer::~FunctionTracer() = default;
 
 }  // namespace trace
 }  // namespace compiler

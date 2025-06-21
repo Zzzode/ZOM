@@ -35,29 +35,6 @@
 #define ZOM_TRACE_BUFFER_SIZE 1000000  // Default maximum events
 #endif
 
-/// Performance optimization: completely remove trace code in release builds
-#if !ZOM_TRACE_ENABLED
-
-#undef ZOM_TRACE_EVENT
-#undef ZOM_TRACE_SCOPE
-#undef ZOM_TRACE_FUNCTION
-#undef ZOM_TRACE_COUNTER
-
-#define ZOM_TRACE_EVENT(category, name, ...) \
-  do {                                       \
-  } while (0)
-#define ZOM_TRACE_SCOPE(category, name, ...) \
-  do {                                       \
-  } while (0)
-#define ZOM_TRACE_FUNCTION(category) \
-  do {                               \
-  } while (0)
-#define ZOM_TRACE_COUNTER(category, name, value) \
-  do {                                           \
-  } while (0)
-
-#endif  // !ZOM_TRACE_ENABLED
-
 namespace zomlang {
 namespace compiler {
 namespace trace {

@@ -96,7 +96,7 @@ bool Parser::isListElement(ParsingContext context, bool inErrorRecovery) const {
 }
 
 bool Parser::abortParsingListOrMoveToNextToken(ParsingContext context) {
-  ZOM_TRACE_EVENT(trace::TraceCategory::kParser, "Error recovery", "Skipping token");
+  trace::traceEvent(trace::TraceCategory::kParser, "Error recovery", "Skipping token");
 
   // Simple error recovery: skip the current token and try again
   impl->consumeToken();
@@ -104,20 +104,20 @@ bool Parser::abortParsingListOrMoveToNextToken(ParsingContext context) {
 }
 
 zc::Maybe<zc::Own<ast::Node>> Parser::parse() {
-  ZOM_TRACE_FUNCTION(trace::TraceCategory::kParser);
+  trace::FunctionTracer functionTracer(trace::TraceCategory::kParser, __FUNCTION__);
 
   impl->consumeToken();
   ZC_IF_SOME(sourceFileNode, parseSourceFile()) {
-    ZOM_TRACE_EVENT(trace::TraceCategory::kParser, "Parse completed successfully");
+    trace::traceEvent(trace::TraceCategory::kParser, "Parse completed successfully");
     return zc::mv(sourceFileNode);
   }
 
-  ZOM_TRACE_EVENT(trace::TraceCategory::kParser, "Parse failed");
+  trace::traceEvent(trace::TraceCategory::kParser, "Parse failed");
   return zc::none;
 }
 
 zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
-  ZOM_TRACE_SCOPE(trace::TraceCategory::kParser, "parseSourceFile");
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseSourceFile");
 
   // sourceFile: module;
   // module: moduleBody?;
@@ -129,7 +129,8 @@ zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
   zc::Vector<zc::Own<ast::Statement>> statements = parseList<ast::Statement>(
       ParsingContext::kSourceElements, ZC_BIND_METHOD(*this, parseModuleItem));
 
-  ZOM_TRACE_COUNTER(trace::TraceCategory::kParser, "module_items_parsed", statements.size());
+  trace::traceCounter(trace::TraceCategory::kParser, "Module items parsed"_zc,
+                      zc::str(statements.size()));
 
   source::SourceLoc endLoc = impl->peekToken().getLocation();
 
@@ -139,12 +140,12 @@ zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
       ast::factory::createSourceFile(zc::str(fileName), zc::mv(statements));
   sourceFile->setSourceRange(source::SourceRange(startLoc, endLoc));
 
-  ZOM_TRACE_EVENT(trace::TraceCategory::kParser, "Source file created", fileName);
+  trace::traceEvent(trace::TraceCategory::kParser, "Source file created"_zc, fileName);
   return sourceFile;
 }
 
 zc::Maybe<zc::Own<ast::Statement>> Parser::parseModuleItem() {
-  ZOM_TRACE_SCOPE(trace::TraceCategory::kParser, "parseModuleItem");
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseModuleItem");
 
   // moduleItem:
   //   statementListItem
@@ -155,18 +156,18 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseModuleItem() {
 
   // Check for import declaration
   if (currentToken.is(lexer::TokenKind::kImportKeyword)) {
-    ZOM_TRACE_EVENT(trace::TraceCategory::kParser, "Parsing import declaration");
+    trace::traceEvent(trace::TraceCategory::kParser, "Parsing import declaration");
     ZC_IF_SOME(importDecl, parseImportDeclaration()) { return zc::mv(importDecl); }
   }
 
   // Check for export declaration
   if (currentToken.is(lexer::TokenKind::kExportKeyword)) {
-    ZOM_TRACE_EVENT(trace::TraceCategory::kParser, "Parsing export declaration");
+    trace::traceEvent(trace::TraceCategory::kParser, "Parsing export declaration");
     ZC_IF_SOME(exportDecl, parseExportDeclaration()) { return zc::mv(exportDecl); }
   }
 
   // Otherwise, parse as statement (statementListItem)
-  ZOM_TRACE_EVENT(trace::TraceCategory::kParser, "Parsing statement");
+  trace::traceEvent(trace::TraceCategory::kParser, "Parsing statement");
   return parseStatement();
 }
 
