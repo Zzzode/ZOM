@@ -17,6 +17,7 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/trace/trace-config.h"
 
 namespace zomlang {
 namespace compiler {
@@ -68,23 +69,6 @@ struct TraceEvent {
              uint32_t dep = 0);
 };
 
-/// Forward declaration
-class TraceManager;
-
-/// RAII scope tracer for automatic enter/exit events
-class ScopeTracer {
-public:
-  ScopeTracer(TraceCategory category, zc::StringPtr name, zc::StringPtr details = nullptr);
-  ~ScopeTracer();
-
-  ZC_DISALLOW_COPY_AND_MOVE(ScopeTracer);
-
-private:
-  TraceCategory category;
-  zc::String name;
-  bool active;
-};
-
 /// Main trace manager - singleton pattern
 class TraceManager {
 public:
@@ -126,31 +110,37 @@ private:
   zc::Own<Impl> impl;
 };
 
-/// Convenience macros for tracing
-#define ZOM_TRACE_CATEGORY_ENABLED(category) \
-  (::zomlang::compiler::trace::TraceManager::getInstance().isEnabled(category))
+/// Trace event function
+void traceEvent(TraceCategory category, zc::StringPtr name, zc::StringPtr details = nullptr);
 
-#define ZOM_TRACE_EVENT(category, name, ...)                                                    \
-  do {                                                                                          \
-    if (ZOM_TRACE_CATEGORY_ENABLED(category)) {                                                 \
-      ::zomlang::compiler::trace::TraceManager::getInstance().addEvent(                         \
-          ::zomlang::compiler::trace::TraceEventType::kInstant, category, name, ##__VA_ARGS__); \
-    }                                                                                           \
-  } while (0)
+/// Trace counter function
+void traceCounter(TraceCategory category, zc::StringPtr name, zc::StringPtr details = nullptr);
 
-#define ZOM_TRACE_SCOPE(category, name, ...)                                            \
-  ::zomlang::compiler::trace::ScopeTracer ZC_UNIQUE_NAME(_trace_scope_)(category, name, \
-                                                                        ##__VA_ARGS__)
+/// Scope tracer with RAII
+class ScopeTracer {
+public:
+  explicit ScopeTracer(TraceCategory category, zc::StringPtr name, zc::StringPtr details = nullptr);
+  ~ScopeTracer();
 
-#define ZOM_TRACE_FUNCTION(category) ZOM_TRACE_SCOPE(category, __FUNCTION__)
+  ZC_DISALLOW_COPY_AND_MOVE(ScopeTracer);
 
-#define ZOM_TRACE_COUNTER(category, name, value)                                                 \
-  do {                                                                                           \
-    if (ZOM_TRACE_CATEGORY_ENABLED(category)) {                                                  \
-      ::zomlang::compiler::trace::TraceManager::getInstance().addEvent(                          \
-          ::zomlang::compiler::trace::TraceEventType::kCounter, category, name, zc::str(value)); \
-    }                                                                                            \
-  } while (0)
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+/// Function tracer helper
+class FunctionTracer {
+public:
+  explicit FunctionTracer(TraceCategory category, zc::StringPtr functionName);
+  ~FunctionTracer();
+
+  ZC_DISALLOW_COPY_AND_MOVE(FunctionTracer);
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
 
 }  // namespace trace
 }  // namespace compiler
