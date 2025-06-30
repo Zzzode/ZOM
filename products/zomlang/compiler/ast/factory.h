@@ -17,6 +17,7 @@
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/operator.h"
 
 namespace zomlang {
 namespace compiler {
@@ -29,9 +30,61 @@ namespace ast {
 /// Forward declaration
 class SourceFile;
 class Statement;
+class Expression;
 class ModulePath;
 class ImportDeclaration;
 class ExportDeclaration;
+class VariableDeclaration;
+class FunctionDeclaration;
+class ClassDeclaration;
+class BlockStatement;
+class ExpressionStatement;
+class IfStatement;
+class WhileStatement;
+class ReturnStatement;
+class BreakStatement;
+class ContinueStatement;
+class EmptyStatement;
+class AliasDeclaration;
+
+// Expression
+class BinaryExpression;
+class UnaryExpression;
+class AssignmentExpression;
+class ConditionalExpression;
+class CallExpression;
+class MemberExpression;
+class UpdateExpression;
+class CastExpression;
+class AwaitExpression;
+class NewExpression;
+class ParenthesizedExpression;
+class Identifier;
+class StringLiteral;
+class NumericLiteral;
+class BooleanLiteral;
+class NilLiteral;
+class DebuggerStatement;
+
+// Types
+class Type;
+class ArrayType;
+class ObjectType;
+class TupleType;
+class UnionType;
+class IntersectionType;
+class ParenthesizedType;
+class TypeReference;
+class PredefinedType;
+class FunctionType;
+class TypeAnnotation;
+
+// Operators
+class Operator;
+class BinaryOperator;
+class UnaryOperator;
+class AssignmentOperator;
+class UpdateOperator;
 
 namespace factory {
 /// Create a new SourceFile Node.
@@ -54,7 +107,7 @@ zc::Own<T> createNodeWithRange(const source::SourceRange& range, Args&&... args)
 zc::Own<ModulePath> createModulePath(zc::Vector<zc::String>&& identifiers);
 
 /// Create an ImportDeclaration node
-zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath>&& modulePath,
+zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath> modulePath,
                                                    zc::Maybe<zc::String> alias = zc::none);
 
 /// Create a simple ExportDeclaration node (export identifier)
@@ -62,7 +115,146 @@ zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier);
 
 /// Create a rename ExportDeclaration node (export identifier as alias from modulePath)
 zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier, zc::String&& alias,
-                                                   zc::Own<ModulePath>&& modulePath);
+                                                   zc::Own<ModulePath> modulePath);
+
+/// Statement factory functions
+zc::Own<VariableDeclaration> createVariableDeclaration(
+    zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> type = zc::none,
+    zc::Maybe<zc::Own<Expression>> init = zc::none);
+
+zc::Own<FunctionDeclaration> createFunctionDeclaration(zc::Own<Identifier> name,
+                                                       zc::Vector<zc::Own<Statement>>&& body);
+
+zc::Own<ClassDeclaration> createClassDeclaration(zc::Own<Identifier> name,
+                                                 zc::Vector<zc::Own<Statement>>&& body);
+
+zc::Own<BlockStatement> createBlockStatement(zc::Vector<zc::Own<Statement>>&& statements);
+
+zc::Own<ExpressionStatement> createExpressionStatement(zc::Own<Expression> expression);
+
+zc::Own<IfStatement> createIfStatement(zc::Own<Expression> test, zc::Own<Statement> consequent,
+                                       zc::Maybe<zc::Own<Statement>> alternate = zc::none);
+
+zc::Own<WhileStatement> createWhileStatement(zc::Own<Expression> test, zc::Own<Statement> body);
+
+zc::Own<ReturnStatement> createReturnStatement(zc::Maybe<zc::Own<Expression>> argument = zc::none);
+
+zc::Own<BreakStatement> createBreakStatement(zc::Maybe<zc::Own<Identifier>> label = zc::none);
+
+zc::Own<ContinueStatement> createContinueStatement(zc::Maybe<zc::Own<Identifier>> label = zc::none);
+
+zc::Own<EmptyStatement> createEmptyStatement();
+
+/// Expression factory functions
+zc::Own<Expression> createBinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
+                                           zc::Own<Expression> right);
+
+zc::Own<UnaryExpression> createUnaryExpression(zc::Own<UnaryOperator> op,
+                                               zc::Own<Expression> operand);
+
+zc::Own<AssignmentExpression> createAssignmentExpression(zc::Own<Expression> left,
+                                                         zc::Own<AssignmentOperator> op,
+                                                         zc::Own<Expression> right);
+
+zc::Own<ConditionalExpression> createConditionalExpression(zc::Own<Expression> test,
+                                                           zc::Own<Expression> consequent,
+                                                           zc::Own<Expression> alternate);
+
+zc::Own<CallExpression> createCallExpression(zc::Own<Expression> callee,
+                                             zc::Vector<zc::Own<Expression>>&& arguments);
+
+zc::Own<MemberExpression> createMemberExpression(zc::Own<Expression> object,
+                                                 zc::Own<Expression> property,
+                                                 bool computed = false);
+
+zc::Own<UpdateExpression> createUpdateExpression(zc::Own<UpdateOperator> op,
+                                                 zc::Own<Expression> operand);
+
+zc::Own<CastExpression> createCastExpression(zc::Own<Expression> expression,
+                                             zc::String&& targetType, bool isOptional = false);
+
+zc::Own<AwaitExpression> createAwaitExpression(zc::Own<Expression> expression);
+
+zc::Own<NewExpression> createNewExpression(zc::Own<Expression> callee,
+                                           zc::Vector<zc::Own<Expression>>&& arguments);
+
+zc::Own<ParenthesizedExpression> createParenthesizedExpression(zc::Own<Expression> expression);
+
+zc::Own<Identifier> createIdentifier(zc::String&& name);
+
+zc::Own<StringLiteral> createStringLiteral(zc::String&& value);
+
+zc::Own<NumericLiteral> createNumericLiteral(double value);
+
+zc::Own<BooleanLiteral> createBooleanLiteral(bool value);
+
+zc::Own<NilLiteral> createNilLiteral();
+
+zc::Own<AliasDeclaration> createAliasDeclaration(zc::Own<Identifier> name, zc::Own<Type> type);
+
+zc::Own<DebuggerStatement> createDebuggerStatement();
+
+/// Type
+zc::Own<ArrayType> createArrayType(zc::Own<Type> elementType);
+
+zc::Own<ObjectType> createObjectType(zc::Vector<zc::Own<Node>>&& members);
+
+zc::Own<TupleType> createTupleType(zc::Vector<zc::Own<Type>>&& elementTypes);
+
+zc::Own<UnionType> createUnionType(zc::Vector<zc::Own<Type>>&& types);
+
+zc::Own<IntersectionType> createIntersectionType(zc::Vector<zc::Own<Type>>&& types);
+
+zc::Own<ParenthesizedType> createParenthesizedType(zc::Own<Type> type);
+
+zc::Own<TypeReference> createTypeReference(zc::Own<Identifier> typeName);
+
+zc::Own<PredefinedType> createPredefinedType(zc::String&& name);
+
+zc::Own<FunctionType> createFunctionType(zc::Vector<zc::Own<Type>>&& parameterTypes,
+                                         zc::Own<Type> returnType);
+
+zc::Own<TypeAnnotation> createTypeAnnotation(zc::Own<Type> type);
+
+/// Operator factory functions
+zc::Own<BinaryOperator> createBinaryOperator(
+    zc::String&& symbol, OperatorPrecedence precedence,
+    OperatorAssociativity associativity = OperatorAssociativity::kLeft);
+
+zc::Own<UnaryOperator> createUnaryOperator(zc::String&& symbol, bool prefix = true);
+
+zc::Own<AssignmentOperator> createAssignmentOperator(zc::String&& symbol);
+
+zc::Own<UpdateOperator> createUpdateOperator(zc::String&& symbol, bool prefix = true);
+
+// Predefined operator factory functions for common operators
+zc::Own<BinaryOperator> createAddOperator();           // +
+zc::Own<BinaryOperator> createSubtractOperator();      // -
+zc::Own<BinaryOperator> createMultiplyOperator();      // *
+zc::Own<BinaryOperator> createDivideOperator();        // /
+zc::Own<BinaryOperator> createModuloOperator();        // %
+zc::Own<BinaryOperator> createEqualOperator();         // ==
+zc::Own<BinaryOperator> createNotEqualOperator();      // !=
+zc::Own<BinaryOperator> createLessOperator();          // <
+zc::Own<BinaryOperator> createGreaterOperator();       // >
+zc::Own<BinaryOperator> createLessEqualOperator();     // <=
+zc::Own<BinaryOperator> createGreaterEqualOperator();  // >=
+zc::Own<BinaryOperator> createLogicalAndOperator();    // &&
+zc::Own<BinaryOperator> createLogicalOrOperator();     // ||
+
+zc::Own<UnaryOperator> createUnaryPlusOperator();   // +
+zc::Own<UnaryOperator> createUnaryMinusOperator();  // -
+zc::Own<UnaryOperator> createLogicalNotOperator();  // !
+zc::Own<UnaryOperator> createBitwiseNotOperator();  // ~
+
+zc::Own<AssignmentOperator> createAssignOperator();          // =
+zc::Own<AssignmentOperator> createAddAssignOperator();       // +=
+zc::Own<AssignmentOperator> createSubtractAssignOperator();  // -=
+
+zc::Own<UpdateOperator> createPreIncrementOperator();   // ++x
+zc::Own<UpdateOperator> createPostIncrementOperator();  // x++
+zc::Own<UpdateOperator> createPreDecrementOperator();   // --x
+zc::Own<UpdateOperator> createPostDecrementOperator();  // x--
 
 }  // namespace factory
 }  // namespace ast
