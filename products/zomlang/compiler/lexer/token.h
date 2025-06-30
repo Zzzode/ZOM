@@ -109,43 +109,43 @@ enum class TokenKind {
   kYieldKeyword,        // yield
 
   // Type keywords
-  kBoolKeyword,         // bool
-  kI8Keyword,           // i8
-  kI32Keyword,          // i32
-  kI64Keyword,          // i64
-  kU8Keyword,           // u8
-  kU16Keyword,          // u16
-  kU32Keyword,          // u32
-  kU64Keyword,          // u64
-  kF32Keyword,          // f32
-  kF64Keyword,          // f64
-  kStrKeyword,          // str
-  kUnitKeyword,         // unit
-  kNilKeyword,          // nil
-  kElseKeyword,         // else
-  kForKeyword,          // for
-  kWhileKeyword,        // while
-  kStructKeyword,       // struct
-  kEnumKeyword,         // enum
-  kErrorKeyword,        // error
-  kAliasKeyword,        // alias
-  kInitKeyword,         // init
-  kDeinitKeyword,       // deinit
-  kRaisesKeyword,       // raises
-  kTypeKeyword,         // type
+  kBoolKeyword,    // bool
+  kI8Keyword,      // i8
+  kI32Keyword,     // i32
+  kI64Keyword,     // i64
+  kU8Keyword,      // u8
+  kU16Keyword,     // u16
+  kU32Keyword,     // u32
+  kU64Keyword,     // u64
+  kF32Keyword,     // f32
+  kF64Keyword,     // f64
+  kStrKeyword,     // str
+  kUnitKeyword,    // unit
+  kNilKeyword,     // nil
+  kElseKeyword,    // else
+  kForKeyword,     // for
+  kWhileKeyword,   // while
+  kStructKeyword,  // struct
+  kEnumKeyword,    // enum
+  kErrorKeyword,   // error
+  kAliasKeyword,   // alias
+  kInitKeyword,    // init
+  kDeinitKeyword,  // deinit
+  kRaisesKeyword,  // raises
+  kTypeKeyword,    // type
 
   // Boolean and null literals
-  kTrueKeyword,         // true
-  kFalseKeyword,        // false
-  kNullKeyword,         // null
+  kTrueKeyword,   // true
+  kFalseKeyword,  // false
+  kNullKeyword,   // null
 
   // Literals
   kIntegerLiteral,
   kFloatLiteral,
   kStringLiteral,
-  kBooleanLiteral,      // true/false
-  kNullLiteral,         // null
-  kNilLiteral,          // nil
+  kBooleanLiteral,  // true/false
+  kNullLiteral,     // null
+  kNilLiteral,      // nil
 
   // Operators
   kOperator,

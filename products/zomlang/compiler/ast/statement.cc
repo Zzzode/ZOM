@@ -70,15 +70,18 @@ struct FunctionDeclaration::Impl {
   const zc::Maybe<zc::Own<Type>> returnType;
   const zc::Own<Statement> body;
 
-  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<Identifier>>&& p, zc::Maybe<zc::Own<Type>> r, zc::Own<Statement> b)
+  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<Identifier>>&& p, zc::Maybe<zc::Own<Type>> r,
+       zc::Own<Statement> b)
       : name(zc::mv(n)), parameters(zc::mv(p)), returnType(zc::mv(r)), body(zc::mv(b)) {}
 };
 
 // ================================================================================
 // FunctionDeclaration
 
-FunctionDeclaration::FunctionDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<Identifier>>&& parameters,
-                                         zc::Maybe<zc::Own<Type>> returnType, zc::Own<Statement> body)
+FunctionDeclaration::FunctionDeclaration(zc::Own<Identifier> name,
+                                         zc::Vector<zc::Own<Identifier>>&& parameters,
+                                         zc::Maybe<zc::Own<Type>> returnType,
+                                         zc::Own<Statement> body)
     : Statement(SyntaxKind::kFunctionDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(parameters), zc::mv(returnType), zc::mv(body))) {}
 
@@ -111,7 +114,8 @@ struct ClassDeclaration::Impl {
 // ================================================================================
 // ClassDeclaration
 
-ClassDeclaration::ClassDeclaration(zc::Own<Identifier> name, zc::Maybe<zc::Own<Identifier>> superClass,
+ClassDeclaration::ClassDeclaration(zc::Own<Identifier> name,
+                                   zc::Maybe<zc::Own<Identifier>> superClass,
                                    zc::Vector<zc::Own<Statement>>&& members)
     : Statement(SyntaxKind::kClassDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(superClass), zc::mv(members))) {}
@@ -121,7 +125,8 @@ ClassDeclaration::~ClassDeclaration() noexcept(false) = default;
 const Identifier* ClassDeclaration::getName() const { return impl->name.get(); }
 
 const Identifier* ClassDeclaration::getSuperClass() const {
-  return impl->superClass.map([](const zc::Own<Identifier>& id) { return id.get(); }).orDefault(nullptr);
+  return impl->superClass.map([](const zc::Own<Identifier>& id) { return id.get(); })
+      .orDefault(nullptr);
 }
 
 const NodeList<Statement>& ClassDeclaration::getMembers() const { return impl->members; }
@@ -263,7 +268,8 @@ struct ForStatement::Impl {
 // ================================================================================
 // ForStatement
 
-ForStatement::ForStatement(zc::Maybe<zc::Own<Statement>> init, zc::Maybe<zc::Own<Expression>> condition,
+ForStatement::ForStatement(zc::Maybe<zc::Own<Statement>> init,
+                           zc::Maybe<zc::Own<Expression>> condition,
                            zc::Maybe<zc::Own<Expression>> update, zc::Own<Statement> body)
     : Statement(SyntaxKind::kForStatement),
       impl(zc::heap<Impl>(zc::mv(init), zc::mv(condition), zc::mv(update), zc::mv(body))) {}
@@ -271,15 +277,18 @@ ForStatement::ForStatement(zc::Maybe<zc::Own<Statement>> init, zc::Maybe<zc::Own
 ForStatement::~ForStatement() noexcept(false) = default;
 
 const Statement* ForStatement::getInit() const {
-  return impl->init.map([](const zc::Own<Statement>& stmt) { return stmt.get(); }).orDefault(nullptr);
+  return impl->init.map([](const zc::Own<Statement>& stmt) { return stmt.get(); })
+      .orDefault(nullptr);
 }
 
 const Expression* ForStatement::getCondition() const {
-  return impl->condition.map([](const zc::Own<Expression>& expr) { return expr.get(); }).orDefault(nullptr);
+  return impl->condition.map([](const zc::Own<Expression>& expr) { return expr.get(); })
+      .orDefault(nullptr);
 }
 
 const Expression* ForStatement::getUpdate() const {
-  return impl->update.map([](const zc::Own<Expression>& expr) { return expr.get(); }).orDefault(nullptr);
+  return impl->update.map([](const zc::Own<Expression>& expr) { return expr.get(); })
+      .orDefault(nullptr);
 }
 
 const Statement* ForStatement::getBody() const { return impl->body.get(); }
@@ -298,7 +307,8 @@ struct MatchStatement::Impl {
 // ================================================================================
 // MatchStatement
 
-MatchStatement::MatchStatement(zc::Own<Expression> discriminant, zc::Vector<zc::Own<Statement>>&& clauses)
+MatchStatement::MatchStatement(zc::Own<Expression> discriminant,
+                               zc::Vector<zc::Own<Statement>>&& clauses)
     : Statement(SyntaxKind::kMatchStatement),
       impl(zc::heap<Impl>(zc::mv(discriminant), zc::mv(clauses))) {}
 
@@ -387,14 +397,16 @@ struct InterfaceDeclaration::Impl {
   const NodeList<Statement> members;
   const zc::Vector<zc::Own<Identifier>> extends;
 
-  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<Statement>>&& m, zc::Vector<zc::Own<Identifier>>&& e)
+  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<Statement>>&& m,
+       zc::Vector<zc::Own<Identifier>>&& e)
       : name(zc::mv(n)), members(zc::mv(m)), extends(zc::mv(e)) {}
 };
 
 // ================================================================================
 // InterfaceDeclaration
 
-InterfaceDeclaration::InterfaceDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<Statement>>&& members,
+InterfaceDeclaration::InterfaceDeclaration(zc::Own<Identifier> name,
+                                           zc::Vector<zc::Own<Statement>>&& members,
                                            zc::Vector<zc::Own<Identifier>>&& extends)
     : Statement(SyntaxKind::kInterfaceDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(members), zc::mv(extends))) {}
@@ -423,7 +435,8 @@ struct StructDeclaration::Impl {
 // ================================================================================
 // StructDeclaration
 
-StructDeclaration::StructDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<Statement>>&& members)
+StructDeclaration::StructDeclaration(zc::Own<Identifier> name,
+                                     zc::Vector<zc::Own<Statement>>&& members)
     : Statement(SyntaxKind::kStructDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(members))) {}
 
@@ -471,7 +484,8 @@ struct ErrorDeclaration::Impl {
 // ================================================================================
 // ErrorDeclaration
 
-ErrorDeclaration::ErrorDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<Statement>>&& members)
+ErrorDeclaration::ErrorDeclaration(zc::Own<Identifier> name,
+                                   zc::Vector<zc::Own<Statement>>&& members)
     : Statement(SyntaxKind::kErrorDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(members))) {}
 
