@@ -14,7 +14,10 @@
 
 #include "zomlang/compiler/ast/factory.h"
 
+#include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/module.h"
+#include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/type.h"
 
 namespace zomlang {
 namespace compiler {
@@ -30,7 +33,7 @@ zc::Own<ModulePath> createModulePath(zc::Vector<zc::String>&& identifiers) {
   return zc::heap<ModulePath>(zc::mv(identifiers));
 }
 
-zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath>&& modulePath,
+zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath> modulePath,
                                                    zc::Maybe<zc::String> alias) {
   return zc::heap<ImportDeclaration>(zc::mv(modulePath), zc::mv(alias));
 }
@@ -40,8 +43,317 @@ zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier) {
 }
 
 zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier, zc::String&& alias,
-                                                   zc::Own<ModulePath>&& modulePath) {
+                                                   zc::Own<ModulePath> modulePath) {
   return zc::heap<ExportDeclaration>(zc::mv(identifier), zc::mv(alias), zc::mv(modulePath));
+}
+
+// Statement factory functions
+zc::Own<VariableDeclaration> createVariableDeclaration(zc::Own<Identifier> name,
+                                                       zc::Maybe<zc::Own<Type>> type,
+                                                       zc::Maybe<zc::Own<Expression>> init) {
+  return zc::heap<VariableDeclaration>(zc::mv(name), zc::mv(type), zc::mv(init));
+}
+
+zc::Own<FunctionDeclaration> createFunctionDeclaration(zc::Own<Identifier> name,
+                                                       zc::Vector<zc::Own<Statement>>&& body) {
+  zc::Vector<zc::Own<Identifier>> parameters;
+  zc::Maybe<zc::Own<Type>> returnType = zc::none;
+  auto bodyStatement = zc::heap<BlockStatement>(zc::mv(body));
+  return zc::heap<FunctionDeclaration>(zc::mv(name), zc::mv(parameters), zc::mv(returnType),
+                                       zc::mv(bodyStatement));
+}
+
+zc::Own<ClassDeclaration> createClassDeclaration(zc::Own<Identifier> name,
+                                                 zc::Vector<zc::Own<Statement>>&& body) {
+  return zc::heap<ClassDeclaration>(zc::mv(name), zc::none, zc::mv(body));
+}
+
+zc::Own<BlockStatement> createBlockStatement(zc::Vector<zc::Own<Statement>>&& statements) {
+  return zc::heap<BlockStatement>(zc::mv(statements));
+}
+
+zc::Own<ExpressionStatement> createExpressionStatement(zc::Own<Expression> expression) {
+  return zc::heap<ExpressionStatement>(zc::mv(expression));
+}
+
+zc::Own<IfStatement> createIfStatement(zc::Own<Expression> test, zc::Own<Statement> consequent,
+                                       zc::Maybe<zc::Own<Statement>> alternate) {
+  return zc::heap<IfStatement>(zc::mv(test), zc::mv(consequent), zc::mv(alternate));
+}
+
+zc::Own<WhileStatement> createWhileStatement(zc::Own<Expression> test, zc::Own<Statement> body) {
+  return zc::heap<WhileStatement>(zc::mv(test), zc::mv(body));
+}
+
+zc::Own<ReturnStatement> createReturnStatement(zc::Maybe<zc::Own<Expression>> argument) {
+  return zc::heap<ReturnStatement>(zc::mv(argument));
+}
+
+zc::Own<EmptyStatement> createEmptyStatement() { return zc::heap<EmptyStatement>(); }
+
+// Expression factory functions
+zc::Own<Expression> createBinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
+                                           zc::Own<Expression> right) {
+  auto binaryExpr = zc::heap<BinaryExpression>(zc::mv(left), zc::mv(op), zc::mv(right));
+  return static_cast<zc::Own<Expression>>(zc::mv(binaryExpr));
+}
+
+zc::Own<UnaryExpression> createUnaryExpression(zc::Own<UnaryOperator> op,
+                                               zc::Own<Expression> operand) {
+  return zc::heap<UnaryExpression>(zc::mv(op), zc::mv(operand));
+}
+
+zc::Own<AssignmentExpression> createAssignmentExpression(zc::Own<Expression> left,
+                                                         zc::Own<AssignmentOperator> op,
+                                                         zc::Own<Expression> right) {
+  return zc::heap<AssignmentExpression>(zc::mv(left), zc::mv(op), zc::mv(right));
+}
+
+zc::Own<ConditionalExpression> createConditionalExpression(zc::Own<Expression> test,
+                                                           zc::Own<Expression> consequent,
+                                                           zc::Own<Expression> alternate) {
+  return zc::heap<ConditionalExpression>(zc::mv(test), zc::mv(consequent), zc::mv(alternate));
+}
+
+zc::Own<CallExpression> createCallExpression(zc::Own<Expression> callee,
+                                             zc::Vector<zc::Own<Expression>>&& arguments) {
+  return zc::heap<CallExpression>(zc::mv(callee), zc::mv(arguments));
+}
+
+zc::Own<MemberExpression> createMemberExpression(zc::Own<Expression> object,
+                                                 zc::Own<Expression> property, bool computed) {
+  return zc::heap<MemberExpression>(zc::mv(object), zc::mv(property), computed);
+}
+
+zc::Own<UpdateExpression> createUpdateExpression(zc::Own<UpdateOperator> op,
+                                                 zc::Own<Expression> operand) {
+  return zc::heap<UpdateExpression>(zc::mv(op), zc::mv(operand));
+}
+
+zc::Own<CastExpression> createCastExpression(zc::Own<Expression> expression,
+                                             zc::String&& targetType, bool isOptional) {
+  return zc::heap<CastExpression>(zc::mv(expression), zc::mv(targetType), isOptional);
+}
+
+zc::Own<AwaitExpression> createAwaitExpression(zc::Own<Expression> expression) {
+  return zc::heap<AwaitExpression>(zc::mv(expression));
+}
+
+zc::Own<NewExpression> createNewExpression(zc::Own<Expression> callee,
+                                           zc::Vector<zc::Own<Expression>>&& arguments) {
+  return zc::heap<NewExpression>(zc::mv(callee), zc::mv(arguments));
+}
+
+zc::Own<ParenthesizedExpression> createParenthesizedExpression(zc::Own<Expression> expression) {
+  return zc::heap<ParenthesizedExpression>(zc::mv(expression));
+}
+
+zc::Own<Identifier> createIdentifier(zc::String&& name) {
+  return zc::heap<Identifier>(zc::mv(name));
+}
+
+zc::Own<StringLiteral> createStringLiteral(zc::String&& value) {
+  return zc::heap<StringLiteral>(zc::mv(value));
+}
+
+zc::Own<NumericLiteral> createNumericLiteral(double value) {
+  return zc::heap<NumericLiteral>(value);
+}
+
+zc::Own<BooleanLiteral> createBooleanLiteral(bool value) { return zc::heap<BooleanLiteral>(value); }
+
+zc::Own<NilLiteral> createNilLiteral() { return zc::heap<NilLiteral>(); }
+
+zc::Own<AliasDeclaration> createAliasDeclaration(zc::Own<Identifier> name, zc::Own<Type> type) {
+  return zc::heap<AliasDeclaration>(zc::mv(name), zc::mv(type));
+}
+
+zc::Own<DebuggerStatement> createDebuggerStatement() { return zc::heap<DebuggerStatement>(); }
+
+// Type factory functions
+zc::Own<TypeReference> createTypeReference(zc::Own<Identifier> typeName) {
+  return zc::heap<TypeReference>(zc::mv(typeName));
+}
+
+zc::Own<ArrayType> createArrayType(zc::Own<Type> elementType) {
+  return zc::heap<ArrayType>(zc::mv(elementType));
+}
+
+zc::Own<UnionType> createUnionType(zc::Vector<zc::Own<Type>>&& types) {
+  return zc::heap<UnionType>(zc::mv(types));
+}
+
+zc::Own<IntersectionType> createIntersectionType(zc::Vector<zc::Own<Type>>&& types) {
+  return zc::heap<IntersectionType>(zc::mv(types));
+}
+
+zc::Own<ParenthesizedType> createParenthesizedType(zc::Own<Type> type) {
+  return zc::heap<ParenthesizedType>(zc::mv(type));
+}
+
+zc::Own<PredefinedType> createPredefinedType(zc::String&& name) {
+  return zc::heap<PredefinedType>(zc::mv(name));
+}
+
+zc::Own<ObjectType> createObjectType(zc::Vector<zc::Own<Node>>&& members) {
+  return zc::heap<ObjectType>(zc::mv(members));
+}
+
+zc::Own<TupleType> createTupleType(zc::Vector<zc::Own<Type>>&& elementTypes) {
+  return zc::heap<TupleType>(zc::mv(elementTypes));
+}
+
+zc::Own<FunctionType> createFunctionType(zc::Vector<zc::Own<Type>>&& parameterTypes,
+                                         zc::Own<Type> returnType) {
+  return zc::heap<FunctionType>(zc::mv(parameterTypes), zc::mv(returnType));
+}
+
+zc::Own<TypeAnnotation> createTypeAnnotation(zc::Own<Type> type) {
+  return zc::heap<TypeAnnotation>(zc::mv(type));
+}
+
+// Operator factory functions
+zc::Own<BinaryOperator> createBinaryOperator(zc::String&& symbol, OperatorPrecedence precedence,
+                                             OperatorAssociativity associativity) {
+  return zc::heap<BinaryOperator>(zc::mv(symbol), precedence, associativity);
+}
+
+zc::Own<UnaryOperator> createUnaryOperator(zc::String&& symbol, bool prefix) {
+  return zc::heap<UnaryOperator>(zc::mv(symbol), prefix);
+}
+
+zc::Own<AssignmentOperator> createAssignmentOperator(zc::String&& symbol) {
+  return zc::heap<AssignmentOperator>(zc::mv(symbol));
+}
+
+zc::Own<UpdateOperator> createUpdateOperator(zc::String&& symbol, bool prefix) {
+  return zc::heap<UpdateOperator>(zc::mv(symbol), prefix);
+}
+
+// Predefined operator factory functions for common operators
+zc::Own<BinaryOperator> createAddOperator() {
+  return createBinaryOperator(zc::str("+"), OperatorPrecedence::kAdditive,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createSubtractOperator() {
+  return createBinaryOperator(zc::str("-"), OperatorPrecedence::kAdditive,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createMultiplyOperator() {
+  return createBinaryOperator(zc::str("*"), OperatorPrecedence::kMultiplicative,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createDivideOperator() {
+  return createBinaryOperator(zc::str("/"), OperatorPrecedence::kMultiplicative,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createModuloOperator() {
+  return createBinaryOperator(zc::str("%"), OperatorPrecedence::kMultiplicative,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createEqualOperator() {
+  return createBinaryOperator(zc::str("=="), OperatorPrecedence::kEquality,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createNotEqualOperator() {
+  return createBinaryOperator(zc::str("!="), OperatorPrecedence::kEquality,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createLessOperator() {
+  return createBinaryOperator(zc::str("<"), OperatorPrecedence::kRelational,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createGreaterOperator() {
+  return createBinaryOperator(zc::str(">"), OperatorPrecedence::kRelational,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createLessEqualOperator() {
+  return createBinaryOperator(zc::str("<="), OperatorPrecedence::kRelational,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createGreaterEqualOperator() {
+  return createBinaryOperator(zc::str(">="), OperatorPrecedence::kRelational,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createLogicalAndOperator() {
+  return createBinaryOperator(zc::str("&&"), OperatorPrecedence::kLogicalAnd,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<BinaryOperator> createLogicalOrOperator() {
+  return createBinaryOperator(zc::str("||"), OperatorPrecedence::kLogicalOr,
+                              OperatorAssociativity::kLeft);
+}
+
+zc::Own<UnaryOperator> createUnaryPlusOperator() { return createUnaryOperator(zc::str("+"), true); }
+
+zc::Own<UnaryOperator> createUnaryMinusOperator() {
+  return createUnaryOperator(zc::str("-"), true);
+}
+
+zc::Own<UnaryOperator> createLogicalNotOperator() {
+  return createUnaryOperator(zc::str("!"), true);
+}
+
+zc::Own<UnaryOperator> createBitwiseNotOperator() {
+  return createUnaryOperator(zc::str("~"), true);
+}
+
+zc::Own<AssignmentOperator> createAssignOperator() {
+  return createAssignmentOperator(zc::str("="));
+}
+
+zc::Own<AssignmentOperator> createAddAssignOperator() {
+  return createAssignmentOperator(zc::str("+="));
+}
+
+zc::Own<AssignmentOperator> createSubtractAssignOperator() {
+  return createAssignmentOperator(zc::str("-="));
+}
+
+zc::Own<UpdateOperator> createPreIncrementOperator() {
+  return createUpdateOperator(zc::str("++"), true);
+}
+
+zc::Own<UpdateOperator> createPostIncrementOperator() {
+  return createUpdateOperator(zc::str("++"), false);
+}
+
+zc::Own<UpdateOperator> createPreDecrementOperator() {
+  return createUpdateOperator(zc::str("--"), true);
+}
+
+zc::Own<UpdateOperator> createPostDecrementOperator() {
+  return createUpdateOperator(zc::str("--"), false);
+}
+
+zc::Own<BreakStatement> createBreakStatement(zc::Maybe<zc::Own<Identifier>> label) {
+  if (label == zc::none) {
+    return zc::heap<BreakStatement>(zc::none);
+  } else {
+    ZC_IF_SOME(labelPtr, label) { return zc::heap<BreakStatement>(zc::mv(labelPtr)); }
+    return zc::heap<BreakStatement>(zc::none);
+  }
+}
+
+zc::Own<ContinueStatement> createContinueStatement(zc::Maybe<zc::Own<Identifier>> label) {
+  if (label == zc::none) {
+    return zc::heap<ContinueStatement>(zc::none);
+  } else {
+    ZC_IF_SOME(labelPtr, label) { return zc::heap<ContinueStatement>(zc::mv(labelPtr)); }
+    return zc::heap<ContinueStatement>(zc::none);
+  }
 }
 
 }  // namespace factory

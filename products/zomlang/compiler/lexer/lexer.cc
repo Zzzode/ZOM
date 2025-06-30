@@ -237,6 +237,12 @@ struct Lexer::Impl {
           } else {
             formToken(TokenKind::kExclamationEquals, tokStart);
           }
+        } else if (curPtr < bufferEnd && *curPtr == '!') {
+          curPtr++;
+          formToken(TokenKind::kErrorUnwrap, tokStart);
+        } else if (curPtr < bufferEnd && *curPtr == '>') {
+          curPtr++;
+          formToken(TokenKind::kErrorReturn, tokStart);
         } else {
           formToken(TokenKind::kExclamation, tokStart);
         }
@@ -296,6 +302,12 @@ struct Lexer::Impl {
         } else if (curPtr < bufferEnd && *curPtr == '.') {
           curPtr++;
           formToken(TokenKind::kQuestionDot, tokStart);
+        } else if (curPtr < bufferEnd && *curPtr == '!') {
+          curPtr++;
+          formToken(TokenKind::kErrorPropagate, tokStart);
+        } else if (curPtr < bufferEnd && *curPtr == ':') {
+          curPtr++;
+          formToken(TokenKind::kErrorDefault, tokStart);
         } else {
           formToken(TokenKind::kQuestion, tokStart);
         }
@@ -466,6 +478,32 @@ struct Lexer::Impl {
     if (text == "when") return TokenKind::kWhenKeyword;
     if (text == "with") return TokenKind::kWithKeyword;
     if (text == "yield") return TokenKind::kYieldKeyword;
+
+    // Type keywords
+    if (text == "bool") return TokenKind::kBoolKeyword;
+    if (text == "i8") return TokenKind::kI8Keyword;
+    if (text == "i32") return TokenKind::kI32Keyword;
+    if (text == "i64") return TokenKind::kI64Keyword;
+    if (text == "u8") return TokenKind::kU8Keyword;
+    if (text == "u16") return TokenKind::kU16Keyword;
+    if (text == "u32") return TokenKind::kU32Keyword;
+    if (text == "u64") return TokenKind::kU64Keyword;
+    if (text == "f32") return TokenKind::kF32Keyword;
+    if (text == "f64") return TokenKind::kF64Keyword;
+    if (text == "str") return TokenKind::kStrKeyword;
+    if (text == "unit") return TokenKind::kUnitKeyword;
+    if (text == "nil") return TokenKind::kNilKeyword;
+    if (text == "else") return TokenKind::kElseKeyword;
+    if (text == "for") return TokenKind::kForKeyword;
+    if (text == "while") return TokenKind::kWhileKeyword;
+    if (text == "struct") return TokenKind::kStructKeyword;
+    if (text == "enum") return TokenKind::kEnumKeyword;
+    if (text == "error") return TokenKind::kErrorKeyword;
+    if (text == "alias") return TokenKind::kAliasKeyword;
+    if (text == "init") return TokenKind::kInitKeyword;
+    if (text == "deinit") return TokenKind::kDeinitKeyword;
+    if (text == "raises") return TokenKind::kRaisesKeyword;
+    if (text == "type") return TokenKind::kTypeKeyword;
 
     return TokenKind::kUnknown;
   }

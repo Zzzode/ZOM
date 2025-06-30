@@ -246,7 +246,7 @@ coverParenthesizedExpressionAndArrowParameterList:
 	| LPAREN expression COMMA ELLIPSIS bindingIdentifier RPAREN
 	| LPAREN expression COMMA ELLIPSIS bindingPattern RPAREN;
 
-// Object Literal
+// Object LiteralExpression
 objectLiteral:
 	LBRACE RBRACE
 	| LBRACE propertyDefinitionList RBRACE
@@ -264,7 +264,7 @@ propertyDefinition:
 
 coverInitializedName: identifier initializer;
 
-// Array Literal
+// Array LiteralExpression
 arrayLiteral: LBRACK RBRACK | LBRACK elementList RBRACK;
 
 elementList:
@@ -283,11 +283,11 @@ leftHandSideExpression:
 
 // Member Expression
 memberExpression:
-	primaryExpression
-	| memberExpression LBRACK expression RBRACK
-	| memberExpression PERIOD identifier
-	| superProperty
-	| NEW memberExpression arguments;
+	(
+		primaryExpression
+		| superProperty
+		| NEW memberExpression arguments
+	) (LBRACK expression RBRACK | PERIOD identifier)*;
 
 // New Expression
 newExpression: memberExpression | NEW newExpression;
@@ -305,30 +305,33 @@ arguments:
 	| typeArguments? LPAREN argumentList COMMA RPAREN;
 
 argumentList:
-	assignmentExpression
-	| ELLIPSIS assignmentExpression
-	| argumentList COMMA assignmentExpression
-	| argumentList COMMA ELLIPSIS assignmentExpression;
+	(assignmentExpression | ELLIPSIS assignmentExpression) (
+		COMMA (
+			assignmentExpression
+			| ELLIPSIS assignmentExpression
+		)
+	)*;
 
 // Call Expression
 callExpression:
-	memberExpression arguments
-	| superCall
-	| callExpression arguments
-	| callExpression LBRACK expression RBRACK
-	| callExpression PERIOD identifier;
+	(memberExpression arguments | superCall) (
+		arguments
+		| LBRACK expression RBRACK
+		| PERIOD identifier
+	)*;
 
 // Optional Expression
 optionalExpression:
-	memberExpression optionalChain
-	| callExpression optionalChain
-	| optionalExpression optionalChain;
+	(memberExpression | callExpression) optionalChain (
+		optionalChain
+	)*;
 
 optionalChain:
-	OPTIONAL_CHAINING identifier
-	| optionalChain arguments
-	| optionalChain LBRACK expression RBRACK
-	| optionalChain PERIOD identifier;
+	OPTIONAL_CHAINING identifier (
+		arguments
+		| LBRACK expression RBRACK
+		| PERIOD identifier
+	)*;
 
 // Update Expression
 updateExpression:
@@ -353,11 +356,7 @@ unaryExpression:
 awaitExpression: AWAIT unaryExpression;
 
 // Cast Expression
-castExpression:
-	unaryExpression
-	| castExpression AS type
-	| castExpression AS QUESTION type
-	| castExpression AS NOT type;
+castExpression: unaryExpression (AS (QUESTION | NOT)? type)*;
 
 // Exponentiation Expression
 exponentiationExpression:
@@ -366,71 +365,59 @@ exponentiationExpression:
 
 // Multiplicative Expression
 multiplicativeExpression:
-	exponentiationExpression
-	| multiplicativeExpression multiplicativeOperator exponentiationExpression;
+	exponentiationExpression (
+		multiplicativeOperator exponentiationExpression
+	)*;
 
 multiplicativeOperator: MUL | DIV | MOD;
 
 // Additive Expression
 additiveExpression:
-	multiplicativeExpression
-	| additiveExpression PLUS multiplicativeExpression
-	| additiveExpression MINUS multiplicativeExpression;
+	multiplicativeExpression (
+		(PLUS | MINUS) multiplicativeExpression
+	)*;
 
 // Shift Expression
 shiftExpression:
-	additiveExpression
-	| shiftExpression LSHIFT additiveExpression
-	| shiftExpression RSHIFT additiveExpression
-	| shiftExpression URSHIFT additiveExpression;
+	additiveExpression (
+		(LSHIFT | RSHIFT | URSHIFT) additiveExpression
+	)*;
 
 // Relational Expression
 relationalExpression:
-	shiftExpression
-	| relationalExpression LT shiftExpression
-	| relationalExpression GT shiftExpression
-	| relationalExpression LTE shiftExpression
-	| relationalExpression GTE shiftExpression
-	| relationalExpression IS shiftExpression
-	| relationalExpression IN shiftExpression;
+	shiftExpression (
+		(LT | GT | LTE | GTE | IS | IN) shiftExpression
+	)*;
 
 // Equality Expression
 equalityExpression:
-	relationalExpression
-	| equalityExpression EQ relationalExpression
-	| equalityExpression NEQ relationalExpression
-	| equalityExpression STRICT_EQ relationalExpression
-	| equalityExpression STRICT_NEQ relationalExpression;
+	relationalExpression (
+		(EQ | NEQ | STRICT_EQ | STRICT_NEQ) relationalExpression
+	)*;
 
 // Bitwise AND Expression
 bitwiseANDExpression:
-	equalityExpression
-	| bitwiseANDExpression BIT_AND equalityExpression;
+	equalityExpression (BIT_AND equalityExpression)*;
 
 // Bitwise XOR Expression
 bitwiseXORExpression:
-	bitwiseANDExpression
-	| bitwiseXORExpression BIT_XOR bitwiseANDExpression;
+	bitwiseANDExpression (BIT_XOR bitwiseANDExpression)*;
 
 // Bitwise OR Expression
 bitwiseORExpression:
-	bitwiseXORExpression
-	| bitwiseORExpression BIT_OR bitwiseXORExpression;
+	bitwiseXORExpression (BIT_OR bitwiseXORExpression)*;
 
 // Logical AND Expression
 logicalANDExpression:
-	bitwiseORExpression
-	| logicalANDExpression AND bitwiseORExpression;
+	bitwiseORExpression (AND bitwiseORExpression)*;
 
 // Logical OR Expression
 logicalORExpression:
-	logicalANDExpression
-	| logicalORExpression OR logicalANDExpression;
+	logicalANDExpression (OR logicalANDExpression)*;
 
 // Coalesce Expression
 coalesceExpression:
-	bitwiseORExpression
-	| coalesceExpression NULL_COALESCE bitwiseORExpression;
+	bitwiseORExpression (NULL_COALESCE bitwiseORExpression)*;
 
 // Short Circuit Expression
 shortCircuitExpression:
@@ -439,8 +426,9 @@ shortCircuitExpression:
 
 // Conditional Expression
 conditionalExpression:
-	shortCircuitExpression
-	| shortCircuitExpression QUESTION assignmentExpression COLON assignmentExpression;
+	shortCircuitExpression (
+		QUESTION assignmentExpression COLON assignmentExpression
+	)?;
 
 // Binding Pattern
 bindingPattern: arrayBindingPattern | objectBindingPattern;
@@ -566,7 +554,7 @@ declaration:
 	functionDeclaration
 	| classDeclaration
 	| interfaceDeclaration
-	| typeAliasDeclaration
+	| aliasDeclaration
 	| structDeclaration
 	| errorDeclaration
 	| enumDeclaration
@@ -661,9 +649,7 @@ parameterClause: LPAREN parameterList? RPAREN;
 typeQuery: TYPEOF typeQueryExpression;
 
 // TypeQueryExpression
-typeQueryExpression:
-	identifier
-	| typeQueryExpression PERIOD identifier;
+typeQueryExpression: identifier ( PERIOD identifier)*;
 
 // OptionalType
 optionalType: OPTIONAL primaryType;
@@ -700,7 +686,7 @@ interfaceBody: interfaceElement*;
 interfaceElement: propertySignature | methodSignature;
 
 // ================================================================================ TYPE ALIAS DECLARATIONS
-typeAliasDeclaration:
+aliasDeclaration:
 	ALIAS bindingIdentifier typeParameters? ASSIGN type;
 
 // ================================================================================ STRUCT DECLARATIONS

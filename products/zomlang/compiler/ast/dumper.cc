@@ -19,7 +19,9 @@
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/module.h"
+#include "zomlang/compiler/ast/operator.h"
 #include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/type.h"
 
 namespace zomlang {
 namespace compiler {
@@ -292,8 +294,13 @@ void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int 
   switch (impl->format) {
     case DumpFormat::kText:
       writeNodeHeader("VariableDeclaration", indent);
-      writeProperty("type", varDecl.getType(), indent + 1);
-      writeProperty("name", varDecl.getName(), indent + 1);
+      if (auto* type = varDecl.getType()) {
+        // TODO: Implement proper type string representation
+        writeProperty("type", "Type", indent + 1);
+      } else {
+        writeProperty("type", "auto", indent + 1);
+      }
+      writeProperty("name", varDecl.getName()->getName(), indent + 1);
       if (varDecl.getInitializer()) {
         writeLine("initializer:", indent + 1);
         dumpExpression(*varDecl.getInitializer(), indent + 2);
@@ -305,9 +312,14 @@ void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int 
       impl->output.write("{\n"_zcb);
       writeProperty("type", "VariableDeclaration", indent + 1);
       impl->output.write(",\n"_zcb);
-      writeProperty("varType", varDecl.getType(), indent + 1);
+      if (auto* type = varDecl.getType()) {
+        // TODO: Implement proper type string representation
+        writeProperty("varType", "Type", indent + 1);
+      } else {
+        writeProperty("varType", "auto", indent + 1);
+      }
       impl->output.write(",\n"_zcb);
-      writeProperty("name", varDecl.getName(), indent + 1);
+      writeProperty("name", varDecl.getName()->getName(), indent + 1);
       if (varDecl.getInitializer()) {
         impl->output.write(",\n"_zcb);
         writeIndent(indent + 1);
@@ -323,11 +335,16 @@ void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int 
       impl->output.write("<VariableDeclaration>\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("<varType>"_zcb);
-      impl->output.write(varDecl.getType().asBytes());
+      if (auto* type = varDecl.getType()) {
+        // TODO: Implement proper type string representation
+        impl->output.write("Type"_zcb);
+      } else {
+        impl->output.write("auto"_zcb);
+      }
       impl->output.write("</varType>\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("<name>"_zcb);
-      impl->output.write(varDecl.getName().asBytes());
+      impl->output.write(varDecl.getName()->getName().asBytes());
       impl->output.write("</name>\n"_zcb);
       if (varDecl.getInitializer()) {
         writeIndent(indent + 1);
@@ -346,7 +363,7 @@ void ASTDumper::dumpBinaryExpression(const BinaryExpression& binExpr, int indent
   switch (impl->format) {
     case DumpFormat::kText:
       writeNodeHeader("BinaryExpression", indent);
-      writeProperty("operator", binExpr.getOp(), indent + 1);
+      writeProperty("operator", binExpr.getOperator()->getSymbol(), indent + 1);
       writeLine("left:", indent + 1);
       dumpExpression(*binExpr.getLeft(), indent + 2);
       writeLine("right:", indent + 1);
@@ -358,7 +375,7 @@ void ASTDumper::dumpBinaryExpression(const BinaryExpression& binExpr, int indent
       impl->output.write("{\n"_zcb);
       writeProperty("type", "BinaryExpression", indent + 1);
       impl->output.write(",\n"_zcb);
-      writeProperty("operator", binExpr.getOp(), indent + 1);
+      writeProperty("operator", binExpr.getOperator()->getSymbol(), indent + 1);
       impl->output.write(",\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("\"left\": "_zcb);
@@ -376,7 +393,7 @@ void ASTDumper::dumpBinaryExpression(const BinaryExpression& binExpr, int indent
       impl->output.write("<BinaryExpression>\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("<operator>"_zcb);
-      impl->output.write(binExpr.getOp().asBytes());
+      impl->output.write(binExpr.getOperator()->getSymbol().asBytes());
       impl->output.write("</operator>\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("<left>\n"_zcb);

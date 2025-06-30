@@ -210,8 +210,7 @@ LineAndColumn SourceManager::getPresumedLineAndColumnForLoc(SourceLoc loc,
 BufferId SourceManager::addNewSourceBuffer(zc::Array<zc::byte> inputData,
                                            const zc::StringPtr bufIdentifier) {
   const BufferId bufferId(impl->buffers.size() + 1);
-  zc::Own<Buffer> buffer =
-      zc::heap<Buffer>(bufferId, zc::heapString(bufIdentifier), zc::mv(inputData));
+  zc::Own<Buffer> buffer = zc::heap<Buffer>(bufferId, zc::str(bufIdentifier), zc::mv(inputData));
   impl->buffers.add(zc::mv(buffer));
   impl->idToBuffer.insert(bufferId, *impl->buffers.back());
   return bufferId;
@@ -221,7 +220,7 @@ BufferId SourceManager::addMemBufferCopy(const zc::ArrayPtr<const zc::byte> inpu
                                          const zc::StringPtr bufIdentifier) {
   const BufferId bufferId(impl->buffers.size() + 1);
   zc::Own<Buffer> buffer =
-      zc::heap<Buffer>(bufferId, zc::heapString(bufIdentifier), zc::heapArray(inputData));
+      zc::heap<Buffer>(bufferId, zc::str(bufIdentifier), zc::heapArray(inputData));
   impl->buffers.add(zc::mv(buffer));
   impl->idToBuffer.insert(bufferId, *impl->buffers.back());
   return bufferId;
