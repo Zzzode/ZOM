@@ -25,44 +25,35 @@ namespace ast {
 // Operator precedence levels
 enum class OperatorPrecedence {
   kLowest = 0,
-  kAssignment = 1,      // =, +=, -=, etc.
-  kConditional = 2,     // ?:
-  kLogicalOr = 3,       // ||
-  kLogicalAnd = 4,      // &&
-  kBitwiseOr = 5,       // |
-  kBitwiseXor = 6,      // ^
-  kBitwiseAnd = 7,      // &
-  kEquality = 8,        // ==, !=
-  kRelational = 9,      // <, >, <=, >=
-  kShift = 10,          // <<, >>
-  kAdditive = 11,       // +, -
-  kMultiplicative = 12, // *, /, %
-  kExponentiation = 13, // **
-  kUnary = 14,          // +, -, !, ~, ++, --
-  kPostfix = 15,        // ++, --, [], (), .
-  kPrimary = 16         // literals, identifiers
+  kAssignment = 1,       // =, +=, -=, etc.
+  kConditional = 2,      // ?:
+  kLogicalOr = 3,        // ||
+  kLogicalAnd = 4,       // &&
+  kBitwiseOr = 5,        // |
+  kBitwiseXor = 6,       // ^
+  kBitwiseAnd = 7,       // &
+  kEquality = 8,         // ==, !=
+  kRelational = 9,       // <, >, <=, >=
+  kShift = 10,           // <<, >>
+  kAdditive = 11,        // +, -
+  kMultiplicative = 12,  // *, /, %
+  kExponentiation = 13,  // **
+  kUnary = 14,           // +, -, !, ~, ++, --
+  kPostfix = 15,         // ++, --, [], (), .
+  kPrimary = 16          // literals, identifiers
 };
 
 // Operator associativity
-enum class OperatorAssociativity {
-  kLeft,
-  kRight,
-  kNone
-};
+enum class OperatorAssociativity { kLeft, kRight, kNone };
 
 // Operator types
-enum class OperatorType {
-  kBinary,
-  kUnary,
-  kAssignment,
-  kUpdate
-};
+enum class OperatorType { kBinary, kUnary, kAssignment, kUpdate };
 
 // Base class for all operators
 class Operator : public Node {
 public:
   explicit Operator(zc::String symbol, OperatorType type, OperatorPrecedence precedence,
-                   OperatorAssociativity associativity);
+                    OperatorAssociativity associativity);
   ~Operator() noexcept(false) override;
 
   ZC_DISALLOW_COPY_AND_MOVE(Operator);

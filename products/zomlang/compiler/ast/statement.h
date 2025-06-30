@@ -242,8 +242,9 @@ public:
 
 class InterfaceDeclaration : public Statement {
 public:
-  InterfaceDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<Statement>>&& members,
-                       zc::Vector<zc::Own<Identifier>>&& extends = zc::Vector<zc::Own<Identifier>>());
+  InterfaceDeclaration(
+      zc::Own<Identifier> name, zc::Vector<zc::Own<Statement>>&& members,
+      zc::Vector<zc::Own<Identifier>>&& extends = zc::Vector<zc::Own<Identifier>>());
   ~InterfaceDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(InterfaceDeclaration);
