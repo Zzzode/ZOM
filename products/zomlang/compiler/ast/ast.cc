@@ -27,9 +27,12 @@ namespace ast {
 struct Node::Impl {
   source::SourceRange range;
   SyntaxKind kind;
+  const Node* parent = nullptr;
+
+  Impl(SyntaxKind kind) : kind(kind) {}
 };
 
-Node::Node(SyntaxKind kind) noexcept : impl(zc::heap<Impl>()) { impl->kind = kind; }
+Node::Node(SyntaxKind kind) noexcept : impl(zc::heap<Impl>(kind)) {}
 Node::~Node() noexcept(false) = default;
 
 // Node sourceRange method implementation
@@ -69,7 +72,8 @@ bool Node::isExpression() const {
          impl->kind == SyntaxKind::kArrayLiteralExpression ||
          impl->kind == SyntaxKind::kObjectLiteralExpression ||
          impl->kind == SyntaxKind::kUpdateExpression || impl->kind == SyntaxKind::kCastExpression ||
-         impl->kind == SyntaxKind::kAwaitExpression ||
+         impl->kind == SyntaxKind::kAwaitExpression || impl->kind == SyntaxKind::kVoidExpression ||
+         impl->kind == SyntaxKind::kTypeOfExpression ||
          impl->kind == SyntaxKind::kOptionalExpression || impl->kind == SyntaxKind::kIdentifier ||
          impl->kind == SyntaxKind::kBindingIdentifier || impl->kind == SyntaxKind::kLiteral ||
          impl->kind == SyntaxKind::kStringLiteral || impl->kind == SyntaxKind::kNumericLiteral ||

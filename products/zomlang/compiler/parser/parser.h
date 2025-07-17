@@ -75,6 +75,8 @@ class CallExpression;
 class MemberExpression;
 class UpdateExpression;
 class CastExpression;
+class VoidExpression;
+class TypeOfExpression;
 class AwaitExpression;
 class LeftHandSideExpression;
 class OptionalExpression;
@@ -116,6 +118,23 @@ public:
   /// \brief Parse the source file and return the AST.
   /// \return The AST if parsing succeeded, zc::Nothing otherwise.
   zc::Maybe<zc::Own<ast::Node>> parse();
+
+  /// Lookahead functionality
+  /// \brief Look ahead n tokens without consuming them
+  /// \param n The number of tokens to look ahead (1-based, 1 means next token)
+  /// \return The token at position n, or EOF token if beyond end
+  const lexer::Token& lookAhead(unsigned n) const;
+
+  /// \brief Check if we can look ahead n tokens
+  /// \param n The number of tokens to look ahead
+  /// \return true if we can look ahead n tokens, false otherwise
+  bool canLookAhead(unsigned n) const;
+
+  /// \brief Look ahead and check if the nth token matches the given kind
+  /// \param n The number of tokens to look ahead (1-based)
+  /// \param kind The token kind to check for
+  /// \return true if the nth token matches the kind, false otherwise
+  bool isLookAhead(unsigned n, lexer::TokenKind kind) const;
 
 private:
   void finishNode(ast::Node* node, const source::SourceRange& range);
@@ -206,16 +225,21 @@ private:
   zc::Maybe<zc::Own<ast::Expression>> parseExponentiationExpression();
   zc::Maybe<zc::Own<ast::CastExpression>> parseCastExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseUnaryExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseSimpleUnaryExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseUpdateExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseLeftHandSideExpressionOrHigher();
-  zc::Maybe<zc::Own<ast::Expression>> parseMemberExpressionOrHigher();
-  zc::Maybe<zc::Own<ast::Expression>> parseCallExpressionRest(zc::Own<ast::Expression> expr);
+  zc::Maybe<zc::Own<ast::UnaryExpression>> parseSimpleUnaryExpression();
+  zc::Maybe<zc::Own<ast::UnaryExpression>> parsePrefixUnaryExpression();
+  zc::Maybe<zc::Own<ast::VoidExpression>> parseVoidExpression();
+  zc::Maybe<zc::Own<ast::TypeOfExpression>> parseTypeOfExpression();
+  zc::Maybe<zc::Own<ast::UpdateExpression>> parseUpdateExpression();
+  zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseLeftHandSideExpressionOrHigher();
+  zc::Maybe<zc::Own<ast::MemberExpression>> parseMemberExpressionOrHigher();
+  zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseCallExpressionRest(
+      zc::Own<ast::MemberExpression> expr);
+  zc::Maybe<zc::Own<ast::MemberExpression>> parseMemberExpressionRest(
+      zc::Own<ast::MemberExpression> expr, bool allowOptionalChain);
+  zc::Maybe<zc::Own<ast::MemberExpression>> parseSuperExpression();
   zc::Maybe<zc::Own<ast::AwaitExpression>> parseAwaitExpression();
   zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseLeftHandSideExpression();
   zc::Maybe<zc::Own<ast::OptionalExpression>> parseOptionalExpression();
-  zc::Maybe<zc::Own<ast::CallExpression>> parseCallExpression();
-  zc::Maybe<zc::Own<ast::MemberExpression>> parseMemberExpression();
   zc::Maybe<zc::Own<ast::NewExpression>> parseNewExpression();
   zc::Maybe<zc::Own<ast::PrimaryExpression>> parsePrimaryExpression();
   zc::Maybe<zc::Own<ast::ParenthesizedExpression>> parseParenthesizedExpression();
@@ -247,6 +271,10 @@ private:
   bool consumeToken(lexer::TokenKind kind);
   const lexer::Token& currentToken() const;
   void skipToken();
+
+  // Argument list parsing
+  zc::Maybe<zc::Vector<zc::Own<ast::Expression>>> parseArgumentList();
+  zc::Maybe<zc::Vector<zc::Own<ast::Type>>> parseTypeArgumentsInExpression();
 
   /// Helper functions for parsing
   bool isStartOfStatement() const;

@@ -120,28 +120,6 @@ bool AssignmentOperator::isCompound() const {
   return symbol != "=";
 }
 
-// ================================================================================
-// UpdateOperator::Impl
-
-struct UpdateOperator::Impl {
-  const bool prefix;
-
-  explicit Impl(bool p) : prefix(p) {}
-};
-
-// ================================================================================
-// UpdateOperator
-
-UpdateOperator::UpdateOperator(zc::String symbol, bool prefix)
-    : Operator(zc::mv(symbol), OperatorType::kUpdate,
-               prefix ? OperatorPrecedence::kUnary : OperatorPrecedence::kPostfix,
-               OperatorAssociativity::kRight),
-      impl(zc::heap<Impl>(prefix)) {}
-
-UpdateOperator::~UpdateOperator() noexcept(false) = default;
-
-bool UpdateOperator::isPrefix() const { return impl->prefix; }
-
 }  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang

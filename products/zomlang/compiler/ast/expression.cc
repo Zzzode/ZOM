@@ -28,9 +28,20 @@ Expression::Expression(SyntaxKind kind) noexcept : Node(kind) {}
 Expression::~Expression() noexcept(false) = default;
 
 // ================================================================================
-// UnaryExpression::Impl
+// UnaryExpression
+UnaryExpression::UnaryExpression(SyntaxKind kind) noexcept : Expression(kind) {}
+UnaryExpression::~UnaryExpression() noexcept(false) = default;
 
-struct UnaryExpression::Impl {
+// ================================================================================
+// UpdateExpression
+
+UpdateExpression::UpdateExpression(SyntaxKind kind) noexcept : UnaryExpression(kind) {}
+UpdateExpression::~UpdateExpression() noexcept(false) = default;
+
+// ================================================================================
+// PrefixUnaryExpression::Impl
+
+struct PrefixUnaryExpression::Impl {
   const zc::Own<UnaryOperator> op;
   const zc::Own<Expression> operand;
 
@@ -39,54 +50,47 @@ struct UnaryExpression::Impl {
 };
 
 // ================================================================================
-// UnaryExpression
-UnaryExpression::UnaryExpression(zc::Own<UnaryOperator> op, zc::Own<Expression> operand)
-    : Expression(SyntaxKind::kUnaryExpression), impl(zc::heap<Impl>(zc::mv(op), zc::mv(operand))) {}
+// PrefixUnaryExpression
 
-UnaryExpression::UnaryExpression(SyntaxKind kind)
-    : Expression(kind),
-      impl(zc::heap<Impl>(zc::heap<UnaryOperator>(zc::str("+"), true),
-                          zc::heap<StringLiteral>(zc::str("")))) {}
+PrefixUnaryExpression::PrefixUnaryExpression(zc::Own<UnaryOperator> op,
+                                             zc::Own<Expression> operand) noexcept
+    : UpdateExpression(SyntaxKind::kPrefixUnaryExpression),
+      impl(zc::heap<Impl>(zc::mv(op), zc::mv(operand))) {}
 
-UnaryExpression::~UnaryExpression() noexcept(false) = default;
+PrefixUnaryExpression::~PrefixUnaryExpression() noexcept(false) = default;
 
-const UnaryOperator* UnaryExpression::getOperator() const { return impl->op.get(); }
+const UnaryOperator* PrefixUnaryExpression::getOperator() const { return impl->op.get(); }
 
-const Expression* UnaryExpression::getOperand() const { return impl->operand.get(); }
+const Expression* PrefixUnaryExpression::getOperand() const { return impl->operand.get(); }
 
-bool UnaryExpression::isPrefix() const { return impl->op->isPrefix(); }
+bool PrefixUnaryExpression::isPrefix() const { return true; }
 
 // ================================================================================
-// UpdateExpression::Impl
+// PostfixUnaryExpression::Impl
 
-struct UpdateExpression::Impl {
-  const zc::Own<UpdateOperator> op;
+struct PostfixUnaryExpression::Impl {
+  const zc::Own<UnaryOperator> op;
   const zc::Own<Expression> operand;
 
-  Impl(zc::Own<UpdateOperator> o, zc::Own<Expression> operand)
+  Impl(zc::Own<UnaryOperator> o, zc::Own<Expression> operand)
       : op(zc::mv(o)), operand(zc::mv(operand)) {}
 };
 
 // ================================================================================
-// UpdateExpression
+// PostfixUnaryExpression
 
-UpdateExpression::UpdateExpression(zc::Own<UpdateOperator> op, zc::Own<Expression> operand)
-    : UnaryExpression(zc::heap<UnaryOperator>(zc::str(op->getSymbol()), op->isPrefix()),
-                      zc::mv(operand)),
-      impl(zc::heap<Impl>(zc::mv(op), zc::heap<StringLiteral>(zc::str("")))) {}
+PostfixUnaryExpression::PostfixUnaryExpression(zc::Own<UnaryOperator> op,
+                                               zc::Own<Expression> operand) noexcept
+    : UpdateExpression(SyntaxKind::kPostfixUnaryExpression),
+      impl(zc::heap<Impl>(zc::mv(op), zc::mv(operand))) {}
 
-UpdateExpression::UpdateExpression(SyntaxKind kind)
-    : UnaryExpression(kind),
-      impl(zc::heap<Impl>(zc::heap<UpdateOperator>(zc::str("++"), true),
-                          zc::heap<StringLiteral>(zc::str("")))) {}
+PostfixUnaryExpression::~PostfixUnaryExpression() noexcept(false) = default;
 
-UpdateExpression::~UpdateExpression() noexcept(false) = default;
+const UnaryOperator* PostfixUnaryExpression::getOperator() const { return impl->op.get(); }
 
-const UpdateOperator* UpdateExpression::getOperator() const { return impl->op.get(); }
+const Expression* PostfixUnaryExpression::getOperand() const { return impl->operand.get(); }
 
-const Expression* UpdateExpression::getOperand() const { return impl->operand.get(); }
-
-bool UpdateExpression::isPrefix() const { return impl->op->isPrefix(); }
+bool PostfixUnaryExpression::isPrefix() const { return false; }
 
 // ================================================================================
 // LeftHandSideExpression
@@ -110,14 +114,9 @@ struct NewExpression::Impl {
 // NewExpression
 
 NewExpression::NewExpression(zc::Own<Expression> callee,
-                             zc::Vector<zc::Own<Expression>>&& arguments)
-    : LeftHandSideExpression(SyntaxKind::kNewExpression),
+                             zc::Vector<zc::Own<Expression>>&& arguments) noexcept
+    : PrimaryExpression(SyntaxKind::kNewExpression),
       impl(zc::heap<Impl>(zc::mv(callee), zc::mv(arguments))) {}
-
-NewExpression::NewExpression(SyntaxKind kind)
-    : LeftHandSideExpression(kind),
-      impl(zc::heap<Impl>(zc::heap<StringLiteral>(zc::str("")),
-                          zc::Vector<zc::Own<Expression>>())) {}
 
 NewExpression::~NewExpression() noexcept(false) = default;
 
@@ -126,43 +125,15 @@ const Expression* NewExpression::getCallee() const { return impl->callee.get(); 
 const NodeList<Expression>& NewExpression::getArguments() const { return impl->arguments; }
 
 // ================================================================================
-// MemberExpression::Impl
-
-struct MemberExpression::Impl {
-  const zc::Own<Expression> object;
-  const zc::Own<Expression> property;
-  const bool computed;
-
-  Impl(zc::Own<Expression> o, zc::Own<Expression> p, bool c)
-      : object(zc::mv(o)), property(zc::mv(p)), computed(c) {}
-};
-
-// ================================================================================
 // MemberExpression
 
-MemberExpression::MemberExpression(zc::Own<Expression> object, zc::Own<Expression> property,
-                                   bool computed)
-    : NewExpression(zc::heap<StringLiteral>(zc::str("")), zc::Vector<zc::Own<Expression>>()),
-      impl(zc::heap<Impl>(zc::mv(object), zc::mv(property), computed)) {}
-
-MemberExpression::MemberExpression(SyntaxKind kind)
-    : NewExpression(kind),
-      impl(zc::heap<Impl>(zc::heap<StringLiteral>(zc::str("")),
-                          zc::heap<StringLiteral>(zc::str("")), false)) {}
-
+MemberExpression::MemberExpression(SyntaxKind kind) noexcept : LeftHandSideExpression(kind) {}
 MemberExpression::~MemberExpression() noexcept(false) = default;
-
-const Expression* MemberExpression::getObject() const { return impl->object.get(); }
-
-const Expression* MemberExpression::getProperty() const { return impl->property.get(); }
-
-bool MemberExpression::isComputed() const { return impl->computed; }
 
 // ================================================================================
 // PrimaryExpression
 
 PrimaryExpression::PrimaryExpression(SyntaxKind kind) noexcept : MemberExpression(kind) {}
-
 PrimaryExpression::~PrimaryExpression() noexcept(false) = default;
 
 // ================================================================================
@@ -180,7 +151,7 @@ struct CallExpression::Impl {
 // CallExpression
 
 CallExpression::CallExpression(zc::Own<Expression> callee,
-                               zc::Vector<zc::Own<Expression>>&& arguments)
+                               zc::Vector<zc::Own<Expression>>&& arguments) noexcept
     : LeftHandSideExpression(SyntaxKind::kCallExpression),
       impl(zc::heap<Impl>(zc::mv(callee), zc::mv(arguments))) {}
 
@@ -229,7 +200,7 @@ struct BinaryExpression::Impl {
 // BinaryExpression
 
 BinaryExpression::BinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
-                                   zc::Own<Expression> right)
+                                   zc::Own<Expression> right) noexcept
     : Expression(SyntaxKind::kBinaryExpression),
       impl(zc::heap<Impl>(zc::mv(left), zc::mv(op), zc::mv(right))) {}
 
@@ -257,7 +228,7 @@ struct AssignmentExpression::Impl {
 // AssignmentExpression
 
 AssignmentExpression::AssignmentExpression(zc::Own<Expression> left, zc::Own<AssignmentOperator> op,
-                                           zc::Own<Expression> right)
+                                           zc::Own<Expression> right) noexcept
     : Expression(SyntaxKind::kAssignmentExpression),
       impl(zc::heap<Impl>(zc::mv(left), zc::mv(op), zc::mv(right))) {}
 
@@ -286,7 +257,7 @@ struct ConditionalExpression::Impl {
 
 ConditionalExpression::ConditionalExpression(zc::Own<Expression> test,
                                              zc::Own<Expression> consequent,
-                                             zc::Own<Expression> alternate)
+                                             zc::Own<Expression> alternate) noexcept
     : Expression(SyntaxKind::kConditionalExpression),
       impl(zc::heap<Impl>(zc::mv(test), zc::mv(consequent), zc::mv(alternate))) {}
 
@@ -310,7 +281,7 @@ struct Identifier::Impl {
 // ================================================================================
 // Identifier
 
-Identifier::Identifier(zc::String name)
+Identifier::Identifier(zc::String name) noexcept
     : PrimaryExpression(SyntaxKind::kIdentifier), impl(zc::heap<Impl>(zc::mv(name))) {}
 
 Identifier::~Identifier() noexcept(false) = default;
@@ -320,7 +291,7 @@ const zc::StringPtr Identifier::getName() const { return impl->name.asPtr(); }
 // ================================================================================
 // LiteralExpression
 
-LiteralExpression::LiteralExpression(SyntaxKind kind) : PrimaryExpression(kind) {}
+LiteralExpression::LiteralExpression(SyntaxKind kind) noexcept : PrimaryExpression(kind) {}
 
 LiteralExpression::~LiteralExpression() noexcept(false) = default;
 
@@ -336,7 +307,7 @@ struct StringLiteral::Impl {
 // ================================================================================
 // StringLiteral
 
-StringLiteral::StringLiteral(zc::String value)
+StringLiteral::StringLiteral(zc::String value) noexcept
     : LiteralExpression(SyntaxKind::kStringLiteral), impl(zc::heap<Impl>(zc::mv(value))) {}
 
 StringLiteral::~StringLiteral() noexcept(false) = default;
@@ -355,7 +326,7 @@ struct NumericLiteral::Impl {
 // ================================================================================
 // NumericLiteral
 
-NumericLiteral::NumericLiteral(double value)
+NumericLiteral::NumericLiteral(double value) noexcept
     : LiteralExpression(SyntaxKind::kNumericLiteral), impl(zc::heap<Impl>(value)) {}
 
 NumericLiteral::~NumericLiteral() noexcept(false) = default;
@@ -374,7 +345,7 @@ struct BooleanLiteral::Impl {
 // ================================================================================
 // BooleanLiteral
 
-BooleanLiteral::BooleanLiteral(bool value)
+BooleanLiteral::BooleanLiteral(bool value) noexcept
     : LiteralExpression(SyntaxKind::kBooleanLiteral), impl(zc::heap<Impl>(value)) {}
 
 BooleanLiteral::~BooleanLiteral() noexcept(false) = default;
@@ -384,8 +355,7 @@ bool BooleanLiteral::getValue() const { return impl->value; }
 // ================================================================================
 // NilLiteral
 
-NilLiteral::NilLiteral() : LiteralExpression(SyntaxKind::kNilLiteral) {}
-
+NilLiteral::NilLiteral() noexcept : LiteralExpression(SyntaxKind::kNilLiteral) {}
 NilLiteral::~NilLiteral() noexcept(false) = default;
 
 // ================================================================================
@@ -404,7 +374,7 @@ struct CastExpression::Impl {
 // CastExpression
 
 CastExpression::CastExpression(zc::Own<Expression> expression, zc::String targetType,
-                               bool isOptional)
+                               bool isOptional) noexcept
     : Expression(SyntaxKind::kCastExpression),
       impl(zc::heap<Impl>(zc::mv(expression), zc::mv(targetType), isOptional)) {}
 
@@ -415,6 +385,44 @@ const Expression* CastExpression::getExpression() const { return impl->expressio
 zc::StringPtr CastExpression::getTargetType() const { return impl->targetType.asPtr(); }
 
 bool CastExpression::isOptional() const { return impl->isOptional; }
+
+// ================================================================================
+// VoidExpression::Impl
+
+struct VoidExpression::Impl {
+  const zc::Own<Expression> expression;
+
+  explicit Impl(zc::Own<Expression> expr) : expression(zc::mv(expr)) {}
+};
+
+// ================================================================================
+// VoidExpression
+
+VoidExpression::VoidExpression(zc::Own<Expression> expression) noexcept
+    : UnaryExpression(SyntaxKind::kVoidExpression), impl(zc::heap<Impl>(zc::mv(expression))) {}
+
+VoidExpression::~VoidExpression() noexcept(false) = default;
+
+const Expression* VoidExpression::getExpression() const { return impl->expression.get(); }
+
+// ================================================================================
+// TypeOfExpression::Impl
+
+struct TypeOfExpression::Impl {
+  const zc::Own<Expression> expression;
+
+  explicit Impl(zc::Own<Expression> expr) : expression(zc::mv(expr)) {}
+};
+
+// ================================================================================
+// TypeOfExpression
+
+TypeOfExpression::TypeOfExpression(zc::Own<Expression> expression) noexcept
+    : UnaryExpression(SyntaxKind::kTypeOfExpression), impl(zc::heap<Impl>(zc::mv(expression))) {}
+
+TypeOfExpression::~TypeOfExpression() noexcept(false) = default;
+
+const Expression* TypeOfExpression::getExpression() const { return impl->expression.get(); }
 
 // ================================================================================
 // AwaitExpression::Impl
@@ -428,7 +436,7 @@ struct AwaitExpression::Impl {
 // ================================================================================
 // AwaitExpression
 
-AwaitExpression::AwaitExpression(zc::Own<Expression> expression)
+AwaitExpression::AwaitExpression(zc::Own<Expression> expression) noexcept
     : Expression(SyntaxKind::kAwaitExpression), impl(zc::heap<Impl>(zc::mv(expression))) {}
 
 AwaitExpression::~AwaitExpression() noexcept(false) = default;
@@ -447,12 +455,9 @@ struct ParenthesizedExpression::Impl {
 // ================================================================================
 // ParenthesizedExpression
 
-ParenthesizedExpression::ParenthesizedExpression(zc::Own<Expression> expression)
+ParenthesizedExpression::ParenthesizedExpression(zc::Own<Expression> expression) noexcept
     : PrimaryExpression(SyntaxKind::kParenthesizedExpression),
       impl(zc::heap<Impl>(zc::mv(expression))) {}
-
-ParenthesizedExpression::ParenthesizedExpression(SyntaxKind kind) noexcept
-    : PrimaryExpression(kind), impl(zc::heap<Impl>(zc::heap<StringLiteral>(zc::str("")))) {}
 
 ParenthesizedExpression::~ParenthesizedExpression() noexcept(false) = default;
 
@@ -470,7 +475,7 @@ struct ArrayLiteralExpression::Impl {
 // ================================================================================
 // ArrayLiteralExpression
 
-ArrayLiteralExpression::ArrayLiteralExpression(zc::Vector<zc::Own<Expression>>&& elements)
+ArrayLiteralExpression::ArrayLiteralExpression(zc::Vector<zc::Own<Expression>>&& elements) noexcept
     : PrimaryExpression(SyntaxKind::kArrayLiteralExpression),
       impl(zc::heap<Impl>(zc::mv(elements))) {}
 
@@ -490,7 +495,8 @@ struct ObjectLiteralExpression::Impl {
 // ================================================================================
 // ObjectLiteralExpression
 
-ObjectLiteralExpression::ObjectLiteralExpression(zc::Vector<zc::Own<Expression>>&& properties)
+ObjectLiteralExpression::ObjectLiteralExpression(
+    zc::Vector<zc::Own<Expression>>&& properties) noexcept
     : PrimaryExpression(SyntaxKind::kObjectLiteralExpression),
       impl(zc::heap<Impl>(zc::mv(properties))) {}
 
@@ -499,6 +505,77 @@ ObjectLiteralExpression::~ObjectLiteralExpression() noexcept(false) = default;
 const NodeList<Expression>& ObjectLiteralExpression::getProperties() const {
   return impl->properties;
 }
+
+// ================================================================================
+// PropertyAccessExpression::Impl
+
+struct PropertyAccessExpression::Impl {
+  zc::Own<LeftHandSideExpression> expression;
+  zc::Own<Identifier> name;
+  const bool questionDot;
+
+  Impl(zc::Own<LeftHandSideExpression> expr, zc::Own<Identifier> n, bool qDot)
+      : expression(zc::mv(expr)), name(zc::mv(n)), questionDot(qDot) {}
+
+  Impl() : questionDot(false) {}
+};
+
+// ================================================================================
+// PropertyAccessExpression
+
+PropertyAccessExpression::PropertyAccessExpression(zc::Own<LeftHandSideExpression> expression,
+                                                   zc::Own<Identifier> name,
+                                                   bool questionDot) noexcept
+    : MemberExpression(SyntaxKind::kPropertyAccessExpression),
+      impl(zc::heap<Impl>(zc::mv(expression), zc::mv(name), questionDot)) {}
+
+PropertyAccessExpression::~PropertyAccessExpression() noexcept(false) = default;
+
+LeftHandSideExpression* PropertyAccessExpression::getExpression() {
+  return const_cast<LeftHandSideExpression*>(impl->expression.get());
+}
+
+Identifier* PropertyAccessExpression::getName() {
+  return const_cast<Identifier*>(impl->name.get());
+}
+
+bool PropertyAccessExpression::isQuestionDot() { return impl->questionDot; }
+
+// ================================================================================
+// ElementAccessExpression::Impl
+
+struct ElementAccessExpression::Impl {
+  zc::Own<LeftHandSideExpression> expression;
+  zc::Own<Expression> index;
+  const bool questionDot;
+
+  Impl(zc::Own<LeftHandSideExpression> expr, zc::Own<Expression> idx, bool qDot)
+      : expression(zc::mv(expr)), index(zc::mv(idx)), questionDot(qDot) {}
+
+  Impl() : questionDot(false) {}
+};
+
+// ================================================================================
+// ElementAccessExpression
+
+ElementAccessExpression::ElementAccessExpression(SyntaxKind kind) noexcept
+    : MemberExpression(kind), impl(zc::heap<Impl>()) {}
+
+ElementAccessExpression::ElementAccessExpression(zc::Own<LeftHandSideExpression> expression,
+                                                 zc::Own<Expression> index,
+                                                 bool questionDot) noexcept
+    : MemberExpression(SyntaxKind::kElementAccessExpression),
+      impl(zc::heap<Impl>(zc::mv(expression), zc::mv(index), questionDot)) {}
+
+ElementAccessExpression::~ElementAccessExpression() noexcept(false) = default;
+
+const LeftHandSideExpression* ElementAccessExpression::getExpression() {
+  return impl->expression.get();
+}
+
+const Expression* ElementAccessExpression::getIndex() { return impl->index.get(); }
+
+bool ElementAccessExpression::isQuestionDot() { return impl->questionDot; }
 
 }  // namespace ast
 }  // namespace compiler

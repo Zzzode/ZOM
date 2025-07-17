@@ -89,7 +89,7 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(BinaryOperator);
 };
 
-// Unary operators: +, -, !, ~
+// Unary operators: +, -, !, ~, ++, --
 class UnaryOperator : public Operator {
 public:
   explicit UnaryOperator(zc::String symbol, bool prefix = true);
@@ -113,21 +113,6 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(AssignmentOperator);
 
   bool isCompound() const;
-};
-
-// Update operators: ++, --
-class UpdateOperator : public Operator {
-public:
-  explicit UpdateOperator(zc::String symbol, bool prefix = true);
-  ~UpdateOperator() noexcept(false) override;
-
-  ZC_DISALLOW_COPY_AND_MOVE(UpdateOperator);
-
-  bool isPrefix() const;
-
-private:
-  struct Impl;
-  const zc::Own<Impl> impl;
 };
 
 }  // namespace ast
