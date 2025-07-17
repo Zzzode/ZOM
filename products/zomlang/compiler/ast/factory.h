@@ -49,13 +49,16 @@ class AliasDeclaration;
 
 // Expression
 class BinaryExpression;
-class UnaryExpression;
+class PrefixUnaryExpression;
+class PostfixUnaryExpression;
 class AssignmentExpression;
 class ConditionalExpression;
 class CallExpression;
 class MemberExpression;
 class UpdateExpression;
 class CastExpression;
+class VoidExpression;
+class TypeOfExpression;
 class AwaitExpression;
 class NewExpression;
 class ParenthesizedExpression;
@@ -65,6 +68,10 @@ class NumericLiteral;
 class BooleanLiteral;
 class NilLiteral;
 class DebuggerStatement;
+class OptionalExpression;
+class PropertyAccessExpression;
+class ElementAccessExpression;
+class LeftHandSideExpression;
 
 // Types
 class Type;
@@ -149,8 +156,11 @@ zc::Own<EmptyStatement> createEmptyStatement();
 zc::Own<Expression> createBinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
                                            zc::Own<Expression> right);
 
-zc::Own<UnaryExpression> createUnaryExpression(zc::Own<UnaryOperator> op,
-                                               zc::Own<Expression> operand);
+zc::Own<PrefixUnaryExpression> createPrefixUnaryExpression(zc::Own<UnaryOperator> op,
+                                                           zc::Own<Expression> operand);
+
+zc::Own<PostfixUnaryExpression> createPostfixUnaryExpression(zc::Own<UnaryOperator> op,
+                                                             zc::Own<Expression> operand);
 
 zc::Own<AssignmentExpression> createAssignmentExpression(zc::Own<Expression> left,
                                                          zc::Own<AssignmentOperator> op,
@@ -163,15 +173,22 @@ zc::Own<ConditionalExpression> createConditionalExpression(zc::Own<Expression> t
 zc::Own<CallExpression> createCallExpression(zc::Own<Expression> callee,
                                              zc::Vector<zc::Own<Expression>>&& arguments);
 
-zc::Own<MemberExpression> createMemberExpression(zc::Own<Expression> object,
-                                                 zc::Own<Expression> property,
-                                                 bool computed = false);
+zc::Own<PropertyAccessExpression> createPropertyAccessExpression(
+    zc::Own<LeftHandSideExpression> expression, zc::Own<Identifier> name, bool questionDot = false);
 
-zc::Own<UpdateExpression> createUpdateExpression(zc::Own<UpdateOperator> op,
-                                                 zc::Own<Expression> operand);
+zc::Own<ElementAccessExpression> createElementAccessExpression(
+    zc::Own<LeftHandSideExpression> expression, zc::Own<Expression> index,
+    bool questionDot = false);
+
+zc::Own<OptionalExpression> createOptionalExpression(zc::Own<Expression> object,
+                                                     zc::Own<Expression> property);
 
 zc::Own<CastExpression> createCastExpression(zc::Own<Expression> expression,
                                              zc::String&& targetType, bool isOptional = false);
+
+zc::Own<VoidExpression> createVoidExpression(zc::Own<Expression> expression);
+
+zc::Own<TypeOfExpression> createTypeOfExpression(zc::Own<Expression> expression);
 
 zc::Own<AwaitExpression> createAwaitExpression(zc::Own<Expression> expression);
 
@@ -225,8 +242,6 @@ zc::Own<UnaryOperator> createUnaryOperator(zc::String&& symbol, bool prefix = tr
 
 zc::Own<AssignmentOperator> createAssignmentOperator(zc::String&& symbol);
 
-zc::Own<UpdateOperator> createUpdateOperator(zc::String&& symbol, bool prefix = true);
-
 // Predefined operator factory functions for common operators
 zc::Own<BinaryOperator> createAddOperator();           // +
 zc::Own<BinaryOperator> createSubtractOperator();      // -
@@ -242,19 +257,20 @@ zc::Own<BinaryOperator> createGreaterEqualOperator();  // >=
 zc::Own<BinaryOperator> createLogicalAndOperator();    // &&
 zc::Own<BinaryOperator> createLogicalOrOperator();     // ||
 
-zc::Own<UnaryOperator> createUnaryPlusOperator();   // +
-zc::Own<UnaryOperator> createUnaryMinusOperator();  // -
-zc::Own<UnaryOperator> createLogicalNotOperator();  // !
-zc::Own<UnaryOperator> createBitwiseNotOperator();  // ~
+zc::Own<UnaryOperator> createUnaryPlusOperator();      // +
+zc::Own<UnaryOperator> createUnaryMinusOperator();     // -
+zc::Own<UnaryOperator> createLogicalNotOperator();     // !
+zc::Own<UnaryOperator> createBitwiseNotOperator();     // ~
+zc::Own<UnaryOperator> createPreIncrementOperator();   // ++x
+zc::Own<UnaryOperator> createPostIncrementOperator();  // x++
+zc::Own<UnaryOperator> createPreDecrementOperator();   // --x
+zc::Own<UnaryOperator> createPostDecrementOperator();  // x--
+zc::Own<UnaryOperator> createVoidOperator();           // void
+zc::Own<UnaryOperator> createTypeOfOperator();         // typeof
 
 zc::Own<AssignmentOperator> createAssignOperator();          // =
 zc::Own<AssignmentOperator> createAddAssignOperator();       // +=
 zc::Own<AssignmentOperator> createSubtractAssignOperator();  // -=
-
-zc::Own<UpdateOperator> createPreIncrementOperator();   // ++x
-zc::Own<UpdateOperator> createPostIncrementOperator();  // x++
-zc::Own<UpdateOperator> createPreDecrementOperator();   // --x
-zc::Own<UpdateOperator> createPostDecrementOperator();  // x--
 
 }  // namespace factory
 }  // namespace ast

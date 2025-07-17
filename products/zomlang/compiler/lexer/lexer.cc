@@ -48,6 +48,10 @@ struct Lexer::Impl {
   LexerMode currentMode;
   CommentRetentionMode commentMode;
 
+  // Lookahead token cache
+  mutable zc::Vector<Token> tokenCache;
+  mutable bool cacheInitialized = false;
+
   Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
        const basic::LangOptions& options, const source::BufferId& bufferId)
       : sourceMgr(sourceMgr),
@@ -387,123 +391,123 @@ struct Lexer::Impl {
     while (curPtr < bufferEnd && isIdentifierContinuation(*curPtr)) { curPtr++; }
 
     // Check if it's a keyword
-    zc::String text = zc::str(zc::ArrayPtr<const zc::byte>(tokStart, curPtr));
+    auto textPtr = zc::ArrayPtr<const zc::byte>(tokStart, curPtr);
 
-    TokenKind kind = getKeywordKind(text);
+    TokenKind kind = getKeywordKind(textPtr);
     if (kind == TokenKind::kUnknown) { kind = TokenKind::kIdentifier; }
 
     formToken(kind, tokStart);
   }
 
-  TokenKind getKeywordKind(const zc::StringPtr text) {
+  TokenKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
     // Keywords from ZomLexer.g4
-    if (text == "abstract") return TokenKind::kAbstractKeyword;
-    if (text == "accessor") return TokenKind::kAccessorKeyword;
-    if (text == "any") return TokenKind::kAnyKeyword;
-    if (text == "as") return TokenKind::kAsKeyword;
-    if (text == "asserts") return TokenKind::kAssertsKeyword;
-    if (text == "assert") return TokenKind::kAssertKeyword;
-    if (text == "async") return TokenKind::kAsyncKeyword;
-    if (text == "await") return TokenKind::kAwaitKeyword;
-    if (text == "bigint") return TokenKind::kBigIntKeyword;
-    if (text == "boolean") return TokenKind::kBooleanKeyword;
-    if (text == "break") return TokenKind::kBreakKeyword;
-    if (text == "case") return TokenKind::kCaseKeyword;
-    if (text == "catch") return TokenKind::kCatchKeyword;
-    if (text == "class") return TokenKind::kClassKeyword;
-    if (text == "continue") return TokenKind::kContinueKeyword;
-    if (text == "const") return TokenKind::kConstKeyword;
-    if (text == "constructor") return TokenKind::kConstructorKeyword;
-    if (text == "debugger") return TokenKind::kDebuggerKeyword;
-    if (text == "declare") return TokenKind::kDeclareKeyword;
-    if (text == "default") return TokenKind::kDefaultKeyword;
-    if (text == "delete") return TokenKind::kDeleteKeyword;
-    if (text == "do") return TokenKind::kDoKeyword;
-    if (text == "extends") return TokenKind::kExtendsKeyword;
-    if (text == "export") return TokenKind::kExportKeyword;
-    if (text == "false") return TokenKind::kFalseKeyword;
-    if (text == "finally") return TokenKind::kFinallyKeyword;
-    if (text == "from") return TokenKind::kFromKeyword;
-    if (text == "fun") return TokenKind::kFunKeyword;
-    if (text == "get") return TokenKind::kGetKeyword;
-    if (text == "global") return TokenKind::kGlobalKeyword;
-    if (text == "if") return TokenKind::kIfKeyword;
-    if (text == "immediate") return TokenKind::kImmediateKeyword;
-    if (text == "implements") return TokenKind::kImplementsKeyword;
-    if (text == "import") return TokenKind::kImportKeyword;
-    if (text == "in") return TokenKind::kInKeyword;
-    if (text == "infer") return TokenKind::kInferKeyword;
-    if (text == "instanceof") return TokenKind::kInstanceOfKeyword;
-    if (text == "interface") return TokenKind::kInterfaceKeyword;
-    if (text == "intrinsic") return TokenKind::kIntrinsicKeyword;
-    if (text == "is") return TokenKind::kIsKeyword;
-    if (text == "keyof") return TokenKind::kKeyOfKeyword;
-    if (text == "let") return TokenKind::kLetKeyword;
-    if (text == "match") return TokenKind::kMatchKeyword;
-    if (text == "module") return TokenKind::kModuleKeyword;
-    if (text == "mutable") return TokenKind::kMutableKeyword;
-    if (text == "namespace") return TokenKind::kNamespaceKeyword;
-    if (text == "never") return TokenKind::kNeverKeyword;
-    if (text == "new") return TokenKind::kNewKeyword;
-    if (text == "number") return TokenKind::kNumberKeyword;
-    if (text == "null") return TokenKind::kNullKeyword;
-    if (text == "object") return TokenKind::kObjectKeyword;
-    if (text == "of") return TokenKind::kOfKeyword;
-    if (text == "optional") return TokenKind::kOptionalKeyword;
-    if (text == "out") return TokenKind::kOutKeyword;
-    if (text == "override") return TokenKind::kOverrideKeyword;
-    if (text == "package") return TokenKind::kPackageKeyword;
-    if (text == "private") return TokenKind::kPrivateKeyword;
-    if (text == "protected") return TokenKind::kProtectedKeyword;
-    if (text == "public") return TokenKind::kPublicKeyword;
-    if (text == "readonly") return TokenKind::kReadonlyKeyword;
-    if (text == "require") return TokenKind::kRequireKeyword;
-    if (text == "return") return TokenKind::kReturnKeyword;
-    if (text == "satisfies") return TokenKind::kSatisfiesKeyword;
-    if (text == "set") return TokenKind::kSetKeyword;
-    if (text == "static") return TokenKind::kStaticKeyword;
-    if (text == "super") return TokenKind::kSuperKeyword;
-    if (text == "switch") return TokenKind::kSwitchKeyword;
-    if (text == "symbol") return TokenKind::kSymbolKeyword;
-    if (text == "this") return TokenKind::kThisKeyword;
-    if (text == "throw") return TokenKind::kThrowKeyword;
-    if (text == "true") return TokenKind::kTrueKeyword;
-    if (text == "try") return TokenKind::kTryKeyword;
-    if (text == "typeof") return TokenKind::kTypeOfKeyword;
-    if (text == "undefined") return TokenKind::kUndefinedKeyword;
-    if (text == "unique") return TokenKind::kUniqueKeyword;
-    if (text == "using") return TokenKind::kUsingKeyword;
-    if (text == "var") return TokenKind::kVarKeyword;
-    if (text == "void") return TokenKind::kVoidKeyword;
-    if (text == "when") return TokenKind::kWhenKeyword;
-    if (text == "with") return TokenKind::kWithKeyword;
-    if (text == "yield") return TokenKind::kYieldKeyword;
+    if (text == "abstract"_zcb) return TokenKind::kAbstractKeyword;
+    if (text == "accessor"_zcb) return TokenKind::kAccessorKeyword;
+    if (text == "any"_zcb) return TokenKind::kAnyKeyword;
+    if (text == "as"_zcb) return TokenKind::kAsKeyword;
+    if (text == "asserts"_zcb) return TokenKind::kAssertsKeyword;
+    if (text == "assert"_zcb) return TokenKind::kAssertKeyword;
+    if (text == "async"_zcb) return TokenKind::kAsyncKeyword;
+    if (text == "await"_zcb) return TokenKind::kAwaitKeyword;
+    if (text == "bigint"_zcb) return TokenKind::kBigIntKeyword;
+    if (text == "boolean"_zcb) return TokenKind::kBooleanKeyword;
+    if (text == "break"_zcb) return TokenKind::kBreakKeyword;
+    if (text == "case"_zcb) return TokenKind::kCaseKeyword;
+    if (text == "catch"_zcb) return TokenKind::kCatchKeyword;
+    if (text == "class"_zcb) return TokenKind::kClassKeyword;
+    if (text == "continue"_zcb) return TokenKind::kContinueKeyword;
+    if (text == "const"_zcb) return TokenKind::kConstKeyword;
+    if (text == "constructor"_zcb) return TokenKind::kConstructorKeyword;
+    if (text == "debugger"_zcb) return TokenKind::kDebuggerKeyword;
+    if (text == "declare"_zcb) return TokenKind::kDeclareKeyword;
+    if (text == "default"_zcb) return TokenKind::kDefaultKeyword;
+    if (text == "delete"_zcb) return TokenKind::kDeleteKeyword;
+    if (text == "do"_zcb) return TokenKind::kDoKeyword;
+    if (text == "extends"_zcb) return TokenKind::kExtendsKeyword;
+    if (text == "export"_zcb) return TokenKind::kExportKeyword;
+    if (text == "false"_zcb) return TokenKind::kFalseKeyword;
+    if (text == "finally"_zcb) return TokenKind::kFinallyKeyword;
+    if (text == "from"_zcb) return TokenKind::kFromKeyword;
+    if (text == "fun"_zcb) return TokenKind::kFunKeyword;
+    if (text == "get"_zcb) return TokenKind::kGetKeyword;
+    if (text == "global"_zcb) return TokenKind::kGlobalKeyword;
+    if (text == "if"_zcb) return TokenKind::kIfKeyword;
+    if (text == "immediate"_zcb) return TokenKind::kImmediateKeyword;
+    if (text == "implements"_zcb) return TokenKind::kImplementsKeyword;
+    if (text == "import"_zcb) return TokenKind::kImportKeyword;
+    if (text == "in"_zcb) return TokenKind::kInKeyword;
+    if (text == "infer"_zcb) return TokenKind::kInferKeyword;
+    if (text == "instanceof"_zcb) return TokenKind::kInstanceOfKeyword;
+    if (text == "interface"_zcb) return TokenKind::kInterfaceKeyword;
+    if (text == "intrinsic"_zcb) return TokenKind::kIntrinsicKeyword;
+    if (text == "is"_zcb) return TokenKind::kIsKeyword;
+    if (text == "keyof"_zcb) return TokenKind::kKeyOfKeyword;
+    if (text == "let"_zcb) return TokenKind::kLetKeyword;
+    if (text == "match"_zcb) return TokenKind::kMatchKeyword;
+    if (text == "module"_zcb) return TokenKind::kModuleKeyword;
+    if (text == "mutable"_zcb) return TokenKind::kMutableKeyword;
+    if (text == "namespace"_zcb) return TokenKind::kNamespaceKeyword;
+    if (text == "never"_zcb) return TokenKind::kNeverKeyword;
+    if (text == "new"_zcb) return TokenKind::kNewKeyword;
+    if (text == "number"_zcb) return TokenKind::kNumberKeyword;
+    if (text == "null"_zcb) return TokenKind::kNullKeyword;
+    if (text == "object"_zcb) return TokenKind::kObjectKeyword;
+    if (text == "of"_zcb) return TokenKind::kOfKeyword;
+    if (text == "optional"_zcb) return TokenKind::kOptionalKeyword;
+    if (text == "out"_zcb) return TokenKind::kOutKeyword;
+    if (text == "override"_zcb) return TokenKind::kOverrideKeyword;
+    if (text == "package"_zcb) return TokenKind::kPackageKeyword;
+    if (text == "private"_zcb) return TokenKind::kPrivateKeyword;
+    if (text == "protected"_zcb) return TokenKind::kProtectedKeyword;
+    if (text == "public"_zcb) return TokenKind::kPublicKeyword;
+    if (text == "readonly"_zcb) return TokenKind::kReadonlyKeyword;
+    if (text == "require"_zcb) return TokenKind::kRequireKeyword;
+    if (text == "return"_zcb) return TokenKind::kReturnKeyword;
+    if (text == "satisfies"_zcb) return TokenKind::kSatisfiesKeyword;
+    if (text == "set"_zcb) return TokenKind::kSetKeyword;
+    if (text == "static"_zcb) return TokenKind::kStaticKeyword;
+    if (text == "super"_zcb) return TokenKind::kSuperKeyword;
+    if (text == "switch"_zcb) return TokenKind::kSwitchKeyword;
+    if (text == "symbol"_zcb) return TokenKind::kSymbolKeyword;
+    if (text == "this"_zcb) return TokenKind::kThisKeyword;
+    if (text == "throw"_zcb) return TokenKind::kThrowKeyword;
+    if (text == "true"_zcb) return TokenKind::kTrueKeyword;
+    if (text == "try"_zcb) return TokenKind::kTryKeyword;
+    if (text == "typeof"_zcb) return TokenKind::kTypeOfKeyword;
+    if (text == "undefined"_zcb) return TokenKind::kUndefinedKeyword;
+    if (text == "unique"_zcb) return TokenKind::kUniqueKeyword;
+    if (text == "using"_zcb) return TokenKind::kUsingKeyword;
+    if (text == "var"_zcb) return TokenKind::kVarKeyword;
+    if (text == "void"_zcb) return TokenKind::kVoidKeyword;
+    if (text == "when"_zcb) return TokenKind::kWhenKeyword;
+    if (text == "with"_zcb) return TokenKind::kWithKeyword;
+    if (text == "yield"_zcb) return TokenKind::kYieldKeyword;
 
     // Type keywords
-    if (text == "bool") return TokenKind::kBoolKeyword;
-    if (text == "i8") return TokenKind::kI8Keyword;
-    if (text == "i32") return TokenKind::kI32Keyword;
-    if (text == "i64") return TokenKind::kI64Keyword;
-    if (text == "u8") return TokenKind::kU8Keyword;
-    if (text == "u16") return TokenKind::kU16Keyword;
-    if (text == "u32") return TokenKind::kU32Keyword;
-    if (text == "u64") return TokenKind::kU64Keyword;
-    if (text == "f32") return TokenKind::kF32Keyword;
-    if (text == "f64") return TokenKind::kF64Keyword;
-    if (text == "str") return TokenKind::kStrKeyword;
-    if (text == "unit") return TokenKind::kUnitKeyword;
-    if (text == "nil") return TokenKind::kNilKeyword;
-    if (text == "else") return TokenKind::kElseKeyword;
-    if (text == "for") return TokenKind::kForKeyword;
-    if (text == "while") return TokenKind::kWhileKeyword;
-    if (text == "struct") return TokenKind::kStructKeyword;
-    if (text == "enum") return TokenKind::kEnumKeyword;
-    if (text == "error") return TokenKind::kErrorKeyword;
-    if (text == "alias") return TokenKind::kAliasKeyword;
-    if (text == "init") return TokenKind::kInitKeyword;
-    if (text == "deinit") return TokenKind::kDeinitKeyword;
-    if (text == "raises") return TokenKind::kRaisesKeyword;
-    if (text == "type") return TokenKind::kTypeKeyword;
+    if (text == "bool"_zcb) return TokenKind::kBoolKeyword;
+    if (text == "i8"_zcb) return TokenKind::kI8Keyword;
+    if (text == "i32"_zcb) return TokenKind::kI32Keyword;
+    if (text == "i64"_zcb) return TokenKind::kI64Keyword;
+    if (text == "u8"_zcb) return TokenKind::kU8Keyword;
+    if (text == "u16"_zcb) return TokenKind::kU16Keyword;
+    if (text == "u32"_zcb) return TokenKind::kU32Keyword;
+    if (text == "u64"_zcb) return TokenKind::kU64Keyword;
+    if (text == "f32"_zcb) return TokenKind::kF32Keyword;
+    if (text == "f64"_zcb) return TokenKind::kF64Keyword;
+    if (text == "str"_zcb) return TokenKind::kStrKeyword;
+    if (text == "unit"_zcb) return TokenKind::kUnitKeyword;
+    if (text == "nil"_zcb) return TokenKind::kNilKeyword;
+    if (text == "else"_zcb) return TokenKind::kElseKeyword;
+    if (text == "for"_zcb) return TokenKind::kForKeyword;
+    if (text == "while"_zcb) return TokenKind::kWhileKeyword;
+    if (text == "struct"_zcb) return TokenKind::kStructKeyword;
+    if (text == "enum"_zcb) return TokenKind::kEnumKeyword;
+    if (text == "error"_zcb) return TokenKind::kErrorKeyword;
+    if (text == "alias"_zcb) return TokenKind::kAliasKeyword;
+    if (text == "init"_zcb) return TokenKind::kInitKeyword;
+    if (text == "deinit"_zcb) return TokenKind::kDeinitKeyword;
+    if (text == "raises"_zcb) return TokenKind::kRaisesKeyword;
+    if (text == "type"_zcb) return TokenKind::kTypeKeyword;
 
     return TokenKind::kUnknown;
   }
@@ -766,6 +770,97 @@ struct Lexer::Impl {
     return c == '+' || c == '-' || c == '*' || c == '/' || c == '=' || c == '<' || c == '>' ||
            c == '!' || c == '&' || c == '|';
   }
+
+  /// Lookahead functionality
+  void initializeTokenCache() const {
+    if (cacheInitialized) return;
+
+    // Save current lexer state
+    const zc::byte* savedCurPtr = curPtr;
+    Token savedNextToken = nextToken;
+    LexerMode savedMode = currentMode;
+
+    // Create a temporary lexer state for lookahead
+    const_cast<Impl*>(this)->curPtr = savedCurPtr;
+    const_cast<Impl*>(this)->currentMode = savedMode;
+
+    // Pre-lex some tokens for lookahead
+    const unsigned kInitialCacheSize = 16;
+    tokenCache.resize(kInitialCacheSize);
+
+    for (unsigned i = 0; i < kInitialCacheSize && !isAtEndOfFile(); ++i) {
+      const_cast<Impl*>(this)->lexImpl();
+      tokenCache[i] = nextToken;
+      if (nextToken.getKind() == TokenKind::kEOF) {
+        tokenCache.resize(i + 1);
+        break;
+      }
+    }
+
+    // Restore original lexer state
+    const_cast<Impl*>(this)->curPtr = savedCurPtr;
+    const_cast<Impl*>(this)->nextToken = savedNextToken;
+    const_cast<Impl*>(this)->currentMode = savedMode;
+
+    cacheInitialized = true;
+  }
+
+  const Token& lookAheadToken(unsigned n) const {
+    if (n == 0) return nextToken;
+
+    initializeTokenCache();
+
+    // Extend cache if needed
+    if (n > tokenCache.size()) {
+      // Save current state
+      const zc::byte* savedCurPtr = curPtr;
+      Token savedNextToken = nextToken;
+      LexerMode savedMode = currentMode;
+
+      // Position lexer at the end of cached tokens
+      if (!tokenCache.empty()) {
+        const Token& lastCachedToken = tokenCache.back();
+        if (lastCachedToken.getKind() == TokenKind::kEOF) { return lastCachedToken; }
+        // Move to position after last cached token
+        const_cast<Impl*>(this)->curPtr =
+            getBufferPtrForSourceLoc(lastCachedToken.getRange().getEnd());
+      }
+
+      // Extend cache
+      unsigned oldSize = tokenCache.size();
+      tokenCache.resize(n + 8);  // Add some extra tokens
+
+      for (unsigned i = oldSize; i < tokenCache.size() && !isAtEndOfFile(); ++i) {
+        const_cast<Impl*>(this)->lexImpl();
+        tokenCache[i] = nextToken;
+        if (nextToken.getKind() == TokenKind::kEOF) {
+          tokenCache.resize(i + 1);
+          break;
+        }
+      }
+
+      // Restore state
+      const_cast<Impl*>(this)->curPtr = savedCurPtr;
+      const_cast<Impl*>(this)->nextToken = savedNextToken;
+      const_cast<Impl*>(this)->currentMode = savedMode;
+    }
+
+    if (n <= tokenCache.size()) { return tokenCache[n - 1]; }
+
+    // Return EOF if beyond available tokens
+    static Token eofToken(TokenKind::kEOF, source::SourceRange());
+    return eofToken;
+  }
+
+  bool canLookAheadToken(unsigned n) const {
+    if (n == 0) return true;
+
+    initializeTokenCache();
+
+    if (n <= tokenCache.size()) { return tokenCache[n - 1].getKind() != TokenKind::kEOF; }
+
+    return false;
+  }
 };
 
 Lexer::Lexer(const source::SourceManager& sourceMgr,
@@ -794,6 +889,10 @@ void Lexer::lex(Token& result) {
 }
 
 const Token& Lexer::peekNextToken() const { return impl->nextToken; }
+
+const Token& Lexer::lookAhead(unsigned n) const { return impl->lookAheadToken(n); }
+
+bool Lexer::canLookAhead(unsigned n) const { return impl->canLookAheadToken(n); }
 
 LexerState Lexer::getStateForBeginningOfToken(const Token& tok) const {
   return LexerState(tok.getLocation(), impl->currentMode);

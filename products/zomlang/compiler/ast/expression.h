@@ -23,11 +23,9 @@ namespace zomlang {
 namespace compiler {
 namespace ast {
 
-class Expression;
+class AssignmentOperator;
 class BinaryOperator;
 class UnaryOperator;
-class UpdateOperator;
-class AssignmentOperator;
 
 class Expression : public Node {
 public:
@@ -37,20 +35,28 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(Expression);
 };
 
-// Forward declarations for proper inheritance hierarchy
-class UpdateExpression;
-class LeftHandSideExpression;
-class NewExpression;
-class MemberExpression;
-class PrimaryExpression;
-
 class UnaryExpression : public Expression {
 public:
-  UnaryExpression(zc::Own<UnaryOperator> op, zc::Own<Expression> operand);
-  explicit UnaryExpression(SyntaxKind kind);
+  explicit UnaryExpression(SyntaxKind kind = SyntaxKind::kUnaryExpression) noexcept;
   ~UnaryExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(UnaryExpression);
+};
+
+class UpdateExpression : public UnaryExpression {
+public:
+  UpdateExpression(SyntaxKind kind = SyntaxKind::kUpdateExpression) noexcept;
+  ~UpdateExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(UpdateExpression);
+};
+
+class PrefixUnaryExpression : public UpdateExpression {
+public:
+  PrefixUnaryExpression(zc::Own<UnaryOperator> op, zc::Own<Expression> operand) noexcept;
+  ~PrefixUnaryExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(PrefixUnaryExpression);
 
   const UnaryOperator* getOperator() const;
   const Expression* getOperand() const;
@@ -61,15 +67,14 @@ private:
   const zc::Own<Impl> impl;
 };
 
-class UpdateExpression : public UnaryExpression {
+class PostfixUnaryExpression : public UpdateExpression {
 public:
-  UpdateExpression(zc::Own<UpdateOperator> op, zc::Own<Expression> operand);
-  explicit UpdateExpression(SyntaxKind kind);
-  ~UpdateExpression() noexcept(false);
+  PostfixUnaryExpression(zc::Own<UnaryOperator> op, zc::Own<Expression> operand) noexcept;
+  ~PostfixUnaryExpression() noexcept(false);
 
-  ZC_DISALLOW_COPY_AND_MOVE(UpdateExpression);
+  ZC_DISALLOW_COPY_AND_MOVE(PostfixUnaryExpression);
 
-  const UpdateOperator* getOperator() const;
+  const UnaryOperator* getOperator() const;
   const Expression* getOperand() const;
   bool isPrefix() const;
 
@@ -86,10 +91,74 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(LeftHandSideExpression);
 };
 
-class NewExpression : public LeftHandSideExpression {
+class MemberExpression : public LeftHandSideExpression {
 public:
-  NewExpression(zc::Own<Expression> callee, zc::Vector<zc::Own<Expression>>&& arguments);
-  explicit NewExpression(SyntaxKind kind);
+  explicit MemberExpression(SyntaxKind kind = SyntaxKind::kMemberExpression) noexcept;
+  ~MemberExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(MemberExpression);
+};
+
+class PrimaryExpression : public MemberExpression {
+public:
+  explicit PrimaryExpression(SyntaxKind kind = SyntaxKind::kPrimaryExpression) noexcept;
+  ~PrimaryExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(PrimaryExpression);
+};
+
+class Identifier : public PrimaryExpression {
+public:
+  explicit Identifier(zc::String name) noexcept;
+  ~Identifier() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(Identifier);
+
+  const zc::StringPtr getName() const;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class PropertyAccessExpression : public MemberExpression {
+public:
+  PropertyAccessExpression(zc::Own<LeftHandSideExpression> expression, zc::Own<Identifier> name,
+                           bool questionDot = false) noexcept;
+  ~PropertyAccessExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(PropertyAccessExpression);
+
+  LeftHandSideExpression* getExpression();
+  Identifier* getName();
+  bool isQuestionDot();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ElementAccessExpression : public MemberExpression {
+public:
+  explicit ElementAccessExpression(SyntaxKind kind = SyntaxKind::kElementAccessExpression) noexcept;
+  ElementAccessExpression(zc::Own<LeftHandSideExpression> expression, zc::Own<Expression> index,
+                          bool questionDot = false) noexcept;
+  ~ElementAccessExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ElementAccessExpression);
+
+  const LeftHandSideExpression* getExpression();
+  const Expression* getIndex();
+  bool isQuestionDot();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class NewExpression : public PrimaryExpression {
+public:
+  NewExpression(zc::Own<Expression> callee, zc::Vector<zc::Own<Expression>>&& arguments) noexcept;
   ~NewExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(NewExpression);
@@ -102,35 +171,9 @@ private:
   const zc::Own<Impl> impl;
 };
 
-class MemberExpression : public NewExpression {
-public:
-  MemberExpression(zc::Own<Expression> object, zc::Own<Expression> property, bool computed = false);
-  explicit MemberExpression(SyntaxKind kind);
-  ~MemberExpression() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(MemberExpression);
-
-  const Expression* getObject() const;
-  const Expression* getProperty() const;
-  bool isComputed() const;
-
-private:
-  struct Impl;
-  const zc::Own<Impl> impl;
-};
-
-class PrimaryExpression : public MemberExpression {
-public:
-  explicit PrimaryExpression(SyntaxKind kind = SyntaxKind::kPrimaryExpression) noexcept;
-  ~PrimaryExpression() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(PrimaryExpression);
-};
-
 class ParenthesizedExpression : public PrimaryExpression {
 public:
-  explicit ParenthesizedExpression(zc::Own<Expression> expression);
-  explicit ParenthesizedExpression(SyntaxKind kind = SyntaxKind::kParenthesizedExpression) noexcept;
+  explicit ParenthesizedExpression(zc::Own<Expression> expression) noexcept;
   ~ParenthesizedExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ParenthesizedExpression);
@@ -144,8 +187,8 @@ private:
 
 class BinaryExpression : public Expression {
 public:
-  BinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op, zc::Own<Expression> right);
-
+  BinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
+                   zc::Own<Expression> right) noexcept;
   ~BinaryExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(BinaryExpression);
@@ -162,7 +205,7 @@ private:
 class AssignmentExpression : public Expression {
 public:
   AssignmentExpression(zc::Own<Expression> left, zc::Own<AssignmentOperator> op,
-                       zc::Own<Expression> right);
+                       zc::Own<Expression> right) noexcept;
   ~AssignmentExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(AssignmentExpression);
@@ -179,7 +222,7 @@ private:
 class ConditionalExpression : public Expression {
 public:
   ConditionalExpression(zc::Own<Expression> test, zc::Own<Expression> consequent,
-                        zc::Own<Expression> alternate);
+                        zc::Own<Expression> alternate) noexcept;
   ~ConditionalExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ConditionalExpression);
@@ -195,7 +238,7 @@ private:
 
 class CallExpression : public LeftHandSideExpression {
 public:
-  CallExpression(zc::Own<Expression> callee, zc::Vector<zc::Own<Expression>>&& arguments);
+  CallExpression(zc::Own<Expression> callee, zc::Vector<zc::Own<Expression>>&& arguments) noexcept;
   ~CallExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(CallExpression);
@@ -223,23 +266,9 @@ private:
   const zc::Own<Impl> impl;
 };
 
-class Identifier : public PrimaryExpression {
-public:
-  explicit Identifier(zc::String name);
-  ~Identifier() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(Identifier);
-
-  const zc::StringPtr getName() const;
-
-private:
-  struct Impl;
-  const zc::Own<Impl> impl;
-};
-
 class LiteralExpression : public PrimaryExpression {
 public:
-  explicit LiteralExpression(SyntaxKind kind = SyntaxKind::kLiteral);
+  explicit LiteralExpression(SyntaxKind kind = SyntaxKind::kLiteral) noexcept;
   ~LiteralExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(LiteralExpression);
@@ -247,7 +276,7 @@ public:
 
 class StringLiteral : public LiteralExpression {
 public:
-  explicit StringLiteral(zc::String value);
+  explicit StringLiteral(zc::String value) noexcept;
   ~StringLiteral() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(StringLiteral);
@@ -261,7 +290,7 @@ private:
 
 class NumericLiteral : public LiteralExpression {
 public:
-  explicit NumericLiteral(double value);
+  explicit NumericLiteral(double value) noexcept;
   ~NumericLiteral() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(NumericLiteral);
@@ -275,7 +304,7 @@ private:
 
 class BooleanLiteral : public LiteralExpression {
 public:
-  explicit BooleanLiteral(bool value);
+  explicit BooleanLiteral(bool value) noexcept;
   ~BooleanLiteral() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(BooleanLiteral);
@@ -289,7 +318,7 @@ private:
 
 class NilLiteral : public LiteralExpression {
 public:
-  NilLiteral();
+  NilLiteral() noexcept;
   ~NilLiteral() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(NilLiteral);
@@ -297,7 +326,8 @@ public:
 
 class CastExpression : public Expression {
 public:
-  CastExpression(zc::Own<Expression> expression, zc::String targetType, bool isOptional = false);
+  CastExpression(zc::Own<Expression> expression, zc::String targetType,
+                 bool isOptional = false) noexcept;
   ~CastExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(CastExpression);
@@ -311,9 +341,37 @@ private:
   const zc::Own<Impl> impl;
 };
 
+class VoidExpression : public UnaryExpression {
+public:
+  explicit VoidExpression(zc::Own<Expression> expression) noexcept;
+  ~VoidExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(VoidExpression);
+
+  const Expression* getExpression() const;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class TypeOfExpression : public UnaryExpression {
+public:
+  explicit TypeOfExpression(zc::Own<Expression> expression) noexcept;
+  ~TypeOfExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(TypeOfExpression);
+
+  const Expression* getExpression() const;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
 class AwaitExpression : public Expression {
 public:
-  explicit AwaitExpression(zc::Own<Expression> expression);
+  explicit AwaitExpression(zc::Own<Expression> expression) noexcept;
   ~AwaitExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(AwaitExpression);
@@ -327,7 +385,7 @@ private:
 
 class ArrayLiteralExpression : public PrimaryExpression {
 public:
-  explicit ArrayLiteralExpression(zc::Vector<zc::Own<Expression>>&& elements);
+  explicit ArrayLiteralExpression(zc::Vector<zc::Own<Expression>>&& elements) noexcept;
   ~ArrayLiteralExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ArrayLiteralExpression);
@@ -341,7 +399,7 @@ private:
 
 class ObjectLiteralExpression : public PrimaryExpression {
 public:
-  explicit ObjectLiteralExpression(zc::Vector<zc::Own<Expression>>&& properties);
+  explicit ObjectLiteralExpression(zc::Vector<zc::Own<Expression>>&& properties) noexcept;
   ~ObjectLiteralExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ObjectLiteralExpression);

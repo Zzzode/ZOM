@@ -94,13 +94,17 @@ zc::Own<EmptyStatement> createEmptyStatement() { return zc::heap<EmptyStatement>
 // Expression factory functions
 zc::Own<Expression> createBinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
                                            zc::Own<Expression> right) {
-  auto binaryExpr = zc::heap<BinaryExpression>(zc::mv(left), zc::mv(op), zc::mv(right));
-  return static_cast<zc::Own<Expression>>(zc::mv(binaryExpr));
+  return zc::heap<BinaryExpression>(zc::mv(left), zc::mv(op), zc::mv(right));
 }
 
-zc::Own<UnaryExpression> createUnaryExpression(zc::Own<UnaryOperator> op,
-                                               zc::Own<Expression> operand) {
-  return zc::heap<UnaryExpression>(zc::mv(op), zc::mv(operand));
+zc::Own<PrefixUnaryExpression> createPrefixUnaryExpression(zc::Own<UnaryOperator> op,
+                                                           zc::Own<Expression> operand) {
+  return zc::heap<PrefixUnaryExpression>(zc::mv(op), zc::mv(operand));
+}
+
+zc::Own<PostfixUnaryExpression> createPostfixUnaryExpression(zc::Own<UnaryOperator> op,
+                                                             zc::Own<Expression> operand) {
+  return zc::heap<PostfixUnaryExpression>(zc::mv(op), zc::mv(operand));
 }
 
 zc::Own<AssignmentExpression> createAssignmentExpression(zc::Own<Expression> left,
@@ -120,19 +124,32 @@ zc::Own<CallExpression> createCallExpression(zc::Own<Expression> callee,
   return zc::heap<CallExpression>(zc::mv(callee), zc::mv(arguments));
 }
 
-zc::Own<MemberExpression> createMemberExpression(zc::Own<Expression> object,
-                                                 zc::Own<Expression> property, bool computed) {
-  return zc::heap<MemberExpression>(zc::mv(object), zc::mv(property), computed);
+zc::Own<PropertyAccessExpression> createPropertyAccessExpression(
+    zc::Own<LeftHandSideExpression> expression, zc::Own<Identifier> name, bool questionDot) {
+  return zc::heap<PropertyAccessExpression>(zc::mv(expression), zc::mv(name), questionDot);
 }
 
-zc::Own<UpdateExpression> createUpdateExpression(zc::Own<UpdateOperator> op,
-                                                 zc::Own<Expression> operand) {
-  return zc::heap<UpdateExpression>(zc::mv(op), zc::mv(operand));
+zc::Own<ElementAccessExpression> createElementAccessExpression(
+    zc::Own<LeftHandSideExpression> expression, zc::Own<Expression> index, bool questionDot) {
+  return zc::heap<ElementAccessExpression>(zc::mv(expression), zc::mv(index), questionDot);
+}
+
+zc::Own<OptionalExpression> createOptionalExpression(zc::Own<Expression> object,
+                                                     zc::Own<Expression> property) {
+  return zc::heap<OptionalExpression>(zc::mv(object), zc::mv(property));
 }
 
 zc::Own<CastExpression> createCastExpression(zc::Own<Expression> expression,
                                              zc::String&& targetType, bool isOptional) {
   return zc::heap<CastExpression>(zc::mv(expression), zc::mv(targetType), isOptional);
+}
+
+zc::Own<VoidExpression> createVoidExpression(zc::Own<Expression> expression) {
+  return zc::heap<VoidExpression>(zc::mv(expression));
+}
+
+zc::Own<TypeOfExpression> createTypeOfExpression(zc::Own<Expression> expression) {
+  return zc::heap<TypeOfExpression>(zc::mv(expression));
 }
 
 zc::Own<AwaitExpression> createAwaitExpression(zc::Own<Expression> expression) {
@@ -226,10 +243,6 @@ zc::Own<AssignmentOperator> createAssignmentOperator(zc::String&& symbol) {
   return zc::heap<AssignmentOperator>(zc::mv(symbol));
 }
 
-zc::Own<UpdateOperator> createUpdateOperator(zc::String&& symbol, bool prefix) {
-  return zc::heap<UpdateOperator>(zc::mv(symbol), prefix);
-}
-
 // Predefined operator factory functions for common operators
 zc::Own<BinaryOperator> createAddOperator() {
   return createBinaryOperator(zc::str("+"), OperatorPrecedence::kAdditive,
@@ -310,6 +323,12 @@ zc::Own<UnaryOperator> createBitwiseNotOperator() {
   return createUnaryOperator(zc::str("~"), true);
 }
 
+zc::Own<UnaryOperator> createVoidOperator() { return createUnaryOperator(zc::str("void"), true); }
+
+zc::Own<UnaryOperator> createTypeOfOperator() {
+  return createUnaryOperator(zc::str("typeof"), true);
+}
+
 zc::Own<AssignmentOperator> createAssignOperator() {
   return createAssignmentOperator(zc::str("="));
 }
@@ -322,20 +341,20 @@ zc::Own<AssignmentOperator> createSubtractAssignOperator() {
   return createAssignmentOperator(zc::str("-="));
 }
 
-zc::Own<UpdateOperator> createPreIncrementOperator() {
-  return createUpdateOperator(zc::str("++"), true);
+zc::Own<UnaryOperator> createPreIncrementOperator() {
+  return createUnaryOperator(zc::str("++"), true);
 }
 
-zc::Own<UpdateOperator> createPostIncrementOperator() {
-  return createUpdateOperator(zc::str("++"), false);
+zc::Own<UnaryOperator> createPostIncrementOperator() {
+  return createUnaryOperator(zc::str("++"), false);
 }
 
-zc::Own<UpdateOperator> createPreDecrementOperator() {
-  return createUpdateOperator(zc::str("--"), true);
+zc::Own<UnaryOperator> createPreDecrementOperator() {
+  return createUnaryOperator(zc::str("--"), true);
 }
 
-zc::Own<UpdateOperator> createPostDecrementOperator() {
-  return createUpdateOperator(zc::str("--"), false);
+zc::Own<UnaryOperator> createPostDecrementOperator() {
+  return createUnaryOperator(zc::str("--"), false);
 }
 
 zc::Own<BreakStatement> createBreakStatement(zc::Maybe<zc::Own<Identifier>> label) {

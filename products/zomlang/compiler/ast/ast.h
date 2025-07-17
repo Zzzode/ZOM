@@ -67,6 +67,8 @@ enum class SyntaxKind {
   kParenthesizedExpression,
   kBinaryExpression,
   kUnaryExpression,
+  kPrefixUnaryExpression,
+  kPostfixUnaryExpression,
   kAssignmentExpression,
   kConditionalExpression,
   kCallExpression,
@@ -74,6 +76,8 @@ enum class SyntaxKind {
   kUpdateExpression,
   kCastExpression,
   kAwaitExpression,
+  kVoidExpression,
+  kTypeOfExpression,
   kOptionalExpression,
   kNewExpression,
   kLeftHandSideExpression,
@@ -90,6 +94,8 @@ enum class SyntaxKind {
   kLogicalOrExpression,
   kCoalesceExpression,
   kShortCircuitExpression,
+  kPropertyAccessExpression,
+  kElementAccessExpression,
 
   // Operators
   kOperator,
