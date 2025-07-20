@@ -43,6 +43,9 @@ struct Lexer::Impl {
   const zc::byte* bufferEnd;
   const zc::byte* curPtr;
 
+  // Full start position tracking
+  const zc::byte* triviaStartPtr;
+
   // Token state
   Token nextToken;
   LexerMode currentMode;
@@ -65,6 +68,7 @@ struct Lexer::Impl {
     bufferStart = buffer.begin();
     bufferEnd = buffer.end();
     curPtr = bufferStart;
+    triviaStartPtr = bufferStart;
   }
 
   /// Utility functions
@@ -78,6 +82,7 @@ struct Lexer::Impl {
 
   /// Lexing implementation
   void lexImpl() {
+    triviaStartPtr = curPtr;
     skipTrivia();
     if (curPtr >= bufferEnd) {
       formToken(TokenKind::kEOF, curPtr);
@@ -941,6 +946,8 @@ source::CharSourceRange Lexer::getCharSourceRangeFromSourceRange(
     const source::SourceRange& sr) const {
   return source::CharSourceRange(sr.getStart(), sr.getEnd());
 }
+
+source::SourceLoc Lexer::getFullStartLoc() const { return source::SourceLoc(impl->triviaStartPtr); }
 
 }  // namespace lexer
 }  // namespace compiler

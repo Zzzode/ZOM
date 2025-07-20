@@ -21,6 +21,7 @@
 #include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/ast/type.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
@@ -36,7 +37,6 @@ class DiagnosticEngine;
 namespace source {
 class BufferId;
 class SourceManager;
-class SourceRange;
 }  // namespace source
 
 namespace lexer {
@@ -137,9 +137,22 @@ public:
   bool isLookAhead(unsigned n, lexer::TokenKind kind) const;
 
 private:
-  void finishNode(ast::Node* node, const source::SourceRange& range);
+  template <typename Node>
+    requires std::is_base_of_v<ast::Node, Node>
+  zc::Own<Node> finishNode(zc::Own<Node>&& node, source::SourceLoc pos) {
+    const source::SourceLoc end = getFullStartLoc();
+    return finishNode(zc::mv(node), zc::mv(pos), zc::mv(end));
+  }
 
   template <typename Node>
+    requires std::is_base_of_v<ast::Node, Node>
+  zc::Own<Node> finishNode(zc::Own<Node>&& node, source::SourceLoc pos, source::SourceLoc end) {
+    node->setSourceRange(source::SourceRange(pos, end));
+    return zc::mv(node);
+  }
+
+  template <typename Node>
+    requires std::is_base_of_v<ast::Node, Node>
   zc::Vector<zc::Own<Node>> parseList(ParsingContext context,
                                       zc::Function<zc::Maybe<zc::Own<Node>>()> parseElement) {
     zc::Vector<zc::Own<Node>> result;
@@ -267,10 +280,12 @@ private:
   zc::Maybe<zc::Own<ast::ParenthesizedType>> parseParenthesizedType();
 
   // Utility parsing methods
-  bool expectToken(lexer::TokenKind kind);
-  bool consumeToken(lexer::TokenKind kind);
-  const lexer::Token& currentToken() const;
-  void skipToken();
+  ZC_ALWAYS_INLINE(bool expectToken(lexer::TokenKind kind));
+  ZC_ALWAYS_INLINE(bool consumeExpectedToken(lexer::TokenKind kind));
+  ZC_ALWAYS_INLINE(const lexer::Token& currentToken() const);
+  ZC_ALWAYS_INLINE(void consumeToken());
+
+  ZC_NODISCARD source::SourceLoc getFullStartLoc() const;
 
   // Argument list parsing
   zc::Maybe<zc::Vector<zc::Own<ast::Expression>>> parseArgumentList();
