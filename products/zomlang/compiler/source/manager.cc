@@ -311,8 +311,21 @@ zc::Maybe<BufferId> SourceManager::findBufferContainingLoc(const SourceLoc& loc)
       std::upper_bound(impl->locCache.sortedBuffers.begin(), impl->locCache.sortedBuffers.end(),
                        loc, BufferIDRangeComparator{*this});
 
+  // upper_bound returns the first element that is greater than loc.
+  // We need to check the previous element (if it exists) to see if it contains loc.
   if (it != impl->locCache.sortedBuffers.begin()) {
     const BufferId candidateId = *(it - 1);
+    ZC_IF_SOME(candidate, impl->idToBuffer.find(candidateId)) {
+      if (ptr >= candidate.data.begin() && ptr < candidate.data.end()) {
+        impl->locCache.lastBufferId = candidateId;
+        return candidateId;
+      }
+    }
+  }
+  // If upper_bound returned begin(), it means all buffers are greater than loc,
+  // but we should still check if the first buffer contains loc.
+  else if (!impl->locCache.sortedBuffers.empty()) {
+    const BufferId candidateId = *impl->locCache.sortedBuffers.begin();
     ZC_IF_SOME(candidate, impl->idToBuffer.find(candidateId)) {
       if (ptr >= candidate.data.begin() && ptr < candidate.data.end()) {
         impl->locCache.lastBufferId = candidateId;
