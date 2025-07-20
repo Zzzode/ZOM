@@ -174,22 +174,21 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseModuleItem() {
 
   // Check for import declaration
   if (token.is(lexer::TokenKind::kImportKeyword)) {
-    trace::traceEvent(trace::TraceCategory::kParser, "Parsing import declaration");
     ZC_IF_SOME(importDecl, parseImportDeclaration()) { return zc::mv(importDecl); }
   }
 
   // Check for export declaration
   if (token.is(lexer::TokenKind::kExportKeyword)) {
-    trace::traceEvent(trace::TraceCategory::kParser, "Parsing export declaration");
     ZC_IF_SOME(exportDecl, parseExportDeclaration()) { return zc::mv(exportDecl); }
   }
 
   // Otherwise, parse as statement (statementListItem)
-  trace::traceEvent(trace::TraceCategory::kParser, "Parsing statement");
   return parseStatement();
 }
 
 zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseImportDeclaration");
+
   // importDeclaration: IMPORT modulePath ( AS identifierName )?;
   const lexer::Token& token = currentToken();
 
@@ -263,6 +262,8 @@ zc::Maybe<zc::Own<ast::ModulePath>> Parser::parseModulePath() {
 }
 
 zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseExportDeclaration");
+
   // exportDeclaration: EXPORT (exportModule | exportRename);
   // exportModule: bindingIdentifier;
   // exportRename: bindingIdentifier AS bindingIdentifier FROM modulePath;
@@ -313,6 +314,19 @@ zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
 
 zc::Maybe<zc::Own<ast::Statement>> Parser::parseStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseStatement");
+
+  // statementListItem: statement | declaration;
+  // statement:
+  //   blockStatement
+  //   | emptyStatement
+  //   | expressionStatement
+  //   | ifStatement
+  //   | matchStatement
+  //   | breakableStatement
+  //   | continueStatement
+  //   | breakStatement
+  //   | returnStatement
+  //   | debuggerStatement;
 
   const lexer::Token& token = currentToken();
 
@@ -623,6 +637,17 @@ zc::Maybe<zc::Vector<zc::Own<ast::Type>>> Parser::parseTypeArgumentsInExpression
 }
 
 zc::Maybe<zc::Own<ast::Identifier>> Parser::parseIdentifier() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseIdentifier");
+
+  // bindingIdentifier: identifier;
+  // identifier:
+  //   identifierName {
+  //     String text = _input.getText(ctx.identifierName());
+  //     if(isReservedWord(text)) {
+  //       throw new ParseCancellationException("Identifier cannot be a reserved word");
+  //     }
+  // };
+
   const lexer::Token& token = currentToken();
   if (token.is(lexer::TokenKind::kIdentifier)) {
     const source::SourceLoc startLoc = token.getLocation();
@@ -888,6 +913,8 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseDeclaration() {
 
 zc::Maybe<zc::Own<ast::VariableDeclaration>> Parser::parseVariableDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseVariableDeclaration");
+
+  // variableDeclaration: LET_OR_CONST bindingList;
 
   lexer::TokenKind declKind = currentToken().getKind();
   if (declKind != lexer::TokenKind::kLetKeyword && declKind != lexer::TokenKind::kVarKeyword) {

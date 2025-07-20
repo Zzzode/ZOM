@@ -500,7 +500,7 @@ whileStatement: WHILE LPAREN expression RPAREN statement;
 forStatement:
 	FOR LPAREN forInit? SEMICOLON expression? SEMICOLON forUpdate? RPAREN statement;
 
-forInit: expression | lexicalDeclaration;
+forInit: expression | variableDeclaration;
 
 forUpdate: expression;
 
@@ -558,7 +558,7 @@ declaration:
 	| structDeclaration
 	| errorDeclaration
 	| enumDeclaration
-	| lexicalDeclaration;
+	| variableDeclaration;
 
 //// ================================================================================ TYPES
 
@@ -719,7 +719,7 @@ setAccessor:
 	SET propertyName LPAREN parameter RPAREN LBRACE functionBody RBRACE;
 
 //// ============================================================================== LET AND CONST DECLARATIONS
-lexicalDeclaration: LET_OR_CONST bindingList;
+variableDeclaration: LET_OR_CONST bindingList;
 
 //// ============================================================================== TYPES
 typeAnnotation: COLON type;
