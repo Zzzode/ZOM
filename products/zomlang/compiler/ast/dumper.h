@@ -15,9 +15,9 @@
 #pragma once
 
 #include "zc/core/common.h"
+#include "zc/core/io.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
-#include "zc/core/io.h"
 
 namespace zomlang {
 namespace compiler {

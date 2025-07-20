@@ -59,6 +59,8 @@ struct Parser::Impl {
   const lexer::Token& peekToken() const { return currentToken; }
   /// Initialize currentToken by consuming the first token
   void initializeToken() { consumeToken(); }
+  /// Helper to get the current token
+  const lexer::Token& getCurrentToken() const { return currentToken; }
 
   /// Lookahead functionality
   const lexer::Token& lookAheadToken(unsigned n) const {
@@ -95,20 +97,20 @@ Parser::Parser(const source::SourceManager& sourceMgr,
 Parser::~Parser() noexcept(false) = default;
 
 bool Parser::isListTerminator(ParsingContext context) const {
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
   switch (context) {
     case ParsingContext::kSourceElements:
-      return currentToken.is(lexer::TokenKind::kEOF);
+      return token.is(lexer::TokenKind::kEOF);
     default:
       return false;
   }
 }
 
 bool Parser::isListElement(ParsingContext context, bool inErrorRecovery) const {
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
   switch (context) {
     case ParsingContext::kSourceElements:
-      return !currentToken.is(lexer::TokenKind::kSemicolon) && isStartOfStatement();
+      return !token.is(lexer::TokenKind::kSemicolon) && isStartOfStatement();
     default:
       return false;
   }
@@ -118,14 +120,14 @@ bool Parser::abortParsingListOrMoveToNextToken(ParsingContext context) {
   trace::traceEvent(trace::TraceCategory::kParser, "Error recovery", "Skipping token");
 
   // Simple error recovery: skip the current token and try again
-  impl->consumeToken();
+  consumeToken();
   return false;  // Continue parsing
 }
 
 zc::Maybe<zc::Own<ast::Node>> Parser::parse() {
   trace::FunctionTracer functionTracer(trace::TraceCategory::kParser, __FUNCTION__);
 
-  impl->consumeToken();
+  consumeToken();
   ZC_IF_SOME(sourceFileNode, parseSourceFile()) {
     trace::traceEvent(trace::TraceCategory::kParser, "Parse completed successfully");
     return zc::mv(sourceFileNode);
@@ -143,7 +145,7 @@ zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
   // moduleBody: moduleItemList;
   // moduleItemList: moduleItem+;
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
+  source::SourceLoc startLoc = currentToken().getLocation();
 
   zc::Vector<zc::Own<ast::Statement>> statements = parseList<ast::Statement>(
       ParsingContext::kSourceElements, ZC_BIND_METHOD(*this, parseModuleItem));
@@ -151,13 +153,10 @@ zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
   trace::traceCounter(trace::TraceCategory::kParser, "Module items parsed"_zc,
                       zc::str(statements.size()));
 
-  source::SourceLoc endLoc = impl->peekToken().getLocation();
-
   // Create the source file node
   zc::StringPtr fileName = impl->sourceMgr.getIdentifierForBuffer(impl->bufferId);
   zc::Own<ast::SourceFile> sourceFile =
-      ast::factory::createSourceFile(zc::str(fileName), zc::mv(statements));
-  sourceFile->setSourceRange(source::SourceRange(startLoc, endLoc));
+      finishNode(ast::factory::createSourceFile(zc::str(fileName), zc::mv(statements)), startLoc);
 
   trace::traceEvent(trace::TraceCategory::kParser, "Source file created"_zc, fileName);
   return sourceFile;
@@ -171,16 +170,16 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseModuleItem() {
   //   | exportDeclaration
   //   | importDeclaration;
 
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   // Check for import declaration
-  if (currentToken.is(lexer::TokenKind::kImportKeyword)) {
+  if (token.is(lexer::TokenKind::kImportKeyword)) {
     trace::traceEvent(trace::TraceCategory::kParser, "Parsing import declaration");
     ZC_IF_SOME(importDecl, parseImportDeclaration()) { return zc::mv(importDecl); }
   }
 
   // Check for export declaration
-  if (currentToken.is(lexer::TokenKind::kExportKeyword)) {
+  if (token.is(lexer::TokenKind::kExportKeyword)) {
     trace::traceEvent(trace::TraceCategory::kParser, "Parsing export declaration");
     ZC_IF_SOME(exportDecl, parseExportDeclaration()) { return zc::mv(exportDecl); }
   }
@@ -192,40 +191,37 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseModuleItem() {
 
 zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
   // importDeclaration: IMPORT modulePath ( AS identifierName )?;
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   // Expect IMPORT token
-  if (!currentToken.is(lexer::TokenKind::kImportKeyword)) { return zc::none; }
+  if (!token.is(lexer::TokenKind::kImportKeyword)) { return zc::none; }
 
-  source::SourceLoc startLoc = currentToken.getLocation();
-  impl->consumeToken();  // consume IMPORT
+  source::SourceLoc startLoc = token.getLocation();
+  consumeToken();  // consume IMPORT
 
   // Parse modulePath
   ZC_IF_SOME(modulePath, parseModulePath()) {
     zc::Maybe<zc::String> alias = zc::none;
 
     // Check for optional AS clause
-    const lexer::Token& nextToken = impl->peekToken();
+    const lexer::Token& nextToken = currentToken();
     if (nextToken.is(lexer::TokenKind::kAsKeyword)) {
-      impl->consumeToken();  // consume AS
+      consumeToken();  // consume AS
 
       // Parse identifier name (alias)
-      const lexer::Token& aliasToken = impl->peekToken();
+      const lexer::Token& aliasToken = currentToken();
       if (aliasToken.is(lexer::TokenKind::kIdentifier)) {
         alias = aliasToken.getText(impl->sourceMgr);
-        impl->consumeToken();  // consume identifier
+        consumeToken();  // consume identifier
       } else {
         // Error: expected identifier after AS
         return zc::none;
       }
     }
 
-    source::SourceLoc endLoc = impl->peekToken().getLocation();
-
     // Create ImportDeclaration with modulePath and optional alias
-    auto importDecl = ast::factory::createImportDeclaration(zc::mv(modulePath), zc::mv(alias));
-    importDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
-    return importDecl;
+    return finishNode(ast::factory::createImportDeclaration(zc::mv(modulePath), zc::mv(alias)),
+                      startLoc);
   }
 
   return zc::none;
@@ -233,26 +229,26 @@ zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
 
 zc::Maybe<zc::Own<ast::ModulePath>> Parser::parseModulePath() {
   // modulePath: bindingIdentifier ( PERIOD bindingIdentifier )*;
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   // Expect first bindingIdentifier
-  if (!currentToken.is(lexer::TokenKind::kIdentifier)) { return zc::none; }
+  if (!token.is(lexer::TokenKind::kIdentifier)) { return zc::none; }
 
-  source::SourceLoc startLoc = currentToken.getLocation();
+  source::SourceLoc startLoc = token.getLocation();
   zc::Vector<zc::String> identifiers;
-  identifiers.add(currentToken.getText(impl->sourceMgr));
-  impl->consumeToken();  // consume first identifier
+  identifiers.add(token.getText(impl->sourceMgr));
+  consumeToken();  // consume first identifier
 
   // Parse optional additional identifiers separated by PERIOD
   while (true) {
-    const lexer::Token& nextToken = impl->peekToken();
+    const lexer::Token& nextToken = currentToken();
     if (nextToken.is(lexer::TokenKind::kPeriod)) {
-      impl->consumeToken();  // consume PERIOD
+      consumeToken();  // consume PERIOD
 
-      const lexer::Token& idToken = impl->peekToken();
+      const lexer::Token& idToken = currentToken();
       if (idToken.is(lexer::TokenKind::kIdentifier)) {
         identifiers.add(idToken.getText(impl->sourceMgr));
-        impl->consumeToken();  // consume identifier
+        consumeToken();  // consume identifier
       } else {
         // Error: expected identifier after period
         return zc::none;
@@ -262,64 +258,53 @@ zc::Maybe<zc::Own<ast::ModulePath>> Parser::parseModulePath() {
     }
   }
 
-  source::SourceLoc endLoc = impl->peekToken().getLocation();
-
   // Create ModulePath with collected identifiers
-  auto modulePath = ast::factory::createModulePath(zc::mv(identifiers));
-  modulePath->setSourceRange(source::SourceRange(startLoc, endLoc));
-  return modulePath;
+  return finishNode(ast::factory::createModulePath(zc::mv(identifiers)), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
   // exportDeclaration: EXPORT (exportModule | exportRename);
   // exportModule: bindingIdentifier;
   // exportRename: bindingIdentifier AS bindingIdentifier FROM modulePath;
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   // Expect EXPORT token
-  if (!currentToken.is(lexer::TokenKind::kExportKeyword)) { return zc::none; }
+  if (!token.is(lexer::TokenKind::kExportKeyword)) { return zc::none; }
 
-  source::SourceLoc startLoc = currentToken.getLocation();
-  impl->consumeToken();  // consume EXPORT
+  source::SourceLoc startLoc = token.getLocation();
+  consumeToken();  // consume EXPORT
 
-  const lexer::Token& nextToken = impl->peekToken();
+  const lexer::Token& nextToken = currentToken();
   if (nextToken.is(lexer::TokenKind::kIdentifier)) {
     zc::String identifier = nextToken.getText(impl->sourceMgr);
-    impl->consumeToken();  // consume identifier
+    consumeToken();  // consume identifier
 
     // Check if this is exportRename (identifier AS identifier FROM modulePath)
-    const lexer::Token& followingToken = impl->peekToken();
+    const lexer::Token& followingToken = currentToken();
     if (followingToken.is(lexer::TokenKind::kAsKeyword)) {
-      impl->consumeToken();  // consume AS
+      consumeToken();  // consume AS
 
-      const lexer::Token& secondIdToken = impl->peekToken();
+      const lexer::Token& secondIdToken = currentToken();
       if (secondIdToken.is(lexer::TokenKind::kIdentifier)) {
         zc::String alias = secondIdToken.getText(impl->sourceMgr);
-        impl->consumeToken();  // consume second identifier
+        consumeToken();  // consume second identifier
 
-        const lexer::Token& fromToken = impl->peekToken();
+        const lexer::Token& fromToken = currentToken();
         if (fromToken.is(lexer::TokenKind::kFromKeyword)) {
-          impl->consumeToken();  // consume FROM
+          consumeToken();  // consume FROM
 
           // Parse modulePath
           ZC_IF_SOME(modulePath, parseModulePath()) {
-            source::SourceLoc endLoc = impl->peekToken().getLocation();
-
             // Create ExportDeclaration with rename info
-            auto exportDecl = ast::factory::createExportDeclaration(
-                zc::mv(identifier), zc::mv(alias), zc::mv(modulePath));
-            exportDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
-            return exportDecl;
+            return finishNode(ast::factory::createExportDeclaration(
+                                  zc::mv(identifier), zc::mv(alias), zc::mv(modulePath)),
+                              startLoc);
           }
         }
       }
     } else {
       // Simple exportModule: just bindingIdentifier
-      source::SourceLoc endLoc = impl->peekToken().getLocation();
-
-      auto exportDecl = ast::factory::createExportDeclaration(zc::mv(identifier));
-      exportDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
-      return exportDecl;
+      return finishNode(ast::factory::createExportDeclaration(zc::mv(identifier)), startLoc);
     }
   }
 
@@ -329,10 +314,10 @@ zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
 zc::Maybe<zc::Own<ast::Statement>> Parser::parseStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseStatement");
 
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   // Check for different statement types
-  switch (currentToken.getKind()) {
+  switch (token.getKind()) {
     case lexer::TokenKind::kLeftBrace:
       return parseBlockStatement();
     case lexer::TokenKind::kSemicolon:
@@ -377,9 +362,9 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseStatement() {
 }
 
 bool Parser::isStartOfStatement() const {
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
-  switch (currentToken.getKind()) {
+  switch (token.getKind()) {
     // Punctuation that can start statements
     case lexer::TokenKind::kAt:         // @decorator
     case lexer::TokenKind::kSemicolon:  // empty statement
@@ -439,9 +424,9 @@ bool Parser::isStartOfStatement() const {
 }
 
 bool Parser::isStartOfLeftHandSideExpression() const {
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
-  switch (currentToken.getKind()) {
+  switch (token.getKind()) {
     // Keywords that can start left-hand side expressions
     case lexer::TokenKind::kThisKeyword:
     case lexer::TokenKind::kSuperKeyword:
@@ -488,9 +473,9 @@ bool Parser::isStartOfExpression() const {
   // First check if it's a left-hand side expression
   if (isStartOfLeftHandSideExpression()) { return true; }
 
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
-  switch (currentToken.getKind()) {
+  switch (token.getKind()) {
     // Unary operators
     case lexer::TokenKind::kPlus:
     case lexer::TokenKind::kMinus:
@@ -516,9 +501,9 @@ bool Parser::isStartOfExpression() const {
 }
 
 bool Parser::isStartOfDeclaration() const {
-  const lexer::Token& currentToken = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
-  switch (currentToken.getKind()) {
+  switch (token.getKind()) {
     // Declaration keywords
     case lexer::TokenKind::kLetKeyword:
     case lexer::TokenKind::kVarKeyword:
@@ -557,18 +542,18 @@ bool Parser::isStartOfDeclaration() const {
 // ================================================================================
 // Utility methods
 
-const lexer::Token& Parser::currentToken() const { return impl->peekToken(); }
+ZC_ALWAYS_INLINE(const lexer::Token& Parser::currentToken() const) { return impl->peekToken(); }
 
-void Parser::skipToken() { impl->consumeToken(); }
+ZC_ALWAYS_INLINE(void Parser::consumeToken()) { impl->consumeToken(); }
 
-bool Parser::expectToken(lexer::TokenKind kind) {
-  const lexer::Token& token = impl->peekToken();
+ZC_ALWAYS_INLINE(bool Parser::expectToken(lexer::TokenKind kind)) {
+  const lexer::Token& token = currentToken();
   return token.is(kind);
 }
 
-bool Parser::consumeToken(lexer::TokenKind kind) {
+ZC_ALWAYS_INLINE(bool Parser::consumeExpectedToken(lexer::TokenKind kind)) {
   if (expectToken(kind)) {
-    impl->consumeToken();
+    consumeToken();
     return true;
   }
   return false;
@@ -579,15 +564,12 @@ zc::Maybe<zc::Vector<zc::Own<ast::Expression>>> Parser::parseArgumentList() {
 
   // argumentList:
   //   (assignmentExpression | ELLIPSIS assignmentExpression) (
-  //     COMMA (
-  //       assignmentExpression
-  //       | ELLIPSIS assignmentExpression
-  //     )
+  //     COMMA (assignmentExpression | ELLIPSIS assignmentExpression)
   //   )*;
 
   if (!expectToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
-  impl->consumeToken();  // consume '('
+  consumeToken();  // consume '('
 
   zc::Vector<zc::Own<ast::Expression>> arguments;
 
@@ -595,10 +577,10 @@ zc::Maybe<zc::Vector<zc::Own<ast::Expression>>> Parser::parseArgumentList() {
     do {
       ZC_IF_SOME(arg, parseAssignmentExpression()) { arguments.add(zc::mv(arg)); }
       else { return zc::none; }
-    } while (consumeToken(lexer::TokenKind::kComma));
+    } while (consumeExpectedToken(lexer::TokenKind::kComma));
   }
 
-  if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
   return zc::mv(arguments);
 }
@@ -613,7 +595,7 @@ zc::Maybe<zc::Vector<zc::Own<ast::Type>>> Parser::parseTypeArgumentsInExpression
   // Check if we have a '<' token that could start type arguments
   if (!expectToken(lexer::TokenKind::kLessThan)) { return zc::none; }
 
-  impl->consumeToken();  // consume '<'
+  consumeToken();  // consume '<'
 
   zc::Vector<zc::Own<ast::Type>> typeArguments;
 
@@ -621,14 +603,14 @@ zc::Maybe<zc::Vector<zc::Own<ast::Type>>> Parser::parseTypeArgumentsInExpression
     do {
       ZC_IF_SOME(typeArg, parseType()) { typeArguments.add(zc::mv(typeArg)); }
       else { return zc::none; }
-    } while (consumeToken(lexer::TokenKind::kComma));
+    } while (consumeExpectedToken(lexer::TokenKind::kComma));
   }
 
-  if (!consumeToken(lexer::TokenKind::kGreaterThan)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kGreaterThan)) { return zc::none; }
 
   // Check if the type argument list is followed by tokens that indicate
   // this should be treated as type arguments rather than comparison operators
-  const lexer::Token& nextToken = impl->peekToken();
+  const lexer::Token& nextToken = currentToken();
   if (nextToken.is(lexer::TokenKind::kLeftParen) ||      // f<T>()
       nextToken.is(lexer::TokenKind::kPeriod) ||         // f<T>.prop
       nextToken.is(lexer::TokenKind::kLeftBracket) ||    // f<T>[]
@@ -641,11 +623,13 @@ zc::Maybe<zc::Vector<zc::Own<ast::Type>>> Parser::parseTypeArgumentsInExpression
 }
 
 zc::Maybe<zc::Own<ast::Identifier>> Parser::parseIdentifier() {
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
   if (token.is(lexer::TokenKind::kIdentifier)) {
+    const source::SourceLoc startLoc = token.getLocation();
     zc::String identifier = token.getText(impl->sourceMgr);
-    impl->consumeToken();
-    return ast::factory::createIdentifier(zc::mv(identifier));
+    consumeToken();
+
+    return finishNode(ast::factory::createIdentifier(zc::mv(identifier)), startLoc);
   }
   return zc::none;
 }
@@ -658,8 +642,8 @@ zc::Maybe<zc::Own<ast::Identifier>> Parser::parseBindingIdentifier() { return pa
 zc::Maybe<zc::Own<ast::BlockStatement>> Parser::parseBlockStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseBlockStatement");
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
 
   zc::Vector<zc::Own<ast::Statement>> statements;
 
@@ -667,30 +651,24 @@ zc::Maybe<zc::Own<ast::BlockStatement>> Parser::parseBlockStatement() {
     ZC_IF_SOME(stmt, parseStatement()) { statements.add(zc::mv(stmt)); }
     else {
       // Error recovery: skip token
-      impl->consumeToken();
+      consumeToken();
     }
   }
 
-  source::SourceLoc endLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
 
   // Create block statement AST node
-  auto blockStmt = ast::factory::createBlockStatement(zc::mv(statements));
-  blockStmt->setSourceRange(source::SourceRange(startLoc, endLoc));
-  return blockStmt;
+  return finishNode(ast::factory::createBlockStatement(zc::mv(statements)), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::EmptyStatement>> Parser::parseEmptyStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseEmptyStatement");
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
-  source::SourceLoc endLoc = impl->peekToken().getLocation();
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
 
   // Create empty statement AST node
-  auto emptyStmt = ast::factory::createEmptyStatement();
-  emptyStmt->setSourceRange(source::SourceRange(startLoc, endLoc));
-  return emptyStmt;
+  return finishNode(ast::factory::createEmptyStatement(), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::ExpressionStatement>> Parser::parseExpressionStatement() {
@@ -708,16 +686,13 @@ zc::Maybe<zc::Own<ast::ExpressionStatement>> Parser::parseExpressionStatement() 
   //    - The "class" keyword (to avoid confusion with class declarations)
   //    - The "let" keyword (to avoid confusion with variable declarations)
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
+  source::SourceLoc startLoc = currentToken().getLocation();
   ZC_IF_SOME(expr, parseExpression()) {
     // Expect semicolon
-    if (!consumeToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
-    source::SourceLoc endLoc = impl->peekToken().getLocation();
+    if (!consumeExpectedToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
 
     // Create expression statement AST node
-    auto exprStmt = ast::factory::createExpressionStatement(zc::mv(expr));
-    exprStmt->setSourceRange(source::SourceRange(startLoc, endLoc));
-    return exprStmt;
+    return finishNode(ast::factory::createExpressionStatement(zc::mv(expr)), startLoc);
   }
 
   return zc::none;
@@ -726,29 +701,26 @@ zc::Maybe<zc::Own<ast::ExpressionStatement>> Parser::parseExpressionStatement() 
 zc::Maybe<zc::Own<ast::IfStatement>> Parser::parseIfStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseIfStatement");
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kIfKeyword)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kIfKeyword)) { return zc::none; }
 
-  if (!consumeToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
   ZC_IF_SOME(condition, parseExpression()) {
-    if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
     ZC_IF_SOME(thenStmt, parseStatement()) {
       zc::Maybe<zc::Own<ast::Statement>> elseStmt = zc::none;
 
       if (expectToken(lexer::TokenKind::kElseKeyword)) {
-        impl->consumeToken();
+        consumeToken();
         elseStmt = parseStatement();
       }
 
-      source::SourceLoc endLoc = impl->peekToken().getLocation();
-
       // Create if statement AST node
-      auto ifStmt =
-          ast::factory::createIfStatement(zc::mv(condition), zc::mv(thenStmt), zc::mv(elseStmt));
-      ifStmt->setSourceRange(source::SourceRange(startLoc, endLoc));
-      return ifStmt;
+      return finishNode(
+          ast::factory::createIfStatement(zc::mv(condition), zc::mv(thenStmt), zc::mv(elseStmt)),
+          startLoc);
     }
   }
 
@@ -758,21 +730,18 @@ zc::Maybe<zc::Own<ast::IfStatement>> Parser::parseIfStatement() {
 zc::Maybe<zc::Own<ast::WhileStatement>> Parser::parseWhileStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseWhileStatement");
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kWhileKeyword)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kWhileKeyword)) { return zc::none; }
 
-  if (!consumeToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
   ZC_IF_SOME(condition, parseExpression()) {
-    if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
     ZC_IF_SOME(body, parseStatement()) {
-      source::SourceLoc endLoc = impl->peekToken().getLocation();
-
       // Create while statement AST node
-      auto whileStmt = ast::factory::createWhileStatement(zc::mv(condition), zc::mv(body));
-      whileStmt->setSourceRange(source::SourceRange(startLoc, endLoc));
-      return whileStmt;
+      return finishNode(ast::factory::createWhileStatement(zc::mv(condition), zc::mv(body)),
+                        startLoc);
     }
   }
 
@@ -782,27 +751,27 @@ zc::Maybe<zc::Own<ast::WhileStatement>> Parser::parseWhileStatement() {
 zc::Maybe<zc::Own<ast::ForStatement>> Parser::parseForStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseForStatement");
 
-  if (!consumeToken(lexer::TokenKind::kForKeyword)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kForKeyword)) { return zc::none; }
 
-  if (!consumeToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
   // Parse init (optional)
   zc::Maybe<zc::Own<ast::Expression>> init = zc::none;
   if (!expectToken(lexer::TokenKind::kSemicolon)) { init = parseExpression(); }
 
-  if (!consumeToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
 
   // Parse condition (optional)
   zc::Maybe<zc::Own<ast::Expression>> condition = zc::none;
   if (!expectToken(lexer::TokenKind::kSemicolon)) { condition = parseExpression(); }
 
-  if (!consumeToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
 
   // Parse update (optional)
   zc::Maybe<zc::Own<ast::Expression>> update = zc::none;
   if (!expectToken(lexer::TokenKind::kRightParen)) { update = parseExpression(); }
 
-  if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
   ZC_IF_SOME(body, parseStatement()) {
     (void)init;       // Suppress unused variable warning
@@ -819,66 +788,65 @@ zc::Maybe<zc::Own<ast::ForStatement>> Parser::parseForStatement() {
 zc::Maybe<zc::Own<ast::BreakStatement>> Parser::parseBreakStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseBreakStatement");
 
-  if (!consumeToken(lexer::TokenKind::kBreakKeyword)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kBreakKeyword)) { return zc::none; }
 
   // Optional label
   zc::Maybe<zc::Own<ast::Identifier>> label = zc::none;
   if (expectToken(lexer::TokenKind::kIdentifier)) { label = parseIdentifier(); }
 
-  if (!consumeToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
 
-  return ast::factory::createBreakStatement(zc::mv(label));
+  return finishNode(ast::factory::createBreakStatement(zc::mv(label)), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::ContinueStatement>> Parser::parseContinueStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseContinueStatement");
 
-  if (!consumeToken(lexer::TokenKind::kContinueKeyword)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kContinueKeyword)) { return zc::none; }
 
   // Optional label
   zc::Maybe<zc::Own<ast::Identifier>> label = zc::none;
   if (expectToken(lexer::TokenKind::kIdentifier)) { label = parseIdentifier(); }
 
-  if (!consumeToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
 
-  return ast::factory::createContinueStatement(zc::mv(label));
+  return finishNode(ast::factory::createContinueStatement(zc::mv(label)), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::ReturnStatement>> Parser::parseReturnStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseReturnStatement");
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kReturnKeyword)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kReturnKeyword)) { return zc::none; }
 
   // Optional expression
   zc::Maybe<zc::Own<ast::Expression>> expr = zc::none;
   if (!expectToken(lexer::TokenKind::kSemicolon)) { expr = parseExpression(); }
 
-  if (!consumeToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
-  source::SourceLoc endLoc = impl->peekToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
 
   // Create return statement AST node
-  auto returnStmt = ast::factory::createReturnStatement(zc::mv(expr));
-  returnStmt->setSourceRange(source::SourceRange(startLoc, endLoc));
-  return returnStmt;
+  return finishNode(ast::factory::createReturnStatement(zc::mv(expr)), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::MatchStatement>> Parser::parseMatchStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseMatchStatement");
 
-  if (!consumeToken(lexer::TokenKind::kMatchKeyword)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kMatchKeyword)) { return zc::none; }
 
-  if (!consumeToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
   ZC_IF_SOME(expr, parseExpression()) {
     (void)expr;  // Suppress unused variable warning
-    if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
-    if (!consumeToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
 
     // TODO: Parse match clauses
 
-    if (!consumeToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
 
     // TODO: Create match statement AST node
     return zc::none;
@@ -893,7 +861,7 @@ zc::Maybe<zc::Own<ast::MatchStatement>> Parser::parseMatchStatement() {
 zc::Maybe<zc::Own<ast::Statement>> Parser::parseDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseDeclaration");
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   switch (token.getKind()) {
     case lexer::TokenKind::kLetKeyword:
@@ -921,36 +889,33 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseDeclaration() {
 zc::Maybe<zc::Own<ast::VariableDeclaration>> Parser::parseVariableDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseVariableDeclaration");
 
-  lexer::TokenKind declKind = impl->peekToken().getKind();
+  lexer::TokenKind declKind = currentToken().getKind();
   if (declKind != lexer::TokenKind::kLetKeyword && declKind != lexer::TokenKind::kVarKeyword) {
     return zc::none;
   }
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  impl->consumeToken();  // consume let
+  source::SourceLoc startLoc = currentToken().getLocation();
+  consumeToken();  // consume let
 
   ZC_IF_SOME(name, parseBindingIdentifier()) {
     // Optional type annotation
     zc::Maybe<zc::Own<ast::Type>> type = zc::none;
     if (expectToken(lexer::TokenKind::kColon)) {
-      impl->consumeToken();
+      consumeToken();
       type = parseType();
     }
 
     // Optional initializer
     zc::Maybe<zc::Own<ast::Expression>> initializer = zc::none;
     if (expectToken(lexer::TokenKind::kEquals)) {
-      impl->consumeToken();
+      consumeToken();
       initializer = parseAssignmentExpression();
     }
 
-    source::SourceLoc endLoc = impl->peekToken().getLocation();
-
     // Create variable declaration AST node
-    auto varDecl =
-        ast::factory::createVariableDeclaration(zc::mv(name), zc::mv(type), zc::mv(initializer));
-    varDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
-    return varDecl;
+    return finishNode(
+        ast::factory::createVariableDeclaration(zc::mv(name), zc::mv(type), zc::mv(initializer)),
+        startLoc);
   }
 
   return zc::none;
@@ -959,27 +924,27 @@ zc::Maybe<zc::Own<ast::VariableDeclaration>> Parser::parseVariableDeclaration() 
 zc::Maybe<zc::Own<ast::FunctionDeclaration>> Parser::parseFunctionDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseFunctionDeclaration");
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kFunKeyword)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kFunKeyword)) { return zc::none; }
 
   ZC_IF_SOME(name, parseBindingIdentifier()) {
     // Parse function signature (parameters and return type)
-    if (!consumeToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
     // TODO: Parse parameter list
 
-    if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
     // Optional return type annotation
     if (expectToken(lexer::TokenKind::kColon)) {
-      impl->consumeToken();
+      consumeToken();
       // TODO: Parse return type
       parseType();
     }
 
     // Parse function body
     ZC_IF_SOME(body, parseBlockStatement()) {
-      source::SourceLoc endLoc = impl->peekToken().getLocation();
+      source::SourceLoc endLoc = currentToken().getLocation();
 
       // Create function declaration AST node
       zc::Vector<zc::Own<ast::Statement>> bodyStatements;
@@ -992,9 +957,9 @@ zc::Maybe<zc::Own<ast::FunctionDeclaration>> Parser::parseFunctionDeclaration() 
         }
       }
 
-      auto funcDecl = ast::factory::createFunctionDeclaration(zc::mv(name), zc::mv(bodyStatements));
-      funcDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
-      return funcDecl;
+      return finishNode(
+          ast::factory::createFunctionDeclaration(zc::mv(name), zc::mv(bodyStatements)), startLoc,
+          endLoc);
     }
   }
 
@@ -1004,19 +969,19 @@ zc::Maybe<zc::Own<ast::FunctionDeclaration>> Parser::parseFunctionDeclaration() 
 zc::Maybe<zc::Own<ast::ClassDeclaration>> Parser::parseClassDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseClassDeclaration");
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kClassKeyword)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kClassKeyword)) { return zc::none; }
 
   ZC_IF_SOME(name, parseBindingIdentifier()) {
     // Optional extends clause
     if (expectToken(lexer::TokenKind::kExtendsKeyword)) {
-      impl->consumeToken();
+      consumeToken();
       // TODO: Parse superclass
       parseBindingIdentifier();
     }
 
     // Parse class body
-    if (!consumeToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
 
     zc::Vector<zc::Own<ast::Statement>> bodyStatements;
 
@@ -1025,18 +990,15 @@ zc::Maybe<zc::Own<ast::ClassDeclaration>> Parser::parseClassDeclaration() {
       ZC_IF_SOME(member, parseStatement()) { bodyStatements.add(zc::mv(member)); }
       else {
         // Skip invalid tokens
-        impl->consumeToken();
+        consumeToken();
       }
     }
 
-    if (!consumeToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
-
-    source::SourceLoc endLoc = impl->peekToken().getLocation();
+    if (!consumeExpectedToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
 
     // Create class declaration AST node
-    auto classDecl = ast::factory::createClassDeclaration(zc::mv(name), zc::mv(bodyStatements));
-    classDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
-    return classDecl;
+    return finishNode(ast::factory::createClassDeclaration(zc::mv(name), zc::mv(bodyStatements)),
+                      startLoc);
   }
 
   return zc::none;
@@ -1045,7 +1007,7 @@ zc::Maybe<zc::Own<ast::ClassDeclaration>> Parser::parseClassDeclaration() {
 zc::Maybe<zc::Own<ast::InterfaceDeclaration>> Parser::parseInterfaceDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseInterfaceDeclaration");
 
-  if (!consumeToken(lexer::TokenKind::kInterfaceKeyword)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kInterfaceKeyword)) { return zc::none; }
 
   ZC_IF_SOME(name, parseBindingIdentifier()) {
     (void)name;  // Suppress unused variable warning
@@ -1060,7 +1022,7 @@ zc::Maybe<zc::Own<ast::InterfaceDeclaration>> Parser::parseInterfaceDeclaration(
 zc::Maybe<zc::Own<ast::StructDeclaration>> Parser::parseStructDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseStructDeclaration");
 
-  if (!consumeToken(lexer::TokenKind::kStructKeyword)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kStructKeyword)) { return zc::none; }
 
   ZC_IF_SOME(name, parseBindingIdentifier()) {
     (void)name;  // Suppress unused variable warning
@@ -1075,7 +1037,7 @@ zc::Maybe<zc::Own<ast::StructDeclaration>> Parser::parseStructDeclaration() {
 zc::Maybe<zc::Own<ast::EnumDeclaration>> Parser::parseEnumDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseEnumDeclaration");
 
-  if (!consumeToken(lexer::TokenKind::kEnumKeyword)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kEnumKeyword)) { return zc::none; }
 
   ZC_IF_SOME(name, parseBindingIdentifier()) {
     (void)name;  // Suppress unused variable warning
@@ -1090,7 +1052,7 @@ zc::Maybe<zc::Own<ast::EnumDeclaration>> Parser::parseEnumDeclaration() {
 zc::Maybe<zc::Own<ast::ErrorDeclaration>> Parser::parseErrorDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseErrorDeclaration");
 
-  if (!consumeToken(lexer::TokenKind::kErrorKeyword)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kErrorKeyword)) { return zc::none; }
 
   ZC_IF_SOME(name, parseBindingIdentifier()) {
     (void)name;  // Suppress unused variable warning
@@ -1105,19 +1067,18 @@ zc::Maybe<zc::Own<ast::ErrorDeclaration>> Parser::parseErrorDeclaration() {
 zc::Maybe<zc::Own<ast::AliasDeclaration>> Parser::parseAliasDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseAliasDeclaration");
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kAliasKeyword)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kAliasKeyword)) { return zc::none; }
 
   ZC_IF_SOME(name, parseBindingIdentifier()) {
-    if (!consumeToken(lexer::TokenKind::kEquals)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kEquals)) { return zc::none; }
 
     ZC_IF_SOME(type, parseType()) {
-      if (!consumeToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
-      source::SourceLoc endLoc = impl->peekToken().getLocation();
+      if (!consumeExpectedToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
+      source::SourceLoc endLoc = currentToken().getLocation();
 
-      auto typeAliasDecl = ast::factory::createAliasDeclaration(zc::mv(name), zc::mv(type));
-      typeAliasDecl->setSourceRange(source::SourceRange(startLoc, endLoc));
-      return typeAliasDecl;
+      return finishNode(ast::factory::createAliasDeclaration(zc::mv(name), zc::mv(type)), startLoc,
+                        endLoc);
     }
   }
 
@@ -1260,7 +1221,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseExpression() {
     zc::Own<ast::Expression> expr = zc::mv(assignExpr);
     // Handle comma operator
     while (expectToken(lexer::TokenKind::kComma)) {
-      impl->consumeToken();
+      consumeToken();
       ZC_IF_SOME(rightAssign, parseAssignmentExpressionOrHigher()) {
         zc::Own<ast::Expression> right = zc::mv(rightAssign);
         // Create comma expression AST node
@@ -1268,6 +1229,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseExpression() {
             ast::factory::createBinaryOperator(zc::str(","), ast::OperatorPrecedence::kLowest);
         zc::Own<ast::Expression> newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
     }
@@ -1294,17 +1256,20 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseAssignmentExpressionOrHigher() 
 
   // Parse binary expression with lowest precedence to get the left operand
   ZC_IF_SOME(expr, parseBinaryExpressionOrHigher()) {
-    const lexer::Token& token = impl->peekToken();
+    const lexer::Token& token = currentToken();
 
     // Check for assignment operators - if found and expr is left-hand side, parse assignment
     if (isAssignmentOperator(token.getKind()) && isLeftHandSideExpression(*expr)) {
       zc::String opText = token.getText(impl->sourceMgr);
-      impl->consumeToken();
+      consumeToken();
 
       // Right-associative: recursively parse assignment expression
       ZC_IF_SOME(right, parseAssignmentExpressionOrHigher()) {
         auto op = ast::factory::createAssignmentOperator(zc::mv(opText));
-        return ast::factory::createAssignmentExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        auto assignExpr =
+            ast::factory::createAssignmentExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for assignment expression
+        return assignExpr;
       }
       return zc::none;
     }
@@ -1330,18 +1295,20 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseConditionalExpressionRest(
     return zc::mv(leftOperand);
   }
 
-  impl->consumeToken();  // consume '?'
+  consumeToken();  // consume '?'
 
   // Parse the 'then' expression
   ZC_IF_SOME(thenExpr, parseAssignmentExpressionOrHigher()) {
     // Expect ':' token
-    if (!consumeToken(lexer::TokenKind::kColon)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kColon)) { return zc::none; }
 
     // Parse the 'else' expression
     ZC_IF_SOME(elseExpr, parseAssignmentExpressionOrHigher()) {
       // Create conditional expression AST node
-      return ast::factory::createConditionalExpression(zc::mv(leftOperand), zc::mv(thenExpr),
-                                                       zc::mv(elseExpr));
+      auto conditionalExpr = ast::factory::createConditionalExpression(
+          zc::mv(leftOperand), zc::mv(thenExpr), zc::mv(elseExpr));
+      // TODO: Set source range for conditional expression
+      return conditionalExpr;
     }
   }
 
@@ -1375,7 +1342,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRest(
   zc::Own<ast::Expression> expr = zc::mv(leftOperand);
 
   while (true) {
-    const lexer::Token& token = impl->peekToken();
+    const lexer::Token& token = currentToken();
 
     if (!isBinaryOperator(token.getKind())) { break; }
 
@@ -1385,7 +1352,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRest(
     bool isRightAssociative = (token.getKind() == lexer::TokenKind::kAsteriskAsterisk);
 
     zc::String opText = token.getText(impl->sourceMgr);
-    impl->consumeToken();
+    consumeToken();
 
     // Parse right operand with appropriate precedence
     OperatorPrecedence rightPrecedence =
@@ -1401,6 +1368,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRest(
             zc::mv(opText), static_cast<ast::OperatorPrecedence>(currentPrecedence));
         auto newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(rightExpr));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
       else { return zc::none; }
@@ -1417,7 +1385,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRestWithPrecede
   zc::Own<ast::Expression> expr = zc::mv(leftOperand);
 
   while (true) {
-    const lexer::Token& token = impl->peekToken();
+    const lexer::Token& token = currentToken();
 
     if (!isBinaryOperator(token.getKind())) { break; }
 
@@ -1428,7 +1396,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRestWithPrecede
     bool isRightAssociative = (token.getKind() == lexer::TokenKind::kAsteriskAsterisk);
 
     zc::String opText = token.getText(impl->sourceMgr);
-    impl->consumeToken();
+    consumeToken();
 
     OperatorPrecedence rightPrecedence =
         isRightAssociative
@@ -1440,7 +1408,10 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRestWithPrecede
                  parseBinaryExpressionRestWithPrecedence(zc::mv(rightOperand), rightPrecedence)) {
         auto op = ast::factory::createBinaryOperator(
             zc::mv(opText), static_cast<ast::OperatorPrecedence>(currentPrecedence));
-        expr = ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(rightExpr));
+        auto binaryExpr =
+            ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(rightExpr));
+        // TODO: Set source range for binary expression
+        expr = zc::mv(binaryExpr);
       }
       else { return zc::none; }
     }
@@ -1466,7 +1437,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpressionOrHigher() {
   //
   // Handles prefix unary operators and update expressions
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   // Check for update expressions (++, --) first
   if (token.is(lexer::TokenKind::kPlusPlus) || token.is(lexer::TokenKind::kMinusMinus)) {
@@ -1499,7 +1470,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpressionOrHigher() {
 zc::Maybe<zc::Own<ast::UnaryExpression>> Parser::parseSimpleUnaryExpression() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseSimpleUnaryExpression");
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   switch (token.getKind()) {
     case lexer::TokenKind::kPlus:
@@ -1532,9 +1503,9 @@ zc::Maybe<zc::Own<ast::UnaryExpression>> Parser::parsePrefixUnaryExpression() {
   //
   // Parse prefix unary operators: +, -, ~, !
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
   zc::String operatorText = token.getText(impl->sourceMgr);
-  impl->consumeToken();
+  consumeToken();
 
   // Parse the operand (recursive call to parseSimpleUnaryExpression)
   ZC_IF_SOME(operand, parseSimpleUnaryExpression()) {
@@ -1560,7 +1531,9 @@ zc::Maybe<zc::Own<ast::UnaryExpression>> Parser::parsePrefixUnaryExpression() {
     }
 
     // Create prefix unary expression
-    return ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(operand));
+    auto prefixExpr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(operand));
+    // TODO: Set source range for prefix unary expression
+    return prefixExpr;
   }
 
   return zc::none;
@@ -1575,14 +1548,16 @@ zc::Maybe<zc::Own<ast::VoidExpression>> Parser::parseVoidExpression() {
   //
   // Parse void operator expression
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
   zc::String operatorText = token.getText(impl->sourceMgr);
-  impl->consumeToken();
+  consumeToken();
 
   // Parse the operand
   ZC_IF_SOME(operand, parseSimpleUnaryExpression()) {
     // Create void expression
-    return ast::factory::createVoidExpression(zc::mv(operand));
+    auto voidExpr = ast::factory::createVoidExpression(zc::mv(operand));
+    // TODO: Set source range for void expression
+    return voidExpr;
   }
 
   return zc::none;
@@ -1597,14 +1572,16 @@ zc::Maybe<zc::Own<ast::TypeOfExpression>> Parser::parseTypeOfExpression() {
   //
   // Parse typeof operator expression
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
   zc::String operatorText = token.getText(impl->sourceMgr);
-  impl->consumeToken();
+  consumeToken();
 
   // Parse the operand
   ZC_IF_SOME(operand, parseSimpleUnaryExpression()) {
     // Create typeof expression
-    return ast::factory::createTypeOfExpression(zc::mv(operand));
+    auto typeofExpr = ast::factory::createTypeOfExpression(zc::mv(operand));
+    // TODO: Set source range for typeof expression
+    return typeofExpr;
   }
 
   return zc::none;
@@ -1620,7 +1597,7 @@ zc::Maybe<zc::Own<ast::LeftHandSideExpression>> Parser::parseLeftHandSideExpress
   //   | callExpression
   //   | optionalExpression;
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   zc::Maybe<zc::Own<ast::MemberExpression>> expression = zc::none;
 
@@ -1653,7 +1630,7 @@ zc::Maybe<zc::Own<ast::MemberExpression>> Parser::parseMemberExpressionOrHigher(
   zc::Maybe<zc::Own<ast::PrimaryExpression>> expression = zc::none;
 
   // Handle 'new' expressions
-  if (impl->peekToken().is(lexer::TokenKind::kNewKeyword)) {
+  if (currentToken().is(lexer::TokenKind::kNewKeyword)) {
     ZC_IF_SOME(newExpr, parseNewExpression()) { expression = zc::mv(newExpr); }
   }
   // Parse primary expression
@@ -1683,45 +1660,56 @@ zc::Maybe<zc::Own<ast::LeftHandSideExpression>> Parser::parseCallExpressionRest(
   zc::Own<ast::LeftHandSideExpression> result = zc::mv(expression);
 
   while (true) {
-    const lexer::Token& token = impl->peekToken();
+    const lexer::Token& token = currentToken();
 
     // Handle function calls
     if (token.is(lexer::TokenKind::kLeftParen)) {
       // Parse argument list
       ZC_IF_SOME(arguments, parseArgumentList()) {
         // Create call expression
-        result = ast::factory::createCallExpression(zc::mv(result), zc::mv(arguments));
+        auto callExpr = ast::factory::createCallExpression(zc::mv(result), zc::mv(arguments));
+        // TODO: Set source range for call expression
+        result = zc::mv(callExpr);
         continue;
       }
       else { return zc::none; }
     }
     // Handle member access (.property)
     else if (token.is(lexer::TokenKind::kPeriod)) {
-      impl->consumeToken();  // consume '.'
+      consumeToken();  // consume '.'
       ZC_IF_SOME(name, parseIdentifier()) {
-        result = ast::factory::createPropertyAccessExpression(zc::mv(result), zc::mv(name), false);
+        auto propAccessExpr =
+            ast::factory::createPropertyAccessExpression(zc::mv(result), zc::mv(name), false);
+        // TODO: Set source range for property access expression
+        result = zc::mv(propAccessExpr);
         continue;
       }
     }
     // Handle computed member access ([expression])
     else if (token.is(lexer::TokenKind::kLeftBracket)) {
-      impl->consumeToken();  // consume '['
+      consumeToken();  // consume '['
       ZC_IF_SOME(index, parseExpression()) {
-        if (!consumeToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
-        result = ast::factory::createElementAccessExpression(zc::mv(result), zc::mv(index), false);
+        if (!consumeExpectedToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
+        auto elemAccessExpr =
+            ast::factory::createElementAccessExpression(zc::mv(result), zc::mv(index), false);
+        // TODO: Set source range for element access expression
+        result = zc::mv(elemAccessExpr);
         continue;
       }
     }
     // Handle optional chaining (?.) - simplified for now
     else if (token.is(lexer::TokenKind::kQuestion)) {
-      impl->consumeToken();  // consume '?'
-      const lexer::Token& nextToken = impl->peekToken();
+      consumeToken();  // consume '?'
+      const lexer::Token& nextToken = currentToken();
       if (nextToken.is(lexer::TokenKind::kPeriod)) {
-        impl->consumeToken();  // consume '.'
+        consumeToken();  // consume '.'
 
         ZC_IF_SOME(property, parseIdentifier()) {
           // Create optional expression directly
-          result = ast::factory::createOptionalExpression(zc::mv(result), zc::mv(property));
+          auto optionalExpr =
+              ast::factory::createOptionalExpression(zc::mv(result), zc::mv(property));
+          // TODO: Set source range for optional expression
+          result = zc::mv(optionalExpr);
           continue;
         }
       } else {
@@ -1748,15 +1736,18 @@ zc::Maybe<zc::Own<ast::AssignmentExpression>> Parser::parseAssignmentExpression(
   // Only return AssignmentExpression if we actually have an assignment
 
   ZC_IF_SOME(expr, parseConditionalExpression()) {
-    const lexer::Token& token = impl->peekToken();
+    const lexer::Token& token = currentToken();
 
     if (isAssignmentOperator(token.getKind()) && isLeftHandSideExpression(*expr)) {
       zc::String opText = token.getText(impl->sourceMgr);
-      impl->consumeToken();
+      consumeToken();
 
       ZC_IF_SOME(right, parseAssignmentExpressionOrHigher()) {
         auto op = ast::factory::createAssignmentOperator(zc::mv(opText));
-        return ast::factory::createAssignmentExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        auto assignExpr =
+            ast::factory::createAssignmentExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for assignment expression
+        return assignExpr;
       }
     }
   }
@@ -1793,14 +1784,16 @@ zc::Maybe<zc::Own<ast::ConditionalExpression>> Parser::parseConditionalExpressio
 
   ZC_IF_SOME(expr, parseShortCircuitExpression()) {
     if (expectToken(lexer::TokenKind::kQuestion)) {
-      impl->consumeToken();
+      consumeToken();
 
       ZC_IF_SOME(thenExpr, parseAssignmentExpressionOrHigher()) {
-        if (!consumeToken(lexer::TokenKind::kColon)) { return zc::none; }
+        if (!consumeExpectedToken(lexer::TokenKind::kColon)) { return zc::none; }
 
         ZC_IF_SOME(elseExpr, parseAssignmentExpressionOrHigher()) {
-          return ast::factory::createConditionalExpression(zc::mv(expr), zc::mv(thenExpr),
-                                                           zc::mv(elseExpr));
+          auto conditionalExpr = ast::factory::createConditionalExpression(
+              zc::mv(expr), zc::mv(thenExpr), zc::mv(elseExpr));
+          // TODO: Set source range for conditional expression
+          return conditionalExpr;
         }
       }
     }
@@ -1822,8 +1815,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseLogicalOrExpression() {
 
   ZC_IF_SOME(expr, parseLogicalAndExpression()) {
     while (expectToken(lexer::TokenKind::kBarBar)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseLogicalAndExpression()) {
         // Create binary expression AST node
@@ -1831,6 +1824,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseLogicalOrExpression() {
             ast::factory::createBinaryOperator(zc::mv(opText), ast::OperatorPrecedence::kLogicalOr);
         auto newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
     }
@@ -1850,8 +1844,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseLogicalAndExpression() {
 
   ZC_IF_SOME(expr, parseBitwiseOrExpression()) {
     while (expectToken(lexer::TokenKind::kAmpersandAmpersand)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseBitwiseOrExpression()) {
         // Create binary expression AST node
@@ -1859,6 +1853,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseLogicalAndExpression() {
                                                      ast::OperatorPrecedence::kLogicalAnd);
         auto newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
     }
@@ -1878,8 +1873,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBitwiseOrExpression() {
 
   ZC_IF_SOME(expr, parseBitwiseXorExpression()) {
     while (expectToken(lexer::TokenKind::kBar)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseBitwiseXorExpression()) {
         // Create binary expression AST node
@@ -1887,6 +1882,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBitwiseOrExpression() {
             ast::factory::createBinaryOperator(zc::mv(opText), ast::OperatorPrecedence::kBitwiseOr);
         auto newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
     }
@@ -1906,8 +1902,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBitwiseXorExpression() {
 
   ZC_IF_SOME(expr, parseBitwiseAndExpression()) {
     while (expectToken(lexer::TokenKind::kCaret)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseBitwiseAndExpression()) {
         // Create binary expression AST node
@@ -1915,6 +1911,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBitwiseXorExpression() {
                                                      ast::OperatorPrecedence::kBitwiseXor);
         auto newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
     }
@@ -1934,8 +1931,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBitwiseAndExpression() {
 
   ZC_IF_SOME(expr, parseEqualityExpression()) {
     while (expectToken(lexer::TokenKind::kAmpersand)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseEqualityExpression()) {
         // Create binary expression AST node
@@ -1943,6 +1940,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBitwiseAndExpression() {
                                                      ast::OperatorPrecedence::kBitwiseAnd);
         auto newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
     }
@@ -1963,8 +1961,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseEqualityExpression() {
   ZC_IF_SOME(expr, parseRelationalExpression()) {
     while (expectToken(lexer::TokenKind::kEqualsEquals) ||
            expectToken(lexer::TokenKind::kExclamationEquals)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseRelationalExpression()) {
         // Create binary expression AST node
@@ -1972,6 +1970,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseEqualityExpression() {
             ast::factory::createBinaryOperator(zc::mv(opText), ast::OperatorPrecedence::kEquality);
         auto newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
     }
@@ -1994,8 +1993,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseRelationalExpression() {
            expectToken(lexer::TokenKind::kGreaterThan) ||
            expectToken(lexer::TokenKind::kLessThanEquals) ||
            expectToken(lexer::TokenKind::kGreaterThanEquals)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseShiftExpression()) {
         // Create binary expression AST node
@@ -2003,6 +2002,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseRelationalExpression() {
                                                      ast::OperatorPrecedence::kRelational);
         auto newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
     }
@@ -2023,8 +2023,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseShiftExpression() {
   ZC_IF_SOME(expr, parseAdditiveExpression()) {
     while (expectToken(lexer::TokenKind::kLessThanLessThan) ||
            expectToken(lexer::TokenKind::kGreaterThanGreaterThan)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseAdditiveExpression()) {
         // Create binary expression AST node
@@ -2032,6 +2032,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseShiftExpression() {
             ast::factory::createBinaryOperator(zc::mv(opText), ast::OperatorPrecedence::kShift);
         auto newExpr =
             ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
         expr = zc::mv(newExpr);
       }
     }
@@ -2051,8 +2052,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseAdditiveExpression() {
 
   ZC_IF_SOME(expr, parseMultiplicativeExpression()) {
     while (expectToken(lexer::TokenKind::kPlus) || expectToken(lexer::TokenKind::kMinus)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseMultiplicativeExpression()) {
         // Create binary expression AST node
@@ -2080,8 +2081,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseMultiplicativeExpression() {
   ZC_IF_SOME(expr, parseExponentiationExpression()) {
     while (expectToken(lexer::TokenKind::kAsterisk) || expectToken(lexer::TokenKind::kSlash) ||
            expectToken(lexer::TokenKind::kPercent)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseExponentiationExpression()) {
         // Create binary expression AST node
@@ -2114,16 +2115,19 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseExponentiationExpression() {
 
   // Try updateExpression POW exponentiationExpression (right-associative)
   ZC_IF_SOME(left, parseUpdateExpression()) {
-    const lexer::Token& token = impl->peekToken();
+    const lexer::Token& token = currentToken();
     if (token.is(lexer::TokenKind::kAsteriskAsterisk)) {  // POW operator
       zc::String opText = token.getText(impl->sourceMgr);
-      impl->consumeToken();
+      consumeToken();
 
       ZC_IF_SOME(right, parseExponentiationExpression()) {  // Right-associative
         auto op = ast::factory::createBinaryOperator(zc::mv(opText),
                                                      ast::OperatorPrecedence::kExponentiation,
                                                      ast::OperatorAssociativity::kRight);
-        return ast::factory::createBinaryExpression(zc::mv(left), zc::mv(op), zc::mv(right));
+        auto binaryExpr =
+            ast::factory::createBinaryExpression(zc::mv(left), zc::mv(op), zc::mv(right));
+        // TODO: Set source range for binary expression
+        return binaryExpr;
       }
     }
     return zc::mv(left);
@@ -2135,7 +2139,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseExponentiationExpression() {
 zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpression() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseUnaryExpression");
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   // unaryExpression:
   //   updateExpression
@@ -2153,22 +2157,24 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpression() {
   // Check for VOID operator
   if (token.is(lexer::TokenKind::kVoidKeyword)) {
     zc::String opText = token.getText(impl->sourceMgr);
-    impl->consumeToken();
+    consumeToken();
 
     ZC_IF_SOME(expr, parseUnaryExpression()) {
       auto op = ast::factory::createVoidOperator();
       auto unaryExpr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(expr));
+      // TODO: Set source range for prefix unary expression
       return zc::mv(unaryExpr);
     }
   }
   // Check for TYPEOF operator
   else if (token.is(lexer::TokenKind::kTypeOfKeyword)) {
     zc::String opText = token.getText(impl->sourceMgr);
-    impl->consumeToken();
+    consumeToken();
 
     ZC_IF_SOME(expr, parseUnaryExpression()) {
       auto op = ast::factory::createTypeOfOperator();
       auto unaryExpr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(expr));
+      // TODO: Set source range for prefix unary expression
       return zc::mv(unaryExpr);
     }
   }
@@ -2176,7 +2182,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpression() {
   else if (token.is(lexer::TokenKind::kPlus) || token.is(lexer::TokenKind::kMinus) ||
            token.is(lexer::TokenKind::kExclamation) || token.is(lexer::TokenKind::kTilde)) {
     zc::String opText = token.getText(impl->sourceMgr);
-    impl->consumeToken();
+    consumeToken();
 
     ZC_IF_SOME(expr, parseUnaryExpression()) {
       // Create appropriate unary operator based on token kind
@@ -2193,6 +2199,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpression() {
         op = ast::factory::createUnaryOperator(zc::mv(opText), true);
       }
       auto unaryExpr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(expr));
+      // TODO: Set source range for prefix unary expression
       return zc::mv(unaryExpr);
     }
   }
@@ -2201,24 +2208,25 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpression() {
     // Delegate to parseAwaitExpression, but we need to return a UnaryExpression
     // For now, treat await as a unary operator
     zc::String opText = token.getText(impl->sourceMgr);
-    impl->consumeToken();
+    consumeToken();
 
     ZC_IF_SOME(expr, parseUnaryExpression()) {
       // For await, we should use AwaitExpression instead of UnaryExpression
       // But for now, treat it as a unary operator
       auto op = ast::factory::createUnaryOperator(zc::str("await"), true);
       auto unaryExpr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(expr));
+      // TODO: Set source range for prefix unary expression
       return zc::mv(unaryExpr);
     }
   }
   // Check for type assertion: LT type GT unaryExpression
   else if (token.is(lexer::TokenKind::kLessThan)) {
     // This is a type assertion, parse it
-    impl->consumeToken();  // consume '<'
+    consumeToken();  // consume '<'
 
     ZC_IF_SOME(type, parseType()) {
       if (expectToken(lexer::TokenKind::kGreaterThan)) {
-        impl->consumeToken();  // consume '>'
+        consumeToken();  // consume '>'
 
         ZC_IF_SOME(expr, parseUnaryExpression()) {
           // Create a type assertion expression
@@ -2227,6 +2235,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpression() {
           (void)type;  // Suppress unused variable warning for now
           auto op = ast::factory::createUnaryOperator(zc::str("<type>"), true);
           auto unaryExpr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(expr));
+          // TODO: Set source range for prefix unary expression
           return zc::mv(unaryExpr);
         }
       }
@@ -2247,19 +2256,21 @@ zc::Maybe<zc::Own<ast::UpdateExpression>> Parser::parseUpdateExpression() {
   //   | INC leftHandSideExpression
   //   | DEC leftHandSideExpression;
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   // Check for prefix increment/decrement operators
   if (token.is(lexer::TokenKind::kPlusPlus) || token.is(lexer::TokenKind::kMinusMinus)) {
     zc::String opText = token.getText(impl->sourceMgr);
-    impl->consumeToken();
+    consumeToken();
 
     // For prefix operators, parse unaryExpression (not leftHandSideExpression)
     ZC_IF_SOME(operand, parseLeftHandSideExpressionOrHigher()) {
       zc::Own<ast::UnaryOperator> op = token.is(lexer::TokenKind::kPlusPlus)
                                            ? ast::factory::createPreIncrementOperator()
                                            : ast::factory::createPreDecrementOperator();
-      return ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(operand));
+      auto prefixExpr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(operand));
+      // TODO: Set source range for prefix unary expression
+      return prefixExpr;
     }
 
     return zc::none;
@@ -2267,18 +2278,20 @@ zc::Maybe<zc::Own<ast::UpdateExpression>> Parser::parseUpdateExpression() {
 
   // Parse leftHandSideExpression first
   ZC_IF_SOME(expression, parseLeftHandSideExpressionOrHigher()) {
-    const lexer::Token& postToken = impl->peekToken();
+    const lexer::Token& postToken = currentToken();
 
     // Check for postfix increment/decrement operators
     if ((postToken.is(lexer::TokenKind::kPlusPlus) ||
          postToken.is(lexer::TokenKind::kMinusMinus))) {
       zc::String opText = postToken.getText(impl->sourceMgr);
-      impl->consumeToken();
+      consumeToken();
 
       zc::Own<ast::UnaryOperator> op = token.is(lexer::TokenKind::kPlusPlus)
                                            ? ast::factory::createPostIncrementOperator()
                                            : ast::factory::createPostDecrementOperator();
-      return ast::factory::createPostfixUnaryExpression(zc::mv(op), zc::mv(expression));
+      auto postfixExpr = ast::factory::createPostfixUnaryExpression(zc::mv(op), zc::mv(expression));
+      // TODO: Set source range for postfix unary expression
+      return postfixExpr;
     }
 
     // No update operators found, return the expression as-is
@@ -2315,7 +2328,7 @@ zc::Maybe<zc::Own<ast::PrimaryExpression>> Parser::parsePrimaryExpression() {
   //
   // Handles basic atomic expressions
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   switch (token.getKind()) {
     case lexer::TokenKind::kIdentifier:
@@ -2331,9 +2344,9 @@ zc::Maybe<zc::Own<ast::PrimaryExpression>> Parser::parsePrimaryExpression() {
       return parseLiteralExpression();
 
     case lexer::TokenKind::kLeftParen: {
-      impl->consumeToken();
+      consumeToken();
       ZC_IF_SOME(expr, parseParenthesizedExpression()) {
-        if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+        if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
         return zc::mv(expr);
       }
       return zc::none;
@@ -2361,38 +2374,44 @@ zc::Maybe<zc::Own<ast::LiteralExpression>> Parser::parseLiteralExpression() {
   //
   // Handles all literal values (numbers, strings, booleans, nil)
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   switch (token.getKind()) {
     case lexer::TokenKind::kIntegerLiteral: {
+      source::SourceLoc startLoc = token.getLocation();
       zc::String value = token.getText(impl->sourceMgr);
-      impl->consumeToken();
+      consumeToken();
       double numValue = zc::StringPtr(value).parseAs<double>();
-      return ast::factory::createNumericLiteral(numValue);
+      return finishNode(ast::factory::createNumericLiteral(numValue), startLoc);
     }
     case lexer::TokenKind::kFloatLiteral: {
+      source::SourceLoc startLoc = token.getLocation();
       zc::String value = token.getText(impl->sourceMgr);
-      impl->consumeToken();
+      consumeToken();
       double numValue = zc::StringPtr(value).parseAs<double>();
-      return ast::factory::createNumericLiteral(numValue);
+      return finishNode(ast::factory::createNumericLiteral(numValue), startLoc);
     }
     case lexer::TokenKind::kStringLiteral: {
+      source::SourceLoc startLoc = token.getLocation();
       zc::String value = token.getText(impl->sourceMgr);
-      impl->consumeToken();
-      return ast::factory::createStringLiteral(zc::mv(value));
+      consumeToken();
+      return finishNode(ast::factory::createStringLiteral(zc::mv(value)), startLoc);
     }
     case lexer::TokenKind::kTrueKeyword: {
-      impl->consumeToken();
-      return ast::factory::createBooleanLiteral(true);
+      source::SourceLoc startLoc = token.getLocation();
+      consumeToken();
+      return finishNode(ast::factory::createBooleanLiteral(true), startLoc);
     }
     case lexer::TokenKind::kFalseKeyword: {
-      impl->consumeToken();
-      return ast::factory::createBooleanLiteral(false);
+      source::SourceLoc startLoc = token.getLocation();
+      consumeToken();
+      return finishNode(ast::factory::createBooleanLiteral(false), startLoc);
     }
     case lexer::TokenKind::kNullKeyword:
     case lexer::TokenKind::kNilKeyword: {
-      impl->consumeToken();
-      return ast::factory::createNilLiteral();
+      source::SourceLoc startLoc = token.getLocation();
+      consumeToken();
+      return finishNode(ast::factory::createNilLiteral(), startLoc);
     }
 
     default:
@@ -2410,17 +2429,17 @@ zc::Maybe<zc::Own<ast::ArrayLiteralExpression>> Parser::parseArrayLiteralExpress
   //
   // Handles array literal expressions [1, 2, 3]
 
-  if (!consumeToken(lexer::TokenKind::kLeftBracket)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftBracket)) { return zc::none; }
 
   zc::Vector<zc::Own<ast::Expression>> elements;
 
   if (!expectToken(lexer::TokenKind::kRightBracket)) {
     do {
       ZC_IF_SOME(element, parseAssignmentExpression()) { elements.add(zc::mv(element)); }
-    } while (consumeToken(lexer::TokenKind::kComma));
+    } while (consumeExpectedToken(lexer::TokenKind::kComma));
   }
 
-  if (!consumeToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
 
   // TODO: Create array literal expression AST node (ArrayLiteralExpression class not yet defined)
   (void)elements;  // Suppress unused variable warning
@@ -2437,11 +2456,11 @@ zc::Maybe<zc::Own<ast::ObjectLiteralExpression>> Parser::parseObjectLiteralExpre
   //
   // Handles object literal expressions {key: value}
 
-  if (!consumeToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
 
   // TODO: Parse object properties
 
-  if (!consumeToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
 
   // TODO: Create object literal expression AST node (ObjectLiteralExpression class not yet defined)
   return zc::none;
@@ -2467,7 +2486,7 @@ zc::Maybe<zc::Own<ast::Type>> Parser::parseType() {
   // Handle optional types
 
   if (expectToken(lexer::TokenKind::kQuestion)) {
-    impl->consumeToken();
+    consumeToken();
     // TODO: Handle optional types properly with a dedicated AST node
   }
 
@@ -2482,7 +2501,7 @@ zc::Maybe<zc::Own<ast::Type>> Parser::parseType() {
 zc::Maybe<zc::Own<ast::TypeAnnotation>> Parser::parseTypeAnnotation() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseTypeAnnotation");
 
-  if (!consumeToken(lexer::TokenKind::kColon)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kColon)) { return zc::none; }
 
   ZC_IF_SOME(type, parseType()) { return ast::factory::createTypeAnnotation(zc::mv(type)); }
 
@@ -2502,7 +2521,7 @@ zc::Maybe<zc::Own<ast::UnionType>> Parser::parseUnionType() {
     types.add(zc::mv(type));
 
     while (expectToken(lexer::TokenKind::kBar)) {
-      impl->consumeToken();
+      consumeToken();
 
       ZC_IF_SOME(rightType, parseIntersectionType()) { types.add(zc::mv(rightType)); }
     }
@@ -2531,7 +2550,7 @@ zc::Maybe<zc::Own<ast::IntersectionType>> Parser::parseIntersectionType() {
     types.add(zc::mv(type));
 
     while (expectToken(lexer::TokenKind::kAmpersand)) {
-      impl->consumeToken();
+      consumeToken();
 
       ZC_IF_SOME(rightType, parsePrimaryType()) { types.add(zc::mv(rightType)); }
     }
@@ -2560,7 +2579,7 @@ zc::Maybe<zc::Own<ast::Type>> Parser::parsePrimaryType() {
   //
   // Handles basic type expressions
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   switch (token.getKind()) {
     case lexer::TokenKind::kLeftParen:
@@ -2590,9 +2609,9 @@ zc::Maybe<zc::Own<ast::ArrayType>> Parser::parseArrayType() {
     zc::Own<ast::Type> result = zc::mv(elementType);
 
     while (expectToken(lexer::TokenKind::kLeftBracket)) {
-      impl->consumeToken();
+      consumeToken();
 
-      if (!consumeToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
+      if (!consumeExpectedToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
 
       result = ast::factory::createArrayType(zc::mv(result));
     }
@@ -2618,10 +2637,10 @@ zc::Maybe<zc::Own<ast::FunctionType>> Parser::parseFunctionType() {
 zc::Maybe<zc::Own<ast::ParenthesizedType>> Parser::parseParenthesizedType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseParenthesizedType");
 
-  if (!consumeToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
   ZC_IF_SOME(type, parseType()) {
-    if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
     return ast::factory::createParenthesizedType(zc::mv(type));
   }
 
@@ -2636,13 +2655,13 @@ zc::Maybe<zc::Own<ast::ObjectType>> Parser::parseObjectType() {
   //
   // Handles object types like {prop: T, method(): U}
 
-  if (!consumeToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
 
   zc::Vector<zc::Own<ast::Node>> members;
 
   // TODO: Parse object type members
 
-  if (!consumeToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
 
   return ast::factory::createObjectType(zc::mv(members));
 }
@@ -2655,17 +2674,17 @@ zc::Maybe<zc::Own<ast::TupleType>> Parser::parseTupleType() {
   //
   // Handles tuple types like [T, U, V]
 
-  if (!consumeToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
   zc::Vector<zc::Own<ast::Type>> elementTypes;
 
   if (!expectToken(lexer::TokenKind::kRightParen)) {
     do {
       ZC_IF_SOME(elementType, parseType()) { elementTypes.add(zc::mv(elementType)); }
-    } while (consumeToken(lexer::TokenKind::kComma));
+    } while (consumeExpectedToken(lexer::TokenKind::kComma));
   }
 
-  if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+  if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
   return ast::factory::createTupleType(zc::mv(elementTypes));
 }
@@ -2694,7 +2713,7 @@ zc::Maybe<zc::Own<ast::PredefinedType>> Parser::parsePredefinedType() {
   //
   // Handles built-in primitive types
 
-  const lexer::Token& token = impl->peekToken();
+  const lexer::Token& token = currentToken();
 
   switch (token.getKind()) {
     case lexer::TokenKind::kBoolKeyword:
@@ -2711,7 +2730,7 @@ zc::Maybe<zc::Own<ast::PredefinedType>> Parser::parsePredefinedType() {
     case lexer::TokenKind::kUnitKeyword:
     case lexer::TokenKind::kNilKeyword: {
       zc::String typeName = token.getText(impl->sourceMgr);
-      impl->consumeToken();
+      consumeToken();
       return ast::factory::createPredefinedType(zc::mv(typeName));
     }
 
@@ -2727,8 +2746,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseCoalesceExpression() {
 
   ZC_IF_SOME(expr, parseBitwiseOrExpression()) {
     while (expectToken(lexer::TokenKind::kQuestionQuestion)) {
-      zc::String opText = impl->peekToken().getText(impl->sourceMgr);
-      impl->consumeToken();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
 
       ZC_IF_SOME(right, parseBitwiseOrExpression()) {
         // Create binary expression AST node
@@ -2752,17 +2771,17 @@ zc::Maybe<zc::Own<ast::CastExpression>> Parser::parseCastExpression() {
 
   ZC_IF_SOME(expr, parseUnaryExpression()) {
     while (expectToken(lexer::TokenKind::kAsKeyword)) {
-      impl->consumeToken();
+      consumeToken();
 
       bool isOptional = false;
       bool isNonNull = false;
 
       if (expectToken(lexer::TokenKind::kQuestion)) {
         isOptional = true;
-        impl->consumeToken();
+        consumeToken();
       } else if (expectToken(lexer::TokenKind::kExclamation)) {
         isNonNull = true;
-        impl->consumeToken();
+        consumeToken();
       }
 
       ZC_IF_SOME(type, parseType()) {
@@ -2789,7 +2808,7 @@ zc::Maybe<zc::Own<ast::AwaitExpression>> Parser::parseAwaitExpression() {
 
   if (!expectToken(lexer::TokenKind::kAwaitKeyword)) { return zc::none; }
 
-  impl->consumeToken();
+  consumeToken();
 
   ZC_IF_SOME(expr, parseUnaryExpression()) {
     return ast::factory::createAwaitExpression(zc::mv(expr));
@@ -2801,15 +2820,12 @@ zc::Maybe<zc::Own<ast::AwaitExpression>> Parser::parseAwaitExpression() {
 zc::Maybe<zc::Own<ast::DebuggerStatement>> Parser::parseDebuggerStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseDebuggerStatement");
 
-  source::SourceLoc startLoc = impl->peekToken().getLocation();
-  if (!consumeToken(lexer::TokenKind::kDebuggerKeyword)) { return zc::none; }
+  source::SourceLoc startLoc = currentToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kDebuggerKeyword)) { return zc::none; }
 
-  if (!consumeToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
-  source::SourceLoc endLoc = impl->peekToken().getLocation();
+  if (!consumeExpectedToken(lexer::TokenKind::kSemicolon)) { return zc::none; }
 
-  auto debuggerStmt = ast::factory::createDebuggerStatement();
-  debuggerStmt->setSourceRange(source::SourceRange(startLoc, endLoc));
-  return debuggerStmt;
+  return finishNode(ast::factory::createDebuggerStatement(), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::NewExpression>> Parser::parseNewExpression() {
@@ -2821,7 +2837,7 @@ zc::Maybe<zc::Own<ast::NewExpression>> Parser::parseNewExpression() {
 
   if (!expectToken(lexer::TokenKind::kNewKeyword)) { return zc::none; }
 
-  impl->consumeToken();
+  consumeToken();
 
   // Parse the expression part using parseMemberExpressionRest
   zc::Maybe<zc::Own<ast::LeftHandSideExpression>> expression = zc::none;
@@ -2866,10 +2882,10 @@ zc::Maybe<zc::Own<ast::ParenthesizedExpression>> Parser::parseParenthesizedExpre
 
   if (!expectToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
-  impl->consumeToken();
+  consumeToken();
 
   ZC_IF_SOME(expr, parseExpression()) {
-    if (!consumeToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+    if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
     // Create a parenthesized expression with the parsed expression
     return ast::factory::createParenthesizedExpression(zc::mv(expr));
@@ -2886,7 +2902,7 @@ zc::Maybe<zc::Own<ast::MemberExpression>> Parser::parseMemberExpressionRest(
 
     // Check for optional chaining first
     if (allowOptionalChain && expectToken(lexer::TokenKind::kQuestionDot)) {
-      impl->consumeToken();  // consume '?.'
+      consumeToken();  // consume '?.'
       questionDotToken = true;
       // After ?., check if next token is identifier (property access) or '[' (element access)
       isPropertyAccess = expectToken(lexer::TokenKind::kIdentifier);
@@ -2894,7 +2910,7 @@ zc::Maybe<zc::Own<ast::MemberExpression>> Parser::parseMemberExpressionRest(
       // Check for regular property access
       isPropertyAccess = expectToken(lexer::TokenKind::kPeriod);
       if (isPropertyAccess) {
-        impl->consumeToken();  // consume '.'
+        consumeToken();  // consume '.'
       }
     }
 
@@ -2910,9 +2926,9 @@ zc::Maybe<zc::Own<ast::MemberExpression>> Parser::parseMemberExpressionRest(
 
     // Check for element access: obj[expr] or obj?.[expr]
     if (expectToken(lexer::TokenKind::kLeftBracket)) {
-      impl->consumeToken();  // consume '['
+      consumeToken();  // consume '['
       ZC_IF_SOME(index, parseExpression()) {
-        if (!consumeToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
+        if (!consumeExpectedToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
         expr = ast::factory::createElementAccessExpression(zc::mv(expr), zc::mv(index),
                                                            questionDotToken);
         continue;
@@ -2935,14 +2951,14 @@ zc::Maybe<zc::Own<ast::MemberExpression>> Parser::parseSuperExpression() {
 
   if (!expectToken(lexer::TokenKind::kSuperKeyword)) { return zc::none; }
 
-  impl->consumeToken();  // consume 'super'
+  consumeToken();  // consume 'super'
 
   // Create the super identifier as the base expression
-  auto expression = ast::factory::createIdentifier(zc::str("super"));
+  zc::Own<ast::Identifier> expression = ast::factory::createIdentifier(zc::str("super"));
 
   // Check for type arguments (e.g., super<T>)
   if (expectToken(lexer::TokenKind::kLessThan)) {
-    source::SourceLoc errorLoc = impl->peekToken().getLocation();
+    source::SourceLoc errorLoc = currentToken().getLocation();
     impl->diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(
         errorLoc, zc::str("super may not use type arguments"));
   }
@@ -2957,13 +2973,13 @@ zc::Maybe<zc::Own<ast::MemberExpression>> Parser::parseSuperExpression() {
 
   // If we reach here, super must be followed by '(', '.', or '['
   // Report an error and try to recover by parsing a dot
-  source::SourceLoc errorLoc = impl->peekToken().getLocation();
+  source::SourceLoc errorLoc = currentToken().getLocation();
   impl->diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(
       errorLoc, zc::str("super must be followed by an argument list or member access"));
 
   // Try to recover by expecting a dot and parsing the right side
   if (expectToken(lexer::TokenKind::kPeriod)) {
-    impl->consumeToken();  // consume '.'
+    consumeToken();  // consume '.'
     ZC_IF_SOME(property, parseIdentifier()) {
       return ast::factory::createPropertyAccessExpression(zc::mv(expression), zc::mv(property),
                                                           false);
@@ -2980,6 +2996,8 @@ bool Parser::canLookAhead(unsigned n) const { return impl->canLookAheadToken(n);
 bool Parser::isLookAhead(unsigned n, lexer::TokenKind kind) const {
   return impl->isLookAheadToken(n, kind);
 }
+
+source::SourceLoc Parser::getFullStartLoc() const { return impl->lexer.getFullStartLoc(); }
 
 }  // namespace parser
 }  // namespace compiler
