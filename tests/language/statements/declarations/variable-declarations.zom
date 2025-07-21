@@ -1,0 +1,2 @@
+let a: int = 1, b: string = "hello", c: bool = true;
+let x, y: int, z = 42;

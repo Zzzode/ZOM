@@ -15,9 +15,9 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/statement.h"
 
 namespace zomlang {
 namespace compiler {
@@ -26,6 +26,7 @@ namespace ast {
 class AssignmentOperator;
 class BinaryOperator;
 class UnaryOperator;
+class Type;
 
 class Expression : public Node {
 public:
@@ -377,6 +378,25 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(AwaitExpression);
 
   const Expression* getExpression() const;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class FunctionExpression : public PrimaryExpression {
+public:
+  FunctionExpression(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+                     zc::Vector<zc::Own<BindingElement>>&& parameters,
+                     zc::Maybe<zc::Own<Type>> returnType, zc::Own<Statement> body);
+  ~FunctionExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(FunctionExpression);
+
+  const NodeList<TypeParameter>& getTypeParameters() const;
+  const NodeList<BindingElement>& getParameters() const;
+  const Type* getReturnType() const;
+  const Statement* getBody() const;
 
 private:
   struct Impl;

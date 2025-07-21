@@ -48,24 +48,48 @@ zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier, zc::
 }
 
 // Statement factory functions
-zc::Own<VariableDeclaration> createVariableDeclaration(zc::Own<Identifier> name,
-                                                       zc::Maybe<zc::Own<Type>> type,
-                                                       zc::Maybe<zc::Own<Expression>> init) {
-  return zc::heap<VariableDeclaration>(zc::mv(name), zc::mv(type), zc::mv(init));
+zc::Own<BindingElement> createBindingElement(zc::Own<Identifier> name,
+                                             zc::Maybe<zc::Own<Type>> type,
+                                             zc::Maybe<zc::Own<Expression>> init) {
+  return zc::heap<BindingElement>(zc::mv(name), zc::mv(type), zc::mv(init));
 }
 
-zc::Own<FunctionDeclaration> createFunctionDeclaration(zc::Own<Identifier> name,
-                                                       zc::Vector<zc::Own<Statement>>&& body) {
-  zc::Vector<zc::Own<Identifier>> parameters;
-  zc::Maybe<zc::Own<Type>> returnType = zc::none;
-  auto bodyStatement = zc::heap<BlockStatement>(zc::mv(body));
-  return zc::heap<FunctionDeclaration>(zc::mv(name), zc::mv(parameters), zc::mv(returnType),
-                                       zc::mv(bodyStatement));
+zc::Own<VariableDeclaration> createVariableDeclaration(
+    zc::Vector<zc::Own<BindingElement>>&& bindings) {
+  return zc::heap<VariableDeclaration>(zc::mv(bindings));
+}
+
+zc::Own<FunctionDeclaration> createFunctionDeclaration(
+    zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<Type>> returnType,
+    zc::Own<Statement> body) {
+  return zc::heap<FunctionDeclaration>(zc::mv(name), zc::mv(typeParameters), zc::mv(parameters),
+                                       zc::mv(returnType), zc::mv(body));
 }
 
 zc::Own<ClassDeclaration> createClassDeclaration(zc::Own<Identifier> name,
                                                  zc::Vector<zc::Own<Statement>>&& body) {
   return zc::heap<ClassDeclaration>(zc::mv(name), zc::none, zc::mv(body));
+}
+
+zc::Own<InterfaceDeclaration> createInterfaceDeclaration(zc::Own<Identifier> name,
+                                                         zc::Vector<zc::Own<Statement>>&& body) {
+  return zc::heap<InterfaceDeclaration>(zc::mv(name), zc::mv(body));
+}
+
+zc::Own<StructDeclaration> createStructDeclaration(zc::Own<Identifier> name,
+                                                   zc::Vector<zc::Own<Statement>>&& body) {
+  return zc::heap<StructDeclaration>(zc::mv(name), zc::mv(body));
+}
+
+zc::Own<EnumDeclaration> createEnumDeclaration(zc::Own<Identifier> name,
+                                               zc::Vector<zc::Own<Statement>>&& body) {
+  return zc::heap<EnumDeclaration>(zc::mv(name), zc::mv(body));
+}
+
+zc::Own<ErrorDeclaration> createErrorDeclaration(zc::Own<Identifier> name,
+                                                 zc::Vector<zc::Own<Statement>>&& body) {
+  return zc::heap<ErrorDeclaration>(zc::mv(name), zc::mv(body));
 }
 
 zc::Own<BlockStatement> createBlockStatement(zc::Vector<zc::Own<Statement>>&& statements) {
@@ -91,7 +115,19 @@ zc::Own<ReturnStatement> createReturnStatement(zc::Maybe<zc::Own<Expression>> ar
 
 zc::Own<EmptyStatement> createEmptyStatement() { return zc::heap<EmptyStatement>(); }
 
-// Expression factory functions
+zc::Own<MatchStatement> createMatchStatement(zc::Own<Expression> discriminant,
+                                             zc::Vector<zc::Own<Statement>>&& clauses) {
+  return zc::heap<MatchStatement>(zc::mv(discriminant), zc::mv(clauses));
+}
+
+zc::Own<ForStatement> createForStatement(zc::Maybe<zc::Own<Statement>> init,
+                                         zc::Maybe<zc::Own<Expression>> condition,
+                                         zc::Maybe<zc::Own<Expression>> update,
+                                         zc::Own<Statement> body) {
+  return zc::heap<ForStatement>(zc::mv(init), zc::mv(condition), zc::mv(update), zc::mv(body));
+}
+
+/// Expression factory functions
 zc::Own<Expression> createBinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
                                            zc::Own<Expression> right) {
   return zc::heap<BinaryExpression>(zc::mv(left), zc::mv(op), zc::mv(right));
@@ -156,6 +192,14 @@ zc::Own<AwaitExpression> createAwaitExpression(zc::Own<Expression> expression) {
   return zc::heap<AwaitExpression>(zc::mv(expression));
 }
 
+zc::Own<FunctionExpression> createFunctionExpression(
+    zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<Type>> returnType,
+    zc::Own<Statement> body) {
+  return zc::heap<FunctionExpression>(zc::mv(typeParameters), zc::mv(parameters),
+                                      zc::mv(returnType), zc::mv(body));
+}
+
 zc::Own<NewExpression> createNewExpression(zc::Own<Expression> callee,
                                            zc::Vector<zc::Own<Expression>>&& arguments) {
   return zc::heap<NewExpression>(zc::mv(callee), zc::mv(arguments));
@@ -163,6 +207,16 @@ zc::Own<NewExpression> createNewExpression(zc::Own<Expression> callee,
 
 zc::Own<ParenthesizedExpression> createParenthesizedExpression(zc::Own<Expression> expression) {
   return zc::heap<ParenthesizedExpression>(zc::mv(expression));
+}
+
+zc::Own<ArrayLiteralExpression> createArrayLiteralExpression(
+    zc::Vector<zc::Own<Expression>>&& elements) {
+  return zc::heap<ArrayLiteralExpression>(zc::mv(elements));
+}
+
+zc::Own<ObjectLiteralExpression> createObjectLiteralExpression(
+    zc::Vector<zc::Own<Expression>>&& properties) {
+  return zc::heap<ObjectLiteralExpression>(zc::mv(properties));
 }
 
 zc::Own<Identifier> createIdentifier(zc::String&& name) {
@@ -225,8 +279,13 @@ zc::Own<FunctionType> createFunctionType(zc::Vector<zc::Own<Type>>&& parameterTy
   return zc::heap<FunctionType>(zc::mv(parameterTypes), zc::mv(returnType));
 }
 
-zc::Own<TypeAnnotation> createTypeAnnotation(zc::Own<Type> type) {
-  return zc::heap<TypeAnnotation>(zc::mv(type));
+zc::Own<TypeParameter> createTypeParameterDeclaration(zc::Own<Identifier> name,
+                                                      zc::Maybe<zc::Own<Type>> constraint) {
+  return zc::heap<TypeParameter>(zc::mv(name), zc::mv(constraint));
+}
+
+zc::Own<OptionalType> createOptionalType(zc::Own<Type> type) {
+  return zc::heap<OptionalType>(zc::mv(type));
 }
 
 // Operator factory functions

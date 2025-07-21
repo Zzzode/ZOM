@@ -16,15 +16,14 @@
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
-#include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
 
-class Expression;
 class Identifier;
+class Expression;
 class Type;
 
 class Statement : public Node {
@@ -35,13 +34,29 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(Statement);
 };
 
-class VariableDeclaration : public Statement {
+// Type parameter declaration: T extends U
+class TypeParameter : public Statement {
 public:
-  VariableDeclaration(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> type = zc::none,
-                      zc::Maybe<zc::Own<Expression>> initializer = zc::none);
-  ~VariableDeclaration() noexcept(false);
+  TypeParameter(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> constraint = zc::none);
+  ~TypeParameter() noexcept(false);
 
-  ZC_DISALLOW_COPY_AND_MOVE(VariableDeclaration);
+  ZC_DISALLOW_COPY_AND_MOVE(TypeParameter);
+
+  const Identifier* getName() const;
+  const Type* getConstraint() const;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class BindingElement : public Statement {
+public:
+  BindingElement(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> type = zc::none,
+                 zc::Maybe<zc::Own<Expression>> initializer = zc::none);
+  ~BindingElement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(BindingElement);
 
   const Identifier* getName() const;
   const Type* getType() const;
@@ -52,16 +67,32 @@ private:
   const zc::Own<Impl> impl;
 };
 
+class VariableDeclaration : public Statement {
+public:
+  VariableDeclaration(zc::Vector<zc::Own<BindingElement>>&& bindings);
+  ~VariableDeclaration() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(VariableDeclaration);
+
+  const NodeList<BindingElement>& getBindings() const;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
 class FunctionDeclaration : public Statement {
 public:
-  FunctionDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<Identifier>>&& parameters,
+  FunctionDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+                      zc::Vector<zc::Own<BindingElement>>&& parameters,
                       zc::Maybe<zc::Own<Type>> returnType, zc::Own<Statement> body);
   ~FunctionDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(FunctionDeclaration);
 
   const Identifier* getName() const;
-  zc::ArrayPtr<const zc::Own<Identifier>> getParameters() const;
+  const NodeList<TypeParameter>& getTypeParameters() const;
+  const NodeList<BindingElement>& getParameters() const;
   const Type* getReturnType() const;
   const Statement* getBody() const;
 

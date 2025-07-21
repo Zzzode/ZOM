@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "zc/core/memory.h"
+#include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/operator.h"
@@ -34,9 +34,11 @@ class Expression;
 class ModulePath;
 class ImportDeclaration;
 class ExportDeclaration;
+class BindingElement;
 class VariableDeclaration;
 class FunctionDeclaration;
 class ClassDeclaration;
+class InterfaceDeclaration;
 class BlockStatement;
 class ExpressionStatement;
 class IfStatement;
@@ -46,6 +48,12 @@ class BreakStatement;
 class ContinueStatement;
 class EmptyStatement;
 class AliasDeclaration;
+class MatchStatement;
+class ErrorDeclaration;
+class StructDeclaration;
+class EnumDeclaration;
+class ForStatement;
+class TypeParameter;
 
 // Expression
 class BinaryExpression;
@@ -60,6 +68,7 @@ class CastExpression;
 class VoidExpression;
 class TypeOfExpression;
 class AwaitExpression;
+class FunctionExpression;
 class NewExpression;
 class ParenthesizedExpression;
 class Identifier;
@@ -72,6 +81,8 @@ class OptionalExpression;
 class PropertyAccessExpression;
 class ElementAccessExpression;
 class LeftHandSideExpression;
+class ArrayLiteralExpression;
+class ObjectLiteralExpression;
 
 // Types
 class Type;
@@ -84,7 +95,7 @@ class ParenthesizedType;
 class TypeReference;
 class PredefinedType;
 class FunctionType;
-class TypeAnnotation;
+class OptionalType;
 
 // Operators
 class Operator;
@@ -98,14 +109,16 @@ namespace factory {
 zc::Own<SourceFile> createSourceFile(zc::String&& fileName,
                                      zc::Vector<zc::Own<ast::Statement>>&& statements);
 
-template <typename T>
-const ast::NodeList<T> createNodeList(zc::Vector<zc::Own<T>>&& list) {
-  return ast::NodeList<T>(zc::mv(list));
+template <typename Node>
+  requires DerivedFromNode<Node>
+const ast::NodeList<Node> createNodeList(zc::Vector<zc::Own<Node>>&& list) {
+  return ast::NodeList<Node>(zc::mv(list));
 }
 
-template <typename T, typename... Args>
-zc::Own<T> createNodeWithRange(const source::SourceRange& range, Args&&... args) {
-  zc::Own<T> node = zc::heap<T>(zc::fwd<Args>(args)...);
+template <typename Node, typename... Args>
+  requires DerivedFromNode<Node>
+zc::Own<Node> createNodeWithRange(const source::SourceRange& range, Args&&... args) {
+  zc::Own<Node> node = zc::heap<Node>(zc::fwd<Args>(args)...);
   node->setSourceRange(range);
   return zc::mv(node);
 }
@@ -125,14 +138,31 @@ zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier, zc::
                                                    zc::Own<ModulePath> modulePath);
 
 /// Statement factory functions
-zc::Own<VariableDeclaration> createVariableDeclaration(
-    zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> type = zc::none,
-    zc::Maybe<zc::Own<Expression>> init = zc::none);
+zc::Own<BindingElement> createBindingElement(zc::Own<Identifier> name,
+                                             zc::Maybe<zc::Own<Type>> type = zc::none,
+                                             zc::Maybe<zc::Own<Expression>> init = zc::none);
 
-zc::Own<FunctionDeclaration> createFunctionDeclaration(zc::Own<Identifier> name,
-                                                       zc::Vector<zc::Own<Statement>>&& body);
+zc::Own<VariableDeclaration> createVariableDeclaration(
+    zc::Vector<zc::Own<BindingElement>>&& bindings);
+
+zc::Own<FunctionDeclaration> createFunctionDeclaration(
+    zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<Type>> returnType,
+    zc::Own<Statement> body);
 
 zc::Own<ClassDeclaration> createClassDeclaration(zc::Own<Identifier> name,
+                                                 zc::Vector<zc::Own<Statement>>&& body);
+
+zc::Own<InterfaceDeclaration> createInterfaceDeclaration(zc::Own<Identifier> name,
+                                                         zc::Vector<zc::Own<Statement>>&& body);
+
+zc::Own<StructDeclaration> createStructDeclaration(zc::Own<Identifier> name,
+                                                   zc::Vector<zc::Own<Statement>>&& body);
+
+zc::Own<EnumDeclaration> createEnumDeclaration(zc::Own<Identifier> name,
+                                               zc::Vector<zc::Own<Statement>>&& body);
+
+zc::Own<ErrorDeclaration> createErrorDeclaration(zc::Own<Identifier> name,
                                                  zc::Vector<zc::Own<Statement>>&& body);
 
 zc::Own<BlockStatement> createBlockStatement(zc::Vector<zc::Own<Statement>>&& statements);
@@ -151,6 +181,14 @@ zc::Own<BreakStatement> createBreakStatement(zc::Maybe<zc::Own<Identifier>> labe
 zc::Own<ContinueStatement> createContinueStatement(zc::Maybe<zc::Own<Identifier>> label = zc::none);
 
 zc::Own<EmptyStatement> createEmptyStatement();
+
+zc::Own<MatchStatement> createMatchStatement(zc::Own<Expression> discriminant,
+                                             zc::Vector<zc::Own<Statement>>&& clauses);
+
+zc::Own<ForStatement> createForStatement(zc::Maybe<zc::Own<Statement>> init,
+                                         zc::Maybe<zc::Own<Expression>> condition,
+                                         zc::Maybe<zc::Own<Expression>> update,
+                                         zc::Own<Statement> body);
 
 /// Expression factory functions
 zc::Own<Expression> createBinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
@@ -192,10 +230,21 @@ zc::Own<TypeOfExpression> createTypeOfExpression(zc::Own<Expression> expression)
 
 zc::Own<AwaitExpression> createAwaitExpression(zc::Own<Expression> expression);
 
+zc::Own<FunctionExpression> createFunctionExpression(
+    zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<Type>> returnType,
+    zc::Own<Statement> body);
+
 zc::Own<NewExpression> createNewExpression(zc::Own<Expression> callee,
                                            zc::Vector<zc::Own<Expression>>&& arguments);
 
 zc::Own<ParenthesizedExpression> createParenthesizedExpression(zc::Own<Expression> expression);
+
+zc::Own<ArrayLiteralExpression> createArrayLiteralExpression(
+    zc::Vector<zc::Own<Expression>>&& elements);
+
+zc::Own<ObjectLiteralExpression> createObjectLiteralExpression(
+    zc::Vector<zc::Own<Expression>>&& properties);
 
 zc::Own<Identifier> createIdentifier(zc::String&& name);
 
@@ -231,7 +280,10 @@ zc::Own<PredefinedType> createPredefinedType(zc::String&& name);
 zc::Own<FunctionType> createFunctionType(zc::Vector<zc::Own<Type>>&& parameterTypes,
                                          zc::Own<Type> returnType);
 
-zc::Own<TypeAnnotation> createTypeAnnotation(zc::Own<Type> type);
+zc::Own<OptionalType> createOptionalType(zc::Own<Type> type);
+
+zc::Own<TypeParameter> createTypeParameterDeclaration(
+    zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> constraint = zc::none);
 
 /// Operator factory functions
 zc::Own<BinaryOperator> createBinaryOperator(

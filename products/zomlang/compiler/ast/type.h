@@ -141,7 +141,7 @@ private:
   const zc::Own<Impl> impl;
 };
 
-// Function type: (T, U) => V
+// Function type: (T, U) -> V
 class FunctionType : public Type {
 public:
   FunctionType(zc::Vector<zc::Own<Type>>&& parameterTypes, zc::Own<Type> returnType);
@@ -157,13 +157,13 @@ private:
   const zc::Own<Impl> impl;
 };
 
-// Type annotation: : Type
-class TypeAnnotation : public Node {
+// Optional type: T?
+class OptionalType : public Type {
 public:
-  explicit TypeAnnotation(zc::Own<Type> type);
-  ~TypeAnnotation() noexcept(false);
+  explicit OptionalType(zc::Own<Type> type);
+  ~OptionalType() noexcept(false);
 
-  ZC_DISALLOW_COPY_AND_MOVE(TypeAnnotation);
+  ZC_DISALLOW_COPY_AND_MOVE(OptionalType);
 
   const Type* getType() const;
 
