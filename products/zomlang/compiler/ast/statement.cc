@@ -15,7 +15,7 @@
 #include "zomlang/compiler/ast/statement.h"
 
 #include "zc/core/memory.h"
-#include "zc/core/string.h"
+#include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/type.h"
 
@@ -29,9 +29,9 @@ Statement::Statement(SyntaxKind kind) noexcept : Node(kind) {}
 Statement::~Statement() noexcept(false) = default;
 
 // ================================================================================
-// VariableDeclaration::Impl
+// BindingElement::Impl
 
-struct VariableDeclaration::Impl {
+struct BindingElement::Impl {
   const zc::Own<Identifier> name;
   const zc::Maybe<zc::Own<Type>> type;
   const zc::Maybe<zc::Own<Expression>> initializer;
@@ -41,55 +41,85 @@ struct VariableDeclaration::Impl {
 };
 
 // ================================================================================
-// VariableDeclaration
+// BindingElement
 
-VariableDeclaration::VariableDeclaration(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> type,
-                                         zc::Maybe<zc::Own<Expression>> initializer)
-    : Statement(SyntaxKind::kVariableDeclaration),
+BindingElement::BindingElement(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> type,
+                               zc::Maybe<zc::Own<Expression>> initializer)
+    : Statement(SyntaxKind::kBindingElement),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(type), zc::mv(initializer))) {}
 
-VariableDeclaration::~VariableDeclaration() noexcept(false) = default;
+BindingElement::~BindingElement() noexcept(false) = default;
 
-const Identifier* VariableDeclaration::getName() const { return impl->name.get(); }
+const Identifier* BindingElement::getName() const { return impl->name.get(); }
 
-const Type* VariableDeclaration::getType() const {
+const Type* BindingElement::getType() const {
   return impl->type.map([](const zc::Own<Type>& t) { return t.get(); }).orDefault(nullptr);
 }
 
-const Expression* VariableDeclaration::getInitializer() const {
+const Expression* BindingElement::getInitializer() const {
   return impl->initializer.map([](const zc::Own<Expression>& expr) { return expr.get(); })
       .orDefault(nullptr);
 }
+
+// ================================================================================
+// VariableDeclaration::Impl
+
+struct VariableDeclaration::Impl {
+  const NodeList<BindingElement> bindings;
+
+  explicit Impl(zc::Vector<zc::Own<BindingElement>>&& b) : bindings(zc::mv(b)) {}
+};
+
+// ================================================================================
+// VariableDeclaration
+
+VariableDeclaration::VariableDeclaration(zc::Vector<zc::Own<BindingElement>>&& bindings)
+    : Statement(SyntaxKind::kVariableDeclaration), impl(zc::heap<Impl>(zc::mv(bindings))) {}
+
+VariableDeclaration::~VariableDeclaration() noexcept(false) = default;
+
+const NodeList<BindingElement>& VariableDeclaration::getBindings() const { return impl->bindings; }
 
 // ================================================================================
 // FunctionDeclaration::Impl
 
 struct FunctionDeclaration::Impl {
   const zc::Own<Identifier> name;
-  const zc::Vector<zc::Own<Identifier>> parameters;
+  const NodeList<TypeParameter> typeParameters;
+  const NodeList<BindingElement> parameters;
   const zc::Maybe<zc::Own<Type>> returnType;
   const zc::Own<Statement> body;
 
-  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<Identifier>>&& p, zc::Maybe<zc::Own<Type>> r,
-       zc::Own<Statement> b)
-      : name(zc::mv(n)), parameters(zc::mv(p)), returnType(zc::mv(r)), body(zc::mv(b)) {}
+  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<TypeParameter>>&& tp,
+       zc::Vector<zc::Own<BindingElement>>&& p, zc::Maybe<zc::Own<Type>> r, zc::Own<Statement> b)
+      : name(zc::mv(n)),
+        typeParameters(zc::mv(tp)),
+        parameters(zc::mv(p)),
+        returnType(zc::mv(r)),
+        body(zc::mv(b)) {}
 };
 
 // ================================================================================
 // FunctionDeclaration
 
 FunctionDeclaration::FunctionDeclaration(zc::Own<Identifier> name,
-                                         zc::Vector<zc::Own<Identifier>>&& parameters,
+                                         zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+                                         zc::Vector<zc::Own<BindingElement>>&& parameters,
                                          zc::Maybe<zc::Own<Type>> returnType,
                                          zc::Own<Statement> body)
     : Statement(SyntaxKind::kFunctionDeclaration),
-      impl(zc::heap<Impl>(zc::mv(name), zc::mv(parameters), zc::mv(returnType), zc::mv(body))) {}
+      impl(zc::heap<Impl>(zc::mv(name), zc::mv(typeParameters), zc::mv(parameters),
+                          zc::mv(returnType), zc::mv(body))) {}
 
 FunctionDeclaration::~FunctionDeclaration() noexcept(false) = default;
 
 const Identifier* FunctionDeclaration::getName() const { return impl->name.get(); }
 
-zc::ArrayPtr<const zc::Own<Identifier>> FunctionDeclaration::getParameters() const {
+const NodeList<TypeParameter>& FunctionDeclaration::getTypeParameters() const {
+  return impl->typeParameters;
+}
+
+const NodeList<BindingElement>& FunctionDeclaration::getParameters() const {
   return impl->parameters;
 }
 
@@ -494,6 +524,33 @@ ErrorDeclaration::~ErrorDeclaration() noexcept(false) = default;
 const Identifier* ErrorDeclaration::getName() const { return impl->name.get(); }
 
 const NodeList<Statement>& ErrorDeclaration::getMembers() const { return impl->members; }
+
+// ================================================================================
+// TypeParameter::Impl
+
+struct TypeParameter::Impl {
+  zc::Own<Identifier> name;
+  zc::Maybe<zc::Own<Type>> constraint;
+
+  Impl(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> constraint)
+      : name(zc::mv(name)), constraint(zc::mv(constraint)) {}
+};
+
+// ================================================================================
+// TypeParameter
+
+TypeParameter::TypeParameter(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> constraint)
+    : Statement(ast::SyntaxKind::kTypeParameterDeclaration),
+      impl(zc::heap<Impl>(zc::mv(name), zc::mv(constraint))) {}
+
+TypeParameter::~TypeParameter() noexcept(false) = default;
+
+const Identifier* TypeParameter::getName() const { return impl->name.get(); }
+
+const Type* TypeParameter::getConstraint() const {
+  ZC_IF_SOME(constraint, impl->constraint) { return constraint.get(); }
+  return nullptr;
+}
 
 }  // namespace ast
 }  // namespace compiler

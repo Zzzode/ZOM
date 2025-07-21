@@ -17,6 +17,8 @@
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/operator.h"
+#include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/type.h"
 
 namespace zomlang {
 namespace compiler {
@@ -442,6 +444,49 @@ AwaitExpression::AwaitExpression(zc::Own<Expression> expression) noexcept
 AwaitExpression::~AwaitExpression() noexcept(false) = default;
 
 const Expression* AwaitExpression::getExpression() const { return impl->expression.get(); }
+
+// ================================================================================
+// FunctionExpression::Impl
+
+struct FunctionExpression::Impl {
+  const NodeList<TypeParameter> typeParameters;
+  const NodeList<BindingElement> parameters;
+  const zc::Maybe<zc::Own<Type>> returnType;
+  const zc::Own<Statement> body;
+
+  Impl(zc::Vector<zc::Own<TypeParameter>>&& tp, zc::Vector<zc::Own<BindingElement>>&& params,
+       zc::Maybe<zc::Own<Type>> rt, zc::Own<Statement> b)
+      : typeParameters(zc::mv(tp)),
+        parameters(zc::mv(params)),
+        returnType(zc::mv(rt)),
+        body(zc::mv(b)) {}
+};
+
+// ================================================================================
+// FunctionExpression
+
+FunctionExpression::FunctionExpression(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+                                       zc::Vector<zc::Own<BindingElement>>&& parameters,
+                                       zc::Maybe<zc::Own<Type>> returnType, zc::Own<Statement> body)
+    : PrimaryExpression(SyntaxKind::kFunctionExpression),
+      impl(zc::heap<Impl>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(returnType),
+                          zc::mv(body))) {}
+
+FunctionExpression::~FunctionExpression() noexcept(false) = default;
+
+const NodeList<TypeParameter>& FunctionExpression::getTypeParameters() const {
+  return impl->typeParameters;
+}
+
+const NodeList<BindingElement>& FunctionExpression::getParameters() const {
+  return impl->parameters;
+}
+
+const Type* FunctionExpression::getReturnType() const {
+  return impl->returnType.map([](const zc::Own<Type>& t) { return t.get(); }).orDefault(nullptr);
+}
+
+const Statement* FunctionExpression::getBody() const { return impl->body.get(); }
 
 // ================================================================================
 // ParenthesizedExpression::Impl

@@ -30,6 +30,7 @@ class Expression;
 class ImportDeclaration;
 class ExportDeclaration;
 class ModulePath;
+class BindingElement;
 class VariableDeclaration;
 class BinaryExpression;
 
@@ -65,6 +66,7 @@ private:
   void dumpImportDeclaration(const ImportDeclaration& importDecl, int indent = 0);
   void dumpExportDeclaration(const ExportDeclaration& exportDecl, int indent = 0);
   void dumpModulePath(const ModulePath& modulePath, int indent = 0);
+  void dumpBindingElement(const BindingElement& bindingElement, int indent = 0);
   void dumpVariableDeclaration(const VariableDeclaration& varDecl, int indent = 0);
   void dumpBinaryExpression(const BinaryExpression& binExpr, int indent = 0);
 

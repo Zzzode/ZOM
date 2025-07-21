@@ -290,41 +290,38 @@ void ASTDumper::dumpModulePath(const ModulePath& modulePath, int indent) {
   }
 }
 
-void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int indent) {
+void ASTDumper::dumpBindingElement(const BindingElement& bindingElement, int indent) {
   switch (impl->format) {
     case DumpFormat::kText:
-      writeNodeHeader("VariableDeclaration", indent);
-      if (auto* type = varDecl.getType()) {
+      writeNodeHeader("BindingElement", indent);
+      writeProperty("name", bindingElement.getName()->getName(), indent + 1);
+      if (auto* type = bindingElement.getType()) {
+        (void)type;  // Suppress unused variable warning
         // TODO: Implement proper type string representation
         writeProperty("type", "Type", indent + 1);
-      } else {
-        writeProperty("type", "auto", indent + 1);
       }
-      writeProperty("name", varDecl.getName()->getName(), indent + 1);
-      if (varDecl.getInitializer()) {
+      if (bindingElement.getInitializer()) {
         writeLine("initializer:", indent + 1);
-        dumpExpression(*varDecl.getInitializer(), indent + 2);
+        dumpExpression(*bindingElement.getInitializer(), indent + 2);
       }
-      writeNodeFooter("VariableDeclaration", indent);
+      writeNodeFooter("BindingElement", indent);
       break;
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "VariableDeclaration", indent + 1);
+      writeProperty("type", "BindingElement", indent + 1);
       impl->output.write(",\n"_zcb);
-      if (auto* type = varDecl.getType()) {
-        // TODO: Implement proper type string representation
+      writeProperty("name", bindingElement.getName()->getName(), indent + 1);
+      if (auto* type = bindingElement.getType()) {
+        (void)type;  // Suppress unused variable warning
+        impl->output.write(",\n"_zcb);
         writeProperty("varType", "Type", indent + 1);
-      } else {
-        writeProperty("varType", "auto", indent + 1);
       }
-      impl->output.write(",\n"_zcb);
-      writeProperty("name", varDecl.getName()->getName(), indent + 1);
-      if (varDecl.getInitializer()) {
+      if (bindingElement.getInitializer()) {
         impl->output.write(",\n"_zcb);
         writeIndent(indent + 1);
         impl->output.write("\"initializer\": "_zcb);
-        dumpExpression(*varDecl.getInitializer(), 0);
+        dumpExpression(*bindingElement.getInitializer(), 0);
       }
       impl->output.write("\n"_zcb);
       writeIndent(indent);
@@ -332,27 +329,65 @@ void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int 
       break;
     case DumpFormat::kXML:
       writeIndent(indent);
-      impl->output.write("<VariableDeclaration>\n"_zcb);
-      writeIndent(indent + 1);
-      impl->output.write("<varType>"_zcb);
-      if (auto* type = varDecl.getType()) {
-        // TODO: Implement proper type string representation
-        impl->output.write("Type"_zcb);
-      } else {
-        impl->output.write("auto"_zcb);
-      }
-      impl->output.write("</varType>\n"_zcb);
+      impl->output.write("<BindingElement>\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("<name>"_zcb);
-      impl->output.write(varDecl.getName()->getName().asBytes());
+      impl->output.write(bindingElement.getName()->getName().asBytes());
       impl->output.write("</name>\n"_zcb);
-      if (varDecl.getInitializer()) {
+      if (auto* type = bindingElement.getType()) {
+        (void)type;  // Suppress unused variable warning
+        writeIndent(indent + 1);
+        impl->output.write("<varType>Type</varType>\n"_zcb);
+      }
+      if (bindingElement.getInitializer()) {
         writeIndent(indent + 1);
         impl->output.write("<initializer>\n"_zcb);
-        dumpExpression(*varDecl.getInitializer(), indent + 2);
+        dumpExpression(*bindingElement.getInitializer(), indent + 2);
         writeIndent(indent + 1);
         impl->output.write("</initializer>\n"_zcb);
       }
+      writeIndent(indent);
+      impl->output.write("</BindingElement>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kText:
+      writeNodeHeader("VariableDeclaration", indent);
+      writeLine("bindings:", indent + 1);
+      for (const auto& binding : varDecl.getBindings()) { dumpBindingElement(binding, indent + 2); }
+      writeNodeFooter("VariableDeclaration", indent);
+      break;
+    case DumpFormat::kJSON: {
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("type", "VariableDeclaration", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"bindings\": [\n"_zcb);
+      bool first = true;
+      for (const auto& binding : varDecl.getBindings()) {
+        if (!first) { impl->output.write(",\n"_zcb); }
+        first = false;
+        dumpBindingElement(binding, indent + 2);
+      }
+      impl->output.write("\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("]\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    }
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<VariableDeclaration>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<bindings>\n"_zcb);
+      for (const auto& binding : varDecl.getBindings()) { dumpBindingElement(binding, indent + 2); }
+      writeIndent(indent + 1);
+      impl->output.write("</bindings>\n"_zcb);
       writeIndent(indent);
       impl->output.write("</VariableDeclaration>\n"_zcb);
       break;

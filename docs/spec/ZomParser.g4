@@ -221,6 +221,7 @@ expression: assignmentExpression (COMMA assignmentExpression)*;
 
 assignmentExpression:
 	conditionalExpression
+	| functionExpression
 	| leftHandSideExpression ASSIGN assignmentExpression
 	| leftHandSideExpression assignmentOperator assignmentExpression
 	| leftHandSideExpression AND_ASSIGN assignmentExpression
@@ -429,6 +430,10 @@ conditionalExpression:
 	shortCircuitExpression (
 		QUESTION assignmentExpression COLON assignmentExpression
 	)?;
+
+// Function Expression
+functionExpression:
+	FUN callSignature LBRACE functionBody RBRACE;
 
 // Binding Pattern
 bindingPattern: arrayBindingPattern | objectBindingPattern;
@@ -666,7 +671,8 @@ constraint: EXTENDS type;
 interfaceType: typeReference;
 callSignature:
 	typeParameters? LPAREN parameterList? RPAREN (
-		(ARROW | ERROR_RETURN) type
+		ARROW type
+		| ERROR_RETURN type raisesClause
 	)?;
 parameterList: parameter (COMMA parameter)*;
 parameter: bindingIdentifier typeAnnotation? initializer?;
@@ -674,7 +680,7 @@ functionBody: statementList?;
 
 arrayBindingPattern: LBRACK bindingElementList? RBRACK;
 bindingElementList: bindingElement (COMMA bindingElement)*;
-bindingElement: bindingIdentifier typeAnnotation?;
+bindingElement: bindingIdentifier typeAnnotation? initializer?;
 bindingList: bindingElement (COMMA bindingElement)*;
 methodSignature: propertyName QUESTION? callSignature;
 
@@ -726,7 +732,7 @@ typeAnnotation: COLON type;
 
 // ================================================================================ FUNCTIONS
 functionDeclaration:
-	FUN bindingIdentifier callSignature errorReturnClause? raisesClause? LBRACE functionBody RBRACE;
+	FUN bindingIdentifier callSignature LBRACE functionBody RBRACE;
 
 // Error handling clauses
 errorReturnClause: ERROR_RETURN type;

@@ -138,21 +138,21 @@ public:
 
 private:
   template <typename Node>
-    requires std::is_base_of_v<ast::Node, Node>
+    requires ast::DerivedFromNode<Node>
   zc::Own<Node> finishNode(zc::Own<Node>&& node, source::SourceLoc pos) {
     const source::SourceLoc end = getFullStartLoc();
     return finishNode(zc::mv(node), zc::mv(pos), zc::mv(end));
   }
 
   template <typename Node>
-    requires std::is_base_of_v<ast::Node, Node>
+    requires ast::DerivedFromNode<Node>
   zc::Own<Node> finishNode(zc::Own<Node>&& node, source::SourceLoc pos, source::SourceLoc end) {
     node->setSourceRange(source::SourceRange(pos, end));
     return zc::mv(node);
   }
 
   template <typename Node>
-    requires std::is_base_of_v<ast::Node, Node>
+    requires ast::DerivedFromNode<Node>
   zc::Vector<zc::Own<Node>> parseList(ParsingContext context,
                                       zc::Function<zc::Maybe<zc::Own<Node>>()> parseElement) {
     zc::Vector<zc::Own<Node>> result;
@@ -177,6 +177,7 @@ private:
 private:
   zc::Maybe<zc::Own<ast::Identifier>> parseIdentifier();
   zc::Maybe<zc::Own<ast::Identifier>> parseBindingIdentifier();
+  zc::Maybe<zc::Own<ast::BindingElement>> parseBindingElement();
 
   // Module and source file parsing
   zc::Maybe<zc::Own<ast::SourceFile>> parseSourceFile();
@@ -219,7 +220,6 @@ private:
   zc::Maybe<zc::Own<ast::Expression>> parseBinaryExpressionRestWithPrecedence(
       zc::Own<ast::Expression> leftOperand, OperatorPrecedence minPrecedence);
   zc::Maybe<zc::Own<ast::Expression>> parseUnaryExpressionOrHigher();
-  zc::Maybe<zc::Own<ast::AssignmentExpression>> parseAssignmentExpression();
   zc::Maybe<zc::Own<ast::ConditionalExpression>> parseConditionalExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseConditionalExpressionRest(
       zc::Own<ast::Expression> leftOperand);
@@ -264,10 +264,11 @@ private:
   zc::Maybe<zc::Own<ast::NumericLiteral>> parseNumericLiteral();
   zc::Maybe<zc::Own<ast::BooleanLiteral>> parseBooleanLiteral();
   zc::Maybe<zc::Own<ast::NilLiteral>> parseNilLiteral();
+  zc::Maybe<zc::Own<ast::FunctionExpression>> parseFunctionExpression();
 
   // Type parsing
   zc::Maybe<zc::Own<ast::Type>> parseType();
-  zc::Maybe<zc::Own<ast::TypeAnnotation>> parseTypeAnnotation();
+  zc::Maybe<zc::Own<ast::Type>> parseTypeAnnotation();
   zc::Maybe<zc::Own<ast::Type>> parsePrimaryType();
   zc::Maybe<zc::Own<ast::UnionType>> parseUnionType();
   zc::Maybe<zc::Own<ast::IntersectionType>> parseIntersectionType();
@@ -278,6 +279,7 @@ private:
   zc::Maybe<zc::Own<ast::TypeReference>> parseTypeReference();
   zc::Maybe<zc::Own<ast::PredefinedType>> parsePredefinedType();
   zc::Maybe<zc::Own<ast::ParenthesizedType>> parseParenthesizedType();
+  zc::Maybe<zc::Own<ast::TypeParameter>> parseTypeParameter();
 
   // Utility parsing methods
   ZC_ALWAYS_INLINE(bool expectToken(lexer::TokenKind kind));

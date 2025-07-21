@@ -142,19 +142,19 @@ const NodeList<Type>& FunctionType::getParameterTypes() const { return impl->par
 
 const Type* FunctionType::getReturnType() const { return impl->returnType.get(); }
 
-// TypeAnnotation
-struct TypeAnnotation::Impl {
+// OptionalType
+struct OptionalType::Impl {
   zc::Own<Type> type;
 
   explicit Impl(zc::Own<Type> type) : type(zc::mv(type)) {}
 };
 
-TypeAnnotation::TypeAnnotation(zc::Own<Type> type)
-    : Node(SyntaxKind::kTypeAnnotation), impl(zc::heap<Impl>(zc::mv(type))) {}
+OptionalType::OptionalType(zc::Own<Type> type)
+    : Type(SyntaxKind::kOptionalType), impl(zc::heap<Impl>(zc::mv(type))) {}
 
-TypeAnnotation::~TypeAnnotation() noexcept(false) = default;
+OptionalType::~OptionalType() noexcept(false) = default;
 
-const Type* TypeAnnotation::getType() const { return impl->type.get(); }
+const Type* OptionalType::getType() const { return impl->type.get(); }
 
 }  // namespace ast
 }  // namespace compiler

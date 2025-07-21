@@ -41,6 +41,7 @@ enum class SyntaxKind {
   kStatement,
   kImportDeclaration,
   kExportDeclaration,
+  kBindingElement,
   kVariableDeclaration,
   kFunctionDeclaration,
   kClassDeclaration,
@@ -77,6 +78,7 @@ enum class SyntaxKind {
   kCastExpression,
   kAwaitExpression,
   kVoidExpression,
+  kFunctionExpression,
   kTypeOfExpression,
   kOptionalExpression,
   kNewExpression,
@@ -131,6 +133,7 @@ enum class SyntaxKind {
   kTypeQuery,
   kParenthesizedType,
   kTypeAnnotation,
+  kTypeParameterDeclaration,
 
   // Patterns
   kPattern,
@@ -147,8 +150,6 @@ enum class SyntaxKind {
   // Other constructs
   kPropertySignature,
   kMethodSignature,
-  kParameter,
-  kTypeParameter,
   kMatchClause,
   kDefaultClause,
   kGuardClause,
@@ -157,7 +158,6 @@ enum class SyntaxKind {
   kElementList,
   kArgumentList,
   kBindingPattern,
-  kBindingElement,
   kInitializer,
   kTypeArguments,
   kTypeArgumentList,
