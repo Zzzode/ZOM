@@ -14,8 +14,18 @@
 
 #pragma once
 
+#include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/source/location.h"
+
+namespace zomlang {
+namespace compiler {
+namespace source {
+class BufferId;
+class SourceManager;
+}  // namespace source
+}  // namespace compiler
+}  // namespace zomlang
 
 namespace zomlang {
 namespace compiler {
@@ -143,6 +153,7 @@ enum class TokenKind {
   kIntegerLiteral,
   kFloatLiteral,
   kStringLiteral,
+  kCharacterLiteral,
   kBooleanLiteral,  // true/false
   kNullLiteral,     // null
   kNilLiteral,      // nil
@@ -228,46 +239,47 @@ enum class TokenKind {
 
 class Token {
 public:
-  Token() : kind(TokenKind::kUnknown) {}
-  Token(TokenKind k, source::SourceRange r) : kind(k), range(r) {}
+  Token() noexcept;
+  Token(TokenKind k, source::SourceRange r, zc::Maybe<zc::String> text = zc::none) noexcept;
 
   // Copy constructor
-  Token(const Token& other) : kind(other.kind), range(other.range) {}
+  Token(const Token& other) noexcept;
 
-  // Move constructor (defaulted is fine as source::SourceRange is movable)
-  Token(Token&& other) noexcept = default;
+  // Move constructor
+  Token(Token&& other) noexcept;
 
-  ~Token() = default;
+  ~Token() noexcept(false);
 
   // Copy assignment operator
-  Token& operator=(const Token& other) {
-    if (this != &other) {
-      kind = other.kind;
-      range = other.range;
-    }
-    return *this;
-  }
+  Token& operator=(const Token& other) noexcept;
 
-  // Move assignment operator (defaulted is fine)
-  Token& operator=(Token&& other) noexcept = default;
+  // Move assignment operator
+  Token& operator=(Token&& other) noexcept;
 
-  void setKind(TokenKind k) { kind = k; }
-  void setRange(source::SourceRange r) { range = r; }
+  void setKind(TokenKind k);
+  void setRange(source::SourceRange r);
+  void setCachedText(zc::String text);
 
-  ZC_NODISCARD bool is(TokenKind k) const { return kind == k; }
+  ZC_NODISCARD bool is(TokenKind k) const;
 
-  ZC_NODISCARD TokenKind getKind() const { return kind; }
-  ZC_NODISCARD source::SourceLoc getLocation() const { return range.getStart(); }
-  ZC_NODISCARD source::SourceRange getRange() const { return range; }
+  ZC_NODISCARD TokenKind getKind() const;
+  ZC_NODISCARD source::SourceLoc getLocation() const;
+  ZC_NODISCARD source::SourceRange getRange() const;
 
-  /// Get the raw text content of this token
-  ZC_NODISCARD zc::String getText(const source::SourceManager& sm) const {
-    return range.getText(sm);
-  }
+  /// Get the raw text content of this token with fast path optimization
+  ZC_NODISCARD zc::String getText(const source::SourceManager& sm) const;
+
+  /// Get text with buffer hint for better performance
+  /// Implementation in token.cc to avoid incomplete type issues
+  ZC_NODISCARD zc::String getTextWithBufferHint(const source::SourceManager& sm,
+                                                const void* bufferIdPtr) const;
+
+  /// Get static text for common keywords and operators
+  static zc::Maybe<zc::String> getStaticTextForTokenKind(TokenKind kind);
 
 private:
-  TokenKind kind;
-  source::SourceRange range;
+  struct Impl;
+  zc::Own<Impl> impl;
 };
 
 }  // namespace lexer

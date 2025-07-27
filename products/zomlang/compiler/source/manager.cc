@@ -451,6 +451,33 @@ zc::ArrayPtr<const zc::byte> SourceManager::extractText(const SourceRange& range
   return zc::ArrayPtr<const zc::byte>();
 }
 
+zc::ArrayPtr<const zc::byte> SourceManager::extractTextFast(const SourceRange& range,
+                                                            BufferId bufferId) const {
+  if (range.isInvalid()) { return zc::ArrayPtr<const zc::byte>(); }
+
+  const SourceLoc start = range.getStart();
+  const SourceLoc end = range.getEnd();
+
+  // Fast path: directly use the provided buffer ID without lookup
+  ZC_IF_SOME(buffer, impl->idToBuffer.find(bufferId)) {
+    const zc::byte* bufferStart = buffer.getBufferStart();
+    const zc::byte* bufferEnd = buffer.getBufferEnd();
+    const zc::byte* rangeStart = start.getOpaqueValue();
+    const zc::byte* rangeEnd = end.getOpaqueValue();
+
+    // Validate that the range is within the buffer
+    if (rangeStart < bufferStart || rangeEnd > bufferEnd || rangeStart > rangeEnd) {
+      return zc::ArrayPtr<const zc::byte>();
+    }
+
+    // Return the text slice
+    const size_t length = rangeEnd - rangeStart;
+    return zc::ArrayPtr<const zc::byte>(rangeStart, length);
+  }
+
+  return zc::ArrayPtr<const zc::byte>();
+}
+
 const zc::Vector<BufferId> SourceManager::getManagedBufferIds() const {
   zc::Vector<BufferId> ids;
   ids.reserve(impl->buffers.size());
