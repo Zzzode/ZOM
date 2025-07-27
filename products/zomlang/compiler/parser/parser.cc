@@ -640,14 +640,9 @@ zc::Maybe<zc::Vector<zc::Own<ast::Type>>> Parser::parseTypeArgumentsInExpression
 zc::Maybe<zc::Own<ast::Identifier>> Parser::parseIdentifier() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseIdentifier");
 
-  // bindingIdentifier: identifier;
-  // identifier:
-  //   identifierName {
-  //     String text = _input.getText(ctx.identifierName());
-  //     if(isReservedWord(text)) {
-  //       throw new ParseCancellationException("Identifier cannot be a reserved word");
-  //     }
-  // };
+  // bindingIdentifier: identifier
+  // identifier: identifierName
+  //   where identifierName must not be a reserved word
 
   const lexer::Token& token = currentToken();
   if (token.is(lexer::TokenKind::kIdentifier)) {
@@ -666,22 +661,16 @@ zc::Maybe<zc::Own<ast::BindingElement>> Parser::parseBindingElement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseBindingElement");
 
   // bindingElement: bindingIdentifier typeAnnotation? initializer?;
+
+  const source::SourceLoc startLoc = currentToken().getLocation();
+
   ZC_IF_SOME(name, parseBindingIdentifier()) {
     // Optional type annotation
-    zc::Maybe<zc::Own<ast::Type>> type = zc::none;
-    if (expectToken(lexer::TokenKind::kColon)) {
-      consumeToken();
-      type = parseType();
-    }
-
+    zc::Maybe<zc::Own<ast::Type>> type = parseTypeAnnotation();
     // Optional initializer
-    zc::Maybe<zc::Own<ast::Expression>> initializer = zc::none;
-    if (expectToken(lexer::TokenKind::kEquals)) {
-      consumeToken();
-      initializer = parseAssignmentExpressionOrHigher();
-    }
+    zc::Maybe<zc::Own<ast::Expression>> initializer = parseInitializer();
 
-    return ast::factory::createBindingElement(zc::mv(name), zc::mv(type), zc::mv(initializer));
+    return finishNode(ast::factory::createBindingElement(zc::mv(name), zc::mv(type), zc::mv(initializer)), startLoc);
   }
 
   return zc::none;
@@ -1347,6 +1336,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseExpression() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseExpression");
 
   // expression: assignmentExpression (COMMA assignmentExpression)*;
+  //
   // Parses a comma-separated list of assignment expressions
 
   ZC_IF_SOME(assignExpr, parseAssignmentExpressionOrHigher()) {
@@ -1368,6 +1358,13 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseExpression() {
     return zc::mv(expr);
   }
 
+  return zc::none;
+}
+
+zc::Maybe<zc::Own<ast::Expression>> Parser::parseInitializer() {
+  if (consumeExpectedToken(lexer::TokenKind::kEquals)) {
+    return parseAssignmentExpressionOrHigher();
+  }
   return zc::none;
 }
 
@@ -2627,22 +2624,18 @@ zc::Maybe<zc::Own<ast::UnionType>> Parser::parseUnionType() {
   //
   // Handles union types like A | B | C
 
+  const source::SourceLoc startLoc = currentToken().getLocation();
+
   ZC_IF_SOME(type, parseIntersectionType()) {
     zc::Vector<zc::Own<ast::Type>> types;
     types.add(zc::mv(type));
 
     while (expectToken(lexer::TokenKind::kBar)) {
       consumeToken();
-
       ZC_IF_SOME(rightType, parseIntersectionType()) { types.add(zc::mv(rightType)); }
     }
 
-    if (types.size() == 1) {
-      // Single type, return as UnionType with one element
-      return ast::factory::createUnionType(zc::mv(types));
-    }
-
-    return ast::factory::createUnionType(zc::mv(types));
+    return finishNode(ast::factory::createUnionType(zc::mv(types)), startLoc);
   }
 
   return zc::none;
@@ -2656,22 +2649,18 @@ zc::Maybe<zc::Own<ast::IntersectionType>> Parser::parseIntersectionType() {
   //
   // Handles intersection types like A & B & C
 
+  const source::SourceLoc startLoc = currentToken().getLocation();
+
   ZC_IF_SOME(type, parsePrimaryType()) {
     zc::Vector<zc::Own<ast::Type>> types;
     types.add(zc::mv(type));
 
     while (expectToken(lexer::TokenKind::kAmpersand)) {
       consumeToken();
-
       ZC_IF_SOME(rightType, parsePrimaryType()) { types.add(zc::mv(rightType)); }
     }
 
-    if (types.size() == 1) {
-      // Single type, return as IntersectionType with one element
-      return ast::factory::createIntersectionType(zc::mv(types));
-    }
-
-    return ast::factory::createIntersectionType(zc::mv(types));
+    return finishNode(ast::factory::createIntersectionType(zc::mv(types)), startLoc);
   }
 
   return zc::none;
@@ -2696,13 +2685,10 @@ zc::Maybe<zc::Own<ast::Type>> Parser::parsePrimaryType() {
     case lexer::TokenKind::kLeftParen:
       // Parenthesized type or tuple type
       return parseParenthesizedType();
-
     case lexer::TokenKind::kLeftBrace:
       return parseObjectType();
-
     case lexer::TokenKind::kIdentifier:
       return parseTypeReference();
-
     default:
       return parsePredefinedType();
   }
@@ -2892,6 +2878,7 @@ zc::Maybe<zc::Own<ast::PredefinedType>> Parser::parsePredefinedType() {
   // Handles built-in primitive types
 
   const lexer::Token& token = currentToken();
+  const source::SourceLoc startLoc = token.getLocation();
 
   switch (token.getKind()) {
     case lexer::TokenKind::kBoolKeyword:
@@ -2909,7 +2896,7 @@ zc::Maybe<zc::Own<ast::PredefinedType>> Parser::parsePredefinedType() {
     case lexer::TokenKind::kNilKeyword: {
       zc::String typeName = token.getText(impl->sourceMgr);
       consumeToken();
-      return ast::factory::createPredefinedType(zc::mv(typeName));
+      return finishNode(ast::factory::createPredefinedType(zc::mv(typeName)), startLoc);
     }
 
     default:
@@ -3269,7 +3256,7 @@ zc::Maybe<zc::Own<ast::FunctionExpression>> Parser::parseFunctionExpression() {
   // Parse parameter list
 
   zc::Vector<zc::Own<ast::BindingElement>> parameters;
-  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) {
+  if (consumeExpectedToken(lexer::TokenKind::kLeftParen)) {
     // Parse parameterList: parameter (COMMA parameter)*
     do {
       // parameter: bindingIdentifier typeAnnotation? initializer?

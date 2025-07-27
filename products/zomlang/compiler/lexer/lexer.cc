@@ -77,7 +77,9 @@ struct Lexer::Impl {
   void formToken(TokenKind kind, const zc::byte* tokStart) {
     source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
     source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
-    nextToken = Token(kind, source::SourceRange(startLoc, endLoc));
+    zc::Maybe<zc::String> cachedText = Token::getStaticTextForTokenKind(kind);
+    // For keywords and common operators, cache the text to avoid repeated extraction
+    nextToken = Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(cachedText));
   }
 
   /// Lexing implementation
@@ -399,9 +401,16 @@ struct Lexer::Impl {
     auto textPtr = zc::ArrayPtr<const zc::byte>(tokStart, curPtr);
 
     TokenKind kind = getKeywordKind(textPtr);
-    if (kind == TokenKind::kUnknown) { kind = TokenKind::kIdentifier; }
-
-    formToken(kind, tokStart);
+    if (kind == TokenKind::kUnknown) {
+      kind = TokenKind::kIdentifier;
+      // For identifiers, we might want to cache the text since they're frequently accessed
+      source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+      source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
+      zc::String identifierText = zc::str(textPtr.asChars());
+      nextToken = Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(identifierText));
+    } else {
+      formToken(kind, tokStart);
+    }
   }
 
   TokenKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
@@ -629,6 +638,7 @@ struct Lexer::Impl {
   void lexSingleQuoteString() {
     const zc::byte* tokStart = curPtr - 1;
     bool foundClosingQuote = false;
+    size_t charCount = 0;
 
     // Skip the starting quote, look for the ending quote
     while (curPtr < bufferEnd) {
@@ -646,19 +656,25 @@ struct Lexer::Impl {
             escaped != 'x') {
           reportInvalidEscapeSequence(escaped, curPtr - 2);
         }
+        charCount++;
       } else if (c == '\n' || c == '\r') {
-        // String cannot span multiple lines (unless escaped)
+        // Character literal cannot span multiple lines (unless escaped)
         reportUnterminatedString(tokStart);
-        // Recover by treating as unterminated string
+        // Recover by treating as unterminated character literal
         curPtr--;  // Back up to the newline
         break;
+      } else {
+        charCount++;
       }
     }
 
     // Check if we reached end of file without closing quote
     if (!foundClosingQuote && curPtr >= bufferEnd) { reportUnterminatedString(tokStart); }
 
-    formToken(TokenKind::kStringLiteral, tokStart);
+    // Character literals should contain exactly one character
+    if (foundClosingQuote && charCount != 1) { reportInvalidCharacterLiteral(tokStart); }
+
+    formToken(TokenKind::kCharacterLiteral, tokStart);
   }
   void lexEscapedIdentifier() { /*...*/ }
   void lexOperator() { /*...*/ }
@@ -729,6 +745,11 @@ struct Lexer::Impl {
     source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
     // Use InvalidChar diagnostic for unterminated comments since there's no specific one
     diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, "/*"_zc);
+  }
+
+  void reportInvalidCharacterLiteral(const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, "character literal"_zc);
   }
 
   void reportInvalidNumberLiteral(zc::StringPtr numberType, const zc::byte* tokStart) {

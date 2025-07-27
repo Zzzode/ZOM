@@ -114,7 +114,8 @@ literal:
 	nilLiteral
 	| booleanLiteral
 	| numericLiteral
-	| stringLiteral;
+	| stringLiteral
+	| characterLiteral;
 
 //// =============================================================================== NIL LITERALS
 nilLiteral: NIL;
@@ -163,6 +164,9 @@ hexDigits: HEX_DIGIT (numericLiteralSeparator? HEX_DIGIT)*;
 stringLiteral:
 	DQUOTE doubleStringCharacters? DQUOTE
 	| SQUOTE singleStringCharacters? SQUOTE;
+
+//// =============================================================================== CHARACTER LITERALS
+characterLiteral: CHAR_LITERAL;
 
 doubleStringCharacters:
 	doubleStringCharacter doubleStringCharacters?;

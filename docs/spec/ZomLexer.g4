@@ -233,10 +233,35 @@ HEX_PREFIX: '0' [xX];
 //// ================================================================================ STRING LITERALS
 SQUOTE: '\'';
 DQUOTE: '"';
-DOUBLE_STRING_ALLOWED_CHAR: ~["\\\r\n\u2028\u2029]; // Any char except ", \, or LineTerminator
-SINGLE_STRING_ALLOWED_CHAR: ~['\\\r\n\u2028\u2029]; // Any char except ', \, or LineTerminator
-SINGLE_ESCAPE_CHARACTER: SQUOTE | DQUOTE | BACKSLASH | 'b' | 'f' | 'n' | 'r' | 't' | 'v';
-NON_ESCAPE_CHARACTER: ~['"\\bfnrtvxu0-9LF\u000A\u000D\u2028\u2029]; // Any source character not part of an escape sequence
+DOUBLE_STRING_ALLOWED_CHAR:
+	~["\\\r\n\u2028\u2029]; // Any char except ", \, or LineTerminator
+SINGLE_STRING_ALLOWED_CHAR:
+	~['\\\r\n\u2028\u2029]; // Any char except ', \, or LineTerminator
+SINGLE_ESCAPE_CHARACTER:
+	SQUOTE
+	| DQUOTE
+	| BACKSLASH
+	| 'b'
+	| 'f'
+	| 'n'
+	| 'r'
+	| 't'
+	| 'v';
+NON_ESCAPE_CHARACTER:
+	~['"\\bfnrtvxu0-9LF\u000A\u000D\u2028\u2029];
+	// Any source character not part of an escape sequence
+
+//// ================================================================================ CHARACTER LITERALS
+CHAR_LITERAL:
+	SQUOTE (CHAR_CONTENT | CHAR_ESCAPE_SEQUENCE) SQUOTE;
+CHAR_CONTENT:
+	~['\\\r\n\u2028\u2029]; // Any char except ', \, or LineTerminator
+CHAR_ESCAPE_SEQUENCE:
+	BACKSLASH (
+		SINGLE_ESCAPE_CHARACTER
+		| HEX_ESCAPE_SEQUENCE
+		| UNICODE_ESCAPE_SEQUENCE
+	);
 
 // ================================================================================== DECLARATIONS
 

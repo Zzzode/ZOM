@@ -213,6 +213,7 @@ private:
 
   // Expression parsing
   zc::Maybe<zc::Own<ast::Expression>> parseExpression();
+  zc::Maybe<zc::Own<ast::Expression>> parseInitializer();
   zc::Maybe<zc::Own<ast::Expression>> parseAssignmentExpressionOrHigher();
   zc::Maybe<zc::Own<ast::Expression>> parseBinaryExpressionOrHigher();
   zc::Maybe<zc::Own<ast::Expression>> parseBinaryExpressionRest(
