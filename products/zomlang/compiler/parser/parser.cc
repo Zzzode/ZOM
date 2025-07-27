@@ -670,7 +670,9 @@ zc::Maybe<zc::Own<ast::BindingElement>> Parser::parseBindingElement() {
     // Optional initializer
     zc::Maybe<zc::Own<ast::Expression>> initializer = parseInitializer();
 
-    return finishNode(ast::factory::createBindingElement(zc::mv(name), zc::mv(type), zc::mv(initializer)), startLoc);
+    return finishNode(
+        ast::factory::createBindingElement(zc::mv(name), zc::mv(type), zc::mv(initializer)),
+        startLoc);
   }
 
   return zc::none;
