@@ -32,6 +32,9 @@ public:
                       zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept;
   ~SourceFile() noexcept(false) override;
 
+  const NodeList<Statement>& getStatements() const;
+  zc::StringPtr getFileName() const;
+
   ZC_DISALLOW_COPY_AND_MOVE(SourceFile);
 
 private:

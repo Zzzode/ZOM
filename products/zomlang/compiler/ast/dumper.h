@@ -32,7 +32,19 @@ class ExportDeclaration;
 class ModulePath;
 class BindingElement;
 class VariableDeclaration;
+class BlockStatement;
+class ExpressionStatement;
 class BinaryExpression;
+class FunctionExpression;
+class StringLiteral;
+class NumericLiteral;
+class BooleanLiteral;
+class NilLiteral;
+class CallExpression;
+class NewExpression;
+class ArrayLiteralExpression;
+class ObjectLiteralExpression;
+class ParenthesizedExpression;
 
 /// AST dump output format
 enum class DumpFormat {
@@ -68,7 +80,19 @@ private:
   void dumpModulePath(const ModulePath& modulePath, int indent = 0);
   void dumpBindingElement(const BindingElement& bindingElement, int indent = 0);
   void dumpVariableDeclaration(const VariableDeclaration& varDecl, int indent = 0);
+  void dumpBlockStatement(const BlockStatement& blockStmt, int indent = 0);
+  void dumpExpressionStatement(const ExpressionStatement& exprStmt, int indent = 0);
   void dumpBinaryExpression(const BinaryExpression& binExpr, int indent = 0);
+  void dumpFunctionExpression(const FunctionExpression& funcExpr, int indent = 0);
+  void dumpStringLiteral(const StringLiteral& strLit, int indent = 0);
+  void dumpNumericLiteral(const NumericLiteral& numLit, int indent = 0);
+  void dumpBooleanLiteral(const BooleanLiteral& boolLit, int indent = 0);
+  void dumpNilLiteral(const NilLiteral& nilLit, int indent = 0);
+  void dumpCallExpression(const CallExpression& callExpr, int indent = 0);
+  void dumpNewExpression(const NewExpression& newExpr, int indent = 0);
+  void dumpArrayLiteralExpression(const ArrayLiteralExpression& arrLit, int indent = 0);
+  void dumpObjectLiteralExpression(const ObjectLiteralExpression& objLit, int indent = 0);
+  void dumpParenthesizedExpression(const ParenthesizedExpression& parenExpr, int indent = 0);
 
   // Helper methods
   void writeIndent(int indent);
