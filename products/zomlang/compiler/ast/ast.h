@@ -123,6 +123,8 @@ enum class SyntaxKind {
   kType,
   kUnionType,
   kIntersectionType,
+  kReturnType,
+  kPostfixType,
   kArrayType,
   kTupleType,
   kObjectType,

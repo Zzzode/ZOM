@@ -270,17 +270,22 @@ private:
   // Type parsing
   zc::Maybe<zc::Own<ast::Type>> parseType();
   zc::Maybe<zc::Own<ast::Type>> parseTypeAnnotation();
-  zc::Maybe<zc::Own<ast::Type>> parsePrimaryType();
   zc::Maybe<zc::Own<ast::UnionType>> parseUnionType();
   zc::Maybe<zc::Own<ast::IntersectionType>> parseIntersectionType();
+  zc::Maybe<zc::Own<ast::Type>> parsePostfixType();
+  zc::Maybe<zc::Own<ast::Type>> parseTypeAtom();
   zc::Maybe<zc::Own<ast::ArrayType>> parseArrayType();
   zc::Maybe<zc::Own<ast::FunctionType>> parseFunctionType();
+  zc::Maybe<zc::Own<ast::ReturnType>> parseReturnType();
   zc::Maybe<zc::Own<ast::ObjectType>> parseObjectType();
   zc::Maybe<zc::Own<ast::TupleType>> parseTupleType();
   zc::Maybe<zc::Own<ast::TypeReference>> parseTypeReference();
   zc::Maybe<zc::Own<ast::PredefinedType>> parsePredefinedType();
   zc::Maybe<zc::Own<ast::ParenthesizedType>> parseParenthesizedType();
   zc::Maybe<zc::Own<ast::TypeParameter>> parseTypeParameter();
+  zc::Maybe<zc::Own<ast::TypeQuery>> parseTypeQuery();
+  zc::Maybe<zc::Own<ast::Expression>> parseTypeQueryExpression();
+  zc::Maybe<zc::Vector<zc::Own<ast::Type>>> parseRaisesClause();
 
   // Utility parsing methods
   ZC_ALWAYS_INLINE(bool expectToken(lexer::TokenKind kind));
@@ -291,6 +296,8 @@ private:
   ZC_NODISCARD source::SourceLoc getFullStartLoc() const;
 
   // Argument list parsing
+  zc::Vector<zc::Own<ast::TypeParameter>> parseTypeParameters();
+  zc::Vector<zc::Own<ast::BindingElement>> parseParameters();
   zc::Maybe<zc::Vector<zc::Own<ast::Expression>>> parseArgumentList();
   zc::Maybe<zc::Vector<zc::Own<ast::Type>>> parseTypeArgumentsInExpression();
 

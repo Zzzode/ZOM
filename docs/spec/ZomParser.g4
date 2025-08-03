@@ -569,16 +569,21 @@ declaration:
 	| enumDeclaration
 	| variableDeclaration;
 
-//// ================================================================================ TYPES
+//// ============================================================================== TYPES
 
 // Type
-type: OPTIONAL? unionType;
+type: unionType;
 
-// ArrayType
-arrayType: typeAtom (LBRACK RBRACK)*;
+// UnionType
+unionType: intersectionType (BIT_OR intersectionType)*;
 
-// PrimaryType
-primaryType: typeAtom | arrayType;
+// IntersectionType
+intersectionType: postfixType (BIT_AND postfixType)*;
+
+// PostfixType
+postfixType: typeAtom (LBRACK RBRACK | QUESTION)*;
+
+// TypeAtom
 typeAtom:
 	parenthesizedType
 	| predefinedType
@@ -589,10 +594,6 @@ typeAtom:
 
 // ParenthesizedType
 parenthesizedType: LPAREN type RPAREN;
-
-// UnionType
-unionType: intersectionType (BIT_OR intersectionType)*;
-intersectionType: primaryType (BIT_AND primaryType)*;
 
 // PredefinedType
 predefinedType:
@@ -649,7 +650,8 @@ namedTupleElement: elementName COLON type;
 elementName: identifier;
 
 // FunctionType
-functionType: typeParameters? parameterClause ARROW type;
+functionType:
+	typeParameters? parameterClause (ARROW type raisesClause?)?;
 
 // ParameterClause
 parameterClause: LPAREN parameterList? RPAREN;
@@ -659,9 +661,6 @@ typeQuery: TYPEOF typeQueryExpression;
 
 // TypeQueryExpression
 typeQueryExpression: identifier ( PERIOD identifier)*;
-
-// OptionalType
-optionalType: OPTIONAL primaryType;
 
 // Supporting rules
 typeArguments: LT typeArgumentList GT;
@@ -674,10 +673,7 @@ typeParameter: identifier constraint?;
 constraint: EXTENDS type;
 interfaceType: typeReference;
 callSignature:
-	typeParameters? LPAREN parameterList? RPAREN (
-		ARROW type
-		| ERROR_RETURN type raisesClause
-	)?;
+	typeParameters? parameterClause (ARROW type raisesClause?)?;
 parameterList: parameter (COMMA parameter)*;
 parameter: bindingIdentifier typeAnnotation? initializer?;
 functionBody: statementList?;
@@ -739,9 +735,7 @@ functionDeclaration:
 	FUN bindingIdentifier callSignature LBRACE functionBody RBRACE;
 
 // Error handling clauses
-errorReturnClause: ERROR_RETURN type;
-raisesClause: RAISES errorTypeList;
-errorTypeList: type (BIT_OR type)*;
+raisesClause: RAISES type;
 
 // ================================================================================ CLASSES
 classDeclaration:

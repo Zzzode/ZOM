@@ -25,6 +25,7 @@ namespace ast {
 class Identifier;
 class Expression;
 class Type;
+class ReturnType;
 
 class Statement : public Node {
 public:
@@ -85,7 +86,7 @@ class FunctionDeclaration : public Statement {
 public:
   FunctionDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
                       zc::Vector<zc::Own<BindingElement>>&& parameters,
-                      zc::Maybe<zc::Own<Type>> returnType, zc::Own<Statement> body);
+                      zc::Maybe<zc::Own<ReturnType>> returnType, zc::Own<Statement> body);
   ~FunctionDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(FunctionDeclaration);
@@ -93,7 +94,7 @@ public:
   const Identifier* getName() const;
   const NodeList<TypeParameter>& getTypeParameters() const;
   const NodeList<BindingElement>& getParameters() const;
-  const Type* getReturnType() const;
+  const ReturnType* getReturnType() const;
   const Statement* getBody() const;
 
 private:

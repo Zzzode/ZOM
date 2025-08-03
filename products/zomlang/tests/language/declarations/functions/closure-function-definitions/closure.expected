@@ -1,0 +1,33 @@
+=== AST for BufferId: 1 ===
+SourceFile {
+  fileName: products/zomlang/tests/language/declarations/functions/closure-function-definitions/closure.zom
+  statements:
+    VariableDeclaration {
+      bindings:
+        BindingElement {
+          name: closure
+          initializer:
+            FunctionExpression {
+              parameters:
+                BindingElement {
+                  name: n
+                  type: Type
+                }
+                BindingElement {
+                  name: s
+                  type: Type
+                }
+              returnType:
+                Type
+              body:
+                BlockStatement {
+                  ExpressionStatement {
+                    StringLiteral {
+                      value: "1234"
+                    }
+                  }
+                }
+            }
+        }
+    }
+}

@@ -87,11 +87,12 @@ struct FunctionDeclaration::Impl {
   const zc::Own<Identifier> name;
   const NodeList<TypeParameter> typeParameters;
   const NodeList<BindingElement> parameters;
-  const zc::Maybe<zc::Own<Type>> returnType;
+  const zc::Maybe<zc::Own<ReturnType>> returnType;
   const zc::Own<Statement> body;
 
   Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<TypeParameter>>&& tp,
-       zc::Vector<zc::Own<BindingElement>>&& p, zc::Maybe<zc::Own<Type>> r, zc::Own<Statement> b)
+       zc::Vector<zc::Own<BindingElement>>&& p, zc::Maybe<zc::Own<ReturnType>> r,
+       zc::Own<Statement> b)
       : name(zc::mv(n)),
         typeParameters(zc::mv(tp)),
         parameters(zc::mv(p)),
@@ -105,7 +106,7 @@ struct FunctionDeclaration::Impl {
 FunctionDeclaration::FunctionDeclaration(zc::Own<Identifier> name,
                                          zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
                                          zc::Vector<zc::Own<BindingElement>>&& parameters,
-                                         zc::Maybe<zc::Own<Type>> returnType,
+                                         zc::Maybe<zc::Own<ReturnType>> returnType,
                                          zc::Own<Statement> body)
     : Statement(SyntaxKind::kFunctionDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(typeParameters), zc::mv(parameters),
@@ -123,8 +124,9 @@ const NodeList<BindingElement>& FunctionDeclaration::getParameters() const {
   return impl->parameters;
 }
 
-const Type* FunctionDeclaration::getReturnType() const {
-  return impl->returnType.map([](const zc::Own<Type>& t) { return t.get(); }).orDefault(nullptr);
+const ReturnType* FunctionDeclaration::getReturnType() const {
+  return impl->returnType.map([](const zc::Own<ReturnType>& t) { return t.get(); })
+      .orDefault(nullptr);
 }
 
 const Statement* FunctionDeclaration::getBody() const { return impl->body.get(); }

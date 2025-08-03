@@ -112,7 +112,6 @@ NUMBER: 'number';
 NULL: 'null';
 OBJECT: 'object';
 OF: 'of';
-OPTIONAL: 'optional';
 OUT: 'out';
 OVERRIDE: 'override';
 PACKAGE: 'package';
@@ -212,7 +211,6 @@ OR_ASSIGN: '||=';
 NULL_COALESCE_ASSIGN: '??=';
 ROCKET: '=>';
 ARROW: '->';
-ERROR_RETURN: '!>';
 
 DIV: '/';
 DIV_ASSIGN: '/=';
@@ -249,7 +247,7 @@ SINGLE_ESCAPE_CHARACTER:
 	| 'v';
 NON_ESCAPE_CHARACTER:
 	~['"\\bfnrtvxu0-9LF\u000A\u000D\u2028\u2029];
-	// Any source character not part of an escape sequence
+// Any source character not part of an escape sequence
 
 //// ================================================================================ CHARACTER LITERALS
 CHAR_LITERAL:

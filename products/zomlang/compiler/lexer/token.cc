@@ -374,8 +374,6 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(TokenKind kind) {
       return "!!"_zc;
     case TokenKind::kErrorDefault:
       return "?:"_zc;
-    case TokenKind::kErrorReturn:
-      return "!>"_zc;
 
     // Punctuation
     case TokenKind::kLeftParen:

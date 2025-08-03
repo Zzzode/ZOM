@@ -135,6 +135,89 @@ zc::Maybe<zc::Own<ast::Node>> Parser::parse() {
   }
 
   trace::traceEvent(trace::TraceCategory::kParser, "Parse failed");
+
+  return zc::none;
+}
+
+zc::Maybe<zc::Own<ast::TypeQuery>> Parser::parseTypeQuery() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseTypeQuery");
+
+  // Parse type query according to the grammar rule:
+  // typeQuery: TYPEOF typeQueryExpression
+  // This handles type queries like typeof myVar or typeof MyClass.prop
+
+  const lexer::Token& token = currentToken();
+  const source::SourceLoc startLoc = token.getLocation();
+
+  if (!token.is(lexer::TokenKind::kTypeOfKeyword)) { return zc::none; }
+
+  consumeToken();  // consume 'typeof'
+
+  ZC_IF_SOME(queryExpr, parseTypeQueryExpression()) {
+    return finishNode(ast::factory::createTypeQuery(zc::mv(queryExpr)), startLoc);
+  }
+
+  return zc::none;
+}
+
+zc::Maybe<zc::Own<ast::Expression>> Parser::parseTypeQueryExpression() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseTypeQueryExpression");
+
+  // Parse type query expression according to the grammar rule:
+  // typeQueryExpression: identifier (PERIOD identifier)*
+  // This handles expressions like 'MyClass' or 'MyClass.field' in typeof queries
+
+  ZC_IF_SOME(firstId, parseIdentifier()) {
+    zc::Own<ast::LeftHandSideExpression> result = zc::mv(firstId);
+
+    // Parse additional identifiers separated by periods
+    while (expectToken(lexer::TokenKind::kPeriod)) {
+      consumeToken();  // consume '.'
+
+      ZC_IF_SOME(nextId, parseIdentifier()) {
+        // Use PropertyAccessExpression for member access
+        auto propAccess =
+            ast::factory::createPropertyAccessExpression(zc::mv(result), zc::mv(nextId), false);
+        result = zc::mv(propAccess);
+      }
+      else {
+        // Error: expected identifier after '.'
+        return zc::none;
+      }
+    }
+
+    return result;
+  }
+
+  return zc::none;
+}
+
+zc::Maybe<zc::Vector<zc::Own<ast::Type>>> Parser::parseRaisesClause() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseRaisesClause");
+
+  // Parse raises clause according to the grammar rule:
+  // raisesClause: RAISES type
+  // This handles error type specifications in function types and declarations
+  // Example: (x: i32) -> i32 raises ErrorType
+
+  zc::Vector<zc::Own<ast::Type>> errorTypes;
+
+  // Parse the first error type
+  ZC_IF_SOME(errorType, parseType()) {
+    errorTypes.add(zc::mv(errorType));
+
+    // Parse additional error types separated by commas
+    while (consumeExpectedToken(lexer::TokenKind::kComma)) {
+      ZC_IF_SOME(nextErrorType, parseType()) { errorTypes.add(zc::mv(nextErrorType)); }
+      else {
+        // Error: expected type after comma
+        return zc::none;
+      }
+    }
+
+    return zc::mv(errorTypes);
+  }
+
   return zc::none;
 }
 
@@ -996,47 +1079,25 @@ zc::Maybe<zc::Own<ast::VariableDeclaration>> Parser::parseVariableDeclaration() 
 zc::Maybe<zc::Own<ast::FunctionDeclaration>> Parser::parseFunctionDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseFunctionDeclaration");
 
+  // functionDeclaration:
+  //   FUN bindingIdentifier callSignature LBRACE functionBody RBRACE;
+
   source::SourceLoc startLoc = currentToken().getLocation();
   if (!consumeExpectedToken(lexer::TokenKind::kFunKeyword)) { return zc::none; }
 
   ZC_IF_SOME(name, parseBindingIdentifier()) {
-    // Parse function signature (parameters and return type)
-    if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
-
-    // TODO: Parse parameter list
-
-    if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
-
-    // Optional return type annotation
-    if (expectToken(lexer::TokenKind::kColon)) {
-      consumeToken();
-      // TODO: Parse return type
-      parseType();
-    }
+    // Parse function signature (type parameters, parameters and return type)
+    zc::Vector<zc::Own<ast::TypeParameter>> typeParameters = parseTypeParameters();
+    zc::Vector<zc::Own<ast::BindingElement>> parameters = parseParameters();
+    zc::Maybe<zc::Own<ast::ReturnType>> returnType = parseReturnType();
 
     // Parse function body
     ZC_IF_SOME(body, parseBlockStatement()) {
-      source::SourceLoc endLoc = currentToken().getLocation();
-
       // Create function declaration AST node
-      zc::Vector<zc::Own<ast::Statement>> bodyStatements;
-      if (body->getKind() == ast::SyntaxKind::kBlockStatement) {
-        // Extract statements from block
-        const auto* blockStmt = static_cast<const ast::BlockStatement*>(body.get());
-        for (const auto& stmt ZC_UNUSED : blockStmt->getStatements()) {
-          // Note: This is a simplified approach. In practice, you might need to clone or move
-          // statements For now, we'll create an empty body
-        }
-      }
-
-      zc::Vector<zc::Own<ast::TypeParameter>> typeParameters;
-      zc::Vector<zc::Own<ast::BindingElement>> parameters;
-      zc::Maybe<zc::Own<ast::Type>> returnType = zc::none;
-      auto bodyStatement = ast::factory::createBlockStatement(zc::mv(bodyStatements));
       return finishNode(ast::factory::createFunctionDeclaration(
                             zc::mv(name), zc::mv(typeParameters), zc::mv(parameters),
-                            zc::mv(returnType), zc::mv(bodyStatement)),
-                        startLoc, endLoc);
+                            zc::mv(returnType), zc::mv(body)),
+                        startLoc);
     }
   }
 
@@ -2584,26 +2645,42 @@ zc::Maybe<zc::Own<ast::ObjectLiteralExpression>> Parser::parseObjectLiteralExpre
 zc::Maybe<zc::Own<ast::Type>> Parser::parseType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseType");
 
-  // type:
-  //   unionType
-  //   | intersectionType
-  //   | primaryType
-  //   | functionType
-  //   | arrayType
-  //   | tupleType
-  //   | objectType
-  //   | typeReference
-  //   | optionalType;
+  // type: unionType;
   //
-  // Handle optional types
-  ZC_IF_SOME(type, parseUnionType()) {
-    // Check for optional type modifier
-    if (expectToken(lexer::TokenKind::kQuestion)) {
-      consumeToken();
-      return ast::factory::createOptionalType(zc::mv(type));
-    }
-    return zc::mv(type);
-  }
+  // unionType: intersectionType (BIT_OR intersectionType)*;
+  //
+  // intersectionType: postfixType (BIT_AND postfixType)*;
+  //
+  // postfixType: typeAtom (LBRACK RBRACK | QUESTION)*;
+  //
+  // typeAtom:
+  //   parenthesizedType
+  //   | predefinedType
+  //   | typeReference
+  //   | objectType
+  //   | tupleType
+  //   | typeQuery;
+  //
+  // parenthesizedType: LPAREN type RPAREN;
+  //
+  // predefinedType:
+  //   I8
+  //   | I32
+  //   | I64
+  //   | U8
+  //   | U16
+  //   | U32
+  //   | U64
+  //   | F32
+  //   | F64
+  //   | STR
+  //   | BOOL
+  //   | NIL
+  //   | UNIT;
+  //
+  // Return the parsed `unionType` directly, the suffix processing is completed in
+  // `parsePrimaryType`.
+  ZC_IF_SOME(type, parseUnionType()) { return zc::mv(type); }
 
   return zc::none;
 }
@@ -2653,13 +2730,13 @@ zc::Maybe<zc::Own<ast::IntersectionType>> Parser::parseIntersectionType() {
 
   const source::SourceLoc startLoc = currentToken().getLocation();
 
-  ZC_IF_SOME(type, parsePrimaryType()) {
+  ZC_IF_SOME(type, parsePostfixType()) {
     zc::Vector<zc::Own<ast::Type>> types;
     types.add(zc::mv(type));
 
     while (expectToken(lexer::TokenKind::kAmpersand)) {
       consumeToken();
-      ZC_IF_SOME(rightType, parsePrimaryType()) { types.add(zc::mv(rightType)); }
+      ZC_IF_SOME(rightType, parsePostfixType()) { types.add(zc::mv(rightType)); }
     }
 
     return finishNode(ast::factory::createIntersectionType(zc::mv(types)), startLoc);
@@ -2668,54 +2745,98 @@ zc::Maybe<zc::Own<ast::IntersectionType>> Parser::parseIntersectionType() {
   return zc::none;
 }
 
-zc::Maybe<zc::Own<ast::Type>> Parser::parsePrimaryType() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parsePrimaryType");
+zc::Maybe<zc::Own<ast::Type>> Parser::parsePostfixType() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parsePostfixType");
 
-  // primaryType:
-  //   parenthesizedType
-  //   | predefinedType
-  //   | typeReference
-  //   | objectType
-  //   | arrayType
-  //   | tupleType;
+  // Parse postfix type according to the grammar rule:
   //
-  // Handles basic type expressions
+  // postfixType: typeAtom (LBRACK RBRACK | QUESTION)*
+  //
+  // This handles type atoms followed by optional array brackets [] or optional marker ?
+  // Examples: T[], T?, T[]?, MyType[][]
 
-  const lexer::Token& token = currentToken();
+  const lexer::Token token = currentToken();
+  const source::SourceLoc startLoc = token.getLocation();
 
-  switch (token.getKind()) {
+  // Parse the base type atom
+  zc::Maybe<zc::Own<ast::Type>> maybeBase;
+  switch (currentToken().getKind()) {
     case lexer::TokenKind::kLeftParen:
-      // Parenthesized type or tuple type
-      return parseParenthesizedType();
+      // Parenthesized type: (T)
+      maybeBase = parseParenthesizedType();
+      break;
     case lexer::TokenKind::kLeftBrace:
-      return parseObjectType();
+      // Object type: {prop: T}
+      maybeBase = parseObjectType();
+      break;
     case lexer::TokenKind::kIdentifier:
-      return parseTypeReference();
+      // Type reference: MyType or MyType<T>
+      maybeBase = parseTypeReference();
+      break;
+    case lexer::TokenKind::kTypeOfKeyword:
+      // Type query: typeof expr
+      maybeBase = parseTypeQuery();
+      break;
     default:
-      return parsePredefinedType();
+      // Predefined type: i32, str, bool, etc.
+      maybeBase = parsePredefinedType();
+      break;
   }
+
+  ZC_IF_SOME(result, zc::mv(maybeBase)) {
+    // Apply postfix operators: [] for arrays and ? for optional types
+    while (true) {
+      // Array type suffix: []
+      if (expectToken(lexer::TokenKind::kLeftBracket)) {
+        consumeToken();  // consume '['
+        if (!consumeExpectedToken(lexer::TokenKind::kRightBracket)) {
+          // Error: expected closing bracket ']'
+          return zc::none;
+        }
+        result = ast::factory::createArrayType(zc::mv(result));
+        continue;
+      }
+
+      // Optional type suffix: ?
+      if (expectToken(lexer::TokenKind::kQuestion)) {
+        source::SourceLoc questionLoc = currentToken().getLocation();
+        consumeToken();  // consume '?'
+        result = ast::factory::createOptionalType(zc::mv(result));
+        result = finishNode(zc::mv(result), startLoc, questionLoc);
+        continue;
+      }
+
+      break;
+    }
+
+    return zc::mv(result);
+  }
+
+  return zc::none;
 }
 
 zc::Maybe<zc::Own<ast::ArrayType>> Parser::parseArrayType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseArrayType");
 
-  // arrayType:
-  //   primaryType LBRACK RBRACK;
-  //
-  // Handles array types like T[]
+  // Parse array type according to the grammar rule:
+  // arrayType: postfixType LBRACK RBRACK
+  // This handles array types like T[], MyType[], etc.
+  // The array suffix [] can be chained: T[][] for multi-dimensional arrays
 
-  ZC_IF_SOME(elementType, parsePrimaryType()) {
-    zc::Own<ast::Type> result = zc::mv(elementType);
+  const source::SourceLoc startLoc = currentToken().getLocation();
 
-    while (expectToken(lexer::TokenKind::kLeftBracket)) {
-      consumeToken();
+  ZC_IF_SOME(elementType, parsePostfixType()) {
+    if (expectToken(lexer::TokenKind::kLeftBracket)) {
+      consumeToken();  // consume '['
 
-      if (!consumeExpectedToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
+      if (!consumeExpectedToken(lexer::TokenKind::kRightBracket)) {
+        // Error: expected closing bracket ']' for array type
+        return zc::none;
+      }
 
-      result = ast::factory::createArrayType(zc::mv(result));
+      // Create array type node with the element type
+      return finishNode(ast::factory::createArrayType(zc::mv(elementType)), startLoc);
     }
-
-    return ast::factory::createArrayType(zc::mv(result));
   }
 
   return zc::none;
@@ -2724,49 +2845,23 @@ zc::Maybe<zc::Own<ast::ArrayType>> Parser::parseArrayType() {
 zc::Maybe<zc::Own<ast::FunctionType>> Parser::parseFunctionType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseFunctionType");
 
-  // functionType:
-  //   typeParameters? LPAREN parameterList? RPAREN ARROW type;
+  // Parse function type according to the grammar rule:
   //
-  // Handles function types like (a: T, b: U) -> R
-
-  // functionType:
-  //   typeParameters? LPAREN parameterList? RPAREN ARROW type;
+  // functionType: typeParameters? parameterClause (ARROW type raisesClause?)?
   //
-  // Handles function types like (a: T, b: U) -> R
+  // This handles function types like (a: T, b: U) -> R or (a: T) -> R raises E
+  // where raisesClause is optional and specifies error types that the function can raise
 
   source::SourceLoc startLoc = currentToken().getLocation();
 
-  // Parse optional type parameters
-  zc::Vector<zc::Own<ast::Type>> typeParameters;
-  if (expectToken(lexer::TokenKind::kLessThan)) {
-    consumeToken();  // consume '<'
-    do {
-      ZC_IF_SOME(typeParam, parseType()) { typeParameters.add(zc::mv(typeParam)); }
-    } while (consumeExpectedToken(lexer::TokenKind::kComma));
-
-    if (!consumeExpectedToken(lexer::TokenKind::kGreaterThan)) { return zc::none; }
-  }
-
-  // Parse parameter clause
-  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
-
-  zc::Vector<zc::Own<ast::Type>> parameters;
-  if (!expectToken(lexer::TokenKind::kRightParen)) {
-    do {
-      ZC_IF_SOME(param, parseType()) { parameters.add(zc::mv(param)); }
-    } while (consumeExpectedToken(lexer::TokenKind::kComma));
-  }
-
-  if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
-
-  // Parse arrow
-  if (!consumeExpectedToken(lexer::TokenKind::kArrow)) { return zc::none; }
-
-  // Parse return type
-  ZC_IF_SOME(returnType, parseType()) {
-    // TODO: Handle type parameters properly
-    (void)typeParameters;  // Suppress unused variable warning
-    return finishNode(ast::factory::createFunctionType(zc::mv(parameters), zc::mv(returnType)),
+  // Parse optional type parameters: <T, U>
+  zc::Vector<zc::Own<ast::TypeParameter>> typeParameters = parseTypeParameters();
+  // Parse parameter clause: (param1: Type1, param2: Type2)
+  zc::Vector<zc::Own<ast::BindingElement>> parameters = parseParameters();
+  // Parse return type: -> type raises error
+  ZC_IF_SOME(returnType, parseReturnType()) {
+    return finishNode(ast::factory::createFunctionType(zc::mv(typeParameters), zc::mv(parameters),
+                                                       zc::mv(returnType)),
                       startLoc);
   }
 
@@ -2824,10 +2919,14 @@ zc::Maybe<zc::Own<ast::ObjectType>> Parser::parseObjectType() {
 zc::Maybe<zc::Own<ast::TupleType>> Parser::parseTupleType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseTupleType");
 
-  // tupleType:
-  //   LBRACK tupleElementTypes? RBRACK;
+  // Parse tuple type according to the grammar rule:
   //
-  // Handles tuple types like [T, U, V]
+  // tupleType: LPAREN tupleElementTypes? RPAREN
+  //
+  // This handles tuple types like (T, U, V) for function parameters and return types
+  // Each element can be a named tuple element: (name: T, other: U)
+
+  source::SourceLoc startLoc = currentToken().getLocation();
 
   if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
@@ -2835,37 +2934,63 @@ zc::Maybe<zc::Own<ast::TupleType>> Parser::parseTupleType() {
 
   if (!expectToken(lexer::TokenKind::kRightParen)) {
     do {
-      ZC_IF_SOME(elementType, parseType()) { elementTypes.add(zc::mv(elementType)); }
+      // Check if this is a named tuple element: name: Type
+      if (lookAhead(1).is(lexer::TokenKind::kColon)) {
+        // Parse named tuple element
+        ZC_IF_SOME(elementName, parseIdentifier()) {
+          (void)elementName;  // Suppress unused variable warning
+          consumeToken();     // consume ':'
+          ZC_IF_SOME(elementType, parseType()) {
+            // TODO: Create named tuple element type
+            elementTypes.add(zc::mv(elementType));
+          }
+        }
+      } else {
+        // Parse regular tuple element
+        ZC_IF_SOME(elementType, parseType()) { elementTypes.add(zc::mv(elementType)); }
+      }
     } while (consumeExpectedToken(lexer::TokenKind::kComma));
   }
 
   if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
-  return ast::factory::createTupleType(zc::mv(elementTypes));
+  return finishNode(ast::factory::createTupleType(zc::mv(elementTypes)), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::TypeReference>> Parser::parseTypeReference() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseTypeReference");
 
-  // typeReference:
-  //   typeName typeArguments?;
-  //
-  // Handles type references like MyType<T, U>
+  // Parse type reference according to the grammar rule:
+  // typeReference: typeName typeArguments?
+  // This handles type references like MyType or generic types like MyType<T, U>
+  // where typeArguments are optional type parameters in angle brackets
+
+  source::SourceLoc startLoc = currentToken().getLocation();
 
   ZC_IF_SOME(typeName, parseIdentifier()) {
-    // Handle type arguments
-    zc::Vector<zc::Own<ast::Type>> typeArguments;
-    if (consumeExpectedToken(lexer::TokenKind::kLessThan)) {
-      do {
-        ZC_IF_SOME(typeArg, parseType()) { typeArguments.add(zc::mv(typeArg)); }
-      } while (consumeExpectedToken(lexer::TokenKind::kComma));
+    // Handle optional type arguments: <T, U, V>
+    zc::Maybe<zc::Vector<zc::Own<ast::Type>>> maybeTypeArguments = zc::none;
+    if (expectToken(lexer::TokenKind::kLessThan)) {
+      zc::Vector<zc::Own<ast::Type>> typeArguments;
 
-      if (!consumeExpectedToken(lexer::TokenKind::kGreaterThan)) { return zc::none; }
+      consumeToken();  // consume '<'
+      if (!expectToken(lexer::TokenKind::kGreaterThan)) {
+        // Parse type argument list
+        do {
+          ZC_IF_SOME(typeArg, parseType()) { typeArguments.add(zc::mv(typeArg)); }
+        } while (consumeExpectedToken(lexer::TokenKind::kComma));
+      }
+
+      if (!consumeExpectedToken(lexer::TokenKind::kGreaterThan)) {
+        // Error: expected closing angle bracket '>'
+        return zc::none;
+      }
+
+      maybeTypeArguments = zc::mv(typeArguments);
     }
 
-    // TODO: Handle type arguments properly
-    (void)typeArguments;  // Suppress unused variable warning
-    return ast::factory::createTypeReference(zc::mv(typeName));
+    return finishNode(
+        ast::factory::createTypeReference(zc::mv(typeName), zc::mv(maybeTypeArguments)), startLoc);
   }
 
   return zc::none;
@@ -2874,16 +2999,14 @@ zc::Maybe<zc::Own<ast::TypeReference>> Parser::parseTypeReference() {
 zc::Maybe<zc::Own<ast::PredefinedType>> Parser::parsePredefinedType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parsePredefinedType");
 
-  // predefinedType:
-  //   BOOL | I8 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64 | STR | UNIT | NIL;
-  //
-  // Handles built-in primitive types
+  // Parse predefined type according to the grammar rule:
+  // predefinedType: I8 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64 | STR | BOOL | NIL | UNIT
+  // These are the built-in primitive types in the ZOM language
 
   const lexer::Token& token = currentToken();
   const source::SourceLoc startLoc = token.getLocation();
 
   switch (token.getKind()) {
-    case lexer::TokenKind::kBoolKeyword:
     case lexer::TokenKind::kI8Keyword:
     case lexer::TokenKind::kI32Keyword:
     case lexer::TokenKind::kI64Keyword:
@@ -2894,8 +3017,9 @@ zc::Maybe<zc::Own<ast::PredefinedType>> Parser::parsePredefinedType() {
     case lexer::TokenKind::kF32Keyword:
     case lexer::TokenKind::kF64Keyword:
     case lexer::TokenKind::kStrKeyword:
-    case lexer::TokenKind::kUnitKeyword:
-    case lexer::TokenKind::kNilKeyword: {
+    case lexer::TokenKind::kBoolKeyword:
+    case lexer::TokenKind::kNilKeyword:
+    case lexer::TokenKind::kUnitKeyword: {
       zc::String typeName = token.getText(impl->sourceMgr);
       consumeToken();
       return finishNode(ast::factory::createPredefinedType(zc::mv(typeName)), startLoc);
@@ -3232,10 +3356,7 @@ zc::Maybe<zc::Own<ast::FunctionExpression>> Parser::parseFunctionExpression() {
   //   FUN callSignature LBRACE functionBody RBRACE;
   //
   // callSignature:
-  //   typeParameters? LPAREN parameterList? RPAREN (
-  //     ARROW type
-  //     | ERROR_RETURN type raisesClause
-  //   )?;
+  //   typeParameters? parameterClause (ARROW type raisesClause?)?;
 
   const lexer::Token& token = currentToken();
   if (!token.is(lexer::TokenKind::kFunKeyword)) { return zc::none; }
@@ -3244,46 +3365,11 @@ zc::Maybe<zc::Own<ast::FunctionExpression>> Parser::parseFunctionExpression() {
   consumeToken();  // consume 'fun'
 
   // Parse callSignature
-
-  zc::Vector<zc::Own<ast::TypeParameter>> typeParameters;
-  if (consumeExpectedToken(lexer::TokenKind::kLessThan)) {
-    do {
-      ZC_IF_SOME(typeParameter, parseTypeParameter()) { typeParameters.add(zc::mv(typeParameter)); }
-      else { return zc::none; }
-    } while (consumeExpectedToken(lexer::TokenKind::kComma));
-
-    if (!consumeExpectedToken(lexer::TokenKind::kGreaterThan)) { return zc::none; }
-  }
-
+  zc::Vector<zc::Own<ast::TypeParameter>> typeParameters = parseTypeParameters();
   // Parse parameter list
-
-  zc::Vector<zc::Own<ast::BindingElement>> parameters;
-  if (consumeExpectedToken(lexer::TokenKind::kLeftParen)) {
-    // Parse parameterList: parameter (COMMA parameter)*
-    do {
-      // parameter: bindingIdentifier typeAnnotation? initializer?
-      ZC_IF_SOME(param, parseBindingElement()) { parameters.add(zc::mv(param)); }
-      else { return zc::none; }
-    } while (consumeExpectedToken(lexer::TokenKind::kComma));
-
-    if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
-  }
-
+  zc::Vector<zc::Own<ast::BindingElement>> parameters = parseParameters();
   // Parse optional return type or error return clause
-  // (ARROW type | ERROR_RETURN type raisesClause)?
-  zc::Maybe<zc::Own<ast::Type>> functionType = zc::none;
-  if (expectToken(lexer::TokenKind::kArrow) || expectToken(lexer::TokenKind::kErrorReturn)) {
-    bool errorReturn = expectToken(lexer::TokenKind::kErrorReturn);
-    consumeToken();  // consume '->' or '!>'
-
-    ZC_IF_SOME(returnType, parseType()) {
-      // Store return type if needed
-      functionType = zc::mv(returnType);  // Suppress unused variable warning
-      if (errorReturn) {
-        // TODO: parse raisesClause
-      }
-    }
-  }
+  zc::Maybe<zc::Own<ast::Type>> returnType = parseReturnType();
 
   // Parse function body: LBRACE functionBody RBRACE
   if (!expectToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
@@ -3291,7 +3377,7 @@ zc::Maybe<zc::Own<ast::FunctionExpression>> Parser::parseFunctionExpression() {
   ZC_IF_SOME(body, parseBlockStatement()) {
     return finishNode(
         ast::factory::createFunctionExpression(zc::mv(typeParameters), zc::mv(parameters),
-                                               zc::mv(functionType), zc::mv(body)),
+                                               zc::mv(returnType), zc::mv(body)),
         startLoc);
   }
 
@@ -3358,6 +3444,64 @@ zc::Maybe<zc::Own<ast::TypeParameter>> Parser::parseTypeParameter() {
 
     return finishNode(
         ast::factory::createTypeParameterDeclaration(zc::mv(name), zc::mv(constraint)), startLoc);
+  }
+
+  return zc::none;
+}
+
+zc::Vector<zc::Own<ast::TypeParameter>> Parser::parseTypeParameters() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseTypeParameters");
+
+  zc::Vector<zc::Own<ast::TypeParameter>> typeParameters;
+
+  if (consumeExpectedToken(lexer::TokenKind::kLessThan)) {
+    do {
+      ZC_IF_SOME(typeParameter, parseTypeParameter()) { typeParameters.add(zc::mv(typeParameter)); }
+      else { return zc::Vector<zc::Own<ast::TypeParameter>>(); }
+    } while (consumeExpectedToken(lexer::TokenKind::kComma));
+
+    if (!consumeExpectedToken(lexer::TokenKind::kGreaterThan)) {
+      return zc::Vector<zc::Own<ast::TypeParameter>>();
+    }
+  }
+
+  return typeParameters;
+}
+
+zc::Vector<zc::Own<ast::BindingElement>> Parser::parseParameters() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseParameters");
+
+  zc::Vector<zc::Own<ast::BindingElement>> parameters;
+  if (consumeExpectedToken(lexer::TokenKind::kLeftParen)) {
+    // Parse parameterList: parameter (COMMA parameter)*
+    do {
+      // parameter: bindingIdentifier typeAnnotation? initializer?
+      ZC_IF_SOME(param, parseBindingElement()) { parameters.add(zc::mv(param)); }
+      else { return zc::Vector<zc::Own<ast::BindingElement>>(); }
+    } while (consumeExpectedToken(lexer::TokenKind::kComma));
+
+    if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) {
+      return zc::Vector<zc::Own<ast::BindingElement>>();
+    }
+  }
+
+  return parameters;
+}
+
+zc::Maybe<zc::Own<ast::ReturnType>> Parser::parseReturnType() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseReturnType");
+
+  // Parse optional return type or error return clause
+  //
+  // callSignature:
+  //   typeParameters? parameterClause (ARROW type raisesClause?)?;
+
+  if (!consumeExpectedToken(lexer::TokenKind::kArrow)) { return zc::none; }
+
+  ZC_IF_SOME(type, parseType()) {
+    zc::Maybe<zc::Own<ast::Type>> errorType = zc::none;
+    if (consumeExpectedToken(lexer::TokenKind::kRaisesKeyword)) { errorType = parseType(); }
+    return ast::factory::createReturnType(zc::mv(type), zc::mv(errorType));
   }
 
   return zc::none;

@@ -214,7 +214,6 @@ enum class TokenKind {
   kErrorPropagate,                           // ?!
   kErrorUnwrap,                              // !!
   kErrorDefault,                             // ?:
-  kErrorReturn,                              // !>
   kAt,                                       // @
   kHash,                                     // #
   kBacktick,                                 // `

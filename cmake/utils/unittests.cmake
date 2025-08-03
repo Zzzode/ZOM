@@ -18,14 +18,14 @@
 # Usage: add_language_test(test_name source_file expected_output)
 function(add_language_test TEST_NAME SOURCE_FILE)
   set(TEST_FULL_NAME "language-${TEST_NAME}")
-  
+
   # Create test that runs zomc on the source file
   add_test(
     NAME ${TEST_FULL_NAME}
     COMMAND zomc --dump-ast ${SOURCE_FILE}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
-  
+
   # Set test properties
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
     LABELS "language;specification"
@@ -37,7 +37,7 @@ endfunction()
 # Usage: add_language_test_with_output(test_name source_file expected_file)
 function(add_language_test_with_output TEST_NAME SOURCE_FILE EXPECTED_FILE)
   set(TEST_FULL_NAME "language-${TEST_NAME}")
-  
+
   # Create test script that compares output
   set(TEST_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/${TEST_NAME}_test.sh")
   file(WRITE ${TEST_SCRIPT}
@@ -55,35 +55,19 @@ function(add_language_test_with_output TEST_NAME SOURCE_FILE EXPECTED_FILE)
     "  exit 1\n"
     "fi\n"
   )
-  
+
   # Make script executable
   file(CHMOD ${TEST_SCRIPT} PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
-  
+
   add_test(
     NAME ${TEST_FULL_NAME}
     COMMAND ${TEST_SCRIPT}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
-  
+
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
     LABELS "language;specification;output-comparison"
     TIMEOUT 30
-  )
-endfunction()
-
-# Function to add an integration test
-# Usage: add_integration_test(test_name executable_target)
-function(add_integration_test TEST_NAME EXECUTABLE_TARGET)
-  set(TEST_FULL_NAME "integration-${TEST_NAME}")
-  
-  add_test(
-    NAME ${TEST_FULL_NAME}
-    COMMAND ${EXECUTABLE_TARGET}
-  )
-  
-  set_tests_properties(${TEST_FULL_NAME} PROPERTIES
-    LABELS "integration"
-    TIMEOUT 60
   )
 endfunction()
 
@@ -91,13 +75,13 @@ endfunction()
 # Usage: add_regression_test(test_name source_file issue_number)
 function(add_regression_test TEST_NAME SOURCE_FILE ISSUE_NUMBER)
   set(TEST_FULL_NAME "regression-${TEST_NAME}")
-  
+
   add_test(
     NAME ${TEST_FULL_NAME}
     COMMAND zomc --dump-ast ${SOURCE_FILE}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
-  
+
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
     LABELS "regression;issue-${ISSUE_NUMBER}"
     TIMEOUT 30
@@ -108,12 +92,12 @@ endfunction()
 # Usage: add_performance_test(test_name executable_target)
 function(add_performance_test TEST_NAME EXECUTABLE_TARGET)
   set(TEST_FULL_NAME "performance-${TEST_NAME}")
-  
+
   add_test(
     NAME ${TEST_FULL_NAME}
     COMMAND ${EXECUTABLE_TARGET}
   )
-  
+
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
     LABELS "performance;benchmark"
     TIMEOUT 300  # 5 minutes for performance tests
@@ -124,18 +108,18 @@ endfunction()
 # Usage: add_language_tests_from_directory(directory_path)
 function(add_language_tests_from_directory DIRECTORY_PATH)
   file(GLOB_RECURSE ZOM_FILES "${DIRECTORY_PATH}/*.zom")
-  
+
   foreach(ZOM_FILE ${ZOM_FILES})
     # Get relative path from the directory
     file(RELATIVE_PATH REL_PATH "${DIRECTORY_PATH}" "${ZOM_FILE}")
-    
+
     # Create test name from relative path
     string(REPLACE "/" "-" TEST_NAME "${REL_PATH}")
     string(REPLACE ".zom" "" TEST_NAME "${TEST_NAME}")
-    
+
     # Check if there's an expected output file
     string(REPLACE ".zom" ".expected" EXPECTED_FILE "${ZOM_FILE}")
-    
+
     if(EXISTS "${EXPECTED_FILE}")
       add_language_test_with_output("${TEST_NAME}" "${ZOM_FILE}" "${EXPECTED_FILE}")
     else()

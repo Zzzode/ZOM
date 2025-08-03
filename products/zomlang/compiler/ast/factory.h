@@ -95,7 +95,9 @@ class ParenthesizedType;
 class TypeReference;
 class PredefinedType;
 class FunctionType;
+class ReturnType;
 class OptionalType;
+class TypeQuery;
 
 // Operators
 class Operator;
@@ -147,7 +149,7 @@ zc::Own<VariableDeclaration> createVariableDeclaration(
 
 zc::Own<FunctionDeclaration> createFunctionDeclaration(
     zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<Type>> returnType,
+    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<ReturnType>> returnType,
     zc::Own<Statement> body);
 
 zc::Own<ClassDeclaration> createClassDeclaration(zc::Own<Identifier> name,
@@ -273,14 +275,21 @@ zc::Own<IntersectionType> createIntersectionType(zc::Vector<zc::Own<Type>>&& typ
 
 zc::Own<ParenthesizedType> createParenthesizedType(zc::Own<Type> type);
 
-zc::Own<TypeReference> createTypeReference(zc::Own<Identifier> typeName);
+zc::Own<TypeReference> createTypeReference(zc::Own<Identifier> typeName,
+                                           zc::Maybe<zc::Vector<zc::Own<Type>>> typeArguments);
 
 zc::Own<PredefinedType> createPredefinedType(zc::String&& name);
 
-zc::Own<FunctionType> createFunctionType(zc::Vector<zc::Own<Type>>&& parameterTypes,
-                                         zc::Own<Type> returnType);
+zc::Own<ReturnType> createReturnType(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType);
+
+zc::Own<FunctionType> createFunctionType(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+                                         zc::Vector<zc::Own<BindingElement>>&& parameters,
+                                         zc::Own<ReturnType> returnType);
 
 zc::Own<OptionalType> createOptionalType(zc::Own<Type> type);
+
+/// Type query factory function
+zc::Own<TypeQuery> createTypeQuery(zc::Own<Expression> expr);
 
 zc::Own<TypeParameter> createTypeParameterDeclaration(
     zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> constraint = zc::none);

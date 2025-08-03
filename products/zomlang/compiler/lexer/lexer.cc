@@ -251,9 +251,6 @@ struct Lexer::Impl {
         } else if (curPtr < bufferEnd && *curPtr == '!') {
           curPtr++;
           formToken(TokenKind::kErrorUnwrap, tokStart);
-        } else if (curPtr < bufferEnd && *curPtr == '>') {
-          curPtr++;
-          formToken(TokenKind::kErrorReturn, tokStart);
         } else {
           formToken(TokenKind::kExclamation, tokStart);
         }

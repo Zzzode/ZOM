@@ -1,6 +1,19 @@
+// Copyright (c) 2024-2025 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
 #include "zomlang/compiler/ast/type.h"
 
-#include "zc/core/debug.h"
 #include "zomlang/compiler/ast/expression.h"
 
 namespace zomlang {
@@ -14,12 +27,15 @@ Type::~Type() noexcept(false) = default;
 // TypeReference
 struct TypeReference::Impl {
   zc::Own<Identifier> name;
+  zc::Maybe<zc::Vector<zc::Own<Type>>> typeArguments;
 
-  explicit Impl(zc::Own<Identifier> name) : name(zc::mv(name)) {}
+  explicit Impl(zc::Own<Identifier> name, zc::Maybe<zc::Vector<zc::Own<Type>>> typeArguments)
+      : name(zc::mv(name)), typeArguments(zc::mv(typeArguments)) {}
 };
 
-TypeReference::TypeReference(zc::Own<Identifier> name)
-    : Type(SyntaxKind::kTypeReference), impl(zc::heap<Impl>(zc::mv(name))) {}
+TypeReference::TypeReference(zc::Own<Identifier> name,
+                             zc::Maybe<zc::Vector<zc::Own<Type>>> typeArguments)
+    : Type(SyntaxKind::kTypeReference), impl(zc::heap<Impl>(zc::mv(name), zc::mv(typeArguments))) {}
 
 TypeReference::~TypeReference() noexcept(false) = default;
 
@@ -123,24 +139,55 @@ TupleType::~TupleType() noexcept(false) = default;
 
 const NodeList<Type>& TupleType::getElementTypes() const { return impl->elementTypes; }
 
-// FunctionType
-struct FunctionType::Impl {
-  NodeList<Type> parameterTypes;
-  zc::Own<Type> returnType;
+// ReturnType
+struct ReturnType::Impl {
+  zc::Own<Type> type;
+  zc::Maybe<zc::Own<Type>> errorType;
 
-  Impl(zc::Vector<zc::Own<Type>>&& parameterTypes, zc::Own<Type> returnType)
-      : parameterTypes(zc::mv(parameterTypes)), returnType(zc::mv(returnType)) {}
+  Impl(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType)
+      : type(zc::mv(type)), errorType(zc::mv(errorType)) {}
 };
 
-FunctionType::FunctionType(zc::Vector<zc::Own<Type>>&& parameterTypes, zc::Own<Type> returnType)
+ReturnType::ReturnType(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType)
+    : Type(SyntaxKind::kReturnType), impl(zc::heap<Impl>(zc::mv(type), zc::mv(errorType))) {}
+
+ReturnType::~ReturnType() noexcept(false) = default;
+
+const Type* ReturnType::getType() const { return impl->type.get(); }
+
+const Type* ReturnType::getErrorType() const {
+  return impl->errorType.map([](const zc::Own<Type>& type) { return type.get(); })
+      .orDefault(nullptr);
+}
+
+// FunctionType
+struct FunctionType::Impl {
+  const NodeList<TypeParameter> typeParameters;
+  const NodeList<BindingElement> parameters;
+  const zc::Own<ReturnType> returnType;
+
+  Impl(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+       zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Own<ReturnType> returnType)
+      : typeParameters(zc::mv(typeParameters)),
+        parameters(zc::mv(parameters)),
+        returnType(zc::mv(returnType)) {}
+};
+
+FunctionType::FunctionType(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+                           zc::Vector<zc::Own<BindingElement>>&& parameters,
+                           zc::Own<ReturnType> returnType)
     : Type(SyntaxKind::kFunctionType),
-      impl(zc::heap<Impl>(zc::mv(parameterTypes), zc::mv(returnType))) {}
+      impl(zc::heap<Impl>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(returnType))) {}
 
 FunctionType::~FunctionType() noexcept(false) = default;
 
-const NodeList<Type>& FunctionType::getParameterTypes() const { return impl->parameterTypes; }
+const NodeList<TypeParameter>& FunctionType::getTypeParameters() const {
+  return impl->typeParameters;
+}
 
-const Type* FunctionType::getReturnType() const { return impl->returnType.get(); }
+const NodeList<BindingElement>& FunctionType::getParameters() const { return impl->parameters; }
+
+const ReturnType* FunctionType::getReturnType() const { return impl->returnType.get(); }
 
 // OptionalType
 struct OptionalType::Impl {
@@ -155,6 +202,19 @@ OptionalType::OptionalType(zc::Own<Type> type)
 OptionalType::~OptionalType() noexcept(false) = default;
 
 const Type* OptionalType::getType() const { return impl->type.get(); }
+
+// ================================================================================
+// TypeQuery
+
+struct TypeQuery::Impl {
+  const zc::Own<Expression> expr;
+};
+
+TypeQuery::TypeQuery(zc::Own<Expression> expr)
+    : Type(SyntaxKind::kTypeQuery), impl(zc::heap<Impl>(zc::mv(expr))) {}
+TypeQuery::~TypeQuery() noexcept(false) = default;
+
+const Expression* TypeQuery::getExpression() const { return impl->expr.get(); }
 
 }  // namespace ast
 }  // namespace compiler

@@ -61,7 +61,7 @@ zc::Own<VariableDeclaration> createVariableDeclaration(
 
 zc::Own<FunctionDeclaration> createFunctionDeclaration(
     zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<Type>> returnType,
+    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<ReturnType>> returnType,
     zc::Own<Statement> body) {
   return zc::heap<FunctionDeclaration>(zc::mv(name), zc::mv(typeParameters), zc::mv(parameters),
                                        zc::mv(returnType), zc::mv(body));
@@ -242,8 +242,9 @@ zc::Own<AliasDeclaration> createAliasDeclaration(zc::Own<Identifier> name, zc::O
 zc::Own<DebuggerStatement> createDebuggerStatement() { return zc::heap<DebuggerStatement>(); }
 
 // Type factory functions
-zc::Own<TypeReference> createTypeReference(zc::Own<Identifier> typeName) {
-  return zc::heap<TypeReference>(zc::mv(typeName));
+zc::Own<TypeReference> createTypeReference(zc::Own<Identifier> typeName,
+                                           zc::Maybe<zc::Vector<zc::Own<Type>>> typeArguments) {
+  return zc::heap<TypeReference>(zc::mv(typeName), zc::mv(typeArguments));
 }
 
 zc::Own<ArrayType> createArrayType(zc::Own<Type> elementType) {
@@ -274,9 +275,14 @@ zc::Own<TupleType> createTupleType(zc::Vector<zc::Own<Type>>&& elementTypes) {
   return zc::heap<TupleType>(zc::mv(elementTypes));
 }
 
-zc::Own<FunctionType> createFunctionType(zc::Vector<zc::Own<Type>>&& parameterTypes,
-                                         zc::Own<Type> returnType) {
-  return zc::heap<FunctionType>(zc::mv(parameterTypes), zc::mv(returnType));
+zc::Own<ReturnType> createReturnType(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType) {
+  return zc::heap<ReturnType>(zc::mv(type), zc::mv(errorType));
+}
+
+zc::Own<FunctionType> createFunctionType(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+                                         zc::Vector<zc::Own<BindingElement>>&& parameters,
+                                         zc::Own<ReturnType> returnType) {
+  return zc::heap<FunctionType>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(returnType));
 }
 
 zc::Own<TypeParameter> createTypeParameterDeclaration(zc::Own<Identifier> name,
@@ -286,6 +292,10 @@ zc::Own<TypeParameter> createTypeParameterDeclaration(zc::Own<Identifier> name,
 
 zc::Own<OptionalType> createOptionalType(zc::Own<Type> type) {
   return zc::heap<OptionalType>(zc::mv(type));
+}
+
+zc::Own<TypeQuery> createTypeQuery(zc::Own<Expression> expr) {
+  return zc::heap<TypeQuery>(zc::mv(expr));
 }
 
 // Operator factory functions
