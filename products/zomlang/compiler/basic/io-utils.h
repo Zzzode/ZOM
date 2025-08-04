@@ -14,26 +14,28 @@
 
 #pragma once
 
-#include <thread>  // For std::thread::hardware_concurrency()
-
-#include "zc/core/function.h"
-
-ZC_BEGIN_HEADER
+#include "zc/core/common.h"
+#include "zc/core/filesystem.h"
+#include "zc/core/io.h"
+#include "zc/core/memory.h"
 
 namespace zomlang {
 namespace compiler {
 namespace basic {
 
-class ThreadPool {
+/// Synchronous file output stream for compiler output
+///
+/// This class provides a synchronous OutputStream implementation that writes
+/// to a file using the zc::File interface. Unlike zc::async::FileOutputStream,
+/// this implementation is designed for synchronous compiler operations.
+class FileOutputStream : public zc::OutputStream {
 public:
-  explicit ThreadPool(size_t numThreads = std::thread::hardware_concurrency());
-  ~ThreadPool() noexcept(false);
+  explicit FileOutputStream(zc::Own<const zc::File> file);
+  ~FileOutputStream() noexcept(false) override;
 
-  /// Disallow copy and move operations
-  ZC_DISALLOW_COPY_AND_MOVE(ThreadPool);
+  void write(zc::ArrayPtr<const zc::byte> data) override;
 
-  /// Enqueue a task to the thread pool
-  void enqueue(zc::Function<void()> task);
+  ZC_DISALLOW_COPY_AND_MOVE(FileOutputStream);
 
 private:
   struct Impl;
@@ -43,5 +45,3 @@ private:
 }  // namespace basic
 }  // namespace compiler
 }  // namespace zomlang
-
-ZC_END_HEADER

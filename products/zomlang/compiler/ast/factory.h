@@ -122,7 +122,7 @@ template <typename Node, typename... Args>
 zc::Own<Node> createNodeWithRange(const source::SourceRange& range, Args&&... args) {
   zc::Own<Node> node = zc::heap<Node>(zc::fwd<Args>(args)...);
   node->setSourceRange(range);
-  return zc::mv(node);
+  return node;  // NRVO optimization
 }
 
 /// Create a ModulePath node

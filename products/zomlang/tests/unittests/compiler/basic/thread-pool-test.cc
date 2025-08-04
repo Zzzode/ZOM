@@ -14,10 +14,10 @@
 
 #include "zomlang/compiler/basic/thread-pool.h"
 
-#include <stdlib.h>  // For rand
 #include <unistd.h>  // For usleep
 
 #include <atomic>
+#include <cstdlib>  // For rand
 
 #include "zc/core/common.h"
 #include "zc/core/debug.h"  // For ZC_FAIL_ASSERT

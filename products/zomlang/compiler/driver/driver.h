@@ -19,14 +19,18 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 
 namespace zomlang {
 namespace compiler {
 
 namespace source {
 class BufferId;
-}
+class SourceManager;
+}  // namespace source
+
+namespace diagnostics {
+class DiagnosticEngine;
+}  // namespace diagnostics
 
 namespace ast {
 class Node;
@@ -60,6 +64,10 @@ public:
   /// Get the compiler options used by the driver.
   /// @return A reference to the compiler options
   const basic::CompilerOptions& getCompilerOptions() const;
+
+  /// Get the source manager used by the driver.
+  /// @return A reference to the source manager
+  const source::SourceManager& getSourceManager() const;
 
 private:
   struct Impl;

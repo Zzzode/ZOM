@@ -22,7 +22,7 @@ function(add_language_test TEST_NAME SOURCE_FILE)
   # Create test that runs zomc on the source file
   add_test(
     NAME ${TEST_FULL_NAME}
-    COMMAND zomc --dump-ast ${SOURCE_FILE}
+    COMMAND ${CMAKE_BINARY_DIR}/products/zomlang/utils/zomc/zomc compile --dump-ast --format=json ${SOURCE_FILE}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
 
@@ -40,18 +40,18 @@ function(add_language_test_with_output TEST_NAME SOURCE_FILE EXPECTED_FILE)
 
   # Create test script that compares output
   set(TEST_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/${TEST_NAME}_test.sh")
+  set(ACTUAL_OUTPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/${TEST_NAME}.actual")
   file(WRITE ${TEST_SCRIPT}
     "#!/bin/bash\n"
-    "set -e\n"
-    "ACTUAL_OUTPUT=$(zomc --dump-ast ${SOURCE_FILE} 2>&1)\n"
-    "EXPECTED_OUTPUT=$(cat ${EXPECTED_FILE})\n"
-    "if [ \"$ACTUAL_OUTPUT\" = \"$EXPECTED_OUTPUT\" ]; then\n"
+    "set -ex\n"
+    "${CMAKE_BINARY_DIR}/products/zomlang/utils/zomc/zomc compile --dump-ast --format=json ${SOURCE_FILE} > \"${ACTUAL_OUTPUT_FILE}\" 2>&1\n"
+    "if cmp -s \"${EXPECTED_FILE}\" \"${ACTUAL_OUTPUT_FILE}\"; then\n"
+    "  rm \"${ACTUAL_OUTPUT_FILE}\"\n"
     "  exit 0\n"
     "else\n"
-    "  echo \"Expected:\"\n"
-    "  echo \"$EXPECTED_OUTPUT\"\n"
-    "  echo \"Actual:\"\n"
-    "  echo \"$ACTUAL_OUTPUT\"\n"
+    "  echo \"Differences:\"\n"
+    "  diff -u \"${EXPECTED_FILE}\" \"${ACTUAL_OUTPUT_FILE}\" || true\n"
+    "  rm \"${ACTUAL_OUTPUT_FILE}\"\n"
     "  exit 1\n"
     "fi\n"
   )
@@ -78,7 +78,7 @@ function(add_regression_test TEST_NAME SOURCE_FILE ISSUE_NUMBER)
 
   add_test(
     NAME ${TEST_FULL_NAME}
-    COMMAND zomc --dump-ast ${SOURCE_FILE}
+    COMMAND ${CMAKE_BINARY_DIR}/products/zomlang/utils/zomc/zomc compile --dump-ast --format=json ${SOURCE_FILE}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
   )
 

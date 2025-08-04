@@ -48,15 +48,15 @@ class ParenthesizedExpression;
 
 /// AST dump output format
 enum class DumpFormat {
-  kText,  // Human-readable text format with indentation
   kJSON,  // JSON format
+  kTEXT,  // Human-readable text format with indentation
   kXML    // XML format
 };
 
 /// AST dumper class for outputting AST in various formats
 class ASTDumper {
 public:
-  explicit ASTDumper(zc::OutputStream& output, DumpFormat format = DumpFormat::kText) noexcept;
+  explicit ASTDumper(zc::OutputStream& output, DumpFormat format = DumpFormat::kTEXT) noexcept;
   ~ASTDumper() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ASTDumper);

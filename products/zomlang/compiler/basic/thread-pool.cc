@@ -14,91 +14,88 @@
 
 #include "zomlang/compiler/basic/thread-pool.h"
 
+#include "zc/core/arena.h"
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/core/exception.h"
+#include "zc/core/list.h"
+#include "zc/core/mutex.h"
 #include "zc/core/thread.h"
+#include "zc/core/vector.h"
 
 namespace zomlang {
 namespace compiler {
 namespace basic {
 
-ThreadPool::ThreadPool(size_t numThreads) : workers(numThreads) {
-  ZC_ASSERT(numThreads > 0);
-  // Create and start worker threads
-  for (size_t i = 0; i < numThreads; ++i) {
-    workers.add(zc::heap<zc::Thread>([this] { this->workerLoop(); }));
+struct ThreadPool::Impl {
+  zc::Arena arena;
+
+  struct Task {
+    zc::Function<void()> func;
+    zc::ListLink<Task> link;
+
+    explicit Task(zc::Function<void()> f) : func(zc::mv(f)) {}
+  };
+
+  zc::Vector<zc::Own<zc::Thread>> workers;
+  zc::MutexGuarded<zc::List<Task, &Task::link>> tasks;
+  bool stop = false;
+
+  Impl(size_t numThreads) {
+    ZC_ASSERT(numThreads > 0);
+    for (size_t i = 0; i < numThreads; ++i) {
+      workers.add(zc::heap<zc::Thread>([this] { workerLoop(); }));
+    }
   }
-}
 
-ThreadPool::~ThreadPool() {
-  {
-    auto lockedTasks = tasks.lockExclusive();
-    stop = true;
-    // Note: There is no explicit notify_all here. zc::_::Mutex::unlock handles waking up threads.
-    // To ensure all waiting threads are awakened to check the stop flag,
-    // we could potentially trigger it manually before unlock (if zc::Mutex supports it),
-    // or rely on the default behavior of unlock. The implementation details of zc::Mutex determine
-    // the best approach. Assuming unlock wakes up waiters.
-  }  // Unlock mutex
+  ~Impl() noexcept(false) {
+    {  // Lock scope to set stop flag
+      auto lockedTasks = tasks.lockExclusive();
+      stop = true;
+    }
+    workers.clear();  // Join all threads
+  }
 
-  // Wait for all worker threads to finish
-  // zc::Thread destructor automatically joins the thread
-  workers.clear();  // Explicitly destroy and join threads
-}
-
-void ThreadPool::enqueue(zc::Function<void()> task) {
-  {
+  void enqueue(zc::Function<void()> task) {
     auto lockedTasks = tasks.lockExclusive();
     if (stop) {
       ZC_FAIL_ASSERT("enqueue on stopped ThreadPool");
-      return;  // Or throw an exception
+      return;
     }
-
     lockedTasks->add(arena.allocate<Task>(zc::mv(task)));
-    // After adding the task, the unlock operation will automatically handle the wake-up logic
-    // (depending on zc::Mutex implementation)
-  }  // Unlock mutex and potentially wake up a waiting thread
-}
+  }
 
-void ThreadPool::workerLoop() {
-  while (true) {
-    zc::Maybe<Task&> taskToRun;
-    {
+  void workerLoop() {
+    while (true) {
+      zc::Maybe<Task&> taskToRun;
       auto lockedTasks = tasks.lockExclusive();
 
-      // Use a lambda that captures `this` (or `stop`) and accepts the locked task list
-      lockedTasks.wait(
-          [this](const auto& taskList) {
-            // Check stop flag or if the task list (already locked) is not empty
-            return stop || !taskList.empty();
-          },
-          zc::none);
+      lockedTasks.wait([this](const auto& taskList) { return stop || !taskList.empty(); },
+                       zc::none);
 
-      // Use lockedTasks directly as it's already locked
-      if (stop && lockedTasks->empty()) { return; }  // Exit loop if stopping and no tasks left
+      if (stop && lockedTasks->empty()) { return; }
 
-      // Use lockedTasks directly
       if (!lockedTasks->empty()) {
-        Task& taskRef = lockedTasks->front();  // Get task from the front (FIFO)
-        // Assuming zc::List has remove(Task&) or similar.
-        // If remove requires iterator, adjust accordingly.
-        // Let's assume remove(Task&) exists for simplicity based on original code.
-        lockedTasks->remove(taskRef);  // Remove the task from the list
-        taskToRun = taskRef;           // Assign the task to be run
+        Task& taskRef = lockedTasks->front();
+        lockedTasks->remove(taskRef);
+        taskToRun = taskRef;
       }
-    }  // Unlock mutex
 
-    // If a task was successfully retrieved, execute it
-    ZC_IF_SOME(task, taskToRun) {
-      zc::Maybe<zc::Exception> exception = zc::runCatchingExceptions([&]() { task.func(); });
-      ZC_IF_SOME(e, exception) {
-        // Handle exceptions thrown during task execution, e.g., log the error
-        ZC_LOG(ERROR, "Task executed with exception: ", e.getDescription());
+      ZC_IF_SOME(taskRef, taskToRun) {
+        zc::Maybe<zc::Exception> exception = zc::runCatchingExceptions([&]() { taskRef.func(); });
+        ZC_IF_SOME(e, exception) {
+          ZC_LOG(ERROR, "Task executed with exception: ", e.getDescription());
+        }
       }
     }
   }
-}
+};
+
+ThreadPool::ThreadPool(size_t numThreads) : impl(zc::heap<Impl>(numThreads)) {}
+
+ThreadPool::~ThreadPool() noexcept(false) {}
+
+void ThreadPool::enqueue(zc::Function<void()> task) { impl->enqueue(zc::mv(task)); }
 
 }  // namespace basic
 }  // namespace compiler

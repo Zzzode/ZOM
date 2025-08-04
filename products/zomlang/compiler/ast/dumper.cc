@@ -54,7 +54,7 @@ void ASTDumper::dump(const Node& node) { dumpNode(node); }
 
 void ASTDumper::dumpSourceFile(const SourceFile& sourceFile) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("SourceFile");
       writeProperty("fileName", sourceFile.getFileName(), 1);
       writeLine("statements:", 1);
@@ -194,7 +194,7 @@ void ASTDumper::dumpExpression(const Expression& expr, int indent) {
 
 void ASTDumper::dumpImportDeclaration(const ImportDeclaration& importDecl, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("ImportDeclaration", indent);
       dumpModulePath(importDecl.getModulePath(), indent + 1);
       ZC_IF_SOME(alias, importDecl.getAlias()) { writeProperty("alias", alias, indent + 1); }
@@ -238,7 +238,7 @@ void ASTDumper::dumpImportDeclaration(const ImportDeclaration& importDecl, int i
 
 void ASTDumper::dumpExportDeclaration(const ExportDeclaration& exportDecl, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("ExportDeclaration", indent);
       writeProperty("identifier", exportDecl.getIdentifier(), indent + 1);
       if (exportDecl.isRename()) {
@@ -301,7 +301,7 @@ void ASTDumper::dumpExportDeclaration(const ExportDeclaration& exportDecl, int i
 
 void ASTDumper::dumpModulePath(const ModulePath& modulePath, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeProperty("modulePath", modulePath.toString(), indent);
       break;
     case DumpFormat::kJSON:
@@ -318,7 +318,7 @@ void ASTDumper::dumpModulePath(const ModulePath& modulePath, int indent) {
 
 void ASTDumper::dumpBindingElement(const BindingElement& bindingElement, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("BindingElement", indent);
       writeProperty("name", bindingElement.getName()->getName(), indent + 1);
       if (auto* type = bindingElement.getType()) {
@@ -380,7 +380,7 @@ void ASTDumper::dumpBindingElement(const BindingElement& bindingElement, int ind
 
 void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("VariableDeclaration", indent);
       writeLine("bindings:", indent + 1);
       for (const auto& binding : varDecl.getBindings()) { dumpBindingElement(binding, indent + 2); }
@@ -422,7 +422,7 @@ void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int 
 
 void ASTDumper::dumpBinaryExpression(const BinaryExpression& binExpr, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("BinaryExpression", indent);
       writeProperty("operator", binExpr.getOperator()->getSymbol(), indent + 1);
       writeLine("left:", indent + 1);
@@ -484,7 +484,7 @@ void ASTDumper::writeLine(const zc::StringPtr text, int indent) {
 
 void ASTDumper::writeNodeHeader(const zc::StringPtr nodeType, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeLine(zc::str(nodeType, " {"), indent);
       break;
     case DumpFormat::kJSON:
@@ -501,7 +501,7 @@ void ASTDumper::writeNodeHeader(const zc::StringPtr nodeType, int indent) {
 
 void ASTDumper::writeNodeFooter(const zc::StringPtr nodeType, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeLine("}", indent);
       break;
     case DumpFormat::kJSON:
@@ -567,7 +567,7 @@ zc::String escapeJsonString(const zc::StringPtr str) {
 
 void ASTDumper::writeProperty(const zc::StringPtr name, const zc::StringPtr value, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeLine(zc::str(name, ": ", value), indent);
       break;
     case DumpFormat::kJSON: {
@@ -585,7 +585,7 @@ void ASTDumper::writeProperty(const zc::StringPtr name, const zc::StringPtr valu
 
 void ASTDumper::dumpFunctionExpression(const FunctionExpression& funcExpr, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("FunctionExpression", indent);
       if (!funcExpr.getTypeParameters().empty()) {
         writeLine("typeParameters:", indent + 1);
@@ -708,7 +708,7 @@ void ASTDumper::dumpFunctionExpression(const FunctionExpression& funcExpr, int i
 
 void ASTDumper::dumpStringLiteral(const StringLiteral& strLit, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("StringLiteral", indent);
       writeProperty("value", strLit.getValue(), indent + 1);
       writeNodeFooter("StringLiteral", indent);
@@ -735,7 +735,7 @@ void ASTDumper::dumpStringLiteral(const StringLiteral& strLit, int indent) {
 
 void ASTDumper::dumpNumericLiteral(const NumericLiteral& numLit, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("NumericLiteral", indent);
       writeProperty("value", zc::str(numLit.getValue()), indent + 1);
       writeNodeFooter("NumericLiteral", indent);
@@ -762,7 +762,7 @@ void ASTDumper::dumpNumericLiteral(const NumericLiteral& numLit, int indent) {
 
 void ASTDumper::dumpBooleanLiteral(const BooleanLiteral& boolLit, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("BooleanLiteral", indent);
       writeProperty("value", boolLit.getValue() ? "true" : "false", indent + 1);
       writeNodeFooter("BooleanLiteral", indent);
@@ -790,7 +790,7 @@ void ASTDumper::dumpBooleanLiteral(const BooleanLiteral& boolLit, int indent) {
 void ASTDumper::dumpNilLiteral(const NilLiteral& nilLit, int indent) {
   (void)nilLit;  // Suppress unused parameter warning
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("NilLiteral", indent);
       writeNodeFooter("NilLiteral", indent);
       break;
@@ -813,7 +813,7 @@ void ASTDumper::dumpNilLiteral(const NilLiteral& nilLit, int indent) {
 
 void ASTDumper::dumpCallExpression(const CallExpression& callExpr, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("CallExpression", indent);
       writeNodeFooter("CallExpression", indent);
       break;
@@ -836,7 +836,7 @@ void ASTDumper::dumpCallExpression(const CallExpression& callExpr, int indent) {
 
 void ASTDumper::dumpNewExpression(const NewExpression& newExpr, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("NewExpression", indent);
       writeNodeFooter("NewExpression", indent);
       break;
@@ -859,7 +859,7 @@ void ASTDumper::dumpNewExpression(const NewExpression& newExpr, int indent) {
 
 void ASTDumper::dumpArrayLiteralExpression(const ArrayLiteralExpression& arrLit, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("ArrayLiteralExpression", indent);
       writeNodeFooter("ArrayLiteralExpression", indent);
       break;
@@ -882,7 +882,7 @@ void ASTDumper::dumpArrayLiteralExpression(const ArrayLiteralExpression& arrLit,
 
 void ASTDumper::dumpObjectLiteralExpression(const ObjectLiteralExpression& objLit, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("ObjectLiteralExpression", indent);
       writeNodeFooter("ObjectLiteralExpression", indent);
       break;
@@ -905,7 +905,7 @@ void ASTDumper::dumpObjectLiteralExpression(const ObjectLiteralExpression& objLi
 
 void ASTDumper::dumpParenthesizedExpression(const ParenthesizedExpression& parenExpr, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("ParenthesizedExpression", indent);
       writeNodeFooter("ParenthesizedExpression", indent);
       break;
@@ -928,7 +928,7 @@ void ASTDumper::dumpParenthesizedExpression(const ParenthesizedExpression& paren
 
 void ASTDumper::dumpBlockStatement(const BlockStatement& blockStmt, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("BlockStatement", indent);
       for (const auto& stmt : blockStmt.getStatements()) { dumpStatement(stmt, indent + 1); }
       writeNodeFooter("BlockStatement", indent);
@@ -965,7 +965,7 @@ void ASTDumper::dumpBlockStatement(const BlockStatement& blockStmt, int indent) 
 
 void ASTDumper::dumpExpressionStatement(const ExpressionStatement& exprStmt, int indent) {
   switch (impl->format) {
-    case DumpFormat::kText:
+    case DumpFormat::kTEXT:
       writeNodeHeader("ExpressionStatement", indent);
       dumpExpression(*exprStmt.getExpression(), indent + 1);
       writeNodeFooter("ExpressionStatement", indent);
