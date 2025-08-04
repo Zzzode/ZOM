@@ -63,7 +63,7 @@ void ASTDumper::dumpSourceFile(const SourceFile& sourceFile) {
       break;
     case DumpFormat::kJSON:
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "SourceFile", 1);
+      writeProperty("node", "SourceFile", 1);
       impl->output.write(",\n"_zcb);
       writeProperty("fileName", sourceFile.getFileName(), 1);
       impl->output.write(",\n"_zcb);
@@ -116,6 +116,21 @@ void ASTDumper::dumpNode(const Node& node, int indent) {
     case SyntaxKind::kExpression:
       dumpExpression(static_cast<const Expression&>(node), indent);
       break;
+    case SyntaxKind::kType:
+    case SyntaxKind::kTypeReference:
+    case SyntaxKind::kArrayType:
+    case SyntaxKind::kUnionType:
+    case SyntaxKind::kIntersectionType:
+    case SyntaxKind::kParenthesizedType:
+    case SyntaxKind::kPredefinedType:
+    case SyntaxKind::kObjectType:
+    case SyntaxKind::kTupleType:
+    case SyntaxKind::kReturnType:
+    case SyntaxKind::kFunctionType:
+    case SyntaxKind::kOptionalType:
+    case SyntaxKind::kTypeQuery:
+      dumpType(static_cast<const Type&>(node), indent);
+      break;
     default:
       // Generic node dump
       writeNodeHeader("Node", indent);
@@ -134,6 +149,9 @@ void ASTDumper::dumpStatement(const Statement& stmt, int indent) {
       break;
     case SyntaxKind::kVariableDeclaration:
       dumpVariableDeclaration(static_cast<const VariableDeclaration&>(stmt), indent);
+      break;
+    case SyntaxKind::kFunctionDeclaration:
+      dumpFunctionDeclaration(static_cast<const FunctionDeclaration&>(stmt), indent);
       break;
     case SyntaxKind::kBlockStatement:
       dumpBlockStatement(static_cast<const BlockStatement&>(stmt), indent);
@@ -203,7 +221,7 @@ void ASTDumper::dumpImportDeclaration(const ImportDeclaration& importDecl, int i
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "ImportDeclaration", indent + 1);
+      writeProperty("node", "ImportDeclaration", indent + 1);
       impl->output.write(",\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("\"modulePath\": \""_zcb);
@@ -252,7 +270,7 @@ void ASTDumper::dumpExportDeclaration(const ExportDeclaration& exportDecl, int i
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "ExportDeclaration", indent + 1);
+      writeProperty("node", "ExportDeclaration", indent + 1);
       impl->output.write(",\n"_zcb);
       writeProperty("identifier", exportDecl.getIdentifier(), indent + 1);
       if (exportDecl.isRename()) {
@@ -322,9 +340,8 @@ void ASTDumper::dumpBindingElement(const BindingElement& bindingElement, int ind
       writeNodeHeader("BindingElement", indent);
       writeProperty("name", bindingElement.getName()->getName(), indent + 1);
       if (auto* type = bindingElement.getType()) {
-        (void)type;  // Suppress unused variable warning
-        // TODO: Implement proper type string representation
-        writeProperty("type", "Type", indent + 1);
+        writeLine("varType:", indent + 1);
+        dumpType(*type, indent + 2);
       }
       if (bindingElement.getInitializer()) {
         writeLine("initializer:", indent + 1);
@@ -335,18 +352,21 @@ void ASTDumper::dumpBindingElement(const BindingElement& bindingElement, int ind
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "BindingElement", indent + 1);
+      writeProperty("node", "BindingElement", indent + 1);
       impl->output.write(",\n"_zcb);
       writeProperty("name", bindingElement.getName()->getName(), indent + 1);
       if (auto* type = bindingElement.getType()) {
-        (void)type;  // Suppress unused variable warning
         impl->output.write(",\n"_zcb);
-        writeProperty("varType", "Type", indent + 1);
+        writeIndent(indent + 1);
+        impl->output.write("\"varType\": "_zcb);
+        impl->output.write("\n"_zcb);
+        dumpType(*type, indent + 1);
       }
       if (bindingElement.getInitializer()) {
         impl->output.write(",\n"_zcb);
         writeIndent(indent + 1);
-        impl->output.write("\"initializer\": \n"_zcb);
+        impl->output.write("\"initializer\": "_zcb);
+        impl->output.write("\n"_zcb);
         dumpExpression(*bindingElement.getInitializer(), indent + 1);
       }
       impl->output.write("\n"_zcb);
@@ -361,9 +381,11 @@ void ASTDumper::dumpBindingElement(const BindingElement& bindingElement, int ind
       impl->output.write(bindingElement.getName()->getName().asBytes());
       impl->output.write("</name>\n"_zcb);
       if (auto* type = bindingElement.getType()) {
-        (void)type;  // Suppress unused variable warning
         writeIndent(indent + 1);
-        impl->output.write("<varType>Type</varType>\n"_zcb);
+        impl->output.write("<varType>\n"_zcb);
+        dumpType(*type, indent + 2);
+        writeIndent(indent + 1);
+        impl->output.write("</varType>\n"_zcb);
       }
       if (bindingElement.getInitializer()) {
         writeIndent(indent + 1);
@@ -389,7 +411,7 @@ void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int 
     case DumpFormat::kJSON: {
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "VariableDeclaration", indent + 1);
+      writeProperty("node", "VariableDeclaration", indent + 1);
       impl->output.write(",\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("\"bindings\": [\n"_zcb);
@@ -420,6 +442,661 @@ void ASTDumper::dumpVariableDeclaration(const VariableDeclaration& varDecl, int 
   }
 }
 
+void ASTDumper::dumpFunctionDeclaration(const FunctionDeclaration& funcDecl, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("FunctionDeclaration", indent);
+      writeProperty("name", funcDecl.getName()->getName(), indent + 1);
+      if (!funcDecl.getTypeParameters().empty()) {
+        writeLine("typeParameters:", indent + 1);
+        for (const auto& typeParam : funcDecl.getTypeParameters()) {
+          (void)typeParam;  // Suppress unused variable warning
+          // TODO: Implement TypeParameter dump
+          writeLine("TypeParameter", indent + 2);
+        }
+      }
+      if (!funcDecl.getParameters().empty()) {
+        writeLine("parameters:", indent + 1);
+        for (const auto& param : funcDecl.getParameters()) {
+          dumpBindingElement(param, indent + 2);
+        }
+      }
+      if (funcDecl.getReturnType()) {
+        writeLine("returnType:", indent + 1);
+        // TODO: Implement Type dump
+        writeLine("Type", indent + 2);
+      }
+      if (funcDecl.getBody()) {
+        writeLine("body:", indent + 1);
+        dumpStatement(*funcDecl.getBody(), indent + 2);
+      }
+      writeNodeFooter("FunctionDeclaration", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "FunctionDeclaration", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeProperty("name", funcDecl.getName()->getName(), indent + 1);
+
+      if (!funcDecl.getTypeParameters().empty()) {
+        impl->output.write(",\n"_zcb);
+        writeIndent(indent + 1);
+        impl->output.write("\"typeParameters\": [\n"_zcb);
+        bool first = true;
+        for (const auto& typeParam : funcDecl.getTypeParameters()) {
+          (void)typeParam;  // Suppress unused variable warning
+          if (!first) { impl->output.write(",\n"_zcb); }
+          first = false;
+          writeIndent(indent + 2);
+          impl->output.write("{\"type\": \"TypeParameter\"}"_zcb);
+        }
+        impl->output.write("\n"_zcb);
+        writeIndent(indent + 1);
+        impl->output.write("]"_zcb);
+      }
+
+      if (!funcDecl.getParameters().empty()) {
+        impl->output.write(",\n"_zcb);
+        writeIndent(indent + 1);
+        impl->output.write("\"parameters\": [\n"_zcb);
+        bool first = true;
+        for (const auto& param : funcDecl.getParameters()) {
+          if (!first) { impl->output.write(",\n"_zcb); }
+          first = false;
+          dumpBindingElement(param, indent + 2);
+        }
+        impl->output.write("\n"_zcb);
+        writeIndent(indent + 1);
+        impl->output.write("]"_zcb);
+      }
+
+      if (funcDecl.getReturnType()) {
+        impl->output.write(",\n"_zcb);
+        writeIndent(indent + 1);
+        impl->output.write("\"returnType\": "_zcb);
+        dumpReturnType(*funcDecl.getReturnType(), indent + 1);
+      }
+
+      if (funcDecl.getBody()) {
+        impl->output.write(",\n"_zcb);
+        writeIndent(indent + 1);
+        impl->output.write("\"body\": \n"_zcb);
+        dumpStatement(*funcDecl.getBody(), indent + 1);
+      }
+
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<FunctionDeclaration>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<name>"_zcb);
+      impl->output.write(funcDecl.getName()->getName().asBytes());
+      impl->output.write("</name>\n"_zcb);
+      if (!funcDecl.getTypeParameters().empty()) {
+        writeIndent(indent + 1);
+        impl->output.write("<typeParameters>\n"_zcb);
+        for (const auto& typeParam : funcDecl.getTypeParameters()) {
+          (void)typeParam;  // Suppress unused variable warning
+          writeIndent(indent + 2);
+          impl->output.write("<TypeParameter></TypeParameter>\n"_zcb);
+        }
+        writeIndent(indent + 1);
+        impl->output.write("</typeParameters>\n"_zcb);
+      }
+      if (!funcDecl.getParameters().empty()) {
+        writeIndent(indent + 1);
+        impl->output.write("<parameters>\n"_zcb);
+        for (const auto& param : funcDecl.getParameters()) {
+          dumpBindingElement(param, indent + 2);
+        }
+        writeIndent(indent + 1);
+        impl->output.write("</parameters>\n"_zcb);
+      }
+      if (funcDecl.getReturnType()) {
+        writeIndent(indent + 1);
+        impl->output.write("<returnType><Type></Type></returnType>\n"_zcb);
+      }
+      if (funcDecl.getBody()) {
+        writeIndent(indent + 1);
+        impl->output.write("<body>\n"_zcb);
+        dumpStatement(*funcDecl.getBody(), indent + 2);
+        writeIndent(indent + 1);
+        impl->output.write("</body>\n"_zcb);
+      }
+      writeIndent(indent);
+      impl->output.write("</FunctionDeclaration>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpType(const Type& type, int indent) {
+  switch (type.getKind()) {
+    case SyntaxKind::kTypeReference:
+      dumpTypeReference(static_cast<const TypeReference&>(type), indent);
+      break;
+    case SyntaxKind::kArrayType:
+      dumpArrayType(static_cast<const ArrayType&>(type), indent);
+      break;
+    case SyntaxKind::kUnionType:
+      dumpUnionType(static_cast<const UnionType&>(type), indent);
+      break;
+    case SyntaxKind::kIntersectionType:
+      dumpIntersectionType(static_cast<const IntersectionType&>(type), indent);
+      break;
+    case SyntaxKind::kParenthesizedType:
+      dumpParenthesizedType(static_cast<const ParenthesizedType&>(type), indent);
+      break;
+    case SyntaxKind::kPredefinedType:
+      dumpPredefinedType(static_cast<const PredefinedType&>(type), indent);
+      break;
+    case SyntaxKind::kObjectType:
+      dumpObjectType(static_cast<const ObjectType&>(type), indent);
+      break;
+    case SyntaxKind::kTupleType:
+      dumpTupleType(static_cast<const TupleType&>(type), indent);
+      break;
+    case SyntaxKind::kReturnType:
+      dumpReturnType(static_cast<const ReturnType&>(type), indent);
+      break;
+    case SyntaxKind::kFunctionType:
+      dumpFunctionType(static_cast<const FunctionType&>(type), indent);
+      break;
+    case SyntaxKind::kOptionalType:
+      dumpOptionalType(static_cast<const OptionalType&>(type), indent);
+      break;
+    case SyntaxKind::kTypeQuery:
+      dumpTypeQuery(static_cast<const TypeQuery&>(type), indent);
+      break;
+    default:
+      // Generic type dump
+      writeNodeHeader("Type", indent);
+      writeNodeFooter("Type", indent);
+      break;
+  }
+}
+
+void ASTDumper::dumpTypeReference(const TypeReference& typeRef, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("TypeReference", indent);
+      writeProperty("name", typeRef.getName(), indent + 1);
+      writeNodeFooter("TypeReference", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "TypeReference", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeProperty("name", typeRef.getName(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<TypeReference>\n"_zcb);
+      writeProperty("name", typeRef.getName(), indent + 1);
+      writeIndent(indent);
+      impl->output.write("</TypeReference>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpArrayType(const ArrayType& arrayType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("ArrayType", indent);
+      writeLine("elementType:", indent + 1);
+      dumpType(*arrayType.getElementType(), indent + 2);
+      writeNodeFooter("ArrayType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "ArrayType", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"elementType\": \n"_zcb);
+      dumpType(*arrayType.getElementType(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<ArrayType>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<elementType>\n"_zcb);
+      dumpType(*arrayType.getElementType(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</elementType>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</ArrayType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpUnionType(const UnionType& unionType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("UnionType", indent);
+      writeLine("types:", indent + 1);
+      for (const auto& type : unionType.getTypes()) { dumpType(type, indent + 2); }
+      writeNodeFooter("UnionType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "UnionType", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"types\": [\n"_zcb);
+      for (size_t i = 0; i < unionType.getTypes().size(); ++i) {
+        if (i > 0) impl->output.write(",\n"_zcb);
+        dumpType(unionType.getTypes()[i], indent + 2);
+      }
+      impl->output.write("\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("]\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<UnionType>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<types>\n"_zcb);
+      for (const auto& type : unionType.getTypes()) { dumpType(type, indent + 2); }
+      writeIndent(indent + 1);
+      impl->output.write("</types>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</UnionType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpIntersectionType(const IntersectionType& intersectionType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("IntersectionType", indent);
+      writeLine("types:", indent + 1);
+      for (const auto& type : intersectionType.getTypes()) { dumpType(type, indent + 2); }
+      writeNodeFooter("IntersectionType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "IntersectionType", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"types\": [\n"_zcb);
+      for (size_t i = 0; i < intersectionType.getTypes().size(); ++i) {
+        if (i > 0) impl->output.write(",\n"_zcb);
+        dumpType(intersectionType.getTypes()[i], indent + 2);
+      }
+      impl->output.write("\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("]\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<IntersectionType>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<types>\n"_zcb);
+      for (const auto& type : intersectionType.getTypes()) { dumpType(type, indent + 2); }
+      writeIndent(indent + 1);
+      impl->output.write("</types>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</IntersectionType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpParenthesizedType(const ParenthesizedType& parenType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("ParenthesizedType", indent);
+      writeLine("type:", indent + 1);
+      dumpType(*parenType.getType(), indent + 2);
+      writeNodeFooter("ParenthesizedType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "ParenthesizedType", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"innerType\": \n"_zcb);
+      dumpType(*parenType.getType(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<ParenthesizedType>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<innerType>\n"_zcb);
+      dumpType(*parenType.getType(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</innerType>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</ParenthesizedType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpPredefinedType(const PredefinedType& predefinedType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("PredefinedType", indent);
+      writeProperty("name", predefinedType.getName(), indent + 1);
+      writeNodeFooter("PredefinedType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "PredefinedType", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeProperty("name", predefinedType.getName(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<PredefinedType>\n"_zcb);
+      writeProperty("name", predefinedType.getName(), indent + 1);
+      writeIndent(indent);
+      impl->output.write("</PredefinedType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpObjectType(const ObjectType& objectType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("ObjectType", indent);
+      writeLine("members:", indent + 1);
+      for (const auto& member : objectType.getMembers()) { dumpNode(member, indent + 2); }
+      writeNodeFooter("ObjectType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "ObjectType", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"members\": [\n"_zcb);
+      for (size_t i = 0; i < objectType.getMembers().size(); ++i) {
+        if (i > 0) impl->output.write(",\n"_zcb);
+        dumpNode(objectType.getMembers()[i], indent + 2);
+      }
+      impl->output.write("\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("]\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<ObjectType>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<members>\n"_zcb);
+      for (const auto& member : objectType.getMembers()) { dumpNode(member, indent + 2); }
+      writeIndent(indent + 1);
+      impl->output.write("</members>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</ObjectType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpTupleType(const TupleType& tupleType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("TupleType", indent);
+      writeLine("elementTypes:", indent + 1);
+      for (const auto& elementType : tupleType.getElementTypes()) {
+        dumpType(elementType, indent + 2);
+      }
+      writeNodeFooter("TupleType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "TupleType", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"elementTypes\": [\n"_zcb);
+      for (size_t i = 0; i < tupleType.getElementTypes().size(); ++i) {
+        if (i > 0) impl->output.write(",\n"_zcb);
+        dumpType(tupleType.getElementTypes()[i], indent + 2);
+      }
+      impl->output.write("\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("]\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<TupleType>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<elementTypes>\n"_zcb);
+      for (const auto& elementType : tupleType.getElementTypes()) {
+        dumpType(elementType, indent + 2);
+      }
+      writeIndent(indent + 1);
+      impl->output.write("</elementTypes>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</TupleType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpReturnType(const ReturnType& returnType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("ReturnType", indent);
+      writeLine("type:", indent + 1);
+      dumpType(*returnType.getType(), indent + 2);
+      if (returnType.getErrorType()) {
+        writeLine("errorType:", indent + 1);
+        dumpType(*returnType.getErrorType(), indent + 2);
+      }
+      writeNodeFooter("ReturnType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "ReturnType", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"returnType\": \n"_zcb);
+      dumpType(*returnType.getType(), indent + 1);
+      if (returnType.getErrorType()) {
+        impl->output.write(",\n"_zcb);
+        writeIndent(indent + 1);
+        impl->output.write("\"errorType\": \n"_zcb);
+        dumpType(*returnType.getErrorType(), indent + 1);
+      }
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<ReturnType>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<returnType>\n"_zcb);
+      dumpType(*returnType.getType(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</returnType>\n"_zcb);
+      if (returnType.getErrorType()) {
+        writeIndent(indent + 1);
+        impl->output.write("<errorType>\n"_zcb);
+        dumpType(*returnType.getErrorType(), indent + 2);
+        writeIndent(indent + 1);
+        impl->output.write("</errorType>\n"_zcb);
+      }
+      writeIndent(indent);
+      impl->output.write("</ReturnType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpFunctionType(const FunctionType& functionType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("FunctionType", indent);
+      if (!functionType.getTypeParameters().empty()) {
+        writeLine("typeParameters:", indent + 1);
+        for (const auto& typeParam : functionType.getTypeParameters()) {
+          dumpNode(typeParam, indent + 2);
+        }
+      }
+      writeLine("parameters:", indent + 1);
+      for (const auto& param : functionType.getParameters()) { dumpNode(param, indent + 2); }
+      writeLine("returnType:", indent + 1);
+      dumpType(*functionType.getReturnType(), indent + 2);
+      writeNodeFooter("FunctionType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "FunctionType", indent + 1);
+      if (!functionType.getTypeParameters().empty()) {
+        impl->output.write(",\n"_zcb);
+        writeIndent(indent + 1);
+        impl->output.write("\"typeParameters\": [\n"_zcb);
+        for (size_t i = 0; i < functionType.getTypeParameters().size(); ++i) {
+          if (i > 0) impl->output.write(",\n"_zcb);
+          dumpNode(functionType.getTypeParameters()[i], indent + 2);
+        }
+        impl->output.write("\n"_zcb);
+        writeIndent(indent + 1);
+        impl->output.write("]"_zcb);
+      }
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"parameters\": [\n"_zcb);
+      for (size_t i = 0; i < functionType.getParameters().size(); ++i) {
+        if (i > 0) impl->output.write(",\n"_zcb);
+        dumpNode(functionType.getParameters()[i], indent + 2);
+      }
+      impl->output.write("\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("],\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"returnType\": \n"_zcb);
+      dumpType(*functionType.getReturnType(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<FunctionType>\n"_zcb);
+      if (!functionType.getTypeParameters().empty()) {
+        writeIndent(indent + 1);
+        impl->output.write("<typeParameters>\n"_zcb);
+        for (const auto& typeParam : functionType.getTypeParameters()) {
+          dumpNode(typeParam, indent + 2);
+        }
+        writeIndent(indent + 1);
+        impl->output.write("</typeParameters>\n"_zcb);
+      }
+      writeIndent(indent + 1);
+      impl->output.write("<parameters>\n"_zcb);
+      for (const auto& param : functionType.getParameters()) { dumpNode(param, indent + 2); }
+      writeIndent(indent + 1);
+      impl->output.write("</parameters>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<returnType>\n"_zcb);
+      dumpType(*functionType.getReturnType(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</returnType>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</FunctionType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpOptionalType(const OptionalType& optionalType, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("OptionalType", indent);
+      writeLine("type:", indent + 1);
+      dumpType(*optionalType.getType(), indent + 2);
+      writeNodeFooter("OptionalType", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "OptionalType", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"innerType\": \n"_zcb);
+      dumpType(*optionalType.getType(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<OptionalType>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<innerType>\n"_zcb);
+      dumpType(*optionalType.getType(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</innerType>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</OptionalType>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpTypeQuery(const TypeQuery& typeQuery, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("TypeQuery", indent);
+      writeLine("expression:", indent + 1);
+      dumpExpression(*typeQuery.getExpression(), indent + 2);
+      writeNodeFooter("TypeQuery", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "TypeQuery", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"expression\": \n"_zcb);
+      dumpExpression(*typeQuery.getExpression(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<TypeQuery>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<expression>\n"_zcb);
+      dumpExpression(*typeQuery.getExpression(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</expression>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</TypeQuery>\n"_zcb);
+      break;
+  }
+}
+
 void ASTDumper::dumpBinaryExpression(const BinaryExpression& binExpr, int indent) {
   switch (impl->format) {
     case DumpFormat::kTEXT:
@@ -434,7 +1111,7 @@ void ASTDumper::dumpBinaryExpression(const BinaryExpression& binExpr, int indent
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "BinaryExpression", indent + 1);
+      writeProperty("node", "BinaryExpression", indent + 1);
       impl->output.write(",\n"_zcb);
       writeProperty("operator", binExpr.getOperator()->getSymbol(), indent + 1);
       impl->output.write(",\n"_zcb);
@@ -490,7 +1167,7 @@ void ASTDumper::writeNodeHeader(const zc::StringPtr nodeType, int indent) {
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", nodeType, indent + 1);
+      writeProperty("node", nodeType, indent + 1);
       break;
     case DumpFormat::kXML:
       writeIndent(indent);
@@ -615,7 +1292,7 @@ void ASTDumper::dumpFunctionExpression(const FunctionExpression& funcExpr, int i
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "FunctionExpression", indent + 1);
+      writeProperty("node", "FunctionExpression", indent + 1);
 
       if (!funcExpr.getTypeParameters().empty()) {
         impl->output.write(",\n"_zcb);
@@ -652,7 +1329,8 @@ void ASTDumper::dumpFunctionExpression(const FunctionExpression& funcExpr, int i
       if (funcExpr.getReturnType()) {
         impl->output.write(",\n"_zcb);
         writeIndent(indent + 1);
-        impl->output.write("\"returnType\": {\"type\": \"Type\"}"_zcb);
+        impl->output.write("\"returnType\": "_zcb);
+        dumpType(*funcExpr.getReturnType(), indent + 1);
       }
 
       if (funcExpr.getBody()) {
@@ -716,7 +1394,7 @@ void ASTDumper::dumpStringLiteral(const StringLiteral& strLit, int indent) {
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "StringLiteral", indent + 1);
+      writeProperty("node", "StringLiteral", indent + 1);
       impl->output.write(",\n"_zcb);
       writeProperty("value", strLit.getValue(), indent + 1);
       impl->output.write("\n"_zcb);
@@ -743,7 +1421,7 @@ void ASTDumper::dumpNumericLiteral(const NumericLiteral& numLit, int indent) {
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "NumericLiteral", indent + 1);
+      writeProperty("node", "NumericLiteral", indent + 1);
       impl->output.write(",\n"_zcb);
       writeProperty("value", zc::str(numLit.getValue()), indent + 1);
       impl->output.write("\n"_zcb);
@@ -770,7 +1448,7 @@ void ASTDumper::dumpBooleanLiteral(const BooleanLiteral& boolLit, int indent) {
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "BooleanLiteral", indent + 1);
+      writeProperty("node", "BooleanLiteral", indent + 1);
       impl->output.write(",\n"_zcb);
       writeProperty("value", boolLit.getValue() ? "true" : "false", indent + 1);
       impl->output.write("\n"_zcb);
@@ -797,7 +1475,7 @@ void ASTDumper::dumpNilLiteral(const NilLiteral& nilLit, int indent) {
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "NilLiteral", indent + 1);
+      writeProperty("node", "NilLiteral", indent + 1);
       impl->output.write("\n"_zcb);
       writeIndent(indent);
       impl->output.write("}"_zcb);
@@ -820,7 +1498,7 @@ void ASTDumper::dumpCallExpression(const CallExpression& callExpr, int indent) {
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "CallExpression", indent + 1);
+      writeProperty("node", "CallExpression", indent + 1);
       impl->output.write("\n"_zcb);
       writeIndent(indent);
       impl->output.write("}"_zcb);
@@ -843,7 +1521,7 @@ void ASTDumper::dumpNewExpression(const NewExpression& newExpr, int indent) {
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "NewExpression", indent + 1);
+      writeProperty("node", "NewExpression", indent + 1);
       impl->output.write("\n"_zcb);
       writeIndent(indent);
       impl->output.write("}"_zcb);
@@ -866,7 +1544,7 @@ void ASTDumper::dumpArrayLiteralExpression(const ArrayLiteralExpression& arrLit,
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "ArrayLiteralExpression", indent + 1);
+      writeProperty("node", "ArrayLiteralExpression", indent + 1);
       impl->output.write("\n"_zcb);
       writeIndent(indent);
       impl->output.write("}"_zcb);
@@ -889,7 +1567,7 @@ void ASTDumper::dumpObjectLiteralExpression(const ObjectLiteralExpression& objLi
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "ObjectLiteralExpression", indent + 1);
+      writeProperty("node", "ObjectLiteralExpression", indent + 1);
       impl->output.write("\n"_zcb);
       writeIndent(indent);
       impl->output.write("}"_zcb);
@@ -912,7 +1590,7 @@ void ASTDumper::dumpParenthesizedExpression(const ParenthesizedExpression& paren
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "ParenthesizedExpression", indent + 1);
+      writeProperty("node", "ParenthesizedExpression", indent + 1);
       impl->output.write("\n"_zcb);
       writeIndent(indent);
       impl->output.write("}"_zcb);
@@ -936,7 +1614,7 @@ void ASTDumper::dumpBlockStatement(const BlockStatement& blockStmt, int indent) 
     case DumpFormat::kJSON: {
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "BlockStatement", indent + 1);
+      writeProperty("node", "BlockStatement", indent + 1);
       impl->output.write(",\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("\"statements\": [\n"_zcb);
@@ -973,7 +1651,7 @@ void ASTDumper::dumpExpressionStatement(const ExpressionStatement& exprStmt, int
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("type", "ExpressionStatement", indent + 1);
+      writeProperty("node", "ExpressionStatement", indent + 1);
       impl->output.write(",\n"_zcb);
       writeIndent(indent + 1);
       impl->output.write("\"expression\": \n"_zcb);

@@ -270,8 +270,8 @@ private:
   // Type parsing
   zc::Maybe<zc::Own<ast::Type>> parseType();
   zc::Maybe<zc::Own<ast::Type>> parseTypeAnnotation();
-  zc::Maybe<zc::Own<ast::UnionType>> parseUnionType();
-  zc::Maybe<zc::Own<ast::IntersectionType>> parseIntersectionType();
+  zc::Maybe<zc::Own<ast::Type>> parseUnionType();
+  zc::Maybe<zc::Own<ast::Type>> parseIntersectionType();
   zc::Maybe<zc::Own<ast::Type>> parsePostfixType();
   zc::Maybe<zc::Own<ast::Type>> parseTypeAtom();
   zc::Maybe<zc::Own<ast::ArrayType>> parseArrayType();

@@ -421,7 +421,7 @@ struct Lexer::Impl {
     if (text == "async"_zcb) return TokenKind::kAsyncKeyword;
     if (text == "await"_zcb) return TokenKind::kAwaitKeyword;
     if (text == "bigint"_zcb) return TokenKind::kBigIntKeyword;
-    if (text == "boolean"_zcb) return TokenKind::kBooleanKeyword;
+    if (text == "bool"_zcb) return TokenKind::kBoolKeyword;
     if (text == "break"_zcb) return TokenKind::kBreakKeyword;
     if (text == "case"_zcb) return TokenKind::kCaseKeyword;
     if (text == "catch"_zcb) return TokenKind::kCatchKeyword;
@@ -460,7 +460,6 @@ struct Lexer::Impl {
     if (text == "namespace"_zcb) return TokenKind::kNamespaceKeyword;
     if (text == "never"_zcb) return TokenKind::kNeverKeyword;
     if (text == "new"_zcb) return TokenKind::kNewKeyword;
-    if (text == "number"_zcb) return TokenKind::kNumberKeyword;
     if (text == "null"_zcb) return TokenKind::kNullKeyword;
     if (text == "object"_zcb) return TokenKind::kObjectKeyword;
     if (text == "of"_zcb) return TokenKind::kOfKeyword;

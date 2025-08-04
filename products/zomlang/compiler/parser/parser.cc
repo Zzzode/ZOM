@@ -2695,7 +2695,7 @@ zc::Maybe<zc::Own<ast::Type>> Parser::parseTypeAnnotation() {
   return zc::none;
 }
 
-zc::Maybe<zc::Own<ast::UnionType>> Parser::parseUnionType() {
+zc::Maybe<zc::Own<ast::Type>> Parser::parseUnionType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseUnionType");
 
   // unionType:
@@ -2714,13 +2714,16 @@ zc::Maybe<zc::Own<ast::UnionType>> Parser::parseUnionType() {
       ZC_IF_SOME(rightType, parseIntersectionType()) { types.add(zc::mv(rightType)); }
     }
 
+    // Only create UnionType if there are multiple types
+    if (types.size() == 1) { return zc::mv(types[0]); }
+
     return finishNode(ast::factory::createUnionType(zc::mv(types)), startLoc);
   }
 
   return zc::none;
 }
 
-zc::Maybe<zc::Own<ast::IntersectionType>> Parser::parseIntersectionType() {
+zc::Maybe<zc::Own<ast::Type>> Parser::parseIntersectionType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseIntersectionType");
 
   // intersectionType:
@@ -2738,6 +2741,9 @@ zc::Maybe<zc::Own<ast::IntersectionType>> Parser::parseIntersectionType() {
       consumeToken();
       ZC_IF_SOME(rightType, parsePostfixType()) { types.add(zc::mv(rightType)); }
     }
+
+    // Only create IntersectionType if there are multiple types
+    if (types.size() == 1) { return zc::mv(types[0]); }
 
     return finishNode(ast::factory::createIntersectionType(zc::mv(types)), startLoc);
   }

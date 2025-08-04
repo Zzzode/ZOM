@@ -12,10 +12,11 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+#include <unistd.h>
+
 #include "zc/core/common.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/io.h"
-#include "zc/core/iostream.h"
 #include "zc/core/main.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/dumper.h"
@@ -222,18 +223,22 @@ private:
   zc::Maybe<zc::Own<zc::OutputStream>> createOutputStream(
       const zc::Maybe<zc::StringPtr>& outputPath, ast::DumpFormat format) {
     ZC_IF_SOME(path, outputPath) { return createFileOutputStream(path, format); }
-    return zc::heap<zc::std::StdOutputStream>(::std::cout);
+    // Use stdout file descriptor to ensure shell redirection works properly
+    return zc::heap<zc::FdOutputStream>(STDOUT_FILENO);
   }
 
   /// Creates a file output stream, handling directory paths appropriately
   zc::Maybe<zc::Own<zc::OutputStream>> createFileOutputStream(zc::StringPtr outputPath,
                                                               ast::DumpFormat format) {
     auto filesystem = zc::newDiskFilesystem();
-    const zc::Directory& currentDir = filesystem->getCurrent();
+    bool isAbsolute = outputPath.size() > 0 && outputPath[0] == '/';
 
-    zc::Path path = resolveOutputPath(outputPath, format, currentDir);
+    const zc::Directory& baseDir = isAbsolute ? filesystem->getRoot() : filesystem->getCurrent();
+    zc::StringPtr pathText = isAbsolute ? outputPath.slice(1) : outputPath;
 
-    auto file = currentDir.openFile(
+    zc::Path path = resolveOutputPath(pathText, format, baseDir);
+
+    auto file = baseDir.openFile(
         path, zc::WriteMode::CREATE | zc::WriteMode::MODIFY | zc::WriteMode::CREATE_PARENT);
 
     return zc::heap<basic::FileOutputStream>(zc::mv(file));

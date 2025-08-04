@@ -14,60 +14,105 @@
 
 # Test utility functions for ZomLang compiler tests
 
-# Function to add a language specification test
-# Usage: add_language_test(test_name source_file expected_output)
-function(add_language_test TEST_NAME SOURCE_FILE)
-  set(TEST_FULL_NAME "language-${TEST_NAME}")
+include(CTest)
 
-  # Create test that runs zomc on the source file
+# Function to add a ztest-based unit test
+# Usage: add_ztest_unit_test(test_name test_source [LIBRARIES ...])
+function(add_ztest_unit_test TEST_NAME TEST_SOURCE)
+  cmake_parse_arguments(ZTEST "" "" "LIBRARIES" ${ARGN})
+  
+  # Create executable for the unit test
+  add_executable(${TEST_NAME} ${TEST_SOURCE})
+  
+  # Link with ztest and specified libraries
+  target_link_libraries(${TEST_NAME} PRIVATE ztest ${ZTEST_LIBRARIES})
+  
+  # Set include directories
+  target_include_directories(${TEST_NAME} PRIVATE 
+    ${ZOM_ROOT}/libraries 
+    ${ZOM_ROOT}/products
+  )
+  
+  # Compiler options
+  target_compile_options(${TEST_NAME} PRIVATE -Wno-global-constructors)
+  
+  # Add as CTest
+  add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+  
+  # Set test properties
+  set_tests_properties(${TEST_NAME} PROPERTIES
+    LABELS "unittest;ztest"
+    TIMEOUT 60
+  )
+  
+  # Add coverage if enabled
+  if(ZOM_ENABLE_COVERAGE)
+    add_coverage_to_test(${TEST_NAME})
+    add_test_to_coverage(${TEST_NAME})
+  endif()
+endfunction()
+
+# Function to add a lit-based AST test
+# Usage: add_lit_ast_test(test_name source_file)
+function(add_lit_ast_test TEST_NAME SOURCE_FILE)
+  # Find lit executable if not already found
+  if(NOT DEFINED LIT_EXECUTABLE OR NOT LIT_EXECUTABLE)
+    find_program(LIT_EXECUTABLE NAMES lit)
+    if(NOT LIT_EXECUTABLE)
+      message(FATAL_ERROR "LLVM lit executable not found. Please install lit first")
+    endif()
+  endif()
+  
+  set(TEST_FULL_NAME "ast-${TEST_NAME}")
+  
+  # Create test that runs lit on the source file
   add_test(
     NAME ${TEST_FULL_NAME}
-    COMMAND ${CMAKE_BINARY_DIR}/products/zomlang/utils/zomc/zomc compile --dump-ast --format=json ${SOURCE_FILE}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND ${LIT_EXECUTABLE} -v ${SOURCE_FILE}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
   )
-
+  
   # Set test properties
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
-    LABELS "language;specification"
+    LABELS "ast;lit;specification"
     TIMEOUT 30
+    ENVIRONMENT "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
   )
 endfunction()
 
-# Function to add a language test with expected output comparison
-# Usage: add_language_test_with_output(test_name source_file expected_file)
-function(add_language_test_with_output TEST_NAME SOURCE_FILE EXPECTED_FILE)
-  set(TEST_FULL_NAME "language-${TEST_NAME}")
+# Legacy function for backward compatibility (deprecated)
+# Usage: add_language_test(test_name source_file)
+function(add_language_test TEST_NAME SOURCE_FILE)
+  message(DEPRECATION "add_language_test is deprecated. Use add_lit_ast_test instead.")
+  add_lit_ast_test(${TEST_NAME} ${SOURCE_FILE})
+endfunction()
 
-  # Create test script that compares output
-  set(TEST_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/${TEST_NAME}_test.sh")
-  set(ACTUAL_OUTPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/${TEST_NAME}.actual")
-  file(WRITE ${TEST_SCRIPT}
-    "#!/bin/bash\n"
-    "set -ex\n"
-    "${CMAKE_BINARY_DIR}/products/zomlang/utils/zomc/zomc compile --dump-ast --format=json ${SOURCE_FILE} > \"${ACTUAL_OUTPUT_FILE}\" 2>&1\n"
-    "if cmp -s \"${EXPECTED_FILE}\" \"${ACTUAL_OUTPUT_FILE}\"; then\n"
-    "  rm \"${ACTUAL_OUTPUT_FILE}\"\n"
-    "  exit 0\n"
-    "else\n"
-    "  echo \"Differences:\"\n"
-    "  diff -u \"${EXPECTED_FILE}\" \"${ACTUAL_OUTPUT_FILE}\" || true\n"
-    "  rm \"${ACTUAL_OUTPUT_FILE}\"\n"
-    "  exit 1\n"
-    "fi\n"
-  )
-
-  # Make script executable
-  file(CHMOD ${TEST_SCRIPT} PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE)
-
+# Function to add a lit-based AST test with FileCheck validation
+# Usage: add_lit_ast_test_with_check(test_name source_file)
+# Note: The source file should contain CHECK directives for validation
+function(add_lit_ast_test_with_check TEST_NAME SOURCE_FILE)
+  # Find lit executable if not already found
+  if(NOT DEFINED LIT_EXECUTABLE OR NOT LIT_EXECUTABLE)
+    find_program(LIT_EXECUTABLE NAMES lit)
+    if(NOT LIT_EXECUTABLE)
+      message(FATAL_ERROR "LLVM lit executable not found. Please install lit first")
+    endif()
+  endif()
+  
+  set(TEST_FULL_NAME "lit-${TEST_NAME}")
+  
+  # Create test that runs lit with FileCheck validation
   add_test(
     NAME ${TEST_FULL_NAME}
-    COMMAND ${TEST_SCRIPT}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND ${LIT_EXECUTABLE} -v ${SOURCE_FILE}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
   )
-
+  
+  # Set test properties
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
-    LABELS "language;specification;output-comparison"
+    LABELS "ast;lit;filecheck;specification"
     TIMEOUT 30
+    ENVIRONMENT "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
   )
 endfunction()
 
@@ -78,8 +123,8 @@ function(add_regression_test TEST_NAME SOURCE_FILE ISSUE_NUMBER)
 
   add_test(
     NAME ${TEST_FULL_NAME}
-    COMMAND ${CMAKE_BINARY_DIR}/products/zomlang/utils/zomc/zomc compile --dump-ast --format=json ${SOURCE_FILE}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    COMMAND ${CMAKE_BINARY_DIR}/products/zomlang/utils/zomc/zomc compile --dump-ast ${SOURCE_FILE}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   )
 
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
@@ -104,9 +149,9 @@ function(add_performance_test TEST_NAME EXECUTABLE_TARGET)
   )
 endfunction()
 
-# Function to discover and add all .zom files in a directory as language tests
-# Usage: add_language_tests_from_directory(directory_path)
-function(add_language_tests_from_directory DIRECTORY_PATH)
+# Function to discover and add all .zom files in a directory as lit AST tests
+# Usage: add_lit_ast_tests_from_directory(directory_path)
+function(add_lit_ast_tests_from_directory DIRECTORY_PATH)
   file(GLOB_RECURSE ZOM_FILES "${DIRECTORY_PATH}/*.zom")
 
   foreach(ZOM_FILE ${ZOM_FILES})
@@ -117,14 +162,39 @@ function(add_language_tests_from_directory DIRECTORY_PATH)
     string(REPLACE "/" "-" TEST_NAME "${REL_PATH}")
     string(REPLACE ".zom" "" TEST_NAME "${TEST_NAME}")
 
-    # Check if there's an expected output file
-    string(REPLACE ".zom" ".expected" EXPECTED_FILE "${ZOM_FILE}")
-
-    if(EXISTS "${EXPECTED_FILE}")
-      add_language_test_with_output("${TEST_NAME}" "${ZOM_FILE}" "${EXPECTED_FILE}")
+    # Check if the file contains CHECK directives
+    file(READ "${ZOM_FILE}" ZOM_CONTENT)
+    if(ZOM_CONTENT MATCHES "// CHECK")
+      add_lit_ast_test_with_check("${TEST_NAME}" "${ZOM_FILE}")
     else()
-      add_language_test("${TEST_NAME}" "${ZOM_FILE}")
+      add_lit_ast_test("${TEST_NAME}" "${ZOM_FILE}")
     endif()
+  endforeach()
+endfunction()
+
+# Function to discover and add all *-test.cc files in a directory as ztest unit tests
+# Usage: add_ztest_unit_tests_from_directory(directory_path [LIBRARIES ...])
+function(add_ztest_unit_tests_from_directory DIRECTORY_PATH)
+  cmake_parse_arguments(ZTEST_DIR "" "" "LIBRARIES" ${ARGN})
+  
+  file(GLOB_RECURSE TEST_FILES "${DIRECTORY_PATH}/*-test.cc")
+
+  foreach(TEST_FILE ${TEST_FILES})
+    # Get relative path from the directory
+    file(RELATIVE_PATH REL_PATH "${DIRECTORY_PATH}" "${TEST_FILE}")
+    
+    # Create test name from relative path
+    get_filename_component(TEST_NAME "${TEST_FILE}" NAME_WE)
+    file(RELATIVE_PATH REL_DIR "${DIRECTORY_PATH}" "${TEST_FILE}")
+    get_filename_component(REL_DIR "${REL_DIR}" DIRECTORY)
+    string(REPLACE "/" "-" DIR_PREFIX "${REL_DIR}")
+    if(DIR_PREFIX AND NOT DIR_PREFIX STREQUAL ".")
+      set(UNIQUE_TEST_NAME "${DIR_PREFIX}-${TEST_NAME}")
+    else()
+      set(UNIQUE_TEST_NAME "${TEST_NAME}")
+    endif()
+    
+    add_ztest_unit_test("${UNIQUE_TEST_NAME}" "${TEST_FILE}" LIBRARIES ${ZTEST_DIR_LIBRARIES})
   endforeach()
 endfunction()
 

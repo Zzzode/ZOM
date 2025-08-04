@@ -1,9 +1,0 @@
-{
-  "type": "SourceFile",
-  "fileName": "products/zomlang/tests/language/declarations/functions/function-definitions/function.zom",
-  "children": [
-    {
-      "type": "Statement"
-    }
-  ]
-}

@@ -208,6 +208,8 @@ const Type* OptionalType::getType() const { return impl->type.get(); }
 
 struct TypeQuery::Impl {
   const zc::Own<Expression> expr;
+
+  explicit Impl(zc::Own<Expression> expr) : expr(zc::mv(expr)) {}
 };
 
 TypeQuery::TypeQuery(zc::Own<Expression> expr)

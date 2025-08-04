@@ -1,12 +1,19 @@
 # ZomLang Compiler Test Suite
 
-This directory contains the comprehensive test suite for the ZomLang compiler. The tests are organized into several categories to ensure thorough coverage of all compiler components and language features.
+This directory contains the comprehensive test suite for the ZomLang compiler using a dual-framework approach: **ztest** for unit tests and **lit** for AST integration tests. The tests are organized into several categories to ensure thorough coverage of all compiler components and language features.
+
+## Testing Framework Overview
+
+The ZomLang test suite uses two specialized testing frameworks:
+
+1. **ztest Unit Tests**: For testing individual compiler components in isolation
+2. **lit AST Tests**: For testing end-to-end AST generation and validation with FileCheck-style assertions
 
 ## Test Structure
 
-### 1. Unit Tests (`unittests/`)
+### 1. Unit Tests (`unittests/`) - ztest Framework
 
-Low-level component tests that verify individual compiler modules work correctly in isolation.
+Low-level component tests that verify individual compiler modules work correctly in isolation using the ztest framework (a customized Google Test).
 
 - **`unittests/compiler/`** - Tests for compiler components
   - `basic/` - Basic compiler infrastructure tests
@@ -17,9 +24,23 @@ Low-level component tests that verify individual compiler modules work correctly
   - `diagnostics/` - Error reporting tests
   - `checker/` - Semantic analysis tests
 
-### 2. Language Tests (`language/`)
+**Example ztest Unit Test**:
 
-Tests that verify the compiler correctly handles ZomLang language constructs according to the language specification.
+```cpp
+#include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/factory.h"
+
+ZC_TEST("ASTFactory: Basic Node Creation") {
+  ASTFactory factory;
+  auto node = factory.createSourceFile("test.zom");
+  ZC_EXPECT(node != nullptr);
+  ZC_EXPECT(node->getType() == NodeType::SourceFile);
+}
+```
+
+### 2. Language Tests (`language/`) - lit Framework
+
+End-to-end tests that verify the compiler correctly handles ZomLang language constructs and generates proper AST output using the lit testing framework with FileCheck-style validation.
 
 - **`language/lexical/`** - Lexical analysis (identifiers, keywords, literals, operators, comments)
 - **`language/expressions/`** - Expression tests (primary, binary, unary, assignment, call, member)
@@ -32,6 +53,23 @@ Tests that verify the compiler correctly handles ZomLang language constructs acc
 - **`language/modules/`** - Module system tests (imports, exports, resolution)
 - **`language/errors/`** - Error handling and recovery tests
 - **`language/semantic/`** - Semantic analysis (type checking, scoping, validation)
+
+**Example lit AST Test**:
+
+```zom
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+fun foo(n: i32, s: str) -> str {}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*function.zom}}",
+// CHECK-NEXT:   "children": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "FunctionDeclaration",
+// ......
+```
 
 ### 3. Performance Tests (`performance/`)
 
@@ -89,28 +127,106 @@ ctest --preset default --output-on-failure
 
 ### Individual Tests
 
+#### ztest Unit Tests
+
 ```bash
 ctest -R "unit-basic-thread-pool-test"  # Run specific unit test
+ctest -R "ast-factory-test"             # Run AST factory tests
+ctest -L "unittest"                     # Run all unit tests
+```
+
+#### lit AST Tests
+
+```bash
+# Run a specific lit test
+export PATH="$PATH:/Users/$(whoami)/Library/Python/3.9/bin"
+lit products/zomlang/tests/language/declarations/functions/function-definitions/function-lit.zom -v
+
+# Run all lit tests in a directory
+lit products/zomlang/tests/language/ -v
+
+# Run lit test with FileCheck manually
+./build-sanitizer/products/zomlang/utils/zomc/zomc compile --dump-ast my-test.zom | \
+  python3 products/zomlang/tests/tools/filecheck.py my-test.zom
+```
+
+#### Test Categories
+
+```bash
 ctest -R "language-"                     # Run all language tests
 ctest -R "regression-issue-001"          # Run specific regression test
+ctest -L "functions"                     # Function-related tests
+ctest -L "ztest"                        # All ztest unit tests
+ctest -L "lit"                          # All lit integration tests
 ```
 
 ## Adding New Tests
 
-### Unit Tests
+### ztest Unit Tests
 
-1. Create a new `.cc` file in the appropriate `unittests/` subdirectory
-2. Follow the naming convention: `*-test.cc`
-3. Use the `ZC_TEST` macro for test cases
-4. The test will be automatically discovered and added
+1. Create a new test file in the appropriate `unittests/` subdirectory
+2. Follow the naming convention: `<component>-test.cc`
+3. Include the necessary headers and use the ztest framework
+4. Add the test to the CMakeLists.txt in the same directory
 
-### Language Tests
+**Example**:
 
-1. Create a `.zom` file in the appropriate `language/` subdirectory
-2. Optionally create a `.expected` file with expected output
-3. The test will be automatically discovered and added
+```cpp
+#include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/factory.h"
 
+ZC_TEST("ASTFactory: Basic Node Creation") {
+  ASTFactory factory;
+  auto node = factory.createSourceFile("test.zom");
+  ZC_EXPECT(node != nullptr);
+  ZC_EXPECT(node->getType() == NodeType::SourceFile);
+}
 
+ZC_TEST("ASTFactory: Function Declaration") {
+  ASTFactory factory;
+  auto func = factory.createFunctionDeclaration("testFunc");
+  ZC_EXPECT(func != nullptr);
+  ZC_EXPECT(func->getName() == "testFunc");
+}
+```
+
+### lit AST Tests
+
+1. Create a new `.zom` file in the appropriate `language/` subdirectory
+2. Add the `// RUN:` directive to specify how to run the test
+3. Include `// CHECK:` directives to validate AST output
+4. Use descriptive comments to explain the test purpose
+
+**Example**:
+
+```zom
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+// Test: Basic function declaration with parameters
+// This test verifies that function declarations with typed parameters
+// generate the correct AST structure
+
+fun greet(name: str, age: i32) -> str {
+    return "Hello, " + name + "!";
+}
+
+// CHECK: "node": "SourceFile"
+// CHECK: "node": "FunctionDeclaration"
+// CHECK: "name": "greet"
+// CHECK: "parameters"
+// CHECK: "name": "name"
+// CHECK: "type": "str"
+// CHECK: "name": "age"
+// CHECK: "type": "i32"
+// CHECK: "returnType": "str"
+```
+
+**FileCheck Patterns**:
+
+- `// CHECK:` - Must appear in order
+- `// CHECK-NEXT:` - Must appear on the very next line
+- `// CHECK-NOT:` - Must not appear between here and next CHECK
+- `// CHECK-SAME:` - Must appear on the same line as previous CHECK
 
 ### Regression Tests
 
@@ -118,8 +234,74 @@ ctest -R "regression-issue-001"          # Run specific regression test
 2. Add `.zom` test files to the directory
 3. Optionally add `.expected` files for output comparison
 4. Tests will be automatically discovered
+5. Use appropriate framework (ztest for unit-level, lit for AST-level)
+
+**Example ztest Regression Test**:
+
+```cpp
+// Regression test for issue #123 - Parser crash on nested generics
+#include "zc/ztest/test.h"
+#include "zomlang/compiler/parser/parser.h"
+
+ZC_TEST("Regression Issue 123: Nested Generic Types") {
+  Parser parser;
+  auto result = parser.parseType("Container<Array<str>>");
+  ZC_EXPECT(result.isSuccess());
+  ZC_EXPECT(result.getType()->isGeneric());
+}
+```
+
+**Example lit Regression Test**:
+
+```zom
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+// Regression test for issue #123
+// Bug: Parser incorrectly handles nested generic types
+// Fixed: Proper precedence handling in type parser
+
+type Container<T> = {
+    items: Array<T>
+};
+
+type NestedContainer = Container<Array<str>>;
+
+// CHECK: "node": "TypeDeclaration"
+// CHECK: "name": "Container"
+// CHECK: "node": "TypeDeclaration"
+// CHECK: "name": "NestedContainer"
+// CHECK: "genericArgs"
+```
 
 ## Test Utilities
+
+The test suite includes several utility tools to aid in test development and debugging:
+
+### Test Frameworks
+
+- **ztest**: Customized Google Test framework for unit testing
+  - Located in `libraries/zc/ztest/`
+  - Provides `ZC_TEST`, `ZC_EXPECT`, `ZC_ASSERT` macros
+  - Automatic test discovery and registration
+
+- **lit**: LLVM Integrated Tester for AST validation
+  - Python-based test runner with FileCheck integration
+  - Supports `// RUN:` directives for test execution
+  - Pattern matching with `// CHECK:` directives
+
+### Test Tools
+
+- **FileCheck** (`tools/filecheck.py`): Pattern matching tool for AST validation
+  - Supports `CHECK`, `CHECK-NEXT`, `CHECK-NOT`, `CHECK-SAME` patterns
+  - Regex and literal string matching
+  - Whitespace-aware matching options
+
+- **zomc**: ZomLang compiler with testing support
+  - `--dump-ast`: Generate JSON AST output for validation
+  - `--dump-tokens`: Generate token stream for lexer testing
+  - `--check-syntax`: Syntax-only compilation for parser testing
+
+### CMake Utilities
 
 The test suite provides several utility functions in `test-utils.cmake`:
 
@@ -129,14 +311,70 @@ The test suite provides several utility functions in `test-utils.cmake`:
 - `add_performance_test(name executable)` - Add a performance test
 - `add_language_tests_from_directory(directory)` - Auto-discover language tests
 
+### Test Runners
+
+- **CTest Integration**: All tests are integrated with CMake's CTest for unified execution
+- **lit Runner**: Direct execution of lit tests with pattern matching
+- **Custom Test Discovery**: Automatic discovery of test files based on naming conventions
+- **Parallel Execution**: Tests can be run in parallel for faster execution
+
+### Debugging Tools
+
+- **Verbose Output**: Use `-v` flag with CTest or lit for detailed test output
+- **Test Filtering**: Run specific tests or test categories using regex patterns
+- **Failure Analysis**: Detailed failure reports with context and expected vs actual results
+- **Manual FileCheck**: Run FileCheck manually for debugging pattern matching
+
 ## Test Dependencies
 
-Tests depend on:
+The test suite requires the following dependencies:
 
-- **zomc** - The ZomLang compiler executable
-- **ztest** - The testing framework library
-- **frontend** - Compiler frontend library
-- Various compiler component libraries
+### Build Dependencies
+
+- **CMake 3.20+**: Build system and test runner
+- **Clang 15+**: C++ compiler with C++20 support
+- **Ninja**: Build system backend (recommended)
+
+### Runtime Dependencies
+
+- **zc Library**: Core utilities and ztest framework
+- **ZomLang Compiler (zomc)**: The compiler being tested
+- **Python 3.9+**: Required for lit test runner and FileCheck
+
+### Python Dependencies
+
+```bash
+# Install lit test runner
+pip3 install lit
+
+# Verify installation
+lit --version
+```
+
+### Test Framework Dependencies
+
+- **ztest**: Built-in unit testing framework (part of zc library)
+- **lit**: LLVM Integrated Tester for AST validation
+- **FileCheck**: Custom Python implementation for pattern matching
+
+### Optional Dependencies
+
+- **LLVM FileCheck**: Alternative pattern matching tool (if available)
+- **Valgrind**: Memory error detection (Linux only)
+- **AddressSanitizer**: Memory error detection (built-in)
+- **Coverage Tools**: For code coverage analysis
+
+### Environment Setup
+
+```bash
+# Add lit to PATH (if installed with --user)
+export PATH="$PATH:/Users/$(whoami)/Library/Python/3.9/bin"
+
+# Verify all tools are available
+which lit
+which python3
+./build-sanitizer/products/zomlang/utils/zomc/zomc --version
+```
 
 ## Coverage
 

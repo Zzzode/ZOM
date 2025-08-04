@@ -36,6 +36,20 @@ class BlockStatement;
 class ExpressionStatement;
 class BinaryExpression;
 class FunctionExpression;
+class FunctionDeclaration;
+class Type;
+class TypeReference;
+class ArrayType;
+class UnionType;
+class IntersectionType;
+class ParenthesizedType;
+class PredefinedType;
+class ObjectType;
+class TupleType;
+class ReturnType;
+class FunctionType;
+class OptionalType;
+class TypeQuery;
 class StringLiteral;
 class NumericLiteral;
 class BooleanLiteral;
@@ -56,7 +70,7 @@ enum class DumpFormat {
 /// AST dumper class for outputting AST in various formats
 class ASTDumper {
 public:
-  explicit ASTDumper(zc::OutputStream& output, DumpFormat format = DumpFormat::kTEXT) noexcept;
+  explicit ASTDumper(zc::OutputStream& output, DumpFormat format = DumpFormat::kJSON) noexcept;
   ~ASTDumper() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ASTDumper);
@@ -80,6 +94,20 @@ private:
   void dumpModulePath(const ModulePath& modulePath, int indent = 0);
   void dumpBindingElement(const BindingElement& bindingElement, int indent = 0);
   void dumpVariableDeclaration(const VariableDeclaration& varDecl, int indent = 0);
+  void dumpFunctionDeclaration(const FunctionDeclaration& funcDecl, int indent = 0);
+  void dumpType(const Type& type, int indent = 0);
+  void dumpTypeReference(const TypeReference& typeRef, int indent = 0);
+  void dumpArrayType(const ArrayType& arrayType, int indent = 0);
+  void dumpUnionType(const UnionType& unionType, int indent = 0);
+  void dumpIntersectionType(const IntersectionType& intersectionType, int indent = 0);
+  void dumpParenthesizedType(const ParenthesizedType& parenType, int indent = 0);
+  void dumpPredefinedType(const PredefinedType& predefinedType, int indent = 0);
+  void dumpObjectType(const ObjectType& objectType, int indent = 0);
+  void dumpTupleType(const TupleType& tupleType, int indent = 0);
+  void dumpReturnType(const ReturnType& returnType, int indent = 0);
+  void dumpFunctionType(const FunctionType& functionType, int indent = 0);
+  void dumpOptionalType(const OptionalType& optionalType, int indent = 0);
+  void dumpTypeQuery(const TypeQuery& typeQuery, int indent = 0);
   void dumpBlockStatement(const BlockStatement& blockStmt, int indent = 0);
   void dumpExpressionStatement(const ExpressionStatement& exprStmt, int indent = 0);
   void dumpBinaryExpression(const BinaryExpression& binExpr, int indent = 0);

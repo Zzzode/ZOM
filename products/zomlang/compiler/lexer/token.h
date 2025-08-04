@@ -48,7 +48,6 @@ enum class TokenKind {
   kAsyncKeyword,        // async
   kAwaitKeyword,        // await
   kBigIntKeyword,       // bigint
-  kBooleanKeyword,      // boolean
   kBreakKeyword,        // break
   kCaseKeyword,         // case
   kCatchKeyword,        // catch
@@ -86,7 +85,6 @@ enum class TokenKind {
   kNamespaceKeyword,    // namespace
   kNeverKeyword,        // never
   kNewKeyword,          // new
-  kNumberKeyword,       // number
   kObjectKeyword,       // object
   kOfKeyword,           // of
   kOptionalKeyword,     // optional
