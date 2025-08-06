@@ -40,7 +40,7 @@ struct FixIt {
 /// Diagnostic argument
 ///
 /// Can be either a string or a token
-using DiagnosticArgument = zc::OneOf<zc::StringPtr, lexer::Token>;
+using DiagnosticArgument = zc::OneOf<zc::String, zc::StringPtr, lexer::Token>;
 
 class Diagnostic {
 public:

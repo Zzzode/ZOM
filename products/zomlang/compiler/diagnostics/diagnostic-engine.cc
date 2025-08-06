@@ -17,6 +17,7 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/diagnostic-info.h"
 #include "zomlang/compiler/diagnostics/diagnostic-state.h"
 #include "zomlang/compiler/source/location.h"
 
@@ -41,6 +42,10 @@ void DiagnosticEngine::addConsumer(zc::Own<DiagnosticConsumer> consumer) {
 }
 
 void DiagnosticEngine::emit(const Diagnostic& diagnostic) {
+  // Check if this is an error-level diagnostic and update state
+  const DiagnosticInfo& info = getDiagnosticInfo(diagnostic.getId());
+  if (info.severity >= DiagSeverity::Error) { impl->state.setHadAnyError(); }
+
   for (auto& consumer : impl->consumers) {
     consumer->handleDiagnostic(impl->sourceManager, diagnostic);
   }
@@ -100,7 +105,8 @@ void DiagnosticEngine::formatDiagnosticMessage(const source::SourceManager& sm,
     // Output parameters
     const auto& arg = args[param.index];
     ZC_SWITCH_ONEOF(arg) {
-      ZC_CASE_ONEOF(str, zc::StringPtr) { out.write(str.asBytes()); }
+      ZC_CASE_ONEOF(strPtr, zc::StringPtr) { out.write(strPtr.asBytes()); }
+      ZC_CASE_ONEOF(str, zc::String) { out.write(str.asBytes()); }
       ZC_CASE_ONEOF(token, lexer::Token) {
         auto tokenText = token.getText(sm);
         out.write(tokenText.asBytes());
