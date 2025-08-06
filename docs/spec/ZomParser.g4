@@ -103,6 +103,7 @@ otherPunctuator:
 	| OR_ASSIGN
 	| NULL_COALESCE_ASSIGN
 	| ARROW
+	| ROCKET
 	| DIV
 	| DIV_ASSIGN;
 divPunctuator: DIV | DIV_ASSIGN;
@@ -110,13 +111,14 @@ rightBracePunctuator: RBRACE;
 
 // ================================================================================ LITERALS
 literal:
-	nullLiteral
+	nilLiteral
 	| booleanLiteral
 	| numericLiteral
-	| stringLiteral;
+	| stringLiteral
+	| characterLiteral;
 
-//// =============================================================================== NULL LITERALS
-nullLiteral: NULL;
+//// =============================================================================== NIL LITERALS
+nilLiteral: NIL;
 
 //// =============================================================================== BOOLEAN LITERALS
 booleanLiteral: TRUE | FALSE;
@@ -163,6 +165,9 @@ stringLiteral:
 	DQUOTE doubleStringCharacters? DQUOTE
 	| SQUOTE singleStringCharacters? SQUOTE;
 
+//// =============================================================================== CHARACTER LITERALS
+characterLiteral: CHAR_LITERAL;
+
 doubleStringCharacters:
 	doubleStringCharacter doubleStringCharacters?;
 
@@ -183,12 +188,11 @@ singleStringCharacter:
 	| BACKSLASH escapeSequence // \ EscapeSequence
 	| lineContinuation;
 
-// Define escapeSequence and lineContinuation if they are not already defined For example:
 escapeSequence:
 	characterEscapeSequence
 	| ZERO {getCharPositionInLine() == 0}? // Assuming 0 is not part of a decimal literal
-	| hexEscapeSequence
-	| unicodeEscapeSequence;
+	| HEX_ESCAPE_SEQUENCE
+	| UNICODE_ESCAPE_SEQUENCE;
 
 characterEscapeSequence:
 	singleEscapeCharacter
@@ -199,16 +203,11 @@ singleEscapeCharacter: SINGLE_ESCAPE_CHARACTER;
 nonEscapeCharacter:
 	NON_ESCAPE_CHARACTER; // Any source character not part of an escape sequence
 
-hexEscapeSequence: 'x' HEX_DIGIT HEX_DIGIT;
-
-unicodeEscapeSequence:
-	'u' (hex4Digits | LBRACE codePoint RBRACE);
-
 hex4Digits: HEX_DIGIT HEX_DIGIT HEX_DIGIT HEX_DIGIT;
 
 lineContinuation: BACKSLASH lineTerminatorSequence;
 
-//// ============================================================================== TEMPLATE LITERALS
+// ================================================================================ TEMPLATE LITERALS
 
 codePoint:
 	hexDigits {
@@ -220,9 +219,269 @@ codePoint:
 };
 
 // ================================================================================ EXPRESSIONS
+
 expression: assignmentExpression (COMMA assignmentExpression)*;
 
+assignmentExpression:
+	conditionalExpression
+	| functionExpression
+	| leftHandSideExpression ASSIGN assignmentExpression
+	| leftHandSideExpression assignmentOperator assignmentExpression
+	| leftHandSideExpression AND_ASSIGN assignmentExpression
+	| leftHandSideExpression OR_ASSIGN assignmentExpression
+	| leftHandSideExpression NULL_COALESCE_ASSIGN assignmentExpression;
+
+// Primary Expression
+primaryExpression:
+	THIS
+	| identifier
+	| literal
+	| arrayLiteral
+	| objectLiteral
+	| coverParenthesizedExpressionAndArrowParameterList;
+
+// Cover Parenthesized Expression and Arrow Parameter List
+coverParenthesizedExpressionAndArrowParameterList:
+	LPAREN expression RPAREN
+	| LPAREN expression COMMA RPAREN
+	| LPAREN RPAREN
+	| LPAREN ELLIPSIS bindingIdentifier RPAREN
+	| LPAREN ELLIPSIS bindingPattern RPAREN
+	| LPAREN expression COMMA ELLIPSIS bindingIdentifier RPAREN
+	| LPAREN expression COMMA ELLIPSIS bindingPattern RPAREN;
+
+// Object LiteralExpression
+objectLiteral:
+	LBRACE RBRACE
+	| LBRACE propertyDefinitionList RBRACE
+	| LBRACE propertyDefinitionList COMMA RBRACE;
+
+propertyDefinitionList:
+	propertyDefinition
+	| propertyDefinitionList COMMA propertyDefinition;
+
+propertyDefinition:
+	identifier
+	| coverInitializedName
+	| propertyName COLON assignmentExpression
+	| ELLIPSIS assignmentExpression;
+
+coverInitializedName: identifier initializer;
+
+// Array LiteralExpression
+arrayLiteral: LBRACK RBRACK | LBRACK elementList RBRACK;
+
+elementList:
+	assignmentExpression
+	| spreadElement
+	| elementList COMMA assignmentExpression
+	| elementList COMMA spreadElement;
+
+spreadElement: ELLIPSIS assignmentExpression;
+
+// Left Hand Side Expression
+leftHandSideExpression:
+	newExpression
+	| callExpression
+	| optionalExpression;
+
+// Member Expression
+memberExpression:
+	(
+		primaryExpression
+		| superProperty
+		| NEW memberExpression arguments
+	) (LBRACK expression RBRACK | PERIOD identifier)*;
+
+// New Expression
+newExpression: memberExpression | NEW newExpression;
+
+// Super Property
+superProperty: SUPER PERIOD identifier;
+
+// Super Call
+superCall: SUPER arguments;
+
+// Arguments
+arguments:
+	typeArguments? LPAREN RPAREN
+	| typeArguments? LPAREN argumentList RPAREN
+	| typeArguments? LPAREN argumentList COMMA RPAREN;
+
+argumentList:
+	(assignmentExpression | ELLIPSIS assignmentExpression) (
+		COMMA (
+			assignmentExpression
+			| ELLIPSIS assignmentExpression
+		)
+	)*;
+
+// Call Expression
+callExpression:
+	(memberExpression arguments | superCall) (
+		arguments
+		| LBRACK expression RBRACK
+		| PERIOD identifier
+	)*;
+
+// Optional Expression
+optionalExpression:
+	(memberExpression | callExpression) optionalChain (
+		optionalChain
+	)*;
+
+optionalChain:
+	OPTIONAL_CHAINING identifier (
+		arguments
+		| LBRACK expression RBRACK
+		| PERIOD identifier
+	)*;
+
+// Postfix Unary Expression
+postfixUnaryExpression:
+	leftHandSideExpression (
+		ERROR_PROPAGATE
+		| FORCE_UNWRAP
+		| INC
+		| DEC
+	)*;
+
+// Prefix Unary Expression
+prefixUnaryExpression:
+	postfixUnaryExpression
+	| VOID prefixUnaryExpression
+	| TYPEOF prefixUnaryExpression
+	| PLUS prefixUnaryExpression
+	| MINUS prefixUnaryExpression
+	| BIT_NOT prefixUnaryExpression
+	| NOT prefixUnaryExpression
+	| INC prefixUnaryExpression
+	| DEC prefixUnaryExpression
+	| AWAIT prefixUnaryExpression;
+
+// Unary Expression
+unaryExpression: prefixUnaryExpression;
+
+// Cast Expression
+castExpression: unaryExpression (AS (QUESTION | NOT)? type)*;
+
+// Exponentiation Expression
+exponentiationExpression:
+	castExpression
+	| unaryExpression POW exponentiationExpression;
+
+// Multiplicative Expression
+multiplicativeExpression:
+	exponentiationExpression (
+		multiplicativeOperator exponentiationExpression
+	)*;
+
+multiplicativeOperator: MUL | DIV | MOD;
+
+// Additive Expression
+additiveExpression:
+	multiplicativeExpression (
+		(PLUS | MINUS) multiplicativeExpression
+	)*;
+
+// Shift Expression
+shiftExpression:
+	additiveExpression (
+		(LSHIFT | RSHIFT | URSHIFT) additiveExpression
+	)*;
+
+// Relational Expression
+relationalExpression:
+	shiftExpression (
+		(LT | GT | LTE | GTE | IS | IN) shiftExpression
+	)*;
+
+// Equality Expression
+equalityExpression:
+	relationalExpression (
+		(EQ | NEQ | STRICT_EQ | STRICT_NEQ) relationalExpression
+	)*;
+
+// Bitwise AND Expression
+bitwiseANDExpression:
+	equalityExpression (BIT_AND equalityExpression)*;
+
+// Bitwise XOR Expression
+bitwiseXORExpression:
+	bitwiseANDExpression (BIT_XOR bitwiseANDExpression)*;
+
+// Bitwise OR Expression
+bitwiseORExpression:
+	bitwiseXORExpression (BIT_OR bitwiseXORExpression)*;
+
+// Logical AND Expression
+logicalANDExpression:
+	bitwiseORExpression (AND bitwiseORExpression)*;
+
+// Logical OR Expression
+logicalORExpression:
+	logicalANDExpression (OR logicalANDExpression)*;
+
+// Coalesce Expression
+coalesceExpression:
+	logicalORExpression (NULL_COALESCE logicalORExpression)*;
+
+// Error Default Expression
+errorDefaultExpression:
+	coalesceExpression (ERROR_DEFAULT coalesceExpression)*;
+
+// Short Circuit Expression
+shortCircuitExpression: errorDefaultExpression;
+
+// Conditional Expression
+conditionalExpression:
+	shortCircuitExpression (
+		QUESTION assignmentExpression COLON assignmentExpression
+	)?;
+
+// Function Expression
+functionExpression:
+	FUN callSignature LBRACE functionBody RBRACE;
+
+// Binding Pattern
+bindingPattern: arrayBindingPattern | objectBindingPattern;
+
+objectBindingPattern: LBRACE bindingPropertyList? RBRACE;
+
+bindingPropertyList:
+	bindingProperty
+	| bindingPropertyList COMMA bindingProperty;
+
+bindingProperty:
+	propertyName COLON bindingElement
+	| bindingIdentifier initializer?;
+
+// Initializer
+initializer: ASSIGN assignmentExpression;
+
+assignmentOperator:
+	MUL_ASSIGN
+	| DIV_ASSIGN
+	| MOD_ASSIGN
+	| PLUS_ASSIGN
+	| MINUS_ASSIGN
+	| LSHIFT_ASSIGN
+	| RSHIFT_ASSIGN
+	| URSHIFT_ASSIGN
+	| BIT_AND_ASSIGN
+	| BIT_XOR_ASSIGN
+	| BIT_OR_ASSIGN
+	| POW_ASSIGN;
+
 // ================================================================================ STATEMENTS
+blockStatement: block;
+
+block: LBRACE statementList? RBRACE;
+
+statementList: statementListItem+;
+
+statementListItem: statement | declaration;
+
 statement:
 	blockStatement
 	| emptyStatement
@@ -235,7 +494,42 @@ statement:
 	| returnStatement
 	| debuggerStatement;
 
-statementListItem: statement | declaration;
+emptyStatement: SEMICOLON;
+
+expressionStatement:
+	{!(_input.LT(1).getType() == LBRACE || _input.LT(1).getText().equals("function") || _input.LT(1).getText().equals("class") || _input.LT(1).getText().equals("let"))
+		}? expression SEMICOLON;
+
+ifStatement:
+	IF LPAREN expression RPAREN statement ELSE statement
+	| IF LPAREN expression RPAREN statement {_input.LT(1).getType() != ZomLexer.ELSE}?;
+
+breakableStatement: iterativeStatement;
+
+iterativeStatement:
+	whileStatement
+	| forStatement
+	| forInStatement;
+
+whileStatement: WHILE LPAREN expression RPAREN statement;
+
+forStatement:
+	FOR LPAREN forInit? SEMICOLON expression? SEMICOLON forUpdate? RPAREN statement;
+
+forInStatement:
+	FOR LPAREN (variableDeclaration | expression) IN expression RPAREN statement;
+
+forInit: expression | variableDeclaration;
+
+forUpdate: expression;
+
+continueStatement: CONTINUE identifier? SEMICOLON;
+
+breakStatement: BREAK identifier? SEMICOLON;
+
+returnStatement: RETURN expression? SEMICOLON;
+
+debuggerStatement: DEBUGGER SEMICOLON;
 
 matchStatement: MATCH LPAREN expression RPAREN matchBlock;
 matchBlock:
@@ -244,18 +538,22 @@ matchBlock:
 	| LBRACE defaultClause RBRACE;
 
 matchClauses: matchClause*;
-matchClause: WHEN pattern guardClause? ARROW expression | block;
+matchClause:
+	WHEN pattern guardClause? ROCKET expression
+	| block;
 
 guardClause: IF expression;
-defaultClause: DEFAULT ARROW statementList;
+defaultClause: DEFAULT ROCKET statementList;
 
-pattern:
+pattern: primaryPattern (AS type)?;
+
+primaryPattern:
 	wildcardPattern
 	| identifierPattern
 	| tuplePattern
 	| structurePattern
 	| arrayPattern
-	| typeCastPattern
+	| isPattern
 	| expressionPattern
 	| enumPattern;
 
@@ -266,9 +564,7 @@ tupleElements: tupleElement (COMMA tupleElement)*;
 tupleElement: bindingIdentifier typeAnnotation?;
 structurePattern: objectType;
 arrayPattern: arrayBindingPattern;
-typeCastPattern: isPattern | asPattern;
 isPattern: IS type;
-asPattern: pattern AS type;
 expressionPattern: expression;
 enumPattern: typeReference? PERIOD propertyName tuplePattern;
 
@@ -277,19 +573,179 @@ declaration:
 	functionDeclaration
 	| classDeclaration
 	| interfaceDeclaration
-	| typeAliasDeclaration
+	| aliasDeclaration
+	| structDeclaration
+	| errorDeclaration
 	| enumDeclaration
-	| lexicalDeclaration;
-
-//// ============================================================================== LET AND CONST DECLARATIONS
-lexicalDeclaration: LET_OR_CONST bindingList;
+	| variableDeclaration;
 
 //// ============================================================================== TYPES
+
+// Type
+type: unionType;
+
+// UnionType
+unionType: intersectionType (BIT_OR intersectionType)*;
+
+// IntersectionType
+intersectionType: postfixType (BIT_AND postfixType)*;
+
+// PostfixType
+postfixType: typeAtom (LBRACK RBRACK | QUESTION)*;
+
+// TypeAtom
+typeAtom:
+	parenthesizedType
+	| predefinedType
+	| typeReference
+	| objectType
+	| tupleType
+	| typeQuery;
+
+// ParenthesizedType
+parenthesizedType: LPAREN type RPAREN;
+
+// PredefinedType
+predefinedType:
+	I8
+	| I32
+	| I64
+	| U8
+	| U16
+	| U32
+	| U64
+	| F32
+	| F64
+	| STR
+	| BOOL
+	| NIL
+	| UNIT;
+
+// TypeReference
+typeReference: typeName typeArguments?;
+
+// TypeName
+typeName: identifier;
+
+// ObjectType
+objectType: LBRACE typeBody? RBRACE;
+
+// TypeBody
+typeBody: typeMemberList SEMICOLON? | typeMemberList COMMA?;
+
+// TypeMemberList
+typeMemberList:
+	typeMember
+	| typeMemberList SEMICOLON typeMember
+	| typeMemberList COMMA typeMember;
+
+// TypeMember
+typeMember: propertySignature;
+
+// TupleType
+tupleType: LPAREN tupleElementTypes? RPAREN;
+
+// TupleElementTypes
+tupleElementTypes:
+	tupleElementType
+	| tupleElementTypes COMMA tupleElementType;
+
+// TupleElementType
+tupleElementType: namedTupleElement | type;
+
+// NamedTupleElement
+namedTupleElement: elementName COLON type;
+
+// ElementName
+elementName: identifier;
+
+// FunctionType
+functionType:
+	typeParameters? parameterClause (ARROW type raisesClause?)?;
+
+// ParameterClause
+parameterClause: LPAREN parameterList? RPAREN;
+
+// TypeQuery
+typeQuery: TYPEOF typeQueryExpression;
+
+// TypeQueryExpression
+typeQueryExpression: identifier ( PERIOD identifier)*;
+
+// Supporting rules
+typeArguments: LT typeArgumentList GT;
+typeArgumentList: type (COMMA type)*;
+propertySignature: propertyName QUESTION? typeAnnotation;
+propertyName: identifier | stringLiteral | numericLiteral;
+typeParameters: LT typeParameterList GT;
+typeParameterList: typeParameter (COMMA typeParameter)*;
+typeParameter: identifier constraint?;
+constraint: EXTENDS type;
+interfaceType: typeReference;
+callSignature:
+	typeParameters? parameterClause (ARROW type raisesClause?)?;
+parameterList: parameter (COMMA parameter)*;
+parameter: bindingIdentifier typeAnnotation? initializer?;
+functionBody: statementList?;
+
+arrayBindingPattern: LBRACK bindingElementList? RBRACK;
+bindingElementList: bindingElement (COMMA bindingElement)*;
+bindingElement: bindingIdentifier typeAnnotation? initializer?;
+bindingList: bindingElement (COMMA bindingElement)*;
+methodSignature: propertyName QUESTION? callSignature;
+
+// ================================================================================ INTERFACE DECLARATIONS
+interfaceDeclaration:
+	INTERFACE bindingIdentifier typeParameters? interfaceHeritage? LBRACE interfaceBody RBRACE;
+interfaceHeritage: EXTENDS interfaceTypeList;
+interfaceBody: interfaceElement*;
+interfaceElement: propertySignature | methodSignature;
+
+// ================================================================================ TYPE ALIAS DECLARATIONS
+aliasDeclaration:
+	ALIAS bindingIdentifier typeParameters? ASSIGN type;
+
+// ================================================================================ STRUCT DECLARATIONS
+structDeclaration:
+	STRUCT bindingIdentifier typeParameters? LBRACE structBody? RBRACE;
+
+structBody: structMember (COMMA structMember)*;
+structMember: propertyName COLON type;
+
+// ================================================================================ ERROR DECLARATIONS
+errorDeclaration:
+	ERROR bindingIdentifier typeParameters? LBRACE errorBody? RBRACE;
+
+errorBody: errorMember (COMMA errorMember)*;
+errorMember: propertyName ((ASSIGN expression) | tupleType)?;
+
+// ================================================================================ ENUM DECLARATIONS
+enumDeclaration: ENUM bindingIdentifier LBRACE enumBody? RBRACE;
+enumBody: enumMember (COMMA enumMember)*;
+enumMember: propertyName ((ASSIGN expression) | tupleType)?;
+
+// ================================================================================ CLASS MEMBER ACCESSORS
+accessibilityModifier: PUBLIC | PRIVATE | PROTECTED;
+initDeclaration:
+	accessibilityModifier? INIT callSignature LBRACE functionBody RBRACE;
+deinitDeclaration: DEINIT LBRACE functionBody RBRACE;
+getAccessor:
+	GET propertyName LPAREN RPAREN typeAnnotation? LBRACE functionBody RBRACE;
+setAccessor:
+	SET propertyName LPAREN parameter RPAREN LBRACE functionBody RBRACE;
+
+// ================================================================================ LET AND CONST DECLARATIONS
+variableDeclaration: LET_OR_CONST bindingList;
+
+// ================================================================================ TYPES
 typeAnnotation: COLON type;
 
 // ================================================================================ FUNCTIONS
 functionDeclaration:
 	FUN bindingIdentifier callSignature LBRACE functionBody RBRACE;
+
+// Error handling clauses
+raisesClause: RAISES type;
 
 // ================================================================================ CLASSES
 classDeclaration:
@@ -308,7 +764,8 @@ classBody: classElementList?;
 classElementList: classElement+;
 
 classElement:
-	constructorDeclaration
+	initDeclaration
+	| deinitDeclaration
 	| propertyMemberDeclaration;
 
 propertyMemberDeclaration:
@@ -317,13 +774,13 @@ propertyMemberDeclaration:
 	| memberAccessorDeclaration;
 
 memberVariableDeclaration:
-	accessibityModifier? STATIC? propertyName typeAnnotation? initilizer?;
+	accessibilityModifier? STATIC? propertyName typeAnnotation? initializer?;
 
 memberFunctionDeclaration:
-	accessibityModifier? STATIC? propertyName callSignature? LBRACE functionBody RBRACE;
+	accessibilityModifier? STATIC? propertyName callSignature? LBRACE functionBody RBRACE;
 
 memberAccessorDeclaration:
-	accessibityModifier? STATIC? (getAccessor | setAccessor);
+	accessibilityModifier? STATIC? (getAccessor | setAccessor);
 
 // ================================================================================ INTERFACES
 
@@ -338,7 +795,7 @@ moduleItem:
 	| exportDeclaration
 	| importDeclaration;
 
-importDeclaration: IMPORT modulePath ( AS identifierName)?;
+importDeclaration: IMPORT modulePath (AS identifierName)?;
 
 exportDeclaration: EXPORT (exportModule | exportRename);
 

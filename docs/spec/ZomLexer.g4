@@ -29,7 +29,6 @@ BACKSLASH: '\\';
 ANSI_LETTER: [a-zA-Z];
 UNICODE_ID_START: [\p{ID_Start}];
 UNICODE_ID_CONTINUE: [\p{ID_Continue}];
-SINGLE_ESCAPE_CHAR_FRAG: ['"\\bfnrtv];
 HEX_4_DIGITS_FRAG: HEX_DIGIT HEX_DIGIT HEX_DIGIT HEX_DIGIT;
 HEX_ESCAPE_SEQUENCE: 'x' HEX_DIGIT HEX_DIGIT;
 UNICODE_ESCAPE_SEQUENCE:
@@ -50,6 +49,7 @@ UNICODE_ESCAPE_SEQUENCE:
 // ================================================================================ Keywords
 ABSTRACT: 'abstract';
 ACCESSOR: 'accessor';
+ALIAS: 'alias';
 ANY: 'any';
 AS: 'as';
 ASSERTS: 'asserts';
@@ -57,32 +57,43 @@ ASSERT: 'assert';
 ASYNC: 'async';
 AWAIT: 'await';
 BIGINT: 'bigint';
-BOOLEAN: 'boolean';
+BOOL: 'bool';
 BREAK: 'break';
 CASE: 'case';
 CATCH: 'catch';
 CLASS: 'class';
-CONTINUE: 'continue';
 CONSTRUCTOR: 'constructor';
+CONTINUE: 'continue';
 DEBUGGER: 'debugger';
 DECLARE: 'declare';
 DEFAULT: 'default';
+DEINIT: 'deinit';
 DELETE: 'delete';
 DO: 'do';
 EXTENDS: 'extends';
+ELSE: 'else';
+ENUM: 'enum';
+ERROR: 'error';
 EXPORT: 'export';
 FALSE: 'false';
 FINALLY: 'finally';
+FOR: 'for';
 FROM: 'from';
+F32: 'f32';
+F64: 'f64';
 FUN: 'fun';
 GET: 'get';
 GLOBAL: 'global';
+I8: 'i8';
+I32: 'i32';
+I64: 'i64';
 IF: 'if';
 IMMEDIATE: 'immediate';
 IMPLEMENTS: 'implements';
 IMPORT: 'import';
 IN: 'in';
 INFER: 'infer';
+INIT: 'init';
 INSTANCEOF: 'instanceof';
 INTERFACE: 'interface';
 INTRINSIC: 'intrinsic';
@@ -94,22 +105,25 @@ MUTABLE: 'mutable';
 NAMESPACE: 'namespace';
 NEVER: 'never';
 NEW: 'new';
-NUMBER: 'number';
+NIL: 'nil';
 NULL: 'null';
 OBJECT: 'object';
 OF: 'of';
-OPTIONAL: 'optional';
 OUT: 'out';
 OVERRIDE: 'override';
 PACKAGE: 'package';
 PRIVATE: 'private';
 PROTECTED: 'protected';
 PUBLIC: 'public';
+RAISES: 'raises';
 READONLY: 'readonly';
 REQUIRE: 'require';
+RETURN: 'return';
 SATISFIES: 'satisfies';
 SET: 'set';
 STATIC: 'static';
+STR: 'str';
+STRUCT: 'struct';
 SUPER: 'super';
 SWITCH: 'switch';
 SYMBOL: 'symbol';
@@ -117,13 +131,20 @@ THIS: 'this';
 THROW: 'throw';
 TRUE: 'true';
 TRY: 'try';
+TYPE: 'type';
 TYPEOF: 'typeof';
+U8: 'u8';
+U16: 'u16';
+U32: 'u32';
+U64: 'u64';
 UNDEFINED: 'undefined';
 UNIQUE: 'unique';
+UNIT: 'unit';
 USING: 'using';
 VAR: 'var';
 VOID: 'void';
 WHEN: 'when';
+WHILE: 'while';
 WITH: 'with';
 YIELD: 'yield';
 
@@ -165,6 +186,9 @@ BIT_NOT: '~';
 AND: '&&';
 OR: '||';
 NULL_COALESCE: '??';
+ERROR_PROPAGATE: '?!';
+FORCE_UNWRAP: '!!';
+ERROR_DEFAULT: '?:';
 QUESTION: '?';
 COLON: ':';
 ASSIGN: '=';
@@ -182,7 +206,8 @@ BIT_XOR_ASSIGN: '^=';
 AND_ASSIGN: '&&=';
 OR_ASSIGN: '||=';
 NULL_COALESCE_ASSIGN: '??=';
-ARROW: '=>';
+ROCKET: '=>';
+ARROW: '->';
 
 DIV: '/';
 DIV_ASSIGN: '/=';
@@ -200,14 +225,39 @@ BINARY_PREFIX: '0' [bB];
 OCTAL_PREFIX: '0' [oO];
 HEX_PREFIX: '0' [xX];
 
-//// ================================================================================ STRING LITERALS
+// ================================================================================ STRING LITERALS
 SQUOTE: '\'';
 DQUOTE: '"';
-DOUBLE_STRING_ALLOWED_CHAR: ~["\\\r\n\u2028\u2029]; // Any char except ", \, or LineTerminator
-SINGLE_STRING_ALLOWED_CHAR: ~['\\\r\n\u2028\u2029]; // Any char except ', \, or LineTerminator
-SINGLE_ESCAPE_CHARACTER: SQUOTE | DQUOTE | BACKSLASH | 'b' | 'f' | 'n' | 'r' | 't' | 'v';
-NON_ESCAPE_CHARACTER: ~['"\\bfnrtvxu0-9LF\u000A\u000D\u2028\u2029]; // Any source character not part of an escape sequence
+DOUBLE_STRING_ALLOWED_CHAR:
+	~["\\\r\n\u2028\u2029]; // Any char except ", \, or LineTerminator
+SINGLE_STRING_ALLOWED_CHAR:
+	~['\\\r\n\u2028\u2029]; // Any char except ', \, or LineTerminator
+SINGLE_ESCAPE_CHARACTER:
+	SQUOTE
+	| DQUOTE
+	| BACKSLASH
+	| 'b'
+	| 'f'
+	| 'n'
+	| 'r'
+	| 't'
+	| 'v';
+NON_ESCAPE_CHARACTER:
+	~['"\\bfnrtvxu0-9LF\u000A\u000D\u2028\u2029];
+// Any source character not part of an escape sequence
 
-// ================================================================================== DECLARATIONS
+// ================================================================================ CHARACTER LITERALS
+CHAR_LITERAL:
+	SQUOTE (CHAR_CONTENT | CHAR_ESCAPE_SEQUENCE) SQUOTE;
+CHAR_CONTENT:
+	~['\\\r\n\u2028\u2029]; // Any char except ', \, or LineTerminator
+CHAR_ESCAPE_SEQUENCE:
+	BACKSLASH (
+		SINGLE_ESCAPE_CHARACTER
+		| HEX_ESCAPE_SEQUENCE
+		| UNICODE_ESCAPE_SEQUENCE
+	);
+
+// ================================================================================ DECLARATIONS
 
 LET_OR_CONST: 'let' | 'const';
