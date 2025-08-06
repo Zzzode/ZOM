@@ -43,7 +43,19 @@
 
 namespace zc {
 
+#ifdef ZOM_ENABLE_COVERAGE
+extern "C" void __llvm_profile_runtime_user();
+#endif
+
 namespace {
+
+#ifdef ZOM_ENABLE_COVERAGE
+// Initialize LLVM coverage profiling before any test code runs
+struct CoverageInitializer {
+  CoverageInitializer() { __llvm_profile_runtime_user(); }
+};
+static CoverageInitializer coverageInitializer;
+#endif
 
 TestCase* testCasesHead = nullptr;
 TestCase** testCasesTail = &testCasesHead;
@@ -228,6 +240,8 @@ public:
   }
 
   MainBuilder::Validity run() {
+    // Initialize LLVM coverage profiling
+
     if (testCasesHead == nullptr) { return "no tests were declared"; }
 
     // Find the common path prefix of all filenames, so we can strip it off.
