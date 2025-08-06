@@ -44,18 +44,10 @@
 namespace zc {
 
 #ifdef ZOM_ENABLE_COVERAGE
-extern "C" void __llvm_profile_runtime_user();
+extern "C" int __llvm_profile_write_file();
 #endif
 
 namespace {
-
-#ifdef ZOM_ENABLE_COVERAGE
-// Initialize LLVM coverage profiling before any test code runs
-struct CoverageInitializer {
-  CoverageInitializer() { __llvm_profile_runtime_user(); }
-};
-static CoverageInitializer coverageInitializer;
-#endif
 
 TestCase* testCasesHead = nullptr;
 TestCase** testCasesTail = &testCasesHead;
@@ -240,8 +232,6 @@ public:
   }
 
   MainBuilder::Validity run() {
-    // Initialize LLVM coverage profiling
-
     if (testCasesHead == nullptr) { return "no tests were declared"; }
 
     // Find the common path prefix of all filenames, so we can strip it off.
@@ -297,6 +287,12 @@ public:
 
     if (passCount > 0) write(GREEN, zc::str(passCount, " test(s) passed"), "");
     if (failCount > 0) write(RED, zc::str(failCount, " test(s) failed"), "");
+
+#ifdef ZOM_ENABLE_COVERAGE
+    // Write coverage data before exiting
+    __llvm_profile_write_file();
+#endif
+
     context.exit();
 
     ZC_UNREACHABLE;

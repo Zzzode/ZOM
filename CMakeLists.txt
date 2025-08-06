@@ -29,6 +29,8 @@ add_subdirectory(products)
 add_subdirectory(examples)
 
 if(ZOM_ENABLE_COVERAGE)
-  create_coverage_target(NAME coverage TARGETS ${ALL_TESTS} EXCLUDES
-                         ".*\-test\\.cc")
+  get_property(ALL_TESTS_GLOBAL GLOBAL PROPERTY ALL_TESTS_GLOBAL)
+  # message("ALL_TESTS_GLOBAL: ${ALL_TESTS_GLOBAL}")
+  create_coverage_target(NAME coverage TARGETS ${ALL_TESTS_GLOBAL} EXCLUDES
+                         ".*\-test\.cc")
 endif()

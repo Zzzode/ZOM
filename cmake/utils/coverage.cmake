@@ -39,15 +39,42 @@ function(create_coverage_target)
       COMMENT "Merging coverage data for ${COVERAGE_NAME}")
     add_dependencies(${COVERAGE_NAME}_merge_profdata ${COVERAGE_NAME}_run_tests)
 
+    # Convert target names to target files
+    # Separate executables and libraries for llvm-cov
+    set(COVERAGE_EXECUTABLE_FILES "")
+    foreach(TARGET_NAME ${COVERAGE_TARGETS})
+      get_target_property(TARGET_TYPE ${TARGET_NAME} TYPE)
+      if(TARGET_TYPE STREQUAL "EXECUTABLE")
+        list(APPEND COVERAGE_EXECUTABLE_FILES $<TARGET_FILE:${TARGET_NAME}>)
+      endif()
+    endforeach()
+
+    # Construct llvm-cov binary arguments: [BIN] [-object BIN]...
+    # Use the first executable as the main target, others as -object
+    list(GET COVERAGE_EXECUTABLE_FILES 0 MAIN_EXECUTABLE)
+    set(COVERAGE_TARGET_FILES "${MAIN_EXECUTABLE}")
+    list(LENGTH COVERAGE_EXECUTABLE_FILES EXEC_COUNT)
+    if(EXEC_COUNT GREATER 1)
+      list(SUBLIST COVERAGE_EXECUTABLE_FILES 1 -1 OTHER_EXECUTABLES)
+      foreach(EXEC ${OTHER_EXECUTABLES})
+        list(APPEND COVERAGE_TARGET_FILES "-object" "${EXEC}")
+      endforeach()
+    endif()
+
+    # *-test.cc and *.def files
+    set(COVERAGE_EXCLUDES ".*-test\.cc;.*\.def")
+
+    # llvm-cov export [options] -instr-profile PROFILE [BIN] [-object BIN]… [-sources] [SOURCE]…
+    set(SOURCES "-sources ${CMAKE_SOURCE_DIR}")
     add_custom_target(
       ${COVERAGE_NAME}_generate_html_report
       COMMAND
-        ${XCRUN} llvm-cov show ${COVERAGE_TARGETS}
-        -instr-profile=${COVERAGE_DIR}/coverage.profdata -format=html
+        ${XCRUN} llvm-cov show -format=html
+        -instr-profile=${COVERAGE_DIR}/coverage.profdata
+        ${COVERAGE_TARGET_FILES}
+        -ignore-filename-regex=${COVERAGE_EXCLUDES}
         -output-dir=${COVERAGE_DIR}/html
-        -ignore-filename-regex="${COVERAGE_EXCLUDES}"
-        -path-equivalence=${CMAKE_SOURCE_DIR},. ${CMAKE_SOURCE_DIR}
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
       COMMENT "Generating HTML coverage report for ${COVERAGE_NAME}")
     add_dependencies(${COVERAGE_NAME}_generate_html_report
                      ${COVERAGE_NAME}_merge_profdata)
@@ -55,12 +82,12 @@ function(create_coverage_target)
     add_custom_target(
       ${COVERAGE_NAME}_generate_text_report
       COMMAND
-        ${XCRUN} llvm-cov report ${COVERAGE_TARGETS}
+        ${XCRUN} llvm-cov report -format=text
+        ${COVERAGE_TARGET_FILES}
         -instr-profile=${COVERAGE_DIR}/coverage.profdata
-        -ignore-filename-regex="${COVERAGE_EXCLUDES}"
-        -path-equivalence=${CMAKE_SOURCE_DIR},. ${CMAKE_SOURCE_DIR} >
-        ${CMAKE_BINARY_DIR}/coverage/coverage.txt
-      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        -ignore-filename-regex=${COVERAGE_EXCLUDES}
+        > ${COVERAGE_DIR}/coverage.txt
+      WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
       COMMENT "Generating text coverage report for ${COVERAGE_NAME}")
     add_dependencies(${COVERAGE_NAME}_generate_text_report
                      ${COVERAGE_NAME}_merge_profdata)
@@ -81,8 +108,7 @@ function(create_coverage_target)
 endfunction()
 
 function(add_test_to_coverage TEST_NAME)
-  list(APPEND ALL_TESTS $<TARGET_FILE:${TEST_NAME}>)
-  set(ALL_TESTS
-      ${ALL_TESTS}
-      CACHE INTERNAL "List of all test executables" FORCE)
+  get_property(ALL_TESTS_PROP GLOBAL PROPERTY ALL_TESTS_GLOBAL)
+  list(APPEND ALL_TESTS_PROP ${TEST_NAME})
+  set_property(GLOBAL PROPERTY ALL_TESTS_GLOBAL "${ALL_TESTS_PROP}")
 endfunction()

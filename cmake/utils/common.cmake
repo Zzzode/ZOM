@@ -54,6 +54,9 @@ if(ZOM_ENABLE_COVERAGE)
 
   message(STATUS "Enable Coverage")
 
+  # Define the coverage macro for all targets
+  add_compile_definitions(ZOM_ENABLE_COVERAGE)
+
   if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     message(WARN "This compiler is not supported for zom")
     add_compile_options(--coverage)
