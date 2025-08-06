@@ -20,8 +20,10 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
 #include "zomlang/compiler/lexer/token.h"
+#include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
@@ -41,10 +43,17 @@ struct Lexer::Impl {
   const zc::byte* bufferEnd;
   const zc::byte* curPtr;
 
+  // Full start position tracking
+  const zc::byte* triviaStartPtr;
+
   // Token state
   Token nextToken;
   LexerMode currentMode;
   CommentRetentionMode commentMode;
+
+  // Lookahead token cache
+  mutable zc::Vector<Token> tokenCache;
+  mutable bool cacheInitialized = false;
 
   Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
        const basic::LangOptions& options, const source::BufferId& bufferId)
@@ -59,6 +68,7 @@ struct Lexer::Impl {
     bufferStart = buffer.begin();
     bufferEnd = buffer.end();
     curPtr = bufferStart;
+    triviaStartPtr = bufferStart;
   }
 
   /// Utility functions
@@ -67,11 +77,14 @@ struct Lexer::Impl {
   void formToken(TokenKind kind, const zc::byte* tokStart) {
     source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
     source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
-    nextToken = Token(kind, source::SourceRange(startLoc, endLoc));
+    zc::Maybe<zc::String> cachedText = Token::getStaticTextForTokenKind(kind);
+    // For keywords and common operators, cache the text to avoid repeated extraction
+    nextToken = Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(cachedText));
   }
 
   /// Lexing implementation
   void lexImpl() {
+    triviaStartPtr = curPtr;
     skipTrivia();
     if (curPtr >= bufferEnd) {
       formToken(TokenKind::kEOF, curPtr);
@@ -235,6 +248,9 @@ struct Lexer::Impl {
           } else {
             formToken(TokenKind::kExclamationEquals, tokStart);
           }
+        } else if (curPtr < bufferEnd && *curPtr == '!') {
+          curPtr++;
+          formToken(TokenKind::kErrorUnwrap, tokStart);
         } else {
           formToken(TokenKind::kExclamation, tokStart);
         }
@@ -294,6 +310,12 @@ struct Lexer::Impl {
         } else if (curPtr < bufferEnd && *curPtr == '.') {
           curPtr++;
           formToken(TokenKind::kQuestionDot, tokStart);
+        } else if (curPtr < bufferEnd && *curPtr == '!') {
+          curPtr++;
+          formToken(TokenKind::kErrorPropagate, tokStart);
+        } else if (curPtr < bufferEnd && *curPtr == ':') {
+          curPtr++;
+          formToken(TokenKind::kErrorDefault, tokStart);
         } else {
           formToken(TokenKind::kQuestion, tokStart);
         }
@@ -328,6 +350,9 @@ struct Lexer::Impl {
       default:
         if (isIdentifierStart(c)) {
           lexIdentifier();
+        } else if (c == '\\' && curPtr < bufferEnd && *curPtr == 'u') {
+          // Unicode escape sequence at start of identifier
+          lexIdentifier();
         } else if (isdigit(c)) {
           lexNumber();
         } else if (c == '"') {
@@ -335,7 +360,18 @@ struct Lexer::Impl {
         } else if (c == '\'') {
           lexSingleQuoteString();
         } else {
-          formToken(TokenKind::kUnknown, tokStart);
+          // Check for multi-byte UTF-8 characters that could be identifier start
+          if ((c & 0x80) != 0) {
+            // Potential multi-byte UTF-8 character
+            // For now, we'll treat it as invalid since we don't have full Unicode support
+            // TODO: Implement proper UTF-8 decoding and Unicode ID_Start property checking
+            reportInvalidCharacter(c, tokStart);
+            recoverFromInvalidCharacter();
+          } else {
+            // Report invalid character error and attempt recovery
+            reportInvalidCharacter(c, tokStart);
+            recoverFromInvalidCharacter();
+          }
         }
         break;
     }
@@ -368,108 +404,190 @@ struct Lexer::Impl {
     // Go back one character, as the first character has already been read
     const zc::byte* tokStart = curPtr - 1;
 
-    while (curPtr < bufferEnd && isIdentifierContinuation(*curPtr)) { curPtr++; }
+    // Continue reading identifier characters
+    while (curPtr < bufferEnd) {
+      zc::byte c = *curPtr;
+
+      // Handle escape sequences
+      if (c == '\\' && curPtr + 1 < bufferEnd && *(curPtr + 1) == 'u') {
+        // Unicode escape sequence: \uXXXX or \u{XXXX}
+        const zc::byte* escapeStart = curPtr;
+        curPtr += 2;  // Skip '\\u'
+
+        if (curPtr < bufferEnd && *curPtr == '{') {
+          // \u{XXXX} format
+          curPtr++;  // Skip '{'
+          const zc::byte* hexStart = curPtr;
+          while (curPtr < bufferEnd && isxdigit(*curPtr)) { curPtr++; }
+          if (curPtr < bufferEnd && *curPtr == '}' && curPtr > hexStart) {
+            curPtr++;  // Skip '}'
+            // TODO: Validate that the hex value represents a valid Unicode ID_Continue
+          } else {
+            // Invalid escape sequence, report error and recover
+            reportInvalidEscapeSequence('u', escapeStart);
+            curPtr = escapeStart + 1;
+            break;
+          }
+        } else {
+          // \uXXXX format
+          const zc::byte* hexStart = curPtr;
+          for (int i = 0; i < 4 && curPtr < bufferEnd && isxdigit(*curPtr); i++) { curPtr++; }
+          if (curPtr - hexStart != 4) {
+            // Invalid escape sequence, report error and recover
+            reportInvalidEscapeSequence('u', escapeStart);
+            curPtr = escapeStart + 1;
+            break;
+          }
+          // TODO: Validate that the hex value represents a valid Unicode ID_Continue
+        }
+      } else if (isIdentifierContinuation(c)) {
+        curPtr++;
+      } else {
+        // Check for multi-byte UTF-8 characters
+        // This is a simplified check - full implementation would decode UTF-8
+        if ((c & 0x80) != 0) {
+          // Potential multi-byte UTF-8 character
+          // For now, we'll skip it as we don't have full Unicode support
+          // TODO: Implement proper UTF-8 decoding and Unicode property checking
+          break;
+        } else {
+          break;
+        }
+      }
+    }
 
     // Check if it's a keyword
-    zc::String text = zc::str(zc::ArrayPtr<const zc::byte>(tokStart, curPtr));
+    auto textPtr = zc::ArrayPtr<const zc::byte>(tokStart, curPtr);
 
-    TokenKind kind = getKeywordKind(text);
-    if (kind == TokenKind::kUnknown) { kind = TokenKind::kIdentifier; }
-
-    formToken(kind, tokStart);
+    TokenKind kind = getKeywordKind(textPtr);
+    if (kind == TokenKind::kIdentifier) {
+      // For identifiers, we might want to cache the text since they're frequently accessed
+      source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+      source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
+      zc::String identifierText = zc::str(textPtr.asChars());
+      nextToken = Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(identifierText));
+    } else {
+      formToken(kind, tokStart);
+    }
   }
 
-  TokenKind getKeywordKind(const zc::StringPtr text) {
+  TokenKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
     // Keywords from ZomLexer.g4
-    if (text == "abstract") return TokenKind::kAbstractKeyword;
-    if (text == "accessor") return TokenKind::kAccessorKeyword;
-    if (text == "any") return TokenKind::kAnyKeyword;
-    if (text == "as") return TokenKind::kAsKeyword;
-    if (text == "asserts") return TokenKind::kAssertsKeyword;
-    if (text == "assert") return TokenKind::kAssertKeyword;
-    if (text == "async") return TokenKind::kAsyncKeyword;
-    if (text == "await") return TokenKind::kAwaitKeyword;
-    if (text == "bigint") return TokenKind::kBigIntKeyword;
-    if (text == "boolean") return TokenKind::kBooleanKeyword;
-    if (text == "break") return TokenKind::kBreakKeyword;
-    if (text == "case") return TokenKind::kCaseKeyword;
-    if (text == "catch") return TokenKind::kCatchKeyword;
-    if (text == "class") return TokenKind::kClassKeyword;
-    if (text == "continue") return TokenKind::kContinueKeyword;
-    if (text == "const") return TokenKind::kConstKeyword;
-    if (text == "constructor") return TokenKind::kConstructorKeyword;
-    if (text == "debugger") return TokenKind::kDebuggerKeyword;
-    if (text == "declare") return TokenKind::kDeclareKeyword;
-    if (text == "default") return TokenKind::kDefaultKeyword;
-    if (text == "delete") return TokenKind::kDeleteKeyword;
-    if (text == "do") return TokenKind::kDoKeyword;
-    if (text == "extends") return TokenKind::kExtendsKeyword;
-    if (text == "export") return TokenKind::kExportKeyword;
-    if (text == "false") return TokenKind::kFalseKeyword;
-    if (text == "finally") return TokenKind::kFinallyKeyword;
-    if (text == "from") return TokenKind::kFromKeyword;
-    if (text == "fun") return TokenKind::kFunKeyword;
-    if (text == "get") return TokenKind::kGetKeyword;
-    if (text == "global") return TokenKind::kGlobalKeyword;
-    if (text == "if") return TokenKind::kIfKeyword;
-    if (text == "immediate") return TokenKind::kImmediateKeyword;
-    if (text == "implements") return TokenKind::kImplementsKeyword;
-    if (text == "import") return TokenKind::kImportKeyword;
-    if (text == "in") return TokenKind::kInKeyword;
-    if (text == "infer") return TokenKind::kInferKeyword;
-    if (text == "instanceof") return TokenKind::kInstanceOfKeyword;
-    if (text == "interface") return TokenKind::kInterfaceKeyword;
-    if (text == "intrinsic") return TokenKind::kIntrinsicKeyword;
-    if (text == "is") return TokenKind::kIsKeyword;
-    if (text == "keyof") return TokenKind::kKeyOfKeyword;
-    if (text == "let") return TokenKind::kLetKeyword;
-    if (text == "match") return TokenKind::kMatchKeyword;
-    if (text == "module") return TokenKind::kModuleKeyword;
-    if (text == "mutable") return TokenKind::kMutableKeyword;
-    if (text == "namespace") return TokenKind::kNamespaceKeyword;
-    if (text == "never") return TokenKind::kNeverKeyword;
-    if (text == "new") return TokenKind::kNewKeyword;
-    if (text == "number") return TokenKind::kNumberKeyword;
-    if (text == "null") return TokenKind::kNullKeyword;
-    if (text == "object") return TokenKind::kObjectKeyword;
-    if (text == "of") return TokenKind::kOfKeyword;
-    if (text == "optional") return TokenKind::kOptionalKeyword;
-    if (text == "out") return TokenKind::kOutKeyword;
-    if (text == "override") return TokenKind::kOverrideKeyword;
-    if (text == "package") return TokenKind::kPackageKeyword;
-    if (text == "private") return TokenKind::kPrivateKeyword;
-    if (text == "protected") return TokenKind::kProtectedKeyword;
-    if (text == "public") return TokenKind::kPublicKeyword;
-    if (text == "readonly") return TokenKind::kReadonlyKeyword;
-    if (text == "require") return TokenKind::kRequireKeyword;
-    if (text == "return") return TokenKind::kReturnKeyword;
-    if (text == "satisfies") return TokenKind::kSatisfiesKeyword;
-    if (text == "set") return TokenKind::kSetKeyword;
-    if (text == "static") return TokenKind::kStaticKeyword;
-    if (text == "super") return TokenKind::kSuperKeyword;
-    if (text == "switch") return TokenKind::kSwitchKeyword;
-    if (text == "symbol") return TokenKind::kSymbolKeyword;
-    if (text == "this") return TokenKind::kThisKeyword;
-    if (text == "throw") return TokenKind::kThrowKeyword;
-    if (text == "true") return TokenKind::kTrueKeyword;
-    if (text == "try") return TokenKind::kTryKeyword;
-    if (text == "typeof") return TokenKind::kTypeOfKeyword;
-    if (text == "undefined") return TokenKind::kUndefinedKeyword;
-    if (text == "unique") return TokenKind::kUniqueKeyword;
-    if (text == "using") return TokenKind::kUsingKeyword;
-    if (text == "var") return TokenKind::kVarKeyword;
-    if (text == "void") return TokenKind::kVoidKeyword;
-    if (text == "when") return TokenKind::kWhenKeyword;
-    if (text == "with") return TokenKind::kWithKeyword;
-    if (text == "yield") return TokenKind::kYieldKeyword;
+    if (text == "abstract"_zcb) return TokenKind::kAbstractKeyword;
+    if (text == "accessor"_zcb) return TokenKind::kAccessorKeyword;
+    if (text == "any"_zcb) return TokenKind::kAnyKeyword;
+    if (text == "as"_zcb) return TokenKind::kAsKeyword;
+    if (text == "asserts"_zcb) return TokenKind::kAssertsKeyword;
+    if (text == "assert"_zcb) return TokenKind::kAssertKeyword;
+    if (text == "async"_zcb) return TokenKind::kAsyncKeyword;
+    if (text == "await"_zcb) return TokenKind::kAwaitKeyword;
+    if (text == "bigint"_zcb) return TokenKind::kBigIntKeyword;
+    if (text == "bool"_zcb) return TokenKind::kBoolKeyword;
+    if (text == "break"_zcb) return TokenKind::kBreakKeyword;
+    if (text == "case"_zcb) return TokenKind::kCaseKeyword;
+    if (text == "catch"_zcb) return TokenKind::kCatchKeyword;
+    if (text == "class"_zcb) return TokenKind::kClassKeyword;
+    if (text == "continue"_zcb) return TokenKind::kContinueKeyword;
+    if (text == "const"_zcb) return TokenKind::kConstKeyword;
+    if (text == "constructor"_zcb) return TokenKind::kConstructorKeyword;
+    if (text == "debugger"_zcb) return TokenKind::kDebuggerKeyword;
+    if (text == "declare"_zcb) return TokenKind::kDeclareKeyword;
+    if (text == "default"_zcb) return TokenKind::kDefaultKeyword;
+    if (text == "delete"_zcb) return TokenKind::kDeleteKeyword;
+    if (text == "do"_zcb) return TokenKind::kDoKeyword;
+    if (text == "extends"_zcb) return TokenKind::kExtendsKeyword;
+    if (text == "export"_zcb) return TokenKind::kExportKeyword;
+    if (text == "false"_zcb) return TokenKind::kFalseKeyword;
+    if (text == "finally"_zcb) return TokenKind::kFinallyKeyword;
+    if (text == "from"_zcb) return TokenKind::kFromKeyword;
+    if (text == "fun"_zcb) return TokenKind::kFunKeyword;
+    if (text == "get"_zcb) return TokenKind::kGetKeyword;
+    if (text == "global"_zcb) return TokenKind::kGlobalKeyword;
+    if (text == "if"_zcb) return TokenKind::kIfKeyword;
+    if (text == "immediate"_zcb) return TokenKind::kImmediateKeyword;
+    if (text == "implements"_zcb) return TokenKind::kImplementsKeyword;
+    if (text == "import"_zcb) return TokenKind::kImportKeyword;
+    if (text == "in"_zcb) return TokenKind::kInKeyword;
+    if (text == "infer"_zcb) return TokenKind::kInferKeyword;
+    if (text == "instanceof"_zcb) return TokenKind::kInstanceOfKeyword;
+    if (text == "interface"_zcb) return TokenKind::kInterfaceKeyword;
+    if (text == "intrinsic"_zcb) return TokenKind::kIntrinsicKeyword;
+    if (text == "is"_zcb) return TokenKind::kIsKeyword;
+    if (text == "keyof"_zcb) return TokenKind::kKeyOfKeyword;
+    if (text == "let"_zcb) return TokenKind::kLetKeyword;
+    if (text == "match"_zcb) return TokenKind::kMatchKeyword;
+    if (text == "module"_zcb) return TokenKind::kModuleKeyword;
+    if (text == "mutable"_zcb) return TokenKind::kMutableKeyword;
+    if (text == "namespace"_zcb) return TokenKind::kNamespaceKeyword;
+    if (text == "never"_zcb) return TokenKind::kNeverKeyword;
+    if (text == "new"_zcb) return TokenKind::kNewKeyword;
+    if (text == "null"_zcb) return TokenKind::kNullKeyword;
+    if (text == "object"_zcb) return TokenKind::kObjectKeyword;
+    if (text == "of"_zcb) return TokenKind::kOfKeyword;
+    if (text == "optional"_zcb) return TokenKind::kOptionalKeyword;
+    if (text == "out"_zcb) return TokenKind::kOutKeyword;
+    if (text == "override"_zcb) return TokenKind::kOverrideKeyword;
+    if (text == "package"_zcb) return TokenKind::kPackageKeyword;
+    if (text == "private"_zcb) return TokenKind::kPrivateKeyword;
+    if (text == "protected"_zcb) return TokenKind::kProtectedKeyword;
+    if (text == "public"_zcb) return TokenKind::kPublicKeyword;
+    if (text == "readonly"_zcb) return TokenKind::kReadonlyKeyword;
+    if (text == "require"_zcb) return TokenKind::kRequireKeyword;
+    if (text == "return"_zcb) return TokenKind::kReturnKeyword;
+    if (text == "satisfies"_zcb) return TokenKind::kSatisfiesKeyword;
+    if (text == "set"_zcb) return TokenKind::kSetKeyword;
+    if (text == "static"_zcb) return TokenKind::kStaticKeyword;
+    if (text == "super"_zcb) return TokenKind::kSuperKeyword;
+    if (text == "switch"_zcb) return TokenKind::kSwitchKeyword;
+    if (text == "symbol"_zcb) return TokenKind::kSymbolKeyword;
+    if (text == "this"_zcb) return TokenKind::kThisKeyword;
+    if (text == "throw"_zcb) return TokenKind::kThrowKeyword;
+    if (text == "true"_zcb) return TokenKind::kTrueKeyword;
+    if (text == "try"_zcb) return TokenKind::kTryKeyword;
+    if (text == "typeof"_zcb) return TokenKind::kTypeOfKeyword;
+    if (text == "undefined"_zcb) return TokenKind::kUndefinedKeyword;
+    if (text == "unique"_zcb) return TokenKind::kUniqueKeyword;
+    if (text == "using"_zcb) return TokenKind::kUsingKeyword;
+    if (text == "var"_zcb) return TokenKind::kVarKeyword;
+    if (text == "void"_zcb) return TokenKind::kVoidKeyword;
+    if (text == "when"_zcb) return TokenKind::kWhenKeyword;
+    if (text == "with"_zcb) return TokenKind::kWithKeyword;
+    if (text == "yield"_zcb) return TokenKind::kYieldKeyword;
 
-    return TokenKind::kUnknown;
+    // Type keywords
+    if (text == "bool"_zcb) return TokenKind::kBoolKeyword;
+    if (text == "i8"_zcb) return TokenKind::kI8Keyword;
+    if (text == "i32"_zcb) return TokenKind::kI32Keyword;
+    if (text == "i64"_zcb) return TokenKind::kI64Keyword;
+    if (text == "u8"_zcb) return TokenKind::kU8Keyword;
+    if (text == "u16"_zcb) return TokenKind::kU16Keyword;
+    if (text == "u32"_zcb) return TokenKind::kU32Keyword;
+    if (text == "u64"_zcb) return TokenKind::kU64Keyword;
+    if (text == "f32"_zcb) return TokenKind::kF32Keyword;
+    if (text == "f64"_zcb) return TokenKind::kF64Keyword;
+    if (text == "str"_zcb) return TokenKind::kStrKeyword;
+    if (text == "unit"_zcb) return TokenKind::kUnitKeyword;
+    if (text == "nil"_zcb) return TokenKind::kNilKeyword;
+    if (text == "else"_zcb) return TokenKind::kElseKeyword;
+    if (text == "for"_zcb) return TokenKind::kForKeyword;
+    if (text == "while"_zcb) return TokenKind::kWhileKeyword;
+    if (text == "struct"_zcb) return TokenKind::kStructKeyword;
+    if (text == "enum"_zcb) return TokenKind::kEnumKeyword;
+    if (text == "error"_zcb) return TokenKind::kErrorKeyword;
+    if (text == "alias"_zcb) return TokenKind::kAliasKeyword;
+    if (text == "init"_zcb) return TokenKind::kInitKeyword;
+    if (text == "deinit"_zcb) return TokenKind::kDeinitKeyword;
+    if (text == "raises"_zcb) return TokenKind::kRaisesKeyword;
+    if (text == "type"_zcb) return TokenKind::kTypeKeyword;
+
+    return TokenKind::kIdentifier;
   }
 
   void lexNumber() {
     // Go back one character, as the first character has already been read
     const zc::byte* tokStart = curPtr - 1;
     TokenKind kind = TokenKind::kIntegerLiteral;
+    bool hasValidDigits = false;
 
     // Check for binary, octal, or hex literals
     if (*tokStart == '0' && curPtr < bufferEnd) {
@@ -478,16 +596,20 @@ struct Lexer::Impl {
         // Binary literal
         curPtr++;  // Skip 'b' or 'B'
         while (curPtr < bufferEnd && (*curPtr == '0' || *curPtr == '1' || *curPtr == '_')) {
+          if (*curPtr != '_') hasValidDigits = true;
           curPtr++;
         }
+        if (!hasValidDigits) { reportInvalidNumberLiteral("binary"_zc, tokStart); }
         formToken(TokenKind::kIntegerLiteral, tokStart);
         return;
       } else if (nextChar == 'o' || nextChar == 'O') {
         // Octal literal
         curPtr++;  // Skip 'o' or 'O'
         while (curPtr < bufferEnd && ((*curPtr >= '0' && *curPtr <= '7') || *curPtr == '_')) {
+          if (*curPtr != '_') { hasValidDigits = true; }
           curPtr++;
         }
+        if (!hasValidDigits) { reportInvalidNumberLiteral("octal"_zc, tokStart); }
         formToken(TokenKind::kIntegerLiteral, tokStart);
         return;
       } else if (nextChar == 'x' || nextChar == 'X') {
@@ -495,15 +617,20 @@ struct Lexer::Impl {
         curPtr++;  // Skip 'x' or 'X'
         while (curPtr < bufferEnd && (isdigit(*curPtr) || (*curPtr >= 'a' && *curPtr <= 'f') ||
                                       (*curPtr >= 'A' && *curPtr <= 'F') || *curPtr == '_')) {
+          if (*curPtr != '_') { hasValidDigits = true; }
           curPtr++;
         }
+        if (!hasValidDigits) { reportInvalidNumberLiteral("hexadecimal"_zc, tokStart); }
         formToken(TokenKind::kIntegerLiteral, tokStart);
         return;
       }
     }
 
     // Read decimal integer part (allowing numeric separators)
-    while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) { curPtr++; }
+    while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) {
+      if (isdigit(*curPtr)) { hasValidDigits = true; }
+      curPtr++;
+    }
 
     // Check if it's a floating-point number
     if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd && isdigit(*(curPtr + 1))) {
@@ -518,7 +645,10 @@ struct Lexer::Impl {
       if (curPtr < bufferEnd && (*curPtr == '+' || *curPtr == '-')) {
         curPtr++;  // Skip sign
       }
+      const zc::byte* expStart = curPtr;
       while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) { curPtr++; }
+      // Check if exponent has digits
+      if (curPtr == expStart) { reportInvalidNumberLiteral("exponent"_zc, tokStart); }
       kind = TokenKind::kFloatLiteral;
     }
 
@@ -529,45 +659,79 @@ struct Lexer::Impl {
     const zc::byte* tokStart = curPtr - 1;
     // Remember which quote character we're using
     zc::byte quoteChar = *(tokStart);
+    bool foundClosingQuote = false;
 
     // Skip the starting quote, look for the ending quote
     while (curPtr < bufferEnd) {
       zc::byte c = *curPtr++;
       if (c == quoteChar) {
         // Found the ending quote
+        foundClosingQuote = true;
         break;
       } else if (c == '\\' && curPtr < bufferEnd) {
         // Handle escape character
-        curPtr++;  // Skip escape character
+        zc::byte escaped = *curPtr++;
+        // Validate common escape sequences
+        if (escaped != 'n' && escaped != 't' && escaped != 'r' && escaped != '\\' &&
+            escaped != '"' && escaped != '\'' && escaped != '0' && escaped != 'u' &&
+            escaped != 'x') {
+          reportInvalidEscapeSequence(escaped, curPtr - 2);
+        }
       } else if (c == '\n' || c == '\r') {
         // String cannot span multiple lines (unless escaped)
-        // An error can be reported here, but for now, handle it simply
+        reportUnterminatedString(tokStart);
+        // Recover by treating as unterminated string
+        curPtr--;  // Back up to the newline
         break;
       }
     }
+
+    // Check if we reached end of file without closing quote
+    if (!foundClosingQuote && curPtr >= bufferEnd) { reportUnterminatedString(tokStart); }
 
     formToken(TokenKind::kStringLiteral, tokStart);
   }
 
   void lexSingleQuoteString() {
     const zc::byte* tokStart = curPtr - 1;
+    bool foundClosingQuote = false;
+    size_t charCount = 0;
 
     // Skip the starting quote, look for the ending quote
     while (curPtr < bufferEnd) {
       zc::byte c = *curPtr++;
       if (c == '\'') {
         // Found the ending quote
+        foundClosingQuote = true;
         break;
       } else if (c == '\\' && curPtr < bufferEnd) {
         // Handle escape character
-        curPtr++;  // Skip escape character
+        zc::byte escaped = *curPtr++;
+        // Validate common escape sequences
+        if (escaped != 'n' && escaped != 't' && escaped != 'r' && escaped != '\\' &&
+            escaped != '"' && escaped != '\'' && escaped != '0' && escaped != 'u' &&
+            escaped != 'x') {
+          reportInvalidEscapeSequence(escaped, curPtr - 2);
+        }
+        charCount++;
       } else if (c == '\n' || c == '\r') {
-        // String cannot span multiple lines (unless escaped)
+        // Character literal cannot span multiple lines (unless escaped)
+        reportUnterminatedString(tokStart);
+        // Recover by treating as unterminated character literal
+        curPtr--;  // Back up to the newline
         break;
+      } else {
+        charCount++;
       }
     }
 
-    formToken(TokenKind::kStringLiteral, tokStart);
+    // Check if we reached end of file without closing quote
+    if (!foundClosingQuote && curPtr >= bufferEnd) { reportUnterminatedString(tokStart); }
+
+    // Character literals should contain exactly one character
+    if (foundClosingQuote && charCount != 1) { reportInvalidCharacterLiteral(tokStart); }
+
+    formToken(TokenKind::kCharacterLiteral, tokStart);
   }
   void lexEscapedIdentifier() { /*...*/ }
   void lexOperator() { /*...*/ }
@@ -606,6 +770,11 @@ struct Lexer::Impl {
       curPtr++;
     }
 
+    // Check if we reached end of file without closing comment
+    if (curPtr + 1 >= bufferEnd && !(*curPtr == '*' && *(curPtr + 1) == '/')) {
+      reportUnterminatedComment(tokStart);
+    }
+
     if (commentMode == CommentRetentionMode::kReturnAsTokens) {
       formToken(TokenKind::kComment, tokStart);
     }
@@ -618,8 +787,57 @@ struct Lexer::Impl {
   /// Multibyte character handling
   bool tryLexMultibyteCharacter() { /*...*/ return false; }
 
-  /// Error recovery
-  void recoverFromLexingError() { /*...*/ }
+  /// Error recovery and diagnostics
+  void reportInvalidCharacter(zc::byte invalidChar, const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, zc::str(invalidChar));
+  }
+
+  void reportUnterminatedString(const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    diagnosticEngine.diagnose<diagnostics::DiagID::UnterminatedString>(loc);
+  }
+
+  void reportUnterminatedComment(const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    // Use InvalidChar diagnostic for unterminated comments since there's no specific one
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, "/*"_zc);
+  }
+
+  void reportInvalidCharacterLiteral(const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, "character literal"_zc);
+  }
+
+  void reportInvalidNumberLiteral(zc::StringPtr numberType, const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    // For now, just report as invalid character with the number type
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, numberType);
+  }
+
+  void reportInvalidEscapeSequence(zc::byte escaped, const zc::byte* tokStart) {
+    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, zc::str(escaped));
+  }
+
+  void recoverFromInvalidCharacter() {
+    // Skip the invalid character and continue lexing
+    if (curPtr < bufferEnd) { curPtr++; }
+    // Form an unknown token to maintain token stream continuity
+    formToken(TokenKind::kUnknown, curPtr - 1);
+  }
+
+  void recoverFromLexingError() {
+    // General error recovery: skip to next whitespace or known delimiter
+    while (curPtr < bufferEnd) {
+      zc::byte c = *curPtr;
+      if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ';' || c == ',' || c == '{' ||
+          c == '}' || c == '(' || c == ')' || c == '[' || c == ']') {
+        break;
+      }
+      curPtr++;
+    }
+  }
 
   /// Buffer management
   void refillBuffer() { /*...*/ }
@@ -629,11 +847,139 @@ struct Lexer::Impl {
   bool isAtEndOfFile() const { return curPtr >= bufferEnd; }
 
   /// Helper functions
-  bool isIdentifierStart(zc::byte c) const { return isalpha(c) || c == '_'; }
-  bool isIdentifierContinuation(zc::byte c) const { return isalnum(c) || c == '_'; }
+  bool isIdentifierStart(zc::byte c) const {
+    // ASCII letters, underscore, and dollar sign
+    return isalpha(c) || c == '_' || c == '$';
+  }
+
+  bool isIdentifierContinuation(zc::byte c) const {
+    // ASCII letters, digits, underscore, and dollar sign
+    return isalnum(c) || c == '_' || c == '$';
+  }
+
+  /// Unicode identifier support
+  bool isUnicodeIdentifierStart(uint32_t codePoint) const {
+    // Check for Unicode ID_Start property
+    // This is a simplified implementation - in a full implementation,
+    // you would use Unicode character database
+    if (codePoint < 0x80) {
+      // ASCII range
+      return isalpha(static_cast<char>(codePoint)) || codePoint == '_' || codePoint == '$';
+    }
+    // For non-ASCII, we need proper Unicode support
+    // TODO: Implement full Unicode ID_Start property check
+    return false;
+  }
+
+  bool isUnicodeIdentifierContinuation(uint32_t codePoint) const {
+    // Check for Unicode ID_Continue property
+    if (codePoint < 0x80) {
+      // ASCII range
+      return isalnum(static_cast<char>(codePoint)) || codePoint == '_' || codePoint == '$';
+    }
+    // Special Unicode characters
+    if (codePoint == 0x200C || codePoint == 0x200D) {
+      // ZWNJ (Zero Width Non-Joiner) and ZWJ (Zero Width Joiner)
+      return true;
+    }
+    // For non-ASCII, we need proper Unicode support
+    // TODO: Implement full Unicode ID_Continue property check
+    return false;
+  }
   bool isOperatorStart(zc::byte c) const {
     return c == '+' || c == '-' || c == '*' || c == '/' || c == '=' || c == '<' || c == '>' ||
            c == '!' || c == '&' || c == '|';
+  }
+
+  /// Lookahead functionality
+  void initializeTokenCache() const {
+    if (cacheInitialized) return;
+
+    // Save current lexer state
+    const zc::byte* savedCurPtr = curPtr;
+    Token savedNextToken = nextToken;
+    LexerMode savedMode = currentMode;
+
+    // Create a temporary lexer state for lookahead
+    const_cast<Impl*>(this)->curPtr = savedCurPtr;
+    const_cast<Impl*>(this)->currentMode = savedMode;
+
+    // Pre-lex some tokens for lookahead
+    const unsigned kInitialCacheSize = 16;
+    tokenCache.resize(kInitialCacheSize);
+
+    for (unsigned i = 0; i < kInitialCacheSize && !isAtEndOfFile(); ++i) {
+      const_cast<Impl*>(this)->lexImpl();
+      tokenCache[i] = nextToken;
+      if (nextToken.getKind() == TokenKind::kEOF) {
+        tokenCache.resize(i + 1);
+        break;
+      }
+    }
+
+    // Restore original lexer state
+    const_cast<Impl*>(this)->curPtr = savedCurPtr;
+    const_cast<Impl*>(this)->nextToken = savedNextToken;
+    const_cast<Impl*>(this)->currentMode = savedMode;
+
+    cacheInitialized = true;
+  }
+
+  const Token& lookAheadToken(unsigned n) const {
+    if (n == 0) return nextToken;
+
+    initializeTokenCache();
+
+    // Extend cache if needed
+    if (n > tokenCache.size()) {
+      // Save current state
+      const zc::byte* savedCurPtr = curPtr;
+      Token savedNextToken = nextToken;
+      LexerMode savedMode = currentMode;
+
+      // Position lexer at the end of cached tokens
+      if (!tokenCache.empty()) {
+        const Token& lastCachedToken = tokenCache.back();
+        if (lastCachedToken.getKind() == TokenKind::kEOF) { return lastCachedToken; }
+        // Move to position after last cached token
+        const_cast<Impl*>(this)->curPtr =
+            getBufferPtrForSourceLoc(lastCachedToken.getRange().getEnd());
+      }
+
+      // Extend cache
+      unsigned oldSize = tokenCache.size();
+      tokenCache.resize(n + 8);  // Add some extra tokens
+
+      for (unsigned i = oldSize; i < tokenCache.size() && !isAtEndOfFile(); ++i) {
+        const_cast<Impl*>(this)->lexImpl();
+        tokenCache[i] = nextToken;
+        if (nextToken.getKind() == TokenKind::kEOF) {
+          tokenCache.resize(i + 1);
+          break;
+        }
+      }
+
+      // Restore state
+      const_cast<Impl*>(this)->curPtr = savedCurPtr;
+      const_cast<Impl*>(this)->nextToken = savedNextToken;
+      const_cast<Impl*>(this)->currentMode = savedMode;
+    }
+
+    if (n <= tokenCache.size()) { return tokenCache[n - 1]; }
+
+    // Return EOF if beyond available tokens
+    static Token eofToken(TokenKind::kEOF, source::SourceRange());
+    return eofToken;
+  }
+
+  bool canLookAheadToken(unsigned n) const {
+    if (n == 0) return true;
+
+    initializeTokenCache();
+
+    if (n <= tokenCache.size()) { return tokenCache[n - 1].getKind() != TokenKind::kEOF; }
+
+    return false;
   }
 };
 
@@ -653,16 +999,14 @@ const zc::byte* Lexer::getBufferPtrForSourceLoc(source::SourceLoc Loc) const {
 
 void Lexer::lex(Token& result) {
   result = impl->nextToken;
-
-  if (impl->isAtEndOfFile()) {
-    result.setKind(TokenKind::kEOF);
-    return;
-  }
-
   impl->lexImpl();
 }
 
 const Token& Lexer::peekNextToken() const { return impl->nextToken; }
+
+const Token& Lexer::lookAhead(unsigned n) const { return impl->lookAheadToken(n); }
+
+bool Lexer::canLookAhead(unsigned n) const { return impl->canLookAheadToken(n); }
 
 LexerState Lexer::getStateForBeginningOfToken(const Token& tok) const {
   return LexerState(tok.getLocation(), impl->currentMode);
@@ -711,6 +1055,8 @@ source::CharSourceRange Lexer::getCharSourceRangeFromSourceRange(
     const source::SourceRange& sr) const {
   return source::CharSourceRange(sr.getStart(), sr.getEnd());
 }
+
+source::SourceLoc Lexer::getFullStartLoc() const { return source::SourceLoc(impl->triviaStartPtr); }
 
 }  // namespace lexer
 }  // namespace compiler

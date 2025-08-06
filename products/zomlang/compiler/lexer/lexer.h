@@ -74,6 +74,17 @@ public:
   /// Preview the next token
   const Token& peekNextToken() const;
 
+  /// Lookahead functionality
+  /// \brief Look ahead n tokens without consuming them
+  /// \param n The number of tokens to look ahead (1-based, 1 means next token)
+  /// \return The token at position n, or EOF token if beyond end
+  const Token& lookAhead(unsigned n) const;
+
+  /// \brief Check if we can look ahead n tokens
+  /// \param n The number of tokens to look ahead
+  /// \return true if we can look ahead n tokens, false otherwise
+  bool canLookAhead(unsigned n) const;
+
   /// State management
   LexerState getStateForBeginningOfToken(const Token& tok) const;
   void restoreState(LexerState s, bool enableDiagnostics = false);
@@ -100,6 +111,9 @@ public:
   /// Source location and range
   source::SourceLoc getLocForStartOfToken(source::SourceLoc loc) const;
   source::CharSourceRange getCharSourceRangeFromSourceRange(const source::SourceRange& sr) const;
+
+  /// @brief Start position of whitespace before current token
+  ZC_NODISCARD source::SourceLoc getFullStartLoc() const;
 
 private:
   struct Impl;
