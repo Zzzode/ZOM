@@ -1,0 +1,50 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+fun foo(n: i32, s: str) -> str {}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*function.zom}}",
+// CHECK-NEXT:   "children": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "FunctionDeclaration",
+// CHECK-NEXT:       "name": "foo",
+// CHECK-NEXT:       "parameters": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "BindingElement",
+// CHECK-NEXT:           "name": "n",
+// CHECK-NEXT:           "varType": 
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "PredefinedType",
+// CHECK-NEXT:             "name": "i32"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "BindingElement",
+// CHECK-NEXT:           "name": "s",
+// CHECK-NEXT:           "varType": 
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "PredefinedType",
+// CHECK-NEXT:             "name": "str"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "returnType":       {
+// CHECK-NEXT:         "node": "ReturnType",
+// CHECK-NEXT:         "returnType": 
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PredefinedType",
+// CHECK-NEXT:           "name": "str"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "body": 
+// CHECK-NEXT:       {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "statements": [
+// CHECK-NEXT: 
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

@@ -1,0 +1,2 @@
+let a: i32 = 1, b: str = "hello", c: bool = true;
+let x, y: i64, z = 42;

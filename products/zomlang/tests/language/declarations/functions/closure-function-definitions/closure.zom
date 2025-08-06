@@ -1,0 +1,69 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+// Test closure function definition with typed parameters
+let closure = fun (n: i32, s: str) -> str {
+  "1234";
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*closure.zom}}",
+// CHECK-NEXT:   "children": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableDeclaration",
+// CHECK-NEXT:       "bindings": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "BindingElement",
+// CHECK-NEXT:           "name": "closure",
+// CHECK-NEXT:           "initializer": 
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "FunctionExpression",
+// CHECK-NEXT:             "parameters": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "BindingElement",
+// CHECK-NEXT:                 "name": "n",
+// CHECK-NEXT:                 "varType": 
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "PredefinedType",
+// CHECK-NEXT:                   "name": "i32"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "BindingElement",
+// CHECK-NEXT:                 "name": "s",
+// CHECK-NEXT:                 "varType": 
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "PredefinedType",
+// CHECK-NEXT:                   "name": "str"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ],
+// CHECK-NEXT:             "returnType":             {
+// CHECK-NEXT:               "node": "ReturnType",
+// CHECK-NEXT:               "returnType": 
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "PredefinedType",
+// CHECK-NEXT:                 "name": "str"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "body": 
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "BlockStatement",
+// CHECK-NEXT:               "statements": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ExpressionStatement",
+// CHECK-NEXT:                   "expression": 
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "StringLiteral",
+// CHECK-NEXT:                     "value": "\"1234\""
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }
