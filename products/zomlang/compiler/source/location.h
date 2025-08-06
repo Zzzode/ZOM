@@ -148,7 +148,7 @@ private:
 
   static SourceLoc computeEnd(const SourceLoc start, const unsigned length) {
     ZC_IREQUIRE(!start.isInvalid(), "Invalid start location.");
-    ZC_IREQUIRE(length > 0, "Length must be greater than zero.");
+    ZC_IREQUIRE(length >= 0, "Length must be greater than or equal to zero.");
 
     const zc::byte* startvalue = start.getOpaqueValue();
     const zc::byte* endvalue = startvalue + length;

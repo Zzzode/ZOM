@@ -114,6 +114,9 @@ public:
   zc::ArrayPtr<const zc::byte> extractText(const SourceRange& range,
                                            zc::Maybe<BufferId> bufferId) const;
 
+  /// Fast path for extracting text when buffer is known
+  zc::ArrayPtr<const zc::byte> extractTextFast(const SourceRange& range, BufferId bufferId) const;
+
   /// Buffer identification
   zc::Maybe<BufferId> findBufferContainingLoc(const SourceLoc& loc) const;
   zc::StringPtr getFileName(BufferId bufferId) const;

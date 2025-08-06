@@ -210,8 +210,7 @@ LineAndColumn SourceManager::getPresumedLineAndColumnForLoc(SourceLoc loc,
 BufferId SourceManager::addNewSourceBuffer(zc::Array<zc::byte> inputData,
                                            const zc::StringPtr bufIdentifier) {
   const BufferId bufferId(impl->buffers.size() + 1);
-  zc::Own<Buffer> buffer =
-      zc::heap<Buffer>(bufferId, zc::heapString(bufIdentifier), zc::mv(inputData));
+  zc::Own<Buffer> buffer = zc::heap<Buffer>(bufferId, zc::str(bufIdentifier), zc::mv(inputData));
   impl->buffers.add(zc::mv(buffer));
   impl->idToBuffer.insert(bufferId, *impl->buffers.back());
   return bufferId;
@@ -221,7 +220,7 @@ BufferId SourceManager::addMemBufferCopy(const zc::ArrayPtr<const zc::byte> inpu
                                          const zc::StringPtr bufIdentifier) {
   const BufferId bufferId(impl->buffers.size() + 1);
   zc::Own<Buffer> buffer =
-      zc::heap<Buffer>(bufferId, zc::heapString(bufIdentifier), zc::heapArray(inputData));
+      zc::heap<Buffer>(bufferId, zc::str(bufIdentifier), zc::heapArray(inputData));
   impl->buffers.add(zc::mv(buffer));
   impl->idToBuffer.insert(bufferId, *impl->buffers.back());
   return bufferId;
@@ -312,8 +311,21 @@ zc::Maybe<BufferId> SourceManager::findBufferContainingLoc(const SourceLoc& loc)
       std::upper_bound(impl->locCache.sortedBuffers.begin(), impl->locCache.sortedBuffers.end(),
                        loc, BufferIDRangeComparator{*this});
 
+  // upper_bound returns the first element that is greater than loc.
+  // We need to check the previous element (if it exists) to see if it contains loc.
   if (it != impl->locCache.sortedBuffers.begin()) {
     const BufferId candidateId = *(it - 1);
+    ZC_IF_SOME(candidate, impl->idToBuffer.find(candidateId)) {
+      if (ptr >= candidate.data.begin() && ptr < candidate.data.end()) {
+        impl->locCache.lastBufferId = candidateId;
+        return candidateId;
+      }
+    }
+  }
+  // If upper_bound returned begin(), it means all buffers are greater than loc,
+  // but we should still check if the first buffer contains loc.
+  else if (!impl->locCache.sortedBuffers.empty()) {
+    const BufferId candidateId = *impl->locCache.sortedBuffers.begin();
     ZC_IF_SOME(candidate, impl->idToBuffer.find(candidateId)) {
       if (ptr >= candidate.data.begin() && ptr < candidate.data.end()) {
         impl->locCache.lastBufferId = candidateId;
@@ -436,6 +448,33 @@ zc::ArrayPtr<const zc::byte> SourceManager::extractText(const SourceRange& range
       return zc::ArrayPtr<const zc::byte>(rangeStart, length);
     }
   }
+  return zc::ArrayPtr<const zc::byte>();
+}
+
+zc::ArrayPtr<const zc::byte> SourceManager::extractTextFast(const SourceRange& range,
+                                                            BufferId bufferId) const {
+  if (range.isInvalid()) { return zc::ArrayPtr<const zc::byte>(); }
+
+  const SourceLoc start = range.getStart();
+  const SourceLoc end = range.getEnd();
+
+  // Fast path: directly use the provided buffer ID without lookup
+  ZC_IF_SOME(buffer, impl->idToBuffer.find(bufferId)) {
+    const zc::byte* bufferStart = buffer.getBufferStart();
+    const zc::byte* bufferEnd = buffer.getBufferEnd();
+    const zc::byte* rangeStart = start.getOpaqueValue();
+    const zc::byte* rangeEnd = end.getOpaqueValue();
+
+    // Validate that the range is within the buffer
+    if (rangeStart < bufferStart || rangeEnd > bufferEnd || rangeStart > rangeEnd) {
+      return zc::ArrayPtr<const zc::byte>();
+    }
+
+    // Return the text slice
+    const size_t length = rangeEnd - rangeStart;
+    return zc::ArrayPtr<const zc::byte>(rangeStart, length);
+  }
+
   return zc::ArrayPtr<const zc::byte>();
 }
 

@@ -98,7 +98,7 @@ bool CompilerDriver::parseSources() {
   // Get BufferIds directly from SourceManager
   zc::Vector<source::BufferId> bufferIds = impl->sourceManager->getManagedBufferIds();
 
-  basic::ThreadPool threadPool(16);
+  basic::ThreadPool threadPool;
 
   for (const source::BufferId& bufferId : bufferIds) {  // Iterate over the retrieved vector
     // Create a thread for each buffer ID
@@ -124,6 +124,10 @@ bool CompilerDriver::parseSources() {
 
 const basic::CompilerOptions& CompilerDriver::getCompilerOptions() const {
   return impl->compilerOpts;
+}
+
+const source::SourceManager& CompilerDriver::getSourceManager() const {
+  return *impl->sourceManager;
 }
 
 }  // namespace driver
