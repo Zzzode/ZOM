@@ -37,9 +37,9 @@ struct CompilerOptions {
     /// Whether to dump AST to stdout (deprecated, use outputType == Type::AST instead)
     bool dumpASTEnabled = false;
     /// Format for AST dumping
-    ast::DumpFormat dumpFormat = ast::DumpFormat::kText;
+    ast::DumpFormat dumpFormat = ast::DumpFormat::kJSON;
     /// Output file path
-    zc::String outputPath;
+    zc::Maybe<zc::String> outputPath;
     /// Emission type
     Type outputType = Type::Binary;
     /// Syntax only compilation

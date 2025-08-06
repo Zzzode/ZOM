@@ -12,12 +12,18 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/core/iostream.h"
+#include <unistd.h>
+
+#include "zc/core/common.h"
+#include "zc/core/filesystem.h"
+#include "zc/core/io.h"
 #include "zc/core/main.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/dumper.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
+#include "zomlang/compiler/basic/io-utils.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/driver/driver.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -116,7 +122,7 @@ public:
 
   zc::MainBuilder::Validity setOutputFormat(zc::StringPtr format) {
     if (format == "text") {
-      compilerOpts.emission.dumpFormat = ast::DumpFormat::kText;
+      compilerOpts.emission.dumpFormat = ast::DumpFormat::kTEXT;
     } else if (format == "json") {
       compilerOpts.emission.dumpFormat = ast::DumpFormat::kJSON;
     } else if (format == "xml") {
@@ -203,24 +209,132 @@ public:
     const auto& asts = driver->getASTs();
     const auto& options = driver->getCompilerOptions();
 
-    zc::std::StdOutputStream stdOut(::std::cout);
-    ast::ASTDumper dumper(stdOut, options.emission.dumpFormat);
+    zc::Maybe<zc::Own<zc::OutputStream>> outputStream =
+        createOutputStream(options.emission.outputPath, options.emission.dumpFormat);
+    ZC_IF_SOME(stream, outputStream) {
+      return dumpASTsToStream(*stream, asts, options.emission.dumpFormat);
+    }
+
+    return "Failed to create output stream.";
+  }
+
+private:
+  /// Creates an appropriate output stream based on the given path and format
+  zc::Maybe<zc::Own<zc::OutputStream>> createOutputStream(
+      const zc::Maybe<zc::StringPtr>& outputPath, ast::DumpFormat format) {
+    ZC_IF_SOME(path, outputPath) { return createFileOutputStream(path, format); }
+    // Use stdout file descriptor to ensure shell redirection works properly
+    return zc::heap<zc::FdOutputStream>(STDOUT_FILENO);
+  }
+
+  /// Creates a file output stream, handling directory paths appropriately
+  zc::Maybe<zc::Own<zc::OutputStream>> createFileOutputStream(zc::StringPtr outputPath,
+                                                              ast::DumpFormat format) {
+    auto filesystem = zc::newDiskFilesystem();
+    bool isAbsolute = outputPath.size() > 0 && outputPath[0] == '/';
+
+    const zc::Directory& baseDir = isAbsolute ? filesystem->getRoot() : filesystem->getCurrent();
+    zc::StringPtr pathText = isAbsolute ? outputPath.slice(1) : outputPath;
+
+    zc::Path path = resolveOutputPath(pathText, format, baseDir);
+
+    auto file = baseDir.openFile(
+        path, zc::WriteMode::CREATE | zc::WriteMode::MODIFY | zc::WriteMode::CREATE_PARENT);
+
+    return zc::heap<basic::FileOutputStream>(zc::mv(file));
+  }
+
+  /// Resolves the final output path, generating filename if path is a directory
+  zc::Path resolveOutputPath(zc::StringPtr outputPath, ast::DumpFormat format,
+                             const zc::Directory& currentDir) {
+    zc::Path path = zc::Path::parse(outputPath);
+
+    if (currentDir.exists(path)) {
+      auto stat = currentDir.lstat(path);
+      if (stat.type == zc::FsNode::Type::DIRECTORY) {
+        zc::String filename = generateDefaultFilename(format);
+        path = path.append(zc::mv(filename));
+      }
+    }
+
+    return path;
+  }
+
+  /// Generates a default filename based on the first source file and format
+  zc::String generateDefaultFilename(ast::DumpFormat format) {
+    static constexpr char kDefaultBaseName[] = "ast_dump";
+
+    auto maybeBaseName = extractSourceBaseName();
+    zc::String baseName;
+    ZC_IF_SOME(name, maybeBaseName) { baseName = zc::mv(name); }
+    else { baseName = zc::str(kDefaultBaseName); }
+    zc::StringPtr extension = getFileExtensionForFormat(format);
+
+    return zc::str(baseName, extension);
+  }
+
+  /// Extracts base name from the first source file
+  zc::Maybe<zc::String> extractSourceBaseName() {
+    const auto& asts = driver->getASTs();
+    if (asts.size() == 0) return zc::none;
+
+    const auto& firstEntry = *asts.begin();
+    const source::BufferId& firstBufferId = firstEntry.key;
+
+    const auto& sourceManager = driver->getSourceManager();
+    zc::StringPtr filePath = sourceManager.getIdentifierForBuffer(firstBufferId);
+
+    zc::Path sourcePath = zc::Path::parse(filePath);
+    auto basenamePath = sourcePath.basename();
+
+    if (basenamePath.size() == 0) return zc::none;
+
+    zc::StringPtr filename = basenamePath[0];
+    return filename.endsWith(".zom") ? zc::str(filename.slice(0, filename.size() - 4))
+                                     : zc::str(filename);
+  }
+
+  /// Returns the appropriate file extension for the given dump format
+  static constexpr zc::StringPtr getFileExtensionForFormat(ast::DumpFormat format) {
+    switch (format) {
+      case ast::DumpFormat::kJSON:
+        return ".json";
+      case ast::DumpFormat::kXML:
+        return ".xml";
+      default:
+        return ".ast";
+    }
+  }
+
+  /// Dumps all ASTs to the given output stream
+  zc::MainBuilder::Validity dumpASTsToStream(zc::OutputStream& outputStream, const auto& asts,
+                                             ast::DumpFormat format) {
+    ast::ASTDumper dumper(outputStream, format);
 
     for (const auto& entry : asts) {
       const source::BufferId& bufferId = entry.key;
       const ast::Node& astNode = *entry.value;
 
-      // Print file header for text format
-      if (options.emission.dumpFormat == ast::DumpFormat::kText) {
-        stdOut.write(zc::str("\n=== AST for BufferId: ", static_cast<uint64_t>(bufferId), " ===\n")
-                         .asBytes());
-      }
-
+      writeBufferHeader(outputStream, bufferId, format);
       dumper.dump(astNode);
-
-      if (options.emission.dumpFormat == ast::DumpFormat::kText) { stdOut.write("\n"_zcb); }
+      writeBufferFooter(outputStream, format);
     }
+
     return true;
+  }
+
+  /// Writes buffer header for text format
+  static void writeBufferHeader(zc::OutputStream& outputStream, const source::BufferId& bufferId,
+                                ast::DumpFormat format) {
+    if (format == ast::DumpFormat::kTEXT) {
+      outputStream.write(
+          zc::str("\n=== AST for BufferId: ", static_cast<uint64_t>(bufferId), " ===\n").asBytes());
+    }
+  }
+
+  /// Writes buffer footer for text format
+  static void writeBufferFooter(zc::OutputStream& outputStream, ast::DumpFormat format) {
+    if (format == ast::DumpFormat::kTEXT) { outputStream.write("\n"_zcb); }
   }
 
   zc::MainBuilder::Validity emitIR() {

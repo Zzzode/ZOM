@@ -14,12 +14,9 @@
 
 #pragma once
 
-#include "zc/core/arena.h"
+#include <thread>  // For std::thread::hardware_concurrency()
+
 #include "zc/core/function.h"
-#include "zc/core/list.h"
-#include "zc/core/memory.h"
-#include "zc/core/mutex.h"
-#include "zc/core/thread.h"
 
 ZC_BEGIN_HEADER
 
@@ -29,8 +26,8 @@ namespace basic {
 
 class ThreadPool {
 public:
-  explicit ThreadPool(size_t numThreads);
-  ~ThreadPool();
+  explicit ThreadPool(size_t numThreads = std::thread::hardware_concurrency());
+  ~ThreadPool() noexcept(false);
 
   /// Disallow copy and move operations
   ZC_DISALLOW_COPY_AND_MOVE(ThreadPool);
@@ -39,28 +36,8 @@ public:
   void enqueue(zc::Function<void()> task);
 
 private:
-  /// Memory pool for storing tasks
-  zc::Arena arena;
-
-  /// Task structure, containing the task function and ListLink
-  struct Task {
-    zc::Function<void()> func;
-    zc::ListLink<Task> link;
-
-    explicit Task(zc::Function<void()> f) : func(zc::mv(f)) {}
-  };
-
-  /// Function executed by worker threads
-  void workerLoop();
-
-  /// Worker threads
-  zc::Vector<zc::Own<zc::Thread>> workers;
-
-  /// Mutex guarding the task queue and stop flag
-  zc::MutexGuarded<zc::List<Task, &Task::link>> tasks;
-
-  /// Stop flag
-  bool stop = false;
+  struct Impl;
+  zc::Own<Impl> impl;
 };
 
 }  // namespace basic

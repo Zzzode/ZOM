@@ -41,7 +41,7 @@ zc::Maybe<zc::Own<ast::Node>> performParse(const source::SourceManager& sm,
   }
 
   // Return the parsed AST (or none if parser returned none)
-  return zc::mv(ast);
+  return ast;  // NRVO optimization
 }
 
 }  // namespace basic
