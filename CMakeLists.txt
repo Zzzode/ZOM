@@ -19,6 +19,7 @@ include(${ZOM_CMAKE_DIR}/utils/common.cmake)
 include(${ZOM_CMAKE_DIR}/utils/checks.cmake)
 include(${ZOM_CMAKE_DIR}/utils/functions.cmake)
 include(${ZOM_CMAKE_DIR}/utils/unittests.cmake)
+
 if(ZOM_ENABLE_COVERAGE)
   include(${ZOM_CMAKE_DIR}/utils/coverage.cmake)
 endif()

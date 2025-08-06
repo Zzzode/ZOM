@@ -6,6 +6,7 @@ add_subdirectory(parser)
 add_subdirectory(source)
 add_subdirectory(checker)
 add_subdirectory(ast)
+add_subdirectory(trace)
 
 add_library(
   frontend STATIC
@@ -16,7 +17,8 @@ add_library(
   $<TARGET_OBJECTS:driver>
   $<TARGET_OBJECTS:lexer>
   $<TARGET_OBJECTS:parser>
-  $<TARGET_OBJECTS:source>)
+  $<TARGET_OBJECTS:source>
+  $<TARGET_OBJECTS:trace>)
 target_link_libraries(frontend PUBLIC zc)
 
 set_target_include_directories(
@@ -28,4 +30,5 @@ set_target_include_directories(
   driver
   lexer
   parser
-  source)
+  source
+  trace)
