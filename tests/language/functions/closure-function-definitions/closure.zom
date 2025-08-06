@@ -1,3 +1,0 @@
-let closure = fun (n: i32, s: str) -> str {
-  '1234';
-}
