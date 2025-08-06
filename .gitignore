@@ -60,3 +60,21 @@ compile_commands.json
 
 # Antlr
 .antlr
+
+# Trae
+.trae
+.vercel
+
+# CTest
+Testing
+
+# Lit
+Output
+
+# QWEN
+.qwen
+QWEN.md
+
+# Claude Code
+CLAUDE.md
+.claude
