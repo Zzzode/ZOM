@@ -16,6 +16,7 @@
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/statement.h"
 
@@ -30,6 +31,9 @@ public:
   explicit SourceFile(zc::String&& fileName,
                       zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept;
   ~SourceFile() noexcept(false) override;
+
+  const NodeList<Statement>& getStatements() const;
+  zc::StringPtr getFileName() const;
 
   ZC_DISALLOW_COPY_AND_MOVE(SourceFile);
 

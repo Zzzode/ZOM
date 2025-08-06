@@ -44,6 +44,10 @@ SourceFile::SourceFile(zc::String&& fileName,
 
 SourceFile::~SourceFile() noexcept(false) = default;
 
+const NodeList<Statement>& SourceFile::getStatements() const { return impl->statements; }
+
+zc::StringPtr SourceFile::getFileName() const { return impl->fileName; }
+
 // ================================================================================
 // ImportDeclaration::Impl
 struct ImportDeclaration::Impl {
