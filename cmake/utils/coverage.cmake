@@ -61,8 +61,16 @@ function(create_coverage_target)
       endforeach()
     endif()
 
-    # *-test.cc and *.def files
-    set(COVERAGE_EXCLUDES ".*-test\.cc;.*\.def")
+    # Build exclude patterns
+    set(COVERAGE_EXCLUDE_PATTERNS ".*-test\.cc")
+    if(COVERAGE_EXCLUDES)
+      list(APPEND COVERAGE_EXCLUDE_PATTERNS ${COVERAGE_EXCLUDES})
+    endif()
+     
+    # Join exclude patterns with | for regex OR
+    string(REPLACE ";" "|" COVERAGE_EXCLUDES "${COVERAGE_EXCLUDE_PATTERNS}")
+    # Escape the pattern for shell
+    set(COVERAGE_EXCLUDES "'${COVERAGE_EXCLUDES}'")
 
     # llvm-cov export [options] -instr-profile PROFILE [BIN] [-object BIN]… [-sources] [SOURCE]…
     set(SOURCES "-sources ${CMAKE_SOURCE_DIR}")
@@ -92,6 +100,20 @@ function(create_coverage_target)
     add_dependencies(${COVERAGE_NAME}_generate_text_report
                      ${COVERAGE_NAME}_merge_profdata)
 
+    # Generate lcov format for codecov compatibility
+    add_custom_target(
+      ${COVERAGE_NAME}_generate_lcov_report
+      COMMAND
+        ${XCRUN} llvm-cov export -format=lcov
+        ${COVERAGE_TARGET_FILES}
+        -instr-profile=${COVERAGE_DIR}/coverage.profdata
+        -ignore-filename-regex=${COVERAGE_EXCLUDES}
+        > ${COVERAGE_DIR}/coverage.lcov
+      WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+      COMMENT "Generating lcov coverage report for ${COVERAGE_NAME}")
+    add_dependencies(${COVERAGE_NAME}_generate_lcov_report
+                     ${COVERAGE_NAME}_merge_profdata)
+
     add_custom_target(
       ${COVERAGE_NAME}
       DEPENDS ${COVERAGE_NAME}_create_dir
@@ -99,6 +121,7 @@ function(create_coverage_target)
               ${COVERAGE_NAME}_merge_profdata
               ${COVERAGE_NAME}_generate_html_report
               ${COVERAGE_NAME}_generate_text_report
+              ${COVERAGE_NAME}_generate_lcov_report
       COMMENT "Generating full coverage report for ${COVERAGE_NAME}")
   else()
     message(

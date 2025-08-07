@@ -1,0 +1,32 @@
+# Codecov configuration for ZOM project
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        base: auto
+    patch:
+      default:
+        target: auto
+        threshold: 1%
+        base: auto
+
+  ignore:
+    - "**/*-test.cc"
+    - "**/unittests/**"
+    - "**/tests/**"
+    - "build-*/**"
+    - "examples/**"
+    - "docs/**"
+    - "scripts/**"
+    - "cmake/**"
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: false
+
+fixes:
+  - "build-coverage/coverage/::"
