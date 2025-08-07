@@ -88,10 +88,37 @@ jobs:
       - name: Generate coverage report
         run: cmake --build --preset coverage --target coverage
 
+      - name: Fix coverage paths for codecov
+        run: |
+          # Fix absolute paths in lcov file to be relative to project root
+          sed -i "s|SF:${{github.workspace}}/|SF:|g" build-coverage/coverage/coverage.lcov
+          # Verify the file exists and has content
+          ls -la build-coverage/coverage/coverage.lcov
+          echo "First 10 lines of coverage file:"
+          head -10 build-coverage/coverage/coverage.lcov
+          echo "Coverage file size: $(wc -l < build-coverage/coverage/coverage.lcov) lines"
+
+      - name: Validate coverage data
+        run: |
+          # Check if coverage file is not empty
+          if [ ! -s build-coverage/coverage/coverage.lcov ]; then
+            echo "Error: Coverage file is empty or does not exist"
+            exit 1
+          fi
+          # Check if coverage file contains valid lcov data
+          if ! grep -q "^SF:" build-coverage/coverage/coverage.lcov; then
+            echo "Error: Coverage file does not contain valid lcov data"
+            exit 1
+          fi
+          echo "Coverage file validation passed"
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: Zzzode/ZOM
-          directory: ${{github.workspace}}/build-coverage/coverage
+          file: ${{github.workspace}}/build-coverage/coverage/coverage.lcov
+          flags: unittests
+          name: codecov-umbrella
           fail_ci_if_error: true
+          verbose: true
