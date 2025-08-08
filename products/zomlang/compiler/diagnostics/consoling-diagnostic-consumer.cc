@@ -34,18 +34,18 @@ namespace {
 
 constexpr zc::StringPtr getColorForSeverity(DiagSeverity severity) {
   switch (severity) {
-    case DiagSeverity::Note:
-      return "\033[1;36m";  // Cyan
-    case DiagSeverity::Remark:
-      return "\033[1;34m";  // Blue
-    case DiagSeverity::Warning:
-      return "\033[1;33m";  // Yellow
-    case DiagSeverity::Error:
-      return "\033[1;31m";  // Red
-    case DiagSeverity::Fatal:
-      return "\033[1;35m";  // Purple
+    case DiagSeverity::kNote:
+      return "\033[1;36m"_zc;  // Cyan
+    case DiagSeverity::kRemark:
+      return "\033[1;34m"_zc;  // Blue
+    case DiagSeverity::kWarning:
+      return "\033[1;33m"_zc;  // Yellow
+    case DiagSeverity::kError:
+      return "\033[1;31m"_zc;  // Red
+    case DiagSeverity::kFatal:
+      return "\033[1;35m"_zc;  // Purple
     default:
-      return "\033[0m";  // Default color (reset)
+      return "\033[0m"_zc;  // Default color (reset)
   }
 }
 
@@ -124,7 +124,7 @@ void ConsolingDiagnosticConsumer::handleDiagnostic(const source::SourceManager& 
                                                    const Diagnostic& diagnostic) {
   const DiagnosticInfo& info = getDiagnosticInfo(diagnostic.getId());
   zc::std::StdOutputStream& output =
-      info.severity >= DiagSeverity::Error ? impl->stdErr : impl->stdOut;
+      info.severity >= DiagSeverity::kError ? impl->stdErr : impl->stdOut;
 
   // Output location information (if any)
   if (diagnostic.getLoc().isValid()) {

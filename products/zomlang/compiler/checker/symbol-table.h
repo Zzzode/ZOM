@@ -19,6 +19,7 @@
 #include "zc/core/string.h"
 
 namespace zomlang {
+namespace compiler {
 namespace checker {
 
 struct Symbol {
@@ -30,7 +31,7 @@ struct Symbol {
 class SymbolTable {
 public:
   void Insert(zc::String name, zc::Own<Symbol> symbol) {
-    symbols.insert(zc::mv(name), zc::mv(symbol));
+    symbols.upsert(zc::mv(name), zc::mv(symbol));
   }
 
   Symbol* Lookup(const zc::String& name) {
@@ -43,4 +44,5 @@ private:
 };
 
 }  // namespace checker
+}  // namespace compiler
 }  // namespace zomlang

@@ -19,5 +19,7 @@
 #include "zomlang/compiler/ast/ast.h"
 
 namespace zomlang {
+namespace compiler {
 namespace checker {}  // namespace checker
+}  // namespace compiler
 }  // namespace zomlang

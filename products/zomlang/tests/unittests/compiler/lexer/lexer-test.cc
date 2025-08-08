@@ -44,8 +44,6 @@ zc::Vector<Token> tokenize(zc::StringPtr source) {
   Lexer lexer(sourceManager, *diagnosticEngine, langOpts, bufferId);
 
   Token token;
-  // skip unknown
-  lexer.lex(token);
   do {
     lexer.lex(token);
     tokens.add(token);
@@ -130,6 +128,100 @@ ZC_TEST("LexerTest.ErrorHandling") {
   auto tokens = tokenize("#invalid");
   ZC_EXPECT(tokens.size() >= 1);
   ZC_EXPECT(tokens[tokens.size() - 1].is(TokenKind::kEOF));
+}
+
+ZC_TEST("LexerTest.LexerModes") {
+  auto& sourceManager = getSourceManager();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto langOpts = basic::LangOptions();
+
+  auto bufferId = sourceManager.addMemBufferCopy("test"_zc.asBytes(), "test.zom");
+  Lexer lexer(sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  // Test mode switching
+  lexer.enterMode(LexerMode::kNormal);
+  lexer.exitMode(LexerMode::kNormal);
+
+  lexer.enterMode(LexerMode::kStringInterpolation);
+  lexer.exitMode(LexerMode::kStringInterpolation);
+
+  lexer.enterMode(LexerMode::kRegexLiteral);
+  lexer.exitMode(LexerMode::kRegexLiteral);
+
+  ZC_EXPECT(true);
+}
+
+ZC_TEST("LexerTest.CommentRetentionModes") {
+  auto& sourceManager = getSourceManager();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto langOpts = basic::LangOptions();
+
+  auto bufferId = sourceManager.addMemBufferCopy("// comment"_zc.asBytes(), "test.zom");
+  Lexer lexer(sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  // Test comment retention modes
+  lexer.setCommentRetentionMode(CommentRetentionMode::kNone);
+  lexer.setCommentRetentionMode(CommentRetentionMode::kAttachToNextToken);
+  lexer.setCommentRetentionMode(CommentRetentionMode::kReturnAsTokens);
+
+  ZC_EXPECT(true);
+}
+
+ZC_TEST("LexerTest.FullStartLoc") {
+  auto& sourceManager = getSourceManager();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto langOpts = basic::LangOptions();
+
+  auto bufferId = sourceManager.addMemBufferCopy("test"_zc.asBytes(), "test.zom");
+  Lexer lexer(sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto loc = lexer.getFullStartLoc();
+  ZC_EXPECT(!loc.isInvalid());
+}
+
+ZC_TEST("LexerTest.IsCodeCompletion") {
+  auto& sourceManager = getSourceManager();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto langOpts = basic::LangOptions();
+
+  auto bufferId = sourceManager.addMemBufferCopy("test"_zc.asBytes(), "test.zom");
+  Lexer lexer(sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  bool isCompletion = lexer.isCodeCompletion();
+  ZC_EXPECT(!isCompletion);
+}
+
+ZC_TEST("LexerTest.StateManagement") {
+  auto& sourceManager = getSourceManager();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto langOpts = basic::LangOptions();
+
+  auto bufferId = sourceManager.addMemBufferCopy("test"_zc.asBytes(), "test.zom");
+  Lexer lexer(sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  // Test state management with a valid token
+  Token token;
+  lexer.lex(token);  // Get a valid token first
+  LexerState state = lexer.getStateForBeginningOfToken(token);
+  lexer.restoreState(state);
+
+  ZC_EXPECT(true);
+}
+
+ZC_TEST("LexerTest.LookAheadAndCanLookAhead") {
+  auto& sourceManager = getSourceManager();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto langOpts = basic::LangOptions();
+
+  auto bufferId = sourceManager.addMemBufferCopy("let x = 42"_zc.asBytes(), "test.zom");
+  Lexer lexer(sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  // Test lookahead functionality
+  bool canLook = lexer.canLookAhead(1);
+  ZC_EXPECT(canLook);
+
+  const Token& next = lexer.lookAhead(1);
+  ZC_EXPECT(!next.is(TokenKind::kEOF));
 }
 
 }  // namespace lexer

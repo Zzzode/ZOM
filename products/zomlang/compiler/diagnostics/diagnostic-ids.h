@@ -34,19 +34,19 @@ enum class DiagID : uint32_t {
 #undef DIAG
 };
 
-enum class DiagSeverity : uint8_t { Note, Remark, Warning, Error, Fatal };
+enum class DiagSeverity : uint8_t { kNote, kRemark, kWarning, kError, kFatal };
 
 constexpr const char* toString(const DiagSeverity severity) {
   switch (severity) {
-    case DiagSeverity::Note:
+    case DiagSeverity::kNote:
       return "Note";
-    case DiagSeverity::Remark:
+    case DiagSeverity::kRemark:
       return "Remark";
-    case DiagSeverity::Warning:
+    case DiagSeverity::kWarning:
       return "Warning";
-    case DiagSeverity::Error:
+    case DiagSeverity::kError:
       return "Error";
-    case DiagSeverity::Fatal:
+    case DiagSeverity::kFatal:
       return "Fatal";
   }
 

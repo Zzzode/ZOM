@@ -368,6 +368,9 @@ CharSourceRange SourceManager::getRangeForBuffer(BufferId bufferId) const {
 }
 
 zc::Maybe<BufferId> SourceManager::getFileSystemSourceBufferID(const zc::StringPtr path) {
+  // Return none for empty paths
+  if (path.size() == 0) { return zc::none; }
+
   const zc::PathPtr cwd = impl->fs->getCurrentPath();
   zc::Path nativePath = cwd.evalNative(path);
   ZC_REQUIRE(path.size() > 0);

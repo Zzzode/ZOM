@@ -29,7 +29,7 @@ namespace zomlang {
 namespace compiler {
 namespace checker {
 
-ZC_TEST("CheckerTest_VariableDeclarationTypeChecking") {
+ZC_TEST("CheckerTest_BasicParsingWorks") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -39,7 +39,7 @@ ZC_TEST("CheckerTest_VariableDeclarationTypeChecking") {
   parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
   auto ast = parser.parse();
 
-  ZC_EXPECT(ast != zc::none);
+  ZC_EXPECT(ast != zc::none, "Parser should successfully parse valid code");
   // TODO: Add type checking once Checker implementation is available
 }
 
@@ -49,11 +49,11 @@ ZC_TEST("CheckerTest_TypeMismatchError") {
   basic::LangOptions langOpts;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("let x: i32 = \"string\";\n").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("let x: i32 = \"string\";").asBytes(), "test.zom");
   parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
   auto ast = parser.parse();
 
-  ZC_EXPECT(ast != zc::none);
+  ZC_EXPECT(ast != zc::none, "Parser should parse syntactically valid code");
   // TODO: Add type checking once Checker implementation is available
 }
 
@@ -63,7 +63,7 @@ ZC_TEST("CheckerTest_UndefinedVariableError") {
   basic::LangOptions langOpts;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("let x: i32 = y + 1;\n").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("let x: i32 = y + 1;").asBytes(), "test.zom");
   parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
   auto ast = parser.parse();
 

@@ -18,6 +18,7 @@
 #include "zomlang/compiler/checker/symbol-table.h"
 
 namespace zomlang {
+namespace compiler {
 namespace checker {
 
 // class TypeChecker : public CompilerStage<zc::Own<ast::AST>,
@@ -35,4 +36,5 @@ namespace checker {
 // };
 
 }  // namespace checker
+}  // namespace compiler
 }  // namespace zomlang

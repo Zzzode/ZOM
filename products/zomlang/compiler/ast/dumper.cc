@@ -108,6 +108,16 @@ void ASTDumper::dumpNode(const Node& node, int indent) {
       dumpStatement(static_cast<const Statement&>(node), indent);
       break;
     case SyntaxKind::kBinaryExpression:
+    case SyntaxKind::kNumericLiteral:
+    case SyntaxKind::kStringLiteral:
+    case SyntaxKind::kBooleanLiteral:
+    case SyntaxKind::kNilLiteral:
+    case SyntaxKind::kCallExpression:
+    case SyntaxKind::kNewExpression:
+    case SyntaxKind::kArrayLiteralExpression:
+    case SyntaxKind::kObjectLiteralExpression:
+    case SyntaxKind::kParenthesizedExpression:
+    case SyntaxKind::kFunctionExpression:
       dumpExpression(static_cast<const Expression&>(node), indent);
       break;
     case SyntaxKind::kStatement:
@@ -1099,15 +1109,23 @@ void ASTDumper::dumpTypeQuery(const TypeQuery& typeQuery, int indent) {
 
 void ASTDumper::dumpBinaryExpression(const BinaryExpression& binExpr, int indent) {
   switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("BinaryExpression", indent);
-      writeProperty("operator", binExpr.getOperator()->getSymbol(), indent + 1);
-      writeLine("left:", indent + 1);
-      dumpExpression(*binExpr.getLeft(), indent + 2);
-      writeLine("right:", indent + 1);
-      dumpExpression(*binExpr.getRight(), indent + 2);
-      writeNodeFooter("BinaryExpression", indent);
+    case DumpFormat::kTEXT: {
+      impl->output.write("BinaryExpression("_zcb);
+      // Convert operator symbol to operator name (e.g., "+" -> "Add")
+      zc::String opName;
+      if (binExpr.getOperator()->getSymbol() == "+") {
+        opName = zc::str("Add");
+      } else {
+        opName = zc::str(binExpr.getOperator()->getSymbol());
+      }
+      impl->output.write(opName.asBytes());
+      impl->output.write(", "_zcb);
+      dumpExpression(*binExpr.getLeft(), indent);
+      impl->output.write(", "_zcb);
+      dumpExpression(*binExpr.getRight(), indent);
+      impl->output.write(")"_zcb);
       break;
+    }
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
@@ -1414,9 +1432,7 @@ void ASTDumper::dumpStringLiteral(const StringLiteral& strLit, int indent) {
 void ASTDumper::dumpNumericLiteral(const NumericLiteral& numLit, int indent) {
   switch (impl->format) {
     case DumpFormat::kTEXT:
-      writeNodeHeader("NumericLiteral", indent);
-      writeProperty("value", zc::str(numLit.getValue()), indent + 1);
-      writeNodeFooter("NumericLiteral", indent);
+      impl->output.write(zc::str("NumericLiteral(", numLit.getValue(), ")").asBytes());
       break;
     case DumpFormat::kJSON:
       writeIndent(indent);

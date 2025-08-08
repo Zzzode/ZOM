@@ -44,7 +44,7 @@ void DiagnosticEngine::addConsumer(zc::Own<DiagnosticConsumer> consumer) {
 void DiagnosticEngine::emit(const Diagnostic& diagnostic) {
   // Check if this is an error-level diagnostic and update state
   const DiagnosticInfo& info = getDiagnosticInfo(diagnostic.getId());
-  if (info.severity >= DiagSeverity::Error) { impl->state.setHadAnyError(); }
+  if (info.severity >= DiagSeverity::kError) { impl->state.setHadAnyError(); }
 
   for (auto& consumer : impl->consumers) {
     consumer->handleDiagnostic(impl->sourceManager, diagnostic);

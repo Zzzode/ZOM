@@ -69,7 +69,10 @@ struct Lexer::Impl {
     bufferEnd = buffer.end();
     curPtr = bufferStart;
     triviaStartPtr = bufferStart;
+    initialize();
   }
+
+  void initialize() { lexImpl(); }
 
   /// Utility functions
   const zc::byte* getBufferPtrForSourceLoc(source::SourceLoc loc) const;
@@ -987,6 +990,7 @@ Lexer::Lexer(const source::SourceManager& sourceMgr,
              diagnostics::DiagnosticEngine& diagnosticEngine, const basic::LangOptions& options,
              const source::BufferId& bufferId)
     : impl(zc::heap<Impl>(sourceMgr, diagnosticEngine, options, bufferId)) {}
+
 Lexer::~Lexer() = default;
 
 const zc::byte* Lexer::Impl::getBufferPtrForSourceLoc(const source::SourceLoc loc) const {
@@ -1042,7 +1046,7 @@ bool Lexer::tryLexRegexLiteral(const zc::byte* tokStart) {
 
 void Lexer::lexStringLiteral(unsigned customDelimiterLen) { impl->lexStringLiteralImpl(); }
 
-bool Lexer::isCodeCompletion() const { return impl->curPtr >= impl->bufferEnd; }
+bool Lexer::isCodeCompletion() const { return impl->triviaStartPtr >= impl->bufferEnd; }
 
 void Lexer::setCommentRetentionMode(CommentRetentionMode mode) { impl->commentMode = mode; }
 

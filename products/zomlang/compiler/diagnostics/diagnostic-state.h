@@ -15,7 +15,7 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zc/core/vector.h"
+#include "zc/core/map.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
@@ -26,6 +26,8 @@ class SourceManager;
 }
 
 namespace diagnostics {
+
+enum class DiagID : uint32_t;
 
 class DiagnosticState {
 public:
@@ -42,8 +44,8 @@ public:
   bool getSuppressWarnings() const { return suppressWarnings; }
   void setSuppressWarnings(bool value) { suppressWarnings = value; }
 
-  void ignoreDiagnostic(uint32_t diag_id);
-  bool isDiagnosticIgnored(uint32_t diag_id) const;
+  void ignoreDiagnostic(DiagID diag_id);
+  bool isDiagnosticIgnored(DiagID diag_id) const;
 
   bool getHadAnyError() const { return hadAnyError; }
   void setHadAnyError() { hadAnyError = true; }
@@ -56,10 +58,7 @@ private:
   bool showDiagnosticsAfterFatalError = false;
   bool suppressWarnings = false;
   bool hadAnyError = false;
-  zc::Vector<bool> ignoredDiagnostics;
-
-  /// Assume 1000 diagnostic ids
-  static constexpr uint32_t kNumDiags = 1000;
+  zc::HashMap<DiagID, bool> ignoredDiagnostics;
 };
 
 }  // namespace diagnostics
