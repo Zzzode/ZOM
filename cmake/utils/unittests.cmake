@@ -20,31 +20,44 @@ include(CTest)
 # Usage: add_ztest_unit_test(test_name test_source [LIBRARIES ...])
 function(add_ztest_unit_test TEST_NAME TEST_SOURCE)
   cmake_parse_arguments(ZTEST "" "" "LIBRARIES" ${ARGN})
-  
+
   # Create executable for the unit test
   add_executable(${TEST_NAME} ${TEST_SOURCE})
-  
+
   # Link with ztest and specified libraries
   target_link_libraries(${TEST_NAME} PRIVATE ztest ${ZTEST_LIBRARIES})
-  
+
   # Set include directories
-  target_include_directories(${TEST_NAME} PRIVATE 
-    ${ZOM_ROOT}/libraries 
+  target_include_directories(${TEST_NAME} PRIVATE
+    ${ZOM_ROOT}/libraries
     ${ZOM_ROOT}/products
   )
-  
+
   # Compiler options
   target_compile_options(${TEST_NAME} PRIVATE -Wno-global-constructors)
-  
+
   # Add as CTest
   add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
-  
+
+  # Determine specific labels based on test name structure
+  set(SPECIFIC_LABELS "unittest")
+
+  # Extract component labels from test name by splitting on '-'
+  # For test names like "ast-dumper-test" or "lexer-lexer-test", extract the first part as component label
+  string(REPLACE "-" ";" TEST_NAME_PARTS "${TEST_NAME}")
+  list(GET TEST_NAME_PARTS 0 FIRST_COMPONENT)
+
+  # Only add component label if it's not "test" and not empty
+  if(FIRST_COMPONENT AND NOT FIRST_COMPONENT STREQUAL "test")
+    set(SPECIFIC_LABELS "${SPECIFIC_LABELS};${FIRST_COMPONENT}")
+  endif()
+
   # Set test properties
   set_tests_properties(${TEST_NAME} PROPERTIES
-    LABELS "unittest;ztest"
+    LABELS "${SPECIFIC_LABELS}"
     TIMEOUT 60
   )
-  
+
   # Add coverage if enabled
   if(ZOM_ENABLE_COVERAGE)
     add_coverage_to_test(${TEST_NAME})
@@ -62,16 +75,16 @@ function(add_lit_ast_test TEST_NAME SOURCE_FILE)
       message(FATAL_ERROR "LLVM lit executable not found. Please install lit first")
     endif()
   endif()
-  
+
   set(TEST_FULL_NAME "ast-${TEST_NAME}")
-  
+
   # Create test that runs lit on the source file
   add_test(
     NAME ${TEST_FULL_NAME}
     COMMAND ${LIT_EXECUTABLE} -v ${SOURCE_FILE}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
   )
-  
+
   # Set test properties
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
     LABELS "ast;lit;specification"
@@ -98,16 +111,16 @@ function(add_lit_ast_test_with_check TEST_NAME SOURCE_FILE)
       message(FATAL_ERROR "LLVM lit executable not found. Please install lit first")
     endif()
   endif()
-  
+
   set(TEST_FULL_NAME "lit-${TEST_NAME}")
-  
+
   # Create test that runs lit with FileCheck validation
   add_test(
     NAME ${TEST_FULL_NAME}
     COMMAND ${LIT_EXECUTABLE} -v ${SOURCE_FILE}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
   )
-  
+
   # Set test properties
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
     LABELS "ast;lit;filecheck;specification"
@@ -176,13 +189,13 @@ endfunction()
 # Usage: add_ztest_unit_tests_from_directory(directory_path [LIBRARIES ...])
 function(add_ztest_unit_tests_from_directory DIRECTORY_PATH)
   cmake_parse_arguments(ZTEST_DIR "" "" "LIBRARIES" ${ARGN})
-  
+
   file(GLOB_RECURSE TEST_FILES "${DIRECTORY_PATH}/*-test.cc")
 
   foreach(TEST_FILE ${TEST_FILES})
     # Get relative path from the directory
     file(RELATIVE_PATH REL_PATH "${DIRECTORY_PATH}" "${TEST_FILE}")
-    
+
     # Create test name from relative path
     get_filename_component(TEST_NAME "${TEST_FILE}" NAME_WE)
     file(RELATIVE_PATH REL_DIR "${DIRECTORY_PATH}" "${TEST_FILE}")
@@ -193,7 +206,7 @@ function(add_ztest_unit_tests_from_directory DIRECTORY_PATH)
     else()
       set(UNIQUE_TEST_NAME "${TEST_NAME}")
     endif()
-    
+
     add_ztest_unit_test("${UNIQUE_TEST_NAME}" "${TEST_FILE}" LIBRARIES ${ZTEST_DIR_LIBRARIES})
   endforeach()
 endfunction()

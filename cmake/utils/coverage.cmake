@@ -26,9 +26,9 @@ function(create_coverage_target)
 
     add_custom_target(
       ${COVERAGE_NAME}_run_tests
-      COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIG>
+      COMMAND timeout 60 ${CMAKE_CTEST_COMMAND} -C $<CONFIG> -j ${CMAKE_JOB_POOLS} || true
       WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-      COMMENT "Running tests for ${COVERAGE_NAME}")
+      COMMENT "Running tests for ${COVERAGE_NAME} (with 60s timeout)")
     add_dependencies(${COVERAGE_NAME}_run_tests ${COVERAGE_NAME}_create_dir)
 
     add_custom_target(

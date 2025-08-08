@@ -32,10 +32,11 @@ ZC_TEST("ParserTest.BasicParserCreation") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
-  
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x: i32 = 42;").asBytes(), "test.zom");
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("let x: i32 = 42;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
-  
+
   // Just verify parser can be created
   ZC_EXPECT(true);
 }
@@ -44,7 +45,7 @@ ZC_TEST("ParserTest.EmptySource") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
-  
+
   auto bufferId = sourceManager->addMemBufferCopy(zc::str(""_zc).asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
 }
@@ -53,12 +54,99 @@ ZC_TEST("ParserTest.SimpleExpression") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
-  
+
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("42").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
-  
+
   // Just verify parser can handle simple expressions
   ZC_EXPECT(true);
+}
+
+ZC_TEST("ParserTest.VariableDeclaration") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = 42;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse variable declaration");
+}
+
+ZC_TEST("ParserTest.FunctionDeclaration") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("fun add(a: i32, b: i32) -> i32 { return a + b; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse function declaration");
+}
+
+ZC_TEST("ParserTest.BinaryExpression") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("1 + 2 * 3").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse binary expression");
+}
+
+ZC_TEST("ParserTest.IfStatement") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("if (x > 0) { return x; } else { return -x; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse if statement");
+}
+
+ZC_TEST("ParserTest.WhileStatement") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("while (x < 10) { x = x + 1; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse while statement");
+}
+
+ZC_TEST("ParserTest.ArrayLiteral") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("[1, 2, 3]").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse array literal");
+}
+
+ZC_TEST("ParserTest.ObjectLiteral") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("{x: 1, y: 2}").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse object literal");
 }
 
 }  // namespace parser

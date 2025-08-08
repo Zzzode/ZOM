@@ -12,4 +12,4 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-DIAG(InvalidPath,           Error,   "Cannot open file path at '{0}', no such file or directory.", 1)
+DIAG(InvalidPath,           kError,   "Cannot open file path at '{0}', no such file or directory.", 1)

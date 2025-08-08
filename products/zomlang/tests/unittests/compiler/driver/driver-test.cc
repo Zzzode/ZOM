@@ -19,6 +19,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
@@ -36,9 +37,54 @@ ZC_TEST("DriverTest.CompilerOptionsAccess") {
   auto compilerOpts = basic::CompilerOptions();
   compilerOpts.emission.syntaxOnly = true;
   auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
-  
+
   auto& opts = driver->getCompilerOptions();
   ZC_EXPECT(opts.emission.syntaxOnly);
+}
+
+ZC_TEST("DriverTest.GetDiagnosticEngine") {
+  auto langOpts = basic::LangOptions();
+  auto compilerOpts = basic::CompilerOptions();
+  auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
+
+  const auto& diagnosticEngine = driver->getDiagnosticEngine();
+  ZC_EXPECT(&diagnosticEngine != nullptr);
+}
+
+ZC_TEST("DriverTest.GetASTsEmpty") {
+  auto langOpts = basic::LangOptions();
+  auto compilerOpts = basic::CompilerOptions();
+  auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
+
+  const auto& asts = driver->getASTs();
+  ZC_EXPECT(asts.size() == 0);
+}
+
+ZC_TEST("DriverTest.GetSourceManager") {
+  auto langOpts = basic::LangOptions();
+  auto compilerOpts = basic::CompilerOptions();
+  auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
+
+  const auto& sourceManager = driver->getSourceManager();
+  ZC_EXPECT(&sourceManager != nullptr);
+}
+
+ZC_TEST("DriverTest.ParseSourcesEmpty") {
+  auto langOpts = basic::LangOptions();
+  auto compilerOpts = basic::CompilerOptions();
+  auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
+
+  bool result = driver->parseSources();
+  ZC_EXPECT(result);
+}
+
+ZC_TEST("DriverTest.AddSourceFileEmpty") {
+  auto langOpts = basic::LangOptions();
+  auto compilerOpts = basic::CompilerOptions();
+  auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
+
+  auto result = driver->addSourceFile(zc::str(""));
+  ZC_EXPECT(result == zc::none);
 }
 
 }  // namespace driver

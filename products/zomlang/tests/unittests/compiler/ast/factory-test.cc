@@ -23,6 +23,7 @@
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/module.h"
 #include "zomlang/compiler/ast/statement.h"
@@ -168,6 +169,64 @@ ZC_TEST("ASTFactory: Statement Creation") {
   auto blockStmt = createBlockStatement(zc::mv(statements));
 
   ZC_EXPECT(blockStmt->getStatements().size() == 2, "BlockStatement should have 2 statements");
+}
+
+ZC_TEST("ASTFactory: Type Creation") {
+  using namespace zomlang::compiler::ast::factory;
+
+  // Test TypeReference creation
+  auto typeName = createIdentifier(zc::str("Int"));
+  auto typeRef = createTypeReference(zc::mv(typeName), zc::none);
+  ZC_EXPECT(typeRef->getName() == "Int", "TypeReference should have correct type name");
+
+  // Test ArrayType creation
+  auto elemType = createPredefinedType(zc::str("String"));
+  auto arrayType = createArrayType(zc::mv(elemType));
+  ZC_EXPECT(arrayType->getElementType() != nullptr, "ArrayType should have element type");
+
+  // Test UnionType creation
+  zc::Vector<zc::Own<ast::Type>> unionTypes;
+  unionTypes.add(createPredefinedType(zc::str("Int")));
+  unionTypes.add(createPredefinedType(zc::str("String")));
+  auto unionType = createUnionType(zc::mv(unionTypes));
+  ZC_EXPECT(unionType->getTypes().size() == 2, "UnionType should have 2 types");
+
+  // Test IntersectionType creation
+  zc::Vector<zc::Own<ast::Type>> intersectionTypes;
+  intersectionTypes.add(createPredefinedType(zc::str("A")));
+  intersectionTypes.add(createPredefinedType(zc::str("B")));
+  auto intersectionType = createIntersectionType(zc::mv(intersectionTypes));
+  ZC_EXPECT(intersectionType->getTypes().size() == 2, "IntersectionType should have 2 types");
+}
+
+ZC_TEST("ASTFactory: Operator Creation") {
+  using namespace zomlang::compiler::ast::factory;
+
+  // Test UnaryOperator creation
+  auto unaryOp = createUnaryOperator(zc::str("!"), true);
+  ZC_EXPECT(unaryOp->getSymbol() == "!", "UnaryOperator should have correct symbol");
+  ZC_EXPECT(unaryOp->isPrefix(), "UnaryOperator should be prefix");
+
+  // Test AssignmentOperator creation
+  auto assignOp = createAssignmentOperator(zc::str("+="));
+  ZC_EXPECT(assignOp->getSymbol() == "+=", "AssignmentOperator should have correct symbol");
+}
+
+ZC_TEST("ASTFactory: Alias and Debugger Creation") {
+  using namespace zomlang::compiler::ast::factory;
+
+  // Test AliasDeclaration creation
+  auto aliasName = createIdentifier(zc::str("MyAlias"));
+  auto targetType = createPredefinedType(zc::str("Int"));
+  auto aliasDecl = createAliasDeclaration(zc::mv(aliasName), zc::mv(targetType));
+  ZC_EXPECT(aliasDecl->getName()->getName() == "MyAlias",
+            "AliasDeclaration should have correct name");
+  ZC_EXPECT(aliasDecl->getType() != nullptr, "AliasDeclaration should have target type");
+
+  // Test DebuggerStatement creation
+  auto debuggerStmt = createDebuggerStatement();
+  ZC_EXPECT(debuggerStmt->getKind() == ast::SyntaxKind::kDebuggerStatement,
+            "DebuggerStatement should have correct kind");
 }
 
 }  // namespace ast

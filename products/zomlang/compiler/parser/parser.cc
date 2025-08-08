@@ -46,10 +46,7 @@ struct Parser::Impl {
       : bufferId(bufferId),
         sourceMgr(sourceMgr),
         diagnosticEngine(diagnosticEngine),
-        lexer(sourceMgr, diagnosticEngine, langOpts, bufferId) {
-    // Initialize the first token, which is kUnknown
-    initializeToken();
-  }
+        lexer(sourceMgr, diagnosticEngine, langOpts, bufferId) {}
   ~Impl() noexcept(false) = default;
 
   ZC_DISALLOW_COPY_AND_MOVE(Impl);
@@ -58,8 +55,6 @@ struct Parser::Impl {
   void consumeToken() { lexer.lex(currentToken); }
   /// Helper to look at the current token
   const lexer::Token& peekToken() const { return currentToken; }
-  /// Initialize currentToken by consuming the first token
-  void initializeToken() { consumeToken(); }
   /// Helper to get the current token
   const lexer::Token& getCurrentToken() const { return currentToken; }
 

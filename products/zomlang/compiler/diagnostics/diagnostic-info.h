@@ -69,7 +69,7 @@ constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
 #undef DIAG
     default:
       // Handle unknown DiagID
-      return DiagnosticInfo{id, DiagSeverity::Error, "Unknown diagnostic"_zcc, 0};
+      return DiagnosticInfo{id, DiagSeverity::kError, "Unknown diagnostic"_zcc, 0};
   }
 }
 

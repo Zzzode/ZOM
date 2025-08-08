@@ -14,20 +14,19 @@
 
 #include "zomlang/compiler/diagnostics/diagnostic-state.h"
 
-#include "zomlang/compiler/source/manager.h"
+#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 
 namespace zomlang {
 namespace compiler {
 namespace diagnostics {
 
-DiagnosticState::DiagnosticState() : ignoredDiagnostics(kNumDiags) {}
+DiagnosticState::DiagnosticState() {}
 
-void DiagnosticState::ignoreDiagnostic(uint32_t diagId) {
-  if (diagId < kNumDiags) { ignoredDiagnostics[diagId] = true; }
-}
+void DiagnosticState::ignoreDiagnostic(DiagID diagId) { ignoredDiagnostics.upsert(diagId, true); }
 
-bool DiagnosticState::isDiagnosticIgnored(uint32_t diagId) const {
-  return diagId < kNumDiags && ignoredDiagnostics[diagId];
+bool DiagnosticState::isDiagnosticIgnored(DiagID diagId) const {
+  auto result = ignoredDiagnostics.find(diagId);
+  return result.orDefault(false);
 }
 
 // CharSourceRange DiagnosticState::toCharSourceRange(const SourceManager& sm, SourceRange range) {

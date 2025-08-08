@@ -12,5 +12,5 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-DIAG(InvalidChar,           Error,   "Invalid character: '{0}'", 1)
-DIAG(UnterminatedString,    Error,   "Unterminated string literal", 0)
+DIAG(InvalidChar,           kError,   "Invalid character: '{0}'", 1)
+DIAG(UnterminatedString,    kError,   "Unterminated string literal", 0)

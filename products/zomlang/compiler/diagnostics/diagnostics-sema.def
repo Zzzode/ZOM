@@ -12,4 +12,4 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-DIAG(TypeMismatch,          Error,   "Type mismatch: expected {0}, got {1}", 2)
+DIAG(TypeMismatch,          kError,   "Type mismatch: expected {0}, got {1}", 2)
