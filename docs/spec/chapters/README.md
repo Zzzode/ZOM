@@ -47,6 +47,7 @@ When making changes to the specification:
 ## Grammar Consistency
 
 The grammar definitions in Chapter 17 should remain consistent with the ANTLR4 grammar files:
+
 - `ZomParser.g4` - Parser grammar rules
 - `ZomLexer.g4` - Lexer tokens and keywords
 
