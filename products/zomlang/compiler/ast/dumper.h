@@ -34,6 +34,7 @@ class BindingElement;
 class VariableDeclaration;
 class BlockStatement;
 class ExpressionStatement;
+class EmptyStatement;
 class BinaryExpression;
 class FunctionExpression;
 class FunctionDeclaration;
@@ -59,6 +60,10 @@ class NewExpression;
 class ArrayLiteralExpression;
 class ObjectLiteralExpression;
 class ParenthesizedExpression;
+class Identifier;
+class PrefixUnaryExpression;
+class AssignmentExpression;
+class ConditionalExpression;
 
 /// AST dump output format
 enum class DumpFormat {
@@ -110,6 +115,7 @@ private:
   void dumpTypeQuery(const TypeQuery& typeQuery, int indent = 0);
   void dumpBlockStatement(const BlockStatement& blockStmt, int indent = 0);
   void dumpExpressionStatement(const ExpressionStatement& exprStmt, int indent = 0);
+  void dumpEmptyStatement(const EmptyStatement& emptyStmt, int indent = 0);
   void dumpBinaryExpression(const BinaryExpression& binExpr, int indent = 0);
   void dumpFunctionExpression(const FunctionExpression& funcExpr, int indent = 0);
   void dumpStringLiteral(const StringLiteral& strLit, int indent = 0);
@@ -121,6 +127,10 @@ private:
   void dumpArrayLiteralExpression(const ArrayLiteralExpression& arrLit, int indent = 0);
   void dumpObjectLiteralExpression(const ObjectLiteralExpression& objLit, int indent = 0);
   void dumpParenthesizedExpression(const ParenthesizedExpression& parenExpr, int indent = 0);
+  void dumpIdentifier(const Identifier& identifier, int indent = 0);
+  void dumpPrefixUnaryExpression(const PrefixUnaryExpression& prefixUnaryExpr, int indent = 0);
+  void dumpAssignmentExpression(const AssignmentExpression& assignmentExpr, int indent = 0);
+  void dumpConditionalExpression(const ConditionalExpression& conditionalExpr, int indent = 0);
 
   // Helper methods
   void writeIndent(int indent);
