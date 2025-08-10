@@ -51,24 +51,28 @@ zc::StringPtr SourceFile::getFileName() const { return impl->fileName; }
 // ================================================================================
 // ImportDeclaration::Impl
 struct ImportDeclaration::Impl {
-  Impl(zc::Own<ModulePath>&& modulePath, zc::Maybe<zc::StringPtr> alias) noexcept
-      : modulePath(zc::mv(modulePath)), alias(alias) {}
+  Impl(zc::Own<ModulePath>&& modulePath, zc::Maybe<zc::String> alias) noexcept
+      : modulePath(zc::mv(modulePath)), alias(zc::mv(alias)) {}
 
   const zc::Own<ModulePath> modulePath;
-  const zc::Maybe<zc::StringPtr> alias;
+  const zc::Maybe<zc::String> alias;
 };
 
 // ================================================================================
 // ImportDeclaration
 ImportDeclaration::ImportDeclaration(zc::Own<ModulePath>&& modulePath,
                                      zc::Maybe<zc::String> alias) noexcept
-    : Statement(SyntaxKind::kImportDeclaration), impl(zc::heap<Impl>(zc::mv(modulePath), alias)) {}
+    : Statement(SyntaxKind::kImportDeclaration),
+      impl(zc::heap<Impl>(zc::mv(modulePath), zc::mv(alias))) {}
 
 ImportDeclaration::~ImportDeclaration() noexcept(false) = default;
 
 const ModulePath& ImportDeclaration::getModulePath() const { return *impl->modulePath; }
 
-zc::Maybe<zc::StringPtr> ImportDeclaration::getAlias() const { return impl->alias; }
+zc::Maybe<zc::StringPtr> ImportDeclaration::getAlias() const {
+  ZC_IF_SOME(alias, impl->alias) { return alias.asPtr(); }
+  else { return zc::none; }
+}
 
 // ================================================================================
 // ExportDeclaration::Impl

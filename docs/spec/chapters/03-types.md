@@ -62,13 +62,13 @@ let multiline: str = "Line 1\nLine 2";
 
 ### Special Types
 
-- **`nil`**: The type of the `nil` value, representing absence
+- **`null`**: The type of the `null` value, representing absence
 - **`unit`**: The type `()`, used for functions that don't return a value
 - **`never`**: The bottom type, for functions that never return
 - **`any`**: The top type, can hold any value (use sparingly)
 
 ```zom
-let nothing: nil = nil;
+let nothing: null = null;
 let empty: unit = ();
 fun crash() -> never {
     throw "This function never returns";
@@ -133,7 +133,7 @@ Optional types represent values that may or may not exist:
 
 ```zom
 let maybeNumber: i32? = 42;
-let nothing: str? = nil;
+let nothing: str? = null;
 
 // Optional chaining
 let length = maybeString?.length;

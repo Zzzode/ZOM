@@ -249,15 +249,13 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseModuleItem() {
   //   | exportDeclaration
   //   | importDeclaration;
 
-  const lexer::Token& token = currentToken();
-
   // Check for import declaration
-  if (token.is(lexer::TokenKind::kImportKeyword)) {
+  if (expectToken(lexer::TokenKind::kImportKeyword)) {
     ZC_IF_SOME(importDecl, parseImportDeclaration()) { return zc::mv(importDecl); }
   }
 
   // Check for export declaration
-  if (token.is(lexer::TokenKind::kExportKeyword)) {
+  if (expectToken(lexer::TokenKind::kExportKeyword)) {
     ZC_IF_SOME(exportDecl, parseExportDeclaration()) { return zc::mv(exportDecl); }
   }
 
@@ -407,10 +405,8 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseStatement() {
   //   | returnStatement
   //   | debuggerStatement;
 
-  const lexer::Token& token = currentToken();
-
   // Check for different statement types
-  switch (token.getKind()) {
+  switch (currentToken().getKind()) {
     case lexer::TokenKind::kLeftBrace:
       return parseBlockStatement();
     case lexer::TokenKind::kSemicolon:
@@ -650,6 +646,29 @@ ZC_ALWAYS_INLINE(bool Parser::consumeExpectedToken(lexer::TokenKind kind)) {
     return true;
   }
   return false;
+}
+
+bool Parser::isUpdateExpression(lexer::TokenKind tokenKind) const {
+  // Check if the current token can possibly be an increment expression.
+  // This function is called inside parseUnaryExpression to decide
+  // whether to call parseSimpleUnaryExpression or call parseUpdateExpression directly
+  switch (tokenKind) {
+    case lexer::TokenKind::kPlus:
+    case lexer::TokenKind::kMinus:
+    case lexer::TokenKind::kTilde:
+    case lexer::TokenKind::kExclamation:
+    case lexer::TokenKind::kDeleteKeyword:
+    case lexer::TokenKind::kTypeOfKeyword:
+    case lexer::TokenKind::kVoidKeyword:
+    case lexer::TokenKind::kAwaitKeyword:
+      return false;
+    case lexer::TokenKind::kLessThan:
+      // < can be used for generic type arguments or comparison operators
+      // Both are not unary expressions, so this should be handled as update expression
+      return true;
+    default:
+      return true;
+  }
 }
 
 zc::Maybe<zc::Vector<zc::Own<ast::Expression>>> Parser::parseArgumentList() {
@@ -1267,75 +1286,49 @@ zc::Maybe<zc::Own<ast::AliasDeclaration>> Parser::parseAliasDeclaration() {
 // ================================================================================
 // Expression parsing implementations
 
-// Operator precedence levels
-enum class OperatorPrecedence {
-  kLowest = 0,
-  kComma = 1,
-  kAssignment = 2,
-  kConditional = 3,
-  kLogicalOr = 4,
-  kLogicalAnd = 5,
-  kBitwiseOr = 6,
-  kBitwiseXor = 7,
-  kBitwiseAnd = 8,
-  kEquality = 9,
-  kRelational = 10,
-  kShift = 11,
-  kAdditive = 12,
-  kMultiplicative = 13,
-  kExponentiation = 14,
-  kUnary = 15,
-  kUpdate = 16,
-  kLeftHandSide = 17,
-  kMember = 18,
-  kPrimary = 19
-};
-
 namespace {
 
-// Get binary operator precedence
-OperatorPrecedence getBinaryOperatorPrecedence(lexer::TokenKind tokenKind) {
+// Get AST binary operator precedence directly from token
+ast::OperatorPrecedence getBinaryOperatorPrecedence(lexer::TokenKind tokenKind) {
   switch (tokenKind) {
-    case lexer::TokenKind::kComma:
-      return OperatorPrecedence::kComma;
     case lexer::TokenKind::kBarBar:
-      return OperatorPrecedence::kLogicalOr;
+      return ast::OperatorPrecedence::kLogicalOr;
     case lexer::TokenKind::kAmpersandAmpersand:
-      return OperatorPrecedence::kLogicalAnd;
+      return ast::OperatorPrecedence::kLogicalAnd;
     case lexer::TokenKind::kBar:
-      return OperatorPrecedence::kBitwiseOr;
+      return ast::OperatorPrecedence::kBitwiseOr;
     case lexer::TokenKind::kCaret:
-      return OperatorPrecedence::kBitwiseXor;
+      return ast::OperatorPrecedence::kBitwiseXor;
     case lexer::TokenKind::kAmpersand:
-      return OperatorPrecedence::kBitwiseAnd;
+      return ast::OperatorPrecedence::kBitwiseAnd;
     case lexer::TokenKind::kEqualsEquals:
     case lexer::TokenKind::kExclamationEquals:
-      return OperatorPrecedence::kEquality;
+      return ast::OperatorPrecedence::kEquality;
     case lexer::TokenKind::kLessThan:
     case lexer::TokenKind::kGreaterThan:
     case lexer::TokenKind::kLessThanEquals:
     case lexer::TokenKind::kGreaterThanEquals:
-      return OperatorPrecedence::kRelational;
+      return ast::OperatorPrecedence::kRelational;
     case lexer::TokenKind::kLessThanLessThan:
     case lexer::TokenKind::kGreaterThanGreaterThan:
-      return OperatorPrecedence::kShift;
+      return ast::OperatorPrecedence::kShift;
     case lexer::TokenKind::kPlus:
     case lexer::TokenKind::kMinus:
-      return OperatorPrecedence::kAdditive;
+      return ast::OperatorPrecedence::kAdditive;
     case lexer::TokenKind::kAsterisk:
     case lexer::TokenKind::kSlash:
     case lexer::TokenKind::kPercent:
-      return OperatorPrecedence::kMultiplicative;
+      return ast::OperatorPrecedence::kMultiplicative;
     case lexer::TokenKind::kAsteriskAsterisk:
-      return OperatorPrecedence::kExponentiation;
+      return ast::OperatorPrecedence::kExponentiation;
     default:
-      return OperatorPrecedence::kLowest;
+      return ast::OperatorPrecedence::kLowest;
   }
 }
 
 // Check if token is a binary operator
 bool isBinaryOperator(lexer::TokenKind tokenKind) {
-  return getBinaryOperatorPrecedence(tokenKind) > OperatorPrecedence::kLowest;
+  return getBinaryOperatorPrecedence(tokenKind) > ast::OperatorPrecedence::kLowest;
 }
 
 // Check if token is an assignment operator
@@ -1446,7 +1439,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseAssignmentExpressionOrHigher() 
   ZC_IF_SOME(funcExpr, parseFunctionExpression()) { return zc::mv(funcExpr); }
 
   // Parse binary expression with lowest precedence to get the left operand
-  ZC_IF_SOME(expr, parseBinaryExpressionOrHigher()) {
+  ZC_IF_SOME(expr, parseBinaryExpressionOrHigher(ast::OperatorPrecedence::kLowest)) {
     const lexer::Token& token = currentToken();
 
     // Check for assignment operators - if found and expr is left-hand side, parse assignment
@@ -1507,19 +1500,22 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseConditionalExpressionRest(
 }
 
 // Binary expression parsing
-zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionOrHigher() {
+zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionOrHigher(
+    ast::OperatorPrecedence precedence) {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseBinaryExpressionOrHigher");
 
   // Handles all binary expressions with precedence:
   //   bitwiseORExpression | bitwiseXORExpression | bitwiseANDExpression
   //   | equalityExpression | relationalExpression | shiftExpression
   //   | additiveExpression | multiplicativeExpression | exponentiationExpression
+  //
   // Uses operator precedence parsing for left-to-right associativity
 
+  const source::SourceLoc startLoc = currentToken().getLocation();
   // Parse the left operand (unary expression or higher)
   ZC_IF_SOME(leftOperand, parseUnaryExpressionOrHigher()) {
     // Parse the rest of the binary expression with lowest precedence
-    return parseBinaryExpressionRest(zc::mv(leftOperand));
+    return parseBinaryExpressionRest(zc::mv(leftOperand), precedence, startLoc);
   }
 
   return zc::none;
@@ -1527,7 +1523,8 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionOrHigher() {
 
 // Binary expression rest parsing
 zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRest(
-    zc::Own<ast::Expression> leftOperand) {
+    zc::Own<ast::Expression> leftOperand, ast::OperatorPrecedence precedence,
+    source::SourceLoc startLoc) {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseBinaryExpressionRest");
 
   zc::Own<ast::Expression> expr = zc::mv(leftOperand);
@@ -1537,76 +1534,52 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRest(
 
     if (!isBinaryOperator(token.getKind())) { break; }
 
-    OperatorPrecedence currentPrecedence = getBinaryOperatorPrecedence(token.getKind());
+    ast::OperatorPrecedence newPrecedence = getBinaryOperatorPrecedence(token.getKind());
 
-    // For right-associative operators (like **), we need special handling
-    bool isRightAssociative = (token.getKind() == lexer::TokenKind::kAsteriskAsterisk);
+    // Check the precedence to see if we should "take" this operator
+    // - For left associative operator (all operator but **), consume the operator,
+    //   recursively call the function below, and parse binaryExpression as a rightOperand
+    //   of the caller if the new precedence of the operator is strictly greater than the current
+    //   precedence.
+    // - For right associative operator (**), consume the operator, recursively call the function
+    //   and parse binaryExpression as a rightOperand of the caller if the new precedence of
+    //   the operator is greater than or equal to the current precedence
+    bool isRightAssociative = token.is(lexer::TokenKind::kAsteriskAsterisk);
+    bool consumeCurrentOperator =
+        isRightAssociative ? newPrecedence >= precedence : newPrecedence > precedence;
 
-    zc::String opText = token.getText(impl->sourceMgr);
-    consumeToken();
+    if (!consumeCurrentOperator) { break; }
 
-    // Parse right operand with appropriate precedence
-    OperatorPrecedence rightPrecedence =
-        isRightAssociative
-            ? static_cast<OperatorPrecedence>(static_cast<int>(currentPrecedence) - 1)
-            : static_cast<OperatorPrecedence>(static_cast<int>(currentPrecedence) + 1);
-
-    ZC_IF_SOME(rightOperand, parseUnaryExpressionOrHigher()) {
-      ZC_IF_SOME(rightExpr,
-                 parseBinaryExpressionRestWithPrecedence(zc::mv(rightOperand), rightPrecedence)) {
-        // Create binary expression AST node
-        auto op = ast::factory::createBinaryOperator(
-            zc::mv(opText), static_cast<ast::OperatorPrecedence>(currentPrecedence));
-        auto newExpr =
-            ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(rightExpr));
-        // TODO: Set source range for binary expression
-        expr = zc::mv(newExpr);
+    if (expectToken(lexer::TokenKind::kAsKeyword)) {
+      // Make sure we *do* perform ASI for constructs like this:
+      //    let x = foo
+      //    as (Bar)
+      // This should be parsed as an initialized variable, followed
+      // by a function call to 'as' with the argument 'Bar'
+      if (currentToken().hasPrecedingLineBreak()) {
+        // 'as' keyword must be on the same line as the variable declaration
+        break;
       }
-      else { return zc::none; }
-    }
-    else { return zc::none; }
-  }
 
-  return zc::mv(expr);
-}
-
-// Helper method for precedence-aware binary expression parsing
-zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRestWithPrecedence(
-    zc::Own<ast::Expression> leftOperand, OperatorPrecedence minPrecedence) {
-  zc::Own<ast::Expression> expr = zc::mv(leftOperand);
-
-  while (true) {
-    const lexer::Token& token = currentToken();
-
-    if (!isBinaryOperator(token.getKind())) { break; }
-
-    OperatorPrecedence currentPrecedence = getBinaryOperatorPrecedence(token.getKind());
-
-    if (currentPrecedence < minPrecedence) { break; }
-
-    bool isRightAssociative = (token.getKind() == lexer::TokenKind::kAsteriskAsterisk);
-
-    zc::String opText = token.getText(impl->sourceMgr);
-    consumeToken();
-
-    OperatorPrecedence rightPrecedence =
-        isRightAssociative
-            ? currentPrecedence
-            : static_cast<OperatorPrecedence>(static_cast<int>(currentPrecedence) + 1);
-
-    ZC_IF_SOME(rightOperand, parseUnaryExpressionOrHigher()) {
-      ZC_IF_SOME(rightExpr,
-                 parseBinaryExpressionRestWithPrecedence(zc::mv(rightOperand), rightPrecedence)) {
-        auto op = ast::factory::createBinaryOperator(
-            zc::mv(opText), static_cast<ast::OperatorPrecedence>(currentPrecedence));
-        auto binaryExpr =
-            ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(rightExpr));
-        // TODO: Set source range for binary expression
-        expr = zc::mv(binaryExpr);
+      ZC_IF_SOME(castExpr, parseCastExpression()) { expr = zc::mv(castExpr); }
+      else {
+        // 'as', 'as!', 'as?' parse failed
+        break;
       }
-      else { return zc::none; }
+    } else {
+      zc::String opText = token.getText(impl->sourceMgr);
+      consumeToken();
+
+      ZC_IF_SOME(rightOperand, parseBinaryExpressionOrHigher(newPrecedence)) {
+        // Convert parser precedence to AST precedence
+        auto astPrecedence = getBinaryOperatorPrecedence(currentToken().getKind());
+        // Create binary operator from current token
+        auto op = ast::factory::createBinaryOperator(zc::mv(opText), astPrecedence);
+        expr = finishNode(
+            ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(rightOperand)),
+            startLoc);
+      }
     }
-    else { return zc::none; }
   }
 
   return zc::mv(expr);
@@ -1616,43 +1589,52 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseBinaryExpressionRestWithPrecede
 zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpressionOrHigher() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseUnaryExpressionOrHigher");
 
-  // unaryExpression:
-  //   updateExpression
-  //   | PLUS unaryExpression
-  //   | MINUS unaryExpression
-  //   | TILDE unaryExpression
-  //   | EXCLAMATION unaryExpression
-  //   | VOID unaryExpression
-  //   | TYPEOF unaryExpression
-  //   | AWAIT unaryExpression;
+  // postfixUnaryExpression:
+  //   leftHandSideExpression (
+  //     ERROR_PROPAGATE
+  //     | FORCE_UNWRAP
+  //     | INC
+  //     | DEC
+  //   )*;
+  //
+  // prefixUnaryExpression:
+  //   postfixUnaryExpression
+  //   | VOID prefixUnaryExpression
+  //   | TYPEOF prefixUnaryExpression
+  //   | PLUS prefixUnaryExpression
+  //   | MINUS prefixUnaryExpression
+  //   | BIT_NOT prefixUnaryExpression
+  //   | NOT prefixUnaryExpression
+  //   | INC prefixUnaryExpression
+  //   | DEC prefixUnaryExpression
+  //   | AWAIT prefixUnaryExpression;
   //
   // Handles prefix unary operators and update expressions
 
   const lexer::Token& token = currentToken();
 
-  // Check for update expressions (++, --) first
-  if (token.is(lexer::TokenKind::kPlusPlus) || token.is(lexer::TokenKind::kMinusMinus)) {
+  if (isUpdateExpression(token.getKind())) {
+    const source::SourceLoc startLoc = token.getLocation();
     ZC_IF_SOME(updateExpr, parseUpdateExpression()) {
-      // Check for exponentiation operator after update expression
-      if (expectToken(lexer::TokenKind::kAsteriskAsterisk)) {
-        // Error: unary expression cannot be left operand of exponentiation
-        // For now, we'll just return the update expression
-        return zc::mv(updateExpr);
-      }
-      return zc::mv(updateExpr);
+      return expectToken(lexer::TokenKind::kAsteriskAsterisk)
+                 ? parseBinaryExpressionRest(zc::mv(updateExpr),
+                                             getBinaryOperatorPrecedence(token.getKind()), startLoc)
+                 : finishNode(zc::mv(updateExpr), startLoc);
     }
   }
 
-  // Check for unary operators
-  if (token.is(lexer::TokenKind::kPlus) || token.is(lexer::TokenKind::kMinus) ||
-      token.is(lexer::TokenKind::kTilde) || token.is(lexer::TokenKind::kExclamation) ||
-      token.is(lexer::TokenKind::kVoidKeyword) || token.is(lexer::TokenKind::kTypeOfKeyword) ||
-      token.is(lexer::TokenKind::kAwaitKeyword)) {
-    return parseSimpleUnaryExpression();
+  const lexer::Token unaryOperator = currentToken();
+  const source::SourceLoc startLoc = unaryOperator.getLocation();
+  ZC_IF_SOME(simpleUnaryExpression, parseSimpleUnaryExpression()) {
+    // Check if followed by exponentiation operator
+    if (expectToken(lexer::TokenKind::kAsteriskAsterisk)) {
+      // This is a unary expression with operator
+      zc::String operatorText = unaryOperator.getText(impl->sourceMgr);
+      impl->diagnosticEngine.diagnose<diagnostics::DiagID::UnaryExpressionInExponentiation>(
+          startLoc, zc::mv(operatorText));
+    }
+    return zc::mv(simpleUnaryExpression);
   }
-
-  // Otherwise, parse update expression
-  ZC_IF_SOME(updateExpr, parseUpdateExpression()) { return zc::mv(updateExpr); }
 
   return zc::none;
 }
@@ -1661,9 +1643,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpressionOrHigher() {
 zc::Maybe<zc::Own<ast::UnaryExpression>> Parser::parseSimpleUnaryExpression() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseSimpleUnaryExpression");
 
-  const lexer::Token& token = currentToken();
-
-  switch (token.getKind()) {
+  switch (currentToken().getKind()) {
     case lexer::TokenKind::kPlus:
     case lexer::TokenKind::kMinus:
     case lexer::TokenKind::kTilde:
@@ -1694,15 +1674,14 @@ zc::Maybe<zc::Own<ast::UnaryExpression>> Parser::parsePrefixUnaryExpression() {
   //
   // Parse prefix unary operators: +, -, ~, !
 
-  const lexer::Token& token = currentToken();
-  zc::String operatorText = token.getText(impl->sourceMgr);
+  zc::String operatorText = currentToken().getText(impl->sourceMgr);
   consumeToken();
 
   // Parse the operand (recursive call to parseSimpleUnaryExpression)
   ZC_IF_SOME(operand, parseSimpleUnaryExpression()) {
     // Create appropriate unary operator based on token kind
     zc::Own<ast::UnaryOperator> op;
-    switch (token.getKind()) {
+    switch (currentToken().getKind()) {
       case lexer::TokenKind::kPlus:
         op = ast::factory::createUnaryPlusOperator();
         break;
@@ -1739,8 +1718,7 @@ zc::Maybe<zc::Own<ast::VoidExpression>> Parser::parseVoidExpression() {
   //
   // Parse void operator expression
 
-  const lexer::Token& token = currentToken();
-  zc::String operatorText = token.getText(impl->sourceMgr);
+  zc::String operatorText = currentToken().getText(impl->sourceMgr);
   consumeToken();
 
   // Parse the operand
@@ -1763,8 +1741,7 @@ zc::Maybe<zc::Own<ast::TypeOfExpression>> Parser::parseTypeOfExpression() {
   //
   // Parse typeof operator expression
 
-  const lexer::Token& token = currentToken();
-  zc::String operatorText = token.getText(impl->sourceMgr);
+  zc::String operatorText = currentToken().getText(impl->sourceMgr);
   consumeToken();
 
   // Parse the operand
@@ -1788,12 +1765,10 @@ zc::Maybe<zc::Own<ast::LeftHandSideExpression>> Parser::parseLeftHandSideExpress
   //   | callExpression
   //   | optionalExpression;
 
-  const lexer::Token& token = currentToken();
-
   zc::Maybe<zc::Own<ast::MemberExpression>> expression = zc::none;
 
   // Handle super keyword
-  if (token.is(lexer::TokenKind::kSuperKeyword)) {
+  if (expectToken(lexer::TokenKind::kSuperKeyword)) {
     ZC_IF_SOME(superExpr, parseSuperExpression()) { expression = zc::mv(superExpr); }
   }
   // Parse regular member expression
@@ -1851,10 +1826,8 @@ zc::Maybe<zc::Own<ast::LeftHandSideExpression>> Parser::parseCallExpressionRest(
   zc::Own<ast::LeftHandSideExpression> result = zc::mv(expression);
 
   while (true) {
-    const lexer::Token& token = currentToken();
-
     // Handle function calls
-    if (token.is(lexer::TokenKind::kLeftParen)) {
+    if (expectToken(lexer::TokenKind::kLeftParen)) {
       // Parse argument list
       ZC_IF_SOME(arguments, parseArgumentList()) {
         // Create call expression
@@ -1866,7 +1839,7 @@ zc::Maybe<zc::Own<ast::LeftHandSideExpression>> Parser::parseCallExpressionRest(
       else { return zc::none; }
     }
     // Handle member access (.property)
-    else if (token.is(lexer::TokenKind::kPeriod)) {
+    else if (expectToken(lexer::TokenKind::kPeriod)) {
       consumeToken();  // consume '.'
       ZC_IF_SOME(name, parseIdentifier()) {
         auto propAccessExpr =
@@ -1877,7 +1850,7 @@ zc::Maybe<zc::Own<ast::LeftHandSideExpression>> Parser::parseCallExpressionRest(
       }
     }
     // Handle computed member access ([expression])
-    else if (token.is(lexer::TokenKind::kLeftBracket)) {
+    else if (expectToken(lexer::TokenKind::kLeftBracket)) {
       consumeToken();  // consume '['
       ZC_IF_SOME(index, parseExpression()) {
         if (!consumeExpectedToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
@@ -1889,10 +1862,9 @@ zc::Maybe<zc::Own<ast::LeftHandSideExpression>> Parser::parseCallExpressionRest(
       }
     }
     // Handle optional chaining (?.) - simplified for now
-    else if (token.is(lexer::TokenKind::kQuestion)) {
+    else if (expectToken(lexer::TokenKind::kQuestion)) {
       consumeToken();  // consume '?'
-      const lexer::Token& nextToken = currentToken();
-      if (nextToken.is(lexer::TokenKind::kPeriod)) {
+      if (expectToken(lexer::TokenKind::kPeriod)) {
         consumeToken();  // consume '.'
 
         ZC_IF_SOME(property, parseIdentifier()) {
@@ -2276,7 +2248,7 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseExponentiationExpression() {
 
   // Try updateExpression POW exponentiationExpression (right-associative)
   ZC_IF_SOME(left, parseUpdateExpression()) {
-    const lexer::Token& token = currentToken();
+    const lexer::Token token = currentToken();
     if (token.is(lexer::TokenKind::kAsteriskAsterisk)) {  // POW operator
       zc::String opText = token.getText(impl->sourceMgr);
       consumeToken();
@@ -2300,8 +2272,6 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseExponentiationExpression() {
 zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpression() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseUnaryExpression");
 
-  const lexer::Token& token = currentToken();
-
   // unaryExpression:
   //   updateExpression
   //   | VOID unaryExpression
@@ -2311,9 +2281,10 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpression() {
   //   | BIT_NOT unaryExpression
   //   | NOT unaryExpression
   //   | awaitExpression
-  //   | LT type GT unaryExpression;
   //
   // Handles prefix unary operators and type assertions
+
+  const lexer::Token& token = currentToken();
 
   // Check for VOID operator
   if (token.is(lexer::TokenKind::kVoidKeyword)) {
@@ -2380,28 +2351,6 @@ zc::Maybe<zc::Own<ast::Expression>> Parser::parseUnaryExpression() {
       return zc::mv(unaryExpr);
     }
   }
-  // Check for type assertion: LT type GT unaryExpression
-  else if (token.is(lexer::TokenKind::kLessThan)) {
-    // This is a type assertion, parse it
-    consumeToken();  // consume '<'
-
-    ZC_IF_SOME(type, parseType()) {
-      if (expectToken(lexer::TokenKind::kGreaterThan)) {
-        consumeToken();  // consume '>'
-
-        ZC_IF_SOME(expr, parseUnaryExpression()) {
-          // Create a type assertion expression
-          // TODO: Implement proper type assertion AST node
-          // For now, create a cast expression or similar
-          (void)type;  // Suppress unused variable warning for now
-          auto op = ast::factory::createUnaryOperator(zc::str("<type>"), true);
-          auto unaryExpr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(expr));
-          // TODO: Set source range for prefix unary expression
-          return zc::mv(unaryExpr);
-        }
-      }
-    }
-  }
 
   // If not a unary expression, try updateExpression
   return parseUpdateExpression();
@@ -2417,7 +2366,8 @@ zc::Maybe<zc::Own<ast::UpdateExpression>> Parser::parseUpdateExpression() {
   //   | INC leftHandSideExpression
   //   | DEC leftHandSideExpression;
 
-  const lexer::Token& token = currentToken();
+  const lexer::Token token = currentToken();
+  const source::SourceLoc startLoc = token.getLocation();
 
   // Check for prefix increment/decrement operators
   if (token.is(lexer::TokenKind::kPlusPlus) || token.is(lexer::TokenKind::kMinusMinus)) {
@@ -2439,7 +2389,7 @@ zc::Maybe<zc::Own<ast::UpdateExpression>> Parser::parseUpdateExpression() {
 
   // Parse leftHandSideExpression first
   ZC_IF_SOME(expression, parseLeftHandSideExpressionOrHigher()) {
-    const lexer::Token& postToken = currentToken();
+    const lexer::Token postToken = currentToken();
 
     // Check for postfix increment/decrement operators
     if ((postToken.is(lexer::TokenKind::kPlusPlus) ||
@@ -2447,12 +2397,11 @@ zc::Maybe<zc::Own<ast::UpdateExpression>> Parser::parseUpdateExpression() {
       zc::String opText = postToken.getText(impl->sourceMgr);
       consumeToken();
 
-      zc::Own<ast::UnaryOperator> op = token.is(lexer::TokenKind::kPlusPlus)
+      zc::Own<ast::UnaryOperator> op = postToken.is(lexer::TokenKind::kPlusPlus)
                                            ? ast::factory::createPostIncrementOperator()
                                            : ast::factory::createPostDecrementOperator();
-      auto postfixExpr = ast::factory::createPostfixUnaryExpression(zc::mv(op), zc::mv(expression));
-      // TODO: Set source range for postfix unary expression
-      return postfixExpr;
+      return finishNode(ast::factory::createPostfixUnaryExpression(zc::mv(op), zc::mv(expression)),
+                        startLoc);
     }
 
     // No update operators found, return the expression as-is
@@ -2489,9 +2438,7 @@ zc::Maybe<zc::Own<ast::PrimaryExpression>> Parser::parsePrimaryExpression() {
   //
   // Handles basic atomic expressions
 
-  const lexer::Token& token = currentToken();
-
-  switch (token.getKind()) {
+  switch (currentToken().getKind()) {
     case lexer::TokenKind::kIdentifier:
       return parseIdentifier();
 
@@ -2501,15 +2448,10 @@ zc::Maybe<zc::Own<ast::PrimaryExpression>> Parser::parsePrimaryExpression() {
     case lexer::TokenKind::kTrueKeyword:
     case lexer::TokenKind::kFalseKeyword:
     case lexer::TokenKind::kNullKeyword:
-    case lexer::TokenKind::kNilKeyword:
       return parseLiteralExpression();
 
     case lexer::TokenKind::kLeftParen: {
-      consumeToken();
-      ZC_IF_SOME(expr, parseParenthesizedExpression()) {
-        if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
-        return zc::mv(expr);
-      }
+      ZC_IF_SOME(expr, parseParenthesizedExpression()) { return zc::mv(expr); }
       return zc::none;
     }
 
@@ -2528,51 +2470,45 @@ zc::Maybe<zc::Own<ast::LiteralExpression>> Parser::parseLiteralExpression() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseLiteralExpression");
 
   // literal:
-  //   nilLiteral
+  //   nullLiteral
   //   | booleanLiteral
   //   | numericLiteral
   //   | stringLiteral;
   //
-  // Handles all literal values (numbers, strings, booleans, nil)
+  // Handles all literal values (numbers, strings, booleans, null)
 
   const lexer::Token& token = currentToken();
+  source::SourceLoc startLoc = token.getLocation();
 
   switch (token.getKind()) {
     case lexer::TokenKind::kIntegerLiteral: {
-      source::SourceLoc startLoc = token.getLocation();
       zc::String value = token.getText(impl->sourceMgr);
       consumeToken();
-      double numValue = zc::StringPtr(value).parseAs<double>();
-      return finishNode(ast::factory::createNumericLiteral(numValue), startLoc);
+      int64_t numValue = value.parseAs<int64_t>();
+      return finishNode(ast::factory::createIntegerLiteral(numValue), startLoc);
     }
     case lexer::TokenKind::kFloatLiteral: {
-      source::SourceLoc startLoc = token.getLocation();
       zc::String value = token.getText(impl->sourceMgr);
       consumeToken();
       double numValue = zc::StringPtr(value).parseAs<double>();
-      return finishNode(ast::factory::createNumericLiteral(numValue), startLoc);
+      return finishNode(ast::factory::createFloatLiteral(numValue), startLoc);
     }
     case lexer::TokenKind::kStringLiteral: {
-      source::SourceLoc startLoc = token.getLocation();
       zc::String value = token.getText(impl->sourceMgr);
       consumeToken();
       return finishNode(ast::factory::createStringLiteral(zc::mv(value)), startLoc);
     }
     case lexer::TokenKind::kTrueKeyword: {
-      source::SourceLoc startLoc = token.getLocation();
       consumeToken();
       return finishNode(ast::factory::createBooleanLiteral(true), startLoc);
     }
     case lexer::TokenKind::kFalseKeyword: {
-      source::SourceLoc startLoc = token.getLocation();
       consumeToken();
       return finishNode(ast::factory::createBooleanLiteral(false), startLoc);
     }
-    case lexer::TokenKind::kNullKeyword:
-    case lexer::TokenKind::kNilKeyword: {
-      source::SourceLoc startLoc = token.getLocation();
+    case lexer::TokenKind::kNullKeyword: {
       consumeToken();
-      return finishNode(ast::factory::createNilLiteral(), startLoc);
+      return finishNode(ast::factory::createNullLiteral(), startLoc);
     }
 
     default:
@@ -3019,7 +2955,7 @@ zc::Maybe<zc::Own<ast::PredefinedType>> Parser::parsePredefinedType() {
     case lexer::TokenKind::kF64Keyword:
     case lexer::TokenKind::kStrKeyword:
     case lexer::TokenKind::kBoolKeyword:
-    case lexer::TokenKind::kNilKeyword:
+    case lexer::TokenKind::kNullKeyword:
     case lexer::TokenKind::kUnitKeyword: {
       zc::String typeName = token.getText(impl->sourceMgr);
       consumeToken();
@@ -3077,11 +3013,13 @@ zc::Maybe<zc::Own<ast::CastExpression>> Parser::parseCastExpression() {
       }
 
       ZC_IF_SOME(type, parseType()) {
-        zc::String targetType = zc::str("unknown");  // TODO: Extract type name from AST
-        // Use type and isNonNull to avoid unused variable warning
-        (void)type;
-        (void)isNonNull;
-        return ast::factory::createCastExpression(zc::mv(expr), zc::mv(targetType), isOptional);
+        if (isOptional) {
+          return ast::factory::createConditionalAsExpression(zc::mv(expr), zc::mv(type));
+        } else if (isNonNull) {
+          return ast::factory::createForcedAsExpression(zc::mv(expr), zc::mv(type));
+        } else {
+          return ast::factory::createAsExpression(zc::mv(expr), zc::mv(type));
+        }
       }
     }
 
@@ -3172,15 +3110,15 @@ zc::Maybe<zc::Own<ast::ParenthesizedExpression>> Parser::parseParenthesizedExpre
 
   // parenthesizedExpression: LPAREN expression RPAREN;
 
-  if (!expectToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
+  const source::SourceLoc startLoc = currentToken().getLocation();
 
-  consumeToken();
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
   ZC_IF_SOME(expr, parseExpression()) {
     if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
     // Create a parenthesized expression with the parsed expression
-    return ast::factory::createParenthesizedExpression(zc::mv(expr));
+    return finishNode(ast::factory::createParenthesizedExpression(zc::mv(expr)), startLoc);
   }
 
   return zc::none;
@@ -3305,20 +3243,32 @@ zc::Maybe<zc::Own<ast::StringLiteral>> Parser::parseStringLiteral() {
   return finishNode(ast::factory::createStringLiteral(zc::mv(value)), startLoc);
 }
 
-zc::Maybe<zc::Own<ast::NumericLiteral>> Parser::parseNumericLiteral() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseNumericLiteral");
+zc::Maybe<zc::Own<ast::IntegerLiteral>> Parser::parseIntegerLiteral() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseIntegerLiteral");
 
   const lexer::Token& token = currentToken();
-  if (!token.is(lexer::TokenKind::kIntegerLiteral) && !token.is(lexer::TokenKind::kFloatLiteral)) {
-    return zc::none;
-  }
+  if (!token.is(lexer::TokenKind::kIntegerLiteral)) { return zc::none; }
+
+  source::SourceLoc startLoc = token.getLocation();
+  zc::String value = token.getText(impl->sourceMgr);
+  consumeToken();
+
+  int64_t numValue = value.parseAs<int64_t>();
+  return finishNode(ast::factory::createIntegerLiteral(numValue), startLoc);
+}
+
+zc::Maybe<zc::Own<ast::FloatLiteral>> Parser::parseFloatLiteral() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseFloatLiteral");
+
+  const lexer::Token& token = currentToken();
+  if (!token.is(lexer::TokenKind::kFloatLiteral)) { return zc::none; }
 
   source::SourceLoc startLoc = token.getLocation();
   zc::String value = token.getText(impl->sourceMgr);
   consumeToken();
 
   double numValue = zc::StringPtr(value).parseAs<double>();
-  return finishNode(ast::factory::createNumericLiteral(numValue), startLoc);
+  return finishNode(ast::factory::createFloatLiteral(numValue), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::BooleanLiteral>> Parser::parseBooleanLiteral() {
@@ -3336,18 +3286,16 @@ zc::Maybe<zc::Own<ast::BooleanLiteral>> Parser::parseBooleanLiteral() {
   return finishNode(ast::factory::createBooleanLiteral(value), startLoc);
 }
 
-zc::Maybe<zc::Own<ast::NilLiteral>> Parser::parseNilLiteral() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseNilLiteral");
+zc::Maybe<zc::Own<ast::NullLiteral>> Parser::parseNullLiteral() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseNullLiteral");
 
   const lexer::Token& token = currentToken();
-  if (!token.is(lexer::TokenKind::kNullKeyword) && !token.is(lexer::TokenKind::kNilKeyword)) {
-    return zc::none;
-  }
+  if (!token.is(lexer::TokenKind::kNullKeyword)) { return zc::none; }
 
   source::SourceLoc startLoc = token.getLocation();
   consumeToken();
 
-  return finishNode(ast::factory::createNilLiteral(), startLoc);
+  return finishNode(ast::factory::createNullLiteral(), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::FunctionExpression>> Parser::parseFunctionExpression() {

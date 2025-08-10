@@ -23,7 +23,7 @@ namespace compiler {
 namespace ast {
 
 // Operator precedence levels
-enum class OperatorPrecedence {
+enum class OperatorPrecedence : uint8_t {
   kLowest = 0,
   kAssignment = 1,       // =, +=, -=, etc.
   kConditional = 2,      // ?:

@@ -28,6 +28,40 @@ class SourceManager;
 
 namespace lexer {
 
+enum class TokenFlags : uint16_t {
+  kNone = 0,
+  // Line break flags
+  kPrecedingLineBreak = 1 << 0,
+
+  // String/escape sequence flags
+  kUnterminated = 1 << 1,
+  kExtendedUnicodeEscape = 1 << 2,  // e.g. `\u{10ffff}`
+  kUnicodeEscape = 1 << 3,          // e.g. `\u00a0`
+  kHexEscape = 1 << 4,              // e.g. `\xa0`
+  kContainsInvalidEscape = 1 << 5,  // e.g. `\uhello`
+
+  // Numeric literal flags
+  kScientific = 1 << 6,                 // e.g. `10e2`
+  kOctal = 1 << 7,                      // e.g. `0777`
+  kHexSpecifier = 1 << 8,               // e.g. `0x00000000`
+  kBinarySpecifier = 1 << 9,            // e.g. `0b0110010000000000`
+  kOctalSpecifier = 1 << 10,            // e.g. `0o777`
+  kContainsSeparator = 1 << 11,         // e.g. `0b1100_0101`
+  kContainsLeadingZero = 1 << 12,       // e.g. `0888`
+  kContainsInvalidSeparator = 1 << 13,  // e.g. `0_1`
+
+  // Composite flags for convenience
+  kBinaryOrOctalSpecifier = kBinarySpecifier | kOctalSpecifier,
+  kWithSpecifier = kHexSpecifier | kBinaryOrOctalSpecifier,
+  kStringLiteralFlags =
+      kHexEscape | kUnicodeEscape | kExtendedUnicodeEscape | kContainsInvalidEscape,
+  kNumericLiteralFlags = kScientific | kOctal | kContainsLeadingZero | kWithSpecifier |
+                         kContainsSeparator | kContainsInvalidSeparator,
+  kTemplateLiteralLikeFlags =
+      kHexEscape | kUnicodeEscape | kExtendedUnicodeEscape | kContainsInvalidEscape,
+  kIsInvalid = kOctal | kContainsLeadingZero | kContainsInvalidSeparator | kContainsInvalidEscape,
+};
+
 enum class TokenKind {
   kUnknown,
 
@@ -126,7 +160,6 @@ enum class TokenKind {
   kF64Keyword,     // f64
   kStrKeyword,     // str
   kUnitKeyword,    // unit
-  kNilKeyword,     // nil
   kElseKeyword,    // else
   kForKeyword,     // for
   kWhileKeyword,   // while
@@ -151,7 +184,6 @@ enum class TokenKind {
   kCharacterLiteral,
   kBooleanLiteral,  // true/false
   kNullLiteral,     // null
-  kNilLiteral,      // nil
 
   // Operators
   kOperator,
@@ -234,7 +266,8 @@ enum class TokenKind {
 class Token {
 public:
   Token() noexcept;
-  Token(TokenKind k, source::SourceRange r, zc::Maybe<zc::String> text = zc::none) noexcept;
+  Token(TokenKind k, source::SourceRange r, zc::Maybe<zc::String> text = zc::none,
+        TokenFlags flags = TokenFlags::kNone) noexcept;
 
   // Copy constructor
   Token(const Token& other) noexcept;
@@ -253,12 +286,17 @@ public:
   void setKind(TokenKind k);
   void setRange(source::SourceRange r);
   void setCachedText(zc::String text);
+  void setFlags(TokenFlags flags);
+  void addFlag(TokenFlags flag);
 
   ZC_NODISCARD bool is(TokenKind k) const;
 
   ZC_NODISCARD TokenKind getKind() const;
   ZC_NODISCARD source::SourceLoc getLocation() const;
   ZC_NODISCARD source::SourceRange getRange() const;
+  ZC_NODISCARD TokenFlags getFlags() const;
+  ZC_NODISCARD bool hasFlag(TokenFlags flag) const;
+  ZC_NODISCARD bool hasPrecedingLineBreak() const;
 
   /// Get the raw text content of this token with fast path optimization
   ZC_NODISCARD zc::String getText(const source::SourceManager& sm) const;

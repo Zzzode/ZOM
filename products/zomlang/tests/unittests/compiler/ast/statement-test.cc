@@ -73,7 +73,7 @@ ZC_TEST("StatementTest.BlockStatement") {
 }
 
 ZC_TEST("StatementTest.ReturnStatement") {
-  auto expr = factory::createNumericLiteral(42.0);
+  auto expr = factory::createFloatLiteral(42.0);
   auto stmt = factory::createReturnStatement(zc::mv(expr));
 
   ZC_EXPECT(stmt->getKind() == SyntaxKind::kReturnStatement);

@@ -112,7 +112,7 @@ public:
   source::SourceLoc getLocForStartOfToken(source::SourceLoc loc) const;
   source::CharSourceRange getCharSourceRangeFromSourceRange(const source::SourceRange& sr) const;
 
-  /// @brief Start position of whitespace before current token
+  /// \brief Start position of whitespace before current token
   ZC_NODISCARD source::SourceLoc getFullStartLoc() const;
 
 private:

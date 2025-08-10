@@ -112,10 +112,11 @@ void ASTDumper::dumpNode(const Node& node, int indent) {
       dumpStatement(static_cast<const Statement&>(node), indent);
       break;
     case SyntaxKind::kBinaryExpression:
-    case SyntaxKind::kNumericLiteral:
+    case SyntaxKind::kIntegerLiteral:
+    case SyntaxKind::kFloatLiteral:
     case SyntaxKind::kStringLiteral:
     case SyntaxKind::kBooleanLiteral:
-    case SyntaxKind::kNilLiteral:
+    case SyntaxKind::kNullLiteral:
     case SyntaxKind::kCallExpression:
     case SyntaxKind::kNewExpression:
     case SyntaxKind::kArrayLiteralExpression:
@@ -205,14 +206,17 @@ void ASTDumper::dumpExpression(const Expression& expr, int indent) {
     case SyntaxKind::kStringLiteral:
       dumpStringLiteral(static_cast<const StringLiteral&>(expr), indent);
       break;
-    case SyntaxKind::kNumericLiteral:
-      dumpNumericLiteral(static_cast<const NumericLiteral&>(expr), indent);
+    case SyntaxKind::kIntegerLiteral:
+      dumpIntegerLiteral(static_cast<const IntegerLiteral&>(expr), indent);
+      break;
+    case SyntaxKind::kFloatLiteral:
+      dumpFloatLiteral(static_cast<const FloatLiteral&>(expr), indent);
       break;
     case SyntaxKind::kBooleanLiteral:
       dumpBooleanLiteral(static_cast<const BooleanLiteral&>(expr), indent);
       break;
-    case SyntaxKind::kNilLiteral:
-      dumpNilLiteral(static_cast<const NilLiteral&>(expr), indent);
+    case SyntaxKind::kNullLiteral:
+      dumpNullLiteral(static_cast<const NullLiteral&>(expr), indent);
       break;
     case SyntaxKind::kCallExpression:
       dumpCallExpression(static_cast<const CallExpression&>(expr), indent);
@@ -240,6 +244,18 @@ void ASTDumper::dumpExpression(const Expression& expr, int indent) {
       break;
     case SyntaxKind::kConditionalExpression:
       dumpConditionalExpression(static_cast<const ConditionalExpression&>(expr), indent);
+      break;
+    case SyntaxKind::kCastExpression:
+      dumpCastExpression(static_cast<const CastExpression&>(expr), indent);
+      break;
+    case SyntaxKind::kAsExpression:
+      dumpAsExpression(static_cast<const AsExpression&>(expr), indent);
+      break;
+    case SyntaxKind::kForcedAsExpression:
+      dumpForcedAsExpression(static_cast<const ForcedAsExpression&>(expr), indent);
+      break;
+    case SyntaxKind::kConditionalAsExpression:
+      dumpConditionalAsExpression(static_cast<const ConditionalAsExpression&>(expr), indent);
       break;
     default:
       // Generic expression dump
@@ -1460,27 +1476,52 @@ void ASTDumper::dumpStringLiteral(const StringLiteral& strLit, int indent) {
   }
 }
 
-void ASTDumper::dumpNumericLiteral(const NumericLiteral& numLit, int indent) {
+void ASTDumper::dumpIntegerLiteral(const IntegerLiteral& intLit, int indent) {
   switch (impl->format) {
     case DumpFormat::kTEXT:
-      impl->output.write(zc::str("NumericLiteral(", numLit.getValue(), ")").asBytes());
+      impl->output.write(zc::str("IntegerLiteral(", intLit.getValue(), ")").asBytes());
       break;
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("node", "NumericLiteral", indent + 1);
+      writeProperty("node", "IntegerLiteral", indent + 1);
       impl->output.write(",\n"_zcb);
-      writeProperty("value", zc::str(numLit.getValue()), indent + 1);
+      writeProperty("value", zc::str(intLit.getValue()), indent + 1);
       impl->output.write("\n"_zcb);
       writeIndent(indent);
       impl->output.write("}"_zcb);
       break;
     case DumpFormat::kXML:
       writeIndent(indent);
-      impl->output.write("<NumericLiteral>\n"_zcb);
-      writeProperty("value", zc::str(numLit.getValue()), indent + 1);
+      impl->output.write("<IntegerLiteral>\n"_zcb);
+      writeProperty("value", zc::str(intLit.getValue()), indent + 1);
       writeIndent(indent);
-      impl->output.write("</NumericLiteral>\n"_zcb);
+      impl->output.write("</IntegerLiteral>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpFloatLiteral(const FloatLiteral& floatLit, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      impl->output.write(zc::str("FloatLiteral(", floatLit.getValue(), ")").asBytes());
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "FloatLiteral", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeProperty("value", zc::str(floatLit.getValue()), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<FloatLiteral>\n"_zcb);
+      writeProperty("value", zc::str(floatLit.getValue()), indent + 1);
+      writeIndent(indent);
+      impl->output.write("</FloatLiteral>\n"_zcb);
       break;
   }
 }
@@ -1513,26 +1554,26 @@ void ASTDumper::dumpBooleanLiteral(const BooleanLiteral& boolLit, int indent) {
   }
 }
 
-void ASTDumper::dumpNilLiteral(const NilLiteral& nilLit, int indent) {
-  (void)nilLit;  // Suppress unused parameter warning
+void ASTDumper::dumpNullLiteral(const NullLiteral& nullLit, int indent) {
+  (void)nullLit;  // Suppress unused parameter warning
   switch (impl->format) {
     case DumpFormat::kTEXT:
-      writeNodeHeader("NilLiteral", indent);
-      writeNodeFooter("NilLiteral", indent);
+      writeNodeHeader("NullLiteral", indent);
+      writeNodeFooter("NullLiteral", indent);
       break;
     case DumpFormat::kJSON:
       writeIndent(indent);
       impl->output.write("{\n"_zcb);
-      writeProperty("node", "NilLiteral", indent + 1);
+      writeProperty("node", "NullLiteral", indent + 1);
       impl->output.write("\n"_zcb);
       writeIndent(indent);
       impl->output.write("}"_zcb);
       break;
     case DumpFormat::kXML:
       writeIndent(indent);
-      impl->output.write("<NilLiteral>\n"_zcb);
+      impl->output.write("<NullLiteral>\n"_zcb);
       writeIndent(indent);
-      impl->output.write("</NilLiteral>\n"_zcb);
+      impl->output.write("</NullLiteral>\n"_zcb);
       break;
   }
 }
@@ -1903,6 +1944,187 @@ void ASTDumper::dumpConditionalExpression(const ConditionalExpression& condition
       impl->output.write("</alternate>\n"_zcb);
       writeIndent(indent);
       impl->output.write("</ConditionalExpression>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpCastExpression(const CastExpression& castExpr, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("CastExpression", indent);
+      writeLine("expression:", indent + 1);
+      dumpExpression(*castExpr.getExpression(), indent + 2);
+      writeLine("targetType:", indent + 1);
+      dumpType(*castExpr.getTargetType(), indent + 2);
+      writeNodeFooter("CastExpression", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "CastExpression", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"expression\": \n"_zcb);
+      dumpExpression(*castExpr.getExpression(), indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"targetType\": \n"_zcb);
+      dumpType(*castExpr.getTargetType(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<CastExpression>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<expression>\n"_zcb);
+      dumpExpression(*castExpr.getExpression(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</expression>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<targetType>\n"_zcb);
+      dumpType(*castExpr.getTargetType(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</targetType>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</CastExpression>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpAsExpression(const AsExpression& asExpr, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("AsExpression", indent);
+      writeLine("expression:", indent + 1);
+      dumpExpression(*asExpr.getExpression(), indent + 2);
+      writeLine("targetType:", indent + 1);
+      dumpType(*asExpr.getTargetType(), indent + 2);
+      writeNodeFooter("AsExpression", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "AsExpression", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"expression\": \n"_zcb);
+      dumpExpression(*asExpr.getExpression(), indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"targetType\": \n"_zcb);
+      dumpType(*asExpr.getTargetType(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<AsExpression>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<expression>\n"_zcb);
+      dumpExpression(*asExpr.getExpression(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</expression>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<targetType>\n"_zcb);
+      dumpType(*asExpr.getTargetType(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</targetType>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</AsExpression>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpForcedAsExpression(const ForcedAsExpression& forcedAsExpr, int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("ForcedAsExpression", indent);
+      writeLine("expression:", indent + 1);
+      dumpExpression(*forcedAsExpr.getExpression(), indent + 2);
+      writeLine("targetType:", indent + 1);
+      dumpType(*forcedAsExpr.getTargetType(), indent + 2);
+      writeNodeFooter("ForcedAsExpression", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "ForcedAsExpression", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"expression\": \n"_zcb);
+      dumpExpression(*forcedAsExpr.getExpression(), indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"targetType\": \n"_zcb);
+      dumpType(*forcedAsExpr.getTargetType(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<ForcedAsExpression>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<expression>\n"_zcb);
+      dumpExpression(*forcedAsExpr.getExpression(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</expression>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<targetType>\n"_zcb);
+      dumpType(*forcedAsExpr.getTargetType(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</targetType>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</ForcedAsExpression>\n"_zcb);
+      break;
+  }
+}
+
+void ASTDumper::dumpConditionalAsExpression(const ConditionalAsExpression& conditionalAsExpr,
+                                            int indent) {
+  switch (impl->format) {
+    case DumpFormat::kTEXT:
+      writeNodeHeader("ConditionalAsExpression", indent);
+      writeLine("expression:", indent + 1);
+      dumpExpression(*conditionalAsExpr.getExpression(), indent + 2);
+      writeLine("targetType:", indent + 1);
+      dumpType(*conditionalAsExpr.getTargetType(), indent + 2);
+      writeNodeFooter("ConditionalAsExpression", indent);
+      break;
+    case DumpFormat::kJSON:
+      writeIndent(indent);
+      impl->output.write("{\n"_zcb);
+      writeProperty("node", "ConditionalAsExpression", indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"expression\": \n"_zcb);
+      dumpExpression(*conditionalAsExpr.getExpression(), indent + 1);
+      impl->output.write(",\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("\"targetType\": \n"_zcb);
+      dumpType(*conditionalAsExpr.getTargetType(), indent + 1);
+      impl->output.write("\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("}"_zcb);
+      break;
+    case DumpFormat::kXML:
+      writeIndent(indent);
+      impl->output.write("<ConditionalAsExpression>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<expression>\n"_zcb);
+      dumpExpression(*conditionalAsExpr.getExpression(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</expression>\n"_zcb);
+      writeIndent(indent + 1);
+      impl->output.write("<targetType>\n"_zcb);
+      dumpType(*conditionalAsExpr.getTargetType(), indent + 2);
+      writeIndent(indent + 1);
+      impl->output.write("</targetType>\n"_zcb);
+      writeIndent(indent);
+      impl->output.write("</ConditionalAsExpression>\n"_zcb);
       break;
   }
 }

@@ -23,8 +23,8 @@ class Node {
 }
 
 fun createList() -> Node {
-    let head = Node(1, nil); // Allocated on heap
-    head.next = Node(2, nil); // Reference counted
+    let head = Node(1, null); // Allocated on heap
+    head.next = Node(2, null); // Reference counted
     return head; // Reference transferred to caller
 } // Local reference cleaned up, heap objects remain
 ```
@@ -73,7 +73,7 @@ class Child {
     weak parent: Parent?, // Weak reference
 
     fun getParent() -> Parent? {
-        return this.parent; // May return nil if parent was deallocated
+        return this.parent; // May return null if parent was deallocated
     }
 }
 ```

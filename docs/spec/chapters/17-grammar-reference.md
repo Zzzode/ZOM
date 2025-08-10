@@ -19,7 +19,7 @@ IdentifierStart ::= UnicodeIDStart | '$' | '_' | '\\' UnicodeEscapeSequence
 IdentifierPart ::= UnicodeIDContinue | '$' | '\u200C' | '\u200D' | '\\' UnicodeEscapeSequence
 
 (* Literals *)
-NilLiteral ::= 'nil'
+NullLiteral ::= 'null'
 BooleanLiteral ::= 'true' | 'false'
 
 (* Numeric Literals *)
@@ -148,7 +148,7 @@ AtomType ::= ParenthesizedType
 
 ParenthesizedType ::= '(' TypeExpression ')'
 PredefinedType ::= 'i8' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'
-                | 'f32' | 'f64' | 'str' | 'bool' | 'nil' | 'unit'
+                | 'f32' | 'f64' | 'str' | 'bool' | 'null' | 'unit'
 TypeReference ::= TypeName TypeArguments?
 TypeName ::= Identifier
 TypeQuery ::= 'typeof' TypeQueryExpression

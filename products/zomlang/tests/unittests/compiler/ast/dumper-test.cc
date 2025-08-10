@@ -60,25 +60,25 @@ ZC_TEST("ASTDumper.DumpSourceFileText") {
   ZC_ASSERT(outputStr.contains("statements:"));
 }
 
-ZC_TEST("ASTDumper.DumpNumericLiteral") {
-  zc::Own<NumericLiteral> expr = ast::factory::createNumericLiteral(123);
+ZC_TEST("ASTDumper.DumpIntegerLiteral") {
+  zc::Own<IntegerLiteral> expr = ast::factory::createIntegerLiteral(123);
   MockOutputStream output;
   ASTDumper dumper(output, DumpFormat::kTEXT);
   dumper.dump(*expr);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result == "NumericLiteral(123)");
+  ZC_ASSERT(result == "IntegerLiteral(123)");
 }
 
 ZC_TEST("ASTDumper.DumpBinaryExpression") {
-  auto lhs = ast::factory::createNumericLiteral(10);
-  auto rhs = ast::factory::createNumericLiteral(20);
+  auto lhs = ast::factory::createIntegerLiteral(10);
+  auto rhs = ast::factory::createIntegerLiteral(20);
   auto op = ast::factory::createAddOperator();
   auto binExpr = ast::factory::createBinaryExpression(zc::mv(lhs), zc::mv(op), zc::mv(rhs));
   MockOutputStream output;
   ASTDumper dumper(output, DumpFormat::kTEXT);
   dumper.dump(*binExpr);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result == "BinaryExpression(Add, NumericLiteral(10), NumericLiteral(20))");
+  ZC_ASSERT(result == "BinaryExpression(Add, IntegerLiteral(10), IntegerLiteral(20))");
 }
 
 ZC_TEST("ASTDumper.DumpSourceFileJson") {
@@ -194,33 +194,33 @@ ZC_TEST("ASTDumper.DumpBooleanLiteralXML") {
   ZC_ASSERT(result.contains("</BooleanLiteral>"));
 }
 
-// Test NilLiteral in all formats
-ZC_TEST("ASTDumper.DumpNilLiteralText") {
-  auto expr = ast::factory::createNilLiteral();
+// Test NullLiteral in all formats
+ZC_TEST("ASTDumper.DumpNullLiteralText") {
+  auto expr = ast::factory::createNullLiteral();
   MockOutputStream output;
   ASTDumper dumper(output, DumpFormat::kTEXT);
   dumper.dump(*expr);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("NilLiteral {"));
+  ZC_ASSERT(result.contains("NullLiteral {"));
 }
 
-ZC_TEST("ASTDumper.DumpNilLiteralJSON") {
-  auto expr = ast::factory::createNilLiteral();
+ZC_TEST("ASTDumper.DumpNullLiteralJSON") {
+  auto expr = ast::factory::createNullLiteral();
   MockOutputStream output;
   ASTDumper dumper(output, DumpFormat::kJSON);
   dumper.dump(*expr);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("\"node\": \"NilLiteral\""));
+  ZC_ASSERT(result.contains("\"node\": \"NullLiteral\""));
 }
 
-ZC_TEST("ASTDumper.DumpNilLiteralXML") {
-  auto expr = ast::factory::createNilLiteral();
+ZC_TEST("ASTDumper.DumpNullLiteralXML") {
+  auto expr = ast::factory::createNullLiteral();
   MockOutputStream output;
   ASTDumper dumper(output, DumpFormat::kXML);
   dumper.dump(*expr);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("<NilLiteral>"));
-  ZC_ASSERT(result.contains("</NilLiteral>"));
+  ZC_ASSERT(result.contains("<NullLiteral>"));
+  ZC_ASSERT(result.contains("</NullLiteral>"));
 }
 
 // Test Identifier in all formats
@@ -257,7 +257,7 @@ ZC_TEST("ASTDumper.DumpIdentifierXML") {
 
 // Test UnaryExpression in all formats
 ZC_TEST("ASTDumper.DumpUnaryExpressionText") {
-  auto operand = ast::factory::createNumericLiteral(42.0);
+  auto operand = ast::factory::createFloatLiteral(42.0);
   auto op = ast::factory::createUnaryMinusOperator();
   auto expr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(operand));
   MockOutputStream output;
@@ -269,7 +269,7 @@ ZC_TEST("ASTDumper.DumpUnaryExpressionText") {
 }
 
 ZC_TEST("ASTDumper.DumpUnaryExpressionJSON") {
-  auto operand = ast::factory::createNumericLiteral(42.0);
+  auto operand = ast::factory::createFloatLiteral(42.0);
   auto op = ast::factory::createUnaryPlusOperator();
   auto expr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(operand));
   MockOutputStream output;
@@ -281,7 +281,7 @@ ZC_TEST("ASTDumper.DumpUnaryExpressionJSON") {
 }
 
 ZC_TEST("ASTDumper.DumpUnaryExpressionXML") {
-  auto operand = ast::factory::createNumericLiteral(42.0);
+  auto operand = ast::factory::createFloatLiteral(42.0);
   auto op = ast::factory::createLogicalNotOperator();
   auto expr = ast::factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(operand));
   MockOutputStream output;
@@ -296,7 +296,7 @@ ZC_TEST("ASTDumper.DumpUnaryExpressionXML") {
 // Test AssignmentExpression in all formats
 ZC_TEST("ASTDumper.DumpAssignmentExpressionText") {
   auto left = ast::factory::createIdentifier(zc::str("x"));
-  auto right = ast::factory::createNumericLiteral(10.0);
+  auto right = ast::factory::createFloatLiteral(10.0);
   auto op = ast::factory::createAssignOperator();
   auto expr = ast::factory::createAssignmentExpression(zc::mv(left), zc::mv(op), zc::mv(right));
   MockOutputStream output;
@@ -308,7 +308,7 @@ ZC_TEST("ASTDumper.DumpAssignmentExpressionText") {
 
 ZC_TEST("ASTDumper.DumpAssignmentExpressionJSON") {
   auto left = ast::factory::createIdentifier(zc::str("x"));
-  auto right = ast::factory::createNumericLiteral(10.0);
+  auto right = ast::factory::createFloatLiteral(10.0);
   auto op = ast::factory::createAssignOperator();
   auto expr = ast::factory::createAssignmentExpression(zc::mv(left), zc::mv(op), zc::mv(right));
   MockOutputStream output;
@@ -320,7 +320,7 @@ ZC_TEST("ASTDumper.DumpAssignmentExpressionJSON") {
 
 ZC_TEST("ASTDumper.DumpAssignmentExpressionXML") {
   auto left = ast::factory::createIdentifier(zc::str("x"));
-  auto right = ast::factory::createNumericLiteral(10.0);
+  auto right = ast::factory::createFloatLiteral(10.0);
   auto op = ast::factory::createAssignOperator();
   auto expr = ast::factory::createAssignmentExpression(zc::mv(left), zc::mv(op), zc::mv(right));
   MockOutputStream output;
@@ -335,7 +335,7 @@ ZC_TEST("ASTDumper.DumpAssignmentExpressionXML") {
 ZC_TEST("ASTDumper.DumpCallExpressionText") {
   auto callee = ast::factory::createIdentifier(zc::str("func"));
   zc::Vector<zc::Own<Expression>> args;
-  args.add(ast::factory::createNumericLiteral(1.0));
+  args.add(ast::factory::createFloatLiteral(1.0));
   args.add(ast::factory::createStringLiteral(zc::str("test")));
   auto expr = ast::factory::createCallExpression(zc::mv(callee), zc::mv(args));
   MockOutputStream output;
@@ -348,7 +348,7 @@ ZC_TEST("ASTDumper.DumpCallExpressionText") {
 ZC_TEST("ASTDumper.DumpCallExpressionJSON") {
   auto callee = ast::factory::createIdentifier(zc::str("func"));
   zc::Vector<zc::Own<Expression>> args;
-  args.add(ast::factory::createNumericLiteral(1.0));
+  args.add(ast::factory::createFloatLiteral(1.0));
   auto expr = ast::factory::createCallExpression(zc::mv(callee), zc::mv(args));
   MockOutputStream output;
   ASTDumper dumper(output, DumpFormat::kJSON);
@@ -444,7 +444,7 @@ ZC_TEST("ASTDumper.DumpPredefinedTypeXML") {
 
 // Test Statement dumping
 ZC_TEST("ASTDumper.DumpExpressionStatementText") {
-  auto expr = ast::factory::createNumericLiteral(42.0);
+  auto expr = ast::factory::createFloatLiteral(42.0);
   auto stmt = ast::factory::createExpressionStatement(zc::mv(expr));
   MockOutputStream output;
   ASTDumper dumper(output, DumpFormat::kTEXT);

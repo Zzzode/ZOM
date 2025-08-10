@@ -289,12 +289,26 @@ private:
   const zc::Own<Impl> impl;
 };
 
-class NumericLiteral : public LiteralExpression {
+class IntegerLiteral : public LiteralExpression {
 public:
-  explicit NumericLiteral(double value) noexcept;
-  ~NumericLiteral() noexcept(false);
+  explicit IntegerLiteral(int64_t value) noexcept;
+  ~IntegerLiteral() noexcept(false);
 
-  ZC_DISALLOW_COPY_AND_MOVE(NumericLiteral);
+  ZC_DISALLOW_COPY_AND_MOVE(IntegerLiteral);
+
+  int64_t getValue() const;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class FloatLiteral : public LiteralExpression {
+public:
+  explicit FloatLiteral(double value) noexcept;
+  ~FloatLiteral() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(FloatLiteral);
 
   double getValue() const;
 
@@ -317,25 +331,64 @@ private:
   const zc::Own<Impl> impl;
 };
 
-class NilLiteral : public LiteralExpression {
+class NullLiteral : public LiteralExpression {
 public:
-  NilLiteral() noexcept;
-  ~NilLiteral() noexcept(false);
+  NullLiteral() noexcept;
+  ~NullLiteral() noexcept(false);
 
-  ZC_DISALLOW_COPY_AND_MOVE(NilLiteral);
+  ZC_DISALLOW_COPY_AND_MOVE(NullLiteral);
 };
 
 class CastExpression : public Expression {
 public:
-  CastExpression(zc::Own<Expression> expression, zc::String targetType,
-                 bool isOptional = false) noexcept;
+  explicit CastExpression(SyntaxKind kind = SyntaxKind::kCastExpression) noexcept;
   ~CastExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(CastExpression);
 
-  const Expression* getExpression() const;
-  zc::StringPtr getTargetType() const;
-  bool isOptional() const;
+  virtual const Expression* getExpression() const = 0;
+  virtual const Type* getTargetType() const = 0;
+};
+
+class AsExpression : public CastExpression {
+public:
+  AsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType) noexcept;
+  ~AsExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(AsExpression);
+
+  const Expression* getExpression() const override;
+  const Type* getTargetType() const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ForcedAsExpression : public CastExpression {
+public:
+  ForcedAsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType) noexcept;
+  ~ForcedAsExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ForcedAsExpression);
+
+  const Expression* getExpression() const override;
+  const Type* getTargetType() const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ConditionalAsExpression : public CastExpression {
+public:
+  ConditionalAsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType) noexcept;
+  ~ConditionalAsExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ConditionalAsExpression);
+
+  const Expression* getExpression() const override;
+  const Type* getTargetType() const override;
 
 private:
   struct Impl;

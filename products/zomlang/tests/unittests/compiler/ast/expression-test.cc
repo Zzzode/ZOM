@@ -25,8 +25,8 @@ namespace compiler {
 namespace ast {
 
 ZC_TEST("ExpressionTest.BinaryExpressionCreation") {
-  auto left = factory::createNumericLiteral(5.0);
-  auto right = factory::createNumericLiteral(3.0);
+  auto left = factory::createFloatLiteral(5.0);
+  auto right = factory::createFloatLiteral(3.0);
   auto op = factory::createAddOperator();
   auto expr = factory::createBinaryExpression(zc::mv(left), zc::mv(op), zc::mv(right));
 
@@ -41,7 +41,7 @@ ZC_TEST("ExpressionTest.BinaryExpressionCreation") {
 }
 
 ZC_TEST("ExpressionTest.UnaryExpression") {
-  auto operand = factory::createNumericLiteral(10.0);
+  auto operand = factory::createFloatLiteral(10.0);
   auto op = factory::createLogicalNotOperator();
   auto expr = factory::createPrefixUnaryExpression(zc::mv(op), zc::mv(operand));
 
@@ -53,7 +53,7 @@ ZC_TEST("ExpressionTest.UnaryExpression") {
 
 ZC_TEST("ExpressionTest.AssignmentExpression") {
   auto lhs = factory::createIdentifier(zc::str("x"));
-  auto rhs = factory::createNumericLiteral(42.0);
+  auto rhs = factory::createFloatLiteral(42.0);
   auto op = factory::createAssignOperator();
   auto expr = factory::createAssignmentExpression(zc::mv(lhs), zc::mv(op), zc::mv(rhs));
 
@@ -64,21 +64,21 @@ ZC_TEST("ExpressionTest.LiteralExpressions") {
   auto strLit = factory::createStringLiteral(zc::str("test"));
   ZC_EXPECT(strLit->getValue() == "test");
 
-  auto numLit = factory::createNumericLiteral(3.14);
+  auto numLit = factory::createFloatLiteral(3.14);
   ZC_EXPECT(numLit->getValue() == 3.14);
 
   auto boolLit = factory::createBooleanLiteral(true);
   ZC_EXPECT(boolLit->getValue() == true);
 
-  auto nilLit = factory::createNilLiteral();
-  ZC_EXPECT(nilLit->getKind() == SyntaxKind::kNilLiteral);
+  auto nullLit = factory::createNullLiteral();
+  ZC_EXPECT(nullLit->getKind() == SyntaxKind::kNullLiteral);
 }
 
 ZC_TEST("ExpressionTest.CallExpression") {
   auto callee = factory::createIdentifier(zc::str("func"));
   zc::Vector<zc::Own<Expression>> args;
-  args.add(factory::createNumericLiteral(1));
-  args.add(factory::createNumericLiteral(2));
+  args.add(factory::createIntegerLiteral(1));
+  args.add(factory::createIntegerLiteral(2));
   auto expr = factory::createCallExpression(zc::mv(callee), zc::mv(args));
 
   ZC_EXPECT(expr->getKind() == SyntaxKind::kCallExpression);

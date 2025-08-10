@@ -13,7 +13,7 @@ match (value) {
     when 42 => print("The answer")
     when "hello" => print("Greeting")
     when true => print("Affirmative")
-    when nil => print("Nothing")
+    when null => print("Nothing")
 }
 ```
 

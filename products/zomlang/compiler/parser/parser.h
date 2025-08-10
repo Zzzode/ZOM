@@ -90,13 +90,14 @@ class Identifier;
 class StringLiteral;
 class NumericLiteral;
 class BooleanLiteral;
-class NilLiteral;
+class NullLiteral;
+
+enum class OperatorPrecedence : uint8_t;
 }  // namespace ast
 
 namespace parser {
 
 // Forward declaration for operator precedence
-enum class OperatorPrecedence;
 
 enum ParsingContext {
   kSourceElements = 0,  // Parsing source elements (statements, declarations, etc.)
@@ -215,11 +216,11 @@ private:
   zc::Maybe<zc::Own<ast::Expression>> parseExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseInitializer();
   zc::Maybe<zc::Own<ast::Expression>> parseAssignmentExpressionOrHigher();
-  zc::Maybe<zc::Own<ast::Expression>> parseBinaryExpressionOrHigher();
+  zc::Maybe<zc::Own<ast::Expression>> parseBinaryExpressionOrHigher(
+      ast::OperatorPrecedence precedence);
   zc::Maybe<zc::Own<ast::Expression>> parseBinaryExpressionRest(
-      zc::Own<ast::Expression> leftOperand);
-  zc::Maybe<zc::Own<ast::Expression>> parseBinaryExpressionRestWithPrecedence(
-      zc::Own<ast::Expression> leftOperand, OperatorPrecedence minPrecedence);
+      zc::Own<ast::Expression> leftOperand, ast::OperatorPrecedence precedence,
+      source::SourceLoc startLoc);
   zc::Maybe<zc::Own<ast::Expression>> parseUnaryExpressionOrHigher();
   zc::Maybe<zc::Own<ast::ConditionalExpression>> parseConditionalExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseConditionalExpressionRest(
@@ -262,9 +263,10 @@ private:
   zc::Maybe<zc::Own<ast::ObjectLiteralExpression>> parseObjectLiteralExpression();
   zc::Maybe<zc::Own<ast::Identifier>> parseIdentifierExpression();
   zc::Maybe<zc::Own<ast::StringLiteral>> parseStringLiteral();
-  zc::Maybe<zc::Own<ast::NumericLiteral>> parseNumericLiteral();
+  zc::Maybe<zc::Own<ast::IntegerLiteral>> parseIntegerLiteral();
+  zc::Maybe<zc::Own<ast::FloatLiteral>> parseFloatLiteral();
   zc::Maybe<zc::Own<ast::BooleanLiteral>> parseBooleanLiteral();
-  zc::Maybe<zc::Own<ast::NilLiteral>> parseNilLiteral();
+  zc::Maybe<zc::Own<ast::NullLiteral>> parseNullLiteral();
   zc::Maybe<zc::Own<ast::FunctionExpression>> parseFunctionExpression();
 
   // Type parsing
@@ -306,6 +308,7 @@ private:
   bool isStartOfLeftHandSideExpression() const;
   bool isStartOfExpression() const;
   bool isStartOfDeclaration() const;
+  bool isUpdateExpression(lexer::TokenKind tokenKind) const;
 
   struct Impl;
   zc::Own<Impl> impl;

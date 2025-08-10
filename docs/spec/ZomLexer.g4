@@ -105,7 +105,6 @@ MUTABLE: 'mutable';
 NAMESPACE: 'namespace';
 NEVER: 'never';
 NEW: 'new';
-NIL: 'nil';
 NULL: 'null';
 OBJECT: 'object';
 OF: 'of';

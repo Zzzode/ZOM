@@ -28,10 +28,12 @@ struct Token::Impl {
   TokenKind kind;
   source::SourceRange range;
   zc::Maybe<zc::String> cachedText;
+  TokenFlags flags;
 
-  Impl() : kind(TokenKind::kUnknown) {}
-  Impl(TokenKind k, source::SourceRange r, zc::Maybe<zc::String> text)
-      : kind(k), range(r), cachedText(zc::mv(text)) {}
+  Impl() : kind(TokenKind::kUnknown), flags(TokenFlags::kNone) {}
+  Impl(TokenKind k, source::SourceRange r, zc::Maybe<zc::String> text,
+       TokenFlags f = TokenFlags::kNone)
+      : kind(k), range(r), cachedText(zc::mv(text)), flags(f) {}
 };
 
 // ================================================================================
@@ -39,12 +41,14 @@ struct Token::Impl {
 
 Token::Token() noexcept : impl(zc::heap<Impl>()) {}
 
-Token::Token(TokenKind k, source::SourceRange r, zc::Maybe<zc::String> text) noexcept
-    : impl(zc::heap<Impl>(k, r, zc::mv(text))) {}
+Token::Token(TokenKind k, source::SourceRange r, zc::Maybe<zc::String> text,
+             TokenFlags flags) noexcept
+    : impl(zc::heap<Impl>(k, r, zc::mv(text), flags)) {}
 
 Token::Token(const Token& other) noexcept : impl(zc::heap<Impl>()) {
   impl->kind = other.impl->kind;
   impl->range = other.impl->range;
+  impl->flags = other.impl->flags;
   ZC_IF_SOME(text, other.impl->cachedText) { impl->cachedText = zc::str(text); }
 }
 
@@ -56,6 +60,7 @@ Token& Token::operator=(const Token& other) noexcept {
   if (this != &other) {
     impl->kind = other.impl->kind;
     impl->range = other.impl->range;
+    impl->flags = other.impl->flags;
     ZC_IF_SOME(text, other.impl->cachedText) { impl->cachedText = zc::str(text); }
     else { impl->cachedText = zc::none; }
   }
@@ -66,6 +71,7 @@ Token& Token::operator=(Token&& other) noexcept {
   if (this != &other) {
     impl->kind = other.impl->kind;
     impl->range = zc::mv(other.impl->range);
+    impl->flags = other.impl->flags;
     impl->cachedText = zc::mv(other.impl->cachedText);
   }
   return *this;
@@ -77,6 +83,13 @@ void Token::setRange(source::SourceRange r) { impl->range = r; }
 
 void Token::setCachedText(zc::String text) { impl->cachedText = zc::mv(text); }
 
+void Token::setFlags(TokenFlags flags) { impl->flags = flags; }
+
+void Token::addFlag(TokenFlags flag) {
+  impl->flags =
+      static_cast<TokenFlags>(static_cast<uint8_t>(impl->flags) | static_cast<uint8_t>(flag));
+}
+
 bool Token::is(TokenKind k) const { return impl->kind == k; }
 
 TokenKind Token::getKind() const { return impl->kind; }
@@ -84,6 +97,14 @@ TokenKind Token::getKind() const { return impl->kind; }
 source::SourceLoc Token::getLocation() const { return impl->range.getStart(); }
 
 source::SourceRange Token::getRange() const { return impl->range; }
+
+TokenFlags Token::getFlags() const { return impl->flags; }
+
+bool Token::hasFlag(TokenFlags flag) const {
+  return (static_cast<uint8_t>(impl->flags) & static_cast<uint8_t>(flag)) != 0;
+}
+
+bool Token::hasPrecedingLineBreak() const { return hasFlag(TokenFlags::kPrecedingLineBreak); }
 
 zc::String Token::getText(const source::SourceManager& sm) const {
   // Fast path: return cached text if available
@@ -130,8 +151,6 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(TokenKind kind) {
       return "false"_zc;
     case TokenKind::kNullKeyword:
       return "null"_zc;
-    case TokenKind::kNilKeyword:
-      return "nil"_zc;
     case TokenKind::kThisKeyword:
       return "this"_zc;
     case TokenKind::kSuperKeyword:

@@ -51,13 +51,14 @@ ZC_TEST("ASTFactory: Basic Node Creation") {
   auto stringLit = createStringLiteral(zc::str("hello world"));
   ZC_EXPECT(stringLit->getValue() == "hello world", "StringLiteral should have correct value");
 
-  auto numLit = createNumericLiteral(42.5);
-  ZC_EXPECT(numLit->getValue() == 42.5, "NumericLiteral should have correct value");
+  auto numLit = createFloatLiteral(42.5);
+  ZC_EXPECT(numLit->getValue() == 42.5, "FloatLiteral should have correct value");
 
   auto boolLit = createBooleanLiteral(true);
   ZC_EXPECT(boolLit->getValue() == true, "BooleanLiteral should have correct value");
 
-  auto nilLit = createNilLiteral();
+  auto nullLit = createNullLiteral();
+  ZC_EXPECT(nullLit->getKind() == SyntaxKind::kNullLiteral, "NullLiteral should have correct kind");
 }
 
 ZC_TEST("ASTFactory: Function Declaration Creation") {
@@ -100,8 +101,8 @@ ZC_TEST("ASTFactory: Expression Creation") {
   using namespace zomlang::compiler::ast::factory;
 
   // Test binary expression creation
-  auto left = createNumericLiteral(10.0);
-  auto right = createNumericLiteral(20.0);
+  auto left = createFloatLiteral(10.0);
+  auto right = createFloatLiteral(20.0);
   auto addOp = createAddOperator();
   auto binaryExpr = createBinaryExpression(zc::mv(left), zc::mv(addOp), zc::mv(right));
 
@@ -112,7 +113,7 @@ ZC_TEST("ASTFactory: Expression Creation") {
   auto callee = createIdentifier(zc::str("myFunction"));
   zc::Vector<zc::Own<ast::Expression>> args;
   args.add(createStringLiteral(zc::str("arg1")));
-  args.add(createNumericLiteral(42.0));
+  args.add(createFloatLiteral(42.0));
   auto callExpr = createCallExpression(zc::mv(callee), zc::mv(args));
 
   ZC_EXPECT(callExpr->getCallee() != nullptr, "CallExpression should have callee");
@@ -136,7 +137,7 @@ ZC_TEST("ASTFactory: Statement Creation") {
   // Test variable declaration creation
   zc::Vector<zc::Own<ast::BindingElement>> bindings;
   auto varName = createIdentifier(zc::str("myVar"));
-  auto initValue = createNumericLiteral(100.0);
+  auto initValue = createFloatLiteral(100.0);
   auto binding = createBindingElement(zc::mv(varName), zc::none, zc::mv(initValue));
   bindings.add(zc::mv(binding));
   auto varDecl = createVariableDeclaration(zc::mv(bindings));

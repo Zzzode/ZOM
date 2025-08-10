@@ -65,6 +65,9 @@ class CallExpression;
 class MemberExpression;
 class UpdateExpression;
 class CastExpression;
+class AsExpression;
+class ForcedAsExpression;
+class ConditionalAsExpression;
 class VoidExpression;
 class TypeOfExpression;
 class AwaitExpression;
@@ -73,9 +76,10 @@ class NewExpression;
 class ParenthesizedExpression;
 class Identifier;
 class StringLiteral;
-class NumericLiteral;
+class IntegerLiteral;
+class FloatLiteral;
 class BooleanLiteral;
-class NilLiteral;
+class NullLiteral;
 class DebuggerStatement;
 class OptionalExpression;
 class PropertyAccessExpression;
@@ -223,8 +227,13 @@ zc::Own<ElementAccessExpression> createElementAccessExpression(
 zc::Own<OptionalExpression> createOptionalExpression(zc::Own<Expression> object,
                                                      zc::Own<Expression> property);
 
-zc::Own<CastExpression> createCastExpression(zc::Own<Expression> expression,
-                                             zc::String&& targetType, bool isOptional = false);
+zc::Own<AsExpression> createAsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType);
+
+zc::Own<ForcedAsExpression> createForcedAsExpression(zc::Own<Expression> expression,
+                                                     zc::Own<Type> targetType);
+
+zc::Own<ConditionalAsExpression> createConditionalAsExpression(zc::Own<Expression> expression,
+                                                               zc::Own<Type> targetType);
 
 zc::Own<VoidExpression> createVoidExpression(zc::Own<Expression> expression);
 
@@ -252,11 +261,13 @@ zc::Own<Identifier> createIdentifier(zc::String&& name);
 
 zc::Own<StringLiteral> createStringLiteral(zc::String&& value);
 
-zc::Own<NumericLiteral> createNumericLiteral(double value);
+zc::Own<IntegerLiteral> createIntegerLiteral(int64_t value);
+
+zc::Own<FloatLiteral> createFloatLiteral(double value);
 
 zc::Own<BooleanLiteral> createBooleanLiteral(bool value);
 
-zc::Own<NilLiteral> createNilLiteral();
+zc::Own<NullLiteral> createNullLiteral();
 
 zc::Own<AliasDeclaration> createAliasDeclaration(zc::Own<Identifier> name, zc::Own<Type> type);
 
