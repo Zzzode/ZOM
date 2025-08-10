@@ -121,7 +121,7 @@ fun greet(name: str, greeting: str = "Hello") -> str {
 // Optional parameters
 fun createUser(name: str, email: str, age?: i32) {
     // age is of type i32?
-    if (age != nil) {
+    if (age != null) {
         print("Age: " + age.toString());
     }
 }
@@ -204,7 +204,7 @@ async fun safelyFetchData(url: str) -> str? {
         return await response.text();
     } catch (error) {
         print("Failed to fetch data: " + error.message);
-        return nil;
+        return null;
     }
 }
 ```
@@ -241,7 +241,7 @@ alias EmailAddress = str;
 
 // Generic type alias
 alias Result<T, E> = T | E;
-alias Optional<T> = T | nil;
+alias Optional<T> = T | null;
 
 // Complex type alias
 alias EventHandler<T> = (T) -> unit;
@@ -555,7 +555,7 @@ class Stack<T> {
     }
 
     fun peek() -> T? {
-        return this.items.length > 0 ? this.items[this.items.length - 1] : nil;
+        return this.items.length > 0 ? this.items[this.items.length - 1] : null;
     }
 
     fun isEmpty() -> bool {

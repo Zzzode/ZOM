@@ -76,6 +76,9 @@ enum class SyntaxKind {
   kMemberExpression,
   kUpdateExpression,
   kCastExpression,
+  kAsExpression,
+  kForcedAsExpression,
+  kConditionalAsExpression,
   kAwaitExpression,
   kVoidExpression,
   kFunctionExpression,
@@ -113,9 +116,10 @@ enum class SyntaxKind {
   // Literals
   kLiteral,
   kStringLiteral,
-  kNumericLiteral,
+  kIntegerLiteral,
+  kFloatLiteral,
   kBooleanLiteral,
-  kNilLiteral,
+  kNullLiteral,
   kArrayLiteralExpression,
   kObjectLiteralExpression,
 

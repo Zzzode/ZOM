@@ -131,7 +131,7 @@ switch      debugger
 ```
 i8          i32         i64         u8          u16
 u32         u64         f32         f64         bool
-str         nil         null        unit        any         never
+str         null        unit        any         never
 object      symbol      bigint      undefined   void
 ```
 
@@ -163,13 +163,13 @@ with        yield
 
 Literals represent constant values in source code.
 
-### Nil Literal
+### Null Literal
 
-The `nil` literal represents the absence of a value:
+The `null` literal represents the absence of a value:
 
 ```zom
-let optional: i32? = nil;
-let result = someFunction() ?? nil;
+let optional: i32? = null;
+let result = someFunction() ?? null;
 ```
 
 ### Boolean Literals

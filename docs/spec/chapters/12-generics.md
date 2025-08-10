@@ -23,7 +23,7 @@ fun max<T: Comparable>(a: T, b: T) -> T {
 // Generic function with default type parameter
 fun parseValue<T = str>(input: str) -> T? {
     // Implementation depends on T
-    return nil; // Placeholder
+    return null; // Placeholder
 }
 ```
 

@@ -76,8 +76,9 @@ bool Node::isExpression() const {
          impl->kind == SyntaxKind::kTypeOfExpression ||
          impl->kind == SyntaxKind::kOptionalExpression || impl->kind == SyntaxKind::kIdentifier ||
          impl->kind == SyntaxKind::kBindingIdentifier || impl->kind == SyntaxKind::kLiteral ||
-         impl->kind == SyntaxKind::kStringLiteral || impl->kind == SyntaxKind::kNumericLiteral ||
-         impl->kind == SyntaxKind::kBooleanLiteral || impl->kind == SyntaxKind::kNilLiteral;
+         impl->kind == SyntaxKind::kStringLiteral || impl->kind == SyntaxKind::kIntegerLiteral ||
+         impl->kind == SyntaxKind::kFloatLiteral || impl->kind == SyntaxKind::kBooleanLiteral ||
+         impl->kind == SyntaxKind::kNullLiteral;
 }
 
 }  // namespace ast

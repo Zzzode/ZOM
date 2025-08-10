@@ -171,7 +171,7 @@ for (let i = 0, j = 10; i < j; ++i, --j) {
 }
 
 // For loop with complex initialization and update
-for (let node = head; node != nil; node = node.next) {
+for (let node = head; node != null; node = node.next) {
     processNode(node);
 }
 
@@ -278,7 +278,7 @@ fun printMessage(msg: str) {
 
 // Early return
 fun divide(a: f64, b: f64) -> f64? {
-    if (b == 0.0) return nil;
+    if (b == 0.0) return null;
     return a / b;
 }
 ```
@@ -303,7 +303,6 @@ fun notImplemented() {
     throw "This feature is not yet implemented";
 }
 ```
-
 
 ## Labeled Statements
 

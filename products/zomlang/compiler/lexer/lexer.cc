@@ -45,6 +45,7 @@ struct Lexer::Impl {
 
   // Full start position tracking
   const zc::byte* triviaStartPtr;
+  const zc::byte* currentTokenTriviaStartPtr;
 
   // Token state
   Token nextToken;
@@ -54,6 +55,9 @@ struct Lexer::Impl {
   // Lookahead token cache
   mutable zc::Vector<Token> tokenCache;
   mutable bool cacheInitialized = false;
+
+  // Line break tracking
+  bool hasPrecedingLineBreak = false;
 
   Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
        const basic::LangOptions& options, const source::BufferId& bufferId)
@@ -69,6 +73,7 @@ struct Lexer::Impl {
     bufferEnd = buffer.end();
     curPtr = bufferStart;
     triviaStartPtr = bufferStart;
+    currentTokenTriviaStartPtr = bufferStart;
     initialize();
   }
 
@@ -77,72 +82,76 @@ struct Lexer::Impl {
   /// Utility functions
   const zc::byte* getBufferPtrForSourceLoc(source::SourceLoc loc) const;
 
-  void formToken(TokenKind kind, const zc::byte* tokStart) {
+  void formToken(TokenKind kind, const zc::byte* tokStart, TokenFlags flags = TokenFlags::kNone) {
     source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
     source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
     zc::Maybe<zc::String> cachedText = Token::getStaticTextForTokenKind(kind);
     // For keywords and common operators, cache the text to avoid repeated extraction
-    nextToken = Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(cachedText));
+    nextToken = Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(cachedText), flags);
   }
 
   /// Lexing implementation
   void lexImpl() {
     triviaStartPtr = curPtr;
-    skipTrivia();
+    TokenFlags tokenFlags = TokenFlags::kNone;
+
+    // Skip trivia and collect flags
+    tokenFlags = skipTriviaAndCollectFlags();
+
     if (curPtr >= bufferEnd) {
-      formToken(TokenKind::kEOF, curPtr);
+      formToken(TokenKind::kEOF, curPtr, tokenFlags);
       return;
     }
-    scanToken();
+    scanToken(tokenFlags);
   }
 
   /// Token scanning
-  void scanToken() {
+  void scanToken(const TokenFlags& tokenFlags) {
     const zc::byte* tokStart = curPtr;
     zc::byte c = *curPtr++;
 
     switch (c) {
       case '(':
-        formToken(TokenKind::kLeftParen, tokStart);
+        formToken(TokenKind::kLeftParen, tokStart, tokenFlags);
         break;
       case ')':
-        formToken(TokenKind::kRightParen, tokStart);
+        formToken(TokenKind::kRightParen, tokStart, tokenFlags);
         break;
       case '{':
-        formToken(TokenKind::kLeftBrace, tokStart);
+        formToken(TokenKind::kLeftBrace, tokStart, tokenFlags);
         break;
       case '}':
-        formToken(TokenKind::kRightBrace, tokStart);
+        formToken(TokenKind::kRightBrace, tokStart, tokenFlags);
         break;
       case ',':
-        formToken(TokenKind::kComma, tokStart);
+        formToken(TokenKind::kComma, tokStart, tokenFlags);
         break;
       case ':':
-        formToken(TokenKind::kColon, tokStart);
+        formToken(TokenKind::kColon, tokStart, tokenFlags);
         break;
       case '-':
         if (curPtr < bufferEnd && *curPtr == '>') {
           curPtr++;
-          formToken(TokenKind::kArrow, tokStart);
+          formToken(TokenKind::kArrow, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '-') {
           curPtr++;
-          formToken(TokenKind::kMinusMinus, tokStart);
+          formToken(TokenKind::kMinusMinus, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kMinusEquals, tokStart);
+          formToken(TokenKind::kMinusEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kMinus, tokStart);
+          formToken(TokenKind::kMinus, tokStart, tokenFlags);
         }
         break;
       case '+':
         if (curPtr < bufferEnd && *curPtr == '+') {
           curPtr++;
-          formToken(TokenKind::kPlusPlus, tokStart);
+          formToken(TokenKind::kPlusPlus, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kPlusEquals, tokStart);
+          formToken(TokenKind::kPlusEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kPlus, tokStart);
+          formToken(TokenKind::kPlus, tokStart, tokenFlags);
         }
         break;
       case '*':
@@ -150,21 +159,21 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kAsteriskAsteriskEquals, tokStart);
+            formToken(TokenKind::kAsteriskAsteriskEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kAsteriskAsterisk, tokStart);
+            formToken(TokenKind::kAsteriskAsterisk, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kAsteriskEquals, tokStart);
+          formToken(TokenKind::kAsteriskEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kAsterisk, tokStart);
+          formToken(TokenKind::kAsterisk, tokStart, tokenFlags);
         }
         break;
       case '/':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kSlashEquals, tokStart);
+          formToken(TokenKind::kSlashEquals, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '/') {
           lexSingleLineComment();
           return;
@@ -172,58 +181,58 @@ struct Lexer::Impl {
           lexMultiLineComment();
           return;
         } else {
-          formToken(TokenKind::kSlash, tokStart);
+          formToken(TokenKind::kSlash, tokStart, tokenFlags);
         }
         break;
       case '%':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kPercentEquals, tokStart);
+          formToken(TokenKind::kPercentEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kPercent, tokStart);
+          formToken(TokenKind::kPercent, tokStart, tokenFlags);
         }
         break;
       case '<':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kLessThanEquals, tokStart);
+          formToken(TokenKind::kLessThanEquals, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '<') {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kLessThanLessThanEquals, tokStart);
+            formToken(TokenKind::kLessThanLessThanEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kLessThanLessThan, tokStart);
+            formToken(TokenKind::kLessThanLessThan, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '/') {
           curPtr++;
-          formToken(TokenKind::kLessThanSlash, tokStart);
+          formToken(TokenKind::kLessThanSlash, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kLessThan, tokStart);
+          formToken(TokenKind::kLessThan, tokStart, tokenFlags);
         }
         break;
       case '>':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kGreaterThanEquals, tokStart);
+          formToken(TokenKind::kGreaterThanEquals, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '>') {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '>') {
             curPtr++;
             if (curPtr < bufferEnd && *curPtr == '=') {
               curPtr++;
-              formToken(TokenKind::kGreaterThanGreaterThanGreaterThanEquals, tokStart);
+              formToken(TokenKind::kGreaterThanGreaterThanGreaterThanEquals, tokStart, tokenFlags);
             } else {
-              formToken(TokenKind::kGreaterThanGreaterThanGreaterThan, tokStart);
+              formToken(TokenKind::kGreaterThanGreaterThanGreaterThan, tokStart, tokenFlags);
             }
           } else if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kGreaterThanGreaterThanEquals, tokStart);
+            formToken(TokenKind::kGreaterThanGreaterThanEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kGreaterThanGreaterThan, tokStart);
+            formToken(TokenKind::kGreaterThanGreaterThan, tokStart, tokenFlags);
           }
         } else {
-          formToken(TokenKind::kGreaterThan, tokStart);
+          formToken(TokenKind::kGreaterThan, tokStart, tokenFlags);
         }
         break;
       case '=':
@@ -231,15 +240,15 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kEqualsEqualsEquals, tokStart);
+            formToken(TokenKind::kEqualsEqualsEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kEqualsEquals, tokStart);
+            formToken(TokenKind::kEqualsEquals, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '>') {
           curPtr++;
-          formToken(TokenKind::kEqualsGreaterThan, tokStart);
+          formToken(TokenKind::kEqualsGreaterThan, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kEquals, tokStart);
+          formToken(TokenKind::kEquals, tokStart, tokenFlags);
         }
         break;
       case '!':
@@ -247,15 +256,15 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kExclamationEqualsEquals, tokStart);
+            formToken(TokenKind::kExclamationEqualsEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kExclamationEquals, tokStart);
+            formToken(TokenKind::kExclamationEquals, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '!') {
           curPtr++;
-          formToken(TokenKind::kErrorUnwrap, tokStart);
+          formToken(TokenKind::kErrorUnwrap, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kExclamation, tokStart);
+          formToken(TokenKind::kExclamation, tokStart, tokenFlags);
         }
         break;
       case '&':
@@ -263,15 +272,15 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kAmpersandAmpersandEquals, tokStart);
+            formToken(TokenKind::kAmpersandAmpersandEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kAmpersandAmpersand, tokStart);
+            formToken(TokenKind::kAmpersandAmpersand, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kAmpersandEquals, tokStart);
+          formToken(TokenKind::kAmpersandEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kAmpersand, tokStart);
+          formToken(TokenKind::kAmpersand, tokStart, tokenFlags);
         }
         break;
       case '|':
@@ -279,89 +288,89 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kBarBarEquals, tokStart);
+            formToken(TokenKind::kBarBarEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kBarBar, tokStart);
+            formToken(TokenKind::kBarBar, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kBarEquals, tokStart);
+          formToken(TokenKind::kBarEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kBar, tokStart);
+          formToken(TokenKind::kBar, tokStart, tokenFlags);
         }
         break;
       case '^':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kCaretEquals, tokStart);
+          formToken(TokenKind::kCaretEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kCaret, tokStart);
+          formToken(TokenKind::kCaret, tokStart, tokenFlags);
         }
         break;
       case '~':
-        formToken(TokenKind::kTilde, tokStart);
+        formToken(TokenKind::kTilde, tokStart, tokenFlags);
         break;
       case '?':
         if (curPtr < bufferEnd && *curPtr == '?') {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kQuestionQuestionEquals, tokStart);
+            formToken(TokenKind::kQuestionQuestionEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kQuestionQuestion, tokStart);
+            formToken(TokenKind::kQuestionQuestion, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '.') {
           curPtr++;
-          formToken(TokenKind::kQuestionDot, tokStart);
+          formToken(TokenKind::kQuestionDot, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '!') {
           curPtr++;
-          formToken(TokenKind::kErrorPropagate, tokStart);
+          formToken(TokenKind::kErrorPropagate, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == ':') {
           curPtr++;
-          formToken(TokenKind::kErrorDefault, tokStart);
+          formToken(TokenKind::kErrorDefault, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kQuestion, tokStart);
+          formToken(TokenKind::kQuestion, tokStart, tokenFlags);
         }
         break;
       case '.':
         if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd &&
             *(curPtr + 1) == '.') {
           curPtr += 2;
-          formToken(TokenKind::kDotDotDot, tokStart);
+          formToken(TokenKind::kDotDotDot, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kPeriod, tokStart);
+          formToken(TokenKind::kPeriod, tokStart, tokenFlags);
         }
         break;
       case ';':
-        formToken(TokenKind::kSemicolon, tokStart);
+        formToken(TokenKind::kSemicolon, tokStart, tokenFlags);
         break;
       case '[':
-        formToken(TokenKind::kLeftBracket, tokStart);
+        formToken(TokenKind::kLeftBracket, tokStart, tokenFlags);
         break;
       case ']':
-        formToken(TokenKind::kRightBracket, tokStart);
+        formToken(TokenKind::kRightBracket, tokStart, tokenFlags);
         break;
       case '@':
-        formToken(TokenKind::kAt, tokStart);
+        formToken(TokenKind::kAt, tokStart, tokenFlags);
         break;
       case '#':
-        formToken(TokenKind::kHash, tokStart);
+        formToken(TokenKind::kHash, tokStart, tokenFlags);
         break;
       case '`':
-        formToken(TokenKind::kBacktick, tokStart);
+        formToken(TokenKind::kBacktick, tokStart, tokenFlags);
         break;
       default:
         if (isIdentifierStart(c)) {
-          lexIdentifier();
+          lexIdentifier(tokenFlags);
         } else if (c == '\\' && curPtr < bufferEnd && *curPtr == 'u') {
           // Unicode escape sequence at start of identifier
-          lexIdentifier();
+          lexIdentifier(tokenFlags);
         } else if (isdigit(c)) {
-          lexNumber();
+          lexNumber(tokenFlags);
         } else if (c == '"') {
-          lexStringLiteralImpl();
+          lexStringLiteralImpl(tokenFlags);
         } else if (c == '\'') {
-          lexSingleQuoteString();
+          lexSingleQuoteString(tokenFlags);
         } else {
           // Check for multi-byte UTF-8 characters that could be identifier start
           if ((c & 0x80) != 0) {
@@ -386,6 +395,29 @@ struct Lexer::Impl {
   }
 
   /// Trivia
+  TokenFlags skipTriviaAndCollectFlags() {
+    TokenFlags flags = TokenFlags::kNone;
+
+    while (curPtr < bufferEnd) {
+      zc::byte c = *curPtr;
+      if (c == ' ' || c == '\t' || c == '\r') {
+        curPtr++;
+      } else if (c == '\n') {
+        flags = static_cast<TokenFlags>(static_cast<uint8_t>(flags) |
+                                        static_cast<uint8_t>(TokenFlags::kPrecedingLineBreak));
+        handleNewline();
+      } else if (c == '/' && curPtr + 1 < bufferEnd && *(curPtr + 1) == '/') {
+        lexSingleLineComment();
+      } else if (c == '/' && curPtr + 1 < bufferEnd && *(curPtr + 1) == '*') {
+        lexMultiLineComment();
+      } else {
+        break;
+      }
+    }
+
+    return flags;
+  }
+
   void skipTrivia() {
     while (curPtr < bufferEnd) {
       zc::byte c = *curPtr;
@@ -403,7 +435,7 @@ struct Lexer::Impl {
     }
   }
 
-  void lexIdentifier() {
+  void lexIdentifier(const TokenFlags& tokenFlags) {
     // Go back one character, as the first character has already been read
     const zc::byte* tokStart = curPtr - 1;
 
@@ -470,7 +502,7 @@ struct Lexer::Impl {
       zc::String identifierText = zc::str(textPtr.asChars());
       nextToken = Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(identifierText));
     } else {
-      formToken(kind, tokStart);
+      formToken(kind, tokStart, tokenFlags);
     }
   }
 
@@ -570,7 +602,7 @@ struct Lexer::Impl {
     if (text == "f64"_zcb) return TokenKind::kF64Keyword;
     if (text == "str"_zcb) return TokenKind::kStrKeyword;
     if (text == "unit"_zcb) return TokenKind::kUnitKeyword;
-    if (text == "nil"_zcb) return TokenKind::kNilKeyword;
+    if (text == "null"_zcb) return TokenKind::kNullKeyword;
     if (text == "else"_zcb) return TokenKind::kElseKeyword;
     if (text == "for"_zcb) return TokenKind::kForKeyword;
     if (text == "while"_zcb) return TokenKind::kWhileKeyword;
@@ -586,11 +618,13 @@ struct Lexer::Impl {
     return TokenKind::kIdentifier;
   }
 
-  void lexNumber() {
+  void lexNumber(const TokenFlags& tokenFlags) {
     // Go back one character, as the first character has already been read
     const zc::byte* tokStart = curPtr - 1;
     TokenKind kind = TokenKind::kIntegerLiteral;
     bool hasValidDigits = false;
+    TokenFlags numericFlags = tokenFlags;
+    bool hasSeparator = false;
 
     // Check for binary, octal, or hex literals
     if (*tokStart == '0' && curPtr < bufferEnd) {
@@ -598,66 +632,116 @@ struct Lexer::Impl {
       if (nextChar == 'b' || nextChar == 'B') {
         // Binary literal
         curPtr++;  // Skip 'b' or 'B'
+        numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
+                                               static_cast<uint16_t>(TokenFlags::kBinarySpecifier));
         while (curPtr < bufferEnd && (*curPtr == '0' || *curPtr == '1' || *curPtr == '_')) {
-          if (*curPtr != '_') hasValidDigits = true;
+          if (*curPtr == '_') {
+            hasSeparator = true;
+          } else {
+            hasValidDigits = true;
+          }
           curPtr++;
         }
+        if (hasSeparator) {
+          numericFlags =
+              static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
+                                      static_cast<uint16_t>(TokenFlags::kContainsSeparator));
+        }
         if (!hasValidDigits) { reportInvalidNumberLiteral("binary"_zc, tokStart); }
-        formToken(TokenKind::kIntegerLiteral, tokStart);
+        formToken(TokenKind::kIntegerLiteral, tokStart, numericFlags);
         return;
       } else if (nextChar == 'o' || nextChar == 'O') {
         // Octal literal
         curPtr++;  // Skip 'o' or 'O'
+        numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
+                                               static_cast<uint16_t>(TokenFlags::kOctalSpecifier));
         while (curPtr < bufferEnd && ((*curPtr >= '0' && *curPtr <= '7') || *curPtr == '_')) {
-          if (*curPtr != '_') { hasValidDigits = true; }
+          if (*curPtr == '_') {
+            hasSeparator = true;
+          } else {
+            hasValidDigits = true;
+          }
           curPtr++;
         }
+        if (hasSeparator) {
+          numericFlags =
+              static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
+                                      static_cast<uint16_t>(TokenFlags::kContainsSeparator));
+        }
         if (!hasValidDigits) { reportInvalidNumberLiteral("octal"_zc, tokStart); }
-        formToken(TokenKind::kIntegerLiteral, tokStart);
+        formToken(TokenKind::kIntegerLiteral, tokStart, numericFlags);
         return;
       } else if (nextChar == 'x' || nextChar == 'X') {
         // Hexadecimal literal
         curPtr++;  // Skip 'x' or 'X'
+        numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
+                                               static_cast<uint16_t>(TokenFlags::kHexSpecifier));
         while (curPtr < bufferEnd && (isdigit(*curPtr) || (*curPtr >= 'a' && *curPtr <= 'f') ||
                                       (*curPtr >= 'A' && *curPtr <= 'F') || *curPtr == '_')) {
-          if (*curPtr != '_') { hasValidDigits = true; }
+          if (*curPtr == '_') {
+            hasSeparator = true;
+          } else {
+            hasValidDigits = true;
+          }
           curPtr++;
         }
+        if (hasSeparator) {
+          numericFlags =
+              static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
+                                      static_cast<uint16_t>(TokenFlags::kContainsSeparator));
+        }
         if (!hasValidDigits) { reportInvalidNumberLiteral("hexadecimal"_zc, tokStart); }
-        formToken(TokenKind::kIntegerLiteral, tokStart);
+        formToken(TokenKind::kIntegerLiteral, tokStart, numericFlags);
         return;
       }
     }
 
     // Read decimal integer part (allowing numeric separators)
     while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) {
-      if (isdigit(*curPtr)) { hasValidDigits = true; }
+      if (*curPtr == '_') {
+        hasSeparator = true;
+      } else {
+        hasValidDigits = true;
+      }
       curPtr++;
     }
 
     // Check if it's a floating-point number
     if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd && isdigit(*(curPtr + 1))) {
       curPtr++;  // Skip '.'
-      while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) { curPtr++; }
+      while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) {
+        if (*curPtr == '_') { hasSeparator = true; }
+        curPtr++;
+      }
       kind = TokenKind::kFloatLiteral;
     }
 
     // Check for exponent part
     if (curPtr < bufferEnd && (*curPtr == 'e' || *curPtr == 'E')) {
       curPtr++;  // Skip 'e' or 'E'
+      numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
+                                             static_cast<uint16_t>(TokenFlags::kScientific));
       if (curPtr < bufferEnd && (*curPtr == '+' || *curPtr == '-')) {
         curPtr++;  // Skip sign
       }
       const zc::byte* expStart = curPtr;
-      while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) { curPtr++; }
+      while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) {
+        if (*curPtr == '_') { hasSeparator = true; }
+        curPtr++;
+      }
       // Check if exponent has digits
       if (curPtr == expStart) { reportInvalidNumberLiteral("exponent"_zc, tokStart); }
       kind = TokenKind::kFloatLiteral;
     }
 
-    formToken(kind, tokStart);
+    if (hasSeparator) {
+      numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
+                                             static_cast<uint16_t>(TokenFlags::kContainsSeparator));
+    }
+
+    formToken(kind, tokStart, numericFlags);
   }
-  void lexStringLiteralImpl() {
+  void lexStringLiteralImpl(const TokenFlags& tokenFlags) {
     // Go back one character, as the first character has already been read
     const zc::byte* tokStart = curPtr - 1;
     // Remember which quote character we're using
@@ -692,10 +776,10 @@ struct Lexer::Impl {
     // Check if we reached end of file without closing quote
     if (!foundClosingQuote && curPtr >= bufferEnd) { reportUnterminatedString(tokStart); }
 
-    formToken(TokenKind::kStringLiteral, tokStart);
+    formToken(TokenKind::kStringLiteral, tokStart, tokenFlags);
   }
 
-  void lexSingleQuoteString() {
+  void lexSingleQuoteString(const TokenFlags& tokenFlags) {
     const zc::byte* tokStart = curPtr - 1;
     bool foundClosingQuote = false;
     size_t charCount = 0;
@@ -734,7 +818,7 @@ struct Lexer::Impl {
     // Character literals should contain exactly one character
     if (foundClosingQuote && charCount != 1) { reportInvalidCharacterLiteral(tokStart); }
 
-    formToken(TokenKind::kCharacterLiteral, tokStart);
+    formToken(TokenKind::kCharacterLiteral, tokStart, tokenFlags);
   }
   void lexEscapedIdentifier() { /*...*/ }
   void lexOperator() { /*...*/ }
@@ -770,6 +854,7 @@ struct Lexer::Impl {
         curPtr += 2;  // Skip '*/'
         break;
       }
+      if (*curPtr == '\n') { hasPrecedingLineBreak = true; }
       curPtr++;
     }
 
@@ -1003,6 +1088,7 @@ const zc::byte* Lexer::getBufferPtrForSourceLoc(source::SourceLoc Loc) const {
 
 void Lexer::lex(Token& result) {
   result = impl->nextToken;
+  impl->currentTokenTriviaStartPtr = impl->triviaStartPtr;
   impl->lexImpl();
 }
 
@@ -1044,7 +1130,9 @@ bool Lexer::tryLexRegexLiteral(const zc::byte* tokStart) {
   return false;
 }
 
-void Lexer::lexStringLiteral(unsigned customDelimiterLen) { impl->lexStringLiteralImpl(); }
+void Lexer::lexStringLiteral(unsigned customDelimiterLen) {
+  impl->lexStringLiteralImpl(TokenFlags::kNone);
+}
 
 bool Lexer::isCodeCompletion() const { return impl->triviaStartPtr >= impl->bufferEnd; }
 
@@ -1060,7 +1148,9 @@ source::CharSourceRange Lexer::getCharSourceRangeFromSourceRange(
   return source::CharSourceRange(sr.getStart(), sr.getEnd());
 }
 
-source::SourceLoc Lexer::getFullStartLoc() const { return source::SourceLoc(impl->triviaStartPtr); }
+source::SourceLoc Lexer::getFullStartLoc() const {
+  return source::SourceLoc(impl->currentTokenTriviaStartPtr);
+}
 
 }  // namespace lexer
 }  // namespace compiler

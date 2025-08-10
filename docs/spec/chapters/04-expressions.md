@@ -21,7 +21,7 @@ Expressions are constructs that evaluate to values. Zom provides a rich set of e
 3.14            // Floating-point literal
 "hello"         // String literal
 true            // Boolean literal
-nil             // Nil literal
+null            // Null literal
 ```
 
 ### Identifier Expressions
@@ -134,7 +134,7 @@ let computed = myObject[computedKey];
 
 ### Optional Chaining
 
-Safely access nested properties that might be nil:
+Safely access nested properties that might be null:
 
 ```zom
 let user: User? = getUser();
@@ -215,7 +215,7 @@ let typeString = typeof myVariable;
 // Type casting
 let casted = <i32>someValue;
 let safeCast = someValue as i32;
-let optionalCast = someValue as? i32; // Returns nil if cast fails
+let optionalCast = someValue as? i32; // Returns null if cast fails
 ```
 
 ### Await Expression
@@ -270,7 +270,7 @@ Zom's error handling uses explicit control flow (no `try/catch`). Use these oper
 
 ```zom
 let result = riskyOperation()?!;  // Propagate error
-let value = optionalValue!!;      // Force unwrap (panics if nil)
+let value = optionalValue!!;      // Force unwrap (panics if null)
 let fallback = riskyOperation()?: defaultValue;  // Use default on error
 let handled = match (riskyOperation()) {
     when Ok(v) => v,

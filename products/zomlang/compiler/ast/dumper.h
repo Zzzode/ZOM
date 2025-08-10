@@ -52,9 +52,10 @@ class FunctionType;
 class OptionalType;
 class TypeQuery;
 class StringLiteral;
-class NumericLiteral;
+class IntegerLiteral;
+class FloatLiteral;
 class BooleanLiteral;
-class NilLiteral;
+class NullLiteral;
 class CallExpression;
 class NewExpression;
 class ArrayLiteralExpression;
@@ -64,6 +65,10 @@ class Identifier;
 class PrefixUnaryExpression;
 class AssignmentExpression;
 class ConditionalExpression;
+class CastExpression;
+class AsExpression;
+class ForcedAsExpression;
+class ConditionalAsExpression;
 
 /// AST dump output format
 enum class DumpFormat {
@@ -119,9 +124,10 @@ private:
   void dumpBinaryExpression(const BinaryExpression& binExpr, int indent = 0);
   void dumpFunctionExpression(const FunctionExpression& funcExpr, int indent = 0);
   void dumpStringLiteral(const StringLiteral& strLit, int indent = 0);
-  void dumpNumericLiteral(const NumericLiteral& numLit, int indent = 0);
+  void dumpIntegerLiteral(const IntegerLiteral& intLit, int indent = 0);
+  void dumpFloatLiteral(const FloatLiteral& floatLit, int indent = 0);
   void dumpBooleanLiteral(const BooleanLiteral& boolLit, int indent = 0);
-  void dumpNilLiteral(const NilLiteral& nilLit, int indent = 0);
+  void dumpNullLiteral(const NullLiteral& nullLit, int indent = 0);
   void dumpCallExpression(const CallExpression& callExpr, int indent = 0);
   void dumpNewExpression(const NewExpression& newExpr, int indent = 0);
   void dumpArrayLiteralExpression(const ArrayLiteralExpression& arrLit, int indent = 0);
@@ -131,6 +137,11 @@ private:
   void dumpPrefixUnaryExpression(const PrefixUnaryExpression& prefixUnaryExpr, int indent = 0);
   void dumpAssignmentExpression(const AssignmentExpression& assignmentExpr, int indent = 0);
   void dumpConditionalExpression(const ConditionalExpression& conditionalExpr, int indent = 0);
+  void dumpCastExpression(const CastExpression& castExpr, int indent = 0);
+  void dumpAsExpression(const AsExpression& asExpr, int indent = 0);
+  void dumpForcedAsExpression(const ForcedAsExpression& forcedAsExpr, int indent = 0);
+  void dumpConditionalAsExpression(const ConditionalAsExpression& conditionalAsExpr,
+                                   int indent = 0);
 
   // Helper methods
   void writeIndent(int indent);

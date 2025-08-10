@@ -175,9 +175,18 @@ zc::Own<OptionalExpression> createOptionalExpression(zc::Own<Expression> object,
   return zc::heap<OptionalExpression>(zc::mv(object), zc::mv(property));
 }
 
-zc::Own<CastExpression> createCastExpression(zc::Own<Expression> expression,
-                                             zc::String&& targetType, bool isOptional) {
-  return zc::heap<CastExpression>(zc::mv(expression), zc::mv(targetType), isOptional);
+zc::Own<AsExpression> createAsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType) {
+  return zc::heap<AsExpression>(zc::mv(expression), zc::mv(targetType));
+}
+
+zc::Own<ForcedAsExpression> createForcedAsExpression(zc::Own<Expression> expression,
+                                                     zc::Own<Type> targetType) {
+  return zc::heap<ForcedAsExpression>(zc::mv(expression), zc::mv(targetType));
+}
+
+zc::Own<ConditionalAsExpression> createConditionalAsExpression(zc::Own<Expression> expression,
+                                                               zc::Own<Type> targetType) {
+  return zc::heap<ConditionalAsExpression>(zc::mv(expression), zc::mv(targetType));
 }
 
 zc::Own<VoidExpression> createVoidExpression(zc::Own<Expression> expression) {
@@ -227,13 +236,15 @@ zc::Own<StringLiteral> createStringLiteral(zc::String&& value) {
   return zc::heap<StringLiteral>(zc::mv(value));
 }
 
-zc::Own<NumericLiteral> createNumericLiteral(double value) {
-  return zc::heap<NumericLiteral>(value);
+zc::Own<IntegerLiteral> createIntegerLiteral(int64_t value) {
+  return zc::heap<IntegerLiteral>(value);
 }
+
+zc::Own<FloatLiteral> createFloatLiteral(double value) { return zc::heap<FloatLiteral>(value); }
 
 zc::Own<BooleanLiteral> createBooleanLiteral(bool value) { return zc::heap<BooleanLiteral>(value); }
 
-zc::Own<NilLiteral> createNilLiteral() { return zc::heap<NilLiteral>(); }
+zc::Own<NullLiteral> createNullLiteral() { return zc::heap<NullLiteral>(); }
 
 zc::Own<AliasDeclaration> createAliasDeclaration(zc::Own<Identifier> name, zc::Own<Type> type) {
   return zc::heap<AliasDeclaration>(zc::mv(name), zc::mv(type));

@@ -111,14 +111,14 @@ rightBracePunctuator: RBRACE;
 
 // ================================================================================ LITERALS
 literal:
-	nilLiteral
+	nullLiteral
 	| booleanLiteral
 	| numericLiteral
 	| stringLiteral
 	| characterLiteral;
 
 //// =============================================================================== NIL LITERALS
-nilLiteral: NIL;
+nullLiteral: NULL;
 
 //// =============================================================================== BOOLEAN LITERALS
 booleanLiteral: TRUE | FALSE;

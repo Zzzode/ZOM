@@ -317,23 +317,42 @@ StringLiteral::~StringLiteral() noexcept(false) = default;
 const zc::StringPtr StringLiteral::getValue() const { return impl->value.asPtr(); }
 
 // ================================================================================
-// NumericLiteral::Impl
+// IntegerLiteral::Impl
 
-struct NumericLiteral::Impl {
+struct IntegerLiteral::Impl {
+  const int64_t value;
+
+  explicit Impl(int64_t v) : value(v) {}
+};
+
+// ================================================================================
+// IntegerLiteral
+
+IntegerLiteral::IntegerLiteral(int64_t value) noexcept
+    : LiteralExpression(SyntaxKind::kIntegerLiteral), impl(zc::heap<Impl>(value)) {}
+
+IntegerLiteral::~IntegerLiteral() noexcept(false) = default;
+
+int64_t IntegerLiteral::getValue() const { return impl->value; }
+
+// ================================================================================
+// FloatLiteral::Impl
+
+struct FloatLiteral::Impl {
   const double value;
 
   explicit Impl(double v) : value(v) {}
 };
 
 // ================================================================================
-// NumericLiteral
+// FloatLiteral
 
-NumericLiteral::NumericLiteral(double value) noexcept
-    : LiteralExpression(SyntaxKind::kNumericLiteral), impl(zc::heap<Impl>(value)) {}
+FloatLiteral::FloatLiteral(double value) noexcept
+    : LiteralExpression(SyntaxKind::kFloatLiteral), impl(zc::heap<Impl>(value)) {}
 
-NumericLiteral::~NumericLiteral() noexcept(false) = default;
+FloatLiteral::~FloatLiteral() noexcept(false) = default;
 
-double NumericLiteral::getValue() const { return impl->value; }
+double FloatLiteral::getValue() const { return impl->value; }
 
 // ================================================================================
 // BooleanLiteral::Impl
@@ -355,38 +374,90 @@ BooleanLiteral::~BooleanLiteral() noexcept(false) = default;
 bool BooleanLiteral::getValue() const { return impl->value; }
 
 // ================================================================================
-// NilLiteral
+// NullLiteral
 
-NilLiteral::NilLiteral() noexcept : LiteralExpression(SyntaxKind::kNilLiteral) {}
-NilLiteral::~NilLiteral() noexcept(false) = default;
-
-// ================================================================================
-// CastExpression::Impl
-
-struct CastExpression::Impl {
-  const zc::Own<Expression> expression;
-  const zc::String targetType;
-  const bool isOptional;
-
-  Impl(zc::Own<Expression> expr, zc::String type, bool optional)
-      : expression(zc::mv(expr)), targetType(zc::mv(type)), isOptional(optional) {}
-};
+NullLiteral::NullLiteral() noexcept : LiteralExpression(SyntaxKind::kNullLiteral) {}
+NullLiteral::~NullLiteral() noexcept(false) = default;
 
 // ================================================================================
 // CastExpression
 
-CastExpression::CastExpression(zc::Own<Expression> expression, zc::String targetType,
-                               bool isOptional) noexcept
-    : Expression(SyntaxKind::kCastExpression),
-      impl(zc::heap<Impl>(zc::mv(expression), zc::mv(targetType), isOptional)) {}
-
+CastExpression::CastExpression(SyntaxKind kind) noexcept : Expression(kind) {}
 CastExpression::~CastExpression() noexcept(false) = default;
 
-const Expression* CastExpression::getExpression() const { return impl->expression.get(); }
+// ================================================================================
+// AsExpression::Impl
 
-zc::StringPtr CastExpression::getTargetType() const { return impl->targetType.asPtr(); }
+struct AsExpression::Impl {
+  const zc::Own<Expression> expression;
+  const zc::Own<Type> targetType;
 
-bool CastExpression::isOptional() const { return impl->isOptional; }
+  Impl(zc::Own<Expression> expr, zc::Own<Type> type)
+      : expression(zc::mv(expr)), targetType(zc::mv(type)) {}
+};
+
+// ================================================================================
+// AsExpression
+
+AsExpression::AsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType) noexcept
+    : CastExpression(SyntaxKind::kAsExpression),
+      impl(zc::heap<Impl>(zc::mv(expression), zc::mv(targetType))) {}
+
+AsExpression::~AsExpression() noexcept(false) = default;
+
+const Expression* AsExpression::getExpression() const { return impl->expression.get(); }
+
+const Type* AsExpression::getTargetType() const { return impl->targetType.get(); }
+
+// ================================================================================
+// ForcedAsExpression::Impl
+
+struct ForcedAsExpression::Impl {
+  const zc::Own<Expression> expression;
+  const zc::Own<Type> targetType;
+
+  Impl(zc::Own<Expression> expr, zc::Own<Type> type)
+      : expression(zc::mv(expr)), targetType(zc::mv(type)) {}
+};
+
+// ================================================================================
+// ForcedAsExpression
+
+ForcedAsExpression::ForcedAsExpression(zc::Own<Expression> expression,
+                                       zc::Own<Type> targetType) noexcept
+    : CastExpression(SyntaxKind::kForcedAsExpression),
+      impl(zc::heap<Impl>(zc::mv(expression), zc::mv(targetType))) {}
+
+ForcedAsExpression::~ForcedAsExpression() noexcept(false) = default;
+
+const Expression* ForcedAsExpression::getExpression() const { return impl->expression.get(); }
+
+const Type* ForcedAsExpression::getTargetType() const { return impl->targetType.get(); }
+
+// ================================================================================
+// ConditionalAsExpression::Impl
+
+struct ConditionalAsExpression::Impl {
+  const zc::Own<Expression> expression;
+  const zc::Own<Type> targetType;
+
+  Impl(zc::Own<Expression> expr, zc::Own<Type> type)
+      : expression(zc::mv(expr)), targetType(zc::mv(type)) {}
+};
+
+// ================================================================================
+// ConditionalAsExpression
+
+ConditionalAsExpression::ConditionalAsExpression(zc::Own<Expression> expression,
+                                                 zc::Own<Type> targetType) noexcept
+    : CastExpression(SyntaxKind::kConditionalAsExpression),
+      impl(zc::heap<Impl>(zc::mv(expression), zc::mv(targetType))) {}
+
+ConditionalAsExpression::~ConditionalAsExpression() noexcept(false) = default;
+
+const Expression* ConditionalAsExpression::getExpression() const { return impl->expression.get(); }
+
+const Type* ConditionalAsExpression::getTargetType() const { return impl->targetType.get(); }
 
 // ================================================================================
 // VoidExpression::Impl

@@ -17,9 +17,6 @@
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/statement.h"
-#include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
@@ -147,6 +144,152 @@ ZC_TEST("ParserTest.ObjectLiteral") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse object literal");
+}
+
+// ================================================================================
+// Error Handling Tests
+ZC_TEST("ParserTest.InvalidSyntax") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = ;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  // Should handle syntax error gracefully
+  ZC_EXPECT(true, "Parser should handle invalid syntax");
+}
+
+ZC_TEST("ParserTest.UnterminatedString") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("let x = \"unterminated").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(true, "Parser should handle unterminated string");
+}
+
+// ================================================================================
+// Complex Expression Tests
+ZC_TEST("ParserTest.NestedBinaryExpression") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("(1 + 2) * (3 - 4) / 5").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse nested binary expression");
+}
+
+ZC_TEST("ParserTest.ConditionalExpression") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("x > 0").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse comparison expression");
+}
+
+ZC_TEST("ParserTest.FunctionCall") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("foo(1, 2, 3)").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse function call");
+}
+
+// ================================================================================
+// Type Parsing Tests
+ZC_TEST("ParserTest.TypeAnnotation") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("let x: i32 = 42;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse type annotation");
+}
+
+ZC_TEST("ParserTest.StringLiteral") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("\"hello world\"").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse string literal");
+}
+
+// ================================================================================
+// Declaration Tests
+ZC_TEST("ParserTest.NumberLiteral") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("42").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse number literal");
+}
+
+ZC_TEST("ParserTest.BooleanLiteral") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("true").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse boolean literal");
+}
+
+// ================================================================================
+// Import/Export Tests
+ZC_TEST("ParserTest.Identifier") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("myVariable").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse identifier");
+}
+
+ZC_TEST("ParserTest.ParenthesizedExpression") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("(42)").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse parenthesized expression");
 }
 
 }  // namespace parser

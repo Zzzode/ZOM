@@ -3,6 +3,7 @@
 Zom provides robust error handling mechanisms through exceptions, Result types, and optional values.
 
 ### Result Types
+
 Result types explicitly handle errors by returning either a success value or an error.
 
 ```zom
@@ -28,12 +29,13 @@ fun processResult() {
 ```
 
 ### Optional Values
+
 Optional values (`T?`) represent nullable data. Use chaining (`?.`) and coalescing (`??`) to handle them.
 
 ```zom
 fun findUser(id: i64) -> User? {
     if (userExists(id)) return getUser(id);
-    return nil;
+    return null;
 }
 
 fun processUser(userId: i64) {
@@ -44,6 +46,7 @@ fun processUser(userId: i64) {
 ```
 
 ### Error Propagation
+
 Use `?!` to propagate errors or `!!` to force unwrap (panics on failure).
 
 ```zom
@@ -91,12 +94,12 @@ fun findUser(id: i64) -> User? {
     if (userExists(id)) {
         return getUser(id);
     }
-    return nil;
+    return null;
 }
 
 fun processUser(userId: i64) {
     let user = findUser(userId);
-    if (user != nil) {
+    if (user != null) {
         print("Found user: " + user.name);
     } else {
         print("User not found");
