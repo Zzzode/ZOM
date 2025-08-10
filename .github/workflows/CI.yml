@@ -117,7 +117,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: Zzzode/ZOM
-          file: ${{github.workspace}}/build-coverage/coverage/coverage.lcov
+          files: ${{github.workspace}}/build-coverage/coverage/coverage.lcov
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: true
