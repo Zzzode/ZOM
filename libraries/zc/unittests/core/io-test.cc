@@ -25,10 +25,9 @@
 
 #include "zc/core/io.h"
 
-#include <zc/ztest/gtest.h>
-
 #include "zc/core/debug.h"
 #include "zc/core/miniposix.h"
+#include "zc/ztest/gtest.h"
 
 namespace zc {
 namespace {
@@ -40,8 +39,8 @@ TEST(Io, WriteVec) {
   int fds[2]{};
   ZC_SYSCALL(miniposix::pipe(fds));
 
-  FdInputStream in((AutoCloseFd(fds[0])));
-  FdOutputStream out((AutoCloseFd(fds[1])));
+  FdInputStream in((OwnFd(fds[0])));
+  FdOutputStream out((OwnFd(fds[1])));
 
   ArrayPtr<const byte> pieces[5] = {arrayPtr(implicitCast<const byte*>(nullptr), 0), "foo"_zcb,
                                     arrayPtr(implicitCast<const byte*>(nullptr), 0), "bar"_zcb,
@@ -54,10 +53,10 @@ TEST(Io, WriteVec) {
   EXPECT_EQ("foobar"_zcb, arrayPtr(buf));
 }
 
-ZC_TEST("stringify AutoCloseFd") {
+ZC_TEST("stringify OwnFd") {
   int fds[2]{};
   ZC_SYSCALL(miniposix::pipe(fds));
-  AutoCloseFd in(fds[0]), out(fds[1]);
+  OwnFd in(fds[0]), out(fds[1]);
 
   ZC_EXPECT(zc::str(in) == zc::str(fds[0]), in, fds[0]);
 }

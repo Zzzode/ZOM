@@ -22,7 +22,8 @@
 #include "zc/tls/readiness-io.h"
 
 #include <stdlib.h>
-#include <zc/ztest/test.h>
+
+#include "zc/ztest/test.h"
 
 namespace zc {
 namespace {
@@ -31,15 +32,13 @@ ZC_TEST("readiness IO: write small") {
   auto io = setupAsyncIo();
   auto pipe = io.provider->newOneWayPipe();
 
-  char buf[4]{};
-  auto readPromise = pipe.in->read(buf, 3, 4);
+  byte buf[3]{};
+  auto readPromise = pipe.in->read(buf);
 
   ReadyOutputStreamWrapper out(*pipe.out);
-  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write(zc::StringPtr("foo").asBytes())) == 3);
-
-  ZC_ASSERT(readPromise.wait(io.waitScope) == 3);
-  buf[3] = '\0';
-  ZC_ASSERT(zc::StringPtr(buf) == "foo");
+  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write("foo"_zcb)) == 3);
+  readPromise.wait(io.waitScope);
+  ZC_ASSERT(buf == "foo"_zcb);
 }
 
 ZC_TEST("readiness IO: write many odd") {
@@ -50,17 +49,17 @@ ZC_TEST("readiness IO: write many odd") {
 
   size_t totalWritten = 0;
   for (;;) {
-    ZC_IF_SOME(n, out.write(zc::StringPtr("bar").asBytes())) {
+    ZC_IF_SOME(n, out.write("bar"_zcb)) {
       totalWritten += n;
       if (n < 3) { break; }
     }
     else { ZC_FAIL_ASSERT("pipe buffer is divisible by 3? really?"); }
   }
 
-  auto buf = zc::heapArray<char>(totalWritten + 1);
-  size_t n = pipe.in->read(buf.begin(), totalWritten, buf.size()).wait(io.waitScope);
+  auto buf = zc::heapArray<byte>(totalWritten + 1);
+  size_t n = pipe.in->read(buf, totalWritten).wait(io.waitScope);
   ZC_ASSERT(n == totalWritten);
-  for (size_t i = 0; i < totalWritten; i++) { ZC_ASSERT(buf[i] == "bar"[i % 3]); }
+  for (size_t i = 0; i < totalWritten; i++) { ZC_ASSERT(buf[i] == "bar"_zcb[i % 3]); }
 }
 
 ZC_TEST("readiness IO: write even") {
@@ -71,7 +70,7 @@ ZC_TEST("readiness IO: write even") {
 
   size_t totalWritten = 0;
   for (;;) {
-    ZC_IF_SOME(n, out.write(zc::StringPtr("ba").asBytes())) {
+    ZC_IF_SOME(n, out.write("ba"_zcb)) {
       totalWritten += n;
       if (n < 2) { ZC_FAIL_ASSERT("pipe buffer is not divisible by 2? really?"); }
     }
@@ -79,7 +78,7 @@ ZC_TEST("readiness IO: write even") {
   }
 
   auto buf = zc::heapArray<char>(totalWritten + 1);
-  size_t n = pipe.in->read(buf.begin(), totalWritten, buf.size()).wait(io.waitScope);
+  size_t n = pipe.in->read(buf.asBytes(), totalWritten).wait(io.waitScope);
   ZC_ASSERT(n == totalWritten);
   for (size_t i = 0; i < totalWritten; i++) { ZC_ASSERT(buf[i] == "ba"[i % 2]); }
 }
@@ -88,18 +87,18 @@ ZC_TEST("readiness IO: write while corked") {
   auto io = setupAsyncIo();
   auto pipe = io.provider->newOneWayPipe();
 
-  char buf[7]{};
-  auto readPromise = pipe.in->read(buf, 3, 7);
+  byte buf[6]{};
+  auto readPromise = pipe.in->read(buf, 3);
 
   ReadyOutputStreamWrapper out(*pipe.out);
   auto cork = out.cork();
-  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write(zc::StringPtr("foo").asBytes())) == 3);
+  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write("foo"_zcb)) == 3);
 
   // Data hasn't been written yet.
   ZC_ASSERT(!readPromise.poll(io.waitScope));
 
   // Write some more, and observe it still isn't flushed out yet.
-  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write(zc::StringPtr("bar").asBytes())) == 3);
+  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write("bar"_zcb)) == 3);
   ZC_ASSERT(!readPromise.poll(io.waitScope));
 
   // After reenabling pumping, the full read should succeed.
@@ -107,8 +106,7 @@ ZC_TEST("readiness IO: write while corked") {
   // telling us that this block isn't treated as part of ZC_ASSERT's internal `for` loop.
   if (true) { auto tmp = zc::mv(cork); }
   ZC_ASSERT(readPromise.wait(io.waitScope) == 6);
-  buf[6] = '\0';
-  ZC_ASSERT(zc::StringPtr(buf) == "foobar");
+  ZC_ASSERT(buf == "foobar"_zcb);
 }
 
 ZC_TEST("readiness IO: write many odd while corked") {
@@ -122,21 +120,21 @@ ZC_TEST("readiness IO: write many odd while corked") {
 
   size_t totalWritten = 0;
   for (;;) {
-    ZC_IF_SOME(n, out.write(zc::StringPtr("bar").asBytes())) {
+    ZC_IF_SOME(n, out.write("bar"_zcb)) {
       totalWritten += n;
       if (n < 3) { break; }
     }
     else { ZC_FAIL_ASSERT("pipe buffer is divisible by 3? really?"); }
   }
 
-  auto buf = zc::heapArray<char>(totalWritten + 1);
-  size_t n = pipe.in->read(buf.begin(), totalWritten, buf.size()).wait(io.waitScope);
+  auto buf = zc::heapArray<byte>(totalWritten + 1);
+  size_t n = pipe.in->read(buf, totalWritten).wait(io.waitScope);
   ZC_ASSERT(n == totalWritten);
-  for (size_t i = 0; i < totalWritten; i++) { ZC_ASSERT(buf[i] == "bar"[i % 3]); }
+  for (size_t i = 0; i < totalWritten; i++) { ZC_ASSERT(buf[i] == "bar"_zcb[i % 3]); }
 
   // Eager pumping should still be corked.
-  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write(zc::StringPtr("bar").asBytes())) == 3);
-  auto readPromise = pipe.in->read(buf.begin(), 3, buf.size());
+  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write("bar"_zcb)) == 3);
+  auto readPromise = pipe.in->read(buf, 3);
   ZC_ASSERT(!readPromise.poll(io.waitScope));
 }
 
@@ -149,21 +147,21 @@ ZC_TEST("readiness IO: write many even while corked") {
 
   size_t totalWritten = 0;
   for (;;) {
-    ZC_IF_SOME(n, out.write(zc::StringPtr("ba").asBytes())) {
+    ZC_IF_SOME(n, out.write("ba"_zcb)) {
       totalWritten += n;
       if (n < 2) { ZC_FAIL_ASSERT("pipe buffer is not divisible by 2? really?"); }
     }
     else { break; }
   }
 
-  auto buf = zc::heapArray<char>(totalWritten + 1);
-  size_t n = pipe.in->read(buf.begin(), totalWritten, buf.size()).wait(io.waitScope);
+  auto buf = zc::heapArray<byte>(totalWritten + 1);
+  size_t n = pipe.in->read(buf, totalWritten).wait(io.waitScope);
   ZC_ASSERT(n == totalWritten);
-  for (size_t i = 0; i < totalWritten; i++) { ZC_ASSERT(buf[i] == "ba"[i % 2]); }
+  for (size_t i = 0; i < totalWritten; i++) { ZC_ASSERT(buf[i] == "ba"_zcb[i % 2]); }
 
   // Eager pumping should still be corked.
-  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write(zc::StringPtr("ba").asBytes())) == 2);
-  auto readPromise = pipe.in->read(buf.begin(), 2, buf.size());
+  ZC_ASSERT(ZC_ASSERT_NONNULL(out.write("ba"_zcb)) == 2);
+  auto readPromise = pipe.in->read(buf, 2);
   ZC_ASSERT(!readPromise.poll(io.waitScope));
 }
 

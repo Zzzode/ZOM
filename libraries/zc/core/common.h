@@ -82,12 +82,9 @@ ZC_BEGIN_HEADER
                "system has libc++ installed (as should be the case on e.g. Mac OSX), try adding "\
                "-stdlib=libc++ to your CXXFLAGS."
 #endif
-#else
-#error \
-    "This library does not currently support GCC due to https://gcc.gnu.org/bugzilla/show_bug.cgi?id=102051."
-// #if __GNUC__ < 10
-//   #warning "This library requires at least GCC 10.0."
-// #endif
+#elif (__GNUC__ < 14) || (__GNUC__ == 14 && __GNUC_MINOR__ < 3)
+#warning \
+    "This library requires at least GCC 14.3 due to https://gcc.gnu.org/bugzilla/show_bug.cgi?id=102051."
 #endif
 #elif defined(_MSC_VER)
 #if _MSC_VER < 1930 && !defined(__clang__)
@@ -101,7 +98,9 @@ ZC_BEGIN_HEADER
 #endif
 #endif
 
-#include <cstddef>
+#include <stddef.h>
+#include <string.h>
+
 #include <cstring>
 #include <initializer_list>
 
@@ -788,7 +787,7 @@ constexpr bool canMemcpy() {
   // Returns true if T can be copied using memcpy instead of using the copy constructor or
   // assignment operator.
 
-  return __is_trivially_constructible(T, const T&) && __is_trivially_assignable(T, const T&);
+  return __is_trivially_constructible(T, const T&) && __is_trivially_assignable(T&, const T&);
 }
 #define ZC_ASSERT_CAN_MEMCPY(T) \
   static_assert(zc::canMemcpy<T>(), "this code expects this type to be memcpy()-able");
@@ -1035,11 +1034,11 @@ public:
     inline Iterator operator-(ptrdiff_t amount) const { return Iterator(value - amount); }
     inline ptrdiff_t operator-(const Iterator& other) const { return value - other.value; }
 
-    inline bool operator==(const Iterator& other) const { return value == other.value; }
-    inline bool operator<=(const Iterator& other) const { return value <= other.value; }
-    inline bool operator>=(const Iterator& other) const { return value >= other.value; }
-    inline bool operator<(const Iterator& other) const { return value < other.value; }
-    inline bool operator>(const Iterator& other) const { return value > other.value; }
+    inline bool operator==(const Iterator& other) const = default;
+    inline bool operator<=(const Iterator& other) const = default;
+    inline bool operator>=(const Iterator& other) const = default;
+    inline bool operator<(const Iterator& other) const = default;
+    inline bool operator>(const Iterator& other) const = default;
 
   private:
     T value;
@@ -1233,22 +1232,25 @@ private:
 
 // We want placement new, but we don't want to #include <new>.  operator new cannot be defined in
 // a namespace, and defining it globally conflicts with the definition in <new>.  So we have to
-// define a dummy type and an operator new that uses it.
+// define a dummy type and an operator new that uses it.  The dummy type is intentionally passed
+// as the last parameter so clang and GCC ABI calling conventions for empty struct struct parameters
+// are compatible, and there are not segfaults trying to call clang operator new/delete from GCC or
+// vice versa.
 
 namespace _ {  // private
 struct PlacementNew {};
 }  // namespace _
 }  // namespace zc
 
-inline void* operator new(size_t, zc::_::PlacementNew, void* __p) noexcept { return __p; }
+inline void* operator new(size_t, void* __p, zc::_::PlacementNew) noexcept { return __p; }
 
-inline void operator delete(void*, zc::_::PlacementNew, void* __p) noexcept {}
+inline void operator delete(void*, void* __p, zc::_::PlacementNew) noexcept {}
 
 namespace zc {
 
 template <typename T, typename... Params>
 inline void ctor(T& location, Params&&... params) {
-  new (_::PlacementNew(), &location) T(zc::fwd<Params>(params)...);
+  new (&location, _::PlacementNew()) T(zc::fwd<Params>(params)...);
 }
 
 template <typename T>
@@ -1565,6 +1567,13 @@ static constexpr None none;
 // A "none" value solely for use in comparisons with and initializations of Maybes. `zc::none` will
 // compare equal to all empty Maybes, and will compare not-equal to all non-empty Maybes. If you
 // construct or assign to a Maybe from `zc::none`, the constructed/assigned Maybe will be empty.
+
+template <typename T>
+inline Maybe<T> some(T&& t) {
+  return Maybe<T>(zc::mv(t));
+}
+// Helper function to auto-deduce maybe argument.
+// Useful when there is a complicated conversion chain to T to avoid spelling types out.
 
 #if __GNUC__ || __clang__
 // These two macros provide a friendly syntax to extract the value of a Maybe or return early.
@@ -2137,11 +2146,13 @@ public:
   constexpr ArrayPtr<PropagateConst<T, byte>> asBytes() const {
     // Reinterpret the array as a byte array. This is explicitly legal under C++ aliasing
     // rules.
+    ZC_ASSERT_CAN_MEMCPY(RemoveConst<T>);
     return {reinterpret_cast<PropagateConst<T, byte>*>(ptr), size_ * sizeof(T)};
   }
   inline ArrayPtr<PropagateConst<T, char>> asChars() const {
     // Reinterpret the array as a char array. This is explicitly legal under C++ aliasing
     // rules.
+    ZC_ASSERT_CAN_MEMCPY(RemoveConst<T>);
     return {reinterpret_cast<PropagateConst<T, char>*>(ptr), size_ * sizeof(T)};
   }
 
@@ -2149,13 +2160,11 @@ public:
 
   inline constexpr bool operator==(const ArrayPtr& other) const {
     if (size_ != other.size_) return false;
-#if defined(__has_feature)
-#if __has_feature(cxx_constexpr_string_builtins)
+#if ZC_HAS_COMPILER_FEATURE(cxx_constexpr_string_builtins)
     if (isIntegral<RemoveConst<T>>()) {
       if (size_ == 0) return true;
       return __builtin_memcmp(ptr, other.ptr, size_ * sizeof(T)) == 0;
     }
-#endif
 #endif
     for (size_t i = 0; i < size_; i++) {
       if (ptr[i] != other[i]) return false;
@@ -2176,11 +2185,9 @@ public:
     size_t comparisonSize = zc::min(size_, other.size_);
     if constexpr (isSameType<RemoveConst<T>, char>() ||
                   isSameType<RemoveConst<T>, unsigned char>()) {
-#if defined(__has_feature)
-#if __has_feature(cxx_constexpr_string_builtins)
+#if ZC_HAS_COMPILER_FEATURE(cxx_constexpr_string_builtins)
       int ret = __builtin_memcmp(ptr, other.ptr, comparisonSize * sizeof(T));
       if (ret != 0) { return ret < 0; }
-#endif
 #else
       for (size_t i = 0; i < comparisonSize; ++i) {
         if (static_cast<unsigned char>(ptr[i]) != static_cast<unsigned char>(other.ptr[i])) {
@@ -2212,6 +2219,13 @@ public:
 
   template <typename U>
   inline auto as() {
+    return U::from(this);
+  }
+  // Syntax sugar for invoking U::from.
+  // Used to chain conversion calls rather than wrap with function.
+
+  template <typename U>
+  inline auto as() const {
     return U::from(this);
   }
   // Syntax sugar for invoking U::from.
@@ -2265,29 +2279,41 @@ private:
 template <>
 inline Maybe<size_t> ArrayPtr<const char>::findFirst(const char& c) const {
   const char* pos = reinterpret_cast<const char*>(memchr(ptr, c, size_));
-  if (pos == nullptr) { return zc::none; }
-  return pos - ptr;
+  if (pos == nullptr) {
+    return zc::none;
+  } else {
+    return pos - ptr;
+  }
 }
 
 template <>
 inline Maybe<size_t> ArrayPtr<char>::findFirst(const char& c) const {
   char* pos = reinterpret_cast<char*>(memchr(ptr, c, size_));
-  if (pos == nullptr) { return zc::none; }
-  return pos - ptr;
+  if (pos == nullptr) {
+    return zc::none;
+  } else {
+    return pos - ptr;
+  }
 }
 
 template <>
 inline Maybe<size_t> ArrayPtr<const byte>::findFirst(const byte& c) const {
   const byte* pos = reinterpret_cast<const byte*>(memchr(ptr, c, size_));
-  if (pos == nullptr) { return zc::none; }
-  return pos - ptr;
+  if (pos == nullptr) {
+    return zc::none;
+  } else {
+    return pos - ptr;
+  }
 }
 
 template <>
 inline Maybe<size_t> ArrayPtr<byte>::findFirst(const byte& c) const {
   byte* pos = reinterpret_cast<byte*>(memchr(ptr, c, size_));
-  if (pos == nullptr) { return zc::none; }
-  return pos - ptr;
+  if (pos == nullptr) {
+    return zc::none;
+  } else {
+    return pos - ptr;
+  }
 }
 
 // glibc has a memrchr() for reverse search but it's non-standard, so we don't bother optimizing
@@ -2495,6 +2521,25 @@ struct ByteLiteral<1ul> {
 };
 
 }  // namespace _
+
+class ThreadId {
+  // Unique thread identifier.
+  // Implemented as thread_local address, so could be efficient even for production
+  // environments especially with LTO.
+
+public:
+  static ThreadId current();
+  // Obtain current thread id
+
+  inline bool operator==(const ThreadId& other) const = default;
+
+  void assertCurrentThread() const;
+  // ZC_ASSERTs that current thread matches this identifier.
+
+private:
+  inline ThreadId(void* id) : id(id) {}
+  void* id;
+};
 
 }  // namespace zc
 

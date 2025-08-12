@@ -21,7 +21,8 @@
 
 #include "zc/http/http.h"
 
-#include <cstdlib>
+#include <stdlib.h>
+
 #include <deque>
 #include <map>
 #include <queue>
@@ -34,7 +35,7 @@
 #include "zc/http/url.h"
 #include "zc/parse/char.h"
 #if ZC_HAS_ZLIB
-#include <zc/zip/zlib.h>
+#include <zlib.h>
 #endif  // ZC_HAS_ZLIB
 
 namespace zc {
@@ -342,6 +343,8 @@ static zc::Maybe<zc::OneOf<HttpMethod, HttpConnectMethod>> consumeHttpMethod(cha
   switch (*p++) {
     case 'A':
       EXPECT_REST(A, CL)
+    case 'B':
+      EXPECT_REST(B, AN)
     case 'C':
       switch (*p++) {
         case 'H':
@@ -423,6 +426,8 @@ static zc::Maybe<zc::OneOf<HttpMethod, HttpConnectMethod>> consumeHttpMethod(cha
         default:
           return zc::none;
       }
+    case 'Q':
+      EXPECT_REST(Q, UERY)
     case 'R':
       EXPECT_REST(R, EPORT)
     case 'S':
@@ -446,6 +451,7 @@ static zc::Maybe<zc::OneOf<HttpMethod, HttpConnectMethod>> consumeHttpMethod(cha
         default:
           return zc::none;
       }
+
     default:
       return zc::none;
   }
@@ -1031,12 +1037,12 @@ bool HttpHeaders::parseHeaders(char* ptr, char* end) {
 zc::String HttpHeaders::serializeRequest(
     HttpMethod method, zc::StringPtr url,
     zc::ArrayPtr<const zc::StringPtr> connectionHeaders) const {
-  return serialize(zc::toCharSequence(method), url, zc::StringPtr("HTTP/1.1"), connectionHeaders);
+  return serialize(zc::toCharSequence(method), url, "HTTP/1.1"_zc, connectionHeaders);
 }
 
 zc::String HttpHeaders::serializeConnectRequest(
     zc::StringPtr authority, zc::ArrayPtr<const zc::StringPtr> connectionHeaders) const {
-  return serialize("CONNECT"_zc, authority, zc::StringPtr("HTTP/1.1"), connectionHeaders);
+  return serialize("CONNECT"_zc, authority, "HTTP/1.1"_zc, connectionHeaders);
 }
 
 zc::String HttpHeaders::serializeResponse(
@@ -1044,7 +1050,7 @@ zc::String HttpHeaders::serializeResponse(
     zc::ArrayPtr<const zc::StringPtr> connectionHeaders) const {
   auto statusCodeStr = zc::toCharSequence(statusCode);
 
-  return serialize(zc::StringPtr("HTTP/1.1"), statusCodeStr, statusText, connectionHeaders);
+  return serialize("HTTP/1.1"_zc, statusCodeStr, statusText, connectionHeaders);
 }
 
 zc::String HttpHeaders::serialize(zc::ArrayPtr<const char> word1, zc::ArrayPtr<const char> word2,
@@ -1717,7 +1723,7 @@ private:
           maxBytes = zc::min(maxBytes, MAX_CHUNK_HEADER_SIZE);
         }
 
-        readPromise = inner.read(headerBuffer.begin() + bufferEnd, 1, maxBytes);
+        readPromise = inner.read(headerBuffer.slice(bufferEnd).first(maxBytes).asBytes(), 1);
       }
 
       auto amount = co_await readPromise;
@@ -2070,8 +2076,8 @@ zc::Own<zc::AsyncInputStream> HttpInputStreamImpl::getEntityBody(
 
   // #3
   ZC_IF_SOME(te, headers.get(HttpHeaderId::TRANSFER_ENCODING)) {
-    // TODO(someday): Support pluggable transfer encodings? Or at least zip?
-    // TODO(someday): Support stacked transfer encodings, e.g. "zip, chunked".
+    // TODO(someday): Support pluggable transfer encodings? Or at least gzip?
+    // TODO(someday): Support stacked transfer encodings, e.g. "gzip, chunked".
 
     // NOTE: #3¶3 is ambiguous about what should happen if Transfer-Encoding and Content-Length are
     //   both present. It says that Transfer-Encoding takes precedence, but also that the request
@@ -2449,7 +2455,7 @@ public:
     auto parts = zc::heapArray<ArrayPtr<const byte>>(3);
     parts[0] = header.asBytes();
     parts[1] = buffer;
-    parts[2] = zc::StringPtr("\r\n").asBytes();
+    parts[2] = "\r\n"_zcb;
 
     auto promise = getInner().writeBodyData(parts.asPtr());
     return promise.attach(zc::mv(header), zc::mv(parts));
@@ -2465,7 +2471,7 @@ public:
     auto partsBuilder = zc::heapArrayBuilder<ArrayPtr<const byte>>(pieces.size() + 2);
     partsBuilder.add(header.asBytes());
     for (auto& piece : pieces) { partsBuilder.add(piece); }
-    partsBuilder.add(zc::StringPtr("\r\n").asBytes());
+    partsBuilder.add("\r\n"_zcb);
 
     auto parts = partsBuilder.finish();
     auto promise = getInner().writeBodyData(parts.asPtr());
@@ -3059,9 +3065,9 @@ private:
     // `ZlibContext` is the WebSocket's interface to Zlib's compression/decompression functions.
     // Depending on the `mode`, `ZlibContext` will act as a compressor or a decompressor.
   public:
-    enum class Mode{
-        COMPRESS,
-        DECOMPRESS,
+    enum class Mode {
+      COMPRESS,
+      DECOMPRESS,
     };
 
     struct Result {
@@ -5339,8 +5345,8 @@ public:
     auto split =
         httpInput.readResponseHeaders()
             .then([this, id](HttpHeaders::ResponseOrProtocolError&& responseOrProtocolError) mutable
-                  -> zc::Tuple<zc::Promise<ConnectRequest::Status>,
-                               zc::Promise<zc::Maybe<HttpInputStreamImpl::ReleasedBuffer>>> {
+                      -> zc::Tuple<zc::Promise<ConnectRequest::Status>,
+                                   zc::Promise<zc::Maybe<HttpInputStreamImpl::ReleasedBuffer>>> {
               ZC_SWITCH_ONEOF(responseOrProtocolError) {
                 ZC_CASE_ONEOF(response, HttpHeaders::Response) {
                   auto& responseHeaders = httpInput.getHeaders();
@@ -6192,8 +6198,8 @@ public:
     auto split = paf.promise
                      .then([this, host = zc::str(host), headers = headers.clone(),
                             settings](ConnectionCounter&& counter) mutable
-                           -> zc::Tuple<zc::Promise<ConnectRequest::Status>,
-                                        zc::Promise<zc::Own<zc::AsyncIoStream>>> {
+                               -> zc::Tuple<zc::Promise<ConnectRequest::Status>,
+                                            zc::Promise<zc::Own<zc::AsyncIoStream>>> {
                        auto request =
                            attachCounter(inner.connect(host, headers, settings), zc::mv(counter));
                        return zc::tuple(zc::mv(request.status), zc::mv(request.connection));

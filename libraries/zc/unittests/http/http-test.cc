@@ -22,14 +22,13 @@
 #include "zc/core/common.h"
 #define ZC_TESTING_ZC 1
 
-#include <zc/core/debug.h>
-#include <zc/core/encoding.h>
-#include <zc/core/vector.h>
-#include <zc/ztest/test.h>
-
 #include <map>
 
+#include "zc/core/debug.h"
+#include "zc/core/encoding.h"
+#include "zc/core/vector.h"
 #include "zc/http/http.h"
+#include "zc/ztest/test.h"
 
 #if ZC_HTTP_TEST_USE_OS_PIPE
 // Run the test using OS-level socketpairs. (See http-socketpair-test.c++.)
@@ -403,9 +402,6 @@ class ReadFragmenter final : public zc::AsyncIoStream {
 public:
   ReadFragmenter(AsyncIoStream& inner, size_t limit) : inner(inner), limit(limit) {}
 
-  Promise<size_t> read(void* buffer, size_t minBytes, size_t maxBytes) override {
-    return inner.read(buffer, minBytes, zc::max(minBytes, zc::min(limit, maxBytes)));
-  }
   Promise<size_t> tryRead(void* buffer, size_t minBytes, size_t maxBytes) override {
     return inner.tryRead(buffer, minBytes, zc::max(minBytes, zc::min(limit, maxBytes)));
   }
@@ -1738,13 +1734,13 @@ ZC_TEST("WebSocket core protocol") {
   auto client = newWebSocket(zc::mv(pipe.ends[0]), zc::none);
   auto server = newWebSocket(zc::mv(pipe.ends[1]), zc::none);
 
-  auto mediumString = zc::strArray(zc::repeat(zc::StringPtr("123456789"), 30), "");
-  auto bigString = zc::strArray(zc::repeat(zc::StringPtr("123456789"), 10000), "");
+  auto mediumString = zc::strArray(zc::repeat("123456789"_zc, 30), "");
+  auto bigString = zc::strArray(zc::repeat("123456789"_zc, 10000), "");
 
-  auto clientTask = client->send(zc::StringPtr("hello"))
+  auto clientTask = client->send("hello"_zc)
                         .then([&]() { return client->send(mediumString); })
                         .then([&]() { return client->send(bigString); })
-                        .then([&]() { return client->send(zc::StringPtr("world").asBytes()); })
+                        .then([&]() { return client->send("world"_zcb); })
                         .then([&]() { return client->close(1234, "bored"); })
                         .then([&]() { ZC_EXPECT(client->sentByteCount() == 90307) });
 
@@ -1874,7 +1870,7 @@ ZC_TEST("WebSocket masked") {
   };
 
   auto clientTask = client->write(DATA);
-  auto serverTask = server->send(zc::StringPtr("hello "));
+  auto serverTask = server->send("hello "_zc);
 
   {
     auto message = server->receive().wait(waitScope);
@@ -2132,7 +2128,7 @@ void doWebSocketPingTest(zc::Maybe<EntropySource&> maskGenerator) {
     ZC_EXPECT(message.get<zc::String>() == "hello world");
   }
 
-  auto serverTask = server->send(zc::StringPtr("bar"));
+  auto serverTask = server->send("bar"_zc);
 
   zc::ArrayPtr<const byte> expected;
 
@@ -2170,7 +2166,7 @@ ZC_TEST("WebSocket ping mid-send") {
   auto client = zc::mv(pipe.ends[0]);
   auto server = newWebSocket(zc::mv(pipe.ends[1]), zc::none);
 
-  auto bigString = zc::strArray(zc::repeat(zc::StringPtr("12345678"), 65536), "");
+  auto bigString = zc::strArray(zc::repeat("12345678"_zc, 65536), "");
   auto serverTask = server->send(bigString).eagerlyEvaluate(nullptr);
 
   byte DATA[] = {
@@ -2204,9 +2200,6 @@ public:
   InputOutputPair(zc::Own<zc::AsyncInputStream> in, zc::Own<zc::AsyncOutputStream> out)
       : in(zc::mv(in)), out(zc::mv(out)) {}
 
-  zc::Promise<size_t> read(void* buffer, size_t minBytes, size_t maxBytes) override {
-    return in->read(buffer, minBytes, maxBytes);
-  }
   zc::Promise<size_t> tryRead(void* buffer, size_t minBytes, size_t maxBytes) override {
     return in->tryRead(buffer, minBytes, maxBytes);
   }
@@ -2246,7 +2239,7 @@ ZC_TEST("WebSocket double-ping mid-send") {
   auto server =
       newWebSocket(zc::heap<InputOutputPair>(zc::mv(upPipe.in), zc::mv(downPipe.out)), zc::none);
 
-  auto bigString = zc::strArray(zc::repeat(zc::StringPtr("12345678"), 65536), "");
+  auto bigString = zc::strArray(zc::repeat("12345678"_zc, 65536), "");
   auto serverTask = server->send(bigString).eagerlyEvaluate(nullptr);
 
   byte DATA[] = {
@@ -2297,7 +2290,7 @@ ZC_TEST("WebSocket multiple ping outside of send") {
     ZC_EXPECT(message.get<zc::String>() == "other");
   }
 
-  auto bigString = zc::strArray(zc::repeat(zc::StringPtr("12345678"), 65536), "");
+  auto bigString = zc::strArray(zc::repeat("12345678"_zc, 65536), "");
   auto serverTask = server->send(bigString).eagerlyEvaluate(nullptr);
 
   // We expect to receive pongs for only the first and last pings, because the server has the
@@ -2326,7 +2319,7 @@ ZC_TEST("WebSocket ping received during pong send") {
   // Send a very large ping so that sending the pong takes a while. Then send a second ping
   // immediately after.
   byte PREFIX[] = {0x89, 0x7f, 0, 0, 0, 0, 0, 8, 0, 0};
-  auto bigString = zc::strArray(zc::repeat(zc::StringPtr("12345678"), 65536), "");
+  auto bigString = zc::strArray(zc::repeat("12345678"_zc, 65536), "");
   byte POSTFIX[] = {
       0x89, 0x03, 'f', 'o', 'o', 0x81, 0x03, 'b', 'a', 'r',
   };
@@ -2399,8 +2392,8 @@ ZC_TEST("WebSocket pump disconnect on send") {
   auto sendTask = client1->send("hello"_zc);
 
   // Endpoint reads three bytes and then disconnects.
-  char buffer[3]{};
-  pipe2.ends[1]->read(buffer, 3).wait(waitScope);
+  byte buffer[3]{};
+  pipe2.ends[1]->read(buffer).wait(waitScope);
   pipe2.ends[1] = nullptr;
 
   // Pump throws disconnected.
@@ -2408,8 +2401,8 @@ ZC_TEST("WebSocket pump disconnect on send") {
 
   // client1 may or may not have been able to send its whole message depending on buffering.
   sendTask
-      .then([]() {},
-            [](zc::Exception&& e) { ZC_EXPECT(e.getType() == zc::Exception::Type::DISCONNECTED); })
+      .catch_(
+          [](zc::Exception&& e) { ZC_EXPECT(e.getType() == zc::Exception::Type::DISCONNECTED); })
       .wait(waitScope);
 }
 
@@ -2446,6 +2439,7 @@ ZC_TEST("WebSocket abort propagates through pipe") {
   // that mode shouldn't depend on kernel behavior at all.
   return;
 #endif
+
   // Pumping one end of a WebSocket pipe into another WebSocket which later becomes aborted will
   // cancel the pump promise with a DISCONNECTED exception.
 
@@ -2477,8 +2471,8 @@ ZC_TEST("WebSocket maximum message size") {
   auto server = newWebSocket(zc::mv(pipe.ends[1]), zc::none, zc::none, errorCatcher);
 
   size_t maxSize = 100;
-  auto biggestAllowedString = zc::strArray(zc::repeat(zc::StringPtr("A"), maxSize), "");
-  auto tooBigString = zc::strArray(zc::repeat(zc::StringPtr("B"), maxSize + 1), "");
+  auto biggestAllowedString = zc::strArray(zc::repeat("A"_zc, maxSize), "");
+  auto tooBigString = zc::strArray(zc::repeat("B"_zc, maxSize + 1), "");
 
   auto rawCloseMessage = zc::heapArray<zc::byte>(129);
   auto clientTask =
@@ -2530,8 +2524,8 @@ ZC_TEST("WebSocket maximum compressed message size") {
                              errorCatcher);
 
   size_t maxSize = 100;
-  auto biggestAllowedString = zc::strArray(zc::repeat(zc::StringPtr("A"), maxSize), "");
-  auto tooBigString = zc::strArray(zc::repeat(zc::StringPtr("B"), maxSize + 1), "");
+  auto biggestAllowedString = zc::strArray(zc::repeat("A"_zc, maxSize), "");
+  auto tooBigString = zc::strArray(zc::repeat("B"_zc, maxSize + 1), "");
 
   auto rawCloseMessage = zc::heapArray<zc::byte>(129);
   auto clientTask =
@@ -2731,7 +2725,7 @@ void testWebSocketClient(zc::WaitScope& waitScope, HttpHeaderTable& headerTable,
     ZC_EXPECT(message.get<zc::String>() == "start-inline");
   }
 
-  ws->send(zc::StringPtr("bar")).wait(waitScope);
+  ws->send("bar"_zc).wait(waitScope);
   {
     auto message = ws->receive().wait(waitScope);
     ZC_ASSERT(message.is<zc::String>());
@@ -2770,14 +2764,14 @@ void testWebSocketTwoMessageCompression(zc::WaitScope& waitScope, HttpHeaderTabl
     ZC_ASSERT(message.is<zc::String>());
     ZC_EXPECT(message.get<zc::String>() == "Hello");
   }
-  ws->send(zc::StringPtr("Hello")).wait(waitScope);
+  ws->send("Hello"_zc).wait(waitScope);
 
   {
     auto message = ws->receive().wait(waitScope);
     ZC_ASSERT(message.is<zc::String>());
     ZC_EXPECT(message.get<zc::String>() == "Hello");
   }
-  ws->send(zc::StringPtr("Hello")).wait(waitScope);
+  ws->send("Hello"_zc).wait(waitScope);
 
   ws->close(0x1234, "qux").wait(waitScope);
   {
@@ -2813,7 +2807,7 @@ void testWebSocketThreeMessageCompression(zc::WaitScope& waitScope, HttpHeaderTa
     ZC_ASSERT(message.is<zc::String>());
     ZC_EXPECT(message.get<zc::String>() == "Hello");
   }
-  ws->send(zc::StringPtr("Hello")).wait(waitScope);
+  ws->send("Hello"_zc).wait(waitScope);
 
   // The message we receive is not compressed, but the one we send is.
   {
@@ -2821,7 +2815,7 @@ void testWebSocketThreeMessageCompression(zc::WaitScope& waitScope, HttpHeaderTa
     ZC_ASSERT(message.is<zc::String>());
     ZC_EXPECT(message.get<zc::String>() == "Hi");
   }
-  ws->send(zc::StringPtr("Hi")).wait(waitScope);
+  ws->send("Hi"_zc).wait(waitScope);
 
   // Compressed message.
   {
@@ -2829,7 +2823,7 @@ void testWebSocketThreeMessageCompression(zc::WaitScope& waitScope, HttpHeaderTa
     ZC_ASSERT(message.is<zc::String>());
     ZC_EXPECT(message.get<zc::String>() == "Hello");
   }
-  ws->send(zc::StringPtr("Hello")).wait(waitScope);
+  ws->send("Hello"_zc).wait(waitScope);
 
   ws->close(0x1234, "qux").wait(waitScope);
   {
@@ -2862,21 +2856,21 @@ void testWebSocketEmptyMessageCompression(zc::WaitScope& waitScope, HttpHeaderTa
     ZC_ASSERT(message.is<zc::String>());
     ZC_EXPECT(message.get<zc::String>() == "Hello");
   }
-  ws->send(zc::StringPtr("Hello")).wait(waitScope);
+  ws->send("Hello"_zc).wait(waitScope);
 
   {
     auto message = ws->receive().wait(waitScope);
     ZC_ASSERT(message.is<zc::String>());
     ZC_EXPECT(message.get<zc::String>() == "");
   }
-  ws->send(zc::StringPtr("")).wait(waitScope);
+  ws->send(""_zc).wait(waitScope);
 
   {
     auto message = ws->receive().wait(waitScope);
     ZC_ASSERT(message.is<zc::String>());
     ZC_EXPECT(message.get<zc::String>() == "Hello");
   }
-  ws->send(zc::StringPtr("Hello")).wait(waitScope);
+  ws->send("Hello"_zc).wait(waitScope);
 
   ws->close(0x1234, "qux").wait(waitScope);
   {
@@ -5561,9 +5555,6 @@ public:
       : inner(zc::mv(inner)), count(count) {}
   ~CountingIoStream() noexcept(false) { --count; }
 
-  zc::Promise<size_t> read(void* buffer, size_t minBytes, size_t maxBytes) override {
-    return inner->read(buffer, minBytes, maxBytes);
-  }
   zc::Promise<size_t> tryRead(void* buffer, size_t minBytes, size_t maxBytes) override {
     return inner->tryRead(buffer, minBytes, maxBytes);
   }
@@ -6277,8 +6268,8 @@ public:
       // Actually, we can't literally cancel mid-read, because this leaves the stream in an
       // unknown state which requires closing the connection. Instead, we know that the sender
       // will send 5 bytes, so we read that, then pause.
-      static char junk[5];
-      return requestBody.read(junk, 5)
+      static byte junk[5];
+      return requestBody.read(junk)
           .then([]() -> zc::Promise<void> { return zc::NEVER_DONE; })
           .exclusiveJoin(timer.afterDelay(1 * zc::MILLISECONDS))
           .then([this, &responseSender]() {
@@ -6632,9 +6623,6 @@ ZC_TEST("HttpServer handles disconnected exception for clients disconnecting aft
   public:
     DisconnectingAsyncIoStream(AsyncIoStream& inner) : inner(inner) {}
 
-    Promise<size_t> read(void* buffer, size_t minBytes, size_t maxBytes) override {
-      return inner.read(buffer, minBytes, maxBytes);
-    }
     Promise<size_t> tryRead(void* buffer, size_t minBytes, size_t maxBytes) override {
       return inner.tryRead(buffer, minBytes, maxBytes);
     }

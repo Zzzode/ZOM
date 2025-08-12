@@ -21,10 +21,9 @@
 
 #pragma once
 
-#include <zc/core/exception.h>
-#include <zc/core/refcount.h>
-
 #include "zc/async/async-prelude.h"
+#include "zc/core/exception.h"
+#include "zc/core/refcount.h"
 
 ZC_BEGIN_HEADER
 
@@ -470,8 +469,9 @@ PromiseForResult<Func, void> evalLast(Func&& func) ZC_WARN_UNUSED_RESULT;
 // drained.
 
 Promise<void> yield();
-// Like `eval()`, but without a function to be evaluated. Useful for yielding control temporarily
-// to serialize actions or schedule other actions for a later time using promise continuations.
+// Like `evalLater()`, but without a function to be evaluated. Useful for yielding control
+// temporarily to serialize actions or schedule other actions for a later time using promise
+// continuations.
 
 Promise<void> yieldUntilQueueEmpty();
 // Like `evalLast()`, but without a function to be evaluated. Useful for yielding control until the
@@ -596,7 +596,7 @@ Promise<T> raceSuccessful(Array<Promise<T>>&& promises, SourceLocation location 
 
 namespace _ {
 
-void throwMultipleCoCaptureInvocations();
+ZC_NORETURN(void throwMultipleCoCaptureInvocations());
 
 template <typename Functor>
 struct CaptureForCoroutine {
@@ -605,8 +605,8 @@ struct CaptureForCoroutine {
   explicit CaptureForCoroutine(Functor&& f) : maybeFunctor(zc::mv(f)) {}
 
   template <typename... Args>
-  static auto coInvoke(Functor functor,
-                       Args&&... args) -> decltype(functor(zc::fwd<Args>(args)...)) {
+  static auto coInvoke(Functor functor, Args&&... args)
+      -> decltype(functor(zc::fwd<Args>(args)...)) {
     // Since the functor is now in the local scope and no longer a member variable, it will be
     // persisted in the coroutine state.
 
@@ -836,6 +836,9 @@ PromiseCrossThreadFulfillerPair<T> newPromiseAndCrossThreadFulfiller();
 // not just the one that called this method. Note that the Promise is still tied to the calling
 // thread's event loop and *cannot* be used from another thread -- only the PromiseFulfiller is
 // cross-thread.
+//
+// There is also a member function of the same name on the Executor class. This function here is
+// equivalent to writing: `getCurrentThreadExecutor().newPromiseAndCrossThreadfulfiller()`.
 
 // =======================================================================================
 // Canceler
@@ -1092,6 +1095,17 @@ public:
   //
   // As with `executeAsync()`, `func` is always destroyed on the requesting thread, after the
   // executor thread has signaled completion. The return value is transferred between threads.
+
+  template <typename T>
+  PromiseCrossThreadFulfillerPair<T> newPromiseAndCrossThreadFulfiller() const;
+  // Like `newPromiseAndCrossThreadFulfiller()`, but the Promise is tied to the event loop
+  // associated with this Executor. This allows the caller to construct Promises associated with
+  // other threads. The caller will have to arrange to move the constructed Promise to its home
+  // thread somehow in order to await or cancel (destroy) it.
+  //
+  // It is not an error to create a promise and cross-thread-fulfiller pair on an Executor whose
+  // event loop has already exited. However, the only thing you can do with the promise is destroy
+  // it. Fulfilling or rejecting it via the fulfiller is a no-op.
 
 private:
   struct Impl;

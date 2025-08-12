@@ -34,7 +34,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#include <zc/ztest/gtest.h>
 
 #include <algorithm>
 #include <atomic>
@@ -43,6 +42,7 @@
 #include "zc/core/io.h"
 #include "zc/core/mutex.h"
 #include "zc/core/thread.h"
+#include "zc/ztest/gtest.h"
 
 #if ZC_USE_EPOLL
 #include <sys/epoll.h>
@@ -121,9 +121,7 @@ bool checkForQemuEpollPwaitBug() {
 
   ZC_SYSCALL(sigaction(SIGURG, &action, nullptr));
 
-  int efd;
-  ZC_SYSCALL(efd = epoll_create1(EPOLL_CLOEXEC));
-  ZC_DEFER(close(efd));
+  auto efd = ZC_SYSCALL_FD(epoll_create1(EPOLL_CLOEXEC));
 
   kill(getpid(), SIGURG);
   ZC_ASSERT(!qemuBugTestSignalHandlerRan);
@@ -374,7 +372,7 @@ TEST(AsyncUnixTest, ReadObserver) {
 
   int pipefds[2]{};
   ZC_SYSCALL(pipe(pipefds));
-  zc::AutoCloseFd infd(pipefds[0]), outfd(pipefds[1]);
+  zc::OwnFd infd(pipefds[0]), outfd(pipefds[1]);
 
   UnixEventPort::FdObserver observer(port, infd, UnixEventPort::FdObserver::OBSERVE_READ);
 
@@ -477,7 +475,7 @@ TEST(AsyncUnixTest, ReadObserverAndSignals) {
 
   int pipefds[2]{};
   ZC_SYSCALL(pipe(pipefds));
-  zc::AutoCloseFd infd(pipefds[0]), outfd(pipefds[1]);
+  zc::OwnFd infd(pipefds[0]), outfd(pipefds[1]);
 
   UnixEventPort::FdObserver observer(port, infd, UnixEventPort::FdObserver::OBSERVE_READ);
 
@@ -578,7 +576,7 @@ TEST(AsyncUnixTest, WriteObserver) {
 
   int pipefds[2]{};
   ZC_SYSCALL(pipe(pipefds));
-  zc::AutoCloseFd infd(pipefds[0]), outfd(pipefds[1]);
+  zc::OwnFd infd(pipefds[0]), outfd(pipefds[1]);
   setNonblocking(outfd);
   setNonblocking(infd);
 
@@ -624,12 +622,10 @@ TEST(AsyncUnixTest, UrgentObserver) {
   UnixEventPort port;
   EventLoop loop(port);
   WaitScope waitScope(loop);
-  int tmpFd;
   char c;
 
   // Spawn a TCP server
-  ZC_SYSCALL(tmpFd = socket(AF_INET, SOCK_STREAM, 0));
-  zc::AutoCloseFd serverFd(tmpFd);
+  auto serverFd = ZC_SYSCALL_FD(socket(AF_INET, SOCK_STREAM, 0));
   sockaddr_in saddr;
   memset(&saddr, 0, sizeof(saddr));
   saddr.sin_family = AF_INET;
@@ -649,13 +645,11 @@ TEST(AsyncUnixTest, UrgentObserver) {
 
   // Accept one connection, send in-band and OOB byte, wait for a quit message
   Thread thread([&]() {
-    int tmpFd;
     char c;
 
     sockaddr_in caddr;
     socklen_t caddrLen = sizeof(caddr);
-    ZC_SYSCALL(tmpFd = accept(serverFd, reinterpret_cast<sockaddr*>(&caddr), &caddrLen));
-    zc::AutoCloseFd clientFd(tmpFd);
+    auto clientFd = ZC_SYSCALL_FD(accept(serverFd, reinterpret_cast<sockaddr*>(&caddr), &caddrLen));
     delay();
 
     // Workaround: OS X won't signal POLLPRI without POLLIN. Also enqueue some in-band data.
@@ -679,8 +673,7 @@ TEST(AsyncUnixTest, UrgentObserver) {
     serverFd = nullptr;
   });
 
-  ZC_SYSCALL(tmpFd = socket(AF_INET, SOCK_STREAM, 0));
-  zc::AutoCloseFd clientFd(tmpFd);
+  auto clientFd = ZC_SYSCALL_FD(socket(AF_INET, SOCK_STREAM, 0));
   ZC_SYSCALL(connect(clientFd, reinterpret_cast<sockaddr*>(&saddr), saddrLen));
 
   UnixEventPort::FdObserver observer(
@@ -952,7 +945,7 @@ ZC_TEST("UnixEventPort whenWriteDisconnected()") {
 
   int fds_[2]{};
   ZC_SYSCALL(socketpair(AF_UNIX, SOCK_STREAM, 0, fds_));
-  zc::AutoCloseFd fds[2] = {zc::AutoCloseFd(fds_[0]), zc::AutoCloseFd(fds_[1])};
+  zc::OwnFd fds[2] = {zc::OwnFd(fds_[0]), zc::OwnFd(fds_[1])};
 
   UnixEventPort::FdObserver observer(port, fds[0], UnixEventPort::FdObserver::OBSERVE_READ);
 
@@ -998,7 +991,7 @@ ZC_TEST("UnixEventPort FdObserver(..., flags=0)::whenWriteDisconnected()") {
 
   int pipefds[2]{};
   ZC_SYSCALL(pipe(pipefds));
-  zc::AutoCloseFd infd(pipefds[0]), outfd(pipefds[1]);
+  zc::OwnFd infd(pipefds[0]), outfd(pipefds[1]);
 
   UnixEventPort::FdObserver observer(port, outfd, 0);
 
@@ -1142,8 +1135,8 @@ ZC_TEST("UnixEventPoll::getPollableFd() for external waiting") {
   {
     int pair[2]{};
     ZC_SYSCALL(pipe(pair));
-    zc::AutoCloseFd in(pair[0]);
-    zc::AutoCloseFd out(pair[1]);
+    zc::OwnFd in(pair[0]);
+    zc::OwnFd out(pair[1]);
 
     zc::UnixEventPort::FdObserver observer(port, in, zc::UnixEventPort::FdObserver::OBSERVE_READ);
     auto promise = observer.whenBecomesReadable();
@@ -1316,8 +1309,8 @@ ZC_TEST("yieldUntilWouldSleep") {
   {
     int pair[2]{};
     ZC_SYSCALL(pipe(pair));
-    zc::AutoCloseFd in(pair[0]);
-    zc::AutoCloseFd out(pair[1]);
+    zc::OwnFd in(pair[0]);
+    zc::OwnFd out(pair[1]);
 
     zc::UnixEventPort::FdObserver observer(port, in, zc::UnixEventPort::FdObserver::OBSERVE_READ);
     auto promise = observer.whenBecomesReadable();

@@ -281,13 +281,13 @@ class DiskHandle {
   // it. Ugly, but works.
 
 public:
-  DiskHandle(AutoCloseFd&& fd) : fd(zc::mv(fd)) {}
+  DiskHandle(OwnFd&& fd) : fd(zc::mv(fd)) {}
 
   // OsHandle ------------------------------------------------------------------
 
-  AutoCloseFd clone() const {
-    int fd2;
+  OwnFd clone() const {
 #ifdef F_DUPFD_CLOEXEC
+    int fd2;
     ZC_SYSCALL_HANDLE_ERRORS(fd2 = fcntl(fd, F_DUPFD_CLOEXEC, 3)) {
       case EINVAL:
       case EOPNOTSUPP:
@@ -297,18 +297,17 @@ public:
         ZC_FAIL_SYSCALL("fnctl(fd, F_DUPFD_CLOEXEC, 3)", error) { break; }
         break;
     }
-    else { return AutoCloseFd(fd2); }
+    else { return OwnFd(fd2); }
 #endif
 
-    ZC_SYSCALL(fd2 = ::dup(fd));
-    AutoCloseFd result(fd2);
+    auto result = ZC_SYSCALL_FD(::dup(fd));
     setCloexec(result);
     return result;
   }
 
   int getFd() const { return fd.get(); }
 
-  void setFd(AutoCloseFd newFd) {
+  void setFd(OwnFd newFd) {
     // Used for one hack in DiskFilesystem's constructor...
     fd = zc::mv(newFd);
   }
@@ -755,7 +754,7 @@ public:
         ZC_FAIL_SYSCALL("openat(fd, path, O_RDONLY)", error, path) { return zc::none; }
     }
 
-    zc::AutoCloseFd result(newFd);
+    zc::OwnFd result(newFd);
 #ifndef O_CLOEXEC
     setCloexec(result);
 #endif
@@ -763,7 +762,7 @@ public:
     return newDiskReadableFile(zc::mv(result));
   }
 
-  Maybe<AutoCloseFd> tryOpenSubdirInternal(PathPtr path) const {
+  Maybe<OwnFd> tryOpenSubdirInternal(PathPtr path) const {
     int newFd;
     ZC_SYSCALL_HANDLE_ERRORS(newFd = openat(fd, path.toString().cStr(),
                                             O_RDONLY | MAYBE_O_CLOEXEC | MAYBE_O_DIRECTORY)) {
@@ -779,7 +778,7 @@ public:
         ZC_FAIL_SYSCALL("openat(fd, path, O_DIRECTORY)", error, path) { return zc::none; }
     }
 
-    zc::AutoCloseFd result(newFd);
+    zc::OwnFd result(newFd);
 #ifndef O_CLOEXEC
     setCloexec(result);
 #endif
@@ -973,7 +972,7 @@ public:
     }
   }
 
-  Maybe<AutoCloseFd> tryOpenFileInternal(PathPtr path, WriteMode mode, bool append) const {
+  Maybe<OwnFd> tryOpenFileInternal(PathPtr path, WriteMode mode, bool append) const {
     uint flags = O_RDWR | MAYBE_O_CLOEXEC;
     mode_t acl = 0666;
     if (has(mode, WriteMode::CREATE)) { flags |= O_CREAT; }
@@ -1034,7 +1033,7 @@ public:
         ZC_FAIL_SYSCALL("openat(fd, path, O_RDWR | ...)", error, path) { return zc::none; }
     }
 
-    zc::AutoCloseFd result(newFd);
+    zc::OwnFd result(newFd);
 #ifndef O_CLOEXEC
     setCloexec(result);
 #endif
@@ -1294,7 +1293,7 @@ public:
       return newFd_ =
                  openat(fd, candidatePath.cStr(), O_RDWR | O_CREAT | O_EXCL | MAYBE_O_CLOEXEC, acl);
     });
-    AutoCloseFd newFd(newFd_);
+    OwnFd newFd(newFd_);
 #ifndef O_CLOEXEC
     setCloexec(newFd);
 #endif
@@ -1320,7 +1319,7 @@ public:
         break;
     }
     else {
-      AutoCloseFd newFd(newFd_);
+      OwnFd newFd(newFd_);
 #ifndef O_CLOEXEC
       setCloexec(newFd);
 #endif
@@ -1331,7 +1330,7 @@ public:
     auto temp = createNamedTemporary(Path("unnamed"), WriteMode::CREATE, [&](StringPtr path) {
       return newFd_ = openat(fd, path.cStr(), O_RDWR | O_CREAT | O_EXCL | MAYBE_O_CLOEXEC, 0600);
     });
-    AutoCloseFd newFd(newFd_);
+    OwnFd newFd(newFd_);
 #ifndef O_CLOEXEC
     setCloexec(newFd);
 #endif
@@ -1367,7 +1366,7 @@ public:
         return heap<BrokenReplacer<Directory>>(newInMemoryDirectory(nullClock()));
     }
 
-    AutoCloseFd subdirFd(subdirFd_);
+    OwnFd subdirFd(subdirFd_);
 #ifndef O_CLOEXEC
     setCloexec(subdirFd);
 #endif
@@ -1436,7 +1435,7 @@ public:
   bool tryRemove(PathPtr path) const { return rmrf(fd, path.toString()); }
 
 protected:
-  AutoCloseFd fd;
+  OwnFd fd;
 };
 
 #define FSNODE_METHODS(classname)                                                                 \
@@ -1450,7 +1449,7 @@ protected:
 
 class DiskReadableFile final : public ReadableFile, public DiskHandle {
 public:
-  DiskReadableFile(AutoCloseFd&& fd) : DiskHandle(zc::mv(fd)) {}
+  DiskReadableFile(OwnFd&& fd) : DiskHandle(zc::mv(fd)) {}
 
   FSNODE_METHODS(DiskReadableFile);
 
@@ -1467,8 +1466,7 @@ public:
 
 class DiskAppendableFile final : public AppendableFile, public DiskHandle, public FdOutputStream {
 public:
-  DiskAppendableFile(AutoCloseFd&& fd)
-      : DiskHandle(zc::mv(fd)), FdOutputStream(DiskHandle::fd.get()) {}
+  DiskAppendableFile(OwnFd&& fd) : DiskHandle(zc::mv(fd)), FdOutputStream(DiskHandle::fd.get()) {}
 
   FSNODE_METHODS(DiskAppendableFile);
 
@@ -1480,7 +1478,7 @@ public:
 
 class DiskFile final : public File, public DiskHandle {
 public:
-  DiskFile(AutoCloseFd&& fd) : DiskHandle(zc::mv(fd)) {}
+  DiskFile(OwnFd&& fd) : DiskHandle(zc::mv(fd)) {}
 
   FSNODE_METHODS(DiskFile);
 
@@ -1511,7 +1509,7 @@ public:
 
 class DiskReadableDirectory final : public ReadableDirectory, public DiskHandle {
 public:
-  DiskReadableDirectory(AutoCloseFd&& fd) : DiskHandle(zc::mv(fd)) {}
+  DiskReadableDirectory(OwnFd&& fd) : DiskHandle(zc::mv(fd)) {}
 
   FSNODE_METHODS(DiskReadableDirectory);
 
@@ -1532,7 +1530,7 @@ public:
 
 class DiskDirectory final : public Directory, public DiskHandle {
 public:
-  DiskDirectory(AutoCloseFd&& fd) : DiskHandle(zc::mv(fd)) {}
+  DiskDirectory(OwnFd&& fd) : DiskHandle(zc::mv(fd)) {}
 
   FSNODE_METHODS(DiskDirectory);
 
@@ -1610,10 +1608,24 @@ private:
   DiskDirectory current;
   Path currentPath;
 
-  static AutoCloseFd openDir(const char* dir) {
-    int newFd;
-    ZC_SYSCALL(newFd = open(dir, O_RDONLY | MAYBE_O_CLOEXEC | MAYBE_O_DIRECTORY));
-    AutoCloseFd result(newFd);
+  static OwnFd openDir(const char* dir) {
+    int fd;
+    ZC_SYSCALL_HANDLE_ERRORS(fd = open(dir, O_RDONLY | MAYBE_O_CLOEXEC | MAYBE_O_DIRECTORY)) {
+#ifdef O_PATH
+      case EACCES: {
+        // If we don't have read permission, fall back to O_PATH if available
+        auto result = ZC_SYSCALL_FD(open(dir, O_PATH | MAYBE_O_CLOEXEC | MAYBE_O_DIRECTORY));
+#ifndef O_CLOEXEC
+        setCloexec(result);
+#endif
+        return result;
+      }
+#endif
+      default:
+        ZC_FAIL_SYSCALL("open(dir, O_RDONLY)", error, dir);
+    }
+
+    auto result = OwnFd(fd);
 #ifndef O_CLOEXEC
     setCloexec(result);
 #endif
@@ -1680,17 +1692,15 @@ private:
 
 }  // namespace
 
-Own<ReadableFile> newDiskReadableFile(zc::AutoCloseFd fd) {
-  return heap<DiskReadableFile>(zc::mv(fd));
-}
-Own<AppendableFile> newDiskAppendableFile(zc::AutoCloseFd fd) {
+Own<ReadableFile> newDiskReadableFile(zc::OwnFd fd) { return heap<DiskReadableFile>(zc::mv(fd)); }
+Own<AppendableFile> newDiskAppendableFile(zc::OwnFd fd) {
   return heap<DiskAppendableFile>(zc::mv(fd));
 }
-Own<File> newDiskFile(zc::AutoCloseFd fd) { return heap<DiskFile>(zc::mv(fd)); }
-Own<ReadableDirectory> newDiskReadableDirectory(zc::AutoCloseFd fd) {
+Own<File> newDiskFile(zc::OwnFd fd) { return heap<DiskFile>(zc::mv(fd)); }
+Own<ReadableDirectory> newDiskReadableDirectory(zc::OwnFd fd) {
   return heap<DiskReadableDirectory>(zc::mv(fd));
 }
-Own<Directory> newDiskDirectory(zc::AutoCloseFd fd) { return heap<DiskDirectory>(zc::mv(fd)); }
+Own<Directory> newDiskDirectory(zc::OwnFd fd) { return heap<DiskDirectory>(zc::mv(fd)); }
 
 Own<Filesystem> newDiskFilesystem() { return heap<DiskFilesystem>(); }
 

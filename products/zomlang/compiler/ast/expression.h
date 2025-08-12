@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"

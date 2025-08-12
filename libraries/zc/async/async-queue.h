@@ -21,14 +21,13 @@
 
 #pragma once
 
-#include <zc/core/common.h>
-#include <zc/core/debug.h>
-#include <zc/core/list.h>
-#include <zc/core/memory.h>
-
 #include <list>
 
 #include "zc/async/async.h"
+#include "zc/core/common.h"
+#include "zc/core/debug.h"
+#include "zc/core/list.h"
+#include "zc/core/memory.h"
 
 ZC_BEGIN_HEADER
 
@@ -41,6 +40,16 @@ public:
 
   WaiterQueue() = default;
   ZC_DISALLOW_COPY_AND_MOVE(WaiterQueue);
+
+  ~WaiterQueue() noexcept(false) {
+    while (!empty()) {
+      reject(ZC_EXCEPTION(
+          FAILED,
+          "WaiterQueue destroyed while some promises returned by wait()"
+          " are still outstanding. This is undefined behavior. You must cancel all promises before"
+          " destroying the WaiterQueue."));
+    }
+  }
 
   Promise<T> wait() { return newAdaptedPromise<T, Node>(queue); }
 

@@ -25,18 +25,17 @@
 
 #include "zc/ztest/test.h"
 
-#include <zc/core/glob-filter.h>
-#include <zc/core/time.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include <atomic>
-#include <csignal>
-#include <cstdlib>
-#include <cstring>
-#include <ctime>
 
+#include "zc/core/glob-filter.h"
 #include "zc/core/io.h"
 #include "zc/core/main.h"
 #include "zc/core/miniposix.h"
+#include "zc/core/time.h"
 #ifndef _WIN32
 #include <sys/mman.h>
 #endif
@@ -272,7 +271,7 @@ public:
           }
           auto end = readClock();
 
-          auto message = zc::str(name, " (", (end - start) / zc::MICROSECONDS, " μs)");
+          auto message = zc::str(name, " (", end - start, ")");
 
           if (currentFailed) {
             write(RED, "[ FAIL ]", message);

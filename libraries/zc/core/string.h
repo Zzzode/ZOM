@@ -21,7 +21,8 @@
 
 #pragma once
 
-#include <cstring>
+#include <string.h>
+
 #include <initializer_list>
 
 #include "zc/core/array.h"
@@ -192,6 +193,13 @@ public:
   // Syntax sugar for invoking T::from.
   // Used to chain conversion calls rather than wrap with function.
 
+  template <typename T>
+  inline auto as() const {
+    return T::from(this);
+  }
+  // Syntax sugar for invoking T::from.
+  // Used to chain conversion calls rather than wrap with function.
+
 private:
   inline explicit constexpr StringPtr(ArrayPtr<const char> content) : content(content) {}
   friend constexpr StringPtr(::operator""_zc)(const char* str, size_t n);
@@ -316,7 +324,6 @@ public:
   inline constexpr const char* end() const ZC_LIFETIMEBOUND;
 
   inline constexpr bool operator==(decltype(nullptr)) const { return content.size() <= 1; }
-  inline constexpr bool operator!=(decltype(nullptr)) const { return content.size() > 1; }
 
   inline bool operator==(const StringPtr& other) const { return StringPtr(*this) == other; }
   inline bool operator<(const StringPtr& other) const { return StringPtr(*this) < other; }
@@ -386,6 +393,13 @@ public:
 
   template <typename T>
   inline auto as() {
+    return T::from(this);
+  }
+  // Syntax sugar for invoking T::from.
+  // Used to chain conversion calls rather than wrap with function.
+
+  template <typename T>
+  inline auto as() const {
     return T::from(this);
   }
   // Syntax sugar for invoking T::from.
@@ -506,6 +520,20 @@ public:
   Maybe<T> tryParseAs() const {
     return StringPtr(*this).tryParseAs<T>();
   }
+
+  template <typename T>
+  inline auto as() {
+    return T::from(this);
+  }
+  // Syntax sugar for invoking T::from.
+  // Used to chain conversion calls rather than wrap with function.
+
+  template <typename T>
+  inline auto as() const {
+    return T::from(this);
+  }
+  // Syntax sugar for invoking T::from.
+  // Used to chain conversion calls rather than wrap with function.
 
 private:
   Array<const char> content;
@@ -1003,6 +1031,20 @@ inline const Delimited<T>& ZC_STRINGIFY(const Delimited<T>& delimited) {
 template <typename T>
 _::Delimited<T> delimited(T&& arr, zc::StringPtr delim) {
   return _::Delimited<T>(zc::fwd<T>(arr), delim);
+}
+
+template <typename T>
+concept Stringifiable = requires(_::Stringifier s, const T& t) {
+  { s * t };
+};
+
+// TODO(someday) an ideal implementation would use zc::toCharSequence instead of zc::str,
+// This would avoid an extra copy and allocation when the Maybe is embedded in a larger string.
+template <typename T>
+  requires Stringifiable<T>
+zc::String ZC_STRINGIFY(const zc::Maybe<T>& maybe) {
+  ZC_IF_SOME(val, maybe) { return str(val); }
+  else { return str("(none)"); }
 }
 
 }  // namespace zc

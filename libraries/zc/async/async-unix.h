@@ -26,10 +26,10 @@
 #endif
 
 #include <signal.h>
-#include <zc/core/io.h>
 
 #include "zc/async/async.h"
 #include "zc/async/timer.h"
+#include "zc/core/io.h"
 
 ZC_BEGIN_HEADER
 
@@ -64,7 +64,7 @@ struct timespec;
 
 namespace zc {
 
-class UnixEventPort : public EventPort, private TimerImpl::SleepHooks {
+class UnixEventPort final : public EventPort, private TimerImpl::SleepHooks {
   // An EventPort implementation which can wait for events on file descriptors as well as signals.
   // This API only makes sense on Unix.
   //
@@ -260,9 +260,9 @@ private:
 
 #if ZC_USE_EPOLL
   sigset_t originalMask;
-  AutoCloseFd epollFd;
-  AutoCloseFd eventFd;             // Used for cross-thread wakeups.
-  zc::Maybe<AutoCloseFd> timerFd;  // Used if preparePollableFdForSleep() is ever called.
+  OwnFd epollFd;
+  OwnFd eventFd;             // Used for cross-thread wakeups.
+  zc::Maybe<OwnFd> timerFd;  // Used if preparePollableFdForSleep() is ever called.
 
   bool sleeping = false;  // Was preparePollableFdForSleep() called?
   bool runnable = false;  // Last value passed to setRunnable().
@@ -270,7 +270,7 @@ private:
 
   bool processEpollEvents(struct epoll_event events[], int n);
 #elif ZC_USE_KQUEUE
-  AutoCloseFd kqueueFd;
+  OwnFd kqueueFd;
 
   bool doKqueueWait(struct timespec* timeout);
 #else
@@ -280,8 +280,8 @@ private:
   FdObserver** observersTail = &observersHead;
 
 #if ZC_USE_PIPE_FOR_WAKEUP
-  AutoCloseFd wakePipeIn;
-  AutoCloseFd wakePipeOut;
+  OwnFd wakePipeIn;
+  OwnFd wakePipeOut;
 #else
   unsigned long long threadId;  // actually pthread_t
 #endif

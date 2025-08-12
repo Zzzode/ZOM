@@ -89,6 +89,17 @@
 //   indicates an error; in this case, it can assume the error was EAGAIN because any other error
 //   would have caused an exception to be thrown.
 //
+// * `ZC_SYSCALL_FD(code, ...)` provides shorthand for the common case that the syscall returns
+//   a file descriptor and you want to wrap that file descirptor in `zc::OwnFd`.
+//   `ZC_SYSCALL_FD` is like `ZC_SYSCALL`, but:
+//     * The syscall must return a file descriptor.
+//     * The whole macro evaluates to a `zc::OwnFd`.
+//     * It cannot have a recovery block.
+//
+//   Example:
+//
+//       zc::OwnFd fd = ZC_SYSCALL_FD(open(filename, O_RDONLY), filename);
+//
 // * `ZC_CONTEXT(...)`:  Notes additional contextual information relevant to any exceptions thrown
 //   from within the current scope.  That is, until control exits the block in which ZC_CONTEXT()
 //   is used, if any exception is generated, it will contain the given information in its context
@@ -385,6 +396,28 @@ namespace zc {
 //     }
 
 #endif
+
+#if _MSC_VER && !defined(__clang__)
+
+#define ZC_SYSCALL_FD(...)            \
+  ([&] {                              \
+    int _zc_fd;                       \
+    ZC_SYSCALL(_zc_fd = __VA_ARGS__); \
+    return zc::OwnFd(_zc_fd);         \
+  }())
+
+#else
+
+#define ZC_SYSCALL_FD(...)            \
+  ({                                  \
+    int _zc_fd;                       \
+    ZC_SYSCALL(_zc_fd = __VA_ARGS__); \
+    (zc::OwnFd(_zc_fd));              \
+  })
+
+#endif
+
+// TODO(someday): Add ZC_WIN32_HANDLE(), similar to ZC_SYSCALL_FD().
 
 #define ZC_ASSERT ZC_REQUIRE
 #define ZC_FAIL_ASSERT ZC_FAIL_REQUIRE

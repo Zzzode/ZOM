@@ -205,7 +205,6 @@ public:
 
   inline bool operator==(const Rc<T>& other) const { return own.get() == other.own.get(); }
   inline bool operator==(decltype(nullptr)) const { return own.get() == nullptr; }
-  inline bool operator!=(decltype(nullptr)) const { return own.get() != nullptr; }
 
   inline T* operator->() { return own.get(); }
   inline const T* operator->() const { return own.get(); }
@@ -354,9 +353,7 @@ private:
   friend zc::Own<T> atomicRefcounted(Params&&... params);
 
   template <typename T>
-  static zc::Arc<T> addRcRefInternal(T* object);
-  template <typename T>
-  static zc::Arc<const T> addRcRefInternal(const T* object);
+  static zc::Arc<T> addRcRefInternal(const T* object);
 
   template <typename T>
   friend class Arc;
@@ -404,7 +401,7 @@ zc::Maybe<zc::Own<const T>> atomicAddRefWeak(const T& object) {
   if (refcounted->addRefWeakInternal()) {
     return zc::Own<const T>(&object, *refcounted);
   } else {
-    return nullptr;
+    return zc::none;
   }
 }
 
@@ -431,22 +428,18 @@ zc::Own<const T> AtomicRefcounted::addRefInternal(const T* object) {
 }
 
 template <typename T>
-zc::Arc<T> AtomicRefcounted::addRcRefInternal(T* object) {
+zc::Arc<T> AtomicRefcounted::addRcRefInternal(const T* object) {
   static_assert(zc::canConvert<T&, AtomicRefcounted&>());
   return zc::Arc<T>(addRefInternal(object));
-}
-
-template <typename T>
-zc::Arc<const T> AtomicRefcounted::addRcRefInternal(const T* object) {
-  static_assert(zc::canConvert<T&, AtomicRefcounted&>());
-  return zc::Arc<const T>(addRefInternal(object));
 }
 
 template <typename T>
 class Arc {
   // Smart pointer for atomic reference counted objects.
   //
-  // Usage is similar to zc::Rc<T>.
+  // The usage is similar to `zc::Rc<T>` but with a "const"-ness twist:
+  // since in zc multithreaded code "const" means "thread-safe", `Arc<T>`
+  // exposes only `const` members of T and thus is closer to `zc::Rc<const T>`.
 
 public:
   ZC_DISALLOW_COPY(Arc);
@@ -457,20 +450,28 @@ public:
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
   inline Arc(Arc<U>&& other) noexcept : own(zc::mv(other.own)) {}
 
-  zc::Own<T> toOwn() {
-    // Convert Arc<T> to Own<T>.
+  zc::Own<const T> toOwn() {
+    // Convert Arc<T> to Own<const T>.
     // Nullifies the original Arc<T>.
     return zc::mv(own);
   }
 
-  zc::Arc<T> addRef() {
-    T* refcounted = own.get();
+  zc::Arc<T> addRef() const {
+    const T* refcounted = own.get();
     if (refcounted != nullptr) {
       return AtomicRefcounted::addRcRefInternal(refcounted);
     } else {
       return zc::Arc<T>();
     }
   }
+
+  // Surrenders ownership of the underlying object to the caller. Unlike Own<T>::disown(), there
+  // is no need for the caller to prove they know how to dispose of the object, because the object
+  // is its own Disposer.
+  const T* disown() { return own.disown(own.get()); }
+
+  // Assume ownership of an object without incrementing its refcount. Opposite of disown().
+  static Arc reown(const T* ptr) { return Arc(ptr); }
 
   Arc& operator=(decltype(nullptr)) {
     own = nullptr;
@@ -481,24 +482,20 @@ public:
 
   template <typename U>
   Arc<U> downcast() {
-    return Arc<U>(own.template downcast<U>());
+    return Arc<U>(own.template downcast<const U>());
   }
 
   inline bool operator==(const Arc<T>& other) const { return own.get() == other.own.get(); }
   inline bool operator==(decltype(nullptr)) const { return own.get() == nullptr; }
-  inline bool operator!=(decltype(nullptr)) const { return own.get() != nullptr; }
 
-  inline T* operator->() { return own.get(); }
   inline const T* operator->() const { return own.get(); }
-
-  inline T* get() { return own.get(); }
   inline const T* get() const { return own.get(); }
 
 private:
-  Arc(T* t) : own(t, *t) {}
-  Arc(Own<T>&& t) : own(zc::mv(t)) {}
+  Arc(const T* t) : own(t, *t) {}
+  Arc(Own<const T>&& t) : own(zc::mv(t)) {}
 
-  Own<T> own;
+  Own<const T> own;
 
   friend class AtomicRefcounted;
 

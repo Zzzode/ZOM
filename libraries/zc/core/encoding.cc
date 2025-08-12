@@ -246,8 +246,8 @@ template <typename To, typename From>
 Array<To> coerceTo(Array<From>&& array) {
   static_assert(sizeof(To) == sizeof(From), "incompatible coercion");
   Array<wchar_t> result;
-  memcpy(&result, &array, sizeof(array));
-  memset(&array, 0, sizeof(array));
+  memcpy((void*)&result, &array, sizeof(array));
+  memset((void*)&array, 0, sizeof(array));
   return result;
 }
 
@@ -518,34 +518,34 @@ String encodeCEscapeImpl(ArrayPtr<const byte> bytes, bool isBinary) {
   for (byte b : bytes) {
     switch (b) {
       case '\a':
-        escaped.addAll(StringPtr("\\a"));
+        escaped.addAll("\\a"_zc);
         break;
       case '\b':
-        escaped.addAll(StringPtr("\\b"));
+        escaped.addAll("\\b"_zc);
         break;
       case '\f':
-        escaped.addAll(StringPtr("\\f"));
+        escaped.addAll("\\f"_zc);
         break;
       case '\n':
-        escaped.addAll(StringPtr("\\n"));
+        escaped.addAll("\\n"_zc);
         break;
       case '\r':
-        escaped.addAll(StringPtr("\\r"));
+        escaped.addAll("\\r"_zc);
         break;
       case '\t':
-        escaped.addAll(StringPtr("\\t"));
+        escaped.addAll("\\t"_zc);
         break;
       case '\v':
-        escaped.addAll(StringPtr("\\v"));
+        escaped.addAll("\\v"_zc);
         break;
       case '\'':
-        escaped.addAll(StringPtr("\\\'"));
+        escaped.addAll("\\\'"_zc);
         break;
       case '\"':
-        escaped.addAll(StringPtr("\\\""));
+        escaped.addAll("\\\""_zc);
         break;
       case '\\':
-        escaped.addAll(StringPtr("\\\\"));
+        escaped.addAll("\\\\"_zc);
         break;
       default:
         if (b < 0x20 || b == 0x7f || (isBinary && b > 0x7f)) {
@@ -664,7 +664,7 @@ EncodingResult<Array<byte>> decodeBinaryCEscape(ArrayPtr<const char> text, bool 
               break;
             }
           }
-          auto utf = decodeUtf16(arrayPtr(&value, 1));
+          auto utf = decodeUtf16(arrayPtr(value));
           if (utf.hadErrors) hadErrors = true;
           result.addAll(utf.asBytes());
           break;
@@ -686,7 +686,7 @@ EncodingResult<Array<byte>> decodeBinaryCEscape(ArrayPtr<const char> text, bool 
               break;
             }
           }
-          auto utf = decodeUtf32(arrayPtr(&value, 1));
+          auto utf = decodeUtf32(arrayPtr(value));
           if (utf.hadErrors) hadErrors = true;
           result.addAll(utf.asBytes());
           break;

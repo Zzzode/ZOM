@@ -24,8 +24,9 @@
 #include "zc/zip/gzip.h"
 
 #include <stdlib.h>
-#include <zc/core/debug.h>
-#include <zc/ztest/test.h>
+
+#include "zc/core/debug.h"
+#include "zc/ztest/test.h"
 
 namespace zc {
 namespace {
@@ -120,7 +121,7 @@ public:
   Promise<void> whenWriteDisconnected() override { ZC_UNIMPLEMENTED("not used"); }
 };
 
-ZC_TEST("zip decompression") {
+ZC_TEST("gzip decompression") {
   // Normal read.
   {
     MockInputStream rawInput(FOOBAR_GZIP, zc::maxValue);
@@ -144,7 +145,7 @@ ZC_TEST("zip decompression") {
     auto amount = gzip.tryRead(text, 1);
     ZC_EXPECT(arrayPtr(text).first(amount) == "fo"_zcb);
 
-    ZC_EXPECT_THROW_MESSAGE("zip compressed stream ended prematurely", gzip.tryRead(text, 1));
+    ZC_EXPECT_THROW_MESSAGE("gzip compressed stream ended prematurely", gzip.tryRead(text, 1));
   }
 
   // Read concatenated input.
@@ -159,7 +160,7 @@ ZC_TEST("zip decompression") {
   }
 }
 
-ZC_TEST("async zip decompression") {
+ZC_TEST("async gzip decompression") {
   auto io = setupAsyncIo();
 
   // Normal read.
@@ -186,7 +187,7 @@ ZC_TEST("async zip decompression") {
     text[n] = '\0';
     ZC_EXPECT(StringPtr(text, n) == "fo");
 
-    ZC_EXPECT_THROW_MESSAGE("zip compressed stream ended prematurely",
+    ZC_EXPECT_THROW_MESSAGE("gzip compressed stream ended prematurely",
                             gzip.tryRead(text, 1, sizeof(text)).wait(io.waitScope));
   }
 
@@ -219,7 +220,7 @@ ZC_TEST("async zip decompression") {
   }
 }
 
-ZC_TEST("zip compression") {
+ZC_TEST("gzip compression") {
   // Normal write.
   {
     MockOutputStream rawOutput;
@@ -260,7 +261,7 @@ ZC_TEST("zip compression") {
   }
 }
 
-ZC_TEST("zip huge round trip") {
+ZC_TEST("gzip huge round trip") {
   auto bytes = heapArray<byte>(65536);
   for (auto& b : bytes) { b = rand(); }
 
@@ -277,7 +278,7 @@ ZC_TEST("zip huge round trip") {
   ZC_ASSERT(bytes == decompressed);
 }
 
-ZC_TEST("async zip compression") {
+ZC_TEST("async gzip compression") {
   auto io = setupAsyncIo();
 
   // Normal write.
@@ -316,10 +317,7 @@ ZC_TEST("async zip compression") {
     MockAsyncOutputStream rawOutput;
     GzipAsyncOutputStream gzip(rawOutput);
 
-    ArrayPtr<const byte> pieces[] = {
-        zc::StringPtr("foo").asBytes(),
-        zc::StringPtr("bar").asBytes(),
-    };
+    ArrayPtr<const byte> pieces[] = {"foo"_zcb, "bar"_zcb};
     gzip.write(pieces).wait(io.waitScope);
     gzip.end().wait(io.waitScope);
 
@@ -327,7 +325,7 @@ ZC_TEST("async zip compression") {
   }
 }
 
-ZC_TEST("async zip huge round trip") {
+ZC_TEST("async gzip huge round trip") {
   auto io = setupAsyncIo();
 
   auto bytes = heapArray<byte>(65536);

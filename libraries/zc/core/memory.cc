@@ -29,8 +29,9 @@ namespace zc {
 
 const NullDisposer NullDisposer::instance = NullDisposer();
 
-#ifdef ZC_ASSERT_PTR_COUNTERS
 namespace _ {
+
+#if ZC_ASSERT_PTR_COUNTERS
 
 void atomicPtrCounterAssertionFailed(char const* reason) {
   ZC_FAIL_ASSERT("ptr counter contract violated", reason);
@@ -39,11 +40,12 @@ void atomicPtrCounterAssertionFailed(char const* reason) {
   ZC_KNOWN_UNREACHABLE(abort());
 }
 
+#endif  // ZC_ASSERT_PTR_COUNTERS
+
 void throwWrongDisposerError() {
   ZC_FAIL_REQUIRE("When disowning an object, disposer must be equal to Own's disposer");
 }
 
 }  // namespace _
-#endif
 
 }  // namespace zc

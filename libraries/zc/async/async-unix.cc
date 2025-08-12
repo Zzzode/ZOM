@@ -411,12 +411,8 @@ void UnixEventPort::gotSignal(const siginfo_t& siginfo) {
 UnixEventPort::UnixEventPort() : clock(systemPreciseMonotonicClock()), timerImpl(clock.now()) {
   ignoreSigpipe();
 
-  int fd;
-  ZC_SYSCALL(fd = epoll_create1(EPOLL_CLOEXEC));
-  epollFd = AutoCloseFd(fd);
-
-  ZC_SYSCALL(fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK));
-  eventFd = AutoCloseFd(fd);
+  epollFd = ZC_SYSCALL_FD(epoll_create1(EPOLL_CLOEXEC));
+  eventFd = ZC_SYSCALL_FD(eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK));
 
   struct epoll_event event;
   memset(&event, 0, sizeof(event));
@@ -541,7 +537,7 @@ bool UnixEventPort::wait() {
     sigset_t currentMask;
     memset(&currentMask, 0, sizeof(currentMask));
     ZC_SYSCALL(sigprocmask(0, nullptr, &currentMask));
-    if (arrayPtr(currentMask).asBytes() != arrayPtr(originalMask).asBytes()) {
+    if (zc::asBytes(currentMask) != zc::asBytes(originalMask)) {
       zc::Vector<zc::String> changes;
       for (int i = 0; i <= SIGRTMAX; i++) {
         if (sigismember(&currentMask, i) && !sigismember(&originalMask, i)) {
@@ -765,8 +761,8 @@ void UnixEventPort::updateNextTimerEvent(zc::Maybe<TimePoint> time) {
   int tfd;
   ZC_IF_SOME(f, timerFd) { tfd = f; }
   else {
-    ZC_SYSCALL(tfd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK));
-    timerFd = zc::AutoCloseFd(tfd);
+    tfd =
+        timerFd.emplace(ZC_SYSCALL_FD(timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK)));
 
     struct epoll_event event;
     memset(&event, 0, sizeof(event));
@@ -801,9 +797,7 @@ zc::TimePoint UnixEventPort::getTimeWhileSleeping() { return clock.now(); }
 UnixEventPort::UnixEventPort() : clock(systemPreciseMonotonicClock()), timerImpl(clock.now()) {
   ignoreSigpipe();
 
-  int fd;
-  ZC_SYSCALL(fd = kqueue());
-  kqueueFd = AutoCloseFd(fd);
+  kqueueFd = ZC_SYSCALL_FD(kqueue());
 
   // NetBSD has kqueue1() which can set CLOEXEC atomically, but FreeBSD, MacOS, and others don't
   // have this... oh well.
@@ -1237,8 +1231,8 @@ UnixEventPort::UnixEventPort() : clock(systemPreciseMonotonicClock()), timerImpl
   // Allocate a pipe to which we'll write a byte in order to wake this thread.
   int fds[2];
   ZC_SYSCALL(pipe(fds));
-  wakePipeIn = zc::AutoCloseFd(fds[0]);
-  wakePipeOut = zc::AutoCloseFd(fds[1]);
+  wakePipeIn = zc::OwnFd(fds[0]);
+  wakePipeOut = zc::OwnFd(fds[1]);
   ZC_SYSCALL(fcntl(wakePipeIn, F_SETFD, FD_CLOEXEC));
   ZC_SYSCALL(fcntl(wakePipeOut, F_SETFD, FD_CLOEXEC));
 #else

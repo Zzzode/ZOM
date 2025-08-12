@@ -23,11 +23,11 @@
 
 #include <locale.h>
 #include <stdint.h>
-#include <zc/ztest/gtest.h>
 
 #include <string>
 
 #include "zc/core/vector.h"
+#include "zc/ztest/gtest.h"
 
 namespace zc {
 namespace _ {  // private
@@ -72,186 +72,184 @@ TEST(String, Nullptr) {
 }
 
 TEST(String, StartsEndsWith) {
-  EXPECT_TRUE(StringPtr("foobar").startsWith("foo"));
-  EXPECT_FALSE(StringPtr("foobar").startsWith("bar"));
-  EXPECT_FALSE(StringPtr("foobar").endsWith("foo"));
-  EXPECT_TRUE(StringPtr("foobar").endsWith("bar"));
+  EXPECT_TRUE("foobar"_zc.startsWith("foo"));
+  EXPECT_FALSE("foobar"_zc.startsWith("bar"));
+  EXPECT_FALSE("foobar"_zc.endsWith("foo"));
+  EXPECT_TRUE("foobar"_zc.endsWith("bar"));
 
-  EXPECT_FALSE(StringPtr("fo").startsWith("foo"));
-  EXPECT_FALSE(StringPtr("fo").endsWith("foo"));
+  EXPECT_FALSE("fo"_zc.startsWith("foo"));
+  EXPECT_FALSE("fo"_zc.endsWith("foo"));
 
-  EXPECT_TRUE(StringPtr("foobar").startsWith(""));
-  EXPECT_TRUE(StringPtr("foobar").endsWith(""));
+  EXPECT_TRUE("foobar"_zc.startsWith(""));
+  EXPECT_TRUE("foobar"_zc.endsWith(""));
 }
 
 TEST(String, parseAs) {
-  EXPECT_EQ(StringPtr("0").parseAs<double>(), 0.0);
-  EXPECT_EQ(StringPtr("0.0").parseAs<double>(), 0.0);
-  EXPECT_EQ(StringPtr("1").parseAs<double>(), 1.0);
-  EXPECT_EQ(StringPtr("1.0").parseAs<double>(), 1.0);
-  EXPECT_EQ(StringPtr("1e100").parseAs<double>(), 1e100);
-  EXPECT_EQ(StringPtr("inf").parseAs<double>(), inf());
-  EXPECT_EQ(StringPtr("infinity").parseAs<double>(), inf());
-  EXPECT_EQ(StringPtr("INF").parseAs<double>(), inf());
-  EXPECT_EQ(StringPtr("INFINITY").parseAs<double>(), inf());
-  EXPECT_EQ(StringPtr("1e100000").parseAs<double>(), inf());
-  EXPECT_EQ(StringPtr("-inf").parseAs<double>(), -inf());
-  EXPECT_EQ(StringPtr("-infinity").parseAs<double>(), -inf());
-  EXPECT_EQ(StringPtr("-INF").parseAs<double>(), -inf());
-  EXPECT_EQ(StringPtr("-INFINITY").parseAs<double>(), -inf());
-  EXPECT_EQ(StringPtr("-1e100000").parseAs<double>(), -inf());
-  EXPECT_TRUE(isNaN(StringPtr("nan").parseAs<double>()));
-  EXPECT_TRUE(isNaN(StringPtr("NAN").parseAs<double>()));
-  EXPECT_TRUE(isNaN(StringPtr("NaN").parseAs<double>()));
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("").parseAs<double>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("a").parseAs<double>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("1a").parseAs<double>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("+-1").parseAs<double>());
+  EXPECT_EQ("0"_zc.parseAs<double>(), 0.0);
+  EXPECT_EQ("0.0"_zc.parseAs<double>(), 0.0);
+  EXPECT_EQ("1"_zc.parseAs<double>(), 1.0);
+  EXPECT_EQ("1.0"_zc.parseAs<double>(), 1.0);
+  EXPECT_EQ("1e100"_zc.parseAs<double>(), 1e100);
+  EXPECT_EQ("inf"_zc.parseAs<double>(), inf());
+  EXPECT_EQ("infinity"_zc.parseAs<double>(), inf());
+  EXPECT_EQ("INF"_zc.parseAs<double>(), inf());
+  EXPECT_EQ("INFINITY"_zc.parseAs<double>(), inf());
+  EXPECT_EQ("1e100000"_zc.parseAs<double>(), inf());
+  EXPECT_EQ("-inf"_zc.parseAs<double>(), -inf());
+  EXPECT_EQ("-infinity"_zc.parseAs<double>(), -inf());
+  EXPECT_EQ("-INF"_zc.parseAs<double>(), -inf());
+  EXPECT_EQ("-INFINITY"_zc.parseAs<double>(), -inf());
+  EXPECT_EQ("-1e100000"_zc.parseAs<double>(), -inf());
+  EXPECT_TRUE(isNaN("nan"_zc.parseAs<double>()));
+  EXPECT_TRUE(isNaN("NAN"_zc.parseAs<double>()));
+  EXPECT_TRUE(isNaN("NaN"_zc.parseAs<double>()));
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", ""_zc.parseAs<double>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", "a"_zc.parseAs<double>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", "1a"_zc.parseAs<double>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", "+-1"_zc.parseAs<double>());
 
-  EXPECT_EQ(StringPtr("1").parseAs<float>(), 1.0);
+  EXPECT_EQ("1"_zc.parseAs<float>(), 1.0);
 
-  EXPECT_EQ(StringPtr("1").parseAs<int64_t>(), 1);
-  EXPECT_EQ(StringPtr("9223372036854775807").parseAs<int64_t>(), 9223372036854775807LL);
-  EXPECT_EQ(StringPtr("-9223372036854775808").parseAs<int64_t>(), -9223372036854775808ULL);
+  EXPECT_EQ("1"_zc.parseAs<int64_t>(), 1);
+  EXPECT_EQ("9223372036854775807"_zc.parseAs<int64_t>(), 9223372036854775807LL);
+  EXPECT_EQ("-9223372036854775808"_zc.parseAs<int64_t>(), -9223372036854775808ULL);
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", "9223372036854775808"_zc.parseAs<int64_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", "-9223372036854775809"_zc.parseAs<int64_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", ""_zc.parseAs<int64_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", "a"_zc.parseAs<int64_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", "1a"_zc.parseAs<int64_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", "+-1"_zc.parseAs<int64_t>());
+  EXPECT_EQ("010"_zc.parseAs<int64_t>(), 10);
+  EXPECT_EQ("0010"_zc.parseAs<int64_t>(), 10);
+  EXPECT_EQ("0x10"_zc.parseAs<int64_t>(), 16);
+  EXPECT_EQ("0X10"_zc.parseAs<int64_t>(), 16);
+  EXPECT_EQ("-010"_zc.parseAs<int64_t>(), -10);
+  EXPECT_EQ("-0x10"_zc.parseAs<int64_t>(), -16);
+  EXPECT_EQ("-0X10"_zc.parseAs<int64_t>(), -16);
+
+  EXPECT_EQ("1"_zc.parseAs<uint64_t>(), 1);
+  EXPECT_EQ("0"_zc.parseAs<uint64_t>(), 0);
+  EXPECT_EQ("18446744073709551615"_zc.parseAs<uint64_t>(), 18446744073709551615ULL);
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", "-1"_zc.parseAs<uint64_t>());
   ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range",
-                                      StringPtr("9223372036854775808").parseAs<int64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range",
-                                      StringPtr("-9223372036854775809").parseAs<int64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("").parseAs<int64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("a").parseAs<int64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("1a").parseAs<int64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("+-1").parseAs<int64_t>());
-  EXPECT_EQ(StringPtr("010").parseAs<int64_t>(), 10);
-  EXPECT_EQ(StringPtr("0010").parseAs<int64_t>(), 10);
-  EXPECT_EQ(StringPtr("0x10").parseAs<int64_t>(), 16);
-  EXPECT_EQ(StringPtr("0X10").parseAs<int64_t>(), 16);
-  EXPECT_EQ(StringPtr("-010").parseAs<int64_t>(), -10);
-  EXPECT_EQ(StringPtr("-0x10").parseAs<int64_t>(), -16);
-  EXPECT_EQ(StringPtr("-0X10").parseAs<int64_t>(), -16);
+                                      "18446744073709551616"_zc.parseAs<uint64_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", ""_zc.parseAs<uint64_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", "a"_zc.parseAs<uint64_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", "1a"_zc.parseAs<uint64_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", "+-1"_zc.parseAs<uint64_t>());
 
-  EXPECT_EQ(StringPtr("1").parseAs<uint64_t>(), 1);
-  EXPECT_EQ(StringPtr("0").parseAs<uint64_t>(), 0);
-  EXPECT_EQ(StringPtr("18446744073709551615").parseAs<uint64_t>(), 18446744073709551615ULL);
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", StringPtr("-1").parseAs<uint64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range",
-                                      StringPtr("18446744073709551616").parseAs<uint64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("").parseAs<uint64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("a").parseAs<uint64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("1a").parseAs<uint64_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("not contain valid", StringPtr("+-1").parseAs<uint64_t>());
+  EXPECT_EQ("1"_zc.parseAs<int32_t>(), 1);
+  EXPECT_EQ("2147483647"_zc.parseAs<int32_t>(), 2147483647);
+  EXPECT_EQ("-2147483648"_zc.parseAs<int32_t>(), -2147483648);
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", "2147483648"_zc.parseAs<int32_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", "-2147483649"_zc.parseAs<int32_t>());
 
-  EXPECT_EQ(StringPtr("1").parseAs<int32_t>(), 1);
-  EXPECT_EQ(StringPtr("2147483647").parseAs<int32_t>(), 2147483647);
-  EXPECT_EQ(StringPtr("-2147483648").parseAs<int32_t>(), -2147483648);
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", StringPtr("2147483648").parseAs<int32_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", StringPtr("-2147483649").parseAs<int32_t>());
+  EXPECT_EQ("1"_zc.parseAs<uint32_t>(), 1);
+  EXPECT_EQ("0"_zc.parseAs<uint32_t>(), 0U);
+  EXPECT_EQ("4294967295"_zc.parseAs<uint32_t>(), 4294967295U);
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", "-1"_zc.parseAs<uint32_t>());
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", "4294967296"_zc.parseAs<uint32_t>());
 
-  EXPECT_EQ(StringPtr("1").parseAs<uint32_t>(), 1);
-  EXPECT_EQ(StringPtr("0").parseAs<uint32_t>(), 0U);
-  EXPECT_EQ(StringPtr("4294967295").parseAs<uint32_t>(), 4294967295U);
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", StringPtr("-1").parseAs<uint32_t>());
-  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("out-of-range", StringPtr("4294967296").parseAs<uint32_t>());
-
-  EXPECT_EQ(StringPtr("1").parseAs<int16_t>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<uint16_t>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<int8_t>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<uint8_t>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<char>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<signed char>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<unsigned char>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<short>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<unsigned short>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<int>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<unsigned>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<long>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<unsigned long>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<long long>(), 1);
-  EXPECT_EQ(StringPtr("1").parseAs<unsigned long long>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<int16_t>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<uint16_t>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<int8_t>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<uint8_t>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<char>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<signed char>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<unsigned char>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<short>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<unsigned short>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<int>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<unsigned>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<long>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<unsigned long>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<long long>(), 1);
+  EXPECT_EQ("1"_zc.parseAs<unsigned long long>(), 1);
 
   EXPECT_EQ(heapString("1").parseAs<int>(), 1);
 }
 
 TEST(String, tryParseAs) {
-  ZC_EXPECT(StringPtr("0").tryParseAs<double>() == 0.0);
-  ZC_EXPECT(StringPtr("0").tryParseAs<double>() == 0.0);
-  ZC_EXPECT(StringPtr("0.0").tryParseAs<double>() == 0.0);
-  ZC_EXPECT(StringPtr("1").tryParseAs<double>() == 1.0);
-  ZC_EXPECT(StringPtr("1.0").tryParseAs<double>() == 1.0);
-  ZC_EXPECT(StringPtr("1e100").tryParseAs<double>() == 1e100);
-  ZC_EXPECT(StringPtr("inf").tryParseAs<double>() == inf());
-  ZC_EXPECT(StringPtr("infinity").tryParseAs<double>() == inf());
-  ZC_EXPECT(StringPtr("INF").tryParseAs<double>() == inf());
-  ZC_EXPECT(StringPtr("INFINITY").tryParseAs<double>() == inf());
-  ZC_EXPECT(StringPtr("1e100000").tryParseAs<double>() == inf());
-  ZC_EXPECT(StringPtr("-inf").tryParseAs<double>() == -inf());
-  ZC_EXPECT(StringPtr("-infinity").tryParseAs<double>() == -inf());
-  ZC_EXPECT(StringPtr("-INF").tryParseAs<double>() == -inf());
-  ZC_EXPECT(StringPtr("-INFINITY").tryParseAs<double>() == -inf());
-  ZC_EXPECT(StringPtr("-1e100000").tryParseAs<double>() == -inf());
-  ZC_EXPECT(isNaN(StringPtr("nan").tryParseAs<double>().orDefault(0.0)) == true);
-  ZC_EXPECT(isNaN(StringPtr("NAN").tryParseAs<double>().orDefault(0.0)) == true);
-  ZC_EXPECT(isNaN(StringPtr("NaN").tryParseAs<double>().orDefault(0.0)) == true);
-  ZC_EXPECT(StringPtr("").tryParseAs<double>() == zc::none);
-  ZC_EXPECT(StringPtr("a").tryParseAs<double>() == zc::none);
-  ZC_EXPECT(StringPtr("1a").tryParseAs<double>() == zc::none);
-  ZC_EXPECT(StringPtr("+-1").tryParseAs<double>() == zc::none);
+  ZC_EXPECT("0"_zc.tryParseAs<double>() == 0.0);
+  ZC_EXPECT("0"_zc.tryParseAs<double>() == 0.0);
+  ZC_EXPECT("0.0"_zc.tryParseAs<double>() == 0.0);
+  ZC_EXPECT("1"_zc.tryParseAs<double>() == 1.0);
+  ZC_EXPECT("1.0"_zc.tryParseAs<double>() == 1.0);
+  ZC_EXPECT("1e100"_zc.tryParseAs<double>() == 1e100);
+  ZC_EXPECT("inf"_zc.tryParseAs<double>() == inf());
+  ZC_EXPECT("infinity"_zc.tryParseAs<double>() == inf());
+  ZC_EXPECT("INF"_zc.tryParseAs<double>() == inf());
+  ZC_EXPECT("INFINITY"_zc.tryParseAs<double>() == inf());
+  ZC_EXPECT("1e100000"_zc.tryParseAs<double>() == inf());
+  ZC_EXPECT("-inf"_zc.tryParseAs<double>() == -inf());
+  ZC_EXPECT("-infinity"_zc.tryParseAs<double>() == -inf());
+  ZC_EXPECT("-INF"_zc.tryParseAs<double>() == -inf());
+  ZC_EXPECT("-INFINITY"_zc.tryParseAs<double>() == -inf());
+  ZC_EXPECT("-1e100000"_zc.tryParseAs<double>() == -inf());
+  ZC_EXPECT(isNaN("nan"_zc.tryParseAs<double>().orDefault(0.0)) == true);
+  ZC_EXPECT(isNaN("NAN"_zc.tryParseAs<double>().orDefault(0.0)) == true);
+  ZC_EXPECT(isNaN("NaN"_zc.tryParseAs<double>().orDefault(0.0)) == true);
+  ZC_EXPECT(""_zc.tryParseAs<double>() == zc::none);
+  ZC_EXPECT("a"_zc.tryParseAs<double>() == zc::none);
+  ZC_EXPECT("1a"_zc.tryParseAs<double>() == zc::none);
+  ZC_EXPECT("+-1"_zc.tryParseAs<double>() == zc::none);
 
-  ZC_EXPECT(StringPtr("1").tryParseAs<float>() == 1.0);
+  ZC_EXPECT("1"_zc.tryParseAs<float>() == 1.0);
 
-  ZC_EXPECT(StringPtr("1").tryParseAs<int64_t>() == 1);
-  ZC_EXPECT(StringPtr("9223372036854775807").tryParseAs<int64_t>() == 9223372036854775807LL);
-  ZC_EXPECT(StringPtr("-9223372036854775808").tryParseAs<int64_t>() == -9223372036854775808ULL);
-  ZC_EXPECT(StringPtr("9223372036854775808").tryParseAs<int64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("-9223372036854775809").tryParseAs<int64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("").tryParseAs<int64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("a").tryParseAs<int64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("1a").tryParseAs<int64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("+-1").tryParseAs<int64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("010").tryParseAs<int64_t>() == 10);
-  ZC_EXPECT(StringPtr("0010").tryParseAs<int64_t>() == 10);
-  ZC_EXPECT(StringPtr("0x10").tryParseAs<int64_t>() == 16);
-  ZC_EXPECT(StringPtr("0X10").tryParseAs<int64_t>() == 16);
-  ZC_EXPECT(StringPtr("-010").tryParseAs<int64_t>() == -10);
-  ZC_EXPECT(StringPtr("-0x10").tryParseAs<int64_t>() == -16);
-  ZC_EXPECT(StringPtr("-0X10").tryParseAs<int64_t>() == -16);
+  ZC_EXPECT("1"_zc.tryParseAs<int64_t>() == 1);
+  ZC_EXPECT("9223372036854775807"_zc.tryParseAs<int64_t>() == 9223372036854775807LL);
+  ZC_EXPECT("-9223372036854775808"_zc.tryParseAs<int64_t>() == -9223372036854775808ULL);
+  ZC_EXPECT("9223372036854775808"_zc.tryParseAs<int64_t>() == zc::none);
+  ZC_EXPECT("-9223372036854775809"_zc.tryParseAs<int64_t>() == zc::none);
+  ZC_EXPECT(""_zc.tryParseAs<int64_t>() == zc::none);
+  ZC_EXPECT("a"_zc.tryParseAs<int64_t>() == zc::none);
+  ZC_EXPECT("1a"_zc.tryParseAs<int64_t>() == zc::none);
+  ZC_EXPECT("+-1"_zc.tryParseAs<int64_t>() == zc::none);
+  ZC_EXPECT("010"_zc.tryParseAs<int64_t>() == 10);
+  ZC_EXPECT("0010"_zc.tryParseAs<int64_t>() == 10);
+  ZC_EXPECT("0x10"_zc.tryParseAs<int64_t>() == 16);
+  ZC_EXPECT("0X10"_zc.tryParseAs<int64_t>() == 16);
+  ZC_EXPECT("-010"_zc.tryParseAs<int64_t>() == -10);
+  ZC_EXPECT("-0x10"_zc.tryParseAs<int64_t>() == -16);
+  ZC_EXPECT("-0X10"_zc.tryParseAs<int64_t>() == -16);
 
-  ZC_EXPECT(StringPtr("1").tryParseAs<uint64_t>() == 1);
-  ZC_EXPECT(StringPtr("0").tryParseAs<uint64_t>() == 0);
-  ZC_EXPECT(StringPtr("18446744073709551615").tryParseAs<uint64_t>() == 18446744073709551615ULL);
-  ZC_EXPECT(StringPtr("-1").tryParseAs<uint64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("18446744073709551616").tryParseAs<uint64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("").tryParseAs<uint64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("a").tryParseAs<uint64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("1a").tryParseAs<uint64_t>() == zc::none);
-  ZC_EXPECT(StringPtr("+-1").tryParseAs<uint64_t>() == zc::none);
+  ZC_EXPECT("1"_zc.tryParseAs<uint64_t>() == 1);
+  ZC_EXPECT("0"_zc.tryParseAs<uint64_t>() == 0);
+  ZC_EXPECT("18446744073709551615"_zc.tryParseAs<uint64_t>() == 18446744073709551615ULL);
+  ZC_EXPECT("-1"_zc.tryParseAs<uint64_t>() == zc::none);
+  ZC_EXPECT("18446744073709551616"_zc.tryParseAs<uint64_t>() == zc::none);
+  ZC_EXPECT(""_zc.tryParseAs<uint64_t>() == zc::none);
+  ZC_EXPECT("a"_zc.tryParseAs<uint64_t>() == zc::none);
+  ZC_EXPECT("1a"_zc.tryParseAs<uint64_t>() == zc::none);
+  ZC_EXPECT("+-1"_zc.tryParseAs<uint64_t>() == zc::none);
 
-  ZC_EXPECT(StringPtr("1").tryParseAs<int32_t>() == 1);
-  ZC_EXPECT(StringPtr("2147483647").tryParseAs<int32_t>() == 2147483647);
-  ZC_EXPECT(StringPtr("-2147483648").tryParseAs<int32_t>() == -2147483648);
-  ZC_EXPECT(StringPtr("2147483648").tryParseAs<int32_t>() == zc::none);
-  ZC_EXPECT(StringPtr("-2147483649").tryParseAs<int32_t>() == zc::none);
+  ZC_EXPECT("1"_zc.tryParseAs<int32_t>() == 1);
+  ZC_EXPECT("2147483647"_zc.tryParseAs<int32_t>() == 2147483647);
+  ZC_EXPECT("-2147483648"_zc.tryParseAs<int32_t>() == -2147483648);
+  ZC_EXPECT("2147483648"_zc.tryParseAs<int32_t>() == zc::none);
+  ZC_EXPECT("-2147483649"_zc.tryParseAs<int32_t>() == zc::none);
 
-  ZC_EXPECT(StringPtr("1").tryParseAs<uint32_t>() == 1);
-  ZC_EXPECT(StringPtr("0").tryParseAs<uint32_t>() == 0U);
-  ZC_EXPECT(StringPtr("4294967295").tryParseAs<uint32_t>() == 4294967295U);
-  ZC_EXPECT(StringPtr("-1").tryParseAs<uint32_t>() == zc::none);
-  ZC_EXPECT(StringPtr("4294967296").tryParseAs<uint32_t>() == zc::none);
+  ZC_EXPECT("1"_zc.tryParseAs<uint32_t>() == 1);
+  ZC_EXPECT("0"_zc.tryParseAs<uint32_t>() == 0U);
+  ZC_EXPECT("4294967295"_zc.tryParseAs<uint32_t>() == 4294967295U);
+  ZC_EXPECT("-1"_zc.tryParseAs<uint32_t>() == zc::none);
+  ZC_EXPECT("4294967296"_zc.tryParseAs<uint32_t>() == zc::none);
 
-  ZC_EXPECT(StringPtr("1").tryParseAs<int16_t>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<uint16_t>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<int8_t>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<uint8_t>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<char>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<signed char>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<unsigned char>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<short>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<unsigned short>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<int>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<unsigned>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<long>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<unsigned long>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<long long>() == 1);
-  ZC_EXPECT(StringPtr("1").tryParseAs<unsigned long long>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<int16_t>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<uint16_t>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<int8_t>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<uint8_t>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<char>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<signed char>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<unsigned char>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<short>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<unsigned short>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<int>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<unsigned>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<long>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<unsigned long>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<long long>() == 1);
+  ZC_EXPECT("1"_zc.tryParseAs<unsigned long long>() == 1);
 
   ZC_EXPECT(heapString("1").tryParseAs<int>() == 1);
 }
@@ -270,11 +268,22 @@ TEST(String, StlInterop) {
 }
 
 struct Stringable {
-  zc::StringPtr toString() { return "foo"; }
+  zc::StringPtr toString() const { return "foo"; }
 };
 
 TEST(String, ToString) { EXPECT_EQ("foo", zc::str(Stringable())); }
 #endif
+
+ZC_TEST("StringPtr constructors") {
+  ZC_EXPECT(StringPtr("") == "");
+  ZC_EXPECT(StringPtr(nullptr) == "");
+  ZC_EXPECT(StringPtr("abc") == "abc");
+  ZC_EXPECT(StringPtr("abc", 3) == "abc");
+
+#ifdef ZC_DEBUG
+  ZC_EXPECT_THROW_MESSAGE("StringPtr must be NUL-terminated", StringPtr("abc", 2));
+#endif
+}
 
 ZC_TEST("string literals with _zc suffix") {
   static constexpr StringPtr FOO = "foo"_zc;
@@ -310,14 +319,14 @@ ZC_TEST("parsing 'nan' returns canonical NaN value") {
   // There are many representations of NaN. We would prefer that parsing "NaN" produces exactly the
   // same bits that zc::nan() returns.
   {
-    double parsedNan = StringPtr("NaN").parseAs<double>();
+    double parsedNan = "NaN"_zc.parseAs<double>();
     double canonicalNan = zc::nan();
-    ZC_EXPECT(zc::arrayPtr(parsedNan).asBytes() == zc::arrayPtr(canonicalNan).asBytes());
+    ZC_EXPECT(zc::asBytes(parsedNan) == zc::asBytes(canonicalNan));
   }
   {
-    float parsedNan = StringPtr("NaN").parseAs<float>();
+    float parsedNan = "NaN"_zc.parseAs<float>();
     float canonicalNan = zc::nan();
-    ZC_EXPECT(zc::arrayPtr(parsedNan).asBytes() == zc::arrayPtr(canonicalNan).asBytes());
+    ZC_EXPECT(zc::asBytes(parsedNan) == zc::asBytes(canonicalNan));
   }
 }
 
@@ -499,6 +508,40 @@ ZC_TEST("as<Std>") {
   StringPtr ptr = "bar"_zc;
   std::string stdPtr = ptr.as<Std>();
   ZC_EXPECT(stdPtr == "bar");
+}
+
+struct OnlyMoves {
+  zc::String toString() const&& { return zc::str("OnlyMoves"); }
+  bool operator==(const OnlyMoves&) const = default;
+};
+
+ZC_TEST("zc::Maybe stringification") {
+  {
+    Maybe<int> a = 0;
+    Maybe<int> an;
+    Maybe<int&> ar = a;
+    Maybe<bool> b = false;
+    Maybe<bool> bn;
+    Maybe<bool&> br = b;
+    ZC_EXPECT(zc::str(a) == zc::str(0));
+    ZC_EXPECT(zc::str(ar) == zc::str(0));
+    ZC_EXPECT(zc::str(b) == zc::str(false));
+    ZC_EXPECT(zc::str(br) == zc::str(false));
+    ZC_EXPECT(zc::str(an) == zc::str("(none)"));
+    ZC_EXPECT(zc::str(bn) == zc::str("(none)"));
+
+    Maybe<Stringable> s = Stringable();
+    Maybe<Stringable> sn;
+    ZC_EXPECT(zc::str(s) == zc::str("foo"));
+    ZC_EXPECT(zc::str(sn) == zc::str("(none)"));
+
+    // This is here to test that ZC_EXPECT doesn't try to generate/use a non-conforming toString
+    // implementation. Effectively this is a test of the correct specification of the Stringifiable
+    // concept in string.h
+    OnlyMoves o(OnlyMoves{});
+    zc::Maybe<OnlyMoves> m(o);
+    ZC_EXPECT(m == m);
+  }
 }
 
 // Supports constexpr

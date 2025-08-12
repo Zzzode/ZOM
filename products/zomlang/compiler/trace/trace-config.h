@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "zc/core/string.h"
 
 /// Compile-time trace configuration

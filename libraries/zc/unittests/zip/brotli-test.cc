@@ -24,8 +24,9 @@
 #include "zc/zip/brotli.h"
 
 #include <stdlib.h>
-#include <zc/core/debug.h>
-#include <zc/ztest/test.h>
+
+#include "zc/core/debug.h"
+#include "zc/ztest/test.h"
 
 namespace zc {
 namespace {
@@ -358,10 +359,7 @@ ZC_TEST("async brotli compression") {
     MockAsyncOutputStream rawOutput;
     BrotliAsyncOutputStream brotli(rawOutput);
 
-    ArrayPtr<const byte> pieces[] = {
-        zc::StringPtr("foo").asBytes(),
-        zc::StringPtr("bar").asBytes(),
-    };
+    ArrayPtr<const byte> pieces[] = {"foo"_zcb, "bar"_zcb};
     brotli.write(pieces).wait(io.waitScope);
     brotli.end().wait(io.waitScope);
 

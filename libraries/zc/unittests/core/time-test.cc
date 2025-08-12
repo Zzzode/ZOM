@@ -23,11 +23,11 @@
 #include "zc/core/win32-api-version.h"
 #endif
 
-#include <zc/core/time.h>
-#include <zc/ztest/test.h>
+#include <time.h>
 
 #include "zc/core/debug.h"
 #include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 #if _WIN32
 #include <windows.h>

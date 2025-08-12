@@ -21,11 +21,11 @@
 
 #include "zc/http/url.h"
 
-#include <zc/core/debug.h>
-#include <zc/core/encoding.h>
-#include <zc/parse/char.h>
+#include <stdlib.h>
 
-#include <cstdlib>
+#include "zc/core/debug.h"
+#include "zc/core/encoding.h"
+#include "zc/parse/char.h"
 
 namespace zc {
 
@@ -403,7 +403,7 @@ String Url::toString(Context context) const {
 
   if (context != HTTP_REQUEST) {
     chars.addAll(scheme);
-    chars.addAll(StringPtr("://"));
+    chars.addAll("://"_zc);
 
     if (context == REMOTE_HREF) {
       ZC_IF_SOME(user, userInfo) {
@@ -427,7 +427,7 @@ String Url::toString(Context context) const {
       chars.addAll(host);
     } else {
       ZC_FAIL_REQUIRE("invalid hostname when stringifying URL", host) {
-        chars.addAll(StringPtr("invalid-host"));
+        chars.addAll("invalid-host"_zc);
         break;
       }
     }

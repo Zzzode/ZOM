@@ -22,11 +22,11 @@
 #include "zc/core/exception.h"
 
 #include <stdint.h>
-#include <zc/ztest/gtest.h>
 
 #include <stdexcept>
 
 #include "zc/core/debug.h"
+#include "zc/ztest/gtest.h"
 
 namespace zc {
 namespace _ {  // private
@@ -253,6 +253,21 @@ ZC_TEST("exception details") {
   ZC_EXPECT(zc::str(ZC_ASSERT_NONNULL(e2.releaseDetail(123)).asChars()) == "foo");
   ZC_EXPECT(e2.getDetail(123) == zc::none);
   ZC_EXPECT(zc::str(ZC_ASSERT_NONNULL(e2.getDetail(456)).asChars()) == "bar");
+}
+
+ZC_TEST("copy constructor") {
+  auto e = new zc::Exception(zc::Exception::Type::FAILED, zc::str("src/bar.cc"), 35,
+                             zc::str("test_exception"));
+  ZC_EXPECT(e->getFile() == "src/bar.cc"_zc);
+  ZC_EXPECT(e->getLine() == 35);
+  ZC_EXPECT(e->getDescription() == "test_exception"_zc);
+
+  zc::Exception e1(*e);
+  delete e;
+
+  ZC_EXPECT(e1.getFile() == "src/bar.cc"_zc);
+  ZC_EXPECT(e1.getLine() == 35);
+  ZC_EXPECT(e1.getDescription() == "test_exception"_zc);
 }
 
 }  // namespace

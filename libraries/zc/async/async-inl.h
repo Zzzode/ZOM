@@ -35,7 +35,7 @@
 #include <intrin.h>  // _ReturnAddress
 #endif
 
-#include <zc/core/list.h>
+#include "zc/core/list.h"
 
 ZC_BEGIN_HEADER
 
@@ -191,7 +191,7 @@ public:
   virtual void traceEvent(TraceBuilder& builder) = 0;
   // Build a trace of the callers leading up to this event. `builder` will be populated with
   // "return addresses" of the promise chain waiting on this event. The return addresses may
-  // actually the addresses of lambdas passed to .then(), but in any case, feeding them into
+  // actually be the addresses of lambdas passed to .then(), but in any case, feeding them into
   // addr2line should produce useful source code locations.
   //
   // `traceEvent()` may be called from an async signal handler while `fire()` is executing. It
@@ -292,7 +292,7 @@ public:
   // when it is ready, and then TransformPromiseNode applies the .then() transformation during the
   // call to .get().
   //
-  // So, when we trace the chain of Events backwards, we end up hoping over segments of
+  // So, when we trace the chain of Events backwards, we end up hopping over segments of
   // TransformPromiseNodes (and other similar types). In order to get those added to the trace,
   // each Event must call back down the PromiseNode chain in the opposite direction, using this
   // method.
@@ -1965,7 +1965,7 @@ class XThreadFulfiller;
 
 class XThreadPaf : public PromiseNode {
 public:
-  XThreadPaf();
+  XThreadPaf(Own<const Executor> executor);
   virtual ~XThreadPaf() noexcept(false);
   void destroy() override;
 
@@ -2008,9 +2008,9 @@ private:
     // object.
   } state;
 
-  const Executor& executor;
-  // Executor of the waiting thread. Only guaranteed to be valid when state is `WAITING` or
-  // `FULFILLING`. After any other state has been reached, this reference may be invalidated.
+  Own<const Executor> executor;
+  // Executor of the waiting thread. We hold a strong reference to it so that we have no risk of UB
+  // if the waiting thread exits before the promise is fulfilled.
 
   ListLink<XThreadPaf> link;
   // In the FULFILLING/FULFILLED states, the object is placed in a linked list within the waiting
@@ -2031,6 +2031,8 @@ private:
 template <typename T>
 class XThreadPafImpl final : public XThreadPaf {
 public:
+  using XThreadPaf::XThreadPaf;
+
   // implements PromiseNode ----------------------------------------------------
   void get(ExceptionOrValue& output) noexcept override { output.as<FixVoid<T>>() = zc::mv(result); }
 
@@ -2050,7 +2052,7 @@ public:
   FulfillScope(XThreadPaf** pointer);
   // Atomically nulls out *pointer and takes ownership of the pointer.
 
-  ~FulfillScope() noexcept;
+  ~FulfillScope() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(FulfillScope);
 
@@ -2111,7 +2113,12 @@ public:
 
 template <typename T>
 PromiseCrossThreadFulfillerPair<T> newPromiseAndCrossThreadFulfiller() {
-  zc::Own<_::XThreadPafImpl<T>, _::PromiseDisposer> node(new _::XThreadPafImpl<T>);
+  return getCurrentThreadExecutor().newPromiseAndCrossThreadFulfiller<T>();
+}
+
+template <typename T>
+PromiseCrossThreadFulfillerPair<T> Executor::newPromiseAndCrossThreadFulfiller() const {
+  zc::Own<_::XThreadPafImpl<T>, _::PromiseDisposer> node(new _::XThreadPafImpl<T>(addRef()));
   auto fulfiller = zc::heap<_::XThreadFulfiller<T>>(node);
   return {_::PromiseNode::to<_::ReducePromises<T>>(zc::mv(node)), zc::mv(fulfiller)};
 }
@@ -2220,9 +2227,19 @@ public:
 
   void unhandled_exception();
 
-protected:
-  class AwaiterBase;
+  // Called from Awaiter implementations to integrate with async tracing during suspension.
+  void setPromiseNodeForTrace(OwnPromiseNode& node) {
+    promiseNodeForTrace = node;
+    hasSuspendedAtLeastOnce = true;
+  }
 
+  // Called from Awaiter implementations to end tracing during resumption/cancellation.
+  void clearPromiseNodeForTrace() { promiseNodeForTrace = zc::none; }
+
+  // Used in Awaiter implementations to optimize certain immediately-ready promise awaits.
+  bool canImmediatelyResume() { return hasSuspendedAtLeastOnce && isNext(); }
+
+protected:
   bool isWaiting() { return waiting; }
   void scheduleResumption() {
     onReadyEvent.arm();
@@ -2294,13 +2311,6 @@ class Coroutine final : public CoroutineBase, public CoroutineMixin<Coroutine<T>
   // The implementation object is also where we can customize memory allocation of coroutine frames,
   // by implementing a member `operator new(size_t, Args...)` (same `Args...` as in
   // coroutine_traits).
-  //
-  // We can also customize how await-expressions are transformed within `zc::Promise<T>`-based
-  // coroutines by implementing an `await_transform(P)` member function, where `P` is some type for
-  // which we want to implement co_await support, e.g. `zc::Promise<U>`. This feature allows us to
-  // provide an optimized `zc::EventLoop` integration when the coroutine's return type and the
-  // await-expression's type are both `zc::Promise` instantiations -- see further comments under
-  // `await_transform()`.
 
 public:
   using Handle = stdcoro::coroutine_handle<Coroutine<T>>;
@@ -2318,37 +2328,33 @@ public:
     return PromiseNode::to<Promise<T>>(OwnPromiseNode(this));
   }
 
-public:
   template <typename U>
-  class Awaiter;
-
-  template <typename U>
-  Awaiter<U> await_transform(zc::Promise<U>& promise) {
-    return Awaiter<U>(PromiseNode::from(zc::mv(promise)));
-  }
-  template <typename U>
-  Awaiter<U> await_transform(zc::Promise<U>&& promise) {
-    return Awaiter<U>(PromiseNode::from(zc::mv(promise)));
-  }
-  // Called when someone writes `co_await promise`, where `promise` is a zc::Promise<U>. We return
-  // an Awaiter<U>, which implements coroutine suspension and resumption in terms of the ZC async
-  // event system.
-  //
-  // There is another hook we could implement: an `operator co_await()` free function. However, a
-  // free function would be unaware of the type of the enclosing coroutine. Since Awaiter<U> is a
-  // member class template of Coroutine<T>, it is able to implement an
-  // `await_suspend(Coroutine<T>::Handle)` override, providing it type-safe access to our enclosing
-  // coroutine's PromiseNode. An `operator co_await()` free function would have to implement
-  // a type-erased `await_suspend(stdcoro::coroutine_handle<void>)` override, and implement
-  // suspension and resumption in terms of .then(). Yuck!
-
-  template <typename U>
-  class ForkedPromiseAwaiter;
-
-  // called by co_awaiting on a forked promise.
-  template <typename U>
-  ForkedPromiseAwaiter<U> await_transform(ForkedPromise<U>& promise) {
-    return ForkedPromiseAwaiter<U>(promise);
+  U&& await_transform(U&& awaitable) {
+    // Our `await_transform()` implementation is where we can instrument awaitables, or provide
+    // custom awaiter implementations, if we need to. Historically, this _is_ where we created
+    // awaiter implementations (that is, the classes with `await_ready()`, `await_suspend()`, and
+    // `await_resume()` member functions), because this was the only place we knew the enclosing
+    // `Coroutine<T>` type. Nowadays, `await_suspend()` can be a template, allowing us to infer
+    // the enclosing coroutine type that way.
+    //
+    // We cannot get rid of `await_transform()`, because downstream projects can (and do) implement
+    // custom coroutine implementations which wrap this implementation, and they use
+    // `await_transform()` to pass unrecognized awaitables through to us -- and if an
+    // `await_transform()` implementation exists for one awaitable types, then the compiler requires
+    // that it exist for all awaitable types `co_await`ed from within this coroutine.
+    //
+    // So, we just pass through all awaitables unchanged for now, deferring to their
+    // `operator co_await` implementations to instantiate the awaiters.
+    //
+    // TODO(someday): We could implement an `await_transform()` overload which wraps awaitables
+    // (e.g.
+    //   Promise, ForkedPromise, and whatever else comes along in the future) in a struct containing
+    //   the awaitable plus a reference to our CoroutineBase. The awaitables' `co_await`
+    //   implementation could accept this struct and pass the CoroutineBase reference to the actual
+    //   awaiter implementation's constructor (e.g. PromiseAwaiter), which would give us access to
+    //   the coroutine in `await_ready()`. This would allow us to decide whether to apply the
+    //   immediately-ready-promise optimization earlier, before suspension.
+    return zc::fwd<U>(awaitable);
   }
 
   void fulfill(FixVoid<T>&& value) {
@@ -2384,13 +2390,13 @@ public:
 // both a `return_value()` and `return_void()`. No amount of EnableIffery can get around it, so
 // these return_* functions live in a CRTP mixin.
 
-class CoroutineBase::AwaiterBase {
+class PromiseAwaiterBase {
 public:
-  explicit AwaiterBase(OwnPromiseNode&& node);
+  explicit PromiseAwaiterBase(OwnPromiseNode&& node);
 
-  AwaiterBase(AwaiterBase&&);
-  ~AwaiterBase() noexcept(false);
-  ZC_DISALLOW_COPY(AwaiterBase);
+  PromiseAwaiterBase(PromiseAwaiterBase&&);
+  ~PromiseAwaiterBase() noexcept(false);
+  ZC_DISALLOW_COPY(PromiseAwaiterBase);
 
   bool await_ready() const { return false; }
   // This could return "`node->get()` is safe to call" instead, which would make suspension-less
@@ -2400,24 +2406,23 @@ public:
   // suspension-less co_awaits.
 
 protected:
-  void getImpl(ExceptionOrValue& result, void* awaitedAt);
-  bool awaitSuspendImpl(CoroutineBase& coroutineEvent);
+  void awaitResumeImpl(ExceptionOrValue& result, void* awaitedAt);
+  bool awaitSuspendImpl(CoroutineBase& coroutine);
 
 private:
   UnwindDetector unwindDetector;
   OwnPromiseNode node;
 
-  Maybe<CoroutineBase&> maybeCoroutineEvent;
+  Maybe<CoroutineBase&> maybeCoroutine;
   // If we do suspend waiting for our wrapped promise, we store a reference to `node` in our
   // enclosing Coroutine for tracing purposes. To guard against any edge cases where an async stack
-  // trace is generated when an Awaiter was destroyed without Coroutine::fire() having been called,
-  // we need our own reference to the enclosing Coroutine. (I struggle to think up any such
+  // trace is generated when a PromiseAwaiter was destroyed without Coroutine::fire() having been
+  // called, we need our own reference to the enclosing Coroutine. (I struggle to think up any such
   // scenarios, but perhaps they could occur when destroying a suspended coroutine.)
 };
 
 template <typename T>
-template <typename U>
-class Coroutine<T>::Awaiter : public AwaiterBase {
+class PromiseAwaiter : public PromiseAwaiterBase {
   // Wrapper around a co_await'ed promise and some storage space for the result of that promise.
   // The compiler arranges to call our await_suspend() to suspend, which arranges to be woken up
   // when the awaited promise is settled. Once that happens, the enclosing coroutine's Event
@@ -2425,56 +2430,95 @@ class Coroutine<T>::Awaiter : public AwaiterBase {
   // awaited promise result.
 
 public:
-  explicit Awaiter(OwnPromiseNode&& node) : AwaiterBase(zc::mv(node)) {}
+  explicit PromiseAwaiter(OwnPromiseNode&& node) : PromiseAwaiterBase(zc::mv(node)) {}
 
-  ZC_NOINLINE U await_resume() {
+  ZC_NOINLINE T await_resume() {
     // This is marked noinline in order to ensure __builtin_return_address() is accurate for stack
     // trace purposes. In my experimentation, this method was not inlined anyway even in opt
     // builds, but I want to make sure it doesn't suddenly start being inlined later causing stack
     // traces to break. (I also tried always-inline, but this did not appear to cause the compiler
     // to inline the method -- perhaps a limitation of coroutines?)
 #if __GNUC__
-    getImpl(result, __builtin_return_address(0));
+    awaitResumeImpl(result, __builtin_return_address(0));
 #elif _MSC_VER
-    getImpl(result, _ReturnAddress());
+    awaitResumeImpl(result, _ReturnAddress());
 #else
 #error "please implement for your compiler"
 #endif
     auto value = zc::_::readMaybe(result.value);
     ZC_IASSERT(value != nullptr, "Neither exception nor value present.");
-    return U(zc::mv(*value));
+    return T(zc::mv(*value));
   }
 
-  template <typename V>
-  bool await_suspend(stdcoro::coroutine_handle<V> coroutine) {
-    return awaitSuspendImpl(coroutine.promise());
+  template <typename U>
+    requires(canConvert<U&, CoroutineBase&>())
+  bool await_suspend(stdcoro::coroutine_handle<U> handle) {
+    return awaitSuspendImpl(handle.promise());
   }
 
 private:
-  ExceptionOr<FixVoid<U>> result;
+  ExceptionOr<FixVoid<T>> result;
 };
 
 // Wait for forked promise.
 // Delegate all the work to usual awaiter on a special node.
 template <typename T>
-template <typename U>
-class Coroutine<T>::ForkedPromiseAwaiter {
+class ForkedPromiseAwaiter {
 public:
-  ForkedPromiseAwaiter(ForkedPromise<U>& promise) : node(promise), awaiter(OwnPromiseNode(&node)) {}
+  ForkedPromiseAwaiter(ForkedPromise<T>& promise) : node(promise), awaiter(OwnPromiseNode(&node)) {}
 
-  template <typename V>
-  inline bool await_suspend(stdcoro::coroutine_handle<V> coroutine) {
+  template <typename U>
+  inline bool await_suspend(stdcoro::coroutine_handle<U> coroutine) {
     return awaiter.await_suspend(coroutine);
   }
 
-  inline U await_resume() { return awaiter.await_resume(); }
+  inline T await_resume() { return awaiter.await_resume(); }
 
   inline bool await_ready() const { return awaiter.await_ready(); }
 
 private:
-  ForkBranch<_::FixVoid<U>, false> node;
-  Awaiter<U> awaiter;
+  ForkBranch<_::FixVoid<T>, false> node;
+  PromiseAwaiter<T> awaiter;
 };
+
+}  // namespace zc::_
+
+namespace zc {
+
+// `operator co_await` definitions for Promise and ForkedPromise
+// ---------------------------------------------------------
+//
+// These operators are called when someone writes `co_await promise`, where `promise` is a
+// zc::Promise<T>. We return an Awaiter<T>, which implements coroutine suspension and resumption in
+// terms of the ZC async event system.
+//
+// `operator co_await` is only one of two hooks we could implement to make Promises awaitable: the
+// other one is the `await_transform()` member function on `zc::_::Coroutine<U>`. We do implement
+// that function, but all it does is pass through awaitables unchanged, which are then picked up by
+// these `co_await` operators.
+//
+// We could someday change our `await_transform()` implementation to return some sort of struct of
+// both the Promise plus a reference to the enclosing Coroutine. Our `co_await` implementations
+// could then use this information to instantiate an Awaiter with immediate access to the coroutine,
+// which would facilitate simpler code.
+
+template <typename T>
+_::PromiseAwaiter<T> operator co_await(Promise<T>& promise) {
+  return _::PromiseAwaiter<T>(_::PromiseNode::from(zc::mv(promise)));
+}
+template <typename T>
+_::PromiseAwaiter<T> operator co_await(Promise<T>&& promise) {
+  return _::PromiseAwaiter<T>(_::PromiseNode::from(zc::mv(promise)));
+}
+
+template <typename T>
+_::ForkedPromiseAwaiter<T> operator co_await(ForkedPromise<T>& promise) {
+  return _::ForkedPromiseAwaiter<T>(promise);
+}
+
+}  // namespace zc
+
+namespace zc::_ {
 
 // ---------------------------------------------------------
 // Coroutine Magic

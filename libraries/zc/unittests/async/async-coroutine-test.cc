@@ -19,11 +19,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-#include <zc/async/async.h>
-#include <zc/core/array.h>
-#include <zc/core/debug.h>
-#include <zc/http/http.h>
-#include <zc/ztest/test.h>
+#include "zc/async/async.h"
+#include "zc/core/array.h"
+#include "zc/core/debug.h"
+#include "zc/http/http.h"
+#include "zc/ztest/test.h"
 
 namespace zc {
 namespace {
@@ -443,7 +443,7 @@ Promise<void> sendData(Promise<Own<NetworkAddress>> addressPromise) {
 Promise<String> receiveDataCoroutine(Own<ConnectionReceiver> listener) {
   auto server = co_await listener->accept();
   char buffer[4]{};
-  auto n = co_await server->read(buffer, 3, 4);
+  auto n = co_await server->read(zc::arrayPtr(buffer).asBytes(), 3);
   ZC_EXPECT(3u == n);
   co_return heapString(buffer, n);
 }

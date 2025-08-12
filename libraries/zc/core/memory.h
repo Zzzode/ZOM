@@ -22,9 +22,29 @@
 #pragma once
 
 #include "zc/core/common.h"
-#ifdef ZC_DEBUG
-#include <atomic>  // std::atomic for ZC_ASSERT_PTR_COUNTERS
+
+// ZC_DEBUG_MEMORY == 1 enables variety of checks designed to catch memory usage errors.
+// ZC_DEBUG_MEMORY undefined or ZC_DEBUG_MEMORY == 0 disables all such checks.
+#if !defined(ZC_DEBUG_MEMORY)
+#define ZC_DEBUG_MEMORY 0
 #endif
+
+// ZC_WARN_REFCOUNTED_ATTACH == 1 enables deprecation warnings when using zc::Own<T>::attach() on
+// refcounted objects.
+#if !defined(ZC_WARN_REFCOUNTED_ATTACH)
+#define ZC_WARN_REFCOUNTED_ATTACH 0
+#endif
+
+// ZC_ASSERT_PTR_COUNTERS == 1 keeps track of active Ptr<T> instances and asserts validity
+// of their ownership.
+// Matches ZC_DEBUG_MEMORY by default.
+#if !defined(ZC_ASSERT_PTR_COUNTERS)
+#define ZC_ASSERT_PTR_COUNTERS ZC_DEBUG_MEMORY
+#endif  // ZC_ASSERT_PTR_COUNTERS
+
+#if ZC_ASSERT_PTR_COUNTERS
+#include <atomic>
+#endif  // ZC_ASSERT_PTR_COUNTERS
 
 ZC_BEGIN_HEADER
 
@@ -58,7 +78,15 @@ inline constexpr bool _zc_internal_isPolymorphic(T*) {
 //     template <typename X, typename Y>
 //     ZC_DECLARE_NON_POLYMORPHIC(MyType<X, Y>)
 
+class AtomicRefcounted;
+class Refcounted;
+
 namespace _ {  // private
+
+template <typename T, typename U>
+concept DerivedFrom = requires(const T* t) { static_cast<const U*>(t); };
+template <typename T>
+concept IsRefcounted = DerivedFrom<T, Refcounted> || DerivedFrom<T, AtomicRefcounted>;
 
 template <typename T>
 struct RefOrVoid_ {
@@ -79,38 +107,27 @@ using RefOrVoid = typename RefOrVoid_<T>::Type;
 //
 // This is a hack needed to avoid defining Own<void> as a totally separate class.
 
-template <typename T, bool isPolymorphic = _zc_internal_isPolymorphic((T*)nullptr)>
-struct CastToVoid_;
-
-template <typename T>
-struct CastToVoid_<T, false> {
-  static void* apply(T* ptr) { return static_cast<void*>(ptr); }
-  static const void* applyConst(T* ptr) {
-    const T* cptr = ptr;
-    return static_cast<const void*>(cptr);
-  }
-};
-
-template <typename T>
-struct CastToVoid_<T, true> {
-  static void* apply(T* ptr) { return dynamic_cast<void*>(ptr); }
-  static const void* applyConst(T* ptr) {
-    const T* cptr = ptr;
-    return dynamic_cast<const void*>(cptr);
-  }
-};
-
 template <typename T>
 void* castToVoid(T* ptr) {
-  return CastToVoid_<T>::apply(ptr);
+  if constexpr (_zc_internal_isPolymorphic((T*)nullptr)) {
+    return dynamic_cast<void*>(ptr);
+  } else {
+    return static_cast<void*>(ptr);
+  }
 }
 
 template <typename T>
 const void* castToConstVoid(T* ptr) {
-  return CastToVoid_<T>::applyConst(ptr);
+  if constexpr (_zc_internal_isPolymorphic((T*)nullptr)) {
+    const T* cptr = ptr;
+    return dynamic_cast<const void*>(cptr);
+  } else {
+    const T* cptr = ptr;
+    return static_cast<const void*>(cptr);
+  }
 }
 
-void throwWrongDisposerError();
+ZC_NORETURN(void throwWrongDisposerError());
 
 }  // namespace _
 
@@ -145,10 +162,6 @@ public:
   //
   // Callers must not call dispose() on the same pointer twice, even if the first call throws
   // an exception.
-
-private:
-  template <typename T, bool polymorphic = _zc_internal_isPolymorphic((T*)nullptr)>
-  struct Dispose_;
 };
 
 template <typename T>
@@ -176,13 +189,8 @@ public:
 // =======================================================================================
 // Ptr Counters
 
-#ifdef ZC_DEBUG
-#define ZC_ASSERT_PTR_COUNTERS
-// When defined, keeps track of active Ptr<T> instances and asserts validity of their ownership
-#endif
-
 namespace _ {
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
 
 void atomicPtrCounterAssertionFailed(const char* const);
 
@@ -210,7 +218,7 @@ private:
 using PtrCounter = AtomicPtrCounter;
 // Default counter type to use
 
-#endif
+#endif  // ZC_ASSERT_PTR_COUNTERS
 }  // namespace _
 
 // =======================================================================================
@@ -276,6 +284,7 @@ public:
   }
 
   template <typename... Attachments>
+    requires(!::zc::_::IsRefcounted<T>)
   Own<T> attach(Attachments&&... attachments) ZC_WARN_UNUSED_RESULT;
   // Returns an Own<T> which points to the same object but which also ensures that all values
   // passed to `attachments` remain alive until after this object is destroyed. Normally
@@ -283,6 +292,26 @@ public:
   //
   // Note that attachments will eventually be destroyed in the order they are listed. Hence,
   // foo.attach(bar, baz) is equivalent to (but more efficient than) foo.attach(bar).attach(baz).
+
+  template <typename... Attachments>
+    requires(::zc::_::IsRefcounted<T>)
+#if ZC_WARN_REFCOUNTED_ATTACH
+  ZC_DEPRECATED(
+      "using attach() with refcounted objects can be a bug; if intentional, use "
+      "attachToThisReference()")
+#endif
+  Own<T> attach(Attachments&&... attachments) ZC_WARN_UNUSED_RESULT;
+
+  template <typename... Attachments>
+    requires(::zc::_::IsRefcounted<T>)
+  Own<T> attachToThisReference(Attachments&&... attachments) ZC_WARN_UNUSED_RESULT;
+  // Like attach(), but only for objects deriving from zc::Refcounted or zc::AtomicRefcounted.
+  // attach() is commonly used to keep dependencies alive for a T value, but this is only reliable
+  // if T has a single zc::Own<T>. Refcounted objects can have multiple zc::Own<T>s, so using
+  // attach() for their dependencies is a potential source of memory errors.
+  //
+  // When an attachment only needs to live as long as a single reference to a refcounted
+  // object, attachToThisReference() can be called to explicitly opt into this behavior.
 
   template <typename U>
   Own<U> downcast() {
@@ -356,6 +385,9 @@ private:
                   "Casting owned pointers requires that the target type is polymorphic.");
     return ptr;
   }
+
+  template <typename... Attachments>
+  Own<T> attachImpl(Attachments&&... attachments) ZC_WARN_UNUSED_RESULT;
 
   template <typename, typename>
   friend class Own;
@@ -778,7 +810,7 @@ public:
   inline Pin(Pin<T>&& other) : t(zc::mv(other.t)) {
     // Move T's ownership.
     // Undefined behavior when live pointers exist, asserted when ZC_ASSERT_PTR_COUNTERS is defined.
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
     other.ptrCounter.assertEmpty();
 #endif
   }
@@ -786,7 +818,7 @@ public:
   inline ~Pin() {
     // Destroy a Pin with underlying object.
     // Undefined behavior when live pointers exist, asserted when ZC_ASSERT_PTR_COUNTERS is defined.
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
     ptrCounter.assertEmpty();
 #endif
   }
@@ -822,7 +854,7 @@ private:
   inline Pin(T&& t) : t(zc::mv(t)) {}
 
   T t;
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
   _::PtrCounter ptrCounter;
 #endif
 
@@ -850,18 +882,18 @@ public:
       // the value was moved out
       return;
     }
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
     counter->dec();
 #endif
   }
 
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
   Ptr(Ptr&& other) : ptr(other.ptr), counter(other.counter) { other.ptr = nullptr; }
 #else
   Ptr(Ptr&& other) : ptr(other.ptr) { other.ptr = nullptr; }
 #endif
 
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
   Ptr(Ptr<U>&& other) : ptr(other.ptr), counter(other.counter) {
     other.ptr = nullptr;
@@ -874,7 +906,7 @@ public:
 #endif
 
 // Ptr<T> can be freely copied.
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
   Ptr(const Ptr& other) : ptr(other.ptr), counter(other.counter) { counter->inc(); }
 #else
   Ptr(const Ptr& other) : ptr(other.ptr) {}
@@ -882,7 +914,7 @@ public:
 
   inline void operator=(decltype(nullptr)) {
     if (ptr != nullptr) {
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
       counter->dec();
       counter = nullptr;
 #endif
@@ -914,13 +946,13 @@ public:
   // ceased to exist.
 
 private:
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
   inline Ptr(Pin<T>* pin) : ptr(pin->get()), counter(&pin->ptrCounter) { counter->inc(); }
 #else
   inline Ptr(Pin<T>* pin) : ptr(pin->get()) {}
 #endif
 
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
   template <typename U, typename = EnableIf<canConvert<U*, T*>()>>
   inline Ptr(Pin<U>* pin) : ptr(pin->get()), counter(&pin->ptrCounter) {
     counter->inc();
@@ -931,7 +963,7 @@ private:
 #endif
 
   T* ptr;
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
   _::PtrCounter* counter;
 #endif
 
@@ -948,24 +980,15 @@ private:
 // Inline implementation details
 
 template <typename T>
-struct Disposer::Dispose_<T, true> {
-  static void dispose(T* object, const Disposer& disposer) {
+void Disposer::dispose(T* object) const {
+  if constexpr (_zc_internal_isPolymorphic((T*)nullptr)) {
     // Note that dynamic_cast<void*> does not require RTTI to be enabled, because the offset to
     // the top of the object is in the vtable -- as it obviously needs to be to correctly implement
     // operator delete.
-    disposer.disposeImpl(dynamic_cast<void*>(object));
+    disposeImpl(dynamic_cast<void*>(object));
+  } else {
+    disposeImpl(static_cast<void*>(object));
   }
-};
-template <typename T>
-struct Disposer::Dispose_<T, false> {
-  static void dispose(T* object, const Disposer& disposer) {
-    disposer.disposeImpl(static_cast<void*>(object));
-  }
-};
-
-template <typename T>
-void Disposer::dispose(T* object) const {
-  Dispose_<T>::dispose(object, *this);
 }
 
 namespace _ {  // private
@@ -1012,7 +1035,29 @@ const StaticDisposerAdapter<T, D> StaticDisposerAdapter<T, D>::instance =
 
 template <typename T>
 template <typename... Attachments>
+  requires(!::zc::_::IsRefcounted<T>)
 Own<T> Own<T>::attach(Attachments&&... attachments) {
+  return attachImpl(zc::fwd<Attachments>(attachments)...);
+}
+
+template <typename T>
+template <typename... Attachments>
+  requires(::zc::_::IsRefcounted<T>)
+Own<T> Own<T>::attach(Attachments&&... attachments) {
+  // TODO(someday): statically assert against IsRefcounted().
+  return attachImpl(zc::fwd<Attachments>(attachments)...);
+}
+
+template <typename T>
+template <typename... Attachments>
+  requires(::zc::_::IsRefcounted<T>)
+Own<T> Own<T>::attachToThisReference(Attachments&&... attachments) {
+  return attachImpl(zc::fwd<Attachments>(attachments)...);
+}
+
+template <typename T>
+template <typename... Attachments>
+Own<T> Own<T>::attachImpl(Attachments&&... attachments) {
   T* ptrCopy = ptr;
 
   ZC_IREQUIRE(ptrCopy != nullptr, "cannot attach to null pointer");
@@ -1029,12 +1074,14 @@ Own<T> Own<T>::attach(Attachments&&... attachments) {
 
 template <typename T, typename... Attachments>
 Own<T> attachRef(T& value, Attachments&&... attachments) {
+  // TODO(someday): maybe also assert against T deriving from zc::Refcounted here?
   auto bundle = new _::DisposableOwnedBundle<Attachments...>(zc::fwd<Attachments>(attachments)...);
   return Own<T>(&value, *bundle);
 }
 
 template <typename T, typename... Attachments>
 Own<Decay<T>> attachVal(T&& value, Attachments&&... attachments) {
+  // TODO(someday): maybe also assert against T deriving from zc::Refcounted here?
   auto bundle = new _::DisposableOwnedBundle<T, Attachments...>(
       zc::fwd<T>(value), zc::fwd<Attachments>(attachments)...);
   return Own<Decay<T>>(&bundle->first, *bundle);

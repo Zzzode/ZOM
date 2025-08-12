@@ -21,12 +21,11 @@
 
 #include "zc/async/async.h"
 
-#include <zc/ztest/gtest.h>
-
 #include "zc/core/array.h"
 #include "zc/core/debug.h"
 #include "zc/core/mutex.h"
 #include "zc/core/thread.h"
+#include "zc/ztest/gtest.h"
 #include "zc/ztest/test.h"
 
 #if !_WIN32
@@ -153,11 +152,11 @@ TEST(Async, HandleException) {
   Promise<int> promise = evalLater([&]() -> int {
     ZC_FAIL_ASSERT("foo") { return 123; }
   });
-  int line = __LINE__ - 1;
+  int line = __LINE__ - 2;
 
   promise = promise.then([](int i) { return i + 1; },
                          [&](Exception&& e) {
-                           EXPECT_EQ(line, e.getLine() + 1);
+                           EXPECT_EQ(line, e.getLine());
                            return 345;
                          });
 
@@ -171,13 +170,13 @@ TEST(Async, PropagateException) {
   Promise<int> promise = evalLater([&]() -> int {
     ZC_FAIL_ASSERT("foo") { return 123; }
   });
-  int line = __LINE__ - 1;
+  int line = __LINE__ - 2;
 
   promise = promise.then([](int i) { return i + 1; });
 
   promise = promise.then([](int i) { return i + 2; },
                          [&](Exception&& e) {
-                           EXPECT_EQ(line, e.getLine() + 1);
+                           EXPECT_EQ(line, e.getLine());
                            return 345;
                          });
 
@@ -191,13 +190,13 @@ TEST(Async, PropagateExceptionTypeChange) {
   Promise<int> promise = evalLater([&]() -> int {
     ZC_FAIL_ASSERT("foo") { return 123; }
   });
-  int line = __LINE__ - 1;
+  int line = __LINE__ - 2;
 
   Promise<StringPtr> promise2 = promise.then([](int i) -> StringPtr { return "foo"; });
 
   promise2 = promise2.then([](StringPtr s) -> StringPtr { return "bar"; },
                            [&](Exception&& e) -> StringPtr {
-                             EXPECT_EQ(line, e.getLine() + 1);
+                             EXPECT_EQ(line, e.getLine());
                              return "baz";
                            });
 
@@ -1183,6 +1182,35 @@ ZC_TEST("TaskSet::clear()") {
     tasks.add(ZC_EXCEPTION(FAILED, "example TaskSet failure"));
     waitScope.poll();
   });
+}
+
+ZC_TEST("TaskSet::trace() on forked promise") {
+  EventLoop loop;
+  WaitScope waitScope(loop);
+  ErrorHandlerImpl errorHandler;
+  TaskSet tasks(errorHandler);
+
+  int counter = 0;
+
+  auto forked = evalLater([&]() { EXPECT_EQ(0, counter++); }).fork();
+
+  auto branch1 = forked.addBranch().then([&]() { EXPECT_EQ(1, counter++); });
+  auto branch2 = forked.addBranch().then([]() { ZC_FAIL_ASSERT("this branch shouldn't run"); });
+
+  tasks.add(zc::mv(branch1));
+  tasks.add(zc::mv(branch2));
+
+  // Ensure only 1 branch has run
+  loop.run(2);
+
+  EXPECT_EQ(counter, 2);
+
+  // trace() shouldn't throw
+  auto trace = tasks.trace();
+  uint lines = 0;
+  for (char c : trace) { lines += c == '\n'; }
+
+  EXPECT_LT(lines, 10);
 }
 
 class DestructorDetector {

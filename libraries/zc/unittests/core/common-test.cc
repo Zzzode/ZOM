@@ -22,14 +22,18 @@
 #include "zc/core/common.h"
 
 #include <inttypes.h>
-#include <zc/ztest/gtest.h>
 
 #include <span>
 
+#include "zc/core/thread.h"
+#include "zc/ztest/gtest.h"
 #include "zc/ztest/test.h"
 
 namespace zc {
 namespace {
+
+ZC_ASSERT_CAN_MEMCPY(char);
+ZC_ASSERT_CAN_MEMCPY(byte);
 
 ZC_TEST("zc::size() on native arrays") {
   int arr[] = {12, 34, 56, 78};
@@ -369,6 +373,23 @@ TEST(Common, Maybe) {
     ZC_EXPECT(m1 != m4);
     ZC_EXPECT(m4 == m5);
     ZC_EXPECT(m4 != m1);
+  }
+
+  {
+    // type deduction in various circumstances
+    struct IntWrapper {
+      IntWrapper(int i) : i(i) {}
+      int i;
+
+      static int twice(Maybe<IntWrapper> i) { return i.orDefault(0).i * 2; }
+    };
+
+    // You can't write twice(5), you need to specify some of the types
+    ZC_EXPECT(10 == IntWrapper::twice(Maybe<IntWrapper>(5)));
+    ZC_EXPECT(10 == IntWrapper::twice(IntWrapper(5)));
+
+    // zc::some solves this problem elegantly
+    ZC_EXPECT(10 == IntWrapper::twice(zc::some(5)));
   }
 }
 
@@ -1149,7 +1170,7 @@ ZC_TEST("single item arrayPtr()") {
     double d;
   };
   SomeObject obj = {42, 3.1415};
-  zc::arrayPtr(obj).asBytes().fill(0);
+  zc::asBytes(obj).fill(0);
   ZC_EXPECT(obj.i == 0);
   ZC_EXPECT(obj.d == 0);
 }
@@ -1176,6 +1197,23 @@ ZC_TEST("memzero<T>()") {
   memset(arr, 0xff, 256 * sizeof(ZeroTest));
   memzero(arr);
   for (auto& t : arr) { ZC_EXPECT(t.pi == 0); }
+}
+
+ZC_TEST("ThreadId") {
+  auto id1 = ThreadId::current();
+  id1.assertCurrentThread();
+
+  auto id2 = ThreadId::current();
+  ZC_ASSERT(id2 == id1);
+
+  Thread thread([&]() {
+    auto id3 = ThreadId::current();
+    id3.assertCurrentThread();
+    ZC_ASSERT(id1 != id3);
+    ZC_ASSERT(id2 != id3);
+
+    ZC_EXPECT_THROW_MESSAGE("expected id == &currentThreadId", id1.assertCurrentThread());
+  });
 }
 
 }  // namespace

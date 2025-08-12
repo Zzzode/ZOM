@@ -48,7 +48,6 @@
 #include <sys/uio.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <zc/core/filesystem.h>
 
 #include <set>
 
@@ -56,6 +55,7 @@
 #include "zc/async/async-io.h"
 #include "zc/async/async-unix.h"
 #include "zc/core/debug.h"
+#include "zc/core/filesystem.h"
 #include "zc/core/io.h"
 #include "zc/core/miniposix.h"
 #include "zc/core/thread.h"
@@ -159,14 +159,14 @@ public:
   }
 
   Promise<ReadResult> tryReadWithFds(void* buffer, size_t minBytes, size_t maxBytes,
-                                     AutoCloseFd* fdBuffer, size_t maxFds) override {
+                                     OwnFd* fdBuffer, size_t maxFds) override {
     return tryReadInternal(buffer, minBytes, maxBytes, fdBuffer, maxFds, {0, 0});
   }
 
   Promise<ReadResult> tryReadWithStreams(void* buffer, size_t minBytes, size_t maxBytes,
                                          Own<AsyncCapabilityStream>* streamBuffer,
                                          size_t maxStreams) override {
-    auto fdBuffer = zc::heapArray<AutoCloseFd>(maxStreams);
+    auto fdBuffer = zc::heapArray<OwnFd>(maxStreams);
     auto promise =
         tryReadInternal(buffer, minBytes, maxBytes, fdBuffer.begin(), maxStreams, {0, 0});
 
@@ -409,7 +409,7 @@ private:
         ZC_FAIL_SYSCALL("pipe2()", error);
     }
 
-    AutoCloseFd pipeIn(pipeFds[0]), pipeOut(pipeFds[1]);
+    OwnFd pipeIn(pipeFds[0]), pipeOut(pipeFds[1]);
 
     return splicePumpLoop(input, pipeFds[0], pipeFds[1], readSoFar, limit, 0)
         .attach(zc::mv(pipeIn), zc::mv(pipeOut));
@@ -548,8 +548,7 @@ private:
   Maybe<Function<void(ArrayPtr<AncillaryMessage>)>> ancillaryMsgCallback;
 
   Promise<ReadResult> tryReadInternal(void* buffer, size_t minBytes, size_t maxBytes,
-                                      AutoCloseFd* fdBuffer, size_t maxFds,
-                                      ReadResult alreadyRead) {
+                                      OwnFd* fdBuffer, size_t maxFds, ReadResult alreadyRead) {
     // `alreadyRead` is the number of bytes we have already received via previous reads -- minBytes,
     // maxBytes, and buffer have already been adjusted to account for them, but this count must
     // be included in the final return value.
@@ -660,9 +659,9 @@ private:
             auto len = zc::min(cmsg->cmsg_len, spaceLeft);
             auto data = arrayPtr(reinterpret_cast<int*>(CMSG_DATA(cmsg)),
                                  (len - CMSG_LEN(0)) / sizeof(int));
-            zc::Vector<zc::AutoCloseFd> trashFds;
+            zc::Vector<zc::OwnFd> trashFds;
             for (auto fd : data) {
-              zc::AutoCloseFd ownFd(fd);
+              zc::OwnFd ownFd(fd);
               if (nfds < maxFds) {
                 fdBuffer[nfds++] = zc::mv(ownFd);
               } else {
@@ -896,14 +895,13 @@ public:
   const struct sockaddr* getRaw() const { return &addr.generic; }
   socklen_t getRawSize() const { return addrlen; }
 
-  int socket(int type) const {
+  zc::OwnFd socket(int type) const {
     bool isStream = type == SOCK_STREAM;
 
-    int result;
 #if __linux__ && !__BIONIC__
     type |= SOCK_NONBLOCK | SOCK_CLOEXEC;
 #endif
-    ZC_SYSCALL(result = ::socket(addr.generic.sa_family, type, 0));
+    auto result = ZC_SYSCALL_FD(::socket(addr.generic.sa_family, type, 0));
 
     if (isStream && (addr.generic.sa_family == AF_INET || addr.generic.sa_family == AF_INET6)) {
       // TODO(perf):  As a hack for the 0.4 release we are always setting
@@ -1329,7 +1327,7 @@ public:
 #endif
 
     if (newFd >= 0) {
-      zc::AutoCloseFd ownFd(newFd);
+      zc::OwnFd ownFd(newFd);
       if (!filter.shouldAllow(reinterpret_cast<struct sockaddr*>(&addr), addrlen)) {
         // Ignore disallowed address.
         return acceptImpl(authenticated);
@@ -1548,11 +1546,9 @@ public:
 
   Own<ConnectionReceiver> listen() override {
     auto makeReceiver = [&](SocketAddress& addr) {
-      int fd = addr.socket(SOCK_STREAM);
+      auto fd = addr.socket(SOCK_STREAM);
 
       {
-        ZC_ON_SCOPE_FAILURE(close(fd));
-
         // We always enable SO_REUSEADDR because having to take your server down for five minutes
         // before it can restart really sucks.
         int optval = 1;
@@ -1564,7 +1560,7 @@ public:
         ZC_SYSCALL(::listen(fd, SOMAXCONN));
       }
 
-      return lowLevel.wrapListenSocketFd(fd, filter, NEW_FD_FLAGS);
+      return lowLevel.wrapListenSocketFd(zc::mv(fd), filter, NEW_FD_FLAGS);
     };
 
     if (addrs.size() == 1) {
@@ -1583,11 +1579,9 @@ public:
              addrs[0].toString());
     }
 
-    int fd = addrs[0].socket(SOCK_DGRAM);
+    auto fd = addrs[0].socket(SOCK_DGRAM);
 
     {
-      ZC_ON_SCOPE_FAILURE(close(fd));
-
       // We always enable SO_REUSEADDR because having to take your server down for five minutes
       // before it can restart really sucks.
       int optval = 1;
@@ -1596,7 +1590,7 @@ public:
       addrs[0].bind(fd);
     }
 
-    return lowLevel.wrapDatagramSocketFd(fd, filter, NEW_FD_FLAGS);
+    return lowLevel.wrapDatagramSocketFd(zc::mv(fd), filter, NEW_FD_FLAGS);
   }
 
   Own<NetworkAddress> clone() override {
@@ -1628,9 +1622,9 @@ private:
              if (!addrs[0].allowedBy(filter)) {
                return ZC_EXCEPTION(FAILED, "connect() blocked by restrictPeers()");
              } else {
-               int fd = addrs[0].socket(SOCK_STREAM);
-               return lowLevel.wrapConnectingSocketFd(fd, addrs[0].getRaw(), addrs[0].getRawSize(),
-                                                      NEW_FD_FLAGS);
+               auto fd = addrs[0].socket(SOCK_STREAM);
+               return lowLevel.wrapConnectingSocketFd(zc::mv(fd), addrs[0].getRaw(),
+                                                      addrs[0].getRawSize(), NEW_FD_FLAGS);
              }
            })
         .then(
@@ -1863,10 +1857,6 @@ public:
         // when truncated. On other platforms (Linux) the length in cmsghdr will itself be
         // truncated to fit within the buffer.
 
-#if __APPLE__
-// On MacOS, `CMSG_SPACE(0)` triggers a bogus warning.
-#pragma GCC diagnostic ignored "-Wnull-pointer-arithmetic"
-#endif
         const byte* pos = reinterpret_cast<const byte*>(cmsg);
         size_t available = ancillaryBuffer.end() - pos;
         if (available < CMSG_SPACE(0)) {

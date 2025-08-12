@@ -8,7 +8,7 @@ on:
 
 env:
   BUILD_TYPE: Release
-  CLANG_FORMAT_VERSION: 18.1.8
+  CLANG_FORMAT_VERSION: 20.1.8
 
 jobs:
   check-format:
@@ -19,10 +19,10 @@ jobs:
       - name: Install clang-format
         run: |
           curl -Lo clang-format.tar.xz \
-            https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.CLANG_FORMAT_VERSION }}/clang+llvm-${{ env.CLANG_FORMAT_VERSION }}-aarch64-linux-gnu.tar.xz
+            https://github.com/llvm/llvm-project/releases/download/llvmorg-${{ env.CLANG_FORMAT_VERSION }}/LLVM-${{ env.CLANG_FORMAT_VERSION }}-Linux-ARM64.tar.xz
 
           mkdir -p /tmp/clang-format
-          tar -xf clang-format.tar.xz --wildcards --strip-components=1 -C /tmp/clang-format 'clang+llvm*/bin/clang-format'
+          tar -xf clang-format.tar.xz --wildcards --strip-components=1 -C /tmp/clang-format 'LLVM*/bin/clang-format'
 
           echo "/tmp/clang-format/bin" >> $GITHUB_PATH
 

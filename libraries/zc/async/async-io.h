@@ -21,11 +21,10 @@
 
 #pragma once
 
-#include <zc/async/timer.h>
-#include <zc/core/function.h>
-#include <zc/core/thread.h>
-
 #include "zc/async/async.h"
+#include "zc/async/timer.h"
+#include "zc/core/function.h"
+#include "zc/core/thread.h"
 
 ZC_BEGIN_HEADER
 
@@ -57,10 +56,18 @@ class AsyncInputStream : private AsyncObject {
   // Asynchronous equivalent of InputStream (from io.h).
 
 public:
-  virtual Promise<size_t> read(void* buffer, size_t minBytes, size_t maxBytes);
-  virtual Promise<size_t> tryRead(void* buffer, size_t minBytes, size_t maxBytes) = 0;
+  Promise<size_t> read(ArrayPtr<byte> buffer, size_t minBytes);
+  // Reads at least `minBytes` from the stream.
+  // Throws an exception if there is not enough data.
 
-  Promise<void> read(void* buffer, size_t bytes);
+  virtual Promise<size_t> tryRead(void* buffer, size_t minBytes, size_t maxBytes) = 0;
+  // Read at least `minBytes` from the stream. Performs partial read if there is not enough data.
+  // Returns total number of bytes read. Return value less than `minBytes` indicates EOF.
+
+  Promise<void> read(ArrayPtr<byte> buffer) {
+    // Reads a complete buffer from the stream. Throws an exception if there is not enough data.
+    return read(buffer, buffer.size()).ignoreResult();
+  }
 
   virtual Maybe<uint64_t> tryGetLength();
   // Get the remaining number of bytes that will be produced by this stream, if known.

@@ -34,12 +34,12 @@
 //   values to them.
 // - Methods are identified by an enum.
 
-#include <zc/async/async-io.h>
-#include <zc/core/debug.h>
-#include <zc/core/memory.h>
-#include <zc/core/one-of.h>
-#include <zc/core/string.h>
-#include <zc/core/vector.h>
+#include "zc/async/async-io.h"
+#include "zc/core/debug.h"
+#include "zc/core/memory.h"
+#include "zc/core/one-of.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
 
 ZC_BEGIN_HEADER
 
@@ -79,8 +79,13 @@ namespace zc {
   MACRO(MSEARCH)                                                                              \
   MACRO(NOTIFY)                                                                               \
   MACRO(SUBSCRIBE)                                                                            \
-  MACRO(UNSUBSCRIBE)
-/* UPnP */
+  MACRO(UNSUBSCRIBE)                                                                          \
+  /* UPnP */                                                                                  \
+                                                                                              \
+  MACRO(QUERY)                                                                                \
+  /* https://www.ietf.org/archive/id/draft-ietf-httpbis-safe-method-w-body-05.html */         \
+  MACRO(BAN)                                                                                  \
+  /* Non-standard method name requested by a Cloudflare customer. */
 
 enum class HttpMethod {
 // Enum of known HTTP methods.

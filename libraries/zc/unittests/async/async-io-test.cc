@@ -27,16 +27,17 @@
 #endif
 
 #include <sys/types.h>
-#include <zc/core/filesystem.h>
-#include <zc/core/time.h>
-#include <zc/ztest/gtest.h>
 
 #include "zc/async/async-io-internal.h"
 #include "zc/async/async-io.h"
 #include "zc/core/cidr.h"
 #include "zc/core/debug.h"
+#include "zc/core/filesystem.h"
 #include "zc/core/io.h"
 #include "zc/core/miniposix.h"
+#include "zc/core/time.h"
+#include "zc/ztest/gtest.h"
+
 #if _WIN32
 #include <ws2tcpip.h>
 
@@ -536,6 +537,105 @@ TEST(AsyncIo, InMemoryCapabilityPipe) {
 }
 
 #if !_WIN32 && !__CYGWIN__
+TEST(AsyncIo, InMemoryCapabilityPipeFds) {
+  // Test passing file descirptors over an in-memory capability pipe.
+  //
+  // This is identical to `TEST(AsyncIo, InMemoryCapabilityPipe)` above except we use sendFd() and
+  // receiveFd().
+
+  auto io = setupAsyncIo();
+
+  int socketFds[2]{};
+  ZC_SYSCALL(socketpair(AF_UNIX, SOCK_STREAM, 0, socketFds));
+  zc::OwnFd socketClient(socketFds[0]);
+  zc::OwnFd sokcetServer(socketFds[1]);
+
+  auto pipe2 = newCapabilityPipe();
+  char receiveBuffer1[4]{};
+  char receiveBuffer2[4]{};
+
+  // Expect to receive an FD, then read "foo" from it, then write "bar" to it.
+  Own<AsyncCapabilityStream> receivedStream;
+  auto promise = pipe2.ends[1]
+                     ->receiveFd()
+                     .then([&](OwnFd fd) {
+                       receivedStream = io.lowLevelProvider->wrapUnixSocketFd(zc::mv(fd));
+                       return receivedStream->tryRead(receiveBuffer2, 3, 4);
+                     })
+                     .then([&](size_t n) {
+                       EXPECT_EQ(3u, n);
+                       return receivedStream->write("bar"_zcb).then(
+                           [&receiveBuffer2, n]() { return heapString(receiveBuffer2, n); });
+                     });
+
+  // Send an FD, then write "foo" to the other end of the sent stream, then receive "bar"
+  // from it.
+  auto clientStream = io.lowLevelProvider->wrapSocketFd(zc::mv(socketClient));
+  zc::String result = pipe2.ends[0]
+                          ->sendFd(zc::mv(sokcetServer))
+                          .then([&]() { return clientStream->write("foo"_zcb); })
+                          .then([&]() { return clientStream->tryRead(receiveBuffer1, 3, 4); })
+                          .then([&](size_t n) {
+                            EXPECT_EQ(3u, n);
+                            return heapString(receiveBuffer1, n);
+                          })
+                          .wait(io.waitScope);
+
+  zc::String result2 = promise.wait(io.waitScope);
+
+  EXPECT_EQ("bar", result);
+  EXPECT_EQ("foo", result2);
+}
+
+TEST(AsyncIo, InMemoryCapabilityPipeFdsReverse) {
+  // Same as above, except we do sendFd() first, then receiveFd(). This hits `BlockedWrite` instead
+  // of `BlockedRead`. At one time there was a bug in that code that mishandled the file
+  // descriptors.
+
+  auto io = setupAsyncIo();
+
+  int socketFds[2]{};
+  ZC_SYSCALL(socketpair(AF_UNIX, SOCK_STREAM, 0, socketFds));
+  zc::OwnFd socketClient(socketFds[0]);
+  zc::OwnFd sokcetServer(socketFds[1]);
+
+  auto pipe2 = newCapabilityPipe();
+  char receiveBuffer1[4]{};
+  char receiveBuffer2[4]{};
+
+  // Send an FD, then write "foo" to the other end of the sent stream, then receive "bar"
+  // from it.
+  auto clientStream = io.lowLevelProvider->wrapSocketFd(zc::mv(socketClient));
+  auto promise = pipe2.ends[0]
+                     ->sendFd(zc::mv(sokcetServer))
+                     .then([&]() { return clientStream->write("foo"_zcb); })
+                     .then([&]() { return clientStream->tryRead(receiveBuffer1, 3, 4); })
+                     .then([&](size_t n) {
+                       EXPECT_EQ(3u, n);
+                       return heapString(receiveBuffer1, n);
+                     });
+
+  // Expect to receive an FD, then read "foo" from it, then write "bar" to it.
+  Own<AsyncCapabilityStream> receivedStream;
+  auto promise2 = pipe2.ends[1]
+                      ->receiveFd()
+                      .then([&](OwnFd fd) {
+                        receivedStream = io.lowLevelProvider->wrapUnixSocketFd(zc::mv(fd));
+                        return receivedStream->tryRead(receiveBuffer2, 3, 4);
+                      })
+                      .then([&](size_t n) {
+                        EXPECT_EQ(3u, n);
+                        return receivedStream->write("bar"_zcb).then(
+                            [&receiveBuffer2, n]() { return heapString(receiveBuffer2, n); });
+                      });
+
+  zc::String result = promise.wait(io.waitScope);
+  zc::String result2 = promise2.wait(io.waitScope);
+
+  EXPECT_EQ("bar", result);
+  EXPECT_EQ("foo", result2);
+}
+
 TEST(AsyncIo, CapabilityPipe) {
   auto ioContext = setupAsyncIo();
 
@@ -630,7 +730,7 @@ TEST(AsyncIo, CapabilityPipeMultiStreamMessage) {
 
   ArrayPtr<const byte> secondBuf = "bar"_zcb;
   pipe.ends[0]
-      ->writeWithStreams("foo"_zcb, arrayPtr(&secondBuf, 1), streams.finish())
+      ->writeWithStreams("foo"_zcb, arrayPtr(secondBuf), streams.finish())
       .wait(ioContext.waitScope);
 
   char receiveBuffer[7]{};
@@ -664,21 +764,21 @@ TEST(AsyncIo, ScmRightsTruncatedOdd) {
 
   int pipeFds[2]{};
   ZC_SYSCALL(miniposix::pipe(pipeFds));
-  zc::AutoCloseFd in1(pipeFds[0]);
-  zc::AutoCloseFd out1(pipeFds[1]);
+  zc::OwnFd in1(pipeFds[0]);
+  zc::OwnFd out1(pipeFds[1]);
 
   ZC_SYSCALL(miniposix::pipe(pipeFds));
-  zc::AutoCloseFd in2(pipeFds[0]);
-  zc::AutoCloseFd out2(pipeFds[1]);
+  zc::OwnFd in2(pipeFds[0]);
+  zc::OwnFd out2(pipeFds[1]);
 
   {
-    AutoCloseFd sendFds[2] = {zc::mv(out1), zc::mv(out2)};
+    OwnFd sendFds[2] = {zc::mv(out1), zc::mv(out2)};
     capPipe.ends[0]->writeWithFds("foo"_zcb, nullptr, sendFds).wait(io.waitScope);
   }
 
   {
     char buffer[4]{};
-    AutoCloseFd fdBuffer[1];
+    OwnFd fdBuffer[1];
     auto result = capPipe.ends[1]->tryReadWithFds(buffer, 3, 3, fdBuffer, 1).wait(io.waitScope);
     ZC_ASSERT(result.capCount == 1);
     zc::FdOutputStream(fdBuffer[0].get()).write("bar"_zcb);
@@ -711,7 +811,7 @@ TEST(AsyncIo, ScmRightsTruncatedOdd) {
         "buggy and leaks file descriptors when an SCM_RIGHTS message is truncated. FreeBSD was "
         "known to do this until late 2018, while MacOS still has this bug as of this writing in "
         "2019. However, ZC works around the problem on those platforms. You need to enable the "
-        "same work-around for your OS -- search for 'SCM_RIGHTS' in zc/async-io-unix.c++.");
+        "same work-around for your OS -- search for 'SCM_RIGHTS' in zc/async/async-io-unix.c++.");
   }
   ZC_ASSERT(n == 0);
 }
@@ -735,25 +835,25 @@ TEST(AsyncIo, ScmRightsTruncatedEven) {
 
   int pipeFds[2]{};
   ZC_SYSCALL(miniposix::pipe(pipeFds));
-  zc::AutoCloseFd in1(pipeFds[0]);
-  zc::AutoCloseFd out1(pipeFds[1]);
+  zc::OwnFd in1(pipeFds[0]);
+  zc::OwnFd out1(pipeFds[1]);
 
   ZC_SYSCALL(miniposix::pipe(pipeFds));
-  zc::AutoCloseFd in2(pipeFds[0]);
-  zc::AutoCloseFd out2(pipeFds[1]);
+  zc::OwnFd in2(pipeFds[0]);
+  zc::OwnFd out2(pipeFds[1]);
 
   ZC_SYSCALL(miniposix::pipe(pipeFds));
-  zc::AutoCloseFd in3(pipeFds[0]);
-  zc::AutoCloseFd out3(pipeFds[1]);
+  zc::OwnFd in3(pipeFds[0]);
+  zc::OwnFd out3(pipeFds[1]);
 
   {
-    AutoCloseFd sendFds[3] = {zc::mv(out1), zc::mv(out2), zc::mv(out3)};
+    OwnFd sendFds[3] = {zc::mv(out1), zc::mv(out2), zc::mv(out3)};
     capPipe.ends[0]->writeWithFds("foo"_zcb, nullptr, sendFds).wait(io.waitScope);
   }
 
   {
     char buffer[4]{};
-    AutoCloseFd fdBuffer[2];
+    OwnFd fdBuffer[2];
     auto result = capPipe.ends[1]->tryReadWithFds(buffer, 3, 3, fdBuffer, 2).wait(io.waitScope);
     ZC_ASSERT(result.capCount == 2);
     zc::FdOutputStream(fdBuffer[0].get()).write("bar"_zcb);
@@ -799,7 +899,7 @@ TEST(AsyncIo, ScmRightsTruncatedEven) {
         "buggy and leaks file descriptors when an SCM_RIGHTS message is truncated. FreeBSD was "
         "known to do this until late 2018, while MacOS still has this bug as of this writing in "
         "2019. However, ZC works around the problem on those platforms. You need to enable the "
-        "same work-around for your OS -- search for 'SCM_RIGHTS' in zc/async-io-unix.c++.");
+        "same work-around for your OS -- search for 'SCM_RIGHTS' in zc/async/async-io-unix.c++.");
   }
   ZC_ASSERT(n == 0);
 }
@@ -870,9 +970,7 @@ bool isMsgTruncBroken() {
   // Detect if the kernel fails to set MSG_TRUNC on recvmsg(). This seems to be the case at least
   // when running an arm64 binary under qemu.
 
-  int fd;
-  ZC_SYSCALL(fd = socket(AF_INET, SOCK_DGRAM, 0));
-  ZC_DEFER(close(fd));
+  auto fd = ZC_SYSCALL_FD(socket(AF_INET, SOCK_DGRAM, 0));
 
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
@@ -1082,9 +1180,7 @@ TEST(AsyncIo, AbstractUnixSocket) {
   Own<ConnectionReceiver> listener = addr->listen();
   // chdir proves no filesystem dependence. Test fails for regular unix socket
   // but passes for abstract unix socket.
-  int originalDirFd;
-  ZC_SYSCALL(originalDirFd = open(".", O_RDONLY | O_DIRECTORY | O_CLOEXEC));
-  ZC_DEFER(close(originalDirFd));
+  auto originalDirFd = ZC_SYSCALL_FD(open(".", O_RDONLY | O_DIRECTORY | O_CLOEXEC));
   ZC_SYSCALL(chdir("/"));
   ZC_DEFER(ZC_SYSCALL(fchdir(originalDirFd)));
 
@@ -3471,6 +3567,45 @@ ZC_TEST("pump file to socket") {
   // Try with a disk file. Should use sendfile().
   auto fs = zc::newDiskFilesystem();
   doTest(fs->getCurrent().createTemporary());
+}
+
+ZC_TEST("Calling abortRead() while tryRead() is in progress") {
+  // This is a stream that will only permit one call to tryRead() to be in progress at any one time
+  // Any tryRead calls won't ever complete
+  class NonConcurrentStream final : public zc::AsyncInputStream {
+  public:
+    virtual zc::Promise<size_t> tryRead(void* buffer, size_t minBytes, size_t maxBytes) override {
+      numConcurrentCalls++;
+      ZC_DEFER(numConcurrentCalls--);
+      co_await (zc::Promise<void>) zc::NEVER_DONE;
+      co_return 0;
+    }
+
+    uint numConcurrentCalls = 0;
+  };
+
+  EventLoop eventLoop;
+  WaitScope ws(eventLoop);
+
+  {
+    auto nonConcurrentStream = zc::heap<NonConcurrentStream>();
+
+    auto pipe = zc::newOneWayPipe();
+    auto pumpTask = nonConcurrentStream->pumpTo(*pipe.out).ignoreResult();
+    auto readTask = pipe.in->readAllBytes().ignoreResult();
+
+    // Assert that pumpTask and readTask are stuck
+    ZC_EXPECT(!pumpTask.poll(ws));
+    ZC_EXPECT(!readTask.poll(ws));
+
+    // Close the read end of the pipe (will cause an abortRead())
+    pipe.in = nullptr;
+
+    // abortRead() shouldn't invoke tryRead() again because our stream can't handle it
+    // See HttpFixedLengthEntityInputReader and HttpChunkedEntityInputReader for real examples of
+    // such streams.
+    ZC_EXPECT(nonConcurrentStream->numConcurrentCalls == 0);
+  }
 }
 
 }  // namespace

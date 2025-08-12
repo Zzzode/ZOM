@@ -28,7 +28,6 @@
 #include <winsock2.h>
 #include <ws2ipdef.h>
 #include <ws2tcpip.h>
-#include <zc/core/win32-api-version.h>
 
 #include <set>
 
@@ -39,6 +38,7 @@
 #include "zc/core/io.h"
 #include "zc/core/thread.h"
 #include "zc/core/vector.h"
+#include "zc/core/win32-api-version.h"
 
 #ifndef IPV6_V6ONLY
 // MinGW's headers are missing this.
@@ -207,17 +207,6 @@ public:
   AsyncStreamFd(Win32EventPort& eventPort, SOCKET fd, uint flags)
       : OwnedFd(fd, flags), observer(eventPort.observeIo(reinterpret_cast<HANDLE>(fd))) {}
   virtual ~AsyncStreamFd() noexcept(false) {}
-
-  Promise<size_t> read(void* buffer, size_t minBytes, size_t maxBytes) override {
-    return tryRead(buffer, minBytes, maxBytes).then([=](size_t result) {
-      ZC_REQUIRE(result >= minBytes, "Premature EOF") {
-        // Pretend we read zeros from the input.
-        memset(reinterpret_cast<byte*>(buffer) + result, 0, minBytes - result);
-        return minBytes;
-      }
-      return result;
-    });
-  }
 
   Promise<size_t> tryRead(void* buffer, size_t minBytes, size_t maxBytes) override {
     auto bufs = heapArray<WSABUF>(1);
