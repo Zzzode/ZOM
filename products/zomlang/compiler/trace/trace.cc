@@ -20,6 +20,7 @@
 #include "zc/core/debug.h"
 #include "zc/core/map.h"
 #include "zc/core/mutex.h"
+#include "zomlang/compiler/trace/trace-config.h"
 
 namespace zomlang {
 namespace compiler {

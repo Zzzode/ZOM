@@ -193,9 +193,7 @@ namespace _ {  // private
 
 StringPtr Stringifier::operator*(decltype(nullptr)) const { return "nullptr"; }
 
-StringPtr Stringifier::operator*(bool b) const {
-  return b ? StringPtr("true") : StringPtr("false");
-}
+StringPtr Stringifier::operator*(bool b) const { return b ? "true"_zc : "false"_zc; }
 
 template <typename T, typename Unsigned>
 static CappedArray<char, sizeof(T) * 3 + 2> stringifyImpl(T i) {

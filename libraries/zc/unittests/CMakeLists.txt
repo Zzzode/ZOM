@@ -36,6 +36,14 @@ foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
     endif()
   endif()
 
+  # Skip TLS tests if OpenSSL is not available
+  if(TEST_SOURCE MATCHES "tls/tls-test.cc")
+    if(NOT DEFINED ZC_HAS_OPENSSL OR NOT ZC_HAS_OPENSSL)
+      message(STATUS "Skipping TLS test: ${TEST_SOURCE} (ZC_HAS_OPENSSL not set)")
+      continue()
+    endif()
+  endif()
+
   set(IS_PLATFORM_SPECIFIC FALSE)
   if(TEST_NAME MATCHES "win32")
     set(IS_PLATFORM_SPECIFIC TRUE)

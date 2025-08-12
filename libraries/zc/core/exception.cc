@@ -127,15 +127,16 @@ struct Dbghelp {
   HINSTANCE lib;
 
   BOOL(WINAPI* symInitialize)(HANDLE hProcess, PCSTR UserSearchPath, BOOL fInvadeProcess);
-  BOOL(WINAPI* stackWalk64)
-  (DWORD MachineType, HANDLE hProcess, HANDLE hThread, LPSTACKFRAME64 StackFrame,
-   PVOID ContextRecord, PREAD_PROCESS_MEMORY_ROUTINE64 ReadMemoryRoutine,
-   PFUNCTION_TABLE_ACCESS_ROUTINE64 FunctionTableAccessRoutine,
-   PGET_MODULE_BASE_ROUTINE64 GetModuleBaseRoutine, PTRANSLATE_ADDRESS_ROUTINE64 TranslateAddress);
+  BOOL(WINAPI* stackWalk64)(DWORD MachineType, HANDLE hProcess, HANDLE hThread,
+                            LPSTACKFRAME64 StackFrame, PVOID ContextRecord,
+                            PREAD_PROCESS_MEMORY_ROUTINE64 ReadMemoryRoutine,
+                            PFUNCTION_TABLE_ACCESS_ROUTINE64 FunctionTableAccessRoutine,
+                            PGET_MODULE_BASE_ROUTINE64 GetModuleBaseRoutine,
+                            PTRANSLATE_ADDRESS_ROUTINE64 TranslateAddress);
   PVOID(WINAPI* symFunctionTableAccess64)(HANDLE hProcess, DWORD64 AddrBase);
   DWORD64(WINAPI* symGetModuleBase64)(HANDLE hProcess, DWORD64 qwAddr);
-  BOOL(WINAPI* symGetLineFromAddr64)
-  (HANDLE hProcess, DWORD64 qwAddr, PDWORD pdwDisplacement, PIMAGEHLP_LINE64 Line64);
+  BOOL(WINAPI* symGetLineFromAddr64)(HANDLE hProcess, DWORD64 qwAddr, PDWORD pdwDisplacement,
+                                     PIMAGEHLP_LINE64 Line64);
 
 #if __GNUC__ && !__clang__ && __GNUC__ >= 8
 // GCC 8 warns that our reinterpret_casts of function pointers below are casting between
@@ -226,14 +227,14 @@ ArrayPtr<void* const> getStackTrace(ArrayPtr<void*> space, uint ignoreCount, HAN
 namespace {
 
 struct PipePair {
-  zc::AutoCloseFd readEnd;
-  zc::AutoCloseFd writeEnd;
+  zc::OwnFd readEnd;
+  zc::OwnFd writeEnd;
 };
 
 PipePair raiiPipe() {
   int fds[2];
   ZC_SYSCALL(pipe(fds));
-  return PipePair{AutoCloseFd(fds[0]), AutoCloseFd(fds[1])};
+  return PipePair{OwnFd(fds[0]), OwnFd(fds[1])};
 }
 
 // A simple subprocess wrapper with in/out pipes.
@@ -277,8 +278,8 @@ struct Subprocess {
   }
 
   pid_t pid;
-  zc::AutoCloseFd in;
-  zc::AutoCloseFd out;
+  zc::OwnFd in;
+  zc::OwnFd out;
 };
 
 String stringifyStackTraceWithLlvm(ArrayPtr<void* const> trace) {
@@ -859,7 +860,6 @@ retry:
     ) {
       // We're at the start of a directory name. Check for valid prefixes.
       for (zc::StringPtr root : ROOTS) {
-        ZC_UNUSED const zc::StringPtr sss = filename.slice(i);
         if (filename.slice(i).startsWith(root)) {
           filename = filename.slice(i + root.size());
 
@@ -957,9 +957,9 @@ Exception::Exception(const Exception& other) noexcept
       type(other.type),
       description(heapString(other.description)),
       traceCount(other.traceCount) {
-  if (file == other.ownFile.cStr()) {
+  if (other.ownFile != nullptr) {
     ownFile = heapString(other.ownFile);
-    file = ownFile.cStr();
+    file = trimSourceFilename(ownFile).cStr();
   }
 
   if (other.remoteTrace != nullptr) { remoteTrace = zc::str(other.remoteTrace); }

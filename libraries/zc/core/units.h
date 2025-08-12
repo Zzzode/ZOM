@@ -55,11 +55,11 @@ struct Id {
   inline constexpr Id() : value(0) {}
   inline constexpr explicit Id(int value) : value(value) {}
 
-  inline constexpr bool operator==(const Id& other) const { return value == other.value; }
-  inline constexpr bool operator<=(const Id& other) const { return value <= other.value; }
-  inline constexpr bool operator>=(const Id& other) const { return value >= other.value; }
-  inline constexpr bool operator<(const Id& other) const { return value < other.value; }
-  inline constexpr bool operator>(const Id& other) const { return value > other.value; }
+  inline constexpr bool operator==(const Id& other) const = default;
+  inline constexpr bool operator<=(const Id& other) const = default;
+  inline constexpr bool operator>=(const Id& other) const = default;
+  inline constexpr bool operator<(const Id& other) const = default;
+  inline constexpr bool operator>(const Id& other) const = default;
 };
 
 // =======================================================================================
@@ -432,7 +432,7 @@ public:
     return *this;
   }
 
-  inline constexpr bool operator==(const Absolute& other) const { return value == other.value; }
+  inline constexpr bool operator==(const Absolute& other) const = default;
   inline constexpr bool operator<=(const Absolute& other) const { return value <= other.value; }
   inline constexpr bool operator>=(const Absolute& other) const { return value >= other.value; }
   inline constexpr bool operator<(const Absolute& other) const { return value < other.value; }
@@ -560,7 +560,6 @@ public:
   OP(|, true)   // bitwise ops can't overflow
 
   COMPARE_OP(==)
-  COMPARE_OP(!=)
   COMPARE_OP(<)
   COMPARE_OP(>)
   COMPARE_OP(<=)
@@ -682,7 +681,6 @@ public:
   // subtraction requires proof that subtrahend is not greater than the minuend.
 
   COMPARE_OP(==)
-  COMPARE_OP(!=)
   COMPARE_OP(<)
   COMPARE_OP(>)
   COMPARE_OP(<=)
@@ -731,7 +729,7 @@ public:
   inline Maybe<Bounded<maxN - otherValue, T>> trySubtract(BoundedConst<otherValue>) const {
     // Subtract a number, calling func() if the result would underflow.
     if (value < otherValue) {
-      return nullptr;
+      return zc::none;
     } else {
       return Bounded<maxN - otherValue, T>(value - otherValue, unsafe);
     }
@@ -806,8 +804,8 @@ inline constexpr Bounded<newMaxN, T> assumeMax(BoundedConst<maxN>, Bounded<maxN,
 }
 
 template <uint maxN, typename Number, typename Unit>
-inline constexpr auto assumeMax(Quantity<BoundedConst<maxN>, Unit>,
-                                Quantity<Number, Unit> value) -> decltype(assumeMax<maxN>(value)) {
+inline constexpr auto assumeMax(Quantity<BoundedConst<maxN>, Unit>, Quantity<Number, Unit> value)
+    -> decltype(assumeMax<maxN>(value)) {
   return assumeMax<maxN>(value);
 }
 
@@ -910,7 +908,7 @@ inline constexpr Bounded<zc::max(aN, bN), WiderType<A, B>> max(Bounded<aN, A> a,
 // We need to override min() and max() because:
 // 1) WiderType<> might not choose the correct bounds.
 // 2) One of the two sides of the ternary operator in the default implementation would fail to
-//    checker even though it is OK in practice.
+//    typecheck even though it is OK in practice.
 
 // -------------------------------------------------------------------
 // Operators between Bounded and BoundedConst
@@ -964,7 +962,6 @@ OP(|, maxN | cvalue)
 REVERSE_OP(|, maxN | cvalue)
 
 COMPARE_OP(==)
-COMPARE_OP(!=)
 COMPARE_OP(<)
 COMPARE_OP(>)
 COMPARE_OP(<=)
@@ -1111,7 +1108,6 @@ OP(>>)
 OP(&)
 OP(|)
 OP(==)
-OP(!=)
 OP(<=)
 OP(>=)
 OP(<)
@@ -1139,7 +1135,7 @@ public:
       return *this;
     }
 
-    inline bool operator==(const Iterator& other) const { return inner == other.inner; }
+    inline bool operator==(const Iterator& other) const = default;
 
   private:
     typename Range<T>::Iterator inner;
@@ -1170,7 +1166,7 @@ public:
       return *this;
     }
 
-    inline bool operator==(const Iterator& other) const { return inner == other.inner; }
+    inline bool operator==(const Iterator& other) const = default;
 
   private:
     typename Range<T>::Iterator inner;

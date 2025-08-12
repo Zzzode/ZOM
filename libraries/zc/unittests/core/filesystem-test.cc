@@ -298,15 +298,15 @@ ZC_TEST("InMemoryFile") {
   clock.expectChanged(*file);
   ZC_EXPECT(file->readAllText() == "foo");
 
-  file->write(3, StringPtr("bar").asBytes());
+  file->write(3, "bar"_zcb);
   clock.expectChanged(*file);
   ZC_EXPECT(file->readAllText() == "foobar");
 
-  file->write(3, StringPtr("baz").asBytes());
+  file->write(3, "baz"_zcb);
   clock.expectChanged(*file);
   ZC_EXPECT(file->readAllText() == "foobaz");
 
-  file->write(9, StringPtr("qux").asBytes());
+  file->write(9, "qux"_zcb);
   clock.expectChanged(*file);
   ZC_EXPECT(file->readAllText() == zc::StringPtr("foobaz\0\0\0qux", 12));
 
@@ -336,12 +336,12 @@ ZC_TEST("InMemoryFile") {
     ZC_EXPECT(zc::str(privateMapping.first(6).asChars()) == "foobaz");
     clock.expectUnchanged(*file);
 
-    file->write(0, StringPtr("qux").asBytes());
+    file->write(0, "qux"_zcb);
     clock.expectChanged(*file);
     ZC_EXPECT(zc::str(mapping.first(6).asChars()) == "quxbaz");
     ZC_EXPECT(zc::str(privateMapping.first(6).asChars()) == "foobaz");
 
-    file->write(12, StringPtr("corge").asBytes());
+    file->write(12, "corge"_zcb);
     ZC_EXPECT(zc::str(mapping.slice(12, 17).asChars()) == "corge");
 
     // Can shrink.
@@ -548,7 +548,7 @@ ZC_TEST("InMemoryDirectory") {
   ZC_EXPECT(dir->openFile(Path({"corge", "grault"}))->readAllText() == "garply");
 
   dir->openFile(Path({"corge", "grault"}), WriteMode::CREATE | WriteMode::MODIFY)
-      ->write(0, StringPtr("rag").asBytes());
+      ->write(0, "rag"_zcb);
   ZC_EXPECT(dir->openFile(Path({"corge", "grault"}))->readAllText() == "ragply");
   clock.expectUnchanged(*dir);
 

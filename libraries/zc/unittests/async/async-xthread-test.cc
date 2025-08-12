@@ -23,12 +23,11 @@
 #include "zc/core/win32-api-version.h"
 #endif
 
-#include <zc/ztest/test.h>
-
 #include "zc/async/async.h"
 #include "zc/core/debug.h"
 #include "zc/core/mutex.h"
 #include "zc/core/thread.h"
+#include "zc/ztest/test.h"
 
 #if _WIN32
 #include <windows.h>
@@ -1035,6 +1034,114 @@ ZC_TEST("cross-thread fulfiller multiple fulfills") {
   zc::Thread thread2(func);
   zc::Thread thread3(func);
   zc::Thread thread4(func);
+}
+
+ZC_TEST("cross-thread fulfiller created using Executor") {
+  MutexGuarded<Maybe<const Executor&>> executor;  // to get the Executor from the other thread
+  MutexGuarded<Maybe<Promise<int>>> promise;      // to pass the Promise to the other thread
+
+  constexpr auto MAGIC_VALUE = 123;
+
+  Thread thread([&]() noexcept {
+    ZC_XTHREAD_TEST_SETUP_LOOP;
+
+    // Give our Executor to the main thread.
+    *executor.lockExclusive() = getCurrentThreadExecutor();
+
+    // Get our Promise from the main thread.
+    Promise<int>* promisePtr;
+    {
+      auto lock = promise.lockExclusive();
+      lock.wait([&](const Maybe<Promise<int>>& value) { return value != zc::none; });
+      promisePtr = &ZC_ASSERT_NONNULL(*lock);
+    }
+
+    // Wait for the main thread to send us the MAGIC_VALUE.
+    ZC_EXPECT(promisePtr->wait(waitScope) == MAGIC_VALUE);
+  });
+
+  ([&]() noexcept {
+    ZC_XTHREAD_TEST_SETUP_LOOP;
+
+    // Get the other thread's Executor.
+    const Executor* exec;
+    {
+      auto lock = executor.lockExclusive();
+      lock.wait([&](Maybe<const Executor&> value) { return value != zc::none; });
+      exec = &ZC_ASSERT_NONNULL(*lock);
+    }
+
+    ZC_EXPECT(exec->isLive());
+
+    // Use the Executor to create a Promise, and give it to the other thread.
+    auto paf = exec->newPromiseAndCrossThreadFulfiller<int>();
+    *promise.lockExclusive() = zc::mv(paf.promise);
+
+    paf.fulfiller->fulfill(zc::cp(MAGIC_VALUE));
+  })();
+}
+
+// Helper to create an Executor whose event loop has already exited.
+Own<const Executor> makeDeadExecutor() {
+  MutexGuarded<Maybe<const Executor&>> executor;  // to get the Executor from the other thread
+
+  // The other thread's executor, owned by the main thread.
+  Maybe<Own<const Executor>> ownExecutor;
+
+  {
+    Thread thread([&]() noexcept {
+      ZC_XTHREAD_TEST_SETUP_LOOP;
+
+      auto lock = executor.lockExclusive();
+
+      // Give our Executor to the main thread.
+      *lock = getCurrentThreadExecutor();
+
+      // Wait for the main thread to tell us it addRef-ed the Executor, then exit.
+      lock.wait([&](const Maybe<const Executor&>& value) { return value == zc::none; });
+    });
+
+    ([&]() noexcept {
+      auto lock = executor.lockExclusive();
+
+      // Get the other thread's Executor.
+      lock.wait([&](Maybe<const Executor&> value) { return value != zc::none; });
+      ownExecutor = (ZC_ASSERT_NONNULL(*lock)).addRef();
+
+      ZC_EXPECT(ZC_ASSERT_NONNULL(ownExecutor)->isLive());
+
+      // Tell the other thread it can exit now.
+      *lock = zc::none;
+    })();
+  }
+
+  return ZC_ASSERT_NONNULL(zc::mv(ownExecutor));
+}
+
+ZC_TEST("cross-thread fulfiller created using Executor, used after Executor dies") {
+  ([&]() noexcept {
+    auto exec = makeDeadExecutor();
+    ZC_ASSERT(!exec->isLive());
+
+    auto paf = exec->newPromiseAndCrossThreadFulfiller<void>();
+
+    // Destroy fulfiller before promise. This implicitly rejects the promise, which is a no-op
+    // because the event loop has already exited.
+    paf.fulfiller = nullptr;
+    paf.promise = nullptr;
+  })();
+
+  ([&]() noexcept {
+    auto exec = makeDeadExecutor();
+    ZC_ASSERT(!exec->isLive());
+
+    auto paf = exec->newPromiseAndCrossThreadFulfiller<void>();
+
+    // Destroy promise before fulfiller. This cancels the promise, making the fulfiller destruction
+    // a no-op (besides freeing memory).
+    paf.promise = nullptr;
+    paf.fulfiller = nullptr;
+  })();
 }
 
 }  // namespace

@@ -31,20 +31,21 @@
 #include <openssl/tls1.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
-#include <zc/async/async-queue.h>
-#include <zc/core/debug.h>
-#include <zc/core/vector.h>
 
+#include "zc/async/async-queue.h"
+#include "zc/core/debug.h"
+#include "zc/core/vector.h"
 #include "zc/tls/readiness-io.h"
 
 #ifdef _WIN32
 #include <cryptuiapi.h>
 #include <wincrypt.h>
 #include <windows.h>
-#include <zc/core/win32-api-version.h>
+
+#include "zc/core/win32-api-version.h"
 #undef CONST
 #undef X509_NAME
-#include <zc/core/windows-sanity.h>
+#include "zc/core/windows-sanity.h"
 #endif
 
 #if OPENSSL_VERSION_NUMBER < 0x10100000L
@@ -403,7 +404,7 @@ private:
   static int bioRead(BIO* b, char* out, int outl) {
     BIO_clear_retry_flags(b);
     ZC_IF_SOME(n, reinterpret_cast<TlsConnection*>(BIO_get_data(b))
-                      ->readBuffer.read(zc::arrayPtr(out, outl).asBytes())) {
+                      ->readBuffer.read(zc::asBytes(out, outl))) {
       return n;
     }
     else {
@@ -415,7 +416,7 @@ private:
   static int bioWrite(BIO* b, const char* in, int inl) {
     BIO_clear_retry_flags(b);
     ZC_IF_SOME(n, reinterpret_cast<TlsConnection*>(BIO_get_data(b))
-                      ->writeBuffer.write(zc::arrayPtr(in, inl).asBytes())) {
+                      ->writeBuffer.write(zc::asBytes(in, inl))) {
       return n;
     }
     else {
@@ -1008,7 +1009,7 @@ TlsCertificate::TlsCertificate(zc::ArrayPtr<const zc::ArrayPtr<const byte>> asn1
 }
 
 TlsCertificate::TlsCertificate(zc::ArrayPtr<const byte> asn1)
-    : TlsCertificate(zc::arrayPtr(&asn1, 1)) {}
+    : TlsCertificate(zc::arrayPtr(asn1)) {}
 
 TlsCertificate::TlsCertificate(zc::StringPtr pem) {
   ensureOpenSslInitialized();

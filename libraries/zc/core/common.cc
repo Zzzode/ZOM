@@ -48,4 +48,12 @@ void unreachable() {
 
 }  // namespace _
 
+namespace {
+static thread_local bool currentThreadId;
+}
+
+ThreadId ThreadId::current() { return ThreadId(&currentThreadId); }
+
+void ThreadId::assertCurrentThread() const { ZC_ASSERT(id == &currentThreadId); }
+
 }  // namespace zc

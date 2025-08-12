@@ -23,7 +23,7 @@
 #define _GNU_SOURCE
 #endif
 
-#include <cstring>
+#include <string.h>
 
 #include "zc/core/function.h"
 #include "zc/ztest/test.h"
@@ -118,7 +118,7 @@ bool expectFatalThrow(zc::Maybe<Exception::Type> type, zc::Maybe<StringPtr> mess
     ZC_FAIL_EXPECT("subprocess crashed without throwing exception", WTERMSIG(status));
     return false;
   } else {
-    ZC_FAIL_EXPECT("subprocess neither excited nor crashed?", status);
+    ZC_FAIL_EXPECT("subprocess neither exited nor crashed?", status);
     return false;
   }
 #endif

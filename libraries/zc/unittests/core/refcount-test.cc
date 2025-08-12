@@ -21,7 +21,7 @@
 
 #include "zc/core/refcount.h"
 
-#include <zc/ztest/gtest.h>
+#include "zc/ztest/gtest.h"
 
 namespace zc {
 
@@ -235,7 +235,7 @@ struct AtomicSetTrueInDestructor : public AtomicRefcounted,
   AtomicSetTrueInDestructor(bool* ptr) : ptr(ptr) {}
   ~AtomicSetTrueInDestructor() { *ptr = true; }
 
-  zc::Arc<AtomicSetTrueInDestructor> newRef() { return addRefToThis(); }
+  zc::Arc<AtomicSetTrueInDestructor> newRef() const { return addRefToThis(); }
 
   bool* ptr;
 };
@@ -300,6 +300,22 @@ ZC_TEST("Arc Own interop") {
   EXPECT_FALSE(b);
   own = nullptr;
   EXPECT_TRUE(b);
+}
+
+ZC_TEST("Arc disown / reown") {
+  bool b = false;
+  const AtomicSetTrueInDestructor* ptr = nullptr;
+
+  {
+    zc::Arc<AtomicSetTrueInDestructor> ref = zc::arc<AtomicSetTrueInDestructor>(&b);
+    ptr = ref.disown();
+  }
+
+  ZC_EXPECT(b == false);
+
+  { auto ref = zc::Arc<AtomicSetTrueInDestructor>::reown(ptr); }
+
+  ZC_EXPECT(b == true);
 }
 
 }  // namespace zc

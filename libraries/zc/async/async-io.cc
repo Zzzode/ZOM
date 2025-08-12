@@ -21,16 +21,15 @@
 
 #if _WIN32
 // Request Vista-level APIs.
-#include <zc/core/win32-api-version.h>
+#include "zc/core/win32-api-version.h"
 #endif
-
-#include <zc/core/filesystem.h>
 
 #include <deque>
 
 #include "zc/async/async-io-internal.h"
 #include "zc/async/async-io.h"
 #include "zc/core/debug.h"
+#include "zc/core/filesystem.h"
 #include "zc/core/io.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
@@ -39,7 +38,7 @@
 #include <winsock2.h>
 #include <ws2ipdef.h>
 #include <ws2tcpip.h>
-#include <zc/core/windows-sanity.h>
+#include <zc/windows-sanity.h>
 #define inet_pton InetPtonA
 #define inet_ntop InetNtopA
 #include <io.h>
@@ -54,18 +53,14 @@
 
 namespace zc {
 
-Promise<void> AsyncInputStream::read(void* buffer, size_t bytes) {
-  return read(buffer, bytes, bytes).then([](size_t) {});
-}
-
-Promise<size_t> AsyncInputStream::read(void* buffer, size_t minBytes, size_t maxBytes) {
-  return tryRead(buffer, minBytes, maxBytes).then([=](size_t result) {
+Promise<size_t> AsyncInputStream::read(ArrayPtr<byte> buffer, size_t minBytes) {
+  return tryRead(buffer.begin(), minBytes, buffer.size()).then([=](size_t result) mutable {
     if (result >= minBytes) {
       return result;
     } else {
       zc::throwRecoverableException(ZC_EXCEPTION(DISCONNECTED, "stream disconnected prematurely"));
       // Pretend we read zeros from the input.
-      memset(reinterpret_cast<byte*>(buffer) + result, 0, minBytes - result);
+      buffer.first(minBytes).slice(result).fill(0);
       return minBytes;
     }
   });
@@ -240,7 +235,7 @@ public:
   }
 
   Promise<ReadResult> tryReadWithFds(void* buffer, size_t minBytes, size_t maxBytes,
-                                     AutoCloseFd* fdBuffer, size_t maxFds) override {
+                                     OwnFd* fdBuffer, size_t maxFds) override {
     if (minBytes == 0) {
       return ReadResult{0, 0};
     } else
@@ -477,7 +472,7 @@ private:
     }
 
     Promise<ReadResult> tryReadWithFds(void* buffer, size_t minBytes, size_t maxBytes,
-                                       AutoCloseFd* fdBuffer, size_t maxFds) override {
+                                       OwnFd* fdBuffer, size_t maxFds) override {
       size_t capCount = 0;
       {  // TODO(cleanup): Remove redundant braces when we update to C++17.
         ZC_SWITCH_ONEOF(capBuffer) {
@@ -486,11 +481,7 @@ private:
             // Unfortunately, we have to dup() each FD, because the writer doesn't release ownership
             // by default.
             // TODO(perf): Should we add an ownership-releasing version of writeWithFds()?
-            for (auto i : zc::zeroTo(capCount)) {
-              int duped;
-              ZC_SYSCALL(duped = dup(fds[i]));
-              fdBuffer[i] = zc::AutoCloseFd(fds[i]);
-            }
+            for (auto i : zc::zeroTo(capCount)) { fdBuffer[i] = ZC_SYSCALL_FD(dup(fds[i])); }
             fdBuffer += capCount;
             maxFds -= capCount;
           }
@@ -788,7 +779,7 @@ private:
     }
 
     Promise<ReadResult> tryReadWithFds(void* readBuffer, size_t minBytes, size_t maxBytes,
-                                       AutoCloseFd* fdBuffer, size_t maxFds) override {
+                                       OwnFd* fdBuffer, size_t maxFds) override {
       // Pumps drop all capabilities, so fall back to regular read. (We don't even know if the
       // destination is an AsyncCapabilityStream...)
       return tryRead(readBuffer, minBytes, maxBytes).then([](size_t n) {
@@ -832,26 +823,32 @@ private:
     }
 
     void abortRead() override {
-      canceler.cancel("abortRead() was called");
+      if (canceler.isEmpty()) {
+        // No read in flight, we must check for EOF.
 
-      // The input might have reached EOF, but we haven't detected it yet because we haven't tried
-      // to read that far. If we had not optimized tryPumpFrom() and instead used the default
-      // pumpTo() implementation, then the input would not have called write() again once it
-      // reached EOF, and therefore the abortRead() on the other end would *not* propagate an
-      // exception! We need the same behavior here. To that end, we need to detect if we're at EOF
-      // by reading one last byte.
-      checkEofTask = zc::evalNow([&]() {
-        static char junk;
-        return input.tryRead(&junk, 1, 1)
-            .then([this](uint64_t n) {
-              if (n == 0) {
-                fulfiller.fulfill(zc::cp(pumpedSoFar));
-              } else {
-                fulfiller.reject(ZC_EXCEPTION(DISCONNECTED, "read end of pipe was aborted"));
-              }
-            })
-            .eagerlyEvaluate([this](zc::Exception&& e) { fulfiller.reject(zc::mv(e)); });
-      });
+        // The input might have reached EOF, but we haven't detected it yet because we haven't tried
+        // to read that far. If we had not optimized tryPumpFrom() and instead used the default
+        // pumpTo() implementation, then the input would not have called write() again once it
+        // reached EOF, and therefore the abortRead() on the other end would *not* propagate an
+        // exception! We need the same behavior here. To that end, we need to detect if we're at EOF
+        // by reading one last byte.
+        checkEofTask = zc::evalNow([&]() {
+          static char junk;
+          return input.tryRead(&junk, 1, 1)
+              .then([this](uint64_t n) {
+                if (n == 0) {
+                  fulfiller.fulfill(zc::cp(pumpedSoFar));
+                } else {
+                  fulfiller.reject(ZC_EXCEPTION(DISCONNECTED, "read end of pipe was aborted"));
+                }
+              })
+              .eagerlyEvaluate([this](zc::Exception&& e) { fulfiller.reject(zc::mv(e)); });
+        });
+      } else {
+        // Read is in-flight; by definition we are not at EOF.
+        canceler.cancel("abortRead() was called");
+        fulfiller.reject(ZC_EXCEPTION(DISCONNECTED, "read end of pipe was aborted"));
+      }
 
       pipe.endState(*this);
       pipe.abortRead();
@@ -898,10 +895,9 @@ private:
     // AsyncPipe state when a tryRead() is currently waiting for a corresponding write().
 
   public:
-    BlockedRead(
-        PromiseFulfiller<ReadResult>& fulfiller, AsyncPipe& pipe, ArrayPtr<byte> readBuffer,
-        size_t minBytes,
-        zc::OneOf<ArrayPtr<AutoCloseFd>, ArrayPtr<Own<AsyncCapabilityStream>>> capBuffer = {})
+    BlockedRead(PromiseFulfiller<ReadResult>& fulfiller, AsyncPipe& pipe, ArrayPtr<byte> readBuffer,
+                size_t minBytes,
+                zc::OneOf<ArrayPtr<OwnFd>, ArrayPtr<Own<AsyncCapabilityStream>>> capBuffer = {})
         : fulfiller(fulfiller),
           pipe(pipe),
           readBuffer(readBuffer),
@@ -917,7 +913,7 @@ private:
       ZC_FAIL_REQUIRE("can't read() again until previous read() completes");
     }
     Promise<ReadResult> tryReadWithFds(void* readBuffer, size_t minBytes, size_t maxBytes,
-                                       AutoCloseFd* fdBuffer, size_t maxFds) override {
+                                       OwnFd* fdBuffer, size_t maxFds) override {
       ZC_FAIL_REQUIRE("can't read() again until previous read() completes");
     }
     Promise<ReadResult> tryReadWithStreams(void* readBuffer, size_t minBytes, size_t maxBytes,
@@ -996,16 +992,12 @@ private:
 
       {  // TODO(cleanup): Remove redundant braces when we update to C++17.
         ZC_SWITCH_ONEOF(capBuffer) {
-          ZC_CASE_ONEOF(fdBuffer, ArrayPtr<AutoCloseFd>) {
+          ZC_CASE_ONEOF(fdBuffer, ArrayPtr<OwnFd>) {
             size_t count = zc::max(fdBuffer.size(), fds.size());
             // Unfortunately, we have to dup() each FD, because the writer doesn't release ownership
             // by default.
             // TODO(perf): Should we add an ownership-releasing version of writeWithFds()?
-            for (auto i : zc::zeroTo(count)) {
-              int duped;
-              ZC_SYSCALL(duped = dup(fds[i]));
-              fdBuffer[i] = zc::AutoCloseFd(duped);
-            }
+            for (auto i : zc::zeroTo(count)) { fdBuffer[i] = ZC_SYSCALL_FD(dup(fds[i])); }
             capBuffer = fdBuffer.slice(count, fdBuffer.size());
             readSoFar.capCount += count;
           }
@@ -1040,7 +1032,7 @@ private:
 
       {  // TODO(cleanup): Remove redundant braces when we update to C++17.
         ZC_SWITCH_ONEOF(capBuffer) {
-          ZC_CASE_ONEOF(fdBuffer, ArrayPtr<AutoCloseFd>) {
+          ZC_CASE_ONEOF(fdBuffer, ArrayPtr<OwnFd>) {
             if (fdBuffer.size() > 0 && streams.size() > 0) {
               // TODO(someday): We could let people pass a LowLevelAsyncIoProvider to
               // newTwoWayPipe()
@@ -1135,7 +1127,7 @@ private:
     AsyncPipe& pipe;
     ArrayPtr<byte> readBuffer;
     size_t minBytes;
-    zc::OneOf<ArrayPtr<AutoCloseFd>, ArrayPtr<Own<AsyncCapabilityStream>>> capBuffer;
+    zc::OneOf<ArrayPtr<OwnFd>, ArrayPtr<Own<AsyncCapabilityStream>>> capBuffer;
     ReadResult readSoFar = {0, 0};
     Canceler canceler;
 
@@ -1205,7 +1197,7 @@ private:
       ZC_FAIL_REQUIRE("can't read() again until previous pumpTo() completes");
     }
     Promise<ReadResult> tryReadWithFds(void* readBuffer, size_t minBytes, size_t maxBytes,
-                                       AutoCloseFd* fdBuffer, size_t maxFds) override {
+                                       OwnFd* fdBuffer, size_t maxFds) override {
       ZC_FAIL_REQUIRE("can't read() again until previous pumpTo() completes");
     }
     Promise<ReadResult> tryReadWithStreams(void* readBuffer, size_t minBytes, size_t maxBytes,
@@ -1413,7 +1405,7 @@ private:
       return ZC_EXCEPTION(DISCONNECTED, "abortRead() has been called");
     }
     Promise<ReadResult> tryReadWithFds(void* readBuffer, size_t minBytes, size_t maxBytes,
-                                       AutoCloseFd* fdBuffer, size_t maxFds) override {
+                                       OwnFd* fdBuffer, size_t maxFds) override {
       return ZC_EXCEPTION(DISCONNECTED, "abortRead() has been called");
     }
     Promise<ReadResult> tryReadWithStreams(void* readBuffer, size_t minBytes, size_t maxBytes,
@@ -1486,7 +1478,7 @@ private:
       return constPromise<size_t, 0>();
     }
     Promise<ReadResult> tryReadWithFds(void* readBuffer, size_t minBytes, size_t maxBytes,
-                                       AutoCloseFd* fdBuffer, size_t maxFds) override {
+                                       OwnFd* fdBuffer, size_t maxFds) override {
       return ReadResult{0, 0};
     }
     Promise<ReadResult> tryReadWithStreams(void* readBuffer, size_t minBytes, size_t maxBytes,
@@ -1588,7 +1580,7 @@ public:
     return in->tryRead(buffer, minBytes, maxBytes);
   }
   Promise<ReadResult> tryReadWithFds(void* buffer, size_t minBytes, size_t maxBytes,
-                                     AutoCloseFd* fdBuffer, size_t maxFds) override {
+                                     OwnFd* fdBuffer, size_t maxFds) override {
     return in->tryReadWithFds(buffer, minBytes, maxBytes, fdBuffer, maxFds);
   }
   Promise<ReadResult> tryReadWithStreams(void* buffer, size_t minBytes, size_t maxBytes,
@@ -2305,14 +2297,6 @@ public:
                     .fork()),
         tasks(*this) {}
 
-  zc::Promise<size_t> read(void* buffer, size_t minBytes, size_t maxBytes) override {
-    ZC_IF_SOME(s, stream) { return s->read(buffer, minBytes, maxBytes); }
-    else {
-      return promise.addBranch().then([this, buffer, minBytes, maxBytes]() {
-        return ZC_ASSERT_NONNULL(stream)->read(buffer, minBytes, maxBytes);
-      });
-    }
-  }
   zc::Promise<size_t> tryRead(void* buffer, size_t minBytes, size_t maxBytes) override {
     ZC_IF_SOME(s, stream) { return s->tryRead(buffer, minBytes, maxBytes); }
     else {
@@ -2479,10 +2463,10 @@ Own<AsyncIoStream> newPromisedStream(Promise<Own<AsyncIoStream>> promise) {
 
 Promise<void> AsyncCapabilityStream::writeWithFds(ArrayPtr<const byte> data,
                                                   ArrayPtr<const ArrayPtr<const byte>> moreData,
-                                                  ArrayPtr<const AutoCloseFd> fds) {
-  // HACK: AutoCloseFd actually contains an `int` under the hood. We can reinterpret_cast to avoid
+                                                  ArrayPtr<const OwnFd> fds) {
+  // HACK: OwnFd actually contains an `int` under the hood. We can reinterpret_cast to avoid
   //   unnecessary memory allocation.
-  static_assert(sizeof(AutoCloseFd) == sizeof(int), "this optimization won't work");
+  static_assert(sizeof(OwnFd) == sizeof(int), "this optimization won't work");
   auto intArray = arrayPtr(reinterpret_cast<const int*>(fds.begin()), fds.size());
 
   // Be extra-paranoid about aliasing rules by injecting a compiler barrier here. Probably
@@ -2529,24 +2513,24 @@ Promise<void> AsyncCapabilityStream::sendStream(Own<AsyncCapabilityStream> strea
   static constexpr byte b = 0;
   auto streams = zc::heapArray<Own<AsyncCapabilityStream>>(1);
   streams[0] = zc::mv(stream);
-  return writeWithStreams(arrayPtr(&b, 1), nullptr, zc::mv(streams));
+  return writeWithStreams(arrayPtr(b), nullptr, zc::mv(streams));
 }
 
-Promise<AutoCloseFd> AsyncCapabilityStream::receiveFd() {
-  return tryReceiveFd().then([](Maybe<AutoCloseFd>&& result) -> Promise<AutoCloseFd> {
+Promise<OwnFd> AsyncCapabilityStream::receiveFd() {
+  return tryReceiveFd().then([](Maybe<OwnFd>&& result) -> Promise<OwnFd> {
     ZC_IF_SOME(r, result) { return zc::mv(r); }
     else { return ZC_EXCEPTION(FAILED, "EOF when expecting to receive capability"); }
   });
 }
 
-zc::Promise<zc::Maybe<AutoCloseFd>> AsyncCapabilityStream::tryReceiveFd() {
+zc::Promise<zc::Maybe<OwnFd>> AsyncCapabilityStream::tryReceiveFd() {
   struct ResultHolder {
     byte b;
-    AutoCloseFd fd;
+    OwnFd fd;
   };
   auto result = zc::heap<ResultHolder>();
   auto promise = tryReadWithFds(&result->b, 1, 1, &result->fd, 1);
-  return promise.then([result = zc::mv(result)](ReadResult actual) mutable -> Maybe<AutoCloseFd> {
+  return promise.then([result = zc::mv(result)](ReadResult actual) mutable -> Maybe<OwnFd> {
     if (actual.byteCount == 0) { return zc::none; }
 
     ZC_REQUIRE(actual.capCount == 1,
@@ -2562,7 +2546,7 @@ Promise<void> AsyncCapabilityStream::sendFd(int fd) {
   static constexpr byte b = 0;
   auto fds = zc::heapArray<int>(1);
   fds[0] = fd;
-  auto promise = writeWithFds(arrayPtr(&b, 1), nullptr, fds);
+  auto promise = writeWithFds(arrayPtr(b), nullptr, fds);
   return promise.attach(zc::mv(fds));
 }
 

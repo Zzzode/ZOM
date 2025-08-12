@@ -26,7 +26,7 @@
 // so this check isn't appropriate for us.
 
 #if _WIN32 || __CYGWIN__
-#include <zc/core/win32-api-version.h>
+#include "zc/core/win32-api-version.h"
 #elif __APPLE__
 // getcontext() and friends are marked deprecated on MacOS but seemingly no replacement is
 // provided. It appears as if they deprecated it solely because the standards bodies deprecated it,
@@ -57,7 +57,8 @@
 
 #if _WIN32 || __CYGWIN__
 #include <windows.h>  // for Sleep(0) and fibers
-#include <zc/core/windows-sanity.h>
+
+#include "zc/core/windows-sanity.h"
 #else
 
 #if ZC_USE_FIBERS
@@ -326,7 +327,14 @@ protected:
     }
 
     // Call the error handler if there was an exception.
-    ZC_IF_SOME(e, result.exception) { taskSet.errorHandler.taskFailed(zc::mv(e)); }
+    ZC_IF_SOME(e, result.exception) {
+      // If we throw an exception here, self will be dropped, which means we're cancelling
+      // ourselves, which will crash. Even if that were not the case, throwing here will unwind
+      // straight out of the event loop. Hence, taskFailed() callbacks really shouldn't throw.
+      // But if one does, it's better that we just crash here rather than try to unwind. So, wrap
+      // the whole thing in a noexcept IIFE.
+      ([&]() noexcept { taskSet.errorHandler.taskFailed(zc::mv(e)); })();
+    }
 
     return Own<Event>(mv(self));
   }
@@ -1000,6 +1008,9 @@ void XThreadEvent::sendReply() noexcept {
         // Calling thread exited without cancelling the promise. This is UB. In fact,
         // `replyExecutor` is probably already destroyed and we are in use-after-free territory
         // already. Better abort. (sendReply() is noexcept so that this aborts.)
+        //
+        // TODO(someday): XThreadPaf had a similar UB case in ~FulfillScope(), but we got rid of it
+        //   by holding a strong reference to the Executor. Can we do the same here?
         ZC_FAIL_ASSERT(
             "the thread which called zc::Executor::executeAsync() apparently exited its own "
             "event loop without canceling the cross-thread promise first; this is undefined "
@@ -1098,7 +1109,7 @@ void XThreadEvent::traceEvent(TraceBuilder& builder) {
 
 void XThreadEvent::onReady(Event* event) noexcept { onReadyEvent.init(event); }
 
-XThreadPaf::XThreadPaf() : state(WAITING), executor(getCurrentThreadExecutor()) {}
+XThreadPaf::XThreadPaf(Own<const Executor> executor) : state(WAITING), executor(zc::mv(executor)) {}
 XThreadPaf::~XThreadPaf() noexcept(false) {}
 
 void XThreadPaf::destroy() {
@@ -1114,14 +1125,14 @@ void XThreadPaf::destroy() {
   } else {
     // Whoops, another thread is already in the process of fulfilling this promise. We'll have to
     // wait for it to finish and transition the state to FULFILLED.
-    executor.impl->state.when([&](auto&) { return state == FULFILLED || state == DISPATCHED; },
-                              [&](Executor::Impl::State& exState) {
-                                if (state == FULFILLED) {
-                                  // The object is on the queue but was not yet dispatched. Remove
-                                  // it.
-                                  exState.fulfilled.remove(*this);
-                                }
-                              });
+    executor->impl->state.when([&](auto&) { return state == FULFILLED || state == DISPATCHED; },
+                               [&](Executor::Impl::State& exState) {
+                                 if (state == FULFILLED) {
+                                   // The object is on the queue but was not yet dispatched. Remove
+                                   // it.
+                                   exState.fulfilled.remove(*this);
+                                 }
+                               });
 
     // It's ours now, delete it.
     delete this;
@@ -1156,12 +1167,12 @@ XThreadPaf::FulfillScope::FulfillScope(XThreadPaf** pointer) {
     obj = nullptr;
   }
 }
-XThreadPaf::FulfillScope::~FulfillScope() noexcept {  // intentionally noexcept
+XThreadPaf::FulfillScope::~FulfillScope() noexcept(false) {
   if (obj != nullptr) {
-    auto lock = obj->executor.impl->state.lockExclusive();
+    auto lock = obj->executor->impl->state.lockExclusive();
+    lock->fulfilled.add(*obj);
+    __atomic_store_n(&obj->state, FULFILLED, __ATOMIC_RELEASE);
     ZC_IF_SOME(l, lock->loop) {
-      lock->fulfilled.add(*obj);
-      __atomic_store_n(&obj->state, FULFILLED, __ATOMIC_RELEASE);
       ZC_IF_SOME(p, l.port) {
         // TODO(perf): It's annoying we have to call wake() with the lock held, but we have to
         //   prevent the destination EventLoop from being destroyed first.
@@ -1169,12 +1180,9 @@ XThreadPaf::FulfillScope::~FulfillScope() noexcept {  // intentionally noexcept
       }
     }
     else {
-      // This will abort due to the method being `noexcept`, which is what we want because this
-      // is UB.
-      ZC_FAIL_REQUIRE(
-          "the thread which called zc::newPromiseAndCrossThreadFulfiller<T>() apparently exited "
-          "its own event loop without canceling the cross-thread promise first; this is "
-          "undefined behavior so I will crash now");
+      // The thread which called zc::newPromiseAndCrossThreadFulfiller<T>() apparently exited its
+      // own event loop without canceling the cross-thread promise first. Whoever now owns the
+      // promise can only do one thing with it safely: destroy it.
     }
   }
 }
@@ -2364,7 +2372,9 @@ struct FiberStack::Impl {
     void ForkBranchBase::tracePromise(TraceBuilder& builder, bool stopAtNextEvent) {
       if (stopAtNextEvent) return;
 
-      if (hub.get() != nullptr) { hub->inner->tracePromise(builder, false); }
+      if (hub.get() != nullptr && hub->inner.get() != nullptr) {
+        hub->inner->tracePromise(builder, false);
+      }
 
       // TODO(debug): Maybe use __builtin_return_address to get the locations that called fork() and
       //   addBranch()?
@@ -2989,7 +2999,7 @@ struct FiberStack::Impl {
     };
 
     Maybe<Own<Event>> CoroutineBase::fire() {
-      // Call Awaiter::await_resume() and proceed with the coroutine. Note that this will not
+      // Call PromiseAwaiter::await_resume() and proceed with the coroutine. Note that this will not
       // destroy the coroutine if control flows off the end of it, because we return
       // suspend_always() from final_suspend().
       //
@@ -2997,8 +3007,6 @@ struct FiberStack::Impl {
       // us without resuming the coroutine, which would save us from throwing an exception when we
       // already know where it's going. But, we don't really know: the `co_await` might be in a
       // try-catch block, so we have no choice but to resume and throw later.
-
-      promiseNodeForTrace = zc::none;
 
       coroutine.resume();
 
@@ -3055,14 +3063,12 @@ struct FiberStack::Impl {
       }
     }
 
-    CoroutineBase::AwaiterBase::AwaiterBase(OwnPromiseNode&& node) : node(zc::mv(node)) {}
-    CoroutineBase::AwaiterBase::AwaiterBase(AwaiterBase&&) = default;
-    CoroutineBase::AwaiterBase::~AwaiterBase() noexcept(false) {
+    PromiseAwaiterBase::PromiseAwaiterBase(OwnPromiseNode&& node) : node(zc::mv(node)) {}
+    PromiseAwaiterBase::PromiseAwaiterBase(PromiseAwaiterBase&&) = default;
+    PromiseAwaiterBase::~PromiseAwaiterBase() noexcept(false) {
       // Make sure it's safe to generate an async stack trace between now and when the Coroutine is
       // destroyed.
-      ZC_IF_SOME(coroutineEvent, maybeCoroutineEvent) {
-        coroutineEvent.promiseNodeForTrace = zc::none;
-      }
+      ZC_IF_SOME(coroutine, maybeCoroutine) { coroutine.clearPromiseNodeForTrace(); }
 
       unwindDetector.catchExceptionsIfUnwinding([this]() {
         // No need to check for a moved-from state, node will just ignore the nullification.
@@ -3070,7 +3076,9 @@ struct FiberStack::Impl {
       });
     }
 
-    void CoroutineBase::AwaiterBase::getImpl(ExceptionOrValue& result, void* awaitedAt) {
+    void PromiseAwaiterBase::awaitResumeImpl(ExceptionOrValue& result, void* awaitedAt) {
+      ZC_IF_SOME(coroutine, maybeCoroutine) { coroutine.clearPromiseNodeForTrace(); }
+
       node->get(result);
 
       ZC_IF_SOME(exception, result.exception) {
@@ -3087,27 +3095,26 @@ struct FiberStack::Impl {
       }
     }
 
-    bool CoroutineBase::AwaiterBase::awaitSuspendImpl(CoroutineBase& coroutineEvent) {
+    bool PromiseAwaiterBase::awaitSuspendImpl(CoroutineBase& coroutine) {
       node->setSelfPointer(&node);
-      node->onReady(&coroutineEvent);
+      node->onReady(&coroutine);
 
-      if (coroutineEvent.hasSuspendedAtLeastOnce && coroutineEvent.isNext()) {
+      if (coroutine.canImmediatelyResume()) {
         // The result is immediately ready and this coroutine is running on the event loop's stack,
         // not a user code stack. Let's cancel our event and immediately resume. It's important that
         // we don't perform this optimization if this is the first suspension, because our caller
         // may depend on running code before this promise's continuations fire.
-        coroutineEvent.disarm();
+        coroutine.disarm();
 
         // We can resume ourselves by returning false. This accomplishes the same thing as if we had
         // returned true from await_ready().
         return false;
       } else {
         // Otherwise, we must suspend. Store a reference to the OwnPromiseNode we're waiting on for
-        // tracing purposes; coroutineEvent.fire() and/or ~Adapter() will null this out.
-        coroutineEvent.promiseNodeForTrace = node;
-        maybeCoroutineEvent = coroutineEvent;
-
-        coroutineEvent.hasSuspendedAtLeastOnce = true;
+        // tracing purposes; await_resume() and/or ~PromiseAwaiterBase() will clear it using the
+        // CoroutineBase& reference we save.
+        coroutine.setPromiseNodeForTrace(node);
+        maybeCoroutine = coroutine;
 
         return true;
       }

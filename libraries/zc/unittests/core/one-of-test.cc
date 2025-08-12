@@ -21,9 +21,8 @@
 
 #include "zc/core/one-of.h"
 
-#include <zc/ztest/gtest.h>
-
 #include "zc/core/string.h"
+#include "zc/ztest/gtest.h"
 
 namespace zc {
 
@@ -189,6 +188,55 @@ ZC_TEST("OneOf copy/move from alternative variants") {
     ZC_ASSERT((dst.is<OneOf<int, float>>()));
     ZC_ASSERT((dst.get<OneOf<int, float>>().is<float>()));
     ZC_EXPECT((dst.get<OneOf<int, float>>().get<float>() == 23.5));
+  }
+}
+
+ZC_TEST("OneOf equality") {
+  {
+    OneOf<int, bool> a = 5;
+    OneOf<int, bool> b = 5;
+    ZC_EXPECT(a == b);
+  }
+  {
+    OneOf<int, bool> a = false;
+    OneOf<int, bool> b = false;
+    ZC_EXPECT(a == b);
+  }
+  {
+    OneOf<int, bool> a = true;
+    OneOf<int, bool> b = false;
+    ZC_EXPECT(a != b);
+  }
+  {
+    OneOf<int, bool> a = 0;
+    OneOf<int, bool> b = false;
+    ZC_EXPECT(a != b);
+  }
+  {
+    OneOf<int, bool> a = 1;
+    OneOf<int, bool> b = true;
+    ZC_EXPECT(a != b);
+  }
+  {
+    OneOf<int, bool> a = 5;
+    OneOf<int, bool> b = 6;
+    ZC_EXPECT(a != b);
+  }
+  {
+    OneOf<int, bool> a = 5;
+    OneOf<int, bool> b = true;
+    ZC_EXPECT(a != b);
+  }
+}
+
+ZC_TEST("OneOf stringification") {
+  {
+    OneOf<int, bool> a = 0;
+    OneOf<int, bool> b = false;
+    OneOf<int, bool> uninit;
+    ZC_EXPECT(zc::str(a) == zc::str(0));
+    ZC_EXPECT(zc::str(b) == zc::str(false));
+    ZC_EXPECT(zc::str(uninit) == zc::str("(null OneOf)"));
   }
 }
 

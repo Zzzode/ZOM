@@ -22,12 +22,13 @@
 #include "zc/core/memory.h"
 
 #include <signal.h>
-#include <zc/ztest/gtest.h>
 
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/core/function.h"
+#include "zc/core/refcount.h"
 #include "zc/core/string.h"
+#include "zc/ztest/gtest.h"
 #include "zc/ztest/test.h"
 
 namespace zc {
@@ -140,6 +141,89 @@ TEST(Memory, AttachNested) {
   ZC_EXPECT(destroyed1 == 1, destroyed1);
   ZC_EXPECT(destroyed2 == 2, destroyed2);
   ZC_EXPECT(destroyed3 == 3, destroyed3);
+}
+
+ZC_TEST("attach Refcounted") {
+  {
+    struct RcDerived : public Refcounted {};
+    struct RcDerived2 : public RcDerived {};
+    struct ArcDerived : public AtomicRefcounted {};
+    struct ArcDerived2 : public ArcDerived {};
+
+    auto obj1 = zc::refcounted<Refcounted>();
+    auto obj2 = zc::refcounted<RcDerived>();
+    auto obj3 = zc::refcounted<RcDerived2>();
+    auto obj4 = zc::atomicRefcounted<AtomicRefcounted>();
+    auto obj5 = zc::atomicRefcounted<ArcDerived>();
+    auto obj6 = zc::atomicRefcounted<ArcDerived2>();
+
+#if 0
+    // Manually observed that these trigger output a deprecation warning during compilation, but
+    // need to disable their compilation, since the CI build forbids deprecation warnings.
+    obj1 = obj1.attach(zc::heap<bool>());
+    obj2 = obj2.attach(zc::heap<bool>());
+    obj3 = obj3.attach(zc::heap<bool>());
+    obj4 = obj4.attach(zc::heap<bool>());
+    obj5 = obj5.attach(zc::heap<bool>());
+    obj6 = obj6.attach(zc::heap<bool>());
+#endif
+
+    // No deprecation warning:
+    obj1 = obj1.attachToThisReference(zc::heap<bool>());
+    obj2 = obj2.attachToThisReference(zc::heap<bool>());
+    obj3 = obj3.attachToThisReference(zc::heap<bool>());
+    obj4 = obj4.attachToThisReference(zc::heap<bool>());
+    obj5 = obj5.attachToThisReference(zc::heap<bool>());
+    obj6 = obj6.attachToThisReference(zc::heap<bool>());
+  }
+
+  // Confirming attachToThisReference() works similarly to attach():
+  {
+    uint counter = 0;
+    uint destroyed1 = 0;
+    uint destroyed2 = 0;
+    uint destroyed3 = 0;
+    uint destroyed4 = 0;
+    uint destroyed5 = 0;
+    uint destroyed6 = 0;
+
+    auto obj1 = zc::heap<DestructionOrderRecorder>(counter, destroyed1);
+    auto obj2 = zc::heap<DestructionOrderRecorder>(counter, destroyed2);
+    auto obj3 = zc::heap<DestructionOrderRecorder>(counter, destroyed3);
+    auto obj4 = zc::heap<DestructionOrderRecorder>(counter, destroyed4);
+    auto obj5 = zc::heap<DestructionOrderRecorder>(counter, destroyed5);
+    auto obj6 = zc::heap<DestructionOrderRecorder>(counter, destroyed6);
+    auto combined = zc::refcounted<Refcounted>().attachToThisReference(zc::mv(obj1), zc::mv(obj2),
+                                                                       zc::mv(obj3));
+    auto otherRef =
+        zc::addRef(*combined).attachToThisReference(zc::mv(obj4), zc::mv(obj5), zc::mv(obj6));
+
+    ZC_EXPECT(combined.get() == otherRef.get());
+    ZC_EXPECT(destroyed1 == 0);
+    ZC_EXPECT(destroyed2 == 0);
+    ZC_EXPECT(destroyed3 == 0);
+    ZC_EXPECT(destroyed4 == 0);
+    ZC_EXPECT(destroyed5 == 0);
+    ZC_EXPECT(destroyed6 == 0);
+
+    combined = nullptr;
+
+    ZC_EXPECT(destroyed1 == 1);
+    ZC_EXPECT(destroyed2 == 2);
+    ZC_EXPECT(destroyed3 == 3);
+    ZC_EXPECT(destroyed4 == 0);
+    ZC_EXPECT(destroyed5 == 0);
+    ZC_EXPECT(destroyed6 == 0);
+
+    otherRef = nullptr;
+
+    ZC_EXPECT(destroyed1 == 1);
+    ZC_EXPECT(destroyed2 == 2);
+    ZC_EXPECT(destroyed3 == 3);
+    ZC_EXPECT(destroyed4 == 4);
+    ZC_EXPECT(destroyed5 == 5);
+    ZC_EXPECT(destroyed6 == 6);
+  }
 }
 
 ZC_TEST("attachRef") {
@@ -607,7 +691,7 @@ ZC_TEST("zc::Ptr<T> subtyping") {
   ZC_EXPECT(ptr3 == pin);
 }
 
-#ifdef ZC_ASSERT_PTR_COUNTERS
+#if ZC_ASSERT_PTR_COUNTERS
 ZC_TEST("zc::Pin<T> destroyed with active ptrs crashed") {
   PtrHolder* holder = nullptr;
 

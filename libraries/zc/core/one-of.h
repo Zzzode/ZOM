@@ -22,6 +22,7 @@
 #pragma once
 
 #include "zc/core/common.h"
+#include "zc/core/string.h"
 
 ZC_BEGIN_HEADER
 
@@ -1766,15 +1767,8 @@ private:
   // TODO(someday):  Generalize the above template and make it common.  I tried, but C++ decided to
   //   be difficult so I cut my losses.
 
-  static constexpr auto spaceSize = maxSize(sizeof(Variants)...);
-  // TODO(msvc):  This constant could just as well go directly inside space's bracket's, where it's
-  // used, but MSVC suffers a parse error on `...`.
-
-  union {
-    byte space[spaceSize];
-
-    void* forceAligned;
-    // TODO(someday):  Use C++11 alignas() once we require GCC 4.8 / Clang 3.3.
+  union alignas(void*) {
+    byte space[maxSize(sizeof(Variants)...)];
   };
 
   template <typename... T>
@@ -1935,6 +1929,47 @@ void OneOf<Variants...>::allHandled() {
 //   parameters, since macros don't recognize <> as grouping.
 // - _zc_switch_done is really used as a boolean flag to prevent the for() loop from actually
 //   looping, but it's defined as a pointer since that's all we can define in this context.
+
+namespace _ {
+
+// Helper that tries comparing a and b as type T, but only if a.is<T>().
+template <typename T, typename... Variants>
+bool compareIfIs(const OneOf<Variants...>& a, const OneOf<Variants...>& b) {
+  if (a.template is<T>()) {
+    // We know a.which() == b.which(), so b is also T.
+    return a.template get<T>() == b.template get<T>();
+  } else {
+    return false;
+  }
+}
+
+}  // namespace _
+
+template <typename... Variants>
+bool operator==(const OneOf<Variants...>& a, const OneOf<Variants...>& b) {
+  if (a == nullptr && b == nullptr) return true;
+  if ((a == nullptr) != (b == nullptr)) return false;
+
+  if (a.which() != b.which()) return false;
+
+  return (_::compareIfIs<Variants>(a, b) || ...);
+}
+
+// TODO(someday) an ideal implementation would use zc::toCharSequence instead of zc::str,
+// producing a OneOf all the possible result types, and then would implement zc::_::fill()
+// for such a OneOf. This would avoid an extra copy and allocation when the OneOf is embedded
+// in a larger string.
+template <typename... Ts>
+  requires(zc::Stringifiable<Ts> && ...)
+zc::String ZC_STRINGIFY(const zc::OneOf<Ts...>& o) {
+  zc::String result;
+  bool handled = false;
+
+  ((o.template is<Ts>() && (result = zc::str(o.template get<Ts>()), handled = true)), ...);
+
+  if (handled == false) { return zc::str("(null OneOf)"); }
+  return result;
+}
 
 }  // namespace zc
 

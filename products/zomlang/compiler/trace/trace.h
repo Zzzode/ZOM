@@ -14,10 +14,11 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
-#include "zomlang/compiler/trace/trace-config.h"
 
 namespace zomlang {
 namespace compiler {
