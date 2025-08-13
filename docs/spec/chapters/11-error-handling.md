@@ -1,29 +1,41 @@
 # Error Handling
 
-Zom provides robust error handling mechanisms through exceptions, Result types, and optional values.
+Zom provides robust error handling mechanisms through explicit error types with `raises`, optional values, and user-defined Result types. ZOM has no implicit error control flow - all errors are handled through explicit pattern matching.
 
-### Result Types
+### Native Error Types with `raises`
 
-Result types explicitly handle errors by returning either a success value or an error.
+Zom's compiler natively supports error handling through the `raises` mechanism. Functions that can fail declare their error types using `raises`, and errors are handled through explicit pattern matching.
 
 ```zom
-enum Result<T, E> {
-    Success(T),
-    Failure(E)
+// Define error types
+error DivisionByZeroError {
+    message: str,
 }
 
-fun safeDivide(a: f64, b: f64) -> Result<f64, str> {
+error FileNotFoundError {
+    path: str,
+}
+
+// Function that can return errors
+fun safeDivide(a: f64, b: f64) -> f64 raises DivisionByZeroError {
     if (b == 0.0) {
-        return Failure("Division by zero");
+        return DivisionByZeroError("Cannot divide by zero");
     }
-    return Success(a / b);
+    return a / b;
 }
 
-fun processResult() {
+// Handling errors with pattern matching
+fun processCalculation() {
     let result = safeDivide(10.0, 2.0);
     match (result) {
-        when Success(value) => print("Result: " + value.toString())
-        when Failure(error) => print("Error: " + error)
+        when DivisionByZeroError(error) => {
+            print("Error: " + error.message);
+            return 0.0;
+        }
+        when value: f64 => {
+            print("Result: " + value.toString());
+            return value;
+        }
     }
 }
 ```
@@ -47,91 +59,106 @@ fun processUser(userId: i64) {
 
 ### Error Propagation
 
-Use `?!` to propagate errors or `!!` to force unwrap (panics on failure).
+Errors must be explicitly handled and propagated through pattern matching. Functions declare their error types using `raises`, and errors are propagated using `return`. There is no implicit error propagation - all error handling is explicit.
 
 ```zom
-fun readConfigFile() -> Result<Config, FileError | ParseError> {
-    let content = readFile("config.json")?!;
-    let config = parseJson(content)?!;
-    return Success(validateConfig(config));
+fun readConfigFile() -> Config raises FileNotFoundError | ParseError {
+    let contentResult = readFile("config.json");
+    match (contentResult) {
+        when FileNotFoundError(error) => return error;
+        when content: str => {
+            let configResult = parseJson(content);
+            match (configResult) {
+                when ParseError(error) => return error;
+                when config: Config => return validateConfig(config);
+            }
+        }
+    }
 }
 
 fun initializeApp() {
-    let config = readConfigFile()!!;
-    startApp(config);
+    let configResult = readConfigFile();
+    match (configResult) {
+        when FileNotFoundError(error) => {
+            print("Config file not found: " + error.path);
+            startApp(getDefaultConfig());
+        }
+        when ParseError(error) => {
+            print("Config parse error: " + error.message);
+            startApp(getDefaultConfig());
+        }
+        when config: Config => {
+            startApp(config);
+        }
+    }
 }
 ```
 
-### Result Types
+### User-Defined Result Types
+
+While ZOM has native error handling, you can also define your own Result-like enums for cases where you want to handle success/failure as regular data rather than exceptions. Note that these are just regular enums and are not treated as error types by the compiler.
 
 ```zom
 enum Result<T, E> {
     Success(T),
-    Failure(E)
+    Failure(E),
 }
 
+// This function returns a Result enum, not a native error
 fun safeDivide(a: f64, b: f64) -> Result<f64, str> {
     if (b == 0.0) {
-        return Failure("Division by zero");
+        return Result.Failure("Division by zero");
     }
-    return Success(a / b);
+    return Result.Success(a / b);
 }
 
 fun processResult() {
     let result = safeDivide(10.0, 2.0);
     match (result) {
-        when Success(value) => print("Result: " + value.toString())
-        when Failure(error) => print("Error: " + error)
+        when Result.Success(value) => print("Result: " + value.toString())
+        when Result.Failure(error) => print("Error: " + error)
     }
 }
 ```
 
-### Optional Values
+### Multiple Error Types
+
+Functions can return multiple error types by declaring them with `raises`. All possible error types must be declared using `raises` and handled explicitly by the caller through pattern matching.
 
 ```zom
-fun findUser(id: i64) -> User? {
-    // Search for user
-    if (userExists(id)) {
-        return getUser(id);
-    }
-    return null;
+error ParseError {
+    message: str,
+    line: i32,
 }
 
-fun processUser(userId: i64) {
-    let user = findUser(userId);
-    if (user != null) {
-        print("Found user: " + user.name);
-    } else {
-        print("User not found");
+fun readConfigFile() -> Config raises FileNotFoundError | ParseError {
+    let contentResult = readFile("config.json");
+    match (contentResult) {
+        when FileNotFoundError(error) => return error;
+        when content: str => {
+            let configResult = parseJson(content);
+            match (configResult) {
+                when ParseError(error) => return error;
+                when config: Config => return validateConfig(config);
+            }
+        }
     }
-
-    // Using optional chaining
-    let email = user?.email?.toLowerCase();
-
-    // Using null coalescing
-    let displayName = user?.name ?? "Anonymous";
-}
-```
-
-### Error Propagation
-
-```zom
-fun readConfigFile() -> Config raises FileError, ParseError {
-    let content = readFile("config.json"); // Can throw FileError
-    let config = parseJson(content); // Can throw ParseError
-    return validateConfig(config); // Can throw ValidationError
 }
 
 fun initializeApp() {
-    try {
-        let config = readConfigFile();
-        startApp(config);
-    } catch (FileError error) {
-        print("Configuration file error: " + error.message);
-        useDefaultConfig();
-    } catch (ParseError error) {
-        print("Configuration parse error: " + error.message);
-        useDefaultConfig();
+    let configResult = readConfigFile();
+    match (configResult) {
+        when FileNotFoundError(error) => {
+            print("Configuration file error: " + error.path);
+            startApp(getDefaultConfig());
+        }
+        when ParseError(error) => {
+            print("Configuration parse error at line " + error.line.toString() + ": " + error.message);
+            startApp(getDefaultConfig());
+        }
+        when config: Config => {
+            startApp(config);
+        }
     }
 }
 ```
