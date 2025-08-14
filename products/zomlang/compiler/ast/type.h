@@ -34,6 +34,9 @@ public:
   ~Type() noexcept(false) override;
 
   ZC_DISALLOW_COPY_AND_MOVE(Type);
+
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
 };
 
 // Primary type (identifier-based type)

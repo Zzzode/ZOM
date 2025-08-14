@@ -29,6 +29,9 @@ class SourceRange;
 
 namespace ast {
 
+// Forward declarations
+class Visitor;
+
 // Syntax kind enumeration for all AST node types
 enum class SyntaxKind {
   // Base types
@@ -215,6 +218,9 @@ public:
   // Type checking helpers
   [[nodiscard]] bool isStatement() const;
   [[nodiscard]] bool isExpression() const;
+
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
 
 private:
   struct Impl;

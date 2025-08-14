@@ -16,6 +16,7 @@
 
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
@@ -72,6 +73,11 @@ bool Operator::hasSamePrecedenceAs(const Operator& other) const {
   return impl->precedence == other.impl->precedence;
 }
 
+// Visitor pattern implementation
+void Operator::accept(Visitor& visitor) const {
+  visitor.visit(*this);
+}
+
 // ================================================================================
 // BinaryOperator
 
@@ -84,6 +90,11 @@ BinaryOperator::BinaryOperator(zc::String symbol, OperatorPrecedence precedence,
 }
 
 BinaryOperator::~BinaryOperator() noexcept(false) = default;
+
+// Visitor pattern implementation
+void BinaryOperator::accept(Visitor& visitor) const {
+  visitor.visit(*this);
+}
 
 // ================================================================================
 // UnaryOperator::Impl
@@ -106,6 +117,11 @@ UnaryOperator::~UnaryOperator() noexcept(false) = default;
 
 bool UnaryOperator::isPrefix() const { return impl->prefix; }
 
+// Visitor pattern implementation
+void UnaryOperator::accept(Visitor& visitor) const {
+  visitor.visit(*this);
+}
+
 // ================================================================================
 // AssignmentOperator
 
@@ -118,6 +134,11 @@ AssignmentOperator::~AssignmentOperator() noexcept(false) = default;
 bool AssignmentOperator::isCompound() const {
   zc::StringPtr symbol = getSymbol();
   return symbol != "=";
+}
+
+// Visitor pattern implementation
+void AssignmentOperator::accept(Visitor& visitor) const {
+  visitor.visit(*this);
 }
 
 }  // namespace ast

@@ -33,6 +33,9 @@ public:
   ~Statement() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Statement);
+
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
 };
 
 // Type parameter declaration: T extends U

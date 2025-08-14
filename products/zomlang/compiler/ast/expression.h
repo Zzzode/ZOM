@@ -36,6 +36,9 @@ public:
   ~Expression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Expression);
+
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
 };
 
 class UnaryExpression : public Expression {

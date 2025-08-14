@@ -18,6 +18,7 @@
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/type.h"
+#include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
@@ -27,6 +28,11 @@ namespace ast {
 // Statement
 Statement::Statement(SyntaxKind kind) noexcept : Node(kind) {}
 Statement::~Statement() noexcept(false) = default;
+
+// Visitor pattern implementation
+void Statement::accept(Visitor& visitor) const {
+  visitor.visit(*this);
+}
 
 // ================================================================================
 // BindingElement::Impl

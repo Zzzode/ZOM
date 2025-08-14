@@ -35,6 +35,9 @@ public:
   const NodeList<Statement>& getStatements() const;
   zc::StringPtr getFileName() const;
 
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
+
   ZC_DISALLOW_COPY_AND_MOVE(SourceFile);
 
 private:
@@ -50,6 +53,9 @@ public:
 
   const ModulePath& getModulePath() const;
   zc::Maybe<zc::StringPtr> getAlias() const;
+
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
 
   ZC_DISALLOW_COPY_AND_MOVE(ImportDeclaration);
 
@@ -72,6 +78,9 @@ public:
   zc::Maybe<zc::StringPtr> getAlias() const;
   zc::Maybe<const ModulePath&> getModulePath() const;
 
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
+
   ZC_DISALLOW_COPY_AND_MOVE(ExportDeclaration);
 
 private:
@@ -86,6 +95,9 @@ public:
 
   zc::ArrayPtr<const zc::String> getIdentifiers() const;
   zc::String toString() const;
+
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
 
   ZC_DISALLOW_COPY_AND_MOVE(ModulePath);
 

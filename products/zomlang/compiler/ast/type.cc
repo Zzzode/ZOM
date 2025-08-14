@@ -15,6 +15,7 @@
 #include "zomlang/compiler/ast/type.h"
 
 #include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
@@ -23,6 +24,11 @@ namespace ast {
 // Type base class
 Type::Type(SyntaxKind kind) : Node(kind) {}
 Type::~Type() noexcept(false) = default;
+
+// Visitor pattern implementation
+void Type::accept(Visitor& visitor) const {
+  visitor.visit(*this);
+}
 
 // TypeReference
 struct TypeReference::Impl {
