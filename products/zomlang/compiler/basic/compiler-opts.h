@@ -28,20 +28,20 @@ namespace basic {
 struct CompilerOptions {
   /// \brief Output and emission options
   struct EmissionOptions {
-    enum class Type {
+    enum class OutputType {
       AST,
       IR,
       Binary,
     };
 
-    /// Whether to dump AST to stdout (deprecated, use outputType == Type::AST instead)
+    /// Whether to dump AST to stdout (deprecated, use outputType == OutputType::AST instead)
     bool dumpASTEnabled = false;
     /// Format for AST dumping
     ast::DumpFormat dumpFormat = ast::DumpFormat::kJSON;
     /// Output file path
     zc::Maybe<zc::String> outputPath;
     /// Emission type
-    Type outputType = Type::Binary;
+    OutputType outputType = OutputType::Binary;
     /// Syntax only compilation
     bool syntaxOnly = false;
 
