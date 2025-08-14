@@ -43,9 +43,9 @@ class Token;
 enum class LexerMode : uint8_t { kNormal, kStringInterpolation, kRegexLiteral };
 
 enum class CommentRetentionMode : uint8_t {
-  kNone,               /// Leave no comments
-  kAttachToNextToken,  /// Append a comment to the next tag
-  kReturnAsTokens      /// Return comments as separate tags
+  kNone,               // Leave no comments
+  kAttachToNextToken,  // Append a comment to the next tag
+  kReturnAsTokens      // Return comments as separate tags
 };
 
 struct LexerState {

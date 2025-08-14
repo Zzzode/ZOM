@@ -108,12 +108,13 @@ public:
 
   zc::MainBuilder::Validity setEmitType(zc::StringPtr type) {
     if (type == "ast") {
-      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::Type::AST;
+      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::AST;
       compilerOpts.emission.dumpASTEnabled = true;
     } else if (type == "ir") {
-      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::Type::IR;
+      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::IR;
     } else if (type == "binary") {
-      compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::Type::Binary;
+      compilerOpts.emission.outputType =
+          basic::CompilerOptions::EmissionOptions::OutputType::Binary;
     } else {
       return zc::str("Invalid output type: ", type, ". Valid types are: ast, ir, binary");
     }
@@ -134,7 +135,7 @@ public:
   }
 
   zc::MainBuilder::Validity enableASTDump() {
-    compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::Type::AST;
+    compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::AST;
     compilerOpts.emission.dumpASTEnabled = true;
     return true;
   }
@@ -191,13 +192,13 @@ public:
 
     // Proceed with output generation based on type
     switch (options.emission.outputType) {
-      case basic::CompilerOptions::EmissionOptions::Type::AST:
+      case basic::CompilerOptions::EmissionOptions::OutputType::AST:
         return emitAST();
 
-      case basic::CompilerOptions::EmissionOptions::Type::IR:
+      case basic::CompilerOptions::EmissionOptions::OutputType::IR:
         return emitIR();
 
-      case basic::CompilerOptions::EmissionOptions::Type::Binary:
+      case basic::CompilerOptions::EmissionOptions::OutputType::Binary:
         return emitBinary();
 
       default:

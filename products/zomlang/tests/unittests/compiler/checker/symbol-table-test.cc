@@ -14,9 +14,9 @@ ZC_TEST("SymbolTable InsertAndLookup") {
   symbol->name = zc::str("test");
   symbol->type = zc::str("int");
 
-  table.Insert(zc::str("test"), zc::mv(symbol));
+  table.insert(zc::str("test"), zc::mv(symbol));
 
-  auto* found = table.Lookup(zc::str("test"));
+  auto* found = table.lookup(zc::str("test"));
   ZC_EXPECT(found != nullptr);
   ZC_EXPECT(found->name == "test");
   ZC_EXPECT(found->type == "int");
@@ -25,7 +25,7 @@ ZC_TEST("SymbolTable InsertAndLookup") {
 ZC_TEST("SymbolTable LookupNonExistent") {
   SymbolTable table;
 
-  auto* found = table.Lookup(zc::str("nonexistent"));
+  auto* found = table.lookup(zc::str("nonexistent"));
   ZC_EXPECT(found == nullptr);
 }
 
@@ -40,11 +40,11 @@ ZC_TEST("SymbolTable MultipleSymbols") {
   symbol2->name = zc::str("y");
   symbol2->type = zc::str("string");
 
-  table.Insert(zc::str("x"), zc::mv(symbol1));
-  table.Insert(zc::str("y"), zc::mv(symbol2));
+  table.insert(zc::str("x"), zc::mv(symbol1));
+  table.insert(zc::str("y"), zc::mv(symbol2));
 
-  auto* found1 = table.Lookup(zc::str("x"));
-  auto* found2 = table.Lookup(zc::str("y"));
+  auto* found1 = table.lookup(zc::str("x"));
+  auto* found2 = table.lookup(zc::str("y"));
 
   ZC_EXPECT(found1 != nullptr);
   ZC_EXPECT(found2 != nullptr);
@@ -65,10 +65,10 @@ ZC_TEST("SymbolTable OverwriteSymbol") {
   symbol2->name = zc::str("test");
   symbol2->type = zc::str("string");
 
-  table.Insert(zc::str("test"), zc::mv(symbol1));
-  table.Insert(zc::str("test"), zc::mv(symbol2));
+  table.insert(zc::str("test"), zc::mv(symbol1));
+  table.insert(zc::str("test"), zc::mv(symbol2));
 
-  auto* found = table.Lookup(zc::str("test"));
+  auto* found = table.lookup(zc::str("test"));
   ZC_EXPECT(found != nullptr);
   ZC_EXPECT(found->type == "string");
 }

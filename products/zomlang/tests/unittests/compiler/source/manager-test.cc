@@ -199,7 +199,7 @@ ZC_TEST("SourceManager: Special Characters") {
 
   // Includes more special characters: Unicode, Tab, Newline, Space, Null character, CRLF
   zc::StringPtr content =
-      "Unicode: 你好世界\tTab\nSpace  \0Null\r\n"_zc;  // Keeping Chinese here as it's part of the
+      "Unicode: 你好世界\tTab\nSpace  \0Null\r\n"_zc;  // Keeping Chinese characters as test data
                                                        // test data
   auto bufferId = manager.addMemBufferCopy(content.asBytes(), "special.txt");
 
@@ -211,7 +211,7 @@ ZC_TEST("SourceManager: Special Characters") {
 
   // Verify position and content of special characters
   ZC_IF_SOME(offset, manager.resolveFromLineCol(
-                         bufferId, 1, 9)) {  // Position of the first Chinese character '你'
+                         bufferId, 1, 9)) {  // Position of the first Unicode character
     auto loc = manager.getLocForOffset(bufferId, offset);
     auto lineCol = manager.getPresumedLineAndColumnForLoc(loc, bufferId);
     ZC_EXPECT(lineCol.line == 1);
@@ -221,7 +221,7 @@ ZC_TEST("SourceManager: Special Characters") {
   ZC_IF_SOME(offsetTab,
              manager.resolveFromLineCol(
                  bufferId, 1,
-                 16)) {  // Position after "你好世界" (assuming 6 bytes for Chinese chars) + \t
+                 16)) {  // Position after Unicode text (assuming 6 bytes for Chinese chars) + \t
     auto locTab = manager.getLocForOffset(bufferId, offsetTab);
     auto lineColTab = manager.getPresumedLineAndColumnForLoc(locTab, bufferId);
     ZC_EXPECT(lineColTab.line == 1);

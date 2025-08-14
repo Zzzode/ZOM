@@ -30,11 +30,11 @@ struct Symbol {
 
 class SymbolTable {
 public:
-  void Insert(zc::String name, zc::Own<Symbol> symbol) {
+  void insert(zc::String name, zc::Own<Symbol> symbol) {
     symbols.upsert(zc::mv(name), zc::mv(symbol));
   }
 
-  Symbol* Lookup(const zc::String& name) {
+  Symbol* lookup(const zc::String& name) {
     ZC_IF_SOME(it, symbols.find(name)) { return it.get(); }
     return nullptr;
   }

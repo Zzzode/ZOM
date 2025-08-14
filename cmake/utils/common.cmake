@@ -37,7 +37,7 @@ if (ZOM_DISABLE_GLOB_CTOR)
   message(
     STATUS
     "Disable declare global or static variables with dynamic constructors")
-  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  if (CMAKE_C_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang++")
     add_compile_options(-Wglobal-constructors)
   endif ()
 endif ()
