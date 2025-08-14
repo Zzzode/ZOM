@@ -76,6 +76,9 @@ public:
   bool hasLowerPrecedenceThan(const Operator& other) const;
   bool hasSamePrecedenceAs(const Operator& other) const;
 
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -89,6 +92,9 @@ public:
   ~BinaryOperator() noexcept(false) override;
 
   ZC_DISALLOW_COPY_AND_MOVE(BinaryOperator);
+
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
 };
 
 // Unary operators: +, -, !, ~, ++, --
@@ -100,6 +106,9 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(UnaryOperator);
 
   bool isPrefix() const;
+
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
 
 private:
   struct Impl;
@@ -115,6 +124,9 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(AssignmentOperator);
 
   bool isCompound() const;
+
+  // Visitor pattern support
+  void accept(Visitor& visitor) const;
 };
 
 }  // namespace ast

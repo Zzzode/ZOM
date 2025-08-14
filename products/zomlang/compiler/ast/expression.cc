@@ -19,6 +19,7 @@
 #include "zomlang/compiler/ast/operator.h"
 #include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/ast/type.h"
+#include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
@@ -28,6 +29,11 @@ namespace ast {
 // Expression
 Expression::Expression(SyntaxKind kind) noexcept : Node(kind) {}
 Expression::~Expression() noexcept(false) = default;
+
+// Visitor pattern implementation
+void Expression::accept(Visitor& visitor) const {
+  visitor.visit(*this);
+}
 
 // ================================================================================
 // UnaryExpression

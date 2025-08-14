@@ -19,6 +19,7 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
@@ -48,6 +49,11 @@ const NodeList<Statement>& SourceFile::getStatements() const { return impl->stat
 
 zc::StringPtr SourceFile::getFileName() const { return impl->fileName; }
 
+// Visitor pattern implementation
+void SourceFile::accept(Visitor& visitor) const {
+  visitor.visit(*this);
+}
+
 // ================================================================================
 // ImportDeclaration::Impl
 struct ImportDeclaration::Impl {
@@ -72,6 +78,11 @@ const ModulePath& ImportDeclaration::getModulePath() const { return *impl->modul
 zc::Maybe<zc::StringPtr> ImportDeclaration::getAlias() const {
   ZC_IF_SOME(alias, impl->alias) { return alias.asPtr(); }
   else { return zc::none; }
+}
+
+// Visitor pattern implementation
+void ImportDeclaration::accept(Visitor& visitor) const {
+  visitor.visit(*this);
 }
 
 // ================================================================================
@@ -138,6 +149,11 @@ zc::Maybe<const ModulePath&> ExportDeclaration::getModulePath() const {
   ZC_UNREACHABLE;
 }
 
+// Visitor pattern implementation
+void ExportDeclaration::accept(Visitor& visitor) const {
+  visitor.visit(*this);
+}
+
 // ================================================================================
 // ModulePath::Impl
 struct ModulePath::Impl {
@@ -164,6 +180,11 @@ zc::String ModulePath::toString() const {
     result = zc::str(result, impl->identifiers[i]);
   }
   return result;
+}
+
+// Visitor pattern implementation
+void ModulePath::accept(Visitor& visitor) const {
+  visitor.visit(*this);
 }
 }  // namespace ast
 }  // namespace compiler

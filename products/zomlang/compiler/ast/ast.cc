@@ -16,6 +16,7 @@
 
 #include "zc/core/memory.h"
 #include "zomlang/compiler/source/location.h"
+#include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
@@ -79,6 +80,11 @@ bool Node::isExpression() const {
          impl->kind == SyntaxKind::kStringLiteral || impl->kind == SyntaxKind::kIntegerLiteral ||
          impl->kind == SyntaxKind::kFloatLiteral || impl->kind == SyntaxKind::kBooleanLiteral ||
          impl->kind == SyntaxKind::kNullLiteral;
+}
+
+// Visitor pattern implementation
+void Node::accept(Visitor& visitor) const {
+  visitor.visit(*this);
 }
 
 }  // namespace ast
