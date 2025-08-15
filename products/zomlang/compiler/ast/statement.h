@@ -46,8 +46,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(TypeParameter);
 
-  const Identifier* getName() const;
-  const Type* getConstraint() const;
+  const Identifier& getName() const;
+  zc::Maybe<const Type&> getConstraint() const;
 
 private:
   struct Impl;
@@ -62,8 +62,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(BindingElement);
 
-  const Identifier* getName() const;
-  const Type* getType() const;
+  const Identifier& getName() const;
+  zc::Maybe<const Type&> getType() const;
   const Expression* getInitializer() const;
 
 private:
@@ -94,11 +94,11 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(FunctionDeclaration);
 
-  const Identifier* getName() const;
+  const Identifier& getName() const;
   const NodeList<TypeParameter>& getTypeParameters() const;
   const NodeList<BindingElement>& getParameters() const;
   const ReturnType* getReturnType() const;
-  const Statement* getBody() const;
+  const Statement& getBody() const;
 
 private:
   struct Impl;
@@ -113,7 +113,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ClassDeclaration);
 
-  const Identifier* getName() const;
+  const Identifier& getName() const;
   const Identifier* getSuperClass() const;
   const NodeList<Statement>& getMembers() const;
 
@@ -143,7 +143,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ExpressionStatement);
 
-  const Expression* getExpression() const;
+  const Expression& getExpression() const;
 
 private:
   struct Impl;
@@ -158,8 +158,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(IfStatement);
 
-  const Expression* getCondition() const;
-  const Statement* getThenStatement() const;
+  const Expression& getCondition() const;
+  const Statement& getThenStatement() const;
   const Statement* getElseStatement() const;
 
 private:
@@ -174,8 +174,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(WhileStatement);
 
-  const Expression* getCondition() const;
-  const Statement* getBody() const;
+  const Expression& getCondition() const;
+  const Statement& getBody() const;
 
 private:
   struct Impl;
@@ -215,7 +215,7 @@ public:
   const Statement* getInit() const;
   const Expression* getCondition() const;
   const Expression* getUpdate() const;
-  const Statement* getBody() const;
+  const Statement& getBody() const;
 
 private:
   struct Impl;
@@ -257,7 +257,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(MatchStatement);
 
-  const Expression* getDiscriminant() const;
+  const Expression& getDiscriminant() const;
   const NodeList<Statement>& getClauses() const;
 
 private:
@@ -284,7 +284,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(InterfaceDeclaration);
 
-  const Identifier* getName() const;
+  const Identifier& getName() const;
   const NodeList<Statement>& getMembers() const;
   zc::ArrayPtr<const zc::Own<Identifier>> getExtends() const;
 
@@ -300,7 +300,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(StructDeclaration);
 
-  const Identifier* getName() const;
+  const Identifier& getName() const;
   const NodeList<Statement>& getMembers() const;
 
 private:
@@ -315,7 +315,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(EnumDeclaration);
 
-  const Identifier* getName() const;
+  const Identifier& getName() const;
   const NodeList<Statement>& getMembers() const;
 
 private:
@@ -330,7 +330,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ErrorDeclaration);
 
-  const Identifier* getName() const;
+  const Identifier& getName() const;
   const NodeList<Statement>& getMembers() const;
 
 private:
@@ -345,8 +345,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(AliasDeclaration);
 
-  const Identifier* getName() const;
-  const Type* getType() const;
+  const Identifier& getName() const;
+  const Type& getType() const;
 
 private:
   struct Impl;

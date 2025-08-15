@@ -34,10 +34,8 @@ ZC_TEST("ExpressionTest.BinaryExpressionCreation") {
   ZC_EXPECT(expr->isExpression());
 
   auto binExpr = static_cast<BinaryExpression*>(expr.get());
-  ZC_EXPECT(binExpr->getLeft() != nullptr);
-  ZC_EXPECT(binExpr->getRight() != nullptr);
-  ZC_EXPECT(binExpr->getOperator() != nullptr);
-  ZC_EXPECT(binExpr->getOperator()->getSymbol() == "+");
+  // getLeft(), getRight(), getOperator() now return references, no need for null checks
+  ZC_EXPECT(binExpr->getOperator().getSymbol() == "+");
 }
 
 ZC_TEST("ExpressionTest.UnaryExpression") {

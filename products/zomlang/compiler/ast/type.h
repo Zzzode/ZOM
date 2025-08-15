@@ -63,7 +63,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ArrayType);
 
-  const Type* getElementType() const;
+  const Type& getElementType() const;
 
 private:
   struct Impl;
@@ -108,7 +108,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ParenthesizedType);
 
-  const Type* getType() const;
+  const Type& getType() const;
 
 private:
   struct Impl;
@@ -168,8 +168,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ReturnType);
 
-  const Type* getType() const;
-  const Type* getErrorType() const;
+  const Type& getType() const;
+  zc::Maybe<const Type&> getErrorType() const;
 
 private:
   struct Impl;
@@ -187,7 +187,7 @@ public:
 
   const NodeList<TypeParameter>& getTypeParameters() const;
   const NodeList<BindingElement>& getParameters() const;
-  const ReturnType* getReturnType() const;
+  const ReturnType& getReturnType() const;
 
 private:
   struct Impl;
@@ -201,7 +201,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(OptionalType);
 
-  const Type* getType() const;
+  const Type& getType() const;
 
 private:
   struct Impl;
@@ -216,7 +216,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(TypeQuery);
 
-  const Expression* getExpression() const;
+  const Expression& getExpression() const;
 
 private:
   struct Impl;

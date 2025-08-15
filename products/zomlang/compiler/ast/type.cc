@@ -26,9 +26,7 @@ Type::Type(SyntaxKind kind) : Node(kind) {}
 Type::~Type() noexcept(false) = default;
 
 // Visitor pattern implementation
-void Type::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void Type::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // TypeReference
 struct TypeReference::Impl {
@@ -59,7 +57,7 @@ ArrayType::ArrayType(zc::Own<Type> elementType)
 
 ArrayType::~ArrayType() noexcept(false) = default;
 
-const Type* ArrayType::getElementType() const { return impl->elementType.get(); }
+const Type& ArrayType::getElementType() const { return *impl->elementType; }
 
 // UnionType
 struct UnionType::Impl {
@@ -101,7 +99,7 @@ ParenthesizedType::ParenthesizedType(zc::Own<Type> type)
 
 ParenthesizedType::~ParenthesizedType() noexcept(false) = default;
 
-const Type* ParenthesizedType::getType() const { return impl->type.get(); }
+const Type& ParenthesizedType::getType() const { return *impl->type; }
 
 // PredefinedType
 struct PredefinedType::Impl {
@@ -159,11 +157,10 @@ ReturnType::ReturnType(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType)
 
 ReturnType::~ReturnType() noexcept(false) = default;
 
-const Type* ReturnType::getType() const { return impl->type.get(); }
+const Type& ReturnType::getType() const { return *impl->type; }
 
-const Type* ReturnType::getErrorType() const {
-  return impl->errorType.map([](const zc::Own<Type>& type) { return type.get(); })
-      .orDefault(nullptr);
+zc::Maybe<const Type&> ReturnType::getErrorType() const {
+  return impl->errorType.map([](const zc::Own<Type>& type) -> const Type& { return *type; });
 }
 
 // FunctionType
@@ -193,7 +190,7 @@ const NodeList<TypeParameter>& FunctionType::getTypeParameters() const {
 
 const NodeList<BindingElement>& FunctionType::getParameters() const { return impl->parameters; }
 
-const ReturnType* FunctionType::getReturnType() const { return impl->returnType.get(); }
+const ReturnType& FunctionType::getReturnType() const { return *impl->returnType; }
 
 // OptionalType
 struct OptionalType::Impl {
@@ -207,7 +204,7 @@ OptionalType::OptionalType(zc::Own<Type> type)
 
 OptionalType::~OptionalType() noexcept(false) = default;
 
-const Type* OptionalType::getType() const { return impl->type.get(); }
+const Type& OptionalType::getType() const { return *impl->type; }
 
 // ================================================================================
 // TypeQuery
@@ -222,7 +219,7 @@ TypeQuery::TypeQuery(zc::Own<Expression> expr)
     : Type(SyntaxKind::kTypeQuery), impl(zc::heap<Impl>(zc::mv(expr))) {}
 TypeQuery::~TypeQuery() noexcept(false) = default;
 
-const Expression* TypeQuery::getExpression() const { return impl->expr.get(); }
+const Expression& TypeQuery::getExpression() const { return *impl->expr; }
 
 }  // namespace ast
 }  // namespace compiler

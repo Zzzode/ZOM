@@ -31,9 +31,7 @@ Expression::Expression(SyntaxKind kind) noexcept : Node(kind) {}
 Expression::~Expression() noexcept(false) = default;
 
 // Visitor pattern implementation
-void Expression::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void Expression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // UnaryExpression
@@ -67,9 +65,9 @@ PrefixUnaryExpression::PrefixUnaryExpression(zc::Own<UnaryOperator> op,
 
 PrefixUnaryExpression::~PrefixUnaryExpression() noexcept(false) = default;
 
-const UnaryOperator* PrefixUnaryExpression::getOperator() const { return impl->op.get(); }
+const UnaryOperator& PrefixUnaryExpression::getOperator() const { return *impl->op; }
 
-const Expression* PrefixUnaryExpression::getOperand() const { return impl->operand.get(); }
+const Expression& PrefixUnaryExpression::getOperand() const { return *impl->operand; }
 
 bool PrefixUnaryExpression::isPrefix() const { return true; }
 
@@ -94,9 +92,9 @@ PostfixUnaryExpression::PostfixUnaryExpression(zc::Own<UnaryOperator> op,
 
 PostfixUnaryExpression::~PostfixUnaryExpression() noexcept(false) = default;
 
-const UnaryOperator* PostfixUnaryExpression::getOperator() const { return impl->op.get(); }
+const UnaryOperator& PostfixUnaryExpression::getOperator() const { return *impl->op; }
 
-const Expression* PostfixUnaryExpression::getOperand() const { return impl->operand.get(); }
+const Expression& PostfixUnaryExpression::getOperand() const { return *impl->operand; }
 
 bool PostfixUnaryExpression::isPrefix() const { return false; }
 
@@ -128,7 +126,7 @@ NewExpression::NewExpression(zc::Own<Expression> callee,
 
 NewExpression::~NewExpression() noexcept(false) = default;
 
-const Expression* NewExpression::getCallee() const { return impl->callee.get(); }
+const Expression& NewExpression::getCallee() const { return *impl->callee; }
 
 const NodeList<Expression>& NewExpression::getArguments() const { return impl->arguments; }
 
@@ -165,7 +163,7 @@ CallExpression::CallExpression(zc::Own<Expression> callee,
 
 CallExpression::~CallExpression() noexcept(false) = default;
 
-const Expression* CallExpression::getCallee() const { return impl->callee.get(); }
+const Expression& CallExpression::getCallee() const { return *impl->callee; }
 
 const NodeList<Expression>& CallExpression::getArguments() const { return impl->arguments; }
 
@@ -188,9 +186,9 @@ OptionalExpression::OptionalExpression(zc::Own<Expression> object, zc::Own<Expre
 
 OptionalExpression::~OptionalExpression() noexcept(false) = default;
 
-const Expression* OptionalExpression::getObject() const { return impl->object.get(); }
+const Expression& OptionalExpression::getObject() const { return *impl->object; }
 
-const Expression* OptionalExpression::getProperty() const { return impl->property.get(); }
+const Expression& OptionalExpression::getProperty() const { return *impl->property; }
 
 // ================================================================================
 // BinaryExpression::Impl
@@ -214,11 +212,11 @@ BinaryExpression::BinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOpera
 
 BinaryExpression::~BinaryExpression() noexcept(false) = default;
 
-const Expression* BinaryExpression::getLeft() const { return impl->left.get(); }
+const Expression& BinaryExpression::getLeft() const { return *impl->left; }
 
-const BinaryOperator* BinaryExpression::getOperator() const { return impl->op.get(); }
+const BinaryOperator& BinaryExpression::getOperator() const { return *impl->op; }
 
-const Expression* BinaryExpression::getRight() const { return impl->right.get(); }
+const Expression& BinaryExpression::getRight() const { return *impl->right; }
 
 // ================================================================================
 // AssignmentExpression::Impl
@@ -242,11 +240,11 @@ AssignmentExpression::AssignmentExpression(zc::Own<Expression> left, zc::Own<Ass
 
 AssignmentExpression::~AssignmentExpression() noexcept(false) = default;
 
-const Expression* AssignmentExpression::getLeft() const { return impl->left.get(); }
+const Expression& AssignmentExpression::getLeft() const { return *impl->left; }
 
-const AssignmentOperator* AssignmentExpression::getOperator() const { return impl->op.get(); }
+const AssignmentOperator& AssignmentExpression::getOperator() const { return *impl->op; }
 
-const Expression* AssignmentExpression::getRight() const { return impl->right.get(); }
+const Expression& AssignmentExpression::getRight() const { return *impl->right; }
 
 // ================================================================================
 // ConditionalExpression::Impl
@@ -271,11 +269,11 @@ ConditionalExpression::ConditionalExpression(zc::Own<Expression> test,
 
 ConditionalExpression::~ConditionalExpression() noexcept(false) = default;
 
-const Expression* ConditionalExpression::getTest() const { return impl->test.get(); }
+const Expression& ConditionalExpression::getTest() const { return *impl->test; }
 
-const Expression* ConditionalExpression::getConsequent() const { return impl->consequent.get(); }
+const Expression& ConditionalExpression::getConsequent() const { return *impl->consequent; }
 
-const Expression* ConditionalExpression::getAlternate() const { return impl->alternate.get(); }
+const Expression& ConditionalExpression::getAlternate() const { return *impl->alternate; }
 
 // ================================================================================
 // Identifier::Impl
@@ -294,7 +292,7 @@ Identifier::Identifier(zc::String name) noexcept
 
 Identifier::~Identifier() noexcept(false) = default;
 
-const zc::StringPtr Identifier::getName() const { return impl->name.asPtr(); }
+const zc::StringPtr Identifier::getName() const { return impl->name; }
 
 // ================================================================================
 // LiteralExpression
@@ -411,9 +409,9 @@ AsExpression::AsExpression(zc::Own<Expression> expression, zc::Own<Type> targetT
 
 AsExpression::~AsExpression() noexcept(false) = default;
 
-const Expression* AsExpression::getExpression() const { return impl->expression.get(); }
+const Expression& AsExpression::getExpression() const { return *impl->expression; }
 
-const Type* AsExpression::getTargetType() const { return impl->targetType.get(); }
+const Type& AsExpression::getTargetType() const { return *impl->targetType; }
 
 // ================================================================================
 // ForcedAsExpression::Impl
@@ -436,9 +434,9 @@ ForcedAsExpression::ForcedAsExpression(zc::Own<Expression> expression,
 
 ForcedAsExpression::~ForcedAsExpression() noexcept(false) = default;
 
-const Expression* ForcedAsExpression::getExpression() const { return impl->expression.get(); }
+const Expression& ForcedAsExpression::getExpression() const { return *impl->expression; }
 
-const Type* ForcedAsExpression::getTargetType() const { return impl->targetType.get(); }
+const Type& ForcedAsExpression::getTargetType() const { return *impl->targetType; }
 
 // ================================================================================
 // ConditionalAsExpression::Impl
@@ -461,9 +459,9 @@ ConditionalAsExpression::ConditionalAsExpression(zc::Own<Expression> expression,
 
 ConditionalAsExpression::~ConditionalAsExpression() noexcept(false) = default;
 
-const Expression* ConditionalAsExpression::getExpression() const { return impl->expression.get(); }
+const Expression& ConditionalAsExpression::getExpression() const { return *impl->expression; }
 
-const Type* ConditionalAsExpression::getTargetType() const { return impl->targetType.get(); }
+const Type& ConditionalAsExpression::getTargetType() const { return *impl->targetType; }
 
 // ================================================================================
 // VoidExpression::Impl
@@ -482,7 +480,7 @@ VoidExpression::VoidExpression(zc::Own<Expression> expression) noexcept
 
 VoidExpression::~VoidExpression() noexcept(false) = default;
 
-const Expression* VoidExpression::getExpression() const { return impl->expression.get(); }
+const Expression& VoidExpression::getExpression() const { return *impl->expression; }
 
 // ================================================================================
 // TypeOfExpression::Impl
@@ -501,7 +499,7 @@ TypeOfExpression::TypeOfExpression(zc::Own<Expression> expression) noexcept
 
 TypeOfExpression::~TypeOfExpression() noexcept(false) = default;
 
-const Expression* TypeOfExpression::getExpression() const { return impl->expression.get(); }
+const Expression& TypeOfExpression::getExpression() const { return *impl->expression; }
 
 // ================================================================================
 // AwaitExpression::Impl
@@ -520,7 +518,7 @@ AwaitExpression::AwaitExpression(zc::Own<Expression> expression) noexcept
 
 AwaitExpression::~AwaitExpression() noexcept(false) = default;
 
-const Expression* AwaitExpression::getExpression() const { return impl->expression.get(); }
+const Expression& AwaitExpression::getExpression() const { return *impl->expression; }
 
 // ================================================================================
 // FunctionExpression::Impl
@@ -559,11 +557,11 @@ const NodeList<BindingElement>& FunctionExpression::getParameters() const {
   return impl->parameters;
 }
 
-const Type* FunctionExpression::getReturnType() const {
-  return impl->returnType.map([](const zc::Own<Type>& t) { return t.get(); }).orDefault(nullptr);
+zc::Maybe<const Type&> FunctionExpression::getReturnType() const {
+  return impl->returnType.map([](const zc::Own<Type>& t) -> const Type& { return *t; });
 }
 
-const Statement* FunctionExpression::getBody() const { return impl->body.get(); }
+const Statement& FunctionExpression::getBody() const { return *impl->body; }
 
 // ================================================================================
 // ParenthesizedExpression::Impl
@@ -583,7 +581,7 @@ ParenthesizedExpression::ParenthesizedExpression(zc::Own<Expression> expression)
 
 ParenthesizedExpression::~ParenthesizedExpression() noexcept(false) = default;
 
-const Expression* ParenthesizedExpression::getExpression() const { return impl->expression.get(); }
+const Expression& ParenthesizedExpression::getExpression() const { return *impl->expression; }
 
 // ================================================================================
 // ArrayLiteralExpression::Impl
@@ -653,13 +651,11 @@ PropertyAccessExpression::PropertyAccessExpression(zc::Own<LeftHandSideExpressio
 
 PropertyAccessExpression::~PropertyAccessExpression() noexcept(false) = default;
 
-LeftHandSideExpression* PropertyAccessExpression::getExpression() {
-  return const_cast<LeftHandSideExpression*>(impl->expression.get());
+const LeftHandSideExpression& PropertyAccessExpression::getExpression() const {
+  return *impl->expression;
 }
 
-Identifier* PropertyAccessExpression::getName() {
-  return const_cast<Identifier*>(impl->name.get());
-}
+const Identifier& PropertyAccessExpression::getName() const { return *impl->name; }
 
 bool PropertyAccessExpression::isQuestionDot() { return impl->questionDot; }
 
@@ -691,11 +687,11 @@ ElementAccessExpression::ElementAccessExpression(zc::Own<LeftHandSideExpression>
 
 ElementAccessExpression::~ElementAccessExpression() noexcept(false) = default;
 
-const LeftHandSideExpression* ElementAccessExpression::getExpression() {
-  return impl->expression.get();
+const LeftHandSideExpression& ElementAccessExpression::getExpression() const {
+  return *impl->expression;
 }
 
-const Expression* ElementAccessExpression::getIndex() { return impl->index.get(); }
+const Expression& ElementAccessExpression::getIndex() const { return *impl->index; }
 
 bool ElementAccessExpression::isQuestionDot() { return impl->questionDot; }
 

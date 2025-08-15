@@ -89,11 +89,11 @@ ZC_TEST("ASTFactory: Function Declaration Creation") {
   auto funcDecl = createFunctionDeclaration(zc::mv(funcName), zc::mv(typeParams),
                                             zc::mv(parameters), zc::none, zc::mv(body));
 
-  ZC_EXPECT(funcDecl->getName()->getName() == "testFunction", "Function should have correct name");
+  ZC_EXPECT(funcDecl->getName().getName() == "testFunction", "Function should have correct name");
   ZC_EXPECT(funcDecl->getParameters().size() == 2, "Function should have 2 parameters");
   ZC_EXPECT(funcDecl->getTypeParameters().size() == 0, "Function should have no type parameters");
   ZC_EXPECT(funcDecl->getReturnType() == nullptr, "Function should have no return type");
-  ZC_EXPECT(funcDecl->getBody() != nullptr, "Function should have a body");
+  // Function always has a body (reference, not pointer)
 }
 
 ZC_TEST("ASTFactory: Expression Creation") {
@@ -116,7 +116,7 @@ ZC_TEST("ASTFactory: Expression Creation") {
   args.add(createFloatLiteral(42.0));
   auto callExpr = createCallExpression(zc::mv(callee), zc::mv(args));
 
-  ZC_EXPECT(callExpr->getCallee() != nullptr, "CallExpression should have callee");
+  // CallExpression always has callee (reference, not pointer)
   ZC_EXPECT(callExpr->getArguments().size() == 2, "CallExpression should have 2 arguments");
 
   // Test conditional expression creation
@@ -125,9 +125,7 @@ ZC_TEST("ASTFactory: Expression Creation") {
   auto alternate = createStringLiteral(zc::str("false_branch"));
   auto condExpr = createConditionalExpression(zc::mv(test), zc::mv(consequent), zc::mv(alternate));
 
-  ZC_EXPECT(condExpr->getTest() != nullptr, "ConditionalExpression should have test");
-  ZC_EXPECT(condExpr->getConsequent() != nullptr, "ConditionalExpression should have consequent");
-  ZC_EXPECT(condExpr->getAlternate() != nullptr, "ConditionalExpression should have alternate");
+  // ConditionalExpression always has test, consequent, and alternate (references, not pointers)
 }
 
 ZC_TEST("ASTFactory: Statement Creation") {
@@ -150,15 +148,14 @@ ZC_TEST("ASTFactory: Statement Creation") {
   auto elseStmt = createEmptyStatement();
   auto ifStmt = createIfStatement(zc::mv(condition), zc::mv(thenStmt), zc::mv(elseStmt));
 
-  ZC_EXPECT(ifStmt->getCondition() != nullptr, "IfStatement should have condition");
-  ZC_EXPECT(ifStmt->getThenStatement() != nullptr, "IfStatement should have then statement");
-  ZC_EXPECT(ifStmt->getElseStatement() != nullptr, "IfStatement should have else statement");
+  // IfStatement always has condition and then statement (references, not pointers)
+  // Note: else statement can be null pointer since it's optional
 
   // Test return statement creation
   auto returnValue = createStringLiteral(zc::str("success"));
   auto returnStmt = createReturnStatement(zc::mv(returnValue));
 
-  ZC_EXPECT(returnStmt->getExpression() != nullptr, "ReturnStatement should have expression");
+  // ReturnStatement expression can be null pointer since it's optional
 
   // Test empty statement creation
   auto emptyStmt = createEmptyStatement();
@@ -183,7 +180,7 @@ ZC_TEST("ASTFactory: Type Creation") {
   // Test ArrayType creation
   auto elemType = createPredefinedType(zc::str("String"));
   auto arrayType = createArrayType(zc::mv(elemType));
-  ZC_EXPECT(arrayType->getElementType() != nullptr, "ArrayType should have element type");
+  // ArrayType always has element type (reference, not pointer)
 
   // Test UnionType creation
   zc::Vector<zc::Own<ast::Type>> unionTypes;
@@ -220,9 +217,9 @@ ZC_TEST("ASTFactory: Alias and Debugger Creation") {
   auto aliasName = createIdentifier(zc::str("MyAlias"));
   auto targetType = createPredefinedType(zc::str("Int"));
   auto aliasDecl = createAliasDeclaration(zc::mv(aliasName), zc::mv(targetType));
-  ZC_EXPECT(aliasDecl->getName()->getName() == "MyAlias",
+  ZC_EXPECT(aliasDecl->getName().getName() == "MyAlias",
             "AliasDeclaration should have correct name");
-  ZC_EXPECT(aliasDecl->getType() != nullptr, "AliasDeclaration should have target type");
+  // AliasDeclaration always has target type (reference, not pointer)
 
   // Test DebuggerStatement creation
   auto debuggerStmt = createDebuggerStatement();

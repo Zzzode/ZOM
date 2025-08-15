@@ -18,26 +18,15 @@
 #include "zc/core/io.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
 
-class Node;
-class SourceFile;
-class Statement;
-class Expression;
-class ImportDeclaration;
-class ExportDeclaration;
+// Forward declarations for types not in visitor.h
 class ModulePath;
 class BindingElement;
-class VariableDeclaration;
-class BlockStatement;
-class ExpressionStatement;
-class EmptyStatement;
-class BinaryExpression;
-class FunctionExpression;
-class FunctionDeclaration;
 class Type;
 class TypeReference;
 class ArrayType;
@@ -51,24 +40,6 @@ class ReturnType;
 class FunctionType;
 class OptionalType;
 class TypeQuery;
-class StringLiteral;
-class IntegerLiteral;
-class FloatLiteral;
-class BooleanLiteral;
-class NullLiteral;
-class CallExpression;
-class NewExpression;
-class ArrayLiteralExpression;
-class ObjectLiteralExpression;
-class ParenthesizedExpression;
-class Identifier;
-class PrefixUnaryExpression;
-class AssignmentExpression;
-class ConditionalExpression;
-class CastExpression;
-class AsExpression;
-class ForcedAsExpression;
-class ConditionalAsExpression;
 
 /// AST dump output format
 enum class DumpFormat {
@@ -77,8 +48,8 @@ enum class DumpFormat {
   kXML    // XML format
 };
 
-/// AST dumper class for outputting AST in various formats
-class ASTDumper {
+/// AST dumper class for outputting AST in various formats using visitor pattern
+class ASTDumper : public Visitor {
 public:
   explicit ASTDumper(zc::OutputStream& output, DumpFormat format = DumpFormat::kJSON) noexcept;
   ~ASTDumper() noexcept(false);
@@ -88,67 +59,67 @@ public:
   /// Dump a single AST node
   void dump(const Node& node);
 
-  /// Dump a source file (top-level entry point)
-  void dumpSourceFile(const SourceFile& sourceFile);
+  /// Set current indentation level
+  void setIndent(int indent) { currentIndent = indent; }
+
+  // Visitor pattern overrides for specific node types
+  void visit(const SourceFile& sourceFile) override;
+  void visit(const ImportDeclaration& importDecl) override;
+  void visit(const ExportDeclaration& exportDecl) override;
+  void visit(const VariableDeclaration& varDecl) override;
+  void visit(const FunctionDeclaration& funcDecl) override;
+  void visit(const BlockStatement& blockStmt) override;
+  void visit(const ExpressionStatement& exprStmt) override;
+  void visit(const EmptyStatement& emptyStmt) override;
+  void visit(const BinaryExpression& binExpr) override;
+  void visit(const FunctionExpression& funcExpr) override;
+  void visit(const StringLiteral& strLit) override;
+  void visit(const IntegerLiteral& intLit) override;
+  void visit(const FloatLiteral& floatLit) override;
+  void visit(const BooleanLiteral& boolLit) override;
+  void visit(const NullLiteral& nullLit) override;
+  void visit(const CallExpression& callExpr) override;
+  void visit(const NewExpression& newExpr) override;
+  void visit(const ArrayLiteralExpression& arrLit) override;
+  void visit(const ObjectLiteralExpression& objLit) override;
+  void visit(const ParenthesizedExpression& parenExpr) override;
+  void visit(const Identifier& identifier) override;
+  void visit(const PrefixUnaryExpression& prefixUnaryExpr) override;
+  void visit(const AssignmentExpression& assignmentExpr) override;
+  void visit(const ConditionalExpression& conditionalExpr) override;
+  void visit(const CastExpression& castExpr) override;
+  void visit(const AsExpression& asExpr) override;
+  void visit(const ForcedAsExpression& forcedAsExpr) override;
+  void visit(const ConditionalAsExpression& conditionalAsExpr) override;
 
 private:
   struct Impl;
   zc::Own<Impl> impl;
+  int currentIndent = 0;
 
-  // Internal dump methods for specific node types
-  void dumpNode(const Node& node, int indent = 0);
-  void dumpStatement(const Statement& stmt, int indent = 0);
-  void dumpExpression(const Expression& expr, int indent = 0);
-  void dumpImportDeclaration(const ImportDeclaration& importDecl, int indent = 0);
-  void dumpExportDeclaration(const ExportDeclaration& exportDecl, int indent = 0);
-  void dumpModulePath(const ModulePath& modulePath, int indent = 0);
-  void dumpBindingElement(const BindingElement& bindingElement, int indent = 0);
-  void dumpVariableDeclaration(const VariableDeclaration& varDecl, int indent = 0);
-  void dumpFunctionDeclaration(const FunctionDeclaration& funcDecl, int indent = 0);
-  void dumpType(const Type& type, int indent = 0);
-  void dumpTypeReference(const TypeReference& typeRef, int indent = 0);
-  void dumpArrayType(const ArrayType& arrayType, int indent = 0);
-  void dumpUnionType(const UnionType& unionType, int indent = 0);
-  void dumpIntersectionType(const IntersectionType& intersectionType, int indent = 0);
-  void dumpParenthesizedType(const ParenthesizedType& parenType, int indent = 0);
-  void dumpPredefinedType(const PredefinedType& predefinedType, int indent = 0);
-  void dumpObjectType(const ObjectType& objectType, int indent = 0);
-  void dumpTupleType(const TupleType& tupleType, int indent = 0);
-  void dumpReturnType(const ReturnType& returnType, int indent = 0);
-  void dumpFunctionType(const FunctionType& functionType, int indent = 0);
-  void dumpOptionalType(const OptionalType& optionalType, int indent = 0);
-  void dumpTypeQuery(const TypeQuery& typeQuery, int indent = 0);
-  void dumpBlockStatement(const BlockStatement& blockStmt, int indent = 0);
-  void dumpExpressionStatement(const ExpressionStatement& exprStmt, int indent = 0);
-  void dumpEmptyStatement(const EmptyStatement& emptyStmt, int indent = 0);
-  void dumpBinaryExpression(const BinaryExpression& binExpr, int indent = 0);
-  void dumpFunctionExpression(const FunctionExpression& funcExpr, int indent = 0);
-  void dumpStringLiteral(const StringLiteral& strLit, int indent = 0);
-  void dumpIntegerLiteral(const IntegerLiteral& intLit, int indent = 0);
-  void dumpFloatLiteral(const FloatLiteral& floatLit, int indent = 0);
-  void dumpBooleanLiteral(const BooleanLiteral& boolLit, int indent = 0);
-  void dumpNullLiteral(const NullLiteral& nullLit, int indent = 0);
-  void dumpCallExpression(const CallExpression& callExpr, int indent = 0);
-  void dumpNewExpression(const NewExpression& newExpr, int indent = 0);
-  void dumpArrayLiteralExpression(const ArrayLiteralExpression& arrLit, int indent = 0);
-  void dumpObjectLiteralExpression(const ObjectLiteralExpression& objLit, int indent = 0);
-  void dumpParenthesizedExpression(const ParenthesizedExpression& parenExpr, int indent = 0);
-  void dumpIdentifier(const Identifier& identifier, int indent = 0);
-  void dumpPrefixUnaryExpression(const PrefixUnaryExpression& prefixUnaryExpr, int indent = 0);
-  void dumpAssignmentExpression(const AssignmentExpression& assignmentExpr, int indent = 0);
-  void dumpConditionalExpression(const ConditionalExpression& conditionalExpr, int indent = 0);
-  void dumpCastExpression(const CastExpression& castExpr, int indent = 0);
-  void dumpAsExpression(const AsExpression& asExpr, int indent = 0);
-  void dumpForcedAsExpression(const ForcedAsExpression& forcedAsExpr, int indent = 0);
-  void dumpConditionalAsExpression(const ConditionalAsExpression& conditionalAsExpr,
-                                   int indent = 0);
+  // Helper methods for dumping specific components
+  void dumpModulePath(const ModulePath& modulePath);
+  void dumpBindingElement(const BindingElement& bindingElement);
+  void dumpType(const Type& type);
+  void dumpTypeReference(const TypeReference& typeRef);
+  void dumpArrayType(const ArrayType& arrayType);
+  void dumpUnionType(const UnionType& unionType);
+  void dumpIntersectionType(const IntersectionType& intersectionType);
+  void dumpParenthesizedType(const ParenthesizedType& parenType);
+  void dumpPredefinedType(const PredefinedType& predefinedType);
+  void dumpObjectType(const ObjectType& objectType);
+  void dumpTupleType(const TupleType& tupleType);
+  void dumpReturnType(const ReturnType& returnType);
+  void dumpFunctionType(const FunctionType& functionType);
+  void dumpOptionalType(const OptionalType& optionalType);
+  void dumpTypeQuery(const TypeQuery& typeQuery);
 
-  // Helper methods
+  // Helper methods for output formatting
   void writeIndent(int indent);
-  void writeLine(const zc::StringPtr text, int indent = 0);
-  void writeNodeHeader(const zc::StringPtr nodeType, int indent = 0);
-  void writeNodeFooter(const zc::StringPtr nodeType, int indent = 0);
-  void writeProperty(const zc::StringPtr name, const zc::StringPtr value, int indent = 0);
+  void writeLine(const zc::StringPtr text, int indent = -1);
+  void writeNodeHeader(const zc::StringPtr nodeType, int indent = -1);
+  void writeNodeFooter(const zc::StringPtr nodeType, int indent = -1);
+  void writeProperty(const zc::StringPtr name, const zc::StringPtr value, int indent = -1);
 };
 
 }  // namespace ast
