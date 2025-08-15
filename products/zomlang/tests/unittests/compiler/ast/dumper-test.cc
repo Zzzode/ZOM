@@ -52,7 +52,7 @@ ZC_TEST("ASTDumper.DumpSourceFileText") {
 
   auto sourceFile = ast::factory::createSourceFile(zc::str("test.zom"), zc::mv(statements));
 
-  dumper.dumpSourceFile(*sourceFile);
+  dumper.dump(*sourceFile);
 
   zc::String outputStr = output.getBuffer();
   ZC_ASSERT(outputStr.contains("SourceFile {"));
@@ -97,7 +97,7 @@ ZC_TEST("ASTDumper.DumpSourceFileJson") {
 
   auto sourceFile = ast::factory::createSourceFile(zc::str("test.zom"), zc::mv(statements));
 
-  dumper.dumpSourceFile(*sourceFile);
+  dumper.dump(*sourceFile);
 
   zc::String outputStr = output.getBuffer();
   ZC_ASSERT(outputStr.contains("\"node\": \"SourceFile\""));
@@ -121,7 +121,7 @@ ZC_TEST("ASTDumper.DumpSourceFileXML") {
 
   auto sourceFile = ast::factory::createSourceFile(zc::str("test.zom"), zc::mv(statements));
 
-  dumper.dumpSourceFile(*sourceFile);
+  dumper.dump(*sourceFile);
 
   zc::String outputStr = output.getBuffer();
   ZC_ASSERT(outputStr.contains("<SourceFile>"));

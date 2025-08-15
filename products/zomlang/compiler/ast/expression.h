@@ -64,8 +64,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(PrefixUnaryExpression);
 
-  const UnaryOperator* getOperator() const;
-  const Expression* getOperand() const;
+  const UnaryOperator& getOperator() const;
+  const Expression& getOperand() const;
   bool isPrefix() const;
 
 private:
@@ -80,8 +80,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(PostfixUnaryExpression);
 
-  const UnaryOperator* getOperator() const;
-  const Expression* getOperand() const;
+  const UnaryOperator& getOperator() const;
+  const Expression& getOperand() const;
   bool isPrefix() const;
 
 private:
@@ -135,8 +135,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(PropertyAccessExpression);
 
-  LeftHandSideExpression* getExpression();
-  Identifier* getName();
+  const LeftHandSideExpression& getExpression() const;
+  const Identifier& getName() const;
   bool isQuestionDot();
 
 private:
@@ -153,8 +153,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ElementAccessExpression);
 
-  const LeftHandSideExpression* getExpression();
-  const Expression* getIndex();
+  const LeftHandSideExpression& getExpression() const;
+  const Expression& getIndex() const;
   bool isQuestionDot();
 
 private:
@@ -169,7 +169,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(NewExpression);
 
-  const Expression* getCallee() const;
+  const Expression& getCallee() const;
   const NodeList<Expression>& getArguments() const;
 
 private:
@@ -184,7 +184,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ParenthesizedExpression);
 
-  const Expression* getExpression() const;
+  const Expression& getExpression() const;
 
 private:
   struct Impl;
@@ -199,9 +199,9 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(BinaryExpression);
 
-  const Expression* getLeft() const;
-  const BinaryOperator* getOperator() const;
-  const Expression* getRight() const;
+  const Expression& getLeft() const;
+  const BinaryOperator& getOperator() const;
+  const Expression& getRight() const;
 
 private:
   struct Impl;
@@ -216,9 +216,9 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(AssignmentExpression);
 
-  const Expression* getLeft() const;
-  const AssignmentOperator* getOperator() const;
-  const Expression* getRight() const;
+  const Expression& getLeft() const;
+  const AssignmentOperator& getOperator() const;
+  const Expression& getRight() const;
 
 private:
   struct Impl;
@@ -233,9 +233,9 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ConditionalExpression);
 
-  const Expression* getTest() const;
-  const Expression* getConsequent() const;
-  const Expression* getAlternate() const;
+  const Expression& getTest() const;
+  const Expression& getConsequent() const;
+  const Expression& getAlternate() const;
 
 private:
   struct Impl;
@@ -249,7 +249,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(CallExpression);
 
-  const Expression* getCallee() const;
+  const Expression& getCallee() const;
   const NodeList<Expression>& getArguments() const;
 
 private:
@@ -264,8 +264,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(OptionalExpression);
 
-  const Expression* getObject() const;
-  const Expression* getProperty() const;
+  const Expression& getObject() const;
+  const Expression& getProperty() const;
 
 private:
   struct Impl;
@@ -351,8 +351,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(CastExpression);
 
-  virtual const Expression* getExpression() const = 0;
-  virtual const Type* getTargetType() const = 0;
+  virtual const Expression& getExpression() const = 0;
+  virtual const Type& getTargetType() const = 0;
 };
 
 class AsExpression : public CastExpression {
@@ -362,8 +362,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(AsExpression);
 
-  const Expression* getExpression() const override;
-  const Type* getTargetType() const override;
+  const Expression& getExpression() const override;
+  const Type& getTargetType() const override;
 
 private:
   struct Impl;
@@ -377,8 +377,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ForcedAsExpression);
 
-  const Expression* getExpression() const override;
-  const Type* getTargetType() const override;
+  const Expression& getExpression() const override;
+  const Type& getTargetType() const override;
 
 private:
   struct Impl;
@@ -392,8 +392,8 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ConditionalAsExpression);
 
-  const Expression* getExpression() const override;
-  const Type* getTargetType() const override;
+  const Expression& getExpression() const override;
+  const Type& getTargetType() const override;
 
 private:
   struct Impl;
@@ -407,7 +407,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(VoidExpression);
 
-  const Expression* getExpression() const;
+  const Expression& getExpression() const;
 
 private:
   struct Impl;
@@ -421,7 +421,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(TypeOfExpression);
 
-  const Expression* getExpression() const;
+  const Expression& getExpression() const;
 
 private:
   struct Impl;
@@ -435,7 +435,7 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(AwaitExpression);
 
-  const Expression* getExpression() const;
+  const Expression& getExpression() const;
 
 private:
   struct Impl;
@@ -453,8 +453,8 @@ public:
 
   const NodeList<TypeParameter>& getTypeParameters() const;
   const NodeList<BindingElement>& getParameters() const;
-  const Type* getReturnType() const;
-  const Statement* getBody() const;
+  zc::Maybe<const Type&> getReturnType() const;
+  const Statement& getBody() const;
 
 private:
   struct Impl;

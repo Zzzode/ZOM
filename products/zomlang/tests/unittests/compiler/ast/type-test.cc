@@ -38,8 +38,8 @@ ZC_TEST("TypeTest.ArrayType") {
 
   ZC_EXPECT(type->getKind() == SyntaxKind::kArrayType);
   auto arrayType = static_cast<ArrayType*>(type.get());
-  ZC_EXPECT(arrayType->getElementType() != nullptr);
-  ZC_EXPECT(arrayType->getElementType()->getKind() == SyntaxKind::kPredefinedType);
+  // getElementType() now returns reference, no need for null check
+  ZC_EXPECT(arrayType->getElementType().getKind() == SyntaxKind::kPredefinedType);
 }
 
 ZC_TEST("TypeTest.UnionType") {
@@ -68,8 +68,7 @@ ZC_TEST("TypeTest.OptionalType") {
   auto type = factory::createOptionalType(zc::mv(baseType));
 
   ZC_EXPECT(type->getKind() == SyntaxKind::kOptionalType);
-  auto optionalType = static_cast<OptionalType*>(type.get());
-  ZC_EXPECT(optionalType->getType() != nullptr);
+  // getType() now returns reference, no need for null check
 }
 
 }  // namespace ast

@@ -56,10 +56,10 @@ BindingElement::BindingElement(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>
 
 BindingElement::~BindingElement() noexcept(false) = default;
 
-const Identifier* BindingElement::getName() const { return impl->name.get(); }
+const Identifier& BindingElement::getName() const { return *impl->name; }
 
-const Type* BindingElement::getType() const {
-  return impl->type.map([](const zc::Own<Type>& t) { return t.get(); }).orDefault(nullptr);
+zc::Maybe<const Type&> BindingElement::getType() const {
+  return impl->type.map([](const zc::Own<Type>& t) -> const Type& { return *t; });
 }
 
 const Expression* BindingElement::getInitializer() const {
@@ -120,7 +120,7 @@ FunctionDeclaration::FunctionDeclaration(zc::Own<Identifier> name,
 
 FunctionDeclaration::~FunctionDeclaration() noexcept(false) = default;
 
-const Identifier* FunctionDeclaration::getName() const { return impl->name.get(); }
+const Identifier& FunctionDeclaration::getName() const { return *impl->name; }
 
 const NodeList<TypeParameter>& FunctionDeclaration::getTypeParameters() const {
   return impl->typeParameters;
@@ -135,7 +135,7 @@ const ReturnType* FunctionDeclaration::getReturnType() const {
       .orDefault(nullptr);
 }
 
-const Statement* FunctionDeclaration::getBody() const { return impl->body.get(); }
+const Statement& FunctionDeclaration::getBody() const { return *impl->body; }
 
 // ================================================================================
 // ClassDeclaration::Impl
@@ -160,7 +160,7 @@ ClassDeclaration::ClassDeclaration(zc::Own<Identifier> name,
 
 ClassDeclaration::~ClassDeclaration() noexcept(false) = default;
 
-const Identifier* ClassDeclaration::getName() const { return impl->name.get(); }
+const Identifier& ClassDeclaration::getName() const { return *impl->name; }
 
 const Identifier* ClassDeclaration::getSuperClass() const {
   return impl->superClass.map([](const zc::Own<Identifier>& id) { return id.get(); })
@@ -205,7 +205,7 @@ ExpressionStatement::ExpressionStatement(zc::Own<Expression> expression)
 
 ExpressionStatement::~ExpressionStatement() noexcept(false) = default;
 
-const Expression* ExpressionStatement::getExpression() const { return impl->expression.get(); }
+const Expression& ExpressionStatement::getExpression() const { return *impl->expression; }
 
 // ================================================================================
 // IfStatement::Impl
@@ -229,9 +229,9 @@ IfStatement::IfStatement(zc::Own<Expression> test, zc::Own<Statement> consequent
 
 IfStatement::~IfStatement() noexcept(false) = default;
 
-const Expression* IfStatement::getCondition() const { return impl->test.get(); }
+const Expression& IfStatement::getCondition() const { return *impl->test; }
 
-const Statement* IfStatement::getThenStatement() const { return impl->consequent.get(); }
+const Statement& IfStatement::getThenStatement() const { return *impl->consequent; }
 
 const Statement* IfStatement::getElseStatement() const {
   return impl->alternate.map([](const zc::Own<Statement>& stmt) { return stmt.get(); })
@@ -256,9 +256,9 @@ WhileStatement::WhileStatement(zc::Own<Expression> test, zc::Own<Statement> body
 
 WhileStatement::~WhileStatement() noexcept(false) = default;
 
-const Expression* WhileStatement::getCondition() const { return impl->test.get(); }
+const Expression& WhileStatement::getCondition() const { return *impl->test; }
 
-const Statement* WhileStatement::getBody() const { return impl->body.get(); }
+const Statement& WhileStatement::getBody() const { return *impl->body; }
 
 // ================================================================================
 // ReturnStatement::Impl
@@ -329,7 +329,7 @@ const Expression* ForStatement::getUpdate() const {
       .orDefault(nullptr);
 }
 
-const Statement* ForStatement::getBody() const { return impl->body.get(); }
+const Statement& ForStatement::getBody() const { return *impl->body; }
 
 // ================================================================================
 // MatchStatement::Impl
@@ -352,7 +352,7 @@ MatchStatement::MatchStatement(zc::Own<Expression> discriminant,
 
 MatchStatement::~MatchStatement() noexcept(false) = default;
 
-const Expression* MatchStatement::getDiscriminant() const { return impl->discriminant.get(); }
+const Expression& MatchStatement::getDiscriminant() const { return *impl->discriminant; }
 
 const NodeList<Statement>& MatchStatement::getClauses() const { return impl->clauses; }
 
@@ -374,9 +374,9 @@ AliasDeclaration::AliasDeclaration(zc::Own<Identifier> name, zc::Own<Type> type)
 
 AliasDeclaration::~AliasDeclaration() noexcept(false) = default;
 
-const Identifier* AliasDeclaration::getName() const { return impl->name.get(); }
+const Identifier& AliasDeclaration::getName() const { return *impl->name; }
 
-const Type* AliasDeclaration::getType() const { return impl->type.get(); }
+const Type& AliasDeclaration::getType() const { return *impl->type; }
 
 // ================================================================================
 // DebuggerStatement
@@ -451,7 +451,7 @@ InterfaceDeclaration::InterfaceDeclaration(zc::Own<Identifier> name,
 
 InterfaceDeclaration::~InterfaceDeclaration() noexcept(false) = default;
 
-const Identifier* InterfaceDeclaration::getName() const { return impl->name.get(); }
+const Identifier& InterfaceDeclaration::getName() const { return *impl->name; }
 
 const NodeList<Statement>& InterfaceDeclaration::getMembers() const { return impl->members; }
 
@@ -480,7 +480,7 @@ StructDeclaration::StructDeclaration(zc::Own<Identifier> name,
 
 StructDeclaration::~StructDeclaration() noexcept(false) = default;
 
-const Identifier* StructDeclaration::getName() const { return impl->name.get(); }
+const Identifier& StructDeclaration::getName() const { return *impl->name; }
 
 const NodeList<Statement>& StructDeclaration::getMembers() const { return impl->members; }
 
@@ -504,7 +504,7 @@ EnumDeclaration::EnumDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<St
 
 EnumDeclaration::~EnumDeclaration() noexcept(false) = default;
 
-const Identifier* EnumDeclaration::getName() const { return impl->name.get(); }
+const Identifier& EnumDeclaration::getName() const { return *impl->name; }
 
 const NodeList<Statement>& EnumDeclaration::getMembers() const { return impl->members; }
 
@@ -529,7 +529,7 @@ ErrorDeclaration::ErrorDeclaration(zc::Own<Identifier> name,
 
 ErrorDeclaration::~ErrorDeclaration() noexcept(false) = default;
 
-const Identifier* ErrorDeclaration::getName() const { return impl->name.get(); }
+const Identifier& ErrorDeclaration::getName() const { return *impl->name; }
 
 const NodeList<Statement>& ErrorDeclaration::getMembers() const { return impl->members; }
 
@@ -553,11 +553,10 @@ TypeParameter::TypeParameter(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> 
 
 TypeParameter::~TypeParameter() noexcept(false) = default;
 
-const Identifier* TypeParameter::getName() const { return impl->name.get(); }
+const Identifier& TypeParameter::getName() const { return *impl->name; }
 
-const Type* TypeParameter::getConstraint() const {
-  ZC_IF_SOME(constraint, impl->constraint) { return constraint.get(); }
-  return nullptr;
+zc::Maybe<const Type&> TypeParameter::getConstraint() const {
+  return impl->constraint.map([](const zc::Own<Type>& t) -> const Type& { return *t; });
 }
 
 }  // namespace ast
