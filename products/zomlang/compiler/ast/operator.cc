@@ -16,6 +16,8 @@
 
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
@@ -39,7 +41,7 @@ struct Operator::Impl {
 // Operator
 
 Operator::Operator(zc::String symbol, OperatorType type, OperatorPrecedence precedence,
-                   OperatorAssociativity associativity)
+                   OperatorAssociativity associativity) noexcept
     : Node(SyntaxKind::kOperator),
       impl(zc::heap<Impl>(zc::mv(symbol), type, precedence, associativity)) {}
 
@@ -73,16 +75,13 @@ bool Operator::hasSamePrecedenceAs(const Operator& other) const {
   return impl->precedence == other.impl->precedence;
 }
 
-// Visitor pattern implementation
-void Operator::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void Operator::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // BinaryOperator
 
 BinaryOperator::BinaryOperator(zc::String symbol, OperatorPrecedence precedence,
-                               OperatorAssociativity associativity)
+                               OperatorAssociativity associativity) noexcept
     : Operator(zc::mv(symbol), OperatorType::kBinary, precedence, associativity) {
   // Update the syntax kind to be more specific
   // Note: We need to access the impl to change the kind, but it's private
@@ -91,10 +90,7 @@ BinaryOperator::BinaryOperator(zc::String symbol, OperatorPrecedence precedence,
 
 BinaryOperator::~BinaryOperator() noexcept(false) = default;
 
-// Visitor pattern implementation
-void BinaryOperator::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void BinaryOperator::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // UnaryOperator::Impl
@@ -108,7 +104,7 @@ struct UnaryOperator::Impl {
 // ================================================================================
 // UnaryOperator
 
-UnaryOperator::UnaryOperator(zc::String symbol, bool prefix)
+UnaryOperator::UnaryOperator(zc::String symbol, bool prefix) noexcept
     : Operator(zc::mv(symbol), OperatorType::kUnary, OperatorPrecedence::kUnary,
                OperatorAssociativity::kRight),
       impl(zc::heap<Impl>(prefix)) {}
@@ -117,15 +113,12 @@ UnaryOperator::~UnaryOperator() noexcept(false) = default;
 
 bool UnaryOperator::isPrefix() const { return impl->prefix; }
 
-// Visitor pattern implementation
-void UnaryOperator::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void UnaryOperator::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // AssignmentOperator
 
-AssignmentOperator::AssignmentOperator(zc::String symbol)
+AssignmentOperator::AssignmentOperator(zc::String symbol) noexcept
     : Operator(zc::mv(symbol), OperatorType::kAssignment, OperatorPrecedence::kAssignment,
                OperatorAssociativity::kRight) {}
 
@@ -136,10 +129,7 @@ bool AssignmentOperator::isCompound() const {
   return symbol != "=";
 }
 
-// Visitor pattern implementation
-void AssignmentOperator::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void AssignmentOperator::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 }  // namespace ast
 }  // namespace compiler

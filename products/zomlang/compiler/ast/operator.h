@@ -55,10 +55,12 @@ enum class OperatorType { kBinary, kUnary, kAssignment, kUpdate };
 class Operator : public Node {
 public:
   explicit Operator(zc::String symbol, OperatorType type, OperatorPrecedence precedence,
-                    OperatorAssociativity associativity);
-  ~Operator() noexcept(false) override;
+                    OperatorAssociativity associativity) noexcept;
+  ~Operator() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Operator);
+
+  void accept(Visitor& visitor) const override;
 
   zc::StringPtr getSymbol() const;
   OperatorType getType() const;
@@ -76,9 +78,6 @@ public:
   bool hasLowerPrecedenceThan(const Operator& other) const;
   bool hasSamePrecedenceAs(const Operator& other) const;
 
-  // Visitor pattern support
-  void accept(Visitor& visitor) const;
-
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -87,28 +86,27 @@ private:
 // Binary operators: +, -, *, /, %, ==, !=, <, >, <=, >=, &&, ||, &, |, ^, <<, >>
 class BinaryOperator : public Operator {
 public:
-  explicit BinaryOperator(zc::String symbol, OperatorPrecedence precedence,
-                          OperatorAssociativity associativity = OperatorAssociativity::kLeft);
-  ~BinaryOperator() noexcept(false) override;
+  explicit BinaryOperator(
+      zc::String symbol, OperatorPrecedence precedence,
+      OperatorAssociativity associativity = OperatorAssociativity::kLeft) noexcept;
+  ~BinaryOperator() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(BinaryOperator);
 
-  // Visitor pattern support
-  void accept(Visitor& visitor) const;
+  void accept(Visitor& visitor) const override;
 };
 
 // Unary operators: +, -, !, ~, ++, --
 class UnaryOperator : public Operator {
 public:
-  explicit UnaryOperator(zc::String symbol, bool prefix = true);
-  ~UnaryOperator() noexcept(false) override;
+  explicit UnaryOperator(zc::String symbol, bool prefix = true) noexcept;
+  ~UnaryOperator() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(UnaryOperator);
 
-  bool isPrefix() const;
+  void accept(Visitor& visitor) const override;
 
-  // Visitor pattern support
-  void accept(Visitor& visitor) const;
+  bool isPrefix() const;
 
 private:
   struct Impl;
@@ -118,15 +116,14 @@ private:
 // Assignment operators: =, +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>=
 class AssignmentOperator : public Operator {
 public:
-  explicit AssignmentOperator(zc::String symbol);
-  ~AssignmentOperator() noexcept(false) override;
+  explicit AssignmentOperator(zc::String symbol) noexcept;
+  ~AssignmentOperator() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(AssignmentOperator);
 
-  bool isCompound() const;
+  void accept(Visitor& visitor) const override;
 
-  // Visitor pattern support
-  void accept(Visitor& visitor) const;
+  bool isCompound() const;
 };
 
 }  // namespace ast

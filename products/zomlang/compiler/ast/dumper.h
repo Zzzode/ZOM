@@ -18,6 +18,7 @@
 #include "zc/core/io.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/serializer.h"
 #include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
@@ -41,17 +42,10 @@ class FunctionType;
 class OptionalType;
 class TypeQuery;
 
-/// AST dump output format
-enum class DumpFormat {
-  kJSON,  // JSON format
-  kTEXT,  // Human-readable text format with indentation
-  kXML    // XML format
-};
-
-/// AST dumper class for outputting AST in various formats using visitor pattern
-class ASTDumper : public Visitor {
+/// AST dumper class for outputting AST using pluggable serializers
+class ASTDumper final : public Visitor {
 public:
-  explicit ASTDumper(zc::OutputStream& output, DumpFormat format = DumpFormat::kJSON) noexcept;
+  explicit ASTDumper(zc::Own<Serializer> serializer) noexcept;
   ~ASTDumper() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ASTDumper);
@@ -62,35 +56,89 @@ public:
   /// Set current indentation level
   void setIndent(int indent) { currentIndent = indent; }
 
-  // Visitor pattern overrides for specific node types
-  void visit(const SourceFile& sourceFile) override;
-  void visit(const ImportDeclaration& importDecl) override;
-  void visit(const ExportDeclaration& exportDecl) override;
-  void visit(const VariableDeclaration& varDecl) override;
-  void visit(const FunctionDeclaration& funcDecl) override;
-  void visit(const BlockStatement& blockStmt) override;
-  void visit(const ExpressionStatement& exprStmt) override;
-  void visit(const EmptyStatement& emptyStmt) override;
-  void visit(const BinaryExpression& binExpr) override;
-  void visit(const FunctionExpression& funcExpr) override;
-  void visit(const StringLiteral& strLit) override;
-  void visit(const IntegerLiteral& intLit) override;
-  void visit(const FloatLiteral& floatLit) override;
-  void visit(const BooleanLiteral& boolLit) override;
-  void visit(const NullLiteral& nullLit) override;
-  void visit(const CallExpression& callExpr) override;
-  void visit(const NewExpression& newExpr) override;
-  void visit(const ArrayLiteralExpression& arrLit) override;
-  void visit(const ObjectLiteralExpression& objLit) override;
-  void visit(const ParenthesizedExpression& parenExpr) override;
-  void visit(const Identifier& identifier) override;
-  void visit(const PrefixUnaryExpression& prefixUnaryExpr) override;
-  void visit(const AssignmentExpression& assignmentExpr) override;
-  void visit(const ConditionalExpression& conditionalExpr) override;
-  void visit(const CastExpression& castExpr) override;
-  void visit(const AsExpression& asExpr) override;
-  void visit(const ForcedAsExpression& forcedAsExpr) override;
-  void visit(const ConditionalAsExpression& conditionalAsExpr) override;
+  // Visitor pattern finals for specific node types
+  void visit(const SourceFile& sourceFile) final;
+  void visit(const ImportDeclaration& importDecl) final;
+  void visit(const ExportDeclaration& exportDecl) final;
+  void visit(const VariableDeclaration& varDecl) final;
+  void visit(const FunctionDeclaration& funcDecl) final;
+  void visit(const BlockStatement& blockStmt) final;
+  void visit(const ExpressionStatement& exprStmt) final;
+  void visit(const EmptyStatement& emptyStmt) final;
+  void visit(const BinaryExpression& binExpr) final;
+  void visit(const FunctionExpression& funcExpr) final;
+  void visit(const StringLiteral& strLit) final;
+  void visit(const IntegerLiteral& intLit) final;
+  void visit(const FloatLiteral& floatLit) final;
+  void visit(const BooleanLiteral& boolLit) final;
+  void visit(const NullLiteral& nullLit) final;
+  void visit(const CallExpression& callExpr) final;
+  void visit(const NewExpression& newExpr) final;
+  void visit(const ArrayLiteralExpression& arrLit) final;
+  void visit(const ObjectLiteralExpression& objLit) final;
+  void visit(const ParenthesizedExpression& parenExpr) final;
+  void visit(const Identifier& identifier) final;
+  void visit(const PrefixUnaryExpression& prefixUnaryExpr) final;
+  void visit(const AssignmentExpression& assignmentExpr) final;
+  void visit(const ConditionalExpression& conditionalExpr) final;
+  void visit(const CastExpression& castExpr) final;
+  void visit(const AsExpression& asExpr) final;
+  void visit(const ForcedAsExpression& forcedAsExpr) final;
+  void visit(const ConditionalAsExpression& conditionalAsExpr) final;
+
+  // Missing visitor methods that need implementation
+  void visit(const Node& node) final;
+  void visit(const Statement& statement) final;
+  void visit(const Expression& expression) final;
+  void visit(const TypeParameter& node) final;
+  void visit(const BindingElement& node) final;
+  void visit(const ClassDeclaration& node) final;
+  void visit(const InterfaceDeclaration& node) final;
+  void visit(const StructDeclaration& node) final;
+  void visit(const EnumDeclaration& node) final;
+  void visit(const ErrorDeclaration& node) final;
+  void visit(const AliasDeclaration& node) final;
+  void visit(const IfStatement& node) final;
+  void visit(const WhileStatement& node) final;
+  void visit(const ForStatement& node) final;
+  void visit(const BreakStatement& node) final;
+  void visit(const ContinueStatement& node) final;
+  void visit(const ReturnStatement& node) final;
+  void visit(const MatchStatement& node) final;
+  void visit(const DebuggerStatement& node) final;
+  void visit(const UnaryExpression& node) final;
+  void visit(const UpdateExpression& node) final;
+  void visit(const PostfixUnaryExpression& node) final;
+  void visit(const LeftHandSideExpression& node) final;
+  void visit(const MemberExpression& node) final;
+  void visit(const PrimaryExpression& node) final;
+  void visit(const PropertyAccessExpression& node) final;
+  void visit(const ElementAccessExpression& node) final;
+  void visit(const OptionalExpression& node) final;
+  void visit(const LiteralExpression& node) final;
+  void visit(const VoidExpression& node) final;
+  void visit(const TypeOfExpression& node) final;
+  void visit(const AwaitExpression& node) final;
+  void visit(const Operator& op) final;
+  void visit(const BinaryOperator& binaryOp) final;
+  void visit(const UnaryOperator& unaryOp) final;
+  void visit(const AssignmentOperator& assignOp) final;
+  void visit(const ModulePath& modulePath) final;
+
+  // Type node visitor methods
+  void visit(const Type& type) final;
+  void visit(const TypeReference& typeRef) final;
+  void visit(const ArrayType& arrayType) final;
+  void visit(const UnionType& unionType) final;
+  void visit(const IntersectionType& intersectionType) final;
+  void visit(const ParenthesizedType& parenType) final;
+  void visit(const PredefinedType& predefinedType) final;
+  void visit(const ObjectType& objectType) final;
+  void visit(const TupleType& tupleType) final;
+  void visit(const ReturnType& returnType) final;
+  void visit(const FunctionType& functionType) final;
+  void visit(const OptionalType& optionalType) final;
+  void visit(const TypeQuery& typeQuery) final;
 
 private:
   struct Impl;

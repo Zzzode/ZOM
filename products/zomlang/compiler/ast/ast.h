@@ -19,6 +19,7 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
@@ -201,26 +202,38 @@ enum class SyntaxKind {
   kErrorTypeList,
 };
 
+class Visitable {
+public:
+  virtual ~Visitable() noexcept(false) = default;
+
+  ZC_DISALLOW_COPY_AND_MOVE(Visitable);
+
+  virtual void accept(Visitor& visitor) const = 0;
+
+protected:
+  Visitable() = default;
+};
+
 // Base class for all AST nodes
-class Node {
+class Node : public Visitable {
 public:
   explicit Node(SyntaxKind kind) noexcept;
-  virtual ~Node() noexcept(false);
+  ~Node() noexcept(false) override;
 
   ZC_DISALLOW_COPY_AND_MOVE(Node);
 
   void setSourceRange(const source::SourceRange&& range);
-  [[nodiscard]] const source::SourceRange sourceRange() const;
+  ZC_NODISCARD const source::SourceRange sourceRange() const;
 
   // Get the syntax kind of this node
-  [[nodiscard]] SyntaxKind getKind() const;
+  ZC_NODISCARD SyntaxKind getKind() const;
 
   // Type checking helpers
-  [[nodiscard]] bool isStatement() const;
-  [[nodiscard]] bool isExpression() const;
+  ZC_NODISCARD bool isStatement() const;
+  ZC_NODISCARD bool isExpression() const;
 
   // Visitor pattern support
-  void accept(Visitor& visitor) const;
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;

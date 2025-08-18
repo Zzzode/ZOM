@@ -22,10 +22,9 @@ namespace compiler {
 namespace ast {
 
 // Type base class
-Type::Type(SyntaxKind kind) : Node(kind) {}
+Type::Type(SyntaxKind kind) noexcept : Node(kind) {}
 Type::~Type() noexcept(false) = default;
 
-// Visitor pattern implementation
 void Type::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // TypeReference
@@ -38,12 +37,14 @@ struct TypeReference::Impl {
 };
 
 TypeReference::TypeReference(zc::Own<Identifier> name,
-                             zc::Maybe<zc::Vector<zc::Own<Type>>> typeArguments)
+                             zc::Maybe<zc::Vector<zc::Own<Type>>> typeArguments) noexcept
     : Type(SyntaxKind::kTypeReference), impl(zc::heap<Impl>(zc::mv(name), zc::mv(typeArguments))) {}
 
 TypeReference::~TypeReference() noexcept(false) = default;
 
 zc::StringPtr TypeReference::getName() const { return impl->name->getName(); }
+
+void TypeReference::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ArrayType
 struct ArrayType::Impl {
@@ -52,12 +53,14 @@ struct ArrayType::Impl {
   explicit Impl(zc::Own<Type> elementType) : elementType(zc::mv(elementType)) {}
 };
 
-ArrayType::ArrayType(zc::Own<Type> elementType)
+ArrayType::ArrayType(zc::Own<Type> elementType) noexcept
     : Type(SyntaxKind::kArrayType), impl(zc::heap<Impl>(zc::mv(elementType))) {}
 
 ArrayType::~ArrayType() noexcept(false) = default;
 
 const Type& ArrayType::getElementType() const { return *impl->elementType; }
+
+void ArrayType::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // UnionType
 struct UnionType::Impl {
@@ -66,12 +69,14 @@ struct UnionType::Impl {
   explicit Impl(zc::Vector<zc::Own<Type>>&& types) : types(zc::mv(types)) {}
 };
 
-UnionType::UnionType(zc::Vector<zc::Own<Type>>&& types)
+UnionType::UnionType(zc::Vector<zc::Own<Type>>&& types) noexcept
     : Type(SyntaxKind::kUnionType), impl(zc::heap<Impl>(zc::mv(types))) {}
 
 UnionType::~UnionType() noexcept(false) = default;
 
 const NodeList<Type>& UnionType::getTypes() const { return impl->types; }
+
+void UnionType::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // IntersectionType
 struct IntersectionType::Impl {
@@ -80,12 +85,14 @@ struct IntersectionType::Impl {
   explicit Impl(zc::Vector<zc::Own<Type>>&& types) : types(zc::mv(types)) {}
 };
 
-IntersectionType::IntersectionType(zc::Vector<zc::Own<Type>>&& types)
+IntersectionType::IntersectionType(zc::Vector<zc::Own<Type>>&& types) noexcept
     : Type(SyntaxKind::kIntersectionType), impl(zc::heap<Impl>(zc::mv(types))) {}
 
 IntersectionType::~IntersectionType() noexcept(false) = default;
 
 const NodeList<Type>& IntersectionType::getTypes() const { return impl->types; }
+
+void IntersectionType::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ParenthesizedType
 struct ParenthesizedType::Impl {
@@ -94,12 +101,14 @@ struct ParenthesizedType::Impl {
   explicit Impl(zc::Own<Type> type) : type(zc::mv(type)) {}
 };
 
-ParenthesizedType::ParenthesizedType(zc::Own<Type> type)
+ParenthesizedType::ParenthesizedType(zc::Own<Type> type) noexcept
     : Type(SyntaxKind::kParenthesizedType), impl(zc::heap<Impl>(zc::mv(type))) {}
 
 ParenthesizedType::~ParenthesizedType() noexcept(false) = default;
 
 const Type& ParenthesizedType::getType() const { return *impl->type; }
+
+void ParenthesizedType::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // PredefinedType
 struct PredefinedType::Impl {
@@ -108,12 +117,14 @@ struct PredefinedType::Impl {
   explicit Impl(zc::String name) : name(zc::mv(name)) {}
 };
 
-PredefinedType::PredefinedType(zc::String name)
+PredefinedType::PredefinedType(zc::String name) noexcept
     : Type(SyntaxKind::kPredefinedType), impl(zc::heap<Impl>(zc::mv(name))) {}
 
 PredefinedType::~PredefinedType() noexcept(false) = default;
 
 zc::StringPtr PredefinedType::getName() const { return impl->name; }
+
+void PredefinedType::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ObjectType
 struct ObjectType::Impl {
@@ -122,12 +133,14 @@ struct ObjectType::Impl {
   explicit Impl(zc::Vector<zc::Own<Node>>&& members) : members(zc::mv(members)) {}
 };
 
-ObjectType::ObjectType(zc::Vector<zc::Own<Node>>&& members)
+ObjectType::ObjectType(zc::Vector<zc::Own<Node>>&& members) noexcept
     : Type(SyntaxKind::kObjectType), impl(zc::heap<Impl>(zc::mv(members))) {}
 
 ObjectType::~ObjectType() noexcept(false) = default;
 
 const NodeList<Node>& ObjectType::getMembers() const { return impl->members; }
+
+void ObjectType::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // TupleType
 struct TupleType::Impl {
@@ -136,12 +149,14 @@ struct TupleType::Impl {
   explicit Impl(zc::Vector<zc::Own<Type>>&& elementTypes) : elementTypes(zc::mv(elementTypes)) {}
 };
 
-TupleType::TupleType(zc::Vector<zc::Own<Type>>&& elementTypes)
+TupleType::TupleType(zc::Vector<zc::Own<Type>>&& elementTypes) noexcept
     : Type(SyntaxKind::kTupleType), impl(zc::heap<Impl>(zc::mv(elementTypes))) {}
 
 TupleType::~TupleType() noexcept(false) = default;
 
 const NodeList<Type>& TupleType::getElementTypes() const { return impl->elementTypes; }
+
+void TupleType::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ReturnType
 struct ReturnType::Impl {
@@ -152,7 +167,7 @@ struct ReturnType::Impl {
       : type(zc::mv(type)), errorType(zc::mv(errorType)) {}
 };
 
-ReturnType::ReturnType(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType)
+ReturnType::ReturnType(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType) noexcept
     : Type(SyntaxKind::kReturnType), impl(zc::heap<Impl>(zc::mv(type), zc::mv(errorType))) {}
 
 ReturnType::~ReturnType() noexcept(false) = default;
@@ -162,6 +177,8 @@ const Type& ReturnType::getType() const { return *impl->type; }
 zc::Maybe<const Type&> ReturnType::getErrorType() const {
   return impl->errorType.map([](const zc::Own<Type>& type) -> const Type& { return *type; });
 }
+
+void ReturnType::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // FunctionType
 struct FunctionType::Impl {
@@ -178,7 +195,7 @@ struct FunctionType::Impl {
 
 FunctionType::FunctionType(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
                            zc::Vector<zc::Own<BindingElement>>&& parameters,
-                           zc::Own<ReturnType> returnType)
+                           zc::Own<ReturnType> returnType) noexcept
     : Type(SyntaxKind::kFunctionType),
       impl(zc::heap<Impl>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(returnType))) {}
 
@@ -192,6 +209,8 @@ const NodeList<BindingElement>& FunctionType::getParameters() const { return imp
 
 const ReturnType& FunctionType::getReturnType() const { return *impl->returnType; }
 
+void FunctionType::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // OptionalType
 struct OptionalType::Impl {
   zc::Own<Type> type;
@@ -199,12 +218,14 @@ struct OptionalType::Impl {
   explicit Impl(zc::Own<Type> type) : type(zc::mv(type)) {}
 };
 
-OptionalType::OptionalType(zc::Own<Type> type)
+OptionalType::OptionalType(zc::Own<Type> type) noexcept
     : Type(SyntaxKind::kOptionalType), impl(zc::heap<Impl>(zc::mv(type))) {}
 
 OptionalType::~OptionalType() noexcept(false) = default;
 
 const Type& OptionalType::getType() const { return *impl->type; }
+
+void OptionalType::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // TypeQuery
@@ -215,11 +236,13 @@ struct TypeQuery::Impl {
   explicit Impl(zc::Own<Expression> expr) : expr(zc::mv(expr)) {}
 };
 
-TypeQuery::TypeQuery(zc::Own<Expression> expr)
+TypeQuery::TypeQuery(zc::Own<Expression> expr) noexcept
     : Type(SyntaxKind::kTypeQuery), impl(zc::heap<Impl>(zc::mv(expr))) {}
 TypeQuery::~TypeQuery() noexcept(false) = default;
 
 const Expression& TypeQuery::getExpression() const { return *impl->expr; }
+
+void TypeQuery::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 }  // namespace ast
 }  // namespace compiler

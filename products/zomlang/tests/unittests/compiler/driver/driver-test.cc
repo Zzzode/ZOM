@@ -17,8 +17,9 @@
 #include "zc/core/filesystem.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
-#include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
