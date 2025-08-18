@@ -20,6 +20,9 @@
 #include "zc/core/main.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/dumper.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/serializer.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/io-utils.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
@@ -123,11 +126,14 @@ public:
 
   zc::MainBuilder::Validity setOutputFormat(zc::StringPtr format) {
     if (format == "text") {
-      compilerOpts.emission.dumpFormat = ast::DumpFormat::kTEXT;
+      compilerOpts.emission.serializerType =
+          basic::CompilerOptions::EmissionOptions::SerializerType::kTEXT;
     } else if (format == "json") {
-      compilerOpts.emission.dumpFormat = ast::DumpFormat::kJSON;
+      compilerOpts.emission.serializerType =
+          basic::CompilerOptions::EmissionOptions::SerializerType::kJSON;
     } else if (format == "xml") {
-      compilerOpts.emission.dumpFormat = ast::DumpFormat::kXML;
+      compilerOpts.emission.serializerType =
+          basic::CompilerOptions::EmissionOptions::SerializerType::kXML;
     } else {
       return zc::str("Invalid format: ", format, ". Valid formats are: text, json, xml");
     }
@@ -211,9 +217,9 @@ public:
     const auto& options = driver->getCompilerOptions();
 
     zc::Maybe<zc::Own<zc::OutputStream>> outputStream =
-        createOutputStream(options.emission.outputPath, options.emission.dumpFormat);
+        createOutputStream(options.emission.outputPath, options.emission.serializerType);
     ZC_IF_SOME(stream, outputStream) {
-      return dumpASTsToStream(*stream, asts, options.emission.dumpFormat);
+      return dumpASTsToStream(*stream, asts, options.emission.serializerType);
     }
 
     return "Failed to create output stream.";
@@ -222,15 +228,16 @@ public:
 private:
   /// Creates an appropriate output stream based on the given path and format
   zc::Maybe<zc::Own<zc::OutputStream>> createOutputStream(
-      const zc::Maybe<zc::StringPtr>& outputPath, ast::DumpFormat format) {
+      const zc::Maybe<zc::StringPtr>& outputPath,
+      basic::CompilerOptions::EmissionOptions::SerializerType format) {
     ZC_IF_SOME(path, outputPath) { return createFileOutputStream(path, format); }
     // Use stdout file descriptor to ensure shell redirection works properly
     return zc::heap<zc::FdOutputStream>(STDOUT_FILENO);
   }
 
   /// Creates a file output stream, handling directory paths appropriately
-  zc::Maybe<zc::Own<zc::OutputStream>> createFileOutputStream(zc::StringPtr outputPath,
-                                                              ast::DumpFormat format) {
+  zc::Maybe<zc::Own<zc::OutputStream>> createFileOutputStream(
+      zc::StringPtr outputPath, basic::CompilerOptions::EmissionOptions::SerializerType format) {
     auto filesystem = zc::newDiskFilesystem();
     bool isAbsolute = outputPath.size() > 0 && outputPath[0] == '/';
 
@@ -246,7 +253,8 @@ private:
   }
 
   /// Resolves the final output path, generating filename if path is a directory
-  zc::Path resolveOutputPath(zc::StringPtr outputPath, ast::DumpFormat format,
+  zc::Path resolveOutputPath(zc::StringPtr outputPath,
+                             basic::CompilerOptions::EmissionOptions::SerializerType format,
                              const zc::Directory& currentDir) {
     zc::Path path = zc::Path::parse(outputPath);
 
@@ -262,7 +270,8 @@ private:
   }
 
   /// Generates a default filename based on the first source file and format
-  zc::String generateDefaultFilename(ast::DumpFormat format) {
+  zc::String generateDefaultFilename(
+      basic::CompilerOptions::EmissionOptions::SerializerType format) {
     static constexpr char kDefaultBaseName[] = "ast_dump";
 
     auto maybeBaseName = extractSourceBaseName();
@@ -296,11 +305,12 @@ private:
   }
 
   /// Returns the appropriate file extension for the given dump format
-  static constexpr zc::StringPtr getFileExtensionForFormat(ast::DumpFormat format) {
+  static constexpr zc::StringPtr getFileExtensionForFormat(
+      basic::CompilerOptions::EmissionOptions::SerializerType format) {
     switch (format) {
-      case ast::DumpFormat::kJSON:
+      case basic::CompilerOptions::EmissionOptions::SerializerType::kJSON:
         return ".json";
-      case ast::DumpFormat::kXML:
+      case basic::CompilerOptions::EmissionOptions::SerializerType::kXML:
         return ".xml";
       default:
         return ".ast";
@@ -308,9 +318,24 @@ private:
   }
 
   /// Dumps all ASTs to the given output stream
-  zc::MainBuilder::Validity dumpASTsToStream(zc::OutputStream& outputStream, const auto& asts,
-                                             ast::DumpFormat format) {
-    ast::ASTDumper dumper(outputStream, format);
+  zc::Own<ast::Serializer> createSerializer(
+      basic::CompilerOptions::EmissionOptions::SerializerType type, zc::OutputStream& output) {
+    switch (type) {
+      case basic::CompilerOptions::EmissionOptions::SerializerType::kJSON:
+        return zc::heap<ast::JSONSerializer>(output);
+      case basic::CompilerOptions::EmissionOptions::SerializerType::kXML:
+        return zc::heap<ast::XMLSerializer>(output);
+      case basic::CompilerOptions::EmissionOptions::SerializerType::kTEXT:
+      default:
+        return zc::heap<ast::TextSerializer>(output);
+    }
+  }
+
+  zc::MainBuilder::Validity dumpASTsToStream(
+      zc::OutputStream& outputStream, const auto& asts,
+      basic::CompilerOptions::EmissionOptions::SerializerType format) {
+    auto serializer = createSerializer(format, outputStream);
+    ast::ASTDumper dumper(zc::mv(serializer));
 
     for (const auto& entry : asts) {
       const source::BufferId& bufferId = entry.key;
@@ -326,16 +351,17 @@ private:
 
   /// Writes buffer header for text format
   static void writeBufferHeader(zc::OutputStream& outputStream, const source::BufferId& bufferId,
-                                ast::DumpFormat format) {
-    if (format == ast::DumpFormat::kTEXT) {
+                                basic::CompilerOptions::EmissionOptions::SerializerType format) {
+    if (format == basic::CompilerOptions::EmissionOptions::SerializerType::kTEXT) {
       outputStream.write(
           zc::str("\n=== AST for BufferId: ", static_cast<uint64_t>(bufferId), " ===\n").asBytes());
     }
   }
 
   /// Writes buffer footer for text format
-  static void writeBufferFooter(zc::OutputStream& outputStream, ast::DumpFormat format) {
-    if (format == ast::DumpFormat::kTEXT) { outputStream.write("\n"_zcb); }
+  static void writeBufferFooter(zc::OutputStream& outputStream,
+                                basic::CompilerOptions::EmissionOptions::SerializerType format) {
+    outputStream.write("\n"_zcb);
   }
 
   zc::MainBuilder::Validity emitIR() {

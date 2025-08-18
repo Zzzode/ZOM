@@ -15,8 +15,8 @@
 #include "zomlang/compiler/ast/ast.h"
 
 #include "zc/core/memory.h"
-#include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/ast/visitor.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
@@ -83,9 +83,7 @@ bool Node::isExpression() const {
 }
 
 // Visitor pattern implementation
-void Node::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void Node::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 }  // namespace ast
 }  // namespace compiler

@@ -30,24 +30,24 @@ class Identifier;
 // Base class for all type nodes
 class Type : public Node {
 public:
-  explicit Type(SyntaxKind kind);
-  ~Type() noexcept(false) override;
+  explicit Type(SyntaxKind kind) noexcept;
+  ~Type() noexcept(false);
+
+  void accept(Visitor& visitor) const override;
 
   ZC_DISALLOW_COPY_AND_MOVE(Type);
-
-  // Visitor pattern support
-  void accept(Visitor& visitor) const;
 };
 
 // Primary type (identifier-based type)
 class TypeReference : public Type {
 public:
   explicit TypeReference(zc::Own<Identifier> name,
-                         zc::Maybe<zc::Vector<zc::Own<Type>>> typeParameters);
+                         zc::Maybe<zc::Vector<zc::Own<Type>>> typeParameters) noexcept;
   ~TypeReference() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(TypeReference);
 
+  void accept(Visitor& visitor) const override;
   zc::StringPtr getName() const;
 
 private:
@@ -58,11 +58,12 @@ private:
 // Array type: T[]
 class ArrayType : public Type {
 public:
-  explicit ArrayType(zc::Own<Type> elementType);
+  explicit ArrayType(zc::Own<Type> elementType) noexcept;
   ~ArrayType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ArrayType);
 
+  void accept(Visitor& visitor) const override;
   const Type& getElementType() const;
 
 private:
@@ -73,11 +74,12 @@ private:
 // Union type: T | U
 class UnionType : public Type {
 public:
-  explicit UnionType(zc::Vector<zc::Own<Type>>&& types);
+  explicit UnionType(zc::Vector<zc::Own<Type>>&& types) noexcept;
   ~UnionType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(UnionType);
 
+  void accept(Visitor& visitor) const override;
   const NodeList<Type>& getTypes() const;
 
 private:
@@ -88,11 +90,12 @@ private:
 // Intersection type: T & U
 class IntersectionType : public Type {
 public:
-  explicit IntersectionType(zc::Vector<zc::Own<Type>>&& types);
+  explicit IntersectionType(zc::Vector<zc::Own<Type>>&& types) noexcept;
   ~IntersectionType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(IntersectionType);
 
+  void accept(Visitor& visitor) const override;
   const NodeList<Type>& getTypes() const;
 
 private:
@@ -103,11 +106,12 @@ private:
 // Parenthesized type: (T)
 class ParenthesizedType : public Type {
 public:
-  explicit ParenthesizedType(zc::Own<Type> type);
+  explicit ParenthesizedType(zc::Own<Type> type) noexcept;
   ~ParenthesizedType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ParenthesizedType);
 
+  void accept(Visitor& visitor) const override;
   const Type& getType() const;
 
 private:
@@ -118,11 +122,12 @@ private:
 // Predefined types (built-in types)
 class PredefinedType : public Type {
 public:
-  explicit PredefinedType(zc::String name);
+  explicit PredefinedType(zc::String name) noexcept;
   ~PredefinedType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(PredefinedType);
 
+  void accept(Visitor& visitor) const override;
   zc::StringPtr getName() const;
 
 private:
@@ -133,11 +138,12 @@ private:
 // Object type: { prop: Type }
 class ObjectType : public Type {
 public:
-  explicit ObjectType(zc::Vector<zc::Own<Node>>&& members);
+  explicit ObjectType(zc::Vector<zc::Own<Node>>&& members) noexcept;
   ~ObjectType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ObjectType);
 
+  void accept(Visitor& visitor) const override;
   const NodeList<Node>& getMembers() const;
 
 private:
@@ -148,11 +154,12 @@ private:
 // Tuple type: [T, U]
 class TupleType : public Type {
 public:
-  explicit TupleType(zc::Vector<zc::Own<Type>>&& elementTypes);
+  explicit TupleType(zc::Vector<zc::Own<Type>>&& elementTypes) noexcept;
   ~TupleType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(TupleType);
 
+  void accept(Visitor& visitor) const override;
   const NodeList<Type>& getElementTypes() const;
 
 private:
@@ -163,11 +170,12 @@ private:
 // Return type with optional error type: -> T raises E
 class ReturnType : public Type {
 public:
-  ReturnType(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType = zc::none);
-  ~ReturnType() noexcept(false) override;
+  ReturnType(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType = zc::none) noexcept;
+  ~ReturnType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ReturnType);
 
+  void accept(Visitor& visitor) const override;
   const Type& getType() const;
   zc::Maybe<const Type&> getErrorType() const;
 
@@ -180,11 +188,13 @@ private:
 class FunctionType : public Type {
 public:
   FunctionType(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
-               zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Own<ReturnType> returnType);
+               zc::Vector<zc::Own<BindingElement>>&& parameters,
+               zc::Own<ReturnType> returnType) noexcept;
   ~FunctionType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(FunctionType);
 
+  void accept(Visitor& visitor) const override;
   const NodeList<TypeParameter>& getTypeParameters() const;
   const NodeList<BindingElement>& getParameters() const;
   const ReturnType& getReturnType() const;
@@ -196,11 +206,12 @@ private:
 
 class OptionalType : public Type {
 public:
-  explicit OptionalType(zc::Own<Type> type);
+  explicit OptionalType(zc::Own<Type> type) noexcept;
   ~OptionalType() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(OptionalType);
 
+  void accept(Visitor& visitor) const override;
   const Type& getType() const;
 
 private:
@@ -211,11 +222,12 @@ private:
 // Type query: typeof expr
 class TypeQuery : public Type {
 public:
-  explicit TypeQuery(zc::Own<Expression> expr);
+  explicit TypeQuery(zc::Own<Expression> expr) noexcept;
   ~TypeQuery() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(TypeQuery);
 
+  void accept(Visitor& visitor) const override;
   const Expression& getExpression() const;
 
 private:

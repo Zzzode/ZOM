@@ -18,7 +18,7 @@ KJ style is used by KJ (obviously), [Cap'n Proto](https://capnproto.org), [Sands
   - [Premature optimization fallacy](#premature-optimization-fallacy)
   - [Text is always UTF-8](#text-is-always-utf-8)
 - [C++ usage](#c-usage)
-  - [Use C++11 (or later)](#use-c11-or-later)
+  - [Use C++20 (or later)](#use-c20-or-later)
   - [Heap allocation](#heap-allocation)
   - [Pointers, references](#pointers-references)
   - [Constness](#constness)
@@ -50,14 +50,14 @@ This section contains guidelines on software design that aren't necessarily C++-
 
 There are two kinds of types: values and resources. Value types are simple data structures; they serve no purpose except to represent pure data. Resource types represent live objects with state and behavior, and often represent resources external to the program.
 
-* Value types make sense to copy (though they don't necessarily have copy constructors). Resource types are not copyable.
-* Value types always have move constructors (and sometimes copy constructors). Resource types are not movable; if ownership transfer is needed, the resource must be allocated on the heap.
-* Value types almost always have implicit destructors. Resource types may have an explicit destructor.
-* Value types should only be compared by value, not identity. Resource types can only be compared by identity.
-* Value types make sense to serialize. Resource types fundamentally cannot be serialized.
-* Value types rarely use inheritance and never have virtual methods. Resource types commonly do.
-* Value types generally use templates for polymorphism. Resource types generally use virtual methods / abstract interfaces.
-* You might even say that value types are used in functional programming style while resource types are used in object-oriented style.
+- Value types make sense to copy (though they don't necessarily have copy constructors). Resource types are not copyable.
+- Value types always have move constructors (and sometimes copy constructors). Resource types are not movable; if ownership transfer is needed, the resource must be allocated on the heap.
+- Value types almost always have implicit destructors. Resource types may have an explicit destructor.
+- Value types should only be compared by value, not identity. Resource types can only be compared by identity.
+- Value types make sense to serialize. Resource types fundamentally cannot be serialized.
+- Value types rarely use inheritance and never have virtual methods. Resource types commonly do.
+- Value types generally use templates for polymorphism. Resource types generally use virtual methods / abstract interfaces.
+- You might even say that value types are used in functional programming style while resource types are used in object-oriented style.
 
 In Cap'n Proto there is a very clear distinction between values and resources: interfaces are resource types whereas everything else is a value.
 
@@ -83,10 +83,10 @@ When declaring a pointer to an object which is owned by the scope, always use `k
 
 When passing a regular C++ pointer or reference as a parameter or return value of a function, care must be taken to document assumptions about the lifetime of the object. In the absence of documentation, make the following assumptions:
 
-* A pointer or reference passed as a constructor parameter must remain valid for the lifetime of the constructed object.
-* A pointer or reference passed as a function or method parameter must remain valid until the function returns. In the case that the function returns a promise, then the object must remain live until the promise completes or is canceled.
-* A pointer or reference returned by a method remains valid at least until the object whose method was called is destroyed.
-* A pointer or reference returned by a stand-alone function likely refers to content of one of the function's parameters, and remains valid until that parameter is destroyed.
+- A pointer or reference passed as a constructor parameter must remain valid for the lifetime of the constructed object.
+- A pointer or reference passed as a function or method parameter must remain valid until the function returns. In the case that the function returns a promise, then the object must remain live until the promise completes or is canceled.
+- A pointer or reference returned by a method remains valid at least until the object whose method was called is destroyed.
+- A pointer or reference returned by a stand-alone function likely refers to content of one of the function's parameters, and remains valid until that parameter is destroyed.
 
 Note that ownership isn't just about memory management -- it matters even in languages that implement garbage collection! Unless an object is 100% immutable, you need to keep track of who is allowed to modify it, and that generally requires declaring an owner. Moreover, even with GC, resource types commonly need `close()` method that acts very much like a C++ destructor, leading to all the same considerations. It is therefore completely wrong to believe garbage collection absolves you of thinking about ownership -- and this misconception commonly leads to huge problems in large-scale systems written in GC languages.
 
@@ -96,8 +96,8 @@ Reference counting is allowed, in which case an object will have multiple owners
 
 When using reference counting, care must be taken to ensure that there is a clear contract between all owners about how the object shall be accessed. In general, this should mean one of the following:
 
-* Reference-counted value types should be immutable.
-* Reference-counted resource types should have an interface which clearly specifies how multiple clients should coordinate.
+- Reference-counted value types should be immutable.
+- Reference-counted resource types should have an interface which clearly specifies how multiple clients should coordinate.
 
 Care must also be taken to avoid cyclic references (which would constitute self-ownership, and would cause a memory leak). Think carefully about what the object ownership graph looks like.
 
@@ -136,24 +136,24 @@ In order to use these APIs while avoiding the problems of singletons, try to enc
 
 ### Exceptions
 
-An exception represents something that "should never happen", assuming everything is working as expected. Of course, things that "should never happen" in fact happen all the time. But, a program should never be written in such a way that it _expects_ an exception under normal circumstances.
+An exception represents something that "should never happen", assuming everything is working as expected. Of course, things that "should never happen" in fact happen all the time. But, a program should never be written in such a way that it *expects* an exception under normal circumstances.
 
-Put another way, exceptions are a way to achieve _fault tolerance_. Throwing an exception is a less-disruptive alternative to aborting the process. Exceptions are a _logistical_ construct, as opposed to a semantic one: an exception should never be part of your "business logic".
+Put another way, exceptions are a way to achieve *fault tolerance*. Throwing an exception is a less-disruptive alternative to aborting the process. Exceptions are a *logistical* construct, as opposed to a semantic one: an exception should never be part of your "business logic".
 
 For example, exceptions may indicate conditions like:
 
-* Logistics of software development:
-  * There is a bug in the code.
-  * The requested method is not implemented.
-* Logistics of software usage:
-  * There is an error in the program's configuration.
-  * The input is invalid.
-* Logistics of distributed systems:
-  * A network connection was reset.
-  * An optimistic transaction was aborted due to concurrent modification.
-* Logistics of physical computation:
-  * The system's resources are exhausted (e.g. out of memory, out of disk space).
-  * The system is overloaded and must reject some requests to avoid long queues.
+- Logistics of software development:
+  - There is a bug in the code.
+  - The requested method is not implemented.
+- Logistics of software usage:
+  - There is an error in the program's configuration.
+  - The input is invalid.
+- Logistics of distributed systems:
+  - A network connection was reset.
+  - An optimistic transaction was aborted due to concurrent modification.
+- Logistics of physical computation:
+  - The system's resources are exhausted (e.g. out of memory, out of disk space).
+  - The system is overloaded and must reject some requests to avoid long queues.
 
 #### Business logic should never catch
 
@@ -165,10 +165,10 @@ Note that with this exception philosophy, Java-style "checked exceptions" (excep
 
 In framework and logistical code, you may catch exceptions and try to handle them. Given the nature of exceptions, though, there are only a few things that are reasonable to do when receiving an exception:
 
-* On network disconnect or transaction failures, back up and start over from the beginning (restore connections and state, redo operations).
-* On resources exhausted / overloaded, retry again later, with exponential back-off.
-* On unimplemented methods, retry with a different implementation strategy, if there is one.
-* When no better option is available, report the problem to a human (the user and/or the developer).
+- On network disconnect or transaction failures, back up and start over from the beginning (restore connections and state, redo operations).
+- On resources exhausted / overloaded, retry again later, with exponential back-off.
+- On unimplemented methods, retry with a different implementation strategy, if there is one.
+- When no better option is available, report the problem to a human (the user and/or the developer).
 
 #### Exceptions can happen anywhere (including destructors)
 
@@ -180,8 +180,8 @@ If exceptions are merely a means to fault tolerance, then it is perfectly clear 
 
 Alas, C++ is what it is. So, in KJ, we work around the problem in a couple ways:
 
-* `kj::UnwindDetector` may be used to detect when a destructor is called during unwind and squelch secondary exceptions.
-* The `KJ_ASSERT` family of macros -- from which most exceptions are thrown in the first place -- implement a concept of "recoverable" exceptions, where it is safe to continue execution without throwing in cases where throwing would be bad. Assert macros in destructors must always be recoverable.
+- `kj::UnwindDetector` may be used to detect when a destructor is called during unwind and squelch secondary exceptions.
+- The `KJ_ASSERT` family of macros -- from which most exceptions are thrown in the first place -- implement a concept of "recoverable" exceptions, where it is safe to continue execution without throwing in cases where throwing would be bad. Assert macros in destructors must always be recoverable.
 
 #### Allowing `-fno-exceptions`
 
@@ -205,18 +205,18 @@ As we all know, you should always validate your input.
 
 But, when should you validate it? There are two plausible answers:
 
-* Upfront, on receipt.
-* Lazily, on use.
+- Upfront, on receipt.
+- Lazily, on use.
 
 Upfront validation occasionally makes sense for the purpose of easier debugging of problems: if an error is reported earlier, it's easier to find where it came from.
 
 However, upfront validation has some big problems.
 
-* It is inefficient, as it requires a redundant pass over the data. Lazy validation, in contrast, occurs at a time when you have already loaded the data for the purpose of using it. Extra passes are often cache-unfriendly and/or entail redundant I/O operations.
+- It is inefficient, as it requires a redundant pass over the data. Lazy validation, in contrast, occurs at a time when you have already loaded the data for the purpose of using it. Extra passes are often cache-unfriendly and/or entail redundant I/O operations.
 
-* It encourages people to skip validation at time of use, on the assumption that it was already validated earlier. This is dangerous, as it entails a non-local assumption. E.g. are you really sure that there is no way to insert data into your database without having validated it? Are you really sure that the data hasn't been corrupted? Are you really sure that your code will never be called in a new situation where validation hasn't happened? Are you sure the data cannot have been modified between validation and use? In practice, you should be validating your input at time of use _even if_ you know it has already been checked previously.
+- It encourages people to skip validation at time of use, on the assumption that it was already validated earlier. This is dangerous, as it entails a non-local assumption. E.g. are you really sure that there is no way to insert data into your database without having validated it? Are you really sure that the data hasn't been corrupted? Are you really sure that your code will never be called in a new situation where validation hasn't happened? Are you sure the data cannot have been modified between validation and use? In practice, you should be validating your input at time of use *even if* you know it has already been checked previously.
 
-* The biggest problem: Upfront validation tends not to match actual usage, because the validation site is far away from the usage site. Over time, as the usage code changes, the validator can easily get out-of-sync. Note that this could mean the code itself is out-of-sync, or it could be that running servers are out-of-sync, because they have different update schedules. Or, the validator may be written with incorrect assumptions in the first place. The consequences of this can be severe. Protocol Buffers' concept of "required fields" is essentially an upfront validation check that [has been responsible for outages of Google Search, GMail, and others](https://capnproto.org/faq.html#how-do-i-make-a-field-required-like-in-protocol-buffers).
+- The biggest problem: Upfront validation tends not to match actual usage, because the validation site is far away from the usage site. Over time, as the usage code changes, the validator can easily get out-of-sync. Note that this could mean the code itself is out-of-sync, or it could be that running servers are out-of-sync, because they have different update schedules. Or, the validator may be written with incorrect assumptions in the first place. The consequences of this can be severe. Protocol Buffers' concept of "required fields" is essentially an upfront validation check that [has been responsible for outages of Google Search, GMail, and others](https://capnproto.org/faq.html#how-do-i-make-a-field-required-like-in-protocol-buffers).
 
 We recommend, therefore, that validation occur at time of use. Code should be written to be tolerant of validation failures. For example, most code dealing with UTF-8 text should treat it as a blob of bytes, not worrying about invalid byte sequences. When you actually need to decode the code points -- such as to display them -- you should do something reasonable with invalid sequences -- such as display the Unicode replacement character.
 
@@ -224,15 +224,15 @@ With that said, when storing data in a database long-term, it can make sense to 
 
 ### Premature optimization fallacy
 
-_"We should forget about small efficiencies, say about 97% of the time: premature optimization is the root of all evil."_ -- Donald Knuth
+*"We should forget about small efficiencies, say about 97% of the time: premature optimization is the root of all evil."* -- Donald Knuth
 
-_"The improvement in speed from Example 2 to Example 2a is only about 12%, and many people would pronounce that insignificant. The conventional wisdom shared by many of today’s software engineers calls for ignoring efficiency in the small; but I believe this is simply an overreaction to the abuses they see being practiced by penny-wise- and-pound-foolish programmers, who can’t debug or maintain their “optimized” programs. In established engineering disciplines a 12% improvement, easily obtained, is never considered marginal; and I believe the same viewpoint should prevail in software engineering. Of course I wouldn’t bother making such optimizations on a one-shot job, but when it’s a question of preparing quality programs, I don’t want to restrict myself to tools that deny me such efficiencies."_ -- Donald Knuth, **in the same paper**.
+*"The improvement in speed from Example 2 to Example 2a is only about 12%, and many people would pronounce that insignificant. The conventional wisdom shared by many of today’s software engineers calls for ignoring efficiency in the small; but I believe this is simply an overreaction to the abuses they see being practiced by penny-wise- and-pound-foolish programmers, who can’t debug or maintain their “optimized” programs. In established engineering disciplines a 12% improvement, easily obtained, is never considered marginal; and I believe the same viewpoint should prevail in software engineering. Of course I wouldn’t bother making such optimizations on a one-shot job, but when it’s a question of preparing quality programs, I don’t want to restrict myself to tools that deny me such efficiencies."* -- Donald Knuth, **in the same paper**.
 
 (Credit: [Stop Misquoting Donald Knuth!](http://www.joshbarczak.com/blog/?p=580))
 
 You should not obsess over optimization or write unmaintainable code for the sake of speed.
 
-However, you _should_ be thinking about efficiency of all the code you write. When writing efficient code is not much harder and not much uglier than inefficient code, you should be writing efficient code. If the efficient approach to a problem would take _much_ longer than the inefficient way then go ahead and code the inefficient way first, but in many cases it's not that stark. Rewriting your code later is _much_ more expensive than writing it correctly the first time, because by then you'll have lost context.
+However, you *should* be thinking about efficiency of all the code you write. When writing efficient code is not much harder and not much uglier than inefficient code, you should be writing efficient code. If the efficient approach to a problem would take *much* longer than the inefficient way then go ahead and code the inefficient way first, but in many cases it's not that stark. Rewriting your code later is *much* more expensive than writing it correctly the first time, because by then you'll have lost context.
 
 You should be constantly aware of whether the code you are writing is low-level (called frequently) or high-level (called infrequently). You should consider optimizations relative to the code's level. In low-level code, optimizations like avoiding heap allocations may make sense. In high-level code you should not worry about heap, but you may still want to think about expensive operations like disk I/O or contacting remote servers (things that low-level code should never do in the first place, of course).
 
@@ -242,7 +242,7 @@ Programmers who ignore efficiency until they have no choice inevitably end up sh
 
 Always encode text as UTF-8. Always assume text is encoded as UTF-8.
 
-(Do not, however, assume text is _valid_ UTF-8; see the section on lazy validation.)
+(Do not, however, assume text is *valid* UTF-8; see the section on lazy validation.)
 
 Do not write code that tries to distinguish characters. Unless you are writing code to render text to a display, you probably don't care about characters. Besides, Unicode itself contains code points which act as modifiers to previous characters; it's futile for you to handle these. Most code only really cares about bytes.
 
@@ -260,25 +260,25 @@ KJ requires C++20. Application code (not used as a library) may consider requiri
 
 ### Heap allocation
 
-* Never write `new` or `delete` explicitly. Use `kj::heap` to allocate single objects or `kj::heapArray` for arrays; these return "owned" pointers (`kj::Own<T>` or `kj::Array<T>`, respectively) which enforce RAII/ownership semantics. You may transfer ownership of these pointers via move semantics, but otherwise the objects will be automatically deleted when they go out of scope. This makes memory leaks very rare in KJ code.
-* Only allocate objects on the heap when you actually need to be able to move them. Otherwise, avoid a heap allocation by declaring the object directly on the stack or as a member of some other object.
-* If a class's copy constructor would require memory allocation, consider providing a `clone()` method instead and deleting the copy constructor. Allocation in implicit copies is a common source of death-by-1000-cuts performance problems. `kj::String`, for example, is movable but not copyable.
+- Never write `new` or `delete` explicitly. Use `kj::heap` to allocate single objects or `kj::heapArray` for arrays; these return "owned" pointers (`kj::Own<T>` or `kj::Array<T>`, respectively) which enforce RAII/ownership semantics. You may transfer ownership of these pointers via move semantics, but otherwise the objects will be automatically deleted when they go out of scope. This makes memory leaks very rare in KJ code.
+- Only allocate objects on the heap when you actually need to be able to move them. Otherwise, avoid a heap allocation by declaring the object directly on the stack or as a member of some other object.
+- If a class's copy constructor would require memory allocation, consider providing a `clone()` method instead and deleting the copy constructor. Allocation in implicit copies is a common source of death-by-1000-cuts performance problems. `kj::String`, for example, is movable but not copyable.
 
 ### Pointers, references
 
-* Pointers and references always point to things that are owned by someone else. Take care to think about the lifetime of that object compared to the lifetime of the pointer.
-* Always use `kj::ArrayPtr<T>` rather than `T*` to point to an array.
-* Always use `kj::StringPtr` rather than `const char*` to point to a NUL-terminated string.
-* Always use `kj::Maybe<T&>` rather than `T*` when a pointer can be null. This forces the user to check for null-ness.
-* In other cases, prefer references over pointers. Note, though, that members of an assignable type cannot be references, so you'll need to use pointers in that case (darn).
+- Pointers and references always point to things that are owned by someone else. Take care to think about the lifetime of that object compared to the lifetime of the pointer.
+- Always use `kj::ArrayPtr<T>` rather than `T*` to point to an array.
+- Always use `kj::StringPtr` rather than `const char*` to point to a NUL-terminated string.
+- Always use `kj::Maybe<T&>` rather than `T*` when a pointer can be null. This forces the user to check for null-ness.
+- In other cases, prefer references over pointers. Note, though, that members of an assignable type cannot be references, so you'll need to use pointers in that case (darn).
 
 **Rationale:** There is an argument that says that references should always be const and pointers mutable, because then when you see `foo(&bar)` you know that the function modifies `bar`. This is a nice theory, but in practice real C++ code is rarely so consistent that you can use this as a real signal. We prefer references because they make it unambiguous that the value cannot be null.
 
 ### Constness
 
-* Treat `const`-ness as transitive. So, if you have a const instance of a struct which in turn contains a pointer (or reference), treat that pointer as pointing to const even if it is not declared as such. To enforce this, copyable classes which contain pointer fields should declare their copy constructor as `T(T& other)` rather than `T(const T& other)` (and similarly for assignment operators) in order to prevent escalating a transitively-const pointer to non-const via copy. You may inherit `kj::DisallowConstCopy` to force the implicit copy constructor and assignment operator to be declared this way.
-* Try to treat const/non-const pointers like shared/exclusive locks. So, when a new const pointer to an object is created, all other pointers should also be considered const at least until the new pointer is destroyed. When a new non-const pointer is created, all other pointers should be considered not dereferenceable until the non-const pointer is destroyed. In theory, these rules help keep different objects from interfering with each other by modifying some third object in incompatible ways. Note that these rules are (as I understand it) enforceable by the Rust type system.
-* `const` methods are safe to call on the same object from multiple threads simultaneously. Conversely, it is unsafe to call a non-`const` method if any other thread might be calling methods on that object concurrently. Note that KJ defines synchronization primitives including `kj::Mutex` which integrate nicely with this rule.
+- Treat `const`-ness as transitive. So, if you have a const instance of a struct which in turn contains a pointer (or reference), treat that pointer as pointing to const even if it is not declared as such. To enforce this, copyable classes which contain pointer fields should declare their copy constructor as `T(T& other)` rather than `T(const T& other)` (and similarly for assignment operators) in order to prevent escalating a transitively-const pointer to non-const via copy. You may inherit `kj::DisallowConstCopy` to force the implicit copy constructor and assignment operator to be declared this way.
+- Try to treat const/non-const pointers like shared/exclusive locks. So, when a new const pointer to an object is created, all other pointers should also be considered const at least until the new pointer is destroyed. When a new non-const pointer is created, all other pointers should be considered not dereferenceable until the non-const pointer is destroyed. In theory, these rules help keep different objects from interfering with each other by modifying some third object in incompatible ways. Note that these rules are (as I understand it) enforceable by the Rust type system.
+- `const` methods are safe to call on the same object from multiple threads simultaneously. Conversely, it is unsafe to call a non-`const` method if any other thread might be calling methods on that object concurrently. Note that KJ defines synchronization primitives including `kj::Mutex` which integrate nicely with this rule.
 
 ### Inheritance
 
@@ -286,9 +286,9 @@ A class is either an interface or an implementation. Interfaces have no fields. 
 
 Interfaces should NOT declare a destructor, because:
 
-* That destructor is never called anyway (because we don't use `delete`, and `kj::Own` has a different mechanism for dispatching the destructor).
-* Declaring destructors for interfaces is tedious.
-* If you declare a destructor but do not declare it `noexcept(false)`, C++11 will (regrettably) decide that it is `noexcept` and that all derived classes must also have a `noexcept` destructor, which is wrong. (See the exceptions philosophy section for discussion on exceptions in destructors.)
+- That destructor is never called anyway (because we don't use `delete`, and `kj::Own` has a different mechanism for dispatching the destructor).
+- Declaring destructors for interfaces is tedious.
+- If you declare a destructor but do not declare it `noexcept(false)`, C++11 will (regrettably) decide that it is `noexcept` and that all derived classes must also have a `noexcept` destructor, which is wrong. (See the exceptions philosophy section for discussion on exceptions in destructors.)
 
 Multiple inheritance is allowed and encouraged, keeping in mind that you are usually inheriting interfaces.
 
@@ -302,13 +302,13 @@ KJ's exception philosophy is described earlier in this document. Here we describ
 
 Never use `throw` explicitly. Almost all exceptions should originate from the `KJ_ASSERT`, `KJ_REQUIRE`, and `KJ_SYSCALL` macros (see `kj/debug.h`). These macros allow you to easily attach useful debug information to the exception message without spending time on string formatting.
 
-Never declare anything `noexcept`. As explained in the philosophy section, whether you like it or not, bugs can happen anywhere and therefore exceptions can happen anywhere. `noexcept` causes the process to abort on exceptions. Aborting is _never_ the right answer.
+Never declare anything `noexcept`. As explained in the philosophy section, whether you like it or not, bugs can happen anywhere and therefore exceptions can happen anywhere. `noexcept` causes the process to abort on exceptions. Aborting is *never* the right answer.
 
 Explicit destructors must always be declared `noexcept(false)`, to work around C++11's regrettable decision that destructors should be `noexcept` by default. In destructors, always use `kj::UnwindDetector` or make all your asserts recoverable in order to ensure that an exception is not thrown during unwind.
 
-Do not fret too much about recovering into a perfectly consistent state after every exception. That's not the point. The point is to be able to recover at all -- to _improve_ reliability, but not to make it perfect. So, write your code to do a reasonable thing in most cases.
+Do not fret too much about recovering into a perfectly consistent state after every exception. That's not the point. The point is to be able to recover at all -- to *improve* reliability, but not to make it perfect. So, write your code to do a reasonable thing in most cases.
 
-For example, if you are implementing a data structure like a vector, do not worry about whether move constructors might throw. In practice, it is extraordinarily rare for move constructors to contain any code that could throw. So just assume they don't. Do NOT do what the C++ standard library does and require that all move constructors be explicitly `noexcept`, because people will not remember to mark their move constructors `noexcept`, and you'll just be creating a huge headache for everyone with _no practical benefit_.
+For example, if you are implementing a data structure like a vector, do not worry about whether move constructors might throw. In practice, it is extraordinarily rare for move constructors to contain any code that could throw. So just assume they don't. Do NOT do what the C++ standard library does and require that all move constructors be explicitly `noexcept`, because people will not remember to mark their move constructors `noexcept`, and you'll just be creating a huge headache for everyone with *no practical benefit*.
 
 ### Template Metaprogramming
 
@@ -340,13 +340,13 @@ Now people can use your template metafunction without the pesky `::Type` or `::v
 
 #### Other hints
 
-* To explicitly disable a template under certain circumstances, bind an unnamed template parameter to `kj::EnableIf`:
+- To explicitly disable a template under certain circumstances, bind an unnamed template parameter to `kj::EnableIf`:
 
         template <typename T, typename = kj::EnableIf(!isConst<T>())>
         void mutate(T& ptr);
         // T must not be const.
 
-* Say you're writing a template type with a constructor function like so:
+- Say you're writing a template type with a constructor function like so:
 
         template <typename T>
         Wrapper<T> makeWrapper(T&& inner);
@@ -356,7 +356,7 @@ Now people can use your template metafunction without the pesky `::Type` or `::v
 
   In general, you should assume KJ code in this pattern uses this rule, so if you are passing in an lvalue but don't actually want it wrapped by reference, wrap it in `kj::mv()`.
 
-* Never use function or method pointers. Prefer templating across functors (like STL does), or for non-templates use `kj::Function` (which will handle this for you).
+- Never use function or method pointers. Prefer templating across functors (like STL does), or for non-templates use `kj::Function` (which will handle this for you).
 
 ### Global Constructors
 
@@ -398,12 +398,12 @@ We recommend that KJ code use KJ APIs where available, falling back to C++ stand
 
 All users of the KJ library should familiarize themselves at least with the declarations in the following files, as you will use them all the time:
 
-* `kj/common.h`
-* `kj/memory.h`
-* `kj/array.h`
-* `kj/string.h`
-* `kj/vector.h`
-* `kj/debug.h`
+- `kj/common.h`
+- `kj/memory.h`
+- `kj/array.h`
+- `kj/string.h`
+- `kj/vector.h`
+- `kj/debug.h`
 
 #### C Library
 
@@ -415,10 +415,10 @@ Do not use the C standard I/O functions -- your code should never contain `FILE*
 
 Use the following warning settings with Clang or GCC:
 
-* `-Wall -Wextra`: Enable most warnings.
-* `-Wglobal-constructors`: (Clang-only) This catches global variables with constructors, which KJ style disallows (see above). You will, however, want to disable this warning in tests, since test frameworks use global constructors and are excepted from the style rule.
-* `-Wno-sign-compare`: While comparison between signed and unsigned values could be a serious bug, we find that in practice this warning is almost always spurious.
-* `-Wno-unused-parameter`: This warning is always spurious. I have never seen it find a real bug. Worse, it encourages people to delete parameter names which harms readability.
+- `-Wall -Wextra`: Enable most warnings.
+- `-Wglobal-constructors`: (Clang-only) This catches global variables with constructors, which KJ style disallows (see above). You will, however, want to disable this warning in tests, since test frameworks use global constructors and are excepted from the style rule.
+- `-Wno-sign-compare`: While comparison between signed and unsigned values could be a serious bug, we find that in practice this warning is almost always spurious.
+- `-Wno-unused-parameter`: This warning is always spurious. I have never seen it find a real bug. Worse, it encourages people to delete parameter names which harms readability.
 
 For development builds, `-Werror` should also be enabled. However, this should not be on by default in open source code as not everyone uses the same compiler or compiler version and different compiler versions often produce different warnings.
 
@@ -426,11 +426,11 @@ For development builds, `-Werror` should also be enabled. However, this should n
 
 We use:
 
-* Clang for compiling.
-* `KJ_DBG()` for simple debugging.
-* Valgrind for complicated debugging.
-* [Ekam](https://github.com/capnproto/ekam) for a build system.
-* Git for version control.
+- Clang for compiling.
+- `KJ_DBG()` for simple debugging.
+- Valgrind for complicated debugging.
+- [Ekam](https://github.com/capnproto/ekam) for a build system.
+- Git for version control.
 
 ## Irrelevant formatting rules
 
@@ -440,12 +440,12 @@ As a code reviewer, when you see a violation of formatting rules, think carefull
 
 ### Naming
 
-* Type names: `TitleCase`
-* Variable, member, function, and method names: `camelCase`
-* Constant and enumerant names: `CAPITAL_WITH_UNDERSCORES`
-* Macro names: `CAPITAL_WITH_UNDERSCORES`, with an appropriate project-specific prefix like `KJ_` or `CAPNP_`.
-* Namespaces: `oneword`. Namespaces should be kept short, because you'll have to type them a lot. The name of KJ itself was chosen for the sole purpose of making the namespace easy to type (while still being sufficiently unique). Use a nested namespace called `_` to contain package-private declarations.
-* Files: `module-name.c++`, `module-name.h`, `module-name-test.c++`
+- Type names: `TitleCase`
+- Variable, member, function, and method names: `camelCase`
+- Constant and enumerant names: `CAPITAL_WITH_UNDERSCORES`
+- Macro names: `CAPITAL_WITH_UNDERSCORES`, with an appropriate project-specific prefix like `KJ_` or `CAPNP_`.
+- Namespaces: `oneword`. Namespaces should be kept short, because you'll have to type them a lot. The name of KJ itself was chosen for the sole purpose of making the namespace easy to type (while still being sufficiently unique). Use a nested namespace called `_` to contain package-private declarations.
+- Files: `module-name.c++`, `module-name.h`, `module-name-test.c++`
 
 **Rationale:** There has never been broad agreement on C++ naming style. The closest we have is the C++ standard library. Unfortunately, the C++ standard library made the awful decision of naming types and values in the same style, losing a highly useful visual cue that makes programming more pleasant, and preventing variables from being named after their type (which in many contexts is perfectly appropriate).
 
@@ -455,21 +455,21 @@ There has also never been any agreement on C++ file extensions, for some reason.
 
 ### Spacing and bracing
 
-* Indents are two spaces.
-* Never use tabs.
-* Maximum line length is 100 characters.
-* Indent continuation lines for braced init lists by two spaces.
-* Indent all other continuation lines by four spaces.
-* Alternatively, line up continuation lines with previous lines if it makes them easier to read.
-* Place a space between a keyword and an open parenthesis, e.g.: `if (foo)`
-* Do not place a space between a function name and an open parenthesis, e.g.: `foo(bar)`
-* Place an opening brace at the end of the statement which initiates the block, not on its own line.
-* Place a closing brace on a new line indented the same as the parent block. If there is post-brace code related to the block (e.g. `else` or `while`), place it on the same line as the closing brace.
-* Always place braces around a block *unless* the block is so short that it can actually go on the same line as the introductory `if` or `while`, e.g.: `if (done) return;`.
-* `case` statements are indented within the `switch`, and their following blocks are **further** indented (so the actual statements in a case are indented four spaces more than the `switch`).
-* `public:`, `private:`, and `protected:` are reverse-indented by one stop.
-* Statements inside a `namespace` are **not** indented unless the namespace is a short block that is just forward-declaring things at the top of a file.
-* Set your editor to strip trailing whitespace on save, otherwise other people who use this setting will see spurious diffs when they edit a file after you.
+- Indents are two spaces.
+- Never use tabs.
+- Maximum line length is 100 characters.
+- Indent continuation lines for braced init lists by two spaces.
+- Indent all other continuation lines by four spaces.
+- Alternatively, line up continuation lines with previous lines if it makes them easier to read.
+- Place a space between a keyword and an open parenthesis, e.g.: `if (foo)`
+- Do not place a space between a function name and an open parenthesis, e.g.: `foo(bar)`
+- Place an opening brace at the end of the statement which initiates the block, not on its own line.
+- Place a closing brace on a new line indented the same as the parent block. If there is post-brace code related to the block (e.g. `else` or `while`), place it on the same line as the closing brace.
+- Always place braces around a block *unless* the block is so short that it can actually go on the same line as the introductory `if` or `while`, e.g.: `if (done) return;`.
+- `case` statements are indented within the `switch`, and their following blocks are **further** indented (so the actual statements in a case are indented four spaces more than the `switch`).
+- `public:`, `private:`, and `protected:` are reverse-indented by one stop.
+- Statements inside a `namespace` are **not** indented unless the namespace is a short block that is just forward-declaring things at the top of a file.
+- Set your editor to strip trailing whitespace on save, otherwise other people who use this setting will see spurious diffs when they edit a file after you.
 
 <br>
 
@@ -522,13 +522,13 @@ Other than that, there is absolutely no good reason to space things one way or a
 
 ### Comments
 
-* Always use line comments (`//`). Never use block comments (`/**/`).
+- Always use line comments (`//`). Never use block comments (`/**/`).
 
   **Rationale:** Block comments don't nest. Block comments tend to be harder to re-arrange, whereas a group of line comments can be moved easily. Also, typing `*` is just way harder than typing `/` so why would you want to?
 
-* Write comments that add useful information that the reader might not already know. Do NOT write comments which say things that are already blatantly obvious from the code. For example, for a function `void frob(Bar bar)`, do not write a comment `// Frobs the Bar.`; that's already obvious. It's better to have no comment.
+- Write comments that add useful information that the reader might not already know. Do NOT write comments which say things that are already blatantly obvious from the code. For example, for a function `void frob(Bar bar)`, do not write a comment `// Frobs the Bar.`; that's already obvious. It's better to have no comment.
 
-* Doc comments go **after** the declaration. If the declaration starts a block, the doc comment should go inside the block at the top. A group of related declarations can have a single group doc comment after the last one as long as there are no black lines between the declarations.
+- Doc comments go **after** the declaration. If the declaration starts a block, the doc comment should go inside the block at the top. A group of related declarations can have a single group doc comment after the last one as long as there are no black lines between the declarations.
 
         int foo();
         // This is documentation for foo().
@@ -545,17 +545,17 @@ Other than that, there is absolutely no good reason to space things one way or a
 
   **Rationale:** When you start reading a doc comment, the first thing you want to know is *what the heck is being documented*. Having to scroll down through a long comment to see the declaration, then back up to read the docs, is bad. Sometimes, people actually repeat the declaration at the top of the comment just so that it's visible. This is silly. Let's just put the comment after the declaration.
 
-* TODO comments are of the form `// TODO(type): description`, where `type` is one of:
-  * `now`: Do before next `git push`.
-  * `soon`: Do before next stable release.
-  * `someday`: A feature that might be nice to have some day, but no urgency.
-  * `perf`: Possible performance enhancement.
-  * `security`: Possible security concern. (Used for low-priority issues. Obviously, code with serious security problems should never be written in the first place.)
-  * `cleanup`: An improvement to maintainability with no user-visible effects.
-  * `port`: Things to do when porting to a new platform.
-  * `test`: Something that needs better testing.
-  * `msvc`: Something to revisit when the next, hopefully less-broken version of Microsoft Visual Studio becomes available.
-  * others: Additional TODO types may be defined for use in certain contexts.
+- TODO comments are of the form `// TODO(type): description`, where `type` is one of:
+  - `now`: Do before next `git push`.
+  - `soon`: Do before next stable release.
+  - `someday`: A feature that might be nice to have some day, but no urgency.
+  - `perf`: Possible performance enhancement.
+  - `security`: Possible security concern. (Used for low-priority issues. Obviously, code with serious security problems should never be written in the first place.)
+  - `cleanup`: An improvement to maintainability with no user-visible effects.
+  - `port`: Things to do when porting to a new platform.
+  - `test`: Something that needs better testing.
+  - `msvc`: Something to revisit when the next, hopefully less-broken version of Microsoft Visual Studio becomes available.
+  - others: Additional TODO types may be defined for use in certain contexts.
 
   **Rationale:** Google's guide suggests that TODOs should bear the name of their author ("the person to ask for more information about the comment"), but in practice there's no particular reason why knowing the author is more useful for TODOs than for any other comment (or, indeed, code), and anyway that's what `git blame` is for. Meanwhile, having TODOs classified by type allows for useful searches, so that e.g. release scripts can error out if release-blocking TODOs are present.
 

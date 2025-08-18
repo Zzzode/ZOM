@@ -1,7 +1,9 @@
 #include "zomlang/compiler/ast/module.h"
 
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/factory.h"
+#include "zomlang/compiler/ast/type.h"
 
 namespace zomlang {
 namespace compiler {

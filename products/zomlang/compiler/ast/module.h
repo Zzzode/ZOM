@@ -30,13 +30,12 @@ class SourceFile : public Node {
 public:
   explicit SourceFile(zc::String&& fileName,
                       zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept;
-  ~SourceFile() noexcept(false) override;
+  ~SourceFile() noexcept(false);
 
   const NodeList<Statement>& getStatements() const;
   zc::StringPtr getFileName() const;
 
-  // Visitor pattern support
-  void accept(Visitor& visitor) const;
+  void accept(Visitor& visitor) const override;
 
   ZC_DISALLOW_COPY_AND_MOVE(SourceFile);
 
@@ -49,13 +48,12 @@ class ImportDeclaration : public Statement {
 public:
   ImportDeclaration(zc::Own<ModulePath>&& modulePath,
                     zc::Maybe<zc::String> alias = zc::none) noexcept;
-  ~ImportDeclaration() noexcept(false) override;
+  ~ImportDeclaration() noexcept(false);
 
   const ModulePath& getModulePath() const;
   zc::Maybe<zc::StringPtr> getAlias() const;
 
-  // Visitor pattern support
-  void accept(Visitor& visitor) const;
+  void accept(Visitor& visitor) const override;
 
   ZC_DISALLOW_COPY_AND_MOVE(ImportDeclaration);
 
@@ -71,15 +69,14 @@ public:
   ExportDeclaration(zc::String&& identifier, zc::String&& alias,
                     zc::Own<ModulePath>&& modulePath) noexcept;
 
-  ~ExportDeclaration() noexcept(false) override;
+  ~ExportDeclaration() noexcept(false);
 
   zc::StringPtr getIdentifier() const;
   bool isRename() const;
   zc::Maybe<zc::StringPtr> getAlias() const;
   zc::Maybe<const ModulePath&> getModulePath() const;
 
-  // Visitor pattern support
-  void accept(Visitor& visitor) const;
+  void accept(Visitor& visitor) const override;
 
   ZC_DISALLOW_COPY_AND_MOVE(ExportDeclaration);
 
@@ -91,13 +88,12 @@ private:
 class ModulePath : public Node {
 public:
   explicit ModulePath(zc::Vector<zc::String>&& identifiers) noexcept;
-  ~ModulePath() noexcept(false) override;
+  ~ModulePath() noexcept(false);
 
   zc::ArrayPtr<const zc::String> getIdentifiers() const;
   zc::String toString() const;
 
-  // Visitor pattern support
-  void accept(Visitor& visitor) const;
+  void accept(Visitor& visitor) const override;
 
   ZC_DISALLOW_COPY_AND_MOVE(ModulePath);
 

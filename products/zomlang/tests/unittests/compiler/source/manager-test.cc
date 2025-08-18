@@ -210,8 +210,8 @@ ZC_TEST("SourceManager: Special Characters") {
   ZC_EXPECT(text == content.asBytes());
 
   // Verify position and content of special characters
-  ZC_IF_SOME(offset, manager.resolveFromLineCol(
-                         bufferId, 1, 9)) {  // Position of the first Unicode character
+  ZC_IF_SOME(offset, manager.resolveFromLineCol(bufferId, 1,
+                                                9)) {  // Position of the first Unicode character
     auto loc = manager.getLocForOffset(bufferId, offset);
     auto lineCol = manager.getPresumedLineAndColumnForLoc(loc, bufferId);
     ZC_EXPECT(lineCol.line == 1);

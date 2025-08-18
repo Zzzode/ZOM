@@ -38,7 +38,7 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(Expression);
 
   // Visitor pattern support
-  void accept(Visitor& visitor) const;
+  void accept(Visitor& visitor) const override;
 };
 
 class UnaryExpression : public Expression {
@@ -47,6 +47,8 @@ public:
   ~UnaryExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(UnaryExpression);
+
+  void accept(Visitor& visitor) const override;
 };
 
 class UpdateExpression : public UnaryExpression {
@@ -55,6 +57,8 @@ public:
   ~UpdateExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(UpdateExpression);
+
+  void accept(Visitor& visitor) const override;
 };
 
 class PrefixUnaryExpression : public UpdateExpression {
@@ -67,6 +71,8 @@ public:
   const UnaryOperator& getOperator() const;
   const Expression& getOperand() const;
   bool isPrefix() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -84,6 +90,8 @@ public:
   const Expression& getOperand() const;
   bool isPrefix() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -95,6 +103,8 @@ public:
   ~LeftHandSideExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(LeftHandSideExpression);
+
+  void accept(Visitor& visitor) const override;
 };
 
 class MemberExpression : public LeftHandSideExpression {
@@ -103,6 +113,8 @@ public:
   ~MemberExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(MemberExpression);
+
+  void accept(Visitor& visitor) const override;
 };
 
 class PrimaryExpression : public MemberExpression {
@@ -111,6 +123,8 @@ public:
   ~PrimaryExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(PrimaryExpression);
+
+  void accept(Visitor& visitor) const override;
 };
 
 class Identifier : public PrimaryExpression {
@@ -121,6 +135,8 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(Identifier);
 
   const zc::StringPtr getName() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -138,6 +154,8 @@ public:
   const LeftHandSideExpression& getExpression() const;
   const Identifier& getName() const;
   bool isQuestionDot();
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -157,6 +175,8 @@ public:
   const Expression& getIndex() const;
   bool isQuestionDot();
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -172,6 +192,8 @@ public:
   const Expression& getCallee() const;
   const NodeList<Expression>& getArguments() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -185,6 +207,8 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(ParenthesizedExpression);
 
   const Expression& getExpression() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -203,6 +227,8 @@ public:
   const BinaryOperator& getOperator() const;
   const Expression& getRight() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -219,6 +245,8 @@ public:
   const Expression& getLeft() const;
   const AssignmentOperator& getOperator() const;
   const Expression& getRight() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -237,6 +265,8 @@ public:
   const Expression& getConsequent() const;
   const Expression& getAlternate() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -252,6 +282,8 @@ public:
   const Expression& getCallee() const;
   const NodeList<Expression>& getArguments() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -259,13 +291,15 @@ private:
 
 class OptionalExpression : public LeftHandSideExpression {
 public:
-  OptionalExpression(zc::Own<Expression> object, zc::Own<Expression> property);
+  OptionalExpression(zc::Own<Expression> object, zc::Own<Expression> property) noexcept;
   ~OptionalExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(OptionalExpression);
 
   const Expression& getObject() const;
   const Expression& getProperty() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -278,6 +312,8 @@ public:
   ~LiteralExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(LiteralExpression);
+
+  void accept(Visitor& visitor) const override;
 };
 
 class StringLiteral : public LiteralExpression {
@@ -288,6 +324,8 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(StringLiteral);
 
   const zc::StringPtr getValue() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -303,6 +341,8 @@ public:
 
   int64_t getValue() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -316,6 +356,8 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(FloatLiteral);
 
   double getValue() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -331,6 +373,8 @@ public:
 
   bool getValue() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -342,6 +386,8 @@ public:
   ~NullLiteral() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(NullLiteral);
+
+  void accept(Visitor& visitor) const override;
 };
 
 class CastExpression : public Expression {
@@ -353,6 +399,8 @@ public:
 
   virtual const Expression& getExpression() const = 0;
   virtual const Type& getTargetType() const = 0;
+
+  void accept(Visitor& visitor) const override;
 };
 
 class AsExpression : public CastExpression {
@@ -364,6 +412,8 @@ public:
 
   const Expression& getExpression() const override;
   const Type& getTargetType() const override;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -380,6 +430,8 @@ public:
   const Expression& getExpression() const override;
   const Type& getTargetType() const override;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -395,6 +447,8 @@ public:
   const Expression& getExpression() const override;
   const Type& getTargetType() const override;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -408,6 +462,8 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(VoidExpression);
 
   const Expression& getExpression() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -423,6 +479,8 @@ public:
 
   const Expression& getExpression() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -437,6 +495,8 @@ public:
 
   const Expression& getExpression() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -446,7 +506,7 @@ class FunctionExpression : public PrimaryExpression {
 public:
   FunctionExpression(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
                      zc::Vector<zc::Own<BindingElement>>&& parameters,
-                     zc::Maybe<zc::Own<Type>> returnType, zc::Own<Statement> body);
+                     zc::Maybe<zc::Own<Type>> returnType, zc::Own<Statement> body) noexcept;
   ~FunctionExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(FunctionExpression);
@@ -455,6 +515,8 @@ public:
   const NodeList<BindingElement>& getParameters() const;
   zc::Maybe<const Type&> getReturnType() const;
   const Statement& getBody() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;
@@ -470,6 +532,8 @@ public:
 
   const NodeList<Expression>& getElements() const;
 
+  void accept(Visitor& visitor) const override;
+
 private:
   struct Impl;
   const zc::Own<Impl> impl;
@@ -483,6 +547,8 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(ObjectLiteralExpression);
 
   const NodeList<Expression>& getProperties() const;
+
+  void accept(Visitor& visitor) const override;
 
 private:
   struct Impl;

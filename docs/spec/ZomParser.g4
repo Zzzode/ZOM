@@ -618,7 +618,7 @@ predefinedType:
 	| F64
 	| STR
 	| BOOL
-	| NIL
+	| NULL
 	| UNIT;
 
 // TypeReference

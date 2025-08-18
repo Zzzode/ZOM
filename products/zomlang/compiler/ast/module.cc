@@ -18,7 +18,9 @@
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
@@ -49,10 +51,7 @@ const NodeList<Statement>& SourceFile::getStatements() const { return impl->stat
 
 zc::StringPtr SourceFile::getFileName() const { return impl->fileName; }
 
-// Visitor pattern implementation
-void SourceFile::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void SourceFile::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ImportDeclaration::Impl
@@ -80,10 +79,7 @@ zc::Maybe<zc::StringPtr> ImportDeclaration::getAlias() const {
   else { return zc::none; }
 }
 
-// Visitor pattern implementation
-void ImportDeclaration::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void ImportDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ExportDeclaration::Impl
@@ -149,10 +145,7 @@ zc::Maybe<const ModulePath&> ExportDeclaration::getModulePath() const {
   ZC_UNREACHABLE;
 }
 
-// Visitor pattern implementation
-void ExportDeclaration::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void ExportDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ModulePath::Impl
@@ -176,16 +169,14 @@ zc::ArrayPtr<const zc::String> ModulePath::getIdentifiers() const {
 zc::String ModulePath::toString() const {
   zc::String result;
   for (size_t i = 0; i < impl->identifiers.size(); ++i) {
-    if (i > 0) { result = zc::str(result, "."); }
+    if (i > 0) result = zc::str(result, ".");
     result = zc::str(result, impl->identifiers[i]);
   }
   return result;
 }
 
-// Visitor pattern implementation
-void ModulePath::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void ModulePath::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 }  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang

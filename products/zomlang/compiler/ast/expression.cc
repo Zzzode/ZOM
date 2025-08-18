@@ -30,7 +30,6 @@ namespace ast {
 Expression::Expression(SyntaxKind kind) noexcept : Node(kind) {}
 Expression::~Expression() noexcept(false) = default;
 
-// Visitor pattern implementation
 void Expression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -38,11 +37,15 @@ void Expression::accept(Visitor& visitor) const { visitor.visit(*this); }
 UnaryExpression::UnaryExpression(SyntaxKind kind) noexcept : Expression(kind) {}
 UnaryExpression::~UnaryExpression() noexcept(false) = default;
 
+void UnaryExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // UpdateExpression
 
 UpdateExpression::UpdateExpression(SyntaxKind kind) noexcept : UnaryExpression(kind) {}
 UpdateExpression::~UpdateExpression() noexcept(false) = default;
+
+void UpdateExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // PrefixUnaryExpression::Impl
@@ -71,6 +74,8 @@ const Expression& PrefixUnaryExpression::getOperand() const { return *impl->oper
 
 bool PrefixUnaryExpression::isPrefix() const { return true; }
 
+void PrefixUnaryExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // PostfixUnaryExpression::Impl
 
@@ -98,12 +103,14 @@ const Expression& PostfixUnaryExpression::getOperand() const { return *impl->ope
 
 bool PostfixUnaryExpression::isPrefix() const { return false; }
 
+void PostfixUnaryExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // LeftHandSideExpression
-
 LeftHandSideExpression::LeftHandSideExpression(SyntaxKind kind) noexcept : UpdateExpression(kind) {}
-
 LeftHandSideExpression::~LeftHandSideExpression() noexcept(false) = default;
+
+void LeftHandSideExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // NewExpression::Impl
@@ -130,17 +137,21 @@ const Expression& NewExpression::getCallee() const { return *impl->callee; }
 
 const NodeList<Expression>& NewExpression::getArguments() const { return impl->arguments; }
 
+void NewExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // MemberExpression
-
 MemberExpression::MemberExpression(SyntaxKind kind) noexcept : LeftHandSideExpression(kind) {}
 MemberExpression::~MemberExpression() noexcept(false) = default;
 
+void MemberExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // PrimaryExpression
-
 PrimaryExpression::PrimaryExpression(SyntaxKind kind) noexcept : MemberExpression(kind) {}
 PrimaryExpression::~PrimaryExpression() noexcept(false) = default;
+
+void PrimaryExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // CallExpression::Impl
@@ -167,6 +178,8 @@ const Expression& CallExpression::getCallee() const { return *impl->callee; }
 
 const NodeList<Expression>& CallExpression::getArguments() const { return impl->arguments; }
 
+void CallExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // OptionalExpression::Impl
 
@@ -180,7 +193,8 @@ struct OptionalExpression::Impl {
 // ================================================================================
 // OptionalExpression
 
-OptionalExpression::OptionalExpression(zc::Own<Expression> object, zc::Own<Expression> property)
+OptionalExpression::OptionalExpression(zc::Own<Expression> object,
+                                       zc::Own<Expression> property) noexcept
     : LeftHandSideExpression(SyntaxKind::kOptionalExpression),
       impl(zc::heap<Impl>(zc::mv(object), zc::mv(property))) {}
 
@@ -189,6 +203,8 @@ OptionalExpression::~OptionalExpression() noexcept(false) = default;
 const Expression& OptionalExpression::getObject() const { return *impl->object; }
 
 const Expression& OptionalExpression::getProperty() const { return *impl->property; }
+
+void OptionalExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // BinaryExpression::Impl
@@ -218,6 +234,8 @@ const BinaryOperator& BinaryExpression::getOperator() const { return *impl->op; 
 
 const Expression& BinaryExpression::getRight() const { return *impl->right; }
 
+void BinaryExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // AssignmentExpression::Impl
 
@@ -245,6 +263,8 @@ const Expression& AssignmentExpression::getLeft() const { return *impl->left; }
 const AssignmentOperator& AssignmentExpression::getOperator() const { return *impl->op; }
 
 const Expression& AssignmentExpression::getRight() const { return *impl->right; }
+
+void AssignmentExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ConditionalExpression::Impl
@@ -275,6 +295,8 @@ const Expression& ConditionalExpression::getConsequent() const { return *impl->c
 
 const Expression& ConditionalExpression::getAlternate() const { return *impl->alternate; }
 
+void ConditionalExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // Identifier::Impl
 
@@ -294,12 +316,14 @@ Identifier::~Identifier() noexcept(false) = default;
 
 const zc::StringPtr Identifier::getName() const { return impl->name; }
 
+void Identifier::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // LiteralExpression
-
 LiteralExpression::LiteralExpression(SyntaxKind kind) noexcept : PrimaryExpression(kind) {}
-
 LiteralExpression::~LiteralExpression() noexcept(false) = default;
+
+void LiteralExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // StringLiteral::Impl
@@ -318,7 +342,9 @@ StringLiteral::StringLiteral(zc::String value) noexcept
 
 StringLiteral::~StringLiteral() noexcept(false) = default;
 
-const zc::StringPtr StringLiteral::getValue() const { return impl->value.asPtr(); }
+const zc::StringPtr StringLiteral::getValue() const { return impl->value; }
+
+void StringLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // IntegerLiteral::Impl
@@ -339,6 +365,8 @@ IntegerLiteral::~IntegerLiteral() noexcept(false) = default;
 
 int64_t IntegerLiteral::getValue() const { return impl->value; }
 
+void IntegerLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // FloatLiteral::Impl
 
@@ -357,6 +385,8 @@ FloatLiteral::FloatLiteral(double value) noexcept
 FloatLiteral::~FloatLiteral() noexcept(false) = default;
 
 double FloatLiteral::getValue() const { return impl->value; }
+
+void FloatLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // BooleanLiteral::Impl
@@ -377,17 +407,21 @@ BooleanLiteral::~BooleanLiteral() noexcept(false) = default;
 
 bool BooleanLiteral::getValue() const { return impl->value; }
 
+void BooleanLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // NullLiteral
-
 NullLiteral::NullLiteral() noexcept : LiteralExpression(SyntaxKind::kNullLiteral) {}
 NullLiteral::~NullLiteral() noexcept(false) = default;
 
+void NullLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // CastExpression
-
 CastExpression::CastExpression(SyntaxKind kind) noexcept : Expression(kind) {}
 CastExpression::~CastExpression() noexcept(false) = default;
+
+void CastExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // AsExpression::Impl
@@ -412,6 +446,8 @@ AsExpression::~AsExpression() noexcept(false) = default;
 const Expression& AsExpression::getExpression() const { return *impl->expression; }
 
 const Type& AsExpression::getTargetType() const { return *impl->targetType; }
+
+void AsExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ForcedAsExpression::Impl
@@ -438,6 +474,8 @@ const Expression& ForcedAsExpression::getExpression() const { return *impl->expr
 
 const Type& ForcedAsExpression::getTargetType() const { return *impl->targetType; }
 
+void ForcedAsExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // ConditionalAsExpression::Impl
 
@@ -463,6 +501,8 @@ const Expression& ConditionalAsExpression::getExpression() const { return *impl-
 
 const Type& ConditionalAsExpression::getTargetType() const { return *impl->targetType; }
 
+void ConditionalAsExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // VoidExpression::Impl
 
@@ -481,6 +521,8 @@ VoidExpression::VoidExpression(zc::Own<Expression> expression) noexcept
 VoidExpression::~VoidExpression() noexcept(false) = default;
 
 const Expression& VoidExpression::getExpression() const { return *impl->expression; }
+
+void VoidExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // TypeOfExpression::Impl
@@ -501,6 +543,8 @@ TypeOfExpression::~TypeOfExpression() noexcept(false) = default;
 
 const Expression& TypeOfExpression::getExpression() const { return *impl->expression; }
 
+void TypeOfExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // AwaitExpression::Impl
 
@@ -519,6 +563,8 @@ AwaitExpression::AwaitExpression(zc::Own<Expression> expression) noexcept
 AwaitExpression::~AwaitExpression() noexcept(false) = default;
 
 const Expression& AwaitExpression::getExpression() const { return *impl->expression; }
+
+void AwaitExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // FunctionExpression::Impl
@@ -542,7 +588,8 @@ struct FunctionExpression::Impl {
 
 FunctionExpression::FunctionExpression(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
                                        zc::Vector<zc::Own<BindingElement>>&& parameters,
-                                       zc::Maybe<zc::Own<Type>> returnType, zc::Own<Statement> body)
+                                       zc::Maybe<zc::Own<Type>> returnType,
+                                       zc::Own<Statement> body) noexcept
     : PrimaryExpression(SyntaxKind::kFunctionExpression),
       impl(zc::heap<Impl>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(returnType),
                           zc::mv(body))) {}
@@ -556,6 +603,8 @@ const NodeList<TypeParameter>& FunctionExpression::getTypeParameters() const {
 const NodeList<BindingElement>& FunctionExpression::getParameters() const {
   return impl->parameters;
 }
+
+void FunctionExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 zc::Maybe<const Type&> FunctionExpression::getReturnType() const {
   return impl->returnType.map([](const zc::Own<Type>& t) -> const Type& { return *t; });
@@ -583,6 +632,8 @@ ParenthesizedExpression::~ParenthesizedExpression() noexcept(false) = default;
 
 const Expression& ParenthesizedExpression::getExpression() const { return *impl->expression; }
 
+void ParenthesizedExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // ArrayLiteralExpression::Impl
 
@@ -602,6 +653,8 @@ ArrayLiteralExpression::ArrayLiteralExpression(zc::Vector<zc::Own<Expression>>&&
 ArrayLiteralExpression::~ArrayLiteralExpression() noexcept(false) = default;
 
 const NodeList<Expression>& ArrayLiteralExpression::getElements() const { return impl->elements; }
+
+void ArrayLiteralExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ObjectLiteralExpression::Impl
@@ -625,6 +678,8 @@ ObjectLiteralExpression::~ObjectLiteralExpression() noexcept(false) = default;
 const NodeList<Expression>& ObjectLiteralExpression::getProperties() const {
   return impl->properties;
 }
+
+void ObjectLiteralExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // PropertyAccessExpression::Impl
@@ -658,6 +713,8 @@ const LeftHandSideExpression& PropertyAccessExpression::getExpression() const {
 const Identifier& PropertyAccessExpression::getName() const { return *impl->name; }
 
 bool PropertyAccessExpression::isQuestionDot() { return impl->questionDot; }
+
+void PropertyAccessExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ElementAccessExpression::Impl
@@ -694,6 +751,8 @@ const LeftHandSideExpression& ElementAccessExpression::getExpression() const {
 const Expression& ElementAccessExpression::getIndex() const { return *impl->index; }
 
 bool ElementAccessExpression::isQuestionDot() { return impl->questionDot; }
+
+void ElementAccessExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 }  // namespace ast
 }  // namespace compiler

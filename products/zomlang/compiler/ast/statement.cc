@@ -29,10 +29,7 @@ namespace ast {
 Statement::Statement(SyntaxKind kind) noexcept : Node(kind) {}
 Statement::~Statement() noexcept(false) = default;
 
-// Visitor pattern implementation
-void Statement::accept(Visitor& visitor) const {
-  visitor.visit(*this);
-}
+void Statement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // BindingElement::Impl
@@ -50,7 +47,7 @@ struct BindingElement::Impl {
 // BindingElement
 
 BindingElement::BindingElement(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> type,
-                               zc::Maybe<zc::Own<Expression>> initializer)
+                               zc::Maybe<zc::Own<Expression>> initializer) noexcept
     : Statement(SyntaxKind::kBindingElement),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(type), zc::mv(initializer))) {}
 
@@ -67,6 +64,8 @@ const Expression* BindingElement::getInitializer() const {
       .orDefault(nullptr);
 }
 
+void BindingElement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // VariableDeclaration::Impl
 
@@ -79,12 +78,14 @@ struct VariableDeclaration::Impl {
 // ================================================================================
 // VariableDeclaration
 
-VariableDeclaration::VariableDeclaration(zc::Vector<zc::Own<BindingElement>>&& bindings)
+VariableDeclaration::VariableDeclaration(zc::Vector<zc::Own<BindingElement>>&& bindings) noexcept
     : Statement(SyntaxKind::kVariableDeclaration), impl(zc::heap<Impl>(zc::mv(bindings))) {}
 
 VariableDeclaration::~VariableDeclaration() noexcept(false) = default;
 
 const NodeList<BindingElement>& VariableDeclaration::getBindings() const { return impl->bindings; }
+
+void VariableDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // FunctionDeclaration::Impl
@@ -113,7 +114,7 @@ FunctionDeclaration::FunctionDeclaration(zc::Own<Identifier> name,
                                          zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
                                          zc::Vector<zc::Own<BindingElement>>&& parameters,
                                          zc::Maybe<zc::Own<ReturnType>> returnType,
-                                         zc::Own<Statement> body)
+                                         zc::Own<Statement> body) noexcept
     : Statement(SyntaxKind::kFunctionDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(typeParameters), zc::mv(parameters),
                           zc::mv(returnType), zc::mv(body))) {}
@@ -137,6 +138,8 @@ const ReturnType* FunctionDeclaration::getReturnType() const {
 
 const Statement& FunctionDeclaration::getBody() const { return *impl->body; }
 
+void FunctionDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // ClassDeclaration::Impl
 
@@ -154,7 +157,7 @@ struct ClassDeclaration::Impl {
 
 ClassDeclaration::ClassDeclaration(zc::Own<Identifier> name,
                                    zc::Maybe<zc::Own<Identifier>> superClass,
-                                   zc::Vector<zc::Own<Statement>>&& members)
+                                   zc::Vector<zc::Own<Statement>>&& members) noexcept
     : Statement(SyntaxKind::kClassDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(superClass), zc::mv(members))) {}
 
@@ -169,6 +172,8 @@ const Identifier* ClassDeclaration::getSuperClass() const {
 
 const NodeList<Statement>& ClassDeclaration::getMembers() const { return impl->members; }
 
+void ClassDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // BlockStatement::Impl
 
@@ -181,12 +186,14 @@ struct BlockStatement::Impl {
 // ================================================================================
 // BlockStatement
 
-BlockStatement::BlockStatement(zc::Vector<zc::Own<Statement>>&& statements)
+BlockStatement::BlockStatement(zc::Vector<zc::Own<Statement>>&& statements) noexcept
     : Statement(SyntaxKind::kBlockStatement), impl(zc::heap<Impl>(zc::mv(statements))) {}
 
 BlockStatement::~BlockStatement() noexcept(false) = default;
 
 const NodeList<Statement>& BlockStatement::getStatements() const { return impl->statements; }
+
+void BlockStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ExpressionStatement::Impl
@@ -200,12 +207,14 @@ struct ExpressionStatement::Impl {
 // ================================================================================
 // ExpressionStatement
 
-ExpressionStatement::ExpressionStatement(zc::Own<Expression> expression)
+ExpressionStatement::ExpressionStatement(zc::Own<Expression> expression) noexcept
     : Statement(SyntaxKind::kExpressionStatement), impl(zc::heap<Impl>(zc::mv(expression))) {}
 
 ExpressionStatement::~ExpressionStatement() noexcept(false) = default;
 
 const Expression& ExpressionStatement::getExpression() const { return *impl->expression; }
+
+void ExpressionStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // IfStatement::Impl
@@ -223,7 +232,7 @@ struct IfStatement::Impl {
 // IfStatement
 
 IfStatement::IfStatement(zc::Own<Expression> test, zc::Own<Statement> consequent,
-                         zc::Maybe<zc::Own<Statement>> alternate)
+                         zc::Maybe<zc::Own<Statement>> alternate) noexcept
     : Statement(SyntaxKind::kIfStatement),
       impl(zc::heap<Impl>(zc::mv(test), zc::mv(consequent), zc::mv(alternate))) {}
 
@@ -238,6 +247,8 @@ const Statement* IfStatement::getElseStatement() const {
       .orDefault(nullptr);
 }
 
+void IfStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // WhileStatement::Impl
 
@@ -251,7 +262,7 @@ struct WhileStatement::Impl {
 // ================================================================================
 // WhileStatement
 
-WhileStatement::WhileStatement(zc::Own<Expression> test, zc::Own<Statement> body)
+WhileStatement::WhileStatement(zc::Own<Expression> test, zc::Own<Statement> body) noexcept
     : Statement(SyntaxKind::kWhileStatement), impl(zc::heap<Impl>(zc::mv(test), zc::mv(body))) {}
 
 WhileStatement::~WhileStatement() noexcept(false) = default;
@@ -259,6 +270,8 @@ WhileStatement::~WhileStatement() noexcept(false) = default;
 const Expression& WhileStatement::getCondition() const { return *impl->test; }
 
 const Statement& WhileStatement::getBody() const { return *impl->body; }
+
+void WhileStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ReturnStatement::Impl
@@ -272,7 +285,7 @@ struct ReturnStatement::Impl {
 // ================================================================================
 // ReturnStatement
 
-ReturnStatement::ReturnStatement(zc::Maybe<zc::Own<Expression>> argument)
+ReturnStatement::ReturnStatement(zc::Maybe<zc::Own<Expression>> argument) noexcept
     : Statement(SyntaxKind::kReturnStatement), impl(zc::heap<Impl>(zc::mv(argument))) {}
 
 ReturnStatement::~ReturnStatement() noexcept(false) = default;
@@ -282,12 +295,16 @@ const Expression* ReturnStatement::getExpression() const {
       .orDefault(nullptr);
 }
 
+void ReturnStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // EmptyStatement
 
-EmptyStatement::EmptyStatement() : Statement(SyntaxKind::kEmptyStatement) {}
+EmptyStatement::EmptyStatement() noexcept : Statement(SyntaxKind::kEmptyStatement) {}
 
 EmptyStatement::~EmptyStatement() noexcept(false) = default;
+
+void EmptyStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ForStatement::Impl
@@ -308,7 +325,7 @@ struct ForStatement::Impl {
 
 ForStatement::ForStatement(zc::Maybe<zc::Own<Statement>> init,
                            zc::Maybe<zc::Own<Expression>> condition,
-                           zc::Maybe<zc::Own<Expression>> update, zc::Own<Statement> body)
+                           zc::Maybe<zc::Own<Expression>> update, zc::Own<Statement> body) noexcept
     : Statement(SyntaxKind::kForStatement),
       impl(zc::heap<Impl>(zc::mv(init), zc::mv(condition), zc::mv(update), zc::mv(body))) {}
 
@@ -331,6 +348,8 @@ const Expression* ForStatement::getUpdate() const {
 
 const Statement& ForStatement::getBody() const { return *impl->body; }
 
+void ForStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // MatchStatement::Impl
 
@@ -346,7 +365,7 @@ struct MatchStatement::Impl {
 // MatchStatement
 
 MatchStatement::MatchStatement(zc::Own<Expression> discriminant,
-                               zc::Vector<zc::Own<Statement>>&& clauses)
+                               zc::Vector<zc::Own<Statement>>&& clauses) noexcept
     : Statement(SyntaxKind::kMatchStatement),
       impl(zc::heap<Impl>(zc::mv(discriminant), zc::mv(clauses))) {}
 
@@ -355,6 +374,8 @@ MatchStatement::~MatchStatement() noexcept(false) = default;
 const Expression& MatchStatement::getDiscriminant() const { return *impl->discriminant; }
 
 const NodeList<Statement>& MatchStatement::getClauses() const { return impl->clauses; }
+
+void MatchStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // AliasDeclaration::Impl
@@ -369,7 +390,7 @@ struct AliasDeclaration::Impl {
 // ================================================================================
 // AliasDeclaration
 
-AliasDeclaration::AliasDeclaration(zc::Own<Identifier> name, zc::Own<Type> type)
+AliasDeclaration::AliasDeclaration(zc::Own<Identifier> name, zc::Own<Type> type) noexcept
     : Statement(SyntaxKind::kAliasDeclaration), impl(zc::heap<Impl>(zc::mv(name), zc::mv(type))) {}
 
 AliasDeclaration::~AliasDeclaration() noexcept(false) = default;
@@ -378,12 +399,16 @@ const Identifier& AliasDeclaration::getName() const { return *impl->name; }
 
 const Type& AliasDeclaration::getType() const { return *impl->type; }
 
+void AliasDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // ================================================================================
 // DebuggerStatement
 
-DebuggerStatement::DebuggerStatement() : Statement(SyntaxKind::kDebuggerStatement) {}
+DebuggerStatement::DebuggerStatement() noexcept : Statement(SyntaxKind::kDebuggerStatement) {}
 
 DebuggerStatement::~DebuggerStatement() noexcept(false) = default;
+
+void DebuggerStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // BreakStatement::Impl
@@ -397,7 +422,7 @@ struct BreakStatement::Impl {
 // ================================================================================
 // BreakStatement
 
-BreakStatement::BreakStatement(zc::Maybe<zc::Own<Identifier>> label)
+BreakStatement::BreakStatement(zc::Maybe<zc::Own<Identifier>> label) noexcept
     : Statement(SyntaxKind::kBreakStatement), impl(zc::heap<Impl>(zc::mv(label))) {}
 
 BreakStatement::~BreakStatement() noexcept(false) = default;
@@ -405,6 +430,8 @@ BreakStatement::~BreakStatement() noexcept(false) = default;
 const Identifier* BreakStatement::getLabel() const {
   return impl->label.map([](const zc::Own<Identifier>& id) { return id.get(); }).orDefault(nullptr);
 }
+
+void BreakStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ContinueStatement::Impl
@@ -418,7 +445,7 @@ struct ContinueStatement::Impl {
 // ================================================================================
 // ContinueStatement
 
-ContinueStatement::ContinueStatement(zc::Maybe<zc::Own<Identifier>> label)
+ContinueStatement::ContinueStatement(zc::Maybe<zc::Own<Identifier>> label) noexcept
     : Statement(SyntaxKind::kContinueStatement), impl(zc::heap<Impl>(zc::mv(label))) {}
 
 ContinueStatement::~ContinueStatement() noexcept(false) = default;
@@ -426,6 +453,8 @@ ContinueStatement::~ContinueStatement() noexcept(false) = default;
 const Identifier* ContinueStatement::getLabel() const {
   return impl->label.map([](const zc::Own<Identifier>& id) { return id.get(); }).orDefault(nullptr);
 }
+
+void ContinueStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // InterfaceDeclaration::Impl
@@ -445,7 +474,7 @@ struct InterfaceDeclaration::Impl {
 
 InterfaceDeclaration::InterfaceDeclaration(zc::Own<Identifier> name,
                                            zc::Vector<zc::Own<Statement>>&& members,
-                                           zc::Vector<zc::Own<Identifier>>&& extends)
+                                           zc::Vector<zc::Own<Identifier>>&& extends) noexcept
     : Statement(SyntaxKind::kInterfaceDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(members), zc::mv(extends))) {}
 
@@ -458,6 +487,8 @@ const NodeList<Statement>& InterfaceDeclaration::getMembers() const { return imp
 zc::ArrayPtr<const zc::Own<Identifier>> InterfaceDeclaration::getExtends() const {
   return impl->extends;
 }
+
+void InterfaceDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // StructDeclaration::Impl
@@ -474,7 +505,7 @@ struct StructDeclaration::Impl {
 // StructDeclaration
 
 StructDeclaration::StructDeclaration(zc::Own<Identifier> name,
-                                     zc::Vector<zc::Own<Statement>>&& members)
+                                     zc::Vector<zc::Own<Statement>>&& members) noexcept
     : Statement(SyntaxKind::kStructDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(members))) {}
 
@@ -483,6 +514,8 @@ StructDeclaration::~StructDeclaration() noexcept(false) = default;
 const Identifier& StructDeclaration::getName() const { return *impl->name; }
 
 const NodeList<Statement>& StructDeclaration::getMembers() const { return impl->members; }
+
+void StructDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // EnumDeclaration::Impl
@@ -498,7 +531,8 @@ struct EnumDeclaration::Impl {
 // ================================================================================
 // EnumDeclaration
 
-EnumDeclaration::EnumDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<Statement>>&& members)
+EnumDeclaration::EnumDeclaration(zc::Own<Identifier> name,
+                                 zc::Vector<zc::Own<Statement>>&& members) noexcept
     : Statement(SyntaxKind::kEnumDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(members))) {}
 
@@ -507,6 +541,8 @@ EnumDeclaration::~EnumDeclaration() noexcept(false) = default;
 const Identifier& EnumDeclaration::getName() const { return *impl->name; }
 
 const NodeList<Statement>& EnumDeclaration::getMembers() const { return impl->members; }
+
+void EnumDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ErrorDeclaration::Impl
@@ -523,7 +559,7 @@ struct ErrorDeclaration::Impl {
 // ErrorDeclaration
 
 ErrorDeclaration::ErrorDeclaration(zc::Own<Identifier> name,
-                                   zc::Vector<zc::Own<Statement>>&& members)
+                                   zc::Vector<zc::Own<Statement>>&& members) noexcept
     : Statement(SyntaxKind::kErrorDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(members))) {}
 
@@ -532,6 +568,8 @@ ErrorDeclaration::~ErrorDeclaration() noexcept(false) = default;
 const Identifier& ErrorDeclaration::getName() const { return *impl->name; }
 
 const NodeList<Statement>& ErrorDeclaration::getMembers() const { return impl->members; }
+
+void ErrorDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // TypeParameter::Impl
@@ -547,7 +585,7 @@ struct TypeParameter::Impl {
 // ================================================================================
 // TypeParameter
 
-TypeParameter::TypeParameter(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> constraint)
+TypeParameter::TypeParameter(zc::Own<Identifier> name, zc::Maybe<zc::Own<Type>> constraint) noexcept
     : Statement(ast::SyntaxKind::kTypeParameterDeclaration),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(constraint))) {}
 
@@ -558,6 +596,8 @@ const Identifier& TypeParameter::getName() const { return *impl->name; }
 zc::Maybe<const Type&> TypeParameter::getConstraint() const {
   return impl->constraint.map([](const zc::Own<Type>& t) -> const Type& { return *t; });
 }
+
+void TypeParameter::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 }  // namespace ast
 }  // namespace compiler

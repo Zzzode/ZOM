@@ -15,11 +15,6 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zomlang/compiler/ast/ast.h"
-#include "zomlang/compiler/ast/statement.h"
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/operator.h"
-#include "zomlang/compiler/ast/module.h"
 
 namespace zomlang {
 namespace compiler {
@@ -31,6 +26,20 @@ class Statement;
 class Expression;
 class Type;
 class Identifier;
+
+// Type node types
+class TypeReference;
+class ArrayType;
+class UnionType;
+class IntersectionType;
+class ParenthesizedType;
+class PredefinedType;
+class ObjectType;
+class TupleType;
+class ReturnType;
+class FunctionType;
+class OptionalType;
+class TypeQuery;
 
 // Operator types
 class Operator;
@@ -102,105 +111,118 @@ class ArrayLiteralExpression;
 class ObjectLiteralExpression;
 
 /// \brief Base visitor interface for AST traversal using the visitor pattern.
-/// 
+///
 /// This class provides a generic visitor interface that can be used to traverse
 /// and process AST nodes. Concrete visitors should inherit from this class and
 /// override the visit methods for the node types they are interested in.
-/// 
+///
 /// The visitor pattern allows for separation of concerns between the AST structure
 /// and the operations performed on it, making it easier to add new operations
 /// without modifying the AST node classes.
 class Visitor {
 public:
-  virtual ~Visitor() noexcept(false) = default;
-
   ZC_DISALLOW_COPY_AND_MOVE(Visitor);
 
   // Base visit methods
-  virtual void visit(const Node& node) {}
-  virtual void visit(const Statement& statement) { visit(static_cast<const Node&>(statement)); }
-  virtual void visit(const Expression& expression) { visit(static_cast<const Node&>(expression)); }
+  virtual void visit(const Node& node) = 0;
+  virtual void visit(const Statement& statement) = 0;
+  virtual void visit(const Expression& expression) = 0;
+  virtual void visit(const Type& type) = 0;
 
   // Statement visitor methods
-  virtual void visit(const TypeParameter& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const BindingElement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const VariableDeclaration& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const FunctionDeclaration& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const ClassDeclaration& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const InterfaceDeclaration& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const StructDeclaration& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const EnumDeclaration& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const ErrorDeclaration& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const AliasDeclaration& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const BlockStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const EmptyStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const ExpressionStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const IfStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const WhileStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const ForStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const BreakStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const ContinueStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const ReturnStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const MatchStatement& node) { visit(static_cast<const Statement&>(node)); }
-  virtual void visit(const DebuggerStatement& node) { visit(static_cast<const Statement&>(node)); }
+  virtual void visit(const TypeParameter& node) = 0;
+  virtual void visit(const BindingElement& node) = 0;
+  virtual void visit(const VariableDeclaration& node) = 0;
+  virtual void visit(const FunctionDeclaration& node) = 0;
+  virtual void visit(const ClassDeclaration& node) = 0;
+  virtual void visit(const InterfaceDeclaration& node) = 0;
+  virtual void visit(const StructDeclaration& node) = 0;
+  virtual void visit(const EnumDeclaration& node) = 0;
+  virtual void visit(const ErrorDeclaration& node) = 0;
+  virtual void visit(const AliasDeclaration& node) = 0;
+  virtual void visit(const BlockStatement& node) = 0;
+  virtual void visit(const EmptyStatement& node) = 0;
+  virtual void visit(const ExpressionStatement& node) = 0;
+  virtual void visit(const IfStatement& node) = 0;
+  virtual void visit(const WhileStatement& node) = 0;
+  virtual void visit(const ForStatement& node) = 0;
+  virtual void visit(const BreakStatement& node) = 0;
+  virtual void visit(const ContinueStatement& node) = 0;
+  virtual void visit(const ReturnStatement& node) = 0;
+  virtual void visit(const MatchStatement& node) = 0;
+  virtual void visit(const DebuggerStatement& node) = 0;
 
   // Expression visitor methods
-  virtual void visit(const UnaryExpression& node) { visit(static_cast<const Expression&>(node)); }
-  virtual void visit(const UpdateExpression& node) { visit(static_cast<const UnaryExpression&>(node)); }
-  virtual void visit(const PrefixUnaryExpression& node) { visit(static_cast<const UpdateExpression&>(node)); }
-  virtual void visit(const PostfixUnaryExpression& node) { visit(static_cast<const UpdateExpression&>(node)); }
-  virtual void visit(const LeftHandSideExpression& node) { visit(static_cast<const UpdateExpression&>(node)); }
-  virtual void visit(const MemberExpression& node) { visit(static_cast<const LeftHandSideExpression&>(node)); }
-  virtual void visit(const PrimaryExpression& node) { visit(static_cast<const MemberExpression&>(node)); }
-  virtual void visit(const Identifier& node) { visit(static_cast<const PrimaryExpression&>(node)); }
-  virtual void visit(const PropertyAccessExpression& node) { visit(static_cast<const MemberExpression&>(node)); }
-  virtual void visit(const ElementAccessExpression& node) { visit(static_cast<const MemberExpression&>(node)); }
-  virtual void visit(const NewExpression& node) { visit(static_cast<const PrimaryExpression&>(node)); }
-  virtual void visit(const ParenthesizedExpression& node) { visit(static_cast<const PrimaryExpression&>(node)); }
-  virtual void visit(const BinaryExpression& node) { visit(static_cast<const Expression&>(node)); }
-  virtual void visit(const AssignmentExpression& node) { visit(static_cast<const Expression&>(node)); }
-  virtual void visit(const ConditionalExpression& node) { visit(static_cast<const Expression&>(node)); }
-  virtual void visit(const CallExpression& node) { visit(static_cast<const LeftHandSideExpression&>(node)); }
-  virtual void visit(const OptionalExpression& node) { visit(static_cast<const LeftHandSideExpression&>(node)); }
-  virtual void visit(const LiteralExpression& node) { visit(static_cast<const PrimaryExpression&>(node)); }
-  virtual void visit(const StringLiteral& node) { visit(static_cast<const LiteralExpression&>(node)); }
-  virtual void visit(const IntegerLiteral& node) { visit(static_cast<const LiteralExpression&>(node)); }
-  virtual void visit(const FloatLiteral& node) { visit(static_cast<const LiteralExpression&>(node)); }
-  virtual void visit(const BooleanLiteral& node) { visit(static_cast<const LiteralExpression&>(node)); }
-  virtual void visit(const NullLiteral& node) { visit(static_cast<const LiteralExpression&>(node)); }
-  virtual void visit(const CastExpression& node) { visit(static_cast<const Expression&>(node)); }
-  virtual void visit(const AsExpression& node) { visit(static_cast<const CastExpression&>(node)); }
-  virtual void visit(const ForcedAsExpression& node) { visit(static_cast<const CastExpression&>(node)); }
-  virtual void visit(const ConditionalAsExpression& node) { visit(static_cast<const CastExpression&>(node)); }
-  virtual void visit(const VoidExpression& node) { visit(static_cast<const UnaryExpression&>(node)); }
-  virtual void visit(const TypeOfExpression& node) { visit(static_cast<const UnaryExpression&>(node)); }
-  virtual void visit(const AwaitExpression& node) { visit(static_cast<const Expression&>(node)); }
-  virtual void visit(const FunctionExpression& node) { visit(static_cast<const PrimaryExpression&>(node)); }
-  virtual void visit(const ArrayLiteralExpression& node) { visit(static_cast<const PrimaryExpression&>(node)); }
-  virtual void visit(const ObjectLiteralExpression& node) { visit(static_cast<const PrimaryExpression&>(node)); }
+  virtual void visit(const UnaryExpression& node) = 0;
+  virtual void visit(const UpdateExpression& node) = 0;
+  virtual void visit(const PrefixUnaryExpression& node) = 0;
+  virtual void visit(const PostfixUnaryExpression& node) = 0;
+  virtual void visit(const LeftHandSideExpression& node) = 0;
+  virtual void visit(const MemberExpression& node) = 0;
+  virtual void visit(const PrimaryExpression& node) = 0;
+  virtual void visit(const Identifier& node) = 0;
+  virtual void visit(const PropertyAccessExpression& node) = 0;
+  virtual void visit(const ElementAccessExpression& node) = 0;
+  virtual void visit(const NewExpression& node) = 0;
+  virtual void visit(const ParenthesizedExpression& node) = 0;
+  virtual void visit(const BinaryExpression& node) = 0;
+  virtual void visit(const AssignmentExpression& node) = 0;
+  virtual void visit(const ConditionalExpression& node) = 0;
+  virtual void visit(const CallExpression& node) = 0;
+  virtual void visit(const OptionalExpression& node) = 0;
+  virtual void visit(const LiteralExpression& node) = 0;
+  virtual void visit(const StringLiteral& node) = 0;
+  virtual void visit(const IntegerLiteral& node) = 0;
+  virtual void visit(const FloatLiteral& node) = 0;
+  virtual void visit(const BooleanLiteral& node) = 0;
+  virtual void visit(const NullLiteral& node) = 0;
+  virtual void visit(const CastExpression& node) = 0;
+  virtual void visit(const AsExpression& node) = 0;
+  virtual void visit(const ForcedAsExpression& node) = 0;
+  virtual void visit(const ConditionalAsExpression& node) = 0;
+  virtual void visit(const VoidExpression& node) = 0;
+  virtual void visit(const TypeOfExpression& node) = 0;
+  virtual void visit(const AwaitExpression& node) = 0;
+  virtual void visit(const FunctionExpression& node) = 0;
+  virtual void visit(const ArrayLiteralExpression& node) = 0;
+  virtual void visit(const ObjectLiteralExpression& node) = 0;
 
   // Visit methods for operators
-  virtual void visit(const Operator& op) { visit(static_cast<const Node&>(op)); }
-  virtual void visit(const BinaryOperator& binaryOp) { visit(static_cast<const Operator&>(binaryOp)); }
-  virtual void visit(const UnaryOperator& unaryOp) { visit(static_cast<const Operator&>(unaryOp)); }
-  virtual void visit(const AssignmentOperator& assignOp) { visit(static_cast<const Operator&>(assignOp)); }
+  virtual void visit(const Operator& op) = 0;
+  virtual void visit(const BinaryOperator& binaryOp) = 0;
+  virtual void visit(const UnaryOperator& unaryOp) = 0;
+  virtual void visit(const AssignmentOperator& assignOp) = 0;
 
-  // Visit methods for module types
-  virtual void visit(const SourceFile& sourceFile) { visit(static_cast<const Node&>(sourceFile)); }
-  virtual void visit(const ModulePath& modulePath) { visit(static_cast<const Node&>(modulePath)); }
-  virtual void visit(const ImportDeclaration& importDecl) { visit(static_cast<const Statement&>(importDecl)); }
-  virtual void visit(const ExportDeclaration& exportDecl) { visit(static_cast<const Statement&>(exportDecl)); }
+  // Module visitor methods
+  virtual void visit(const SourceFile& sourceFile) = 0;
+  virtual void visit(const ModulePath& modulePath) = 0;
+  virtual void visit(const ImportDeclaration& importDecl) = 0;
+  virtual void visit(const ExportDeclaration& exportDecl) = 0;
+
+  // Type visitor methods
+  virtual void visit(const TypeReference& typeRef) = 0;
+  virtual void visit(const ArrayType& arrayType) = 0;
+  virtual void visit(const UnionType& unionType) = 0;
+  virtual void visit(const IntersectionType& intersectionType) = 0;
+  virtual void visit(const ParenthesizedType& parenType) = 0;
+  virtual void visit(const PredefinedType& predefinedType) = 0;
+  virtual void visit(const ObjectType& objectType) = 0;
+  virtual void visit(const TupleType& tupleType) = 0;
+  virtual void visit(const ReturnType& returnType) = 0;
+  virtual void visit(const FunctionType& functionType) = 0;
+  virtual void visit(const OptionalType& optionalType) = 0;
+  virtual void visit(const TypeQuery& typeQuery) = 0;
 
 protected:
   Visitor() = default;
 };
 
 /// \brief Utility class for visitors that need to return values.
-/// 
+///
 /// Since virtual functions cannot be templates, visitors that need to return
 /// values should store their results in member variables and access them
 /// after the visit operation completes.
-/// 
+///
 /// Example usage:
 /// \code
 /// class EvaluationVisitor : public Visitor {
@@ -215,7 +237,6 @@ protected:
 /// \endcode
 class VisitorResult {
 public:
-  virtual ~VisitorResult() noexcept(false) = default;
   ZC_DISALLOW_COPY_AND_MOVE(VisitorResult);
 
 protected:

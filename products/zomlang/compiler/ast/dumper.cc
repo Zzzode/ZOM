@@ -14,12 +14,10 @@
 
 #include "zomlang/compiler/ast/dumper.h"
 
-#include "zc/core/io.h"
-#include "zc/core/string.h"
-#include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/module.h"
 #include "zomlang/compiler/ast/operator.h"
+#include "zomlang/compiler/ast/serializer.h"
 #include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/ast/type.h"
 
@@ -27,956 +25,693 @@ namespace zomlang {
 namespace compiler {
 namespace ast {
 
-// ================================================================================
-// ASTDumper::Impl
-
 struct ASTDumper::Impl {
-  Impl(zc::OutputStream& output, DumpFormat format) noexcept
-      : output(output), format(format), isFirstNode(true) {}
-  ~Impl() noexcept(false) = default;
+  zc::Own<Serializer> serializer;
 
-  ZC_DISALLOW_COPY_AND_MOVE(Impl);
-
-  zc::OutputStream& output;
-  DumpFormat format;
-  bool isFirstNode;
+  explicit Impl(zc::Own<Serializer> s) : serializer(zc::mv(s)) {}
 };
 
-// ================================================================================
-// ASTDumper
-
-ASTDumper::ASTDumper(zc::OutputStream& output, DumpFormat format) noexcept
-    : impl(zc::heap<Impl>(output, format)) {}
+ASTDumper::ASTDumper(zc::Own<Serializer> serializer) noexcept
+    : impl(zc::heap<Impl>(zc::mv(serializer))) {}
 
 ASTDumper::~ASTDumper() noexcept(false) = default;
 
-void ASTDumper::dump(const Node& node) {
-  // Use visitor pattern instead of switch-case
-  node.accept(*this);
-}
+void ASTDumper::dump(const Node& node) { node.accept(*this); }
 
-// ================================================================================
-// Visitor pattern implementations
+void ASTDumper::visit(const SourceFile& node) {
+  impl->serializer->writeNodeStart("SourceFile"_zc);
 
-void ASTDumper::visit(const SourceFile& sourceFile) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("SourceFile");
-      writeProperty("fileName", sourceFile.getFileName(), currentIndent + 1);
-      writeLine("statements:", currentIndent + 1);
-      setIndent(currentIndent + 2);
-      for (const auto& stmt : sourceFile.getStatements()) {
-        stmt.accept(*this);
-      }
-      setIndent(currentIndent - 2);
-      writeNodeFooter("SourceFile");
-      break;
-    case DumpFormat::kJSON:
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "SourceFile", 1);
-      impl->output.write(",\n"_zcb);
-      writeProperty("fileName", sourceFile.getFileName(), 1);
-      impl->output.write(",\n"_zcb);
-      writeIndent(1);
-      impl->output.write("\"children\": [\n"_zcb);
-      {
-        bool first = true;
-        setIndent(2);
-        for (const auto& stmt : sourceFile.getStatements()) {
-          if (!first) { impl->output.write(",\n"_zcb); }
-          first = false;
-          stmt.accept(*this);
-        }
-        setIndent(0);
-      }
-      impl->output.write("\n"_zcb);
-      writeIndent(1);
-      impl->output.write("]\n}\n"_zcb);
-      break;
-    case DumpFormat::kXML:
-      impl->output.write("<SourceFile>\n"_zcb);
-      writeIndent(1);
-      impl->output.write("<fileName>"_zcb);
-      impl->output.write(sourceFile.getFileName().asBytes());
-      impl->output.write("</fileName>\n"_zcb);
-      writeIndent(1);
-      impl->output.write("<statements>\n"_zcb);
-      setIndent(2);
-      for (const auto& stmt : sourceFile.getStatements()) {
-        stmt.accept(*this);
-      }
-      setIndent(0);
-      writeIndent(1);
-      impl->output.write("</statements>\n"_zcb);
-      impl->output.write("</SourceFile>\n"_zcb);
-      break;
+  impl->serializer->writeProperty("fileName", node.getFileName());
+
+  const auto& statements = node.getStatements();
+  impl->serializer->writeArrayStart("statements"_zc, statements.size());
+  for (const auto& stmt : statements) {
+    impl->serializer->writeArrayElement();
+    stmt.accept(*this);
   }
+  impl->serializer->writeArrayEnd("statements"_zc);
+
+  impl->serializer->writeNodeEnd("SourceFile"_zc);
 }
 
-void ASTDumper::visit(const ImportDeclaration& importDecl) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("ImportDeclaration");
-      dumpModulePath(importDecl.getModulePath());
-      ZC_IF_SOME(alias, importDecl.getAlias()) {
-        writeProperty("alias", alias, currentIndent + 1);
-      }
-      writeNodeFooter("ImportDeclaration");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "ImportDeclaration", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("\"modulePath\": \""_zcb);
-      impl->output.write(importDecl.getModulePath().toString().asBytes());
-      impl->output.write("\""_zcb);
-      ZC_IF_SOME(alias, importDecl.getAlias()) {
-        impl->output.write(",\n"_zcb);
-        writeProperty("alias", alias, currentIndent + 1);
-      }
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<ImportDeclaration>\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("<modulePath>"_zcb);
-      impl->output.write(importDecl.getModulePath().toString().asBytes());
-      impl->output.write("</modulePath>\n"_zcb);
-      ZC_IF_SOME(alias, importDecl.getAlias()) {
-        writeIndent(currentIndent + 1);
-        impl->output.write("<alias>"_zcb);
-        impl->output.write(alias.asBytes());
-        impl->output.write("</alias>\n"_zcb);
-      }
-      writeIndent(currentIndent);
-      impl->output.write("</ImportDeclaration>\n"_zcb);
-      break;
-  }
+void ASTDumper::visit(const ImportDeclaration& node) {
+  impl->serializer->writeNodeStart("ImportDeclaration"_zc);
+
+  impl->serializer->writeChildStart("modulePath"_zc);
+  node.getModulePath().accept(*this);
+  impl->serializer->writeChildEnd("modulePath"_zc);
+
+  ZC_IF_SOME(alias, node.getAlias()) { impl->serializer->writeProperty("alias", alias); }
+
+  impl->serializer->writeNodeEnd("ImportDeclaration"_zc);
 }
 
-void ASTDumper::visit(const ExportDeclaration& exportDecl) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("ExportDeclaration");
-      writeProperty("identifier", exportDecl.getIdentifier(), currentIndent + 1);
-      if (exportDecl.isRename()) {
-        ZC_IF_SOME(alias, exportDecl.getAlias()) {
-          writeProperty("alias", alias, currentIndent + 1);
-        }
-        ZC_IF_SOME(modulePath, exportDecl.getModulePath()) {
-          dumpModulePath(modulePath);
-        }
-      }
-      writeNodeFooter("ExportDeclaration");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "ExportDeclaration", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeProperty("identifier", exportDecl.getIdentifier(), currentIndent + 1);
-      if (exportDecl.isRename()) {
-        ZC_IF_SOME(alias, exportDecl.getAlias()) {
-          impl->output.write(",\n"_zcb);
-          writeProperty("alias", alias, currentIndent + 1);
-        }
-        ZC_IF_SOME(modulePath, exportDecl.getModulePath()) {
-          impl->output.write(",\n"_zcb);
-          writeIndent(currentIndent + 1);
-          impl->output.write("\"modulePath\": \""_zcb);
-          impl->output.write(modulePath.toString().asBytes());
-          impl->output.write("\""_zcb);
-        }
-      }
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<ExportDeclaration>\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("<identifier>"_zcb);
-      impl->output.write(exportDecl.getIdentifier().asBytes());
-      impl->output.write("</identifier>\n"_zcb);
-      if (exportDecl.isRename()) {
-        ZC_IF_SOME(alias, exportDecl.getAlias()) {
-          writeIndent(currentIndent + 1);
-          impl->output.write("<alias>"_zcb);
-          impl->output.write(alias.asBytes());
-          impl->output.write("</alias>\n"_zcb);
-        }
-        ZC_IF_SOME(modulePath, exportDecl.getModulePath()) {
-          writeIndent(currentIndent + 1);
-          impl->output.write("<modulePath>"_zcb);
-          impl->output.write(modulePath.toString().asBytes());
-          impl->output.write("</modulePath>\n"_zcb);
-        }
-      }
-      writeIndent(currentIndent);
-      impl->output.write("</ExportDeclaration>\n"_zcb);
-      break;
-  }
-}
+void ASTDumper::visit(const ExportDeclaration& node) {
+  impl->serializer->writeNodeStart("ExportDeclaration"_zc);
 
-void ASTDumper::visit(const VariableDeclaration& varDecl) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("VariableDeclaration");
-      writeLine("bindings:", currentIndent + 1);
-      setIndent(currentIndent + 2);
-      for (const auto& binding : varDecl.getBindings()) {
-        dumpBindingElement(binding);
-      }
-      setIndent(currentIndent - 2);
-      writeNodeFooter("VariableDeclaration");
-      break;
-    case DumpFormat::kJSON: {
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "VariableDeclaration", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("\"bindings\": [\n"_zcb);
-      bool first = true;
-      setIndent(currentIndent + 2);
-      for (const auto& binding : varDecl.getBindings()) {
-        if (!first) { impl->output.write(",\n"_zcb); }
-        first = false;
-        dumpBindingElement(binding);
-      }
-      setIndent(currentIndent);
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("]\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    }
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<VariableDeclaration>\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("<bindings>\n"_zcb);
-      setIndent(currentIndent + 2);
-      for (const auto& binding : varDecl.getBindings()) {
-        dumpBindingElement(binding);
-      }
-      setIndent(currentIndent);
-      writeIndent(currentIndent + 1);
-      impl->output.write("</bindings>\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("</VariableDeclaration>\n"_zcb);
-      break;
-  }
-}
+  impl->serializer->writeProperty("identifier", node.getIdentifier());
 
-void ASTDumper::visit(const FunctionDeclaration& funcDecl) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("FunctionDeclaration");
-      writeProperty("name", funcDecl.getName().getName(), currentIndent + 1);
-      if (!funcDecl.getParameters().empty()) {
-        writeLine("parameters:", currentIndent + 1);
-        setIndent(currentIndent + 2);
-        for (const auto& param : funcDecl.getParameters()) {
-          dumpBindingElement(param);
-        }
-        setIndent(currentIndent - 2);
-      }
-      writeLine("body:", currentIndent + 1);
-      setIndent(currentIndent + 2);
-      funcDecl.getBody().accept(*this);
-      setIndent(currentIndent - 2);
-      writeNodeFooter("FunctionDeclaration");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "FunctionDeclaration", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeProperty("name", funcDecl.getName().getName(), currentIndent + 1);
-      if (!funcDecl.getParameters().empty()) {
-        impl->output.write(",\n"_zcb);
-        writeIndent(currentIndent + 1);
-        impl->output.write("\"parameters\": [\n"_zcb);
-        bool first = true;
-        setIndent(currentIndent + 2);
-        for (const auto& param : funcDecl.getParameters()) {
-          if (!first) { impl->output.write(",\n"_zcb); }
-          first = false;
-          dumpBindingElement(param);
-        }
-        setIndent(currentIndent);
-        impl->output.write("\n"_zcb);
-        writeIndent(currentIndent + 1);
-        impl->output.write("]"_zcb);
-      }
-      impl->output.write(",\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("\"body\": "_zcb);
-      setIndent(currentIndent + 1);
-      funcDecl.getBody().accept(*this);
-      setIndent(currentIndent);
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<FunctionDeclaration>\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("<name>"_zcb);
-      impl->output.write(funcDecl.getName().getName().asBytes());
-      impl->output.write("</name>\n"_zcb);
-      if (!funcDecl.getParameters().empty()) {
-        writeIndent(currentIndent + 1);
-        impl->output.write("<parameters>\n"_zcb);
-        setIndent(currentIndent + 2);
-        for (const auto& param : funcDecl.getParameters()) {
-          dumpBindingElement(param);
-        }
-        setIndent(currentIndent);
-        writeIndent(currentIndent + 1);
-        impl->output.write("</parameters>\n"_zcb);
-      }
-      writeIndent(currentIndent + 1);
-      impl->output.write("<body>\n"_zcb);
-      setIndent(currentIndent + 2);
-      funcDecl.getBody().accept(*this);
-      setIndent(currentIndent);
-      writeIndent(currentIndent + 1);
-      impl->output.write("</body>\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("</FunctionDeclaration>\n"_zcb);
-      break;
-  }
-}
+  if (node.isRename()) {
+    ZC_IF_SOME(alias, node.getAlias()) { impl->serializer->writeProperty("alias", alias); }
 
-void ASTDumper::visit(const BlockStatement& blockStmt) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("BlockStatement");
-      writeLine("statements:", currentIndent + 1);
-      setIndent(currentIndent + 2);
-      for (const auto& stmt : blockStmt.getStatements()) {
-        stmt.accept(*this);
-      }
-      setIndent(currentIndent - 2);
-      writeNodeFooter("BlockStatement");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "BlockStatement", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("\"statements\": [\n"_zcb);
-      {
-        bool first = true;
-        setIndent(currentIndent + 2);
-        for (const auto& stmt : blockStmt.getStatements()) {
-          if (!first) { impl->output.write(",\n"_zcb); }
-          first = false;
-          stmt.accept(*this);
-        }
-        setIndent(currentIndent);
-      }
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("]\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<BlockStatement>\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("<statements>\n"_zcb);
-      setIndent(currentIndent + 2);
-      for (const auto& stmt : blockStmt.getStatements()) {
-        stmt.accept(*this);
-      }
-      setIndent(currentIndent);
-      writeIndent(currentIndent + 1);
-      impl->output.write("</statements>\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("</BlockStatement>\n"_zcb);
-      break;
-  }
-}
-
-void ASTDumper::visit(const ExpressionStatement& exprStmt) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("ExpressionStatement");
-      writeLine("expression:", currentIndent + 1);
-      setIndent(currentIndent + 2);
-      exprStmt.getExpression().accept(*this);
-      setIndent(currentIndent - 2);
-      writeNodeFooter("ExpressionStatement");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "ExpressionStatement", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("\"expression\": "_zcb);
-      setIndent(currentIndent + 1);
-      exprStmt.getExpression().accept(*this);
-      setIndent(currentIndent);
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<ExpressionStatement>\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("<expression>\n"_zcb);
-      setIndent(currentIndent + 2);
-      exprStmt.getExpression().accept(*this);
-      setIndent(currentIndent);
-      writeIndent(currentIndent + 1);
-      impl->output.write("</expression>\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("</ExpressionStatement>\n"_zcb);
-      break;
-  }
-}
-
-void ASTDumper::visit(const EmptyStatement& emptyStmt) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("EmptyStatement");
-      writeNodeFooter("EmptyStatement");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "EmptyStatement", currentIndent + 1);
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<EmptyStatement />\n"_zcb);
-      break;
-  }
-}
-
-// Expression visitors
-void ASTDumper::visit(const BinaryExpression& binExpr) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("BinaryExpression");
-      writeLine("left:", currentIndent + 1);
-      setIndent(currentIndent + 2);
-      binExpr.getLeft().accept(*this);
-       setIndent(currentIndent - 2);
-       writeLine("operator:", currentIndent + 1);
-       setIndent(currentIndent + 2);
-       binExpr.getOperator().accept(*this);
-       setIndent(currentIndent - 2);
-       writeLine("right:", currentIndent + 1);
-       setIndent(currentIndent + 2);
-       binExpr.getRight().accept(*this);
-      setIndent(currentIndent - 2);
-      writeNodeFooter("BinaryExpression");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "BinaryExpression", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("\"left\": "_zcb);
-      setIndent(currentIndent + 1);
-      binExpr.getLeft().accept(*this);
-       setIndent(currentIndent);
-       impl->output.write(",\n"_zcb);
-       writeIndent(currentIndent + 1);
-       impl->output.write("\"operator\": "_zcb);
-       setIndent(currentIndent + 1);
-       binExpr.getOperator().accept(*this);
-       setIndent(currentIndent);
-       impl->output.write(",\n"_zcb);
-       writeIndent(currentIndent + 1);
-       impl->output.write("\"right\": "_zcb);
-       setIndent(currentIndent + 1);
-       binExpr.getRight().accept(*this);
-      setIndent(currentIndent);
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<BinaryExpression>\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("<left>\n"_zcb);
-      setIndent(currentIndent + 2);
-      binExpr.getLeft().accept(*this);
-       setIndent(currentIndent);
-       writeIndent(currentIndent + 1);
-       impl->output.write("</left>\n"_zcb);
-       writeIndent(currentIndent + 1);
-       impl->output.write("<operator>\n"_zcb);
-       setIndent(currentIndent + 2);
-       binExpr.getOperator().accept(*this);
-       setIndent(currentIndent);
-       writeIndent(currentIndent + 1);
-       impl->output.write("</operator>\n"_zcb);
-       writeIndent(currentIndent + 1);
-       impl->output.write("<right>\n"_zcb);
-       setIndent(currentIndent + 2);
-       binExpr.getRight().accept(*this);
-      setIndent(currentIndent);
-      writeIndent(currentIndent + 1);
-      impl->output.write("</right>\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("</BinaryExpression>\n"_zcb);
-      break;
-  }
-}
-
-void ASTDumper::visit(const StringLiteral& strLit) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("StringLiteral");
-      writeProperty("value", strLit.getValue(), currentIndent + 1);
-      writeNodeFooter("StringLiteral");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "StringLiteral", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeProperty("value", strLit.getValue(), currentIndent + 1);
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<StringLiteral>"_zcb);
-      impl->output.write(strLit.getValue().asBytes());
-      impl->output.write("</StringLiteral>\n"_zcb);
-      break;
-  }
-}
-
-void ASTDumper::visit(const IntegerLiteral& intLit) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("IntegerLiteral");
-      writeProperty("value", zc::str(intLit.getValue()), currentIndent + 1);
-      writeNodeFooter("IntegerLiteral");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "IntegerLiteral", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeProperty("value", zc::str(intLit.getValue()), currentIndent + 1);
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<IntegerLiteral>"_zcb);
-      impl->output.write(zc::str(intLit.getValue()).asBytes());
-      impl->output.write("</IntegerLiteral>\n"_zcb);
-      break;
-  }
-}
-
-void ASTDumper::visit(const Identifier& identifier) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("Identifier");
-      writeProperty("name", identifier.getName(), currentIndent + 1);
-      writeNodeFooter("Identifier");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "Identifier", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeProperty("name", identifier.getName(), currentIndent + 1);
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<Identifier>"_zcb);
-      impl->output.write(identifier.getName().asBytes());
-      impl->output.write("</Identifier>\n"_zcb);
-      break;
-  }
-}
-
-// Placeholder implementations for other visit methods
-void ASTDumper::visit(const FunctionExpression& funcExpr) {
-  writeNodeHeader("FunctionExpression");
-  writeNodeFooter("FunctionExpression");
-}
-
-void ASTDumper::visit(const FloatLiteral& floatLit) {
-  writeNodeHeader("FloatLiteral");
-  writeProperty("value", zc::str(floatLit.getValue()), currentIndent + 1);
-  writeNodeFooter("FloatLiteral");
-}
-
-void ASTDumper::visit(const BooleanLiteral& boolLit) {
-  writeNodeHeader("BooleanLiteral");
-  writeProperty("value", boolLit.getValue() ? "true" : "false", currentIndent + 1);
-  writeNodeFooter("BooleanLiteral");
-}
-
-void ASTDumper::visit(const NullLiteral& nullLit) {
-  writeNodeHeader("NullLiteral");
-  writeNodeFooter("NullLiteral");
-}
-
-void ASTDumper::visit(const CallExpression& callExpr) {
-  writeNodeHeader("CallExpression");
-  writeNodeFooter("CallExpression");
-}
-
-void ASTDumper::visit(const NewExpression& newExpr) {
-  writeNodeHeader("NewExpression");
-  writeNodeFooter("NewExpression");
-}
-
-void ASTDumper::visit(const ArrayLiteralExpression& arrLit) {
-  writeNodeHeader("ArrayLiteralExpression");
-  writeNodeFooter("ArrayLiteralExpression");
-}
-
-void ASTDumper::visit(const ObjectLiteralExpression& objLit) {
-  writeNodeHeader("ObjectLiteralExpression");
-  writeNodeFooter("ObjectLiteralExpression");
-}
-
-void ASTDumper::visit(const ParenthesizedExpression& parenExpr) {
-  writeNodeHeader("ParenthesizedExpression");
-  writeLine("expression:", currentIndent + 1);
-  setIndent(currentIndent + 2);
-  parenExpr.getExpression().accept(*this);
-  setIndent(currentIndent - 2);
-  writeNodeFooter("ParenthesizedExpression");
-}
-
-void ASTDumper::visit(const PrefixUnaryExpression& prefixUnaryExpr) {
-  writeNodeHeader("PrefixUnaryExpression");
-  writeNodeFooter("PrefixUnaryExpression");
-}
-
-void ASTDumper::visit(const AssignmentExpression& assignmentExpr) {
-  writeNodeHeader("AssignmentExpression");
-  writeNodeFooter("AssignmentExpression");
-}
-
-void ASTDumper::visit(const ConditionalExpression& conditionalExpr) {
-  writeNodeHeader("ConditionalExpression");
-  writeNodeFooter("ConditionalExpression");
-}
-
-void ASTDumper::visit(const CastExpression& castExpr) {
-  writeNodeHeader("CastExpression");
-  writeNodeFooter("CastExpression");
-}
-
-void ASTDumper::visit(const AsExpression& asExpr) {
-  writeNodeHeader("AsExpression");
-  writeNodeFooter("AsExpression");
-}
-
-void ASTDumper::visit(const ForcedAsExpression& forcedAsExpr) {
-  writeNodeHeader("ForcedAsExpression");
-  writeNodeFooter("ForcedAsExpression");
-}
-
-void ASTDumper::visit(const ConditionalAsExpression& conditionalAsExpr) {
-  writeNodeHeader("ConditionalAsExpression");
-  writeNodeFooter("ConditionalAsExpression");
-}
-
-// ================================================================================
-// Helper methods
-
-void ASTDumper::dumpModulePath(const ModulePath& modulePath) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeProperty("modulePath", modulePath.toString(), currentIndent + 1);
-      break;
-    case DumpFormat::kJSON:
-      writeProperty("modulePath", modulePath.toString(), currentIndent + 1);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent + 1);
-      impl->output.write("<modulePath>"_zcb);
-      impl->output.write(modulePath.toString().asBytes());
-      impl->output.write("</modulePath>\n"_zcb);
-      break;
-  }
-}
-
-void ASTDumper::dumpBindingElement(const BindingElement& bindingElement) {
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeNodeHeader("BindingElement");
-      writeProperty("name", bindingElement.getName().getName(), currentIndent + 1);
-      ZC_IF_SOME(type, bindingElement.getType()) {
-        writeLine("varType:", currentIndent + 1);
-        setIndent(currentIndent + 2);
-        dumpType(type);
-        setIndent(currentIndent - 2);
-      }
-      if (bindingElement.getInitializer()) {
-        writeLine("initializer:", currentIndent + 1);
-        setIndent(currentIndent + 2);
-        bindingElement.getInitializer()->accept(*this);
-        setIndent(currentIndent - 2);
-      }
-      writeNodeFooter("BindingElement");
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(currentIndent);
-      impl->output.write("{\n"_zcb);
-      writeProperty("node", "BindingElement", currentIndent + 1);
-      impl->output.write(",\n"_zcb);
-      writeProperty("name", bindingElement.getName().getName(), currentIndent + 1);
-      ZC_IF_SOME(type, bindingElement.getType()) {
-        impl->output.write(",\n"_zcb);
-        writeIndent(currentIndent + 1);
-        impl->output.write("\"varType\": "_zcb);
-        setIndent(currentIndent + 1);
-        dumpType(type);
-        setIndent(currentIndent);
-      }
-      if (bindingElement.getInitializer()) {
-        impl->output.write(",\n"_zcb);
-        writeIndent(currentIndent + 1);
-        impl->output.write("\"initializer\": "_zcb);
-        setIndent(currentIndent + 1);
-        bindingElement.getInitializer()->accept(*this);
-        setIndent(currentIndent);
-      }
-      impl->output.write("\n"_zcb);
-      writeIndent(currentIndent);
-      impl->output.write("}"_zcb);
-      break;
-    case DumpFormat::kXML:
-      writeIndent(currentIndent);
-      impl->output.write("<BindingElement>\n"_zcb);
-      writeIndent(currentIndent + 1);
-      impl->output.write("<name>"_zcb);
-      impl->output.write(bindingElement.getName().getName().asBytes());
-      impl->output.write("</name>\n"_zcb);
-      ZC_IF_SOME(type, bindingElement.getType()) {
-        writeIndent(currentIndent + 1);
-        impl->output.write("<varType>\n"_zcb);
-        setIndent(currentIndent + 2);
-        dumpType(type);
-        setIndent(currentIndent);
-        writeIndent(currentIndent + 1);
-        impl->output.write("</varType>\n"_zcb);
-      }
-      if (bindingElement.getInitializer()) {
-        writeIndent(currentIndent + 1);
-        impl->output.write("<initializer>\n"_zcb);
-        setIndent(currentIndent + 2);
-        bindingElement.getInitializer()->accept(*this);
-        setIndent(currentIndent);
-        writeIndent(currentIndent + 1);
-        impl->output.write("</initializer>\n"_zcb);
-      }
-      writeIndent(currentIndent);
-      impl->output.write("</BindingElement>\n"_zcb);
-      break;
-  }
-}
-
-// Placeholder implementations for type dumping methods
-void ASTDumper::dumpType(const Type& type) {
-  writeNodeHeader("Type");
-  writeNodeFooter("Type");
-}
-
-void ASTDumper::dumpTypeReference(const TypeReference& typeRef) {
-  writeNodeHeader("TypeReference");
-  writeNodeFooter("TypeReference");
-}
-
-void ASTDumper::dumpArrayType(const ArrayType& arrayType) {
-  writeNodeHeader("ArrayType");
-  writeNodeFooter("ArrayType");
-}
-
-void ASTDumper::dumpUnionType(const UnionType& unionType) {
-  writeNodeHeader("UnionType");
-  writeNodeFooter("UnionType");
-}
-
-void ASTDumper::dumpIntersectionType(const IntersectionType& intersectionType) {
-  writeNodeHeader("IntersectionType");
-  writeNodeFooter("IntersectionType");
-}
-
-void ASTDumper::dumpParenthesizedType(const ParenthesizedType& parenType) {
-  writeNodeHeader("ParenthesizedType");
-  writeNodeFooter("ParenthesizedType");
-}
-
-void ASTDumper::dumpPredefinedType(const PredefinedType& predefinedType) {
-  writeNodeHeader("PredefinedType");
-  writeNodeFooter("PredefinedType");
-}
-
-void ASTDumper::dumpObjectType(const ObjectType& objectType) {
-  writeNodeHeader("ObjectType");
-  writeNodeFooter("ObjectType");
-}
-
-void ASTDumper::dumpTupleType(const TupleType& tupleType) {
-  writeNodeHeader("TupleType");
-  writeNodeFooter("TupleType");
-}
-
-void ASTDumper::dumpReturnType(const ReturnType& returnType) {
-  writeNodeHeader("ReturnType");
-  writeNodeFooter("ReturnType");
-}
-
-void ASTDumper::dumpFunctionType(const FunctionType& functionType) {
-  writeNodeHeader("FunctionType");
-  writeNodeFooter("FunctionType");
-}
-
-void ASTDumper::dumpOptionalType(const OptionalType& optionalType) {
-  writeNodeHeader("OptionalType");
-  writeNodeFooter("OptionalType");
-}
-
-void ASTDumper::dumpTypeQuery(const TypeQuery& typeQuery) {
-  writeNodeHeader("TypeQuery");
-  writeNodeFooter("TypeQuery");
-}
-
-// ================================================================================
-// Output formatting helpers
-
-void ASTDumper::writeIndent(int indent) {
-  for (int i = 0; i < indent; ++i) { impl->output.write("  "_zcb); }
-}
-
-void ASTDumper::writeLine(const zc::StringPtr text, int indent) {
-  int actualIndent = (indent == -1) ? currentIndent : indent;
-  writeIndent(actualIndent);
-  impl->output.write(text.asBytes());
-  impl->output.write("\n"_zcb);
-}
-
-void ASTDumper::writeNodeHeader(const zc::StringPtr nodeType, int indent) {
-  int actualIndent = (indent == -1) ? currentIndent : indent;
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeIndent(actualIndent);
-      impl->output.write(nodeType.asBytes());
-      impl->output.write(" {\n"_zcb);
-      break;
-    case DumpFormat::kJSON:
-    case DumpFormat::kXML:
-      // Handled in specific visit methods
-      break;
-  }
-}
-
-void ASTDumper::writeNodeFooter(const zc::StringPtr nodeType, int indent) {
-  int actualIndent = (indent == -1) ? currentIndent : indent;
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeIndent(actualIndent);
-      impl->output.write("}\n"_zcb);
-      break;
-    case DumpFormat::kJSON:
-    case DumpFormat::kXML:
-      // Handled in specific visit methods
-      break;
-  }
-}
-
-zc::String escapeJsonString(const zc::StringPtr str) {
-  zc::Vector<char> result;
-  for (char c : str) {
-    switch (c) {
-      case '"':
-        result.addAll(zc::StringPtr("\\\""));
-        break;
-      case '\\':
-        result.addAll(zc::StringPtr("\\\\"));
-        break;
-      case '\b':
-        result.addAll(zc::StringPtr("\\b"));
-        break;
-      case '\f':
-        result.addAll(zc::StringPtr("\\f"));
-        break;
-      case '\n':
-        result.addAll(zc::StringPtr("\\n"));
-        break;
-      case '\r':
-        result.addAll(zc::StringPtr("\\r"));
-        break;
-      case '\t':
-        result.addAll(zc::StringPtr("\\t"));
-        break;
-      default:
-        if (c >= 0 && c < 32) {
-          result.addAll(zc::str("\\u", zc::hex(static_cast<uint32_t>(c))));
-        } else {
-          result.add(c);
-        }
-        break;
+    ZC_IF_SOME(modulePath, node.getModulePath()) {
+      impl->serializer->writeChildStart("modulePath"_zc);
+      modulePath.accept(*this);
+      impl->serializer->writeChildEnd("modulePath"_zc);
     }
   }
-  result.add('\0');
-  return zc::String(result.releaseAsArray());
+
+  impl->serializer->writeNodeEnd("ExportDeclaration"_zc);
 }
 
-void ASTDumper::writeProperty(const zc::StringPtr name, const zc::StringPtr value, int indent) {
-  int actualIndent = (indent == -1) ? currentIndent : indent;
-  switch (impl->format) {
-    case DumpFormat::kTEXT:
-      writeIndent(actualIndent);
-      impl->output.write(name.asBytes());
-      impl->output.write(": "_zcb);
-      impl->output.write(value.asBytes());
-      impl->output.write("\n"_zcb);
-      break;
-    case DumpFormat::kJSON:
-      writeIndent(actualIndent);
-      impl->output.write("\""_zcb);
-      impl->output.write(name.asBytes());
-      impl->output.write("\": \""_zcb);
-      impl->output.write(escapeJsonString(value).asBytes());
-      impl->output.write("\""_zcb);
-      break;
-    case DumpFormat::kXML:
-      // XML properties are handled differently in specific visit methods
-      break;
+void ASTDumper::visit(const VariableDeclaration& node) {
+  impl->serializer->writeNodeStart("VariableDeclaration"_zc);
+
+  const auto& bindings = node.getBindings();
+  impl->serializer->writeArrayStart("bindings"_zc, bindings.size());
+  for (const auto& binding : bindings) {
+    impl->serializer->writeArrayElement();
+    binding.accept(*this);
   }
+  impl->serializer->writeArrayEnd("bindings"_zc);
+
+  impl->serializer->writeNodeEnd("VariableDeclaration"_zc);
+}
+
+void ASTDumper::visit(const FunctionDeclaration& node) {
+  impl->serializer->writeNodeStart("FunctionDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  node.getName().accept(*this);
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& typeParams = node.getTypeParameters();
+  if (!typeParams.empty()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParams.size());
+    for (const auto& param : typeParams) {
+      impl->serializer->writeArrayElement();
+      param.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
+  }
+
+  const auto& params = node.getParameters();
+  impl->serializer->writeArrayStart("parameters"_zc, params.size());
+  for (const auto& param : params) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("parameters"_zc);
+
+  if (auto* returnType = node.getReturnType()) {
+    impl->serializer->writeChildStart("returnType"_zc);
+    returnType->accept(*this);
+    impl->serializer->writeChildEnd("returnType"_zc);
+  }
+
+  impl->serializer->writeChildStart("body"_zc);
+  node.getBody().accept(*this);
+  impl->serializer->writeChildEnd("body"_zc);
+
+  impl->serializer->writeNodeEnd("FunctionDeclaration"_zc);
+}
+
+void ASTDumper::visit(const BlockStatement& node) {
+  impl->serializer->writeNodeStart("BlockStatement"_zc);
+
+  const auto& statements = node.getStatements();
+  impl->serializer->writeArrayStart("children"_zc, statements.size());
+  for (const auto& stmt : statements) {
+    impl->serializer->writeArrayElement();
+    stmt.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("children"_zc);
+
+  impl->serializer->writeNodeEnd("BlockStatement"_zc);
+}
+
+void ASTDumper::visit(const ExpressionStatement& node) {
+  impl->serializer->writeNodeStart("ExpressionStatement"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeNodeEnd("ExpressionStatement"_zc);
+}
+
+void ASTDumper::visit(const EmptyStatement& node) {
+  impl->serializer->writeNodeStart("EmptyStatement"_zc);
+  impl->serializer->writeNodeEnd("EmptyStatement"_zc);
+}
+
+void ASTDumper::visit(const BinaryExpression& node) {
+  impl->serializer->writeNodeStart("BinaryExpression"_zc);
+
+  impl->serializer->writeChildStart("left"_zc);
+  node.getLeft().accept(*this);
+  impl->serializer->writeChildEnd("left"_zc);
+
+  impl->serializer->writeChildStart("operator"_zc);
+  node.getOperator().accept(*this);
+  impl->serializer->writeChildEnd("operator"_zc);
+
+  impl->serializer->writeChildStart("right"_zc);
+  node.getRight().accept(*this);
+  impl->serializer->writeChildEnd("right"_zc);
+
+  impl->serializer->writeNodeEnd("BinaryExpression"_zc);
+}
+
+void ASTDumper::visit(const StringLiteral& node) {
+  impl->serializer->writeNodeStart("StringLiteral"_zc);
+  impl->serializer->writeProperty("value", node.getValue());
+  impl->serializer->writeNodeEnd("StringLiteral"_zc);
+}
+
+void ASTDumper::visit(const IntegerLiteral& node) {
+  impl->serializer->writeNodeStart("IntegerLiteral"_zc);
+  impl->serializer->writeProperty("value", zc::str(node.getValue()));
+  impl->serializer->writeNodeEnd("IntegerLiteral"_zc);
+}
+
+void ASTDumper::visit(const FloatLiteral& node) {
+  impl->serializer->writeNodeStart("FloatLiteral"_zc);
+  impl->serializer->writeProperty("value", zc::str(node.getValue()));
+  impl->serializer->writeNodeEnd("FloatLiteral"_zc);
+}
+
+void ASTDumper::visit(const BooleanLiteral& node) {
+  impl->serializer->writeNodeStart("BooleanLiteral"_zc);
+  impl->serializer->writeProperty("value", node.getValue() ? "true" : "false");
+  impl->serializer->writeNodeEnd("BooleanLiteral"_zc);
+}
+
+void ASTDumper::visit(const NullLiteral& node) {
+  impl->serializer->writeNodeStart("NullLiteral"_zc);
+  impl->serializer->writeNodeEnd("NullLiteral"_zc);
+}
+
+void ASTDumper::visit(const Identifier& node) {
+  impl->serializer->writeNodeStart("Identifier"_zc);
+  impl->serializer->writeProperty("name", node.getName());
+  impl->serializer->writeNodeEnd("Identifier"_zc);
+}
+
+void ASTDumper::visit(const ParenthesizedExpression& node) {
+  impl->serializer->writeNodeStart("ParenthesizedExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeNodeEnd("ParenthesizedExpression"_zc);
+}
+
+void ASTDumper::visit(const Operator& node) {
+  impl->serializer->writeNodeStart("Operator"_zc);
+  impl->serializer->writeProperty("symbol", node.getSymbol());
+  impl->serializer->writeProperty("type", zc::str(static_cast<int>(node.getType())));
+  impl->serializer->writeNodeEnd("Operator"_zc);
+}
+
+void ASTDumper::visit(const BinaryOperator& node) {
+  impl->serializer->writeNodeStart("BinaryOperator"_zc);
+  impl->serializer->writeProperty("symbol", node.getSymbol());
+  impl->serializer->writeProperty("precedence", zc::str(static_cast<int>(node.getPrecedence())));
+  impl->serializer->writeNodeEnd("BinaryOperator"_zc);
+}
+
+void ASTDumper::visit(const UnaryOperator& node) {
+  impl->serializer->writeNodeStart("UnaryOperator"_zc);
+  impl->serializer->writeProperty("symbol", node.getSymbol());
+  impl->serializer->writeNodeEnd("UnaryOperator"_zc);
+}
+
+void ASTDumper::visit(const AssignmentOperator& node) {
+  impl->serializer->writeNodeStart("AssignmentOperator"_zc);
+  impl->serializer->writeProperty("symbol", node.getSymbol());
+  impl->serializer->writeNodeEnd("AssignmentOperator"_zc);
+}
+
+void ASTDumper::visit(const Node& node) {
+  impl->serializer->writeNodeStart("Node"_zc);
+  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
+  impl->serializer->writeNodeEnd("Node"_zc);
+}
+
+void ASTDumper::visit(const Statement& node) {
+  impl->serializer->writeNodeStart("Statement"_zc);
+  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
+  impl->serializer->writeNodeEnd("Statement"_zc);
+}
+
+void ASTDumper::visit(const Expression& node) {
+  impl->serializer->writeNodeStart("Expression"_zc);
+  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
+  impl->serializer->writeNodeEnd("Expression"_zc);
+}
+
+void ASTDumper::visit(const BindingElement& node) {
+  impl->serializer->writeNodeStart("BindingElement"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  node.getName().accept(*this);
+  impl->serializer->writeChildEnd("name"_zc);
+
+  ZC_IF_SOME(type, node.getType()) {
+    impl->serializer->writeChildStart("varType"_zc);
+    type.accept(*this);
+    impl->serializer->writeChildEnd("varType"_zc);
+  }
+
+  impl->serializer->writeChildStart("initializer"_zc);
+  if (auto* initializer = node.getInitializer()) {
+    initializer->accept(*this);
+  } else {
+    impl->serializer->writeNull();
+  }
+  impl->serializer->writeChildEnd("initializer"_zc);
+
+  impl->serializer->writeNodeEnd("BindingElement"_zc);
+}
+
+void ASTDumper::visit(const ModulePath& node) {
+  impl->serializer->writeNodeStart("ModulePath"_zc);
+
+  const auto& identifiers = node.getIdentifiers();
+  impl->serializer->writeArrayStart("identifiers"_zc, identifiers.size());
+  for (const auto& id : identifiers) {
+    impl->serializer->writeArrayElement();
+    impl->serializer->writeNodeStart("Identifier"_zc);
+    impl->serializer->writeProperty("value", id);
+    impl->serializer->writeNodeEnd("Identifier"_zc);
+  }
+  impl->serializer->writeArrayEnd("identifiers"_zc);
+
+  impl->serializer->writeNodeEnd("ModulePath"_zc);
+}
+
+// Additional visit methods for missing AST node types
+void ASTDumper::visit(const TypeParameter& node) {
+  impl->serializer->writeNodeStart("TypeParameter"_zc);
+  impl->serializer->writeNodeEnd("TypeParameter"_zc);
+}
+
+void ASTDumper::visit(const ClassDeclaration& node) {
+  impl->serializer->writeNodeStart("ClassDeclaration"_zc);
+  impl->serializer->writeNodeEnd("ClassDeclaration"_zc);
+}
+
+void ASTDumper::visit(const InterfaceDeclaration& node) {
+  impl->serializer->writeNodeStart("InterfaceDeclaration"_zc);
+  impl->serializer->writeNodeEnd("InterfaceDeclaration"_zc);
+}
+
+void ASTDumper::visit(const StructDeclaration& node) {
+  impl->serializer->writeNodeStart("StructDeclaration"_zc);
+  impl->serializer->writeNodeEnd("StructDeclaration"_zc);
+}
+
+void ASTDumper::visit(const EnumDeclaration& node) {
+  impl->serializer->writeNodeStart("EnumDeclaration"_zc);
+  impl->serializer->writeNodeEnd("EnumDeclaration"_zc);
+}
+
+void ASTDumper::visit(const ErrorDeclaration& node) {
+  impl->serializer->writeNodeStart("ErrorDeclaration"_zc);
+  impl->serializer->writeNodeEnd("ErrorDeclaration"_zc);
+}
+
+void ASTDumper::visit(const AliasDeclaration& node) {
+  impl->serializer->writeNodeStart("AliasDeclaration"_zc);
+  impl->serializer->writeNodeEnd("AliasDeclaration"_zc);
+}
+
+void ASTDumper::visit(const IfStatement& node) {
+  impl->serializer->writeNodeStart("IfStatement"_zc);
+  impl->serializer->writeNodeEnd("IfStatement"_zc);
+}
+
+void ASTDumper::visit(const WhileStatement& node) {
+  impl->serializer->writeNodeStart("WhileStatement"_zc);
+  impl->serializer->writeNodeEnd("WhileStatement"_zc);
+}
+
+void ASTDumper::visit(const ForStatement& node) {
+  impl->serializer->writeNodeStart("ForStatement"_zc);
+  impl->serializer->writeNodeEnd("ForStatement"_zc);
+}
+
+void ASTDumper::visit(const BreakStatement& node) {
+  impl->serializer->writeNodeStart("BreakStatement"_zc);
+  impl->serializer->writeNodeEnd("BreakStatement"_zc);
+}
+
+void ASTDumper::visit(const ContinueStatement& node) {
+  impl->serializer->writeNodeStart("ContinueStatement"_zc);
+  impl->serializer->writeNodeEnd("ContinueStatement"_zc);
+}
+
+void ASTDumper::visit(const ReturnStatement& node) {
+  impl->serializer->writeNodeStart("ReturnStatement"_zc);
+  impl->serializer->writeNodeEnd("ReturnStatement"_zc);
+}
+
+void ASTDumper::visit(const MatchStatement& node) {
+  impl->serializer->writeNodeStart("MatchStatement"_zc);
+  impl->serializer->writeNodeEnd("MatchStatement"_zc);
+}
+
+void ASTDumper::visit(const DebuggerStatement& node) {
+  impl->serializer->writeNodeStart("DebuggerStatement"_zc);
+  impl->serializer->writeNodeEnd("DebuggerStatement"_zc);
+}
+
+void ASTDumper::visit(const UnaryExpression& node) {
+  impl->serializer->writeNodeStart("UnaryExpression"_zc);
+  impl->serializer->writeNodeEnd("UnaryExpression"_zc);
+}
+
+void ASTDumper::visit(const UpdateExpression& node) {
+  impl->serializer->writeNodeStart("UpdateExpression"_zc);
+  impl->serializer->writeNodeEnd("UpdateExpression"_zc);
+}
+
+void ASTDumper::visit(const PrefixUnaryExpression& node) {
+  impl->serializer->writeNodeStart("PrefixUnaryExpression"_zc);
+
+  impl->serializer->writeChildStart("operator"_zc);
+  node.getOperator().accept(*this);
+  impl->serializer->writeChildEnd("operator"_zc);
+
+  impl->serializer->writeChildStart("operand"_zc);
+  node.getOperand().accept(*this);
+  impl->serializer->writeChildEnd("operand"_zc);
+
+  impl->serializer->writeNodeEnd("PrefixUnaryExpression"_zc);
+}
+
+void ASTDumper::visit(const PostfixUnaryExpression& node) {
+  impl->serializer->writeNodeStart("PostfixUnaryExpression"_zc);
+
+  impl->serializer->writeChildStart("operand"_zc);
+  node.getOperand().accept(*this);
+  impl->serializer->writeChildEnd("operand"_zc);
+
+  impl->serializer->writeChildStart("operator"_zc);
+  node.getOperator().accept(*this);
+  impl->serializer->writeChildEnd("operator"_zc);
+
+  impl->serializer->writeNodeEnd("PostfixUnaryExpression"_zc);
+}
+
+void ASTDumper::visit(const LeftHandSideExpression& node) {
+  impl->serializer->writeNodeStart("LeftHandSideExpression"_zc);
+  impl->serializer->writeNodeEnd("LeftHandSideExpression"_zc);
+}
+
+void ASTDumper::visit(const MemberExpression& node) {
+  impl->serializer->writeNodeStart("MemberExpression"_zc);
+  impl->serializer->writeNodeEnd("MemberExpression"_zc);
+}
+
+void ASTDumper::visit(const PrimaryExpression& node) {
+  impl->serializer->writeNodeStart("PrimaryExpression"_zc);
+  impl->serializer->writeNodeEnd("PrimaryExpression"_zc);
+}
+
+void ASTDumper::visit(const PropertyAccessExpression& node) {
+  impl->serializer->writeNodeStart("PropertyAccessExpression"_zc);
+  impl->serializer->writeNodeEnd("PropertyAccessExpression"_zc);
+}
+
+void ASTDumper::visit(const ElementAccessExpression& node) {
+  impl->serializer->writeNodeStart("ElementAccessExpression"_zc);
+  impl->serializer->writeNodeEnd("ElementAccessExpression"_zc);
+}
+
+void ASTDumper::visit(const NewExpression& node) {
+  impl->serializer->writeNodeStart("NewExpression"_zc);
+  impl->serializer->writeNodeEnd("NewExpression"_zc);
+}
+
+void ASTDumper::visit(const AssignmentExpression& node) {
+  impl->serializer->writeNodeStart("AssignmentExpression"_zc);
+  impl->serializer->writeNodeEnd("AssignmentExpression"_zc);
+}
+
+void ASTDumper::visit(const ConditionalExpression& node) {
+  impl->serializer->writeNodeStart("ConditionalExpression"_zc);
+  impl->serializer->writeNodeEnd("ConditionalExpression"_zc);
+}
+
+void ASTDumper::visit(const CallExpression& node) {
+  impl->serializer->writeNodeStart("CallExpression"_zc);
+  impl->serializer->writeNodeEnd("CallExpression"_zc);
+}
+
+void ASTDumper::visit(const OptionalExpression& node) {
+  impl->serializer->writeNodeStart("OptionalExpression"_zc);
+  impl->serializer->writeNodeEnd("OptionalExpression"_zc);
+}
+
+void ASTDumper::visit(const LiteralExpression& node) {
+  impl->serializer->writeNodeStart("LiteralExpression"_zc);
+  impl->serializer->writeNodeEnd("LiteralExpression"_zc);
+}
+
+void ASTDumper::visit(const CastExpression& node) {
+  impl->serializer->writeNodeStart("CastExpression"_zc);
+  impl->serializer->writeNodeEnd("CastExpression"_zc);
+}
+
+void ASTDumper::visit(const AsExpression& node) {
+  impl->serializer->writeNodeStart("AsExpression"_zc);
+  impl->serializer->writeNodeEnd("AsExpression"_zc);
+}
+
+void ASTDumper::visit(const ForcedAsExpression& node) {
+  impl->serializer->writeNodeStart("ForcedAsExpression"_zc);
+  impl->serializer->writeNodeEnd("ForcedAsExpression"_zc);
+}
+
+void ASTDumper::visit(const ConditionalAsExpression& node) {
+  impl->serializer->writeNodeStart("ConditionalAsExpression"_zc);
+  impl->serializer->writeNodeEnd("ConditionalAsExpression"_zc);
+}
+
+void ASTDumper::visit(const VoidExpression& node) {
+  impl->serializer->writeNodeStart("VoidExpression"_zc);
+  impl->serializer->writeNodeEnd("VoidExpression"_zc);
+}
+
+void ASTDumper::visit(const TypeOfExpression& node) {
+  impl->serializer->writeNodeStart("TypeOfExpression"_zc);
+  impl->serializer->writeNodeEnd("TypeOfExpression"_zc);
+}
+
+void ASTDumper::visit(const AwaitExpression& node) {
+  impl->serializer->writeNodeStart("AwaitExpression"_zc);
+  impl->serializer->writeNodeEnd("AwaitExpression"_zc);
+}
+
+void ASTDumper::visit(const FunctionExpression& node) {
+  impl->serializer->writeNodeStart("FunctionExpression"_zc);
+
+  const auto& typeParams = node.getTypeParameters();
+  impl->serializer->writeArrayStart("typeParameters"_zc, typeParams.size());
+  for (const auto& param : typeParams) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("typeParameters"_zc);
+
+  const auto& params = node.getParameters();
+  impl->serializer->writeArrayStart("parameters"_zc, params.size());
+  for (const auto& param : params) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("parameters"_zc);
+
+  ZC_IF_SOME(returnType, node.getReturnType()) {
+    impl->serializer->writeChildStart("returnType"_zc);
+    returnType.accept(*this);
+    impl->serializer->writeChildEnd("returnType"_zc);
+  }
+
+  impl->serializer->writeChildStart("body"_zc);
+  node.getBody().accept(*this);
+  impl->serializer->writeChildEnd("body"_zc);
+
+  impl->serializer->writeNodeEnd("FunctionExpression"_zc);
+}
+
+void ASTDumper::visit(const ArrayLiteralExpression& node) {
+  impl->serializer->writeNodeStart("ArrayLiteralExpression"_zc);
+  impl->serializer->writeNodeEnd("ArrayLiteralExpression"_zc);
+}
+
+void ASTDumper::visit(const ObjectLiteralExpression& node) {
+  impl->serializer->writeNodeStart("ObjectLiteralExpression"_zc);
+  impl->serializer->writeNodeEnd("ObjectLiteralExpression"_zc);
+}
+
+// Type node visit methods
+void ASTDumper::visit(const Type& node) {
+  impl->serializer->writeNodeStart("Type"_zc);
+  impl->serializer->writeNodeEnd("Type"_zc);
+}
+
+void ASTDumper::visit(const TypeReference& node) {
+  impl->serializer->writeNodeStart("TypeReference"_zc);
+  impl->serializer->writeProperty("name", node.getName());
+  impl->serializer->writeNodeEnd("TypeReference"_zc);
+}
+
+void ASTDumper::visit(const ArrayType& node) {
+  impl->serializer->writeNodeStart("ArrayType"_zc);
+
+  impl->serializer->writeChildStart("elementType"_zc);
+  node.getElementType().accept(*this);
+  impl->serializer->writeChildEnd("elementType"_zc);
+
+  impl->serializer->writeNodeEnd("ArrayType"_zc);
+}
+
+void ASTDumper::visit(const UnionType& node) {
+  impl->serializer->writeNodeStart("UnionType"_zc);
+
+  const auto& types = node.getTypes();
+  impl->serializer->writeArrayStart("types"_zc, types.size());
+  for (const auto& type : types) {
+    impl->serializer->writeArrayElement();
+    type.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("types"_zc);
+
+  impl->serializer->writeNodeEnd("UnionType"_zc);
+}
+
+void ASTDumper::visit(const IntersectionType& node) {
+  impl->serializer->writeNodeStart("IntersectionType"_zc);
+
+  const auto& types = node.getTypes();
+  impl->serializer->writeArrayStart("types"_zc, types.size());
+  for (const auto& type : types) {
+    impl->serializer->writeArrayElement();
+    type.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("types"_zc);
+
+  impl->serializer->writeNodeEnd("IntersectionType"_zc);
+}
+
+void ASTDumper::visit(const ParenthesizedType& node) {
+  impl->serializer->writeNodeStart("ParenthesizedType"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  node.getType().accept(*this);
+  impl->serializer->writeChildEnd("type"_zc);
+
+  impl->serializer->writeNodeEnd("ParenthesizedType"_zc);
+}
+
+void ASTDumper::visit(const PredefinedType& node) {
+  impl->serializer->writeNodeStart("PredefinedType"_zc);
+  impl->serializer->writeProperty("name", node.getName());
+  impl->serializer->writeNodeEnd("PredefinedType"_zc);
+}
+
+void ASTDumper::visit(const ObjectType& node) {
+  impl->serializer->writeNodeStart("ObjectType"_zc);
+
+  const auto& members = node.getMembers();
+  impl->serializer->writeArrayStart("members"_zc, members.size());
+  for (const auto& member : members) {
+    impl->serializer->writeArrayElement();
+    member.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("members"_zc);
+
+  impl->serializer->writeNodeEnd("ObjectType"_zc);
+}
+
+void ASTDumper::visit(const TupleType& node) {
+  impl->serializer->writeNodeStart("TupleType"_zc);
+
+  const auto& elementTypes = node.getElementTypes();
+  impl->serializer->writeArrayStart("elementTypes"_zc, elementTypes.size());
+  for (const auto& elementType : elementTypes) {
+    impl->serializer->writeArrayElement();
+    elementType.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("elementTypes"_zc);
+
+  impl->serializer->writeNodeEnd("TupleType"_zc);
+}
+
+void ASTDumper::visit(const ReturnType& node) {
+  impl->serializer->writeNodeStart("ReturnType"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  node.getType().accept(*this);
+  impl->serializer->writeChildEnd("type"_zc);
+
+  ZC_IF_SOME(errorType, node.getErrorType()) {
+    impl->serializer->writeChildStart("errorType"_zc);
+    errorType.accept(*this);
+    impl->serializer->writeChildEnd("errorType"_zc);
+  }
+
+  impl->serializer->writeNodeEnd("ReturnType"_zc);
+}
+
+void ASTDumper::visit(const FunctionType& node) {
+  impl->serializer->writeNodeStart("FunctionType"_zc);
+
+  const auto& typeParams = node.getTypeParameters();
+  impl->serializer->writeArrayStart("typeParameters"_zc, typeParams.size());
+  for (const auto& param : typeParams) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("typeParameters"_zc);
+
+  const auto& params = node.getParameters();
+  impl->serializer->writeArrayStart("parameters"_zc, params.size());
+  for (const auto& param : params) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("parameters"_zc);
+
+  impl->serializer->writeChildStart("returnType"_zc);
+  node.getReturnType().accept(*this);
+  impl->serializer->writeChildEnd("returnType"_zc);
+
+  impl->serializer->writeNodeEnd("FunctionType"_zc);
+}
+
+void ASTDumper::visit(const OptionalType& node) {
+  impl->serializer->writeNodeStart("OptionalType"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  node.getType().accept(*this);
+  impl->serializer->writeChildEnd("type"_zc);
+
+  impl->serializer->writeNodeEnd("OptionalType"_zc);
+}
+
+void ASTDumper::visit(const TypeQuery& node) {
+  impl->serializer->writeNodeStart("TypeQuery"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeNodeEnd("TypeQuery"_zc);
 }
 
 }  // namespace ast

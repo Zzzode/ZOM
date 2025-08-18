@@ -49,9 +49,11 @@ struct ThreadPool::Impl {
   }
 
   ~Impl() noexcept(false) {
-    {  // Lock scope to set stop flag
+    {  // Lock scope to set stop flag and wait for completion
       auto lockedTasks = tasks.lockExclusive();
       stop = true;
+      // Wait until all tasks are completed before stopping
+      lockedTasks.wait([](const auto& taskList) { return taskList.empty(); }, zc::none);
     }
     workers.clear();  // Join all threads
   }

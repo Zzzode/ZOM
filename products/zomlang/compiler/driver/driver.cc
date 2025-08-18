@@ -18,6 +18,8 @@
 #include "zc/core/map.h"
 #include "zc/core/mutex.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/thread-pool.h"
