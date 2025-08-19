@@ -118,13 +118,13 @@ zc::Own<SourceFile> createSourceFile(zc::String&& fileName,
                                      zc::Vector<zc::Own<ast::Statement>>&& statements);
 
 template <typename Node>
-  requires DerivedFromNode<Node>
+  requires std::derived_from<Node, ast::Node>
 const ast::NodeList<Node> createNodeList(zc::Vector<zc::Own<Node>>&& list) {
   return ast::NodeList<Node>(zc::mv(list));
 }
 
 template <typename Node, typename... Args>
-  requires DerivedFromNode<Node>
+  requires std::derived_from<Node, ast::Node>
 zc::Own<Node> createNodeWithRange(const source::SourceRange& range, Args&&... args) {
   zc::Own<Node> node = zc::heap<Node>(zc::fwd<Args>(args)...);
   node->setSourceRange(range);

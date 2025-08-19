@@ -139,21 +139,21 @@ public:
 
 private:
   template <typename Node>
-    requires ast::DerivedFromNode<Node>
+    requires std::derived_from<Node, ast::Node>
   zc::Own<Node> finishNode(zc::Own<Node>&& node, source::SourceLoc pos) {
     const source::SourceLoc end = getFullStartLoc();
     return finishNode(zc::mv(node), zc::mv(pos), zc::mv(end));
   }
 
   template <typename Node>
-    requires ast::DerivedFromNode<Node>
+    requires std::derived_from<Node, ast::Node>
   zc::Own<Node> finishNode(zc::Own<Node>&& node, source::SourceLoc pos, source::SourceLoc end) {
     node->setSourceRange(source::SourceRange(pos, end));
     return zc::mv(node);
   }
 
   template <typename Node>
-    requires ast::DerivedFromNode<Node>
+    requires std::derived_from<Node, ast::Node>
   zc::Vector<zc::Own<Node>> parseList(ParsingContext context,
                                       zc::Function<zc::Maybe<zc::Own<Node>>()> parseElement) {
     zc::Vector<zc::Own<Node>> result;

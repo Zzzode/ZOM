@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <type_traits>
+#include <concepts>
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
@@ -241,31 +241,8 @@ private:
 };
 
 // NodeList template class, used to store a list of nodes
-namespace _ {
-// Default case
-template <typename T, typename = void>
-struct IsNodeLike : std::false_type {};
-
-// Directly derived from Node
 template <typename T>
-struct IsNodeLike<T, std::enable_if_t<std::is_base_of_v<Node, T>>> : std::true_type {};
-
-// zc::Own<T>
-template <typename T>
-struct IsNodeLike<zc::Own<T>, std::enable_if_t<std::is_base_of_v<Node, T>>> : std::true_type {};
-
-// zc::Maybe<U> (Recursive)
-template <typename U>
-struct IsNodeLike<zc::Maybe<U>, std::enable_if_t<IsNodeLike<U>::value>> : std::true_type {};
-}  // namespace _
-
-template <typename T>
-concept FlexibleNodeType = _::IsNodeLike<T>::value;
-
-template <typename T>
-concept DerivedFromNode = std::is_base_of_v<Node, T>;
-
-template <DerivedFromNode T>
+  requires std::derived_from<T, Node>
 class NodeList {
 public:
   NodeList() noexcept {};
@@ -334,7 +311,8 @@ private:
 };
 
 // NodeList implementations of Iterator and ConstIterator
-template <DerivedFromNode T>
+template <typename T>
+  requires std::derived_from<T, Node>
 class NodeList<T>::Iterator {
 public:
   Iterator(zc::Vector<zc::Own<T>>& vec, size_t index) : vec(&vec), index(index) {}
@@ -358,7 +336,8 @@ private:
   size_t index;
 };
 
-template <DerivedFromNode T>
+template <typename T>
+  requires std::derived_from<T, Node>
 class NodeList<T>::ConstIterator {
 public:
   ConstIterator(const zc::Vector<zc::Own<T>>& vec, size_t index) : vec(&vec), index(index) {}
