@@ -224,7 +224,7 @@ private:
   zc::Maybe<zc::Own<ast::Expression>> parseUnaryExpressionOrHigher();
   zc::Maybe<zc::Own<ast::ConditionalExpression>> parseConditionalExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseConditionalExpressionRest(
-      zc::Own<ast::Expression> leftOperand);
+      zc::Own<ast::Expression> leftOperand, source::SourceLoc startLoc);
   zc::Maybe<zc::Own<ast::Expression>> parseShortCircuitExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseLogicalOrExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseLogicalAndExpression();
@@ -250,7 +250,7 @@ private:
   zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseCallExpressionRest(
       zc::Own<ast::MemberExpression> expr);
   zc::Maybe<zc::Own<ast::MemberExpression>> parseMemberExpressionRest(
-      zc::Own<ast::MemberExpression> expr, bool allowOptionalChain);
+      zc::Own<ast::MemberExpression> expr, source::SourceLoc startLoc, bool allowOptionalChain);
   zc::Maybe<zc::Own<ast::MemberExpression>> parseSuperExpression();
   zc::Maybe<zc::Own<ast::AwaitExpression>> parseAwaitExpression();
   zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseLeftHandSideExpression();
@@ -287,7 +287,7 @@ private:
   zc::Maybe<zc::Own<ast::TypeParameter>> parseTypeParameter();
   zc::Maybe<zc::Own<ast::TypeQuery>> parseTypeQuery();
   zc::Maybe<zc::Own<ast::Expression>> parseTypeQueryExpression();
-  zc::Maybe<zc::Vector<zc::Own<ast::Type>>> parseRaisesClause();
+  zc::Maybe<zc::Own<ast::Type>> parseRaisesClause();
 
   // Utility parsing methods
   ZC_ALWAYS_INLINE(bool expectToken(lexer::TokenKind kind));
