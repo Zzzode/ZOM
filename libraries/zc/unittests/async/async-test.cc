@@ -1046,7 +1046,7 @@ TEST(Async, LargeTaskSetDestructionExceptions) {
 
     ZC_EXPECT_THROW_MESSAGE("ThrowingDestructor_exception", { tasks = zc::none; });
   });
-#endif
+#endif  // __APPLE__
 }
 
 TEST(Async, LargeTaskSetClear) {
@@ -1082,7 +1082,7 @@ TEST(Async, LargeTaskSetClearException) {
 
     ZC_EXPECT_THROW_MESSAGE("ThrowingDestructor_exception", { tasks.clear(); });
   });
-#endif
+#endif  // __APPLE__
 }
 
 #endif  // ZC_USE_FIBERS || !_WIN32

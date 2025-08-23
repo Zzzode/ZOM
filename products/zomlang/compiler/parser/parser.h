@@ -229,6 +229,7 @@ private:
   zc::Maybe<zc::Own<ast::Expression>> parseLogicalOrExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseLogicalAndExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseCoalesceExpression();
+  zc::Maybe<zc::Own<ast::Expression>> parseErrorDefaultExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseBitwiseOrExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseBitwiseXorExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseBitwiseAndExpression();
@@ -288,6 +289,13 @@ private:
   zc::Maybe<zc::Own<ast::TypeQuery>> parseTypeQuery();
   zc::Maybe<zc::Own<ast::Expression>> parseTypeQueryExpression();
   zc::Maybe<zc::Own<ast::Type>> parseRaisesClause();
+  zc::Maybe<zc::Own<ast::Pattern>> parsePattern();
+  zc::Maybe<zc::Own<ast::Pattern>> parseWildcardPattern();
+  zc::Maybe<zc::Own<ast::Pattern>> parseIdentifierPattern();
+  zc::Maybe<zc::Own<ast::Pattern>> parseTuplePattern();
+  zc::Maybe<zc::Own<ast::Pattern>> parseStructurePattern();
+  zc::Maybe<zc::Own<ast::BindingPattern>> parseArrayBindingPattern();
+  zc::Maybe<zc::Own<ast::BindingPattern>> parseObjectBindingPattern();
 
   // Utility parsing methods
   ZC_ALWAYS_INLINE(bool expectToken(lexer::TokenKind kind));

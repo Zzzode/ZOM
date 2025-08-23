@@ -119,7 +119,7 @@ private:
   const zc::Own<Impl> impl;
 };
 
-// Predefined types (built-in types)
+// Predefined type (built-in primitive types)
 class PredefinedType : public Type {
 public:
   explicit PredefinedType(zc::String name) noexcept;

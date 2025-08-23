@@ -374,8 +374,8 @@ public:
   }
 
   template <typename Input, typename... Params>
-  auto parseNext(Input& input,
-                 Params&&... params) const -> Maybe<decltype(tuple(zc::fwd<Params>(params)...))> {
+  auto parseNext(Input& input, Params&&... params) const
+      -> Maybe<decltype(tuple(zc::fwd<Params>(params)...))> {
     return tuple(zc::fwd<Params>(params)...);
   }
 };
@@ -401,8 +401,8 @@ public:
   explicit constexpr Many_(SubParser&& subParser) : subParser(zc::fwd<SubParser>(subParser)) {}
 
   template <typename Input>
-  auto operator()(Input& input) const -> decltype(Impl<Input>::apply(instance<const SubParser&>(),
-                                                                     input));
+  auto operator()(Input& input) const
+      -> decltype(Impl<Input>::apply(instance<const SubParser&>(), input));
 
 private:
   SubParser subParser;
@@ -490,8 +490,8 @@ public:
       : subParser(zc::fwd<SubParser>(subParser)), count(count) {}
 
   template <typename Input>
-  auto operator()(Input& input) const -> decltype(Impl<Input>::apply(instance<const SubParser&>(),
-                                                                     instance<uint>(), input));
+  auto operator()(Input& input) const
+      -> decltype(Impl<Input>::apply(instance<const SubParser&>(), instance<uint>(), input));
 
 private:
   SubParser subParser;

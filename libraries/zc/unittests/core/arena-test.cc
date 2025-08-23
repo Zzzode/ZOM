@@ -22,9 +22,9 @@
 #include "zc/core/arena.h"
 
 #include <stdint.h>
-#include <zc/ztest/gtest.h>
 
 #include "zc/core/debug.h"
+#include "zc/ztest/gtest.h"
 
 namespace zc {
 namespace {

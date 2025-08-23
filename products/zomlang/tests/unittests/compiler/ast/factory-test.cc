@@ -178,21 +178,21 @@ ZC_TEST("ASTFactory: Type Creation") {
   ZC_EXPECT(typeRef->getName() == "Int", "TypeReference should have correct type name");
 
   // Test ArrayType creation
-  auto elemType = createPredefinedType(zc::str("String"));
+  auto elemType = createPredefinedType(zc::str("str"));
   auto arrayType = createArrayType(zc::mv(elemType));
   // ArrayType always has element type (reference, not pointer)
 
   // Test UnionType creation
   zc::Vector<zc::Own<ast::Type>> unionTypes;
-  unionTypes.add(createPredefinedType(zc::str("Int")));
-  unionTypes.add(createPredefinedType(zc::str("String")));
+  unionTypes.add(createPredefinedType(zc::str("i32")));
+  unionTypes.add(createPredefinedType(zc::str("str")));
   auto unionType = createUnionType(zc::mv(unionTypes));
   ZC_EXPECT(unionType->getTypes().size() == 2, "UnionType should have 2 types");
 
   // Test IntersectionType creation
   zc::Vector<zc::Own<ast::Type>> intersectionTypes;
-  intersectionTypes.add(createPredefinedType(zc::str("A")));
-  intersectionTypes.add(createPredefinedType(zc::str("B")));
+  intersectionTypes.add(createPredefinedType(zc::str("i32")));
+  intersectionTypes.add(createPredefinedType(zc::str("str")));
   auto intersectionType = createIntersectionType(zc::mv(intersectionTypes));
   ZC_EXPECT(intersectionType->getTypes().size() == 2, "IntersectionType should have 2 types");
 }
@@ -215,7 +215,7 @@ ZC_TEST("ASTFactory: Alias and Debugger Creation") {
 
   // Test AliasDeclaration creation
   auto aliasName = createIdentifier(zc::str("MyAlias"));
-  auto targetType = createPredefinedType(zc::str("Int"));
+  auto targetType = createPredefinedType(zc::str("i32"));
   auto aliasDecl = createAliasDeclaration(zc::mv(aliasName), zc::mv(targetType));
   ZC_EXPECT(aliasDecl->getName().getName() == "MyAlias",
             "AliasDeclaration should have correct name");

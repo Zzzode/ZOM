@@ -21,7 +21,7 @@
 
 #include "zc/parse/char.h"
 
-#include <cstdlib>
+#include <stdlib.h>
 
 #include "zc/core/debug.h"
 

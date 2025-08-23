@@ -38,10 +38,11 @@
 #include <winsock2.h>
 #include <ws2ipdef.h>
 #include <ws2tcpip.h>
-#include <zc/windows-sanity.h>
+
+#include "zc/core/windows-sanity.h"
 #define inet_pton InetPtonA
 #define inet_ntop InetNtopA
-#include <io.h>
+#include "zc/core/io.h"
 #define dup _dup
 #else
 #include <arpa/inet.h>

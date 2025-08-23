@@ -26,13 +26,13 @@
 
 #include <ntsecapi.h>  // NTSTATUS
 #include <ntstatus.h>  // STATUS_SUCCESS
-#include <zc/core/win32-api-version.h>
 
 #include <atomic>
 
 #include "zc/core/debug.h"
 #include "zc/core/refcount.h"
 #include "zc/core/time.h"
+#include "zc/core/win32-api-version.h"
 
 #undef ERROR  // dammit windows.h
 

@@ -318,4 +318,189 @@ ZC_TEST("Arc disown / reown") {
   ZC_EXPECT(b == true);
 }
 
+ZC_TEST("Rc move assignment and comparison") {
+  bool b1 = false, b2 = false;
+
+  Rc<SetTrueInDestructor> ref1 = zc::rc<SetTrueInDestructor>(&b1);
+  Rc<SetTrueInDestructor> ref2 = zc::rc<SetTrueInDestructor>(&b2);
+
+  // Test inequality
+  ZC_EXPECT(!(ref1 == ref2));
+
+  // Test move assignment
+  ref2 = zc::mv(ref1);
+  ZC_EXPECT(ref1 == nullptr);
+  ZC_EXPECT(ref2 != nullptr);
+  ZC_EXPECT(b2 == true);  // Original ref2 object should be destroyed
+
+  ref2 = nullptr;
+  ZC_EXPECT(b1 == true);  // ref1's object should be destroyed
+}
+
+ZC_TEST("Arc move assignment and comparison") {
+  bool b1 = false, b2 = false;
+
+  Arc<AtomicSetTrueInDestructor> ref1 = zc::arc<AtomicSetTrueInDestructor>(&b1);
+  Arc<AtomicSetTrueInDestructor> ref2 = zc::arc<AtomicSetTrueInDestructor>(&b2);
+
+  // Test inequality
+  ZC_EXPECT(!(ref1 == ref2));
+
+  // Test move assignment
+  ref2 = zc::mv(ref1);
+  ZC_EXPECT(ref1 == nullptr);
+  ZC_EXPECT(ref2 != nullptr);
+  ZC_EXPECT(b2 == true);  // Original ref2 object should be destroyed
+
+  ref2 = nullptr;
+  ZC_EXPECT(b1 == true);  // ref1's object should be destroyed
+}
+
+ZC_TEST("Rc downcast") {
+  bool b = false;
+
+  auto child = zc::rc<Child>(&b);
+  auto parent = child.addRef();
+
+  // Test successful downcast
+  auto downcast = parent.downcast<Child>();
+  ZC_EXPECT(parent == nullptr);  // Original should be nullified
+  ZC_EXPECT(downcast != nullptr);
+
+  ZC_EXPECT(!b);
+  child = nullptr;
+  ZC_EXPECT(!b);
+  downcast = nullptr;
+  ZC_EXPECT(b);
+}
+
+ZC_TEST("Arc downcast") {
+  bool b = false;
+
+  struct AtomicChild : public AtomicSetTrueInDestructor {
+    AtomicChild(bool* ptr) : AtomicSetTrueInDestructor(ptr) {}
+  };
+
+  auto child = zc::arc<AtomicChild>(&b);
+  auto parent = child.addRef();
+
+  // Test successful downcast
+  auto downcast = parent.downcast<AtomicChild>();
+  ZC_EXPECT(parent == nullptr);  // Original should be nullified
+  ZC_EXPECT(downcast != nullptr);
+
+  ZC_EXPECT(!b);
+  child = nullptr;
+  ZC_EXPECT(!b);
+  downcast = nullptr;
+  ZC_EXPECT(b);
+}
+
+ZC_TEST("atomicAddRefWeak") {
+  bool b = false;
+
+  auto ref = zc::arc<AtomicSetTrueInDestructor>(&b);
+  const AtomicSetTrueInDestructor* ptr = ref.get();
+
+  // Test successful weak ref while object is alive
+  auto weakRef = zc::atomicAddRefWeak(*ptr);
+  ZC_EXPECT(weakRef != zc::none);
+  ZC_IF_SOME(strongRef, weakRef) { ZC_EXPECT(strongRef.get() == ptr); }
+
+  ZC_EXPECT(!b);
+  ref = nullptr;
+  ZC_EXPECT(!b);  // Object still alive due to weak ref
+
+  weakRef = zc::none;
+  ZC_EXPECT(b);  // Now object is destroyed
+}
+
+ZC_TEST("RefcountedWrapper edge cases") {
+  // Test with primitive type
+  {
+    auto wrapper = zc::refcountedWrapper<int>(42);
+    ZC_EXPECT(wrapper->getWrapped() == 42);
+
+    auto ref1 = wrapper->addWrappedRef();
+    auto ref2 = wrapper->addWrappedRef();
+
+    ZC_EXPECT(*ref1 == 42);
+    ZC_EXPECT(*ref2 == 42);
+    ZC_EXPECT(ref1.get() == ref2.get());
+
+    // Modify through one reference
+    *ref1 = 100;
+    ZC_EXPECT(*ref2 == 100);
+    ZC_EXPECT(wrapper->getWrapped() == 100);
+  }
+
+  // Test with const wrapper
+  {
+    auto wrapper = zc::refcountedWrapper<int>(123);
+    const auto& constWrapper = *wrapper;
+
+    ZC_EXPECT(constWrapper.getWrapped() == 123);
+
+    auto ref = wrapper->addWrappedRef();
+    ZC_EXPECT(*ref == 123);
+  }
+}
+
+ZC_TEST("Rc and Arc null operations") {
+  // Test Rc with nullptr
+  {
+    Rc<SetTrueInDestructor> ref(nullptr);
+    ZC_EXPECT(ref == nullptr);
+    ZC_EXPECT(ref.get() == nullptr);
+
+    auto ref2 = ref.addRef();
+    ZC_EXPECT(ref2 == nullptr);
+
+    auto own = ref.toOwn();
+    ZC_EXPECT(own.get() == nullptr);
+  }
+
+  // Test Arc with nullptr
+  {
+    Arc<AtomicSetTrueInDestructor> ref(nullptr);
+    ZC_EXPECT(ref == nullptr);
+    ZC_EXPECT(ref.get() == nullptr);
+
+    auto ref2 = ref.addRef();
+    ZC_EXPECT(ref2 == nullptr);
+
+    auto own = ref.toOwn();
+    ZC_EXPECT(own.get() == nullptr);
+
+    const AtomicSetTrueInDestructor* ptr = ref.disown();
+    ZC_EXPECT(ptr == nullptr);
+  }
+}
+
+ZC_TEST("Rc and Arc get() method") {
+  bool b1 = false, b2 = false;
+
+  // Test Rc get()
+  {
+    auto ref = zc::rc<SetTrueInDestructor>(&b1);
+    SetTrueInDestructor* ptr = ref.get();
+    ZC_EXPECT(ptr != nullptr);
+    ZC_EXPECT(ptr->ptr == &b1);
+
+    const auto& constRef = ref;
+    const SetTrueInDestructor* constPtr = constRef.get();
+    ZC_EXPECT(constPtr == ptr);
+  }
+  ZC_EXPECT(b1 == true);
+
+  // Test Arc get()
+  {
+    auto ref = zc::arc<AtomicSetTrueInDestructor>(&b2);
+    const AtomicSetTrueInDestructor* ptr = ref.get();
+    ZC_EXPECT(ptr != nullptr);
+    ZC_EXPECT(ptr->ptr == &b2);
+  }
+  ZC_EXPECT(b2 == true);
+}
+
 }  // namespace zc
