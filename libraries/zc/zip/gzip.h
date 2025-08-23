@@ -21,9 +21,10 @@
 
 #pragma once
 
-#include <zc/async/async-io.h>
-#include <zc/core/io.h>
-#include <zc/zip/zlib.h>
+#include <zlib.h>
+
+#include "zc/async/async-io.h"
+#include "zc/core/io.h"
 
 ZC_BEGIN_HEADER
 

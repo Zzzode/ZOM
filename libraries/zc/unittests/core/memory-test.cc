@@ -557,6 +557,29 @@ ZC_TEST("Maybe<Own<T>>") {
   ZC_EXPECT(&ZC_ASSERT_NONNULL(mRef) == ZC_ASSERT_NONNULL(m).get());
 }
 
+ZC_TEST("disown with wrong disposer") {
+  // Test throwWrongDisposerError function
+  int value = 42;
+  Own<int> ptr(&value, NullDisposer::instance);
+
+  // Try to disown with wrong disposer - should throw
+  ZC_EXPECT_THROW_RECOVERABLE_MESSAGE("disposer must be equal",
+                                      ptr.disown(&DestructorOnlyDisposer<int>::instance));
+}
+
+ZC_TEST("NullDisposer functionality") {
+  // Test NullDisposer instance and dispose method
+  int value = 123;
+  Own<int> ptr(&value, NullDisposer::instance);
+
+  ZC_EXPECT(ptr.get() == &value);
+  ZC_EXPECT(*ptr == 123);
+
+  // NullDisposer should do nothing when disposing
+  ptr = nullptr;  // This calls NullDisposer::disposeImpl
+  // If we get here without crash, NullDisposer worked correctly
+}
+
 int* sawIntPtr = nullptr;
 
 void freeInt(int* ptr) {
@@ -709,6 +732,19 @@ ZC_TEST("zc::Pin<T> moved with active ptrs crashes") {
     auto ptr = obj.asPtr();
     // moving a pin with active reference crashes
     zc::Pin<Obj> obj2(zc::mv(obj));
+  });
+}
+
+ZC_TEST("atomicPtrCounterAssertionFailed coverage") {
+  // Test the atomicPtrCounterAssertionFailed function indirectly
+  // by triggering unbalanced inc/dec operations
+
+  // This test verifies that the counter assertion functions are called
+  // when ptr counter contracts are violated
+  ZC_EXPECT_SIGNAL(SIGABRT, {
+    zc::_::AtomicPtrCounter counter;
+    // Calling dec() on a counter with count 0 should trigger assertion failure
+    counter.dec();
   });
 }
 #endif

@@ -21,7 +21,7 @@
 
 #include "zc/core/arena.h"
 
-#include <cstdint>
+#include <stdint.h>
 
 #include "zc/core/debug.h"
 

@@ -105,6 +105,26 @@ class ReturnType;
 class OptionalType;
 class TypeQuery;
 
+// Pattern classes
+class Pattern;
+class PrimaryPattern;
+class WildcardPattern;
+class IdentifierPattern;
+class TuplePattern;
+class StructurePattern;
+class ArrayPattern;
+class IsPattern;
+class ExpressionPattern;
+class EnumPattern;
+
+// Match clause classes
+class MatchClause;
+class DefaultClause;
+class BindingPatternElement;
+class BindingPattern;
+class ArrayBindingPattern;
+class ObjectBindingPattern;
+
 // Operators
 class Operator;
 class BinaryOperator;
@@ -193,14 +213,32 @@ zc::Own<EmptyStatement> createEmptyStatement();
 zc::Own<MatchStatement> createMatchStatement(zc::Own<Expression> discriminant,
                                              zc::Vector<zc::Own<Statement>>&& clauses);
 
+zc::Own<MatchClause> createMatchClause(zc::Own<Pattern> pattern,
+                                       zc::Maybe<zc::Own<Expression>> guard,
+                                       zc::Own<Statement> body);
+
+zc::Own<DefaultClause> createDefaultClause(zc::Vector<zc::Own<Statement>>&& statements);
+
+zc::Own<BindingPatternElement> createBindingPatternElement(
+    zc::Own<Pattern> pattern, zc::Maybe<zc::Own<Expression>> initializer = zc::none);
+
+zc::Own<BindingPattern> createBindingPattern(zc::Vector<zc::Own<BindingPatternElement>>&& elements);
+
+zc::Own<ArrayBindingPattern> createArrayBindingPattern(
+    zc::Vector<zc::Own<BindingElement>>&& elements);
+
+zc::Own<ObjectBindingPattern> createObjectBindingPattern(
+    zc::Vector<zc::Own<BindingElement>>&& elements);
+
 zc::Own<ForStatement> createForStatement(zc::Maybe<zc::Own<Statement>> init,
                                          zc::Maybe<zc::Own<Expression>> condition,
                                          zc::Maybe<zc::Own<Expression>> update,
                                          zc::Own<Statement> body);
 
 /// Expression factory functions
-zc::Own<Expression> createBinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
-                                           zc::Own<Expression> right);
+zc::Own<BinaryExpression> createBinaryExpression(zc::Own<Expression> left,
+                                                 zc::Own<BinaryOperator> op,
+                                                 zc::Own<Expression> right);
 
 zc::Own<PrefixUnaryExpression> createPrefixUnaryExpression(zc::Own<UnaryOperator> op,
                                                            zc::Own<Expression> operand);
@@ -270,6 +308,28 @@ zc::Own<FloatLiteral> createFloatLiteral(double value);
 zc::Own<BooleanLiteral> createBooleanLiteral(bool value);
 
 zc::Own<NullLiteral> createNullLiteral();
+
+/// Pattern factory functions
+// zc::Own<PrimaryPattern> createPrimaryPattern(zc::Own<Expression> expression);
+
+zc::Own<WildcardPattern> createWildcardPattern();
+
+zc::Own<IdentifierPattern> createIdentifierPattern(zc::Own<Identifier> identifier);
+
+zc::Own<TuplePattern> createTuplePattern(zc::Vector<zc::Own<Pattern>>&& elements);
+
+zc::Own<StructurePattern> createStructurePattern(zc::Own<TypeReference> typeReference,
+                                                 zc::Vector<zc::Own<Pattern>>&& fields);
+
+zc::Own<ArrayPattern> createArrayPattern(zc::Vector<zc::Own<Pattern>>&& elements);
+
+zc::Own<IsPattern> createIsPattern(zc::Own<Pattern> pattern, zc::Own<Type> type);
+
+zc::Own<ExpressionPattern> createExpressionPattern(zc::Own<Expression> expression);
+
+zc::Own<EnumPattern> createEnumPattern(zc::Own<TypeReference> typeReference,
+                                       zc::Own<Identifier> propertyName,
+                                       zc::Maybe<zc::Own<TuplePattern>> tuplePattern = zc::none);
 
 zc::Own<AliasDeclaration> createAliasDeclaration(zc::Own<Identifier> name, zc::Own<Type> type);
 

@@ -29,14 +29,14 @@
 // #include windows.h yourself before including this header.)
 #include <inttypes.h>
 #include <windows.h>
-#include <zc/core/win32-api-version.h>
-#include <zc/core/windows-sanity.h>
 
 #include <atomic>
 
 #include "zc/async/async.h"
 #include "zc/async/timer.h"
 #include "zc/core/io.h"
+#include "zc/core/win32-api-version.h"
+#include "zc/core/windows-sanity.h"
 
 ZC_BEGIN_HEADER
 

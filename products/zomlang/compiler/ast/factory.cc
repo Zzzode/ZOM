@@ -128,8 +128,9 @@ zc::Own<ForStatement> createForStatement(zc::Maybe<zc::Own<Statement>> init,
 }
 
 /// Expression factory functions
-zc::Own<Expression> createBinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
-                                           zc::Own<Expression> right) {
+zc::Own<BinaryExpression> createBinaryExpression(zc::Own<Expression> left,
+                                                 zc::Own<BinaryOperator> op,
+                                                 zc::Own<Expression> right) {
   return zc::heap<BinaryExpression>(zc::mv(left), zc::mv(op), zc::mv(right));
 }
 
@@ -453,6 +454,92 @@ zc::Own<ContinueStatement> createContinueStatement(zc::Maybe<zc::Own<Identifier>
     ZC_IF_SOME(labelPtr, label) { return zc::heap<ContinueStatement>(zc::mv(labelPtr)); }
     return zc::heap<ContinueStatement>(zc::none);
   }
+}
+
+// Pattern factory functions
+// Note: PrimaryPattern is a base class, typically not instantiated directly
+// This function is temporarily disabled
+// zc::Own<PrimaryPattern> createPrimaryPattern(zc::Own<Expression> expression) {
+//   return zc::heap<PrimaryPattern>();
+// }
+
+zc::Own<WildcardPattern> createWildcardPattern() { return zc::heap<WildcardPattern>(); }
+
+zc::Own<IdentifierPattern> createIdentifierPattern(zc::Own<Identifier> identifier) {
+  return zc::heap<IdentifierPattern>(zc::mv(identifier));
+}
+
+zc::Own<TuplePattern> createTuplePattern(zc::Vector<zc::Own<Pattern>>&& elements) {
+  return zc::heap<TuplePattern>(zc::mv(elements));
+}
+
+zc::Own<StructurePattern> createStructurePattern(zc::Maybe<zc::Own<TypeReference>> typeReference,
+                                                 zc::Vector<zc::Own<Pattern>>&& fields) {
+  // TODO: StructurePattern 构造函数只接受 properties 参数，需要重新设计
+  // 暂时只传递 fields 参数
+  static_cast<void>(typeReference);
+  return zc::heap<StructurePattern>(zc::mv(fields));
+}
+
+zc::Own<ArrayPattern> createArrayPattern(zc::Vector<zc::Own<Pattern>>&& elements) {
+  return zc::heap<ArrayPattern>(zc::mv(elements));
+}
+
+zc::Own<IsPattern> createIsPattern(zc::Own<Pattern> pattern, zc::Own<Type> type) {
+  // TODO: IsPattern 构造函数只接受 type 参数，需要重新设计以支持 pattern
+  // 暂时只传递 type 参数
+  static_cast<void>(pattern);
+  return zc::heap<IsPattern>(zc::mv(type));
+}
+
+zc::Own<ExpressionPattern> createExpressionPattern(zc::Own<Expression> expression) {
+  return zc::heap<ExpressionPattern>(zc::mv(expression));
+}
+
+zc::Own<EnumPattern> createEnumPattern(zc::Own<TypeReference> typeReference,
+                                       zc::Own<Identifier> propertyName,
+                                       zc::Maybe<zc::Own<TuplePattern>> tuplePattern) {
+  // TODO: Fix type conversion from TypeReference to Type
+  // For now, cast TypeReference to Type since TypeReference inherits from Type
+  zc::Maybe<zc::Own<Type>> typeRef = zc::mv(typeReference);
+
+  // TODO: Handle optional TuplePattern - for now create empty one if none provided
+  zc::Own<TuplePattern> tuple;
+  ZC_IF_SOME(tp, tuplePattern) { tuple = zc::mv(tp); }
+  else { tuple = zc::heap<TuplePattern>(zc::Vector<zc::Own<Pattern>>()); }
+
+  return zc::heap<EnumPattern>(zc::mv(typeRef), zc::mv(propertyName), zc::mv(tuple));
+}
+
+// Match clause factory functions
+zc::Own<MatchClause> createMatchClause(zc::Own<Pattern> pattern,
+                                       zc::Maybe<zc::Own<Expression>> guard,
+                                       zc::Own<Statement> body) {
+  return zc::heap<MatchClause>(zc::mv(pattern), zc::mv(guard), zc::mv(body));
+}
+
+zc::Own<DefaultClause> createDefaultClause(zc::Vector<zc::Own<Statement>>&& statements) {
+  return zc::heap<DefaultClause>(zc::mv(statements));
+}
+
+zc::Own<BindingPatternElement> createBindingPatternElement(
+    zc::Own<Pattern> pattern, zc::Maybe<zc::Own<Expression>> initializer) {
+  return zc::heap<BindingPatternElement>(zc::mv(pattern), zc::mv(initializer));
+}
+
+zc::Own<BindingPattern> createBindingPattern(
+    zc::Vector<zc::Own<BindingPatternElement>>&& elements) {
+  return zc::heap<BindingPattern>(zc::mv(elements));
+}
+
+zc::Own<ArrayBindingPattern> createArrayBindingPattern(
+    zc::Vector<zc::Own<BindingElement>>&& elements) {
+  return zc::heap<ArrayBindingPattern>(zc::mv(elements));
+}
+
+zc::Own<ObjectBindingPattern> createObjectBindingPattern(
+    zc::Vector<zc::Own<BindingElement>>&& elements) {
+  return zc::heap<ObjectBindingPattern>(zc::mv(elements));
 }
 
 }  // namespace factory

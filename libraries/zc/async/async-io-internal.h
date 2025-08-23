@@ -1,4 +1,3 @@
-
 // Copyright (c) 2017 Sandstorm Development Group, Inc. and contributors
 // Licensed under the MIT License:
 //

@@ -14,12 +14,28 @@
 
 #include "zomlang/compiler/ast/type.h"
 
+#include "zc/core/debug.h"
 #include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
+
+namespace {
+
+bool isValidPredefinedType(zc::StringPtr name) noexcept {
+  constexpr zc::StringPtr VALID_TYPES[] = {"i8"_zc,  "i64"_zc,  "i32"_zc,  "i64"_zc, "u8"_zc,
+                                           "u16"_zc, "u32"_zc,  "u64"_zc,  "f32"_zc, "f64"_zc,
+                                           "str"_zc, "bool"_zc, "null"_zc, "unit"_zc};
+
+  for (const auto& validType : VALID_TYPES) {
+    if (name == validType) { return true; }
+  }
+  return false;
+}
+
+}  // namespace
 
 // Type base class
 Type::Type(SyntaxKind kind) noexcept : Node(kind) {}
@@ -118,7 +134,9 @@ struct PredefinedType::Impl {
 };
 
 PredefinedType::PredefinedType(zc::String name) noexcept
-    : Type(SyntaxKind::kPredefinedType), impl(zc::heap<Impl>(zc::mv(name))) {}
+    : Type(SyntaxKind::kPredefinedType), impl(zc::heap<Impl>(zc::mv(name))) {
+  ZC_REQUIRE(isValidPredefinedType(impl->name), "Invalid predefined type name", impl->name);
+}
 
 PredefinedType::~PredefinedType() noexcept(false) = default;
 

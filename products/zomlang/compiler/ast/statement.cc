@@ -14,6 +14,7 @@
 
 #include "zomlang/compiler/ast/statement.h"
 
+#include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
@@ -598,6 +599,160 @@ zc::Maybe<const Type&> TypeParameter::getConstraint() const {
 }
 
 void TypeParameter::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// MatchClause::Impl
+
+struct MatchClause::Impl {
+  const zc::Own<Pattern> pattern;
+  const zc::Maybe<zc::Own<Expression>> guard;
+  const zc::Own<Statement> body;
+
+  Impl(zc::Own<Pattern> p, zc::Maybe<zc::Own<Expression>> g, zc::Own<Statement> b)
+      : pattern(zc::mv(p)), guard(zc::mv(g)), body(zc::mv(b)) {}
+};
+
+// ================================================================================
+// MatchClause
+
+MatchClause::MatchClause(zc::Own<Pattern> pattern, zc::Maybe<zc::Own<Expression>> guard,
+                         zc::Own<Statement> body) noexcept
+    : Statement(SyntaxKind::kMatchClause),
+      impl(zc::heap<Impl>(zc::mv(pattern), zc::mv(guard), zc::mv(body))) {}
+
+MatchClause::~MatchClause() noexcept(false) = default;
+
+const Pattern& MatchClause::getPattern() const { return *impl->pattern; }
+
+const Expression* MatchClause::getGuard() const {
+  return impl->guard.map([](const zc::Own<Expression>& expr) { return expr.get(); })
+      .orDefault(nullptr);
+}
+
+const Statement& MatchClause::getBody() const { return *impl->body; }
+
+void MatchClause::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// DefaultClause::Impl
+
+struct DefaultClause::Impl {
+  const NodeList<Statement> statements;
+
+  explicit Impl(zc::Vector<zc::Own<Statement>>&& s) : statements(zc::mv(s)) {}
+};
+
+// ================================================================================
+// DefaultClause
+
+DefaultClause::DefaultClause(zc::Vector<zc::Own<Statement>>&& statements) noexcept
+    : Statement(SyntaxKind::kDefaultClause), impl(zc::heap<Impl>(zc::mv(statements))) {}
+
+DefaultClause::~DefaultClause() noexcept(false) = default;
+
+const NodeList<Statement>& DefaultClause::getStatements() const { return impl->statements; }
+
+void DefaultClause::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// BindingPatternElement::Impl
+
+struct BindingPatternElement::Impl {
+  const zc::Own<Pattern> pattern;
+  const zc::Maybe<zc::Own<Expression>> initializer;
+
+  Impl(zc::Own<Pattern> p, zc::Maybe<zc::Own<Expression>> i)
+      : pattern(zc::mv(p)), initializer(zc::mv(i)) {}
+};
+
+// ================================================================================
+// BindingPatternElement
+
+BindingPatternElement::BindingPatternElement(zc::Own<Pattern> pattern,
+                                             zc::Maybe<zc::Own<Expression>> initializer) noexcept
+    : Statement(SyntaxKind::kBindingPattern),
+      impl(zc::heap<Impl>(zc::mv(pattern), zc::mv(initializer))) {}
+
+BindingPatternElement::~BindingPatternElement() noexcept(false) = default;
+
+const Pattern& BindingPatternElement::getPattern() const { return *impl->pattern; }
+
+const Expression* BindingPatternElement::getInitializer() const {
+  return impl->initializer.map([](const zc::Own<Expression>& expr) { return expr.get(); })
+      .orDefault(nullptr);
+}
+
+void BindingPatternElement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// BindingPattern::Impl
+
+struct BindingPattern::Impl {
+  const NodeList<BindingPatternElement> elements;
+
+  explicit Impl(zc::Vector<zc::Own<BindingPatternElement>>&& e) : elements(zc::mv(e)) {}
+};
+
+// ================================================================================
+// BindingPattern
+
+BindingPattern::BindingPattern(zc::Vector<zc::Own<BindingPatternElement>>&& elements) noexcept
+    : Statement(SyntaxKind::kBindingPattern), impl(zc::heap<Impl>(zc::mv(elements))) {}
+
+BindingPattern::~BindingPattern() noexcept(false) = default;
+
+const NodeList<BindingPatternElement>& BindingPattern::getElements() const {
+  return impl->elements;
+}
+
+void BindingPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// ArrayBindingPattern::Impl
+
+struct ArrayBindingPattern::Impl {
+  const NodeList<BindingElement> elements;
+
+  explicit Impl(zc::Vector<zc::Own<BindingElement>>&& e) : elements(zc::mv(e)) {}
+};
+
+// ================================================================================
+// ArrayBindingPattern
+
+ArrayBindingPattern::ArrayBindingPattern(zc::Vector<zc::Own<BindingElement>>&& elements) noexcept
+    : BindingPattern(zc::Vector<zc::Own<BindingPatternElement>>{}),
+      impl(zc::heap<Impl>(zc::mv(elements))) {}
+
+ArrayBindingPattern::~ArrayBindingPattern() noexcept(false) = default;
+
+const NodeList<BindingElement>& ArrayBindingPattern::getElements() const { return impl->elements; }
+
+void ArrayBindingPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// ObjectBindingPattern::Impl
+
+struct ObjectBindingPattern::Impl {
+  const NodeList<BindingElement> properties;
+
+  explicit Impl(zc::Vector<zc::Own<BindingElement>>&& p) : properties(zc::mv(p)) {}
+};
+
+// ================================================================================
+// ObjectBindingPattern
+
+ObjectBindingPattern::ObjectBindingPattern(
+    zc::Vector<zc::Own<BindingElement>>&& properties) noexcept
+    : BindingPattern(zc::Vector<zc::Own<BindingPatternElement>>{}),
+      impl(zc::heap<Impl>(zc::mv(properties))) {}
+
+ObjectBindingPattern::~ObjectBindingPattern() noexcept(false) = default;
+
+const NodeList<BindingElement>& ObjectBindingPattern::getProperties() const {
+  return impl->properties;
+}
+
+void ObjectBindingPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 }  // namespace ast
 }  // namespace compiler

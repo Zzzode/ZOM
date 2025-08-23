@@ -21,9 +21,9 @@
 
 #include "zc/core/iostream.h"
 
-#include <zc/ztest/gtest.h>
-
 #include <sstream>
+
+#include "zc/ztest/gtest.h"
 
 namespace zc {
 namespace std {

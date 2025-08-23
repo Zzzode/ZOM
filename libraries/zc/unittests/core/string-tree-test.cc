@@ -21,7 +21,7 @@
 
 #include "zc/core/string-tree.h"
 
-#include <zc/ztest/gtest.h>
+#include "zc/ztest/gtest.h"
 
 namespace zc {
 namespace _ {  // private

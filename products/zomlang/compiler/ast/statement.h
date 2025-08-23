@@ -26,6 +26,7 @@ class Identifier;
 class Expression;
 class Type;
 class ReturnType;
+class Pattern;
 
 class Statement : public Node {
 public:
@@ -388,6 +389,110 @@ public:
 
   const Identifier& getName() const;
   const Type& getType() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+// Forward declaration for Pattern
+class Pattern;
+
+class MatchClause : public Statement {
+public:
+  MatchClause(zc::Own<Pattern> pattern, zc::Maybe<zc::Own<Expression>> guard,
+              zc::Own<Statement> body) noexcept;
+  ~MatchClause() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(MatchClause);
+
+  const Pattern& getPattern() const;
+  const Expression* getGuard() const;
+  const Statement& getBody() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class DefaultClause : public Statement {
+public:
+  explicit DefaultClause(zc::Vector<zc::Own<Statement>>&& statements) noexcept;
+  ~DefaultClause() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(DefaultClause);
+
+  const NodeList<Statement>& getStatements() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class BindingPatternElement : public Statement {
+public:
+  BindingPatternElement(zc::Own<Pattern> pattern,
+                        zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
+  ~BindingPatternElement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(BindingPatternElement);
+
+  const Pattern& getPattern() const;
+  const Expression* getInitializer() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class BindingPattern : public Statement {
+public:
+  explicit BindingPattern(zc::Vector<zc::Own<BindingPatternElement>>&& elements) noexcept;
+  ~BindingPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(BindingPattern);
+
+  const NodeList<BindingPatternElement>& getElements() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ArrayBindingPattern : public BindingPattern {
+public:
+  explicit ArrayBindingPattern(zc::Vector<zc::Own<BindingElement>>&& elements) noexcept;
+  ~ArrayBindingPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ArrayBindingPattern);
+
+  const NodeList<BindingElement>& getElements() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ObjectBindingPattern : public BindingPattern {
+public:
+  explicit ObjectBindingPattern(zc::Vector<zc::Own<BindingElement>>&& properties) noexcept;
+  ~ObjectBindingPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ObjectBindingPattern);
+
+  const NodeList<BindingElement>& getProperties() const;
 
   void accept(Visitor& visitor) const override;
 

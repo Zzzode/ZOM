@@ -21,8 +21,8 @@
 
 #pragma once
 
-#include <zc/core/debug.h>
-#include <zc/core/windows-sanity.h>  // work-around macro conflict with `ERROR`
+#include "zc/core/debug.h"
+#include "zc/core/windows-sanity.h"  // work-around macro conflict with `ERROR`
 
 ZC_BEGIN_HEADER
 

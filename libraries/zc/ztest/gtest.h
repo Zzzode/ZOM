@@ -29,8 +29,8 @@
 // - Test fixtures are not supported. Allocate your "test fixture" on the stack instead. Do setup
 //   in the constructor, teardown in the destructor.
 
-#include <zc/core/windows-sanity.h>  // work-around macro conflict with `ERROR`
-#include <zc/ztest/test.h>
+#include "zc/core/windows-sanity.h"  // work-around macro conflict with `ERROR`
+#include "zc/ztest/test.h"
 
 ZC_BEGIN_HEADER
 

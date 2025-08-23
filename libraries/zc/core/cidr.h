@@ -24,7 +24,6 @@
 
 #include <cstdint>
 
-#include "zc/core/array.h"
 #include "zc/core/common.h"
 
 ZC_BEGIN_HEADER

@@ -166,6 +166,4 @@ ZC_TEST("Win32IocpEventPort APC") {
 }  // namespace
 }  // namespace zc
 
-#else
-
 #endif  // _WIN32

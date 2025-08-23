@@ -353,23 +353,23 @@ ZC_TEST("HttpHeaders validation") {
   auto table = HttpHeaderTable::Builder().build();
   HttpHeaders headers(*table);
 
-  headers.add("Valid-Name", "valid value");
+  headers.addPtrPtr("Valid-Name", "valid value");
 
   // The HTTP RFC prohibits control characters, but browsers only prohibit \0, \r, and \n. ZC goes
   // with the browsers for compatibility.
-  headers.add("Valid-Name", "valid\x01value");
+  headers.addPtrPtr("Valid-Name", "valid\x01value");
 
   // The HTTP RFC does not permit non-ASCII values.
   // ZC chooses to interpret them as UTF-8, to avoid the need for any expensive conversion.
   // Browsers apparently interpret them as LATIN-1. Applications can reinterpet these strings as
   // LATIN-1 easily enough if they really need to.
-  headers.add("Valid-Name", u8"valid€value");
+  headers.addPtrPtr("Valid-Name", u8"valid€value");
 
-  ZC_EXPECT_THROW_MESSAGE("invalid header name", headers.add("Invalid Name", "value"));
-  ZC_EXPECT_THROW_MESSAGE("invalid header name", headers.add("Invalid@Name", "value"));
+  ZC_EXPECT_THROW_MESSAGE("invalid header name", headers.addPtrPtr("Invalid Name", "value"));
+  ZC_EXPECT_THROW_MESSAGE("invalid header name", headers.addPtrPtr("Invalid@Name", "value"));
 
-  ZC_EXPECT_THROW_MESSAGE("invalid header value", headers.set(HttpHeaderId::HOST, "in\nvalid"));
-  ZC_EXPECT_THROW_MESSAGE("invalid header value", headers.add("Valid-Name", "in\nvalid"));
+  ZC_EXPECT_THROW_MESSAGE("invalid header value", headers.setPtr(HttpHeaderId::HOST, "in\nvalid"));
+  ZC_EXPECT_THROW_MESSAGE("invalid header value", headers.addPtrPtr("Valid-Name", "in\nvalid"));
 }
 
 ZC_TEST("HttpHeaders Set-Cookie handling") {
@@ -379,12 +379,12 @@ ZC_TEST("HttpHeaders Set-Cookie handling") {
   auto table = builder.build();
 
   HttpHeaders headers(*table);
-  headers.set(hCookie, "Foo");
-  headers.add("Cookie", "Bar");
-  headers.add("Cookie", "Baz");
-  headers.set(hSetCookie, "Foo");
-  headers.add("Set-Cookie", "Bar");
-  headers.add("Set-Cookie", "Baz");
+  headers.setPtr(hCookie, "Foo");
+  headers.addPtrPtr("Cookie", "Bar");
+  headers.addPtrPtr("Cookie", "Baz");
+  headers.setPtr(hSetCookie, "Foo");
+  headers.addPtrPtr("Set-Cookie", "Bar");
+  headers.addPtrPtr("Set-Cookie", "Baz");
 
   auto text = headers.toString();
   ZC_EXPECT(text ==
@@ -553,7 +553,7 @@ void testHttpClientRequest(zc::WaitScope& waitScope, const HttpRequestTestCase& 
   auto client = newHttpClient(table, *pipe.ends[0]);
 
   HttpHeaders headers(table);
-  for (auto& header : testCase.requestHeaders) { headers.set(header.id, header.value); }
+  for (auto& header : testCase.requestHeaders) { headers.setPtr(header.id, header.value); }
 
   auto request = client->request(testCase.method, testCase.path, headers, testCase.requestBodySize);
   if (testCase.requestBodyParts.size() > 0) {
@@ -625,7 +625,7 @@ void testHttpClient(zc::WaitScope& waitScope, HttpHeaderTable& table, HttpClient
   ZC_CONTEXT(testCase.request.raw, testCase.response.raw);
 
   HttpHeaders headers(table);
-  for (auto& header : testCase.request.requestHeaders) { headers.set(header.id, header.value); }
+  for (auto& header : testCase.request.requestHeaders) { headers.setPtr(header.id, header.value); }
 
   auto request = client.request(testCase.request.method, testCase.request.path, headers,
                                 testCase.request.requestBodySize);
@@ -690,7 +690,7 @@ public:
 
           responseHeaders.clear();
           for (auto& header : response.responseHeaders) {
-            responseHeaders.set(header.id, header.value);
+            responseHeaders.setPtr(header.id, header.value);
           }
 
           auto stream = responseSender.send(response.statusCode, response.statusText,
@@ -1176,6 +1176,63 @@ ZC_TEST("HttpClient chunked body pump from fixed length stream") {
             text);
 }
 
+ZC_TEST("HttpServer handles 'chunked, chunked' as 'chunked'") {
+  // Test that "Transfer-Encoding: chunked, chunked" is treated as equivalent to "chunked"
+  // This is technically invalid per HTTP spec but needed for compatibility
+  ZC_HTTP_TEST_SETUP_IO;
+  zc::TimerImpl timer(zc::origin<zc::TimePoint>());
+
+  HttpRequestTestCase REQUEST_WITH_CHUNKED_CHUNKED = {
+      "POST /foo HTTP/1.1\r\n"
+      "Transfer-Encoding: chunked, chunked\r\n"
+      "\r\n"
+      "6\r\n"
+      "foobar\r\n"
+      "0\r\n"
+      "\r\n",
+
+      HttpMethod::POST,
+      "/foo",
+      {},
+      zc::none,  // chunked encoding, no fixed length
+      {"foobar"}};
+
+  HttpRequestTestCase REQUEST_WITH_CHUNKED_CHUNKED_NO_SPACE = {
+      "POST /bar HTTP/1.1\r\n"
+      "Transfer-Encoding: chunked,chunked\r\n"
+      "\r\n"
+      "3\r\n"
+      "baz\r\n"
+      "0\r\n"
+      "\r\n",
+
+      HttpMethod::POST,
+      "/bar",
+      {},
+      zc::none,  // chunked encoding, no fixed length
+      {"baz"}};
+
+  HttpResponseTestCase RESPONSE = {
+      "HTTP/1.1 200 OK\r\n"
+      "Content-Length: 2\r\n"
+      "\r\n"
+      "ok",
+
+      200,
+      "OK",
+      {},
+      2,
+      {"ok"}};
+
+  // Test with "chunked, chunked" (with space)
+  testHttpServerRequest(waitScope, timer, REQUEST_WITH_CHUNKED_CHUNKED, RESPONSE,
+                        ZC_HTTP_TEST_CREATE_2PIPE);
+
+  // Test with "chunked,chunked" (no space)
+  testHttpServerRequest(waitScope, timer, REQUEST_WITH_CHUNKED_CHUNKED_NO_SPACE, RESPONSE,
+                        ZC_HTTP_TEST_CREATE_2PIPE);
+}
+
 ZC_TEST("HttpServer requests") {
   HttpResponseTestCase RESPONSE = {
       "HTTP/1.1 200 OK\r\n"
@@ -1495,7 +1552,9 @@ ZC_TEST("HttpClient parallel pipeline") {
     ZC_CONTEXT(testCase.request.raw, testCase.response.raw);
 
     HttpHeaders headers(table);
-    for (auto& header : testCase.request.requestHeaders) { headers.set(header.id, header.value); }
+    for (auto& header : testCase.request.requestHeaders) {
+      headers.setPtr(header.id, header.value);
+    }
 
     auto request = client->request(testCase.request.method, testCase.request.path, headers,
                                    testCase.request.requestBodySize);
@@ -2710,7 +2769,7 @@ zc::ArrayPtr<const byte> asBytes(const char (&chars)[s]) {
 void testWebSocketClient(zc::WaitScope& waitScope, HttpHeaderTable& headerTable,
                          zc::HttpHeaderId hMyHeader, HttpClient& client) {
   zc::HttpHeaders headers(headerTable);
-  headers.set(hMyHeader, "foo");
+  headers.setPtr(hMyHeader, "foo");
   auto response = client.openWebSocket("/websocket", headers).wait(waitScope);
 
   ZC_EXPECT(response.statusCode == 101);
@@ -2750,7 +2809,7 @@ void testWebSocketTwoMessageCompression(zc::WaitScope& waitScope, HttpHeaderTabl
   // compressed message changes.
 
   zc::HttpHeaders headers(headerTable);
-  headers.set(extHeader, extensions);
+  headers.setPtr(extHeader, extensions);
   auto response = client.openWebSocket("/websocket", headers).wait(waitScope);
 
   ZC_EXPECT(response.statusCode == 101);
@@ -2792,7 +2851,7 @@ void testWebSocketThreeMessageCompression(zc::WaitScope& waitScope, HttpHeaderTa
   // The third message is the same as the first (from the application code's perspective).
 
   zc::HttpHeaders headers(headerTable);
-  headers.set(extHeader, extensions);
+  headers.setPtr(extHeader, extensions);
   auto response = client.openWebSocket("/websocket", headers).wait(waitScope);
 
   ZC_EXPECT(response.statusCode == 101);
@@ -2842,7 +2901,7 @@ void testWebSocketEmptyMessageCompression(zc::WaitScope& waitScope, HttpHeaderTa
   // Confirm that we can send empty messages when compression is enabled.
 
   zc::HttpHeaders headers(headerTable);
-  headers.set(extHeader, extensions);
+  headers.setPtr(extHeader, extensions);
   auto response = client.openWebSocket("/websocket", headers).wait(waitScope);
 
   ZC_EXPECT(response.statusCode == 101);
@@ -2897,7 +2956,7 @@ void testWebSocketOptimizePumpProxy(zc::WaitScope& waitScope, HttpHeaderTable& h
   // configuration and pass it to `proxyServer` in a way that would allow for optimizedPumping.
 
   zc::HttpHeaders headers(headerTable);
-  headers.set(extHeader, extensions);
+  headers.setPtr(extHeader, extensions);
   auto response = client.openWebSocket("/websocket", headers).wait(waitScope);
 
   ZC_EXPECT(response.statusCode == 101);
@@ -2935,7 +2994,7 @@ void testWebSocketFourMessageCompression(zc::WaitScope& waitScope, HttpHeaderTab
   // the message). We will receive three messages.
 
   zc::HttpHeaders headers(headerTable);
-  headers.set(extHeader, extensions);
+  headers.setPtr(extHeader, extensions);
   auto response = client.openWebSocket("/websocket", headers).wait(waitScope);
 
   ZC_EXPECT(response.statusCode == 101);
@@ -3867,7 +3926,7 @@ ZC_TEST("HttpClient WebSocket error") {
   auto client = newHttpClient(*headerTable, *pipe.ends[0], clientSettings);
 
   zc::HttpHeaders headers(*headerTable);
-  headers.set(hMyHeader, "foo");
+  headers.setPtr(hMyHeader, "foo");
 
   {
     auto response = client->openWebSocket("/websocket", headers).wait(waitScope);
@@ -5820,8 +5879,6 @@ ZC_TEST("HttpClient connection management") {
   ZC_EXPECT(cumulative == 8);
   serverTimer.advanceTo(serverTimer.now() + serverSettings.pipelineTimeout * 2);
   waitScope.poll();
-  clientTimer.advanceTo(clientTimer.now() + 100 * zc::MILLISECONDS);
-  waitScope.poll();
   ZC_EXPECT(count == 0);
   ZC_EXPECT(cumulative == 8);
 
@@ -6239,7 +6296,7 @@ ZC_TEST("HttpClient to capnproto.org") {
     auto client = newHttpClient(table, *conn);
 
     HttpHeaders headers(table);
-    headers.set(HttpHeaderId::HOST, "capnproto.org");
+    headers.setPtr(HttpHeaderId::HOST, "capnproto.org");
 
     auto response = client->request(HttpMethod::GET, "/", headers).response.wait(io.waitScope);
     ZC_EXPECT(response.statusCode / 100 == 3);

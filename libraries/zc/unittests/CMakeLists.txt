@@ -66,6 +66,9 @@ foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
   target_compile_options(${UNIQUE_TEST_NAME} PRIVATE -Wno-global-constructors)
 
   add_test(NAME ${UNIQUE_TEST_NAME} COMMAND ${UNIQUE_TEST_NAME})
+  set_tests_properties(${UNIQUE_TEST_NAME} PROPERTIES
+    TIMEOUT 60
+  )
   if (ZOM_ENABLE_COVERAGE)
     add_coverage_to_test(${UNIQUE_TEST_NAME})
     add_test_to_coverage(${UNIQUE_TEST_NAME})

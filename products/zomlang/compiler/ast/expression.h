@@ -555,6 +555,160 @@ private:
   const zc::Own<Impl> impl;
 };
 
+// Pattern classes
+class Pattern : public Expression {
+public:
+  explicit Pattern(SyntaxKind kind = SyntaxKind::kPattern) noexcept;
+  ~Pattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(Pattern);
+
+  void accept(Visitor& visitor) const override;
+};
+
+class PrimaryPattern : public Pattern {
+public:
+  explicit PrimaryPattern(SyntaxKind kind = SyntaxKind::kPrimaryPattern) noexcept;
+  ~PrimaryPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(PrimaryPattern);
+
+  void accept(Visitor& visitor) const override;
+};
+
+class WildcardPattern : public PrimaryPattern {
+public:
+  explicit WildcardPattern(zc::Maybe<zc::Own<Type>> typeAnnotation = zc::none) noexcept;
+  ~WildcardPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(WildcardPattern);
+
+  zc::Maybe<const Type&> getTypeAnnotation() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class IdentifierPattern : public PrimaryPattern {
+public:
+  IdentifierPattern(zc::Own<Identifier> identifier,
+                    zc::Maybe<zc::Own<Type>> typeAnnotation = zc::none) noexcept;
+  ~IdentifierPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(IdentifierPattern);
+
+  const Identifier& getIdentifier() const;
+  zc::Maybe<const Type&> getTypeAnnotation() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class TuplePattern : public PrimaryPattern {
+public:
+  explicit TuplePattern(zc::Vector<zc::Own<Pattern>>&& elements) noexcept;
+  ~TuplePattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(TuplePattern);
+
+  const NodeList<Pattern>& getElements() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class StructurePattern : public PrimaryPattern {
+public:
+  explicit StructurePattern(zc::Vector<zc::Own<Pattern>>&& properties) noexcept;
+  ~StructurePattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(StructurePattern);
+
+  const NodeList<Pattern>& getProperties() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ArrayPattern : public PrimaryPattern {
+public:
+  explicit ArrayPattern(zc::Vector<zc::Own<Pattern>>&& elements) noexcept;
+  ~ArrayPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ArrayPattern);
+
+  const NodeList<Pattern>& getElements() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class IsPattern : public PrimaryPattern {
+public:
+  explicit IsPattern(zc::Own<Type> type) noexcept;
+  ~IsPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(IsPattern);
+
+  const Type& getType() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ExpressionPattern : public PrimaryPattern {
+public:
+  explicit ExpressionPattern(zc::Own<Expression> expression) noexcept;
+  ~ExpressionPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ExpressionPattern);
+
+  const Expression& getExpression() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class EnumPattern : public PrimaryPattern {
+public:
+  EnumPattern(zc::Maybe<zc::Own<Type>> typeReference, zc::Own<Identifier> propertyName,
+              zc::Own<TuplePattern> tuplePattern) noexcept;
+  ~EnumPattern() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(EnumPattern);
+
+  zc::Maybe<const Type&> getTypeReference() const;
+  const Identifier& getPropertyName() const;
+  const TuplePattern& getTuplePattern() const;
+
+  void accept(Visitor& visitor) const override;
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
 }  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang

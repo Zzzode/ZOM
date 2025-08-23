@@ -22,8 +22,7 @@
 #include "zc/core/common.h"
 #if ZC_HAS_ZLIB
 
-#include <zc/core/debug.h>
-
+#include "zc/core/debug.h"
 #include "zc/zip/gzip.h"
 
 namespace zc {
@@ -37,7 +36,7 @@ GzipOutputContext::GzipOutputContext(zc::Maybe<int> compressionLevel) {
     compressing = true;
     initResult =
         deflateInit2(&ctx, level, Z_DEFLATED,
-                     15 + 16,  // windowBits = 15 (maximum) + magic value 16 to ask for zip.
+                     15 + 16,  // windowBits = 15 (maximum) + magic value 16 to ask for gzip.
                      8,        // memLevel = 8 (the default)
                      Z_DEFAULT_STRATEGY);
   }
@@ -72,7 +71,7 @@ zc::Tuple<bool, zc::ArrayPtr<const byte>> GzipOutputContext::pumpOnce(int flush)
 }
 
 void GzipOutputContext::fail(int result) {
-  auto header = compressing ? "zip compression failed" : "zip decompression failed";
+  auto header = compressing ? "gzip compression failed" : "gzip decompression failed";
   if (ctx.msg == nullptr) {
     ZC_FAIL_REQUIRE(header, result);
   } else {
@@ -83,7 +82,7 @@ void GzipOutputContext::fail(int result) {
 }  // namespace _
 
 GzipInputStream::GzipInputStream(InputStream& inner) : inner(inner) {
-  // windowBits = 15 (maximum) + magic value 16 to ask for zip.
+  // windowBits = 15 (maximum) + magic value 16 to ask for gzip.
   ZC_ASSERT(inflateInit2(&ctx, 15 + 16) == Z_OK);
 }
 
@@ -105,7 +104,7 @@ size_t GzipInputStream::readImpl(ArrayPtr<byte> out, size_t minBytes, size_t alr
     // possible, but this may be a concern when implementing support for other algorithms as e.g.
     // brotli's reference implementation maintains a decompression output buffer.
     if (amount == 0) {
-      if (!atValidEndpoint) { ZC_FAIL_REQUIRE("zip compressed stream ended prematurely"); }
+      if (!atValidEndpoint) { ZC_FAIL_REQUIRE("gzip compressed stream ended prematurely"); }
       return alreadyRead;
     } else {
       ctx.next_in = buffer;
@@ -133,9 +132,9 @@ size_t GzipInputStream::readImpl(ArrayPtr<byte> out, size_t minBytes, size_t alr
     }
   } else {
     if (ctx.msg == nullptr) {
-      ZC_FAIL_REQUIRE("zip decompression failed", inflateResult);
+      ZC_FAIL_REQUIRE("gzip decompression failed", inflateResult);
     } else {
-      ZC_FAIL_REQUIRE("zip decompression failed", ctx.msg);
+      ZC_FAIL_REQUIRE("gzip decompression failed", ctx.msg);
     }
   }
 }
@@ -168,7 +167,7 @@ void GzipOutputStream::pump(int flush) {
 // =======================================================================================
 
 GzipAsyncInputStream::GzipAsyncInputStream(AsyncInputStream& inner) : inner(inner) {
-  // windowBits = 15 (maximum) + magic value 16 to ask for zip.
+  // windowBits = 15 (maximum) + magic value 16 to ask for gzip.
   ZC_ASSERT(inflateInit2(&ctx, 15 + 16) == Z_OK);
 }
 
@@ -187,7 +186,7 @@ Promise<size_t> GzipAsyncInputStream::readImpl(byte* out, size_t minBytes, size_
         .then([this, out, minBytes, maxBytes, alreadyRead](size_t amount) -> Promise<size_t> {
           if (amount == 0) {
             if (!atValidEndpoint) {
-              return ZC_EXCEPTION(DISCONNECTED, "zip compressed stream ended prematurely");
+              return ZC_EXCEPTION(DISCONNECTED, "gzip compressed stream ended prematurely");
             }
             return alreadyRead;
           } else {
@@ -217,9 +216,9 @@ Promise<size_t> GzipAsyncInputStream::readImpl(byte* out, size_t minBytes, size_
     }
   } else {
     if (ctx.msg == nullptr) {
-      ZC_FAIL_REQUIRE("zip decompression failed", inflateResult);
+      ZC_FAIL_REQUIRE("gzip decompression failed", inflateResult);
     } else {
-      ZC_FAIL_REQUIRE("zip decompression failed", ctx.msg);
+      ZC_FAIL_REQUIRE("gzip decompression failed", ctx.msg);
     }
   }
 }
