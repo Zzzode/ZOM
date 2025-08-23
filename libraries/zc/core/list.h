@@ -30,7 +30,7 @@ namespace zc {
 template <typename T>
 class ListLink;
 
-template <typename T, typename MaybeConstT, ListLink<T> T::*link>
+template <typename T, typename MaybeConstT, ListLink<T> T::* link>
 class ListIterator;
 
 namespace _ {  // (private)
@@ -42,7 +42,7 @@ ZC_NORETURN(void throwDestroyedWhileInList());
 
 }  // namespace _
 
-template <typename T, ListLink<T> T::*link>
+template <typename T, ListLink<T> T::* link>
 class List {
   // A linked list that does no memory allocation.
   //
@@ -154,13 +154,13 @@ private:
   Maybe<T&> next;
   Maybe<T&>* prev;
 
-  template <typename U, ListLink<U> U::*link>
+  template <typename U, ListLink<U> U::* link>
   friend class List;
-  template <typename U, typename MaybeConstU, ListLink<U> U::*link>
+  template <typename U, typename MaybeConstU, ListLink<U> U::* link>
   friend class ListIterator;
 };
 
-template <typename T, typename MaybeConstT, ListLink<T> T::*link>
+template <typename T, typename MaybeConstT, ListLink<T> T::* link>
 class ListIterator {
 public:
   ListIterator() = default;

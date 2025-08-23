@@ -244,6 +244,7 @@ enum class TokenKind {
   kAt,                                       // @
   kHash,                                     // #
   kBacktick,                                 // `
+  kUnderscore,                               // _
 
   // Punctuation
   kPunctuation,

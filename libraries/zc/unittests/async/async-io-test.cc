@@ -3608,5 +3608,196 @@ ZC_TEST("Calling abortRead() while tryRead() is in progress") {
   }
 }
 
+// ---------------------------------------------------------------------------------------------
+// accept() with aborted connection - IPv4 listener
+// ---------------------------------------------------------------------------------------------
+// Test accept() behavior when connections are aborted (send RST) before being accepted.
+// Creates an aborted IPv4 connection followed by a valid one, then verifies proper handling.
+//
+// On Unix platforms, accept() typically returns the aborted connection, which fails on first
+// read (throws "Connection reset by peer" or returns 0 bytes). The test then calls accept()
+// again to get the valid connection. Some platforms may filter out aborted connections.
+
+#if !_WIN32
+ZC_TEST("accept() with aborted connection - IPv4") {
+  // -- async-io boilerplate ---------------------------------------------------
+  auto io = zc::setupAsyncIo();
+  auto& net = io.provider->getNetwork();
+
+  auto listenerAddr = net.parseAddress("127.0.0.1", 0).wait(io.waitScope);
+  auto listener = listenerAddr->listen();
+  uint16_t port = listener->getPort();
+
+  // Create a connection that will be aborted (sends RST packet)
+  int s = ::socket(AF_INET, SOCK_STREAM, 0);
+  ZC_ASSERT(s >= 0);
+
+  // Configure socket to send RST on close instead of FIN
+  struct linger lg = {1, 0};
+  ZC_SYSCALL(setsockopt(s, SOL_SOCKET, SO_LINGER, &lg, sizeof(lg)));
+
+  sockaddr_in a{};
+  a.sin_family = AF_INET;
+  a.sin_port = htons(port);
+  a.sin_addr.s_addr = htonl(0x7f000001);
+  ZC_SYSCALL(::connect(s, reinterpret_cast<sockaddr*>(&a), sizeof(a)));
+
+  // Close immediately to send RST packet
+  ZC_SYSCALL(::close(s));
+
+  // Allow aborted connection to reach accept queue first
+  io.provider->getTimer().afterDelay(20 * zc::MILLISECONDS).wait(io.waitScope);
+
+  // Create a valid connection that should work
+  auto clientP = net.parseAddress("127.0.0.1", port).then([](Own<NetworkAddress> addr) {
+    return addr->connect();
+  });
+  // Accept first connection - this should be the aborted one
+  auto firstConnection = listener->accept().wait(io.waitScope);
+
+  char buffer[16];
+  bool firstConnectionAborted = false;
+
+  // Test if first connection is aborted by attempting to read
+  auto maybeException = zc::runCatchingExceptions([&]() {
+    firstConnection->tryRead(buffer, 1, sizeof(buffer))
+        .then([&firstConnectionAborted](uint64_t bytesRead) {
+          if (bytesRead == 0) { firstConnectionAborted = true; }
+        })
+        .exclusiveJoin(io.provider->getTimer().afterDelay(20 * zc::MILLISECONDS))
+        .wait(io.waitScope);
+  });
+  ZC_IF_SOME(e, maybeException) {
+    // Read failed with exception (connection was aborted)
+    if (e.getType() == zc::Exception::Type::DISCONNECTED) {
+      // Read failed with disconnected exception (connection was aborted)
+      firstConnectionAborted = true;
+    } else {
+      zc::throwFatalException(zc::mv(e));
+    }
+  }
+
+  zc::Own<AsyncIoStream> serverCon;
+  if (firstConnectionAborted) {
+    // First connection was aborted as expected - accept the second (valid) connection
+    serverCon = listener->accept().wait(io.waitScope);
+  } else {
+    serverCon = zc::mv(firstConnection);
+  }
+  // Verify we have a working connection
+  auto clientCon = clientP.wait(io.waitScope);
+
+  // Test data transfer on the valid connection
+  auto writePromise = clientCon->write(zc::StringPtr("hello").asBytes());
+  auto readPromise2 =
+      serverCon->read(zc::arrayPtr(reinterpret_cast<zc::byte*>(buffer), sizeof(buffer)), 5);
+
+  writePromise.wait(io.waitScope);
+  auto amount = readPromise2.wait(io.waitScope);
+  ZC_ASSERT(amount == 5);
+  ZC_ASSERT(memcmp(buffer, "hello", 5) == 0);
+}
+#endif  // !_WIN32
+
+// ---------------------------------------------------------------------------------------------
+// accept() with aborted connection - dual-stack IPv4/IPv6 listener
+// ---------------------------------------------------------------------------------------------
+// Test accept() behavior with aborted cross-protocol connections on dual-stack listeners.
+// Creates an aborted IPv4 connection to an IPv6 listener, followed by a valid IPv6 connection.
+//
+// Expected behavior:
+// - Darwin/macOS: When IPv4 connects to IPv6 listener and gets aborted, accept() returns
+//   a socket with addrlen=0. ZC's accept loop detects this Darwin quirk and discards the
+//   socket automatically, so first accept() returns the valid connection.
+// - Linux/other Unix: accept() returns the aborted connection, which fails on first
+//   read (throws exception or returns 0 bytes). Test then calls accept() again for the
+//   valid connection.
+//
+// This test specifically exercises the Darwin addrlen==0 bug workaround in ZC's accept loop.
+
+#if !_WIN32
+ZC_TEST("accept() with aborted connection - dual-stack IPv4/IPv6") {
+  if (!systemSupportsAddress("::")) {
+    ZC_LOG(WARNING, "system does not support ipv6; skipping test");
+    return;
+  }
+
+  char buffer[16];
+  // -- async-io boilerplate ---------------------------------------------------
+  auto io = zc::setupAsyncIo();
+  auto& net = io.provider->getNetwork();
+
+  auto listenerAddr = net.parseAddress("::", 0).wait(io.waitScope);
+  auto listener = listenerAddr->listen();
+  uint16_t port = listener->getPort();
+
+  // Create IPv4 connection that will be aborted (sends RST packet)
+  int s = ::socket(AF_INET, SOCK_STREAM, 0);
+  ZC_ASSERT(s >= 0);
+
+  // Configure socket to send RST on close instead of FIN
+  struct linger lg = {1, 0};
+  ZC_SYSCALL(setsockopt(s, SOL_SOCKET, SO_LINGER, &lg, sizeof(lg)));
+
+  sockaddr_in a{};
+  a.sin_family = AF_INET;
+  a.sin_port = htons(port);
+  a.sin_addr.s_addr = htonl(0x7f000001);
+  ZC_SYSCALL(::connect(s, reinterpret_cast<sockaddr*>(&a), sizeof(a)));
+
+  // Close immediately to send RST packet
+  ZC_SYSCALL(::close(s));
+
+  // Allow aborted connection to reach accept queue first
+  io.provider->getTimer().afterDelay(20 * zc::MILLISECONDS).wait(io.waitScope);
+
+  // Create valid IPv6 connection
+  auto clientP =
+      net.parseAddress("::1", port).then([](Own<NetworkAddress> addr) { return addr->connect(); });
+  // Accept connection - on macOS with addrlen==0 bug, aborted connection is filtered
+  auto serverCon = listener->accept().wait(io.waitScope);
+
+  // Test if the accepted connection is valid by attempting to read
+  // On macOS, the addrlen==0 bug means the aborted connection is filtered out,
+  // so the first accept() returns the valid connection.
+  // On other platforms, we may get the aborted connection first.
+  bool connectionAborted = false;
+
+  auto maybeException = zc::runCatchingExceptions([&]() {
+    serverCon->tryRead(buffer, 1, sizeof(buffer))
+        .then([&connectionAborted](uint64_t bytesRead) {
+          if (bytesRead == 0) { connectionAborted = true; }
+        })
+        .exclusiveJoin(io.provider->getTimer().afterDelay(20 * zc::MILLISECONDS))
+        .wait(io.waitScope);
+  });
+  ZC_IF_SOME(e, maybeException) {
+    if (e.getType() == zc::Exception::Type::DISCONNECTED) {
+      // Read failed with disconnected exception (connection was aborted)
+      connectionAborted = true;
+    } else {
+      zc::throwFatalException(zc::mv(e));
+    }
+  }
+
+  if (connectionAborted) {
+    // First connection was aborted - accept the second (valid) connection
+    serverCon = listener->accept().wait(io.waitScope);
+  }
+
+  auto clientCon = clientP.wait(io.waitScope);
+
+  // Test data transfer on the valid connection
+  auto writePromise = clientCon->write(zc::StringPtr("hello").asBytes());
+  auto readPromise =
+      serverCon->read(zc::arrayPtr(reinterpret_cast<zc::byte*>(buffer), sizeof(buffer)), 5);
+
+  writePromise.wait(io.waitScope);
+  auto amount = readPromise.wait(io.waitScope);
+  ZC_ASSERT(amount == 5);
+  ZC_ASSERT(memcmp(buffer, "hello", 5) == 0);
+}
+#endif  // !_WIN32
+
 }  // namespace
 }  // namespace zc

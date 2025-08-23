@@ -23,16 +23,17 @@
 
 #include <brotli/decode.h>
 #include <brotli/encode.h>
-#include <zc/async/async-io.h>
-#include <zc/core/io.h>
-#include <zc/core/one-of.h>
+
+#include "zc/async/async-io.h"
+#include "zc/core/io.h"
+#include "zc/core/one-of.h"
 
 ZC_BEGIN_HEADER
 
 namespace zc {
 
-// level 5 should offer a good default tradeoff based on concerns about being slower than zip at
-// e.g. level 6 and about compressing worse than zip at lower levels. Note that
+// level 5 should offer a good default tradeoff based on concerns about being slower than gzip at
+// e.g. level 6 and about compressing worse than gzip at lower levels. Note that
 // BROTLI_DEFAULT_QUALITY is set to the maximum level of 11 – way too slow for on-the-fly
 // compression.
 constexpr size_t ZC_BROTLI_DEFAULT_QUALITY = 5;
@@ -104,7 +105,7 @@ public:
   enum { DECOMPRESS };
 
   // Order of arguments is not ideal, but allows us to specify the window size if needed while
-  // remaining compatible with the zip API.
+  // remaining compatible with the gzip API.
   BrotliOutputStream(OutputStream& inner, int compressionLevel = ZC_BROTLI_DEFAULT_QUALITY,
                      int windowBits = _::ZC_BROTLI_DEFAULT_WBITS);
   BrotliOutputStream(OutputStream& inner, decltype(DECOMPRESS),

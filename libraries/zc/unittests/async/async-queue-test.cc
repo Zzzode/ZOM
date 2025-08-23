@@ -21,9 +21,9 @@
 
 #include "zc/async/async-queue.h"
 
-#include <zc/async/async-io.h>
-#include <zc/core/vector.h>
-#include <zc/ztest/test.h>
+#include "zc/async/async-io.h"
+#include "zc/core/vector.h"
+#include "zc/ztest/test.h"
 
 namespace zc {
 namespace {

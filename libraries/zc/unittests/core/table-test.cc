@@ -22,13 +22,13 @@
 #include "zc/core/table.h"
 
 #include <stdlib.h>
-#include <zc/ztest/test.h>
 
 #include <set>
 #include <unordered_set>
 
 #include "zc/core/hash.h"
 #include "zc/core/time.h"
+#include "zc/ztest/test.h"
 
 namespace zc {
 namespace _ {

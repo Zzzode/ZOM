@@ -22,8 +22,9 @@
 #pragma once
 
 #include <inttypes.h>
-#include <zc/core/string.h>
-#include <zc/core/vector.h>
+
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
 
 ZC_BEGIN_HEADER
 

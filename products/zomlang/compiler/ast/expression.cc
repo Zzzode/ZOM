@@ -754,6 +754,193 @@ bool ElementAccessExpression::isQuestionDot() { return impl->questionDot; }
 
 void ElementAccessExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
+// ================================================================================
+// Pattern
+Pattern::Pattern(SyntaxKind kind) noexcept : Expression(kind) {}
+Pattern::~Pattern() noexcept(false) = default;
+
+void Pattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// PrimaryPattern
+PrimaryPattern::PrimaryPattern(SyntaxKind kind) noexcept : Pattern(kind) {}
+PrimaryPattern::~PrimaryPattern() noexcept(false) = default;
+
+void PrimaryPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// WildcardPattern::Impl
+struct WildcardPattern::Impl {
+  const zc::Maybe<zc::Own<Type>> typeAnnotation;
+
+  explicit Impl(zc::Maybe<zc::Own<Type>> ta) : typeAnnotation(zc::mv(ta)) {}
+};
+
+// ================================================================================
+// WildcardPattern
+WildcardPattern::WildcardPattern(zc::Maybe<zc::Own<Type>> typeAnnotation) noexcept
+    : PrimaryPattern(SyntaxKind::kWildcardPattern), impl(zc::heap<Impl>(zc::mv(typeAnnotation))) {}
+
+WildcardPattern::~WildcardPattern() noexcept(false) = default;
+
+zc::Maybe<const Type&> WildcardPattern::getTypeAnnotation() const {
+  return impl->typeAnnotation.map([](const zc::Own<Type>& type) -> const Type& { return *type; });
+}
+
+void WildcardPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// IdentifierPattern::Impl
+struct IdentifierPattern::Impl {
+  const zc::Own<Identifier> identifier;
+  const zc::Maybe<zc::Own<Type>> typeAnnotation;
+
+  Impl(zc::Own<Identifier> id, zc::Maybe<zc::Own<Type>> ta)
+      : identifier(zc::mv(id)), typeAnnotation(zc::mv(ta)) {}
+};
+
+// ================================================================================
+// IdentifierPattern
+IdentifierPattern::IdentifierPattern(zc::Own<Identifier> identifier,
+                                     zc::Maybe<zc::Own<Type>> typeAnnotation) noexcept
+    : PrimaryPattern(SyntaxKind::kIdentifierPattern),
+      impl(zc::heap<Impl>(zc::mv(identifier), zc::mv(typeAnnotation))) {}
+
+IdentifierPattern::~IdentifierPattern() noexcept(false) = default;
+
+const Identifier& IdentifierPattern::getIdentifier() const { return *impl->identifier; }
+
+zc::Maybe<const Type&> IdentifierPattern::getTypeAnnotation() const {
+  return impl->typeAnnotation.map([](const zc::Own<Type>& type) -> const Type& { return *type; });
+}
+
+void IdentifierPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// TuplePattern::Impl
+struct TuplePattern::Impl {
+  const NodeList<Pattern> elements;
+
+  explicit Impl(zc::Vector<zc::Own<Pattern>>&& elems) : elements(zc::mv(elems)) {}
+};
+
+// ================================================================================
+// TuplePattern
+TuplePattern::TuplePattern(zc::Vector<zc::Own<Pattern>>&& elements) noexcept
+    : PrimaryPattern(SyntaxKind::kTuplePattern), impl(zc::heap<Impl>(zc::mv(elements))) {}
+
+TuplePattern::~TuplePattern() noexcept(false) = default;
+
+const NodeList<Pattern>& TuplePattern::getElements() const { return impl->elements; }
+
+void TuplePattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// StructurePattern::Impl
+struct StructurePattern::Impl {
+  const NodeList<Pattern> properties;
+
+  explicit Impl(zc::Vector<zc::Own<Pattern>>&& props) : properties(zc::mv(props)) {}
+};
+
+// ================================================================================
+// StructurePattern
+StructurePattern::StructurePattern(zc::Vector<zc::Own<Pattern>>&& properties) noexcept
+    : PrimaryPattern(SyntaxKind::kStructurePattern), impl(zc::heap<Impl>(zc::mv(properties))) {}
+
+StructurePattern::~StructurePattern() noexcept(false) = default;
+
+const NodeList<Pattern>& StructurePattern::getProperties() const { return impl->properties; }
+
+void StructurePattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// ArrayPattern::Impl
+struct ArrayPattern::Impl {
+  const NodeList<Pattern> elements;
+
+  explicit Impl(zc::Vector<zc::Own<Pattern>>&& elems) : elements(zc::mv(elems)) {}
+};
+
+// ================================================================================
+// ArrayPattern
+ArrayPattern::ArrayPattern(zc::Vector<zc::Own<Pattern>>&& elements) noexcept
+    : PrimaryPattern(SyntaxKind::kArrayPattern), impl(zc::heap<Impl>(zc::mv(elements))) {}
+
+ArrayPattern::~ArrayPattern() noexcept(false) = default;
+
+const NodeList<Pattern>& ArrayPattern::getElements() const { return impl->elements; }
+
+void ArrayPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// IsPattern::Impl
+struct IsPattern::Impl {
+  const zc::Own<Type> type;
+
+  explicit Impl(zc::Own<Type> t) : type(zc::mv(t)) {}
+};
+
+// ================================================================================
+// IsPattern
+IsPattern::IsPattern(zc::Own<Type> type) noexcept
+    : PrimaryPattern(SyntaxKind::kIsPattern), impl(zc::heap<Impl>(zc::mv(type))) {}
+
+IsPattern::~IsPattern() noexcept(false) = default;
+
+const Type& IsPattern::getType() const { return *impl->type; }
+
+void IsPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// ExpressionPattern::Impl
+struct ExpressionPattern::Impl {
+  const zc::Own<Expression> expression;
+
+  explicit Impl(zc::Own<Expression> expr) : expression(zc::mv(expr)) {}
+};
+
+// ================================================================================
+// ExpressionPattern
+ExpressionPattern::ExpressionPattern(zc::Own<Expression> expression) noexcept
+    : PrimaryPattern(SyntaxKind::kExpressionPattern), impl(zc::heap<Impl>(zc::mv(expression))) {}
+
+ExpressionPattern::~ExpressionPattern() noexcept(false) = default;
+
+const Expression& ExpressionPattern::getExpression() const { return *impl->expression; }
+
+void ExpressionPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// EnumPattern::Impl
+struct EnumPattern::Impl {
+  const zc::Maybe<zc::Own<Type>> typeReference;
+  const zc::Own<Identifier> propertyName;
+  const zc::Own<TuplePattern> tuplePattern;
+
+  Impl(zc::Maybe<zc::Own<Type>> tr, zc::Own<Identifier> pn, zc::Own<TuplePattern> tp)
+      : typeReference(zc::mv(tr)), propertyName(zc::mv(pn)), tuplePattern(zc::mv(tp)) {}
+};
+
+// ================================================================================
+// EnumPattern
+EnumPattern::EnumPattern(zc::Maybe<zc::Own<Type>> typeReference, zc::Own<Identifier> propertyName,
+                         zc::Own<TuplePattern> tuplePattern) noexcept
+    : PrimaryPattern(SyntaxKind::kEnumPattern),
+      impl(zc::heap<Impl>(zc::mv(typeReference), zc::mv(propertyName), zc::mv(tuplePattern))) {}
+
+EnumPattern::~EnumPattern() noexcept(false) = default;
+
+zc::Maybe<const Type&> EnumPattern::getTypeReference() const {
+  return impl->typeReference.map([](const zc::Own<Type>& type) -> const Type& { return *type; });
+}
+
+const Identifier& EnumPattern::getPropertyName() const { return *impl->propertyName; }
+
+const TuplePattern& EnumPattern::getTuplePattern() const { return *impl->tuplePattern; }
+
+void EnumPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 }  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang

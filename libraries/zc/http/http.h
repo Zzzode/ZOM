@@ -207,7 +207,7 @@ class HttpHeaderTable {
   //
   //     // Get http://example.com.
   //     HttpHeaders headers(table);
-  //     headers.set(accept, "text/html");
+  //     headers.setPtr(accept, "text/html");
   //     auto response = client->send(zc::HttpMethod::GET, "http://example.com", headers)
   //         .wait(waitScope);
   //     auto msg = zc::str("Response content type: ", response.headers.get(contentType));
@@ -334,7 +334,11 @@ public:
   // `func2(name, value)` for each header that does not. All calls to func1() precede all calls to
   // func2().
 
+  ZC_DEPRECATED("Use setPtr()")
   void set(HttpHeaderId id, zc::StringPtr value);
+  void setPtr(HttpHeaderId id, zc::StringPtr value);
+  void setPtr(HttpHeaderId id, zc::String&& value) = delete;
+
   void set(HttpHeaderId id, zc::String&& value);
   // Sets a header value, overwriting the existing value.
   //
@@ -344,8 +348,18 @@ public:
   //   HttpHeaders object is destroyed. This allows string literals to be passed without making a
   //   copy, but complicates the use of dynamic values. Hint: Consider using `takeOwnership()`.
 
+  ZC_DEPRECATED("Use addPtrPtr()")
   void add(zc::StringPtr name, zc::StringPtr value);
+  void addPtrPtr(zc::StringPtr name, zc::StringPtr value);
+  void addPtrPtr(zc::StringPtr name, zc::String&& value) = delete;
+  void addPtrPtr(zc::String&& name, zc::StringPtr value) = delete;
+  void addPtrPtr(zc::String&& name, zc::String&& value) = delete;
+
+  ZC_DEPRECATED("Use addPtr()")
   void add(zc::StringPtr name, zc::String&& value);
+  void addPtr(zc::StringPtr name, zc::String&& value);
+  void addPtr(zc::String&& name, zc::String&& value) = delete;
+
   void add(zc::String&& name, zc::String&& value);
   // Append a header. `name` will be looked up in the header table, but if it's not mapped, the
   // header will be added to the list of unmapped headers.

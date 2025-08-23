@@ -22,7 +22,7 @@
 #if ZC_HAS_OPENSSL
 
 #if _WIN32
-#include <zc/win32-api-version.h>
+#include "zc/core/win32-api-version.h"
 #endif
 
 #include <openssl/opensslv.h>

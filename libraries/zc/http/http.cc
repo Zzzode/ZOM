@@ -518,8 +518,8 @@ static void requireValidHeaderName(zc::StringPtr name) {
   }
 }
 
-static void requireValidHeaderValue(zc::StringPtr value) {
-  ZC_REQUIRE(HttpHeaders::isValidHeaderValue(value), "invalid header value",
+static void requireValidHeaderValue(zc::StringPtr value, auto name) {
+  ZC_REQUIRE(HttpHeaders::isValidHeaderValue(value), name, "invalid header value",
              zc::encodeCEscape(value));
 }
 
@@ -699,31 +699,40 @@ bool HttpHeaders::isWebSocket() const {
 }
 
 void HttpHeaders::set(HttpHeaderId id, zc::StringPtr value) {
+  // TODO(cleanup): Remove this soon.
+  setPtr(id, value);
+}
+
+void HttpHeaders::setPtr(HttpHeaderId id, zc::StringPtr value) {
   id.requireFrom(*table);
-  requireValidHeaderValue(value);
+  requireValidHeaderValue(value, id);
 
   indexedHeaders[id.id] = value;
 }
 
 void HttpHeaders::set(HttpHeaderId id, zc::String&& value) {
-  set(id, zc::StringPtr(value));
+  setPtr(id, zc::StringPtr(value));
   takeOwnership(zc::mv(value));
 }
 
-void HttpHeaders::add(zc::StringPtr name, zc::StringPtr value) {
+void HttpHeaders::addPtrPtr(zc::StringPtr name, zc::StringPtr value) {
   requireValidHeaderName(name);
-  requireValidHeaderValue(value);
+  requireValidHeaderValue(value, name);
 
   addNoCheck(name, value);
 }
 
-void HttpHeaders::add(zc::StringPtr name, zc::String&& value) {
-  add(name, zc::StringPtr(value));
+void HttpHeaders::add(zc::StringPtr name, zc::StringPtr value) { addPtrPtr(name, value); }
+
+void HttpHeaders::addPtr(zc::StringPtr name, zc::String&& value) {
+  addPtrPtr(name, zc::StringPtr(value));
   takeOwnership(zc::mv(value));
 }
 
+void HttpHeaders::add(zc::StringPtr name, zc::String&& value) { addPtr(name, zc::mv(value)); }
+
 void HttpHeaders::add(zc::String&& name, zc::String&& value) {
-  add(zc::StringPtr(name), zc::StringPtr(value));
+  addPtrPtr(zc::StringPtr(name), zc::StringPtr(value));
   takeOwnership(zc::mv(name));
   takeOwnership(zc::mv(value));
 }
@@ -2087,6 +2096,18 @@ zc::Own<zc::AsyncInputStream> HttpInputStreamImpl::getEntityBody(
     //   the network.)
     if (fastCaseCmp<'c', 'h', 'u', 'n', 'k', 'e', 'd'>(te.cStr())) {
       // #3¶1
+      return zc::heap<HttpChunkedEntityReader>(*this);
+    } else if (fastCaseCmp<'c', 'h', 'u', 'n', 'k', 'e', 'd', ',', ' ', 'c', 'h', 'u', 'n', 'k',
+                           'e', 'd'>(te.cStr()) ||
+               fastCaseCmp<'c', 'h', 'u', 'n', 'k', 'e', 'd', ',', 'c', 'h', 'u', 'n', 'k', 'e',
+                           'd'>(te.cStr())) {
+      // Handle "chunked, chunked" (with or without space) as equivalent to "chunked"
+      // This is technically invalid per HTTP spec, but we treat it as single chunked encoding
+      // to avoid breaking compatibility with misconfigured clients/proxies
+      // Note that this does not create a risk for request smuggling because, in the worst case,
+      // if the sender actually did double-chunk the stream, we'll merely end up delivering a
+      // corrupted stream (the body will contain chunk framing).
+      // We would not end up misinterpreting the outer framing, so we won't desync.
       return zc::heap<HttpChunkedEntityReader>(*this);
     } else if (fastCaseCmp<'i', 'd', 'e', 'n', 't', 'i', 't', 'y'>(te.cStr())) {
       // #3¶2
@@ -5941,7 +5962,7 @@ public:
     auto parsed = Url::parse(url, Url::HTTP_PROXY_REQUEST, urlOptions);
     auto path = parsed.toString(Url::HTTP_REQUEST);
     auto headersCopy = headers.clone();
-    headersCopy.set(HttpHeaderId::HOST, parsed.host);
+    headersCopy.setPtr(HttpHeaderId::HOST, parsed.host);
     return getClient(parsed).request(method, path, headersCopy, expectedBodySize);
   }
 
@@ -5957,7 +5978,7 @@ public:
     auto parsed = Url::parse(url, Url::HTTP_PROXY_REQUEST, urlOptions);
     auto path = parsed.toString(Url::HTTP_REQUEST);
     auto headersCopy = headers.clone();
-    headersCopy.set(HttpHeaderId::HOST, parsed.host);
+    headersCopy.setPtr(HttpHeaderId::HOST, parsed.host);
     return getClient(parsed).openWebSocket(path, headersCopy);
   }
 
@@ -6350,7 +6371,7 @@ public:
     // `Upgrade: websocket` so that headers.isWebSocket() returns true on the service side.
     auto urlCopy = zc::str(url);
     auto headersCopy = zc::heap(headers.clone());
-    headersCopy->set(HttpHeaderId::UPGRADE, "websocket");
+    headersCopy->setPtr(HttpHeaderId::UPGRADE, "websocket");
     ZC_DASSERT(headersCopy->isWebSocket());
 
     auto paf = zc::newPromiseAndFulfiller<WebSocketResponse>();
@@ -7825,7 +7846,7 @@ zc::Promise<void> HttpServerErrorHandler::handleClientProtocolError(
 
   HttpHeaderTable headerTable{};
   HttpHeaders headers(headerTable);
-  headers.set(HttpHeaderId::CONTENT_TYPE, "text/plain");
+  headers.setPtr(HttpHeaderId::CONTENT_TYPE, "text/plain");
 
   auto errorMessage = zc::str("ERROR: ", protocolError.description);
   auto body = response.send(protocolError.statusCode, protocolError.statusMessage, headers,
@@ -7854,7 +7875,7 @@ zc::Promise<void> HttpServerErrorHandler::handleApplicationError(
 
     HttpHeaderTable headerTable{};
     HttpHeaders headers(headerTable);
-    headers.set(HttpHeaderId::CONTENT_TYPE, "text/plain");
+    headers.setPtr(HttpHeaderId::CONTENT_TYPE, "text/plain");
 
     zc::String errorMessage;
     zc::Own<AsyncOutputStream> body;
@@ -7888,7 +7909,7 @@ void HttpServerErrorHandler::handleListenLoopException(zc::Exception&& exception
 zc::Promise<void> HttpServerErrorHandler::handleNoResponse(zc::HttpService::Response& response) {
   HttpHeaderTable headerTable{};
   HttpHeaders headers(headerTable);
-  headers.set(HttpHeaderId::CONTENT_TYPE, "text/plain");
+  headers.setPtr(HttpHeaderId::CONTENT_TYPE, "text/plain");
 
   constexpr auto errorMessage = "ERROR: The HttpService did not generate a response."_zc;
   auto body = response.send(500, "Internal Server Error", headers, errorMessage.size());

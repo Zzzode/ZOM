@@ -41,7 +41,8 @@
 #include <sys/ptrace.h>
 #include <syscall.h>
 #include <unistd.h>
-#include <zc/core/debug.h>
+
+#include "zc/core/debug.h"
 
 #ifdef SECCOMP_SET_MODE_FILTER
 
@@ -90,9 +91,7 @@ struct SetupSeccompForFilesystemTest {
         {0x06, 0, 0, 0x0005005f},  {0x06, 0, 0, 0x7fff0000},
     };
 
-    struct sock_fprog prog {
-      sizeof(filter) / sizeof(filter[0]), filter
-    };
+    struct sock_fprog prog{sizeof(filter) / sizeof(filter[0]), filter};
 
     ZC_SYSCALL(prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0));
     ZC_SYSCALL(syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, 0, &prog));
@@ -117,6 +116,6 @@ SetupSeccompForFilesystemTest setupSeccompForFilesystemTest;
 //   test on the host platform then it needs to be a test on all other targets, too. So add a dummy
 //   test here.
 // TODO(cleanup): Make Ekam cross-compiling better.
-#include <zc/test.h>
+#include "zc/ztest/test.h"
 ZC_TEST("old kernel test -- not supported on this architecture") {}
 #endif

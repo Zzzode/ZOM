@@ -169,6 +169,40 @@ ZC_TEST("StatementTest.FunctionDeclarationWithParameters") {
   ZC_EXPECT(decl->getReturnType() == nullptr);
 }
 
+ZC_TEST("StatementTest.FunctionDeclarationWithReturnTypeAndTypeParameters") {
+  auto name = factory::createIdentifier(zc::str("genericFunc"));
+
+  // Create type parameters
+  zc::Vector<zc::Own<TypeParameter>> typeParams;
+  auto typeParamName = factory::createIdentifier(zc::str("T"));
+  auto constraintName = factory::createIdentifier(zc::str("Comparable"));
+  auto constraint = factory::createTypeReference(zc::mv(constraintName), zc::none);
+  typeParams.add(
+      factory::createTypeParameterDeclaration(zc::mv(typeParamName), zc::mv(constraint)));
+
+  // Create parameters
+  zc::Vector<zc::Own<BindingElement>> params;
+  auto paramName = factory::createIdentifier(zc::str("value"));
+  auto paramTypeName = factory::createIdentifier(zc::str("T"));
+  auto paramType = factory::createTypeReference(zc::mv(paramTypeName), zc::none);
+  params.add(factory::createBindingElement(zc::mv(paramName), zc::mv(paramType)));
+
+  // Create return type
+  auto returnTypeName = factory::createIdentifier(zc::str("String"));
+  auto returnTypeRef = factory::createTypeReference(zc::mv(returnTypeName), zc::none);
+  auto returnType = factory::createReturnType(zc::mv(returnTypeRef), zc::none);
+
+  auto body = factory::createBlockStatement({});
+  auto decl = factory::createFunctionDeclaration(zc::mv(name), zc::mv(typeParams), zc::mv(params),
+                                                 zc::mv(returnType), zc::mv(body));
+
+  ZC_EXPECT(decl->getKind() == SyntaxKind::kFunctionDeclaration);
+  ZC_EXPECT(decl->getName().getName() == "genericFunc");
+  ZC_EXPECT(decl->getTypeParameters().size() == 1);
+  ZC_EXPECT(decl->getParameters().size() == 1);
+  ZC_EXPECT(decl->getReturnType() != nullptr);
+}
+
 ZC_TEST("StatementTest.FunctionDeclarationAccept") {
   auto name = factory::createIdentifier(zc::str("func"));
   zc::Vector<zc::Own<TypeParameter>> typeParams;
@@ -177,7 +211,7 @@ ZC_TEST("StatementTest.FunctionDeclarationAccept") {
   auto decl = factory::createFunctionDeclaration(zc::mv(name), zc::mv(typeParams), zc::mv(params),
                                                  zc::none, zc::mv(body));
 
-  // Test visitor pattern
+  // Test visitor pattern - just ensure it doesn't crash
 }
 
 // ================================================================================
@@ -202,6 +236,19 @@ ZC_TEST("StatementTest.ClassDeclarationWithMembers") {
   ZC_EXPECT(classDecl->getKind() == SyntaxKind::kClassDeclaration);
   ZC_EXPECT(classDecl->getName().getName() == "ChildClass");
   ZC_EXPECT(classDecl->getMembers().size() == 1);
+}
+
+ZC_TEST("StatementTest.ClassDeclarationWithSuperClass") {
+  auto name = factory::createIdentifier(zc::str("ChildClass"));
+  auto superClass = factory::createIdentifier(zc::str("ParentClass"));
+  zc::Vector<zc::Own<Statement>> members;
+  auto classDecl = zc::heap<ClassDeclaration>(zc::mv(name), zc::mv(superClass), zc::mv(members));
+
+  ZC_EXPECT(classDecl->getKind() == SyntaxKind::kClassDeclaration);
+  ZC_EXPECT(classDecl->getName().getName() == "ChildClass");
+  ZC_EXPECT(classDecl->getSuperClass() != nullptr);
+  ZC_EXPECT(classDecl->getSuperClass()->getName() == "ParentClass");
+  ZC_EXPECT(classDecl->getMembers().size() == 0);
 }
 
 ZC_TEST("StatementTest.ClassDeclarationAccept") {
@@ -628,6 +675,143 @@ ZC_TEST("StatementTest.BaseStatementAccept") {
 
   // Test base Statement::accept method
   // In a real test, we'd use a mock visitor to verify the call
+}
+
+ZC_TEST("StatementTest.MatchClause") {
+  auto identifier = factory::createIdentifier(zc::str("x"));
+  auto pattern = factory::createIdentifierPattern(zc::mv(identifier));
+  auto body = factory::createEmptyStatement();
+  auto clause = factory::createMatchClause(zc::mv(pattern), zc::none, zc::mv(body));
+
+  ZC_EXPECT(clause->getKind() == SyntaxKind::kMatchClause);
+  auto matchClause = static_cast<MatchClause*>(clause.get());
+  ZC_EXPECT(matchClause->getPattern().getKind() == SyntaxKind::kIdentifierPattern);
+  ZC_EXPECT(matchClause->getBody().getKind() == SyntaxKind::kEmptyStatement);
+}
+
+ZC_TEST("StatementTest.MatchClauseWithGuard") {
+  auto identifier = factory::createIdentifier(zc::str("value"));
+  auto pattern = factory::createIdentifierPattern(zc::mv(identifier));
+  auto guard = factory::createBooleanLiteral(true);
+  auto body = factory::createEmptyStatement();
+  auto clause = factory::createMatchClause(zc::mv(pattern), zc::mv(guard), zc::mv(body));
+
+  ZC_EXPECT(clause->getKind() == SyntaxKind::kMatchClause);
+  auto matchClause = static_cast<MatchClause*>(clause.get());
+  ZC_EXPECT(matchClause->getPattern().getKind() == SyntaxKind::kIdentifierPattern);
+  ZC_EXPECT(matchClause->getGuard() != nullptr);
+  ZC_EXPECT(matchClause->getGuard()->getKind() == SyntaxKind::kBooleanLiteral);
+  ZC_EXPECT(matchClause->getBody().getKind() == SyntaxKind::kEmptyStatement);
+}
+
+ZC_TEST("StatementTest.DefaultClause") {
+  zc::Vector<zc::Own<Statement>> statements;
+  statements.add(factory::createEmptyStatement());
+  auto clause = factory::createDefaultClause(zc::mv(statements));
+
+  ZC_EXPECT(clause->getKind() == SyntaxKind::kDefaultClause);
+  auto defaultClause = static_cast<DefaultClause*>(clause.get());
+  ZC_EXPECT(defaultClause->getStatements().size() == 1);
+}
+
+ZC_TEST("StatementTest.IdentifierPattern") {
+  auto identifier = factory::createIdentifier(zc::str("variable"));
+  auto pattern = factory::createIdentifierPattern(zc::mv(identifier));
+
+  ZC_EXPECT(pattern->getKind() == SyntaxKind::kIdentifierPattern);
+  auto idPattern = static_cast<IdentifierPattern*>(pattern.get());
+  ZC_EXPECT(idPattern->getIdentifier().getName() == "variable");
+}
+
+ZC_TEST("StatementTest.ExpressionPattern") {
+  auto literal = factory::createIntegerLiteral(42);
+  auto pattern = factory::createExpressionPattern(zc::mv(literal));
+
+  ZC_EXPECT(pattern->getKind() == SyntaxKind::kExpressionPattern);
+  auto exprPattern = static_cast<ExpressionPattern*>(pattern.get());
+  ZC_EXPECT(exprPattern->getExpression().getKind() == SyntaxKind::kIntegerLiteral);
+}
+
+ZC_TEST("StatementTest.WildcardPattern") {
+  auto pattern = factory::createWildcardPattern();
+
+  ZC_EXPECT(pattern->getKind() == SyntaxKind::kWildcardPattern);
+  ZC_EXPECT(pattern->getKind() == SyntaxKind::kWildcardPattern);
+}
+
+ZC_TEST("StatementTest.BindingPattern") {
+  zc::Vector<zc::Own<BindingPatternElement>> elements;
+  auto literal = factory::createIntegerLiteral(42);
+  auto pattern = factory::createExpressionPattern(zc::mv(literal));
+  auto element = factory::createBindingPatternElement(zc::mv(pattern));
+  elements.add(zc::mv(element));
+
+  auto bindingPattern = factory::createBindingPattern(zc::mv(elements));
+
+  ZC_EXPECT(bindingPattern->getKind() == SyntaxKind::kBindingPattern);
+  ZC_EXPECT(bindingPattern->getElements().size() == 1);
+}
+
+ZC_TEST("StatementTest.TuplePattern") {
+  zc::Vector<zc::Own<Pattern>> elements;
+  auto identifier = factory::createIdentifier(zc::str("x"));
+  auto idPattern = factory::createIdentifierPattern(zc::mv(identifier));
+  auto wildcardPattern = factory::createWildcardPattern();
+  elements.add(zc::mv(idPattern));
+  elements.add(zc::mv(wildcardPattern));
+
+  auto tuplePattern = factory::createTuplePattern(zc::mv(elements));
+
+  ZC_EXPECT(tuplePattern->getKind() == SyntaxKind::kTuplePattern);
+  auto tuple = static_cast<TuplePattern*>(tuplePattern.get());
+  ZC_EXPECT(tuple->getElements().size() == 2);
+}
+
+ZC_TEST("StatementTest.ArrayPattern") {
+  zc::Vector<zc::Own<Pattern>> elements;
+  auto identifier = factory::createIdentifier(zc::str("first"));
+  auto pattern = factory::createIdentifierPattern(zc::mv(identifier));
+  elements.add(zc::mv(pattern));
+
+  auto arrayPattern = factory::createArrayPattern(zc::mv(elements));
+
+  ZC_EXPECT(arrayPattern->getKind() == SyntaxKind::kArrayPattern);
+  auto array = static_cast<ArrayPattern*>(arrayPattern.get());
+  ZC_EXPECT(array->getElements().size() == 1);
+}
+
+// ================================================================================
+// BindingPattern Tests
+
+ZC_TEST("StatementTest.BindingPatternElement") {
+  auto identifier = factory::createIdentifier(zc::str("x"));
+  auto pattern = factory::createIdentifierPattern(zc::mv(identifier));
+  auto initializer = factory::createIntegerLiteral(42);
+  auto element = factory::createBindingPatternElement(zc::mv(pattern), zc::mv(initializer));
+
+  ZC_EXPECT(element->getKind() == SyntaxKind::kBindingPattern);
+  ZC_EXPECT(element->getPattern().getKind() == SyntaxKind::kIdentifierPattern);
+  ZC_EXPECT(element->getInitializer() != nullptr);
+}
+
+ZC_TEST("StatementTest.ArrayBindingPattern") {
+  zc::Vector<zc::Own<BindingElement>> elements;
+  auto name = factory::createIdentifier(zc::str("x"));
+  elements.add(factory::createBindingElement(zc::mv(name)));
+
+  auto arrayBinding = factory::createArrayBindingPattern(zc::mv(elements));
+  ZC_EXPECT(arrayBinding->getKind() == SyntaxKind::kBindingPattern);
+  ZC_EXPECT(arrayBinding->getElements().size() == 1);
+}
+
+ZC_TEST("StatementTest.ObjectBindingPattern") {
+  zc::Vector<zc::Own<BindingElement>> properties;
+  auto name = factory::createIdentifier(zc::str("prop"));
+  properties.add(factory::createBindingElement(zc::mv(name)));
+
+  auto objectBinding = factory::createObjectBindingPattern(zc::mv(properties));
+  ZC_EXPECT(objectBinding->getKind() == SyntaxKind::kBindingPattern);
+  ZC_EXPECT(objectBinding->getProperties().size() == 1);
 }
 
 }  // namespace ast

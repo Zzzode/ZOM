@@ -21,10 +21,9 @@
 
 #include "zc/core/tuple.h"
 
-#include <zc/ztest/gtest.h>
-
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zc/ztest/gtest.h"
 
 namespace zc {
 

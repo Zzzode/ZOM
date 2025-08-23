@@ -135,6 +135,40 @@ def get_changed_files():
     return filtered_files
 
 
+def get_files_from_path(path):
+    """Get all C/C++ files from the specified path (file or directory)."""
+    allowed_extensions = {".c", ".cpp", ".cc", ".h", ".hpp"}
+    files = []
+    
+    if os.path.isfile(path):
+        # Single file
+        if os.path.splitext(path)[1] in allowed_extensions:
+            files.append(path)
+        else:
+            print(f"{YELLOW}Warning: {path} is not a C/C++ file{RESET}")
+    elif os.path.isdir(path):
+        # Directory - recursively find all C/C++ files
+        for root, dirs, filenames in os.walk(path):
+            # Skip third_party and runtime directories
+            dirs[:] = [d for d in dirs if not d.startswith('third_party') and d not in ['rtsvm', 'rts']]
+            
+            for filename in filenames:
+                if os.path.splitext(filename)[1] in allowed_extensions:
+                    file_path = os.path.join(root, filename)
+                    # Apply the same filtering as get_changed_files
+                    if (not file_path.startswith("third_party/")
+                        and not file_path.startswith("src/rtsvm/")
+                        and not file_path.startswith("src/rts/")
+                        and not file_path.startswith("test/rtsvm/")
+                        or file_path.startswith("src/rtsvm/vm/heap/")):
+                        files.append(file_path)
+    else:
+        print(f"{RED}Error: {path} is not a valid file or directory{RESET}")
+        sys.exit(1)
+    
+    return files
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Check and optionally auto-format files."
@@ -143,6 +177,11 @@ def main():
         "--auto-format",
         action="store_true",
         help="Automatically format unformatted files",
+    )
+    parser.add_argument(
+        "--path",
+        type=str,
+        help="Specify a file or directory to format instead of checking git changes",
     )
     args = parser.parse_args()
 
@@ -159,25 +198,36 @@ def main():
         )
         sys.exit(1)
 
-    # Check if we are in a git repository
-    git_repo_check = (
-        subprocess.run(
-            ["git", "rev-parse", "--is-inside-work-tree"],
-            capture_output=True,
-            text=True,
-        ).returncode
-        == 0
-    )
-    if not git_repo_check:
-        print(f"{RED}Current directory is not a git repository.{RESET}")
-        sys.exit(1)
+    # Determine which files to check
+    if args.path:
+        # Use specified path
+        files_to_check = get_files_from_path(args.path)
+        if not files_to_check:
+            print(f"{YELLOW}No C/C++ files found in the specified path.{RESET}")
+            sys.exit(0)
+        print(f"Files to check in {args.path}:")
+        for file_path in files_to_check:
+            print(f"{GREEN} - {file_path}{RESET}")
+    else:
+        # Check if we are in a git repository
+        git_repo_check = (
+            subprocess.run(
+                ["git", "rev-parse", "--is-inside-work-tree"],
+                capture_output=True,
+                text=True,
+            ).returncode
+            == 0
+        )
+        if not git_repo_check:
+            print(f"{RED}Current directory is not a git repository.{RESET}")
+            sys.exit(1)
 
-    # Get the list of changed files that need to be checked.
-    changed_files = get_changed_files()
+        # Get the list of changed files that need to be checked.
+        files_to_check = get_changed_files()
 
-    # Check the format of each changed file and optionally format it.
+    # Check the format of each file and optionally format it.
     unformatted_files = [
-        f for f in changed_files if not check_and_format(f, args.auto_format)
+        f for f in files_to_check if not check_and_format(f, args.auto_format)
     ]
 
     # Check if there are any unformatted files.
@@ -190,7 +240,10 @@ def main():
             print(f"{RED}{i}. {file_path}{RESET}")
         sys.exit(1)
 
-    print(f"{GREEN}All changed files are formatted correctly.{RESET}")
+    if args.path:
+        print(f"{GREEN}All files in the specified path are formatted correctly.{RESET}")
+    else:
+        print(f"{GREEN}All changed files are formatted correctly.{RESET}")
     sys.exit(0)
 
 

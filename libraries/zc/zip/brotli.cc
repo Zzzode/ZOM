@@ -23,7 +23,7 @@
 
 #include "zc/zip/brotli.h"
 
-#include <zc/core/debug.h>
+#include "zc/core/debug.h"
 
 namespace zc {
 
@@ -117,7 +117,7 @@ zc::Tuple<bool, zc::ArrayPtr<const byte>> BrotliOutputContext::pumpOnce(
                                                                  &availableOut, &nextOut, nullptr);
       if (result == BROTLI_DECODER_RESULT_ERROR) {
         // Note: Unlike BrotliInputStream, this will implicitly reject trailing data during
-        // decompression, matching the behavior for zip.
+        // decompression, matching the behavior for gzip.
         ZC_FAIL_REQUIRE("brotli decompression failed",
                         BrotliDecoderErrorString(BrotliDecoderGetErrorCode(dctx)));
       }

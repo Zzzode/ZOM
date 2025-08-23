@@ -745,10 +745,32 @@ zc::Maybe<zc::Own<ast::Identifier>> Parser::parseBindingIdentifier() { return pa
 zc::Maybe<zc::Own<ast::BindingElement>> Parser::parseBindingElement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseBindingElement");
 
-  // bindingElement: bindingIdentifier typeAnnotation? initializer?;
+  // bindingElement: bindingIdentifier typeAnnotation? initializer? | bindingPattern initializer?;
 
   const source::SourceLoc startLoc = currentToken().getLocation();
 
+  // Check for array or object binding pattern - temporarily disabled
+  if (false && expectToken(lexer::TokenKind::kLeftBracket)) {
+    ZC_IF_SOME(pattern, parseArrayBindingPattern()) {
+      static_cast<void>(pattern);
+      zc::Maybe<zc::Own<ast::Expression>> initializer = parseInitializer();
+      // TODO: Fix type mismatch - BindingPattern vs Pattern
+      // return finishNode(
+      //     ast::factory::createBindingPatternElement(zc::mv(pattern), zc::mv(initializer)),
+      //     startLoc);
+    }
+  } else if (false && expectToken(lexer::TokenKind::kLeftBrace)) {
+    ZC_IF_SOME(pattern, parseObjectBindingPattern()) {
+      static_cast<void>(pattern);
+      zc::Maybe<zc::Own<ast::Expression>> initializer = parseInitializer();
+      // TODO: Fix type mismatch - BindingPattern vs Pattern
+      // return finishNode(
+      //     ast::factory::createBindingPatternElement(zc::mv(pattern), zc::mv(initializer)),
+      //     startLoc);
+    }
+  }
+
+  // Parse regular identifier binding
   ZC_IF_SOME(name, parseBindingIdentifier()) {
     // Optional type annotation
     zc::Maybe<zc::Own<ast::Type>> type = parseTypeAnnotation();
@@ -878,6 +900,7 @@ zc::Maybe<zc::Own<ast::WhileStatement>> Parser::parseWhileStatement() {
 zc::Maybe<zc::Own<ast::ForStatement>> Parser::parseForStatement() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseForStatement");
 
+  source::SourceLoc startLoc = currentToken().getLocation();
   if (!consumeExpectedToken(lexer::TokenKind::kForKeyword)) { return zc::none; }
 
   if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
@@ -901,7 +924,6 @@ zc::Maybe<zc::Own<ast::ForStatement>> Parser::parseForStatement() {
   if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
   ZC_IF_SOME(body, parseStatement()) {
-    source::SourceLoc startLoc = currentToken().getLocation();
     // Convert init expression to statement if needed
     zc::Maybe<zc::Own<ast::Statement>> initStmt = zc::none;
     ZC_IF_SOME(initExpr, init) {
@@ -977,13 +999,25 @@ zc::Maybe<zc::Own<ast::MatchStatement>> Parser::parseMatchStatement() {
     // Parse match clauses
     zc::Vector<zc::Own<ast::Statement>> clauses;
     while (!expectToken(lexer::TokenKind::kRightBrace)) {
-      // Parse match clause: pattern => statement
-      ZC_IF_SOME(pattern, parseExpression()) {
-        (void)pattern;  // Suppress unused variable warning
+      if (expectToken(lexer::TokenKind::kDefaultKeyword)) {
+        // Parse default clause
+        consumeToken();  // consume 'default'
         if (consumeExpectedToken(lexer::TokenKind::kArrow)) {
-          ZC_IF_SOME(statement, parseStatement()) {
-            // Create match clause (simplified as statement for now)
-            clauses.add(zc::mv(statement));
+          zc::Vector<zc::Own<ast::Statement>> defaultStmts = parseList<ast::Statement>(
+              ParsingContext::kBlockElements, ZC_BIND_METHOD(*this, parseStatement));
+          clauses.add(ast::factory::createDefaultClause(zc::mv(defaultStmts)));
+        }
+      } else {
+        // Parse regular match clause
+        ZC_IF_SOME(pattern, parsePattern()) {
+          if (consumeExpectedToken(lexer::TokenKind::kArrow)) {
+            // Parse optional guard clause
+            zc::Maybe<zc::Own<ast::Expression>> guard;
+            if (consumeExpectedToken(lexer::TokenKind::kIfKeyword)) { guard = parseExpression(); }
+            ZC_IF_SOME(statement, parseStatement()) {
+              clauses.add(ast::factory::createMatchClause(zc::mv(pattern), zc::mv(guard),
+                                                          zc::mv(statement)));
+            }
           }
         }
       }
@@ -1884,20 +1918,29 @@ zc::Maybe<zc::Own<ast::LeftHandSideExpression>> Parser::parseCallExpressionRest(
 }
 
 zc::Maybe<zc::Own<ast::Expression>> Parser::parseShortCircuitExpression() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseShortCircuitExpression");
+  return parseErrorDefaultExpression();
+}
 
-  // shortCircuitExpression:
-  //   logicalORExpression
-  //   | coalesceExpression;
-  //
-  // Handles short-circuit evaluation for logical and null coalescing operators
+zc::Maybe<zc::Own<ast::Expression>> Parser::parseErrorDefaultExpression() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseErrorDefaultExpression");
 
-  // Try to parse as logicalORExpression first
-  ZC_IF_SOME(logicalExpr, parseLogicalOrExpression()) { return zc::mv(logicalExpr); }
-
-  // If not a logicalORExpression, try coalesceExpression
-  ZC_IF_SOME(coalesceExpr, parseCoalesceExpression()) { return zc::mv(coalesceExpr); }
-
+  const source::SourceLoc startLoc = currentToken().getLocation();
+  ZC_IF_SOME(expr, parseCoalesceExpression()) {
+    while (expectToken(lexer::TokenKind::kErrorDefault)) {
+      const source::SourceLoc opLoc = currentToken().getLocation();
+      zc::String opText = currentToken().getText(impl->sourceMgr);
+      consumeToken();
+      ZC_IF_SOME(right, parseCoalesceExpression()) {
+        auto op = finishNode(
+            ast::factory::createBinaryOperator(zc::mv(opText), ast::OperatorPrecedence::kLowest),
+            opLoc);
+        expr = finishNode(
+            ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(right)),
+            startLoc);
+      }
+    }
+    return finishNode(zc::mv(expr), startLoc);
+  }
   return zc::none;
 }
 
@@ -2908,38 +2951,42 @@ zc::Maybe<zc::Own<ast::TupleType>> Parser::parseTupleType() {
 
   if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
 
-  zc::Vector<zc::Own<ast::Type>> elementTypes;
+  // TODO: Implement TupleElement class
+  // zc::Vector<zc::Own<ast::TupleElement>> elements;
+  zc::Vector<zc::Own<ast::Type>> elements;
 
   if (!expectToken(lexer::TokenKind::kRightParen)) {
     do {
-      // Check if this is a named tuple element: name: Type
+      // Parse named or unnamed tuple element
+      zc::Maybe<zc::Own<ast::Identifier>> name;
       if (lookAhead(1).is(lexer::TokenKind::kColon)) {
-        // Parse named tuple element
-        ZC_IF_SOME(elementName, parseIdentifier()) {
-          (void)elementName;  // Suppress unused variable warning
-          consumeToken();     // consume ':'
-          ZC_IF_SOME(elementType, parseType()) {
-            // TODO: Create named tuple element type
-            elementTypes.add(zc::mv(elementType));
-          }
-        }
-      } else {
-        // Parse regular tuple element
-        ZC_IF_SOME(elementType, parseType()) { elementTypes.add(zc::mv(elementType)); }
+        name = parseIdentifier();
+        consumeToken();  // consume ':'
+      }
+      ZC_IF_SOME(type, parseType()) {
+        // TODO: Implement TupleElement creation
+        // if (name.hasValue()) {
+        //   elements.add(ast::factory::createNamedTupleElement(zc::mv(name).value(),
+        //   zc::mv(type)));
+        // } else {
+        //   elements.add(ast::factory::createTupleElement(zc::mv(type)));
+        // }
+        ZC_IF_SOME(n, name) { static_cast<void>(n); }
+        elements.add(zc::mv(type));
       }
     } while (consumeExpectedToken(lexer::TokenKind::kComma));
   }
 
   if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
 
-  return finishNode(ast::factory::createTupleType(zc::mv(elementTypes)), startLoc);
+  return finishNode(ast::factory::createTupleType(zc::mv(elements)), startLoc);
 }
 
 zc::Maybe<zc::Own<ast::TypeReference>> Parser::parseTypeReference() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseTypeReference");
 
-  // Parse type reference according to the grammar rule:
   // typeReference: typeName typeArguments?
+  //
   // This handles type references like MyType or generic types like MyType<T, U>
   // where typeArguments are optional type parameters in angle brackets
 
@@ -2947,30 +2994,27 @@ zc::Maybe<zc::Own<ast::TypeReference>> Parser::parseTypeReference() {
 
   ZC_IF_SOME(typeName, parseIdentifier()) {
     // Handle optional type arguments: <T, U, V>
-    zc::Maybe<zc::Vector<zc::Own<ast::Type>>> maybeTypeArguments = zc::none;
+    zc::Maybe<zc::Vector<zc::Own<ast::Type>>> typeArguments = zc::none;
     if (expectToken(lexer::TokenKind::kLessThan)) {
-      zc::Vector<zc::Own<ast::Type>> typeArguments;
-
+      zc::Vector<zc::Own<ast::Type>> args;
       consumeToken();  // consume '<'
-      if (!expectToken(lexer::TokenKind::kGreaterThan)) {
-        // Parse type argument list
-        do {
-          ZC_IF_SOME(typeArg, parseType()) { typeArguments.add(zc::mv(typeArg)); }
-        } while (consumeExpectedToken(lexer::TokenKind::kComma));
+      while (!expectToken(lexer::TokenKind::kGreaterThan)) {
+        ZC_IF_SOME(arg, parseType()) { args.add(zc::mv(arg)); }
+        else { return zc::none; }
+        if (!expectToken(lexer::TokenKind::kGreaterThan) &&
+            !consumeExpectedToken(lexer::TokenKind::kComma)) {
+          break;
+        }
       }
-
       if (!consumeExpectedToken(lexer::TokenKind::kGreaterThan)) {
         // Error: expected closing angle bracket '>'
         return zc::none;
       }
-
-      maybeTypeArguments = zc::mv(typeArguments);
+      typeArguments = zc::mv(args);
     }
-
-    return finishNode(
-        ast::factory::createTypeReference(zc::mv(typeName), zc::mv(maybeTypeArguments)), startLoc);
+    return finishNode(ast::factory::createTypeReference(zc::mv(typeName), zc::mv(typeArguments)),
+                      startLoc);
   }
-
   return zc::none;
 }
 
@@ -3006,6 +3050,138 @@ zc::Maybe<zc::Own<ast::PredefinedType>> Parser::parsePredefinedType() {
     default:
       return zc::none;
   }
+}
+
+zc::Maybe<zc::Own<ast::Pattern>> Parser::parsePattern() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parsePattern");
+
+  switch (currentToken().getKind()) {
+    case lexer::TokenKind::kUnderscore:
+      return parseWildcardPattern();
+    case lexer::TokenKind::kIdentifier:
+      return parseIdentifierPattern();
+    case lexer::TokenKind::kLeftParen:
+      return parseTuplePattern();
+    case lexer::TokenKind::kLeftBrace:
+      return parseStructurePattern();
+    default:
+      // Handle other pattern types (array, is-pattern, etc.)
+      return zc::none;
+  }
+}
+
+zc::Maybe<zc::Own<ast::Pattern>> Parser::parseWildcardPattern() {
+  const source::SourceLoc startLoc = currentToken().getLocation();
+  consumeToken();  // consume '_'
+
+  zc::Maybe<zc::Own<ast::Type>> type;
+  if (consumeExpectedToken(lexer::TokenKind::kColon)) { type = parseType(); }
+
+  // TODO: Handle type annotation for wildcard patterns
+  static_cast<void>(type);
+  return finishNode(ast::factory::createWildcardPattern(), startLoc);
+}
+
+zc::Maybe<zc::Own<ast::Pattern>> Parser::parseIdentifierPattern() {
+  ZC_IF_SOME(id, parseIdentifier()) {
+    zc::Maybe<zc::Own<ast::Type>> type;
+    if (consumeExpectedToken(lexer::TokenKind::kColon)) {
+      type = parseType();
+      // TODO: Handle type annotation for identifier patterns
+      static_cast<void>(type);
+    }
+    return ast::factory::createIdentifierPattern(zc::mv(id));
+  }
+  return zc::none;
+}
+
+zc::Maybe<zc::Own<ast::Pattern>> Parser::parseTuplePattern() {
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftParen)) { return zc::none; }
+
+  zc::Vector<zc::Own<ast::Pattern>> elements;
+  while (!expectToken(lexer::TokenKind::kRightParen)) {
+    ZC_IF_SOME(pattern, parsePattern()) { elements.add(zc::mv(pattern)); }
+    if (!expectToken(lexer::TokenKind::kRightParen) &&
+        !consumeExpectedToken(lexer::TokenKind::kComma)) {
+      break;
+    }
+  }
+
+  if (!consumeExpectedToken(lexer::TokenKind::kRightParen)) { return zc::none; }
+  return ast::factory::createTuplePattern(zc::mv(elements));
+}
+
+zc::Maybe<zc::Own<ast::Pattern>> Parser::parseStructurePattern() {
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
+
+  zc::Vector<zc::Own<ast::Pattern>> properties;
+  while (!expectToken(lexer::TokenKind::kRightBrace)) {
+    ZC_IF_SOME(id, parseIdentifier()) {
+      if (consumeExpectedToken(lexer::TokenKind::kColon)) {
+        ZC_IF_SOME(nestedPattern, parsePattern()) {
+          // TODO: Implement createPropertyPattern
+          // properties.add(ast::factory::createPropertyPattern(zc::mv(id), zc::mv(nestedPattern)));
+          static_cast<void>(id);
+          static_cast<void>(nestedPattern);
+        }
+      } else {
+        // TODO: Implement createPropertyPattern
+        // properties.add(ast::factory::createPropertyPattern(zc::mv(id)));
+        static_cast<void>(id);
+      }
+    }
+    if (!expectToken(lexer::TokenKind::kRightBrace) &&
+        !consumeExpectedToken(lexer::TokenKind::kComma)) {
+      break;
+    }
+  }
+
+  if (!consumeExpectedToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
+  // TODO: Implement proper structure pattern parsing with type reference
+  return zc::none;
+}
+
+zc::Maybe<zc::Own<ast::BindingPattern>> Parser::parseArrayBindingPattern() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseArrayBindingPattern");
+
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftBracket)) { return zc::none; }
+
+  zc::Vector<zc::Own<ast::BindingElement>> elements;
+  while (!expectToken(lexer::TokenKind::kRightBracket)) {
+    // TODO: Handle ellipsis/spread patterns
+    if (false) {  // Temporarily disabled
+      // Parse spread element
+      consumeToken();  // consume '...'
+      ZC_IF_SOME(expr, parseAssignmentExpressionOrHigher()) {
+        static_cast<void>(expr);
+        // elements.add(ast::factory::createSpreadElement(zc::mv(expr)));
+      }
+    } else {
+      ZC_IF_SOME(elem, parseBindingElement()) { elements.add(zc::mv(elem)); }
+    }
+    if (!expectToken(lexer::TokenKind::kRightBracket) &&
+        !consumeExpectedToken(lexer::TokenKind::kComma)) {
+      break;
+    }
+  }
+
+  if (!consumeExpectedToken(lexer::TokenKind::kRightBracket)) { return zc::none; }
+  return ast::factory::createArrayBindingPattern(zc::mv(elements));
+}
+
+zc::Maybe<zc::Own<ast::BindingPattern>> Parser::parseObjectBindingPattern() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseObjectBindingPattern");
+
+  if (!consumeExpectedToken(lexer::TokenKind::kLeftBrace)) { return zc::none; }
+
+  // TODO: Implement full object binding pattern parsing
+  // For now, just consume tokens until closing brace
+  while (!expectToken(lexer::TokenKind::kRightBrace)) { consumeToken(); }
+
+  zc::Vector<zc::Own<ast::BindingElement>> properties;
+
+  if (!consumeExpectedToken(lexer::TokenKind::kRightBrace)) { return zc::none; }
+  return ast::factory::createObjectBindingPattern(zc::mv(properties));
 }
 
 zc::Maybe<zc::Own<ast::Expression>> Parser::parseCoalesceExpression() {

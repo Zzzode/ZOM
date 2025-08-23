@@ -325,7 +325,7 @@ ZC_NORETURN(void unreachable());
 #define ZC_MSVC_TRADITIONAL_CPP 1
 #endif
 
-#ifdef ZC_DEBUG
+#if defined(ZC_DEBUG) || (defined(ZC_ENABLE_IREQUIRE) && ZC_ENABLE_IREQUIRE)
 #if ZC_MSVC_TRADITIONAL_CPP
 #define ZC_IREQUIRE(condition, ...) \
   if (ZC_LIKELY(condition))         \
@@ -389,6 +389,8 @@ ZC_NORETURN(void unreachable());
 // variable-sized arrays.  For other compilers we could just use a fixed-size array.  `minStack`
 // is the stack array size to use if variable-width arrays are not supported.  `maxStack` is the
 // maximum stack array size if variable-width arrays *are* supported.
+//
+// TODO(cleanup): Deprecate this in favor of zc::SmallArray, over in array.h
 #if __GNUC__ && !__clang__
 #define ZC_STACK_ARRAY(type, name, size, minStack, maxStack)                                     \
   size_t name##_size = (size);                                                                   \

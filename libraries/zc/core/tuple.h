@@ -248,37 +248,37 @@ struct ExpandAndApplyFunc {
   ExpandAndApplyFunc(Func&& func, First&& first)
       : func(zc::fwd<Func>(func)), first(zc::fwd<First>(first)) {}
   template <typename... T>
-  auto operator()(T&&... params) -> decltype(this->func(zc::fwd<First>(first),
-                                                        zc::fwd<T>(params)...)) {
+  auto operator()(T&&... params)
+      -> decltype(this->func(zc::fwd<First>(first), zc::fwd<T>(params)...)) {
     return this->func(zc::fwd<First>(first), zc::fwd<T>(params)...);
   }
 };
 
 template <typename Func, typename First, typename... Rest>
-inline auto expandAndApply(Func&& func, First&& first,
-                           Rest&&... rest) -> ExpandAndApplyResult<Func, First, Rest...> {
+inline auto expandAndApply(Func&& func, First&& first, Rest&&... rest)
+    -> ExpandAndApplyResult<Func, First, Rest...> {
   return expandAndApply(
       ExpandAndApplyFunc<Func, First, Rest...>(zc::fwd<Func>(func), zc::fwd<First>(first)),
       zc::fwd<Rest>(rest)...);
 }
 
 template <typename Func, typename... FirstTypes, typename... Rest>
-inline auto expandAndApply(Func&& func, Tuple<FirstTypes...>&& first,
-                           Rest&&... rest) -> ExpandAndApplyResult<Func, FirstTypes&&..., Rest...> {
+inline auto expandAndApply(Func&& func, Tuple<FirstTypes...>&& first, Rest&&... rest)
+    -> ExpandAndApplyResult<Func, FirstTypes&&..., Rest...> {
   return expandAndApplyWithIndexes(MakeIndexes<sizeof...(FirstTypes)>(), zc::fwd<Func>(func),
                                    zc::mv(first), zc::fwd<Rest>(rest)...);
 }
 
 template <typename Func, typename... FirstTypes, typename... Rest>
-inline auto expandAndApply(Func&& func, Tuple<FirstTypes...>& first,
-                           Rest&&... rest) -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
+inline auto expandAndApply(Func&& func, Tuple<FirstTypes...>& first, Rest&&... rest)
+    -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
   return expandAndApplyWithIndexes(MakeIndexes<sizeof...(FirstTypes)>(), zc::fwd<Func>(func), first,
                                    zc::fwd<Rest>(rest)...);
 }
 
 template <typename Func, typename... FirstTypes, typename... Rest>
-inline auto expandAndApply(Func&& func, const Tuple<FirstTypes...>& first,
-                           Rest&&... rest) -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
+inline auto expandAndApply(Func&& func, const Tuple<FirstTypes...>& first, Rest&&... rest)
+    -> ExpandAndApplyResult<Func, FirstTypes..., Rest...> {
   return expandAndApplyWithIndexes(MakeIndexes<sizeof...(FirstTypes)>(), zc::fwd<Func>(func), first,
                                    zc::fwd<Rest>(rest)...);
 }
@@ -342,8 +342,8 @@ using Tuple = typename Tuple_<T...>::Type;
 // construct a tuple from other tuples, the elements are flattened and concatenated.
 
 template <typename... Params>
-inline auto tuple(Params&&... params) -> decltype(_::expandAndApply(_::MakeTupleFunc(),
-                                                                    zc::fwd<Params>(params)...)) {
+inline auto tuple(Params&&... params)
+    -> decltype(_::expandAndApply(_::MakeTupleFunc(), zc::fwd<Params>(params)...)) {
   // Construct a new tuple from the given values.  Any tuples in the argument list will be
   // flattened into the result.
   return _::expandAndApply(_::MakeTupleFunc(), zc::fwd<Params>(params)...);

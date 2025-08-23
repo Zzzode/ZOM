@@ -21,8 +21,8 @@
 
 #include "zc/http/url.h"
 
-#include <zc/core/debug.h>
-#include <zc/ztest/test.h>
+#include "zc/core/debug.h"
+#include "zc/ztest/test.h"
 
 namespace zc {
 namespace {
