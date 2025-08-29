@@ -108,6 +108,13 @@ struct Lexer::Impl {
   /// Token scanning
   void scanToken(const TokenFlags& tokenFlags) {
     const zc::byte* tokStart = curPtr;
+
+    // Check for end of file
+    if (curPtr >= bufferEnd) {
+      formToken(TokenKind::kEOF, tokStart, tokenFlags);
+      return;
+    }
+
     zc::byte c = *curPtr++;
 
     switch (c) {
@@ -333,8 +340,13 @@ struct Lexer::Impl {
         }
         break;
       case '.':
-        if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd &&
-            *(curPtr + 1) == '.') {
+        // Check if it's a decimal number starting with a dot
+        if (curPtr < bufferEnd && isdigit(*curPtr)) {
+          // Go back one character since lexNumber expects to start from the first digit character
+          curPtr--;
+          lexNumber(tokenFlags);
+        } else if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd &&
+                   *(curPtr + 1) == '.') {
           curPtr += 2;
           formToken(TokenKind::kDotDotDot, tokStart, tokenFlags);
         } else {
@@ -361,24 +373,49 @@ struct Lexer::Impl {
         break;
       default:
         if (isIdentifierStart(c)) {
+          // Go back one character since lexIdentifier expects to start from the first character
+          curPtr--;
           lexIdentifier(tokenFlags);
         } else if (c == '\\' && curPtr < bufferEnd && *curPtr == 'u') {
           // Unicode escape sequence at start of identifier
-          lexIdentifier(tokenFlags);
+          // Go back one character since lexEscapedIdentifier expects to start from the backslash
+          curPtr--;
+          lexEscapedIdentifier(tokenFlags);
         } else if (isdigit(c)) {
+          // Go back one character since lexNumber expects to start from the first digit
+          curPtr--;
           lexNumber(tokenFlags);
         } else if (c == '"') {
+          // Go back one character since lexStringLiteralImpl expects to start from the quote
+          curPtr--;
           lexStringLiteralImpl(tokenFlags);
         } else if (c == '\'') {
+          // Go back one character since lexSingleQuoteString expects to start from the quote
+          curPtr--;
           lexSingleQuoteString(tokenFlags);
         } else {
           // Check for multi-byte UTF-8 characters that could be identifier start
           if ((c & 0x80) != 0) {
-            // Potential multi-byte UTF-8 character
-            // For now, we'll treat it as invalid since we don't have full Unicode support
-            // TODO: Implement proper UTF-8 decoding and Unicode ID_Start property checking
-            reportInvalidCharacter(c, tokStart);
-            recoverFromInvalidCharacter();
+            // Potential multi-byte UTF-8 character - try to decode it
+            uint32_t codePoint = 0;
+            const zc::byte* originalPtr = curPtr - 1;  // Point to the start byte
+
+            if (tryDecodeUtf8CodePoint(originalPtr, codePoint)) {
+              // Successfully decoded UTF-8 character
+              if (isUnicodeIdentifierStart(codePoint)) {
+                // Valid identifier start - continue lexing identifier
+                curPtr = originalPtr;  // Update position after decoded character
+                lexIdentifier(tokenFlags);
+              } else {
+                // Valid UTF-8 but not identifier start
+                reportInvalidCharacter(c, tokStart);
+                recoverFromInvalidCharacter();
+              }
+            } else {
+              // Invalid UTF-8 sequence
+              reportInvalidCharacter(c, tokStart);
+              recoverFromInvalidCharacter();
+            }
           } else {
             // Report invalid character error and attempt recovery
             reportInvalidCharacter(c, tokStart);
@@ -481,10 +518,24 @@ struct Lexer::Impl {
         // Check for multi-byte UTF-8 characters
         // This is a simplified check - full implementation would decode UTF-8
         if ((c & 0x80) != 0) {
-          // Potential multi-byte UTF-8 character
-          // For now, we'll skip it as we don't have full Unicode support
-          // TODO: Implement proper UTF-8 decoding and Unicode property checking
-          break;
+          // Potential multi-byte UTF-8 character - try to decode it
+          uint32_t codePoint = 0;
+          const zc::byte* originalPtr = curPtr;
+
+          if (tryDecodeUtf8CodePoint(originalPtr, codePoint)) {
+            // Successfully decoded UTF-8 character
+            if (isUnicodeIdentifierContinuation(codePoint)) {
+              // Valid identifier continuation - update position and continue
+              curPtr = originalPtr;
+              continue;
+            } else {
+              // Valid UTF-8 but not identifier continuation
+              break;
+            }
+          } else {
+            // Invalid UTF-8 sequence - stop identifier
+            break;
+          }
         } else {
           break;
         }
@@ -820,11 +871,395 @@ struct Lexer::Impl {
 
     formToken(TokenKind::kCharacterLiteral, tokStart, tokenFlags);
   }
-  void lexEscapedIdentifier() { /*...*/ }
-  void lexOperator() { /*...*/ }
+
+  void lexEscapedIdentifier(const TokenFlags& tokenFlags) {
+    const zc::byte* tokStart = curPtr;
+
+    // Handle Unicode escape sequence at start of identifier
+    if (*curPtr == '\\' && curPtr + 1 < bufferEnd && *(curPtr + 1) == 'u') {
+      curPtr += 2;  // Skip '\\u'
+
+      // Check for extended Unicode escape \u{XXXX}
+      if (curPtr < bufferEnd && *curPtr == '{') {
+        curPtr++;  // Skip '{'
+        const zc::byte* hexStart = curPtr;
+        while (curPtr < bufferEnd && isxdigit(*curPtr)) { curPtr++; }
+        if (curPtr < bufferEnd && *curPtr == '}' && curPtr > hexStart) {
+          curPtr++;  // Skip '}'
+          // TODO: Validate that the hex value represents a valid Unicode ID_Start
+        } else {
+          // Invalid escape sequence, report error and recover
+          reportInvalidEscapeSequence('u', tokStart);
+          recoverFromLexingError();
+          return;
+        }
+      } else {
+        // Standard Unicode escape \uXXXX
+        const zc::byte* hexStart = curPtr;
+        for (int i = 0; i < 4 && curPtr < bufferEnd && isxdigit(*curPtr); i++) { curPtr++; }
+        if (curPtr - hexStart != 4) {
+          // Invalid escape sequence, report error and recover
+          reportInvalidEscapeSequence('u', tokStart);
+          recoverFromLexingError();
+          return;
+        }
+        // TODO: Validate that the hex value represents a valid Unicode ID_Start
+      }
+    }
+
+    // Continue reading identifier parts
+    while (curPtr < bufferEnd) {
+      zc::byte c = *curPtr;
+
+      // Handle escape sequences
+      if (c == '\\' && curPtr + 1 < bufferEnd && *(curPtr + 1) == 'u') {
+        const zc::byte* escapeStart = curPtr;
+        curPtr += 2;  // Skip '\\u'
+
+        if (curPtr < bufferEnd && *curPtr == '{') {
+          // \u{XXXX} format
+          curPtr++;  // Skip '{'
+          const zc::byte* hexStart = curPtr;
+          while (curPtr < bufferEnd && isxdigit(*curPtr)) { curPtr++; }
+          if (curPtr < bufferEnd && *curPtr == '}' && curPtr > hexStart) {
+            curPtr++;  // Skip '}'
+            // TODO: Validate that the hex value represents a valid Unicode ID_Continue
+          } else {
+            // Invalid escape sequence, report error and recover
+            reportInvalidEscapeSequence('u', escapeStart);
+            curPtr = escapeStart + 1;
+            break;
+          }
+        } else {
+          // \uXXXX format
+          const zc::byte* hexStart = curPtr;
+          for (int i = 0; i < 4 && curPtr < bufferEnd && isxdigit(*curPtr); i++) { curPtr++; }
+          if (curPtr - hexStart != 4) {
+            // Invalid escape sequence, report error and recover
+            reportInvalidEscapeSequence('u', escapeStart);
+            curPtr = escapeStart + 1;
+            break;
+          }
+          // TODO: Validate that the hex value represents a valid Unicode ID_Continue
+        }
+      } else if (isIdentifierContinuation(c)) {
+        curPtr++;
+      } else {
+        // Check for multi-byte UTF-8 characters
+        if ((c & 0x80) != 0) {
+          // Potential multi-byte UTF-8 character
+          // For now, we'll skip it as we don't have full Unicode support
+          // TODO: Implement proper UTF-8 decoding and Unicode property checking
+          break;
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Check if it's a keyword
+    auto textPtr = zc::ArrayPtr<const zc::byte>(tokStart, curPtr);
+    TokenKind kind = getKeywordKind(textPtr);
+
+    if (kind == TokenKind::kIdentifier) {
+      // For identifiers, we might want to cache the text since they're frequently accessed
+      source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
+      source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
+      zc::String identifierText = zc::str(textPtr.asChars());
+      nextToken =
+          Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(identifierText), tokenFlags);
+    } else {
+      formToken(kind, tokStart, tokenFlags);
+    }
+  }
+
+  void lexOperator(const TokenFlags& tokenFlags) {
+    const zc::byte* tokStart = curPtr;
+    zc::byte c = *curPtr++;
+
+    // Handle multi-character operators
+    switch (c) {
+      case '=':
+        if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          if (curPtr < bufferEnd && *curPtr == '=') {
+            curPtr++;
+            formToken(TokenKind::kEqualsEqualsEquals, tokStart, tokenFlags);
+          } else {
+            formToken(TokenKind::kEqualsEquals, tokStart, tokenFlags);
+          }
+        } else if (curPtr < bufferEnd && *curPtr == '>') {
+          curPtr++;
+          formToken(TokenKind::kArrow, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kEquals, tokStart, tokenFlags);
+        }
+        break;
+      case '!':
+        if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          if (curPtr < bufferEnd && *curPtr == '=') {
+            curPtr++;
+            formToken(TokenKind::kExclamationEqualsEquals, tokStart, tokenFlags);
+          } else {
+            formToken(TokenKind::kExclamationEquals, tokStart, tokenFlags);
+          }
+        } else {
+          formToken(TokenKind::kExclamation, tokStart, tokenFlags);
+        }
+        break;
+      case '<':
+        if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kLessThanEquals, tokStart, tokenFlags);
+        } else if (curPtr < bufferEnd && *curPtr == '<') {
+          curPtr++;
+          if (curPtr < bufferEnd && *curPtr == '=') {
+            curPtr++;
+            formToken(TokenKind::kLessThanLessThanEquals, tokStart, tokenFlags);
+          } else {
+            formToken(TokenKind::kLessThanLessThan, tokStart, tokenFlags);
+          }
+        } else {
+          formToken(TokenKind::kLessThan, tokStart, tokenFlags);
+        }
+        break;
+      case '>':
+        if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kGreaterThanEquals, tokStart, tokenFlags);
+        } else if (curPtr < bufferEnd && *curPtr == '>') {
+          curPtr++;
+          if (curPtr < bufferEnd && *curPtr == '=') {
+            curPtr++;
+            formToken(TokenKind::kGreaterThanGreaterThanEquals, tokStart, tokenFlags);
+          } else if (curPtr < bufferEnd && *curPtr == '>') {
+            curPtr++;
+            if (curPtr < bufferEnd && *curPtr == '=') {
+              curPtr++;
+              formToken(TokenKind::kGreaterThanGreaterThanGreaterThanEquals, tokStart, tokenFlags);
+            } else {
+              formToken(TokenKind::kGreaterThanGreaterThanGreaterThan, tokStart, tokenFlags);
+            }
+          } else {
+            formToken(TokenKind::kGreaterThanGreaterThan, tokStart, tokenFlags);
+          }
+        } else {
+          formToken(TokenKind::kGreaterThan, tokStart, tokenFlags);
+        }
+        break;
+      case '&':
+        if (curPtr < bufferEnd && *curPtr == '&') {
+          curPtr++;
+          formToken(TokenKind::kAmpersandAmpersand, tokStart, tokenFlags);
+        } else if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kAmpersandEquals, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kAmpersand, tokStart, tokenFlags);
+        }
+        break;
+      case '|':
+        if (curPtr < bufferEnd && *curPtr == '|') {
+          curPtr++;
+          formToken(TokenKind::kBarBar, tokStart, tokenFlags);
+        } else if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kBarEquals, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kBar, tokStart, tokenFlags);
+        }
+        break;
+      case '^':
+        if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kCaretEquals, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kCaret, tokStart, tokenFlags);
+        }
+        break;
+      case '+':
+        if (curPtr < bufferEnd && *curPtr == '+') {
+          curPtr++;
+          formToken(TokenKind::kPlusPlus, tokStart, tokenFlags);
+        } else if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kPlusEquals, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kPlus, tokStart, tokenFlags);
+        }
+        break;
+      case '-':
+        if (curPtr < bufferEnd && *curPtr == '-') {
+          curPtr++;
+          formToken(TokenKind::kMinusMinus, tokStart, tokenFlags);
+        } else if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kMinusEquals, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kMinus, tokStart, tokenFlags);
+        }
+        break;
+      case '*':
+        if (curPtr < bufferEnd && *curPtr == '*') {
+          curPtr++;
+          if (curPtr < bufferEnd && *curPtr == '=') {
+            curPtr++;
+            formToken(TokenKind::kAsteriskAsteriskEquals, tokStart, tokenFlags);
+          } else {
+            formToken(TokenKind::kAsteriskAsterisk, tokStart, tokenFlags);
+          }
+        } else if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kAsteriskEquals, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kAsterisk, tokStart, tokenFlags);
+        }
+        break;
+      case '/':
+        if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kSlashEquals, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kSlash, tokStart, tokenFlags);
+        }
+        break;
+      case '%':
+        if (curPtr < bufferEnd && *curPtr == '=') {
+          curPtr++;
+          formToken(TokenKind::kPercentEquals, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kPercent, tokStart, tokenFlags);
+        }
+        break;
+      case '?':
+        if (curPtr < bufferEnd && *curPtr == '?') {
+          curPtr++;
+          if (curPtr < bufferEnd && *curPtr == '=') {
+            curPtr++;
+            formToken(TokenKind::kQuestionQuestionEquals, tokStart, tokenFlags);
+          } else {
+            formToken(TokenKind::kQuestionQuestion, tokStart, tokenFlags);
+          }
+        } else if (curPtr < bufferEnd && *curPtr == '.') {
+          curPtr++;
+          formToken(TokenKind::kQuestionDot, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kQuestion, tokStart, tokenFlags);
+        }
+        break;
+      case '.':
+        if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd &&
+            *(curPtr + 1) == '.') {
+          curPtr += 2;
+          formToken(TokenKind::kDotDotDot, tokStart, tokenFlags);
+        } else {
+          formToken(TokenKind::kPeriod, tokStart, tokenFlags);
+        }
+        break;
+      default:
+        // Single character operator, should have been handled in scanToken
+        reportInvalidCharacter(c, tokStart);
+        recoverFromInvalidCharacter();
+        break;
+    }
+  }
 
   /// Unicode handling
-  uint32_t lexUnicodeScalarValue() { /*...*/ return 0; }
+  uint32_t lexUnicodeScalarValue() {
+    // Expect to be positioned at the start of a Unicode escape sequence
+    // This function handles both \uXXXX and \u{XXXX} formats
+
+    if (curPtr >= bufferEnd || *curPtr != '\\') {
+      return 0;  // Invalid: not a backslash
+    }
+
+    const zc::byte* start = curPtr;
+    curPtr++;  // Skip '\\'
+
+    if (curPtr >= bufferEnd || *curPtr != 'u') {
+      curPtr = start;  // Restore position
+      return 0;        // Invalid: not followed by 'u'
+    }
+
+    curPtr++;  // Skip 'u'
+
+    // Check for extended Unicode escape \u{XXXX}
+    if (curPtr < bufferEnd && *curPtr == '{') {
+      curPtr++;  // Skip '{'
+
+      uint32_t value = 0;
+      int digitCount = 0;
+
+      // Scan hex digits
+      while (curPtr < bufferEnd && isxdigit(*curPtr) && digitCount < 6) {
+        zc::byte c = *curPtr;
+        uint32_t digit;
+        if (c >= '0' && c <= '9') {
+          digit = c - '0';
+        } else if (c >= 'A' && c <= 'F') {
+          digit = c - 'A' + 10;
+        } else if (c >= 'a' && c <= 'f') {
+          digit = c - 'a' + 10;
+        } else {
+          break;
+        }
+
+        value = (value << 4) | digit;
+        curPtr++;
+        digitCount++;
+      }
+
+      // Must have at least one hex digit
+      if (digitCount == 0) {
+        curPtr = start;  // Restore position
+        return 0;        // Invalid: no hex digits
+      }
+
+      // Must be followed by '}'
+      if (curPtr >= bufferEnd || *curPtr != '}') {
+        curPtr = start;  // Restore position
+        return 0;        // Invalid: missing closing brace
+      }
+
+      curPtr++;  // Skip '}'
+
+      // Validate Unicode scalar value range
+      if (value > 0x10FFFF) {
+        curPtr = start;  // Restore position
+        return 0;        // Invalid: out of Unicode range
+      }
+
+      return value;
+    }
+
+    // Handle standard Unicode escape \uXXXX
+    uint32_t value = 0;
+    for (int i = 0; i < 4; i++) {
+      if (curPtr >= bufferEnd || !isxdigit(*curPtr)) {
+        curPtr = start;  // Restore position
+        return 0;        // Invalid: insufficient hex digits
+      }
+
+      zc::byte c = *curPtr;
+      uint32_t digit;
+      if (c >= '0' && c <= '9') {
+        digit = c - '0';
+      } else if (c >= 'A' && c <= 'F') {
+        digit = c - 'A' + 10;
+      } else if (c >= 'a' && c <= 'f') {
+        digit = c - 'a' + 10;
+      } else {
+        curPtr = start;  // Restore position
+        return 0;        // Invalid hex digit
+      }
+
+      value = (value << 4) | digit;
+      curPtr++;
+    }
+
+    return value;
+  }
 
   /// Comments
   void lexSingleLineComment() {
@@ -945,6 +1380,66 @@ struct Lexer::Impl {
     return isalnum(c) || c == '_' || c == '$';
   }
 
+  /// UTF-8 decoding helper
+  bool tryDecodeUtf8CodePoint(const zc::byte*& ptr, uint32_t& codePoint) const {
+    if (ptr >= bufferEnd) return false;
+
+    zc::byte c = *ptr;
+
+    if (c < 0x80) {
+      // ASCII - single byte
+      codePoint = c;
+      ptr++;
+      return true;
+    } else if ((c & 0xe0) == 0xc0) {
+      // 2-byte sequence: 110xxxxx 10xxxxxx
+      if (ptr + 1 >= bufferEnd) return false;
+      zc::byte c2 = ptr[1];
+      if ((c2 & 0xc0) != 0x80) return false;
+
+      codePoint = ((c & 0x1f) << 6) | (c2 & 0x3f);
+      // Check for overlong encoding
+      if (codePoint < 0x80) return false;
+
+      ptr += 2;
+      return true;
+    } else if ((c & 0xf0) == 0xe0) {
+      // 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx
+      if (ptr + 2 >= bufferEnd) return false;
+      zc::byte c2 = ptr[1];
+      zc::byte c3 = ptr[2];
+      if ((c2 & 0xc0) != 0x80 || (c3 & 0xc0) != 0x80) return false;
+
+      codePoint = ((c & 0x0f) << 12) | ((c2 & 0x3f) << 6) | (c3 & 0x3f);
+      // Check for overlong encoding
+      if (codePoint < 0x800) return false;
+      // Check for surrogate pairs (invalid in UTF-8)
+      if (codePoint >= 0xd800 && codePoint <= 0xdfff) return false;
+
+      ptr += 3;
+      return true;
+    } else if ((c & 0xf8) == 0xf0) {
+      // 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+      if (ptr + 3 >= bufferEnd) return false;
+      zc::byte c2 = ptr[1];
+      zc::byte c3 = ptr[2];
+      zc::byte c4 = ptr[3];
+      if ((c2 & 0xc0) != 0x80 || (c3 & 0xc0) != 0x80 || (c4 & 0xc0) != 0x80) return false;
+
+      codePoint = ((c & 0x07) << 18) | ((c2 & 0x3f) << 12) | ((c3 & 0x3f) << 6) | (c4 & 0x3f);
+      // Check for overlong encoding
+      if (codePoint < 0x10000) return false;
+      // Check for valid Unicode range
+      if (codePoint > 0x10ffff) return false;
+
+      ptr += 4;
+      return true;
+    } else {
+      // Invalid UTF-8 start byte
+      return false;
+    }
+  }
+
   /// Unicode identifier support
   bool isUnicodeIdentifierStart(uint32_t codePoint) const {
     // Check for Unicode ID_Start property
@@ -954,8 +1449,24 @@ struct Lexer::Impl {
       // ASCII range
       return isalpha(static_cast<char>(codePoint)) || codePoint == '_' || codePoint == '$';
     }
-    // For non-ASCII, we need proper Unicode support
-    // TODO: Implement full Unicode ID_Start property check
+
+    // Basic Unicode ranges for identifier start characters
+    // This is a simplified check covering common cases
+    if ((codePoint >= 0x00c0 && codePoint <= 0x00d6) ||  // Latin-1 Supplement
+        (codePoint >= 0x00d8 && codePoint <= 0x00f6) ||
+        (codePoint >= 0x00f8 && codePoint <= 0x02ff) ||    // Latin Extended
+        (codePoint >= 0x0370 && codePoint <= 0x037d) ||    // Greek
+        (codePoint >= 0x037f && codePoint <= 0x1fff) ||    // Various scripts
+        (codePoint >= 0x200c && codePoint <= 0x200d) ||    // ZWNJ, ZWJ
+        (codePoint >= 0x2070 && codePoint <= 0x218f) ||    // Superscripts, etc.
+        (codePoint >= 0x2c00 && codePoint <= 0x2fef) ||    // Various scripts
+        (codePoint >= 0x3001 && codePoint <= 0xd7ff) ||    // CJK and others
+        (codePoint >= 0xf900 && codePoint <= 0xfdcf) ||    // CJK Compatibility
+        (codePoint >= 0xfdf0 && codePoint <= 0xfffd) ||    // Arabic Presentation, etc.
+        (codePoint >= 0x10000 && codePoint <= 0xeffff)) {  // Supplementary planes
+      return true;
+    }
+
     return false;
   }
 
@@ -965,13 +1476,65 @@ struct Lexer::Impl {
       // ASCII range
       return isalnum(static_cast<char>(codePoint)) || codePoint == '_' || codePoint == '$';
     }
+
+    // ID_Continue includes all ID_Start characters
+    if (isUnicodeIdentifierStart(codePoint)) { return true; }
+
+    // Additional characters allowed in identifier continuation
+    // Digits from various scripts
+    if ((codePoint >= 0x0030 && codePoint <= 0x0039) ||  // ASCII digits
+        (codePoint >= 0x0660 && codePoint <= 0x0669) ||  // Arabic-Indic digits
+        (codePoint >= 0x06f0 && codePoint <= 0x06f9) ||  // Extended Arabic-Indic digits
+        (codePoint >= 0x07c0 && codePoint <= 0x07c9) ||  // NKo digits
+        (codePoint >= 0x0966 && codePoint <= 0x096f) ||  // Devanagari digits
+        (codePoint >= 0x09e6 && codePoint <= 0x09ef) ||  // Bengali digits
+        (codePoint >= 0x0a66 && codePoint <= 0x0a6f) ||  // Gurmukhi digits
+        (codePoint >= 0x0ae6 && codePoint <= 0x0aef) ||  // Gujarati digits
+        (codePoint >= 0x0b66 && codePoint <= 0x0b6f) ||  // Oriya digits
+        (codePoint >= 0x0be6 && codePoint <= 0x0bef) ||  // Tamil digits
+        (codePoint >= 0x0c66 && codePoint <= 0x0c6f) ||  // Telugu digits
+        (codePoint >= 0x0ce6 && codePoint <= 0x0cef) ||  // Kannada digits
+        (codePoint >= 0x0d66 && codePoint <= 0x0d6f) ||  // Malayalam digits
+        (codePoint >= 0x0e50 && codePoint <= 0x0e59) ||  // Thai digits
+        (codePoint >= 0x0ed0 && codePoint <= 0x0ed9) ||  // Lao digits
+        (codePoint >= 0x0f20 && codePoint <= 0x0f29) ||  // Tibetan digits
+        (codePoint >= 0x1040 && codePoint <= 0x1049) ||  // Myanmar digits
+        (codePoint >= 0x1090 && codePoint <= 0x1099) ||  // Myanmar Shan digits
+        (codePoint >= 0x17e0 && codePoint <= 0x17e9) ||  // Khmer digits
+        (codePoint >= 0x1810 && codePoint <= 0x1819) ||  // Mongolian digits
+        (codePoint >= 0x1946 && codePoint <= 0x194f) ||  // Limbu digits
+        (codePoint >= 0x19d0 && codePoint <= 0x19d9) ||  // New Tai Lue digits
+        (codePoint >= 0x1a80 && codePoint <= 0x1a89) ||  // Tai Tham Hora digits
+        (codePoint >= 0x1a90 && codePoint <= 0x1a99) ||  // Tai Tham Tham digits
+        (codePoint >= 0x1b50 && codePoint <= 0x1b59) ||  // Balinese digits
+        (codePoint >= 0x1bb0 && codePoint <= 0x1bb9) ||  // Sundanese digits
+        (codePoint >= 0x1c40 && codePoint <= 0x1c49) ||  // Lepcha digits
+        (codePoint >= 0x1c50 && codePoint <= 0x1c59) ||  // Ol Chiki digits
+        (codePoint >= 0xa620 && codePoint <= 0xa629) ||  // Vai digits
+        (codePoint >= 0xa8d0 && codePoint <= 0xa8d9) ||  // Saurashtra digits
+        (codePoint >= 0xa900 && codePoint <= 0xa909) ||  // Kayah Li digits
+        (codePoint >= 0xa9d0 && codePoint <= 0xa9d9) ||  // Javanese digits
+        (codePoint >= 0xaa50 && codePoint <= 0xaa59) ||  // Cham digits
+        (codePoint >= 0xabf0 && codePoint <= 0xabf9) ||  // Meetei Mayek digits
+        (codePoint >= 0xff10 && codePoint <= 0xff19)) {  // Fullwidth digits
+      return true;
+    }
+
     // Special Unicode characters
     if (codePoint == 0x200C || codePoint == 0x200D) {
       // ZWNJ (Zero Width Non-Joiner) and ZWJ (Zero Width Joiner)
       return true;
     }
-    // For non-ASCII, we need proper Unicode support
-    // TODO: Implement full Unicode ID_Continue property check
+
+    // Combining marks (simplified ranges)
+    if ((codePoint >= 0x0300 && codePoint <= 0x036f) ||  // Combining Diacritical Marks
+        (codePoint >= 0x1ab0 && codePoint <= 0x1aff) ||  // Combining Diacritical Marks Extended
+        (codePoint >= 0x1dc0 && codePoint <= 0x1dff) ||  // Combining Diacritical Marks Supplement
+        (codePoint >= 0x20d0 && codePoint <= 0x20ff) ||  // Combining Diacritical Marks for Symbols
+        (codePoint >= 0xfe20 && codePoint <= 0xfe2f)) {  // Combining Half Marks
+      return true;
+    }
+
     return false;
   }
   bool isOperatorStart(zc::byte c) const {
@@ -1121,8 +1684,99 @@ void Lexer::exitMode(LexerMode mode) {
 
 // Full implementations of other methods...
 unsigned Lexer::lexUnicodeEscape(const zc::byte*& curPtr, diagnostics::DiagnosticEngine& diags) {
-  // Original implementation...
-  return 0;
+  // Expect to be positioned at the start of a Unicode escape sequence
+  // This function handles both \uXXXX and \u{XXXX} formats
+
+  const zc::byte* start = curPtr;
+
+  if (!curPtr || *curPtr != '\\') {
+    return 0;  // Invalid: not a backslash
+  }
+
+  curPtr++;  // Skip '\\'
+
+  if (!curPtr || *curPtr != 'u') {
+    curPtr = start;  // Restore position
+    return 0;        // Invalid: not followed by 'u'
+  }
+
+  curPtr++;  // Skip 'u'
+
+  // Check for extended Unicode escape \u{XXXX}
+  if (curPtr && *curPtr == '{') {
+    curPtr++;  // Skip '{'
+
+    uint32_t value = 0;
+    int digitCount = 0;
+
+    // Scan hex digits
+    while (curPtr && isxdigit(*curPtr) && digitCount < 6) {
+      zc::byte c = *curPtr;
+      uint32_t digit;
+      if (c >= '0' && c <= '9') {
+        digit = c - '0';
+      } else if (c >= 'A' && c <= 'F') {
+        digit = c - 'A' + 10;
+      } else if (c >= 'a' && c <= 'f') {
+        digit = c - 'a' + 10;
+      } else {
+        break;
+      }
+
+      value = (value << 4) | digit;
+      curPtr++;
+      digitCount++;
+    }
+
+    // Must have at least one hex digit
+    if (digitCount == 0) {
+      curPtr = start;  // Restore position
+      return 0;        // Invalid: no hex digits
+    }
+
+    // Must be followed by '}'
+    if (!curPtr || *curPtr != '}') {
+      curPtr = start;  // Restore position
+      return 0;        // Invalid: missing closing brace
+    }
+
+    curPtr++;  // Skip '}'
+
+    // Validate Unicode scalar value range
+    if (value > 0x10FFFF) {
+      curPtr = start;  // Restore position
+      return 0;        // Invalid: out of Unicode range
+    }
+
+    return value;
+  }
+
+  // Handle standard Unicode escape \uXXXX
+  uint32_t value = 0;
+  for (int i = 0; i < 4; i++) {
+    if (!curPtr || !isxdigit(*curPtr)) {
+      curPtr = start;  // Restore position
+      return 0;        // Invalid: insufficient hex digits
+    }
+
+    zc::byte c = *curPtr;
+    uint32_t digit;
+    if (c >= '0' && c <= '9') {
+      digit = c - '0';
+    } else if (c >= 'A' && c <= 'F') {
+      digit = c - 'A' + 10;
+    } else if (c >= 'a' && c <= 'f') {
+      digit = c - 'a' + 10;
+    } else {
+      curPtr = start;  // Restore position
+      return 0;        // Invalid hex digit
+    }
+
+    value = (value << 4) | digit;
+    curPtr++;
+  }
+
+  return value;
 }
 
 bool Lexer::tryLexRegexLiteral(const zc::byte* tokStart) {
