@@ -210,28 +210,28 @@ ZC_TEST("List remove while iterating") {
   }
 }
 
-// 测试异常情况以提高覆盖率
+// Test error cases to improve coverage
 ZC_TEST("List error cases") {
   List<TestElement, &TestElement::link> list1;
   List<TestElement, &TestElement::link> list2;
 
   TestElement element(42);
 
-  // 测试双重添加异常
+  // Test double add exception
   list1.add(element);
   ZC_EXPECT_THROW_RECOVERABLE_MESSAGE(
       "tried to add element to zc::List but the element is already in a list", list1.add(element));
   ZC_EXPECT_THROW_RECOVERABLE_MESSAGE(
       "tried to add element to zc::List but the element is already in a list", list2.add(element));
 
-  // 测试从错误列表移除异常
+  // Test remove from wrong list exception
   ZC_EXPECT_THROW_RECOVERABLE_MESSAGE(
       "tried to remove element from zc::List but the element is in a different list",
       list2.remove(element));
 
   list1.remove(element);
 
-  // 测试移除不存在元素异常
+  // Test remove non-existent element exception
   ZC_EXPECT_THROW_RECOVERABLE_MESSAGE(
       "tried to remove element from zc::List but the element is not in a list",
       list1.remove(element));
@@ -244,7 +244,7 @@ ZC_TEST("List addFront error cases") {
   List<TestElement, &TestElement::link> list;
   TestElement element(42);
 
-  // 测试addFront双重添加异常
+  // Test addFront double add exception
   list.addFront(element);
   ZC_EXPECT_THROW_RECOVERABLE_MESSAGE(
       "tried to add element to zc::List but the element is already in a list",
@@ -260,13 +260,13 @@ ZC_TEST("List iterator operations") {
   list.add(foo);
   list.add(bar);
 
-  // 测试后置递增操作符
+  // Test postfix increment operator
   auto iter = list.begin();
   auto old_iter = iter++;
   ZC_EXPECT(old_iter->i == 123);
   ZC_EXPECT(iter->i == 456);
 
-  // 测试const迭代器
+  // Test const iterator
   const auto& const_list = list;
   auto const_iter = const_list.begin();
   ZC_EXPECT(const_iter->i == 123);
@@ -283,7 +283,7 @@ ZC_TEST("List single element operations") {
   List<TestElement, &TestElement::link> list;
   TestElement element(42);
 
-  // 测试单元素列表的front()方法
+  // Test front() method for single element list
   list.add(element);
   ZC_EXPECT(list.front().i == 42);
 
@@ -292,7 +292,7 @@ ZC_TEST("List single element operations") {
 
   list.remove(element);
 
-  // 测试addFront单元素
+  // Test addFront single element
   list.addFront(element);
   ZC_EXPECT(list.front().i == 42);
   ZC_EXPECT(list.size() == 1);
@@ -304,7 +304,7 @@ ZC_TEST("ListLink isLinked method") {
   TestElement element(42);
   List<TestElement, &TestElement::link> list;
 
-  // 初始状态：未链接
+  // Initial state: not linked
   ZC_EXPECT(!element.link.isLinked());
 
   list.add(element);
@@ -313,7 +313,7 @@ ZC_TEST("ListLink isLinked method") {
   list.remove(element);
   ZC_EXPECT(!element.link.isLinked());
 
-  // 测试addFront
+  // Test addFront
   list.addFront(element);
   ZC_EXPECT(element.link.isLinked());
 

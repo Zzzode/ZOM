@@ -488,6 +488,14 @@ const zc::Vector<BufferId> SourceManager::getManagedBufferIds() const {
   return ids;
 }
 
+LineAndColumn SourceManager::getLineAndColumn(const SourceLoc& loc) const {
+  return getPresumedLineAndColumnForLoc(loc, BufferId{0});
+}
+
+unsigned SourceManager::getLineNumber(const SourceLoc& loc) const {
+  return getLineAndColumn(loc).line;
+}
+
 }  // namespace source
 }  // namespace compiler
 }  // namespace zomlang

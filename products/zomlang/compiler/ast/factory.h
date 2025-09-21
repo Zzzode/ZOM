@@ -152,17 +152,18 @@ zc::Own<Node> createNodeWithRange(const source::SourceRange& range, Args&&... ar
 }
 
 /// Create a ModulePath node
-zc::Own<ModulePath> createModulePath(zc::Vector<zc::String>&& identifiers);
+zc::Own<ModulePath> createModulePath(zc::Vector<zc::Own<Identifier>>&& identifiers);
 
 /// Create an ImportDeclaration node
-zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath> modulePath,
-                                                   zc::Maybe<zc::String> alias = zc::none);
+zc::Own<ImportDeclaration> createImportDeclaration(
+    zc::Own<ModulePath> modulePath, zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none);
 
 /// Create a simple ExportDeclaration node (export identifier)
-zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier);
+zc::Own<ExportDeclaration> createExportDeclaration(zc::Own<ast::Identifier>&& identifier);
 
 /// Create a rename ExportDeclaration node (export identifier as alias from modulePath)
-zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier, zc::String&& alias,
+zc::Own<ExportDeclaration> createExportDeclaration(zc::Own<ast::Identifier>&& identifier,
+                                                   zc::Own<ast::Identifier>&& alias,
                                                    zc::Own<ModulePath> modulePath);
 
 /// Statement factory functions
@@ -298,6 +299,8 @@ zc::Own<ObjectLiteralExpression> createObjectLiteralExpression(
     zc::Vector<zc::Own<Expression>>&& properties);
 
 zc::Own<Identifier> createIdentifier(zc::String&& name);
+
+zc::Own<Identifier> createMissingIdentifier();
 
 zc::Own<StringLiteral> createStringLiteral(zc::String&& value);
 

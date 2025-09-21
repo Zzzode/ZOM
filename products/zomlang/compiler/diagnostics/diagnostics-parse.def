@@ -18,3 +18,5 @@ DIAG(UnaryExpressionInExponentiation, kError,
      "A unary expression with the '{0}' operator is not allowed in the left hand side of an "
      "exponentiation expression. Consider enclosing the expression in parentheses",
      1)
+DIAG(ReservedKeywordAsIdentifier, kError, "Reserved keyword '{0}' cannot be used as an identifier", 1)
+DIAG(ExceptedIdentifier, kError, "Identifier expected, found '{0}'", 1)

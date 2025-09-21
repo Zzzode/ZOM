@@ -18,12 +18,14 @@
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/statement.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
 
+class Identifier;
 class ModulePath;
 
 class SourceFile : public Node {
@@ -47,11 +49,11 @@ private:
 class ImportDeclaration : public Statement {
 public:
   ImportDeclaration(zc::Own<ModulePath>&& modulePath,
-                    zc::Maybe<zc::String> alias = zc::none) noexcept;
+                    zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none) noexcept;
   ~ImportDeclaration() noexcept(false);
 
   const ModulePath& getModulePath() const;
-  zc::Maybe<zc::StringPtr> getAlias() const;
+  zc::Maybe<const ast::Identifier&> getAlias() const;
 
   void accept(Visitor& visitor) const override;
 
@@ -64,16 +66,16 @@ private:
 
 class ExportDeclaration : public Statement {
 public:
-  explicit ExportDeclaration(zc::String&& identifier) noexcept;
+  explicit ExportDeclaration(zc::Own<ast::Identifier>&& identifier) noexcept;
 
-  ExportDeclaration(zc::String&& identifier, zc::String&& alias,
+  ExportDeclaration(zc::Own<ast::Identifier>&& identifier, zc::Own<ast::Identifier>&& alias,
                     zc::Own<ModulePath>&& modulePath) noexcept;
 
   ~ExportDeclaration() noexcept(false);
 
-  zc::StringPtr getIdentifier() const;
+  const ast::Identifier& getIdentifier() const;
   bool isRename() const;
-  zc::Maybe<zc::StringPtr> getAlias() const;
+  zc::Maybe<const ast::Identifier&> getAlias() const;
   zc::Maybe<const ModulePath&> getModulePath() const;
 
   void accept(Visitor& visitor) const override;
@@ -87,11 +89,10 @@ private:
 
 class ModulePath : public Node {
 public:
-  explicit ModulePath(zc::Vector<zc::String>&& identifiers) noexcept;
+  explicit ModulePath(zc::Vector<zc::Own<ast::Identifier>>&& identifiers) noexcept;
   ~ModulePath() noexcept(false);
 
-  zc::ArrayPtr<const zc::String> getIdentifiers() const;
-  zc::String toString() const;
+  const NodeList<Identifier>& getIdentifiers() const;
 
   void accept(Visitor& visitor) const override;
 

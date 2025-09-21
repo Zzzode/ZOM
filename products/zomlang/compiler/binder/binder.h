@@ -15,34 +15,15 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zc/core/map.h"
+#include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/visitor.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/symbol/symbol.h"
 
 namespace zomlang {
 namespace compiler {
-namespace checker {
-
-struct Symbol {
-  zc::String name;
-  zc::String type;
-  // Add more properties as needed
-};
-
-class SymbolTable {
-public:
-  void insert(zc::String name, zc::Own<Symbol> symbol) {
-    symbols.upsert(zc::mv(name), zc::mv(symbol));
-  }
-
-  Symbol* lookup(const zc::String& name) {
-    ZC_IF_SOME(it, symbols.find(name)) { return it.get(); }
-    return nullptr;
-  }
-
-private:
-  zc::HashMap<zc::String, zc::Own<Symbol>> symbols;
-};
-
-}  // namespace checker
+namespace binder {}  // namespace binder
 }  // namespace compiler
 }  // namespace zomlang
