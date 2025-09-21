@@ -61,7 +61,7 @@ void ASTDumper::visit(const ImportDeclaration& node) {
   node.getModulePath().accept(*this);
   impl->serializer->writeChildEnd("modulePath"_zc);
 
-  ZC_IF_SOME(alias, node.getAlias()) { impl->serializer->writeProperty("alias", alias); }
+  ZC_IF_SOME(alias, node.getAlias()) { impl->serializer->writeProperty("alias", alias.getName()); }
 
   impl->serializer->writeNodeEnd("ImportDeclaration"_zc);
 }
@@ -69,10 +69,16 @@ void ASTDumper::visit(const ImportDeclaration& node) {
 void ASTDumper::visit(const ExportDeclaration& node) {
   impl->serializer->writeNodeStart("ExportDeclaration"_zc);
 
-  impl->serializer->writeProperty("identifier", node.getIdentifier());
+  impl->serializer->writeChildStart("identifier"_zc);
+  node.getIdentifier().accept(*this);
+  impl->serializer->writeChildEnd("identifier"_zc);
 
   if (node.isRename()) {
-    ZC_IF_SOME(alias, node.getAlias()) { impl->serializer->writeProperty("alias", alias); }
+    ZC_IF_SOME(alias, node.getAlias()) {
+      impl->serializer->writeChildStart("alias"_zc);
+      alias.accept(*this);
+      impl->serializer->writeChildEnd("alias"_zc);
+    }
 
     ZC_IF_SOME(modulePath, node.getModulePath()) {
       impl->serializer->writeChildStart("modulePath"_zc);
@@ -304,7 +310,7 @@ void ASTDumper::visit(const ModulePath& node) {
   for (const auto& id : identifiers) {
     impl->serializer->writeArrayElement();
     impl->serializer->writeNodeStart("Identifier"_zc);
-    impl->serializer->writeProperty("value", id);
+    impl->serializer->writeProperty("value", id.getName());
     impl->serializer->writeNodeEnd("Identifier"_zc);
   }
   impl->serializer->writeArrayEnd("identifiers"_zc);

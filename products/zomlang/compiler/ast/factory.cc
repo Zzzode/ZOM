@@ -29,20 +29,21 @@ zc::Own<SourceFile> createSourceFile(zc::String&& fileName,
   return zc::heap<SourceFile>(zc::mv(fileName), zc::mv(statements));
 }
 
-zc::Own<ModulePath> createModulePath(zc::Vector<zc::String>&& identifiers) {
+zc::Own<ModulePath> createModulePath(zc::Vector<zc::Own<ast::Identifier>>&& identifiers) {
   return zc::heap<ModulePath>(zc::mv(identifiers));
 }
 
 zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath> modulePath,
-                                                   zc::Maybe<zc::String> alias) {
+                                                   zc::Maybe<zc::Own<ast::Identifier>> alias) {
   return zc::heap<ImportDeclaration>(zc::mv(modulePath), zc::mv(alias));
 }
 
-zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier) {
+zc::Own<ExportDeclaration> createExportDeclaration(zc::Own<ast::Identifier>&& identifier) {
   return zc::heap<ExportDeclaration>(zc::mv(identifier));
 }
 
-zc::Own<ExportDeclaration> createExportDeclaration(zc::String&& identifier, zc::String&& alias,
+zc::Own<ExportDeclaration> createExportDeclaration(zc::Own<ast::Identifier>&& identifier,
+                                                   zc::Own<ast::Identifier>&& alias,
                                                    zc::Own<ModulePath> modulePath) {
   return zc::heap<ExportDeclaration>(zc::mv(identifier), zc::mv(alias), zc::mv(modulePath));
 }
@@ -232,6 +233,8 @@ zc::Own<ObjectLiteralExpression> createObjectLiteralExpression(
 zc::Own<Identifier> createIdentifier(zc::String&& name) {
   return zc::heap<Identifier>(zc::mv(name));
 }
+
+zc::Own<Identifier> createMissingIdentifier() { return zc::heap<Identifier>(zc::str("")); }
 
 zc::Own<StringLiteral> createStringLiteral(zc::String&& value) {
   return zc::heap<StringLiteral>(zc::mv(value));
@@ -475,8 +478,8 @@ zc::Own<TuplePattern> createTuplePattern(zc::Vector<zc::Own<Pattern>>&& elements
 
 zc::Own<StructurePattern> createStructurePattern(zc::Maybe<zc::Own<TypeReference>> typeReference,
                                                  zc::Vector<zc::Own<Pattern>>&& fields) {
-  // TODO: StructurePattern 构造函数只接受 properties 参数，需要重新设计
-  // 暂时只传递 fields 参数
+  // TODO: StructurePattern constructor only accepts properties parameter, needs redesign
+  // For now, only pass fields parameter
   static_cast<void>(typeReference);
   return zc::heap<StructurePattern>(zc::mv(fields));
 }
@@ -486,8 +489,8 @@ zc::Own<ArrayPattern> createArrayPattern(zc::Vector<zc::Own<Pattern>>&& elements
 }
 
 zc::Own<IsPattern> createIsPattern(zc::Own<Pattern> pattern, zc::Own<Type> type) {
-  // TODO: IsPattern 构造函数只接受 type 参数，需要重新设计以支持 pattern
-  // 暂时只传递 type 参数
+  // TODO: IsPattern constructor only accepts type parameter, needs redesign to support pattern
+  // For now, only pass type parameter
   static_cast<void>(pattern);
   return zc::heap<IsPattern>(zc::mv(type));
 }

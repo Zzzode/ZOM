@@ -78,12 +78,12 @@ public:
   /// \brief Look ahead n tokens without consuming them
   /// \param n The number of tokens to look ahead (1-based, 1 means next token)
   /// \return The token at position n, or EOF token if beyond end
-  const Token& lookAhead(unsigned n) const;
+  const Token& lookAhead(unsigned n);
 
   /// \brief Check if we can look ahead n tokens
   /// \param n The number of tokens to look ahead
   /// \return true if we can look ahead n tokens, false otherwise
-  bool canLookAhead(unsigned n) const;
+  bool canLookAhead(unsigned n);
 
   /// State management
   LexerState getStateForBeginningOfToken(const Token& tok) const;
