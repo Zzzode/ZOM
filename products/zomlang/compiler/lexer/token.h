@@ -69,7 +69,6 @@ enum class TokenKind {
   kIdentifier,
 
   // Keywords
-  kKeywords,
   kAbstractKeyword,     // abstract
   kAccessorKeyword,     // accessor
   kAnyKeyword,          // any
@@ -186,7 +185,6 @@ enum class TokenKind {
   kNullLiteral,     // null
 
   // Operators
-  kOperator,
   kArrow,                                    // ->
   kColon,                                    // :
   kPeriod,                                   // .
@@ -247,7 +245,6 @@ enum class TokenKind {
   kUnderscore,                               // _
 
   // Punctuation
-  kPunctuation,
   kLeftParen,     // (
   kRightParen,    // )
   kLeftBrace,     // {
@@ -260,8 +257,20 @@ enum class TokenKind {
   kComment,
 
   // Add more token types as needed...
-
   kEOF,
+
+  kCount,
+
+  kFirstKeyword = kAbstractKeyword,
+  kLastKeyword = kNullKeyword,
+
+  kFirstReservedKeyword = kAbstractKeyword,
+  kLastReservedKeyword = kNullKeyword,
+
+  kFirstBinaryOperator = kLessThan,
+  kLastBinaryOperator = kErrorDefault,
+  kFirstPunctuation = kLeftParen,
+  kLastPunctuation = kRightBracket,
 };
 
 class Token {

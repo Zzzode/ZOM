@@ -124,18 +124,18 @@ public:
   /// \brief Look ahead n tokens without consuming them
   /// \param n The number of tokens to look ahead (1-based, 1 means next token)
   /// \return The token at position n, or EOF token if beyond end
-  const lexer::Token& lookAhead(unsigned n) const;
+  const lexer::Token& lookAhead(unsigned n);
 
   /// \brief Check if we can look ahead n tokens
   /// \param n The number of tokens to look ahead
   /// \return true if we can look ahead n tokens, false otherwise
-  bool canLookAhead(unsigned n) const;
+  bool canLookAhead(unsigned n);
 
   /// \brief Look ahead and check if the nth token matches the given kind
   /// \param n The number of tokens to look ahead (1-based)
   /// \param kind The token kind to check for
   /// \return true if the nth token matches the kind, false otherwise
-  bool isLookAhead(unsigned n, lexer::TokenKind kind) const;
+  bool isLookAhead(unsigned n, lexer::TokenKind kind);
 
 private:
   template <typename Node>
@@ -176,7 +176,9 @@ private:
   bool abortParsingListOrMoveToNextToken(ParsingContext context);
 
 private:
+  zc::Maybe<zc::Own<ast::Identifier>> createIdentifier(bool isIdentifier);
   zc::Maybe<zc::Own<ast::Identifier>> parseIdentifier();
+  zc::Maybe<zc::Own<ast::Identifier>> parseIdentifierName();
   zc::Maybe<zc::Own<ast::Identifier>> parseBindingIdentifier();
   zc::Maybe<zc::Own<ast::BindingElement>> parseBindingElement();
 
@@ -317,6 +319,8 @@ private:
   bool isStartOfExpression() const;
   bool isStartOfDeclaration() const;
   bool isUpdateExpression(lexer::TokenKind tokenKind) const;
+  bool isBindingIdentifier() const;
+  bool isIdentifier() const;
 
   struct Impl;
   zc::Own<Impl> impl;

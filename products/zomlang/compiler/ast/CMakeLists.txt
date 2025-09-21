@@ -7,6 +7,7 @@ set(AST_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/serializer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/statement.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/type.cc)
+  ${CMAKE_CURRENT_SOURCE_DIR}/type.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/desugar.cc)
 
 add_library(ast STATIC ${AST_SRC})

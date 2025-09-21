@@ -60,16 +60,14 @@
       "name": "debug",
       "configurePreset": "debug",
       "targets": [
-        "zc",
-        "lexer"
+        "all"
       ]
     },
     {
       "name": "release",
       "configurePreset": "release",
       "targets": [
-        "zc",
-        "lexer"
+        "all"
       ]
     },
     {

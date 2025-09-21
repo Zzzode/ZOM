@@ -14,27 +14,25 @@
 
 #pragma once
 
-#include "zomlang/compiler/ast/ast.h"
-#include "zomlang/compiler/symbol/symbol-table.h"
+#include "zomlang/compiler/lexer/token.h"
 
 namespace zomlang {
 namespace compiler {
-namespace checker {
+namespace lexer {
 
-// class TypeChecker : public CompilerStage<zc::Own<ast::AST>,
-// zc::String> {
-//  protected:
-//   void process(const zc::Own<ast::AST>& input,
-//                zc::Vector<zc::String>& outputs) override;
-//
-//  private:
-//   SymbolTable symbol_table_;
-//
-//  public:
-//   TypeChecker() = default;
-//   ~TypeChecker() noexcept override = default;
-// };
+inline bool isKeyword(TokenKind tokenKind) {
+  return tokenKind >= TokenKind::kFirstKeyword && tokenKind <= TokenKind::kLastKeyword;
+}
 
-}  // namespace checker
+inline bool isReservedKeyword(TokenKind tokenKind) {
+  return tokenKind >= TokenKind::kFirstReservedKeyword &&
+         tokenKind <= TokenKind::kLastReservedKeyword;
+}
+
+inline bool isIdentifierOrKeyword(TokenKind tokenKind) {
+  return tokenKind == TokenKind::kIdentifier || isKeyword(tokenKind);
+}
+
+}  // namespace lexer
 }  // namespace compiler
 }  // namespace zomlang
