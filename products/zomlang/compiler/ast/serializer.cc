@@ -17,78 +17,14 @@
 #include <cstdio>
 
 #include "zc/core/debug.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
+#include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/basic/string-escape.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
-
-// JSON string escaping helper function
-zc::String escapeJsonString(zc::StringPtr str) {
-  zc::Vector<char> result;
-  for (char c : str) {
-    switch (c) {
-      case '"':
-        result.addAll("\\\""_zc.asArray());
-        break;
-      case '\\':
-        result.addAll("\\\\"_zc.asArray());
-        break;
-      case '\b':
-        result.addAll("\\b"_zc.asArray());
-        break;
-      case '\f':
-        result.addAll("\\f"_zc.asArray());
-        break;
-      case '\n':
-        result.addAll("\\n"_zc.asArray());
-        break;
-      case '\r':
-        result.addAll("\\r"_zc.asArray());
-        break;
-      case '\t':
-        result.addAll("\\t"_zc.asArray());
-        break;
-      default:
-        if (static_cast<unsigned char>(c) < 0x20) {
-          char buffer[7];
-          std::snprintf(buffer, sizeof(buffer), "\\u%04x", static_cast<unsigned char>(c));
-          result.addAll(zc::ArrayPtr<const char>(buffer, 6));
-        } else {
-          result.add(c);
-        }
-        break;
-    }
-  }
-  return zc::str(result.asPtr());
-}
-
-// XML string escaping helper function
-zc::String escapeXmlString(zc::StringPtr str) {
-  zc::Vector<char> result;
-  for (char c : str) {
-    switch (c) {
-      case '<':
-        result.addAll("&lt;"_zc.asArray());
-        break;
-      case '>':
-        result.addAll("&gt;"_zc.asArray());
-        break;
-      case '&':
-        result.addAll("&amp;"_zc.asArray());
-        break;
-      case '"':
-        result.addAll("&quot;"_zc.asArray());
-        break;
-      case '\'':
-        result.addAll("&apos;"_zc.asArray());
-        break;
-      default:
-        result.add(c);
-        break;
-    }
-  }
-  return zc::str(result.asPtr());
-}
 
 // JSONSerializer implementation
 struct JSONSerializer::Impl {
@@ -148,7 +84,7 @@ void JSONSerializer::writeProperty(const zc::StringPtr name, const zc::StringPtr
   if (!impl->currentFirstProperty()) { impl->write(",\n"); }
   impl->currentFirstProperty() = false;
   impl->writeIndent();
-  zc::String escapedValue = escapeJsonString(value);
+  zc::String escapedValue = basic::escapeJsonString(value);
   impl->write(zc::str("\"", name, "\": \"", escapedValue, "\""));
 }
 
@@ -230,7 +166,7 @@ void XMLSerializer::writeNodeEnd(const zc::StringPtr nodeType) {
 
 void XMLSerializer::writeProperty(const zc::StringPtr name, const zc::StringPtr value) {
   impl->writeIndent();
-  auto escapedValue = escapeXmlString(value);
+  auto escapedValue = basic::escapeXmlString(value);
   impl->write(zc::str("<", name, ">", escapedValue, "</", name, ">\n"));
 }
 

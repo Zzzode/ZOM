@@ -17,8 +17,10 @@
 #include <cstdint>
 
 #include "zc/core/common.h"
+#include "zc/core/exception.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zc/core/vector.h"
 
 namespace zomlang {
 namespace compiler {
@@ -54,6 +56,7 @@ struct TraceConfig {
   bool enableTimestamps = true;
   bool enableThreadInfo = true;
   zc::StringPtr outputFile = nullptr;
+  uint32_t maxRecursionDepth = 1000;  // Maximum recursion depth to prevent stack overflow
 };
 
 /// Individual trace event
@@ -67,7 +70,7 @@ struct TraceEvent {
   uint32_t depth;  // Call stack depth
 
   TraceEvent(TraceEventType t, TraceCategory cat, zc::StringPtr n, zc::StringPtr d = nullptr,
-             uint32_t dep = 0);
+             uint32_t dep = 0) noexcept;
 };
 
 /// Main trace manager - singleton pattern
@@ -101,11 +104,28 @@ public:
   /// Get event count
   size_t getEventCount() const;
 
+  /// Get maximum recursion depth from config
+  uint32_t getMaxRecursionDepth() const;
+
 private:
-  TraceManager() = default;
-  ~TraceManager() = default;
+  TraceManager() noexcept = default;
+  ~TraceManager() noexcept(false) = default;
 
   ZC_DISALLOW_COPY_AND_MOVE(TraceManager);
+
+  /// Write trace events to file in Chrome tracing JSON format
+  /// Returns zc::none on success, or the exception on failure
+  zc::Maybe<zc::Exception> writeTraceToFile(zc::StringPtr filename,
+                                            const zc::Vector<TraceEvent>& events);
+
+  /// Generate Chrome tracing JSON from events
+  zc::String generateChromeTracingJson(const zc::Vector<TraceEvent>& events);
+
+  /// Format single event as JSON
+  zc::String formatEventAsJson(const TraceEvent& event);
+
+  /// Escape string for JSON
+  zc::String escapeJsonString(zc::StringPtr str);
 
   struct Impl;
   zc::Own<Impl> impl;
@@ -120,8 +140,9 @@ void traceCounter(TraceCategory category, zc::StringPtr name, zc::StringPtr deta
 /// Scope tracer with RAII
 class ScopeTracer {
 public:
-  explicit ScopeTracer(TraceCategory category, zc::StringPtr name, zc::StringPtr details = nullptr);
-  ~ScopeTracer();
+  explicit ScopeTracer(TraceCategory category, zc::StringPtr name,
+                       zc::StringPtr details = nullptr) noexcept;
+  ~ScopeTracer() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ScopeTracer);
 
