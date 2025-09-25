@@ -18,8 +18,11 @@
 #include <thread>
 
 #include "zc/core/debug.h"
+#include "zc/core/filesystem.h"
 #include "zc/core/map.h"
 #include "zc/core/mutex.h"
+#include "zc/core/vector.h"
+#include "zomlang/compiler/basic/string-escape.h"
 #include "zomlang/compiler/trace/trace-config.h"
 
 namespace zomlang {
@@ -30,7 +33,7 @@ namespace trace {
 // TraceEvent
 
 TraceEvent::TraceEvent(TraceEventType t, TraceCategory cat, zc::StringPtr n, zc::StringPtr d,
-                       uint32_t dep)
+                       uint32_t dep) noexcept
     : type(t), category(cat), name(zc::str(n)), depth(dep) {
   if (d != nullptr) { details = zc::str(d); }
 
@@ -137,10 +140,122 @@ void TraceManager::flush() {
   zc::Locked<zc::Vector<TraceEvent>> lock = impl->events.lockExclusive();
 
   if (impl->config.outputFile != nullptr) {
-    // TODO: Implement file output in JSON format for Chrome tracing
-    // For now, just output to debug log
-    ZC_LOG(INFO, "Trace flush requested - ", lock->size(), " events");
+    ZC_IF_SOME(exception, writeTraceToFile(impl->config.outputFile, *lock)) {
+      ZC_LOG(ERROR, "Failed to write trace file", impl->config.outputFile, exception);
+    }
   }
+}
+
+zc::Maybe<zc::Exception> TraceManager::writeTraceToFile(zc::StringPtr filename,
+                                                        const zc::Vector<TraceEvent>& events) {
+  // Create Chrome tracing JSON format
+  zc::String json = generateChromeTracingJson(events);
+
+  // Write to file using zc::runCatchingExceptions for proper error handling
+  return zc::runCatchingExceptions([&]() {
+    // Use zc filesystem to write the file
+    auto fs = zc::newDiskFilesystem();
+
+    // Use Path::eval to handle both absolute and relative paths correctly
+    zc::Path outputPath = zc::Path(nullptr).eval(filename);
+    auto file = fs->getCurrent().openFile(
+        outputPath, zc::WriteMode::CREATE | zc::WriteMode::MODIFY | zc::WriteMode::CREATE_PARENT);
+    file->writeAll(json);
+    file->datasync();
+  });
+}
+
+zc::String TraceManager::generateChromeTracingJson(const zc::Vector<TraceEvent>& events) {
+  zc::Vector<char> json;
+
+  // Start JSON array
+  json.addAll(zc::StringPtr("{\"traceEvents\":[\n"));
+
+  bool first = true;
+  for (const auto& event : events) {
+    if (!first) { json.addAll(zc::StringPtr(",\n")); }
+    first = false;
+
+    // Convert event to Chrome tracing format
+    zc::String eventJson = formatEventAsJson(event);
+    json.addAll(eventJson);
+  }
+
+  // End JSON
+  json.addAll(zc::StringPtr("\n]}"));
+
+  return zc::str(json.releaseAsArray());
+}
+
+zc::String TraceManager::formatEventAsJson(const TraceEvent& event) {
+  // Map our event types to Chrome tracing format
+  const char* phase;
+  switch (event.type) {
+    case TraceEventType::kEnter:
+      phase = "B";  // Begin
+      break;
+    case TraceEventType::kExit:
+      phase = "E";  // End
+      break;
+    case TraceEventType::kInstant:
+      phase = "i";  // Instant
+      break;
+    case TraceEventType::kCounter:
+      phase = "C";  // Counter
+      break;
+    case TraceEventType::kMetadata:
+      phase = "M";  // Metadata
+      break;
+    default:
+      phase = "i";
+      break;
+  }
+
+  // Convert category to string
+  const char* categoryStr;
+  switch (event.category) {
+    case TraceCategory::kLexer:
+      categoryStr = "lexer";
+      break;
+    case TraceCategory::kParser:
+      categoryStr = "parser";
+      break;
+    case TraceCategory::kChecker:
+      categoryStr = "checker";
+      break;
+    case TraceCategory::kDriver:
+      categoryStr = "driver";
+      break;
+    case TraceCategory::kDiagnostics:
+      categoryStr = "diagnostics";
+      break;
+    case TraceCategory::kMemory:
+      categoryStr = "memory";
+      break;
+    case TraceCategory::kPerformance:
+      categoryStr = "performance";
+      break;
+    default:
+      categoryStr = "unknown";
+      break;
+  }
+
+  // Convert timestamp from nanoseconds to microseconds (Chrome format)
+  uint64_t timestampUs = event.timestamp / 1000;
+
+  // Build JSON object
+  zc::String baseJson =
+      zc::str("  {", "\"name\":\"", basic::escapeJsonString(event.name), "\",", "\"cat\":\"",
+              categoryStr, "\",", "\"ph\":\"", phase, "\",", "\"ts\":", timestampUs, ",",
+              "\"pid\":1,", "\"tid\":", event.threadId);
+
+  // Add details if present
+  if (event.details.size() > 0) {
+    return zc::str(baseJson, ",\"args\":{\"details\":\"", basic::escapeJsonString(event.details),
+                   "\"}}");
+  }
+
+  return zc::str(baseJson, "}");
 }
 
 uint32_t TraceManager::getCurrentDepth() const {
@@ -183,6 +298,11 @@ size_t TraceManager::getEventCount() const {
   return lock->size();
 }
 
+uint32_t TraceManager::getMaxRecursionDepth() const {
+  ZC_REQUIRE(impl.get() != nullptr);
+  return impl->config.maxRecursionDepth;
+}
+
 // ================================================================================
 // Trace functions
 
@@ -220,6 +340,16 @@ struct ScopeTracer::Impl {
 
     if constexpr (kTraceEnabled) {
       if (TraceManager::getInstance().isEnabled(category)) {
+        // Check recursion depth before incrementing
+        uint32_t currentDepth = TraceManager::getInstance().getCurrentDepth();
+        uint32_t maxDepth = TraceManager::getInstance().getMaxRecursionDepth();
+
+        if (currentDepth >= maxDepth) {
+          ZC_FAIL_REQUIRE("Trace recursion depth exceeded maximum limit", currentDepth,
+                          ">=", maxDepth, "category:", static_cast<uint32_t>(category),
+                          "name:", name);
+        }
+
         enabled = true;
         TraceManager::getInstance().incrementDepth();
         TraceManager::getInstance().addEvent(TraceEventType::kEnter, category, name, details);
@@ -240,10 +370,10 @@ struct ScopeTracer::Impl {
 // ================================================================================
 // ScopeTracer
 
-ScopeTracer::ScopeTracer(TraceCategory category, zc::StringPtr name, zc::StringPtr details)
+ScopeTracer::ScopeTracer(TraceCategory category, zc::StringPtr name, zc::StringPtr details) noexcept
     : impl(zc::heap<Impl>(category, name, details)) {}
 
-ScopeTracer::~ScopeTracer() = default;
+ScopeTracer::~ScopeTracer() noexcept(false) = default;
 
 // ================================================================================
 // FunctionTracer::Impl
