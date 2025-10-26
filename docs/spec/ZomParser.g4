@@ -539,8 +539,7 @@ matchBlock:
 
 matchClauses: matchClause*;
 matchClause:
-	WHEN pattern guardClause? ROCKET expression
-	| block;
+	WHEN pattern guardClause? ROCKET (expression | block);
 
 guardClause: IF expression;
 defaultClause: DEFAULT ROCKET statementList;
@@ -795,13 +794,11 @@ moduleItem:
 	| exportDeclaration
 	| importDeclaration;
 
-importDeclaration: IMPORT modulePath (AS identifierName)?;
+importDeclaration: IMPORT bindingIdentifier ASSIGN modulePath;
 
-exportDeclaration: EXPORT (exportModule | exportRename);
+modulePath: stringLiteral;
 
-modulePath: bindingIdentifier ( PERIOD bindingIdentifier)*;
-
-exportModule: bindingIdentifier;
-
-exportRename:
-	bindingIdentifier AS bindingIdentifier FROM modulePath;
+exportDeclaration:
+	EXPORT bindingIdentifier (PERIOD bindingIdentifier)* (
+		AS identifierName
+	)?;

@@ -56,7 +56,7 @@ ZC_TEST("ParserTest.SimpleExpression") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
 }
 
-ZC_TEST("ParserTest.VariableDeclaration") {
+ZC_TEST("ParserTest.VariableDeclarationList") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -448,15 +448,15 @@ ZC_TEST("ParserTest.LookAheadBasic") {
 
   // Test lookAhead(1) - should return first token (x)
   const auto& token1 = parser.lookAhead(1);
-  ZC_EXPECT(token1.is(lexer::TokenKind::kIdentifier), "First token should be 'x'");
+  ZC_EXPECT(token1.is(ast::SyntaxKind::Identifier), "First token should be 'x'");
 
   // Test lookAhead(2) - should return second token (identifier 'x')
   const auto& token2 = parser.lookAhead(2);
-  ZC_EXPECT(token2.is(lexer::TokenKind::kEquals), "Second token should be '='");
+  ZC_EXPECT(token2.is(ast::SyntaxKind::Equals), "Second token should be '='");
 
   // Test lookAhead(3) - should return third token (=)
   const auto& token3 = parser.lookAhead(3);
-  ZC_EXPECT(token3.is(lexer::TokenKind::kIntegerLiteral), "Third token should be '42'");
+  ZC_EXPECT(token3.is(ast::SyntaxKind::IntegerLiteral), "Third token should be '42'");
 }
 
 ZC_TEST("ParserTest.CanLookAhead") {
@@ -484,12 +484,11 @@ ZC_TEST("ParserTest.IsLookAhead") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
 
   // Test isLookAhead for specific token kinds
-  ZC_EXPECT(parser.isLookAhead(1, lexer::TokenKind::kIdentifier), "First token should be 'x'");
-  ZC_EXPECT(parser.isLookAhead(2, lexer::TokenKind::kEquals), "Second token should be '='");
-  ZC_EXPECT(parser.isLookAhead(3, lexer::TokenKind::kIntegerLiteral),
+  ZC_EXPECT(parser.isLookAhead(1, ast::SyntaxKind::Identifier), "First token should be 'x'");
+  ZC_EXPECT(parser.isLookAhead(2, ast::SyntaxKind::Equals), "Second token should be '='");
+  ZC_EXPECT(parser.isLookAhead(3, ast::SyntaxKind::IntegerLiteral),
             "Third token should be integer literal 42");
-  ZC_EXPECT(parser.isLookAhead(4, lexer::TokenKind::kSemicolon),
-            "Fourth token should be semicolon");
+  ZC_EXPECT(parser.isLookAhead(4, ast::SyntaxKind::Semicolon), "Fourth token should be semicolon");
 }
 
 ZC_TEST("ParserTest.LookAheadBeyondEOF") {
@@ -502,13 +501,13 @@ ZC_TEST("ParserTest.LookAheadBeyondEOF") {
 
   // Test lookAhead beyond available tokens
   const auto& token1 = parser.lookAhead(1);
-  ZC_EXPECT(token1.is(lexer::TokenKind::kEOF), "First token should be EOF");
+  ZC_EXPECT(token1.is(ast::SyntaxKind::EndOfFile), "First token should be EOF");
 
   const auto& token2 = parser.lookAhead(2);
-  ZC_EXPECT(token2.is(lexer::TokenKind::kEOF), "Second token should be EOF");
+  ZC_EXPECT(token2.is(ast::SyntaxKind::EndOfFile), "Second token should be EOF");
 
   const auto& token3 = parser.lookAhead(3);
-  ZC_EXPECT(token3.is(lexer::TokenKind::kEOF), "Third token should be EOF");
+  ZC_EXPECT(token3.is(ast::SyntaxKind::EndOfFile), "Third token should be EOF");
 
   // Test canLookAhead beyond EOF
   ZC_EXPECT(!parser.canLookAhead(1), "Should not be able to look ahead beyond EOF");
@@ -526,14 +525,14 @@ ZC_TEST("ParserTest.LookAheadEmptySource") {
 
   // Test lookAhead on empty source
   const auto& token1 = parser.lookAhead(1);
-  ZC_EXPECT(token1.is(lexer::TokenKind::kEOF), "First token should be EOF");
+  ZC_EXPECT(token1.is(ast::SyntaxKind::EndOfFile), "First token should be EOF");
 
   // Test canLookAhead on empty source
   ZC_EXPECT(!parser.canLookAhead(1), "Should not be able to look ahead in empty source");
 
   // Test isLookAhead on empty source
-  ZC_EXPECT(parser.isLookAhead(1, lexer::TokenKind::kEOF), "First token should be EOF");
-  ZC_EXPECT(!parser.isLookAhead(1, lexer::TokenKind::kIdentifier),
+  ZC_EXPECT(parser.isLookAhead(1, ast::SyntaxKind::EndOfFile), "First token should be EOF");
+  ZC_EXPECT(!parser.isLookAhead(1, ast::SyntaxKind::Identifier),
             "First token should not be identifier");
 }
 
@@ -547,17 +546,14 @@ ZC_TEST("ParserTest.LookAheadComplexExpression") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
 
   // Test specific token positions in complex expression
-  ZC_EXPECT(parser.isLookAhead(1, lexer::TokenKind::kIdentifier),
+  ZC_EXPECT(parser.isLookAhead(1, ast::SyntaxKind::Identifier),
             "Token 1 should be identifier 'add'");
-  ZC_EXPECT(parser.isLookAhead(2, lexer::TokenKind::kLeftParen), "Token 2 should be '('");
-  ZC_EXPECT(parser.isLookAhead(3, lexer::TokenKind::kIdentifier),
-            "Token 3 should be identifier 'a'");
-  ZC_EXPECT(parser.isLookAhead(4, lexer::TokenKind::kColon), "Token 4 should be ':'");
-  ZC_EXPECT(parser.isLookAhead(5, lexer::TokenKind::kI32Keyword),
-            "Token 5 should be keyword 'i32'");
-  ZC_EXPECT(parser.isLookAhead(6, lexer::TokenKind::kComma), "Token 6 should be ','");
-  ZC_EXPECT(parser.isLookAhead(7, lexer::TokenKind::kIdentifier),
-            "Token 7 should be identifier 'b'");
+  ZC_EXPECT(parser.isLookAhead(2, ast::SyntaxKind::LeftParen), "Token 2 should be '('");
+  ZC_EXPECT(parser.isLookAhead(3, ast::SyntaxKind::Identifier), "Token 3 should be identifier 'a'");
+  ZC_EXPECT(parser.isLookAhead(4, ast::SyntaxKind::Colon), "Token 4 should be ':'");
+  ZC_EXPECT(parser.isLookAhead(5, ast::SyntaxKind::I32Keyword), "Token 5 should be keyword 'i32'");
+  ZC_EXPECT(parser.isLookAhead(6, ast::SyntaxKind::Comma), "Token 6 should be ','");
+  ZC_EXPECT(parser.isLookAhead(7, ast::SyntaxKind::Identifier), "Token 7 should be identifier 'b'");
 }
 
 ZC_TEST("ParserTest.ParseTypeQuery") {

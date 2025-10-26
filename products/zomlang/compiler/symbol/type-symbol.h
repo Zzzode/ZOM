@@ -24,7 +24,7 @@ namespace compiler {
 
 // Forward declarations
 namespace ast {
-class Type;
+class TypeNode;
 }
 
 namespace symbol {
@@ -84,8 +84,8 @@ public:
   zc::Array<zc::Maybe<const TypeSymbol&>> getLowerBounds() const;
 
   // AST integration
-  zc::Maybe<const ast::Type&> getAstType() const;
-  void setAstType(zc::Maybe<const ast::Type&> type);
+  zc::Maybe<const ast::TypeNode&> getAstType() const;
+  void setAstType(zc::Maybe<const ast::TypeNode&> type);
 
   // Symbol classification
   bool isType() const { return true; }

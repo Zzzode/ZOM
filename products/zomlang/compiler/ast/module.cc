@@ -29,21 +29,27 @@ namespace ast {
 
 // ================================================================================
 // SourceFile::Impl
-struct SourceFile::Impl {
+struct SourceFile::Impl : private NodeImpl {
   Impl(zc::String&& fileName, zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
-      : fileName(zc::mv(fileName)), statements(zc::mv(statements)) {}
+      : NodeImpl(SyntaxKind::SourceFile),
+        fileName(zc::mv(fileName)),
+        statements(zc::mv(statements)) {}
 
   /// Identifier of the module buffer.
   const zc::String fileName;
   /// List of toplevel statements in the module.
   const NodeList<ast::Statement> statements;
+
+  // Forward NodeImpl methods
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
 };
 
 // ================================================================================
 // SourceFile
 SourceFile::SourceFile(zc::String&& fileName,
                        zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept
-    : Node(SyntaxKind::kSourceFile), impl(zc::heap<Impl>(zc::mv(fileName), zc::mv(statements))) {}
+    : Node(), impl(zc::heap<Impl>(zc::mv(fileName), zc::mv(statements))) {}
 
 SourceFile::~SourceFile() noexcept(false) = default;
 
@@ -51,125 +57,131 @@ const NodeList<Statement>& SourceFile::getStatements() const { return impl->stat
 
 zc::StringPtr SourceFile::getFileName() const { return impl->fileName; }
 
+SyntaxKind SourceFile::getKind() const { return SyntaxKind::SourceFile; }
+
 void SourceFile::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+void SourceFile::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& SourceFile::getSourceRange() const { return impl->getSourceRange(); }
 
 // ================================================================================
 // ImportDeclaration::Impl
-struct ImportDeclaration::Impl {
+struct ImportDeclaration::Impl : private NodeImpl {
   Impl(zc::Own<ModulePath>&& modulePath, zc::Maybe<zc::Own<ast::Identifier>> alias) noexcept
-      : modulePath(zc::mv(modulePath)), alias(zc::mv(alias)) {}
+      : NodeImpl(SyntaxKind::ImportDeclaration),
+        modulePath(zc::mv(modulePath)),
+        alias(zc::mv(alias)) {}
 
   const zc::Own<ModulePath> modulePath;
   const zc::Maybe<zc::Own<ast::Identifier>> alias;
+
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
 };
 
 // ================================================================================
 // ImportDeclaration
 ImportDeclaration::ImportDeclaration(zc::Own<ModulePath>&& modulePath,
                                      zc::Maybe<zc::Own<ast::Identifier>> alias) noexcept
-    : Statement(SyntaxKind::kImportDeclaration),
-      impl(zc::heap<Impl>(zc::mv(modulePath), zc::mv(alias))) {}
+    : Statement(), impl(zc::heap<Impl>(zc::mv(modulePath), zc::mv(alias))) {}
 
 ImportDeclaration::~ImportDeclaration() noexcept(false) = default;
 
 const ModulePath& ImportDeclaration::getModulePath() const { return *impl->modulePath; }
 
-zc::Maybe<const ast::Identifier&> ImportDeclaration::getAlias() const {
-  ZC_IF_SOME(alias, impl->alias) { return *alias; }
-  return zc::none;
+zc::Maybe<const ast::Identifier&> ImportDeclaration::getAlias() const { return impl->alias; }
+
+SyntaxKind ImportDeclaration::getKind() const { return impl->getKind(); }
+
+void ImportDeclaration::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& ImportDeclaration::getSourceRange() const {
+  return impl->getSourceRange();
 }
 
 void ImportDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ExportDeclaration::Impl
-struct ExportDeclaration::Impl {
-  struct SimpleExport {
-    zc::Own<ast::Identifier> identifier;
+struct ExportDeclaration::Impl : private NodeImpl {
+  explicit Impl(zc::Own<ast::Expression>&& exportPath,
+                zc::Maybe<zc::Own<ast::Identifier>> alias) noexcept
+      : NodeImpl(SyntaxKind::ExportDeclaration),
+        exportPath(zc::mv(exportPath)),
+        alias(zc::mv(alias)) {}
 
-    explicit SimpleExport(zc::Own<ast::Identifier>&& identifier) : identifier(zc::mv(identifier)) {}
-  };
+  const zc::Own<ast::Expression> exportPath;
+  const zc::Maybe<zc::Own<ast::Identifier>> alias;
 
-  struct RenameExport {
-    zc::Own<ast::Identifier> identifier;
-    zc::Own<ast::Identifier> alias;
-    zc::Own<ModulePath> modulePath;
-
-    RenameExport(zc::Own<ast::Identifier>&& identifier, zc::Own<ast::Identifier>&& alias,
-                 zc::Own<ModulePath>&& modulePath)
-        : identifier(zc::mv(identifier)), alias(zc::mv(alias)), modulePath(zc::mv(modulePath)) {}
-  };
-
-  zc::OneOf<SimpleExport, RenameExport> exportType;
-
-  explicit Impl(zc::Own<ast::Identifier>&& identifier)
-      : exportType(SimpleExport(zc::mv(identifier))) {}
-
-  Impl(zc::Own<ast::Identifier>&& identifier, zc::Own<ast::Identifier>&& alias,
-       zc::Own<ModulePath>&& modulePath)
-      : exportType(RenameExport(zc::mv(identifier), zc::mv(alias), zc::mv(modulePath))) {}
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
 };
 
 // ================================================================================
 // ExportDeclaration
-ExportDeclaration::ExportDeclaration(zc::Own<ast::Identifier>&& identifier) noexcept
-    : Statement(SyntaxKind::kExportDeclaration), impl(zc::heap<Impl>(zc::mv(identifier))) {}
-
-ExportDeclaration::ExportDeclaration(zc::Own<ast::Identifier>&& identifier,
-                                     zc::Own<ast::Identifier>&& alias,
-                                     zc::Own<ModulePath>&& modulePath) noexcept
-    : Statement(SyntaxKind::kExportDeclaration),
-      impl(zc::heap<Impl>(zc::mv(identifier), zc::mv(alias), zc::mv(modulePath))) {}
+ExportDeclaration::ExportDeclaration(zc::Own<ast::Expression>&& exportPath,
+                                     zc::Maybe<zc::Own<ast::Identifier>> alias) noexcept
+    : Statement(), impl(zc::heap<Impl>(zc::mv(exportPath), zc::mv(alias))) {}
 
 ExportDeclaration::~ExportDeclaration() noexcept(false) = default;
 
-const ast::Identifier& ExportDeclaration::getIdentifier() const {
-  ZC_SWITCH_ONEOF(impl->exportType) {
-    ZC_CASE_ONEOF(simple, Impl::SimpleExport) { return *simple.identifier; }
-    ZC_CASE_ONEOF(rename, Impl::RenameExport) { return *rename.identifier; }
-  }
-  ZC_UNREACHABLE;
-}
-
-bool ExportDeclaration::isRename() const { return impl->exportType.is<Impl::RenameExport>(); }
+const ast::Expression& ExportDeclaration::getExportPath() const { return *impl->exportPath; }
 
 zc::Maybe<const ast::Identifier&> ExportDeclaration::getAlias() const {
-  ZC_SWITCH_ONEOF(impl->exportType) {
-    ZC_CASE_ONEOF(simple, Impl::SimpleExport) { return zc::none; }
-    ZC_CASE_ONEOF(rename, Impl::RenameExport) { return *rename.alias; }
-  }
-  ZC_UNREACHABLE;
+  ZC_IF_SOME(alias, impl->alias) { return *alias; }
+  return zc::none;
 }
 
-zc::Maybe<const ModulePath&> ExportDeclaration::getModulePath() const {
-  ZC_SWITCH_ONEOF(impl->exportType) {
-    ZC_CASE_ONEOF(simple, Impl::SimpleExport) { return zc::none; }
-    ZC_CASE_ONEOF(rename, Impl::RenameExport) { return *rename.modulePath; }
-  }
-  ZC_UNREACHABLE;
+SyntaxKind ExportDeclaration::getKind() const { return impl->getKind(); }
+
+void ExportDeclaration::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& ExportDeclaration::getSourceRange() const {
+  return impl->getSourceRange();
 }
 
 void ExportDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ModulePath::Impl
-struct ModulePath::Impl {
-  explicit Impl(zc::Vector<zc::Own<ast::Identifier>>&& identifiers) noexcept
-      : identifiers(zc::mv(identifiers)) {}
+struct ModulePath::Impl : private NodeImpl {
+  explicit Impl(zc::Own<ast::StringLiteral>&& stringLiteral) noexcept
+      : NodeImpl(SyntaxKind::ModulePath), stringLiteral(zc::mv(stringLiteral)) {}
 
-  const NodeList<Identifier> identifiers;
+  const zc::Own<ast::StringLiteral> stringLiteral;
+
+  // Forward NodeImpl methods
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
 };
 
 // ================================================================================
 // ModulePath
-ModulePath::ModulePath(zc::Vector<zc::Own<ast::Identifier>>&& identifiers) noexcept
-    : Node(SyntaxKind::kModulePath), impl(zc::heap<Impl>(zc::mv(identifiers))) {}
+ModulePath::ModulePath(zc::Own<ast::StringLiteral>&& stringLiteral) noexcept
+    : Node(), impl(zc::heap<Impl>(zc::mv(stringLiteral))) {}
 
 ModulePath::~ModulePath() noexcept(false) = default;
 
-const NodeList<Identifier>& ModulePath::getIdentifiers() const { return impl->identifiers; }
+const ast::StringLiteral& ModulePath::getStringLiteral() const { return *impl->stringLiteral; }
+
+SyntaxKind ModulePath::getKind() const { return SyntaxKind::ModulePath; }
 
 void ModulePath::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+void ModulePath::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& ModulePath::getSourceRange() const { return impl->getSourceRange(); }
 
 }  // namespace ast
 }  // namespace compiler

@@ -15,6 +15,7 @@
 #pragma once
 
 #include "zc/core/common.h"
+#include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/symbol/symbol-flags.h"
 #include "zomlang/compiler/symbol/symbol-id.h"
@@ -24,6 +25,10 @@ namespace compiler {
 
 namespace source {
 class SourceManager;
+}
+
+namespace ast {
+class Node;
 }
 
 namespace symbol {
@@ -128,6 +133,10 @@ public:
   zc::Maybe<const TypeSymbol&> getType() const;
   void setType(zc::Maybe<TypeSymbol&> type);
 
+  zc::ArrayPtr<const zc::Maybe<const ast::Node&>> getDeclarationNodes() const;
+  void addDeclarationNode(zc::Maybe<const ast::Node&> node);
+  void removeDeclarationNode(const ast::Node& node);
+
   // Visibility and access
   bool isPublic() const;
   bool isPrivate() const;
@@ -153,6 +162,86 @@ protected:
   struct Impl;
   zc::Own<Impl> impl;
 };
+
+/// \brief Internal symbol name prefix - invalid UTF-8 sequence that will never occur as identifier
+/// name
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_PREFIX = "\xFE"_zc;
+
+/// \brief Internal symbol names for special compiler-generated symbols
+/// These names use an invalid UTF-8 prefix to ensure they never conflict with user identifiers
+
+/// Call signatures
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_CALL =
+    "\xFE"
+    "call"_zc;
+/// Constructor implementations
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_CONSTRUCTOR =
+    "\xFE"
+    "constructor"_zc;
+/// Constructor signatures
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_NEW =
+    "\xFE"
+    "new"_zc;
+/// Index signatures
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_INDEX =
+    "\xFE"
+    "index"_zc;
+/// Module export * declarations
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_EXPORT_STAR =
+    "\xFE"
+    "export"_zc;
+/// Global self-reference
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_GLOBAL =
+    "\xFE"
+    "global"_zc;
+/// Indicates missing symbol
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_MISSING =
+    "\xFE"
+    "missing"_zc;
+/// Anonymous type literal symbol
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_TYPE =
+    "\xFE"
+    "type"_zc;
+/// Anonymous object literal declaration
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_OBJECT =
+    "\xFE"
+    "object"_zc;
+/// Anonymous JSX attributes object literal declaration
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_JSX_ATTRIBUTES =
+    "\xFE"
+    "jsxAttributes"_zc;
+/// Unnamed class expression
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_CLASS =
+    "\xFE"
+    "class"_zc;
+/// Unnamed function expression
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_FUNCTION =
+    "\xFE"
+    "function"_zc;
+/// Computed property name declaration with dynamic name
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_COMPUTED =
+    "\xFE"
+    "computed"_zc;
+/// Indicator symbol used to mark partially resolved type aliases
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_RESOLVING =
+    "\xFE"
+    "resolving"_zc;
+/// Instantiation expressions
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_INSTANTIATION_EXPRESSION =
+    "\xFE"
+    "instantiationExpression"_zc;
+/// Import attributes
+constexpr zc::StringPtr IMPORT_ATTRIBUTES =
+    "\xFE"
+    "importAttributes"_zc;
+/// Export assignment symbol
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_EXPORT_EQUALS = "export="_zc;
+/// Default export symbol (technically not wholly internal, but included here for usability)
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_DEFAULT = "default"_zc;
+/// This reference
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_THIS = "this"_zc;
+/// Module exports
+constexpr zc::StringPtr INTERNAL_SYMBOL_NAME_MODULE_EXPORTS = "module.exports"_zc;
 
 }  // namespace symbol
 }  // namespace compiler

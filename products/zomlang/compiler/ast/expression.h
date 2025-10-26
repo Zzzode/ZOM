@@ -20,77 +20,131 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
 
-class AssignmentOperator;
-class BinaryOperator;
-class UnaryOperator;
-class Type;
+class TypeNode;
 
 class Expression : public Node {
 public:
-  explicit Expression(SyntaxKind kind = SyntaxKind::kExpression) noexcept;
-  ~Expression() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(Expression);
 
-  // Visitor pattern support
-  void accept(Visitor& visitor) const override;
+  /// \brief Virtual destructor for proper RTTI support
+  virtual ~Expression() noexcept(false) = default;
+
+  /// \brief Accept a visitor for traversal
+  /// This is a pure virtual method that must be implemented by concrete Expression subclasses
+  virtual void accept(Visitor& visitor) const = 0;
+
+  /// \brief Get the syntax kind of this expression
+  /// This is a pure virtual method that must be implemented by concrete Expression subclasses
+  virtual SyntaxKind getKind() const = 0;
+
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is an Expression or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::PrefixUnaryExpression ||
+           kind == SyntaxKind::PostfixUnaryExpression ||
+           kind == SyntaxKind::PropertyAccessExpression ||
+           kind == SyntaxKind::ElementAccessExpression || kind == SyntaxKind::NewExpression ||
+           kind == SyntaxKind::ParenthesizedExpression || kind == SyntaxKind::BinaryExpression ||
+           kind == SyntaxKind::ConditionalExpression || kind == SyntaxKind::CallExpression ||
+           kind == SyntaxKind::StringLiteral || kind == SyntaxKind::IntegerLiteral ||
+           kind == SyntaxKind::FloatLiteral || kind == SyntaxKind::BooleanLiteral ||
+           kind == SyntaxKind::NullLiteral || kind == SyntaxKind::AsExpression ||
+           kind == SyntaxKind::ForcedAsExpression || kind == SyntaxKind::ConditionalAsExpression ||
+           kind == SyntaxKind::VoidExpression || kind == SyntaxKind::TypeOfExpression ||
+           kind == SyntaxKind::AwaitExpression || kind == SyntaxKind::FunctionExpression ||
+           kind == SyntaxKind::ArrayLiteralExpression ||
+           kind == SyntaxKind::ObjectLiteralExpression || kind == SyntaxKind::Identifier ||
+           kind == SyntaxKind::WildcardPattern || kind == SyntaxKind::IdentifierPattern ||
+           kind == SyntaxKind::TuplePattern || kind == SyntaxKind::StructurePattern ||
+           kind == SyntaxKind::ArrayPattern || kind == SyntaxKind::IsPattern ||
+           kind == SyntaxKind::ExpressionPattern || kind == SyntaxKind::EnumPattern;
+  }
+
+protected:
+  Expression() noexcept = default;
 };
 
 class UnaryExpression : public Expression {
 public:
-  explicit UnaryExpression(SyntaxKind kind = SyntaxKind::kUnaryExpression) noexcept;
-  ~UnaryExpression() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(UnaryExpression);
 
-  void accept(Visitor& visitor) const override;
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is a UnaryExpression or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::PrefixUnaryExpression ||
+           kind == SyntaxKind::PostfixUnaryExpression || kind == SyntaxKind::VoidExpression ||
+           kind == SyntaxKind::TypeOfExpression;
+  }
+
+protected:
+  UnaryExpression() noexcept = default;
 };
 
 class UpdateExpression : public UnaryExpression {
 public:
-  UpdateExpression(SyntaxKind kind = SyntaxKind::kUpdateExpression) noexcept;
-  ~UpdateExpression() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(UpdateExpression);
 
-  void accept(Visitor& visitor) const override;
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is an UpdateExpression or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::PrefixUnaryExpression ||
+           kind == SyntaxKind::PostfixUnaryExpression ||
+           kind == SyntaxKind::PropertyAccessExpression ||
+           kind == SyntaxKind::ElementAccessExpression || kind == SyntaxKind::CallExpression ||
+           kind == SyntaxKind::Identifier || kind == SyntaxKind::NewExpression ||
+           kind == SyntaxKind::ParenthesizedExpression || kind == SyntaxKind::StringLiteral ||
+           kind == SyntaxKind::IntegerLiteral || kind == SyntaxKind::FloatLiteral ||
+           kind == SyntaxKind::BooleanLiteral || kind == SyntaxKind::NullLiteral ||
+           kind == SyntaxKind::ArrayLiteralExpression ||
+           kind == SyntaxKind::ObjectLiteralExpression;
+  }
+
+protected:
+  UpdateExpression() noexcept = default;
 };
 
-class PrefixUnaryExpression : public UpdateExpression {
+class PrefixUnaryExpression final : public UpdateExpression {
 public:
-  PrefixUnaryExpression(zc::Own<UnaryOperator> op, zc::Own<Expression> operand) noexcept;
+  PrefixUnaryExpression(SyntaxKind op, zc::Own<Expression> operand) noexcept;
   ~PrefixUnaryExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(PrefixUnaryExpression);
 
-  const UnaryOperator& getOperator() const;
+  SyntaxKind getOperator() const;
   const Expression& getOperand() const;
   bool isPrefix() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class PostfixUnaryExpression : public UpdateExpression {
+class PostfixUnaryExpression final : public UpdateExpression {
 public:
-  PostfixUnaryExpression(zc::Own<UnaryOperator> op, zc::Own<Expression> operand) noexcept;
+  PostfixUnaryExpression(SyntaxKind op, zc::Own<Expression> operand) noexcept;
   ~PostfixUnaryExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(PostfixUnaryExpression);
 
-  const UnaryOperator& getOperator() const;
+  SyntaxKind getOperator() const;
   const Expression& getOperand() const;
   bool isPrefix() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
@@ -99,51 +153,86 @@ private:
 
 class LeftHandSideExpression : public UpdateExpression {
 public:
-  explicit LeftHandSideExpression(SyntaxKind kind = SyntaxKind::kLeftHandSideExpression) noexcept;
-  ~LeftHandSideExpression() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(LeftHandSideExpression);
 
-  void accept(Visitor& visitor) const override;
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is a LeftHandSideExpression or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::PropertyAccessExpression ||
+           kind == SyntaxKind::ElementAccessExpression || kind == SyntaxKind::CallExpression ||
+           kind == SyntaxKind::Identifier || kind == SyntaxKind::NewExpression ||
+           kind == SyntaxKind::ParenthesizedExpression || kind == SyntaxKind::StringLiteral ||
+           kind == SyntaxKind::IntegerLiteral || kind == SyntaxKind::FloatLiteral ||
+           kind == SyntaxKind::BooleanLiteral || kind == SyntaxKind::NullLiteral ||
+           kind == SyntaxKind::ArrayLiteralExpression ||
+           kind == SyntaxKind::ObjectLiteralExpression;
+  }
+
+protected:
+  LeftHandSideExpression() noexcept = default;
 };
 
 class MemberExpression : public LeftHandSideExpression {
 public:
-  explicit MemberExpression(SyntaxKind kind = SyntaxKind::kMemberExpression) noexcept;
-  ~MemberExpression() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(MemberExpression);
 
-  void accept(Visitor& visitor) const override;
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is a MemberExpression or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::PropertyAccessExpression ||
+           kind == SyntaxKind::ElementAccessExpression;
+  }
+
+protected:
+  MemberExpression() noexcept = default;
 };
 
 class PrimaryExpression : public MemberExpression {
 public:
-  explicit PrimaryExpression(SyntaxKind kind = SyntaxKind::kPrimaryExpression) noexcept;
-  ~PrimaryExpression() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(PrimaryExpression);
 
-  void accept(Visitor& visitor) const override;
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is a PrimaryExpression or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::Identifier || kind == SyntaxKind::NewExpression ||
+           kind == SyntaxKind::ParenthesizedExpression || kind == SyntaxKind::StringLiteral ||
+           kind == SyntaxKind::IntegerLiteral || kind == SyntaxKind::FloatLiteral ||
+           kind == SyntaxKind::BooleanLiteral || kind == SyntaxKind::NullLiteral ||
+           kind == SyntaxKind::ArrayLiteralExpression ||
+           kind == SyntaxKind::ObjectLiteralExpression || kind == SyntaxKind::WildcardPattern ||
+           kind == SyntaxKind::IdentifierPattern || kind == SyntaxKind::TuplePattern ||
+           kind == SyntaxKind::StructurePattern || kind == SyntaxKind::ArrayPattern ||
+           kind == SyntaxKind::IsPattern || kind == SyntaxKind::ExpressionPattern ||
+           kind == SyntaxKind::EnumPattern;
+  }
+
+protected:
+  PrimaryExpression() noexcept = default;
 };
 
-class Identifier : public PrimaryExpression {
+class Identifier final : public PrimaryExpression {
 public:
   explicit Identifier(zc::String name) noexcept;
   ~Identifier() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Identifier);
 
-  const zc::StringPtr getName() const;
+  const zc::StringPtr getText() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
+  zc::Own<Impl> impl;
 };
 
-class PropertyAccessExpression : public MemberExpression {
+class PropertyAccessExpression final : public MemberExpression {
 public:
   PropertyAccessExpression(zc::Own<LeftHandSideExpression> expression, zc::Own<Identifier> name,
                            bool questionDot = false) noexcept;
@@ -153,18 +242,17 @@ public:
 
   const LeftHandSideExpression& getExpression() const;
   const Identifier& getName() const;
-  bool isQuestionDot();
+  bool isQuestionDot() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
+  zc::Own<Impl> impl;
 };
 
-class ElementAccessExpression : public MemberExpression {
+class ElementAccessExpression final : public MemberExpression, public Declaration {
 public:
-  explicit ElementAccessExpression(SyntaxKind kind = SyntaxKind::kElementAccessExpression) noexcept;
   ElementAccessExpression(zc::Own<LeftHandSideExpression> expression, zc::Own<Expression> index,
                           bool questionDot = false) noexcept;
   ~ElementAccessExpression() noexcept(false);
@@ -173,16 +261,17 @@ public:
 
   const LeftHandSideExpression& getExpression() const;
   const Expression& getIndex() const;
-  bool isQuestionDot();
+  bool isQuestionDot() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  DECLARATION_METHOD_DECL();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class NewExpression : public PrimaryExpression {
+class NewExpression final : public PrimaryExpression, public Declaration {
 public:
   NewExpression(zc::Own<Expression> callee, zc::Vector<zc::Own<Expression>>&& arguments) noexcept;
   ~NewExpression() noexcept(false);
@@ -192,14 +281,15 @@ public:
   const Expression& getCallee() const;
   const NodeList<Expression>& getArguments() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  DECLARATION_METHOD_DECL();
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
+  zc::Own<Impl> impl;
 };
 
-class ParenthesizedExpression : public PrimaryExpression {
+class ParenthesizedExpression final : public PrimaryExpression {
 public:
   explicit ParenthesizedExpression(zc::Own<Expression> expression) noexcept;
   ~ParenthesizedExpression() noexcept(false);
@@ -208,52 +298,39 @@ public:
 
   const Expression& getExpression() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class BinaryExpression : public Expression {
+class BinaryExpression final : public Expression, public Declaration {
 public:
-  BinaryExpression(zc::Own<Expression> left, zc::Own<BinaryOperator> op,
+  BinaryExpression(zc::Own<Expression> left, zc::Own<TokenNode> op,
                    zc::Own<Expression> right) noexcept;
   ~BinaryExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(BinaryExpression);
 
+  /// \brief Get the left operand
   const Expression& getLeft() const;
-  const BinaryOperator& getOperator() const;
+
+  /// \brief Get the operator
+  const TokenNode& getOperator() const;
+
+  /// \brief Get the right operand
   const Expression& getRight() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  DECLARATION_METHOD_DECL();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class AssignmentExpression : public Expression {
-public:
-  AssignmentExpression(zc::Own<Expression> left, zc::Own<AssignmentOperator> op,
-                       zc::Own<Expression> right) noexcept;
-  ~AssignmentExpression() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(AssignmentExpression);
-
-  const Expression& getLeft() const;
-  const AssignmentOperator& getOperator() const;
-  const Expression& getRight() const;
-
-  void accept(Visitor& visitor) const override;
-
-private:
-  struct Impl;
-  const zc::Own<Impl> impl;
-};
-
-class ConditionalExpression : public Expression {
+class ConditionalExpression final : public Expression {
 public:
   ConditionalExpression(zc::Own<Expression> test, zc::Own<Expression> consequent,
                         zc::Own<Expression> alternate) noexcept;
@@ -265,16 +342,18 @@ public:
   const Expression& getConsequent() const;
   const Expression& getAlternate() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class CallExpression : public LeftHandSideExpression {
+class CallExpression final : public LeftHandSideExpression {
 public:
-  CallExpression(zc::Own<Expression> callee, zc::Vector<zc::Own<Expression>>&& arguments) noexcept;
+  CallExpression(zc::Own<Expression> callee, zc::Maybe<zc::Own<TokenNode>> questionDotToken,
+                 zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> typeArguments,
+                 zc::Vector<zc::Own<Expression>>&& arguments) noexcept;
   ~CallExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(CallExpression);
@@ -282,24 +361,7 @@ public:
   const Expression& getCallee() const;
   const NodeList<Expression>& getArguments() const;
 
-  void accept(Visitor& visitor) const override;
-
-private:
-  struct Impl;
-  const zc::Own<Impl> impl;
-};
-
-class OptionalExpression : public LeftHandSideExpression {
-public:
-  OptionalExpression(zc::Own<Expression> object, zc::Own<Expression> property) noexcept;
-  ~OptionalExpression() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(OptionalExpression);
-
-  const Expression& getObject() const;
-  const Expression& getProperty() const;
-
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
@@ -308,15 +370,39 @@ private:
 
 class LiteralExpression : public PrimaryExpression {
 public:
-  explicit LiteralExpression(SyntaxKind kind = SyntaxKind::kLiteral) noexcept;
-  ~LiteralExpression() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(LiteralExpression);
 
-  void accept(Visitor& visitor) const override;
+  virtual zc::StringPtr getText() const = 0;
+
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is a LiteralExpression or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::StringLiteral || kind == SyntaxKind::IntegerLiteral ||
+           kind == SyntaxKind::FloatLiteral || kind == SyntaxKind::BooleanLiteral ||
+           kind == SyntaxKind::NullLiteral || kind == SyntaxKind::ObjectLiteralExpression;
+  }
+
+protected:
+  LiteralExpression() noexcept = default;
 };
 
-class StringLiteral : public LiteralExpression {
+class LiteralExpressionImpl {
+public:
+  LiteralExpressionImpl(zc::StringPtr p) noexcept;
+  ~LiteralExpressionImpl() noexcept(false) = default;
+
+  zc::StringPtr getText() const;
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+#define LITERAL_EXPRESSION_METHOD_DECL() zc::StringPtr getText() const override;
+
+class StringLiteral final : public LiteralExpression {
 public:
   explicit StringLiteral(zc::String value) noexcept;
   ~StringLiteral() noexcept(false);
@@ -325,14 +411,15 @@ public:
 
   const zc::StringPtr getValue() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  LITERAL_EXPRESSION_METHOD_DECL();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class IntegerLiteral : public LiteralExpression {
+class IntegerLiteral final : public LiteralExpression {
 public:
   explicit IntegerLiteral(int64_t value) noexcept;
   ~IntegerLiteral() noexcept(false);
@@ -341,14 +428,15 @@ public:
 
   int64_t getValue() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  LITERAL_EXPRESSION_METHOD_DECL();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class FloatLiteral : public LiteralExpression {
+class FloatLiteral final : public LiteralExpression {
 public:
   explicit FloatLiteral(double value) noexcept;
   ~FloatLiteral() noexcept(false);
@@ -357,14 +445,15 @@ public:
 
   double getValue() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  LITERAL_EXPRESSION_METHOD_DECL();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class BooleanLiteral : public LiteralExpression {
+class BooleanLiteral final : public LiteralExpression {
 public:
   explicit BooleanLiteral(bool value) noexcept;
   ~BooleanLiteral() noexcept(false);
@@ -373,88 +462,115 @@ public:
 
   bool getValue() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  LITERAL_EXPRESSION_METHOD_DECL();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class NullLiteral : public LiteralExpression {
+class NullLiteral final : public LiteralExpression {
 public:
   NullLiteral() noexcept;
   ~NullLiteral() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(NullLiteral);
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  LITERAL_EXPRESSION_METHOD_DECL();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
 };
 
 class CastExpression : public Expression {
 public:
-  explicit CastExpression(SyntaxKind kind = SyntaxKind::kCastExpression) noexcept;
-  ~CastExpression() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(CastExpression);
 
+  /// \brief Get the expression being cast
   virtual const Expression& getExpression() const = 0;
-  virtual const Type& getTargetType() const = 0;
 
-  void accept(Visitor& visitor) const override;
+  /// \brief Get the target type
+  virtual const TypeNode& getTargetType() const = 0;
+
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is a CastExpression or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::AsExpression || kind == SyntaxKind::ForcedAsExpression ||
+           kind == SyntaxKind::ConditionalAsExpression;
+  }
+
+protected:
+  CastExpression() noexcept = default;
 };
 
-class AsExpression : public CastExpression {
+class CastExpressionImpl {
 public:
-  AsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType) noexcept;
+  CastExpressionImpl(const Expression& expression, const TypeNode& targetType) noexcept;
+  ~CastExpressionImpl() noexcept(false) = default;
+
+  const Expression& getExpression() const;
+  const TypeNode& getTargetType() const;
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+#define CAST_EXPRESSION_METHOD_DECL()               \
+  const Expression& getExpression() const override; \
+  const TypeNode& getTargetType() const override;
+
+class AsExpression final : public CastExpression {
+public:
+  AsExpression(zc::Own<Expression> expression, zc::Own<TypeNode> targetType) noexcept;
   ~AsExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(AsExpression);
 
-  const Expression& getExpression() const override;
-  const Type& getTargetType() const override;
-
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  CAST_EXPRESSION_METHOD_DECL();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class ForcedAsExpression : public CastExpression {
+class ForcedAsExpression final : public CastExpression {
 public:
-  ForcedAsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType) noexcept;
+  ForcedAsExpression(zc::Own<Expression> expression, zc::Own<TypeNode> targetType) noexcept;
   ~ForcedAsExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ForcedAsExpression);
 
-  const Expression& getExpression() const override;
-  const Type& getTargetType() const override;
-
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  CAST_EXPRESSION_METHOD_DECL();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class ConditionalAsExpression : public CastExpression {
+class ConditionalAsExpression final : public CastExpression {
 public:
-  ConditionalAsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType) noexcept;
+  ConditionalAsExpression(zc::Own<Expression> expression, zc::Own<TypeNode> targetType) noexcept;
   ~ConditionalAsExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ConditionalAsExpression);
 
-  const Expression& getExpression() const override;
-  const Type& getTargetType() const override;
-
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  CAST_EXPRESSION_METHOD_DECL();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class VoidExpression : public UnaryExpression {
+class VoidExpression final : public UnaryExpression {
 public:
   explicit VoidExpression(zc::Own<Expression> expression) noexcept;
   ~VoidExpression() noexcept(false);
@@ -463,14 +579,14 @@ public:
 
   const Expression& getExpression() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class TypeOfExpression : public UnaryExpression {
+class TypeOfExpression final : public UnaryExpression {
 public:
   explicit TypeOfExpression(zc::Own<Expression> expression) noexcept;
   ~TypeOfExpression() noexcept(false);
@@ -479,14 +595,14 @@ public:
 
   const Expression& getExpression() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class AwaitExpression : public Expression {
+class AwaitExpression final : public Expression {
 public:
   explicit AwaitExpression(zc::Own<Expression> expression) noexcept;
   ~AwaitExpression() noexcept(false);
@@ -495,35 +611,36 @@ public:
 
   const Expression& getExpression() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class FunctionExpression : public PrimaryExpression {
+class FunctionExpression final : public Declaration, public Expression {
 public:
-  FunctionExpression(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
+  FunctionExpression(zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
                      zc::Vector<zc::Own<BindingElement>>&& parameters,
-                     zc::Maybe<zc::Own<Type>> returnType, zc::Own<Statement> body) noexcept;
+                     zc::Maybe<zc::Own<TypeNode>> returnTypeNode, zc::Own<Statement> body) noexcept;
   ~FunctionExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(FunctionExpression);
 
-  const NodeList<TypeParameter>& getTypeParameters() const;
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
   const NodeList<BindingElement>& getParameters() const;
-  zc::Maybe<const Type&> getReturnType() const;
+  zc::Maybe<const TypeNode&> getReturnType() const;
   const Statement& getBody() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  DECLARATION_METHOD_DECL();
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
+  zc::Own<Impl> impl;
 };
 
-class ArrayLiteralExpression : public PrimaryExpression {
+class ArrayLiteralExpression final : public PrimaryExpression {
 public:
   explicit ArrayLiteralExpression(zc::Vector<zc::Own<Expression>>&& elements) noexcept;
   ~ArrayLiteralExpression() noexcept(false);
@@ -532,14 +649,14 @@ public:
 
   const NodeList<Expression>& getElements() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class ObjectLiteralExpression : public PrimaryExpression {
+class ObjectLiteralExpression final : public LiteralExpression {
 public:
   explicit ObjectLiteralExpression(zc::Vector<zc::Own<Expression>>&& properties) noexcept;
   ~ObjectLiteralExpression() noexcept(false);
@@ -548,7 +665,8 @@ public:
 
   const NodeList<Expression>& getProperties() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
+  LITERAL_EXPRESSION_METHOD_DECL();
 
 private:
   struct Impl;
@@ -558,59 +676,77 @@ private:
 // Pattern classes
 class Pattern : public Expression {
 public:
-  explicit Pattern(SyntaxKind kind = SyntaxKind::kPattern) noexcept;
-  ~Pattern() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(Pattern);
 
-  void accept(Visitor& visitor) const override;
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is a Pattern or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::WildcardPattern || kind == SyntaxKind::IdentifierPattern ||
+           kind == SyntaxKind::TuplePattern || kind == SyntaxKind::StructurePattern ||
+           kind == SyntaxKind::ArrayPattern || kind == SyntaxKind::IsPattern ||
+           kind == SyntaxKind::ExpressionPattern || kind == SyntaxKind::EnumPattern;
+  }
+
+protected:
+  Pattern() noexcept = default;
 };
 
 class PrimaryPattern : public Pattern {
 public:
-  explicit PrimaryPattern(SyntaxKind kind = SyntaxKind::kPrimaryPattern) noexcept;
-  ~PrimaryPattern() noexcept(false);
-
   ZC_DISALLOW_COPY_AND_MOVE(PrimaryPattern);
 
-  void accept(Visitor& visitor) const override;
+  /// \brief LLVM-style RTTI support
+  /// \param node The node to check
+  /// \return true if the node is a PrimaryPattern or derived class
+  static bool classof(const Node& node) {
+    SyntaxKind kind = node.getKind();
+    return kind == SyntaxKind::WildcardPattern || kind == SyntaxKind::IdentifierPattern ||
+           kind == SyntaxKind::TuplePattern || kind == SyntaxKind::StructurePattern ||
+           kind == SyntaxKind::ArrayPattern || kind == SyntaxKind::IsPattern ||
+           kind == SyntaxKind::ExpressionPattern || kind == SyntaxKind::EnumPattern;
+  }
+
+protected:
+  PrimaryPattern() noexcept = default;
 };
 
-class WildcardPattern : public PrimaryPattern {
+class WildcardPattern final : public PrimaryPattern {
 public:
-  explicit WildcardPattern(zc::Maybe<zc::Own<Type>> typeAnnotation = zc::none) noexcept;
+  explicit WildcardPattern(zc::Maybe<zc::Own<TypeNode>> typeAnnotation = zc::none) noexcept;
   ~WildcardPattern() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(WildcardPattern);
 
-  zc::Maybe<const Type&> getTypeAnnotation() const;
+  zc::Maybe<const TypeNode&> getTypeAnnotation() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class IdentifierPattern : public PrimaryPattern {
+class IdentifierPattern final : public PrimaryPattern {
 public:
   IdentifierPattern(zc::Own<Identifier> identifier,
-                    zc::Maybe<zc::Own<Type>> typeAnnotation = zc::none) noexcept;
+                    zc::Maybe<zc::Own<TypeNode>> typeAnnotation = zc::none) noexcept;
   ~IdentifierPattern() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(IdentifierPattern);
 
   const Identifier& getIdentifier() const;
-  zc::Maybe<const Type&> getTypeAnnotation() const;
+  zc::Maybe<const TypeNode&> getTypeAnnotation() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
+  zc::Own<Impl> impl;
 };
 
-class TuplePattern : public PrimaryPattern {
+class TuplePattern final : public PrimaryPattern {
 public:
   explicit TuplePattern(zc::Vector<zc::Own<Pattern>>&& elements) noexcept;
   ~TuplePattern() noexcept(false);
@@ -619,14 +755,14 @@ public:
 
   const NodeList<Pattern>& getElements() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class StructurePattern : public PrimaryPattern {
+class StructurePattern final : public PrimaryPattern {
 public:
   explicit StructurePattern(zc::Vector<zc::Own<Pattern>>&& properties) noexcept;
   ~StructurePattern() noexcept(false);
@@ -635,14 +771,14 @@ public:
 
   const NodeList<Pattern>& getProperties() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class ArrayPattern : public PrimaryPattern {
+class ArrayPattern final : public PrimaryPattern {
 public:
   explicit ArrayPattern(zc::Vector<zc::Own<Pattern>>&& elements) noexcept;
   ~ArrayPattern() noexcept(false);
@@ -651,30 +787,30 @@ public:
 
   const NodeList<Pattern>& getElements() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class IsPattern : public PrimaryPattern {
+class IsPattern final : public PrimaryPattern {
 public:
-  explicit IsPattern(zc::Own<Type> type) noexcept;
+  explicit IsPattern(zc::Own<TypeNode> type) noexcept;
   ~IsPattern() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(IsPattern);
 
-  const Type& getType() const;
+  const TypeNode& getType() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class ExpressionPattern : public PrimaryPattern {
+class ExpressionPattern final : public PrimaryPattern {
 public:
   explicit ExpressionPattern(zc::Own<Expression> expression) noexcept;
   ~ExpressionPattern() noexcept(false);
@@ -683,26 +819,41 @@ public:
 
   const Expression& getExpression() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
   const zc::Own<Impl> impl;
 };
 
-class EnumPattern : public PrimaryPattern {
+/// \brief Represents an enum pattern.
+///
+/// Enum patterns match against enum values.
+/// \code
+/// enum MyEnum {
+///   Value1(i32, i32),
+///   Value2(i32),
+/// }
+/// let x = MyEnum::Value1(1, 2);
+/// match x {
+///   when MyEnum.Value1(a, b) => {
+///     // a is 1, b is 2
+///   }
+/// }
+/// \endcode
+class EnumPattern final : public PrimaryPattern {
 public:
-  EnumPattern(zc::Maybe<zc::Own<Type>> typeReference, zc::Own<Identifier> propertyName,
+  EnumPattern(zc::Maybe<zc::Own<TypeNode>> typeReference, zc::Own<Identifier> propertyName,
               zc::Own<TuplePattern> tuplePattern) noexcept;
   ~EnumPattern() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(EnumPattern);
 
-  zc::Maybe<const Type&> getTypeReference() const;
+  zc::Maybe<const TypeNode&> getTypeReference() const;
   const Identifier& getPropertyName() const;
   const TuplePattern& getTuplePattern() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;

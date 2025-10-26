@@ -14,11 +14,12 @@
 
 #pragma once
 
-#include <concepts>
+#include <type_traits>
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
@@ -28,184 +29,18 @@ namespace source {
 class SourceRange;
 }  // namespace source
 
+namespace symbol {
+class Symbol;
+class SymbolTable;
+}  // namespace symbol
+
 namespace ast {
 
 // Forward declarations
 class Visitor;
 
-// Syntax kind enumeration for all AST node types
-enum class SyntaxKind {
-  // Base types
-  kNode,
-
-  // Specific node types
-  kSourceFile,
-  kModule,
-  kModulePath,
-
-  // Statement types
-  kStatement,
-  kImportDeclaration,
-  kExportDeclaration,
-  kBindingElement,
-  kVariableDeclaration,
-  kFunctionDeclaration,
-  kClassDeclaration,
-  kInterfaceDeclaration,
-  kStructDeclaration,
-  kEnumDeclaration,
-  kErrorDeclaration,
-  kAliasDeclaration,
-  kBlockStatement,
-  kEmptyStatement,
-  kExpressionStatement,
-  kIfStatement,
-  kWhileStatement,
-  kForStatement,
-  kBreakStatement,
-  kContinueStatement,
-  kReturnStatement,
-  kMatchStatement,
-  kDebuggerStatement,
-
-  // Expression types
-  kExpression,
-  kPrimaryExpression,
-  kParenthesizedExpression,
-  kBinaryExpression,
-  kUnaryExpression,
-  kPrefixUnaryExpression,
-  kPostfixUnaryExpression,
-  kAssignmentExpression,
-  kConditionalExpression,
-  kCallExpression,
-  kMemberExpression,
-  kUpdateExpression,
-  kCastExpression,
-  kAsExpression,
-  kForcedAsExpression,
-  kConditionalAsExpression,
-  kAwaitExpression,
-  kVoidExpression,
-  kFunctionExpression,
-  kTypeOfExpression,
-  kOptionalExpression,
-  kNewExpression,
-  kLeftHandSideExpression,
-  kExponentiationExpression,
-  kMultiplicativeExpression,
-  kAdditiveExpression,
-  kShiftExpression,
-  kRelationalExpression,
-  kEqualityExpression,
-  kBitwiseAndExpression,
-  kBitwiseXorExpression,
-  kBitwiseOrExpression,
-  kLogicalAndExpression,
-  kLogicalOrExpression,
-  kCoalesceExpression,
-  kShortCircuitExpression,
-  kPropertyAccessExpression,
-  kElementAccessExpression,
-
-  // Operators
-  kOperator,
-  kBinaryOperator,
-  kUnaryOperator,
-  kAssignmentOperator,
-  kUpdateOperator,
-
-  // Identifiers and literals
-  kIdentifier,
-  kBindingIdentifier,
-
-  // Literals
-  kLiteral,
-  kStringLiteral,
-  kIntegerLiteral,
-  kFloatLiteral,
-  kBooleanLiteral,
-  kNullLiteral,
-  kArrayLiteralExpression,
-  kObjectLiteralExpression,
-
-  // Types
-  kType,
-  kUnionType,
-  kIntersectionType,
-  kReturnType,
-  kPostfixType,
-  kArrayType,
-  kTupleType,
-  kObjectType,
-  kFunctionType,
-  kTypeReference,
-  kPredefinedType,
-  kOptionalType,
-  kTypeQuery,
-  kParenthesizedType,
-  kTypeAnnotation,
-  kTypeParameterDeclaration,
-
-  // Patterns
-  kPattern,
-  kWildcardPattern,
-  kIdentifierPattern,
-  kTuplePattern,
-  kStructurePattern,
-  kArrayPattern,
-  kIsPattern,
-  kExpressionPattern,
-  kEnumPattern,
-  kPrimaryPattern,
-
-  // Other constructs
-  kPropertySignature,
-  kMethodSignature,
-  kMatchClause,
-  kDefaultClause,
-  kGuardClause,
-  kPropertyDefinition,
-  kSpreadElement,
-  kElementList,
-  kArgumentList,
-  kBindingPattern,
-  kInitializer,
-  kTypeArguments,
-  kTypeArgumentList,
-  kCallSignature,
-  kParameterList,
-  kFunctionBody,
-  kClassElement,
-  kClassBody,
-  kInterfaceElement,
-  kInterfaceBody,
-  kStructMember,
-  kStructBody,
-  kErrorMember,
-  kErrorBody,
-  kEnumMember,
-  kEnumBody,
-  kAccessibilityModifier,
-  kInitDeclaration,
-  kDeinitDeclaration,
-  kGetAccessor,
-  kSetAccessor,
-  kMemberVariableDeclaration,
-  kMemberFunctionDeclaration,
-  kMemberAccessorDeclaration,
-  kPropertyMemberDeclaration,
-  kClassHeritage,
-  kInterfaceHeritage,
-  kErrorReturnClause,
-  kRaisesClause,
-  kErrorTypeList,
-};
-
 class Visitable {
 public:
-  virtual ~Visitable() noexcept(false) = default;
-
   ZC_DISALLOW_COPY_AND_MOVE(Visitable);
 
   virtual void accept(Visitor& visitor) const = 0;
@@ -217,32 +52,130 @@ protected:
 // Base class for all AST nodes
 class Node : public Visitable {
 public:
-  explicit Node(SyntaxKind kind) noexcept;
-  ~Node() noexcept(false) override;
-
   ZC_DISALLOW_COPY_AND_MOVE(Node);
 
+  /// \brief Set the source range of this node
+  virtual void setSourceRange(const source::SourceRange&& range) = 0;
+
+  /// \brief Get the source range of this node
+  virtual const source::SourceRange& getSourceRange() const = 0;
+
+  /// \brief Get the syntax kind of this node
+  virtual SyntaxKind getKind() const = 0;
+
+protected:
+  Node() noexcept = default;
+};
+
+class NodeImpl {
+public:
+  explicit NodeImpl(SyntaxKind kind) noexcept;
+  ~NodeImpl() noexcept(false);
+
   void setSourceRange(const source::SourceRange&& range);
-  ZC_NODISCARD const source::SourceRange sourceRange() const;
 
-  // Get the syntax kind of this node
-  ZC_NODISCARD SyntaxKind getKind() const;
+  const source::SourceRange& getSourceRange() const;
 
-  // Type checking helpers
-  ZC_NODISCARD bool isStatement() const;
-  ZC_NODISCARD bool isExpression() const;
-
-  // Visitor pattern support
-  void accept(Visitor& visitor) const override;
+  SyntaxKind getKind() const;
 
 private:
   struct Impl;
   zc::Own<Impl> impl;
 };
 
-// NodeList template class, used to store a list of nodes
+#define NODE_METHOD_DECLARE()                                      \
+  void setSourceRange(const source::SourceRange&& range) override; \
+  const source::SourceRange& getSourceRange() const override;      \
+  SyntaxKind getKind() const override;                             \
+  void accept(Visitor& visitor) const override;
+
+class TokenNode final : public Node {
+public:
+  TokenNode(SyntaxKind kind) noexcept;
+  ~TokenNode() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(TokenNode);
+
+  NODE_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+/// \brief Interface for AST nodes that can contain local symbols
+///
+/// This interface is implemented by nodes that create their own scope
+/// and can contain local symbol declarations (variables, functions, etc.).
+/// It provides access to the symbol table and maintains a chain of
+/// containers for declaration order tracking.
+class LocalsContainer {
+public:
+  ZC_DISALLOW_COPY_AND_MOVE(LocalsContainer);
+
+  /// \brief Get the symbol table containing local symbols
+  /// \return Reference to the symbol table, may be empty if not yet bound
+  virtual zc::Maybe<const symbol::SymbolTable&> getLocals() const = 0;
+
+  /// \brief Set the symbol table for this container
+  /// \param locals The symbol table to associate with this container
+  virtual void setLocals(zc::Maybe<const symbol::SymbolTable&> locals) = 0;
+
+  /// \brief Get the next container in declaration order
+  /// \return Reference to the next container, or none if this is the last
+  virtual zc::Maybe<const LocalsContainer&> getNextContainer() const = 0;
+
+  /// \brief Set the next container in declaration order
+  /// \param nextContainer The next container to link to
+  virtual void setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) = 0;
+
+protected:
+  LocalsContainer() noexcept = default;
+};
+
+/// \brief Implementation class for LocalsContainer interface
+///
+/// Provides concrete implementation of the LocalsContainer interface
+/// using the Pimpl pattern for encapsulation.
+class LocalsContainerImpl {
+public:
+  LocalsContainerImpl() noexcept;
+  ~LocalsContainerImpl() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(LocalsContainerImpl);
+
+  /// \brief Get the symbol table containing local symbols
+  zc::Maybe<const symbol::SymbolTable&> getLocals() const;
+
+  /// \brief Set the symbol table for this container
+  void setLocals(zc::Maybe<const symbol::SymbolTable&> locals);
+
+  /// \brief Get the next container in declaration order
+  zc::Maybe<const LocalsContainer&> getNextContainer() const;
+
+  /// \brief Set the next container in declaration order
+  void setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer);
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+/// \brief Macro to declare LocalsContainer methods in derived classes
+#define LOCALS_CONTAINER_METHOD_DECL()                                   \
+  zc::Maybe<const symbol::SymbolTable&> getLocals() const override;      \
+  void setLocals(zc::Maybe<const symbol::SymbolTable&> locals) override; \
+  zc::Maybe<const LocalsContainer&> getNextContainer() const override;   \
+  void setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) override;
+
+// Concept to define valid AST node types for NodeList
 template <typename T>
-  requires std::derived_from<T, Node>
+concept NodeLike = std::is_base_of_v<Node, T> || std::is_base_of_v<Statement, T> ||
+                   std::is_base_of_v<Expression, T> || std::is_base_of_v<Declaration, T> ||
+                   std::is_base_of_v<TypeNode, T> || std::is_base_of_v<TokenNode, T>;
+
+// NodeList template class, used to store a list of nodes
+template <NodeLike T>
 class NodeList {
 public:
   NodeList() noexcept {};
@@ -311,8 +244,7 @@ private:
 };
 
 // NodeList implementations of Iterator and ConstIterator
-template <typename T>
-  requires std::derived_from<T, Node>
+template <NodeLike T>
 class NodeList<T>::Iterator {
 public:
   Iterator(zc::Vector<zc::Own<T>>& vec, size_t index) : vec(&vec), index(index) {}
@@ -336,8 +268,7 @@ private:
   size_t index;
 };
 
-template <typename T>
-  requires std::derived_from<T, Node>
+template <NodeLike T>
 class NodeList<T>::ConstIterator {
 public:
   ConstIterator(const zc::Vector<zc::Own<T>>& vec, size_t index) : vec(&vec), index(index) {}

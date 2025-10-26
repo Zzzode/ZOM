@@ -256,6 +256,53 @@ inline SymbolFlags& operator&=(SymbolFlags& a, SymbolFlags b) {
   return a;
 }
 
+inline SymbolFlags& operator^=(SymbolFlags& a, SymbolFlags b) {
+  a = a ^ b;
+  return a;
+}
+
+/// \brief Logical NOT operator for quick empty checks
+/// \param flags The SymbolFlags to check
+/// \return true if flags is None, false otherwise
+inline bool operator!(SymbolFlags flags) { return flags == SymbolFlags::None; }
+
+/// \brief Equality comparison operator
+/// \param a First SymbolFlags
+/// \param b Second SymbolFlags
+/// \return true if both flags are equal
+inline bool operator==(SymbolFlags a, SymbolFlags b) {
+  return static_cast<uint64_t>(a) == static_cast<uint64_t>(b);
+}
+
+/// \brief Inequality comparison operator
+/// \param a First SymbolFlags
+/// \param b Second SymbolFlags
+/// \return true if flags are not equal
+inline bool operator!=(SymbolFlags a, SymbolFlags b) {
+  return static_cast<uint64_t>(a) != static_cast<uint64_t>(b);
+}
+
+/// \brief Left shift operator for bit manipulation
+/// \param flags The SymbolFlags to shift
+/// \param shift Number of positions to shift left
+/// \return Shifted SymbolFlags
+inline SymbolFlags operator<<(SymbolFlags flags, int shift) {
+  return static_cast<SymbolFlags>(static_cast<uint64_t>(flags) << shift);
+}
+
+/// \brief Right shift operator for bit manipulation
+/// \param flags The SymbolFlags to shift
+/// \param shift Number of positions to shift right
+/// \return Shifted SymbolFlags
+inline SymbolFlags operator>>(SymbolFlags flags, int shift) {
+  return static_cast<SymbolFlags>(static_cast<uint64_t>(flags) >> shift);
+}
+
+/// \brief Check if flags are non-empty (alternative to explicit bool conversion)
+/// \param flags The SymbolFlags to check
+/// \return true if flags is not None, false otherwise
+inline bool isNonEmpty(SymbolFlags flags) { return flags != SymbolFlags::None; }
+
 inline bool hasFlag(SymbolFlags flags, SymbolFlags flag) {
   return (flags & flag) != SymbolFlags::None;
 }

@@ -16,12 +16,13 @@
 
 #include <cstdint>
 
-#include "zc/core/common.h"
-#include "zc/core/string.h"
-#include "zomlang/compiler/ast/ast.h"
-
 namespace zomlang {
 namespace compiler {
+
+namespace lexer {
+enum class SyntaxKind;
+}  // namespace lexer
+
 namespace ast {
 
 // Operator precedence levels
@@ -51,80 +52,9 @@ enum class OperatorAssociativity { kLeft, kRight, kNone };
 // Operator types
 enum class OperatorType { kBinary, kUnary, kAssignment, kUpdate };
 
-// Base class for all operators
-class Operator : public Node {
-public:
-  explicit Operator(zc::String symbol, OperatorType type, OperatorPrecedence precedence,
-                    OperatorAssociativity associativity) noexcept;
-  ~Operator() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(Operator);
-
-  void accept(Visitor& visitor) const override;
-
-  zc::StringPtr getSymbol() const;
-  OperatorType getType() const;
-  OperatorPrecedence getPrecedence() const;
-  OperatorAssociativity getAssociativity() const;
-
-  // Helper methods for operator classification
-  bool isBinary() const;
-  bool isUnary() const;
-  bool isAssignment() const;
-  bool isUpdate() const;
-
-  // Precedence comparison
-  bool hasHigherPrecedenceThan(const Operator& other) const;
-  bool hasLowerPrecedenceThan(const Operator& other) const;
-  bool hasSamePrecedenceAs(const Operator& other) const;
-
-private:
-  struct Impl;
-  const zc::Own<Impl> impl;
-};
-
 // Binary operators: +, -, *, /, %, ==, !=, <, >, <=, >=, &&, ||, &, |, ^, <<, >>
-class BinaryOperator : public Operator {
-public:
-  explicit BinaryOperator(
-      zc::String symbol, OperatorPrecedence precedence,
-      OperatorAssociativity associativity = OperatorAssociativity::kLeft) noexcept;
-  ~BinaryOperator() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(BinaryOperator);
-
-  void accept(Visitor& visitor) const override;
-};
-
 // Unary operators: +, -, !, ~, ++, --
-class UnaryOperator : public Operator {
-public:
-  explicit UnaryOperator(zc::String symbol, bool prefix = true) noexcept;
-  ~UnaryOperator() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(UnaryOperator);
-
-  void accept(Visitor& visitor) const override;
-
-  bool isPrefix() const;
-
-private:
-  struct Impl;
-  const zc::Own<Impl> impl;
-};
-
 // Assignment operators: =, +=, -=, *=, /=, %=, &=, |=, ^=, <<=, >>=
-class AssignmentOperator : public Operator {
-public:
-  explicit AssignmentOperator(zc::String symbol) noexcept;
-  ~AssignmentOperator() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(AssignmentOperator);
-
-  void accept(Visitor& visitor) const override;
-
-  bool isCompound() const;
-};
 
 }  // namespace ast
 }  // namespace compiler

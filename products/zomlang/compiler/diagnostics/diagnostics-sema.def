@@ -12,4 +12,25 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-DIAG(TypeMismatch,          kError,   "Type mismatch: expected {0}, got {1}", 2)
+DIAG(TypeMismatch, kError, "Type mismatch: expected {0}, got {1}", 2)
+DIAG(UndefinedIdentifier, kError, "Undefined identifier: '{0}'", 1)
+DIAG(DuplicateIdentifier, kError, "Duplicate identifier: '{0}'", 1)
+DIAG(RedeclareVariable, kError, "Cannot redeclare variable '{0}'", 1)
+DIAG(RedeclareFunction, kError, "Cannot redeclare function '{0}'", 1)
+DIAG(RedeclareClass, kError, "Cannot redeclare class '{0}'", 1)
+DIAG(RedeclareInterface, kError, "Cannot redeclare interface '{0}'", 1)
+DIAG(RedeclareEnum, kError, "Cannot redeclare enum '{0}'", 1)
+DIAG(RedeclareTypeAlias, kError, "Cannot redeclare type alias '{0}'", 1)
+DIAG(RedeclaraBlockScopedVariable, kError, "Cannot redeclare block-scoped variable '{0}'", 1)
+DIAG(EnumMergeConflict, kError,
+     "Enum declarations can only merge with namespace or other enum declarations", 0)
+DIAG(MultipleDefaultExports, kError, "A module cannot have multiple default exports", 0)
+
+// Contextual identifier validation errors
+DIAG(ReservedWord, kError, "Identifier expected. '{0}' is a reserved word", 1)
+DIAG(ReservedInContext, kError,
+     "Identifier expected. '{0}' is a reserved word that cannot be used here", 1)
+DIAG(ReservedInModule, kError,
+     "Identifier expected. '{0}' is a reserved word at the top level of a module", 1)
+
+DIAG(SemanticError, kError, "{0}", 1)

@@ -189,7 +189,14 @@ public:
       return zc::str("Compilation failed due to parsing errors.");
     }
 
-    // If syntax-only mode, we're done after parsing
+    // Trigger the parallel binding process
+    success = driver->bindSources();
+
+    if (!success || driver->getDiagnosticEngine().hasErrors()) {
+      return zc::str("Compilation failed due to binding errors.");
+    }
+
+    // If syntax-only mode, we're done after parsing and binding
     const auto& options = driver->getCompilerOptions();
     if (options.emission.syntaxOnly) {
       context.warning("Syntax check completed successfully.");

@@ -18,16 +18,20 @@
 #include "zc/core/map.h"
 #include "zc/core/mutex.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/cast.h"
 #include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/module.h"
 #include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/thread-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/binder/binder.h"
 #include "zomlang/compiler/diagnostics/consoling-diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/source/manager.h"
+#include "zomlang/compiler/symbol/symbol-table.h"
 
 namespace zomlang {
 namespace compiler {
@@ -41,7 +45,8 @@ struct CompilerDriver::Impl {
       : langOpts(opts),
         compilerOpts(compOpts),
         sourceManager(zc::heap<source::SourceManager>()),
-        diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)) {
+        diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)),
+        symbolTable(zc::heap<symbol::SymbolTable>()) {
     diagnosticEngine->addConsumer(zc::heap<diagnostics::ConsolingDiagnosticConsumer>());
   }
   ~Impl() noexcept(false) = default;
@@ -66,6 +71,8 @@ struct CompilerDriver::Impl {
   zc::Own<source::SourceManager> sourceManager;
   /// Diagnostic engine to report diagnostics.
   zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;
+  /// Symbol table to manage symbols and scopes.
+  zc::Own<symbol::SymbolTable> symbolTable;
   /// Mutex-guarded map from BufferId to parsed AST.
   zc::MutexGuarded<zc::HashMap<source::BufferId, zc::Own<ast::Node>>> astMutex;
 };
@@ -123,6 +130,48 @@ bool CompilerDriver::parseSources() {
   // Return true if no errors were reported
   return !impl->diagnosticEngine->hasErrors();
 }
+
+bool CompilerDriver::bindSources() {
+  // Create a vector of buffer IDs and AST references for binding
+  zc::Vector<zc::Tuple<source::BufferId, zc::Maybe<ast::Node&>>> bindingTasks;
+
+  {
+    // Get the parsed ASTs in a scoped block
+    auto lockedAsts = impl->astMutex.lockShared();
+    for (const auto& entry : *lockedAsts) {
+      // Use zc::Maybe<ast::Node&> instead of raw pointer
+      // Cast away const for binding (binder needs mutable access)
+      ast::Node& astNode = const_cast<ast::Node&>(*entry.value);
+      bindingTasks.add(zc::tuple(entry.key, zc::Maybe<ast::Node&>(astNode)));
+    }
+    // Lock is automatically released when lockedAsts goes out of scope
+  }
+
+  basic::ThreadPool threadPool;
+
+  for (const auto& task : bindingTasks) {
+    const source::BufferId& bufferId = zc::get<0>(task);
+    const zc::Maybe<ast::Node&>& maybeAstNode = zc::get<1>(task);
+
+    // Create a thread for each AST binding
+    threadPool.enqueue([this, bufferId, &maybeAstNode]() -> void {
+      ZC_IF_SOME(astNode, maybeAstNode) {
+        // Cast to SourceFile for binding using type-safe cast
+        auto& sourceFile = ast::cast<ast::SourceFile>(astNode);
+        // Create a binder for this thread
+        binder::Binder binder(*impl->symbolTable, *impl->diagnosticEngine);
+        // Perform binding for the source file
+        binder.bindSourceFile(sourceFile);
+      }
+      // Errors during binding should be reported via the DiagnosticEngine
+    });
+  }
+
+  // Return true if no errors were reported
+  return !impl->diagnosticEngine->hasErrors();
+}
+
+const symbol::SymbolTable& CompilerDriver::getSymbolTable() const { return *impl->symbolTable; }
 
 const basic::CompilerOptions& CompilerDriver::getCompilerOptions() const {
   return impl->compilerOpts;

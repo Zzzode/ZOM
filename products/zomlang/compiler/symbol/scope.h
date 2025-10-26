@@ -37,6 +37,7 @@ public:
     Interface,
     Function,
     Block,
+    Enum,
     Catch,
     For,
     While,
@@ -46,7 +47,7 @@ public:
     Namespace
   };
 
-  Scope(Kind kind, zc::StringPtr name, zc::Maybe<const Scope&> parent = zc::none) noexcept;
+  Scope(Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent = zc::none) noexcept;
   Scope(Scope&& other) noexcept = default;
   Scope& operator=(Scope&& other) noexcept = default;
   ~Scope() noexcept(false);
@@ -61,12 +62,12 @@ public:
   /// \brief Symbol management
   void addSymbol(zc::Own<Symbol> symbol);
   void removeSymbol(zc::StringPtr name);
-  zc::Maybe<const Symbol&> lookupSymbol(zc::StringPtr name) const;
-  zc::Maybe<const Symbol&> lookupSymbolLocally(zc::StringPtr name) const;
-  zc::Maybe<const Symbol&> lookupSymbolRecursively(zc::StringPtr name) const;
+  zc::Maybe<Symbol&> lookupSymbol(zc::StringPtr name);
+  zc::Maybe<Symbol&> lookupSymbolLocally(zc::StringPtr name);
+  zc::Maybe<Symbol&> lookupSymbolRecursively(zc::StringPtr name);
 
   /// \brief Symbol enumeration
-  bool hasSymbol(zc::StringPtr name) const;
+  bool hasSymbol(zc::StringPtr name);
   size_t getSymbolCount() const;
 
   /// \brief Scope hierarchy
@@ -89,7 +90,7 @@ public:
   zc::String toString() const;
 
   /// \brief Operator overloads
-  zc::Maybe<const Symbol&> operator[](zc::StringPtr name) const;
+  zc::Maybe<Symbol&> operator[](zc::StringPtr name);
   bool operator==(const Scope& other) const;
   bool operator!=(const Scope& other) const;
 

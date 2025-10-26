@@ -11,14 +11,3 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-
-#include "zomlang/compiler/ast/operator.h"
-
-#include "zomlang/compiler/ast/kinds.h"
-#include "zomlang/compiler/source/location.h"
-
-namespace zomlang {
-namespace compiler {
-namespace ast {}  // namespace ast
-}  // namespace compiler
-}  // namespace zomlang

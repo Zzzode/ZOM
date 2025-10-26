@@ -25,13 +25,13 @@ namespace lexer {
 // Token::Impl
 
 struct Token::Impl {
-  TokenKind kind;
+  ast::SyntaxKind kind;
   source::SourceRange range;
   zc::Maybe<zc::String> cachedText;
   TokenFlags flags;
 
-  Impl() : kind(TokenKind::kUnknown), flags(TokenFlags::kNone) {}
-  Impl(TokenKind k, source::SourceRange r, zc::Maybe<zc::String> text,
+  Impl() : kind(ast::SyntaxKind::Unknown), flags(TokenFlags::kNone) {}
+  Impl(ast::SyntaxKind k, source::SourceRange r, zc::Maybe<zc::String> text,
        TokenFlags f = TokenFlags::kNone)
       : kind(k), range(r), cachedText(zc::mv(text)), flags(f) {}
 };
@@ -41,7 +41,7 @@ struct Token::Impl {
 
 Token::Token() noexcept : impl(zc::heap<Impl>()) {}
 
-Token::Token(TokenKind k, source::SourceRange r, zc::Maybe<zc::String> text,
+Token::Token(ast::SyntaxKind k, source::SourceRange r, zc::Maybe<zc::String> text,
              TokenFlags flags) noexcept
     : impl(zc::heap<Impl>(k, r, zc::mv(text), flags)) {}
 
@@ -77,7 +77,7 @@ Token& Token::operator=(Token&& other) noexcept {
   return *this;
 }
 
-void Token::setKind(TokenKind k) { impl->kind = k; }
+void Token::setKind(ast::SyntaxKind k) { impl->kind = k; }
 
 void Token::setRange(source::SourceRange r) { impl->range = r; }
 
@@ -90,9 +90,9 @@ void Token::addFlag(TokenFlags flag) {
       static_cast<TokenFlags>(static_cast<uint8_t>(impl->flags) | static_cast<uint8_t>(flag));
 }
 
-bool Token::is(TokenKind k) const { return impl->kind == k; }
+bool Token::is(ast::SyntaxKind k) const { return impl->kind == k; }
 
-TokenKind Token::getKind() const { return impl->kind; }
+ast::SyntaxKind Token::getKind() const { return impl->kind; }
 
 source::SourceLoc Token::getLocation() const { return impl->range.getStart(); }
 
@@ -118,300 +118,300 @@ zc::String Token::getText(const source::SourceManager& sm) const {
 }
 
 namespace {
-constexpr zc::StringPtr getStaticTextForTokenKindImpl(TokenKind kind) {
+constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
   switch (kind) {
     // Keywords
-    case TokenKind::kLetKeyword:
+    case ast::SyntaxKind::LetKeyword:
       return "let"_zc;
-    case TokenKind::kConstKeyword:
+    case ast::SyntaxKind::ConstKeyword:
       return "const"_zc;
-    case TokenKind::kVarKeyword:
+    case ast::SyntaxKind::VarKeyword:
       return "var"_zc;
-    case TokenKind::kFunKeyword:
+    case ast::SyntaxKind::FunKeyword:
       return "fun"_zc;
-    case TokenKind::kClassKeyword:
+    case ast::SyntaxKind::ClassKeyword:
       return "class"_zc;
-    case TokenKind::kIfKeyword:
+    case ast::SyntaxKind::IfKeyword:
       return "if"_zc;
-    case TokenKind::kElseKeyword:
+    case ast::SyntaxKind::ElseKeyword:
       return "else"_zc;
-    case TokenKind::kForKeyword:
+    case ast::SyntaxKind::ForKeyword:
       return "for"_zc;
-    case TokenKind::kWhileKeyword:
+    case ast::SyntaxKind::WhileKeyword:
       return "while"_zc;
-    case TokenKind::kReturnKeyword:
+    case ast::SyntaxKind::ReturnKeyword:
       return "return"_zc;
-    case TokenKind::kBreakKeyword:
+    case ast::SyntaxKind::BreakKeyword:
       return "break"_zc;
-    case TokenKind::kContinueKeyword:
+    case ast::SyntaxKind::ContinueKeyword:
       return "continue"_zc;
-    case TokenKind::kTrueKeyword:
+    case ast::SyntaxKind::TrueKeyword:
       return "true"_zc;
-    case TokenKind::kFalseKeyword:
+    case ast::SyntaxKind::FalseKeyword:
       return "false"_zc;
-    case TokenKind::kNullKeyword:
+    case ast::SyntaxKind::NullKeyword:
       return "null"_zc;
-    case TokenKind::kThisKeyword:
+    case ast::SyntaxKind::ThisKeyword:
       return "this"_zc;
-    case TokenKind::kSuperKeyword:
+    case ast::SyntaxKind::SuperKeyword:
       return "super"_zc;
-    case TokenKind::kNewKeyword:
+    case ast::SyntaxKind::NewKeyword:
       return "new"_zc;
-    case TokenKind::kTryKeyword:
+    case ast::SyntaxKind::TryKeyword:
       return "try"_zc;
-    case TokenKind::kCatchKeyword:
+    case ast::SyntaxKind::CatchKeyword:
       return "catch"_zc;
-    case TokenKind::kFinallyKeyword:
+    case ast::SyntaxKind::FinallyKeyword:
       return "finally"_zc;
-    case TokenKind::kThrowKeyword:
+    case ast::SyntaxKind::ThrowKeyword:
       return "throw"_zc;
-    case TokenKind::kTypeOfKeyword:
+    case ast::SyntaxKind::TypeOfKeyword:
       return "typeof"_zc;
-    case TokenKind::kVoidKeyword:
+    case ast::SyntaxKind::VoidKeyword:
       return "void"_zc;
-    case TokenKind::kDeleteKeyword:
+    case ast::SyntaxKind::DeleteKeyword:
       return "delete"_zc;
-    case TokenKind::kInKeyword:
+    case ast::SyntaxKind::InKeyword:
       return "in"_zc;
-    case TokenKind::kOfKeyword:
+    case ast::SyntaxKind::OfKeyword:
       return "of"_zc;
-    case TokenKind::kInstanceOfKeyword:
+    case ast::SyntaxKind::InstanceOfKeyword:
       return "instanceof"_zc;
-    case TokenKind::kAsKeyword:
+    case ast::SyntaxKind::AsKeyword:
       return "as"_zc;
-    case TokenKind::kIsKeyword:
+    case ast::SyntaxKind::IsKeyword:
       return "is"_zc;
-    case TokenKind::kImportKeyword:
+    case ast::SyntaxKind::ImportKeyword:
       return "import"_zc;
-    case TokenKind::kExportKeyword:
+    case ast::SyntaxKind::ExportKeyword:
       return "export"_zc;
-    case TokenKind::kFromKeyword:
+    case ast::SyntaxKind::FromKeyword:
       return "from"_zc;
-    case TokenKind::kDefaultKeyword:
+    case ast::SyntaxKind::DefaultKeyword:
       return "default"_zc;
-    case TokenKind::kAsyncKeyword:
+    case ast::SyntaxKind::AsyncKeyword:
       return "async"_zc;
-    case TokenKind::kAwaitKeyword:
+    case ast::SyntaxKind::AwaitKeyword:
       return "await"_zc;
-    case TokenKind::kYieldKeyword:
+    case ast::SyntaxKind::YieldKeyword:
       return "yield"_zc;
-    case TokenKind::kStaticKeyword:
+    case ast::SyntaxKind::StaticKeyword:
       return "static"_zc;
-    case TokenKind::kPublicKeyword:
+    case ast::SyntaxKind::PublicKeyword:
       return "public"_zc;
-    case TokenKind::kPrivateKeyword:
+    case ast::SyntaxKind::PrivateKeyword:
       return "private"_zc;
-    case TokenKind::kProtectedKeyword:
+    case ast::SyntaxKind::ProtectedKeyword:
       return "protected"_zc;
-    case TokenKind::kAbstractKeyword:
+    case ast::SyntaxKind::AbstractKeyword:
       return "abstract"_zc;
-    case TokenKind::kOverrideKeyword:
+    case ast::SyntaxKind::OverrideKeyword:
       return "override"_zc;
-    case TokenKind::kInterfaceKeyword:
+    case ast::SyntaxKind::InterfaceKeyword:
       return "interface"_zc;
-    case TokenKind::kImplementsKeyword:
+    case ast::SyntaxKind::ImplementsKeyword:
       return "implements"_zc;
-    case TokenKind::kExtendsKeyword:
+    case ast::SyntaxKind::ExtendsKeyword:
       return "extends"_zc;
-    case TokenKind::kStructKeyword:
+    case ast::SyntaxKind::StructKeyword:
       return "struct"_zc;
-    case TokenKind::kEnumKeyword:
+    case ast::SyntaxKind::EnumKeyword:
       return "enum"_zc;
-    case TokenKind::kErrorKeyword:
+    case ast::SyntaxKind::ErrorKeyword:
       return "error"_zc;
-    case TokenKind::kAliasKeyword:
+    case ast::SyntaxKind::AliasKeyword:
       return "alias"_zc;
-    case TokenKind::kTypeKeyword:
+    case ast::SyntaxKind::TypeKeyword:
       return "type"_zc;
-    case TokenKind::kNamespaceKeyword:
+    case ast::SyntaxKind::NamespaceKeyword:
       return "namespace"_zc;
-    case TokenKind::kModuleKeyword:
+    case ast::SyntaxKind::ModuleKeyword:
       return "module"_zc;
-    case TokenKind::kPackageKeyword:
+    case ast::SyntaxKind::PackageKeyword:
       return "package"_zc;
-    case TokenKind::kUsingKeyword:
+    case ast::SyntaxKind::UsingKeyword:
       return "using"_zc;
-    case TokenKind::kWithKeyword:
+    case ast::SyntaxKind::WithKeyword:
       return "with"_zc;
-    case TokenKind::kWhenKeyword:
+    case ast::SyntaxKind::WhenKeyword:
       return "when"_zc;
-    case TokenKind::kSwitchKeyword:
+    case ast::SyntaxKind::SwitchKeyword:
       return "switch"_zc;
-    case TokenKind::kCaseKeyword:
+    case ast::SyntaxKind::CaseKeyword:
       return "case"_zc;
-    case TokenKind::kMatchKeyword:
+    case ast::SyntaxKind::MatchKeyword:
       return "match"_zc;
-    case TokenKind::kDoKeyword:
+    case ast::SyntaxKind::DoKeyword:
       return "do"_zc;
-    case TokenKind::kDebuggerKeyword:
+    case ast::SyntaxKind::DebuggerKeyword:
       return "debugger"_zc;
-    case TokenKind::kInitKeyword:
+    case ast::SyntaxKind::InitKeyword:
       return "init"_zc;
-    case TokenKind::kDeinitKeyword:
+    case ast::SyntaxKind::DeinitKeyword:
       return "deinit"_zc;
-    case TokenKind::kRaisesKeyword:
+    case ast::SyntaxKind::RaisesKeyword:
       return "raises"_zc;
 
     // Type keywords
-    case TokenKind::kBoolKeyword:
+    case ast::SyntaxKind::BoolKeyword:
       return "bool"_zc;
-    case TokenKind::kI8Keyword:
+    case ast::SyntaxKind::I8Keyword:
       return "i8"_zc;
-    case TokenKind::kI32Keyword:
+    case ast::SyntaxKind::I32Keyword:
       return "i32"_zc;
-    case TokenKind::kI64Keyword:
+    case ast::SyntaxKind::I64Keyword:
       return "i64"_zc;
-    case TokenKind::kU8Keyword:
+    case ast::SyntaxKind::U8Keyword:
       return "u8"_zc;
-    case TokenKind::kU16Keyword:
+    case ast::SyntaxKind::U16Keyword:
       return "u16"_zc;
-    case TokenKind::kU32Keyword:
+    case ast::SyntaxKind::U32Keyword:
       return "u32"_zc;
-    case TokenKind::kU64Keyword:
+    case ast::SyntaxKind::U64Keyword:
       return "u64"_zc;
-    case TokenKind::kF32Keyword:
+    case ast::SyntaxKind::F32Keyword:
       return "f32"_zc;
-    case TokenKind::kF64Keyword:
+    case ast::SyntaxKind::F64Keyword:
       return "f64"_zc;
-    case TokenKind::kStrKeyword:
+    case ast::SyntaxKind::StrKeyword:
       return "str"_zc;
-    case TokenKind::kUnitKeyword:
+    case ast::SyntaxKind::UnitKeyword:
       return "unit"_zc;
 
     // Common operators
-    case TokenKind::kPlus:
+    case ast::SyntaxKind::Plus:
       return "+"_zc;
-    case TokenKind::kMinus:
+    case ast::SyntaxKind::Minus:
       return "-"_zc;
-    case TokenKind::kAsterisk:
+    case ast::SyntaxKind::Asterisk:
       return "*"_zc;
-    case TokenKind::kAsteriskAsterisk:
+    case ast::SyntaxKind::AsteriskAsterisk:
       return "**"_zc;
-    case TokenKind::kSlash:
+    case ast::SyntaxKind::Slash:
       return "/"_zc;
-    case TokenKind::kPercent:
+    case ast::SyntaxKind::Percent:
       return "%"_zc;
-    case TokenKind::kEquals:
+    case ast::SyntaxKind::Equals:
       return "="_zc;
-    case TokenKind::kEqualsEquals:
+    case ast::SyntaxKind::EqualsEquals:
       return "=="_zc;
-    case TokenKind::kEqualsEqualsEquals:
+    case ast::SyntaxKind::EqualsEqualsEquals:
       return "==="_zc;
-    case TokenKind::kExclamationEquals:
+    case ast::SyntaxKind::ExclamationEquals:
       return "!="_zc;
-    case TokenKind::kExclamationEqualsEquals:
+    case ast::SyntaxKind::ExclamationEqualsEquals:
       return "!=="_zc;
-    case TokenKind::kLessThan:
+    case ast::SyntaxKind::LessThan:
       return "<"_zc;
-    case TokenKind::kGreaterThan:
+    case ast::SyntaxKind::GreaterThan:
       return ">"_zc;
-    case TokenKind::kLessThanEquals:
+    case ast::SyntaxKind::LessThanEquals:
       return "<="_zc;
-    case TokenKind::kGreaterThanEquals:
+    case ast::SyntaxKind::GreaterThanEquals:
       return ">="_zc;
-    case TokenKind::kAmpersandAmpersand:
+    case ast::SyntaxKind::AmpersandAmpersand:
       return "&&"_zc;
-    case TokenKind::kBarBar:
+    case ast::SyntaxKind::BarBar:
       return "||"_zc;
-    case TokenKind::kExclamation:
+    case ast::SyntaxKind::Exclamation:
       return "!"_zc;
-    case TokenKind::kQuestion:
+    case ast::SyntaxKind::Question:
       return "?"_zc;
-    case TokenKind::kColon:
+    case ast::SyntaxKind::Colon:
       return ":"_zc;
-    case TokenKind::kSemicolon:
+    case ast::SyntaxKind::Semicolon:
       return ";"_zc;
-    case TokenKind::kComma:
+    case ast::SyntaxKind::Comma:
       return ","_zc;
-    case TokenKind::kPeriod:
+    case ast::SyntaxKind::Period:
       return "."_zc;
-    case TokenKind::kArrow:
+    case ast::SyntaxKind::Arrow:
       return "->"_zc;
-    case TokenKind::kEqualsGreaterThan:
+    case ast::SyntaxKind::EqualsGreaterThan:
       return "=>"_zc;
-    case TokenKind::kPlusPlus:
+    case ast::SyntaxKind::PlusPlus:
       return "++"_zc;
-    case TokenKind::kMinusMinus:
+    case ast::SyntaxKind::MinusMinus:
       return "--"_zc;
-    case TokenKind::kPlusEquals:
+    case ast::SyntaxKind::PlusEquals:
       return "+="_zc;
-    case TokenKind::kMinusEquals:
+    case ast::SyntaxKind::MinusEquals:
       return "-="_zc;
-    case TokenKind::kAsteriskEquals:
+    case ast::SyntaxKind::AsteriskEquals:
       return "*="_zc;
-    case TokenKind::kAsteriskAsteriskEquals:
+    case ast::SyntaxKind::AsteriskAsteriskEquals:
       return "**="_zc;
-    case TokenKind::kSlashEquals:
+    case ast::SyntaxKind::SlashEquals:
       return "/="_zc;
-    case TokenKind::kPercentEquals:
+    case ast::SyntaxKind::PercentEquals:
       return "%="_zc;
-    case TokenKind::kAmpersand:
+    case ast::SyntaxKind::Ampersand:
       return "&"_zc;
-    case TokenKind::kBar:
+    case ast::SyntaxKind::Bar:
       return "|"_zc;
-    case TokenKind::kCaret:
+    case ast::SyntaxKind::Caret:
       return "^"_zc;
-    case TokenKind::kTilde:
+    case ast::SyntaxKind::Tilde:
       return "~"_zc;
-    case TokenKind::kLessThanLessThan:
+    case ast::SyntaxKind::LessThanLessThan:
       return "<<"_zc;
-    case TokenKind::kLessThanSlash:
+    case ast::SyntaxKind::LessThanSlash:
       return "</"_zc;
-    case TokenKind::kGreaterThanGreaterThan:
+    case ast::SyntaxKind::GreaterThanGreaterThan:
       return ">>"_zc;
-    case TokenKind::kGreaterThanGreaterThanGreaterThan:
+    case ast::SyntaxKind::GreaterThanGreaterThanGreaterThan:
       return ">"
              ">"
              ">"_zc;
-    case TokenKind::kAmpersandEquals:
+    case ast::SyntaxKind::AmpersandEquals:
       return "&="_zc;
-    case TokenKind::kBarEquals:
+    case ast::SyntaxKind::BarEquals:
       return "|="_zc;
-    case TokenKind::kCaretEquals:
+    case ast::SyntaxKind::CaretEquals:
       return "^="_zc;
-    case TokenKind::kLessThanLessThanEquals:
+    case ast::SyntaxKind::LessThanLessThanEquals:
       return "<<="_zc;
-    case TokenKind::kGreaterThanGreaterThanEquals:
+    case ast::SyntaxKind::GreaterThanGreaterThanEquals:
       return ">>="_zc;
-    case TokenKind::kGreaterThanGreaterThanGreaterThanEquals:
+    case ast::SyntaxKind::GreaterThanGreaterThanGreaterThanEquals:
       return ">>>="_zc;
-    case TokenKind::kBarBarEquals:
+    case ast::SyntaxKind::BarBarEquals:
       return "||="_zc;
-    case TokenKind::kAmpersandAmpersandEquals:
+    case ast::SyntaxKind::AmpersandAmpersandEquals:
       return "&&="_zc;
-    case TokenKind::kQuestionQuestion:
+    case ast::SyntaxKind::QuestionQuestion:
       return "??"_zc;
-    case TokenKind::kQuestionQuestionEquals:
+    case ast::SyntaxKind::QuestionQuestionEquals:
       return "\?\?="_zc;
-    case TokenKind::kQuestionDot:
+    case ast::SyntaxKind::QuestionDot:
       return "?."_zc;
-    case TokenKind::kDotDotDot:
+    case ast::SyntaxKind::DotDotDot:
       return "..."_zc;
-    case TokenKind::kErrorPropagate:
+    case ast::SyntaxKind::ErrorPropagate:
       return "?!"_zc;
-    case TokenKind::kErrorUnwrap:
+    case ast::SyntaxKind::ErrorUnwrap:
       return "!!"_zc;
-    case TokenKind::kErrorDefault:
+    case ast::SyntaxKind::ErrorDefault:
       return "?:"_zc;
 
     // Punctuation
-    case TokenKind::kLeftParen:
+    case ast::SyntaxKind::LeftParen:
       return "("_zc;
-    case TokenKind::kRightParen:
+    case ast::SyntaxKind::RightParen:
       return ")"_zc;
-    case TokenKind::kLeftBrace:
+    case ast::SyntaxKind::LeftBrace:
       return "{"_zc;
-    case TokenKind::kRightBrace:
+    case ast::SyntaxKind::RightBrace:
       return "}"_zc;
-    case TokenKind::kLeftBracket:
+    case ast::SyntaxKind::LeftBracket:
       return "["_zc;
-    case TokenKind::kRightBracket:
+    case ast::SyntaxKind::RightBracket:
       return "]"_zc;
-    case TokenKind::kAt:
+    case ast::SyntaxKind::At:
       return "@"_zc;
-    case TokenKind::kHash:
+    case ast::SyntaxKind::Hash:
       return "#"_zc;
-    case TokenKind::kBacktick:
+    case ast::SyntaxKind::Backtick:
       return "`"_zc;
 
     default:
@@ -420,7 +420,7 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(TokenKind kind) {
 }
 }  // namespace
 
-zc::Maybe<zc::String> Token::getStaticTextForTokenKind(TokenKind kind) {
+zc::Maybe<zc::String> Token::getStaticTextForTokenKind(ast::SyntaxKind kind) {
   zc::StringPtr text = getStaticTextForTokenKindImpl(kind);
   if (text.size() > 0) { return zc::str(text); }
   return zc::none;

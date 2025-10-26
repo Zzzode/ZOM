@@ -27,7 +27,7 @@ namespace symbol {
 
 // TypeSymbol::Impl definition
 struct TypeSymbol::Impl {
-  zc::Maybe<const ast::Type&> astType;
+  zc::Maybe<const ast::TypeNode&> astType;
   zc::Vector<zc::Maybe<const TypeSymbol&>> superTypes;
   zc::Vector<zc::Maybe<const TypeSymbol&>> typeParameters;
   zc::Vector<zc::Maybe<const TypeSymbol&>> upperBounds;
@@ -46,9 +46,9 @@ TypeSymbol::TypeSymbol(TypeSymbol&& other) noexcept = default;
 TypeSymbol& TypeSymbol::operator=(TypeSymbol&& other) noexcept = default;
 TypeSymbol::~TypeSymbol() noexcept(false) = default;
 
-zc::Maybe<const ast::Type&> TypeSymbol::getAstType() const { return impl->astType; }
+zc::Maybe<const ast::TypeNode&> TypeSymbol::getAstType() const { return impl->astType; }
 
-void TypeSymbol::setAstType(zc::Maybe<const ast::Type&> type) { impl->astType = type; }
+void TypeSymbol::setAstType(zc::Maybe<const ast::TypeNode&> type) { impl->astType = type; }
 
 bool TypeSymbol::isClass() const { return hasFlag(SymbolFlags::Class); }
 
@@ -65,13 +65,13 @@ bool TypeSymbol::isFunction() const { return hasFlag(SymbolFlags::Function); }
 bool TypeSymbol::isEnumType() const { return hasFlag(SymbolFlags::Enum); }
 
 bool TypeSymbol::isUnionType() const {
-  ZC_IF_SOME(astType, impl->astType) { return astType.getKind() == ast::SyntaxKind::kUnionType; }
+  ZC_IF_SOME(astType, impl->astType) { return astType.getKind() == ast::SyntaxKind::UnionTypeNode; }
   return false;
 }
 
 bool TypeSymbol::isIntersectionType() const {
   ZC_IF_SOME(astType, impl->astType) {
-    return astType.getKind() == ast::SyntaxKind::kIntersectionType;
+    return astType.getKind() == ast::SyntaxKind::IntersectionTypeNode;
   }
   return false;
 }

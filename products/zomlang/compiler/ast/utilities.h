@@ -12,27 +12,29 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#pragma once
-
-#include "zomlang/compiler/ast/kinds.h"
+#include "zc/core/common.h"
 
 namespace zomlang {
 namespace compiler {
-namespace lexer {
+namespace ast {
 
-inline bool isKeyword(ast::SyntaxKind tokenKind) {
-  return tokenKind >= ast::SyntaxKind::FirstKeyword && tokenKind <= ast::SyntaxKind::LastKeyword;
-}
+class Node;
+class Identifier;
+class Declaration;
 
-inline bool isReservedKeyword(ast::SyntaxKind tokenKind) {
-  return tokenKind >= ast::SyntaxKind::FirstReservedWord &&
-         tokenKind <= ast::SyntaxKind::LastReservedWord;
-}
+zc::Maybe<const ast::Identifier&> getNameOfDeclaration(const ast::Declaration& node);
 
-inline bool isIdentifierOrKeyword(ast::SyntaxKind tokenKind) {
-  return tokenKind == ast::SyntaxKind::Identifier || lexer::isKeyword(tokenKind);
-}
+/// \brief Check if a node is a property name literal
+/// \param node The AST node to check
+/// \return true if the node is a valid property name literal, false otherwise
+bool isPropertyNameLiteral(const ast::Node& node);
 
-}  // namespace lexer
+
+bool isDeclaration(const ast::Node& node);
+
+
+bool isExportable(const ast::Node& node);
+
+}  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang

@@ -25,6 +25,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/module.h"
 #include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/ast/type.h"
@@ -45,7 +46,7 @@ ZC_TEST("ASTFactory: Basic Node Creation") {
 
   // Test Identifier creation
   auto identifier = createIdentifier(zc::str("testVar"));
-  ZC_EXPECT(identifier->getName() == "testVar", "Identifier should have correct name");
+  ZC_EXPECT(identifier->getText() == "testVar", "Identifier should have correct name");
 
   // Test literal creation
   auto stringLit = createStringLiteral(zc::str("hello world"));
@@ -58,7 +59,7 @@ ZC_TEST("ASTFactory: Basic Node Creation") {
   ZC_EXPECT(boolLit->getValue() == true, "BooleanLiteral should have correct value");
 
   auto nullLit = createNullLiteral();
-  ZC_EXPECT(nullLit->getKind() == SyntaxKind::kNullLiteral, "NullLiteral should have correct kind");
+  ZC_EXPECT(nullLit->getKind() == SyntaxKind::NullLiteral, "NullLiteral should have correct kind");
 }
 
 ZC_TEST("ASTFactory: Function Declaration Creation") {
@@ -83,13 +84,13 @@ ZC_TEST("ASTFactory: Function Declaration Creation") {
   auto body = createBlockStatement(zc::mv(bodyStatements));
 
   // Create type parameters (empty)
-  zc::Vector<zc::Own<ast::TypeParameter>> typeParams;
+  zc::Vector<zc::Own<ast::TypeParameterDeclaration>> typeParams;
 
   // Create function declaration
   auto funcDecl = createFunctionDeclaration(zc::mv(funcName), zc::mv(typeParams),
                                             zc::mv(parameters), zc::none, zc::mv(body));
 
-  ZC_EXPECT(funcDecl->getName().getName() == "testFunction", "Function should have correct name");
+  ZC_EXPECT(funcDecl->getName().getText() == "testFunction", "Function should have correct name");
   ZC_EXPECT(funcDecl->getParameters().size() == 2, "Function should have 2 parameters");
   ZC_EXPECT(funcDecl->getTypeParameters().size() == 0, "Function should have no type parameters");
   ZC_EXPECT(funcDecl->getReturnType() == nullptr, "Function should have no return type");
@@ -103,7 +104,7 @@ ZC_TEST("ASTFactory: Expression Creation") {
   // Test binary expression creation
   auto left = createFloatLiteral(10.0);
   auto right = createFloatLiteral(20.0);
-  auto addOp = createAddOperator();
+  auto addOp = createTokenNode(SyntaxKind::Plus);
   auto binaryExpr = createBinaryExpression(zc::mv(left), zc::mv(addOp), zc::mv(right));
 
   // Note: We can't directly access BinaryExpression methods from Expression pointer
@@ -114,7 +115,7 @@ ZC_TEST("ASTFactory: Expression Creation") {
   zc::Vector<zc::Own<ast::Expression>> args;
   args.add(createStringLiteral(zc::str("arg1")));
   args.add(createFloatLiteral(42.0));
-  auto callExpr = createCallExpression(zc::mv(callee), zc::mv(args));
+  auto callExpr = createCallExpression(zc::mv(callee), zc::none, zc::none, zc::mv(args));
 
   // CallExpression always has callee (reference, not pointer)
   ZC_EXPECT(callExpr->getArguments().size() == 2, "CallExpression should have 2 arguments");
@@ -138,9 +139,9 @@ ZC_TEST("ASTFactory: Statement Creation") {
   auto initValue = createFloatLiteral(100.0);
   auto binding = createBindingElement(zc::mv(varName), zc::none, zc::mv(initValue));
   bindings.add(zc::mv(binding));
-  auto varDecl = createVariableDeclaration(zc::mv(bindings));
+  auto varDecl = createVariableDeclarationList(zc::mv(bindings));
 
-  ZC_EXPECT(varDecl->getBindings().size() == 1, "VariableDeclaration should have 1 binding");
+  ZC_EXPECT(varDecl->getBindings().size() == 1, "VariableDeclarationList should have 1 binding");
 
   // Test if statement creation
   auto condition = createBooleanLiteral(true);
@@ -175,7 +176,7 @@ ZC_TEST("ASTFactory: Type Creation") {
   // Test TypeReference creation
   auto typeName = createIdentifier(zc::str("Int"));
   auto typeRef = createTypeReference(zc::mv(typeName), zc::none);
-  ZC_EXPECT(typeRef->getName() == "Int", "TypeReference should have correct type name");
+  ZC_EXPECT(typeRef->getName().getText() == "Int", "TypeReference should have correct type name");
 
   // Test ArrayType creation
   auto elemType = createPredefinedType(zc::str("str"));
@@ -183,14 +184,14 @@ ZC_TEST("ASTFactory: Type Creation") {
   // ArrayType always has element type (reference, not pointer)
 
   // Test UnionType creation
-  zc::Vector<zc::Own<ast::Type>> unionTypes;
+  zc::Vector<zc::Own<ast::TypeNode>> unionTypes;
   unionTypes.add(createPredefinedType(zc::str("i32")));
   unionTypes.add(createPredefinedType(zc::str("str")));
   auto unionType = createUnionType(zc::mv(unionTypes));
   ZC_EXPECT(unionType->getTypes().size() == 2, "UnionType should have 2 types");
 
   // Test IntersectionType creation
-  zc::Vector<zc::Own<ast::Type>> intersectionTypes;
+  zc::Vector<zc::Own<ast::TypeNode>> intersectionTypes;
   intersectionTypes.add(createPredefinedType(zc::str("i32")));
   intersectionTypes.add(createPredefinedType(zc::str("str")));
   auto intersectionType = createIntersectionType(zc::mv(intersectionTypes));
@@ -201,13 +202,13 @@ ZC_TEST("ASTFactory: Operator Creation") {
   using namespace zomlang::compiler::ast::factory;
 
   // Test UnaryOperator creation
-  auto unaryOp = createUnaryOperator(zc::str("!"), true);
-  ZC_EXPECT(unaryOp->getSymbol() == "!", "UnaryOperator should have correct symbol");
-  ZC_EXPECT(unaryOp->isPrefix(), "UnaryOperator should be prefix");
+  auto unaryOp = createTokenNode(SyntaxKind::Exclamation);
+  ZC_EXPECT(unaryOp->getKind() == SyntaxKind::Exclamation, "UnaryOperator should be prefix");
 
   // Test AssignmentOperator creation
-  auto assignOp = createAssignmentOperator(zc::str("+="));
-  ZC_EXPECT(assignOp->getSymbol() == "+=", "AssignmentOperator should have correct symbol");
+  auto assignOp = createTokenNode(SyntaxKind::Equals);
+  ZC_EXPECT(assignOp->getKind() == SyntaxKind::Equals,
+            "AssignmentOperator should have correct kind");
 }
 
 ZC_TEST("ASTFactory: Alias and Debugger Creation") {
@@ -217,13 +218,13 @@ ZC_TEST("ASTFactory: Alias and Debugger Creation") {
   auto aliasName = createIdentifier(zc::str("MyAlias"));
   auto targetType = createPredefinedType(zc::str("i32"));
   auto aliasDecl = createAliasDeclaration(zc::mv(aliasName), zc::mv(targetType));
-  ZC_EXPECT(aliasDecl->getName().getName() == "MyAlias",
+  ZC_EXPECT(aliasDecl->getName().getText() == "MyAlias",
             "AliasDeclaration should have correct name");
   // AliasDeclaration always has target type (reference, not pointer)
 
   // Test DebuggerStatement creation
   auto debuggerStmt = createDebuggerStatement();
-  ZC_EXPECT(debuggerStmt->getKind() == ast::SyntaxKind::kDebuggerStatement,
+  ZC_EXPECT(debuggerStmt->getKind() == SyntaxKind::DebuggerStatement,
             "DebuggerStatement should have correct kind");
 }
 

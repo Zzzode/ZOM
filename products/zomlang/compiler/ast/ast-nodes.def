@@ -1,0 +1,196 @@
+// Copyright (c) 2024-2025 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+// WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+// License for the specific language governing permissions and limitations under
+// the License.
+
+/// \file ast-nodes.def
+/// \brief Unified AST node definitions using X-macro pattern
+///
+/// This file defines all AST nodes in a centralized manner to eliminate
+/// redundancy across cast.h, visitor.h, and kinds.h. It supports multiple
+/// macro expansion modes for different use cases.
+///
+/// Usage patterns:
+/// 1. Forward declarations: #define AST_ELEMENT_NODE(Class) class Class;
+/// 2. SyntaxKind enum: #define AST_ELEMENT_NODE(Class) Class,
+/// 3. Template specializations: #define AST_ELEMENT_NODE(Class) template<> struct
+/// SyntaxKindTrait<SyntaxKind::Class> { using Type = Class; };
+/// 4. Visitor methods: #define AST_ELEMENT_NODE(Class) virtual void visit(const Class& node) = 0;
+///
+/// Interface nodes (abstract base classes) don't have SyntaxKind values
+/// Element nodes (concrete implementations) have corresponding SyntaxKind values
+/// The class name directly corresponds to the SyntaxKind enum value
+
+#ifndef AST_ELEMENT_NODE
+#error "AST_ELEMENT_NODE macro must be defined before including ast-nodes.def"
+#endif
+
+#ifndef AST_INTERFACE_NODE
+#define AST_INTERFACE_NODE(Class)  // Default: ignore interface nodes
+#endif
+
+// ================================================================================
+// INTERFACE NODES (Abstract base classes without SyntaxKind)
+// ================================================================================
+
+AST_INTERFACE_NODE(Node)
+AST_INTERFACE_NODE(Statement)
+AST_INTERFACE_NODE(Expression)
+AST_INTERFACE_NODE(TypeNode)
+AST_INTERFACE_NODE(Declaration)
+AST_INTERFACE_NODE(NamedDeclaration)
+AST_INTERFACE_NODE(UnaryExpression)
+AST_INTERFACE_NODE(UpdateExpression)
+AST_INTERFACE_NODE(LeftHandSideExpression)
+AST_INTERFACE_NODE(MemberExpression)
+AST_INTERFACE_NODE(PrimaryExpression)
+AST_INTERFACE_NODE(LiteralExpression)
+AST_INTERFACE_NODE(CastExpression)
+AST_INTERFACE_NODE(Pattern)
+AST_INTERFACE_NODE(PrimaryPattern)
+AST_INTERFACE_NODE(BindingPattern)
+
+// ================================================================================
+// ELEMENT NODES (Concrete implementations with SyntaxKind)
+// ================================================================================
+
+// Module nodes
+AST_ELEMENT_NODE(SourceFile)
+AST_ELEMENT_NODE(Module)
+AST_ELEMENT_NODE(ModulePath)
+AST_ELEMENT_NODE(ImportDeclaration)
+AST_ELEMENT_NODE(ExportDeclaration)
+
+// Basic nodes
+AST_ELEMENT_NODE(Identifier)
+AST_ELEMENT_NODE(BindingElement)
+
+// Declaration nodes
+AST_ELEMENT_NODE(VariableDeclaration)
+AST_ELEMENT_NODE(VariableDeclarationList)
+AST_ELEMENT_NODE(FunctionDeclaration)
+AST_ELEMENT_NODE(ClassDeclaration)
+AST_ELEMENT_NODE(InterfaceDeclaration)
+AST_ELEMENT_NODE(StructDeclaration)
+AST_ELEMENT_NODE(EnumDeclaration)
+AST_ELEMENT_NODE(ErrorDeclaration)
+AST_ELEMENT_NODE(AliasDeclaration)
+AST_ELEMENT_NODE(TypeParameterDeclaration)
+AST_ELEMENT_NODE(MethodDeclaration)
+AST_ELEMENT_NODE(ConstructorDeclaration)
+AST_ELEMENT_NODE(ParameterDeclaration)
+AST_ELEMENT_NODE(PropertyDeclaration)
+AST_ELEMENT_NODE(MissingDeclaration)
+
+// Statement nodes
+AST_ELEMENT_NODE(VariableStatement)
+AST_ELEMENT_NODE(BlockStatement)
+AST_ELEMENT_NODE(EmptyStatement)
+AST_ELEMENT_NODE(ExpressionStatement)
+AST_ELEMENT_NODE(IfStatement)
+AST_ELEMENT_NODE(WhileStatement)
+AST_ELEMENT_NODE(ForStatement)
+AST_ELEMENT_NODE(BreakStatement)
+AST_ELEMENT_NODE(ContinueStatement)
+AST_ELEMENT_NODE(ReturnStatement)
+AST_ELEMENT_NODE(MatchStatement)
+AST_ELEMENT_NODE(DebuggerStatement)
+AST_ELEMENT_NODE(MatchClause)
+AST_ELEMENT_NODE(DefaultClause)
+AST_ELEMENT_NODE(ArrayBindingPattern)
+AST_ELEMENT_NODE(ObjectBindingPattern)
+
+// Expression nodes
+AST_ELEMENT_NODE(PrefixUnaryExpression)
+AST_ELEMENT_NODE(PostfixUnaryExpression)
+AST_ELEMENT_NODE(PropertyAccessExpression)
+AST_ELEMENT_NODE(ElementAccessExpression)
+AST_ELEMENT_NODE(NewExpression)
+AST_ELEMENT_NODE(ParenthesizedExpression)
+AST_ELEMENT_NODE(BinaryExpression)
+AST_ELEMENT_NODE(ConditionalExpression)
+AST_ELEMENT_NODE(CallExpression)
+AST_ELEMENT_NODE(FunctionExpression)
+AST_ELEMENT_NODE(ArrayLiteralExpression)
+AST_ELEMENT_NODE(ObjectLiteralExpression)
+
+// Literal nodes
+AST_ELEMENT_NODE(StringLiteral)
+AST_ELEMENT_NODE(IntegerLiteral)
+AST_ELEMENT_NODE(FloatLiteral)
+AST_ELEMENT_NODE(BooleanLiteral)
+AST_ELEMENT_NODE(NullLiteral)
+
+// Cast nodes
+AST_ELEMENT_NODE(AsExpression)
+AST_ELEMENT_NODE(ForcedAsExpression)
+AST_ELEMENT_NODE(ConditionalAsExpression)
+
+// Other expression nodes
+AST_ELEMENT_NODE(VoidExpression)
+AST_ELEMENT_NODE(TypeOfExpression)
+AST_ELEMENT_NODE(AwaitExpression)
+AST_ELEMENT_NODE(ThisExpression)
+AST_ELEMENT_NODE(SuperExpression)
+
+// Type nodes
+AST_ELEMENT_NODE(TypeReferenceNode)
+AST_ELEMENT_NODE(ArrayTypeNode)
+AST_ELEMENT_NODE(UnionTypeNode)
+AST_ELEMENT_NODE(IntersectionTypeNode)
+AST_ELEMENT_NODE(ParenthesizedTypeNode)
+AST_ELEMENT_NODE(PredefinedTypeNode)
+AST_ELEMENT_NODE(BoolTypeNode)
+AST_ELEMENT_NODE(I8TypeNode)
+AST_ELEMENT_NODE(I16TypeNode)
+AST_ELEMENT_NODE(I32TypeNode)
+AST_ELEMENT_NODE(I64TypeNode)
+AST_ELEMENT_NODE(U8TypeNode)
+AST_ELEMENT_NODE(U16TypeNode)
+AST_ELEMENT_NODE(U32TypeNode)
+AST_ELEMENT_NODE(U64TypeNode)
+AST_ELEMENT_NODE(F32TypeNode)
+AST_ELEMENT_NODE(F64TypeNode)
+AST_ELEMENT_NODE(StrTypeNode)
+AST_ELEMENT_NODE(UnitTypeNode)
+AST_ELEMENT_NODE(ObjectTypeNode)
+AST_ELEMENT_NODE(TupleTypeNode)
+AST_ELEMENT_NODE(ReturnTypeNode)
+AST_ELEMENT_NODE(FunctionTypeNode)
+AST_ELEMENT_NODE(OptionalTypeNode)
+AST_ELEMENT_NODE(TypeQueryNode)
+
+// Pattern nodes
+AST_ELEMENT_NODE(WildcardPattern)
+AST_ELEMENT_NODE(IdentifierPattern)
+AST_ELEMENT_NODE(TuplePattern)
+AST_ELEMENT_NODE(StructurePattern)
+AST_ELEMENT_NODE(ArrayPattern)
+AST_ELEMENT_NODE(IsPattern)
+AST_ELEMENT_NODE(ExpressionPattern)
+AST_ELEMENT_NODE(EnumPattern)
+
+// Signature nodes
+AST_ELEMENT_NODE(PropertySignature)
+AST_ELEMENT_NODE(MethodSignature)
+
+// Body/Structure nodes
+AST_ELEMENT_NODE(ClassBody)
+AST_ELEMENT_NODE(InterfaceBody)
+AST_ELEMENT_NODE(StructBody)
+AST_ELEMENT_NODE(ErrorBody)
+AST_ELEMENT_NODE(EnumBody)
+
+// Operator node
+AST_ELEMENT_NODE(TokenNode)
+
+#undef AST_INTERFACE_NODE

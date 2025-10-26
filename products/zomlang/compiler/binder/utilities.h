@@ -14,25 +14,8 @@
 
 #pragma once
 
-#include "zomlang/compiler/ast/kinds.h"
-
 namespace zomlang {
 namespace compiler {
-namespace lexer {
-
-inline bool isKeyword(ast::SyntaxKind tokenKind) {
-  return tokenKind >= ast::SyntaxKind::FirstKeyword && tokenKind <= ast::SyntaxKind::LastKeyword;
-}
-
-inline bool isReservedKeyword(ast::SyntaxKind tokenKind) {
-  return tokenKind >= ast::SyntaxKind::FirstReservedWord &&
-         tokenKind <= ast::SyntaxKind::LastReservedWord;
-}
-
-inline bool isIdentifierOrKeyword(ast::SyntaxKind tokenKind) {
-  return tokenKind == ast::SyntaxKind::Identifier || lexer::isKeyword(tokenKind);
-}
-
-}  // namespace lexer
+namespace binder {}  // namespace binder
 }  // namespace compiler
 }  // namespace zomlang

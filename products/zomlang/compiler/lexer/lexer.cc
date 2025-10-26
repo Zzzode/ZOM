@@ -20,6 +20,7 @@
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -85,7 +86,8 @@ struct Lexer::Impl {
   /// Utility functions
   const zc::byte* getBufferPtrForSourceLoc(source::SourceLoc loc) const;
 
-  void formToken(TokenKind kind, const zc::byte* tokStart, TokenFlags flags = TokenFlags::kNone) {
+  void formToken(ast::SyntaxKind kind, const zc::byte* tokStart,
+                 TokenFlags flags = TokenFlags::kNone) {
     source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
     source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
     zc::Maybe<zc::String> cachedText = Token::getStaticTextForTokenKind(kind);
@@ -93,8 +95,8 @@ struct Lexer::Impl {
     // For string literals and other tokens that don't have static text,
     // we need to extract the text from the source buffer
     if (cachedText == zc::none &&
-        (kind == TokenKind::kStringLiteral || kind == TokenKind::kIntegerLiteral ||
-         kind == TokenKind::kFloatLiteral || kind == TokenKind::kIdentifier)) {
+        (kind == ast::SyntaxKind::StringLiteral || kind == ast::SyntaxKind::IntegerLiteral ||
+         kind == ast::SyntaxKind::FloatLiteral || kind == ast::SyntaxKind::Identifier)) {
       size_t length = curPtr - tokStart;
       zc::ArrayPtr<const zc::byte> textBytes(tokStart, length);
       cachedText = zc::str(textBytes.asChars());
@@ -113,7 +115,7 @@ struct Lexer::Impl {
     tokenFlags = skipTriviaAndCollectFlags();
 
     if (curPtr >= bufferEnd) {
-      formToken(TokenKind::kEOF, curPtr, tokenFlags);
+      formToken(ast::SyntaxKind::EndOfFile, curPtr, tokenFlags);
       return;
     }
     scanToken(tokenFlags);
@@ -125,7 +127,7 @@ struct Lexer::Impl {
 
     // Check for end of file
     if (curPtr >= bufferEnd) {
-      formToken(TokenKind::kEOF, tokStart, tokenFlags);
+      formToken(ast::SyntaxKind::EndOfFile, tokStart, tokenFlags);
       return;
     }
 
@@ -133,22 +135,22 @@ struct Lexer::Impl {
 
     switch (c) {
       case '(':
-        formToken(TokenKind::kLeftParen, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::LeftParen, tokStart, tokenFlags);
         break;
       case ')':
-        formToken(TokenKind::kRightParen, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::RightParen, tokStart, tokenFlags);
         break;
       case '{':
-        formToken(TokenKind::kLeftBrace, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::LeftBrace, tokStart, tokenFlags);
         break;
       case '}':
-        formToken(TokenKind::kRightBrace, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::RightBrace, tokStart, tokenFlags);
         break;
       case ',':
-        formToken(TokenKind::kComma, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::Comma, tokStart, tokenFlags);
         break;
       case ':':
-        formToken(TokenKind::kColon, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::Colon, tokStart, tokenFlags);
         break;
       case '-':
       case '+':
@@ -159,7 +161,7 @@ struct Lexer::Impl {
       case '/':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kSlashEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::SlashEquals, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '/') {
           lexSingleLineComment();
           return;
@@ -167,7 +169,7 @@ struct Lexer::Impl {
           lexMultiLineComment();
           return;
         } else {
-          formToken(TokenKind::kSlash, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Slash, tokStart, tokenFlags);
         }
         break;
       case '%':
@@ -198,28 +200,28 @@ struct Lexer::Impl {
         } else if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd &&
                    *(curPtr + 1) == '.') {
           curPtr += 2;
-          formToken(TokenKind::kDotDotDot, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::DotDotDot, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kPeriod, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Period, tokStart, tokenFlags);
         }
         break;
       case ';':
-        formToken(TokenKind::kSemicolon, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::Semicolon, tokStart, tokenFlags);
         break;
       case '[':
-        formToken(TokenKind::kLeftBracket, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::LeftBracket, tokStart, tokenFlags);
         break;
       case ']':
-        formToken(TokenKind::kRightBracket, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::RightBracket, tokStart, tokenFlags);
         break;
       case '@':
-        formToken(TokenKind::kAt, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::At, tokStart, tokenFlags);
         break;
       case '#':
-        formToken(TokenKind::kHash, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::Hash, tokStart, tokenFlags);
         break;
       case '`':
-        formToken(TokenKind::kBacktick, tokStart, tokenFlags);
+        formToken(ast::SyntaxKind::Backtick, tokStart, tokenFlags);
         break;
       default:
         // Reset curPtr to point to the current character for proper checking
@@ -349,8 +351,8 @@ struct Lexer::Impl {
     // Check if it's a keyword
     auto textPtr = zc::ArrayPtr<const zc::byte>(tokStart, curPtr);
 
-    TokenKind kind = getKeywordKind(textPtr);
-    if (kind == TokenKind::kIdentifier) {
+    ast::SyntaxKind kind = getKeywordKind(textPtr);
+    if (kind == ast::SyntaxKind::Identifier) {
       // For identifiers, we might want to cache the text since they're frequently accessed
       source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
       source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
@@ -361,123 +363,123 @@ struct Lexer::Impl {
     }
   }
 
-  TokenKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
+  ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
     // Keywords from ZomLexer.g4
-    if (text == "abstract"_zcb) return TokenKind::kAbstractKeyword;
-    if (text == "accessor"_zcb) return TokenKind::kAccessorKeyword;
-    if (text == "any"_zcb) return TokenKind::kAnyKeyword;
-    if (text == "as"_zcb) return TokenKind::kAsKeyword;
-    if (text == "asserts"_zcb) return TokenKind::kAssertsKeyword;
-    if (text == "assert"_zcb) return TokenKind::kAssertKeyword;
-    if (text == "async"_zcb) return TokenKind::kAsyncKeyword;
-    if (text == "await"_zcb) return TokenKind::kAwaitKeyword;
-    if (text == "bigint"_zcb) return TokenKind::kBigIntKeyword;
-    if (text == "bool"_zcb) return TokenKind::kBoolKeyword;
-    if (text == "break"_zcb) return TokenKind::kBreakKeyword;
-    if (text == "case"_zcb) return TokenKind::kCaseKeyword;
-    if (text == "catch"_zcb) return TokenKind::kCatchKeyword;
-    if (text == "class"_zcb) return TokenKind::kClassKeyword;
-    if (text == "continue"_zcb) return TokenKind::kContinueKeyword;
-    if (text == "const"_zcb) return TokenKind::kConstKeyword;
-    if (text == "constructor"_zcb) return TokenKind::kConstructorKeyword;
-    if (text == "debugger"_zcb) return TokenKind::kDebuggerKeyword;
-    if (text == "declare"_zcb) return TokenKind::kDeclareKeyword;
-    if (text == "default"_zcb) return TokenKind::kDefaultKeyword;
-    if (text == "delete"_zcb) return TokenKind::kDeleteKeyword;
-    if (text == "do"_zcb) return TokenKind::kDoKeyword;
-    if (text == "extends"_zcb) return TokenKind::kExtendsKeyword;
-    if (text == "export"_zcb) return TokenKind::kExportKeyword;
-    if (text == "false"_zcb) return TokenKind::kFalseKeyword;
-    if (text == "finally"_zcb) return TokenKind::kFinallyKeyword;
-    if (text == "from"_zcb) return TokenKind::kFromKeyword;
-    if (text == "fun"_zcb) return TokenKind::kFunKeyword;
-    if (text == "get"_zcb) return TokenKind::kGetKeyword;
-    if (text == "global"_zcb) return TokenKind::kGlobalKeyword;
-    if (text == "if"_zcb) return TokenKind::kIfKeyword;
-    if (text == "immediate"_zcb) return TokenKind::kImmediateKeyword;
-    if (text == "implements"_zcb) return TokenKind::kImplementsKeyword;
-    if (text == "import"_zcb) return TokenKind::kImportKeyword;
-    if (text == "in"_zcb) return TokenKind::kInKeyword;
-    if (text == "infer"_zcb) return TokenKind::kInferKeyword;
-    if (text == "instanceof"_zcb) return TokenKind::kInstanceOfKeyword;
-    if (text == "interface"_zcb) return TokenKind::kInterfaceKeyword;
-    if (text == "intrinsic"_zcb) return TokenKind::kIntrinsicKeyword;
-    if (text == "is"_zcb) return TokenKind::kIsKeyword;
-    if (text == "keyof"_zcb) return TokenKind::kKeyOfKeyword;
-    if (text == "let"_zcb) return TokenKind::kLetKeyword;
-    if (text == "match"_zcb) return TokenKind::kMatchKeyword;
-    if (text == "module"_zcb) return TokenKind::kModuleKeyword;
-    if (text == "mutable"_zcb) return TokenKind::kMutableKeyword;
-    if (text == "namespace"_zcb) return TokenKind::kNamespaceKeyword;
-    if (text == "never"_zcb) return TokenKind::kNeverKeyword;
-    if (text == "new"_zcb) return TokenKind::kNewKeyword;
-    if (text == "null"_zcb) return TokenKind::kNullKeyword;
-    if (text == "object"_zcb) return TokenKind::kObjectKeyword;
-    if (text == "of"_zcb) return TokenKind::kOfKeyword;
-    if (text == "optional"_zcb) return TokenKind::kOptionalKeyword;
-    if (text == "out"_zcb) return TokenKind::kOutKeyword;
-    if (text == "override"_zcb) return TokenKind::kOverrideKeyword;
-    if (text == "package"_zcb) return TokenKind::kPackageKeyword;
-    if (text == "private"_zcb) return TokenKind::kPrivateKeyword;
-    if (text == "protected"_zcb) return TokenKind::kProtectedKeyword;
-    if (text == "public"_zcb) return TokenKind::kPublicKeyword;
-    if (text == "readonly"_zcb) return TokenKind::kReadonlyKeyword;
-    if (text == "require"_zcb) return TokenKind::kRequireKeyword;
-    if (text == "return"_zcb) return TokenKind::kReturnKeyword;
-    if (text == "satisfies"_zcb) return TokenKind::kSatisfiesKeyword;
-    if (text == "set"_zcb) return TokenKind::kSetKeyword;
-    if (text == "static"_zcb) return TokenKind::kStaticKeyword;
-    if (text == "super"_zcb) return TokenKind::kSuperKeyword;
-    if (text == "switch"_zcb) return TokenKind::kSwitchKeyword;
-    if (text == "symbol"_zcb) return TokenKind::kSymbolKeyword;
-    if (text == "this"_zcb) return TokenKind::kThisKeyword;
-    if (text == "throw"_zcb) return TokenKind::kThrowKeyword;
-    if (text == "true"_zcb) return TokenKind::kTrueKeyword;
-    if (text == "try"_zcb) return TokenKind::kTryKeyword;
-    if (text == "typeof"_zcb) return TokenKind::kTypeOfKeyword;
-    if (text == "undefined"_zcb) return TokenKind::kUndefinedKeyword;
-    if (text == "unique"_zcb) return TokenKind::kUniqueKeyword;
-    if (text == "using"_zcb) return TokenKind::kUsingKeyword;
-    if (text == "var"_zcb) return TokenKind::kVarKeyword;
-    if (text == "void"_zcb) return TokenKind::kVoidKeyword;
-    if (text == "when"_zcb) return TokenKind::kWhenKeyword;
-    if (text == "with"_zcb) return TokenKind::kWithKeyword;
-    if (text == "yield"_zcb) return TokenKind::kYieldKeyword;
+    if (text == "abstract"_zcb) return ast::SyntaxKind::AbstractKeyword;
+    if (text == "accessor"_zcb) return ast::SyntaxKind::AccessorKeyword;
+    if (text == "any"_zcb) return ast::SyntaxKind::AnyKeyword;
+    if (text == "as"_zcb) return ast::SyntaxKind::AsKeyword;
+    if (text == "asserts"_zcb) return ast::SyntaxKind::AssertsKeyword;
+    if (text == "assert"_zcb) return ast::SyntaxKind::AssertKeyword;
+    if (text == "async"_zcb) return ast::SyntaxKind::AsyncKeyword;
+    if (text == "await"_zcb) return ast::SyntaxKind::AwaitKeyword;
+    if (text == "bigint"_zcb) return ast::SyntaxKind::BigIntKeyword;
+    if (text == "bool"_zcb) return ast::SyntaxKind::BoolKeyword;
+    if (text == "break"_zcb) return ast::SyntaxKind::BreakKeyword;
+    if (text == "case"_zcb) return ast::SyntaxKind::CaseKeyword;
+    if (text == "catch"_zcb) return ast::SyntaxKind::CatchKeyword;
+    if (text == "class"_zcb) return ast::SyntaxKind::ClassKeyword;
+    if (text == "continue"_zcb) return ast::SyntaxKind::ContinueKeyword;
+    if (text == "const"_zcb) return ast::SyntaxKind::ConstKeyword;
+    if (text == "constructor"_zcb) return ast::SyntaxKind::ConstructorKeyword;
+    if (text == "debugger"_zcb) return ast::SyntaxKind::DebuggerKeyword;
+    if (text == "declare"_zcb) return ast::SyntaxKind::DeclareKeyword;
+    if (text == "default"_zcb) return ast::SyntaxKind::DefaultKeyword;
+    if (text == "delete"_zcb) return ast::SyntaxKind::DeleteKeyword;
+    if (text == "do"_zcb) return ast::SyntaxKind::DoKeyword;
+    if (text == "extends"_zcb) return ast::SyntaxKind::ExtendsKeyword;
+    if (text == "export"_zcb) return ast::SyntaxKind::ExportKeyword;
+    if (text == "false"_zcb) return ast::SyntaxKind::FalseKeyword;
+    if (text == "finally"_zcb) return ast::SyntaxKind::FinallyKeyword;
+    if (text == "from"_zcb) return ast::SyntaxKind::FromKeyword;
+    if (text == "fun"_zcb) return ast::SyntaxKind::FunKeyword;
+    if (text == "get"_zcb) return ast::SyntaxKind::GetKeyword;
+    if (text == "global"_zcb) return ast::SyntaxKind::GlobalKeyword;
+    if (text == "if"_zcb) return ast::SyntaxKind::IfKeyword;
+    if (text == "immediate"_zcb) return ast::SyntaxKind::ImmediateKeyword;
+    if (text == "implements"_zcb) return ast::SyntaxKind::ImplementsKeyword;
+    if (text == "import"_zcb) return ast::SyntaxKind::ImportKeyword;
+    if (text == "in"_zcb) return ast::SyntaxKind::InKeyword;
+    if (text == "infer"_zcb) return ast::SyntaxKind::InferKeyword;
+    if (text == "instanceof"_zcb) return ast::SyntaxKind::InstanceOfKeyword;
+    if (text == "interface"_zcb) return ast::SyntaxKind::InterfaceKeyword;
+    if (text == "intrinsic"_zcb) return ast::SyntaxKind::IntrinsicKeyword;
+    if (text == "is"_zcb) return ast::SyntaxKind::IsKeyword;
+    if (text == "keyof"_zcb) return ast::SyntaxKind::KeyOfKeyword;
+    if (text == "let"_zcb) return ast::SyntaxKind::LetKeyword;
+    if (text == "match"_zcb) return ast::SyntaxKind::MatchKeyword;
+    if (text == "module"_zcb) return ast::SyntaxKind::ModuleKeyword;
+    if (text == "mutable"_zcb) return ast::SyntaxKind::MutableKeyword;
+    if (text == "namespace"_zcb) return ast::SyntaxKind::NamespaceKeyword;
+    if (text == "never"_zcb) return ast::SyntaxKind::NeverKeyword;
+    if (text == "new"_zcb) return ast::SyntaxKind::NewKeyword;
+    if (text == "null"_zcb) return ast::SyntaxKind::NullKeyword;
+    if (text == "object"_zcb) return ast::SyntaxKind::ObjectKeyword;
+    if (text == "of"_zcb) return ast::SyntaxKind::OfKeyword;
+    if (text == "optional"_zcb) return ast::SyntaxKind::OptionalKeyword;
+    if (text == "out"_zcb) return ast::SyntaxKind::OutKeyword;
+    if (text == "override"_zcb) return ast::SyntaxKind::OverrideKeyword;
+    if (text == "package"_zcb) return ast::SyntaxKind::PackageKeyword;
+    if (text == "private"_zcb) return ast::SyntaxKind::PrivateKeyword;
+    if (text == "protected"_zcb) return ast::SyntaxKind::ProtectedKeyword;
+    if (text == "public"_zcb) return ast::SyntaxKind::PublicKeyword;
+    if (text == "readonly"_zcb) return ast::SyntaxKind::ReadonlyKeyword;
+    if (text == "require"_zcb) return ast::SyntaxKind::RequireKeyword;
+    if (text == "return"_zcb) return ast::SyntaxKind::ReturnKeyword;
+    if (text == "satisfies"_zcb) return ast::SyntaxKind::SatisfiesKeyword;
+    if (text == "set"_zcb) return ast::SyntaxKind::SetKeyword;
+    if (text == "static"_zcb) return ast::SyntaxKind::StaticKeyword;
+    if (text == "super"_zcb) return ast::SyntaxKind::SuperKeyword;
+    if (text == "switch"_zcb) return ast::SyntaxKind::SwitchKeyword;
+    if (text == "symbol"_zcb) return ast::SyntaxKind::SymbolKeyword;
+    if (text == "this"_zcb) return ast::SyntaxKind::ThisKeyword;
+    if (text == "throw"_zcb) return ast::SyntaxKind::ThrowKeyword;
+    if (text == "true"_zcb) return ast::SyntaxKind::TrueKeyword;
+    if (text == "try"_zcb) return ast::SyntaxKind::TryKeyword;
+    if (text == "typeof"_zcb) return ast::SyntaxKind::TypeOfKeyword;
+    if (text == "undefined"_zcb) return ast::SyntaxKind::UndefinedKeyword;
+    if (text == "unique"_zcb) return ast::SyntaxKind::UniqueKeyword;
+    if (text == "using"_zcb) return ast::SyntaxKind::UsingKeyword;
+    if (text == "var"_zcb) return ast::SyntaxKind::VarKeyword;
+    if (text == "void"_zcb) return ast::SyntaxKind::VoidKeyword;
+    if (text == "when"_zcb) return ast::SyntaxKind::WhenKeyword;
+    if (text == "with"_zcb) return ast::SyntaxKind::WithKeyword;
+    if (text == "yield"_zcb) return ast::SyntaxKind::YieldKeyword;
 
     // Type keywords
-    if (text == "bool"_zcb) return TokenKind::kBoolKeyword;
-    if (text == "i8"_zcb) return TokenKind::kI8Keyword;
-    if (text == "i32"_zcb) return TokenKind::kI32Keyword;
-    if (text == "i64"_zcb) return TokenKind::kI64Keyword;
-    if (text == "u8"_zcb) return TokenKind::kU8Keyword;
-    if (text == "u16"_zcb) return TokenKind::kU16Keyword;
-    if (text == "u32"_zcb) return TokenKind::kU32Keyword;
-    if (text == "u64"_zcb) return TokenKind::kU64Keyword;
-    if (text == "f32"_zcb) return TokenKind::kF32Keyword;
-    if (text == "f64"_zcb) return TokenKind::kF64Keyword;
-    if (text == "str"_zcb) return TokenKind::kStrKeyword;
-    if (text == "unit"_zcb) return TokenKind::kUnitKeyword;
-    if (text == "null"_zcb) return TokenKind::kNullKeyword;
-    if (text == "else"_zcb) return TokenKind::kElseKeyword;
-    if (text == "for"_zcb) return TokenKind::kForKeyword;
-    if (text == "while"_zcb) return TokenKind::kWhileKeyword;
-    if (text == "struct"_zcb) return TokenKind::kStructKeyword;
-    if (text == "enum"_zcb) return TokenKind::kEnumKeyword;
-    if (text == "error"_zcb) return TokenKind::kErrorKeyword;
-    if (text == "alias"_zcb) return TokenKind::kAliasKeyword;
-    if (text == "init"_zcb) return TokenKind::kInitKeyword;
-    if (text == "deinit"_zcb) return TokenKind::kDeinitKeyword;
-    if (text == "raises"_zcb) return TokenKind::kRaisesKeyword;
-    if (text == "type"_zcb) return TokenKind::kTypeKeyword;
+    if (text == "bool"_zcb) return ast::SyntaxKind::BoolKeyword;
+    if (text == "i8"_zcb) return ast::SyntaxKind::I8Keyword;
+    if (text == "i32"_zcb) return ast::SyntaxKind::I32Keyword;
+    if (text == "i64"_zcb) return ast::SyntaxKind::I64Keyword;
+    if (text == "u8"_zcb) return ast::SyntaxKind::U8Keyword;
+    if (text == "u16"_zcb) return ast::SyntaxKind::U16Keyword;
+    if (text == "u32"_zcb) return ast::SyntaxKind::U32Keyword;
+    if (text == "u64"_zcb) return ast::SyntaxKind::U64Keyword;
+    if (text == "f32"_zcb) return ast::SyntaxKind::F32Keyword;
+    if (text == "f64"_zcb) return ast::SyntaxKind::F64Keyword;
+    if (text == "str"_zcb) return ast::SyntaxKind::StrKeyword;
+    if (text == "unit"_zcb) return ast::SyntaxKind::UnitKeyword;
+    if (text == "null"_zcb) return ast::SyntaxKind::NullKeyword;
+    if (text == "else"_zcb) return ast::SyntaxKind::ElseKeyword;
+    if (text == "for"_zcb) return ast::SyntaxKind::ForKeyword;
+    if (text == "while"_zcb) return ast::SyntaxKind::WhileKeyword;
+    if (text == "struct"_zcb) return ast::SyntaxKind::StructKeyword;
+    if (text == "enum"_zcb) return ast::SyntaxKind::EnumKeyword;
+    if (text == "error"_zcb) return ast::SyntaxKind::ErrorKeyword;
+    if (text == "alias"_zcb) return ast::SyntaxKind::AliasKeyword;
+    if (text == "init"_zcb) return ast::SyntaxKind::InitKeyword;
+    if (text == "deinit"_zcb) return ast::SyntaxKind::DeinitKeyword;
+    if (text == "raises"_zcb) return ast::SyntaxKind::RaisesKeyword;
+    if (text == "type"_zcb) return ast::SyntaxKind::TypeKeyword;
 
-    return TokenKind::kIdentifier;
+    return ast::SyntaxKind::Identifier;
   }
 
   void lexNumber(const TokenFlags& tokenFlags) {
     // The first digit character has already been consumed in scanToken
     // So we need to go back one character to include it in the token
     const zc::byte* tokStart = curPtr;  // curPtr already points to the first digit
-    TokenKind kind = TokenKind::kIntegerLiteral;
+    ast::SyntaxKind kind = ast::SyntaxKind::IntegerLiteral;
     bool hasValidDigits = false;
     TokenFlags numericFlags = tokenFlags;
     bool hasSeparator = false;
@@ -504,7 +506,7 @@ struct Lexer::Impl {
                                       static_cast<uint16_t>(TokenFlags::kContainsSeparator));
         }
         if (!hasValidDigits) { reportInvalidNumberLiteral("binary"_zc, tokStart); }
-        formToken(TokenKind::kIntegerLiteral, tokStart, numericFlags);
+        formToken(ast::SyntaxKind::IntegerLiteral, tokStart, numericFlags);
         return;
       } else if (nextChar == 'o' || nextChar == 'O') {
         // Octal literal
@@ -525,7 +527,7 @@ struct Lexer::Impl {
                                       static_cast<uint16_t>(TokenFlags::kContainsSeparator));
         }
         if (!hasValidDigits) { reportInvalidNumberLiteral("octal"_zc, tokStart); }
-        formToken(TokenKind::kIntegerLiteral, tokStart, numericFlags);
+        formToken(ast::SyntaxKind::IntegerLiteral, tokStart, numericFlags);
         return;
       } else if (nextChar == 'x' || nextChar == 'X') {
         // Hexadecimal literal
@@ -547,7 +549,7 @@ struct Lexer::Impl {
                                       static_cast<uint16_t>(TokenFlags::kContainsSeparator));
         }
         if (!hasValidDigits) { reportInvalidNumberLiteral("hexadecimal"_zc, tokStart); }
-        formToken(TokenKind::kIntegerLiteral, tokStart, numericFlags);
+        formToken(ast::SyntaxKind::IntegerLiteral, tokStart, numericFlags);
         return;
       }
     }
@@ -570,7 +572,7 @@ struct Lexer::Impl {
         if (*curPtr == '_') { hasSeparator = true; }
         curPtr++;
       }
-      kind = TokenKind::kFloatLiteral;
+      kind = ast::SyntaxKind::FloatLiteral;
     }
 
     // Check for exponent part
@@ -588,7 +590,7 @@ struct Lexer::Impl {
       }
       // Check if exponent has digits
       if (curPtr == expStart) { reportInvalidNumberLiteral("exponent"_zc, tokStart); }
-      kind = TokenKind::kFloatLiteral;
+      kind = ast::SyntaxKind::FloatLiteral;
     }
 
     if (hasSeparator) {
@@ -611,10 +613,10 @@ struct Lexer::Impl {
         }
       } else if (c == 'f' || c == 'F') {
         curPtr++;  // Skip 'f' or 'F'
-        kind = TokenKind::kFloatLiteral;
+        kind = ast::SyntaxKind::FloatLiteral;
       } else if (c == 'd' || c == 'D') {
         curPtr++;  // Skip 'd' or 'D'
-        kind = TokenKind::kFloatLiteral;
+        kind = ast::SyntaxKind::FloatLiteral;
       }
     }
 
@@ -659,7 +661,7 @@ struct Lexer::Impl {
     // Check if we reached end of file without closing quote
     if (!foundClosingQuote && curPtr >= bufferEnd) { reportUnterminatedString(tokStart); }
 
-    formToken(TokenKind::kStringLiteral, tokStart, tokenFlags);
+    formToken(ast::SyntaxKind::StringLiteral, tokStart, tokenFlags);
   }
 
   void lexSingleQuoteString(const TokenFlags& tokenFlags) {
@@ -708,7 +710,7 @@ struct Lexer::Impl {
     // Character literals should contain exactly one character
     if (foundClosingQuote && charCount != 1) { reportInvalidCharacterLiteral(tokStart); }
 
-    formToken(TokenKind::kCharacterLiteral, tokStart, tokenFlags);
+    formToken(ast::SyntaxKind::CharacterLiteral, tokStart, tokenFlags);
   }
 
   void lexEscapedIdentifier(const TokenFlags& tokenFlags) {
@@ -764,9 +766,9 @@ struct Lexer::Impl {
 
     // Check if it's a keyword
     auto textPtr = zc::ArrayPtr<const zc::byte>(tokStart, curPtr);
-    TokenKind kind = getKeywordKind(textPtr);
+    ast::SyntaxKind kind = getKeywordKind(textPtr);
 
-    if (kind == TokenKind::kIdentifier) {
+    if (kind == ast::SyntaxKind::Identifier) {
       // For identifiers, we might want to cache the text since they're frequently accessed
       source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
       source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
@@ -789,15 +791,15 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kEqualsEqualsEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::EqualsEqualsEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kEqualsEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::EqualsEquals, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '>') {
           curPtr++;
-          formToken(TokenKind::kEqualsGreaterThan, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::EqualsGreaterThan, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Equals, tokStart, tokenFlags);
         }
         break;
       case '!':
@@ -805,55 +807,56 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kExclamationEqualsEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::ExclamationEqualsEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kExclamationEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::ExclamationEquals, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '!') {
           curPtr++;
-          formToken(TokenKind::kErrorUnwrap, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::ErrorUnwrap, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kExclamation, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Exclamation, tokStart, tokenFlags);
         }
         break;
       case '<':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kLessThanEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::LessThanEquals, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '<') {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kLessThanLessThanEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::LessThanLessThanEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kLessThanLessThan, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::LessThanLessThan, tokStart, tokenFlags);
           }
         } else {
-          formToken(TokenKind::kLessThan, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::LessThan, tokStart, tokenFlags);
         }
         break;
       case '>':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kGreaterThanEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::GreaterThanEquals, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '>') {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kGreaterThanGreaterThanEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::GreaterThanGreaterThanEquals, tokStart, tokenFlags);
           } else if (curPtr < bufferEnd && *curPtr == '>') {
             curPtr++;
             if (curPtr < bufferEnd && *curPtr == '=') {
               curPtr++;
-              formToken(TokenKind::kGreaterThanGreaterThanGreaterThanEquals, tokStart, tokenFlags);
+              formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThanEquals, tokStart,
+                        tokenFlags);
             } else {
-              formToken(TokenKind::kGreaterThanGreaterThanGreaterThan, tokStart, tokenFlags);
+              formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan, tokStart, tokenFlags);
             }
           } else {
-            formToken(TokenKind::kGreaterThanGreaterThan, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::GreaterThanGreaterThan, tokStart, tokenFlags);
           }
         } else {
-          formToken(TokenKind::kGreaterThan, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::GreaterThan, tokStart, tokenFlags);
         }
         break;
       case '&':
@@ -861,15 +864,15 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kAmpersandAmpersandEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::AmpersandAmpersandEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kAmpersandAmpersand, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::AmpersandAmpersand, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kAmpersandEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::AmpersandEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kAmpersand, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Ampersand, tokStart, tokenFlags);
         }
         break;
       case '|':
@@ -877,48 +880,48 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kBarBarEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::BarBarEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kBarBar, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::BarBar, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kBarEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::BarEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kBar, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Bar, tokStart, tokenFlags);
         }
         break;
       case '^':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kCaretEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::CaretEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kCaret, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Caret, tokStart, tokenFlags);
         }
         break;
       case '+':
         if (curPtr < bufferEnd && *curPtr == '+') {
           curPtr++;
-          formToken(TokenKind::kPlusPlus, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::PlusPlus, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kPlusEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::PlusEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kPlus, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Plus, tokStart, tokenFlags);
         }
         break;
       case '-':
         if (curPtr < bufferEnd && *curPtr == '>') {
           curPtr++;
-          formToken(TokenKind::kArrow, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Arrow, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '-') {
           curPtr++;
-          formToken(TokenKind::kMinusMinus, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::MinusMinus, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kMinusEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::MinusEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kMinus, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Minus, tokStart, tokenFlags);
         }
         break;
       case '*':
@@ -926,31 +929,31 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kAsteriskAsteriskEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::AsteriskAsteriskEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kAsteriskAsterisk, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::AsteriskAsterisk, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kAsteriskEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::AsteriskEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kAsterisk, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Asterisk, tokStart, tokenFlags);
         }
         break;
       case '/':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kSlashEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::SlashEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kSlash, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Slash, tokStart, tokenFlags);
         }
         break;
       case '%':
         if (curPtr < bufferEnd && *curPtr == '=') {
           curPtr++;
-          formToken(TokenKind::kPercentEquals, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::PercentEquals, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kPercent, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Percent, tokStart, tokenFlags);
         }
         break;
       case '?':
@@ -958,30 +961,30 @@ struct Lexer::Impl {
           curPtr++;
           if (curPtr < bufferEnd && *curPtr == '=') {
             curPtr++;
-            formToken(TokenKind::kQuestionQuestionEquals, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::QuestionQuestionEquals, tokStart, tokenFlags);
           } else {
-            formToken(TokenKind::kQuestionQuestion, tokStart, tokenFlags);
+            formToken(ast::SyntaxKind::QuestionQuestion, tokStart, tokenFlags);
           }
         } else if (curPtr < bufferEnd && *curPtr == '.') {
           curPtr++;
-          formToken(TokenKind::kQuestionDot, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::QuestionDot, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == '!') {
           curPtr++;
-          formToken(TokenKind::kErrorPropagate, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::ErrorPropagate, tokStart, tokenFlags);
         } else if (curPtr < bufferEnd && *curPtr == ':') {
           curPtr++;
-          formToken(TokenKind::kErrorDefault, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::ErrorDefault, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kQuestion, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Question, tokStart, tokenFlags);
         }
         break;
       case '.':
         if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd &&
             *(curPtr + 1) == '.') {
           curPtr += 2;
-          formToken(TokenKind::kDotDotDot, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::DotDotDot, tokStart, tokenFlags);
         } else {
-          formToken(TokenKind::kPeriod, tokStart, tokenFlags);
+          formToken(ast::SyntaxKind::Period, tokStart, tokenFlags);
         }
         break;
       default:
@@ -1099,7 +1102,7 @@ struct Lexer::Impl {
     while (curPtr < bufferEnd && *curPtr != '\n') { curPtr++; }
 
     if (commentMode == CommentRetentionMode::kReturnAsTokens) {
-      formToken(TokenKind::kComment, tokStart);
+      formToken(ast::SyntaxKind::Comment, tokStart);
     }
     // If comments are not retained, just skip them
   }
@@ -1127,7 +1130,7 @@ struct Lexer::Impl {
     }
 
     if (commentMode == CommentRetentionMode::kReturnAsTokens) {
-      formToken(TokenKind::kComment, tokStart);
+      formToken(ast::SyntaxKind::Comment, tokStart);
     }
     // If comments are not retained, just skip them
   }
@@ -1175,7 +1178,7 @@ struct Lexer::Impl {
     // Skip the invalid character and continue lexing
     if (curPtr < bufferEnd) { curPtr++; }
     // Form an unknown token to maintain token stream continuity
-    formToken(TokenKind::kUnknown, curPtr - 1);
+    formToken(ast::SyntaxKind::Unknown, curPtr - 1);
   }
 
   void recoverFromLexingError() {
@@ -1372,7 +1375,7 @@ struct Lexer::Impl {
     // Position lexer at the end of cached tokens
     if (!tokenCache.empty()) {
       const Token& lastCachedToken = tokenCache.back();
-      if (lastCachedToken.getKind() == TokenKind::kEOF) { return lastCachedToken; }
+      if (lastCachedToken.getKind() == ast::SyntaxKind::EndOfFile) { return lastCachedToken; }
       // Move to position after last cached token
       curPtr = getBufferPtrForSourceLoc(lastCachedToken.getRange().getEnd());
     }
@@ -1383,7 +1386,7 @@ struct Lexer::Impl {
     for (unsigned i = 0; i < tokensNeeded && !isAtEndOfFile(); ++i) {
       lexImpl();
       tokenCache.push_back(nextToken);
-      if (nextToken.getKind() == TokenKind::kEOF) { break; }
+      if (nextToken.getKind() == ast::SyntaxKind::EndOfFile) { break; }
     }
 
     // Restore state
@@ -1394,22 +1397,22 @@ struct Lexer::Impl {
     // Return the requested token from cache
     if (cacheIndex < tokenCache.size()) { return tokenCache[cacheIndex]; }
 
-    // Return EOF if beyond available tokens
-    static Token eofToken(TokenKind::kEOF, source::SourceRange());
-    return eofToken;
+    // Return EndOfFile if beyond available tokens
+    static Token EndOfFileToken(ast::SyntaxKind::EndOfFile, source::SourceRange());
+    return EndOfFileToken;
   }
 
   bool canLookAheadToken(unsigned n) {
     ZC_REQUIRE(n > 0, "canLookAheadToken: n must be greater than 0");
 
-    if (n == 1) { return nextToken.getKind() != TokenKind::kEOF; }
+    if (n == 1) { return nextToken.getKind() != ast::SyntaxKind::EndOfFile; }
 
     initializeTokenCache();
 
     // Cache index: n == 2 -> index 0, n == 3 -> index 1, etc.
     unsigned cacheIndex = n - 2;
     if (cacheIndex < tokenCache.size()) {
-      return tokenCache[cacheIndex].getKind() != TokenKind::kEOF;
+      return tokenCache[cacheIndex].getKind() != ast::SyntaxKind::EndOfFile;
     }
 
     return false;

@@ -61,7 +61,7 @@ void ASTDumper::visit(const ImportDeclaration& node) {
   node.getModulePath().accept(*this);
   impl->serializer->writeChildEnd("modulePath"_zc);
 
-  ZC_IF_SOME(alias, node.getAlias()) { impl->serializer->writeProperty("alias", alias.getName()); }
+  ZC_IF_SOME(alias, node.getAlias()) { impl->serializer->writeProperty("alias", alias.getText()); }
 
   impl->serializer->writeNodeEnd("ImportDeclaration"_zc);
 }
@@ -69,29 +69,21 @@ void ASTDumper::visit(const ImportDeclaration& node) {
 void ASTDumper::visit(const ExportDeclaration& node) {
   impl->serializer->writeNodeStart("ExportDeclaration"_zc);
 
-  impl->serializer->writeChildStart("identifier"_zc);
-  node.getIdentifier().accept(*this);
-  impl->serializer->writeChildEnd("identifier"_zc);
+  impl->serializer->writeChildStart("exportPath"_zc);
+  node.getExportPath().accept(*this);
+  impl->serializer->writeChildEnd("exportPath"_zc);
 
-  if (node.isRename()) {
-    ZC_IF_SOME(alias, node.getAlias()) {
-      impl->serializer->writeChildStart("alias"_zc);
-      alias.accept(*this);
-      impl->serializer->writeChildEnd("alias"_zc);
-    }
-
-    ZC_IF_SOME(modulePath, node.getModulePath()) {
-      impl->serializer->writeChildStart("modulePath"_zc);
-      modulePath.accept(*this);
-      impl->serializer->writeChildEnd("modulePath"_zc);
-    }
+  ZC_IF_SOME(alias, node.getAlias()) {
+    impl->serializer->writeChildStart("alias"_zc);
+    alias.accept(*this);
+    impl->serializer->writeChildEnd("alias"_zc);
   }
 
   impl->serializer->writeNodeEnd("ExportDeclaration"_zc);
 }
 
-void ASTDumper::visit(const VariableDeclaration& node) {
-  impl->serializer->writeNodeStart("VariableDeclaration"_zc);
+void ASTDumper::visit(const VariableDeclarationList& node) {
+  impl->serializer->writeNodeStart("VariableDeclarationList"_zc);
 
   const auto& bindings = node.getBindings();
   impl->serializer->writeArrayStart("bindings"_zc, bindings.size());
@@ -101,7 +93,17 @@ void ASTDumper::visit(const VariableDeclaration& node) {
   }
   impl->serializer->writeArrayEnd("bindings"_zc);
 
-  impl->serializer->writeNodeEnd("VariableDeclaration"_zc);
+  impl->serializer->writeNodeEnd("VariableDeclarationList"_zc);
+}
+
+void ASTDumper::visit(const VariableStatement& node) {
+  impl->serializer->writeNodeStart("VariableStatement"_zc);
+
+  impl->serializer->writeChildStart("declarations"_zc);
+  node.getDeclarations().accept(*this);
+  impl->serializer->writeChildEnd("declarations"_zc);
+
+  impl->serializer->writeNodeEnd("VariableStatement"_zc);
 }
 
 void ASTDumper::visit(const FunctionDeclaration& node) {
@@ -129,9 +131,9 @@ void ASTDumper::visit(const FunctionDeclaration& node) {
   }
   impl->serializer->writeArrayEnd("parameters"_zc);
 
-  if (auto* returnType = node.getReturnType()) {
+  ZC_IF_SOME(returnType, node.getReturnType()) {
     impl->serializer->writeChildStart("returnType"_zc);
-    returnType->accept(*this);
+    returnType.accept(*this);
     impl->serializer->writeChildEnd("returnType"_zc);
   }
 
@@ -220,7 +222,7 @@ void ASTDumper::visit(const NullLiteral& node) {
 
 void ASTDumper::visit(const Identifier& node) {
   impl->serializer->writeNodeStart("Identifier"_zc);
-  impl->serializer->writeProperty("name", node.getName());
+  impl->serializer->writeProperty("name", node.getText());
   impl->serializer->writeNodeEnd("Identifier"_zc);
 }
 
@@ -232,32 +234,6 @@ void ASTDumper::visit(const ParenthesizedExpression& node) {
   impl->serializer->writeChildEnd("expression"_zc);
 
   impl->serializer->writeNodeEnd("ParenthesizedExpression"_zc);
-}
-
-void ASTDumper::visit(const Operator& node) {
-  impl->serializer->writeNodeStart("Operator"_zc);
-  impl->serializer->writeProperty("symbol", node.getSymbol());
-  impl->serializer->writeProperty("type", zc::str(static_cast<int>(node.getType())));
-  impl->serializer->writeNodeEnd("Operator"_zc);
-}
-
-void ASTDumper::visit(const BinaryOperator& node) {
-  impl->serializer->writeNodeStart("BinaryOperator"_zc);
-  impl->serializer->writeProperty("symbol", node.getSymbol());
-  impl->serializer->writeProperty("precedence", zc::str(static_cast<int>(node.getPrecedence())));
-  impl->serializer->writeNodeEnd("BinaryOperator"_zc);
-}
-
-void ASTDumper::visit(const UnaryOperator& node) {
-  impl->serializer->writeNodeStart("UnaryOperator"_zc);
-  impl->serializer->writeProperty("symbol", node.getSymbol());
-  impl->serializer->writeNodeEnd("UnaryOperator"_zc);
-}
-
-void ASTDumper::visit(const AssignmentOperator& node) {
-  impl->serializer->writeNodeStart("AssignmentOperator"_zc);
-  impl->serializer->writeProperty("symbol", node.getSymbol());
-  impl->serializer->writeNodeEnd("AssignmentOperator"_zc);
 }
 
 void ASTDumper::visit(const Node& node) {
@@ -292,11 +268,8 @@ void ASTDumper::visit(const BindingElement& node) {
   }
 
   impl->serializer->writeChildStart("initializer"_zc);
-  if (auto* initializer = node.getInitializer()) {
-    initializer->accept(*this);
-  } else {
-    impl->serializer->writeNull();
-  }
+  ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+  else { impl->serializer->writeNull(); }
   impl->serializer->writeChildEnd("initializer"_zc);
 
   impl->serializer->writeNodeEnd("BindingElement"_zc);
@@ -305,23 +278,17 @@ void ASTDumper::visit(const BindingElement& node) {
 void ASTDumper::visit(const ModulePath& node) {
   impl->serializer->writeNodeStart("ModulePath"_zc);
 
-  const auto& identifiers = node.getIdentifiers();
-  impl->serializer->writeArrayStart("identifiers"_zc, identifiers.size());
-  for (const auto& id : identifiers) {
-    impl->serializer->writeArrayElement();
-    impl->serializer->writeNodeStart("Identifier"_zc);
-    impl->serializer->writeProperty("value", id.getName());
-    impl->serializer->writeNodeEnd("Identifier"_zc);
-  }
-  impl->serializer->writeArrayEnd("identifiers"_zc);
+  impl->serializer->writeChildStart("stringLiteral"_zc);
+  node.getStringLiteral().accept(*this);
+  impl->serializer->writeChildEnd("stringLiteral"_zc);
 
   impl->serializer->writeNodeEnd("ModulePath"_zc);
 }
 
 // Additional visit methods for missing AST node types
-void ASTDumper::visit(const TypeParameter& node) {
-  impl->serializer->writeNodeStart("TypeParameter"_zc);
-  impl->serializer->writeNodeEnd("TypeParameter"_zc);
+void ASTDumper::visit(const TypeParameterDeclaration& node) {
+  impl->serializer->writeNodeStart("TypeParameterDeclaration"_zc);
+  impl->serializer->writeNodeEnd("TypeParameterDeclaration"_zc);
 }
 
 void ASTDumper::visit(const ClassDeclaration& node) {
@@ -389,6 +356,16 @@ void ASTDumper::visit(const MatchStatement& node) {
   impl->serializer->writeNodeEnd("MatchStatement"_zc);
 }
 
+void ASTDumper::visit(const MatchClause& node) {
+  impl->serializer->writeNodeStart("MatchClause"_zc);
+  impl->serializer->writeNodeEnd("MatchClause"_zc);
+}
+
+void ASTDumper::visit(const DefaultClause& node) {
+  impl->serializer->writeNodeStart("DefaultClause"_zc);
+  impl->serializer->writeNodeEnd("DefaultClause"_zc);
+}
+
 void ASTDumper::visit(const DebuggerStatement& node) {
   impl->serializer->writeNodeStart("DebuggerStatement"_zc);
   impl->serializer->writeNodeEnd("DebuggerStatement"_zc);
@@ -408,7 +385,7 @@ void ASTDumper::visit(const PrefixUnaryExpression& node) {
   impl->serializer->writeNodeStart("PrefixUnaryExpression"_zc);
 
   impl->serializer->writeChildStart("operator"_zc);
-  node.getOperator().accept(*this);
+  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getOperator())));
   impl->serializer->writeChildEnd("operator"_zc);
 
   impl->serializer->writeChildStart("operand"_zc);
@@ -426,7 +403,7 @@ void ASTDumper::visit(const PostfixUnaryExpression& node) {
   impl->serializer->writeChildEnd("operand"_zc);
 
   impl->serializer->writeChildStart("operator"_zc);
-  node.getOperator().accept(*this);
+  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getOperator())));
   impl->serializer->writeChildEnd("operator"_zc);
 
   impl->serializer->writeNodeEnd("PostfixUnaryExpression"_zc);
@@ -462,11 +439,6 @@ void ASTDumper::visit(const NewExpression& node) {
   impl->serializer->writeNodeEnd("NewExpression"_zc);
 }
 
-void ASTDumper::visit(const AssignmentExpression& node) {
-  impl->serializer->writeNodeStart("AssignmentExpression"_zc);
-  impl->serializer->writeNodeEnd("AssignmentExpression"_zc);
-}
-
 void ASTDumper::visit(const ConditionalExpression& node) {
   impl->serializer->writeNodeStart("ConditionalExpression"_zc);
   impl->serializer->writeNodeEnd("ConditionalExpression"_zc);
@@ -475,11 +447,6 @@ void ASTDumper::visit(const ConditionalExpression& node) {
 void ASTDumper::visit(const CallExpression& node) {
   impl->serializer->writeNodeStart("CallExpression"_zc);
   impl->serializer->writeNodeEnd("CallExpression"_zc);
-}
-
-void ASTDumper::visit(const OptionalExpression& node) {
-  impl->serializer->writeNodeStart("OptionalExpression"_zc);
-  impl->serializer->writeNodeEnd("OptionalExpression"_zc);
 }
 
 void ASTDumper::visit(const LiteralExpression& node) {
@@ -565,29 +532,34 @@ void ASTDumper::visit(const ObjectLiteralExpression& node) {
 }
 
 // Type node visit methods
-void ASTDumper::visit(const Type& node) {
-  impl->serializer->writeNodeStart("Type"_zc);
-  impl->serializer->writeNodeEnd("Type"_zc);
+void ASTDumper::visit(const TypeNode& node) {
+  impl->serializer->writeNodeStart("TypeNode"_zc);
+  impl->serializer->writeNodeEnd("TypeNode"_zc);
 }
 
-void ASTDumper::visit(const TypeReference& node) {
-  impl->serializer->writeNodeStart("TypeReference"_zc);
-  impl->serializer->writeProperty("name", node.getName());
-  impl->serializer->writeNodeEnd("TypeReference"_zc);
+void ASTDumper::visit(const TokenNode& node) {
+  impl->serializer->writeNodeStart("TokenNode"_zc);
+  impl->serializer->writeNodeEnd("TokenNode"_zc);
 }
 
-void ASTDumper::visit(const ArrayType& node) {
-  impl->serializer->writeNodeStart("ArrayType"_zc);
+void ASTDumper::visit(const TypeReferenceNode& node) {
+  impl->serializer->writeNodeStart("TypeReferenceNode"_zc);
+  impl->serializer->writeProperty("name", node.getName().getText());
+  impl->serializer->writeNodeEnd("TypeReferenceNode"_zc);
+}
+
+void ASTDumper::visit(const ArrayTypeNode& node) {
+  impl->serializer->writeNodeStart("ArrayTypeNode"_zc);
 
   impl->serializer->writeChildStart("elementType"_zc);
   node.getElementType().accept(*this);
   impl->serializer->writeChildEnd("elementType"_zc);
 
-  impl->serializer->writeNodeEnd("ArrayType"_zc);
+  impl->serializer->writeNodeEnd("ArrayTypeNode"_zc);
 }
 
-void ASTDumper::visit(const UnionType& node) {
-  impl->serializer->writeNodeStart("UnionType"_zc);
+void ASTDumper::visit(const UnionTypeNode& node) {
+  impl->serializer->writeNodeStart("UnionTypeNode"_zc);
 
   const auto& types = node.getTypes();
   impl->serializer->writeArrayStart("types"_zc, types.size());
@@ -597,11 +569,11 @@ void ASTDumper::visit(const UnionType& node) {
   }
   impl->serializer->writeArrayEnd("types"_zc);
 
-  impl->serializer->writeNodeEnd("UnionType"_zc);
+  impl->serializer->writeNodeEnd("UnionTypeNode"_zc);
 }
 
-void ASTDumper::visit(const IntersectionType& node) {
-  impl->serializer->writeNodeStart("IntersectionType"_zc);
+void ASTDumper::visit(const IntersectionTypeNode& node) {
+  impl->serializer->writeNodeStart("IntersectionTypeNode"_zc);
 
   const auto& types = node.getTypes();
   impl->serializer->writeArrayStart("types"_zc, types.size());
@@ -611,27 +583,27 @@ void ASTDumper::visit(const IntersectionType& node) {
   }
   impl->serializer->writeArrayEnd("types"_zc);
 
-  impl->serializer->writeNodeEnd("IntersectionType"_zc);
+  impl->serializer->writeNodeEnd("IntersectionTypeNode"_zc);
 }
 
-void ASTDumper::visit(const ParenthesizedType& node) {
-  impl->serializer->writeNodeStart("ParenthesizedType"_zc);
+void ASTDumper::visit(const ParenthesizedTypeNode& node) {
+  impl->serializer->writeNodeStart("ParenthesizedTypeNode"_zc);
 
   impl->serializer->writeChildStart("type"_zc);
   node.getType().accept(*this);
   impl->serializer->writeChildEnd("type"_zc);
 
-  impl->serializer->writeNodeEnd("ParenthesizedType"_zc);
+  impl->serializer->writeNodeEnd("ParenthesizedTypeNode"_zc);
 }
 
-void ASTDumper::visit(const PredefinedType& node) {
-  impl->serializer->writeNodeStart("PredefinedType"_zc);
-  impl->serializer->writeProperty("name", node.getName());
-  impl->serializer->writeNodeEnd("PredefinedType"_zc);
+void ASTDumper::visit(const PredefinedTypeNode& node) {
+  impl->serializer->writeNodeStart("PredefinedTypeNode"_zc);
+  impl->serializer->writeProperty("name", "Predefined");
+  impl->serializer->writeNodeEnd("PredefinedTypeNode"_zc);
 }
 
-void ASTDumper::visit(const ObjectType& node) {
-  impl->serializer->writeNodeStart("ObjectType"_zc);
+void ASTDumper::visit(const ObjectTypeNode& node) {
+  impl->serializer->writeNodeStart("ObjectTypeNode"_zc);
 
   const auto& members = node.getMembers();
   impl->serializer->writeArrayStart("members"_zc, members.size());
@@ -641,11 +613,11 @@ void ASTDumper::visit(const ObjectType& node) {
   }
   impl->serializer->writeArrayEnd("members"_zc);
 
-  impl->serializer->writeNodeEnd("ObjectType"_zc);
+  impl->serializer->writeNodeEnd("ObjectTypeNode"_zc);
 }
 
-void ASTDumper::visit(const TupleType& node) {
-  impl->serializer->writeNodeStart("TupleType"_zc);
+void ASTDumper::visit(const TupleTypeNode& node) {
+  impl->serializer->writeNodeStart("TupleTypeNode"_zc);
 
   const auto& elementTypes = node.getElementTypes();
   impl->serializer->writeArrayStart("elementTypes"_zc, elementTypes.size());
@@ -655,11 +627,11 @@ void ASTDumper::visit(const TupleType& node) {
   }
   impl->serializer->writeArrayEnd("elementTypes"_zc);
 
-  impl->serializer->writeNodeEnd("TupleType"_zc);
+  impl->serializer->writeNodeEnd("TupleTypeNode"_zc);
 }
 
-void ASTDumper::visit(const ReturnType& node) {
-  impl->serializer->writeNodeStart("ReturnType"_zc);
+void ASTDumper::visit(const ReturnTypeNode& node) {
+  impl->serializer->writeNodeStart("ReturnTypeNode"_zc);
 
   impl->serializer->writeChildStart("type"_zc);
   node.getType().accept(*this);
@@ -671,11 +643,11 @@ void ASTDumper::visit(const ReturnType& node) {
     impl->serializer->writeChildEnd("errorType"_zc);
   }
 
-  impl->serializer->writeNodeEnd("ReturnType"_zc);
+  impl->serializer->writeNodeEnd("ReturnTypeNode"_zc);
 }
 
-void ASTDumper::visit(const FunctionType& node) {
-  impl->serializer->writeNodeStart("FunctionType"_zc);
+void ASTDumper::visit(const FunctionTypeNode& node) {
+  impl->serializer->writeNodeStart("FunctionTypeNode"_zc);
 
   const auto& typeParams = node.getTypeParameters();
   impl->serializer->writeArrayStart("typeParameters"_zc, typeParams.size());
@@ -697,27 +669,282 @@ void ASTDumper::visit(const FunctionType& node) {
   node.getReturnType().accept(*this);
   impl->serializer->writeChildEnd("returnType"_zc);
 
-  impl->serializer->writeNodeEnd("FunctionType"_zc);
+  impl->serializer->writeNodeEnd("FunctionTypeNode"_zc);
 }
 
-void ASTDumper::visit(const OptionalType& node) {
-  impl->serializer->writeNodeStart("OptionalType"_zc);
+void ASTDumper::visit(const OptionalTypeNode& node) {
+  impl->serializer->writeNodeStart("OptionalTypeNode"_zc);
 
   impl->serializer->writeChildStart("type"_zc);
   node.getType().accept(*this);
   impl->serializer->writeChildEnd("type"_zc);
 
-  impl->serializer->writeNodeEnd("OptionalType"_zc);
+  impl->serializer->writeNodeEnd("OptionalTypeNode"_zc);
 }
 
-void ASTDumper::visit(const TypeQuery& node) {
-  impl->serializer->writeNodeStart("TypeQuery"_zc);
+void ASTDumper::visit(const TypeQueryNode& node) {
+  impl->serializer->writeNodeStart("TypeQueryNode"_zc);
 
   impl->serializer->writeChildStart("expression"_zc);
   node.getExpression().accept(*this);
   impl->serializer->writeChildEnd("expression"_zc);
 
-  impl->serializer->writeNodeEnd("TypeQuery"_zc);
+  impl->serializer->writeNodeEnd("TypeQueryNode"_zc);
+}
+
+// Missing declaration visit methods
+void ASTDumper::visit(const MethodDeclaration& node) {
+  impl->serializer->writeNodeStart("MethodDeclaration"_zc);
+  impl->serializer->writeNodeEnd("MethodDeclaration"_zc);
+}
+
+void ASTDumper::visit(const ConstructorDeclaration& node) {
+  impl->serializer->writeNodeStart("ConstructorDeclaration"_zc);
+  impl->serializer->writeNodeEnd("ConstructorDeclaration"_zc);
+}
+
+void ASTDumper::visit(const ParameterDeclaration& node) {
+  impl->serializer->writeNodeStart("ParameterDeclaration"_zc);
+  impl->serializer->writeNodeEnd("ParameterDeclaration"_zc);
+}
+
+void ASTDumper::visit(const PropertyDeclaration& node) {
+  impl->serializer->writeNodeStart("PropertyDeclaration"_zc);
+  impl->serializer->writeNodeEnd("PropertyDeclaration"_zc);
+}
+
+void ASTDumper::visit(const MissingDeclaration& node) {
+  // TODO: Implement MissingDeclaration dumping
+  impl->serializer->writeNodeStart("MissingDeclaration"_zc);
+  impl->serializer->writeNodeEnd("MissingDeclaration"_zc);
+}
+
+void ASTDumper::visit(const InterfaceBody& node) {
+  // TODO: Implement InterfaceBody dumping
+  impl->serializer->writeNodeStart("InterfaceBody"_zc);
+  impl->serializer->writeNodeEnd("InterfaceBody"_zc);
+}
+
+void ASTDumper::visit(const StructBody& node) {
+  // TODO: Implement StructBody dumping
+  impl->serializer->writeNodeStart("StructBody"_zc);
+  impl->serializer->writeNodeEnd("StructBody"_zc);
+}
+
+void ASTDumper::visit(const ErrorBody& node) {
+  // TODO: Implement ErrorBody dumping
+  impl->serializer->writeNodeStart("ErrorBody"_zc);
+  impl->serializer->writeNodeEnd("ErrorBody"_zc);
+}
+
+void ASTDumper::visit(const EnumBody& node) {
+  impl->serializer->writeNodeStart("EnumBody"_zc);
+  // TODO: Implement EnumBody dumping
+  impl->serializer->writeNodeEnd("EnumBody"_zc);
+}
+
+void ASTDumper::visit(const ArrayBindingPattern& node) {
+  impl->serializer->writeNodeStart("ArrayBindingPattern"_zc);
+  // TODO: Implement ArrayBindingPattern dumping
+  impl->serializer->writeNodeEnd("ArrayBindingPattern"_zc);
+}
+
+void ASTDumper::visit(const ObjectBindingPattern& node) {
+  impl->serializer->writeNodeStart("ObjectBindingPattern"_zc);
+  // TODO: Implement ObjectBindingPattern dumping
+  impl->serializer->writeNodeEnd("ObjectBindingPattern"_zc);
+}
+
+void ASTDumper::visit(const ThisExpression& node) {
+  impl->serializer->writeNodeStart("ThisExpression"_zc);
+  // TODO: Implement ThisExpression dumping
+  impl->serializer->writeNodeEnd("ThisExpression"_zc);
+}
+
+void ASTDumper::visit(const SuperExpression& node) {
+  impl->serializer->writeNodeStart("SuperExpression"_zc);
+  // TODO: Implement SuperExpression dumping
+  impl->serializer->writeNodeEnd("SuperExpression"_zc);
+}
+
+void ASTDumper::visit(const BoolTypeNode& node) {
+  impl->serializer->writeNodeStart("BoolTypeNode"_zc);
+  // TODO: Implement BoolTypeNode dumping
+  impl->serializer->writeNodeEnd("BoolTypeNode"_zc);
+}
+
+void ASTDumper::visit(const I8TypeNode& node) {
+  impl->serializer->writeNodeStart("I8TypeNode"_zc);
+  // TODO: Implement I8TypeNode dumping
+  impl->serializer->writeNodeEnd("I8TypeNode"_zc);
+}
+
+void ASTDumper::visit(const I16TypeNode& node) {
+  impl->serializer->writeNodeStart("I16TypeNode"_zc);
+  // TODO: Implement I16TypeNode dumping
+  impl->serializer->writeNodeEnd("I16TypeNode"_zc);
+}
+
+void ASTDumper::visit(const I32TypeNode& node) {
+  impl->serializer->writeNodeStart("I32TypeNode"_zc);
+  // TODO: Implement I32TypeNode dumping
+  impl->serializer->writeNodeEnd("I32TypeNode"_zc);
+}
+
+void ASTDumper::visit(const I64TypeNode& node) {
+  impl->serializer->writeNodeStart("I64TypeNode"_zc);
+  // TODO: Implement I64TypeNode dumping
+  impl->serializer->writeNodeEnd("I64TypeNode"_zc);
+}
+
+void ASTDumper::visit(const U8TypeNode& node) {
+  impl->serializer->writeNodeStart("U8TypeNode"_zc);
+  // TODO: Implement U8TypeNode dumping
+  impl->serializer->writeNodeEnd("U8TypeNode"_zc);
+}
+
+void ASTDumper::visit(const U16TypeNode& node) {
+  impl->serializer->writeNodeStart("U16TypeNode"_zc);
+  // TODO: Implement U16TypeNode dumping
+  impl->serializer->writeNodeEnd("U16TypeNode"_zc);
+}
+
+void ASTDumper::visit(const U32TypeNode& node) {
+  impl->serializer->writeNodeStart("U32TypeNode"_zc);
+  // TODO: Implement U32TypeNode dumping
+  impl->serializer->writeNodeEnd("U32TypeNode"_zc);
+}
+
+void ASTDumper::visit(const U64TypeNode& node) {
+  impl->serializer->writeNodeStart("U64TypeNode"_zc);
+  // TODO: Implement U64TypeNode dumping
+  impl->serializer->writeNodeEnd("U64TypeNode"_zc);
+}
+
+void ASTDumper::visit(const F32TypeNode& node) {
+  impl->serializer->writeNodeStart("F32TypeNode"_zc);
+  // TODO: Implement F32TypeNode dumping
+  impl->serializer->writeNodeEnd("F32TypeNode"_zc);
+}
+
+void ASTDumper::visit(const F64TypeNode& node) {
+  impl->serializer->writeNodeStart("F64TypeNode"_zc);
+  // TODO: Implement F64TypeNode dumping
+  impl->serializer->writeNodeEnd("F64TypeNode"_zc);
+}
+
+void ASTDumper::visit(const StrTypeNode& node) {
+  impl->serializer->writeNodeStart("StrTypeNode"_zc);
+  // TODO: Implement StrTypeNode dumping
+  impl->serializer->writeNodeEnd("StrTypeNode"_zc);
+}
+
+void ASTDumper::visit(const UnitTypeNode& node) {
+  impl->serializer->writeNodeStart("UnitTypeNode"_zc);
+  // TODO: Implement UnitTypeNode dumping
+  impl->serializer->writeNodeEnd("UnitTypeNode"_zc);
+}
+
+// Signature node visit methods
+void ASTDumper::visit(const PropertySignature& node) {
+  impl->serializer->writeNodeStart("PropertySignature"_zc);
+  // TODO: Implement PropertySignature dumping
+  impl->serializer->writeNodeEnd("PropertySignature"_zc);
+}
+
+void ASTDumper::visit(const MethodSignature& node) {
+  impl->serializer->writeNodeStart("MethodSignature"_zc);
+  // TODO: Implement MethodSignature dumping
+  impl->serializer->writeNodeEnd("MethodSignature"_zc);
+}
+
+// Body/Structure node visit methods
+void ASTDumper::visit(const ClassBody& node) {
+  writeNodeHeader("ClassBody");
+  // TODO: Implement ClassBody dumping
+  writeNodeFooter("ClassBody");
+}
+
+// Missing visitor method implementations
+void ASTDumper::visit(const Module& node) {
+  writeNodeHeader("Module");
+  // TODO: Implement Module dumping
+  writeNodeFooter("Module");
+}
+
+void ASTDumper::visit(const VariableDeclaration& node) {
+  writeNodeHeader("VariableDeclaration");
+  // TODO: Implement VariableDeclaration dumping
+  writeNodeFooter("VariableDeclaration");
+}
+
+void ASTDumper::visit(const WildcardPattern& node) {
+  writeNodeHeader("WildcardPattern");
+  // TODO: Implement WildcardPattern dumping
+  writeNodeFooter("WildcardPattern");
+}
+
+void ASTDumper::visit(const IdentifierPattern& node) {
+  writeNodeHeader("IdentifierPattern");
+  // TODO: Implement IdentifierPattern dumping
+  writeNodeFooter("IdentifierPattern");
+}
+
+void ASTDumper::visit(const TuplePattern& node) {
+  writeNodeHeader("TuplePattern");
+  // TODO: Implement TuplePattern dumping
+  writeNodeFooter("TuplePattern");
+}
+
+void ASTDumper::visit(const StructurePattern& node) {
+  writeNodeHeader("StructurePattern");
+  // TODO: Implement StructurePattern dumping
+  writeNodeFooter("StructurePattern");
+}
+
+void ASTDumper::visit(const ArrayPattern& node) {
+  writeNodeHeader("ArrayPattern");
+  // TODO: Implement ArrayPattern dumping
+  writeNodeFooter("ArrayPattern");
+}
+
+void ASTDumper::visit(const IsPattern& node) {
+  writeNodeHeader("IsPattern");
+  // TODO: Implement IsPattern dumping
+  writeNodeFooter("IsPattern");
+}
+
+void ASTDumper::visit(const ExpressionPattern& node) {
+  writeNodeHeader("ExpressionPattern");
+  // TODO: Implement ExpressionPattern dumping
+  writeNodeFooter("ExpressionPattern");
+}
+
+void ASTDumper::visit(const EnumPattern& node) {
+  writeNodeHeader("EnumPattern");
+  // TODO: Implement EnumPattern dumping
+  writeNodeFooter("EnumPattern");
+}
+
+// Private helper methods implementation
+void ASTDumper::writeIndent(int indent) {
+  // TODO: Implement indentation if needed by serializer
+}
+
+void ASTDumper::writeLine(const zc::StringPtr text, int indent) {
+  // TODO: Implement line writing if needed by serializer
+}
+
+void ASTDumper::writeNodeHeader(const zc::StringPtr nodeType, int indent) {
+  impl->serializer->writeNodeStart(nodeType);
+}
+
+void ASTDumper::writeNodeFooter(const zc::StringPtr nodeType, int indent) {
+  impl->serializer->writeNodeEnd(nodeType);
+}
+
+void ASTDumper::writeProperty(const zc::StringPtr name, const zc::StringPtr value, int indent) {
+  impl->serializer->writeProperty(name, value);
 }
 
 }  // namespace ast

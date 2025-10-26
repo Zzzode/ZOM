@@ -17,73 +17,90 @@
 #include "zc/core/memory.h"
 #include "zomlang/compiler/ast/visitor.h"
 #include "zomlang/compiler/source/location.h"
+#include "zomlang/compiler/symbol/symbol-table.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
 
 // ================================================================================
-// Node::Impl
+// NodeImpl::Impl
 
-struct Node::Impl {
-  source::SourceRange range;
+struct NodeImpl::Impl {
   SyntaxKind kind;
-  const Node* parent = nullptr;
+
+  source::SourceRange range;
+
+  zc::Maybe<const Node&> parent = zc::none;
 
   Impl(SyntaxKind kind) : kind(kind) {}
 };
 
-Node::Node(SyntaxKind kind) noexcept : impl(zc::heap<Impl>(kind)) {}
-Node::~Node() noexcept(false) = default;
+NodeImpl::NodeImpl(SyntaxKind kind) noexcept : impl(zc::heap<Impl>(kind)) {}
 
-// Node sourceRange method implementation
-void Node::setSourceRange(const source::SourceRange&& range) { impl->range = zc::mv(range); }
-const source::SourceRange Node::sourceRange() const { return impl->range; }
+NodeImpl::~NodeImpl() noexcept(false) = default;
 
-// Node kind method implementations
-SyntaxKind Node::getKind() const { return impl->kind; }
+void NodeImpl::setSourceRange(const source::SourceRange&& range) { impl->range = zc::mv(range); }
 
-bool Node::isStatement() const {
-  return impl->kind == SyntaxKind::kStatement || impl->kind == SyntaxKind::kImportDeclaration ||
-         impl->kind == SyntaxKind::kExportDeclaration ||
-         impl->kind == SyntaxKind::kVariableDeclaration ||
-         impl->kind == SyntaxKind::kFunctionDeclaration ||
-         impl->kind == SyntaxKind::kClassDeclaration ||
-         impl->kind == SyntaxKind::kInterfaceDeclaration ||
-         impl->kind == SyntaxKind::kStructDeclaration ||
-         impl->kind == SyntaxKind::kEnumDeclaration ||
-         impl->kind == SyntaxKind::kErrorDeclaration ||
-         impl->kind == SyntaxKind::kAliasDeclaration || impl->kind == SyntaxKind::kBlockStatement ||
-         impl->kind == SyntaxKind::kEmptyStatement ||
-         impl->kind == SyntaxKind::kExpressionStatement || impl->kind == SyntaxKind::kIfStatement ||
-         impl->kind == SyntaxKind::kWhileStatement || impl->kind == SyntaxKind::kForStatement ||
-         impl->kind == SyntaxKind::kBreakStatement ||
-         impl->kind == SyntaxKind::kContinueStatement ||
-         impl->kind == SyntaxKind::kReturnStatement || impl->kind == SyntaxKind::kMatchStatement ||
-         impl->kind == SyntaxKind::kDebuggerStatement;
+const source::SourceRange& NodeImpl::getSourceRange() const { return impl->range; }
+
+SyntaxKind NodeImpl::getKind() const { return impl->kind; }
+
+// ================================================================================
+// TokenNode
+
+struct TokenNode::Impl : private NodeImpl {
+  explicit Impl(SyntaxKind kind) : NodeImpl(kind) {}
+
+  // Forward NodeImpl methods
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+TokenNode::TokenNode(SyntaxKind kind) noexcept : impl(zc::heap<Impl>(kind)) {}
+
+TokenNode::~TokenNode() noexcept(false) = default;
+
+void TokenNode::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
 }
 
-bool Node::isExpression() const {
-  return impl->kind == SyntaxKind::kExpression || impl->kind == SyntaxKind::kPrimaryExpression ||
-         impl->kind == SyntaxKind::kBinaryExpression ||
-         impl->kind == SyntaxKind::kUnaryExpression ||
-         impl->kind == SyntaxKind::kAssignmentExpression ||
-         impl->kind == SyntaxKind::kConditionalExpression ||
-         impl->kind == SyntaxKind::kCallExpression || impl->kind == SyntaxKind::kMemberExpression ||
-         impl->kind == SyntaxKind::kArrayLiteralExpression ||
-         impl->kind == SyntaxKind::kObjectLiteralExpression ||
-         impl->kind == SyntaxKind::kUpdateExpression || impl->kind == SyntaxKind::kCastExpression ||
-         impl->kind == SyntaxKind::kAwaitExpression || impl->kind == SyntaxKind::kVoidExpression ||
-         impl->kind == SyntaxKind::kTypeOfExpression ||
-         impl->kind == SyntaxKind::kOptionalExpression || impl->kind == SyntaxKind::kIdentifier ||
-         impl->kind == SyntaxKind::kBindingIdentifier || impl->kind == SyntaxKind::kLiteral ||
-         impl->kind == SyntaxKind::kStringLiteral || impl->kind == SyntaxKind::kIntegerLiteral ||
-         impl->kind == SyntaxKind::kFloatLiteral || impl->kind == SyntaxKind::kBooleanLiteral ||
-         impl->kind == SyntaxKind::kNullLiteral;
+const source::SourceRange& TokenNode::getSourceRange() const { return impl->getSourceRange(); }
+
+SyntaxKind TokenNode::getKind() const { return impl->getKind(); }
+
+void TokenNode::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// LocalsContainerImpl::Impl
+
+struct LocalsContainerImpl::Impl {
+  zc::Maybe<const symbol::SymbolTable&> locals = zc::none;
+  zc::Maybe<const LocalsContainer&> nextContainer = zc::none;
+
+  Impl() = default;
+};
+
+LocalsContainerImpl::LocalsContainerImpl() noexcept : impl(zc::heap<Impl>()) {}
+
+LocalsContainerImpl::~LocalsContainerImpl() noexcept(false) = default;
+
+zc::Maybe<const symbol::SymbolTable&> LocalsContainerImpl::getLocals() const {
+  return impl->locals;
 }
 
-// Visitor pattern implementation
-void Node::accept(Visitor& visitor) const { visitor.visit(*this); }
+void LocalsContainerImpl::setLocals(zc::Maybe<const symbol::SymbolTable&> locals) {
+  impl->locals = locals;
+}
+
+zc::Maybe<const LocalsContainer&> LocalsContainerImpl::getNextContainer() const {
+  return impl->nextContainer;
+}
+
+void LocalsContainerImpl::setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) {
+  impl->nextContainer = nextContainer;
+}
 
 }  // namespace ast
 }  // namespace compiler

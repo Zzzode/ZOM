@@ -15,10 +15,10 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zc/core/io.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/serializer.h"
+#include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
@@ -28,19 +28,19 @@ namespace ast {
 // Forward declarations for types not in visitor.h
 class ModulePath;
 class BindingElement;
-class Type;
-class TypeReference;
-class ArrayType;
-class UnionType;
-class IntersectionType;
-class ParenthesizedType;
-class PredefinedType;
-class ObjectType;
-class TupleType;
-class ReturnType;
-class FunctionType;
-class OptionalType;
-class TypeQuery;
+class TypeNode;
+class TypeReferenceNode;
+class ArrayTypeNode;
+class UnionTypeNode;
+class IntersectionTypeNode;
+class ParenthesizedTypeNode;
+class PredefinedTypeNode;
+class ObjectTypeNode;
+class TupleTypeNode;
+class ReturnTypeNode;
+class FunctionTypeNode;
+class OptionalTypeNode;
+class TypeQueryNode;
 
 /// AST dumper class for outputting AST using pluggable serializers
 class ASTDumper final : public Visitor {
@@ -60,7 +60,8 @@ public:
   void visit(const SourceFile& sourceFile) final;
   void visit(const ImportDeclaration& importDecl) final;
   void visit(const ExportDeclaration& exportDecl) final;
-  void visit(const VariableDeclaration& varDecl) final;
+  void visit(const VariableDeclarationList& varDecl) final;
+  void visit(const VariableStatement& varStmt) final;
   void visit(const FunctionDeclaration& funcDecl) final;
   void visit(const BlockStatement& blockStmt) final;
   void visit(const ExpressionStatement& exprStmt) final;
@@ -79,7 +80,6 @@ public:
   void visit(const ParenthesizedExpression& parenExpr) final;
   void visit(const Identifier& identifier) final;
   void visit(const PrefixUnaryExpression& prefixUnaryExpr) final;
-  void visit(const AssignmentExpression& assignmentExpr) final;
   void visit(const ConditionalExpression& conditionalExpr) final;
   void visit(const CastExpression& castExpr) final;
   void visit(const AsExpression& asExpr) final;
@@ -90,7 +90,7 @@ public:
   void visit(const Node& node) final;
   void visit(const Statement& statement) final;
   void visit(const Expression& expression) final;
-  void visit(const TypeParameter& node) final;
+  void visit(const TypeParameterDeclaration& node) final;
   void visit(const BindingElement& node) final;
   void visit(const ClassDeclaration& node) final;
   void visit(const InterfaceDeclaration& node) final;
@@ -105,6 +105,8 @@ public:
   void visit(const ContinueStatement& node) final;
   void visit(const ReturnStatement& node) final;
   void visit(const MatchStatement& node) final;
+  void visit(const MatchClause& node) final;
+  void visit(const DefaultClause& node) final;
   void visit(const DebuggerStatement& node) final;
   void visit(const UnaryExpression& node) final;
   void visit(const UpdateExpression& node) final;
@@ -114,31 +116,76 @@ public:
   void visit(const PrimaryExpression& node) final;
   void visit(const PropertyAccessExpression& node) final;
   void visit(const ElementAccessExpression& node) final;
-  void visit(const OptionalExpression& node) final;
   void visit(const LiteralExpression& node) final;
   void visit(const VoidExpression& node) final;
   void visit(const TypeOfExpression& node) final;
   void visit(const AwaitExpression& node) final;
-  void visit(const Operator& op) final;
-  void visit(const BinaryOperator& binaryOp) final;
-  void visit(const UnaryOperator& unaryOp) final;
-  void visit(const AssignmentOperator& assignOp) final;
   void visit(const ModulePath& modulePath) final;
 
   // Type node visitor methods
-  void visit(const Type& type) final;
-  void visit(const TypeReference& typeRef) final;
-  void visit(const ArrayType& arrayType) final;
-  void visit(const UnionType& unionType) final;
-  void visit(const IntersectionType& intersectionType) final;
-  void visit(const ParenthesizedType& parenType) final;
-  void visit(const PredefinedType& predefinedType) final;
-  void visit(const ObjectType& objectType) final;
-  void visit(const TupleType& tupleType) final;
-  void visit(const ReturnType& returnType) final;
-  void visit(const FunctionType& functionType) final;
-  void visit(const OptionalType& optionalType) final;
-  void visit(const TypeQuery& typeQuery) final;
+  void visit(const TypeNode& type) final;
+  void visit(const TokenNode& token) final;
+  void visit(const TypeReferenceNode& typeRef) final;
+  void visit(const ArrayTypeNode& arrayType) final;
+  void visit(const UnionTypeNode& unionType) final;
+  void visit(const IntersectionTypeNode& intersectionType) final;
+  void visit(const ParenthesizedTypeNode& parenType) final;
+  void visit(const PredefinedTypeNode& predefinedType) final;
+  void visit(const ObjectTypeNode& objectType) final;
+  void visit(const TupleTypeNode& tupleType) final;
+  void visit(const ReturnTypeNode& returnType) final;
+  void visit(const FunctionTypeNode& functionType) final;
+  void visit(const OptionalTypeNode& optionalType) final;
+  void visit(const TypeQueryNode& typeQuery) final;
+
+  // Missing declaration visitor methods
+  void visit(const MethodDeclaration& node) final;
+  void visit(const ConstructorDeclaration& node) final;
+  void visit(const ParameterDeclaration& node) final;
+  void visit(const PropertyDeclaration& node) final;
+  void visit(const MissingDeclaration& node) final;
+
+  // Body node visitor methods
+  void visit(const InterfaceBody& node) final;
+  void visit(const StructBody& node) final;
+  void visit(const ErrorBody& node) final;
+  void visit(const EnumBody& node) final;
+  void visit(const ArrayBindingPattern& node) final;
+  void visit(const ObjectBindingPattern& node) final;
+  void visit(const ThisExpression& node) final;
+  void visit(const SuperExpression& node) final;
+  void visit(const BoolTypeNode& node) final;
+  void visit(const I8TypeNode& node) final;
+  void visit(const I16TypeNode& node) final;
+  void visit(const I32TypeNode& node) final;
+  void visit(const I64TypeNode& node) final;
+  void visit(const U8TypeNode& node) final;
+  void visit(const U16TypeNode& node) final;
+  void visit(const U32TypeNode& node) final;
+  void visit(const U64TypeNode& node) final;
+  void visit(const F32TypeNode& node) final;
+  void visit(const F64TypeNode& node) final;
+  void visit(const StrTypeNode& node) final;
+  void visit(const UnitTypeNode& node) final;
+
+  // Signature visitor methods
+  void visit(const PropertySignature& node) final;
+  void visit(const MethodSignature& node) final;
+
+  // Body/Structure visitor methods (additional to existing ones)
+  void visit(const ClassBody& node) final;
+
+  // Missing visitor methods for patterns and other nodes
+  void visit(const Module& node) final;
+  void visit(const VariableDeclaration& node) final;
+  void visit(const WildcardPattern& node) final;
+  void visit(const IdentifierPattern& node) final;
+  void visit(const TuplePattern& node) final;
+  void visit(const StructurePattern& node) final;
+  void visit(const ArrayPattern& node) final;
+  void visit(const IsPattern& node) final;
+  void visit(const ExpressionPattern& node) final;
+  void visit(const EnumPattern& node) final;
 
 private:
   struct Impl;
@@ -148,19 +195,19 @@ private:
   // Helper methods for dumping specific components
   void dumpModulePath(const ModulePath& modulePath);
   void dumpBindingElement(const BindingElement& bindingElement);
-  void dumpType(const Type& type);
-  void dumpTypeReference(const TypeReference& typeRef);
-  void dumpArrayType(const ArrayType& arrayType);
-  void dumpUnionType(const UnionType& unionType);
-  void dumpIntersectionType(const IntersectionType& intersectionType);
-  void dumpParenthesizedType(const ParenthesizedType& parenType);
-  void dumpPredefinedType(const PredefinedType& predefinedType);
-  void dumpObjectType(const ObjectType& objectType);
-  void dumpTupleType(const TupleType& tupleType);
-  void dumpReturnType(const ReturnType& returnType);
-  void dumpFunctionType(const FunctionType& functionType);
-  void dumpOptionalType(const OptionalType& optionalType);
-  void dumpTypeQuery(const TypeQuery& typeQuery);
+  void dumpType(const TypeNode& type);
+  void dumpTypeReference(const TypeReferenceNode& typeRef);
+  void dumpArrayType(const ArrayTypeNode& arrayType);
+  void dumpUnionType(const UnionTypeNode& unionType);
+  void dumpIntersectionType(const IntersectionTypeNode& intersectionType);
+  void dumpParenthesizedType(const ParenthesizedTypeNode& parenType);
+  void dumpPredefinedType(const PredefinedTypeNode& predefinedType);
+  void dumpObjectType(const ObjectTypeNode& objectType);
+  void dumpTupleType(const TupleTypeNode& tupleType);
+  void dumpReturnType(const ReturnTypeNode& returnType);
+  void dumpFunctionType(const FunctionTypeNode& functionType);
+  void dumpOptionalType(const OptionalTypeNode& optionalType);
+  void dumpTypeQuery(const TypeQueryNode& typeQuery);
 
   // Helper methods for output formatting
   void writeIndent(int indent);

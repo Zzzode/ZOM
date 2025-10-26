@@ -32,20 +32,32 @@ namespace ast {
 class Node;
 }
 
+namespace symbol {
+class SymbolTable;
+}
+
 namespace basic {
 
 struct LangOptions;
 
-/// \brief Perform lexing and parsing of a given source file.
-/// \param sm The source manager.
-/// \param diagnosticEngine The diagnostic engine.
-/// \param langOpts The language options.
-/// \param bufferId The buffer id of the source file.
-/// \return The ASTNode if successful, zc::Nothing otherwise.
+/// \brief Perform parsing on a single source buffer
+/// \param sm Source manager containing the source buffer
+/// \param diagnosticEngine Diagnostic engine for error reporting
+/// \param langOpts Language options for parsing
+/// \param bufferId Buffer ID of the source to parse
+/// \return Parsed AST node or none if parsing failed
 zc::Maybe<zc::Own<ast::Node>> performParse(const source::SourceManager& sm,
                                            diagnostics::DiagnosticEngine& diagnosticEngine,
                                            const LangOptions& langOpts,
                                            const source::BufferId& bufferId);
+
+/// \brief Perform binding on a parsed AST to create symbols
+/// \param symbolTable Symbol table for managing symbols and scopes
+/// \param diagnosticEngine Diagnostic engine for error reporting
+/// \param ast AST node to bind (must be a SourceFile)
+/// \return True if binding succeeded, false if errors occurred
+bool performBind(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
+                 ast::Node& ast);
 
 }  // namespace basic
 }  // namespace compiler

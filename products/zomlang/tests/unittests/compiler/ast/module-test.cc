@@ -45,80 +45,59 @@ ZC_TEST("ModuleTest: SourceFileWithMultipleStatements") {
 // ModulePath Tests
 ZC_TEST("ModuleTest: CreateModulePath") {
   using namespace zomlang::compiler::ast::factory;
-  zc::Vector<zc::Own<ast::Identifier>> identifiers;
-  identifiers.add(createIdentifier(zc::str("std")));
-  identifiers.add(createIdentifier(zc::str("io")));
-  auto modulePath = createModulePath(zc::mv(identifiers));
+  auto stringLiteral = createStringLiteral(zc::str("std.io"));
+  auto modulePath = createModulePath(zc::mv(stringLiteral));
 
-  const auto& pathIds = modulePath->getIdentifiers();
-  ZC_EXPECT(pathIds.size() == 2, "ModulePath should have 2 identifiers");
-  ZC_EXPECT(pathIds[0].getName() == "std", "First identifier should be 'std'");
-  ZC_EXPECT(pathIds[1].getName() == "io", "Second identifier should be 'io'");
+  const auto& pathString = modulePath->getStringLiteral();
+  ZC_EXPECT(pathString.getValue() == "std.io", "ModulePath should have correct string literal");
 }
 
 ZC_TEST("ModuleTest: ModulePathToString") {
   using namespace zomlang::compiler::ast::factory;
-  zc::Vector<zc::Own<ast::Identifier>> identifiers;
-  identifiers.add(createIdentifier(zc::str("std")));
-  identifiers.add(createIdentifier(zc::str("collections")));
-  identifiers.add(createIdentifier(zc::str("vector")));
-  auto modulePath = createModulePath(zc::mv(identifiers));
+  auto stringLiteral = createStringLiteral(zc::str("std.collections.vector"));
+  auto modulePath = createModulePath(zc::mv(stringLiteral));
 
-  // Note: toString() method needs to be implemented in ModulePath class
-  // For now, we'll test the identifiers directly
-  const auto& pathIds = modulePath->getIdentifiers();
-  ZC_EXPECT(pathIds.size() == 3, "ModulePath should have 3 identifiers");
-  ZC_EXPECT(pathIds[0].getName() == "std", "First identifier should be 'std'");
-  ZC_EXPECT(pathIds[1].getName() == "collections", "Second identifier should be 'collections'");
-  ZC_EXPECT(pathIds[2].getName() == "vector", "Third identifier should be 'vector'");
+  const auto& pathString = modulePath->getStringLiteral();
+  ZC_EXPECT(pathString.getValue() == "std.collections.vector",
+            "ModulePath should have correct string literal");
 }
 
 ZC_TEST("ModuleTest: SingleIdentifierModulePath") {
   using namespace zomlang::compiler::ast::factory;
-  zc::Vector<zc::Own<ast::Identifier>> identifiers;
-  identifiers.add(createIdentifier(zc::str("math")));
-  auto modulePath = createModulePath(zc::mv(identifiers));
+  auto stringLiteral = createStringLiteral(zc::str("math"));
+  auto modulePath = createModulePath(zc::mv(stringLiteral));
 
-  const auto& pathIds = modulePath->getIdentifiers();
-  ZC_EXPECT(pathIds.size() == 1, "ModulePath should have 1 identifier");
-  ZC_EXPECT(pathIds[0].getName() == "math", "Identifier should be 'math'");
+  const auto& pathString = modulePath->getStringLiteral();
+  ZC_EXPECT(pathString.getValue() == "math", "ModulePath should have correct string literal");
 }
 
 // ================================================================================
 // ImportDeclaration Tests
 ZC_TEST("ModuleTest: CreateImportDeclaration") {
   using namespace zomlang::compiler::ast::factory;
-  zc::Vector<zc::Own<ast::Identifier>> identifiers;
-  identifiers.add(createIdentifier(zc::str("std")));
-  identifiers.add(createIdentifier(zc::str("io")));
-  auto modulePath = createModulePath(zc::mv(identifiers));
+  auto stringLiteral = createStringLiteral(zc::str("std.io"));
+  auto modulePath = createModulePath(zc::mv(stringLiteral));
   auto importDecl = createImportDeclaration(zc::mv(modulePath));
 
   const auto& modulePathRef = importDecl->getModulePath();
-  const auto& pathIds = modulePathRef.getIdentifiers();
-  ZC_EXPECT(pathIds.size() == 2, "Import should have correct module path size");
-  ZC_EXPECT(pathIds[0].getName() == "std", "First identifier should be 'std'");
-  ZC_EXPECT(pathIds[1].getName() == "io", "Second identifier should be 'io'");
+  const auto& pathString = modulePathRef.getStringLiteral();
+  ZC_EXPECT(pathString.getValue() == "std.io", "Import should have correct module path");
   ZC_EXPECT(importDecl->getAlias() == zc::none, "Import without alias should return none");
 }
 
 ZC_TEST("ModuleTest: CreateImportDeclarationWithAlias") {
   using namespace zomlang::compiler::ast::factory;
-  zc::Vector<zc::Own<ast::Identifier>> identifiers;
-  identifiers.add(createIdentifier(zc::str("std")));
-  identifiers.add(createIdentifier(zc::str("collections")));
-  auto modulePath = createModulePath(zc::mv(identifiers));
+  auto stringLiteral = createStringLiteral(zc::str("std.collections"));
+  auto modulePath = createModulePath(zc::mv(stringLiteral));
   auto importDecl =
       createImportDeclaration(zc::mv(modulePath), createIdentifier(zc::str("collections")));
 
   const auto& modulePathRef = importDecl->getModulePath();
-  const auto& pathIds = modulePathRef.getIdentifiers();
-  ZC_EXPECT(pathIds.size() == 2, "Import should have correct module path size");
-  ZC_EXPECT(pathIds[0].getName() == "std", "First identifier should be 'std'");
-  ZC_EXPECT(pathIds[1].getName() == "collections", "Second identifier should be 'collections'");
+  const auto& pathString = modulePathRef.getStringLiteral();
+  ZC_EXPECT(pathString.getValue() == "std.collections", "Import should have correct module path");
   ZC_EXPECT(importDecl->getAlias() != zc::none, "Import with alias should not return none");
   ZC_IF_SOME(alias, importDecl->getAlias()) {
-    ZC_EXPECT(alias.getName() == "collections", "Import should have correct alias");
+    ZC_EXPECT(alias.getText() == "collections", "Import should have correct alias");
   }
 }
 
@@ -126,52 +105,61 @@ ZC_TEST("ModuleTest: CreateImportDeclarationWithAlias") {
 // ExportDeclaration Tests
 ZC_TEST("ModuleTest: CreateSimpleExportDeclaration") {
   using namespace zomlang::compiler::ast::factory;
-  auto exportDecl = createExportDeclaration(createIdentifier(zc::str("myFunction")));
+  auto exportDecl = createExportDeclaration(createIdentifier(zc::str("myFunction")), zc::none);
 
-  ZC_EXPECT(exportDecl->getIdentifier().getName() == "myFunction",
-            "Export should have correct identifier");
-  ZC_EXPECT(!exportDecl->isRename(), "Simple export should not be a rename");
+  // The export path should be a simple identifier
+  auto& exportPath = exportDecl->getExportPath();
+  ZC_EXPECT(exportPath.getKind() == SyntaxKind::Identifier, "Export path should be an Identifier");
   ZC_EXPECT(exportDecl->getAlias() == zc::none, "Simple export should have no alias");
-  ZC_EXPECT(exportDecl->getModulePath() == zc::none, "Simple export should have no module path");
 }
 
-ZC_TEST("ModuleTest: CreateRenameExportDeclaration") {
+ZC_TEST("ModuleTest: CreateExportDeclarationWithAlias") {
   using namespace zomlang::compiler::ast::factory;
-  zc::Vector<zc::Own<ast::Identifier>> identifiers;
-  identifiers.add(createIdentifier(zc::str("utils")));
-  identifiers.add(createIdentifier(zc::str("helpers")));
-  auto modulePath = createModulePath(zc::mv(identifiers));
-  auto exportDecl =
-      createExportDeclaration(createIdentifier(zc::str("originalName")),
-                              createIdentifier(zc::str("newName")), zc::mv(modulePath));
+  auto exportDecl = createExportDeclaration(createIdentifier(zc::str("originalName")),
+                                            createIdentifier(zc::str("newName")));
 
-  ZC_EXPECT(exportDecl->getIdentifier().getName() == "originalName",
-            "Rename export should have correct identifier");
-  ZC_EXPECT(exportDecl->isRename(), "Rename export should be marked as rename");
-  ZC_EXPECT(exportDecl->getAlias() != zc::none, "Rename export should have alias");
+  // The export path should be a simple identifier
+  auto& exportPath = exportDecl->getExportPath();
+  ZC_EXPECT(exportPath.getKind() == SyntaxKind::Identifier, "Export path should be an Identifier");
+
+  ZC_EXPECT(exportDecl->getAlias() != zc::none, "Export with alias should have alias");
   ZC_IF_SOME(alias, exportDecl->getAlias()) {
-    ZC_EXPECT(alias.getName() == "newName", "Rename export should have correct alias");
+    ZC_EXPECT(alias.getText() == "newName", "Export should have correct alias");
   }
-  ZC_EXPECT(exportDecl->getModulePath() != zc::none, "Rename export should have module path");
-  ZC_IF_SOME(modulePathRef, exportDecl->getModulePath()) {
-    const auto& pathIds = modulePathRef.getIdentifiers();
-    ZC_EXPECT(pathIds.size() == 2, "Module path should have 2 identifiers");
-    ZC_EXPECT(pathIds[0].getName() == "utils", "First identifier should be 'utils'");
-    ZC_EXPECT(pathIds[1].getName() == "helpers", "Second identifier should be 'helpers'");
-  }
+}
+
+ZC_TEST("ModuleTest: CreateDotSeparatedExportDeclaration") {
+  using namespace zomlang::compiler::ast::factory;
+
+  // Create a.b.c export path using PropertyAccessExpression
+  auto baseId = createIdentifier(zc::str("a"));
+  auto bId = createIdentifier(zc::str("b"));
+  auto cId = createIdentifier(zc::str("c"));
+
+  auto ab = createPropertyAccessExpression(zc::mv(baseId), zc::mv(bId), false);
+  auto abc = createPropertyAccessExpression(zc::mv(ab), zc::mv(cId), false);
+
+  auto exportDecl = createExportDeclaration(zc::mv(abc), zc::none);
+
+  // The export path should be a PropertyAccessExpression
+  auto& exportPath = exportDecl->getExportPath();
+  ZC_EXPECT(exportPath.getKind() == SyntaxKind::PropertyAccessExpression,
+            "Export path should be a PropertyAccessExpression");
+  ZC_EXPECT(exportDecl->getAlias() == zc::none, "Dot-separated export should have no alias");
 }
 
 ZC_TEST("ModuleTest: ExportDeclarationEdgeCases") {
   using namespace zomlang::compiler::ast::factory;
 
-  // Test empty identifier
-  auto exportDecl1 = createExportDeclaration(createIdentifier(zc::str("")));
-  ZC_EXPECT(exportDecl1->getIdentifier().getName() == "", "Empty identifier should be preserved");
+  // Test empty identifier name
+  auto exportDecl1 = createExportDeclaration(createIdentifier(zc::str("")), zc::none);
+  auto& exportPath1 = exportDecl1->getExportPath();
+  ZC_EXPECT(exportPath1.getKind() == SyntaxKind::Identifier, "Export path should be an Identifier");
 
-  // Test identifier with special characters
-  auto exportDecl2 = createExportDeclaration(createIdentifier(zc::str("_private$var")));
-  ZC_EXPECT(exportDecl2->getIdentifier().getName() == "_private$var",
-            "Special characters in identifier should be preserved");
+  // Test special characters in identifier
+  auto exportDecl2 = createExportDeclaration(createIdentifier(zc::str("_private$var")), zc::none);
+  auto& exportPath2 = exportDecl2->getExportPath();
+  ZC_EXPECT(exportPath2.getKind() == SyntaxKind::Identifier, "Export path should be an Identifier");
 }
 
 }  // namespace ast

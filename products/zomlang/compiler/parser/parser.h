@@ -41,7 +41,6 @@ class SourceManager;
 
 namespace lexer {
 class Token;
-enum class TokenKind;
 }  // namespace lexer
 
 // Forward declarations for AST nodes that will be used by the parser.
@@ -54,22 +53,22 @@ class ImportDeclaration;
 class ExportDeclaration;
 class ModulePath;
 class ImplementationElement;
-class Type;
-class TypeReference;
-class ArrayType;
-class UnionType;
-class IntersectionType;
-class ParenthesizedType;
-class PredefinedType;
-class ObjectType;
-class TupleType;
-class FunctionType;
-class TypeAnnotation;
+
+class TypeNode;
+class TypeReferenceNode;
+class ArrayTypeNode;
+class UnionTypeNode;
+class IntersectionTypeNode;
+class ParenthesizedTypeNode;
+class PredefinedTypeNode;
+class ObjectTypeNode;
+class TupleTypeNode;
+class FunctionTypeNode;
+
 // Expression forward declarations
 class Expression;
 class BinaryExpression;
 class UnaryExpression;
-class AssignmentExpression;
 class ConditionalExpression;
 class CallExpression;
 class MemberExpression;
@@ -79,7 +78,6 @@ class VoidExpression;
 class TypeOfExpression;
 class AwaitExpression;
 class LeftHandSideExpression;
-class OptionalExpression;
 class NewExpression;
 class PrimaryExpression;
 class ParenthesizedExpression;
@@ -97,7 +95,12 @@ enum class OperatorPrecedence : uint8_t;
 
 namespace parser {
 
-// Forward declaration for operator precedence
+// Concept to define valid AST node types for NodeList
+template <typename T>
+concept NodeLike =
+    std::is_base_of_v<ast::Node, T> || std::is_base_of_v<ast::Statement, T> ||
+    std::is_base_of_v<ast::Expression, T> || std::is_base_of_v<ast::Declaration, T> ||
+    std::is_base_of_v<ast::TypeNode, T> || std::is_base_of_v<ast::TokenNode, T>;
 
 enum ParsingContext {
   kSourceElements = 0,  // Parsing source elements (statements, declarations, etc.)
@@ -135,25 +138,22 @@ public:
   /// \param n The number of tokens to look ahead (1-based)
   /// \param kind The token kind to check for
   /// \return true if the nth token matches the kind, false otherwise
-  bool isLookAhead(unsigned n, lexer::TokenKind kind);
+  bool isLookAhead(unsigned n, ast::SyntaxKind kind);
 
 private:
-  template <typename Node>
-    requires std::derived_from<Node, ast::Node>
+  template <NodeLike Node>
   zc::Own<Node> finishNode(zc::Own<Node>&& node, source::SourceLoc pos) {
     const source::SourceLoc end = getFullStartLoc();
     return finishNode(zc::mv(node), zc::mv(pos), zc::mv(end));
   }
 
-  template <typename Node>
-    requires std::derived_from<Node, ast::Node>
+  template <NodeLike Node>
   zc::Own<Node> finishNode(zc::Own<Node>&& node, source::SourceLoc pos, source::SourceLoc end) {
     node->setSourceRange(source::SourceRange(pos, end));
     return zc::mv(node);
   }
 
-  template <typename Node>
-    requires std::derived_from<Node, ast::Node>
+  template <NodeLike Node>
   zc::Vector<zc::Own<Node>> parseList(ParsingContext context,
                                       zc::Function<zc::Maybe<zc::Own<Node>>()> parseElement) {
     zc::Vector<zc::Own<Node>> result;
@@ -205,7 +205,8 @@ private:
 
   // Declaration parsing
   zc::Maybe<zc::Own<ast::Statement>> parseDeclaration();
-  zc::Maybe<zc::Own<ast::VariableDeclaration>> parseVariableDeclaration();
+  zc::Maybe<zc::Own<ast::VariableStatement>> parseVariableStatement();
+  zc::Maybe<zc::Own<ast::VariableDeclarationList>> parseVariableDeclarationList();
   zc::Maybe<zc::Own<ast::FunctionDeclaration>> parseFunctionDeclaration();
   zc::Maybe<zc::Own<ast::ClassDeclaration>> parseClassDeclaration();
   zc::Maybe<zc::Own<ast::InterfaceDeclaration>> parseInterfaceDeclaration();
@@ -251,13 +252,13 @@ private:
   zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseLeftHandSideExpressionOrHigher();
   zc::Maybe<zc::Own<ast::MemberExpression>> parseMemberExpressionOrHigher();
   zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseCallExpressionRest(
-      zc::Own<ast::MemberExpression> expr);
+      source::SourceLoc loc, zc::Own<ast::LeftHandSideExpression> expr);
   zc::Maybe<zc::Own<ast::MemberExpression>> parseMemberExpressionRest(
-      zc::Own<ast::MemberExpression> expr, source::SourceLoc startLoc, bool allowOptionalChain);
+      zc::Own<ast::LeftHandSideExpression> expr, source::SourceLoc startLoc,
+      bool allowOptionalChain);
   zc::Maybe<zc::Own<ast::MemberExpression>> parseSuperExpression();
   zc::Maybe<zc::Own<ast::AwaitExpression>> parseAwaitExpression();
   zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseLeftHandSideExpression();
-  zc::Maybe<zc::Own<ast::OptionalExpression>> parseOptionalExpression();
   zc::Maybe<zc::Own<ast::NewExpression>> parseNewExpression();
   zc::Maybe<zc::Own<ast::PrimaryExpression>> parsePrimaryExpression();
   zc::Maybe<zc::Own<ast::ParenthesizedExpression>> parseParenthesizedExpression();
@@ -273,24 +274,24 @@ private:
   zc::Maybe<zc::Own<ast::FunctionExpression>> parseFunctionExpression();
 
   // Type parsing
-  zc::Maybe<zc::Own<ast::Type>> parseType();
-  zc::Maybe<zc::Own<ast::Type>> parseTypeAnnotation();
-  zc::Maybe<zc::Own<ast::Type>> parseUnionType();
-  zc::Maybe<zc::Own<ast::Type>> parseIntersectionType();
-  zc::Maybe<zc::Own<ast::Type>> parsePostfixType();
-  zc::Maybe<zc::Own<ast::Type>> parseTypeAtom();
-  zc::Maybe<zc::Own<ast::ArrayType>> parseArrayType();
-  zc::Maybe<zc::Own<ast::FunctionType>> parseFunctionType();
-  zc::Maybe<zc::Own<ast::ReturnType>> parseReturnType();
-  zc::Maybe<zc::Own<ast::ObjectType>> parseObjectType();
-  zc::Maybe<zc::Own<ast::TupleType>> parseTupleType();
-  zc::Maybe<zc::Own<ast::TypeReference>> parseTypeReference();
-  zc::Maybe<zc::Own<ast::PredefinedType>> parsePredefinedType();
-  zc::Maybe<zc::Own<ast::ParenthesizedType>> parseParenthesizedType();
-  zc::Maybe<zc::Own<ast::TypeParameter>> parseTypeParameter();
-  zc::Maybe<zc::Own<ast::TypeQuery>> parseTypeQuery();
+  zc::Maybe<zc::Own<ast::TypeNode>> parseType();
+  zc::Maybe<zc::Own<ast::TypeNode>> parseTypeAnnotation();
+  zc::Maybe<zc::Own<ast::TypeNode>> parseUnionType();
+  zc::Maybe<zc::Own<ast::TypeNode>> parseIntersectionType();
+  zc::Maybe<zc::Own<ast::TypeNode>> parsePostfixType();
+  zc::Maybe<zc::Own<ast::TypeNode>> parseTypeAtom();
+  zc::Maybe<zc::Own<ast::ArrayTypeNode>> parseArrayType();
+  zc::Maybe<zc::Own<ast::FunctionTypeNode>> parseFunctionType();
+  zc::Maybe<zc::Own<ast::ReturnTypeNode>> parseReturnType();
+  zc::Maybe<zc::Own<ast::ObjectTypeNode>> parseObjectType();
+  zc::Maybe<zc::Own<ast::TupleTypeNode>> parseTupleType();
+  zc::Maybe<zc::Own<ast::TypeReferenceNode>> parseTypeReference();
+  zc::Maybe<zc::Own<ast::PredefinedTypeNode>> parsePredefinedType();
+  zc::Maybe<zc::Own<ast::ParenthesizedTypeNode>> parseParenthesizedType();
+  zc::Maybe<zc::Own<ast::TypeParameterDeclaration>> parseTypeParameter();
+  zc::Maybe<zc::Own<ast::TypeQueryNode>> parseTypeQuery();
   zc::Maybe<zc::Own<ast::Expression>> parseTypeQueryExpression();
-  zc::Maybe<zc::Own<ast::Type>> parseRaisesClause();
+  zc::Maybe<zc::Own<ast::TypeNode>> parseRaisesClause();
   zc::Maybe<zc::Own<ast::Pattern>> parsePattern();
   zc::Maybe<zc::Own<ast::Pattern>> parseWildcardPattern();
   zc::Maybe<zc::Own<ast::Pattern>> parseIdentifierPattern();
@@ -300,25 +301,29 @@ private:
   zc::Maybe<zc::Own<ast::BindingPattern>> parseObjectBindingPattern();
 
   // Utility parsing methods
-  ZC_ALWAYS_INLINE(bool expectToken(lexer::TokenKind kind));
-  ZC_ALWAYS_INLINE(bool consumeExpectedToken(lexer::TokenKind kind));
+  ZC_ALWAYS_INLINE(bool expectToken(ast::SyntaxKind kind));
+  ZC_ALWAYS_INLINE(bool consumeExpectedToken(ast::SyntaxKind kind));
   ZC_ALWAYS_INLINE(const lexer::Token& currentToken() const);
   ZC_ALWAYS_INLINE(void consumeToken());
 
   ZC_NODISCARD source::SourceLoc getFullStartLoc() const;
 
   // Argument list parsing
-  zc::Vector<zc::Own<ast::TypeParameter>> parseTypeParameters();
+  zc::Vector<zc::Own<ast::TypeParameterDeclaration>> parseTypeParameters();
   zc::Vector<zc::Own<ast::BindingElement>> parseParameters();
   zc::Maybe<zc::Vector<zc::Own<ast::Expression>>> parseArgumentList();
-  zc::Maybe<zc::Vector<zc::Own<ast::Type>>> parseTypeArgumentsInExpression();
+  zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> parseTypeArgumentsInExpression();
+
+  // Token node parsing
+  zc::Maybe<zc::Own<ast::TokenNode>> parseTokenNode();
+  zc::Maybe<zc::Own<ast::TokenNode>> parseExpectedToken(ast::SyntaxKind kind);
 
   /// Helper functions for parsing
   bool isStartOfStatement() const;
   bool isStartOfLeftHandSideExpression() const;
   bool isStartOfExpression() const;
   bool isStartOfDeclaration() const;
-  bool isUpdateExpression(lexer::TokenKind tokenKind) const;
+  bool isUpdateExpression(ast::SyntaxKind tokenKind) const;
   bool isBindingIdentifier() const;
   bool isIdentifier() const;
 

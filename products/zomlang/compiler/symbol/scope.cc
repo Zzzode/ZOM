@@ -28,13 +28,13 @@ namespace symbol {
 
 // Scope implementation using pimpl pattern
 struct Scope::Impl {
-  Impl(Kind kind, zc::StringPtr name, zc::Maybe<const Scope&> parent)
+  Impl(Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent)
       : kind(kind), name(name), parent(parent) {}
 
   // Basic properties
   Kind kind;
   zc::StringPtr name;
-  zc::Maybe<const Scope&> parent;
+  zc::Maybe<Scope&> parent;
 
   // Symbol storage
   zc::HashMap<zc::StringPtr, zc::Own<Symbol>> symbols;
@@ -44,7 +44,7 @@ struct Scope::Impl {
 };
 
 // Scope constructor
-Scope::Scope(Kind kind, zc::StringPtr name, zc::Maybe<const Scope&> parent) noexcept
+Scope::Scope(Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent) noexcept
     : impl(zc::heap<Impl>(kind, name, parent)) {}
 
 // Scope destructor
@@ -76,23 +76,21 @@ void Scope::addSymbol(zc::Own<Symbol> symbol) {
 
 void Scope::removeSymbol(zc::StringPtr name) { impl->symbols.erase(name); }
 
-zc::Maybe<const Symbol&> Scope::lookupSymbol(zc::StringPtr name) const {
-  return lookupSymbolRecursively(name);
-}
+zc::Maybe<Symbol&> Scope::lookupSymbol(zc::StringPtr name) { return lookupSymbolRecursively(name); }
 
-zc::Maybe<const Symbol&> Scope::lookupSymbolLocally(zc::StringPtr name) const {
+zc::Maybe<Symbol&> Scope::lookupSymbolLocally(zc::StringPtr name) {
   auto it = impl->symbols.find(name);
   ZC_IF_SOME(symbol, it) { return *symbol; }
   return zc::none;
 }
 
-zc::Maybe<const Symbol&> Scope::lookupSymbolRecursively(zc::StringPtr name) const {
+zc::Maybe<Symbol&> Scope::lookupSymbolRecursively(zc::StringPtr name) {
   ZC_IF_SOME(symbol, impl->symbols.find(name)) { return *symbol; }
   ZC_IF_SOME(parent, impl->parent) { return parent.lookupSymbolRecursively(name); }
   return zc::none;
 }
 
-bool Scope::hasSymbol(zc::StringPtr name) const { return lookupSymbolLocally(name) != zc::none; }
+bool Scope::hasSymbol(zc::StringPtr name) { return lookupSymbolLocally(name) != zc::none; }
 
 size_t Scope::getSymbolCount() const { return impl->symbols.size(); }
 
@@ -201,7 +199,7 @@ bool Scope::isValid() const {
 void Scope::validate() const { ZC_REQUIRE(isValid(), "Invalid scope: ", toString()); }
 
 // Symbol overloads
-zc::Maybe<const Symbol&> Scope::operator[](zc::StringPtr name) const { return lookupSymbol(name); }
+zc::Maybe<Symbol&> Scope::operator[](zc::StringPtr name) { return lookupSymbol(name); }
 
 bool Scope::operator==(const Scope& other) const { return this == &other; }
 
@@ -389,6 +387,29 @@ zc::Maybe<const Scope&> ScopeManager::getClassScope(zc::StringPtr name) const {
 }
 
 zc::Maybe<const Scope&> ScopeManager::getFunctionScope(zc::StringPtr name) const {
+  ZC_IF_SOME(funcScope, impl->functionScopes.find(name)) { return funcScope; }
+  return zc::none;
+}
+
+// Mutable scope lookup methods
+zc::Maybe<Scope&> ScopeManager::getGlobalScopeMutable() {
+  for (auto& ownedScope : impl->ownedScopes) {
+    if (ownedScope->isRoot()) { return *ownedScope; }
+  }
+  return zc::none;
+}
+
+zc::Maybe<Scope&> ScopeManager::getPackageScopeMutable(zc::StringPtr name) {
+  ZC_IF_SOME(pkgScope, impl->packageScopes.find(name)) { return pkgScope; }
+  return zc::none;
+}
+
+zc::Maybe<Scope&> ScopeManager::getClassScopeMutable(zc::StringPtr name) {
+  ZC_IF_SOME(clsScope, impl->classScopes.find(name)) { return clsScope; }
+  return zc::none;
+}
+
+zc::Maybe<Scope&> ScopeManager::getFunctionScopeMutable(zc::StringPtr name) {
   ZC_IF_SOME(funcScope, impl->functionScopes.find(name)) { return funcScope; }
   return zc::none;
 }

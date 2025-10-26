@@ -34,6 +34,11 @@ class DiagnosticEngine;
 
 namespace ast {
 class Node;
+class SourceFile;
+}  // namespace ast
+
+namespace symbol {
+class SymbolTable;
 }
 
 namespace driver {
@@ -45,28 +50,36 @@ public:
   ~CompilerDriver() noexcept(false);
 
   /// Add a source file to the compiler.
-  /// @param file The path to the source file to add
-  /// @return The buffer ID of the added file, or none if the file could not be added
+  /// \param file The path to the source file to add
+  /// \return The buffer ID of the added file, or none if the file could not be added
   zc::Maybe<source::BufferId> addSourceFile(zc::StringPtr file);
 
   /// Get the diagnostic engine used by the compiler.
-  /// @return A reference to the diagnostic engine
+  /// \return A reference to the diagnostic engine
   const diagnostics::DiagnosticEngine& getDiagnosticEngine() const;
 
   /// Parses all added source files into ASTs.
-  /// @return True if parsing succeeded without fatal errors, false otherwise.
+  /// \return True if parsing succeeded without fatal errors, false otherwise.
   bool parseSources();
 
+  /// Binds all parsed ASTs to create symbols and perform semantic analysis.
+  /// \return True if binding succeeded without fatal errors, false otherwise.
+  bool bindSources();
+
   /// Get the parsed ASTs
-  /// @return A reference to the map of buffer IDs to AST nodes
+  /// \return A reference to the map of buffer IDs to AST nodes
   const zc::HashMap<source::BufferId, zc::Own<ast::Node>>& getASTs() const;
 
+  /// Get the symbol table used by the compiler.
+  /// \return A reference to the symbol table
+  const symbol::SymbolTable& getSymbolTable() const;
+
   /// Get the compiler options used by the driver.
-  /// @return A reference to the compiler options
+  /// \return A reference to the compiler options
   const basic::CompilerOptions& getCompilerOptions() const;
 
   /// Get the source manager used by the driver.
-  /// @return A reference to the source manager
+  /// \return A reference to the source manager
   const source::SourceManager& getSourceManager() const;
 
 private:

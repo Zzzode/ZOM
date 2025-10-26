@@ -15,11 +15,14 @@
 #include "zomlang/compiler/basic/frontend.h"
 
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/module.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/binder/binder.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/lexer/lexer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
+#include "zomlang/compiler/symbol/symbol-table.h"
 
 namespace zomlang {
 namespace compiler {
@@ -42,6 +45,25 @@ zc::Maybe<zc::Own<ast::Node>> performParse(const source::SourceManager& sm,
 
   // Return the parsed AST (or none if parser returned none)
   return ast;  // NRVO optimization
+}
+
+/// Implementation of performBind
+bool performBind(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
+                 ast::Node& ast) {
+  // Cast to SourceFile for binding
+  if (auto* sourceFile = dynamic_cast<ast::SourceFile*>(&ast)) {
+    // Create a binder instance
+    binder::Binder binder(symbolTable, diagnosticEngine);
+
+    // Perform binding for the source file
+    binder.bindSourceFile(*sourceFile);
+
+    // Return true if no errors occurred during binding
+    return !diagnosticEngine.hasErrors();
+  }
+
+  // If the AST is not a SourceFile, we can't bind it
+  return false;
 }
 
 }  // namespace basic

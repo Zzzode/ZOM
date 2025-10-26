@@ -11,7 +11,7 @@ let closure = fun (n: i32, s: str) -> str {
 // CHECK-NEXT:   "fileName": "{{.*closure.zom}}",
 // CHECK-NEXT:   "statements": [
 // CHECK-NEXT:     {
-// CHECK-NEXT:       "node": "VariableDeclaration",
+// CHECK-NEXT:       "node": "VariableDeclarationList",
 // CHECK-NEXT:       "bindings": [
 // CHECK-NEXT:         {
 // CHECK-NEXT:           "node": "BindingElement",
@@ -22,7 +22,7 @@ let closure = fun (n: i32, s: str) -> str {
 // CHECK-NEXT:           "initializer": {
 // CHECK-NEXT:             "node": "FunctionExpression",
 // CHECK-NEXT:             "typeParameters": [
-// CHECK-NEXT: 
+// CHECK-NEXT:
 // CHECK-NEXT:             ],
 // CHECK-NEXT:             "parameters": [
 // CHECK-NEXT:               {

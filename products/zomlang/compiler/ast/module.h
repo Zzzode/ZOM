@@ -28,7 +28,7 @@ namespace ast {
 class Identifier;
 class ModulePath;
 
-class SourceFile : public Node {
+class SourceFile final : public Node {
 public:
   explicit SourceFile(zc::String&& fileName,
                       zc::Vector<zc::Own<ast::Statement>>&& statements) noexcept;
@@ -37,16 +37,16 @@ public:
   const NodeList<Statement>& getStatements() const;
   zc::StringPtr getFileName() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
   ZC_DISALLOW_COPY_AND_MOVE(SourceFile);
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
+  zc::Own<Impl> impl;
 };
 
-class ImportDeclaration : public Statement {
+class ImportDeclaration final : public Statement {
 public:
   ImportDeclaration(zc::Own<ModulePath>&& modulePath,
                     zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none) noexcept;
@@ -55,52 +55,47 @@ public:
   const ModulePath& getModulePath() const;
   zc::Maybe<const ast::Identifier&> getAlias() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
   ZC_DISALLOW_COPY_AND_MOVE(ImportDeclaration);
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
+  zc::Own<Impl> impl;
 };
 
-class ExportDeclaration : public Statement {
+class ExportDeclaration final : public Statement {
 public:
-  explicit ExportDeclaration(zc::Own<ast::Identifier>&& identifier) noexcept;
-
-  ExportDeclaration(zc::Own<ast::Identifier>&& identifier, zc::Own<ast::Identifier>&& alias,
-                    zc::Own<ModulePath>&& modulePath) noexcept;
+  explicit ExportDeclaration(zc::Own<ast::Expression>&& exportPath,
+                             zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none) noexcept;
 
   ~ExportDeclaration() noexcept(false);
 
-  const ast::Identifier& getIdentifier() const;
-  bool isRename() const;
+  const ast::Expression& getExportPath() const;
   zc::Maybe<const ast::Identifier&> getAlias() const;
-  zc::Maybe<const ModulePath&> getModulePath() const;
 
-  void accept(Visitor& visitor) const override;
+  NODE_METHOD_DECLARE();
 
   ZC_DISALLOW_COPY_AND_MOVE(ExportDeclaration);
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
+  zc::Own<Impl> impl;
 };
 
-class ModulePath : public Node {
+class ModulePath final : public Node {
 public:
-  explicit ModulePath(zc::Vector<zc::Own<ast::Identifier>>&& identifiers) noexcept;
+  explicit ModulePath(zc::Own<ast::StringLiteral>&& stringLiteral) noexcept;
   ~ModulePath() noexcept(false);
-
-  const NodeList<Identifier>& getIdentifiers() const;
-
-  void accept(Visitor& visitor) const override;
-
   ZC_DISALLOW_COPY_AND_MOVE(ModulePath);
+
+  const ast::StringLiteral& getStringLiteral() const;
+
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
+  zc::Own<Impl> impl;
 };
 
 }  // namespace ast

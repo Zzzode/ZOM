@@ -14,7 +14,12 @@
 
 #include "zomlang/compiler/ast/factory.h"
 
+#include "zc/core/memory.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
+#include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/module.h"
 #include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/ast/type.h"
@@ -29,8 +34,8 @@ zc::Own<SourceFile> createSourceFile(zc::String&& fileName,
   return zc::heap<SourceFile>(zc::mv(fileName), zc::mv(statements));
 }
 
-zc::Own<ModulePath> createModulePath(zc::Vector<zc::Own<ast::Identifier>>&& identifiers) {
-  return zc::heap<ModulePath>(zc::mv(identifiers));
+zc::Own<ModulePath> createModulePath(zc::Own<ast::StringLiteral>&& stringLiteral) {
+  return zc::heap<ModulePath>(zc::mv(stringLiteral));
 }
 
 zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath> modulePath,
@@ -38,31 +43,30 @@ zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath> modulePat
   return zc::heap<ImportDeclaration>(zc::mv(modulePath), zc::mv(alias));
 }
 
-zc::Own<ExportDeclaration> createExportDeclaration(zc::Own<ast::Identifier>&& identifier) {
-  return zc::heap<ExportDeclaration>(zc::mv(identifier));
-}
-
-zc::Own<ExportDeclaration> createExportDeclaration(zc::Own<ast::Identifier>&& identifier,
-                                                   zc::Own<ast::Identifier>&& alias,
-                                                   zc::Own<ModulePath> modulePath) {
-  return zc::heap<ExportDeclaration>(zc::mv(identifier), zc::mv(alias), zc::mv(modulePath));
+zc::Own<ExportDeclaration> createExportDeclaration(zc::Own<ast::Expression>&& exportPath,
+                                                   zc::Maybe<zc::Own<ast::Identifier>> alias) {
+  return zc::heap<ExportDeclaration>(zc::mv(exportPath), zc::mv(alias));
 }
 
 // Statement factory functions
 zc::Own<BindingElement> createBindingElement(zc::Own<Identifier> name,
-                                             zc::Maybe<zc::Own<Type>> type,
-                                             zc::Maybe<zc::Own<Expression>> init) {
-  return zc::heap<BindingElement>(zc::mv(name), zc::mv(type), zc::mv(init));
+                                             zc::Maybe<zc::Own<TypeNode>> type,
+                                             zc::Maybe<zc::Own<Expression>> initializer) {
+  return zc::heap<BindingElement>(zc::mv(name), zc::mv(type), zc::mv(initializer));
 }
 
-zc::Own<VariableDeclaration> createVariableDeclaration(
+zc::Own<VariableDeclarationList> createVariableDeclarationList(
     zc::Vector<zc::Own<BindingElement>>&& bindings) {
-  return zc::heap<VariableDeclaration>(zc::mv(bindings));
+  return zc::heap<VariableDeclarationList>(zc::mv(bindings));
+}
+
+zc::Own<VariableStatement> createVariableStatement(zc::Own<VariableDeclarationList> declarations) {
+  return zc::heap<VariableStatement>(zc::mv(declarations));
 }
 
 zc::Own<FunctionDeclaration> createFunctionDeclaration(
-    zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<ReturnType>> returnType,
+    zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<ReturnTypeNode>> returnType,
     zc::Own<Statement> body) {
   return zc::heap<FunctionDeclaration>(zc::mv(name), zc::mv(typeParameters), zc::mv(parameters),
                                        zc::mv(returnType), zc::mv(body));
@@ -129,26 +133,19 @@ zc::Own<ForStatement> createForStatement(zc::Maybe<zc::Own<Statement>> init,
 }
 
 /// Expression factory functions
-zc::Own<BinaryExpression> createBinaryExpression(zc::Own<Expression> left,
-                                                 zc::Own<BinaryOperator> op,
+zc::Own<BinaryExpression> createBinaryExpression(zc::Own<Expression> left, zc::Own<TokenNode> op,
                                                  zc::Own<Expression> right) {
   return zc::heap<BinaryExpression>(zc::mv(left), zc::mv(op), zc::mv(right));
 }
 
-zc::Own<PrefixUnaryExpression> createPrefixUnaryExpression(zc::Own<UnaryOperator> op,
+zc::Own<PrefixUnaryExpression> createPrefixUnaryExpression(SyntaxKind op,
                                                            zc::Own<Expression> operand) {
   return zc::heap<PrefixUnaryExpression>(zc::mv(op), zc::mv(operand));
 }
 
-zc::Own<PostfixUnaryExpression> createPostfixUnaryExpression(zc::Own<UnaryOperator> op,
+zc::Own<PostfixUnaryExpression> createPostfixUnaryExpression(SyntaxKind op,
                                                              zc::Own<Expression> operand) {
   return zc::heap<PostfixUnaryExpression>(zc::mv(op), zc::mv(operand));
-}
-
-zc::Own<AssignmentExpression> createAssignmentExpression(zc::Own<Expression> left,
-                                                         zc::Own<AssignmentOperator> op,
-                                                         zc::Own<Expression> right) {
-  return zc::heap<AssignmentExpression>(zc::mv(left), zc::mv(op), zc::mv(right));
 }
 
 zc::Own<ConditionalExpression> createConditionalExpression(zc::Own<Expression> test,
@@ -157,9 +154,12 @@ zc::Own<ConditionalExpression> createConditionalExpression(zc::Own<Expression> t
   return zc::heap<ConditionalExpression>(zc::mv(test), zc::mv(consequent), zc::mv(alternate));
 }
 
-zc::Own<CallExpression> createCallExpression(zc::Own<Expression> callee,
-                                             zc::Vector<zc::Own<Expression>>&& arguments) {
-  return zc::heap<CallExpression>(zc::mv(callee), zc::mv(arguments));
+zc::Own<CallExpression> createCallExpression(
+    zc::Own<Expression> callee, zc::Maybe<zc::Own<TokenNode>> questionDotToken,
+    zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> typeArguments,
+    zc::Vector<zc::Own<Expression>>&& arguments) {
+  return zc::heap<CallExpression>(zc::mv(callee), zc::mv(questionDotToken), zc::mv(typeArguments),
+                                  zc::mv(arguments));
 }
 
 zc::Own<PropertyAccessExpression> createPropertyAccessExpression(
@@ -172,22 +172,18 @@ zc::Own<ElementAccessExpression> createElementAccessExpression(
   return zc::heap<ElementAccessExpression>(zc::mv(expression), zc::mv(index), questionDot);
 }
 
-zc::Own<OptionalExpression> createOptionalExpression(zc::Own<Expression> object,
-                                                     zc::Own<Expression> property) {
-  return zc::heap<OptionalExpression>(zc::mv(object), zc::mv(property));
-}
-
-zc::Own<AsExpression> createAsExpression(zc::Own<Expression> expression, zc::Own<Type> targetType) {
+zc::Own<AsExpression> createAsExpression(zc::Own<Expression> expression,
+                                         zc::Own<TypeNode> targetType) {
   return zc::heap<AsExpression>(zc::mv(expression), zc::mv(targetType));
 }
 
 zc::Own<ForcedAsExpression> createForcedAsExpression(zc::Own<Expression> expression,
-                                                     zc::Own<Type> targetType) {
+                                                     zc::Own<TypeNode> targetType) {
   return zc::heap<ForcedAsExpression>(zc::mv(expression), zc::mv(targetType));
 }
 
 zc::Own<ConditionalAsExpression> createConditionalAsExpression(zc::Own<Expression> expression,
-                                                               zc::Own<Type> targetType) {
+                                                               zc::Own<TypeNode> targetType) {
   return zc::heap<ConditionalAsExpression>(zc::mv(expression), zc::mv(targetType));
 }
 
@@ -204,8 +200,8 @@ zc::Own<AwaitExpression> createAwaitExpression(zc::Own<Expression> expression) {
 }
 
 zc::Own<FunctionExpression> createFunctionExpression(
-    zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<Type>> returnType,
+    zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<TypeNode>> returnType,
     zc::Own<Statement> body) {
   return zc::heap<FunctionExpression>(zc::mv(typeParameters), zc::mv(parameters),
                                       zc::mv(returnType), zc::mv(body));
@@ -250,195 +246,93 @@ zc::Own<BooleanLiteral> createBooleanLiteral(bool value) { return zc::heap<Boole
 
 zc::Own<NullLiteral> createNullLiteral() { return zc::heap<NullLiteral>(); }
 
-zc::Own<AliasDeclaration> createAliasDeclaration(zc::Own<Identifier> name, zc::Own<Type> type) {
+zc::Own<AliasDeclaration> createAliasDeclaration(zc::Own<Identifier> name, zc::Own<TypeNode> type) {
   return zc::heap<AliasDeclaration>(zc::mv(name), zc::mv(type));
 }
 
 zc::Own<DebuggerStatement> createDebuggerStatement() { return zc::heap<DebuggerStatement>(); }
 
 // Type factory functions
-zc::Own<TypeReference> createTypeReference(zc::Own<Identifier> typeName,
-                                           zc::Maybe<zc::Vector<zc::Own<Type>>> typeArguments) {
-  return zc::heap<TypeReference>(zc::mv(typeName), zc::mv(typeArguments));
+zc::Own<TypeReferenceNode> createTypeReference(
+    zc::Own<Identifier> typeName, zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments) {
+  return zc::heap<TypeReferenceNode>(zc::mv(typeName), zc::mv(typeArguments));
 }
 
-zc::Own<ArrayType> createArrayType(zc::Own<Type> elementType) {
-  return zc::heap<ArrayType>(zc::mv(elementType));
+zc::Own<ArrayTypeNode> createArrayType(zc::Own<TypeNode> elementType) {
+  return zc::heap<ArrayTypeNode>(zc::mv(elementType));
 }
 
-zc::Own<UnionType> createUnionType(zc::Vector<zc::Own<Type>>&& types) {
-  return zc::heap<UnionType>(zc::mv(types));
+zc::Own<UnionTypeNode> createUnionType(zc::Vector<zc::Own<TypeNode>>&& types) {
+  return zc::heap<UnionTypeNode>(zc::mv(types));
 }
 
-zc::Own<IntersectionType> createIntersectionType(zc::Vector<zc::Own<Type>>&& types) {
-  return zc::heap<IntersectionType>(zc::mv(types));
+zc::Own<IntersectionTypeNode> createIntersectionType(zc::Vector<zc::Own<TypeNode>>&& types) {
+  return zc::heap<IntersectionTypeNode>(zc::mv(types));
 }
 
-zc::Own<ParenthesizedType> createParenthesizedType(zc::Own<Type> type) {
-  return zc::heap<ParenthesizedType>(zc::mv(type));
+zc::Own<ParenthesizedTypeNode> createParenthesizedType(zc::Own<TypeNode> type) {
+  return zc::heap<ParenthesizedTypeNode>(zc::mv(type));
 }
 
-zc::Own<PredefinedType> createPredefinedType(zc::String&& name) {
-  return zc::heap<PredefinedType>(zc::mv(name));
+zc::Own<PredefinedTypeNode> createPredefinedType(zc::String&& name) {
+  if (name == "bool") {
+    return zc::heap<BoolTypeNode>();
+  } else if (name == "i8") {
+    return zc::heap<I8TypeNode>();
+  } else if (name == "i16") {
+    return zc::heap<I16TypeNode>();
+  } else if (name == "i32") {
+    return zc::heap<I32TypeNode>();
+  } else if (name == "i64") {
+    return zc::heap<I64TypeNode>();
+  } else if (name == "u8") {
+    return zc::heap<U8TypeNode>();
+  } else if (name == "u16") {
+    return zc::heap<U16TypeNode>();
+  } else if (name == "u32") {
+    return zc::heap<U32TypeNode>();
+  } else if (name == "u64") {
+    return zc::heap<U64TypeNode>();
+  } else if (name == "f32") {
+    return zc::heap<F32TypeNode>();
+  } else if (name == "f64") {
+    return zc::heap<F64TypeNode>();
+  } else {
+    // 默认返回 i32 类型，或者可以抛出错误
+    return zc::heap<I32TypeNode>();
+  }
 }
 
-zc::Own<ObjectType> createObjectType(zc::Vector<zc::Own<Node>>&& members) {
-  return zc::heap<ObjectType>(zc::mv(members));
+zc::Own<ObjectTypeNode> createObjectType(zc::Vector<zc::Own<Node>>&& members) {
+  return zc::heap<ObjectTypeNode>(zc::mv(members));
 }
 
-zc::Own<TupleType> createTupleType(zc::Vector<zc::Own<Type>>&& elementTypes) {
-  return zc::heap<TupleType>(zc::mv(elementTypes));
+zc::Own<TupleTypeNode> createTupleType(zc::Vector<zc::Own<TypeNode>>&& elementTypes) {
+  return zc::heap<TupleTypeNode>(zc::mv(elementTypes));
 }
 
-zc::Own<ReturnType> createReturnType(zc::Own<Type> type, zc::Maybe<zc::Own<Type>> errorType) {
-  return zc::heap<ReturnType>(zc::mv(type), zc::mv(errorType));
+zc::Own<ReturnTypeNode> createReturnType(zc::Own<TypeNode> type,
+                                         zc::Maybe<zc::Own<TypeNode>> errorType) {
+  return zc::heap<ReturnTypeNode>(zc::mv(type), zc::mv(errorType));
 }
 
-zc::Own<FunctionType> createFunctionType(zc::Vector<zc::Own<TypeParameter>>&& typeParameters,
-                                         zc::Vector<zc::Own<BindingElement>>&& parameters,
-                                         zc::Own<ReturnType> returnType) {
-  return zc::heap<FunctionType>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(returnType));
+zc::Own<FunctionTypeNode> createFunctionType(
+    zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Own<ReturnTypeNode> returnType) {
+  return zc::heap<FunctionTypeNode>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(returnType));
 }
 
-zc::Own<TypeParameter> createTypeParameterDeclaration(zc::Own<Identifier> name,
-                                                      zc::Maybe<zc::Own<Type>> constraint) {
-  return zc::heap<TypeParameter>(zc::mv(name), zc::mv(constraint));
+zc::Own<TypeParameterDeclaration> createTypeParameterDeclaration(
+    zc::Own<Identifier> name, zc::Maybe<zc::Own<TypeNode>> constraint) {
+  return zc::heap<TypeParameterDeclaration>(zc::mv(name), zc::mv(constraint));
 }
 
-zc::Own<OptionalType> createOptionalType(zc::Own<Type> type) {
-  return zc::heap<OptionalType>(zc::mv(type));
+zc::Own<OptionalTypeNode> createOptionalType(zc::Own<TypeNode> type) {
+  return zc::heap<OptionalTypeNode>(zc::mv(type));
 }
 
-zc::Own<TypeQuery> createTypeQuery(zc::Own<Expression> expr) {
-  return zc::heap<TypeQuery>(zc::mv(expr));
-}
-
-// Operator factory functions
-zc::Own<BinaryOperator> createBinaryOperator(zc::String&& symbol, OperatorPrecedence precedence,
-                                             OperatorAssociativity associativity) {
-  return zc::heap<BinaryOperator>(zc::mv(symbol), precedence, associativity);
-}
-
-zc::Own<UnaryOperator> createUnaryOperator(zc::String&& symbol, bool prefix) {
-  return zc::heap<UnaryOperator>(zc::mv(symbol), prefix);
-}
-
-zc::Own<AssignmentOperator> createAssignmentOperator(zc::String&& symbol) {
-  return zc::heap<AssignmentOperator>(zc::mv(symbol));
-}
-
-// Predefined operator factory functions for common operators
-zc::Own<BinaryOperator> createAddOperator() {
-  return createBinaryOperator(zc::str("+"), OperatorPrecedence::kAdditive,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createSubtractOperator() {
-  return createBinaryOperator(zc::str("-"), OperatorPrecedence::kAdditive,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createMultiplyOperator() {
-  return createBinaryOperator(zc::str("*"), OperatorPrecedence::kMultiplicative,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createDivideOperator() {
-  return createBinaryOperator(zc::str("/"), OperatorPrecedence::kMultiplicative,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createModuloOperator() {
-  return createBinaryOperator(zc::str("%"), OperatorPrecedence::kMultiplicative,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createEqualOperator() {
-  return createBinaryOperator(zc::str("=="), OperatorPrecedence::kEquality,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createNotEqualOperator() {
-  return createBinaryOperator(zc::str("!="), OperatorPrecedence::kEquality,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createLessOperator() {
-  return createBinaryOperator(zc::str("<"), OperatorPrecedence::kRelational,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createGreaterOperator() {
-  return createBinaryOperator(zc::str(">"), OperatorPrecedence::kRelational,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createLessEqualOperator() {
-  return createBinaryOperator(zc::str("<="), OperatorPrecedence::kRelational,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createGreaterEqualOperator() {
-  return createBinaryOperator(zc::str(">="), OperatorPrecedence::kRelational,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createLogicalAndOperator() {
-  return createBinaryOperator(zc::str("&&"), OperatorPrecedence::kLogicalAnd,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<BinaryOperator> createLogicalOrOperator() {
-  return createBinaryOperator(zc::str("||"), OperatorPrecedence::kLogicalOr,
-                              OperatorAssociativity::kLeft);
-}
-
-zc::Own<UnaryOperator> createUnaryPlusOperator() { return createUnaryOperator(zc::str("+"), true); }
-
-zc::Own<UnaryOperator> createUnaryMinusOperator() {
-  return createUnaryOperator(zc::str("-"), true);
-}
-
-zc::Own<UnaryOperator> createLogicalNotOperator() {
-  return createUnaryOperator(zc::str("!"), true);
-}
-
-zc::Own<UnaryOperator> createBitwiseNotOperator() {
-  return createUnaryOperator(zc::str("~"), true);
-}
-
-zc::Own<UnaryOperator> createVoidOperator() { return createUnaryOperator(zc::str("void"), true); }
-
-zc::Own<UnaryOperator> createTypeOfOperator() {
-  return createUnaryOperator(zc::str("typeof"), true);
-}
-
-zc::Own<AssignmentOperator> createAssignOperator() {
-  return createAssignmentOperator(zc::str("="));
-}
-
-zc::Own<AssignmentOperator> createAddAssignOperator() {
-  return createAssignmentOperator(zc::str("+="));
-}
-
-zc::Own<AssignmentOperator> createSubtractAssignOperator() {
-  return createAssignmentOperator(zc::str("-="));
-}
-
-zc::Own<UnaryOperator> createPreIncrementOperator() {
-  return createUnaryOperator(zc::str("++"), true);
-}
-
-zc::Own<UnaryOperator> createPostIncrementOperator() {
-  return createUnaryOperator(zc::str("++"), false);
-}
-
-zc::Own<UnaryOperator> createPreDecrementOperator() {
-  return createUnaryOperator(zc::str("--"), true);
-}
-
-zc::Own<UnaryOperator> createPostDecrementOperator() {
-  return createUnaryOperator(zc::str("--"), false);
+zc::Own<TypeQueryNode> createTypeQuery(zc::Own<Expression> expr) {
+  return zc::heap<TypeQueryNode>(zc::mv(expr));
 }
 
 zc::Own<BreakStatement> createBreakStatement(zc::Maybe<zc::Own<Identifier>> label) {
@@ -476,8 +370,8 @@ zc::Own<TuplePattern> createTuplePattern(zc::Vector<zc::Own<Pattern>>&& elements
   return zc::heap<TuplePattern>(zc::mv(elements));
 }
 
-zc::Own<StructurePattern> createStructurePattern(zc::Maybe<zc::Own<TypeReference>> typeReference,
-                                                 zc::Vector<zc::Own<Pattern>>&& fields) {
+zc::Own<StructurePattern> createStructurePattern(
+    zc::Maybe<zc::Own<TypeReferenceNode>> typeReference, zc::Vector<zc::Own<Pattern>>&& fields) {
   // TODO: StructurePattern constructor only accepts properties parameter, needs redesign
   // For now, only pass fields parameter
   static_cast<void>(typeReference);
@@ -488,7 +382,7 @@ zc::Own<ArrayPattern> createArrayPattern(zc::Vector<zc::Own<Pattern>>&& elements
   return zc::heap<ArrayPattern>(zc::mv(elements));
 }
 
-zc::Own<IsPattern> createIsPattern(zc::Own<Pattern> pattern, zc::Own<Type> type) {
+zc::Own<IsPattern> createIsPattern(zc::Own<Pattern> pattern, zc::Own<TypeNode> type) {
   // TODO: IsPattern constructor only accepts type parameter, needs redesign to support pattern
   // For now, only pass type parameter
   static_cast<void>(pattern);
@@ -499,12 +393,12 @@ zc::Own<ExpressionPattern> createExpressionPattern(zc::Own<Expression> expressio
   return zc::heap<ExpressionPattern>(zc::mv(expression));
 }
 
-zc::Own<EnumPattern> createEnumPattern(zc::Own<TypeReference> typeReference,
+zc::Own<EnumPattern> createEnumPattern(zc::Own<TypeReferenceNode> typeReference,
                                        zc::Own<Identifier> propertyName,
                                        zc::Maybe<zc::Own<TuplePattern>> tuplePattern) {
-  // TODO: Fix type conversion from TypeReference to Type
-  // For now, cast TypeReference to Type since TypeReference inherits from Type
-  zc::Maybe<zc::Own<Type>> typeRef = zc::mv(typeReference);
+  // TODO: Fix type conversion from TypeReferenceNode to Type
+  // For now, cast TypeReferenceNode to Type since TypeReferenceNode inherits from Type
+  zc::Maybe<zc::Own<TypeNode>> typeRef = zc::mv(typeReference);
 
   // TODO: Handle optional TuplePattern - for now create empty one if none provided
   zc::Own<TuplePattern> tuple;
@@ -525,16 +419,6 @@ zc::Own<DefaultClause> createDefaultClause(zc::Vector<zc::Own<Statement>>&& stat
   return zc::heap<DefaultClause>(zc::mv(statements));
 }
 
-zc::Own<BindingPatternElement> createBindingPatternElement(
-    zc::Own<Pattern> pattern, zc::Maybe<zc::Own<Expression>> initializer) {
-  return zc::heap<BindingPatternElement>(zc::mv(pattern), zc::mv(initializer));
-}
-
-zc::Own<BindingPattern> createBindingPattern(
-    zc::Vector<zc::Own<BindingPatternElement>>&& elements) {
-  return zc::heap<BindingPattern>(zc::mv(elements));
-}
-
 zc::Own<ArrayBindingPattern> createArrayBindingPattern(
     zc::Vector<zc::Own<BindingElement>>&& elements) {
   return zc::heap<ArrayBindingPattern>(zc::mv(elements));
@@ -544,6 +428,9 @@ zc::Own<ObjectBindingPattern> createObjectBindingPattern(
     zc::Vector<zc::Own<BindingElement>>&& elements) {
   return zc::heap<ObjectBindingPattern>(zc::mv(elements));
 }
+
+// Token node factory functions for operators
+zc::Own<TokenNode> createTokenNode(SyntaxKind kind) { return zc::heap<TokenNode>(kind); }
 
 }  // namespace factory
 }  // namespace ast
