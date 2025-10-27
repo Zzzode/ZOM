@@ -29,9 +29,7 @@ zc::Maybe<const ast::Identifier&> getNameOfDeclaration(const ast::Declaration& n
 /// \return true if the node is a valid property name literal, false otherwise
 bool isPropertyNameLiteral(const ast::Node& node);
 
-
 bool isDeclaration(const ast::Node& node);
-
 
 bool isExportable(const ast::Node& node);
 

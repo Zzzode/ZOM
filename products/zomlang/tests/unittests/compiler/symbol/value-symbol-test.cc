@@ -16,6 +16,8 @@
 
 #include "zc/core/debug.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-table.h"

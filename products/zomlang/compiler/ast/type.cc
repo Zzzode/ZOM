@@ -32,7 +32,7 @@ struct DeclarationImpl::Impl {
 // Forward declaration of NamedDeclarationImpl::Impl
 struct NamedDeclarationImpl::Impl {
   const zc::Own<Identifier> name;
-  
+
   explicit Impl(zc::Own<Identifier> name) : name(zc::mv(name)) {}
 };
 
@@ -42,7 +42,9 @@ struct TypeReferenceNode::Impl : private NodeImpl {
   zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments;
 
   explicit Impl(zc::Own<Identifier> name, zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments)
-      : NodeImpl(SyntaxKind::TypeReferenceNode), name(zc::mv(name)), typeArguments(zc::mv(typeArguments)) {}
+      : NodeImpl(SyntaxKind::TypeReferenceNode),
+        name(zc::mv(name)),
+        typeArguments(zc::mv(typeArguments)) {}
 
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
@@ -94,9 +96,7 @@ void ArrayTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
 }
 
-const source::SourceRange& ArrayTypeNode::getSourceRange() const {
-  return impl->getSourceRange();
-}
+const source::SourceRange& ArrayTypeNode::getSourceRange() const { return impl->getSourceRange(); }
 
 void ArrayTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -104,7 +104,7 @@ void ArrayTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 struct UnionTypeNode::Impl : private NodeImpl {
   NodeList<TypeNode> types;
 
-  explicit Impl(zc::Vector<zc::Own<TypeNode>>&& types) 
+  explicit Impl(zc::Vector<zc::Own<TypeNode>>&& types)
       : NodeImpl(SyntaxKind::UnionTypeNode), types(zc::mv(types)) {}
 
   using NodeImpl::getKind;
@@ -125,9 +125,7 @@ void UnionTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
 }
 
-const source::SourceRange& UnionTypeNode::getSourceRange() const {
-  return impl->getSourceRange();
-}
+const source::SourceRange& UnionTypeNode::getSourceRange() const { return impl->getSourceRange(); }
 
 void UnionTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -389,9 +387,7 @@ void TupleTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
 }
 
-const source::SourceRange& TupleTypeNode::getSourceRange() const {
-  return impl->getSourceRange();
-}
+const source::SourceRange& TupleTypeNode::getSourceRange() const { return impl->getSourceRange(); }
 
 void TupleTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -422,9 +418,7 @@ void ReturnTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
 }
 
-const source::SourceRange& ReturnTypeNode::getSourceRange() const {
-  return impl->getSourceRange();
-}
+const source::SourceRange& ReturnTypeNode::getSourceRange() const { return impl->getSourceRange(); }
 
 SyntaxKind ReturnTypeNode::getKind() const { return impl->getKind(); }
 
@@ -511,7 +505,8 @@ void OptionalTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 struct TypeQueryNode::Impl : private NodeImpl {
   const zc::Own<Expression> expr;
 
-  explicit Impl(zc::Own<Expression> expr) : NodeImpl(SyntaxKind::TypeQueryNode), expr(zc::mv(expr)) {}
+  explicit Impl(zc::Own<Expression> expr)
+      : NodeImpl(SyntaxKind::TypeQueryNode), expr(zc::mv(expr)) {}
 
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
@@ -529,9 +524,7 @@ void TypeQueryNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
 }
 
-const source::SourceRange& TypeQueryNode::getSourceRange() const {
-  return impl->getSourceRange();
-}
+const source::SourceRange& TypeQueryNode::getSourceRange() const { return impl->getSourceRange(); }
 
 SyntaxKind TypeQueryNode::getKind() const { return impl->getKind(); }
 
@@ -542,7 +535,9 @@ struct TypeParameterDeclaration::Impl : private NamedDeclarationImpl, private No
   zc::Maybe<zc::Own<TypeNode>> constraint;
 
   Impl(zc::Own<Identifier> name, zc::Maybe<zc::Own<TypeNode>> constraint)
-      : NamedDeclarationImpl(zc::mv(name)), NodeImpl(SyntaxKind::TypeParameterDeclaration), constraint(zc::mv(constraint)) {}
+      : NamedDeclarationImpl(zc::mv(name)),
+        NodeImpl(SyntaxKind::TypeParameterDeclaration),
+        constraint(zc::mv(constraint)) {}
 
   // Forward NodeImpl methods
   using NodeImpl::getKind;
@@ -575,13 +570,13 @@ const source::SourceRange& TypeParameterDeclaration::getSourceRange() const {
   return impl->getSourceRange();
 }
 
-SyntaxKind TypeParameterDeclaration::getKind() const {
-  return impl->getKind();
-}
+SyntaxKind TypeParameterDeclaration::getKind() const { return impl->getKind(); }
 
 void TypeParameterDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
-zc::Maybe<const symbol::Symbol&> TypeParameterDeclaration::getSymbol() const { return impl->getSymbol(); }
+zc::Maybe<const symbol::Symbol&> TypeParameterDeclaration::getSymbol() const {
+  return impl->getSymbol();
+}
 
 void TypeParameterDeclaration::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) {
   const_cast<Impl*>(impl.get())->setSymbol(symbol);

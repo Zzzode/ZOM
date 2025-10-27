@@ -14,7 +14,9 @@
 
 #include "zomlang/compiler/symbol/symbol.h"
 
+#include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/type-symbol.h"

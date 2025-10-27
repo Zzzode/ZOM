@@ -20,6 +20,8 @@
 #include "zc/core/map.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/symbol/symbol.h"
 
 namespace zomlang {

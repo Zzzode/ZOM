@@ -15,6 +15,8 @@
 #include "zomlang/compiler/symbol/symbol-table.h"
 
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol.h"
 #include "zomlang/compiler/symbol/value-symbol.h"

@@ -14,6 +14,8 @@
 
 #include "zomlang/compiler/symbol/symbol-denotation.h"
 
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/type-symbol.h"
 

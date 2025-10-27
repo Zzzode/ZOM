@@ -30,10 +30,31 @@ namespace ast {
 /// This provides a safe alternative to static_cast by checking the SyntaxKind
 /// or using classof methods before performing the cast operation.
 ///
-/// Usage Guidelines:
+/// ## Function Categories:
+/// - **isa<T>()**: Type checking - returns bool indicating if node is of type T
+/// - **cast<T>()**: Checked casting - throws on failure, use when certain cast will succeed
+/// - **dyn_cast<T>()**: Safe casting - returns Maybe<T>, use when cast might fail
+///
+/// ## Usage Guidelines:
 /// - Use `isa<T>()` to check if a node is of a specific type
 /// - Use `cast<T>()` when you're certain the cast will succeed (throws on failure)
 /// - Use `dyn_cast<T>()` when the cast might fail (returns Maybe)
+///
+/// ## Examples:
+/// \code
+/// // Type checking
+/// if (isa<FunctionDeclaration>(node)) {
+///   // node is a FunctionDeclaration
+/// }
+///
+/// // Checked casting (throws if invalid)
+/// auto& funcDecl = cast<FunctionDeclaration>(node);
+///
+/// // Safe casting (returns Maybe)
+/// if (auto funcDecl = dyn_cast<FunctionDeclaration>(node)) {
+///   // Use funcDecl.value()
+/// }
+/// \endcode
 
 /// \brief Type trait to get the SyntaxKind for a given AST node type
 /// Each concrete AST node type should specialize this template
@@ -95,6 +116,10 @@ ZC_NODISCARD bool nodeMatches(const Node& node) noexcept {
 
 }  // namespace _
 
+//==============================================================================
+// Type Checking Functions (isa)
+//==============================================================================
+
 /// \brief Check if a node is of a specific type
 /// \tparam T The target AST node type (concrete or interface)
 /// \param node The node to check
@@ -113,6 +138,19 @@ template <_::ASTNode T>
 ZC_NODISCARD bool isa(const Node& node) noexcept {
   return _::nodeMatches<T>(node);
 }
+
+/// \brief Check if a zc::Own<Node> is of a specific type
+/// \tparam T The target AST node type
+/// \param node The owned node to check
+/// \return True if the node is of type T, false otherwise
+template <_::ASTNode T>
+ZC_NODISCARD bool isa(const zc::Own<Node>& node) noexcept {
+  return isa<T>(*node);
+}
+
+//==============================================================================
+// Checked Casting Functions (cast)
+//==============================================================================
 
 /// \brief Perform a checked cast to a specific AST node type
 /// \tparam T The target AST node type
@@ -158,6 +196,31 @@ ZC_NODISCARD auto cast(const Node& node)
   }
 }
 
+/// \brief Perform a checked cast on a zc::Own<Node> to a specific AST node type
+/// \tparam T The target AST node type
+/// \param node The owned node to cast
+/// \return Reference to the casted node
+/// \throws zc::Exception if the cast is invalid
+template <_::ASTNode T>
+ZC_NODISCARD auto cast(zc::Own<Node>& node) -> std::conditional_t<std::is_reference_v<T>, T, T&> {
+  return cast<T>(*node);
+}
+
+/// \brief Perform a checked cast on a const zc::Own<Node> to a specific AST node type
+/// \tparam T The target AST node type
+/// \param node The owned node to cast
+/// \return Const reference to the casted node
+/// \throws zc::Exception if the cast is invalid
+template <_::ASTNode T>
+ZC_NODISCARD auto cast(const zc::Own<Node>& node)
+    -> std::conditional_t<std::is_reference_v<T>, T, const T&> {
+  return cast<T>(*node);
+}
+
+//==============================================================================
+// Safe Casting Functions (dyn_cast)
+//==============================================================================
+
 /// \brief Safely cast a node to a specific type, returning Maybe if invalid
 /// \tparam T The target AST node type
 /// \param node The node to cast
@@ -186,6 +249,40 @@ template <_::ASTNode T>
 ZC_NODISCARD zc::Maybe<const T&> dyn_cast(const Node& node) noexcept {
   if (isa<T>(node)) { return static_cast<const T&>(node); }
   return zc::none;
+}
+
+/// \brief Safely cast a zc::Own<Node> to a specific type, returning Maybe if invalid
+/// \tparam T The target AST node type
+/// \param node The owned node to cast
+/// \return Maybe containing the casted owned node, or none if cast is invalid
+///
+/// Use this when the cast might fail. It's safer than cast() but requires
+/// checking the result.
+///
+/// Example:
+/// \code
+/// if (auto funcDecl = dyn_cast<FunctionDeclaration>(ownedNode)) {
+///   // Use funcDecl.value()
+/// }
+/// \endcode
+template <_::ASTNode T, typename U>
+ZC_NODISCARD zc::Maybe<zc::Own<T>> dyn_cast(zc::Own<U>&& node) noexcept {
+  static_assert(std::is_base_of_v<Node, U>, "U must be derived from Node");
+  if (isa<T>(*node)) {
+    // Transfer ownership and cast the pointer
+    auto* rawPtr = node.disown(&zc::_::HeapDisposer<U>::instance);
+    return zc::Own<T>(static_cast<T*>(rawPtr), zc::_::HeapDisposer<T>::instance);
+  }
+  return zc::none;
+}
+
+/// \brief Safely cast a const zc::Own<Node> to a specific type, returning Maybe if invalid
+/// \tparam T The target AST node type
+/// \param node The owned node to cast
+/// \return Maybe containing const reference to the casted node, or none if cast fails
+template <_::ASTNode T>
+ZC_NODISCARD zc::Maybe<const T&> dyn_cast(const zc::Own<Node>& node) noexcept {
+  return dyn_cast<T>(*node);
 }
 
 }  // namespace ast

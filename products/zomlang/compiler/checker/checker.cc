@@ -17,6 +17,9 @@
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/type.h"
 
 namespace zomlang {
 namespace compiler {

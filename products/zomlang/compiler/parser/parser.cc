@@ -3220,10 +3220,10 @@ zc::Maybe<zc::Own<ast::MemberExpression>> Parser::parseMemberExpressionRest(
   }
 
   auto finishedNode = finishNode(zc::mv(expr), startLoc);
-  if (ast::dyn_cast<ast::MemberExpression>(*finishedNode) != zc::none) {
-    // Use downcast to convert zc::Own<LeftHandSideExpression> to zc::Own<MemberExpression>
-    return finishedNode.template downcast<ast::MemberExpression>();
+  ZC_IF_SOME(memberExpr, ast::dyn_cast<ast::MemberExpression>(zc::mv(finishedNode))) {
+    return zc::mv(memberExpr);
   }
+
   return zc::none;
 }
 

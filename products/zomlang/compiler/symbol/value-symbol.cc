@@ -16,6 +16,8 @@
 
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/symbol/symbol.h"
 #include "zomlang/compiler/symbol/type-symbol.h"
 

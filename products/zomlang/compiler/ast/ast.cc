@@ -15,6 +15,9 @@
 #include "zomlang/compiler/ast/ast.h"
 
 #include "zc/core/memory.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/ast/visitor.h"
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/symbol/symbol-table.h"

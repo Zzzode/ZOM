@@ -21,6 +21,8 @@
 #include "zc/core/map.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/symbol/package-symbol.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-denotation.h"

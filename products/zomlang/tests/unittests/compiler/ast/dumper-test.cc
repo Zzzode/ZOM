@@ -355,7 +355,8 @@ ZC_TEST("ASTDumper.DumpUnaryExpressionJSON") {
 
 ZC_TEST("ASTDumper.DumpUnaryExpressionXML") {
   auto operand = ast::factory::createFloatLiteral(42.0);
-  auto expr = ast::factory::createPrefixUnaryExpression(ast::SyntaxKind::Exclamation, zc::mv(operand));
+  auto expr =
+      ast::factory::createPrefixUnaryExpression(ast::SyntaxKind::Exclamation, zc::mv(operand));
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kXML);
   ASTDumper dumper(zc::mv(serializer));
@@ -607,7 +608,8 @@ ZC_TEST("ASTDumper.DumpBlockStatementText") {
 // Test PostfixUnaryExpression dumping
 ZC_TEST("ASTDumper.DumpPostfixUnaryExpressionText") {
   auto operand = ast::factory::createIdentifier(zc::str("x"));
-  auto expr = ast::factory::createPostfixUnaryExpression(ast::SyntaxKind::PlusPlus, zc::mv(operand));
+  auto expr =
+      ast::factory::createPostfixUnaryExpression(ast::SyntaxKind::PlusPlus, zc::mv(operand));
 
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
