@@ -14,8 +14,9 @@
 
 #pragma once
 
-#include <cstdint>
-
+#include "zc/core/vector.h"
+#include "zomlang/compiler/basic/string-pool.h"
+#include "zomlang/compiler/lexer/token.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
@@ -40,80 +41,68 @@ namespace lexer {
 // Forward declarations
 class Token;
 
-enum class LexerMode : uint8_t { kNormal, kStringInterpolation, kRegexLiteral };
+enum class CommentDirectiveKind {
+  ExpectError,
+  Ignore,
+};
 
-enum class CommentRetentionMode : uint8_t {
-  kNone,               // Leave no comments
-  kAttachToNextToken,  // Append a comment to the next tag
-  kReturnAsTokens      // Return comments as separate tags
+struct CommentDirective {
+  source::SourceRange range;
+  CommentDirectiveKind kind;
 };
 
 struct LexerState {
-  source::SourceLoc Loc;
-  LexerMode mode;
+  // Core position pointers
+  const zc::byte* curPtr;         // Current position (end position of text of current token)
+  const zc::byte* fullStartPtr;   // Start position of whitespace before current token
+  const zc::byte* tokenStartPtr;  // Start position of text of current token
 
-  explicit LexerState(const source::SourceLoc Loc, const LexerMode m) : Loc(Loc), mode(m) {}
+  TokenFlags tokenFlags;
+  // Token state
+  Token token;  // Current token
+
+  explicit LexerState(const zc::byte* curPtr = nullptr, const zc::byte* fullStartPtr = nullptr,
+                      const zc::byte* tokenStartPtr = nullptr, const Token& token = Token(),
+                      TokenFlags tokenFlags = TokenFlags::None)
+      : curPtr(curPtr),
+        fullStartPtr(fullStartPtr),
+        tokenStartPtr(tokenStartPtr),
+        tokenFlags(tokenFlags),
+        token(token) {}
 };
 
 class Lexer {
 public:
   Lexer(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
-        const basic::LangOptions& options, const source::BufferId& bufferId);
+        const basic::LangOptions& options, basic::StringPool& stringPool,
+        const source::BufferId& bufferId);
   ~Lexer();
 
   ZC_DISALLOW_COPY_AND_MOVE(Lexer);
 
-  /// \brief For a source location in the current buffer, returns the corresponding pointer.
-  /// \param Loc The source location.
-  /// \return The corresponding pointer.
-  ZC_NODISCARD const zc::byte* getBufferPtrForSourceLoc(source::SourceLoc Loc) const;
+  // =======================================================================================
+  // Lexing Utilities
 
-  /// Main lexical analysis function
-  void lex(Token& result);
+  /// \brief Lex and output token by reference (for tests/back-compat)
+  /// \param outToken The token to output.
+  void lex(Token& outToken);
 
-  /// Preview the next token
-  const Token& peekNextToken() const;
-
-  /// Lookahead functionality
-  /// \brief Look ahead n tokens without consuming them
-  /// \param n The number of tokens to look ahead (1-based, 1 means next token)
-  /// \return The token at position n, or EOF token if beyond end
-  const Token& lookAhead(unsigned n);
-
-  /// \brief Check if we can look ahead n tokens
-  /// \param n The number of tokens to look ahead
-  /// \return true if we can look ahead n tokens, false otherwise
-  bool canLookAhead(unsigned n);
-
-  /// State management
-  LexerState getStateForBeginningOfToken(const Token& tok) const;
+  /// \brief Restore the lexer state.
+  /// \param s The state to restore.
+  /// \param enableDiagnostics Whether to enable diagnostics.
   void restoreState(LexerState s, bool enableDiagnostics = false);
 
-  /// Mode switching
-  void enterMode(LexerMode mode);
-  void exitMode(LexerMode mode);
-
-  /// Unicode support
-  static unsigned lexUnicodeEscape(const zc::byte*& curPtr, diagnostics::DiagnosticEngine& diags);
-
-  /// Regular expression support
-  bool tryLexRegexLiteral(const zc::byte* tokStart);
-
-  /// String interpolation support
-  void lexStringLiteral(unsigned customDelimiterLen = 0);
-
-  /// Code completion support
-  bool isCodeCompletion() const;
-
-  /// Comment handling
-  void setCommentRetentionMode(CommentRetentionMode mode);
-
-  /// Source location and range
-  source::SourceLoc getLocForStartOfToken(source::SourceLoc loc) const;
-  source::CharSourceRange getCharSourceRangeFromSourceRange(const source::SourceRange& sr) const;
+  /// \brief Get the current lexer state.
+  /// \return The current lexer state.
+  ZC_NODISCARD const LexerState getCurrentState() const;
 
   /// \brief Start position of whitespace before current token
-  ZC_NODISCARD source::SourceLoc getFullStartLoc() const;
+  /// \return The source location of the full start.
+  ZC_NODISCARD const source::SourceLoc getFullStartLoc() const;
+
+  /// \brief Get the list of comment directives found so far.
+  /// \return The list of comment directives.
+  ZC_NODISCARD const zc::Vector<CommentDirective>& getCommentDirectives() const;
 
 private:
   struct Impl;

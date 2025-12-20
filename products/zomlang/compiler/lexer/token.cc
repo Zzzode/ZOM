@@ -27,13 +27,13 @@ namespace lexer {
 struct Token::Impl {
   ast::SyntaxKind kind;
   source::SourceRange range;
-  zc::Maybe<zc::String> cachedText;
+  zc::Maybe<zc::StringPtr> value;
   TokenFlags flags;
 
-  Impl() : kind(ast::SyntaxKind::Unknown), flags(TokenFlags::kNone) {}
-  Impl(ast::SyntaxKind k, source::SourceRange r, zc::Maybe<zc::String> text,
-       TokenFlags f = TokenFlags::kNone)
-      : kind(k), range(r), cachedText(zc::mv(text)), flags(f) {}
+  Impl() : kind(ast::SyntaxKind::Unknown), flags(TokenFlags::None) {}
+  Impl(ast::SyntaxKind k, source::SourceRange r, zc::Maybe<zc::StringPtr> text,
+       TokenFlags f = TokenFlags::None)
+      : kind(k), range(r), value(zc::mv(text)), flags(f) {}
 };
 
 // ================================================================================
@@ -41,15 +41,15 @@ struct Token::Impl {
 
 Token::Token() noexcept : impl(zc::heap<Impl>()) {}
 
-Token::Token(ast::SyntaxKind k, source::SourceRange r, zc::Maybe<zc::String> text,
+Token::Token(ast::SyntaxKind k, source::SourceRange r, zc::Maybe<zc::StringPtr> value,
              TokenFlags flags) noexcept
-    : impl(zc::heap<Impl>(k, r, zc::mv(text), flags)) {}
+    : impl(zc::heap<Impl>(k, r, zc::mv(value), flags)) {}
 
 Token::Token(const Token& other) noexcept : impl(zc::heap<Impl>()) {
   impl->kind = other.impl->kind;
   impl->range = other.impl->range;
   impl->flags = other.impl->flags;
-  ZC_IF_SOME(text, other.impl->cachedText) { impl->cachedText = zc::str(text); }
+  impl->value = other.impl->value;
 }
 
 Token::Token(Token&& other) noexcept : impl(zc::mv(other.impl)) {}
@@ -61,8 +61,7 @@ Token& Token::operator=(const Token& other) noexcept {
     impl->kind = other.impl->kind;
     impl->range = other.impl->range;
     impl->flags = other.impl->flags;
-    ZC_IF_SOME(text, other.impl->cachedText) { impl->cachedText = zc::str(text); }
-    else { impl->cachedText = zc::none; }
+    impl->value = other.impl->value;
   }
   return *this;
 }
@@ -72,7 +71,7 @@ Token& Token::operator=(Token&& other) noexcept {
     impl->kind = other.impl->kind;
     impl->range = zc::mv(other.impl->range);
     impl->flags = other.impl->flags;
-    impl->cachedText = zc::mv(other.impl->cachedText);
+    impl->value = other.impl->value;
   }
   return *this;
 }
@@ -81,13 +80,13 @@ void Token::setKind(ast::SyntaxKind k) { impl->kind = k; }
 
 void Token::setRange(source::SourceRange r) { impl->range = r; }
 
-void Token::setCachedText(zc::String text) { impl->cachedText = zc::mv(text); }
+void Token::setValue(zc::StringPtr value) { impl->value = zc::mv(value); }
 
 void Token::setFlags(TokenFlags flags) { impl->flags = flags; }
 
 void Token::addFlag(TokenFlags flag) {
   impl->flags =
-      static_cast<TokenFlags>(static_cast<uint8_t>(impl->flags) | static_cast<uint8_t>(flag));
+      static_cast<TokenFlags>(static_cast<uint16_t>(impl->flags) | static_cast<uint16_t>(flag));
 }
 
 bool Token::is(ast::SyntaxKind k) const { return impl->kind == k; }
@@ -100,18 +99,18 @@ source::SourceRange Token::getRange() const { return impl->range; }
 
 TokenFlags Token::getFlags() const { return impl->flags; }
 
-bool Token::hasFlag(TokenFlags flag) const {
-  return (static_cast<uint8_t>(impl->flags) & static_cast<uint8_t>(flag)) != 0;
-}
+zc::Maybe<zc::StringPtr> Token::getValue() const { return impl->value; }
 
-bool Token::hasPrecedingLineBreak() const { return hasFlag(TokenFlags::kPrecedingLineBreak); }
+bool Token::hasFlag(TokenFlags flag) const { return (impl->flags & flag) != TokenFlags::None; }
 
-zc::String Token::getText(const source::SourceManager& sm) const {
+bool Token::hasPrecedingLineBreak() const { return hasFlag(TokenFlags::PrecedingLineBreak); }
+
+zc::StringPtr Token::getText(const source::SourceManager& sm) const {
   // Fast path: return cached text if available
-  ZC_IF_SOME(cached, impl->cachedText) { return zc::str(cached); }
+  ZC_IF_SOME(value, impl->value) { return value; }
 
   // Fast path: for known keywords and operators, return static strings
-  ZC_IF_SOME(staticText, getStaticTextForTokenKind(impl->kind)) { return zc::str(staticText); }
+  ZC_IF_SOME(staticText, getStaticTextForTokenKind(impl->kind)) { return staticText; }
 
   // Slow path: extract from source manager
   return impl->range.getText(sm);
@@ -125,8 +124,6 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "let"_zc;
     case ast::SyntaxKind::ConstKeyword:
       return "const"_zc;
-    case ast::SyntaxKind::VarKeyword:
-      return "var"_zc;
     case ast::SyntaxKind::FunKeyword:
       return "fun"_zc;
     case ast::SyntaxKind::ClassKeyword:
@@ -420,25 +417,24 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
 }
 }  // namespace
 
-zc::Maybe<zc::String> Token::getStaticTextForTokenKind(ast::SyntaxKind kind) {
+zc::Maybe<zc::StringPtr> Token::getStaticTextForTokenKind(ast::SyntaxKind kind) {
   zc::StringPtr text = getStaticTextForTokenKindImpl(kind);
-  if (text.size() > 0) { return zc::str(text); }
+  if (text.size() > 0) { return text; }
   return zc::none;
 }
 
-zc::String Token::getTextWithBufferHint(const source::SourceManager& sm,
-                                        const void* bufferIdPtr) const {
+zc::StringPtr Token::getTextWithBufferHint(const source::SourceManager& sm,
+                                           const void* bufferIdPtr) const {
   // Fast path: return cached text if available
-  ZC_IF_SOME(cached, impl->cachedText) { return zc::str(cached); }
+  ZC_IF_SOME(value, impl->value) { return value; }
 
   // Fast path: for known keywords and operators, return static strings
-  ZC_IF_SOME(staticText, getStaticTextForTokenKind(impl->kind)) { return zc::str(staticText); }
+  ZC_IF_SOME(staticText, getStaticTextForTokenKind(impl->kind)) { return staticText; }
 
   // Optimized path: extract with buffer hint if provided
   if (bufferIdPtr != nullptr) {
     const source::BufferId* bufferId = static_cast<const source::BufferId*>(bufferIdPtr);
-    zc::ArrayPtr<const zc::byte> textBytes = sm.extractTextFast(impl->range, *bufferId);
-    return zc::str(textBytes.asChars());
+    return sm.extractTextFastAsStringPtr(impl->range, *bufferId);
   }
 
   // Fallback to slow path

@@ -45,17 +45,15 @@ void SourceLoc::print(zc::OutputStream& os, const SourceManager& sm) const {
   os.write(toString(sm, tmp).asBytes());
 }
 
-zc::String SourceRange::getText(const SourceManager& sm) const {
-  if (isInvalid()) { return zc::str(""); }
-  zc::ArrayPtr<const zc::byte> textBytes = sm.extractText(*this, zc::none);
-  return zc::str(textBytes.asChars());
+zc::StringPtr SourceRange::getText(const SourceManager& sm) const {
+  if (isInvalid()) { return ""; }
+  return sm.extractTextAsStringPtr(*this);
 }
 
-zc::String CharSourceRange::getText(SourceManager& sm) const {
-  if (start.isInvalid() || end.isInvalid()) { return zc::str(""); }
+zc::StringPtr CharSourceRange::getText(SourceManager& sm) const {
+  if (start.isInvalid() || end.isInvalid()) { return ""; }
   SourceRange range(start, end);
-  auto textBytes = sm.extractText(range, zc::none);
-  return zc::str(textBytes.asChars());
+  return sm.extractTextAsStringPtr(range);
 }
 
 }  // namespace source

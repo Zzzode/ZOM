@@ -28,22 +28,27 @@ namespace ast {
 // Operator precedence levels
 enum class OperatorPrecedence : uint8_t {
   kLowest = 0,
-  kAssignment = 1,       // =, +=, -=, etc.
-  kConditional = 2,      // ?:
-  kLogicalOr = 3,        // ||
-  kLogicalAnd = 4,       // &&
-  kBitwiseOr = 5,        // |
-  kBitwiseXor = 6,       // ^
-  kBitwiseAnd = 7,       // &
-  kEquality = 8,         // ==, !=
-  kRelational = 9,       // <, >, <=, >=
-  kShift = 10,           // <<, >>
-  kAdditive = 11,        // +, -
-  kMultiplicative = 12,  // *, /, %
-  kExponentiation = 13,  // **
-  kUnary = 14,           // +, -, !, ~, ++, --
-  kPostfix = 15,         // ++, --, [], (), .
-  kPrimary = 16          // literals, identifiers
+  kComma,           // ,
+  kAssignment,      // =, +=, -=, etc.
+  kConditional,     // ?:
+  kLogicalOr,       // ||
+  kLogicalAnd,      // &&
+  kBitwiseOr,       // |
+  kBitwiseXor,      // ^
+  kBitwiseAnd,      // &
+  kEquality,        // ==, !=
+  kRelational,      // <, >, <=, >=
+  kShift,           // <<, >>
+  kAdditive,        // +, -
+  kMultiplicative,  // *, /, %
+  kExponentiation,  // **
+  kUnary,           // +, -, !, ~, ++, --
+  kPostfix,         // ++, --, [], (), .
+  kLeftHandSide,    // left-hand side of an assignment
+  kMemberAccess,    // . []
+  kPrimary,         // literals, identifiers
+
+  kInvalid = 255
 };
 
 // Operator associativity

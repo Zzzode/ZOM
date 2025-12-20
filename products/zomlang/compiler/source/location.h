@@ -57,6 +57,7 @@ class SourceRange {
 public:
   SourceRange() = default;
   SourceRange(const SourceLoc start, const SourceLoc end) : start(start), end(end) {}
+  SourceRange(const zc::byte* start, const zc::byte* end) : start(start), end(end) {}
 
   ZC_NODISCARD SourceLoc getStart() const { return start; }
   ZC_NODISCARD SourceLoc getEnd() const { return end; }
@@ -85,7 +86,7 @@ public:
   }
 
   /// Get the raw text content between start and end locations
-  ZC_NODISCARD zc::String getText(const SourceManager& sm) const;
+  ZC_NODISCARD zc::StringPtr getText(const SourceManager& sm) const;
 
   void print(zc::OutputStream& os, const SourceManager& sm) const {
     constexpr uint64_t tmp = ~0ULL;
@@ -104,6 +105,9 @@ public:
       : start(start), end(end), isTokenRange(isTokenRange) {
     ZC_IREQUIRE(start <= end, "Start location must be before or equal to end location.");
   }
+
+  explicit CharSourceRange(const SourceRange range, const bool isTokenRange = true)
+      : start(range.getStart()), end(range.getEnd()), isTokenRange(isTokenRange) {}
 
   CharSourceRange(const SourceLoc start, const unsigned length, const bool isTokenRange = true)
       : start(start), end(computeEnd(start, length)), isTokenRange(isTokenRange) {}
@@ -134,7 +138,7 @@ public:
   }
 
   /// Get the raw text content between start and end locations
-  ZC_NODISCARD zc::String getText(SourceManager& sm) const;
+  ZC_NODISCARD zc::StringPtr getText(SourceManager& sm) const;
 
   bool operator==(const CharSourceRange& other) const {
     return start == other.start && end == other.end;

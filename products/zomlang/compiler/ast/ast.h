@@ -170,15 +170,13 @@ private:
 
 // Concept to define valid AST node types for NodeList
 template <typename T>
-concept NodeLike = std::is_base_of_v<Node, T> || std::is_base_of_v<Statement, T> ||
-                   std::is_base_of_v<Expression, T> || std::is_base_of_v<Declaration, T> ||
-                   std::is_base_of_v<TypeNode, T> || std::is_base_of_v<TokenNode, T>;
+concept NodeLike = std::is_base_of_v<Node, T> || std::is_base_of_v<Declaration, T>;
 
 // NodeList template class, used to store a list of nodes
 template <NodeLike T>
 class NodeList {
 public:
-  NodeList() noexcept {};
+  NodeList() noexcept = default;
   explicit NodeList(zc::Vector<zc::Own<T>>&& nodes) noexcept : nodes(zc::mv(nodes)) {}
 
   ~NodeList() noexcept(false) = default;

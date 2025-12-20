@@ -11,13 +11,3 @@
 # WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 # License for the specific language governing permissions and limitations under
 # the License.
-
-# Error Handling Tests
-# Tests for error declarations, error propagation, and error handling
-
-# TODO: Add subdirectories for specific error test categories when implemented
-# - error-declarations
-# - error-propagation
-# - try-catch
-# - error-types
-# - error-recovery

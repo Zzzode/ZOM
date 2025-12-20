@@ -21,7 +21,7 @@ fun foo(n: i32, s: str) -> str {}
 // CHECK-NEXT:             "name": "n"
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "varType": {
-// CHECK-NEXT:             "node": "PredefinedType",
+// CHECK-NEXT:             "node": "I32TypeNode",
 // CHECK-NEXT:             "name": "i32"
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "initializer": null
@@ -33,7 +33,7 @@ fun foo(n: i32, s: str) -> str {}
 // CHECK-NEXT:             "name": "s"
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "varType": {
-// CHECK-NEXT:             "node": "PredefinedType",
+// CHECK-NEXT:             "node": "StrTypeNode",
 // CHECK-NEXT:             "name": "str"
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "initializer": null
@@ -42,7 +42,7 @@ fun foo(n: i32, s: str) -> str {}
 // CHECK-NEXT:       "returnType": {
 // CHECK-NEXT:         "node": "ReturnType",
 // CHECK-NEXT:         "type": {
-// CHECK-NEXT:           "node": "PredefinedType",
+// CHECK-NEXT:           "node": "StrTypeNode",
 // CHECK-NEXT:           "name": "str"
 // CHECK-NEXT:         }
 // CHECK-NEXT:       },

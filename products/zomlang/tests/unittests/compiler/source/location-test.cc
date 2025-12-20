@@ -65,7 +65,7 @@ ZC_TEST("SourceLocation CharSourceRangeInvalid") {
   zomlang::compiler::source::CharSourceRange range;
   zomlang::compiler::source::SourceManager sm;
 
-  zc::String text = range.getText(sm);
+  zc::StringPtr text = range.getText(sm);
   ZC_EXPECT(text.size() == 0);
 }
 

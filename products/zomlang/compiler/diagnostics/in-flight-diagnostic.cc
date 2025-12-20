@@ -17,6 +17,7 @@
 #include "zc/core/common.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
@@ -40,6 +41,8 @@ struct InFlightDiagnostic::Impl {
 InFlightDiagnostic::InFlightDiagnostic(DiagnosticEngine& engine, Diagnostic&& diag)
     : impl(zc::heap<Impl>(engine, zc::mv(diag))) {}
 
+InFlightDiagnostic::InFlightDiagnostic(InFlightDiagnostic&& other) noexcept = default;
+
 InFlightDiagnostic::~InFlightDiagnostic() {
   if (!impl->emitted) { emit(); }
 }
@@ -53,6 +56,16 @@ void InFlightDiagnostic::emit() {
 
 InFlightDiagnostic& InFlightDiagnostic::addFixIt(zc::Own<FixIt> fixit) {
   impl->diag.addFixIt(zc::mv(fixit));
+  return *this;
+}
+
+InFlightDiagnostic& InFlightDiagnostic::addRange(const source::CharSourceRange& range) {
+  impl->diag.addRange(range);
+  return *this;
+}
+
+InFlightDiagnostic& InFlightDiagnostic::addChild(zc::Own<Diagnostic> child) {
+  impl->diag.addChildDiagnostic(zc::mv(child));
   return *this;
 }
 

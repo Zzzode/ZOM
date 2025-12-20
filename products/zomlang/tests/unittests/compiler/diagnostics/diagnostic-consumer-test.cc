@@ -66,12 +66,13 @@ ZC_TEST("DiagnosticConsumerTest: DiagnosticHandling") {
 
   // Create a test diagnostic
   source::SourceLoc loc;
-  Diagnostic testDiagnostic(DiagID::InvalidChar, loc, zc::str("Test error"));
+  Diagnostic testDiagnostic(DiagID::InvalidCharacter, loc);
 
   consumer.handleDiagnostic(sourceManager, testDiagnostic);
 
   ZC_EXPECT(consumer.diagnosticIds.size() == 1, "Should have one diagnostic");
-  ZC_EXPECT(consumer.diagnosticIds[0] == DiagID::InvalidChar, "Diagnostic should have correct ID");
+  ZC_EXPECT(consumer.diagnosticIds[0] == DiagID::InvalidCharacter,
+            "Diagnostic should have correct ID");
 }
 
 ZC_TEST("DiagnosticConsumerTest: VirtualDestructor") {

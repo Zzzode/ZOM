@@ -133,17 +133,17 @@ void PostfixUnaryExpression::accept(Visitor& visitor) const { visitor.visit(*thi
 // ================================================================================
 // Identifier
 struct Identifier::Impl : private NodeImpl {
-  const zc::String name;
+  const zc::StringPtr name;
   zc::Maybe<const symbol::Symbol&> symbol = zc::none;
 
-  explicit Impl(zc::String n) : NodeImpl(SyntaxKind::Identifier), name(zc::mv(n)) {}
+  explicit Impl(zc::StringPtr n) : NodeImpl(SyntaxKind::Identifier), name(zc::mv(n)) {}
 
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
   using NodeImpl::setSourceRange;
 };
 
-Identifier::Identifier(zc::String name) noexcept : impl(zc::heap<Impl>(zc::mv(name))) {}
+Identifier::Identifier(zc::StringPtr name) noexcept : impl(zc::heap<Impl>(zc::mv(name))) {}
 
 Identifier::~Identifier() noexcept(false) = default;
 
@@ -264,19 +264,62 @@ void ElementAccessExpression::setSymbol(zc::Maybe<const symbol::Symbol&> symbol)
 }
 
 // ================================================================================
+// CaptureElement
+struct CaptureElement::Impl : private NodeImpl {
+  const bool isByReference;
+  const bool isThis;
+  const zc::Maybe<zc::Own<Identifier>> identifier;
+
+  Impl(bool ref, zc::Maybe<zc::Own<Identifier>> id, bool ths)
+      : NodeImpl(SyntaxKind::CaptureElement),
+        isByReference(ref),
+        isThis(ths),
+        identifier(zc::mv(id)) {}
+
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+CaptureElement::CaptureElement(bool isByReference, zc::Maybe<zc::Own<Identifier>> identifier,
+                               bool isThis) noexcept
+    : Node(), impl(zc::heap<Impl>(isByReference, zc::mv(identifier), isThis)) {}
+
+CaptureElement::~CaptureElement() noexcept(false) = default;
+
+bool CaptureElement::isByReference() const { return impl->isByReference; }
+
+bool CaptureElement::isThis() const { return impl->isThis; }
+
+zc::Maybe<const Identifier&> CaptureElement::getIdentifier() const { return impl->identifier; }
+
+void CaptureElement::setSourceRange(const source::SourceRange&& range) {
+  const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& CaptureElement::getSourceRange() const { return impl->getSourceRange(); }
+
+SyntaxKind CaptureElement::getKind() const { return impl->getKind(); }
+
+void CaptureElement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
 // FunctionExpression
 struct FunctionExpression::Impl : private NodeImpl {
   const NodeList<TypeParameterDeclaration> typeParameters;
   const NodeList<BindingElement> parameters;
+  const NodeList<CaptureElement> captures;
   const zc::Maybe<zc::Own<TypeNode>> returnType;
   const zc::Own<Statement> body;
   zc::Maybe<const symbol::Symbol&> symbol = zc::none;
 
   Impl(zc::Vector<zc::Own<TypeParameterDeclaration>>&& tp, zc::Vector<zc::Own<BindingElement>>&& p,
-       zc::Maybe<zc::Own<TypeNode>> rt, zc::Own<Statement> b)
+       zc::Vector<zc::Own<CaptureElement>>&& c, zc::Maybe<zc::Own<TypeNode>> rt,
+       zc::Own<Statement> b)
       : NodeImpl(SyntaxKind::FunctionExpression),
         typeParameters(NodeList<TypeParameterDeclaration>(zc::mv(tp))),
         parameters(NodeList<BindingElement>(zc::mv(p))),
+        captures(NodeList<CaptureElement>(zc::mv(c))),
         returnType(zc::mv(rt)),
         body(zc::mv(b)) {}
 
@@ -290,10 +333,11 @@ struct FunctionExpression::Impl : private NodeImpl {
 
 FunctionExpression::FunctionExpression(
     zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<TypeNode>> returnType,
+    zc::Vector<zc::Own<BindingElement>>&& parameters,
+    zc::Vector<zc::Own<CaptureElement>>&& captures, zc::Maybe<zc::Own<TypeNode>> returnType,
     zc::Own<Statement> body) noexcept
-    : impl(zc::heap<Impl>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(returnType),
-                          zc::mv(body))) {}
+    : impl(zc::heap<Impl>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(captures),
+                          zc::mv(returnType), zc::mv(body))) {}
 
 FunctionExpression::~FunctionExpression() noexcept(false) = default;
 
@@ -304,6 +348,8 @@ const NodeList<TypeParameterDeclaration>& FunctionExpression::getTypeParameters(
 const NodeList<BindingElement>& FunctionExpression::getParameters() const {
   return impl->parameters;
 }
+
+const NodeList<CaptureElement>& FunctionExpression::getCaptures() const { return impl->captures; }
 
 zc::Maybe<const TypeNode&> FunctionExpression::getReturnType() const { return impl->returnType; }
 
@@ -900,27 +946,24 @@ void ObjectLiteralExpression::accept(Visitor& visitor) const { visitor.visit(*th
 
 // ================================================================================
 // StringLiteral
-
 struct StringLiteral::Impl : private NodeImpl {
-  LiteralExpressionImpl literalImpl;
-  zc::String value;
+  const zc::StringPtr value;
 
-  explicit Impl(zc::String value) noexcept
-      : NodeImpl(SyntaxKind::StringLiteral), literalImpl(value), value(zc::mv(value)) {}
+  explicit Impl(zc::StringPtr v) : NodeImpl(SyntaxKind::StringLiteral), value(zc::mv(v)) {}
 
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
   using NodeImpl::setSourceRange;
 };
 
-StringLiteral::StringLiteral(zc::String value) noexcept
+StringLiteral::StringLiteral(zc::StringPtr value) noexcept
     : LiteralExpression(), impl(zc::heap<Impl>(zc::mv(value))) {}
 
 StringLiteral::~StringLiteral() noexcept(false) = default;
 
 const zc::StringPtr StringLiteral::getValue() const { return impl->value; }
 
-zc::StringPtr StringLiteral::getText() const { return impl->literalImpl.getText(); }
+zc::StringPtr StringLiteral::getText() const { return impl->value; }
 
 void StringLiteral::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -1001,6 +1044,37 @@ SyntaxKind FloatLiteral::getKind() const { return impl->getKind(); }
 void FloatLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
+// BigIntLiteral
+
+struct BigIntLiteral::Impl : private NodeImpl {
+  LiteralExpressionImpl literalImpl;
+
+  explicit Impl(zc::StringPtr text) noexcept
+      : NodeImpl(SyntaxKind::BigIntLiteral), literalImpl(text) {}
+
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+BigIntLiteral::BigIntLiteral(zc::StringPtr text) noexcept
+    : LiteralExpression(), impl(zc::heap<Impl>(text)) {}
+
+BigIntLiteral::~BigIntLiteral() noexcept(false) = default;
+
+zc::StringPtr BigIntLiteral::getText() const { return impl->literalImpl.getText(); }
+
+void BigIntLiteral::setSourceRange(const source::SourceRange&& range) {
+  const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& BigIntLiteral::getSourceRange() const { return impl->getSourceRange(); }
+
+SyntaxKind BigIntLiteral::getKind() const { return impl->getKind(); }
+
+void BigIntLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
 // BooleanLiteral
 
 struct BooleanLiteral::Impl : private NodeImpl {
@@ -1062,6 +1136,79 @@ const source::SourceRange& NullLiteral::getSourceRange() const { return impl->ge
 SyntaxKind NullLiteral::getKind() const { return impl->getKind(); }
 
 void NullLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// TemplateSpan
+
+struct TemplateSpan::Impl : private NodeImpl {
+  const zc::Own<Expression> expression;
+  const zc::Own<StringLiteral> literal;
+
+  Impl(zc::Own<Expression> e, zc::Own<StringLiteral> l)
+      : NodeImpl(SyntaxKind::TemplateSpan), expression(zc::mv(e)), literal(zc::mv(l)) {}
+
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+TemplateSpan::TemplateSpan(zc::Own<Expression> expression, zc::Own<StringLiteral> literal) noexcept
+    : impl(zc::heap<Impl>(zc::mv(expression), zc::mv(literal))) {}
+
+TemplateSpan::~TemplateSpan() noexcept(false) = default;
+
+const Expression& TemplateSpan::getExpression() const { return *impl->expression; }
+
+const StringLiteral& TemplateSpan::getLiteral() const { return *impl->literal; }
+
+void TemplateSpan::setSourceRange(const source::SourceRange&& range) {
+  const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& TemplateSpan::getSourceRange() const { return impl->getSourceRange(); }
+
+SyntaxKind TemplateSpan::getKind() const { return impl->getKind(); }
+
+void TemplateSpan::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// TemplateLiteralExpression
+
+struct TemplateLiteralExpression::Impl : private NodeImpl {
+  const zc::Own<StringLiteral> head;
+  const NodeList<TemplateSpan> spans;
+
+  Impl(zc::Own<StringLiteral> h, zc::Vector<zc::Own<TemplateSpan>>&& s)
+      : NodeImpl(SyntaxKind::TemplateLiteralExpression), head(zc::mv(h)), spans(zc::mv(s)) {}
+
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+TemplateLiteralExpression::TemplateLiteralExpression(
+    zc::Own<StringLiteral> head, zc::Vector<zc::Own<TemplateSpan>>&& spans) noexcept
+    : LiteralExpression(), impl(zc::heap<Impl>(zc::mv(head), zc::mv(spans))) {}
+
+TemplateLiteralExpression::~TemplateLiteralExpression() noexcept(false) = default;
+
+const StringLiteral& TemplateLiteralExpression::getHead() const { return *impl->head; }
+
+const NodeList<TemplateSpan>& TemplateLiteralExpression::getSpans() const { return impl->spans; }
+
+zc::StringPtr TemplateLiteralExpression::getText() const { return impl->head->getText(); }
+
+void TemplateLiteralExpression::setSourceRange(const source::SourceRange&& range) {
+  const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& TemplateLiteralExpression::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+SyntaxKind TemplateLiteralExpression::getKind() const { return impl->getKind(); }
+
+void TemplateLiteralExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // AsExpression
@@ -1270,6 +1417,82 @@ const source::SourceRange& AwaitExpression::getSourceRange() const {
 SyntaxKind AwaitExpression::getKind() const { return impl->getKind(); }
 
 void AwaitExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// NonNullExpression
+struct NonNullExpression::Impl : private NodeImpl {
+  zc::Own<Expression> expression;
+
+  explicit Impl(zc::Own<Expression> expression) noexcept
+      : NodeImpl(SyntaxKind::NonNullExpression), expression(zc::mv(expression)) {}
+
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+NonNullExpression::NonNullExpression(zc::Own<Expression> expression) noexcept
+    : impl(zc::heap<Impl>(zc::mv(expression))) {}
+
+NonNullExpression::~NonNullExpression() noexcept(false) = default;
+
+const Expression& NonNullExpression::getExpression() const { return *impl->expression; }
+
+void NonNullExpression::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& NonNullExpression::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+SyntaxKind NonNullExpression::getKind() const { return impl->getKind(); }
+
+void NonNullExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
+// ExpressionWithTypeArguments
+struct ExpressionWithTypeArguments::Impl : private NodeImpl {
+  zc::Own<Expression> expression;
+  NodeList<TypeNode> typeArguments;
+
+  Impl(zc::Own<Expression> expression,
+       zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments) noexcept
+      : NodeImpl(SyntaxKind::ExpressionWithTypeArguments),
+        expression(zc::mv(expression)),
+        typeArguments([&]() {
+          ZC_IF_SOME(args, typeArguments) { return NodeList<TypeNode>(zc::mv(args)); }
+          else { return NodeList<TypeNode>(); }
+        }()) {}
+
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+ExpressionWithTypeArguments::ExpressionWithTypeArguments(
+    zc::Own<Expression> expression, zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments) noexcept
+    : impl(zc::heap<Impl>(zc::mv(expression), zc::mv(typeArguments))) {}
+
+ExpressionWithTypeArguments::~ExpressionWithTypeArguments() noexcept(false) = default;
+
+const Expression& ExpressionWithTypeArguments::getExpression() const { return *impl->expression; }
+
+const NodeList<TypeNode>& ExpressionWithTypeArguments::getTypeArguments() const {
+  return impl->typeArguments;
+}
+
+SyntaxKind ExpressionWithTypeArguments::getKind() const { return impl->getKind(); }
+
+void ExpressionWithTypeArguments::setSourceRange(const source::SourceRange&& range) {
+  const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& ExpressionWithTypeArguments::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+void ExpressionWithTypeArguments::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 }  // namespace ast
 }  // namespace compiler

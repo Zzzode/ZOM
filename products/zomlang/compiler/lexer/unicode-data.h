@@ -28,25 +28,28 @@ struct UnicodeRange {
   uint32_t end;
 };
 
-/// \brief Unicode ID_Start code point ranges
-/// Based on Unicode 15.0.0 specification
-/// These ranges define characters that can start an identifier
+/// \brief Corresponds to the ID_Start and Other_ID_Start property
 extern const zc::ArrayPtr<const UnicodeRange> ID_START_RANGES;
 
-/// \brief Unicode ID_Continue code point ranges
-/// Based on Unicode 15.0.0 specification
-/// These ranges define characters that can continue an identifier
-extern const zc::ArrayPtr<const UnicodeRange> ID_CONTINUE_RANGES;
+/// \brief Corresponds to ID_Continue, Other_ID_Continue, plus ID_Start and Other_ID_Start
+extern const zc::ArrayPtr<const UnicodeRange> ID_PART_RANGES;
 
-/// \brief Check if a code point is in ID_Start category
+/// \brief Check if a code point is in ID_Start and Other_ID_Start category
 /// \param codePoint The Unicode code point to check
 /// \return true if the code point can start an identifier
 bool isIdStart(uint32_t codePoint);
 
-/// \brief Check if a code point is in ID_Continue category
+/// \brief Check if a code point is in ID_Continue, Other_ID_Continue, plus ID_Start and
+/// Other_ID_Start category
 /// \param codePoint The Unicode code point to check
 /// \return true if the code point can continue an identifier
-bool isIdContinue(uint32_t codePoint);
+bool isIdPart(uint32_t codePoint);
+
+/// \brief Check if a code point is in a given range of Unicode code points
+/// \param codePoint The Unicode code point to check
+/// \param ranges The range of Unicode code points to check against
+/// \return true if the code point is in the range
+bool isInUnicodeRange(uint32_t codePoint, const zc::ArrayPtr<const UnicodeRange>& ranges);
 
 }  // namespace lexer
 }  // namespace compiler

@@ -16,6 +16,7 @@
 
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/module.h"
+#include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/binder.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -32,9 +33,10 @@ namespace basic {
 zc::Maybe<zc::Own<ast::Node>> performParse(const source::SourceManager& sm,
                                            diagnostics::DiagnosticEngine& diagnosticEngine,
                                            const LangOptions& langOpts,
+                                           basic::StringPool& stringPool,
                                            const source::BufferId& bufferId) {
   // Create a Parser instance
-  parser::Parser parser(sm, diagnosticEngine, langOpts, bufferId);
+  parser::Parser parser(sm, diagnosticEngine, langOpts, stringPool, bufferId);
   // Assuming Parser::parse now returns the AST or null on failure
   zc::Maybe<zc::Own<ast::Node>> ast = parser.parse();
 

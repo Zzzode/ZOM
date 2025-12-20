@@ -15,18 +15,22 @@
 #include "zomlang/compiler/lexer/lexer.h"
 
 #include <cctype>
-#include <deque>
+#include <cstdint>
+#include <cstdlib>
 
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/core/string.h"
+#include "zc/core/vector.h"
 #include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
+#include "zomlang/compiler/lexer/bigint.h"
 #include "zomlang/compiler/lexer/token.h"
-#include "zomlang/compiler/lexer/unicode-data.h"
+#include "zomlang/compiler/lexer/utils.h"
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -34,1469 +38,1355 @@ namespace zomlang {
 namespace compiler {
 namespace lexer {
 
+enum class EscapeSequenceScanningFlags : uint8_t {
+  String = 1 << 0,
+  ReportErrors = 1 << 1,
+
+  RegularExpression = 1 << 2,
+  AnnexB = 1 << 3,
+  AnyUnicodeMode = 1 << 4,
+  AtomEscape = 1 << 5,
+
+  ReportInvalidEscapeErrors = RegularExpression | ReportErrors,
+  AllowExtendedUnicodeEscape = String | AnyUnicodeMode,
+};
+
+constexpr EscapeSequenceScanningFlags operator|(EscapeSequenceScanningFlags a,
+                                                EscapeSequenceScanningFlags b) {
+  return static_cast<EscapeSequenceScanningFlags>(static_cast<uint8_t>(a) |
+                                                  static_cast<uint8_t>(b));
+}
+
+constexpr EscapeSequenceScanningFlags operator&(EscapeSequenceScanningFlags a,
+                                                EscapeSequenceScanningFlags b) {
+  return static_cast<EscapeSequenceScanningFlags>(static_cast<uint8_t>(a) &
+                                                  static_cast<uint8_t>(b));
+}
+
+constexpr EscapeSequenceScanningFlags operator|=(EscapeSequenceScanningFlags& a,
+                                                 EscapeSequenceScanningFlags b) {
+  return a = a | b;
+}
+
+constexpr bool hasFlag(EscapeSequenceScanningFlags flags, EscapeSequenceScanningFlags flag) {
+  return (static_cast<uint8_t>(flags) & static_cast<uint8_t>(flag)) != 0;
+}
+
 struct Lexer::Impl {
   /// Reference members
   const source::SourceManager& sourceMgr;
+  /// Diagnostic engine for reporting errors
   diagnostics::DiagnosticEngine& diagnosticEngine;
   /// Language options
   const basic::LangOptions& langOpts;
+  /// String pool for interning strings
+  basic::StringPool& stringPool;
   /// Buffer ID for the buffer being lexed
   const source::BufferId& bufferId;
-  /// Buffer states
+  /// Buffer bounds
   const zc::byte* bufferStart;
+  /// End of text
   const zc::byte* bufferEnd;
-  const zc::byte* curPtr;
+  /// Embedded lexer state
+  LexerState state;
 
-  // Full start position tracking
-  const zc::byte* triviaStartPtr;
-  const zc::byte* currentTokenTriviaStartPtr;
-
-  // Token state
-  Token nextToken;
-  LexerMode currentMode;
-  CommentRetentionMode commentMode;
-
-  // Lookahead token cache
-  mutable std::deque<Token> tokenCache;
-  mutable bool cacheInitialized = false;
-
-  // Line break tracking
-  bool hasPrecedingLineBreak = false;
+  /// Collected comment directives
+  zc::Vector<CommentDirective> commentDirectives;
 
   Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
-       const basic::LangOptions& options, const source::BufferId& bufferId)
-      : sourceMgr(sourceMgr),
-        diagnosticEngine(diagnosticEngine),
-        langOpts(options),
-        bufferId(bufferId),
-        currentMode(LexerMode::kNormal),
-        commentMode(CommentRetentionMode::kNone) {
-    // Initialize buffer pointers
-    zc::ArrayPtr<const zc::byte> buffer = sourceMgr.getEntireTextForBuffer(bufferId);
-    bufferStart = buffer.begin();
-    bufferEnd = buffer.end();
-    curPtr = bufferStart;
-    triviaStartPtr = bufferStart;
-    currentTokenTriviaStartPtr = bufferStart;
-    initialize();
-  }
-
-  void initialize() { lexImpl(); }
-
-  /// Utility functions
-  const zc::byte* getBufferPtrForSourceLoc(source::SourceLoc loc) const;
-
-  void formToken(ast::SyntaxKind kind, const zc::byte* tokStart,
-                 TokenFlags flags = TokenFlags::kNone) {
-    source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-    source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
-    zc::Maybe<zc::String> cachedText = Token::getStaticTextForTokenKind(kind);
-
-    // For string literals and other tokens that don't have static text,
-    // we need to extract the text from the source buffer
-    if (cachedText == zc::none &&
-        (kind == ast::SyntaxKind::StringLiteral || kind == ast::SyntaxKind::IntegerLiteral ||
-         kind == ast::SyntaxKind::FloatLiteral || kind == ast::SyntaxKind::Identifier)) {
-      size_t length = curPtr - tokStart;
-      zc::ArrayPtr<const zc::byte> textBytes(tokStart, length);
-      cachedText = zc::str(textBytes.asChars());
-    }
-
-    // For keywords and common operators, cache the text to avoid repeated extraction
-    nextToken = Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(cachedText), flags);
-  }
-
-  /// Lexing implementation
-  void lexImpl() {
-    triviaStartPtr = curPtr;
-    TokenFlags tokenFlags = TokenFlags::kNone;
-
-    // Skip trivia and collect flags
-    tokenFlags = skipTriviaAndCollectFlags();
-
-    if (curPtr >= bufferEnd) {
-      formToken(ast::SyntaxKind::EndOfFile, curPtr, tokenFlags);
-      return;
-    }
-    scanToken(tokenFlags);
-  }
-
-  /// Token scanning
-  void scanToken(const TokenFlags& tokenFlags) {
-    const zc::byte* tokStart = curPtr;
-
-    // Check for end of file
-    if (curPtr >= bufferEnd) {
-      formToken(ast::SyntaxKind::EndOfFile, tokStart, tokenFlags);
-      return;
-    }
-
-    zc::byte c = *curPtr++;
-
-    switch (c) {
-      case '(':
-        formToken(ast::SyntaxKind::LeftParen, tokStart, tokenFlags);
-        break;
-      case ')':
-        formToken(ast::SyntaxKind::RightParen, tokStart, tokenFlags);
-        break;
-      case '{':
-        formToken(ast::SyntaxKind::LeftBrace, tokStart, tokenFlags);
-        break;
-      case '}':
-        formToken(ast::SyntaxKind::RightBrace, tokStart, tokenFlags);
-        break;
-      case ',':
-        formToken(ast::SyntaxKind::Comma, tokStart, tokenFlags);
-        break;
-      case ':':
-        formToken(ast::SyntaxKind::Colon, tokStart, tokenFlags);
-        break;
-      case '-':
-      case '+':
-      case '*':
-        curPtr = tokStart;  // Reset pointer for lexOperator
-        lexOperator(tokenFlags);
-        break;
-      case '/':
-        if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::SlashEquals, tokStart, tokenFlags);
-        } else if (curPtr < bufferEnd && *curPtr == '/') {
-          lexSingleLineComment();
-          return;
-        } else if (curPtr < bufferEnd && *curPtr == '*') {
-          lexMultiLineComment();
-          return;
-        } else {
-          formToken(ast::SyntaxKind::Slash, tokStart, tokenFlags);
-        }
-        break;
-      case '%':
-      case '<':
-        curPtr = tokStart;  // Reset pointer for lexOperator
-        lexOperator(tokenFlags);
-        break;
-      case '>':
-      case '=':
-        curPtr = tokStart;  // Reset pointer for lexOperator
-        lexOperator(tokenFlags);
-        break;
-      case '!':
-      case '&':
-      case '|':
-      case '^':
-      case '~':
-      case '?':
-        curPtr = tokStart;  // Reset pointer for lexOperator
-        lexOperator(tokenFlags);
-        break;
-      case '.':
-        // Check if it's a decimal number starting with a dot
-        if (curPtr < bufferEnd && isdigit(*curPtr)) {
-          // Go back one character since lexNumber expects to start from the first digit character
-          curPtr--;
-          lexNumber(tokenFlags);
-        } else if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd &&
-                   *(curPtr + 1) == '.') {
-          curPtr += 2;
-          formToken(ast::SyntaxKind::DotDotDot, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Period, tokStart, tokenFlags);
-        }
-        break;
-      case ';':
-        formToken(ast::SyntaxKind::Semicolon, tokStart, tokenFlags);
-        break;
-      case '[':
-        formToken(ast::SyntaxKind::LeftBracket, tokStart, tokenFlags);
-        break;
-      case ']':
-        formToken(ast::SyntaxKind::RightBracket, tokStart, tokenFlags);
-        break;
-      case '@':
-        formToken(ast::SyntaxKind::At, tokStart, tokenFlags);
-        break;
-      case '#':
-        formToken(ast::SyntaxKind::Hash, tokStart, tokenFlags);
-        break;
-      case '`':
-        formToken(ast::SyntaxKind::Backtick, tokStart, tokenFlags);
-        break;
-      default:
-        // Reset curPtr to point to the current character for proper checking
-        curPtr = tokStart;
-
-        // Check if it's an identifier start character (single or multi-byte)
-        uint32_t identifierStartLength = getIdentifierStartLength(c);
-        if (identifierStartLength > 0) {
-          lexIdentifier(tokenFlags);
-        } else if (c == '\\') {
-          // Unicode escape sequence at start of identifier
-          if (curPtr + 1 < bufferEnd && *(curPtr + 1) == 'u') {
-            lexEscapedIdentifier(tokenFlags);
-          } else {
-            // Invalid escape sequence - backslash not followed by 'u'
-            reportInvalidCharacter('\\', tokStart);
-            recoverFromInvalidCharacter();
-          }
-        } else if (isdigit(c)) {
-          lexNumber(tokenFlags);
-        } else if (c == '"') {
-          lexStringLiteralImpl(tokenFlags);
-        } else if (c == '\'') {
-          lexSingleQuoteString(tokenFlags);
-        } else {
-          // Report invalid character error and attempt recovery
-          reportInvalidCharacter(c, tokStart);
-          recoverFromInvalidCharacter();
-        }
-        break;
-    }
-  }
-
-  /// Newline handling
-  void handleNewline() {
-    curPtr++;  // Skip newline character
-  }
-
-  /// Trivia
-  TokenFlags skipTriviaAndCollectFlags() {
-    TokenFlags flags = TokenFlags::kNone;
-
-    while (curPtr < bufferEnd) {
-      zc::byte c = *curPtr;
-      if (c == ' ' || c == '\t' || c == '\r') {
-        curPtr++;
-      } else if (c == '\n') {
-        flags = static_cast<TokenFlags>(static_cast<uint8_t>(flags) |
-                                        static_cast<uint8_t>(TokenFlags::kPrecedingLineBreak));
-        handleNewline();
-      } else if (c == '/' && curPtr + 1 < bufferEnd && *(curPtr + 1) == '/') {
-        lexSingleLineComment();
-      } else if (c == '/' && curPtr + 1 < bufferEnd && *(curPtr + 1) == '*') {
-        lexMultiLineComment();
-      } else {
-        break;
-      }
-    }
-
-    return flags;
-  }
-
-  void skipTrivia() {
-    while (curPtr < bufferEnd) {
-      zc::byte c = *curPtr;
-      if (c == ' ' || c == '\t' || c == '\r') {
-        curPtr++;
-      } else if (c == '\n') {
-        handleNewline();
-      } else if (c == '/' && curPtr + 1 < bufferEnd && *(curPtr + 1) == '/') {
-        lexSingleLineComment();
-      } else if (c == '/' && curPtr + 1 < bufferEnd && *(curPtr + 1) == '*') {
-        lexMultiLineComment();
-      } else {
-        break;
-      }
-    }
-  }
-
-  void lexIdentifier(const TokenFlags& tokenFlags) {
-    // curPtr currently points to the first character of the identifier
-    const zc::byte* tokStart = curPtr;
-
-    // First, advance past the identifier start character
-    zc::byte startChar = *curPtr;
-    uint32_t startLength = getIdentifierStartLength(startChar);
-    if (startLength > 0) {
-      curPtr += startLength;
-    } else {
-      // This shouldn't happen if scanToken called us correctly
-      curPtr++;
-    }
-
-    // Continue reading identifier characters
-    while (curPtr < bufferEnd) {
-      zc::byte c = *curPtr;
-
-      // Handle escape sequences
-      if (c == '\\' && curPtr + 1 < bufferEnd && *(curPtr + 1) == 'u') {
-        // Unicode escape sequence: \uXXXX or \u{XXXX}
-        uint32_t codePoint = lexUnicodeScalarValue();
-        if (codePoint == 0) {
-          // Invalid escape sequence, lexUnicodeScalarValue already reported error
-          break;
-        } else {
-          // Validate that the code point represents a valid Unicode ID_Continue
-          if (!isUnicodeIdentifierContinuation(codePoint)) {
-            // Invalid Unicode escape sequence for identifier continuation
-            reportInvalidCharacter('\\', curPtr - 2);  // Point to the backslash
-            break;
-          }
-        }
-      } else {
-        // Check for identifier continuation character (single or multi-byte UTF-8)
-        uint32_t continuationLength = getIdentifierContinuationLength(c);
-        if (continuationLength > 0) {
-          // Valid identifier continuation - advance by the correct number of bytes
-          curPtr += continuationLength;
-          continue;
-        } else {
-          // Not an identifier continuation character
-          break;
-        }
-      }
-    }
-
-    // Check if it's a keyword
-    auto textPtr = zc::ArrayPtr<const zc::byte>(tokStart, curPtr);
-
-    ast::SyntaxKind kind = getKeywordKind(textPtr);
-    if (kind == ast::SyntaxKind::Identifier) {
-      // For identifiers, we might want to cache the text since they're frequently accessed
-      source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-      source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
-      zc::String identifierText = zc::str(textPtr.asChars());
-      nextToken = Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(identifierText));
-    } else {
-      formToken(kind, tokStart, tokenFlags);
-    }
-  }
-
-  ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
-    // Keywords from ZomLexer.g4
-    if (text == "abstract"_zcb) return ast::SyntaxKind::AbstractKeyword;
-    if (text == "accessor"_zcb) return ast::SyntaxKind::AccessorKeyword;
-    if (text == "any"_zcb) return ast::SyntaxKind::AnyKeyword;
-    if (text == "as"_zcb) return ast::SyntaxKind::AsKeyword;
-    if (text == "asserts"_zcb) return ast::SyntaxKind::AssertsKeyword;
-    if (text == "assert"_zcb) return ast::SyntaxKind::AssertKeyword;
-    if (text == "async"_zcb) return ast::SyntaxKind::AsyncKeyword;
-    if (text == "await"_zcb) return ast::SyntaxKind::AwaitKeyword;
-    if (text == "bigint"_zcb) return ast::SyntaxKind::BigIntKeyword;
-    if (text == "bool"_zcb) return ast::SyntaxKind::BoolKeyword;
-    if (text == "break"_zcb) return ast::SyntaxKind::BreakKeyword;
-    if (text == "case"_zcb) return ast::SyntaxKind::CaseKeyword;
-    if (text == "catch"_zcb) return ast::SyntaxKind::CatchKeyword;
-    if (text == "class"_zcb) return ast::SyntaxKind::ClassKeyword;
-    if (text == "continue"_zcb) return ast::SyntaxKind::ContinueKeyword;
-    if (text == "const"_zcb) return ast::SyntaxKind::ConstKeyword;
-    if (text == "constructor"_zcb) return ast::SyntaxKind::ConstructorKeyword;
-    if (text == "debugger"_zcb) return ast::SyntaxKind::DebuggerKeyword;
-    if (text == "declare"_zcb) return ast::SyntaxKind::DeclareKeyword;
-    if (text == "default"_zcb) return ast::SyntaxKind::DefaultKeyword;
-    if (text == "delete"_zcb) return ast::SyntaxKind::DeleteKeyword;
-    if (text == "do"_zcb) return ast::SyntaxKind::DoKeyword;
-    if (text == "extends"_zcb) return ast::SyntaxKind::ExtendsKeyword;
-    if (text == "export"_zcb) return ast::SyntaxKind::ExportKeyword;
-    if (text == "false"_zcb) return ast::SyntaxKind::FalseKeyword;
-    if (text == "finally"_zcb) return ast::SyntaxKind::FinallyKeyword;
-    if (text == "from"_zcb) return ast::SyntaxKind::FromKeyword;
-    if (text == "fun"_zcb) return ast::SyntaxKind::FunKeyword;
-    if (text == "get"_zcb) return ast::SyntaxKind::GetKeyword;
-    if (text == "global"_zcb) return ast::SyntaxKind::GlobalKeyword;
-    if (text == "if"_zcb) return ast::SyntaxKind::IfKeyword;
-    if (text == "immediate"_zcb) return ast::SyntaxKind::ImmediateKeyword;
-    if (text == "implements"_zcb) return ast::SyntaxKind::ImplementsKeyword;
-    if (text == "import"_zcb) return ast::SyntaxKind::ImportKeyword;
-    if (text == "in"_zcb) return ast::SyntaxKind::InKeyword;
-    if (text == "infer"_zcb) return ast::SyntaxKind::InferKeyword;
-    if (text == "instanceof"_zcb) return ast::SyntaxKind::InstanceOfKeyword;
-    if (text == "interface"_zcb) return ast::SyntaxKind::InterfaceKeyword;
-    if (text == "intrinsic"_zcb) return ast::SyntaxKind::IntrinsicKeyword;
-    if (text == "is"_zcb) return ast::SyntaxKind::IsKeyword;
-    if (text == "keyof"_zcb) return ast::SyntaxKind::KeyOfKeyword;
-    if (text == "let"_zcb) return ast::SyntaxKind::LetKeyword;
-    if (text == "match"_zcb) return ast::SyntaxKind::MatchKeyword;
-    if (text == "module"_zcb) return ast::SyntaxKind::ModuleKeyword;
-    if (text == "mutable"_zcb) return ast::SyntaxKind::MutableKeyword;
-    if (text == "namespace"_zcb) return ast::SyntaxKind::NamespaceKeyword;
-    if (text == "never"_zcb) return ast::SyntaxKind::NeverKeyword;
-    if (text == "new"_zcb) return ast::SyntaxKind::NewKeyword;
-    if (text == "null"_zcb) return ast::SyntaxKind::NullKeyword;
-    if (text == "object"_zcb) return ast::SyntaxKind::ObjectKeyword;
-    if (text == "of"_zcb) return ast::SyntaxKind::OfKeyword;
-    if (text == "optional"_zcb) return ast::SyntaxKind::OptionalKeyword;
-    if (text == "out"_zcb) return ast::SyntaxKind::OutKeyword;
-    if (text == "override"_zcb) return ast::SyntaxKind::OverrideKeyword;
-    if (text == "package"_zcb) return ast::SyntaxKind::PackageKeyword;
-    if (text == "private"_zcb) return ast::SyntaxKind::PrivateKeyword;
-    if (text == "protected"_zcb) return ast::SyntaxKind::ProtectedKeyword;
-    if (text == "public"_zcb) return ast::SyntaxKind::PublicKeyword;
-    if (text == "readonly"_zcb) return ast::SyntaxKind::ReadonlyKeyword;
-    if (text == "require"_zcb) return ast::SyntaxKind::RequireKeyword;
-    if (text == "return"_zcb) return ast::SyntaxKind::ReturnKeyword;
-    if (text == "satisfies"_zcb) return ast::SyntaxKind::SatisfiesKeyword;
-    if (text == "set"_zcb) return ast::SyntaxKind::SetKeyword;
-    if (text == "static"_zcb) return ast::SyntaxKind::StaticKeyword;
-    if (text == "super"_zcb) return ast::SyntaxKind::SuperKeyword;
-    if (text == "switch"_zcb) return ast::SyntaxKind::SwitchKeyword;
-    if (text == "symbol"_zcb) return ast::SyntaxKind::SymbolKeyword;
-    if (text == "this"_zcb) return ast::SyntaxKind::ThisKeyword;
-    if (text == "throw"_zcb) return ast::SyntaxKind::ThrowKeyword;
-    if (text == "true"_zcb) return ast::SyntaxKind::TrueKeyword;
-    if (text == "try"_zcb) return ast::SyntaxKind::TryKeyword;
-    if (text == "typeof"_zcb) return ast::SyntaxKind::TypeOfKeyword;
-    if (text == "undefined"_zcb) return ast::SyntaxKind::UndefinedKeyword;
-    if (text == "unique"_zcb) return ast::SyntaxKind::UniqueKeyword;
-    if (text == "using"_zcb) return ast::SyntaxKind::UsingKeyword;
-    if (text == "var"_zcb) return ast::SyntaxKind::VarKeyword;
-    if (text == "void"_zcb) return ast::SyntaxKind::VoidKeyword;
-    if (text == "when"_zcb) return ast::SyntaxKind::WhenKeyword;
-    if (text == "with"_zcb) return ast::SyntaxKind::WithKeyword;
-    if (text == "yield"_zcb) return ast::SyntaxKind::YieldKeyword;
-
-    // Type keywords
-    if (text == "bool"_zcb) return ast::SyntaxKind::BoolKeyword;
-    if (text == "i8"_zcb) return ast::SyntaxKind::I8Keyword;
-    if (text == "i32"_zcb) return ast::SyntaxKind::I32Keyword;
-    if (text == "i64"_zcb) return ast::SyntaxKind::I64Keyword;
-    if (text == "u8"_zcb) return ast::SyntaxKind::U8Keyword;
-    if (text == "u16"_zcb) return ast::SyntaxKind::U16Keyword;
-    if (text == "u32"_zcb) return ast::SyntaxKind::U32Keyword;
-    if (text == "u64"_zcb) return ast::SyntaxKind::U64Keyword;
-    if (text == "f32"_zcb) return ast::SyntaxKind::F32Keyword;
-    if (text == "f64"_zcb) return ast::SyntaxKind::F64Keyword;
-    if (text == "str"_zcb) return ast::SyntaxKind::StrKeyword;
-    if (text == "unit"_zcb) return ast::SyntaxKind::UnitKeyword;
-    if (text == "null"_zcb) return ast::SyntaxKind::NullKeyword;
-    if (text == "else"_zcb) return ast::SyntaxKind::ElseKeyword;
-    if (text == "for"_zcb) return ast::SyntaxKind::ForKeyword;
-    if (text == "while"_zcb) return ast::SyntaxKind::WhileKeyword;
-    if (text == "struct"_zcb) return ast::SyntaxKind::StructKeyword;
-    if (text == "enum"_zcb) return ast::SyntaxKind::EnumKeyword;
-    if (text == "error"_zcb) return ast::SyntaxKind::ErrorKeyword;
-    if (text == "alias"_zcb) return ast::SyntaxKind::AliasKeyword;
-    if (text == "init"_zcb) return ast::SyntaxKind::InitKeyword;
-    if (text == "deinit"_zcb) return ast::SyntaxKind::DeinitKeyword;
-    if (text == "raises"_zcb) return ast::SyntaxKind::RaisesKeyword;
-    if (text == "type"_zcb) return ast::SyntaxKind::TypeKeyword;
-
-    return ast::SyntaxKind::Identifier;
-  }
-
-  void lexNumber(const TokenFlags& tokenFlags) {
-    // The first digit character has already been consumed in scanToken
-    // So we need to go back one character to include it in the token
-    const zc::byte* tokStart = curPtr;  // curPtr already points to the first digit
-    ast::SyntaxKind kind = ast::SyntaxKind::IntegerLiteral;
-    bool hasValidDigits = false;
-    TokenFlags numericFlags = tokenFlags;
-    bool hasSeparator = false;
-
-    // Check for binary, octal, or hex literals
-    if (tokStart >= bufferStart && *tokStart == '0' && curPtr + 1 < bufferEnd) {
-      zc::byte nextChar = *(curPtr + 1);
-      if (nextChar == 'b' || nextChar == 'B') {
-        // Binary literal
-        curPtr += 2;  // Skip '0' and 'b'/'B'
-        numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
-                                               static_cast<uint16_t>(TokenFlags::kBinarySpecifier));
-        while (curPtr < bufferEnd && (*curPtr == '0' || *curPtr == '1' || *curPtr == '_')) {
-          if (*curPtr == '_') {
-            hasSeparator = true;
-          } else {
-            hasValidDigits = true;
-          }
-          curPtr++;
-        }
-        if (hasSeparator) {
-          numericFlags =
-              static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
-                                      static_cast<uint16_t>(TokenFlags::kContainsSeparator));
-        }
-        if (!hasValidDigits) { reportInvalidNumberLiteral("binary"_zc, tokStart); }
-        formToken(ast::SyntaxKind::IntegerLiteral, tokStart, numericFlags);
-        return;
-      } else if (nextChar == 'o' || nextChar == 'O') {
-        // Octal literal
-        curPtr += 2;  // Skip '0' and 'o'/'O'
-        numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
-                                               static_cast<uint16_t>(TokenFlags::kOctalSpecifier));
-        while (curPtr < bufferEnd && ((*curPtr >= '0' && *curPtr <= '7') || *curPtr == '_')) {
-          if (*curPtr == '_') {
-            hasSeparator = true;
-          } else {
-            hasValidDigits = true;
-          }
-          curPtr++;
-        }
-        if (hasSeparator) {
-          numericFlags =
-              static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
-                                      static_cast<uint16_t>(TokenFlags::kContainsSeparator));
-        }
-        if (!hasValidDigits) { reportInvalidNumberLiteral("octal"_zc, tokStart); }
-        formToken(ast::SyntaxKind::IntegerLiteral, tokStart, numericFlags);
-        return;
-      } else if (nextChar == 'x' || nextChar == 'X') {
-        // Hexadecimal literal
-        curPtr += 2;  // Skip '0' and 'x'/'X'
-        numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
-                                               static_cast<uint16_t>(TokenFlags::kHexSpecifier));
-        while (curPtr < bufferEnd && (isdigit(*curPtr) || (*curPtr >= 'a' && *curPtr <= 'f') ||
-                                      (*curPtr >= 'A' && *curPtr <= 'F') || *curPtr == '_')) {
-          if (*curPtr == '_') {
-            hasSeparator = true;
-          } else {
-            hasValidDigits = true;
-          }
-          curPtr++;
-        }
-        if (hasSeparator) {
-          numericFlags =
-              static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
-                                      static_cast<uint16_t>(TokenFlags::kContainsSeparator));
-        }
-        if (!hasValidDigits) { reportInvalidNumberLiteral("hexadecimal"_zc, tokStart); }
-        formToken(ast::SyntaxKind::IntegerLiteral, tokStart, numericFlags);
-        return;
-      }
-    }
-
-    // Read decimal integer part (allowing numeric separators)
-    curPtr++;  // Skip the first digit that was already consumed
-    while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) {
-      if (*curPtr == '_') {
-        hasSeparator = true;
-      } else {
-        hasValidDigits = true;
-      }
-      curPtr++;
-    }
-
-    // Check if it's a floating-point number
-    if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd && isdigit(*(curPtr + 1))) {
-      curPtr++;  // Skip '.'
-      while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) {
-        if (*curPtr == '_') { hasSeparator = true; }
-        curPtr++;
-      }
-      kind = ast::SyntaxKind::FloatLiteral;
-    }
-
-    // Check for exponent part
-    if (curPtr < bufferEnd && (*curPtr == 'e' || *curPtr == 'E')) {
-      curPtr++;  // Skip 'e' or 'E'
-      numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
-                                             static_cast<uint16_t>(TokenFlags::kScientific));
-      if (curPtr < bufferEnd && (*curPtr == '+' || *curPtr == '-')) {
-        curPtr++;  // Skip sign
-      }
-      const zc::byte* expStart = curPtr;
-      while (curPtr < bufferEnd && (isdigit(*curPtr) || *curPtr == '_')) {
-        if (*curPtr == '_') { hasSeparator = true; }
-        curPtr++;
-      }
-      // Check if exponent has digits
-      if (curPtr == expStart) { reportInvalidNumberLiteral("exponent"_zc, tokStart); }
-      kind = ast::SyntaxKind::FloatLiteral;
-    }
-
-    if (hasSeparator) {
-      numericFlags = static_cast<TokenFlags>(static_cast<uint16_t>(numericFlags) |
-                                             static_cast<uint16_t>(TokenFlags::kContainsSeparator));
-    }
-
-    // Handle numeric literal suffixes
-    if (curPtr < bufferEnd) {
-      zc::byte c = *curPtr;
-      if (c == 'u' || c == 'U') {
-        curPtr++;  // Skip 'u' or 'U'
-        if (curPtr < bufferEnd && (*curPtr == 'l' || *curPtr == 'L')) {
-          curPtr++;  // Skip 'l' or 'L' for 'ul' suffix
-        }
-      } else if (c == 'l' || c == 'L') {
-        curPtr++;  // Skip 'l' or 'L'
-        if (curPtr < bufferEnd && (*curPtr == 'u' || *curPtr == 'U')) {
-          curPtr++;  // Skip 'u' or 'U' for 'lu' suffix
-        }
-      } else if (c == 'f' || c == 'F') {
-        curPtr++;  // Skip 'f' or 'F'
-        kind = ast::SyntaxKind::FloatLiteral;
-      } else if (c == 'd' || c == 'D') {
-        curPtr++;  // Skip 'd' or 'D'
-        kind = ast::SyntaxKind::FloatLiteral;
-      }
-    }
-
-    formToken(kind, tokStart, numericFlags);
-  }
-  void lexStringLiteralImpl(const TokenFlags& tokenFlags) {
-    // curPtr currently points to the quote character due to curPtr-- in scanToken
-    // tokStart should point to the quote character for the entire token
-    const zc::byte* tokStart = curPtr;
-    // Remember which quote character we're using
-    zc::byte quoteChar = *(tokStart);
-    bool foundClosingQuote = false;
-
-    // Skip the starting quote
-    curPtr++;
-
-    // Skip the starting quote, look for the ending quote
-    while (curPtr < bufferEnd) {
-      zc::byte c = *curPtr++;
-      if (c == quoteChar) {
-        // Found the ending quote
-        foundClosingQuote = true;
-        break;
-      } else if (c == '\\' && curPtr < bufferEnd) {
-        // Handle escape character
-        zc::byte escaped = *curPtr++;
-        if (escaped == 'u') {
-          // Handle Unicode escape sequence
-          lexUnicodeScalarValue();
-        } else {
-          // Validate common escape sequences
-          if (escaped != 'n' && escaped != 't' && escaped != 'r' && escaped != '\\' &&
-              escaped != '"' && escaped != '\'' && escaped != '0' && escaped != 'x') {}
-        }
-        // Note: We continue parsing after escape sequences, including \n
-      } else if (c == '\n' || c == '\r') {
-        // Allow actual newline characters in string literals
-        // Continue parsing - newlines are valid content in string literals
-      }
-    }
-
-    // Check if we reached end of file without closing quote
-    if (!foundClosingQuote && curPtr >= bufferEnd) { reportUnterminatedString(tokStart); }
-
-    formToken(ast::SyntaxKind::StringLiteral, tokStart, tokenFlags);
-  }
-
-  void lexSingleQuoteString(const TokenFlags& tokenFlags) {
-    // curPtr currently points to the quote character due to curPtr-- in scanToken
-    // tokStart should point to the quote character for the entire token
-    const zc::byte* tokStart = curPtr;
-    bool foundClosingQuote = false;
-    size_t charCount = 0;
-
-    // Skip the starting quote
-    curPtr++;
-    while (curPtr < bufferEnd) {
-      zc::byte c = *curPtr++;
-      if (c == '\'') {
-        // Found the ending quote
-        foundClosingQuote = true;
-        break;
-      } else if (c == '\\' && curPtr < bufferEnd) {
-        // Handle escape character
-        zc::byte escaped = *curPtr++;
-        if (escaped == 'u') {
-          // Handle Unicode escape sequence
-          lexUnicodeScalarValue();
-        } else {
-          // Validate common escape sequences
-          if (escaped != 'n' && escaped != 't' && escaped != 'r' && escaped != '\\' &&
-              escaped != '"' && escaped != '\'' && escaped != '0' && escaped != 'x') {
-            reportInvalidEscapeSequence(escaped, curPtr - 2);
-          }
-        }
-        charCount++;
-      } else if (c == '\n' || c == '\r') {
-        // Character literal cannot span multiple lines (unless escaped)
-        reportUnterminatedString(tokStart);
-        // Recover by treating as unterminated character literal
-        curPtr--;  // Back up to the newline
-        break;
-      } else {
-        charCount++;
-      }
-    }
-
-    // Check if we reached end of file without closing quote
-    if (!foundClosingQuote && curPtr >= bufferEnd) { reportUnterminatedString(tokStart); }
-
-    // Character literals should contain exactly one character
-    if (foundClosingQuote && charCount != 1) { reportInvalidCharacterLiteral(tokStart); }
-
-    formToken(ast::SyntaxKind::CharacterLiteral, tokStart, tokenFlags);
-  }
-
-  void lexEscapedIdentifier(const TokenFlags& tokenFlags) {
-    const zc::byte* tokStart = curPtr;
-
-    // Handle Unicode escape sequence at start of identifier
-    if (*curPtr == '\\' && curPtr + 1 < bufferEnd && *(curPtr + 1) == 'u') {
-      uint32_t codePoint = lexUnicodeScalarValue();
-      if (codePoint == 0) {
-        // Invalid escape sequence, lexUnicodeScalarValue already reported error
-        // Continue lexing as a regular identifier starting from the backslash
-        curPtr = tokStart + 1;
-      } else {
-        // Validate that the code point represents a valid Unicode ID_Start
-        if (!isUnicodeIdentifierStart(codePoint)) {
-          // Invalid Unicode escape sequence for identifier start
-          reportInvalidCharacter('\\', tokStart);  // Point to the backslash
-          curPtr = tokStart + 1;                   // Skip the backslash and continue
-        }
-      }
-    }
-
-    // Continue reading identifier parts
-    while (curPtr < bufferEnd) {
-      zc::byte c = *curPtr;
-
-      // Handle escape sequences
-      if (c == '\\' && curPtr + 1 < bufferEnd && *(curPtr + 1) == 'u') {
-        uint32_t codePoint = lexUnicodeScalarValue();
-        if (codePoint == 0) {
-          // Invalid escape sequence, lexUnicodeScalarValue already reported error
-          break;
-        } else {
-          // Validate that the code point represents a valid Unicode ID_Continue
-          if (!isUnicodeIdentifierContinuation(codePoint)) {
-            // Invalid Unicode escape sequence for identifier continuation
-            reportInvalidCharacter('\\', curPtr - 2);  // Point to the backslash
-            break;
-          }
-        }
-      } else {
-        // Check for identifier continuation character (single or multi-byte UTF-8)
-        uint32_t continuationLength = getIdentifierContinuationLength(c);
-        if (continuationLength > 0) {
-          // Valid identifier continuation - advance by the correct number of bytes
-          curPtr += continuationLength;
-        } else {
-          // Not an identifier continuation character
-          break;
-        }
-      }
-    }
-
-    // Check if it's a keyword
-    auto textPtr = zc::ArrayPtr<const zc::byte>(tokStart, curPtr);
-    ast::SyntaxKind kind = getKeywordKind(textPtr);
-
-    if (kind == ast::SyntaxKind::Identifier) {
-      // For identifiers, we might want to cache the text since they're frequently accessed
-      source::SourceLoc startLoc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-      source::SourceLoc endLoc = sourceMgr.getLocForOffset(bufferId, curPtr - bufferStart);
-      zc::String identifierText = zc::str(textPtr.asChars());
-      nextToken =
-          Token(kind, source::SourceRange(startLoc, endLoc), zc::mv(identifierText), tokenFlags);
-    } else {
-      formToken(kind, tokStart, tokenFlags);
-    }
-  }
-
-  void lexOperator(const TokenFlags& tokenFlags) {
-    const zc::byte* tokStart = curPtr;
-    zc::byte c = *curPtr++;
-
-    // Handle multi-character operators
-    switch (c) {
-      case '=':
-        if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          if (curPtr < bufferEnd && *curPtr == '=') {
-            curPtr++;
-            formToken(ast::SyntaxKind::EqualsEqualsEquals, tokStart, tokenFlags);
-          } else {
-            formToken(ast::SyntaxKind::EqualsEquals, tokStart, tokenFlags);
-          }
-        } else if (curPtr < bufferEnd && *curPtr == '>') {
-          curPtr++;
-          formToken(ast::SyntaxKind::EqualsGreaterThan, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Equals, tokStart, tokenFlags);
-        }
-        break;
-      case '!':
-        if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          if (curPtr < bufferEnd && *curPtr == '=') {
-            curPtr++;
-            formToken(ast::SyntaxKind::ExclamationEqualsEquals, tokStart, tokenFlags);
-          } else {
-            formToken(ast::SyntaxKind::ExclamationEquals, tokStart, tokenFlags);
-          }
-        } else if (curPtr < bufferEnd && *curPtr == '!') {
-          curPtr++;
-          formToken(ast::SyntaxKind::ErrorUnwrap, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Exclamation, tokStart, tokenFlags);
-        }
-        break;
-      case '<':
-        if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::LessThanEquals, tokStart, tokenFlags);
-        } else if (curPtr < bufferEnd && *curPtr == '<') {
-          curPtr++;
-          if (curPtr < bufferEnd && *curPtr == '=') {
-            curPtr++;
-            formToken(ast::SyntaxKind::LessThanLessThanEquals, tokStart, tokenFlags);
-          } else {
-            formToken(ast::SyntaxKind::LessThanLessThan, tokStart, tokenFlags);
-          }
-        } else {
-          formToken(ast::SyntaxKind::LessThan, tokStart, tokenFlags);
-        }
-        break;
-      case '>':
-        if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::GreaterThanEquals, tokStart, tokenFlags);
-        } else if (curPtr < bufferEnd && *curPtr == '>') {
-          curPtr++;
-          if (curPtr < bufferEnd && *curPtr == '=') {
-            curPtr++;
-            formToken(ast::SyntaxKind::GreaterThanGreaterThanEquals, tokStart, tokenFlags);
-          } else if (curPtr < bufferEnd && *curPtr == '>') {
-            curPtr++;
-            if (curPtr < bufferEnd && *curPtr == '=') {
-              curPtr++;
-              formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThanEquals, tokStart,
-                        tokenFlags);
-            } else {
-              formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan, tokStart, tokenFlags);
-            }
-          } else {
-            formToken(ast::SyntaxKind::GreaterThanGreaterThan, tokStart, tokenFlags);
-          }
-        } else {
-          formToken(ast::SyntaxKind::GreaterThan, tokStart, tokenFlags);
-        }
-        break;
-      case '&':
-        if (curPtr < bufferEnd && *curPtr == '&') {
-          curPtr++;
-          if (curPtr < bufferEnd && *curPtr == '=') {
-            curPtr++;
-            formToken(ast::SyntaxKind::AmpersandAmpersandEquals, tokStart, tokenFlags);
-          } else {
-            formToken(ast::SyntaxKind::AmpersandAmpersand, tokStart, tokenFlags);
-          }
-        } else if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::AmpersandEquals, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Ampersand, tokStart, tokenFlags);
-        }
-        break;
-      case '|':
-        if (curPtr < bufferEnd && *curPtr == '|') {
-          curPtr++;
-          if (curPtr < bufferEnd && *curPtr == '=') {
-            curPtr++;
-            formToken(ast::SyntaxKind::BarBarEquals, tokStart, tokenFlags);
-          } else {
-            formToken(ast::SyntaxKind::BarBar, tokStart, tokenFlags);
-          }
-        } else if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::BarEquals, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Bar, tokStart, tokenFlags);
-        }
-        break;
-      case '^':
-        if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::CaretEquals, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Caret, tokStart, tokenFlags);
-        }
-        break;
-      case '+':
-        if (curPtr < bufferEnd && *curPtr == '+') {
-          curPtr++;
-          formToken(ast::SyntaxKind::PlusPlus, tokStart, tokenFlags);
-        } else if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::PlusEquals, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Plus, tokStart, tokenFlags);
-        }
-        break;
-      case '-':
-        if (curPtr < bufferEnd && *curPtr == '>') {
-          curPtr++;
-          formToken(ast::SyntaxKind::Arrow, tokStart, tokenFlags);
-        } else if (curPtr < bufferEnd && *curPtr == '-') {
-          curPtr++;
-          formToken(ast::SyntaxKind::MinusMinus, tokStart, tokenFlags);
-        } else if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::MinusEquals, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Minus, tokStart, tokenFlags);
-        }
-        break;
-      case '*':
-        if (curPtr < bufferEnd && *curPtr == '*') {
-          curPtr++;
-          if (curPtr < bufferEnd && *curPtr == '=') {
-            curPtr++;
-            formToken(ast::SyntaxKind::AsteriskAsteriskEquals, tokStart, tokenFlags);
-          } else {
-            formToken(ast::SyntaxKind::AsteriskAsterisk, tokStart, tokenFlags);
-          }
-        } else if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::AsteriskEquals, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Asterisk, tokStart, tokenFlags);
-        }
-        break;
-      case '/':
-        if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::SlashEquals, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Slash, tokStart, tokenFlags);
-        }
-        break;
-      case '%':
-        if (curPtr < bufferEnd && *curPtr == '=') {
-          curPtr++;
-          formToken(ast::SyntaxKind::PercentEquals, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Percent, tokStart, tokenFlags);
-        }
-        break;
-      case '?':
-        if (curPtr < bufferEnd && *curPtr == '?') {
-          curPtr++;
-          if (curPtr < bufferEnd && *curPtr == '=') {
-            curPtr++;
-            formToken(ast::SyntaxKind::QuestionQuestionEquals, tokStart, tokenFlags);
-          } else {
-            formToken(ast::SyntaxKind::QuestionQuestion, tokStart, tokenFlags);
-          }
-        } else if (curPtr < bufferEnd && *curPtr == '.') {
-          curPtr++;
-          formToken(ast::SyntaxKind::QuestionDot, tokStart, tokenFlags);
-        } else if (curPtr < bufferEnd && *curPtr == '!') {
-          curPtr++;
-          formToken(ast::SyntaxKind::ErrorPropagate, tokStart, tokenFlags);
-        } else if (curPtr < bufferEnd && *curPtr == ':') {
-          curPtr++;
-          formToken(ast::SyntaxKind::ErrorDefault, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Question, tokStart, tokenFlags);
-        }
-        break;
-      case '.':
-        if (curPtr < bufferEnd && *curPtr == '.' && curPtr + 1 < bufferEnd &&
-            *(curPtr + 1) == '.') {
-          curPtr += 2;
-          formToken(ast::SyntaxKind::DotDotDot, tokStart, tokenFlags);
-        } else {
-          formToken(ast::SyntaxKind::Period, tokStart, tokenFlags);
-        }
-        break;
-      default:
-        // Single character operator, should have been handled in scanToken
-        reportInvalidCharacter(c, tokStart);
-        recoverFromInvalidCharacter();
-        break;
-    }
-  }
-
-  /// Unicode handling
-  uint32_t lexUnicodeScalarValue() {
-    // Expect to be positioned at the start of a Unicode escape sequence
-    // This function handles both \uXXXX and \u{XXXX} formats
-
-    if (curPtr >= bufferEnd || *curPtr != '\\') {
-      return 0;  // Invalid: not a backslash
-    }
-
-    const zc::byte* start = curPtr;
-    curPtr++;  // Skip '\\'
-
-    if (curPtr >= bufferEnd || *curPtr != 'u') {
-      curPtr = start;  // Restore position
-      return 0;        // Invalid: not followed by 'u'
-    }
-
-    curPtr++;  // Skip 'u'
-
-    // Check for extended Unicode escape \u{XXXX}
-    if (curPtr < bufferEnd && *curPtr == '{') {
-      curPtr++;  // Skip '{'
-
-      uint32_t value = 0;
-      int digitCount = 0;
-
-      // Scan hex digits
-      while (curPtr < bufferEnd && isxdigit(*curPtr) && digitCount < 6) {
-        zc::byte c = *curPtr;
-        uint32_t digit;
-        if (c >= '0' && c <= '9') {
-          digit = c - '0';
-        } else if (c >= 'A' && c <= 'F') {
-          digit = c - 'A' + 10;
-        } else if (c >= 'a' && c <= 'f') {
-          digit = c - 'a' + 10;
-        } else {
-          break;
-        }
-
-        value = (value << 4) | digit;
-        curPtr++;
-        digitCount++;
-      }
-
-      // Must have at least one hex digit
-      if (digitCount == 0) {
-        curPtr = start;  // Restore position
-        return 0;        // Invalid: no hex digits
-      }
-
-      // Must be followed by '}'
-      if (curPtr >= bufferEnd || *curPtr != '}') {
-        curPtr = start;  // Restore position
-        return 0;        // Invalid: missing closing brace
-      }
-
-      curPtr++;  // Skip '}'
-
-      // Validate Unicode scalar value range
-      if (value > 0x10FFFF) {
-        curPtr = start;  // Restore position
-        return 0;        // Invalid: out of Unicode range
-      }
-
-      return value;
-    }
-
-    // Handle standard Unicode escape \uXXXX
-    uint32_t value = 0;
-    for (int i = 0; i < 4; i++) {
-      if (curPtr >= bufferEnd || !isxdigit(*curPtr)) {
-        curPtr = start;  // Restore position
-        return 0;        // Invalid: insufficient hex digits
-      }
-
-      zc::byte c = *curPtr;
-      uint32_t digit;
-      if (c >= '0' && c <= '9') {
-        digit = c - '0';
-      } else if (c >= 'A' && c <= 'F') {
-        digit = c - 'A' + 10;
-      } else if (c >= 'a' && c <= 'f') {
-        digit = c - 'a' + 10;
-      } else {
-        curPtr = start;  // Restore position
-        return 0;        // Invalid hex digit
-      }
-
-      value = (value << 4) | digit;
-      curPtr++;
-    }
-
-    return value;
-  }
-
-  /// Comments
-  void lexSingleLineComment() {
-    const zc::byte* tokStart = curPtr;
-
-    // Skip '//'
-    curPtr += 2;
-
-    // Read to the end of the line
-    while (curPtr < bufferEnd && *curPtr != '\n') { curPtr++; }
-
-    if (commentMode == CommentRetentionMode::kReturnAsTokens) {
-      formToken(ast::SyntaxKind::Comment, tokStart);
-    }
-    // If comments are not retained, just skip them
-  }
-
-  void lexMultiLineComment() {
-    const zc::byte* tokStart = curPtr;
-
-    // Skip '/*'
-    curPtr += 2;
-
-    // Read until we find '*/'
-    while (curPtr + 1 < bufferEnd) {
-      if (*curPtr == '*' && *(curPtr + 1) == '/') {
-        curPtr += 2;  // Skip '*/'
-        break;
-      }
-      if (*curPtr == '\n') { hasPrecedingLineBreak = true; }
-      curPtr++;
-    }
-
-    // Check if we reached end of file without closing comment
-    if (curPtr + 1 >= bufferEnd &&
-        !(curPtr < bufferEnd && *curPtr == '*' && curPtr + 1 < bufferEnd && *(curPtr + 1) == '/')) {
-      reportUnterminatedComment(tokStart);
-    }
-
-    if (commentMode == CommentRetentionMode::kReturnAsTokens) {
-      formToken(ast::SyntaxKind::Comment, tokStart);
-    }
-    // If comments are not retained, just skip them
-  }
-
-  /// Preprocessor directives
-  void lexPreprocessorDirective() { /*...*/ }
-
-  /// Multibyte character handling
-  bool tryLexMultibyteCharacter() { /*...*/ return false; }
-
-  /// Error recovery and diagnostics
-  void reportInvalidCharacter(zc::byte invalidChar, const zc::byte* tokStart) {
-    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, zc::str(invalidChar));
-  }
-
-  void reportUnterminatedString(const zc::byte* tokStart) {
-    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnterminatedString>(loc);
-  }
-
-  void reportUnterminatedComment(const zc::byte* tokStart) {
-    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-    // Use InvalidChar diagnostic for unterminated comments since there's no specific one
-    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, "/*"_zc);
-  }
-
-  void reportInvalidCharacterLiteral(const zc::byte* tokStart) {
-    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, "character literal"_zc);
-  }
-
-  void reportInvalidNumberLiteral(zc::StringPtr numberType, const zc::byte* tokStart) {
-    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-    // For now, just report as invalid character with the number type
-    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, numberType);
-  }
-
-  void reportInvalidEscapeSequence(zc::byte escaped, const zc::byte* tokStart) {
-    source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, tokStart - bufferStart);
-    diagnosticEngine.diagnose<diagnostics::DiagID::InvalidChar>(loc, zc::str(escaped));
-  }
-
-  void recoverFromInvalidCharacter() {
-    // Skip the invalid character and continue lexing
-    if (curPtr < bufferEnd) { curPtr++; }
-    // Form an unknown token to maintain token stream continuity
-    formToken(ast::SyntaxKind::Unknown, curPtr - 1);
-  }
-
-  void recoverFromLexingError() {
-    // General error recovery: skip to next whitespace or known delimiter
-    while (curPtr < bufferEnd) {
-      zc::byte c = *curPtr;
-      if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == ';' || c == ',' || c == '{' ||
-          c == '}' || c == '(' || c == ')' || c == '[' || c == ']') {
-        break;
-      }
-      curPtr++;
-    }
-  }
-
-  /// Buffer management
-  void refillBuffer() { /*...*/ }
-
-  /// State checks
-  bool isAtStartOfLine() const { return curPtr == bufferStart || *(curPtr - 1) == '\n'; }
-  bool isAtEndOfFile() const { return curPtr >= bufferEnd; }
-
-  /// Helper functions
-  /// Check if a byte is the start of an identifier character
-  /// Returns the number of bytes consumed (0 if not an identifier start)
-  uint32_t getIdentifierStartLength(zc::byte c) const {
-    // First check ASCII cases: letters, underscore, and dollar sign
-    if (isalpha(c) || c == '_' || c == '$') { return 1; }
-
-    // For non-ASCII characters, decode UTF-8 and check Unicode properties
-    if ((c & 0x80) != 0) {
-      // Use curPtr to read the complete UTF-8 sequence from the buffer
-      const zc::byte* ptr = curPtr;
-      uint32_t codePoint = 0;
-      if (uint32_t offset = tryDecodeUtf8CodePoint(ptr, codePoint)) {
-        if (isUnicodeIdentifierStart(codePoint)) { return offset; }
-      }
-    }
-
-    return 0;
-  }
-
-  /// Check if a byte is the continuation of an identifier character
-  /// Returns the number of bytes consumed (0 if not an identifier continuation)
-  uint32_t getIdentifierContinuationLength(zc::byte c) const {
-    // First check ASCII cases: letters, digits, underscore, and dollar sign
-    if (isalnum(c) || c == '_' || c == '$') { return 1; }
-
-    // For non-ASCII characters, decode UTF-8 and check Unicode properties
-    if ((c & 0x80) != 0) {
-      // Use curPtr to read the complete UTF-8 sequence from the buffer
-      const zc::byte* ptr = curPtr;
-      uint32_t codePoint = 0;
-      if (uint32_t offset = tryDecodeUtf8CodePoint(ptr, codePoint)) {
-        // Check for ZWNJ (U+200C) and ZWJ (U+200D) as per grammar rules
-        if (codePoint == 0x200C || codePoint == 0x200D) { return offset; }
-        if (isUnicodeIdentifierContinuation(codePoint)) { return offset; }
-      }
-    }
-
-    return 0;
-  }
-
-  /// Legacy helper functions for backward compatibility
-  bool isIdentifierStart(zc::byte c) const { return getIdentifierStartLength(c) > 0; }
-
-  bool isIdentifierContinuation(zc::byte c) const { return getIdentifierContinuationLength(c) > 0; }
-
-  /// UTF-8 decoding helper
-  uint32_t tryDecodeUtf8CodePoint(const zc::byte* ptr, uint32_t& codePoint) const {
-    if (ptr >= bufferEnd) { return 0; }
-
-    zc::byte c = *ptr;
-
-    if (c < 0x80) {
-      // ASCII - single byte
-      codePoint = c;
-      return 1;
-    }
-
-    if ((c & 0xe0) == 0xc0) {
-      // 2-byte sequence: 110xxxxx 10xxxxxx
-      if (ptr + 1 >= bufferEnd) { return 0; }
-      zc::byte c2 = ptr[1];
-      if ((c2 & 0xc0) != 0x80) { return 0; }
-
-      codePoint = ((c & 0x1f) << 6) | (c2 & 0x3f);
-      // Check for overlong encoding
-      if (codePoint < 0x80) { return 0; }
-
-      return 2;
-    }
-
-    if ((c & 0xf0) == 0xe0) {
-      // 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx
-      if (ptr + 2 >= bufferEnd) { return 0; }
-      zc::byte c2 = ptr[1];
-      zc::byte c3 = ptr[2];
-      if ((c2 & 0xc0) != 0x80 || (c3 & 0xc0) != 0x80) { return 0; }
-
-      codePoint = ((c & 0x0f) << 12) | ((c2 & 0x3f) << 6) | (c3 & 0x3f);
-      // Check for overlong encoding
-      if (codePoint < 0x800) { return 0; }
-      // Check for surrogate pairs (invalid in UTF-8)
-      if (codePoint >= 0xd800 && codePoint <= 0xdfff) { return 0; }
-
-      return 3;
-    }
-
-    if ((c & 0xf8) == 0xf0) {
-      // 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-      if (ptr + 3 >= bufferEnd) { return 0; }
-      zc::byte c2 = ptr[1];
-      zc::byte c3 = ptr[2];
-      zc::byte c4 = ptr[3];
-      if ((c2 & 0xc0) != 0x80 || (c3 & 0xc0) != 0x80 || (c4 & 0xc0) != 0x80) { return 0; }
-
-      codePoint = ((c & 0x07) << 18) | ((c2 & 0x3f) << 12) | ((c3 & 0x3f) << 6) | (c4 & 0x3f);
-      // Check for overlong encoding
-      if (codePoint < 0x10000) { return 0; }
-      // Check for valid Unicode range
-      if (codePoint > 0x10ffff) { return 0; }
-
-      return 4;
-    }
-
-    // Invalid UTF-8 start byte
-    return 0;
-  }
-
-  /// Unicode identifier support
-  bool isUnicodeIdentifierStart(const uint32_t codePoint) const { return isIdStart(codePoint); }
-
-  bool isUnicodeIdentifierContinuation(uint32_t codePoint) const { return isIdContinue(codePoint); }
-
-  bool isOperatorStart(zc::byte c) const {
-    return c == '+' || c == '-' || c == '*' || c == '/' || c == '=' || c == '<' || c == '>' ||
-           c == '!' || c == '&' || c == '|';
-  }
-
-  /// \brief Shift the lookahead cache by removing the first token
-  /// This maintains cache consistency without invalidating the entire cache
-  void shiftTokenCache() {
-    if (cacheInitialized && !tokenCache.empty()) { tokenCache.pop_front(); }
-  }
-
-  /// Lookahead functionality
-  void initializeTokenCache() {
-    if (cacheInitialized) { return; }
-
-    // Save current lexer state
-    const zc::byte* savedCurPtr = curPtr;
-    Token savedNextToken = nextToken;
-    LexerMode savedMode = currentMode;
-
-    // Create a temporary lexer state for lookahead
-    curPtr = savedCurPtr;
-    currentMode = savedMode;
-
-    // Pre-lex some tokens for lookahead
-    const unsigned kInitialCacheSize = 16;
-
-    for (unsigned i = 0; i < kInitialCacheSize && !isAtEndOfFile(); ++i) {
-      lexImpl();
-      tokenCache.push_back(nextToken);
-    }
-
-    // Restore original lexer state
-    curPtr = savedCurPtr;
-    nextToken = savedNextToken;
-    currentMode = savedMode;
-
-    cacheInitialized = true;
-  }
-
-  const Token& lookAheadToken(unsigned n) {
-    ZC_REQUIRE(n > 0, "lookAheadToken: n must be greater than 0");
-
-    if (n == 1) { return nextToken; }
-
-    initializeTokenCache();
-
-    // Cache index: n == 2 -> index 0, n == 3 -> index 1, etc.
-    unsigned cacheIndex = n - 2;
-
-    if (cacheIndex < tokenCache.size()) { return tokenCache[cacheIndex]; }
-
-    // Extend cache if needed
-
-    // Save current state
-    const zc::byte* savedCurPtr = curPtr;
-    Token savedNextToken = nextToken;
-    LexerMode savedMode = currentMode;
-
-    // Position lexer at the end of cached tokens
-    if (!tokenCache.empty()) {
-      const Token& lastCachedToken = tokenCache.back();
-      if (lastCachedToken.getKind() == ast::SyntaxKind::EndOfFile) { return lastCachedToken; }
-      // Move to position after last cached token
-      curPtr = getBufferPtrForSourceLoc(lastCachedToken.getRange().getEnd());
-    }
-
-    // Extend cache
-    unsigned tokensNeeded = (n - 2) - tokenCache.size() + 1 + 8;  // Add some extra tokens
-
-    for (unsigned i = 0; i < tokensNeeded && !isAtEndOfFile(); ++i) {
-      lexImpl();
-      tokenCache.push_back(nextToken);
-      if (nextToken.getKind() == ast::SyntaxKind::EndOfFile) { break; }
-    }
-
-    // Restore state
-    curPtr = savedCurPtr;
-    nextToken = savedNextToken;
-    currentMode = savedMode;
-
-    // Return the requested token from cache
-    if (cacheIndex < tokenCache.size()) { return tokenCache[cacheIndex]; }
-
-    // Return EndOfFile if beyond available tokens
-    static Token EndOfFileToken(ast::SyntaxKind::EndOfFile, source::SourceRange());
-    return EndOfFileToken;
-  }
-
-  bool canLookAheadToken(unsigned n) {
-    ZC_REQUIRE(n > 0, "canLookAheadToken: n must be greater than 0");
-
-    if (n == 1) { return nextToken.getKind() != ast::SyntaxKind::EndOfFile; }
-
-    initializeTokenCache();
-
-    // Cache index: n == 2 -> index 0, n == 3 -> index 1, etc.
-    unsigned cacheIndex = n - 2;
-    if (cacheIndex < tokenCache.size()) {
-      return tokenCache[cacheIndex].getKind() != ast::SyntaxKind::EndOfFile;
-    }
-
-    return false;
-  }
+       const basic::LangOptions& options, basic::StringPool& stringPool,
+       const source::BufferId& bufferId);
+
+  /// \brief Get the current byte at the cursor position.
+  /// \note Even though this returns a rune (int32_t), it only decodes the current byte. It must be
+  /// checked against < 0x80 to verify that a call to charWithSize is not needed.
+  /// \return The current byte at the cursor position.
+  int32_t ch() const;
+
+  /// \brief Get the character at the specified offset from the current position.
+  /// \param offset The offset from the current cursor position.
+  int32_t charAt(int32_t offset) const;
+
+  /// \brief Get the current character and its size in bytes. This handles multi-byte UTF-8
+  /// sequences correctly.
+  /// \return A pair containing the decoded character (rune) and its size in bytes.
+  std::pair<uint32_t, uint32_t> charWithSize() const;
+
+  /// \brief Form a token of the given kind and advance the lexer.
+  /// \param kind The syntax kind of the token.
+  /// \param value Optional string value for the token (e.g., for identifiers or literals).
+  void formToken(ast::SyntaxKind kind, zc::Maybe<zc::StringPtr> value = zc::none);
+
+  /// \brief Process a comment directive.
+  /// \param start The start of the comment directive.
+  /// \param end The end of the comment directive.
+  /// \param isMultiLine Whether the comment is multi-line.
+  void processCommentDirective(const zc::byte* start, const zc::byte* end, bool isMultiLine);
+
+  /// \brief Lex an identifier token.
+  /// \param text The text of the identifier.
+  void getIdentifierToken(zc::StringPtr text);
+
+  /// \brief Lex hexadecimal digits.
+  /// \param minCount The minimum number of digits to lex.
+  /// \param scanAsManyAsPossible Whether to scan as many digits as possible.
+  /// \param canHaveSeparators Whether the digits can have separators.
+  /// \return The lexed hexadecimal digits as a string.
+  zc::StringPtr lexHexDigits(int32_t minCount, bool scanAsManyAsPossible, bool canHaveSeparators);
+
+  /// \brief Lex binary or octal digits.
+  /// \param base The base of the number (2 for binary, 8 for octal).
+  /// \return The lexed digits as a string.
+  zc::StringPtr lexBinaryOrOctalDigits(int32_t base);
+
+  void lex();
+
+  /// \brief Lex an identifier.
+  /// \param prefixLength The length of the prefix (e.g., '$' for a global identifier).
+  /// \return The lexed identifier as a string.
+  zc::Maybe<zc::StringPtr> lexIdentifier(int32_t prefixLength);
+
+  /// \brief Peek at the next Unicode escape sequence.
+  /// \return The Unicode code point if a valid escape sequence is found, -1 otherwise.
+  int32_t peekUnicodeEscape();
+
+  /// \brief Lex a number.
+  void lexNumber();
+
+  /// \brief Lex a number fragment.
+  /// \return The lexed number fragment as a string.
+  zc::StringPtr lexNumberFragment();
+
+  /// \brief Lex digits.
+  /// \return A pair containing the lexed digits as a string and a boolean indicating if a decimal
+  /// point was found.
+  std::pair<zc::StringPtr, bool> lexDigits();
+
+  /// \brief Lex a big int suffix.
+  /// \param tokenValue The token value to check.
+  /// \return The syntax kind of the big int suffix.
+  ast::SyntaxKind lexBigIntSuffix(zc::StringPtr& tokenValue);
+
+  /// \brief Set the tokenValue and returns a NoSubstitutionTemplateLiteral or a literal component
+  /// of a TemplateExpression.
+  /// @param shouldEmitInvalidEscapeError Whether to emit an error for an invalid escape sequence.
+  /// @param outValue The token value to set.
+  /// @return The syntax kind of the template literal.
+  ast::SyntaxKind lexTemplateAndRetTokenValue(bool shouldEmitInvalidEscapeError,
+                                              zc::StringPtr& outValue);
+
+  /// \brief Lex identifier parts.
+  /// \return The lexed identifier parts as a string.
+  zc::StringPtr lexIdentifierParts();
+
+  /// \brief Lex a string.
+  /// \return The lexed string as a string.
+  zc::StringPtr lexString();
+
+  /// \brief Lex an escape sequence.
+  /// \param flags The flags to use for scanning the escape sequence.
+  /// \return The lexed escape sequence as a string.
+  zc::StringPtr lexEscapeSequence(EscapeSequenceScanningFlags flags);
+
+  /// \brief Lex a Unicode escape sequence at \u.
+  /// \param shouldEmitInvalidEscapeError Whether to emit an error for an invalid escape sequence.
+  /// \return The Unicode code point if a valid escape sequence is found, -1 otherwise.
+  int32_t lexUnicodeEscape(bool shouldEmitInvalidEscapeError);
+
+  /// \brief Lex an invalid character.
+  void lexInvalidCharacter();
+
+  /// \brief Report an error at the specified position.
+  /// \tparam ID The diagnostic ID to report.
+  /// \tparam ...Args The types of the arguments to format the diagnostic message.
+  /// \param pos The position in the buffer where the error occurred.
+  /// \param length The length of the text that caused the error.
+  /// \param ...args The arguments to format the diagnostic message.
+  template <diagnostics::DiagID ID, typename... Args>
+  void errorAt(const zc::byte* pos, uint32_t length, Args&&... args);
+
+  /// \brief Report an error.
+  /// \tparam ID The diagnostic ID to report.
+  /// \tparam ...Args The types of the arguments to format the diagnostic message.
+  /// \param ...args The arguments to format the diagnostic message.
+  template <diagnostics::DiagID ID, typename... Args>
+  void error(Args&&... args);
 };
+
+Lexer::Impl::Impl(const source::SourceManager& sourceMgr,
+                  diagnostics::DiagnosticEngine& diagnosticEngine,
+                  const basic::LangOptions& options, basic::StringPool& stringPool,
+                  const source::BufferId& bufferId)
+    : sourceMgr(sourceMgr),
+      diagnosticEngine(diagnosticEngine),
+      langOpts(options),
+      stringPool(stringPool),
+      bufferId(bufferId) {
+  // Initialize buffer pointers
+  zc::ArrayPtr<const zc::byte> buffer = sourceMgr.getEntireTextForBuffer(bufferId);
+  bufferStart = buffer.begin();
+  bufferEnd = buffer.end();
+
+  // Initialize embedded state
+  state.curPtr = bufferStart;
+  state.fullStartPtr = bufferStart;
+  state.tokenStartPtr = bufferStart;
+  state.tokenFlags = TokenFlags::None;
+}
+
+int32_t Lexer::Impl::ch() const {
+  if (state.curPtr >= bufferEnd) { return -1; }
+  return *state.curPtr;
+}
+
+int32_t Lexer::Impl::charAt(int32_t offset) const {
+  if (state.curPtr + offset < bufferStart || state.curPtr + offset >= bufferEnd) { return -1; }
+  return *(state.curPtr + offset);
+}
+
+std::pair<uint32_t, uint32_t> Lexer::Impl::charWithSize() const {
+  return lexer::charWithSize(state.curPtr, bufferEnd);
+}
+
+void Lexer::Impl::formToken(ast::SyntaxKind kind, zc::Maybe<zc::StringPtr> value) {
+  source::SourceLoc startLoc(state.tokenStartPtr);
+  source::SourceLoc endLoc(state.curPtr);
+  source::SourceRange range(startLoc, endLoc);
+
+  // Create token
+  state.token = Token(kind, range, value, state.tokenFlags);
+}
+
+void Lexer::Impl::processCommentDirective(const zc::byte* start, const zc::byte* end,
+                                          bool isMultiLine) {
+  const zc::byte* pos = start;
+
+  if (isMultiLine) {
+    // Skip whitespace
+    while (pos < end && (*pos == ' ' || *pos == '\t')) { pos++; }
+    // Skip combinations of / and *
+    while (pos < end && (*pos == '/' || *pos == '*')) { pos++; }
+  } else {
+    // Skip opening //
+    pos += 2;
+    // Skip another / if present
+    while (pos < end && *pos == '/') { pos++; }
+  }
+
+  // Skip whitespace
+  while (pos < end && (*pos == ' ' || *pos == '\t')) { pos++; }
+
+  // Directive must start with '@'
+  if (!(pos < end && *pos == '@')) { return; }
+  pos++;
+
+  CommentDirectiveKind kind;
+  zc::StringPtr text =
+      stringPool.intern((zc::heapString(reinterpret_cast<const char*>(pos), end - pos)));
+
+  if (text.startsWith("zom-expect-error")) {
+    kind = CommentDirectiveKind::ExpectError;
+  } else if (text.startsWith("zom-ignore")) {
+    kind = CommentDirectiveKind::Ignore;
+  } else {
+    return;
+  }
+
+  CommentDirective directive = {source::SourceRange(start, end), kind};
+  commentDirectives.add(zc::mv(directive));
+}
+
+void Lexer::Impl::getIdentifierToken(zc::StringPtr text) {
+  ast::SyntaxKind kind = getKeywordKind(text.asBytes());
+  formToken(kind, text);
+}
+
+zc::StringPtr Lexer::Impl::lexHexDigits(int32_t minCount, bool scanAsManyAsPossible,
+                                        bool canHaveSeparators) {
+  zc::Vector<char> valueChars;
+  bool allowSeparator = false;
+  bool isPreviousTokenSeparator = false;
+
+  while (valueChars.size() < minCount || scanAsManyAsPossible) {
+    int32_t c = ch();
+
+    if (canHaveSeparators && c == '_') {
+      state.tokenFlags |= TokenFlags::ContainsSeparator;
+      if (allowSeparator) {
+        allowSeparator = false;
+        isPreviousTokenSeparator = true;
+      } else if (isPreviousTokenSeparator) {
+        errorAt<diagnostics::DiagID::MultipleConsecutiveNumericSeparatorsAreNotPermitted>(
+            state.curPtr, 1);
+      } else {
+        errorAt<diagnostics::DiagID::NumericSeparatorsAreNotAllowedHere>(state.curPtr, 1);
+      }
+      state.curPtr++;
+      continue;
+    }
+
+    allowSeparator = canHaveSeparators;
+    if (c >= 'A' && c <= 'F') {
+      c += 'a' - 'A';  // standardize hex literals to lowercase
+    } else if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+      break;
+    }
+
+    valueChars.add(static_cast<char>(c));
+    state.curPtr++;
+    isPreviousTokenSeparator = false;
+  }
+
+  if (valueChars.size() < minCount) { return ""_zc; }
+
+  if (charAt(-1) == '_') {
+    errorAt<diagnostics::DiagID::NumericSeparatorsAreNotAllowedHere>(state.curPtr - 1, 1);
+  }
+
+  return stringPool.intern(valueChars.releaseAsArray());
+}
+
+zc::StringPtr Lexer::Impl::lexBinaryOrOctalDigits(int32_t base) {
+  zc::Vector<char> valueChars;
+  bool allowSeparator = false;
+  bool isPreviousTokenSeparator = false;
+
+  while (true) {
+    int32_t c = ch();
+
+    if (isDigit(c) && c - '0' < base) {
+      valueChars.add(static_cast<char>(c));
+      allowSeparator = true;
+      isPreviousTokenSeparator = false;
+    } else if (c == '_') {
+      state.tokenFlags |= TokenFlags::ContainsSeparator;
+      if (allowSeparator) {
+        allowSeparator = false;
+        isPreviousTokenSeparator = true;
+      } else if (isPreviousTokenSeparator) {
+        errorAt<diagnostics::DiagID::MultipleConsecutiveNumericSeparatorsAreNotPermitted>(
+            state.curPtr, 1);
+      } else {
+        errorAt<diagnostics::DiagID::NumericSeparatorsAreNotAllowedHere>(state.curPtr, 1);
+      }
+    } else {
+      break;
+    }
+    state.curPtr++;
+  }
+
+  if (isPreviousTokenSeparator) {
+    errorAt<diagnostics::DiagID::NumericSeparatorsAreNotAllowedHere>(state.curPtr - 1, 1);
+  }
+
+  return stringPool.intern(valueChars.releaseAsArray());
+}
+
+void Lexer::Impl::lex() {
+  state.fullStartPtr = state.curPtr;
+  state.tokenFlags = TokenFlags::None;
+
+  while (true) {
+    state.tokenStartPtr = state.curPtr;
+    int32_t c = ch();
+
+    switch (c) {
+      case '\r':
+      case '\n':
+        state.tokenFlags |= TokenFlags::PrecedingLineBreak;
+        state.curPtr++;
+        continue;
+      case ' ':   // space
+      case '\t':  // tab
+      case '\v':  // vertical tab
+      case '\f':  // form feed
+        state.curPtr++;
+        continue;
+      case '!':
+        if (charAt(1) == '=') {
+          if (charAt(2) == '=') {
+            state.curPtr += 3;
+            return formToken(ast::SyntaxKind::ExclamationEqualsEquals);
+          }
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::ExclamationEquals);
+        }
+        if (charAt(1) == '!') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::ErrorUnwrap);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Exclamation);
+      case '"':
+      case '\'': {
+        zc::StringPtr str = lexString();
+        return formToken(ast::SyntaxKind::StringLiteral, str);
+      }
+      case '`': {
+        zc::StringPtr str;
+        ast::SyntaxKind kind = lexTemplateAndRetTokenValue(false, str);
+        formToken(kind, str);
+        return;
+      }
+      case '%':
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::PercentEquals);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Percent);
+      case '&':
+        if (charAt(1) == '&') {
+          if (charAt(2) == '=') {
+            state.curPtr += 3;
+            return formToken(ast::SyntaxKind::AmpersandAmpersandEquals);
+          }
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::AmpersandAmpersand);
+        }
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::AmpersandEquals);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Ampersand);
+      case '(':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::LeftParen);
+      case ')':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::RightParen);
+      case '*':
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::AsteriskEquals);
+        }
+        if (charAt(1) == '*') {
+          if (charAt(2) == '=') {
+            state.curPtr += 3;
+            return formToken(ast::SyntaxKind::AsteriskAsteriskEquals);
+          }
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::AsteriskAsterisk);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Asterisk);
+      case '+':
+        if (charAt(1) == '+') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::PlusPlus);
+        }
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::PlusEquals);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Plus);
+      case ',':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Comma);
+      case '-':
+        if (charAt(1) == '-') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::MinusMinus);
+        }
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::MinusEquals);
+        }
+        if (charAt(1) == '>') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::Arrow);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Minus);
+      case '.':
+        if (isdigit(charAt(1))) { return lexNumber(); }
+        if (charAt(1) == '.' && charAt(2) == '.') {
+          state.curPtr += 3;
+          return formToken(ast::SyntaxKind::DotDotDot);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Period);
+      case '/':
+        // Single-line comment
+        if (charAt(1) == '/') {
+          state.curPtr += 2;
+
+          while (true) {
+            auto [code, size] = charWithSize();
+            if (size == 0 || isLineBreak(code)) { break; }
+            state.curPtr += size;
+          }
+
+          processCommentDirective(state.tokenStartPtr, state.curPtr, false);
+          continue;
+        }
+
+        // Multi-line comment
+        if (charAt(1) == '*') {
+          state.curPtr += 2;
+
+          bool commentClosed = false;
+          const zc::byte* lastLineStartPtr = state.tokenStartPtr;
+
+          while (true) {
+            auto [code, size] = charWithSize();
+            if (size == 0) { break; }
+
+            if (code == '*' && charAt(1) == '/') {
+              state.curPtr += 2;
+              commentClosed = true;
+              break;
+            }
+
+            state.curPtr += size;
+
+            if (isLineBreak(code)) {
+              lastLineStartPtr = state.curPtr;
+              state.tokenFlags |= TokenFlags::PrecedingLineBreak;
+            }
+          }
+
+          processCommentDirective(lastLineStartPtr, state.curPtr, true);
+
+          if (!commentClosed) { error<diagnostics::DiagID::AsteriskSlashExpected>(); }
+
+          continue;
+        }
+
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::SlashEquals);
+        }
+
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Slash);
+      case '0':
+        if (charAt(1) == 'X' || charAt(1) == 'x') {
+          const zc::byte* start = state.curPtr;
+          state.curPtr += 2;
+          zc::StringPtr digits = lexHexDigits(1, true, true);
+          if (digits == ""_zc) {
+            error<diagnostics::DiagID::HexadecimalDigitExpected>();
+            digits = "0"_zc;
+          }
+          zc::StringPtr rawText = stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars());
+          zc::StringPtr tokenValue;
+          if (rawText.startsWith("0x") && rawText.slice(2) == digits) {
+            tokenValue = digits;
+          } else {
+            tokenValue = stringPool.intern("0x", digits);
+          }
+          state.tokenFlags |= TokenFlags::HexSpecifier;
+          return formToken(ast::SyntaxKind::IntegerLiteral, tokenValue);
+        }
+        if (charAt(1) == 'B' || charAt(1) == 'b') {
+          state.curPtr += 2;
+          zc::StringPtr digits = lexBinaryOrOctalDigits(2);
+          if (digits == ""_zc) {
+            error<diagnostics::DiagID::BinaryOrOctalDigitExpected>();
+            digits = "0"_zc;
+          }
+          zc::StringPtr tokenValue = stringPool.intern("0b", digits);
+          state.tokenFlags |= TokenFlags::BinarySpecifier;
+          return formToken(ast::SyntaxKind::IntegerLiteral, tokenValue);
+        }
+        if (charAt(1) == 'O' || charAt(1) == 'o') {
+          state.curPtr += 2;
+          zc::StringPtr digits = lexBinaryOrOctalDigits(8);
+          if (digits == ""_zc) {
+            error<diagnostics::DiagID::OctalDigitExpected>();
+            digits = "0"_zc;
+          }
+          zc::StringPtr tokenValue = stringPool.intern("0o", digits);
+          state.tokenFlags |= TokenFlags::OctalSpecifier;
+          return formToken(ast::SyntaxKind::IntegerLiteral, tokenValue);
+        }
+        ZC_FALLTHROUGH;
+      case '1' ... '9':
+        return lexNumber();
+      case ':':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Colon);
+      case ';':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Semicolon);
+      case '<':
+        if (charAt(1) == '<') {
+          if (charAt(2) == '=') {
+            state.curPtr += 3;
+            return formToken(ast::SyntaxKind::LessThanLessThanEquals);
+          }
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::LessThanLessThan);
+        }
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::LessThanEquals);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::LessThan);
+      case '=':
+        if (charAt(1) == '=') {
+          if (charAt(2) == '=') {
+            state.curPtr += 3;
+            return formToken(ast::SyntaxKind::EqualsEqualsEquals);
+          }
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::EqualsEquals);
+        }
+        if (charAt(1) == '>') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::EqualsGreaterThan);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Equals);
+      case '>':
+        if (charAt(1) == '>') {
+          if (charAt(2) == '=') {
+            state.curPtr += 3;
+            return formToken(ast::SyntaxKind::GreaterThanGreaterThanEquals);
+          }
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::GreaterThanGreaterThan);
+        }
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::GreaterThanEquals);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::GreaterThan);
+      case '?':
+        if (charAt(1) == '.' && isdigit(charAt(2))) {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::QuestionDot);
+        }
+        if (charAt(1) == '?') {
+          if (charAt(2) == '=') {
+            state.curPtr += 3;
+            return formToken(ast::SyntaxKind::QuestionQuestionEquals);
+          }
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::QuestionQuestion);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Question);
+      case '[':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::LeftBracket);
+      case ']':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::RightBracket);
+      case '^':
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::CaretEquals);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Caret);
+      case '{':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::LeftBrace);
+      case '|':
+        if (charAt(1) == '|') {
+          if (charAt(2) == '=') {
+            state.curPtr += 3;
+            return formToken(ast::SyntaxKind::BarBarEquals);
+          }
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::BarBar);
+        }
+        if (charAt(1) == '=') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::BarEquals);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Bar);
+      case '}':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::RightBrace);
+      case '~':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Tilde);
+      case '@':
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::At);
+      case '\\': {
+        const int32_t cp = peekUnicodeEscape();
+
+        if (cp >= 0 && isIdentifierStart(cp)) {
+          zc::StringPtr tokenValue =
+              stringPool.intern(encodeUtf8(lexUnicodeEscape(true)), lexIdentifierParts());
+          return getIdentifierToken(tokenValue);
+        }
+
+        return lexInvalidCharacter();
+      }
+      case '#':
+        if (charAt(1) == '!') {
+          if (state.curPtr == bufferStart) {
+            state.curPtr += 2;
+            while (true) {
+              auto [code, size] = charWithSize();
+              if (size == 0 || isLineBreak(code)) { break; }
+              state.curPtr += size;
+            }
+            continue;
+          }
+          errorAt<diagnostics::DiagID::XCanOnlyUsedAtStartOfFile>(state.curPtr, 2);
+          state.curPtr++;
+          return formToken(ast::SyntaxKind::Unknown);
+        }
+        state.curPtr++;
+        return formToken(ast::SyntaxKind::Hash);
+      default:
+        if (c < 0) { return formToken(ast::SyntaxKind::EndOfFile); }
+        ZC_IF_SOME(tokenValue, lexIdentifier(0)) { return getIdentifierToken(tokenValue); }
+        auto [code, size] = charWithSize();
+        if (code == kInvalidCodePoint && size == 1) {
+          errorAt<diagnostics::DiagID::FileAppearsToBeBinary>(bufferStart, 0);
+          state.curPtr = bufferEnd;
+          return formToken(ast::SyntaxKind::NonTextFileMarker);
+        }
+        if (isWhiteSpaceSingleLine(code)) {
+          state.curPtr += size;
+          continue;
+        }
+        if (isLineBreak(code)) {
+          state.tokenFlags |= TokenFlags::PrecedingLineBreak;
+          state.curPtr += size;
+          continue;
+        }
+        return lexInvalidCharacter();
+    }
+  }
+}
+
+zc::Maybe<zc::StringPtr> Lexer::Impl::lexIdentifier(int32_t prefixLength) {
+  const zc::byte* start = state.curPtr;
+  state.curPtr += prefixLength;
+  int32_t ch = this->ch();
+
+  // Fast path for simple ASCII identifiers
+  if (isASCIILetter(ch) || ch == '_' || ch == '$') {
+    while (true) {
+      state.curPtr++;
+      ch = this->ch();
+      if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') ||
+            ch == '_' || ch == '$')) {
+        break;
+      }
+    }
+    if (ch < 0x80 && ch != '\\') {
+      return stringPool.intern(
+          zc::heapString(reinterpret_cast<const char*>(start), state.curPtr - start));
+    }
+    state.curPtr = start + prefixLength;
+  }
+
+  auto [decodedChar, size] = charWithSize();
+  ch = decodedChar;
+
+  if (isIdentifierStart(ch)) {
+    while (true) {
+      state.curPtr += size;
+      auto [nextChar, nextSize] = charWithSize();
+      ch = nextChar;
+      size = nextSize;
+      if (!isIdentifierPart(ch)) { break; }
+    }
+
+    zc::StringPtr tokenValue = stringPool.intern(
+        zc::heapString(reinterpret_cast<const char*>(start), state.curPtr - start));
+    if (ch == '\\') { tokenValue = stringPool.intern(tokenValue, lexIdentifierParts()); }
+    return tokenValue;
+  }
+
+  return zc::none;
+}
+
+int32_t Lexer::Impl::peekUnicodeEscape() {
+  if (charAt(1) == 'u') {
+    const zc::byte* savePtr = state.curPtr;
+    const TokenFlags saveTokenFlags = state.tokenFlags;
+    const int32_t codePoint = lexUnicodeEscape(false);
+    state.curPtr = savePtr;
+    state.tokenFlags = saveTokenFlags;
+    return codePoint;
+  }
+  return -1;
+}
+
+void Lexer::Impl::lexNumber() {
+  const zc::byte* start = state.curPtr;
+  zc::StringPtr fixedPart;
+
+  if (ch() == '0') {
+    state.curPtr++;
+    if (ch() == '_') {
+      state.tokenFlags |= TokenFlags::ContainsSeparator | TokenFlags::ContainsInvalidSeparator;
+      errorAt<diagnostics::DiagID::NumericSeparatorsAreNotAllowedHere>(state.curPtr, 1);
+      state.curPtr = start;
+      fixedPart = lexNumberFragment();
+    } else {
+      auto [digits, isOctal] = lexDigits();
+      if (digits == ""_zc) {
+        // Single zero
+        fixedPart = "0"_zc;
+      } else if (!isOctal) {
+        // NonOctalDecimalIntegerLiteral - leading zero with non-octal digits
+        state.tokenFlags |= TokenFlags::ContainsLeadingZero;
+        fixedPart = digits;
+      } else {
+        // Octal literal (legacy)
+        state.tokenFlags |= TokenFlags::Octal;
+
+        zc::StringPtr octalDigits = digits;
+        // Use standard strtoll for octal parsing since zc::String::parseAs doesn't support radix
+        // argument
+        int64_t octalValue = strtoll(octalDigits.cStr(), nullptr, 8);
+        zc::StringPtr decimalValue = stringPool.intern(octalValue);
+
+        // Check if we have a preceding minus token for proper diagnostic range
+        const bool withMinus = state.token.is(ast::SyntaxKind::Minus);
+        zc::StringPtr suggestion = stringPool.intern(withMinus ? "-0o" : "0o", octalDigits);
+        const zc::byte* errorStart = withMinus ? start - 1 : start;
+        const size_t errorLength = withMinus ? state.curPtr - start + 1 : state.curPtr - start;
+
+        // Report error: Octal literals are not allowed. Use the syntax '0o...'
+        errorAt<diagnostics::DiagID::OctalLiteralsAreNotAllowedUseTheSyntax0o>(
+            errorStart, errorLength, suggestion);
+
+        // Fallback: Treat as decimal integer literal for recovery
+        // We'll use the parsed octal value as the token value so compilation can proceed with
+        // intended value
+        return formToken(ast::SyntaxKind::IntegerLiteral, decimalValue);
+      }
+    }
+  } else {
+    fixedPart = lexNumberFragment();
+  }
+
+  const zc::byte* fixedPartEnd = state.curPtr;
+  zc::StringPtr fractionalPart = ""_zc;
+  zc::StringPtr exponentPart = ""_zc;
+  zc::StringPtr exponentPreamble = ""_zc;
+
+  if (ch() == '.') {
+    state.curPtr++;
+    fractionalPart = lexNumberFragment();
+  }
+
+  const zc::byte* end = state.curPtr;
+  if (ch() == 'E' || ch() == 'e') {
+    state.curPtr++;
+    state.tokenFlags |= TokenFlags::Scientific;
+    if (ch() == '+' || ch() == '-') { state.curPtr++; }
+    const zc::byte* startNumericPart = state.curPtr;
+    exponentPart = lexNumberFragment();
+    if (exponentPart == ""_zc) {
+      error<diagnostics::DiagID::DigitExpected>();
+    } else {
+      exponentPreamble = stringPool.intern(zc::arrayPtr(end, startNumericPart).asChars());
+      end = state.curPtr;
+    }
+  }
+
+  zc::StringPtr tokenValue;
+  if (hasFlag(state.tokenFlags, TokenFlags::ContainsSeparator)) {
+    tokenValue = fixedPart;
+    if (fractionalPart != ""_zc) {
+      tokenValue = stringPool.intern(tokenValue, ".", fractionalPart);
+    }
+    if (exponentPart != ""_zc) {
+      tokenValue = stringPool.intern(tokenValue, exponentPreamble, exponentPart);
+    }
+  } else {
+    tokenValue = stringPool.intern(zc::arrayPtr(start, end).asChars());
+  }
+
+  if (hasFlag(state.tokenFlags, TokenFlags::ContainsLeadingZero)) {
+    errorAt<diagnostics::DiagID::DecimalsWithLeadingZerosAreNotAllowed>(start,
+                                                                        state.curPtr - start);
+    // Normalize the value by parsing as number and converting back to string
+    // This removes leading zeros while preserving the numeric value
+    if (fractionalPart != ""_zc || hasFlag(state.tokenFlags, TokenFlags::Scientific)) {
+      // For floating point numbers, parse as double
+      double floatValue = tokenValue.parseAs<double>();
+      tokenValue = stringPool.intern(floatValue);
+    } else {
+      // For integers, parse as int64_t
+      int64_t intValue = tokenValue.parseAs<int64_t>();
+      tokenValue = stringPool.intern(intValue);
+    }
+  }
+
+  ast::SyntaxKind result;
+  if (fixedPartEnd == state.curPtr) {
+    result = lexBigIntSuffix(tokenValue);
+  } else {
+    // Additional characters consumed (fractional part or scientific notation)
+    // Normalize the token value and set appropriate result type
+    if (fractionalPart != ""_zc || hasFlag(state.tokenFlags, TokenFlags::Scientific)) {
+      result = ast::SyntaxKind::FloatLiteral;
+      tokenValue = stringPool.intern(tokenValue.parseAs<double>());
+    } else {
+      result = ast::SyntaxKind::IntegerLiteral;
+      tokenValue = stringPool.intern(tokenValue.parseAs<int64_t>());
+    }
+  }
+
+  // Identifier start check after number
+  auto [code, size] = charWithSize();
+  if (isIdentifierStart(code)) {
+    const zc::byte* idStart = state.curPtr;
+    zc::StringPtr id = lexIdentifierParts();
+
+    // Check if it was a BigInt 'n' that we missed earlier
+    if (result != ast::SyntaxKind::BigIntLiteral && id.size() == 1 && id == "n"_zc) {
+      if (hasFlag(state.tokenFlags, TokenFlags::Scientific)) {
+        errorAt<diagnostics::DiagID::ABigIntLiteralCannotUseExponentialNotation>(
+            start, state.curPtr - start);
+        return formToken(result, tokenValue);
+      }
+      if (fixedPartEnd < idStart) {
+        errorAt<diagnostics::DiagID::ABigIntLiteralMustBeAnInteger>(start, state.curPtr - start);
+        return formToken(result, tokenValue);
+      }
+    }
+
+    errorAt<diagnostics::DiagID::AnIdentifierOrKeywordCannotImmediatelyFollowANumericLiteral>(
+        idStart, state.curPtr - idStart);
+    state.curPtr = idStart;
+  }
+
+  return formToken(result, tokenValue);
+}
+
+zc::StringPtr Lexer::Impl::lexNumberFragment() {
+  const zc::byte* start = state.curPtr;
+  bool allowSeparator = false;
+  bool isPreviousTokenSeparator = false;
+  zc::Vector<char> result;
+
+  while (true) {
+    int32_t c = ch();
+    if (c == '_') {
+      state.tokenFlags |= TokenFlags::ContainsSeparator;
+      if (allowSeparator) {
+        allowSeparator = false;
+        isPreviousTokenSeparator = true;
+        result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      } else {
+        state.tokenFlags |= TokenFlags::ContainsInvalidSeparator;
+        if (isPreviousTokenSeparator) {
+          errorAt<diagnostics::DiagID::MultipleConsecutiveNumericSeparatorsAreNotPermitted>(
+              state.curPtr, 1);
+        } else {
+          errorAt<diagnostics::DiagID::NumericSeparatorsAreNotAllowedHere>(state.curPtr, 1);
+        }
+      }
+      state.curPtr++;
+      start = state.curPtr;
+      continue;
+    }
+    if (isDigit(c)) {
+      allowSeparator = true;
+      isPreviousTokenSeparator = false;
+      state.curPtr++;
+      continue;
+    }
+    break;
+  }
+
+  if (isPreviousTokenSeparator) {
+    state.tokenFlags |= TokenFlags::ContainsInvalidSeparator;
+    errorAt<diagnostics::DiagID::NumericSeparatorsAreNotAllowedHere>(state.curPtr - 1, 1);
+  }
+
+  result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+  return stringPool.intern(result.releaseAsArray());
+}
+
+std::pair<zc::StringPtr, bool> Lexer::Impl::lexDigits() {
+  const zc::byte* start = state.curPtr;
+  bool isOctal = true;
+  while (isDigit(ch())) {
+    if (!isOctalDigit(static_cast<zc::byte>(ch()))) { isOctal = false; }
+    state.curPtr++;
+  }
+  if (state.curPtr == start) { return {""_zc, isOctal}; }
+  return {stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars()), isOctal};
+}
+
+ast::SyntaxKind Lexer::Impl::lexBigIntSuffix(zc::StringPtr& tokenValue) {
+  if (ch() == 'n') {
+    tokenValue = stringPool.intern(tokenValue, "n");
+    if (hasFlag(state.tokenFlags, TokenFlags::BinaryOrOctalSpecifier)) {
+      // Use the utility function to convert binary/octal string to its base-10 representation.
+      zc::String base10Value = parsePseudoBigInt(tokenValue);
+      tokenValue = stringPool.intern(base10Value, "n");
+    }
+    state.curPtr++;
+    return ast::SyntaxKind::BigIntLiteral;
+  }
+
+  // Parse integer value to normalize it (e.g. remove leading zeros)
+  // Only if not already processed above (BinaryOrOctalSpecifier)
+  int64_t intValue = hasFlag(state.tokenFlags, TokenFlags::BinarySpecifier)
+                         ? strtoll(tokenValue.slice(2).cStr(), nullptr, 2)
+                     : hasFlag(state.tokenFlags, TokenFlags::OctalSpecifier)
+                         ? strtoll(tokenValue.slice(2).cStr(), nullptr, 8)
+                         : tokenValue.parseAs<int64_t>();
+
+  tokenValue = stringPool.intern(intValue);
+  return ast::SyntaxKind::IntegerLiteral;
+}
+
+ast::SyntaxKind Lexer::Impl::lexTemplateAndRetTokenValue(bool shouldEmitInvalidEscapeError,
+                                                         zc::StringPtr& outValue) {
+  const bool startedWithBacktick = ch() == '`';
+
+  state.curPtr++;
+  const zc::byte* start = state.curPtr;
+
+  zc::Vector<char> result;
+  ast::SyntaxKind tokenKind = ast::SyntaxKind::Unknown;
+
+  while (true) {
+    if (state.curPtr >= bufferEnd) {
+      result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      state.tokenFlags |= TokenFlags::Unterminated;
+      error<diagnostics::DiagID::UnterminatedTemplateLiteral>();
+      tokenKind = startedWithBacktick ? ast::SyntaxKind::NoSubstitutionTemplateLiteral
+                                      : ast::SyntaxKind::TemplateTail;
+      break;
+    }
+
+    const zc::byte c = ch();
+    if (c == '`') {
+      result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      state.curPtr++;
+      tokenKind = startedWithBacktick ? ast::SyntaxKind::NoSubstitutionTemplateLiteral
+                                      : ast::SyntaxKind::TemplateTail;
+      break;
+    }
+
+    if (c == '$' && state.curPtr + 1 < bufferEnd && *(state.curPtr + 1) == '{') {
+      result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      state.curPtr += 2;
+      tokenKind =
+          startedWithBacktick ? ast::SyntaxKind::TemplateHead : ast::SyntaxKind::TemplateMiddle;
+      break;
+    }
+
+    if (c == '\\') {
+      result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      EscapeSequenceScanningFlags flags = EscapeSequenceScanningFlags::String;
+      if (shouldEmitInvalidEscapeError) { flags |= EscapeSequenceScanningFlags::ReportErrors; }
+      zc::StringPtr esc = lexEscapeSequence(flags);
+      result.addAll(esc.asArray());
+      start = state.curPtr;
+      continue;
+    }
+
+    if (c == '\r') {
+      result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      state.curPtr++;
+      if (state.curPtr < bufferEnd && ch() == '\n') { state.curPtr++; }
+      result.add('\n');
+      start = state.curPtr;
+      continue;
+    }
+
+    state.curPtr++;
+  }
+
+  ZC_DASSERT(tokenKind != ast::SyntaxKind::Unknown);
+
+  outValue = stringPool.intern(result.releaseAsArray());
+  return tokenKind;
+}
+
+zc::StringPtr Lexer::Impl::lexIdentifierParts() {
+  zc::Vector<char> result;
+  const zc::byte* start = state.curPtr;
+
+  while (true) {
+    auto [code, size] = charWithSize();
+    if (isIdentifierPart(code)) {
+      state.curPtr += size;
+      continue;
+    }
+
+    if (ch() == '\\') {
+      const int32_t escaped = peekUnicodeEscape();
+      if (escaped >= 0 && isIdentifierPart(escaped)) {
+        result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+        zc::String utf8 = encodeUtf8(lexUnicodeEscape(true));
+        result.addAll(utf8.asArray());
+        start = state.curPtr;
+        continue;
+      }
+    }
+    break;
+  }
+  result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+  return stringPool.intern(result.releaseAsArray());
+}
+
+zc::StringPtr Lexer::Impl::lexString() {
+  zc::byte quoteChar = ch();
+  state.curPtr++;
+  zc::Vector<char> result;
+  const zc::byte* start = state.curPtr;
+
+  while (true) {
+    if (state.curPtr >= bufferEnd) {
+      result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      state.tokenFlags |= TokenFlags::Unterminated;
+      error<diagnostics::DiagID::UnterminatedString>();
+      break;
+    }
+    const zc::byte c = ch();
+    if (c == quoteChar) {
+      result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      state.curPtr++;
+      break;
+    }
+    if (c == '\\') {
+      result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      zc::StringPtr esc = lexEscapeSequence(EscapeSequenceScanningFlags::String |
+                                            EscapeSequenceScanningFlags::ReportErrors);
+      result.addAll(esc.asArray());
+      start = state.curPtr;
+      continue;
+    }
+    if ((c == '\n' || c == '\r')) {
+      result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
+      state.tokenFlags |= TokenFlags::Unterminated;
+      error<diagnostics::DiagID::UnterminatedString>();
+      break;
+    }
+    state.curPtr++;
+  }
+  return stringPool.intern(result.releaseAsArray());
+}
+
+zc::StringPtr Lexer::Impl::lexEscapeSequence(EscapeSequenceScanningFlags flags) {
+  const zc::byte* start = state.curPtr;
+  state.curPtr++;
+  if (state.curPtr >= bufferEnd) {
+    error<diagnostics::DiagID::UnexpectedEndOfText>();
+    return ""_zc;
+  }
+
+  zc::byte c = ch();
+  state.curPtr++;
+  switch (c) {
+    case '0':
+      if (state.curPtr >= bufferEnd || !isdigit(ch())) { return "\0"_zc; }
+      ZC_FALLTHROUGH;
+    case '1':
+    case '2':
+    case '3':
+      if (state.curPtr < bufferEnd && isOctalDigit(ch())) { state.curPtr++; }
+      ZC_FALLTHROUGH;
+    case '4':
+    case '5':
+    case '6':
+    case '7': {
+      if (state.curPtr < bufferEnd && isOctalDigit(ch())) { state.curPtr++; }
+      state.tokenFlags |= TokenFlags::ContainsInvalidEscape;
+      if (hasFlag(flags, EscapeSequenceScanningFlags::ReportInvalidEscapeErrors)) {
+        // Parse octal value
+        uint32_t code = parseOctalValue(zc::arrayPtr(start + 1, state.curPtr));
+        zc::String hexValue = formatHexValue(code);
+
+        if (hasFlag(flags, EscapeSequenceScanningFlags::RegularExpression) &&
+            !hasFlag(flags, EscapeSequenceScanningFlags::AtomEscape) && c != '0') {
+          error<diagnostics::DiagID::OctalEscapeSequencesAndBackreferencesNotAllowed>(
+              zc::mv(hexValue));
+        } else {
+          error<diagnostics::DiagID::OctalEscapeSequencesNotAllowed>(zc::mv(hexValue));
+        }
+        return stringPool.intern(encodeUtf8(code));
+      }
+      return stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars());
+    }
+    case '8':
+    case '9': {
+      state.tokenFlags |= TokenFlags::ContainsInvalidEscape;
+      if (hasFlag(flags, EscapeSequenceScanningFlags::ReportInvalidEscapeErrors)) {
+        if (hasFlag(flags, EscapeSequenceScanningFlags::RegularExpression) &&
+            !hasFlag(flags, EscapeSequenceScanningFlags::AtomEscape)) {
+          error<diagnostics::DiagID::DecimalEscapeSequencesAndBackreferencesNotAllowed>(
+              formatHexValue(c - '0'));
+        } else {
+          error<diagnostics::DiagID::EscapeSequenceNotAllowed>(
+              zc::heapString(zc::arrayPtr(start, state.curPtr).asChars()));
+        }
+        return stringPool.intern(encodeUtf8(c));
+      }
+      return stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars());
+    }
+    case 'b':
+      return stringPool.intern('\b');
+    case 't':
+      return stringPool.intern('\t');
+    case 'n':
+      return stringPool.intern('\n');
+    case 'v':
+      return stringPool.intern('\v');
+    case 'f':
+      return stringPool.intern('\f');
+    case 'r':
+      return stringPool.intern('\r');
+    case '\'':
+      return stringPool.intern('\'');
+    case '"':
+      return stringPool.intern('"');
+    case 'u': {
+      // '\uDDDD' and '\U{DDDDDD}'
+      state.curPtr -= 2;
+      uint32_t codePoint =
+          lexUnicodeEscape(hasFlag(flags, EscapeSequenceScanningFlags::ReportInvalidEscapeErrors));
+      if (codePoint < 0) { return stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars()); }
+      return stringPool.intern(encodeUtf8(codePoint));
+    }
+    case 'x': {
+      for (; state.curPtr < start + 4; state.curPtr++) {
+        if (!(state.curPtr < bufferEnd && isxdigit(*state.curPtr))) {
+          state.tokenFlags |= TokenFlags::ContainsInvalidEscape;
+          if (hasFlag(flags, EscapeSequenceScanningFlags::ReportInvalidEscapeErrors)) {
+            error<diagnostics::DiagID::InvalidCharacter>();
+          }
+          return stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars());
+        }
+      }
+      state.tokenFlags |= TokenFlags::HexEscape;
+      int code = 0;
+      zc::byte h1 = *(start + 2);
+      zc::byte h2 = *(start + 3);
+      auto hexVal = [](zc::byte h) -> int {
+        if (h >= '0' && h <= '9') return h - '0';
+        if (h >= 'A' && h <= 'F') return h - 'A' + 10;
+        return h - 'a' + 10;
+      };
+      code = (hexVal(h1) << 4) | hexVal(h2);
+      return stringPool.intern(static_cast<char>(code));
+    }
+    case '\r':
+      if (state.curPtr < bufferEnd && ch() == '\n') { state.curPtr++; }
+      ZC_FALLTHROUGH;
+    case '\n':
+      return ""_zc;
+    default:
+      if (hasFlag(flags, EscapeSequenceScanningFlags::AnyUnicodeMode) ||
+          hasFlag(flags, EscapeSequenceScanningFlags::RegularExpression) ||
+          (hasFlag(flags, EscapeSequenceScanningFlags::AnnexB) && isIdentifierPart(c))) {
+        error<diagnostics::DiagID::ThisCharCannotBeEscapedInARegularExpression>();
+      }
+      return stringPool.intern(encodeUtf8(c));
+  }
+}
+
+int32_t Lexer::Impl::lexUnicodeEscape(bool shouldEmitInvalidEscapeError) {
+  state.curPtr += 2;
+  const zc::byte* start = state.curPtr;
+  bool extended = ch() == '{';
+  zc::StringPtr hexDigits;
+
+  if (extended) {
+    state.curPtr++;
+    state.tokenFlags |= TokenFlags::ExtendedUnicodeEscape;
+    hexDigits = lexHexDigits(1, true, false);
+  } else {
+    state.tokenFlags |= TokenFlags::UnicodeEscape;
+    hexDigits = lexHexDigits(4, false, false);
+  }
+
+  if (hexDigits == ""_zc) {
+    state.tokenFlags |= TokenFlags::ContainsInvalidEscape;
+    if (shouldEmitInvalidEscapeError) {
+      error<diagnostics::DiagID::HexadecimalDigitExpected>();
+      return -1;
+    }
+  }
+
+  uint32_t hexValue = parseHexValue(hexDigits);
+  if (extended) {
+    if (hexValue > 0x10FFFF) {
+      state.tokenFlags |= TokenFlags::ContainsInvalidEscape;
+      if (shouldEmitInvalidEscapeError) {
+        errorAt<diagnostics::DiagID::ExtendedUnicodeEscapeValueOutOfRange>(
+            start + 1, state.curPtr - start - 1);
+      }
+      return -1;
+    }
+
+    if (ch() == '}') {
+      state.tokenFlags |= TokenFlags::ContainsInvalidEscape;
+      if (shouldEmitInvalidEscapeError) {
+        error<diagnostics::DiagID::UnterminatedUnicodeEscapeSequence>();
+      }
+      return -1;
+    }
+    state.curPtr++;
+  }
+
+  return hexValue;
+}
+
+void Lexer::Impl::lexInvalidCharacter() {
+  auto [code, size] = charWithSize();
+  errorAt<diagnostics::DiagID::InvalidCharacter>(state.curPtr, size);
+  state.curPtr += size;
+  return formToken(ast::SyntaxKind::Unknown);
+}
+
+template <diagnostics::DiagID ID, typename... Args>
+void Lexer::Impl::errorAt(const zc::byte* pos, uint32_t length, Args&&... args) {
+  source::SourceLoc loc(pos);
+  source::CharSourceRange range(loc, length);
+  diagnosticEngine.diagnose<ID>(loc, zc::fwd<Args>(args)...).addRange(range);
+}
+
+template <diagnostics::DiagID ID, typename... Args>
+void Lexer::Impl::error(Args&&... args) {
+  source::SourceLoc loc = sourceMgr.getLocForOffset(bufferId, state.tokenStartPtr - bufferStart);
+  diagnosticEngine.diagnose<ID>(loc, zc::fwd<Args>(args)...);
+}
 
 Lexer::Lexer(const source::SourceManager& sourceMgr,
              diagnostics::DiagnosticEngine& diagnosticEngine, const basic::LangOptions& options,
-             const source::BufferId& bufferId)
-    : impl(zc::heap<Impl>(sourceMgr, diagnosticEngine, options, bufferId)) {}
+             basic::StringPool& stringPool, const source::BufferId& bufferId)
+    : impl(zc::heap<Impl>(sourceMgr, diagnosticEngine, options, stringPool, bufferId)) {}
 
 Lexer::~Lexer() = default;
 
-const zc::byte* Lexer::Impl::getBufferPtrForSourceLoc(const source::SourceLoc loc) const {
-  return bufferStart + sourceMgr.getLocOffsetInBuffer(loc, bufferId);
-}
-
-const zc::byte* Lexer::getBufferPtrForSourceLoc(source::SourceLoc Loc) const {
-  return impl->getBufferPtrForSourceLoc(Loc);
-}
-
-void Lexer::lex(Token& result) {
-  result = impl->nextToken;
-  impl->currentTokenTriviaStartPtr = impl->triviaStartPtr;
-
-  impl->shiftTokenCache();
-
-  impl->lexImpl();
-}
-
-const Token& Lexer::peekNextToken() const { return impl->nextToken; }
-
-const Token& Lexer::lookAhead(unsigned n) { return impl->lookAheadToken(n); }
-
-bool Lexer::canLookAhead(unsigned n) { return impl->canLookAheadToken(n); }
-
-LexerState Lexer::getStateForBeginningOfToken(const Token& tok) const {
-  return LexerState(tok.getLocation(), impl->currentMode);
+void Lexer::lex(Token& outToken) {
+  impl->lex();
+  outToken = impl->state.token;
 }
 
 void Lexer::restoreState(LexerState s, bool enableDiagnostics) {
-  impl->curPtr = getBufferPtrForSourceLoc(s.Loc);
-  impl->currentMode = s.mode;
-  impl->lexImpl();
-
-  // Don't re-emit diagnostics from re-advancing the lexer.
-  if (enableDiagnostics) {
-    // impl->diags.ignoreInFlightDiagnostics();
-  }
+  impl->state.curPtr = s.curPtr;
+  impl->state.fullStartPtr = s.fullStartPtr;
+  impl->state.tokenStartPtr = s.tokenStartPtr;
+  impl->state.token = s.token;
+  impl->state.tokenFlags = s.tokenFlags;
 }
 
-void Lexer::enterMode(LexerMode mode) { impl->currentMode = mode; }
+const LexerState Lexer::getCurrentState() const { return impl->state; }
 
-void Lexer::exitMode(LexerMode mode) {
-  if (impl->currentMode == mode) { impl->currentMode = LexerMode::kNormal; }
+const source::SourceLoc Lexer::getFullStartLoc() const {
+  return source::SourceLoc(impl->state.fullStartPtr);
 }
 
-// Full implementations of other methods...
-
-bool Lexer::tryLexRegexLiteral(const zc::byte* tokStart) {
-  // Original implementation...
-  return false;
-}
-
-void Lexer::lexStringLiteral(unsigned customDelimiterLen) {
-  impl->lexStringLiteralImpl(TokenFlags::kNone);
-}
-
-bool Lexer::isCodeCompletion() const { return impl->triviaStartPtr >= impl->bufferEnd; }
-
-void Lexer::setCommentRetentionMode(CommentRetentionMode mode) { impl->commentMode = mode; }
-
-source::SourceLoc Lexer::getLocForStartOfToken(source::SourceLoc loc) const {
-  if (loc.isInvalid()) { return {}; }
-  return {};
-}
-
-source::CharSourceRange Lexer::getCharSourceRangeFromSourceRange(
-    const source::SourceRange& sr) const {
-  return source::CharSourceRange(sr.getStart(), sr.getEnd());
-}
-
-source::SourceLoc Lexer::getFullStartLoc() const {
-  return source::SourceLoc(impl->currentTokenTriviaStartPtr);
+const zc::Vector<CommentDirective>& Lexer::getCommentDirectives() const {
+  return impl->commentDirectives;
 }
 
 }  // namespace lexer

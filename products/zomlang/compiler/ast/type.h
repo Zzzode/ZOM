@@ -17,6 +17,7 @@
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/classof.h"
 #include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/ast/visitor.h"
 
@@ -37,32 +38,36 @@ public:
   virtual ~TypeNode() noexcept(false) = default;
 
   /// \brief Check if a node is a TypeNode
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::TypeReferenceNode || kind == SyntaxKind::ArrayTypeNode ||
-           kind == SyntaxKind::UnionTypeNode || kind == SyntaxKind::IntersectionTypeNode ||
-           kind == SyntaxKind::ParenthesizedTypeNode || kind == SyntaxKind::PredefinedTypeNode ||
-           kind == SyntaxKind::BoolTypeNode || kind == SyntaxKind::I8TypeNode ||
-           kind == SyntaxKind::I16TypeNode || kind == SyntaxKind::I32TypeNode ||
-           kind == SyntaxKind::I64TypeNode || kind == SyntaxKind::U8TypeNode ||
-           kind == SyntaxKind::U16TypeNode || kind == SyntaxKind::U32TypeNode ||
-           kind == SyntaxKind::U64TypeNode || kind == SyntaxKind::F32TypeNode ||
-           kind == SyntaxKind::F64TypeNode || kind == SyntaxKind::StrTypeNode ||
-           kind == SyntaxKind::UnitTypeNode || kind == SyntaxKind::ObjectTypeNode ||
-           kind == SyntaxKind::TupleTypeNode || kind == SyntaxKind::ReturnTypeNode ||
-           kind == SyntaxKind::FunctionTypeNode || kind == SyntaxKind::OptionalTypeNode ||
-           kind == SyntaxKind::TypeQueryNode;
-  }
+  GENERATE_CLASSOF_IMPL(TypeNode)
 
 protected:
-  TypeNode() noexcept = default;
+  using Node::Node;
 };
 
-// Primary type (identifier-based type)
+// ================================================================================
+// PredefinedTypeNode
+
+// Base class for predefined types
+class PredefinedTypeNode : public TypeNode {
+public:
+  ZC_DISALLOW_COPY_AND_MOVE(PredefinedTypeNode);
+
+  virtual zc::StringPtr getName() const = 0;
+
+  /// \brief Check if a node is a PredefinedTypeNode
+  GENERATE_CLASSOF_IMPL(PredefinedTypeNode)
+
+protected:
+  PredefinedTypeNode() noexcept = default;
+};
+
+// ================================================================================
+// TypeReferenceNode
+
 class TypeReferenceNode final : public TypeNode {
 public:
   TypeReferenceNode(zc::Own<Identifier> name,
-                    zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeParameters) noexcept;
+                    zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments) noexcept;
   ~TypeReferenceNode() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(TypeReferenceNode);
@@ -141,18 +146,7 @@ public:
 
 private:
   struct Impl;
-  const zc::Own<Impl> impl;
-};
-
-// Base class for predefined types
-class PredefinedTypeNode : public TypeNode {
-public:
-  ZC_DISALLOW_COPY_AND_MOVE(PredefinedTypeNode);
-
-  virtual zc::StringPtr getName() const = 0;
-
-protected:
-  PredefinedTypeNode() noexcept = default;
+  zc::Own<Impl> impl;
 };
 
 class BoolTypeNode final : public PredefinedTypeNode {
@@ -161,6 +155,42 @@ public:
   ~BoolTypeNode() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(BoolTypeNode);
+
+  zc::StringPtr getName() const override;
+
+  NODE_METHOD_DECLARE();
+};
+
+class StrTypeNode final : public PredefinedTypeNode {
+public:
+  StrTypeNode() noexcept;
+  ~StrTypeNode() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(StrTypeNode);
+
+  zc::StringPtr getName() const override;
+
+  NODE_METHOD_DECLARE();
+};
+
+class UnitTypeNode final : public PredefinedTypeNode {
+public:
+  UnitTypeNode() noexcept;
+  ~UnitTypeNode() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(UnitTypeNode);
+
+  zc::StringPtr getName() const override;
+
+  NODE_METHOD_DECLARE();
+};
+
+class NullTypeNode final : public PredefinedTypeNode {
+public:
+  NullTypeNode() noexcept;
+  ~NullTypeNode() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(NullTypeNode);
 
   zc::StringPtr getName() const override;
 
@@ -321,11 +351,11 @@ private:
   const zc::Own<Impl> impl;
 };
 
-// Return type with optional error type
+// Return type: -> T raises E
 class ReturnTypeNode final : public TypeNode {
 public:
-  ReturnTypeNode(zc::Own<TypeNode> type,
-                 zc::Maybe<zc::Own<TypeNode>> errorType = zc::none) noexcept;
+  explicit ReturnTypeNode(zc::Own<TypeNode> type,
+                          zc::Maybe<zc::Own<TypeNode>> errorType = zc::none) noexcept;
   ~ReturnTypeNode() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ReturnTypeNode);
@@ -340,7 +370,7 @@ private:
   const zc::Own<Impl> impl;
 };
 
-// Function type: (params) -> ReturnType
+// Function type: (T, U) -> R
 class FunctionTypeNode final : public TypeNode {
 public:
   FunctionTypeNode(zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
@@ -361,6 +391,7 @@ private:
   const zc::Own<Impl> impl;
 };
 
+// Optional type: T?
 class OptionalTypeNode final : public TypeNode {
 public:
   explicit OptionalTypeNode(zc::Own<TypeNode> type) noexcept;
@@ -377,10 +408,10 @@ private:
   const zc::Own<Impl> impl;
 };
 
-// TypeNode query: typeof expr
+// Type query: typeof T
 class TypeQueryNode final : public TypeNode {
 public:
-  explicit TypeQueryNode(zc::Own<Expression> expr) noexcept;
+  explicit TypeQueryNode(zc::Own<Expression> expression) noexcept;
   ~TypeQueryNode() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(TypeQueryNode);

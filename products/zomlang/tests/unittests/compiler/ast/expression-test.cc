@@ -48,7 +48,7 @@ ZC_TEST("ExpressionTest.UnaryExpression") {
 }
 
 ZC_TEST("ExpressionTest.AssignmentExpression") {
-  auto lhs = factory::createIdentifier(zc::str("x"));
+  auto lhs = factory::createIdentifier("x"_zc);
   auto rhs = factory::createFloatLiteral(42.0);
   auto op = factory::createTokenNode(SyntaxKind::Equals);
   auto expr = factory::createBinaryExpression(zc::mv(lhs), zc::mv(op), zc::mv(rhs));
@@ -57,7 +57,7 @@ ZC_TEST("ExpressionTest.AssignmentExpression") {
 }
 
 ZC_TEST("ExpressionTest.LiteralExpressions") {
-  auto strLit = factory::createStringLiteral(zc::str("test"));
+  auto strLit = factory::createStringLiteral("test");
   ZC_EXPECT(strLit->getValue() == "test");
 
   auto numLit = factory::createFloatLiteral(3.14);
@@ -71,7 +71,7 @@ ZC_TEST("ExpressionTest.LiteralExpressions") {
 }
 
 ZC_TEST("ExpressionTest.CallExpression") {
-  auto callee = factory::createIdentifier(zc::str("func"));
+  auto callee = factory::createIdentifier("func"_zc);
   zc::Vector<zc::Own<Expression>> args;
   args.add(factory::createIntegerLiteral(1));
   args.add(factory::createIntegerLiteral(2));
@@ -83,7 +83,7 @@ ZC_TEST("ExpressionTest.CallExpression") {
 
 ZC_TEST("ExpressionTest.PostfixUnaryExpression") {
   // Test postfix increment
-  auto operand1 = factory::createIdentifier(zc::str("x"));
+  auto operand1 = factory::createIdentifier("x"_zc);
   auto expr1 = factory::createPostfixUnaryExpression(SyntaxKind::PlusPlus, zc::mv(operand1));
 
   ZC_EXPECT(expr1->getKind() == SyntaxKind::PostfixUnaryExpression);
@@ -91,7 +91,7 @@ ZC_TEST("ExpressionTest.PostfixUnaryExpression") {
   ZC_EXPECT(!expr1->isPrefix());
 
   // Test postfix decrement
-  auto operand2 = factory::createIdentifier(zc::str("y"));
+  auto operand2 = factory::createIdentifier("y"_zc);
   auto expr2 = factory::createPostfixUnaryExpression(SyntaxKind::MinusMinus, zc::mv(operand2));
 
   ZC_EXPECT(expr2->getKind() == SyntaxKind::PostfixUnaryExpression);
@@ -101,17 +101,17 @@ ZC_TEST("ExpressionTest.PostfixUnaryExpression") {
 
 ZC_TEST("ExpressionTest.NewExpression") {
   // Test new expression with arguments
-  auto callee1 = factory::createIdentifier(zc::str("MyClass"));
+  auto callee1 = factory::createIdentifier("MyClass"_zc);
   zc::Vector<zc::Own<Expression>> args1;
   args1.add(factory::createIntegerLiteral(42));
-  args1.add(factory::createStringLiteral(zc::str("test")));
+  args1.add(factory::createStringLiteral("test"_zc));
   auto expr1 = factory::createNewExpression(zc::mv(callee1), zc::mv(args1));
 
   ZC_EXPECT(expr1->getKind() == SyntaxKind::NewExpression);
   ZC_EXPECT(expr1->getArguments().size() == 2);
 
   // Test new expression without arguments
-  auto callee2 = factory::createIdentifier(zc::str("EmptyClass"));
+  auto callee2 = factory::createIdentifier("EmptyClass"_zc);
   zc::Vector<zc::Own<Expression>> args2;
   auto expr2 = factory::createNewExpression(zc::mv(callee2), zc::mv(args2));
 
@@ -122,8 +122,8 @@ ZC_TEST("ExpressionTest.NewExpression") {
 ZC_TEST("ExpressionTest.ConditionalExpression") {
   // Test ternary operator: condition ? consequent : alternate
   auto test = factory::createBooleanLiteral(true);
-  auto consequent = factory::createStringLiteral(zc::str("yes"));
-  auto alternate = factory::createStringLiteral(zc::str("no"));
+  auto consequent = factory::createStringLiteral("yes"_zc);
+  auto alternate = factory::createStringLiteral("no"_zc);
   auto expr =
       factory::createConditionalExpression(zc::mv(test), zc::mv(consequent), zc::mv(alternate));
 
@@ -144,15 +144,15 @@ ZC_TEST("ExpressionTest.ConditionalExpression") {
 ZC_TEST("ExpressionTest.AsExpression") {
   // Test type conversion expression
   auto expression = factory::createIntegerLiteral(42);
-  auto targetType = factory::createPredefinedType(zc::str("str"));
+  auto targetType = factory::createPredefinedType("str"_zc);
   auto expr = factory::createAsExpression(zc::mv(expression), zc::mv(targetType));
 
   ZC_EXPECT(expr->getKind() == SyntaxKind::AsExpression);
 
   // Test with custom type
-  auto expression2 = factory::createIdentifier(zc::str("obj"));
+  auto expression2 = factory::createIdentifier("obj"_zc);
   auto targetType2 =
-      factory::createTypeReference(factory::createIdentifier(zc::str("MyClass")), zc::none);
+      factory::createTypeReference(factory::createIdentifier("MyClass"_zc), zc::none);
   auto expr2 = factory::createAsExpression(zc::mv(expression2), zc::mv(targetType2));
 
   ZC_EXPECT(expr2->getKind() == SyntaxKind::AsExpression);
@@ -160,8 +160,8 @@ ZC_TEST("ExpressionTest.AsExpression") {
 
 ZC_TEST("ExpressionTest.ForcedAsExpression") {
   // Test forced type conversion expression
-  auto expression = factory::createIdentifier(zc::str("value"));
-  auto targetType = factory::createPredefinedType(zc::str("i32"));
+  auto expression = factory::createIdentifier("value"_zc);
+  auto targetType = factory::createPredefinedType("i32"_zc);
   auto expr = factory::createForcedAsExpression(zc::mv(expression), zc::mv(targetType));
 
   ZC_EXPECT(expr->getKind() == SyntaxKind::ForcedAsExpression);
@@ -169,8 +169,8 @@ ZC_TEST("ExpressionTest.ForcedAsExpression") {
 
 ZC_TEST("ExpressionTest.ConditionalAsExpression") {
   // Test conditional type conversion expression
-  auto expression = factory::createIdentifier(zc::str("maybeValue"));
-  auto targetType = factory::createPredefinedType(zc::str("bool"));
+  auto expression = factory::createIdentifier("maybeValue"_zc);
+  auto targetType = factory::createPredefinedType("bool"_zc);
   auto expr = factory::createConditionalAsExpression(zc::mv(expression), zc::mv(targetType));
 
   ZC_EXPECT(expr->getKind() == SyntaxKind::ConditionalAsExpression);
@@ -179,8 +179,8 @@ ZC_TEST("ExpressionTest.ConditionalAsExpression") {
 ZC_TEST("ExpressionTest.VoidExpression") {
   // Test void expression
   auto expression =
-      factory::createCallExpression(factory::createIdentifier(zc::str("sideEffect")), zc::none,
-                                    zc::none, zc::Vector<zc::Own<Expression>>());
+      factory::createCallExpression(factory::createIdentifier("sideEffect"_zc), zc::none, zc::none,
+                                    zc::Vector<zc::Own<Expression>>());
   auto expr = factory::createVoidExpression(zc::mv(expression));
 
   ZC_EXPECT(expr->getKind() == SyntaxKind::VoidExpression);
@@ -188,13 +188,13 @@ ZC_TEST("ExpressionTest.VoidExpression") {
 
 ZC_TEST("ExpressionTest.TypeOfExpression") {
   // Test typeof expression with identifier
-  auto expression = factory::createIdentifier(zc::str("variable"));
+  auto expression = factory::createIdentifier("variable"_zc);
   auto expr = factory::createTypeOfExpression(zc::mv(expression));
 
   ZC_EXPECT(expr->getKind() == SyntaxKind::TypeOfExpression);
 
   // Test typeof expression with literal
-  auto expression2 = factory::createStringLiteral(zc::str("hello"));
+  auto expression2 = factory::createStringLiteral("hello"_zc);
   auto expr2 = factory::createTypeOfExpression(zc::mv(expression2));
 
   ZC_EXPECT(expr2->getKind() == SyntaxKind::TypeOfExpression);
@@ -203,14 +203,14 @@ ZC_TEST("ExpressionTest.TypeOfExpression") {
 ZC_TEST("ExpressionTest.AwaitExpression") {
   // Test await expression with function call
   auto expression =
-      factory::createCallExpression(factory::createIdentifier(zc::str("asyncFunction")), zc::none,
+      factory::createCallExpression(factory::createIdentifier("asyncFunction"_zc), zc::none,
                                     zc::none, zc::Vector<zc::Own<Expression>>());
   auto expr = factory::createAwaitExpression(zc::mv(expression));
 
   ZC_EXPECT(expr->getKind() == SyntaxKind::AwaitExpression);
 
   // Test await expression with identifier
-  auto expression2 = factory::createIdentifier(zc::str("promise"));
+  auto expression2 = factory::createIdentifier("promise"_zc);
   auto expr2 = factory::createAwaitExpression(zc::mv(expression2));
 
   ZC_EXPECT(expr2->getKind() == SyntaxKind::AwaitExpression);
@@ -218,7 +218,7 @@ ZC_TEST("ExpressionTest.AwaitExpression") {
 
 ZC_TEST("ExpressionTest.ElementAccessExpression") {
   // Test basic array access
-  auto arrayExpr = factory::createIdentifier(zc::str("arr"));
+  auto arrayExpr = factory::createIdentifier("arr"_zc);
   auto indexExpr = factory::createIntegerLiteral(0);
   auto elementAccess = factory::createElementAccessExpression(zc::mv(arrayExpr), zc::mv(indexExpr));
 
@@ -226,16 +226,16 @@ ZC_TEST("ExpressionTest.ElementAccessExpression") {
   ZC_EXPECT(elementAccess->isQuestionDot() == false);
 
   // Test object property access with string key
-  auto objExpr = factory::createIdentifier(zc::str("obj"));
-  auto propIndexExpr = factory::createStringLiteral(zc::str("prop"));
+  auto objExpr = factory::createIdentifier("obj"_zc);
+  auto propIndexExpr = factory::createStringLiteral("prop"_zc);
   auto propElementAccess =
       factory::createElementAccessExpression(zc::mv(objExpr), zc::mv(propIndexExpr));
 
   ZC_EXPECT(propElementAccess->getKind() == SyntaxKind::ElementAccessExpression);
 
   // Test with questionDot = true
-  auto maybeArrExpr = factory::createIdentifier(zc::str("maybeArr"));
-  auto keyExpr = factory::createStringLiteral(zc::str("key"));
+  auto maybeArrExpr = factory::createIdentifier("maybeArr"_zc);
+  auto keyExpr = factory::createStringLiteral("key"_zc);
   auto optionalElementAccess =
       factory::createElementAccessExpression(zc::mv(maybeArrExpr), zc::mv(keyExpr), true);
 
@@ -245,8 +245,8 @@ ZC_TEST("ExpressionTest.ElementAccessExpression") {
 
 ZC_TEST("ExpressionTest.PropertyAccessExpression") {
   // Test regular property access
-  auto objExpr = factory::createIdentifier(zc::str("obj"));
-  auto propName = factory::createIdentifier(zc::str("prop"));
+  auto objExpr = factory::createIdentifier("obj"_zc);
+  auto propName = factory::createIdentifier("prop"_zc);
   auto propertyAccess =
       factory::createPropertyAccessExpression(zc::mv(objExpr), zc::mv(propName), false);
 
@@ -254,8 +254,8 @@ ZC_TEST("ExpressionTest.PropertyAccessExpression") {
   ZC_EXPECT(propertyAccess->isQuestionDot() == false);
 
   // Test optional property access
-  auto optionalObjExpr = factory::createIdentifier(zc::str("obj"));
-  auto optionalPropName = factory::createIdentifier(zc::str("prop"));
+  auto optionalObjExpr = factory::createIdentifier("obj"_zc);
+  auto optionalPropName = factory::createIdentifier("prop"_zc);
   auto optionalPropertyAccess = factory::createPropertyAccessExpression(
       zc::mv(optionalObjExpr), zc::mv(optionalPropName), true);
 
@@ -265,31 +265,31 @@ ZC_TEST("ExpressionTest.PropertyAccessExpression") {
 
 ZC_TEST("ExpressionTest.Identifier") {
   // Test basic identifier
-  auto identifier = factory::createIdentifier(zc::str("variableName"));
+  auto identifier = factory::createIdentifier("variableName"_zc);
 
   ZC_EXPECT(identifier->getKind() == SyntaxKind::Identifier);
   ZC_EXPECT(identifier->getText() == "variableName");
 
   // Test identifier with underscore
-  auto underscoreId = factory::createIdentifier(zc::str("_privateVar"));
+  auto underscoreId = factory::createIdentifier("_privateVar"_zc);
   ZC_EXPECT(underscoreId->getKind() == SyntaxKind::Identifier);
 
   // Test identifier with numbers
-  auto numberedId = factory::createIdentifier(zc::str("var123"));
+  auto numberedId = factory::createIdentifier("var123"_zc);
   ZC_EXPECT(numberedId->getKind() == SyntaxKind::Identifier);
   ZC_EXPECT(numberedId->getText() == "var123");
 }
 
 ZC_TEST("ExpressionTest.GetterMethods") {
   // Test prefix unary expression getters
-  auto operand = factory::createIdentifier(zc::str("x"));
+  auto operand = factory::createIdentifier("x"_zc);
   auto prefixExpr = factory::createPrefixUnaryExpression(SyntaxKind::PlusPlus, zc::mv(operand));
 
   ZC_EXPECT(prefixExpr->getOperand().getKind() == SyntaxKind::Identifier);
   ZC_EXPECT(prefixExpr->isPrefix() == true);
 
   // Test postfix unary expression getters
-  auto postfixOperand = factory::createIdentifier(zc::str("y"));
+  auto postfixOperand = factory::createIdentifier("y"_zc);
   auto postfixExpr =
       factory::createPostfixUnaryExpression(SyntaxKind::PlusPlus, zc::mv(postfixOperand));
 
@@ -297,9 +297,9 @@ ZC_TEST("ExpressionTest.GetterMethods") {
   ZC_EXPECT(postfixExpr->isPrefix() == false);
 
   // Test conditional expression getters
-  auto test = factory::createIdentifier(zc::str("condition"));
-  auto consequent = factory::createIdentifier(zc::str("trueValue"));
-  auto alternate = factory::createIdentifier(zc::str("falseValue"));
+  auto test = factory::createIdentifier("condition"_zc);
+  auto consequent = factory::createIdentifier("trueValue"_zc);
+  auto alternate = factory::createIdentifier("falseValue"_zc);
   auto conditionalExpr =
       factory::createConditionalExpression(zc::mv(test), zc::mv(consequent), zc::mv(alternate));
 
@@ -308,7 +308,7 @@ ZC_TEST("ExpressionTest.GetterMethods") {
   ZC_EXPECT(conditionalExpr->getAlternate().getKind() == SyntaxKind::Identifier);
 
   // Test call expression getters
-  auto callee = factory::createIdentifier(zc::str("func"));
+  auto callee = factory::createIdentifier("func"_zc);
   auto callExpr = factory::createCallExpression(zc::mv(callee), zc::none, zc::none, {});
 
   ZC_EXPECT(callExpr->getCallee().getKind() == SyntaxKind::Identifier);
@@ -337,16 +337,16 @@ ZC_TEST("ExpressionTest.FunctionExpression") {
   // Test simple function expression without type parameters
   zc::Vector<zc::Own<TypeParameterDeclaration>> typeParams;
   zc::Vector<zc::Own<BindingElement>> params;
-  auto paramName = factory::createIdentifier(zc::str("x"));
-  auto paramType = factory::createPredefinedType(zc::str("i32"));
+  auto paramName = factory::createIdentifier("x"_zc);
+  auto paramType = factory::createPredefinedType("i32"_zc);
   auto param = factory::createBindingElement(zc::mv(paramName), zc::mv(paramType), zc::none);
   params.add(zc::mv(param));
 
-  auto returnTypeInner = factory::createPredefinedType(zc::str("i32"));
+  auto returnTypeInner = factory::createPredefinedType("i32"_zc);
   auto returnType = factory::createReturnType(zc::mv(returnTypeInner), zc::none);
   auto body = factory::createBlockStatement(zc::Vector<zc::Own<Statement>>());
 
-  auto funcExpr = factory::createFunctionExpression(zc::mv(typeParams), zc::mv(params),
+  auto funcExpr = factory::createFunctionExpression(zc::mv(typeParams), zc::mv(params), {},
                                                     zc::mv(returnType), zc::mv(body));
 
   ZC_EXPECT(funcExpr->getKind() == SyntaxKind::FunctionExpression);
@@ -357,24 +357,23 @@ ZC_TEST("ExpressionTest.FunctionExpression") {
   // Test function expression with type parameters
   zc::Vector<zc::Own<TypeParameterDeclaration>> typeParamsWithGeneric;
   auto typeParam =
-      factory::createTypeParameterDeclaration(factory::createIdentifier(zc::str("T")), zc::none);
+      factory::createTypeParameterDeclaration(factory::createIdentifier("T"_zc), zc::none);
   typeParamsWithGeneric.add(zc::mv(typeParam));
 
   zc::Vector<zc::Own<BindingElement>> genericParams;
-  auto genericParamName = factory::createIdentifier(zc::str("value"));
-  auto genericParamType =
-      factory::createTypeReference(factory::createIdentifier(zc::str("T")), zc::none);
+  auto genericParamName = factory::createIdentifier("value"_zc);
+  auto genericParamType = factory::createTypeReference(factory::createIdentifier("T"_zc), zc::none);
   auto genericParam =
       factory::createBindingElement(zc::mv(genericParamName), zc::mv(genericParamType), zc::none);
   genericParams.add(zc::mv(genericParam));
 
   auto genericReturnTypeInner =
-      factory::createTypeReference(factory::createIdentifier(zc::str("T")), zc::none);
+      factory::createTypeReference(factory::createIdentifier("T"_zc), zc::none);
   auto genericReturnType = factory::createReturnType(zc::mv(genericReturnTypeInner), zc::none);
   auto genericBody = factory::createBlockStatement(zc::Vector<zc::Own<Statement>>());
 
   auto genericFuncExpr =
-      factory::createFunctionExpression(zc::mv(typeParamsWithGeneric), zc::mv(genericParams),
+      factory::createFunctionExpression(zc::mv(typeParamsWithGeneric), zc::mv(genericParams), {},
                                         zc::mv(genericReturnType), zc::mv(genericBody));
 
   ZC_EXPECT(genericFuncExpr->getKind() == SyntaxKind::FunctionExpression);
@@ -402,7 +401,7 @@ ZC_TEST("ExpressionTest.ArrayLiteralExpression") {
 
   // Test array literal with mixed types
   zc::Vector<zc::Own<Expression>> mixedElements;
-  mixedElements.add(factory::createStringLiteral(zc::str("hello")));
+  mixedElements.add(factory::createStringLiteral("hello"_zc));
   mixedElements.add(factory::createFloatLiteral(3.14));
   mixedElements.add(factory::createBooleanLiteral(true));
   auto mixedArray = factory::createArrayLiteralExpression(zc::mv(mixedElements));
@@ -421,9 +420,9 @@ ZC_TEST("ExpressionTest.ObjectLiteralExpression") {
 
   // Test object literal with properties
   zc::Vector<zc::Own<Expression>> properties;
-  properties.add(factory::createStringLiteral(zc::str("name")));
-  properties.add(factory::createStringLiteral(zc::str("Alice")));
-  properties.add(factory::createStringLiteral(zc::str("age")));
+  properties.add(factory::createStringLiteral("name"_zc));
+  properties.add(factory::createStringLiteral("Alice"_zc));
+  properties.add(factory::createStringLiteral("age"_zc));
   properties.add(factory::createIntegerLiteral(30));
   auto objectExpr = factory::createObjectLiteralExpression(zc::mv(properties));
 
@@ -435,39 +434,39 @@ ZC_TEST("ExpressionTest.AcceptMethods") {
   // Test that all expression types have proper accept methods
   // This is a basic test to ensure the visitor pattern works
 
-  auto prefixOperand = factory::createIdentifier(zc::str("x"));
+  auto prefixOperand = factory::createIdentifier("x"_zc);
   auto prefixExpr =
       factory::createPrefixUnaryExpression(SyntaxKind::PlusPlus, zc::mv(prefixOperand));
   ZC_EXPECT(prefixExpr->getKind() == SyntaxKind::PrefixUnaryExpression);
 
   // Test postfix unary expression
-  auto postfixOperand = factory::createIdentifier(zc::str("y"));
+  auto postfixOperand = factory::createIdentifier("y"_zc);
   auto postfixExpr =
       factory::createPostfixUnaryExpression(SyntaxKind::PlusPlus, zc::mv(postfixOperand));
   ZC_EXPECT(postfixExpr->getKind() == SyntaxKind::PostfixUnaryExpression);
 
   // Test conditional expression
-  auto test = factory::createIdentifier(zc::str("condition"));
-  auto consequent = factory::createIdentifier(zc::str("trueValue"));
-  auto alternate = factory::createIdentifier(zc::str("falseValue"));
+  auto test = factory::createIdentifier("condition"_zc);
+  auto consequent = factory::createIdentifier("trueValue"_zc);
+  auto alternate = factory::createIdentifier("falseValue"_zc);
   auto conditionalExpr =
       factory::createConditionalExpression(zc::mv(test), zc::mv(consequent), zc::mv(alternate));
   ZC_EXPECT(conditionalExpr->getKind() == SyntaxKind::ConditionalExpression);
 
   // Test call expression
-  auto callee = factory::createIdentifier(zc::str("func"));
+  auto callee = factory::createIdentifier("func"_zc);
   auto callExpr = factory::createCallExpression(zc::mv(callee), zc::none, zc::none, {});
   ZC_EXPECT(callExpr->getKind() == SyntaxKind::CallExpression);
 
   // Test element access expression
-  auto object = factory::createIdentifier(zc::str("arr"));
+  auto object = factory::createIdentifier("arr"_zc);
   auto index = factory::createIntegerLiteral(0);
   auto elementExpr = factory::createElementAccessExpression(zc::mv(object), zc::mv(index));
   ZC_EXPECT(elementExpr->getKind() == SyntaxKind::ElementAccessExpression);
 
   // Test property access expression
-  auto propObject = factory::createIdentifier(zc::str("obj"));
-  auto propName = factory::createIdentifier(zc::str("prop"));
+  auto propObject = factory::createIdentifier("obj"_zc);
+  auto propName = factory::createIdentifier("prop"_zc);
   auto propExpr =
       factory::createPropertyAccessExpression(zc::mv(propObject), zc::mv(propName), false);
   ZC_EXPECT(propExpr->getKind() == SyntaxKind::PropertyAccessExpression);
@@ -486,14 +485,14 @@ ZC_TEST("ExpressionTest.WildcardPattern") {
 
 ZC_TEST("ExpressionTest.IdentifierPattern") {
   // Test identifier pattern creation
-  auto identifier = factory::createIdentifier(zc::str("variableName"));
+  auto identifier = factory::createIdentifier("variableName"_zc);
   auto identifierPattern = factory::createIdentifierPattern(zc::mv(identifier));
 
   ZC_EXPECT(identifierPattern->getKind() == SyntaxKind::IdentifierPattern);
   ZC_EXPECT(identifierPattern->getIdentifier().getText() == "variableName"_zc);
 
   // Test with different identifier names
-  auto identifier2 = factory::createIdentifier(zc::str("_underscore"));
+  auto identifier2 = factory::createIdentifier("_underscore"_zc);
   auto identifierPattern2 = factory::createIdentifierPattern(zc::mv(identifier2));
   ZC_EXPECT(identifierPattern2->getIdentifier().getText() == "_underscore"_zc);
 }
@@ -508,7 +507,7 @@ ZC_TEST("ExpressionTest.TuplePattern") {
 
   // Test tuple pattern with mixed elements
   zc::Vector<zc::Own<Pattern>> elements;
-  auto identifier = factory::createIdentifier(zc::str("x"));
+  auto identifier = factory::createIdentifier("x"_zc);
   auto identifierPattern = factory::createIdentifierPattern(zc::mv(identifier));
   auto wildcardPattern = factory::createWildcardPattern();
 
@@ -530,9 +529,9 @@ ZC_TEST("ExpressionTest.ArrayPattern") {
 
   // Test array pattern with elements
   zc::Vector<zc::Own<Pattern>> elements;
-  auto identifier1 = factory::createIdentifier(zc::str("first"));
+  auto identifier1 = factory::createIdentifier("first"_zc);
   auto pattern1 = factory::createIdentifierPattern(zc::mv(identifier1));
-  auto identifier2 = factory::createIdentifier(zc::str("second"));
+  auto identifier2 = factory::createIdentifier("second"_zc);
   auto pattern2 = factory::createIdentifierPattern(zc::mv(identifier2));
 
   elements.add(zc::mv(pattern1));
@@ -552,30 +551,29 @@ ZC_TEST("ExpressionTest.ExpressionPattern") {
   ZC_EXPECT(expressionPattern->getExpression().getKind() == SyntaxKind::IntegerLiteral);
 
   // Test expression pattern with identifier
-  auto identifier = factory::createIdentifier(zc::str("constant"));
+  auto identifier = factory::createIdentifier("constant"_zc);
   auto expressionPattern2 = factory::createExpressionPattern(zc::mv(identifier));
   ZC_EXPECT(expressionPattern2->getExpression().getKind() == SyntaxKind::Identifier);
 }
 
 ZC_TEST("ExpressionTest.IsPattern") {
   // Test is pattern with predefined type
-  auto type = factory::createPredefinedType(zc::str("i32"));
+  auto type = factory::createPredefinedType("i32"_zc);
   auto wildcardPattern = factory::createWildcardPattern();
   auto isPattern = factory::createIsPattern(zc::mv(wildcardPattern), zc::mv(type));
 
   ZC_EXPECT(isPattern->getKind() == SyntaxKind::IsPattern);
-  ZC_EXPECT(isPattern->getType().getKind() == SyntaxKind::PredefinedTypeNode);
+  ZC_EXPECT(isPattern->getType().getKind() == SyntaxKind::I32TypeNode);
 }
 
 ZC_TEST("ExpressionTest.EnumPattern") {
   // Test enum pattern
-  auto typeRef =
-      factory::createTypeReference(factory::createIdentifier(zc::str("MyEnum")), zc::none);
-  auto propertyName = factory::createIdentifier(zc::str("Variant"));
+  auto typeRef = factory::createTypeReference(factory::createIdentifier("MyEnum"_zc), zc::none);
+  auto propertyName = factory::createIdentifier("Variant"_zc);
 
   // Create tuple pattern for enum variant
   zc::Vector<zc::Own<Pattern>> tupleElements;
-  auto identifier = factory::createIdentifier(zc::str("value"));
+  auto identifier = factory::createIdentifier("value"_zc);
   auto identifierPattern = factory::createIdentifierPattern(zc::mv(identifier));
   tupleElements.add(zc::mv(identifierPattern));
   auto tuplePattern = factory::createTuplePattern(zc::mv(tupleElements));
@@ -588,11 +586,11 @@ ZC_TEST("ExpressionTest.EnumPattern") {
   ZC_EXPECT(enumPattern->getTuplePattern().getElements().size() == 1);
 
   // Test enum pattern without type reference
-  auto propertyName2 = factory::createIdentifier(zc::str("SimpleVariant"));
+  auto propertyName2 = factory::createIdentifier("SimpleVariant"_zc);
   zc::Vector<zc::Own<Pattern>> emptyTupleElements;
   auto emptyTuplePattern = factory::createTuplePattern(zc::mv(emptyTupleElements));
   auto typeRef2 =
-      factory::createTypeReference(factory::createIdentifier(zc::str("SimpleEnum")), zc::none);
+      factory::createTypeReference(factory::createIdentifier("SimpleEnum"_zc), zc::none);
   auto enumPattern2 = factory::createEnumPattern(zc::mv(typeRef2), zc::mv(propertyName2),
                                                  zc::mv(emptyTuplePattern));
 

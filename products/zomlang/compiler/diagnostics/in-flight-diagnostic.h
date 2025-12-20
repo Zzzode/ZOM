@@ -19,6 +19,10 @@
 
 namespace zomlang {
 namespace compiler {
+namespace source {
+class CharSourceRange;
+}
+
 namespace diagnostics {
 
 struct FixIt;
@@ -31,7 +35,7 @@ public:
   InFlightDiagnostic(DiagnosticEngine& engine, Diagnostic&& diag);
   ~InFlightDiagnostic();
 
-  InFlightDiagnostic(InFlightDiagnostic&& other) noexcept = default;
+  InFlightDiagnostic(InFlightDiagnostic&& other) noexcept;
   InFlightDiagnostic& operator=(InFlightDiagnostic&& other) noexcept = delete;
 
   ZC_DISALLOW_COPY(InFlightDiagnostic);
@@ -40,6 +44,8 @@ public:
 
   /// Add methods to modify the diagnostic, for example, add fix-its
   InFlightDiagnostic& addFixIt(zc::Own<FixIt> fixit);
+  InFlightDiagnostic& addRange(const source::CharSourceRange& range);
+  InFlightDiagnostic& addChild(zc::Own<Diagnostic> child);
 
 private:
   struct Impl;

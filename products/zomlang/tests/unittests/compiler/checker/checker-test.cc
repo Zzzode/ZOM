@@ -12,14 +12,10 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/checker/checker.h"
-
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/statement.h"
-#include "zomlang/compiler/basic/compiler-opts.h"
+#include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/parser/parser.h"
@@ -33,10 +29,11 @@ ZC_TEST("CheckerTest_BasicParsingWorks") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
+  basic::StringPool stringPool;
 
   auto bufferId =
       sourceManager->addMemBufferCopy(zc::str("let x: i32 = 42;").asBytes(), "test.zom");
-  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto ast = parser.parse();
 
   ZC_EXPECT(ast != zc::none, "Parser should successfully parse valid code");
@@ -47,10 +44,11 @@ ZC_TEST("CheckerTest_TypeMismatchError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
+  basic::StringPool stringPool;
 
   auto bufferId =
       sourceManager->addMemBufferCopy(zc::str("let x: i32 = \"string\";").asBytes(), "test.zom");
-  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto ast = parser.parse();
 
   ZC_EXPECT(ast != zc::none, "Parser should parse syntactically valid code");
@@ -61,10 +59,11 @@ ZC_TEST("CheckerTest_UndefinedVariableError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
+  basic::StringPool stringPool;
 
   auto bufferId =
       sourceManager->addMemBufferCopy(zc::str("let x: i32 = y + 1;").asBytes(), "test.zom");
-  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto ast = parser.parse();
 
   ZC_EXPECT(ast != zc::none);
@@ -75,10 +74,11 @@ ZC_TEST("CheckerTest_FunctionParameterTypeChecking") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
+  basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
       zc::str("fun add(a: i32, b: str) -> i32 { return a + b; }\n").asBytes(), "test.zom");
-  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, bufferId);
+  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto ast = parser.parse();
 
   ZC_EXPECT(ast != zc::none);

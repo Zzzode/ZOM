@@ -30,44 +30,72 @@ class SourceManager;
 namespace lexer {
 
 enum class TokenFlags : uint16_t {
-  kNone = 0,
+  None = 0,
   // Line break flags
-  kPrecedingLineBreak = 1 << 0,
+  PrecedingLineBreak = 1 << 0,
 
   // String/escape sequence flags
-  kUnterminated = 1 << 1,
-  kExtendedUnicodeEscape = 1 << 2,  // e.g. `\u{10ffff}`
-  kUnicodeEscape = 1 << 3,          // e.g. `\u00a0`
-  kHexEscape = 1 << 4,              // e.g. `\xa0`
-  kContainsInvalidEscape = 1 << 5,  // e.g. `\uhello`
+  Unterminated = 1 << 1,
+  ExtendedUnicodeEscape = 1 << 2,  // e.g. `\u{10ffff}`
+  UnicodeEscape = 1 << 3,          // e.g. `\u00a0`
+  HexEscape = 1 << 4,              // e.g. `\xa0`
+  ContainsInvalidEscape = 1 << 5,  // e.g. `\uhello`
 
   // Numeric literal flags
-  kScientific = 1 << 6,                 // e.g. `10e2`
-  kOctal = 1 << 7,                      // e.g. `0777`
-  kHexSpecifier = 1 << 8,               // e.g. `0x00000000`
-  kBinarySpecifier = 1 << 9,            // e.g. `0b0110010000000000`
-  kOctalSpecifier = 1 << 10,            // e.g. `0o777`
-  kContainsSeparator = 1 << 11,         // e.g. `0b1100_0101`
-  kContainsLeadingZero = 1 << 12,       // e.g. `0888`
-  kContainsInvalidSeparator = 1 << 13,  // e.g. `0_1`
+  Scientific = 1 << 6,                 // e.g. `10e2`
+  Octal = 1 << 7,                      // e.g. `0777`
+  HexSpecifier = 1 << 8,               // e.g. `0x00000000`
+  BinarySpecifier = 1 << 9,            // e.g. `0b0110010000000000`
+  OctalSpecifier = 1 << 10,            // e.g. `0o777`
+  ContainsSeparator = 1 << 11,         // e.g. `0b1100_0101`
+  ContainsLeadingZero = 1 << 12,       // e.g. `0888`
+  ContainsInvalidSeparator = 1 << 13,  // e.g. `0_1`
 
   // Composite flags for convenience
-  kBinaryOrOctalSpecifier = kBinarySpecifier | kOctalSpecifier,
-  kWithSpecifier = kHexSpecifier | kBinaryOrOctalSpecifier,
-  kStringLiteralFlags =
-      kHexEscape | kUnicodeEscape | kExtendedUnicodeEscape | kContainsInvalidEscape,
-  kNumericLiteralFlags = kScientific | kOctal | kContainsLeadingZero | kWithSpecifier |
-                         kContainsSeparator | kContainsInvalidSeparator,
-  kTemplateLiteralLikeFlags =
-      kHexEscape | kUnicodeEscape | kExtendedUnicodeEscape | kContainsInvalidEscape,
-  kIsInvalid = kOctal | kContainsLeadingZero | kContainsInvalidSeparator | kContainsInvalidEscape,
+  BinaryOrOctalSpecifier = BinarySpecifier | OctalSpecifier,
+  WithSpecifier = HexSpecifier | BinaryOrOctalSpecifier,
+  StringLiteralFlags = HexEscape | UnicodeEscape | ExtendedUnicodeEscape | ContainsInvalidEscape,
+  NumericLiteralFlags = Scientific | Octal | ContainsLeadingZero | WithSpecifier |
+                        ContainsSeparator | ContainsInvalidSeparator,
+  TemplateLiteralLikeFlags =
+      HexEscape | UnicodeEscape | ExtendedUnicodeEscape | ContainsInvalidEscape,
+  IsInvalid = Octal | ContainsLeadingZero | ContainsInvalidSeparator | ContainsInvalidEscape,
 };
+
+constexpr TokenFlags operator|(TokenFlags lhs, TokenFlags rhs) {
+  return static_cast<TokenFlags>(static_cast<uint16_t>(lhs) | static_cast<uint16_t>(rhs));
+}
+constexpr TokenFlags operator&(TokenFlags lhs, TokenFlags rhs) {
+  return static_cast<TokenFlags>(static_cast<uint16_t>(lhs) & static_cast<uint16_t>(rhs));
+}
+constexpr TokenFlags operator^(TokenFlags lhs, TokenFlags rhs) {
+  return static_cast<TokenFlags>(static_cast<uint16_t>(lhs) ^ static_cast<uint16_t>(rhs));
+}
+constexpr TokenFlags operator~(TokenFlags v) {
+  return static_cast<TokenFlags>(~static_cast<uint16_t>(v));
+}
+inline TokenFlags& operator|=(TokenFlags& lhs, TokenFlags rhs) {
+  lhs = lhs | rhs;
+  return lhs;
+}
+inline TokenFlags& operator&=(TokenFlags& lhs, TokenFlags rhs) {
+  lhs = lhs & rhs;
+  return lhs;
+}
+inline TokenFlags& operator^=(TokenFlags& lhs, TokenFlags rhs) {
+  lhs = lhs ^ rhs;
+  return lhs;
+}
+
+constexpr bool hasFlag(TokenFlags flags, TokenFlags flag) {
+  return (flags & flag) != TokenFlags::None;
+}
 
 class Token {
 public:
   Token() noexcept;
-  Token(ast::SyntaxKind k, source::SourceRange r, zc::Maybe<zc::String> text = zc::none,
-        TokenFlags flags = TokenFlags::kNone) noexcept;
+  Token(ast::SyntaxKind k, source::SourceRange r, zc::Maybe<zc::StringPtr> value = zc::none,
+        TokenFlags flags = TokenFlags::None) noexcept;
 
   // Copy constructor
   Token(const Token& other) noexcept;
@@ -85,7 +113,7 @@ public:
 
   void setKind(ast::SyntaxKind k);
   void setRange(source::SourceRange r);
-  void setCachedText(zc::String text);
+  void setValue(zc::StringPtr value);
   void setFlags(TokenFlags flags);
   void addFlag(TokenFlags flag);
 
@@ -95,19 +123,23 @@ public:
   ZC_NODISCARD source::SourceLoc getLocation() const;
   ZC_NODISCARD source::SourceRange getRange() const;
   ZC_NODISCARD TokenFlags getFlags() const;
+
+  // Retrieve value if available
+  zc::Maybe<zc::StringPtr> getValue() const;
+
   ZC_NODISCARD bool hasFlag(TokenFlags flag) const;
   ZC_NODISCARD bool hasPrecedingLineBreak() const;
 
   /// Get the raw text content of this token with fast path optimization
-  ZC_NODISCARD zc::String getText(const source::SourceManager& sm) const;
+  ZC_NODISCARD zc::StringPtr getText(const source::SourceManager& sm) const;
 
   /// Get text with buffer hint for better performance
   /// Implementation in token.cc to avoid incomplete type issues
-  ZC_NODISCARD zc::String getTextWithBufferHint(const source::SourceManager& sm,
-                                                const void* bufferIdPtr) const;
+  ZC_NODISCARD zc::StringPtr getTextWithBufferHint(const source::SourceManager& sm,
+                                                   const void* bufferIdPtr) const;
 
   /// Get static text for common keywords and operators
-  static zc::Maybe<zc::String> getStaticTextForTokenKind(ast::SyntaxKind kind);
+  static zc::Maybe<zc::StringPtr> getStaticTextForTokenKind(ast::SyntaxKind kind);
 
 private:
   struct Impl;

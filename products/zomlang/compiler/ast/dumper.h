@@ -69,8 +69,11 @@ public:
   void visit(const BinaryExpression& binExpr) final;
   void visit(const FunctionExpression& funcExpr) final;
   void visit(const StringLiteral& strLit) final;
+  void visit(const TemplateLiteralExpression& templateLit) final;
+  void visit(const TemplateSpan& templateSpan) final;
   void visit(const IntegerLiteral& intLit) final;
   void visit(const FloatLiteral& floatLit) final;
+  void visit(const BigIntLiteral& bigIntLit) final;
   void visit(const BooleanLiteral& boolLit) final;
   void visit(const NullLiteral& nullLit) final;
   void visit(const CallExpression& callExpr) final;
@@ -85,10 +88,25 @@ public:
   void visit(const AsExpression& asExpr) final;
   void visit(const ForcedAsExpression& forcedAsExpr) final;
   void visit(const ConditionalAsExpression& conditionalAsExpr) final;
+  void visit(const NonNullExpression& nonNullExpr) final;
+  void visit(const ExpressionWithTypeArguments& exprWithTypeArgs) final;
+  void visit(const HeritageClause& node) final;
+
+  // Interface node visitor methods (abstract base classes)
+  void visit(const PredefinedTypeNode& node) final;
+  void visit(const Declaration& node) final;
+  void visit(const NamedDeclaration& node) final;
+  void visit(const Pattern& node) final;
+  void visit(const PrimaryPattern& node) final;
+  void visit(const BindingPattern& node) final;
+  void visit(const ClassElement& node) final;
+  void visit(const InterfaceElement& node) final;
 
   // Missing visitor methods that need implementation
   void visit(const Node& node) final;
   void visit(const Statement& statement) final;
+  void visit(const IterationStatement& node) final;
+  void visit(const DeclarationStatement& node) final;
   void visit(const Expression& expression) final;
   void visit(const TypeParameterDeclaration& node) final;
   void visit(const BindingElement& node) final;
@@ -130,7 +148,6 @@ public:
   void visit(const UnionTypeNode& unionType) final;
   void visit(const IntersectionTypeNode& intersectionType) final;
   void visit(const ParenthesizedTypeNode& parenType) final;
-  void visit(const PredefinedTypeNode& predefinedType) final;
   void visit(const ObjectTypeNode& objectType) final;
   void visit(const TupleTypeNode& tupleType) final;
   void visit(const ReturnTypeNode& returnType) final;
@@ -144,6 +161,7 @@ public:
   void visit(const ParameterDeclaration& node) final;
   void visit(const PropertyDeclaration& node) final;
   void visit(const MissingDeclaration& node) final;
+  void visit(const SemicolonClassElement& node) final;
 
   // Body node visitor methods
   void visit(const InterfaceBody& node) final;
@@ -167,8 +185,9 @@ public:
   void visit(const F64TypeNode& node) final;
   void visit(const StrTypeNode& node) final;
   void visit(const UnitTypeNode& node) final;
+  void visit(const NullTypeNode& node) final;
 
-  // Signature visitor methods
+  // Method signature visitor methods
   void visit(const PropertySignature& node) final;
   void visit(const MethodSignature& node) final;
 
@@ -186,6 +205,7 @@ public:
   void visit(const IsPattern& node) final;
   void visit(const ExpressionPattern& node) final;
   void visit(const EnumPattern& node) final;
+  void visit(const CaptureElement& node) final;
 
 private:
   struct Impl;

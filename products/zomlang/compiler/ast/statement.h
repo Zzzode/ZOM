@@ -17,7 +17,7 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zomlang/compiler/ast/ast.h"
-#include "zomlang/compiler/ast/visitor.h"
+#include "zomlang/compiler/ast/classof.h"
 
 namespace zomlang {
 namespace compiler {
@@ -26,6 +26,7 @@ namespace ast {
 class Identifier;
 class Expression;
 class Pattern;
+class PropertyDeclaration;
 class TypeNode;
 class ReturnTypeNode;
 
@@ -41,20 +42,7 @@ public:
   /// This is a pure virtual method that must be implemented by concrete Statement subclasses
   virtual SyntaxKind getKind() const = 0;
 
-  /// \brief Check if a node is a Statement
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::BlockStatement || kind == SyntaxKind::EmptyStatement ||
-           kind == SyntaxKind::ExpressionStatement || kind == SyntaxKind::IfStatement ||
-           kind == SyntaxKind::WhileStatement || kind == SyntaxKind::ForStatement ||
-           kind == SyntaxKind::BreakStatement || kind == SyntaxKind::ContinueStatement ||
-           kind == SyntaxKind::ReturnStatement || kind == SyntaxKind::MatchStatement ||
-           kind == SyntaxKind::DebuggerStatement || kind == SyntaxKind::MatchClause ||
-           kind == SyntaxKind::DefaultClause || kind == SyntaxKind::FunctionDeclaration ||
-           kind == SyntaxKind::ClassDeclaration || kind == SyntaxKind::InterfaceDeclaration ||
-           kind == SyntaxKind::StructDeclaration || kind == SyntaxKind::EnumDeclaration ||
-           kind == SyntaxKind::ErrorDeclaration || kind == SyntaxKind::AliasDeclaration;
-  }
+  GENERATE_CLASSOF_IMPL(Statement);
 
 protected:
   Statement() noexcept = default;
@@ -112,18 +100,7 @@ public:
   /// \brief Set the symbol associated with this declaration
   virtual void setSymbol(zc::Maybe<const symbol::Symbol&> symbol) = 0;
 
-  /// \brief Check if a node is a Declaration
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::VariableDeclaration || kind == SyntaxKind::FunctionDeclaration ||
-           kind == SyntaxKind::ClassDeclaration || kind == SyntaxKind::InterfaceDeclaration ||
-           kind == SyntaxKind::StructDeclaration || kind == SyntaxKind::EnumDeclaration ||
-           kind == SyntaxKind::ErrorDeclaration || kind == SyntaxKind::AliasDeclaration ||
-           kind == SyntaxKind::TypeParameterDeclaration || kind == SyntaxKind::MethodDeclaration ||
-           kind == SyntaxKind::ConstructorDeclaration || kind == SyntaxKind::ParameterDeclaration ||
-           kind == SyntaxKind::PropertyDeclaration || kind == SyntaxKind::MissingDeclaration ||
-           kind == SyntaxKind::BindingElement;
-  }
+  GENERATE_CLASSOF_IMPL(Declaration);
 
 protected:
   Declaration() noexcept = default;
@@ -156,16 +133,7 @@ public:
   /// \brief Get the name of this declaration
   virtual const Identifier& getName() const = 0;
 
-  /// \brief LLVM-style RTTI support
-  /// \param node The node to check
-  /// \return true if the node is a NamedDeclaration or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::BindingElement || kind == SyntaxKind::FunctionDeclaration ||
-           kind == SyntaxKind::ClassDeclaration || kind == SyntaxKind::StructDeclaration ||
-           kind == SyntaxKind::EnumDeclaration || kind == SyntaxKind::ErrorDeclaration ||
-           kind == SyntaxKind::AliasDeclaration || kind == SyntaxKind::TypeParameterDeclaration;
-  }
+  GENERATE_CLASSOF_IMPL(NamedDeclaration);
 
 protected:
   NamedDeclaration() noexcept = default;
@@ -207,6 +175,29 @@ public:
   zc::Maybe<const TypeNode&> getType() const;
 
   /// \brief Get the initializer expression for this binding element
+  zc::Maybe<const Expression&> getInitializer() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class ParameterDeclaration final : public NamedDeclaration, public Node {
+public:
+  explicit ParameterDeclaration(zc::Own<Identifier> name,
+                                zc::Maybe<zc::Own<TypeNode>> type = zc::none,
+                                zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
+  ~ParameterDeclaration() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ParameterDeclaration);
+
+  /// \brief Get the type annotation for this parameter declaration
+  zc::Maybe<const TypeNode&> getType() const;
+
+  /// \brief Get the initializer expression for this parameter declaration
   zc::Maybe<const Expression&> getInitializer() const;
 
   NODE_METHOD_DECLARE();
@@ -322,22 +313,56 @@ private:
   zc::Own<Impl> impl;
 };
 
+class ClassElement : public NamedDeclaration {
+public:
+  ZC_DISALLOW_COPY_AND_MOVE(ClassElement);
+
+protected:
+  ClassElement() noexcept = default;
+};
+
+class InterfaceElement : public NamedDeclaration {
+public:
+  ZC_DISALLOW_COPY_AND_MOVE(InterfaceElement);
+
+protected:
+  InterfaceElement() noexcept = default;
+};
+
 class ClassDeclaration final : public DeclarationStatement {
 public:
-  ClassDeclaration(zc::Own<Identifier> name, zc::Maybe<zc::Own<Identifier>> superClass,
-                   zc::Vector<zc::Own<Statement>>&& members) noexcept;
+  ClassDeclaration(zc::Own<Identifier> name,
+                   zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+                   zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
+                   zc::Vector<zc::Own<ClassElement>>&& members) noexcept;
   ~ClassDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ClassDeclaration);
 
-  /// \brief Get the super class of this class declaration
-  zc::Maybe<const Identifier&> getSuperClass() const;
-
-  /// \brief Get the members of this class declaration
-  const NodeList<Statement>& getMembers() const;
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
+  zc::Maybe<const zc::Vector<zc::Own<HeritageClause>>&> getHeritageClauses() const;
+  const NodeList<ClassElement>& getMembers() const;
 
   NODE_METHOD_DECLARE();
   NAMED_DECLARATION_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class HeritageClause final : public Node {
+public:
+  HeritageClause(ast::SyntaxKind token,
+                 zc::Vector<zc::Own<ExpressionWithTypeArguments>>&& types) noexcept;
+  ~HeritageClause() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(HeritageClause);
+
+  ast::SyntaxKind getToken() const;
+  const zc::Vector<zc::Own<ExpressionWithTypeArguments>>& getTypes() const;
+
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
@@ -532,14 +557,15 @@ private:
 
 class InterfaceDeclaration final : public DeclarationStatement {
 public:
-  InterfaceDeclaration(
-      zc::Own<Identifier> name, zc::Vector<zc::Own<Statement>>&& members,
-      zc::Vector<zc::Own<Identifier>>&& extends = zc::Vector<zc::Own<Identifier>>()) noexcept;
+  InterfaceDeclaration(zc::Own<Identifier> name,
+                       zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+                       zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
+                       zc::Vector<zc::Own<InterfaceElement>>&& members) noexcept;
   ~InterfaceDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(InterfaceDeclaration);
 
-  const NodeList<Statement>& getMembers() const;
+  const NodeList<InterfaceElement>& getMembers() const;
   zc::ArrayPtr<const zc::Own<Identifier>> getExtends() const;
 
   NODE_METHOD_DECLARE();
@@ -659,11 +685,7 @@ public:
 
   virtual const NodeList<BindingElement>& getElements() const = 0;
 
-  /// \brief Check if a node is a BindingPattern
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::ArrayBindingPattern || kind == SyntaxKind::ObjectBindingPattern;
-  }
+  GENERATE_CLASSOF_IMPL(BindingPattern);
 
 protected:
   BindingPattern() noexcept = default;
@@ -698,6 +720,86 @@ public:
 
   NODE_METHOD_DECLARE();
   BINDING_PATTERN_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class PropertySignature final : public InterfaceElement, public Node {
+public:
+  PropertySignature(zc::Own<Identifier> name, bool optional,
+                    zc::Maybe<zc::Own<TypeNode>> type = zc::none,
+                    zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
+  ~PropertySignature() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(PropertySignature);
+
+  bool isOptional() const;
+
+  zc::Maybe<const TypeNode&> getType() const;
+  zc::Maybe<const Expression&> getInitializer() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class MethodSignature final : public InterfaceElement, public LocalsContainer, public Node {
+public:
+  MethodSignature(zc::Own<Identifier> name, bool optional,
+                  zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+                  zc::Vector<zc::Own<BindingElement>>&& parameters,
+                  zc::Maybe<zc::Own<ReturnTypeNode>> returnType = zc::none) noexcept;
+  ~MethodSignature() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(MethodSignature);
+
+  bool isOptional() const;
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
+  const NodeList<BindingElement>& getParameters() const;
+  zc::Maybe<const ReturnTypeNode&> getReturnType() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+  LOCALS_CONTAINER_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class SemicolonClassElement final : public ClassElement, public Node {
+public:
+  SemicolonClassElement() noexcept;
+  ~SemicolonClassElement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(SemicolonClassElement);
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class PropertyDeclaration final : public ClassElement, public Node {
+public:
+  PropertyDeclaration(zc::Own<Identifier> name, zc::Maybe<zc::Own<TypeNode>> type,
+                      zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
+  ~PropertyDeclaration() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(PropertyDeclaration);
+
+  zc::Maybe<const TypeNode&> getType() const;
+  zc::Maybe<const Expression&> getInitializer() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
 
 private:
   struct Impl;

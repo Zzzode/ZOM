@@ -38,6 +38,7 @@ class SymbolTable;
 
 namespace basic {
 
+class StringPool;
 struct LangOptions;
 
 /// \brief Perform parsing on a single source buffer
@@ -49,6 +50,7 @@ struct LangOptions;
 zc::Maybe<zc::Own<ast::Node>> performParse(const source::SourceManager& sm,
                                            diagnostics::DiagnosticEngine& diagnosticEngine,
                                            const LangOptions& langOpts,
+                                           basic::StringPool& stringPool,
                                            const source::BufferId& bufferId);
 
 /// \brief Perform binding on a parsed AST to create symbols

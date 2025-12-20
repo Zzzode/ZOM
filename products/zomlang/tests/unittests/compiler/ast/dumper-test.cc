@@ -1,5 +1,6 @@
 #include "zomlang/compiler/ast/dumper.h"
 
+#include "zc/core/exception.h"
 #include "zc/core/io.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
@@ -60,7 +61,7 @@ ZC_TEST("ASTDumper.DumpSourceFileText") {
   zc::Vector<zc::Own<zomlang::compiler::ast::Statement>> statements;
   zc::Vector<zc::Own<BindingElement>> bindings;
   // Create a binding element for the variable declaration list
-  auto identifier = ast::factory::createIdentifier(zc::str("testVar"));
+  auto identifier = ast::factory::createIdentifier("testVar"_zc);
   auto bindingElement = ast::factory::createBindingElement(zc::mv(identifier));
   bindings.add(zc::mv(bindingElement));
 
@@ -105,9 +106,8 @@ ZC_TEST("ASTDumper.DumpBinaryExpression") {
       "      value: 10\n"
       "    }\n"
       "  operator:\n"
-      "    BinaryOperator {\n"
+      "    TokenNode {\n"
       "      symbol: +\n"
-      "      precedence: 11\n"
       "    }\n"
       "  right:\n"
       "    IntegerLiteral {\n"
@@ -125,7 +125,7 @@ ZC_TEST("ASTDumper.DumpSourceFileJson") {
   zc::Vector<zc::Own<Statement>> statements;
   zc::Vector<zc::Own<BindingElement>> bindings;
   // Create a proper BindingElement with an identifier
-  auto identifier = ast::factory::createIdentifier(zc::str("testVar"));
+  auto identifier = ast::factory::createIdentifier("testVar"_zc);
   auto bindingElement = ast::factory::createBindingElement(zc::mv(identifier));
   bindings.add(zc::mv(bindingElement));
 
@@ -151,7 +151,7 @@ ZC_TEST("ASTDumper.DumpSourceFileXML") {
 
   zc::Vector<zc::Own<Statement>> statements;
   zc::Vector<zc::Own<BindingElement>> bindings;
-  auto identifier = ast::factory::createIdentifier(zc::str("testVar"));
+  auto identifier = ast::factory::createIdentifier("testVar"_zc);
   auto bindingElement = ast::factory::createBindingElement(zc::mv(identifier));
   bindings.add(zc::mv(bindingElement));
 
@@ -172,7 +172,7 @@ ZC_TEST("ASTDumper.DumpSourceFileXML") {
 
 // Test StringLiteral in all formats
 ZC_TEST("ASTDumper.DumpStringLiteralText") {
-  auto expr = ast::factory::createStringLiteral(zc::str("hello world"));
+  auto expr = ast::factory::createStringLiteral("hello world"_zc);
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
   ASTDumper dumper(zc::mv(serializer));
@@ -183,7 +183,7 @@ ZC_TEST("ASTDumper.DumpStringLiteralText") {
 }
 
 ZC_TEST("ASTDumper.DumpStringLiteralJSON") {
-  auto expr = ast::factory::createStringLiteral(zc::str("hello world"));
+  auto expr = ast::factory::createStringLiteral("hello world"_zc);
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kJSON);
   ASTDumper dumper(zc::mv(serializer));
@@ -194,7 +194,7 @@ ZC_TEST("ASTDumper.DumpStringLiteralJSON") {
 }
 
 ZC_TEST("ASTDumper.DumpStringLiteralXML") {
-  auto expr = ast::factory::createStringLiteral(zc::str("hello world"));
+  auto expr = ast::factory::createStringLiteral("hello world"_zc);
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kXML);
   ASTDumper dumper(zc::mv(serializer));
@@ -274,7 +274,7 @@ ZC_TEST("ASTDumper.DumpNullLiteralXML") {
 
 // Test Identifier in all formats
 ZC_TEST("ASTDumper.DumpIdentifierText") {
-  auto expr = ast::factory::createIdentifier(zc::str("myVariable"));
+  auto expr = ast::factory::createIdentifier("myVariable"_zc);
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
   ASTDumper dumper(zc::mv(serializer));
@@ -285,7 +285,7 @@ ZC_TEST("ASTDumper.DumpIdentifierText") {
 }
 
 ZC_TEST("ASTDumper.DumpIdentifierJSON") {
-  auto expr = ast::factory::createIdentifier(zc::str("myVariable"));
+  auto expr = ast::factory::createIdentifier("myVariable"_zc);
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kJSON);
   ASTDumper dumper(zc::mv(serializer));
@@ -296,7 +296,7 @@ ZC_TEST("ASTDumper.DumpIdentifierJSON") {
 }
 
 ZC_TEST("ASTDumper.DumpIdentifierXML") {
-  auto expr = ast::factory::createIdentifier(zc::str("myVariable"));
+  auto expr = ast::factory::createIdentifier("myVariable"_zc);
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kXML);
   ASTDumper dumper(zc::mv(serializer));
@@ -319,7 +319,7 @@ ZC_TEST("ASTDumper.DumpUnaryExpressionText") {
   const zc::StringPtr expected =
       "PrefixUnaryExpression {\n"
       "  operator:\n"
-      "    UnaryOperator {\n"
+      "    TokenNode {\n"
       "      symbol: -\n"
       "    }\n"
       "  operand:\n"
@@ -342,7 +342,7 @@ ZC_TEST("ASTDumper.DumpUnaryExpressionJSON") {
       "{\n"
       "  \"node\": \"PrefixUnaryExpression\",\n"
       "  \"operator\": {\n"
-      "    \"node\": \"UnaryOperator\",\n"
+      "    \"node\": \"TokenNode\",\n"
       "    \"symbol\": \"+\"\n"
       "  },\n"
       "  \"operand\": {\n"
@@ -369,10 +369,10 @@ ZC_TEST("ASTDumper.DumpUnaryExpressionXML") {
 
 // Test CallExpression in all formats
 ZC_TEST("ASTDumper.DumpCallExpressionText") {
-  auto callee = ast::factory::createIdentifier(zc::str("func"));
+  auto callee = ast::factory::createIdentifier("func"_zc);
   zc::Vector<zc::Own<Expression>> args;
   args.add(ast::factory::createFloatLiteral(1.0));
-  args.add(ast::factory::createStringLiteral(zc::str("test")));
+  args.add(ast::factory::createStringLiteral("test"_zc));
   zc::Vector<zc::Own<ast::TypeNode>> typeArgs;
   auto expr =
       ast::factory::createCallExpression(zc::mv(callee), zc::none, zc::mv(typeArgs), zc::mv(args));
@@ -385,7 +385,7 @@ ZC_TEST("ASTDumper.DumpCallExpressionText") {
 }
 
 ZC_TEST("ASTDumper.DumpCallExpressionJSON") {
-  auto callee = ast::factory::createIdentifier(zc::str("func"));
+  auto callee = ast::factory::createIdentifier("func"_zc);
   zc::Vector<zc::Own<Expression>> args;
   args.add(ast::factory::createFloatLiteral(1.0));
   zc::Vector<zc::Own<ast::TypeNode>> typeArgs;
@@ -400,7 +400,7 @@ ZC_TEST("ASTDumper.DumpCallExpressionJSON") {
 }
 
 ZC_TEST("ASTDumper.DumpCallExpressionXML") {
-  auto callee = ast::factory::createIdentifier(zc::str("func"));
+  auto callee = ast::factory::createIdentifier("func"_zc);
   zc::Vector<zc::Own<Expression>> args;
   zc::Vector<zc::Own<TypeNode>> typeArgs;
   auto expr =
@@ -417,8 +417,8 @@ ZC_TEST("ASTDumper.DumpCallExpressionXML") {
 // Test ConditionalExpression in all formats
 ZC_TEST("ASTDumper.DumpConditionalExpressionText") {
   auto test = ast::factory::createBooleanLiteral(true);
-  auto consequent = ast::factory::createStringLiteral(zc::str("yes"));
-  auto alternate = ast::factory::createStringLiteral(zc::str("no"));
+  auto consequent = ast::factory::createStringLiteral("yes"_zc);
+  auto alternate = ast::factory::createStringLiteral("no"_zc);
   auto expr = ast::factory::createConditionalExpression(zc::mv(test), zc::mv(consequent),
                                                         zc::mv(alternate));
   MockOutputStream output;
@@ -431,8 +431,8 @@ ZC_TEST("ASTDumper.DumpConditionalExpressionText") {
 
 ZC_TEST("ASTDumper.DumpConditionalExpressionJSON") {
   auto test = ast::factory::createBooleanLiteral(true);
-  auto consequent = ast::factory::createStringLiteral(zc::str("yes"));
-  auto alternate = ast::factory::createStringLiteral(zc::str("no"));
+  auto consequent = ast::factory::createStringLiteral("yes"_zc);
+  auto alternate = ast::factory::createStringLiteral("no"_zc);
   auto expr = ast::factory::createConditionalExpression(zc::mv(test), zc::mv(consequent),
                                                         zc::mv(alternate));
   MockOutputStream output;
@@ -445,8 +445,8 @@ ZC_TEST("ASTDumper.DumpConditionalExpressionJSON") {
 
 ZC_TEST("ASTDumper.DumpConditionalExpressionXML") {
   auto test = ast::factory::createBooleanLiteral(true);
-  auto consequent = ast::factory::createStringLiteral(zc::str("yes"));
-  auto alternate = ast::factory::createStringLiteral(zc::str("no"));
+  auto consequent = ast::factory::createStringLiteral("yes"_zc);
+  auto alternate = ast::factory::createStringLiteral("no"_zc);
   auto expr = ast::factory::createConditionalExpression(zc::mv(test), zc::mv(consequent),
                                                         zc::mv(alternate));
   MockOutputStream output;
@@ -460,37 +460,37 @@ ZC_TEST("ASTDumper.DumpConditionalExpressionXML") {
 
 // Test Type dumping in all formats
 ZC_TEST("ASTDumper.DumpPredefinedTypeText") {
-  auto type = ast::factory::createPredefinedType(zc::str("str"));
+  auto type = ast::factory::createPredefinedType("str"_zc);
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
   ASTDumper dumper(zc::mv(serializer));
   dumper.dump(*type);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("PredefinedType {"));
+  ZC_ASSERT(result.contains("StrTypeNode {"));
   ZC_ASSERT(result.contains("name: str"));
 }
 
 ZC_TEST("ASTDumper.DumpPredefinedTypeJSON") {
-  auto type = ast::factory::createPredefinedType(zc::str("i32"));
+  auto type = ast::factory::createPredefinedType("i32"_zc);
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kJSON);
   ASTDumper dumper(zc::mv(serializer));
   dumper.dump(*type);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("\"node\": \"PredefinedType\""));
+  ZC_ASSERT(result.contains("\"node\": \"I32TypeNode\""));
   ZC_ASSERT(result.contains("\"name\": \"i32\""));
 }
 
 ZC_TEST("ASTDumper.DumpPredefinedTypeXML") {
-  auto type = ast::factory::createPredefinedType(zc::str("bool"));
+  auto type = ast::factory::createPredefinedType("bool"_zc);
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kXML);
   ASTDumper dumper(zc::mv(serializer));
   dumper.dump(*type);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("<PredefinedType>"));
+  ZC_ASSERT(result.contains("<BoolTypeNode>"));
   ZC_ASSERT(result.contains("<name>bool</name>"));
-  ZC_ASSERT(result.contains("</PredefinedType>"));
+  ZC_ASSERT(result.contains("</BoolTypeNode>"));
 }
 
 // Test Statement dumping
@@ -508,7 +508,7 @@ ZC_TEST("ASTDumper.DumpExpressionStatementText") {
 }
 
 ZC_TEST("ASTDumper.DumpExpressionStatementJSON") {
-  auto expr = ast::factory::createStringLiteral(zc::str("hello"));
+  auto expr = ast::factory::createStringLiteral("hello"_zc);
   auto stmt = ast::factory::createExpressionStatement(zc::mv(expr));
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kJSON);
@@ -566,9 +566,9 @@ ZC_TEST("ASTDumper.DumpEmptyStatementXML") {
 
 // Test FunctionDeclaration dumping
 ZC_TEST("ASTDumper.DumpFunctionDeclarationText") {
-  auto funcName = ast::factory::createIdentifier(zc::str("testFunc"));
+  auto funcName = ast::factory::createIdentifier("testFunc"_zc);
   zc::Vector<zc::Own<ast::BindingElement>> parameters;
-  auto param = ast::factory::createBindingElement(ast::factory::createIdentifier(zc::str("param")),
+  auto param = ast::factory::createBindingElement(ast::factory::createIdentifier("param"_zc),
                                                   zc::none, zc::none);
   parameters.add(zc::mv(param));
 
@@ -607,7 +607,7 @@ ZC_TEST("ASTDumper.DumpBlockStatementText") {
 
 // Test PostfixUnaryExpression dumping
 ZC_TEST("ASTDumper.DumpPostfixUnaryExpressionText") {
-  auto operand = ast::factory::createIdentifier(zc::str("x"));
+  auto operand = ast::factory::createIdentifier("x"_zc);
   auto expr =
       ast::factory::createPostfixUnaryExpression(ast::SyntaxKind::PlusPlus, zc::mv(operand));
 
@@ -623,7 +623,7 @@ ZC_TEST("ASTDumper.DumpPostfixUnaryExpressionText") {
 
 // Test TypeReference dumping
 ZC_TEST("ASTDumper.DumpTypeReferenceText") {
-  auto typeName = ast::factory::createIdentifier(zc::str("MyType"));
+  auto typeName = ast::factory::createIdentifier("MyType"_zc);
   auto typeRef = ast::factory::createTypeReference(zc::mv(typeName), zc::none);
 
   MockOutputStream output;
@@ -631,13 +631,13 @@ ZC_TEST("ASTDumper.DumpTypeReferenceText") {
   ASTDumper dumper(zc::mv(serializer));
   dumper.dump(*typeRef);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("TypeReference {"));
+  ZC_ASSERT(result.contains("TypeReferenceNode {"));
   ZC_ASSERT(result.contains("name:"));
 }
 
 // Test ArrayType dumping
 ZC_TEST("ASTDumper.DumpArrayTypeText") {
-  auto elementType = ast::factory::createPredefinedType(zc::str("i32"));
+  auto elementType = ast::factory::createPredefinedType("i32"_zc);
   auto arrayType = ast::factory::createArrayType(zc::mv(elementType));
 
   MockOutputStream output;
@@ -645,15 +645,15 @@ ZC_TEST("ASTDumper.DumpArrayTypeText") {
   ASTDumper dumper(zc::mv(serializer));
   dumper.dump(*arrayType);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("ArrayType {"));
+  ZC_ASSERT(result.contains("ArrayTypeNode {"));
   ZC_ASSERT(result.contains("elementType:"));
 }
 
 // Test UnionType dumping
 ZC_TEST("ASTDumper.DumpUnionTypeText") {
   zc::Vector<zc::Own<ast::TypeNode>> types;
-  types.add(ast::factory::createPredefinedType(zc::str("str")));
-  types.add(ast::factory::createPredefinedType(zc::str("i32")));
+  types.add(ast::factory::createPredefinedType("str"_zc));
+  types.add(ast::factory::createPredefinedType("i32"_zc));
   auto unionType = ast::factory::createUnionType(zc::mv(types));
 
   MockOutputStream output;
@@ -661,7 +661,7 @@ ZC_TEST("ASTDumper.DumpUnionTypeText") {
   ASTDumper dumper(zc::mv(serializer));
   dumper.dump(*unionType);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("UnionType {"));
+  ZC_ASSERT(result.contains("UnionTypeNode {"));
   ZC_ASSERT(result.contains("types:"));
 }
 
@@ -681,7 +681,7 @@ ZC_TEST("ASTDumper.DumpParenthesizedExpressionText") {
 
 // Test JSON serialization for complex types
 ZC_TEST("ASTDumper.DumpArrayTypeJSON") {
-  auto elementType = ast::factory::createPredefinedType(zc::str("str"));
+  auto elementType = ast::factory::createPredefinedType("str"_zc);
   auto arrayType = ast::factory::createArrayType(zc::mv(elementType));
 
   MockOutputStream output;
@@ -689,15 +689,15 @@ ZC_TEST("ASTDumper.DumpArrayTypeJSON") {
   ASTDumper dumper(zc::mv(serializer));
   dumper.dump(*arrayType);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("\"node\": \"ArrayType\""));
+  ZC_ASSERT(result.contains("\"node\": \"ArrayTypeNode\""));
   ZC_ASSERT(result.contains("\"elementType\":"));
 }
 
 // Test XML serialization for complex types
 ZC_TEST("ASTDumper.DumpUnionTypeXML") {
   zc::Vector<zc::Own<ast::TypeNode>> types;
-  types.add(ast::factory::createPredefinedType(zc::str("bool")));
-  types.add(ast::factory::createPredefinedType(zc::str("null")));
+  types.add(ast::factory::createPredefinedType("bool"_zc));
+  types.add(ast::factory::createPredefinedType("null"_zc));
   auto unionType = ast::factory::createUnionType(zc::mv(types));
 
   MockOutputStream output;
@@ -705,9 +705,9 @@ ZC_TEST("ASTDumper.DumpUnionTypeXML") {
   ASTDumper dumper(zc::mv(serializer));
   dumper.dump(*unionType);
   zc::String result = output.getBuffer();
-  ZC_ASSERT(result.contains("<UnionType>"));
+  ZC_ASSERT(result.contains("<UnionTypeNode>"));
   ZC_ASSERT(result.contains("<types>"));
-  ZC_ASSERT(result.contains("</UnionType>"));
+  ZC_ASSERT(result.contains("</UnionTypeNode>"));
 }
 
 }  // namespace ast

@@ -24,6 +24,7 @@
 #include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/frontend.h"
+#include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/thread-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/binder.h"
@@ -44,7 +45,8 @@ struct CompilerDriver::Impl {
   Impl(const basic::LangOptions& opts, const basic::CompilerOptions& compOpts) noexcept
       : langOpts(opts),
         compilerOpts(compOpts),
-        sourceManager(zc::heap<source::SourceManager>()),
+        stringPool(zc::heap<basic::StringPool>()),
+        sourceManager(zc::heap<source::SourceManager>(*stringPool)),
         diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)),
         symbolTable(zc::heap<symbol::SymbolTable>()) {
     diagnosticEngine->addConsumer(zc::heap<diagnostics::ConsolingDiagnosticConsumer>());
@@ -67,6 +69,8 @@ struct CompilerDriver::Impl {
   const basic::LangOptions& langOpts;
   /// Compiler options
   const basic::CompilerOptions& compilerOpts;
+  /// String pool to manage interned strings.
+  zc::Own<basic::StringPool> stringPool;
   /// Source manager to manage source files.
   zc::Own<source::SourceManager> sourceManager;
   /// Diagnostic engine to report diagnostics.
@@ -98,6 +102,10 @@ const diagnostics::DiagnosticEngine& CompilerDriver::getDiagnosticEngine() const
   return *impl->diagnosticEngine;
 }
 
+diagnostics::DiagnosticEngine& CompilerDriver::getDiagnosticEngine() {
+  return *impl->diagnosticEngine;
+}
+
 const zc::HashMap<source::BufferId, zc::Own<ast::Node>>& CompilerDriver::getASTs() const {
   auto lockedAsts = impl->astMutex.lockShared();
   return *lockedAsts;
@@ -113,8 +121,9 @@ bool CompilerDriver::parseSources() {
     // Create a thread for each buffer ID
     threadPool.enqueue([this, bufferId]() -> void {
       // Perform lexing and parsing for the buffer.
-      zc::Maybe<zc::Own<ast::Node>> maybeAst = basic::performParse(
-          *impl->sourceManager, *impl->diagnosticEngine, impl->langOpts, bufferId);
+      zc::Maybe<zc::Own<ast::Node>> maybeAst =
+          basic::performParse(*impl->sourceManager, *impl->diagnosticEngine, impl->langOpts,
+                              *impl->stringPool, bufferId);
 
       // Store the result if successful
       ZC_IF_SOME(ast, maybeAst) {
@@ -172,6 +181,10 @@ bool CompilerDriver::bindSources() {
 }
 
 const symbol::SymbolTable& CompilerDriver::getSymbolTable() const { return *impl->symbolTable; }
+
+basic::StringPool& CompilerDriver::getStringPool() { return *impl->stringPool; }
+
+const basic::StringPool& CompilerDriver::getStringPool() const { return *impl->stringPool; }
 
 const basic::CompilerOptions& CompilerDriver::getCompilerOptions() const {
   return impl->compilerOpts;

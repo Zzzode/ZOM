@@ -31,8 +31,8 @@ ZC_TEST("DiagnosticTest.BasicDiagnosticReporting") {
 
   auto bufferId = sourceManager->addMemBufferCopy(zc::StringPtr("let x = ;").asBytes(), "test.zom");
   auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
-  
-  diagnosticEngine->diagnose<DiagID::InvalidChar>(loc, zc::str("test"));
+
+  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
@@ -42,10 +42,11 @@ ZC_TEST("DiagnosticTest.MultipleDiagnostics") {
   auto consumer = zc::heap<ConsolingDiagnosticConsumer>();
   diagnosticEngine->addConsumer(zc::mv(consumer));
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::StringPtr("invalid code").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::StringPtr("invalid code").asBytes(), "test.zom");
   auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
-  
-  diagnosticEngine->diagnose<DiagID::InvalidChar>(loc, zc::str("@"));
+
+  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   diagnosticEngine->diagnose<DiagID::UnterminatedString>(loc);
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
@@ -56,10 +57,11 @@ ZC_TEST("DiagnosticTest.DiagnosticConsumer") {
   auto consumer = zc::heap<ConsolingDiagnosticConsumer>();
   diagnosticEngine->addConsumer(zc::mv(consumer));
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::StringPtr("code with error").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::StringPtr("code with error").asBytes(), "test.zom");
   auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
-  
-  diagnosticEngine->diagnose<DiagID::InvalidChar>(loc, zc::str("i32"));
+
+  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
@@ -69,10 +71,11 @@ ZC_TEST("DiagnosticTest.SourceLocationReporting") {
   auto consumer = zc::heap<ConsolingDiagnosticConsumer>();
   diagnosticEngine->addConsumer(zc::mv(consumer));
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::StringPtr("line1\nline2\nline3").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::StringPtr("line1\nline2\nline3").asBytes(), "test.zom");
   auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
-  
-  diagnosticEngine->diagnose<DiagID::InvalidChar>(loc, zc::str("test"));
+
+  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 

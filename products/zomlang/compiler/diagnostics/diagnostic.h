@@ -25,11 +25,6 @@
 
 namespace zomlang {
 namespace compiler {
-
-namespace source {
-class SourceLoc;
-}
-
 namespace diagnostics {
 
 struct FixIt {
@@ -65,6 +60,7 @@ public:
 
   void addChildDiagnostic(zc::Own<Diagnostic> child);
   void addFixIt(zc::Own<FixIt> fixIt);
+  void addRange(const source::CharSourceRange& range);
 
 private:
   DiagID id;

@@ -30,6 +30,10 @@ enum class SyntaxKind {
 
   // Literals
   CharacterLiteral,
+  NoSubstitutionTemplateLiteral,  // `...`
+  TemplateHead,                   // `...${
+  TemplateMiddle,                 // }...${
+  TemplateTail,                   // }...`
 
   // ================================================================================
   // KEYWORDS
@@ -109,7 +113,6 @@ enum class SyntaxKind {
   UndefinedKeyword,    // undefined
   UniqueKeyword,       // unique
   UsingKeyword,        // using
-  VarKeyword,          // var
   VoidKeyword,         // void
   WhenKeyword,         // when
   WhileKeyword,        // while
@@ -245,14 +248,26 @@ enum class SyntaxKind {
 
   Comment,
   EndOfFile,
+  SingleLineComment,
+  MultiLineComment,
+  NewLine,
+  Whitespace,
+  // Detect and preserve #! on top of the file
+  Shebang,
+  // Detect and provide better error recovery when we encounter a git merge marker.  This
+  // allows us to edit files with git-conflict markers in them in a much more pleasant manner.
+  ConflictMarker,
+  // If a file is actually binary, with any luck, we'll get U+FFFD REPLACEMENT CHARACTER
+  // in position zero and can just skip what is surely a doomed parse.
+  NonTextFileMarker,
 
 // ================================================================================
 // AST NODES (Generated from ast-nodes.def)
 // ================================================================================
 
 // Generate SyntaxKind enum values for element nodes only
-#define AST_ELEMENT_NODE(Class) Class,
-#define AST_INTERFACE_NODE(Class)  // Skip interface nodes
+#define AST_ELEMENT_NODE(Class, ...) Class,
+#define AST_INTERFACE_NODE(Class, Parent)  // Skip interface nodes
 #include "zomlang/compiler/ast/ast-nodes.def"
 #undef AST_ELEMENT_NODE
 #undef AST_INTERFACE_NODE
@@ -326,38 +341,9 @@ enum class SyntaxKind {
   LastPunctuation = RightBracket,
 
   // AST node ranges
-  FirstStatement = BlockStatement,
-  LastStatement = DebuggerStatement,
+  FirstStatement = VariableStatement,
+  LastStatement = DefaultClause,
 };
-
-// ================================================================================
-// UTILITY FUNCTIONS
-// ================================================================================
-
-/// \brief Check if a syntax element kind represents a keyword
-inline bool isKeyword(SyntaxKind kind) {
-  return kind >= SyntaxKind::FirstKeyword && kind <= SyntaxKind::LastKeyword;
-}
-
-/// \brief Check if a syntax element kind represents a reserved keyword
-inline bool isReservedKeyword(SyntaxKind kind) {
-  return kind >= SyntaxKind::FirstReservedWord && kind <= SyntaxKind::LastReservedWord;
-}
-
-/// \brief Check if a syntax element kind represents an identifier or keyword
-inline bool isIdentifierOrKeyword(SyntaxKind kind) {
-  return kind == SyntaxKind::Identifier || isKeyword(kind);
-}
-
-/// \brief Check if a syntax element kind represents punctuation
-inline bool isPunctuation(SyntaxKind kind) {
-  return kind >= SyntaxKind::FirstPunctuation && kind <= SyntaxKind::LastPunctuation;
-}
-
-/// \brief Check if a syntax element kind represents a statement
-inline bool isStatement(SyntaxKind kind) {
-  return kind >= SyntaxKind::FirstStatement && kind <= SyntaxKind::LastStatement;
-}
 
 }  // namespace ast
 }  // namespace compiler

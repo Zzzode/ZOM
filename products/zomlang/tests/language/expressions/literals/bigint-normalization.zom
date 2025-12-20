@@ -1,0 +1,39 @@
+// RUN: %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+
+// Test BigInt literals with binary and octal suffixes and normalization
+let a = 10n;
+// CHECK: "kind": "BigIntLiteral"
+// CHECK-NEXT: "value": "10n"
+
+let b = 0b10n;
+// CHECK: "kind": "BigIntLiteral"
+// CHECK-NEXT: "value": "2n"
+
+let c = 0o10n;
+// CHECK: "kind": "BigIntLiteral"
+// CHECK-NEXT: "value": "8n"
+
+let d = 0b1111_0000n;
+// CHECK: "kind": "BigIntLiteral"
+// CHECK-NEXT: "value": "240n"
+
+let e = 0o755n;
+// CHECK: "kind": "BigIntLiteral"
+// CHECK-NEXT: "value": "493n"
+
+// Test numeric literal normalization
+let f = 0b10;
+// CHECK: "kind": "IntegerLiteral"
+// CHECK-NEXT: "value": "2"
+
+let g = 0o10;
+// CHECK: "kind": "IntegerLiteral"
+// CHECK-NEXT: "value": "8"
+
+let h = 0b1111_0000;
+// CHECK: "kind": "IntegerLiteral"
+// CHECK-NEXT: "value": "240"
+
+let i = 000123;
+// CHECK: "kind": "IntegerLiteral"
+// CHECK-NEXT: "value": "123"

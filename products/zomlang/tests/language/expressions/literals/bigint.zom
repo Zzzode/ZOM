@@ -1,0 +1,5 @@
+// Test for BigInt suffix logic
+var a = 123n;
+var b = 0x123n;
+var c = 0b101n;
+var d = 0o123n;

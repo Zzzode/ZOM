@@ -18,8 +18,7 @@ namespace zomlang {
 namespace compiler {
 namespace lexer {
 
-// Unicode ID_Start ranges based on Unicode 15.0.0 (simplified core set)
-// These ranges include letters and letter-like symbols that can start identifiers
+// Corresponds to the ID_Start and Other_ID_Start property
 static constexpr UnicodeRange ID_START_RANGES_DATA[] = {
     {0x0041, 0x005A},   {0x0061, 0x007A},   {0x00AA, 0x00AA},   {0x00B5, 0x00B5},
     {0x00BA, 0x00BA},   {0x00C0, 0x00D6},   {0x00D8, 0x00F6},   {0x00F8, 0x02C1},
@@ -188,9 +187,8 @@ static constexpr UnicodeRange ID_START_RANGES_DATA[] = {
     {0x2EBF0, 0x2EE5D}, {0x2F800, 0x2FA1D}, {0x30000, 0x3134A}, {0x31350, 0x323AF},
 };
 
-// Unicode ID_Continue ranges based on Unicode 15.0.0 (simplified core set)
-// These ranges include all ID_Start characters plus digits, combining marks, etc.
-static constexpr UnicodeRange ID_CONTINUE_RANGES_DATA[] = {
+// Corresponds to ID_Continue, Other_ID_Continue, plus ID_Start and Other_ID_Start
+static constexpr UnicodeRange ID_PART_RANGES_DATA[] = {
     {0x0030, 0x0039},   {0x0041, 0x005A},   {0x005F, 0x005F},   {0x0061, 0x007A},
     {0x00AA, 0x00AA},   {0x00B5, 0x00B5},   {0x00B7, 0x00B7},   {0x00BA, 0x00BA},
     {0x00C0, 0x00D6},   {0x00D8, 0x00F6},   {0x00F8, 0x02C1},   {0x02C6, 0x02D1},
@@ -388,34 +386,13 @@ static constexpr UnicodeRange ID_CONTINUE_RANGES_DATA[] = {
 
 constexpr zc::ArrayPtr<const UnicodeRange> ID_START_RANGES = zc::arrayPtr(ID_START_RANGES_DATA);
 
-constexpr zc::ArrayPtr<const UnicodeRange> ID_CONTINUE_RANGES =
-    zc::arrayPtr(ID_CONTINUE_RANGES_DATA);
+constexpr zc::ArrayPtr<const UnicodeRange> ID_PART_RANGES = zc::arrayPtr(ID_PART_RANGES_DATA);
 
-bool isIdStart(const uint32_t codePoint) {
-  // Binary search through the sorted ranges
-  auto ranges = ID_START_RANGES;
-  size_t left = 0;
-  size_t right = ranges.size();
+bool isIdStart(const uint32_t codePoint) { return isInUnicodeRange(codePoint, ID_START_RANGES); }
 
-  while (left < right) {
-    size_t mid = left + (right - left) / 2;
-    const auto& range = ranges[mid];
+bool isIdPart(const uint32_t codePoint) { return isInUnicodeRange(codePoint, ID_PART_RANGES); }
 
-    if (codePoint < range.start) {
-      right = mid;
-    } else if (codePoint > range.end) {
-      left = mid + 1;
-    } else {
-      return true;  // codePoint is within range
-    }
-  }
-
-  return false;
-}
-
-bool isIdContinue(const uint32_t codePoint) {
-  // Binary search through the sorted ranges
-  auto ranges = ID_CONTINUE_RANGES;
+bool isInUnicodeRange(const uint32_t codePoint, const zc::ArrayPtr<const UnicodeRange>& ranges) {
   size_t left = 0;
   size_t right = ranges.size();
 

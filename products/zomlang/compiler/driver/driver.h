@@ -41,6 +41,10 @@ namespace symbol {
 class SymbolTable;
 }
 
+namespace basic {
+class StringPool;
+}  // namespace basic
+
 namespace driver {
 
 class CompilerDriver {
@@ -57,6 +61,7 @@ public:
   /// Get the diagnostic engine used by the compiler.
   /// \return A reference to the diagnostic engine
   const diagnostics::DiagnosticEngine& getDiagnosticEngine() const;
+  diagnostics::DiagnosticEngine& getDiagnosticEngine();
 
   /// Parses all added source files into ASTs.
   /// \return True if parsing succeeded without fatal errors, false otherwise.
@@ -73,6 +78,11 @@ public:
   /// Get the symbol table used by the compiler.
   /// \return A reference to the symbol table
   const symbol::SymbolTable& getSymbolTable() const;
+
+  /// Get the string pool used by the compiler.
+  /// \return A reference to the string pool
+  basic::StringPool& getStringPool();
+  const basic::StringPool& getStringPool() const;
 
   /// Get the compiler options used by the driver.
   /// \return A reference to the compiler options

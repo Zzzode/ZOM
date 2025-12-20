@@ -16,6 +16,9 @@ formatted_files = []  # Global list to track formatted files
 
 def check_and_format(file_path, auto_format=False):
     """Check if the given file is formatted properly using clang-format and optionally format it."""
+    if not os.path.exists(file_path):
+        return True
+
     try:
         # Run clang-format on the file.
         formatted = subprocess.run(
@@ -116,6 +119,7 @@ def get_changed_files():
         f
         for f in changed_files
         if os.path.splitext(f)[1] in allowed_extensions
+        and os.path.exists(f)
         and (
             not f.startswith("third_party/")
             and not f.startswith("src/rtsvm/")
@@ -139,7 +143,7 @@ def get_files_from_path(path):
     """Get all C/C++ files from the specified path (file or directory)."""
     allowed_extensions = {".c", ".cpp", ".cc", ".h", ".hpp"}
     files = []
-    
+
     if os.path.isfile(path):
         # Single file
         if os.path.splitext(path)[1] in allowed_extensions:
@@ -151,7 +155,7 @@ def get_files_from_path(path):
         for root, dirs, filenames in os.walk(path):
             # Skip third_party and runtime directories
             dirs[:] = [d for d in dirs if not d.startswith('third_party') and d not in ['rtsvm', 'rts']]
-            
+
             for filename in filenames:
                 if os.path.splitext(filename)[1] in allowed_extensions:
                     file_path = os.path.join(root, filename)
@@ -165,7 +169,7 @@ def get_files_from_path(path):
     else:
         print(f"{RED}Error: {path} is not a valid file or directory{RESET}")
         sys.exit(1)
-    
+
     return files
 
 

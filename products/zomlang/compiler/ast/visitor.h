@@ -21,8 +21,8 @@ namespace compiler {
 namespace ast {
 
 // Forward declarations for all AST node types
-#define AST_ELEMENT_NODE(ClassName) class ClassName;
-#define AST_INTERFACE_NODE(ClassName) class ClassName;
+#define AST_ELEMENT_NODE(ClassName, ...) class ClassName;
+#define AST_INTERFACE_NODE(ClassName, Parent) class ClassName;
 #include "zomlang/compiler/ast/ast-nodes.def"
 #undef AST_ELEMENT_NODE
 #undef AST_INTERFACE_NODE
@@ -40,31 +40,11 @@ class Visitor {
 public:
   ZC_DISALLOW_COPY_AND_MOVE(Visitor);
 
-#define AST_ELEMENT_NODE(ClassName) virtual void visit(const ClassName& node) = 0;
+#define AST_INTERFACE_NODE(ClassName, Parent) virtual void visit(const ClassName& node) = 0;
+#define AST_ELEMENT_NODE(ClassName, ...) virtual void visit(const ClassName& node) = 0;
 #include "zomlang/compiler/ast/ast-nodes.def"
 #undef AST_ELEMENT_NODE
-
-  // Base visit methods
-  virtual void visit(const Node& node) = 0;
-  virtual void visit(const Statement& statement) = 0;
-  virtual void visit(const Expression& expression) = 0;
-  virtual void visit(const TypeNode& type) = 0;
-
-  // Expression visitor methods
-  virtual void visit(const UnaryExpression& node) = 0;
-  virtual void visit(const UpdateExpression& node) = 0;
-
-  virtual void visit(const LeftHandSideExpression& node) = 0;
-  virtual void visit(const MemberExpression& node) = 0;
-  virtual void visit(const PrimaryExpression& node) = 0;
-
-  virtual void visit(const LiteralExpression& node) = 0;
-
-  virtual void visit(const CastExpression& node) = 0;
-
-  // Module visitor methods
-
-  // Type visitor methods
+#undef AST_INTERFACE_NODE
 
 protected:
   Visitor() = default;

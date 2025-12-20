@@ -20,6 +20,7 @@
 #include "zomlang/compiler/ast/serializer.h"
 #include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/ast/type.h"
+#include "zomlang/compiler/lexer/token.h"
 
 namespace zomlang {
 namespace compiler {
@@ -197,6 +198,38 @@ void ASTDumper::visit(const StringLiteral& node) {
   impl->serializer->writeNodeEnd("StringLiteral"_zc);
 }
 
+void ASTDumper::visit(const TemplateLiteralExpression& node) {
+  impl->serializer->writeNodeStart("TemplateLiteralExpression"_zc);
+
+  impl->serializer->writeChildStart("head"_zc);
+  node.getHead().accept(*this);
+  impl->serializer->writeChildEnd("head"_zc);
+
+  const auto& spans = node.getSpans();
+  impl->serializer->writeArrayStart("spans"_zc, spans.size());
+  for (const auto& span : spans) {
+    impl->serializer->writeArrayElement();
+    span.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("spans"_zc);
+
+  impl->serializer->writeNodeEnd("TemplateLiteralExpression"_zc);
+}
+
+void ASTDumper::visit(const TemplateSpan& node) {
+  impl->serializer->writeNodeStart("TemplateSpan"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeChildStart("literal"_zc);
+  node.getLiteral().accept(*this);
+  impl->serializer->writeChildEnd("literal"_zc);
+
+  impl->serializer->writeNodeEnd("TemplateSpan"_zc);
+}
+
 void ASTDumper::visit(const IntegerLiteral& node) {
   impl->serializer->writeNodeStart("IntegerLiteral"_zc);
   impl->serializer->writeProperty("value", zc::str(node.getValue()));
@@ -207,6 +240,12 @@ void ASTDumper::visit(const FloatLiteral& node) {
   impl->serializer->writeNodeStart("FloatLiteral"_zc);
   impl->serializer->writeProperty("value", zc::str(node.getValue()));
   impl->serializer->writeNodeEnd("FloatLiteral"_zc);
+}
+
+void ASTDumper::visit(const BigIntLiteral& node) {
+  impl->serializer->writeNodeStart("BigIntLiteral"_zc);
+  impl->serializer->writeProperty("text"_zc, node.getText());
+  impl->serializer->writeNodeEnd("BigIntLiteral"_zc);
 }
 
 void ASTDumper::visit(const BooleanLiteral& node) {
@@ -248,6 +287,18 @@ void ASTDumper::visit(const Statement& node) {
   impl->serializer->writeNodeEnd("Statement"_zc);
 }
 
+void ASTDumper::visit(const IterationStatement& node) {
+  impl->serializer->writeNodeStart("IterationStatement"_zc);
+  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
+  impl->serializer->writeNodeEnd("IterationStatement"_zc);
+}
+
+void ASTDumper::visit(const DeclarationStatement& node) {
+  impl->serializer->writeNodeStart("DeclarationStatement"_zc);
+  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
+  impl->serializer->writeNodeEnd("DeclarationStatement"_zc);
+}
+
 void ASTDumper::visit(const Expression& node) {
   impl->serializer->writeNodeStart("Expression"_zc);
   impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
@@ -273,6 +324,15 @@ void ASTDumper::visit(const BindingElement& node) {
   impl->serializer->writeChildEnd("initializer"_zc);
 
   impl->serializer->writeNodeEnd("BindingElement"_zc);
+}
+void ASTDumper::visit(const ClassElement& node) {
+  impl->serializer->writeNodeStart("ClassElement"_zc);
+  impl->serializer->writeNodeEnd("ClassElement"_zc);
+}
+
+void ASTDumper::visit(const InterfaceElement& node) {
+  impl->serializer->writeNodeStart("InterfaceElement"_zc);
+  impl->serializer->writeNodeEnd("InterfaceElement"_zc);
 }
 
 void ASTDumper::visit(const ModulePath& node) {
@@ -385,7 +445,11 @@ void ASTDumper::visit(const PrefixUnaryExpression& node) {
   impl->serializer->writeNodeStart("PrefixUnaryExpression"_zc);
 
   impl->serializer->writeChildStart("operator"_zc);
-  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getOperator())));
+  impl->serializer->writeNodeStart("TokenNode"_zc);
+  ZC_IF_SOME(operatorText, lexer::Token::getStaticTextForTokenKind(node.getOperator())) {
+    impl->serializer->writeProperty("symbol", operatorText);
+  }
+  impl->serializer->writeNodeEnd("TokenNode"_zc);
   impl->serializer->writeChildEnd("operator"_zc);
 
   impl->serializer->writeChildStart("operand"_zc);
@@ -403,7 +467,11 @@ void ASTDumper::visit(const PostfixUnaryExpression& node) {
   impl->serializer->writeChildEnd("operand"_zc);
 
   impl->serializer->writeChildStart("operator"_zc);
-  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getOperator())));
+  impl->serializer->writeNodeStart("TokenNode"_zc);
+  ZC_IF_SOME(operatorText, lexer::Token::getStaticTextForTokenKind(node.getOperator())) {
+    impl->serializer->writeProperty("symbol", operatorText);
+  }
+  impl->serializer->writeNodeEnd("TokenNode"_zc);
   impl->serializer->writeChildEnd("operator"_zc);
 
   impl->serializer->writeNodeEnd("PostfixUnaryExpression"_zc);
@@ -474,13 +542,75 @@ void ASTDumper::visit(const ConditionalAsExpression& node) {
   impl->serializer->writeNodeEnd("ConditionalAsExpression"_zc);
 }
 
+void ASTDumper::visit(const NonNullExpression& node) {
+  impl->serializer->writeNodeStart("NonNullExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeNodeEnd("NonNullExpression"_zc);
+}
+
+void ASTDumper::visit(const ExpressionWithTypeArguments& node) {
+  impl->serializer->writeNodeStart("ExpressionWithTypeArguments"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  const auto& typeArguments = node.getTypeArguments();
+  if (!typeArguments.empty()) {
+    impl->serializer->writeArrayStart("typeArguments"_zc, typeArguments.size());
+    for (const auto& typeArg : typeArguments) {
+      impl->serializer->writeArrayElement();
+      typeArg.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeArguments"_zc);
+  }
+
+  impl->serializer->writeNodeEnd("ExpressionWithTypeArguments"_zc);
+}
+
+void ASTDumper::visit(const HeritageClause& node) {
+  impl->serializer->writeNodeStart("HeritageClause"_zc);
+
+  impl->serializer->writeChildStart("token"_zc);
+  impl->serializer->writeNodeStart("TokenNode"_zc);
+  ZC_IF_SOME(text, lexer::Token::getStaticTextForTokenKind(node.getToken())) {
+    impl->serializer->writeProperty("symbol", text);
+  }
+  impl->serializer->writeNodeEnd("TokenNode"_zc);
+  impl->serializer->writeChildEnd("token"_zc);
+
+  const auto& types = node.getTypes();
+  impl->serializer->writeArrayStart("types"_zc, types.size());
+  for (const auto& t : types) {
+    impl->serializer->writeArrayElement();
+    t->accept(*this);
+  }
+  impl->serializer->writeArrayEnd("types"_zc);
+
+  impl->serializer->writeNodeEnd("HeritageClause"_zc);
+}
+
 void ASTDumper::visit(const VoidExpression& node) {
   impl->serializer->writeNodeStart("VoidExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
   impl->serializer->writeNodeEnd("VoidExpression"_zc);
 }
 
 void ASTDumper::visit(const TypeOfExpression& node) {
   impl->serializer->writeNodeStart("TypeOfExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
   impl->serializer->writeNodeEnd("TypeOfExpression"_zc);
 }
 
@@ -507,6 +637,14 @@ void ASTDumper::visit(const FunctionExpression& node) {
     param.accept(*this);
   }
   impl->serializer->writeArrayEnd("parameters"_zc);
+
+  const auto& captures = node.getCaptures();
+  impl->serializer->writeArrayStart("captures"_zc, captures.size());
+  for (const auto& capture : captures) {
+    impl->serializer->writeArrayElement();
+    capture.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("captures"_zc);
 
   ZC_IF_SOME(returnType, node.getReturnType()) {
     impl->serializer->writeChildStart("returnType"_zc);
@@ -539,12 +677,18 @@ void ASTDumper::visit(const TypeNode& node) {
 
 void ASTDumper::visit(const TokenNode& node) {
   impl->serializer->writeNodeStart("TokenNode"_zc);
+
+  // Get the operator symbol from the TokenNode's SyntaxKind
+  ZC_IF_SOME(operatorText, lexer::Token::getStaticTextForTokenKind(node.getKind())) {
+    impl->serializer->writeProperty("symbol", operatorText);
+  }
+
   impl->serializer->writeNodeEnd("TokenNode"_zc);
 }
 
 void ASTDumper::visit(const TypeReferenceNode& node) {
   impl->serializer->writeNodeStart("TypeReferenceNode"_zc);
-  impl->serializer->writeProperty("name", node.getName().getText());
+  impl->serializer->writeProperty("name"_zc, node.getName().getText());
   impl->serializer->writeNodeEnd("TypeReferenceNode"_zc);
 }
 
@@ -597,9 +741,39 @@ void ASTDumper::visit(const ParenthesizedTypeNode& node) {
 }
 
 void ASTDumper::visit(const PredefinedTypeNode& node) {
-  impl->serializer->writeNodeStart("PredefinedTypeNode"_zc);
-  impl->serializer->writeProperty("name", "Predefined");
-  impl->serializer->writeNodeEnd("PredefinedTypeNode"_zc);
+  impl->serializer->writeNodeStart("PredefinedType"_zc);
+  impl->serializer->writeProperty("name"_zc, node.getName());
+  impl->serializer->writeNodeEnd("PredefinedType"_zc);
+}
+
+void ASTDumper::visit(const Declaration& node) {
+  impl->serializer->writeNodeStart("Declaration"_zc);
+  impl->serializer->writeProperty("name", "Declaration");
+  impl->serializer->writeNodeEnd("Declaration"_zc);
+}
+
+void ASTDumper::visit(const NamedDeclaration& node) {
+  impl->serializer->writeNodeStart("NamedDeclaration"_zc);
+  impl->serializer->writeProperty("name", "NamedDeclaration");
+  impl->serializer->writeNodeEnd("NamedDeclaration"_zc);
+}
+
+void ASTDumper::visit(const Pattern& node) {
+  impl->serializer->writeNodeStart("Pattern"_zc);
+  impl->serializer->writeProperty("name", "Pattern");
+  impl->serializer->writeNodeEnd("Pattern"_zc);
+}
+
+void ASTDumper::visit(const PrimaryPattern& node) {
+  impl->serializer->writeNodeStart("PrimaryPattern"_zc);
+  impl->serializer->writeProperty("name", "PrimaryPattern");
+  impl->serializer->writeNodeEnd("PrimaryPattern"_zc);
+}
+
+void ASTDumper::visit(const BindingPattern& node) {
+  impl->serializer->writeNodeStart("BindingPattern"_zc);
+  impl->serializer->writeProperty("name", "BindingPattern");
+  impl->serializer->writeNodeEnd("BindingPattern"_zc);
 }
 
 void ASTDumper::visit(const ObjectTypeNode& node) {
@@ -631,7 +805,7 @@ void ASTDumper::visit(const TupleTypeNode& node) {
 }
 
 void ASTDumper::visit(const ReturnTypeNode& node) {
-  impl->serializer->writeNodeStart("ReturnTypeNode"_zc);
+  impl->serializer->writeNodeStart("ReturnType"_zc);
 
   impl->serializer->writeChildStart("type"_zc);
   node.getType().accept(*this);
@@ -643,7 +817,7 @@ void ASTDumper::visit(const ReturnTypeNode& node) {
     impl->serializer->writeChildEnd("errorType"_zc);
   }
 
-  impl->serializer->writeNodeEnd("ReturnTypeNode"_zc);
+  impl->serializer->writeNodeEnd("ReturnType"_zc);
 }
 
 void ASTDumper::visit(const FunctionTypeNode& node) {
@@ -718,6 +892,10 @@ void ASTDumper::visit(const MissingDeclaration& node) {
   impl->serializer->writeNodeStart("MissingDeclaration"_zc);
   impl->serializer->writeNodeEnd("MissingDeclaration"_zc);
 }
+void ASTDumper::visit(const SemicolonClassElement& node) {
+  impl->serializer->writeNodeStart("SemicolonClassElement"_zc);
+  impl->serializer->writeNodeEnd("SemicolonClassElement"_zc);
+}
 
 void ASTDumper::visit(const InterfaceBody& node) {
   // TODO: Implement InterfaceBody dumping
@@ -769,80 +947,86 @@ void ASTDumper::visit(const SuperExpression& node) {
 
 void ASTDumper::visit(const BoolTypeNode& node) {
   impl->serializer->writeNodeStart("BoolTypeNode"_zc);
-  // TODO: Implement BoolTypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("BoolTypeNode"_zc);
 }
 
 void ASTDumper::visit(const I8TypeNode& node) {
   impl->serializer->writeNodeStart("I8TypeNode"_zc);
-  // TODO: Implement I8TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("I8TypeNode"_zc);
 }
 
 void ASTDumper::visit(const I16TypeNode& node) {
   impl->serializer->writeNodeStart("I16TypeNode"_zc);
-  // TODO: Implement I16TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("I16TypeNode"_zc);
 }
 
 void ASTDumper::visit(const I32TypeNode& node) {
   impl->serializer->writeNodeStart("I32TypeNode"_zc);
-  // TODO: Implement I32TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("I32TypeNode"_zc);
 }
 
 void ASTDumper::visit(const I64TypeNode& node) {
   impl->serializer->writeNodeStart("I64TypeNode"_zc);
-  // TODO: Implement I64TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("I64TypeNode"_zc);
 }
 
 void ASTDumper::visit(const U8TypeNode& node) {
   impl->serializer->writeNodeStart("U8TypeNode"_zc);
-  // TODO: Implement U8TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("U8TypeNode"_zc);
 }
 
 void ASTDumper::visit(const U16TypeNode& node) {
   impl->serializer->writeNodeStart("U16TypeNode"_zc);
-  // TODO: Implement U16TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("U16TypeNode"_zc);
 }
 
 void ASTDumper::visit(const U32TypeNode& node) {
   impl->serializer->writeNodeStart("U32TypeNode"_zc);
-  // TODO: Implement U32TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("U32TypeNode"_zc);
 }
 
 void ASTDumper::visit(const U64TypeNode& node) {
   impl->serializer->writeNodeStart("U64TypeNode"_zc);
-  // TODO: Implement U64TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("U64TypeNode"_zc);
 }
 
 void ASTDumper::visit(const F32TypeNode& node) {
   impl->serializer->writeNodeStart("F32TypeNode"_zc);
-  // TODO: Implement F32TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("F32TypeNode"_zc);
 }
 
 void ASTDumper::visit(const F64TypeNode& node) {
   impl->serializer->writeNodeStart("F64TypeNode"_zc);
-  // TODO: Implement F64TypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("F64TypeNode"_zc);
 }
 
 void ASTDumper::visit(const StrTypeNode& node) {
   impl->serializer->writeNodeStart("StrTypeNode"_zc);
-  // TODO: Implement StrTypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("StrTypeNode"_zc);
 }
 
 void ASTDumper::visit(const UnitTypeNode& node) {
   impl->serializer->writeNodeStart("UnitTypeNode"_zc);
-  // TODO: Implement UnitTypeNode dumping
+  impl->serializer->writeProperty("name"_zc, node.getName());
   impl->serializer->writeNodeEnd("UnitTypeNode"_zc);
+}
+
+void ASTDumper::visit(const NullTypeNode& node) {
+  impl->serializer->writeNodeStart("NullTypeNode"_zc);
+  impl->serializer->writeProperty("name"_zc, node.getName());
+  impl->serializer->writeNodeEnd("NullTypeNode"_zc);
 }
 
 // Signature node visit methods
@@ -924,6 +1108,20 @@ void ASTDumper::visit(const EnumPattern& node) {
   writeNodeHeader("EnumPattern");
   // TODO: Implement EnumPattern dumping
   writeNodeFooter("EnumPattern");
+}
+
+void ASTDumper::visit(const CaptureElement& node) {
+  impl->serializer->writeNodeStart("CaptureElement"_zc);
+  impl->serializer->writeProperty("isByReference"_zc,
+                                  node.isByReference() ? "true"_zc : "false"_zc);
+  impl->serializer->writeProperty("isThis"_zc, node.isThis() ? "true"_zc : "false"_zc);
+
+  ZC_IF_SOME(id, node.getIdentifier()) {
+    impl->serializer->writeChildStart("identifier"_zc);
+    id.accept(*this);
+    impl->serializer->writeChildEnd("identifier"_zc);
+  }
+  impl->serializer->writeNodeEnd("CaptureElement"_zc);
 }
 
 // Private helper methods implementation

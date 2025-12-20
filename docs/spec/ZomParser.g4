@@ -302,6 +302,9 @@ superProperty: SUPER PERIOD identifier;
 // Super Call
 superCall: SUPER arguments;
 
+// Import Call
+importCall: IMPORT arguments;
+
 // Arguments
 arguments:
 	typeArguments? LPAREN RPAREN
@@ -318,7 +321,7 @@ argumentList:
 
 // Call Expression
 callExpression:
-	(memberExpression arguments | superCall) (
+	(memberExpression arguments | superCall | importCall) (
 		arguments
 		| LBRACK expression RBRACK
 		| PERIOD identifier
@@ -441,7 +444,17 @@ conditionalExpression:
 
 // Function Expression
 functionExpression:
-	FUN callSignature LBRACE functionBody RBRACE;
+	FUN typeParameters? parameterClause captureClause? (
+		ARROW type raisesClause?
+	)? LBRACE functionBody RBRACE;
+
+captureClause: useKeyword LBRACK captureList? RBRACK;
+
+useKeyword: identifier { $identifier.text.equals("use") }?;
+
+captureList: captureElement (COMMA captureElement)*;
+
+captureElement: (BIT_AND? identifier) | THIS;
 
 // Binding Pattern
 bindingPattern: arrayBindingPattern | objectBindingPattern;

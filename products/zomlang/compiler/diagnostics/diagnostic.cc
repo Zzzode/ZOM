@@ -45,6 +45,7 @@ void Diagnostic::addChildDiagnostic(zc::Own<Diagnostic> child) {
   childDiagnostics.add(zc::mv(child));
 }
 void Diagnostic::addFixIt(zc::Own<FixIt> fixIt) { fixIts.add(zc::mv(fixIt)); }
+void Diagnostic::addRange(const source::CharSourceRange& range) { ranges.add(range); }
 
 }  // namespace diagnostics
 }  // namespace compiler

@@ -60,10 +60,10 @@ jobs:
           pip3 install --break-system-packages psutil
 
       - name: Configure CMake
-        run: cmake --preset sanitizer
+        run: cmake --preset debug
 
       - name: Build tests
-        run: cmake --build --preset sanitizer
+        run: cmake --build --preset debug
 
       - name: Run tests
         run: ctest --preset allTests

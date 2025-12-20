@@ -182,7 +182,7 @@ const TypeNode& ParenthesizedTypeNode::getType() const { return *impl->type; }
 SyntaxKind ParenthesizedTypeNode::getKind() const { return impl->getKind(); }
 
 void ParenthesizedTypeNode::setSourceRange(const source::SourceRange&& range) {
-  const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
+  impl->setSourceRange(zc::mv(range));
 }
 
 const source::SourceRange& ParenthesizedTypeNode::getSourceRange() const {
@@ -331,6 +331,45 @@ void F64TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
 }
 const source::SourceRange& F64TypeNode::getSourceRange() const {
+  static source::SourceRange empty;
+  return empty;
+}
+
+StrTypeNode::StrTypeNode() noexcept : PredefinedTypeNode() {}
+StrTypeNode::~StrTypeNode() noexcept(false) = default;
+zc::StringPtr StrTypeNode::getName() const { return "str"_zc; }
+SyntaxKind StrTypeNode::getKind() const { return SyntaxKind::StrTypeNode; }
+void StrTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
+void StrTypeNode::setSourceRange(const source::SourceRange&& range) {
+  // TODO: Implement source range tracking for predefined types
+}
+const source::SourceRange& StrTypeNode::getSourceRange() const {
+  static source::SourceRange empty;
+  return empty;
+}
+
+UnitTypeNode::UnitTypeNode() noexcept : PredefinedTypeNode() {}
+UnitTypeNode::~UnitTypeNode() noexcept(false) = default;
+zc::StringPtr UnitTypeNode::getName() const { return "unit"_zc; }
+SyntaxKind UnitTypeNode::getKind() const { return SyntaxKind::UnitTypeNode; }
+void UnitTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
+void UnitTypeNode::setSourceRange(const source::SourceRange&& range) {
+  // TODO: Implement source range tracking for predefined types
+}
+const source::SourceRange& UnitTypeNode::getSourceRange() const {
+  static source::SourceRange empty;
+  return empty;
+}
+
+NullTypeNode::NullTypeNode() noexcept : PredefinedTypeNode() {}
+NullTypeNode::~NullTypeNode() noexcept(false) = default;
+zc::StringPtr NullTypeNode::getName() const { return "null"_zc; }
+SyntaxKind NullTypeNode::getKind() const { return SyntaxKind::NullTypeNode; }
+void NullTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
+void NullTypeNode::setSourceRange(const source::SourceRange&& range) {
+  // TODO: Implement source range tracking for predefined types
+}
+const source::SourceRange& NullTypeNode::getSourceRange() const {
   static source::SourceRange empty;
   return empty;
 }

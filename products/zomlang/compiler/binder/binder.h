@@ -213,6 +213,15 @@ public:
   void visit(const ast::TypeNode& type) override;
   void visit(const ast::TokenNode& token) override;
 
+  // Interface node visitors (abstract base classes)
+  void visit(const ast::Declaration& node) override;
+  void visit(const ast::NamedDeclaration& node) override;
+  void visit(const ast::Pattern& node) override;
+  void visit(const ast::PrimaryPattern& node) override;
+  void visit(const ast::BindingPattern& node) override;
+  void visit(const ast::ClassElement& node) override;
+  void visit(const ast::InterfaceElement& node) override;
+
   // Declaration visitors
   void visit(const ast::VariableDeclaration& node) override;
   void visit(const ast::VariableDeclarationList& node) override;
@@ -227,6 +236,7 @@ public:
   void visit(const ast::ConstructorDeclaration& node) override;
   void visit(const ast::ParameterDeclaration& node) override;
   void visit(const ast::PropertyDeclaration& node) override;
+  void visit(const ast::SemicolonClassElement& node) override;
   void visit(const ast::MissingDeclaration& node) override;
 
   // Statement visitors
@@ -239,6 +249,8 @@ public:
   void visit(const ast::MatchStatement& node) override;
   void visit(const ast::MatchClause& node) override;
   void visit(const ast::DefaultClause& node) override;
+  void visit(const ast::IterationStatement& node) override;
+  void visit(const ast::DeclarationStatement& node) override;
 
   // Expression visitors
   void visit(const ast::Identifier& node) override;
@@ -279,6 +291,7 @@ public:
   void visit(const ast::F64TypeNode& node) override;
   void visit(const ast::StrTypeNode& node) override;
   void visit(const ast::UnitTypeNode& node) override;
+  void visit(const ast::NullTypeNode& node) override;
 
   // Binding pattern visitors
   void visit(const ast::ArrayBindingPattern& node) override;
@@ -314,16 +327,22 @@ public:
   void visit(const ast::StringLiteral& node) override;
   void visit(const ast::IntegerLiteral& node) override;
   void visit(const ast::FloatLiteral& node) override;
+  void visit(const ast::BigIntLiteral& node) override;
   void visit(const ast::BooleanLiteral& node) override;
   void visit(const ast::NullLiteral& node) override;
+  void visit(const ast::TemplateSpan& node) override;
+  void visit(const ast::TemplateLiteralExpression& node) override;
   void visit(const ast::CastExpression& node) override;
   void visit(const ast::AsExpression& node) override;
   void visit(const ast::ForcedAsExpression& node) override;
   void visit(const ast::ConditionalAsExpression& node) override;
+  void visit(const ast::NonNullExpression& node) override;
+  void visit(const ast::ExpressionWithTypeArguments& node) override;
   void visit(const ast::VoidExpression& node) override;
   void visit(const ast::TypeOfExpression& node) override;
   void visit(const ast::AwaitExpression& node) override;
   void visit(const ast::FunctionExpression& node) override;
+  void visit(const ast::CaptureElement& node) override;
   void visit(const ast::ArrayLiteralExpression& node) override;
   void visit(const ast::ObjectLiteralExpression& node) override;
   void visit(const ast::ModulePath& modulePath) override;
@@ -348,6 +367,7 @@ public:
 
   // Body visitors
   void visit(const ast::ClassBody& node) override;
+  void visit(const ast::HeritageClause& node) override;
 
 protected:
   /// \brief Symbol creation methods
@@ -385,14 +405,6 @@ protected:
   /// \brief Error handling
   void checkNoConflict(const ast::Node& node, zc::StringPtr name);
 
-  /// \brief Check contextual identifier usage (await/yield in wrong contexts)
-  void checkContextualIdentifier(const ast::Identifier& node);
-
-  /// \brief Helper function to create symbol by flags
-  symbol::Symbol& createSymbolByFlags(symbol::SymbolTable& symbolTable,
-                                      const ast::Declaration& node, symbol::SymbolFlags includes,
-                                      symbol::SymbolFlags excludes);
-
   /// \brief Binding helpers for specific node types
   void bindDeclaration(const ast::Declaration& declaration);
   void bindVariableDeclaration(const ast::VariableDeclaration& varDecl);
@@ -407,6 +419,14 @@ protected:
   void bindContainerMembers(const ast::Node& container);
   void bindBlockStatement(const ast::Node& block);
   void bindFunctionBody(const ast::Node& function);
+
+  /// \brief Check contextual identifier usage (await/yield in wrong contexts)
+  void checkContextualIdentifier(const ast::Identifier& node);
+
+  /// \brief Helper function to create symbol by flags
+  symbol::Symbol& createSymbolByFlags(symbol::SymbolTable& symbolTable,
+                                      const ast::Declaration& node, symbol::SymbolFlags includes,
+                                      symbol::SymbolFlags excludes);
 
 private:
   struct Impl;

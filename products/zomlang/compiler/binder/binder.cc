@@ -297,6 +297,14 @@ void Binder::visit(const ast::DefaultClause& node) {
   for (const auto& stmt : node.getStatements()) { stmt.accept(*this); }
 }
 
+void Binder::visit(const ast::IterationStatement& node) {
+  // IterationStatement is a base class, no specific members to visit
+}
+
+void Binder::visit(const ast::DeclarationStatement& node) {
+  // DeclarationStatement is a base class, no specific members to visit
+}
+
 // Expression visitors
 void Binder::visit(const ast::Identifier& node) {
   // Check contextual identifier usage (await/yield in wrong contexts)
@@ -401,6 +409,17 @@ void Binder::visit(const ast::IntegerLiteral& node) {}
 void Binder::visit(const ast::FloatLiteral& node) {}
 void Binder::visit(const ast::BooleanLiteral& node) {}
 void Binder::visit(const ast::NullLiteral& node) {}
+
+void Binder::visit(const ast::TemplateSpan& node) {
+  node.getExpression().accept(*this);
+  node.getLiteral().accept(*this);
+}
+
+void Binder::visit(const ast::TemplateLiteralExpression& node) {
+  node.getHead().accept(*this);
+  for (const auto& span : node.getSpans()) { span.accept(*this); }
+}
+
 void Binder::visit(const ast::CastExpression& node) {
   node.getExpression().accept(*this);
   node.getTargetType().accept(*this);
@@ -416,6 +435,11 @@ void Binder::visit(const ast::ForcedAsExpression& node) {
 void Binder::visit(const ast::ConditionalAsExpression& node) {
   node.getExpression().accept(*this);
   node.getTargetType().accept(*this);
+}
+void Binder::visit(const ast::NonNullExpression& node) { node.getExpression().accept(*this); }
+void Binder::visit(const ast::ExpressionWithTypeArguments& node) {
+  node.getExpression().accept(*this);
+  for (const auto& typeArg : node.getTypeArguments()) { typeArg.accept(*this); }
 }
 void Binder::visit(const ast::VoidExpression& node) { node.getExpression().accept(*this); }
 void Binder::visit(const ast::TypeOfExpression& node) { node.getExpression().accept(*this); }
@@ -436,6 +460,11 @@ void Binder::visit(const ast::FunctionExpression& node) {
   // Visit function body
   node.getBody().accept(*this);
 }
+
+void Binder::visit(const ast::CaptureElement& node) {
+  ZC_IF_SOME(id, node.getIdentifier()) { id.accept(*this); }
+}
+
 void Binder::visit(const ast::ArrayLiteralExpression& node) {
   for (auto& element : node.getElements()) { element.accept(*this); }
 }
@@ -466,6 +495,10 @@ void Binder::visit(const ast::ParameterDeclaration& node) {
 void Binder::visit(const ast::PropertyDeclaration& node) {
   // Bind property declaration - create symbol for class/interface property
   // TODO: Implement property declaration binding
+}
+
+void Binder::visit(const ast::SemicolonClassElement& node) {
+  // Semicolon class elements are empty, no binding needed.
 }
 
 void Binder::visit(const ast::MissingDeclaration& node) {
@@ -501,6 +534,33 @@ void Binder::visit(const ast::ParenthesizedTypeNode& parenType) {
   parenType.getType().accept(*this);
 }
 void Binder::visit(const ast::PredefinedTypeNode& predefinedType) {}
+
+void Binder::visit(const ast::Declaration& node) {
+  // Declaration is an interface node, delegate to specific implementation
+  // This should not be called directly as Declaration is abstract
+}
+
+void Binder::visit(const ast::NamedDeclaration& node) {
+  // NamedDeclaration is an interface node, delegate to specific implementation
+  // This should not be called directly as NamedDeclaration is abstract
+}
+
+void Binder::visit(const ast::Pattern& node) {
+  // Pattern is an interface node, delegate to specific implementation
+  // This should not be called directly as Pattern is abstract
+}
+
+void Binder::visit(const ast::PrimaryPattern& node) {
+  // PrimaryPattern is an interface node, delegate to specific implementation
+  // This should not be called directly as PrimaryPattern is abstract
+}
+
+void Binder::visit(const ast::BindingPattern& node) {
+  // BindingPattern is an interface node, delegate to specific implementation
+  // This should not be called directly as BindingPattern is abstract
+}
+void Binder::visit(const ast::ClassElement& node) {}
+void Binder::visit(const ast::InterfaceElement& node) {}
 void Binder::visit(const ast::ObjectTypeNode& objectType) {}
 void Binder::visit(const ast::TupleTypeNode& tupleType) {
   for (auto& element : tupleType.getElementTypes()) { element.accept(*this); }
@@ -525,6 +585,7 @@ void Binder::visit(const ast::F32TypeNode& node) {}
 void Binder::visit(const ast::F64TypeNode& node) {}
 void Binder::visit(const ast::StrTypeNode& node) {}
 void Binder::visit(const ast::UnitTypeNode& node) {}
+void Binder::visit(const ast::NullTypeNode& node) {}
 
 // Binding pattern visitors
 void Binder::visit(const ast::ArrayBindingPattern& node) {
@@ -606,6 +667,11 @@ void Binder::visit(const ast::MethodSignature& node) {
 void Binder::visit(const ast::ClassBody& node) {
   // Class bodies contain class members
   // TODO: Implement class body binding when interface is available
+}
+
+void Binder::visit(const ast::HeritageClause& node) {
+  // Heritage clause contains type references, visit them
+  for (const auto& t : node.getTypes()) { t->accept(*this); }
 }
 
 void Binder::enterScope(symbol::Scope& scope) {
@@ -813,6 +879,10 @@ void Binder::checkContextualIdentifier(const ast::Identifier& node) {
     impl->diagEng.diagnose<DiagID::ReservedInContext>(loc, identifierText);
     return;
   }
+}
+
+void Binder::visit(const ast::BigIntLiteral& node) {
+  // No binding needed for BigInt literals
 }
 
 }  // namespace binder

@@ -29,6 +29,8 @@ public:
   void handleDiagnostic(const source::SourceManager& sm, const Diagnostic& diagnostic) override;
 
 private:
+  void printSummary();
+
   struct Impl;
   zc::Own<Impl> impl;
 };

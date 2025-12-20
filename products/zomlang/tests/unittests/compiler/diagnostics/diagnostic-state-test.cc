@@ -9,14 +9,14 @@ namespace diagnostics {
 
 ZC_TEST("DiagState DefaultConstruction") {
   DiagnosticState state;
-  ZC_EXPECT(!state.isDiagnosticIgnored(DiagID::InvalidChar));
+  ZC_EXPECT(!state.isDiagnosticIgnored(DiagID::InvalidCharacter));
   ZC_EXPECT(!state.isDiagnosticIgnored(DiagID::UnterminatedString));
 }
 
 ZC_TEST("DiagState IgnoreDiagnostic") {
   DiagnosticState state;
-  state.ignoreDiagnostic(DiagID::InvalidChar);
-  ZC_EXPECT(state.isDiagnosticIgnored(DiagID::InvalidChar));
+  state.ignoreDiagnostic(DiagID::InvalidCharacter);
+  ZC_EXPECT(state.isDiagnosticIgnored(DiagID::InvalidCharacter));
   ZC_EXPECT(!state.isDiagnosticIgnored(DiagID::UnterminatedString));
   ZC_EXPECT(!state.isDiagnosticIgnored(DiagID::TypeMismatch));
 }
@@ -29,11 +29,11 @@ ZC_TEST("DiagState IgnoreOutOfBounds") {
 
 ZC_TEST("DiagState MultipleIgnores") {
   DiagnosticState state;
-  state.ignoreDiagnostic(DiagID::InvalidChar);
+  state.ignoreDiagnostic(DiagID::InvalidCharacter);
   state.ignoreDiagnostic(DiagID::UnterminatedString);
   state.ignoreDiagnostic(DiagID::TypeMismatch);
 
-  ZC_EXPECT(state.isDiagnosticIgnored(DiagID::InvalidChar));
+  ZC_EXPECT(state.isDiagnosticIgnored(DiagID::InvalidCharacter));
   ZC_EXPECT(state.isDiagnosticIgnored(DiagID::UnterminatedString));
   ZC_EXPECT(state.isDiagnosticIgnored(DiagID::TypeMismatch));
   ZC_EXPECT(!state.isDiagnosticIgnored(DiagID::InvalidPath));

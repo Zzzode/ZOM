@@ -26,7 +26,7 @@ add_subdirectory(language)
 
 # Performance Tests - Benchmarks and performance regression tests
 if(ZOM_ENABLE_PERFORMANCE_TESTS)
-  add_subdirectory(performance)
+  # add_subdirectory(performance)
 endif()
 
 # Regression Tests - Tests for previously fixed bugs

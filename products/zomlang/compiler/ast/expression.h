@@ -19,14 +19,15 @@
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/classof.h"
+#include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/ast/visitor.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
-
-class TypeNode;
 
 class Expression : public Node {
 public:
@@ -46,27 +47,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is an Expression or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::PrefixUnaryExpression ||
-           kind == SyntaxKind::PostfixUnaryExpression ||
-           kind == SyntaxKind::PropertyAccessExpression ||
-           kind == SyntaxKind::ElementAccessExpression || kind == SyntaxKind::NewExpression ||
-           kind == SyntaxKind::ParenthesizedExpression || kind == SyntaxKind::BinaryExpression ||
-           kind == SyntaxKind::ConditionalExpression || kind == SyntaxKind::CallExpression ||
-           kind == SyntaxKind::StringLiteral || kind == SyntaxKind::IntegerLiteral ||
-           kind == SyntaxKind::FloatLiteral || kind == SyntaxKind::BooleanLiteral ||
-           kind == SyntaxKind::NullLiteral || kind == SyntaxKind::AsExpression ||
-           kind == SyntaxKind::ForcedAsExpression || kind == SyntaxKind::ConditionalAsExpression ||
-           kind == SyntaxKind::VoidExpression || kind == SyntaxKind::TypeOfExpression ||
-           kind == SyntaxKind::AwaitExpression || kind == SyntaxKind::FunctionExpression ||
-           kind == SyntaxKind::ArrayLiteralExpression ||
-           kind == SyntaxKind::ObjectLiteralExpression || kind == SyntaxKind::Identifier ||
-           kind == SyntaxKind::WildcardPattern || kind == SyntaxKind::IdentifierPattern ||
-           kind == SyntaxKind::TuplePattern || kind == SyntaxKind::StructurePattern ||
-           kind == SyntaxKind::ArrayPattern || kind == SyntaxKind::IsPattern ||
-           kind == SyntaxKind::ExpressionPattern || kind == SyntaxKind::EnumPattern;
-  }
+  GENERATE_CLASSOF_IMPL(Expression)
 
 protected:
   Expression() noexcept = default;
@@ -79,12 +60,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is a UnaryExpression or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::PrefixUnaryExpression ||
-           kind == SyntaxKind::PostfixUnaryExpression || kind == SyntaxKind::VoidExpression ||
-           kind == SyntaxKind::TypeOfExpression;
-  }
+  GENERATE_CLASSOF_IMPL(UnaryExpression)
 
 protected:
   UnaryExpression() noexcept = default;
@@ -97,19 +73,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is an UpdateExpression or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::PrefixUnaryExpression ||
-           kind == SyntaxKind::PostfixUnaryExpression ||
-           kind == SyntaxKind::PropertyAccessExpression ||
-           kind == SyntaxKind::ElementAccessExpression || kind == SyntaxKind::CallExpression ||
-           kind == SyntaxKind::Identifier || kind == SyntaxKind::NewExpression ||
-           kind == SyntaxKind::ParenthesizedExpression || kind == SyntaxKind::StringLiteral ||
-           kind == SyntaxKind::IntegerLiteral || kind == SyntaxKind::FloatLiteral ||
-           kind == SyntaxKind::BooleanLiteral || kind == SyntaxKind::NullLiteral ||
-           kind == SyntaxKind::ArrayLiteralExpression ||
-           kind == SyntaxKind::ObjectLiteralExpression;
-  }
+  GENERATE_CLASSOF_IMPL(UpdateExpression)
 
 protected:
   UpdateExpression() noexcept = default;
@@ -158,17 +122,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is a LeftHandSideExpression or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::PropertyAccessExpression ||
-           kind == SyntaxKind::ElementAccessExpression || kind == SyntaxKind::CallExpression ||
-           kind == SyntaxKind::Identifier || kind == SyntaxKind::NewExpression ||
-           kind == SyntaxKind::ParenthesizedExpression || kind == SyntaxKind::StringLiteral ||
-           kind == SyntaxKind::IntegerLiteral || kind == SyntaxKind::FloatLiteral ||
-           kind == SyntaxKind::BooleanLiteral || kind == SyntaxKind::NullLiteral ||
-           kind == SyntaxKind::ArrayLiteralExpression ||
-           kind == SyntaxKind::ObjectLiteralExpression;
-  }
+  GENERATE_CLASSOF_IMPL(LeftHandSideExpression)
 
 protected:
   LeftHandSideExpression() noexcept = default;
@@ -181,11 +135,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is a MemberExpression or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::PropertyAccessExpression ||
-           kind == SyntaxKind::ElementAccessExpression;
-  }
+  GENERATE_CLASSOF_IMPL(MemberExpression)
 
 protected:
   MemberExpression() noexcept = default;
@@ -198,19 +148,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is a PrimaryExpression or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::Identifier || kind == SyntaxKind::NewExpression ||
-           kind == SyntaxKind::ParenthesizedExpression || kind == SyntaxKind::StringLiteral ||
-           kind == SyntaxKind::IntegerLiteral || kind == SyntaxKind::FloatLiteral ||
-           kind == SyntaxKind::BooleanLiteral || kind == SyntaxKind::NullLiteral ||
-           kind == SyntaxKind::ArrayLiteralExpression ||
-           kind == SyntaxKind::ObjectLiteralExpression || kind == SyntaxKind::WildcardPattern ||
-           kind == SyntaxKind::IdentifierPattern || kind == SyntaxKind::TuplePattern ||
-           kind == SyntaxKind::StructurePattern || kind == SyntaxKind::ArrayPattern ||
-           kind == SyntaxKind::IsPattern || kind == SyntaxKind::ExpressionPattern ||
-           kind == SyntaxKind::EnumPattern;
-  }
+  GENERATE_CLASSOF_IMPL(PrimaryExpression)
 
 protected:
   PrimaryExpression() noexcept = default;
@@ -218,7 +156,7 @@ protected:
 
 class Identifier final : public PrimaryExpression {
 public:
-  explicit Identifier(zc::String name) noexcept;
+  explicit Identifier(zc::StringPtr name) noexcept;
   ~Identifier() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Identifier);
@@ -269,6 +207,24 @@ public:
 private:
   struct Impl;
   const zc::Own<Impl> impl;
+};
+
+class ExpressionWithTypeArguments final : public MemberExpression {
+public:
+  ExpressionWithTypeArguments(zc::Own<Expression> expression,
+                              zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments) noexcept;
+  ~ExpressionWithTypeArguments() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ExpressionWithTypeArguments);
+
+  const Expression& getExpression() const;
+  const NodeList<TypeNode>& getTypeArguments() const;
+
+  NODE_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
 };
 
 class NewExpression final : public PrimaryExpression, public Declaration {
@@ -377,12 +333,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is a LiteralExpression or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::StringLiteral || kind == SyntaxKind::IntegerLiteral ||
-           kind == SyntaxKind::FloatLiteral || kind == SyntaxKind::BooleanLiteral ||
-           kind == SyntaxKind::NullLiteral || kind == SyntaxKind::ObjectLiteralExpression;
-  }
+  GENERATE_CLASSOF_IMPL(LiteralExpression)
 
 protected:
   LiteralExpression() noexcept = default;
@@ -404,7 +355,7 @@ private:
 
 class StringLiteral final : public LiteralExpression {
 public:
-  explicit StringLiteral(zc::String value) noexcept;
+  explicit StringLiteral(zc::StringPtr value) noexcept;
   ~StringLiteral() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(StringLiteral);
@@ -453,6 +404,21 @@ private:
   const zc::Own<Impl> impl;
 };
 
+class BigIntLiteral final : public LiteralExpression {
+public:
+  explicit BigIntLiteral(zc::StringPtr text) noexcept;
+  ~BigIntLiteral() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(BigIntLiteral);
+
+  NODE_METHOD_DECLARE();
+  LITERAL_EXPRESSION_METHOD_DECL();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
 class BooleanLiteral final : public LiteralExpression {
 public:
   explicit BooleanLiteral(bool value) noexcept;
@@ -485,6 +451,42 @@ private:
   const zc::Own<Impl> impl;
 };
 
+class TemplateSpan final : public Node {
+public:
+  TemplateSpan(zc::Own<Expression> expression, zc::Own<StringLiteral> literal) noexcept;
+  ~TemplateSpan() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(TemplateSpan);
+
+  const Expression& getExpression() const;
+  const StringLiteral& getLiteral() const;
+
+  NODE_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class TemplateLiteralExpression final : public LiteralExpression {
+public:
+  TemplateLiteralExpression(zc::Own<StringLiteral> head,
+                            zc::Vector<zc::Own<TemplateSpan>>&& spans) noexcept;
+  ~TemplateLiteralExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(TemplateLiteralExpression);
+
+  const StringLiteral& getHead() const;
+  const NodeList<TemplateSpan>& getSpans() const;
+
+  NODE_METHOD_DECLARE();
+  LITERAL_EXPRESSION_METHOD_DECL();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
 class CastExpression : public Expression {
 public:
   ZC_DISALLOW_COPY_AND_MOVE(CastExpression);
@@ -498,11 +500,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is a CastExpression or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::AsExpression || kind == SyntaxKind::ForcedAsExpression ||
-           kind == SyntaxKind::ConditionalAsExpression;
-  }
+  GENERATE_CLASSOF_IMPL(CastExpression)
 
 protected:
   CastExpression() noexcept = default;
@@ -618,10 +616,46 @@ private:
   const zc::Own<Impl> impl;
 };
 
-class FunctionExpression final : public Declaration, public Expression {
+class NonNullExpression final : public LeftHandSideExpression {
+public:
+  explicit NonNullExpression(zc::Own<Expression> expression) noexcept;
+  ~NonNullExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(NonNullExpression);
+
+  const Expression& getExpression() const;
+
+  NODE_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class CaptureElement final : public Node {
+public:
+  CaptureElement(bool isByReference, zc::Maybe<zc::Own<Identifier>> identifier,
+                 bool isThis) noexcept;
+  ~CaptureElement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(CaptureElement);
+
+  bool isByReference() const;
+  bool isThis() const;
+  zc::Maybe<const Identifier&> getIdentifier() const;
+
+  NODE_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class FunctionExpression final : public Declaration, public PrimaryExpression {
 public:
   FunctionExpression(zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
                      zc::Vector<zc::Own<BindingElement>>&& parameters,
+                     zc::Vector<zc::Own<CaptureElement>>&& captures,
                      zc::Maybe<zc::Own<TypeNode>> returnTypeNode, zc::Own<Statement> body) noexcept;
   ~FunctionExpression() noexcept(false);
 
@@ -629,6 +663,7 @@ public:
 
   const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
   const NodeList<BindingElement>& getParameters() const;
+  const NodeList<CaptureElement>& getCaptures() const;
   zc::Maybe<const TypeNode&> getReturnType() const;
   const Statement& getBody() const;
 
@@ -681,13 +716,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is a Pattern or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::WildcardPattern || kind == SyntaxKind::IdentifierPattern ||
-           kind == SyntaxKind::TuplePattern || kind == SyntaxKind::StructurePattern ||
-           kind == SyntaxKind::ArrayPattern || kind == SyntaxKind::IsPattern ||
-           kind == SyntaxKind::ExpressionPattern || kind == SyntaxKind::EnumPattern;
-  }
+  GENERATE_CLASSOF_IMPL(Pattern)
 
 protected:
   Pattern() noexcept = default;
@@ -700,13 +729,7 @@ public:
   /// \brief LLVM-style RTTI support
   /// \param node The node to check
   /// \return true if the node is a PrimaryPattern or derived class
-  static bool classof(const Node& node) {
-    SyntaxKind kind = node.getKind();
-    return kind == SyntaxKind::WildcardPattern || kind == SyntaxKind::IdentifierPattern ||
-           kind == SyntaxKind::TuplePattern || kind == SyntaxKind::StructurePattern ||
-           kind == SyntaxKind::ArrayPattern || kind == SyntaxKind::IsPattern ||
-           kind == SyntaxKind::ExpressionPattern || kind == SyntaxKind::EnumPattern;
-  }
+  GENERATE_CLASSOF_IMPL(PrimaryPattern)
 
 protected:
   PrimaryPattern() noexcept = default;

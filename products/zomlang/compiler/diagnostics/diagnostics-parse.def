@@ -12,11 +12,99 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-DIAG(InvalidChar, kError, "Invalid character: '{0}'", 1)
+DIAG(ThisCharCannotBeEscapedInARegularExpression, kError,
+     "This character cannot be escaped in a regular expression", 0)
+DIAG(InvalidCharacter, kError, "Invalid character", 0)
 DIAG(UnterminatedString, kError, "Unterminated string literal", 0)
+DIAG(UnterminatedTemplateLiteral, kError, "Unterminated template literal", 0)
+DIAG(UnterminatedComment, kError, "Unterminated comment", 0)
+DIAG(AsteriskSlashExpected, kError, "'*/' expected", 0)
+DIAG(UnexpectedEndOfText, kError, "Unexpected end of text", 0)
 DIAG(UnaryExpressionInExponentiation, kError,
      "A unary expression with the '{0}' operator is not allowed in the left hand side of an "
      "exponentiation expression. Consider enclosing the expression in parentheses",
      1)
-DIAG(ReservedKeywordAsIdentifier, kError, "Reserved keyword '{0}' cannot be used as an identifier", 1)
+DIAG(ReservedKeywordAsIdentifier, kError, "Reserved keyword '{0}' cannot be used as an identifier",
+     1)
 DIAG(ExceptedIdentifier, kError, "Identifier expected, found '{0}'", 1)
+DIAG(MissingSemicolon, kError, "Missing semicolon before '{0}'", 1)
+DIAG(VariableDeclarationNotAllowedHere, kError, "Variable declaration not allowed at this location",
+     0)
+DIAG(InterfaceNameCannotBeKeyword, kError, "Interface name cannot be '{0}'", 1)
+DIAG(InterfaceMustBeGivenAName, kError, "Interface must be given a name", 0)
+DIAG(TypeAliasNameCannotBeKeyword, kError, "Type alias name cannot be '{0}'", 1)
+DIAG(TypeAliasMustBeGivenAName, kError, "Type alias must be given a name", 0)
+DIAG(NamespaceNameCannotBeKeyword, kError, "Namespace name cannot be '{0}'", 1)
+DIAG(NamespaceMustBeGivenAName, kError, "Namespace must be given a name", 0)
+DIAG(DidYouMean, kError, "Unknown keyword or identifier. Did you mean '{0}'?", 1)
+DIAG(UnexpectedKeywordOrIdentifier, kError, "Unexpected keyword or identifier", 0)
+DIAG(TypePredicateOnlyInReturn, kError,
+     "A type predicate is only allowed in return type position for functions and methods", 0)
+DIAG(ExpectedToken, kError, "Expected '{0}'", 1)
+DIAG(OctalLiteralsAreNotAllowedUseTheSyntax0o, kError,
+     "Octal literals are not allowed. Use the syntax '{0}'", 1)
+DIAG(OctalEscapeSequencesNotAllowed, kError,
+     "Octal escape sequences are not allowed. Use the syntax '\\x{0}'", 1)
+DIAG(OctalEscapeSequencesAndBackreferencesNotAllowed, kError,
+     "Octal escape sequences and backreferences are not allowed in a character class. If this was "
+     "intended as an escape sequence, use the syntax '\\x{0}'",
+     1)
+DIAG(
+    DecimalEscapeSequencesAndBackreferencesNotAllowed, kError,
+    "Decimal escape sequences and backreferences are not allowed in a character class. If this was "
+    "intended as an escape sequence, use the syntax '\\x{0}'",
+    1)
+DIAG(EscapeSequenceNotAllowed, kError, "Escape sequence '{0}' is not allowed", 1)
+DIAG(HexadecimalDigitExpected, kError, "Hexadecimal digit expected", 0)
+DIAG(BinaryOrOctalDigitExpected, kError, "Binary or octal digit expected", 0)
+DIAG(OctalDigitExpected, kError, "Octal digit expected", 0)
+DIAG(NumericSeparatorsAreNotAllowedHere, kError, "Numeric separators are not allowed here", 0)
+DIAG(MultipleConsecutiveNumericSeparatorsAreNotPermitted, kError,
+     "Multiple consecutive numeric separators are not permitted", 0)
+DIAG(UnicodeEscapeSequencesOnlyAvailableWithUnicodeFlag, kError,
+     "Unicode escape sequences are only available when the Unicode (u) flag or the Unicode Sets "
+     "(v) flag is set",
+     0)
+DIAG(ExtendedUnicodeEscapeValueOutOfRange, kError,
+     "An extended Unicode escape value must be between 0x0 and 0x10FFFF inclusive", 0)
+DIAG(UnterminatedUnicodeEscapeSequence, kError, "Unterminated Unicode escape sequence", 0)
+DIAG(ExpectedMatchingTokenHere, kNote,
+     "The parser expected to find a {0} to match the {1} token here", 2)
+DIAG(DecimalsWithLeadingZerosAreNotAllowed, kError, "Decimals with leading zeros are not allowed",
+     0)
+DIAG(DigitExpected, kError, "Digit expected", 0)
+DIAG(ABigIntLiteralCannotUseExponentialNotation, kError,
+     "A BigInt literal cannot use exponential notation", 0)
+DIAG(ABigIntLiteralMustBeAnInteger, kError, "A BigInt literal must be an integer", 0)
+DIAG(AnIdentifierOrKeywordCannotImmediatelyFollowANumericLiteral, kError,
+     "An identifier or keyword cannot immediately follow a numeric literal", 0)
+DIAG(XCanOnlyUsedAtStartOfFile, kError,
+     "Hashbang comment can only be used at the start of the file", 0)
+DIAG(FileAppearsToBeBinary, kError, "File appears to be binary", 0)
+
+// Diagnostics for list parsing error recovery
+DIAG(DeclarationOrStatementExpected, kError, "Declaration or statement expected", 0)
+DIAG(CaseOrDefaultExpected, kError, "case or default expected", 0)
+DIAG(StatementExpected, kError, "Statement expected", 0)
+DIAG(PropertyOrSignatureExpected, kError, "Property or signature expected", 0)
+DIAG(UnexpectedTokenClassMemberExpected, kError,
+     "Unexpected token. A constructor, method, accessor, or property was expected", 0)
+DIAG(EnumMemberExpected, kError, "Enum member expected", 0)
+DIAG(ExpressionExpected, kError, "Expression expected", 0)
+DIAG(VariableDeclarationNameNotAllowed, kError,
+     "'{0}' is not allowed as a variable declaration name", 1)
+DIAG(VariableDeclarationExpected, kError, "Variable declaration expected", 0)
+DIAG(PropertyDestructuringPatternExpected, kError, "Property destructuring pattern expected", 0)
+DIAG(ArrayElementDestructuringPatternExpected, kError,
+     "Array element destructuring pattern expected", 0)
+DIAG(ArgumentExpressionExpected, kError, "Argument expression expected", 0)
+DIAG(PropertyAssignmentExpected, kError, "Property assignment expected", 0)
+DIAG(ExpressionOrCommaExpected, kError, "Expression or comma expected", 0)
+DIAG(ParameterDeclarationExpected, kError, "Parameter declaration expected", 0)
+DIAG(ParameterNameNotAllowed, kError, "'{0}' is not allowed as a parameter name", 1)
+DIAG(TypeParameterDeclarationExpected, kError, "Type parameter declaration expected", 0)
+DIAG(TypeArgumentExpected, kError, "Type argument expected", 0)
+DIAG(TypeExpected, kError, "Type expected", 0)
+DIAG(UnexpectedTokenExpected, kError, "Unexpected token expected", 0)
+DIAG(IdentifierExpected, kError, "Identifier expected", 0)
+DIAG(IdentifierOrStringLiteralExpected, kError, "Identifier or string literal expected", 0)

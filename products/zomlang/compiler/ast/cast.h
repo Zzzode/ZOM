@@ -62,14 +62,18 @@ template <typename T>
 struct SyntaxKindTrait;
 
 // Forward declarations for all concrete AST node types using X-macro
-#define AST_ELEMENT_NODE(ClassName) class ClassName;
-#define AST_INTERFACE_NODE(ClassName) class ClassName;
+#define AST_ELEMENT_NODE(ClassName, ...) class ClassName;
+#define AST_INTERFACE_NODE(ClassName, Parent) class ClassName;
 #include "zomlang/compiler/ast/ast-nodes.def"
 #undef AST_ELEMENT_NODE
 #undef AST_INTERFACE_NODE
 
 // SyntaxKindTrait specializations for all AST node types using X-macro
-#define AST_ELEMENT_NODE(ClassName)                            \
+// Helper for stripping parens to handle multiple inheritance in X-macro
+#define ESC(...) __VA_ARGS__
+#define STRIP_PARENS(X) ESC X
+
+#define AST_ELEMENT_NODE(ClassName, ...)                       \
   template <>                                                  \
   struct SyntaxKindTrait<ClassName> {                          \
     static constexpr SyntaxKind value = SyntaxKind::ClassName; \
@@ -84,15 +88,40 @@ struct SyntaxKindTrait;
   };
 #include "zomlang/compiler/ast/ast-nodes.def"
 #undef AST_ELEMENT_NODE
+#undef STRIP_PARENS
+#undef ESC
 
 namespace _ {  // Private implementation details
 
-/// \brief Concept to check if a type is a concrete AST node (has SyntaxKind)
+/// \brief Convert SyntaxKind to string for debugging purposes
+/// \param kind The SyntaxKind to convert
+/// \return String representation of the SyntaxKind
+inline zc::StringPtr syntaxKindToString(SyntaxKind kind) noexcept {
+  switch (kind) {
+#define AST_ELEMENT_NODE(ClassName, ...) \
+  case SyntaxKind::ClassName:            \
+    return #ClassName##_zc;
+#include "zomlang/compiler/ast/ast-nodes.def"
+#undef AST_ELEMENT_NODE
+    default:
+      return "Unknown"_zc;
+  }
+}
+
+/// \brief Concept for concrete AST nodes (those with a SyntaxKind)
 template <typename T>
 concept ConcreteASTNode = requires {
   typename SyntaxKindTrait<std::remove_reference_t<T>>;
   SyntaxKindTrait<std::remove_reference_t<T>>::value;
 };
+
+/// \brief Get the expected SyntaxKind for a concrete AST node type
+/// \tparam T The AST node type
+/// \return The SyntaxKind for the type T
+template <ConcreteASTNode T>
+constexpr SyntaxKind getExpectedSyntaxKind() noexcept {
+  return SyntaxKindTrait<std::remove_reference_t<T>>::value;
+}
 
 /// \brief Concept to check if a type is an interface AST node (has classof method)
 template <typename T>
@@ -169,7 +198,17 @@ ZC_NODISCARD bool isa(const zc::Own<Node>& node) noexcept {
 template <_::ASTNode T>
 ZC_NODISCARD auto cast(Node& node) -> std::conditional_t<std::is_reference_v<T>, T, T&> {
   if (!isa<T>(node)) {
-    ZC_FAIL_REQUIRE("Invalid AST node cast: expected kind does not match actual kind");
+    if constexpr (_::ConcreteASTNode<T>) {
+      auto expectedKind = _::getExpectedSyntaxKind<T>();
+      auto actualKind = node.getKind();
+      ZC_FAIL_REQUIRE(zc::str("Invalid AST node cast: expected ",
+                              _::syntaxKindToString(expectedKind), " but got ",
+                              _::syntaxKindToString(actualKind)));
+    } else {
+      ZC_FAIL_REQUIRE(
+          zc::str("Invalid AST node cast: node does not match interface type, actual kind is ",
+                  _::syntaxKindToString(node.getKind())));
+    }
   }
   if constexpr (std::is_reference_v<T>) {
     return static_cast<T>(node);
@@ -187,7 +226,17 @@ template <_::ASTNode T>
 ZC_NODISCARD auto cast(const Node& node)
     -> std::conditional_t<std::is_reference_v<T>, T, const T&> {
   if (!isa<T>(node)) {
-    ZC_FAIL_REQUIRE("Invalid AST node cast: expected kind does not match actual kind");
+    if constexpr (_::ConcreteASTNode<T>) {
+      auto expectedKind = _::getExpectedSyntaxKind<T>();
+      auto actualKind = node.getKind();
+      ZC_FAIL_REQUIRE(zc::str("Invalid AST node cast: expected ",
+                              _::syntaxKindToString(expectedKind), " but got ",
+                              _::syntaxKindToString(actualKind)));
+    } else {
+      ZC_FAIL_REQUIRE(
+          zc::str("Invalid AST node cast: node does not match interface type, actual kind is ",
+                  _::syntaxKindToString(node.getKind())));
+    }
   }
   if constexpr (std::is_reference_v<T>) {
     return static_cast<T>(node);
@@ -215,6 +264,40 @@ template <_::ASTNode T>
 ZC_NODISCARD auto cast(const zc::Own<Node>& node)
     -> std::conditional_t<std::is_reference_v<T>, T, const T&> {
   return cast<T>(*node);
+}
+
+/// \brief Perform a checked cast on a zc::Own<U> to a specific AST node type, transferring
+/// ownership
+/// \tparam T The target AST node type
+/// \param node The owned node to cast
+/// \return Owned pointer to the casted node
+/// \throws zc::Exception if the cast is invalid
+///
+/// Use this when you're certain the cast will succeed and need to transfer ownership.
+/// If there's any doubt, use dyn_cast instead.
+///
+/// Example:
+/// \code
+/// auto memberExpr = cast<MemberExpression>(zc::mv(expr));
+/// \endcode
+template <_::ASTNode T, typename U>
+ZC_NODISCARD zc::Own<T> cast(zc::Own<U>&& node) {
+  static_assert(std::is_base_of_v<Node, U>, "U must be derived from Node");
+  if (!isa<T>(*node)) {
+    if constexpr (_::ConcreteASTNode<T>) {
+      auto expectedKind = _::getExpectedSyntaxKind<T>();
+      auto actualKind = node->getKind();
+      ZC_FAIL_REQUIRE(zc::str("Invalid AST node cast: expected ",
+                              _::syntaxKindToString(expectedKind), " but got ",
+                              _::syntaxKindToString(actualKind)));
+    } else {
+      ZC_FAIL_REQUIRE(
+          zc::str("Invalid AST node cast: node does not match interface type, actual kind is ",
+                  _::syntaxKindToString(node->getKind())));
+    }
+  }
+  // Use downcast to safely transfer ownership with correct disposer
+  return node.template downcast<T>();
 }
 
 //==============================================================================
@@ -269,9 +352,8 @@ template <_::ASTNode T, typename U>
 ZC_NODISCARD zc::Maybe<zc::Own<T>> dyn_cast(zc::Own<U>&& node) noexcept {
   static_assert(std::is_base_of_v<Node, U>, "U must be derived from Node");
   if (isa<T>(*node)) {
-    // Transfer ownership and cast the pointer
-    auto* rawPtr = node.disown(&zc::_::HeapDisposer<U>::instance);
-    return zc::Own<T>(static_cast<T*>(rawPtr), zc::_::HeapDisposer<T>::instance);
+    // Use downcast to safely transfer ownership with correct disposer
+    return node.template downcast<T>();
   }
   return zc::none;
 }

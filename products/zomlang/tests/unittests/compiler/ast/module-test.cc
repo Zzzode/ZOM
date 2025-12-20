@@ -45,7 +45,7 @@ ZC_TEST("ModuleTest: SourceFileWithMultipleStatements") {
 // ModulePath Tests
 ZC_TEST("ModuleTest: CreateModulePath") {
   using namespace zomlang::compiler::ast::factory;
-  auto stringLiteral = createStringLiteral(zc::str("std.io"));
+  auto stringLiteral = createStringLiteral("std.io"_zc);
   auto modulePath = createModulePath(zc::mv(stringLiteral));
 
   const auto& pathString = modulePath->getStringLiteral();
@@ -54,7 +54,7 @@ ZC_TEST("ModuleTest: CreateModulePath") {
 
 ZC_TEST("ModuleTest: ModulePathToString") {
   using namespace zomlang::compiler::ast::factory;
-  auto stringLiteral = createStringLiteral(zc::str("std.collections.vector"));
+  auto stringLiteral = createStringLiteral("std.collections.vector"_zc);
   auto modulePath = createModulePath(zc::mv(stringLiteral));
 
   const auto& pathString = modulePath->getStringLiteral();
@@ -64,7 +64,7 @@ ZC_TEST("ModuleTest: ModulePathToString") {
 
 ZC_TEST("ModuleTest: SingleIdentifierModulePath") {
   using namespace zomlang::compiler::ast::factory;
-  auto stringLiteral = createStringLiteral(zc::str("math"));
+  auto stringLiteral = createStringLiteral("math"_zc);
   auto modulePath = createModulePath(zc::mv(stringLiteral));
 
   const auto& pathString = modulePath->getStringLiteral();
@@ -75,7 +75,7 @@ ZC_TEST("ModuleTest: SingleIdentifierModulePath") {
 // ImportDeclaration Tests
 ZC_TEST("ModuleTest: CreateImportDeclaration") {
   using namespace zomlang::compiler::ast::factory;
-  auto stringLiteral = createStringLiteral(zc::str("std.io"));
+  auto stringLiteral = createStringLiteral("std.io"_zc);
   auto modulePath = createModulePath(zc::mv(stringLiteral));
   auto importDecl = createImportDeclaration(zc::mv(modulePath));
 
@@ -87,10 +87,9 @@ ZC_TEST("ModuleTest: CreateImportDeclaration") {
 
 ZC_TEST("ModuleTest: CreateImportDeclarationWithAlias") {
   using namespace zomlang::compiler::ast::factory;
-  auto stringLiteral = createStringLiteral(zc::str("std.collections"));
+  auto stringLiteral = createStringLiteral("std.collections"_zc);
   auto modulePath = createModulePath(zc::mv(stringLiteral));
-  auto importDecl =
-      createImportDeclaration(zc::mv(modulePath), createIdentifier(zc::str("collections")));
+  auto importDecl = createImportDeclaration(zc::mv(modulePath), createIdentifier("collections"_zc));
 
   const auto& modulePathRef = importDecl->getModulePath();
   const auto& pathString = modulePathRef.getStringLiteral();
@@ -105,7 +104,7 @@ ZC_TEST("ModuleTest: CreateImportDeclarationWithAlias") {
 // ExportDeclaration Tests
 ZC_TEST("ModuleTest: CreateSimpleExportDeclaration") {
   using namespace zomlang::compiler::ast::factory;
-  auto exportDecl = createExportDeclaration(createIdentifier(zc::str("myFunction")), zc::none);
+  auto exportDecl = createExportDeclaration(createIdentifier("myFunction"_zc), zc::none);
 
   // The export path should be a simple identifier
   auto& exportPath = exportDecl->getExportPath();
@@ -115,8 +114,8 @@ ZC_TEST("ModuleTest: CreateSimpleExportDeclaration") {
 
 ZC_TEST("ModuleTest: CreateExportDeclarationWithAlias") {
   using namespace zomlang::compiler::ast::factory;
-  auto exportDecl = createExportDeclaration(createIdentifier(zc::str("originalName")),
-                                            createIdentifier(zc::str("newName")));
+  auto exportDecl =
+      createExportDeclaration(createIdentifier("originalName"_zc), createIdentifier("newName"_zc));
 
   // The export path should be a simple identifier
   auto& exportPath = exportDecl->getExportPath();
@@ -132,9 +131,9 @@ ZC_TEST("ModuleTest: CreateDotSeparatedExportDeclaration") {
   using namespace zomlang::compiler::ast::factory;
 
   // Create a.b.c export path using PropertyAccessExpression
-  auto baseId = createIdentifier(zc::str("a"));
-  auto bId = createIdentifier(zc::str("b"));
-  auto cId = createIdentifier(zc::str("c"));
+  auto baseId = createIdentifier("a"_zc);
+  auto bId = createIdentifier("b"_zc);
+  auto cId = createIdentifier("c"_zc);
 
   auto ab = createPropertyAccessExpression(zc::mv(baseId), zc::mv(bId), false);
   auto abc = createPropertyAccessExpression(zc::mv(ab), zc::mv(cId), false);
@@ -152,12 +151,12 @@ ZC_TEST("ModuleTest: ExportDeclarationEdgeCases") {
   using namespace zomlang::compiler::ast::factory;
 
   // Test empty identifier name
-  auto exportDecl1 = createExportDeclaration(createIdentifier(zc::str("")), zc::none);
+  auto exportDecl1 = createExportDeclaration(createIdentifier(""_zc), zc::none);
   auto& exportPath1 = exportDecl1->getExportPath();
   ZC_EXPECT(exportPath1.getKind() == SyntaxKind::Identifier, "Export path should be an Identifier");
 
   // Test special characters in identifier
-  auto exportDecl2 = createExportDeclaration(createIdentifier(zc::str("_private$var")), zc::none);
+  auto exportDecl2 = createExportDeclaration(createIdentifier("_private$var"_zc), zc::none);
   auto& exportPath2 = exportDecl2->getExportPath();
   ZC_EXPECT(exportPath2.getKind() == SyntaxKind::Identifier, "Export path should be an Identifier");
 }

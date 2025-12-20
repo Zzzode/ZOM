@@ -22,6 +22,11 @@
 
 namespace zomlang {
 namespace compiler {
+
+namespace basic {
+class StringPool;
+}
+
 namespace source {
 
 class SourceLoc;
@@ -70,6 +75,7 @@ struct VirtualFile {
 class SourceManager {
 public:
   SourceManager() noexcept;
+  explicit SourceManager(basic::StringPool& extractedTextPool) noexcept;
   ~SourceManager() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(SourceManager);
@@ -116,6 +122,13 @@ public:
 
   /// Fast path for extracting text when buffer is known
   zc::ArrayPtr<const zc::byte> extractTextFast(const SourceRange& range, BufferId bufferId) const;
+
+  /// Returns a NUL-terminated view of the extracted text by interning into an internal pool.
+  zc::StringPtr extractTextAsStringPtr(const SourceRange& range,
+                                       zc::Maybe<BufferId> bufferId = zc::none) const;
+
+  /// Fast path for returning a NUL-terminated view when buffer is known.
+  zc::StringPtr extractTextFastAsStringPtr(const SourceRange& range, BufferId bufferId) const;
 
   /// Buffer identification
   zc::Maybe<BufferId> findBufferContainingLoc(const SourceLoc& loc) const;

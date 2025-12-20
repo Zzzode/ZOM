@@ -23,6 +23,7 @@
 #include "zc/core/map.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
@@ -121,7 +122,7 @@ struct BufferIDRangeComparator {
     auto rhsRange = sourceManager.getRangeForBuffer(rhsID);
 
     std::less<const zc::byte*> pointerCompare;
-    return pointerCompare(lhsLoc.getOpaqueValue(), rhsRange.getEnd().getOpaqueValue());
+    return pointerCompare(lhsLoc.getOpaqueValue(), rhsRange.getStart().getOpaqueValue());
   }
 };
 
@@ -145,6 +146,8 @@ struct BufferLocCache {
 
 struct SourceManager::Impl {
   Impl() noexcept : fs(zc::newDiskFilesystem()) {}
+  explicit Impl(basic::StringPool& pool) noexcept
+      : fs(zc::newDiskFilesystem()), externalExtractedTextPool(pool) {}
   ~Impl() noexcept(false) = default;
 
   /// The filesystem to use for reading files.
@@ -161,6 +164,14 @@ struct SourceManager::Impl {
   /// Fast lookup from buffer ID to buffer.
   zc::HashMap<BufferId, const Buffer&> idToBuffer;
 
+  mutable basic::StringPool ownedExtractedTextPool;
+  mutable zc::Maybe<basic::StringPool&> externalExtractedTextPool;
+
+  basic::StringPool& getExtractedTextPool() const {
+    ZC_IF_SOME(pool, externalExtractedTextPool) { return pool; }
+    return ownedExtractedTextPool;
+  }
+
   mutable BufferLocCache locCache;
 };
 
@@ -168,6 +179,8 @@ struct SourceManager::Impl {
 // SourceManager
 
 SourceManager::SourceManager() noexcept : impl(zc::heap<Impl>()) {}
+SourceManager::SourceManager(basic::StringPool& extractedTextPool) noexcept
+    : impl(zc::heap<Impl>(extractedTextPool)) {}
 SourceManager::~SourceManager() noexcept(false) = default;
 
 LineAndColumn SourceManager::getPresumedLineAndColumnForLoc(SourceLoc loc,
@@ -303,7 +316,7 @@ zc::Maybe<BufferId> SourceManager::findBufferContainingLoc(const SourceLoc& loc)
   // Check the last buffer we looked in.
   ZC_IF_SOME(lastId, impl->locCache.lastBufferId) {
     const Buffer& lastBuf = ZC_ASSERT_NONNULL(impl->idToBuffer.find(lastId));
-    if (ptr >= lastBuf.data.begin() && ptr < lastBuf.data.end()) { return lastId; }
+    if (ptr >= lastBuf.data.begin() && ptr <= lastBuf.data.end()) { return lastId; }
   }
 
   // Search the sorted list of buffer IDs.
@@ -316,7 +329,7 @@ zc::Maybe<BufferId> SourceManager::findBufferContainingLoc(const SourceLoc& loc)
   if (it != impl->locCache.sortedBuffers.begin()) {
     const BufferId candidateId = *(it - 1);
     ZC_IF_SOME(candidate, impl->idToBuffer.find(candidateId)) {
-      if (ptr >= candidate.data.begin() && ptr < candidate.data.end()) {
+      if (ptr >= candidate.data.begin() && ptr <= candidate.data.end()) {
         impl->locCache.lastBufferId = candidateId;
         return candidateId;
       }
@@ -327,7 +340,7 @@ zc::Maybe<BufferId> SourceManager::findBufferContainingLoc(const SourceLoc& loc)
   else if (!impl->locCache.sortedBuffers.empty()) {
     const BufferId candidateId = *impl->locCache.sortedBuffers.begin();
     ZC_IF_SOME(candidate, impl->idToBuffer.find(candidateId)) {
-      if (ptr >= candidate.data.begin() && ptr < candidate.data.end()) {
+      if (ptr >= candidate.data.begin() && ptr <= candidate.data.end()) {
         impl->locCache.lastBufferId = candidateId;
         return candidateId;
       }
@@ -479,6 +492,20 @@ zc::ArrayPtr<const zc::byte> SourceManager::extractTextFast(const SourceRange& r
   }
 
   return zc::ArrayPtr<const zc::byte>();
+}
+
+zc::StringPtr SourceManager::extractTextAsStringPtr(const SourceRange& range,
+                                                    zc::Maybe<BufferId> bufferId) const {
+  auto bytes = extractText(range, bufferId);
+  if (bytes.size() == 0) { return ""_zc; }
+  return impl->getExtractedTextPool().intern(bytes.asChars());
+}
+
+zc::StringPtr SourceManager::extractTextFastAsStringPtr(const SourceRange& range,
+                                                        BufferId bufferId) const {
+  auto bytes = extractTextFast(range, bufferId);
+  if (bytes.size() == 0) { return ""_zc; }
+  return impl->getExtractedTextPool().intern(bytes.asChars());
 }
 
 const zc::Vector<BufferId> SourceManager::getManagedBufferIds() const {

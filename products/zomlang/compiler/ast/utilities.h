@@ -13,6 +13,7 @@
 // the License.
 
 #include "zc/core/common.h"
+#include "zomlang/compiler/ast/kinds.h"
 
 namespace zomlang {
 namespace compiler {
@@ -29,9 +30,38 @@ zc::Maybe<const ast::Identifier&> getNameOfDeclaration(const ast::Declaration& n
 /// \return true if the node is a valid property name literal, false otherwise
 bool isPropertyNameLiteral(const ast::Node& node);
 
-bool isDeclaration(const ast::Node& node);
+// bool isDeclaration(const ast::Node& node);
 
 bool isExportable(const ast::Node& node);
+
+// ================================================================================
+// UTILITY FUNCTIONS
+// ================================================================================
+
+/// \brief Check if a syntax element kind represents a keyword
+inline bool isKeyword(SyntaxKind kind) {
+  return kind >= SyntaxKind::FirstKeyword && kind <= SyntaxKind::LastKeyword;
+}
+
+/// \brief Check if a syntax element kind represents a reserved keyword
+inline bool isReservedKeyword(SyntaxKind kind) {
+  return kind >= SyntaxKind::FirstReservedWord && kind <= SyntaxKind::LastReservedWord;
+}
+
+/// \brief Check if a syntax element kind represents an identifier or keyword
+inline bool isIdentifierOrKeyword(SyntaxKind kind) {
+  return kind == SyntaxKind::Identifier || isKeyword(kind);
+}
+
+/// \brief Check if a syntax element kind represents punctuation
+inline bool isPunctuation(SyntaxKind kind) {
+  return kind >= SyntaxKind::FirstPunctuation && kind <= SyntaxKind::LastPunctuation;
+}
+
+/// \brief Check if a syntax element kind represents a statement
+inline bool isStatement(SyntaxKind kind) {
+  return kind >= SyntaxKind::FirstStatement && kind <= SyntaxKind::LastStatement;
+}
 
 }  // namespace ast
 }  // namespace compiler
