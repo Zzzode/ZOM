@@ -401,6 +401,40 @@ const source::SourceRange& ObjectTypeNode::getSourceRange() const {
   return empty;
 }
 
+// NamedTupleElement
+struct NamedTupleElement::Impl : private NodeImpl {
+  zc::Own<Identifier> name;
+  zc::Own<TypeNode> type;
+
+  Impl(zc::Own<Identifier> name, zc::Own<TypeNode> type)
+      : NodeImpl(SyntaxKind::NamedTupleElement), name(zc::mv(name)), type(zc::mv(type)) {}
+
+  using NodeImpl::getKind;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+NamedTupleElement::NamedTupleElement(zc::Own<Identifier> name, zc::Own<TypeNode> type) noexcept
+    : TypeNode(), impl(zc::heap<Impl>(zc::mv(name), zc::mv(type))) {}
+
+NamedTupleElement::~NamedTupleElement() noexcept(false) = default;
+
+const Identifier& NamedTupleElement::getName() const { return *impl->name; }
+
+const TypeNode& NamedTupleElement::getType() const { return *impl->type; }
+
+SyntaxKind NamedTupleElement::getKind() const { return impl->getKind(); }
+
+void NamedTupleElement::setSourceRange(const source::SourceRange&& range) {
+  const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& NamedTupleElement::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+void NamedTupleElement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
 // TupleTypeNode
 struct TupleTypeNode::Impl : private NodeImpl {
   NodeList<TypeNode> elementTypes;
@@ -465,12 +499,12 @@ void ReturnTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // FunctionTypeNode
 struct FunctionTypeNode::Impl : private NodeImpl {
-  const NodeList<TypeParameterDeclaration> typeParameters;
-  const NodeList<BindingElement> parameters;
+  const zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters;
+  const NodeList<ParameterDeclaration> parameters;
   const zc::Own<ReturnTypeNode> returnType;
 
-  Impl(zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-       zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Own<ReturnTypeNode> returnType)
+  Impl(zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+       zc::Vector<zc::Own<ParameterDeclaration>>&& parameters, zc::Own<ReturnTypeNode> returnType)
       : NodeImpl(SyntaxKind::FunctionTypeNode),
         typeParameters(zc::mv(typeParameters)),
         parameters(zc::mv(parameters)),
@@ -481,19 +515,23 @@ struct FunctionTypeNode::Impl : private NodeImpl {
   using NodeImpl::setSourceRange;
 };
 
-FunctionTypeNode::FunctionTypeNode(zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-                                   zc::Vector<zc::Own<BindingElement>>&& parameters,
-                                   zc::Own<ReturnTypeNode> returnType) noexcept
+FunctionTypeNode::FunctionTypeNode(
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Own<ReturnTypeNode> returnType) noexcept
     : TypeNode(),
       impl(zc::heap<Impl>(zc::mv(typeParameters), zc::mv(parameters), zc::mv(returnType))) {}
 
 FunctionTypeNode::~FunctionTypeNode() noexcept(false) = default;
 
-const NodeList<TypeParameterDeclaration>& FunctionTypeNode::getTypeParameters() const {
-  return impl->typeParameters;
+zc::Maybe<zc::ArrayPtr<const zc::Own<TypeParameterDeclaration>>>
+FunctionTypeNode::getTypeParameters() const {
+  return impl->typeParameters.map([](auto& typeParameters) { return typeParameters.asPtr(); });
 }
 
-const NodeList<BindingElement>& FunctionTypeNode::getParameters() const { return impl->parameters; }
+const NodeList<ParameterDeclaration>& FunctionTypeNode::getParameters() const {
+  return impl->parameters;
+}
 
 const ReturnTypeNode& FunctionTypeNode::getReturnType() const { return *impl->returnType; }
 
@@ -595,7 +633,10 @@ TypeParameterDeclaration::TypeParameterDeclaration(zc::Own<Identifier> name,
 
 TypeParameterDeclaration::~TypeParameterDeclaration() noexcept(false) = default;
 
-const Identifier& TypeParameterDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+TypeParameterDeclaration::getName() const {
+  return impl->getName();
+}
 
 zc::Maybe<const TypeNode&> TypeParameterDeclaration::getConstraint() const {
   return impl->constraint;

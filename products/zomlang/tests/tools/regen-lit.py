@@ -11,68 +11,82 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 class SnapshotRegenerator:
     """Tool to regenerate test snapshots for ZomLang AST tests."""
 
-    def __init__(self, zomc_path: str):
+    def __init__(
+        self, zomc_path: str, cmake_binary_dir: Optional[str], preset: Optional[str]
+    ):
         self.zomc_path = zomc_path
+        self.cmake_binary_dir = cmake_binary_dir
+        self.preset = preset
+
+    def _zomc_path_in_build_dir(self, build_dir: Path) -> Path:
+        return build_dir / "products" / "zomlang" / "utils" / "zomc" / "zomc"
 
     def find_zomc(self) -> Optional[str]:
         """Find zomc compiler in build directories."""
         if self.zomc_path and os.path.exists(self.zomc_path):
             return self.zomc_path
 
-        # Try to find zomc in build directory
-        # Go up from tests/tools to project root
-        script_dir = Path(__file__).parent.parent.parent.parent.parent
-        build_dirs = ["build-sanitizer", "build", "build-debug", "build-release"]
-
-        for build_dir in build_dirs:
-            potential_path = (
-                script_dir
-                / build_dir
-                / "products"
-                / "zomlang"
-                / "utils"
-                / "zomc"
-                / "zomc"
-            )
+        env_cmake_binary_dir = os.environ.get("CMAKE_BINARY_DIR", "").strip()
+        cmake_binary_dir = (self.cmake_binary_dir or env_cmake_binary_dir).strip()
+        if cmake_binary_dir:
+            potential_path = self._zomc_path_in_build_dir(Path(cmake_binary_dir))
             if potential_path.exists():
                 return str(potential_path)
 
-        # Also try current working directory
+        zomc_in_path = shutil.which("zomc")
+        if zomc_in_path:
+            return zomc_in_path
+
+        script_dir = Path(__file__).parent.parent.parent.parent.parent
+
+        if self.preset:
+            candidates = [f"build-{self.preset}"]
+        else:
+            candidates = [
+                "build-debug",
+                "build-sanitizer",
+                "build-release",
+                "build-coverage",
+                "build",
+            ]
+
+        for build_dir in candidates:
+            potential_path = self._zomc_path_in_build_dir(script_dir / build_dir)
+            if potential_path.exists():
+                return str(potential_path)
+
         cwd = Path.cwd()
-        for build_dir in build_dirs:
-            potential_path = (
-                cwd / build_dir / "products" / "zomlang" / "utils" / "zomc" / "zomc"
-            )
+        for build_dir in candidates:
+            potential_path = self._zomc_path_in_build_dir(cwd / build_dir)
             if potential_path.exists():
                 return str(potential_path)
 
         return None
 
-    def run_zomc(self, test_file: str) -> str:
-        """Run zomc compiler and get AST output."""
+    def run_zomc(self, test_file: str) -> Tuple[int, str]:
+        """Run zomc compiler and get combined output."""
         zomc = self.find_zomc()
         if not zomc:
             raise RuntimeError("Could not find zomc compiler")
 
-        try:
-            result = subprocess.run(
-                [zomc, "compile", "--dump-ast", test_file],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            return result.stdout.strip()
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"zomc failed: {e.stderr}")
+        result = subprocess.run(
+            [zomc, "compile", "--dump-ast", test_file],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+        )
+        return result.returncode, result.stdout
 
     def format_json_for_check(self, json_str: str) -> List[str]:
         """Format JSON string as CHECK comments."""
@@ -95,6 +109,91 @@ class SnapshotRegenerator:
             else:
                 lines.append(f"// CHECK-NEXT: {line}")
         return lines
+
+    def _strip_ansi(self, text: str) -> str:
+        return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+    def _normalize_diagnostic_line(self, line: str) -> str:
+        line = self._strip_ansi(line).rstrip()
+        line = re.sub(
+            r"(?:/?[A-Za-z0-9_.-]+/)+(?P<file>[^/\s:]+\.zom)",
+            lambda m: f"{{{{.*{m.group('file')}}}}}",
+            line,
+        )
+        line = re.sub(
+            r"(?:[A-Za-z]:\\\\)?(?:[A-Za-z0-9_.-]+\\\\)+(?P<file>[^\\\\\s:]+\.zom)",
+            lambda m: f"{{{{.*{m.group('file')}}}}}",
+            line,
+        )
+        line = re.sub(r"(?:/?[A-Za-z0-9_.-]+/)+zomc\b", "{{.*zomc}}", line)
+        line = re.sub(
+            r"(?:[A-Za-z]:\\\\)?(?:[A-Za-z0-9_.-]+\\\\)+zomc\b",
+            "{{.*zomc}}",
+            line,
+        )
+        return line
+
+    def _extract_stable_diagnostic_lines(self, output: str) -> List[str]:
+        output = self._strip_ansi(output)
+        lines = []
+        for line in output.splitlines():
+            stripped = line.rstrip()
+            if not stripped:
+                continue
+            if (
+                stripped.startswith("Error [")
+                or stripped.startswith("Warning [")
+                or stripped.startswith("Note [")
+            ):
+                lines.append(stripped)
+                continue
+
+            compilation_failed_match = re.search(
+                r"(Compilation failed[^.]*\.)", stripped
+            )
+            if compilation_failed_match:
+                lines.append(compilation_failed_match.group(1))
+
+        if lines:
+            return lines
+
+        fallback = []
+        for line in output.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            fallback.append(stripped)
+            if len(fallback) >= 10:
+                break
+        return fallback
+
+    def format_diagnostics_for_check(self, output: str) -> List[str]:
+        check_lines = []
+        for line in output.splitlines():
+            normalized = self._normalize_diagnostic_line(line)
+            if not normalized.strip():
+                continue
+            check_lines.append(f"// CHECK: {normalized}")
+        if check_lines:
+            return check_lines
+
+        stable_lines = self._extract_stable_diagnostic_lines(output)
+        return [
+            f"// CHECK: {self._normalize_diagnostic_line(line)}"
+            for line in stable_lines
+        ]
+
+    def _is_json_output(self, output: str) -> bool:
+        candidate = output.strip()
+        if not candidate:
+            return False
+        if not (candidate.startswith("{") or candidate.startswith("[")):
+            return False
+        try:
+            json.loads(candidate)
+            return True
+        except Exception:
+            return False
 
     def read_test_file(self, test_file: str) -> List[str]:
         """Read test file and return lines."""
@@ -123,11 +222,13 @@ class SnapshotRegenerator:
         """Regenerate snapshot for a single test file."""
         print(f"Regenerating snapshot for: {test_file}")
 
-        # Get AST output from zomc
-        ast_output = self.run_zomc(test_file)
+        returncode, output = self.run_zomc(test_file)
+        output = output.rstrip()
 
-        # Format as CHECK comments
-        check_lines = self.format_json_for_check(ast_output)
+        if returncode == 0 and self._is_json_output(output):
+            check_lines = self.format_json_for_check(output)
+        else:
+            check_lines = self.format_diagnostics_for_check(output)
 
         # Read existing test file
         lines = self.read_test_file(test_file)
@@ -202,6 +303,14 @@ def main():
         "--zomc-path", help="Path to zomc compiler (auto-detected if not specified)"
     )
     parser.add_argument(
+        "--cmake-binary-dir",
+        help="CMake binary dir (defaults to $CMAKE_BINARY_DIR if set)",
+    )
+    parser.add_argument(
+        "--preset",
+        help="CMake preset name (uses build-<preset> when auto-detecting)",
+    )
+    parser.add_argument(
         "--append",
         action="store_true",
         help="Append CHECK comments instead of replacing existing ones",
@@ -213,7 +322,9 @@ def main():
         print(f"Error: {args.target} does not exist")
         sys.exit(1)
 
-    regenerator = SnapshotRegenerator(args.zomc_path)
+    regenerator = SnapshotRegenerator(
+        args.zomc_path, args.cmake_binary_dir, args.preset
+    )
 
     try:
         if os.path.isfile(args.target):

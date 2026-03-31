@@ -21,11 +21,7 @@ add_subdirectory(variables)
 # Function Declarations
 add_subdirectory(functions)
 
-# TODO: Add subdirectories for other declaration types when implemented
-# - classes
-# - interfaces
-# - type-aliases
-# - structs
-# - enums
-# - errors
-# - modules
+add_subdirectory(aliases)
+add_subdirectory(structs)
+add_subdirectory(enums)
+add_subdirectory(errors)

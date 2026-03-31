@@ -80,6 +80,10 @@ public:
   void visit(const NewExpression& newExpr) final;
   void visit(const ArrayLiteralExpression& arrLit) final;
   void visit(const ObjectLiteralExpression& objLit) final;
+  void visit(const PropertyAssignment& node) final;
+  void visit(const ShorthandPropertyAssignment& node) final;
+  void visit(const SpreadAssignment& node) final;
+  void visit(const SpreadElement& node) final;
   void visit(const ParenthesizedExpression& parenExpr) final;
   void visit(const Identifier& identifier) final;
   void visit(const PrefixUnaryExpression& prefixUnaryExpr) final;
@@ -96,6 +100,7 @@ public:
   void visit(const PredefinedTypeNode& node) final;
   void visit(const Declaration& node) final;
   void visit(const NamedDeclaration& node) final;
+  void visit(const ObjectLiteralElement& node) final;
   void visit(const Pattern& node) final;
   void visit(const PrimaryPattern& node) final;
   void visit(const BindingPattern& node) final;
@@ -113,12 +118,16 @@ public:
   void visit(const ClassDeclaration& node) final;
   void visit(const InterfaceDeclaration& node) final;
   void visit(const StructDeclaration& node) final;
+  void visit(const EnumMember& node) final;
   void visit(const EnumDeclaration& node) final;
   void visit(const ErrorDeclaration& node) final;
   void visit(const AliasDeclaration& node) final;
   void visit(const IfStatement& node) final;
   void visit(const WhileStatement& node) final;
   void visit(const ForStatement& node) final;
+  void visit(const ForInStatement& node) final;
+  void visit(const LabeledStatement& node) final;
+  void visit(const PatternProperty& node) final;
   void visit(const BreakStatement& node) final;
   void visit(const ContinueStatement& node) final;
   void visit(const ReturnStatement& node) final;
@@ -154,14 +163,19 @@ public:
   void visit(const FunctionTypeNode& functionType) final;
   void visit(const OptionalTypeNode& optionalType) final;
   void visit(const TypeQueryNode& typeQuery) final;
+  void visit(const NamedTupleElement& node) final;
 
   // Missing declaration visitor methods
   void visit(const MethodDeclaration& node) final;
-  void visit(const ConstructorDeclaration& node) final;
+  void visit(const GetAccessor& node) final;
+  void visit(const SetAccessor& node) final;
+  void visit(const InitDeclaration& node) final;
+  void visit(const DeinitDeclaration& node) final;
   void visit(const ParameterDeclaration& node) final;
   void visit(const PropertyDeclaration& node) final;
   void visit(const MissingDeclaration& node) final;
   void visit(const SemicolonClassElement& node) final;
+  void visit(const SemicolonInterfaceElement& node) final;
 
   // Body node visitor methods
   void visit(const InterfaceBody& node) final;

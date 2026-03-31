@@ -1,0 +1,169 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+let [a, b] = [1, 2];
+let {x, y} = {x: 10, y: 20};
+let [first, ...rest] = [1, 2, 3];
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*destructuring.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "ArrayBindingPattern",
+// CHECK-NEXT:               "elements": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "BindingElement",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "a"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "BindingElement",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "b"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "ArrayLiteralExpression",
+// CHECK-NEXT:               "elements": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "IntegerLiteral",
+// CHECK-NEXT:                   "value": "1"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "IntegerLiteral",
+// CHECK-NEXT:                   "value": "2"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "ObjectBindingPattern",
+// CHECK-NEXT:               "properties": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "BindingElement",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "x"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "BindingElement",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "y"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "ObjectLiteralExpression",
+// CHECK-NEXT:               "properties": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "PropertyAssignment",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "x"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": {
+// CHECK-NEXT:                     "node": "IntegerLiteral",
+// CHECK-NEXT:                     "value": "10"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "PropertyAssignment",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "y"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": {
+// CHECK-NEXT:                     "node": "IntegerLiteral",
+// CHECK-NEXT:                     "value": "20"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "ArrayBindingPattern",
+// CHECK-NEXT:               "elements": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "BindingElement",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "first"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "BindingElement",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "rest"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "ArrayLiteralExpression",
+// CHECK-NEXT:               "elements": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "IntegerLiteral",
+// CHECK-NEXT:                   "value": "1"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "IntegerLiteral",
+// CHECK-NEXT:                   "value": "2"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "IntegerLiteral",
+// CHECK-NEXT:                   "value": "3"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

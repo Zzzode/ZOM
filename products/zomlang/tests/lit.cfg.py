@@ -111,7 +111,7 @@ config.environment["ZOMLANG_TEST_ROOT"] = config.test_source_root
 config.environment["ZOMLANG_BUILD_ROOT"] = os.environ.get("CMAKE_BINARY_DIR", "")
 
 # Timeout for individual tests (in seconds)
-lit_config.maxIndividualTestTime = 60
+lit_config.maxIndividualTestTime = 20
 
 # Enable parallel execution
 lit_config.parallelism_group = "zomlang-ast"

@@ -37,9 +37,7 @@ ZC_TEST("TokenTest.ConstructorsAndAssignment") {
   ZC_EXPECT(t2.is(ast::SyntaxKind::Identifier));
   ZC_EXPECT(t2.getRange().getStart() == range.getStart());
   ZC_EXPECT(t2.getRange().getEnd() == range.getEnd());
-
-  ZC_IF_SOME(val, t2.getValue()) { ZC_EXPECT(val == "test"_zc); }
-  else { ZC_FAIL_ASSERT("Expected value"); }
+  ZC_EXPECT(t2.getValue() == "test"_zc);
 
   ZC_EXPECT(t2.hasFlag(TokenFlags::StringLiteralFlags));
 
@@ -48,9 +46,7 @@ ZC_TEST("TokenTest.ConstructorsAndAssignment") {
   ZC_EXPECT(t3.is(ast::SyntaxKind::Identifier));
   ZC_EXPECT(t3.getRange().getStart() == range.getStart());
   ZC_EXPECT(t3.getRange().getEnd() == range.getEnd());
-
-  ZC_IF_SOME(val, t3.getValue()) { ZC_EXPECT(val == "test"_zc); }
-  else { ZC_FAIL_ASSERT("Expected value"); }
+  ZC_EXPECT(t3.getValue() == "test"_zc);
 
   ZC_EXPECT(t3.hasFlag(TokenFlags::StringLiteralFlags));
 
@@ -59,9 +55,7 @@ ZC_TEST("TokenTest.ConstructorsAndAssignment") {
   ZC_EXPECT(t4.is(ast::SyntaxKind::Identifier));
   ZC_EXPECT(t4.getRange().getStart() == range.getStart());
   ZC_EXPECT(t4.getRange().getEnd() == range.getEnd());
-
-  ZC_IF_SOME(val, t4.getValue()) { ZC_EXPECT(val == "test"_zc); }
-  else { ZC_FAIL_ASSERT("Expected value"); }
+  ZC_EXPECT(t4.getValue() == "test"_zc);
 
   ZC_EXPECT(t4.hasFlag(TokenFlags::StringLiteralFlags));
   // t2 is now in a moved-from state, we shouldn't use it generally, but for coverage we might check
@@ -73,9 +67,7 @@ ZC_TEST("TokenTest.ConstructorsAndAssignment") {
   ZC_EXPECT(t5.is(ast::SyntaxKind::Identifier));
   ZC_EXPECT(t5.getRange().getStart() == range.getStart());
   ZC_EXPECT(t5.getRange().getEnd() == range.getEnd());
-
-  ZC_IF_SOME(val, t5.getValue()) { ZC_EXPECT(val == "test"_zc); }
-  else { ZC_FAIL_ASSERT("Expected value"); }
+  ZC_EXPECT(t5.getValue() == "test"_zc);
 
   // Move assignment
   Token t6;
@@ -83,9 +75,7 @@ ZC_TEST("TokenTest.ConstructorsAndAssignment") {
   ZC_EXPECT(t6.is(ast::SyntaxKind::Identifier));
   ZC_EXPECT(t6.getRange().getStart() == range.getStart());
   ZC_EXPECT(t6.getRange().getEnd() == range.getEnd());
-
-  ZC_IF_SOME(val, t6.getValue()) { ZC_EXPECT(val == "test"_zc); }
-  else { ZC_FAIL_ASSERT("Expected value"); }
+  ZC_EXPECT(t6.getValue() == "test"_zc);
 
   // Self assignment check (mostly to ensure no crash/correctness)
 #pragma clang diagnostic push
@@ -115,8 +105,7 @@ ZC_TEST("TokenTest.SettersAndGetters") {
   ZC_EXPECT(t.getLocation() == range.getStart());
 
   t.setValue("123"_zc);
-  ZC_IF_SOME(val, t.getValue()) { ZC_EXPECT(val == "123"_zc); }
-  else { ZC_FAIL_ASSERT("Expected value"); }
+  ZC_EXPECT(t.getValue() == "123"_zc);
 
   t.setFlags(TokenFlags::Octal);
   ZC_EXPECT(t.getFlags() == TokenFlags::Octal);
@@ -171,51 +160,27 @@ ZC_TEST("TokenTest.StaticText") {
   ZC_EXPECT(Token::getStaticTextForTokenKind(ast::SyntaxKind::Unknown) == zc::none);
 }
 
-ZC_TEST("TokenTest.GetText") {
-  auto& sm = getSourceManager();
-  // Create a buffer with some content
-  zc::StringPtr content = "let x = 42;"_zc;
-  source::BufferId bufferId = sm.addMemBufferCopy(content.asBytes(), "token_test.zom");
-
-  // Case 1: Token with cached value
+ZC_TEST("TokenTest.GetValue") {
+  // Case 1: Token with explicit value
   {
     Token t;
     t.setValue("cached"_zc);
-    ZC_EXPECT(t.getText(sm) == "cached"_zc);
-    ZC_EXPECT(t.getTextWithBufferHint(sm, &bufferId) == "cached"_zc);
+    ZC_EXPECT(t.getValue() == "cached"_zc);
   }
 
-  // Case 2: Token with static text
+  // Case 2: Token with static text value
   {
     Token t;
     t.setKind(ast::SyntaxKind::LetKeyword);
-    // Range points to "let" in source, but static text should take precedence if implemented that
-    // way Actually, looking at implementation:
-    // 1. Check value (impl->value)
-    // 2. Check static text (getStaticTextForTokenKind)
-    // 3. Extract from source
-
-    ZC_EXPECT(t.getText(sm) == "let"_zc);
-    ZC_EXPECT(t.getTextWithBufferHint(sm, &bufferId) == "let"_zc);
+    ZC_EXPECT(t.getValue() == "let"_zc);
   }
 
-  // Case 3: Token needing extraction (Identifier "x")
+  // Case 3: Identifier token must carry its value explicitly
   {
-    // "x" is at index 4, length 1
-    // We need to get the start location of the buffer.
-    source::SourceLoc start = sm.getLocForBufferStart(bufferId);
-    source::SourceLoc xLoc = start.getAdvancedLoc(4);
-    source::SourceRange xRange(xLoc, xLoc.getAdvancedLoc(1));
-
     Token t;
     t.setKind(ast::SyntaxKind::Identifier);
-    t.setRange(xRange);
-
-    ZC_EXPECT(t.getText(sm) == "x"_zc);
-    ZC_EXPECT(t.getTextWithBufferHint(sm, &bufferId) == "x"_zc);
-
-    // Test getTextWithBufferHint with nullptr buffer
-    ZC_EXPECT(t.getTextWithBufferHint(sm, nullptr) == "x"_zc);
+    t.setValue("x"_zc);
+    ZC_EXPECT(t.getValue() == "x"_zc);
   }
 }
 
@@ -312,8 +277,8 @@ ZC_TEST("TokenTest.OperatorStaticText") {
             "str"_zc);
   ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::BoolKeyword)) ==
             "bool"_zc);
-  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::VoidKeyword)) ==
-            "void"_zc);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::UnitKeyword)) ==
+            "unit"_zc);
 
   // Test punctuation
   ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::Semicolon)) ==

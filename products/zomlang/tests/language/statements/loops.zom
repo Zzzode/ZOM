@@ -1,0 +1,161 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+while (true) { ; }
+for (let i = 0; i < 10; i += 1) { ; }
+for (; ; ) { break; }
+for (let x in xs) { continue; }
+for (x in xs) { ; }
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*loops.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "WhileStatement",
+// CHECK-NEXT:       "condition": {
+// CHECK-NEXT:         "node": "BooleanLiteral",
+// CHECK-NEXT:         "value": "true"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "EmptyStatement"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ForStatement",
+// CHECK-NEXT:       "initializer": {
+// CHECK-NEXT:         "node": "VariableStatement",
+// CHECK-NEXT:         "declarations": {
+// CHECK-NEXT:           "node": "VariableDeclarationList",
+// CHECK-NEXT:           "bindings": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "VariableDeclaration",
+// CHECK-NEXT:               "name": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "i"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "type": null,
+// CHECK-NEXT:               "initializer": {
+// CHECK-NEXT:                 "node": "IntegerLiteral",
+// CHECK-NEXT:                 "value": "0"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ]
+// CHECK-NEXT:         }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "condition": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "i"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "<"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "IntegerLiteral",
+// CHECK-NEXT:           "value": "10"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "update": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "i"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "+="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "IntegerLiteral",
+// CHECK-NEXT:           "value": "1"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "EmptyStatement"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ForStatement",
+// CHECK-NEXT:       "initializer": null,
+// CHECK-NEXT:       "condition": null,
+// CHECK-NEXT:       "update": null,
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "BreakStatement",
+// CHECK-NEXT:             "label": null
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ForInStatement",
+// CHECK-NEXT:       "initializer": {
+// CHECK-NEXT:         "node": "VariableStatement",
+// CHECK-NEXT:         "declarations": {
+// CHECK-NEXT:           "node": "VariableDeclarationList",
+// CHECK-NEXT:           "bindings": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "VariableDeclaration",
+// CHECK-NEXT:               "name": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "x"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "type": null,
+// CHECK-NEXT:               "initializer": null
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ]
+// CHECK-NEXT:         }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "xs"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "ContinueStatement",
+// CHECK-NEXT:             "label": null
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ForInStatement",
+// CHECK-NEXT:       "initializer": {
+// CHECK-NEXT:         "node": "ExpressionStatement",
+// CHECK-NEXT:         "expression": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "x"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "xs"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "EmptyStatement"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

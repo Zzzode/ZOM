@@ -87,6 +87,8 @@ public:
   /// \param outToken The token to output.
   void lex(Token& outToken);
 
+  ZC_NODISCARD ast::SyntaxKind reScanGreaterToken();
+
   /// \brief Restore the lexer state.
   /// \param s The state to restore.
   /// \param enableDiagnostics Whether to enable diagnostics.
@@ -100,9 +102,17 @@ public:
   /// \return The source location of the full start.
   ZC_NODISCARD const source::SourceLoc getFullStartLoc() const;
 
+  /// \brief Start position of text of current token
+  /// \return The source location of the token start.
+  ZC_NODISCARD const source::SourceLoc getTokenStartLoc() const;
+
   /// \brief Get the list of comment directives found so far.
   /// \return The list of comment directives.
   ZC_NODISCARD const zc::Vector<CommentDirective>& getCommentDirectives() const;
+
+  /// \brief
+  /// \return
+  ZC_NODISCARD bool hasPrecedingLineBreak() const;
 
 private:
   struct Impl;

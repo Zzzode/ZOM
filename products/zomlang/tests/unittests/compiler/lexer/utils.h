@@ -24,16 +24,31 @@ namespace zomlang {
 namespace compiler {
 namespace lexer {
 
+struct TokenizeResult {
+  zc::Own<basic::StringPool> stringPool;
+  zc::Vector<Token> tokens;
+
+  inline size_t size() const { return tokens.size(); }
+
+  inline Token& operator[](size_t i) { return tokens[i]; }
+  inline const Token& operator[](size_t i) const { return tokens[i]; }
+
+  inline auto begin() { return tokens.begin(); }
+  inline auto end() { return tokens.end(); }
+  inline auto begin() const { return tokens.begin(); }
+  inline auto end() const { return tokens.end(); }
+};
+
 inline source::SourceManager& getSourceManager() {
   static zc::Own<source::SourceManager> sourceManager = zc::heap<source::SourceManager>();
   return *sourceManager;
 }
 
-inline zc::Vector<Token> tokenize(zc::StringPtr source,
-                                  zc::Maybe<diagnostics::DiagnosticEngine&> diagEng = zc::none) {
+inline zc::Vector<Token> tokenizeWithStringPool(
+    zc::StringPtr source, basic::StringPool& stringPool,
+    zc::Maybe<diagnostics::DiagnosticEngine&> diagEng = zc::none) {
   auto& sourceManager = getSourceManager();
   auto langOpts = basic::LangOptions();
-  basic::StringPool stringPool;
 
   auto bufferId = sourceManager.addMemBufferCopy(source.asBytes(), "test.zom");
 
@@ -56,6 +71,25 @@ inline zc::Vector<Token> tokenize(zc::StringPtr source,
   } while (token.getKind() != ast::SyntaxKind::EndOfFile);
 
   return tokens;
+}
+
+inline TokenizeResult tokenize(zc::StringPtr source) {
+  TokenizeResult result;
+  result.stringPool = zc::heap<basic::StringPool>();
+  result.tokens = tokenizeWithStringPool(source, *result.stringPool);
+  return result;
+}
+
+inline TokenizeResult tokenize(zc::StringPtr source, diagnostics::DiagnosticEngine& diagEng) {
+  TokenizeResult result;
+  result.stringPool = zc::heap<basic::StringPool>();
+  result.tokens = tokenizeWithStringPool(source, *result.stringPool, diagEng);
+  return result;
+}
+
+inline TokenizeResult tokenize(zc::StringPtr source, diagnostics::DiagnosticEngine* diagEng) {
+  if (diagEng == nullptr) { return tokenize(source); }
+  return tokenize(source, *diagEng);
 }
 
 inline zc::Vector<CommentDirective> tokenizeAndGetDirectives(zc::StringPtr source) {

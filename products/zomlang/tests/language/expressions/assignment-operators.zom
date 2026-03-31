@@ -1,0 +1,377 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+let a = 1;
+let b = 2;
+let c = 3;
+a = b;
+a += b;
+a -= b;
+a *= b;
+a /= b;
+a %= b;
+a **= b;
+a <<= b;
+a >>= b;
+a >>>= b;
+a &= b;
+a ^= b;
+a |= b;
+a &&= b;
+a ||= b;
+a ??= b;
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*assignment-operators.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "a"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "1"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "b"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "2"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "c"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "3"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "+="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "-="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "*="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "{{.*=}}"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "%="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "**="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "<<="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": ">>="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": ">>>="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "&="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "^="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "|="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "&&="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "||="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExpressionStatement",
+// CHECK-NEXT:       "expression": {
+// CHECK-NEXT:         "node": "BinaryExpression",
+// CHECK-NEXT:         "left": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "a"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "operator": {
+// CHECK-NEXT:           "node": "TokenNode",
+// CHECK-NEXT:           "symbol": "??="
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "right": {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "b"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

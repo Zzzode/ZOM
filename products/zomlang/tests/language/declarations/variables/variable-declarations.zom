@@ -1,2 +1,130 @@
+// RUN: /opt/homebrew/bin/timeout 5s %zomc compile --dump-ast %s | %FileCheck %s
+
 let a: i32 = 1, b: str = "hello", c: bool = true;
 let x, y: i64, z = 42;
+const PI: f64 = 3.14159;
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*variable-declarations.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "a"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "I32TypeNode",
+// CHECK-NEXT:               "name": "i32"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "1"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "b"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "StrTypeNode",
+// CHECK-NEXT:               "name": "str"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "StringLiteral",
+// CHECK-NEXT:               "value": "hello"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "c"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "BoolTypeNode",
+// CHECK-NEXT:               "name": "bool"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "BooleanLiteral",
+// CHECK-NEXT:               "value": "true"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "x"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": null
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "y"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "I64TypeNode",
+// CHECK-NEXT:               "name": "i64"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": null
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "z"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "42"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "PI"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "F64TypeNode",
+// CHECK-NEXT:               "name": "f64"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "FloatLiteral",
+// CHECK-NEXT:               "value": "3.14159"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

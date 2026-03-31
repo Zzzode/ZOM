@@ -1,0 +1,214 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+match (x) {
+  when _ => 0;
+  when v: i32 => v;
+  when (a: i32, b: str) if a > 0 => a;
+  when { x: i32, y: str } => 1;
+  when [a, b] => 2;
+  when is i32 => 3;
+  when x + 1 => 4;
+  // when Result.Ok(v: i32) => v;
+  default => return 0;
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*match.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "MatchStatement",
+// CHECK-NEXT:       "discriminant": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "x"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "clauses": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MatchClause",
+// CHECK-NEXT:           "pattern": {
+// CHECK-NEXT:             "node": "IdentifierPattern",
+// CHECK-NEXT:             "identifier": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "_"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "typeAnnotation": null
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "guard": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "ExpressionStatement",
+// CHECK-NEXT:             "expression": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "0"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MatchClause",
+// CHECK-NEXT:           "pattern": {
+// CHECK-NEXT:             "node": "IdentifierPattern",
+// CHECK-NEXT:             "identifier": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "v"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "typeAnnotation": null
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "guard": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "ExpressionStatement",
+// CHECK-NEXT:             "expression": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "v"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MatchClause",
+// CHECK-NEXT:           "pattern": {
+// CHECK-NEXT:             "node": "TuplePattern",
+// CHECK-NEXT:             "elements": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "IdentifierPattern",
+// CHECK-NEXT:                 "identifier": {
+// CHECK-NEXT:                   "node": "Identifier",
+// CHECK-NEXT:                   "name": "a"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "typeAnnotation": null
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "IdentifierPattern",
+// CHECK-NEXT:                 "identifier": {
+// CHECK-NEXT:                   "node": "Identifier",
+// CHECK-NEXT:                   "name": "b"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "typeAnnotation": null
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "guard": {
+// CHECK-NEXT:             "node": "BinaryExpression",
+// CHECK-NEXT:             "left": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "a"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "operator": {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": ">"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "right": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "0"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "ExpressionStatement",
+// CHECK-NEXT:             "expression": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "a"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MatchClause",
+// CHECK-NEXT:           "pattern": {
+// CHECK-NEXT:             "node": "StructurePattern",
+// CHECK-NEXT:             "properties": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "PatternProperty",
+// CHECK-NEXT:                 "name": "x",
+// CHECK-NEXT:                 "pattern": {
+// CHECK-NEXT:                   "node": "IsPattern",
+// CHECK-NEXT:                   "type": {
+// CHECK-NEXT:                     "node": "I32TypeNode",
+// CHECK-NEXT:                     "name": "i32"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "PatternProperty",
+// CHECK-NEXT:                 "name": "y",
+// CHECK-NEXT:                 "pattern": {
+// CHECK-NEXT:                   "node": "IsPattern",
+// CHECK-NEXT:                   "type": {
+// CHECK-NEXT:                     "node": "StrTypeNode",
+// CHECK-NEXT:                     "name": "str"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "guard": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "ExpressionStatement",
+// CHECK-NEXT:             "expression": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "1"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MatchClause",
+// CHECK-NEXT:           "pattern": {
+// CHECK-NEXT:             "node": "ArrayPattern",
+// CHECK-NEXT:             "elements": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "IdentifierPattern",
+// CHECK-NEXT:                 "identifier": {
+// CHECK-NEXT:                   "node": "Identifier",
+// CHECK-NEXT:                   "name": "a"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "typeAnnotation": null
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "IdentifierPattern",
+// CHECK-NEXT:                 "identifier": {
+// CHECK-NEXT:                   "node": "Identifier",
+// CHECK-NEXT:                   "name": "b"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "typeAnnotation": null
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "guard": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "ExpressionStatement",
+// CHECK-NEXT:             "expression": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "2"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MatchClause",
+// CHECK-NEXT:           "pattern": {
+// CHECK-NEXT:             "node": "IsPattern",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "I32TypeNode",
+// CHECK-NEXT:               "name": "i32"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "guard": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "ExpressionStatement",
+// CHECK-NEXT:             "expression": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "3"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "DefaultClause",
+// CHECK-NEXT:           "statements": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ReturnStatement",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "IntegerLiteral",
+// CHECK-NEXT:                 "value": "0"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ]
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

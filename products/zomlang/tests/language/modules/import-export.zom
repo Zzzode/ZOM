@@ -1,0 +1,29 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+import M = "m";
+export M;
+export M.Sub as Alias;
+
+
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*import-export.zom}}:4:1
+// CHECK:   |
+// CHECK: 4 | export M;
+// CHECK:   | ^~~~~~
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*import-export.zom}}:5:1
+// CHECK:   |
+// CHECK: 5 | export M.Sub as Alias;
+// CHECK:   | ^~~~~~
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*import-export.zom}}:5:14
+// CHECK:   |
+// CHECK: 5 | export M.Sub as Alias;
+// CHECK:   |              ^~
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*import-export.zom}}:5:14
+// CHECK:   |
+// CHECK: 5 | export M.Sub as Alias;
+// CHECK:   |              ^~
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

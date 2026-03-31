@@ -1,0 +1,95 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+class Base {
+  fun foo() {}
+}
+
+class Derived extends Base {
+  fun bar() {}
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*class-inheritance.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ClassDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Base"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MethodDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "foo"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT: 
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ClassDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Derived"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "heritageClauses": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "HeritageClause",
+// CHECK-NEXT:           "token": {
+// CHECK-NEXT:             "node": "TokenNode",
+// CHECK-NEXT:             "symbol": "extends"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "types": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ExpressionWithTypeArguments",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "Base"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ]
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MethodDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "bar"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT: 
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

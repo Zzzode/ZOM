@@ -1,0 +1,28 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+fun noReturn() {
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*no-return.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "FunctionDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "noReturn"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT: 
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

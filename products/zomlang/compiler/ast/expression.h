@@ -211,14 +211,16 @@ private:
 
 class ExpressionWithTypeArguments final : public MemberExpression {
 public:
-  ExpressionWithTypeArguments(zc::Own<Expression> expression,
+  ExpressionWithTypeArguments(zc::Own<LeftHandSideExpression> expression,
                               zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments) noexcept;
   ~ExpressionWithTypeArguments() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ExpressionWithTypeArguments);
 
-  const Expression& getExpression() const;
+  const LeftHandSideExpression& getExpression() const;
   const NodeList<TypeNode>& getTypeArguments() const;
+  zc::Own<LeftHandSideExpression> takeExpression();
+  zc::Maybe<zc::Vector<zc::Own<TypeNode>>> takeTypeArguments();
 
   NODE_METHOD_DECLARE();
 
@@ -229,13 +231,14 @@ private:
 
 class NewExpression final : public PrimaryExpression, public Declaration {
 public:
-  NewExpression(zc::Own<Expression> callee, zc::Vector<zc::Own<Expression>>&& arguments) noexcept;
+  NewExpression(zc::Own<Expression> callee, zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments,
+                zc::Maybe<zc::Vector<zc::Own<Expression>>> arguments) noexcept;
   ~NewExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(NewExpression);
 
   const Expression& getCallee() const;
-  const NodeList<Expression>& getArguments() const;
+  const zc::Maybe<zc::Vector<zc::Own<Expression>>>& getArguments() const;
 
   NODE_METHOD_DECLARE();
   DECLARATION_METHOD_DECL();
@@ -253,6 +256,20 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(ParenthesizedExpression);
 
   const Expression& getExpression() const;
+
+  NODE_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ThisExpression final : public PrimaryExpression {
+public:
+  ThisExpression() noexcept;
+  ~ThisExpression() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ThisExpression);
 
   NODE_METHOD_DECLARE();
 
@@ -289,6 +306,9 @@ private:
 class ConditionalExpression final : public Expression {
 public:
   ConditionalExpression(zc::Own<Expression> test, zc::Own<Expression> consequent,
+                        zc::Own<Expression> alternate) noexcept;
+  ConditionalExpression(zc::Own<Expression> test, zc::Maybe<zc::Own<TokenNode>> questionToken,
+                        zc::Own<Expression> consequent, zc::Maybe<zc::Own<TokenNode>> colonToken,
                         zc::Own<Expression> alternate) noexcept;
   ~ConditionalExpression() noexcept(false);
 
@@ -653,16 +673,16 @@ private:
 
 class FunctionExpression final : public Declaration, public PrimaryExpression {
 public:
-  FunctionExpression(zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-                     zc::Vector<zc::Own<BindingElement>>&& parameters,
+  FunctionExpression(zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                     zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
                      zc::Vector<zc::Own<CaptureElement>>&& captures,
                      zc::Maybe<zc::Own<TypeNode>> returnTypeNode, zc::Own<Statement> body) noexcept;
   ~FunctionExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(FunctionExpression);
 
-  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
-  const NodeList<BindingElement>& getParameters() const;
+  zc::Maybe<zc::ArrayPtr<const zc::Own<TypeParameterDeclaration>>> getTypeParameters() const;
+  const NodeList<ParameterDeclaration>& getParameters() const;
   const NodeList<CaptureElement>& getCaptures() const;
   zc::Maybe<const TypeNode&> getReturnType() const;
   const Statement& getBody() const;
@@ -675,16 +695,36 @@ private:
   zc::Own<Impl> impl;
 };
 
-class ArrayLiteralExpression final : public PrimaryExpression {
+class SpreadElement final : public Expression {
 public:
-  explicit ArrayLiteralExpression(zc::Vector<zc::Own<Expression>>&& elements) noexcept;
+  explicit SpreadElement(zc::Own<Expression> expression) noexcept;
+  ~SpreadElement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(SpreadElement);
+
+  const Expression& getExpression() const;
+
+  NODE_METHOD_DECLARE();
+  static bool classof(const Node& node) { return node.getKind() == SyntaxKind::SpreadElement; }
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ArrayLiteralExpression final : public LiteralExpression {
+public:
+  explicit ArrayLiteralExpression(zc::Vector<zc::Own<Expression>>&& elements,
+                                  bool multiLine) noexcept;
   ~ArrayLiteralExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ArrayLiteralExpression);
 
   const NodeList<Expression>& getElements() const;
+  bool isMultiLine() const;
 
   NODE_METHOD_DECLARE();
+  LITERAL_EXPRESSION_METHOD_DECL();
 
 private:
   struct Impl;
@@ -693,15 +733,75 @@ private:
 
 class ObjectLiteralExpression final : public LiteralExpression {
 public:
-  explicit ObjectLiteralExpression(zc::Vector<zc::Own<Expression>>&& properties) noexcept;
+  explicit ObjectLiteralExpression(zc::Vector<zc::Own<ObjectLiteralElement>>&& properties,
+                                   bool multiLine) noexcept;
   ~ObjectLiteralExpression() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ObjectLiteralExpression);
 
-  const NodeList<Expression>& getProperties() const;
+  const NodeList<ObjectLiteralElement>& getProperties() const;
+  bool isMultiLine() const;
 
   NODE_METHOD_DECLARE();
   LITERAL_EXPRESSION_METHOD_DECL();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class PropertyAssignment final : public ObjectLiteralElement, public Node {
+public:
+  PropertyAssignment(zc::Own<Identifier> name, zc::Maybe<zc::Own<Expression>> initializer,
+                     zc::Maybe<zc::Own<TokenNode>> questionToken) noexcept;
+  ~PropertyAssignment() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(PropertyAssignment);
+
+  const Identifier& getNameIdentifier() const;
+  zc::Maybe<const Expression&> getInitializer() const;
+  zc::Maybe<const TokenNode&> getQuestionToken() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class ShorthandPropertyAssignment final : public ObjectLiteralElement, public Node {
+public:
+  ShorthandPropertyAssignment(zc::Own<Identifier> name,
+                              zc::Maybe<zc::Own<Expression>> objectAssignmentInitializer,
+                              zc::Maybe<zc::Own<TokenNode>> equalsToken) noexcept;
+  ~ShorthandPropertyAssignment() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ShorthandPropertyAssignment);
+
+  const Identifier& getNameIdentifier() const;
+  zc::Maybe<const Expression&> getObjectAssignmentInitializer() const;
+  zc::Maybe<const TokenNode&> getEqualsToken() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class SpreadAssignment final : public ObjectLiteralElement, public Node {
+public:
+  explicit SpreadAssignment(zc::Own<Expression> expression) noexcept;
+  ~SpreadAssignment() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(SpreadAssignment);
+
+  const Expression& getExpression() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
 
 private:
   struct Impl;
@@ -825,6 +925,24 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(IsPattern);
 
   const TypeNode& getType() const;
+
+  NODE_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
+class PatternProperty final : public Pattern {
+public:
+  PatternProperty(zc::Own<Identifier> name,
+                  zc::Maybe<zc::Own<Pattern>> pattern = zc::none) noexcept;
+  ~PatternProperty() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(PatternProperty);
+
+  const Identifier& getName() const;
+  zc::Maybe<const Pattern&> getPattern() const;
 
   NODE_METHOD_DECLARE();
 

@@ -1,0 +1,24 @@
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+
+interface I {
+  class C {}
+}
+
+
+// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK:   --> {{.*interface-invalid-member-class.zom}}:4:3
+// CHECK:   |
+// CHECK: 4 |   class C {}
+// CHECK:   |   ^~~~~
+// CHECK: Error [ZOM2025]: Expected '}'
+// CHECK:   --> {{.*interface-invalid-member-class.zom}}:4:3
+// CHECK:   |
+// CHECK: 4 |   class C {}
+// CHECK:   |   ^~~~~
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*interface-invalid-member-class.zom}}:5:1
+// CHECK:   |
+// CHECK: 5 | }
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

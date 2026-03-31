@@ -1,11 +1,16 @@
-// RUN: %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
 
 // Test legacy octal literals which are not allowed
 let x = 0123;
 
-// CHECK: error: Octal literals are not allowed. Use the syntax '0o123'
-// CHECK-NEXT: let x = 0123;
-// CHECK-NEXT:         ^~~~
 
 // Verify that the value is still parsed correctly as octal (83) despite the error
-// CHECK: "value": 83
+
+
+// CHECK: Error [ZOM2026]: Octal literals are not allowed. Use the syntax '0o123'
+// CHECK:   --> {{.*legacy-octal.zom}}:4:9
+// CHECK:   |
+// CHECK: 4 | let x = 0123;
+// CHECK:   |         ^~~~
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

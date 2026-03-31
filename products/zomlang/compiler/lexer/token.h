@@ -94,7 +94,7 @@ constexpr bool hasFlag(TokenFlags flags, TokenFlags flag) {
 class Token {
 public:
   Token() noexcept;
-  Token(ast::SyntaxKind k, source::SourceRange r, zc::Maybe<zc::StringPtr> value = zc::none,
+  Token(ast::SyntaxKind k, source::SourceRange r, zc::StringPtr value = ""_zc,
         TokenFlags flags = TokenFlags::None) noexcept;
 
   // Copy constructor
@@ -124,19 +124,9 @@ public:
   ZC_NODISCARD source::SourceRange getRange() const;
   ZC_NODISCARD TokenFlags getFlags() const;
 
-  // Retrieve value if available
-  zc::Maybe<zc::StringPtr> getValue() const;
-
+  ZC_NODISCARD zc::StringPtr getValue() const;
   ZC_NODISCARD bool hasFlag(TokenFlags flag) const;
   ZC_NODISCARD bool hasPrecedingLineBreak() const;
-
-  /// Get the raw text content of this token with fast path optimization
-  ZC_NODISCARD zc::StringPtr getText(const source::SourceManager& sm) const;
-
-  /// Get text with buffer hint for better performance
-  /// Implementation in token.cc to avoid incomplete type issues
-  ZC_NODISCARD zc::StringPtr getTextWithBufferHint(const source::SourceManager& sm,
-                                                   const void* bufferIdPtr) const;
 
   /// Get static text for common keywords and operators
   static zc::Maybe<zc::StringPtr> getStaticTextForTokenKind(ast::SyntaxKind kind);

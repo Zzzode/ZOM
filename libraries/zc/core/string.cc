@@ -23,6 +23,7 @@
 
 #include <errno.h>
 #include <float.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,11 +41,76 @@ bool isHex(const char* s) {
   return s[0] == '0' && (s[1] == 'x' || s[1] == 'X');
 }
 
+bool isBinary(const char* s) {
+  if (*s == '-') s++;
+  return s[0] == '0' && (s[1] == 'b' || s[1] == 'B');
+}
+
+bool isOctal(const char* s) {
+  if (*s == '-') s++;
+  return s[0] == '0' && (s[1] == 'o' || s[1] == 'O');
+}
+
 long long parseSigned(const StringPtr& s, long long min, long long max) {
   ZC_REQUIRE(s != nullptr, "String does not contain valid number", s) { return 0; }
   char* endPtr;
   errno = 0;
-  auto value = strtoll(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
+  long long value;
+  if (isBinary(s.cStr())) {
+    const char* ptr = s.begin();
+    bool negative = *ptr == '-';
+    ptr += negative ? 3 : 2;
+    unsigned long long uvalue = strtoull(ptr, &endPtr, 2);
+    if (errno != ERANGE) {
+      if (negative) {
+        if (uvalue > 9223372036854775808ULL) {
+          errno = ERANGE;
+          value = LLONG_MIN;
+        } else if (uvalue == 9223372036854775808ULL) {
+          value = LLONG_MIN;
+        } else {
+          value = -static_cast<long long>(uvalue);
+        }
+      } else {
+        if (uvalue > static_cast<unsigned long long>(LLONG_MAX)) {
+          errno = ERANGE;
+          value = LLONG_MAX;
+        } else {
+          value = static_cast<long long>(uvalue);
+        }
+      }
+    } else {
+      value = negative ? LLONG_MIN : LLONG_MAX;
+    }
+  } else if (isOctal(s.cStr())) {
+    const char* ptr = s.begin();
+    bool negative = *ptr == '-';
+    ptr += negative ? 3 : 2;
+    unsigned long long uvalue = strtoull(ptr, &endPtr, 8);
+    if (errno != ERANGE) {
+      if (negative) {
+        if (uvalue > 9223372036854775808ULL) {
+          errno = ERANGE;
+          value = LLONG_MIN;
+        } else if (uvalue == 9223372036854775808ULL) {
+          value = LLONG_MIN;
+        } else {
+          value = -static_cast<long long>(uvalue);
+        }
+      } else {
+        if (uvalue > static_cast<unsigned long long>(LLONG_MAX)) {
+          errno = ERANGE;
+          value = LLONG_MAX;
+        } else {
+          value = static_cast<long long>(uvalue);
+        }
+      }
+    } else {
+      value = negative ? LLONG_MIN : LLONG_MAX;
+    }
+  } else {
+    value = strtoll(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
+  }
   ZC_REQUIRE(endPtr == s.end(), "String does not contain valid number", s) { return 0; }
   ZC_REQUIRE(errno != ERANGE, "Value out-of-range", s) { return 0; }
   ZC_REQUIRE(value >= min && value <= max, "Value out-of-range", value, min, max) { return 0; }
@@ -55,7 +121,62 @@ Maybe<long long> tryParseSigned(const StringPtr& s, long long min, long long max
   if (s == nullptr) { return zc::none; }  // String does not contain valid number.
   char* endPtr;
   errno = 0;
-  auto value = strtoll(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
+  long long value;
+  if (isBinary(s.cStr())) {
+    const char* ptr = s.begin();
+    bool negative = *ptr == '-';
+    ptr += negative ? 3 : 2;
+    unsigned long long uvalue = strtoull(ptr, &endPtr, 2);
+    if (errno != ERANGE) {
+      if (negative) {
+        if (uvalue > 9223372036854775808ULL) {
+          errno = ERANGE;
+          value = LLONG_MIN;
+        } else if (uvalue == 9223372036854775808ULL) {
+          value = LLONG_MIN;
+        } else {
+          value = -static_cast<long long>(uvalue);
+        }
+      } else {
+        if (uvalue > static_cast<unsigned long long>(LLONG_MAX)) {
+          errno = ERANGE;
+          value = LLONG_MAX;
+        } else {
+          value = static_cast<long long>(uvalue);
+        }
+      }
+    } else {
+      value = negative ? LLONG_MIN : LLONG_MAX;
+    }
+  } else if (isOctal(s.cStr())) {
+    const char* ptr = s.begin();
+    bool negative = *ptr == '-';
+    ptr += negative ? 3 : 2;
+    unsigned long long uvalue = strtoull(ptr, &endPtr, 8);
+    if (errno != ERANGE) {
+      if (negative) {
+        if (uvalue > 9223372036854775808ULL) {
+          errno = ERANGE;
+          value = LLONG_MIN;
+        } else if (uvalue == 9223372036854775808ULL) {
+          value = LLONG_MIN;
+        } else {
+          value = -static_cast<long long>(uvalue);
+        }
+      } else {
+        if (uvalue > static_cast<unsigned long long>(LLONG_MAX)) {
+          errno = ERANGE;
+          value = LLONG_MAX;
+        } else {
+          value = static_cast<long long>(uvalue);
+        }
+      }
+    } else {
+      value = negative ? LLONG_MIN : LLONG_MAX;
+    }
+  } else {
+    value = strtoll(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
+  }
   if (endPtr != s.end() || errno == ERANGE || value < min || max < value) { return zc::none; }
   return value;
 }
@@ -64,7 +185,18 @@ unsigned long long parseUnsigned(const StringPtr& s, unsigned long long max) {
   ZC_REQUIRE(s != nullptr, "String does not contain valid number", s) { return 0; }
   char* endPtr;
   errno = 0;
-  auto value = strtoull(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
+  unsigned long long value;
+  if (isBinary(s.cStr())) {
+    const char* ptr = s.begin();
+    ptr += (*ptr == '-') ? 3 : 2;
+    value = strtoull(ptr, &endPtr, 2);
+  } else if (isOctal(s.cStr())) {
+    const char* ptr = s.begin();
+    ptr += (*ptr == '-') ? 3 : 2;
+    value = strtoull(ptr, &endPtr, 8);
+  } else {
+    value = strtoull(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
+  }
   ZC_REQUIRE(endPtr == s.end(), "String does not contain valid number", s) { return 0; }
   ZC_REQUIRE(errno != ERANGE, "Value out-of-range", s) { return 0; }
   ZC_REQUIRE(value <= max, "Value out-of-range", value, max) { return 0; }
@@ -77,7 +209,18 @@ Maybe<unsigned long long> tryParseUnsigned(const StringPtr& s, unsigned long lon
   if (s == nullptr) { return zc::none; }  // String does not contain valid number.
   char* endPtr;
   errno = 0;
-  auto value = strtoull(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
+  unsigned long long value;
+  if (isBinary(s.cStr())) {
+    const char* ptr = s.begin();
+    ptr += (*ptr == '-') ? 3 : 2;
+    value = strtoull(ptr, &endPtr, 2);
+  } else if (isOctal(s.cStr())) {
+    const char* ptr = s.begin();
+    ptr += (*ptr == '-') ? 3 : 2;
+    value = strtoull(ptr, &endPtr, 8);
+  } else {
+    value = strtoull(s.begin(), &endPtr, isHex(s.cStr()) ? 16 : 10);
+  }
   if (endPtr != s.end() || errno == ERANGE || max < value || s[0] == '-') { return zc::none; }
   return value;
 }

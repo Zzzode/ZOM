@@ -84,7 +84,7 @@ enum class SyntaxKind {
   LetKeyword,          // let
   MatchKeyword,        // match
   ModuleKeyword,       // module
-  MutableKeyword,      // mutable
+  MutatingKeyword,     // mutating
   NamespaceKeyword,    // namespace
   NeverKeyword,        // never
   NewKeyword,          // new
@@ -113,7 +113,6 @@ enum class SyntaxKind {
   UndefinedKeyword,    // undefined
   UniqueKeyword,       // unique
   UsingKeyword,        // using
-  VoidKeyword,         // void
   WhenKeyword,         // when
   WhileKeyword,        // while
   WithKeyword,         // with
@@ -221,7 +220,6 @@ enum class SyntaxKind {
   // Error handling operators
   ErrorPropagate,  // ?!
   ErrorUnwrap,     // !!
-  ErrorDefault,    // ?:
 
   // Special operators
   At,          // @
@@ -294,7 +292,6 @@ enum class SyntaxKind {
 
   GuardClause,
   PropertyDefinition,
-  SpreadElement,
   ElementList,
   ArgumentList,
   BindingPattern,
@@ -308,12 +305,7 @@ enum class SyntaxKind {
   InterfaceElement,
   StructMember,
   ErrorMember,
-  EnumMember,
   AccessibilityModifier,
-  InitDeclaration,
-  DeinitDeclaration,
-  GetAccessor,
-  SetAccessor,
   MemberVariableDeclaration,
   MemberFunctionDeclaration,
   MemberAccessorDeclaration,
@@ -336,7 +328,7 @@ enum class SyntaxKind {
   FirstReservedWord = AbstractKeyword,
   LastReservedWord = NullKeyword,
   FirstBinaryOperator = LessThan,
-  LastBinaryOperator = ErrorDefault,
+  LastBinaryOperator = QuestionDot,
   FirstPunctuation = LeftParen,
   LastPunctuation = RightBracket,
 

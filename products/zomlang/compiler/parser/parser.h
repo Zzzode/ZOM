@@ -19,6 +19,7 @@
 #include "zc/core/memory.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -109,6 +110,7 @@ enum class ParsingContext : uint32_t {
   MatchClauseStatements,  // Statements in match clause
   InterfaceMembers,       // Members in interface
   ClassMembers,           // Members in class declaration
+  StructMembers,          // Members in struct declaration
   EnumMembers,            // Members in enum declaration
   HeritageClauseElement,  // Elements in a heritage clause
   VariableDeclarations,   // Variable declarations in variable statement
@@ -198,12 +200,30 @@ private:
   ZC_ALWAYS_INLINE(void nextToken());
   ZC_ALWAYS_INLINE(const lexer::Token& currentToken() const);
   ZC_ALWAYS_INLINE(const source::SourceLoc currentLoc() const);
+  ZC_ALWAYS_INLINE(ast::SyntaxKind currentKind() const);
+
   ZC_NODISCARD source::SourceLoc getFullStartLoc() const;
+  ZC_NODISCARD source::SourceLoc getTokenStartLoc() const;
+  ZC_NODISCARD bool hasPrecedingLineBreak() const;
+  ast::SyntaxKind reScanGreaterToken();
 
   ZC_ALWAYS_INLINE(bool expectToken(ast::SyntaxKind kind));
+  // Returns true if the current token matches any of the provided kinds.
+  template <typename... Kinds>
+  ZC_ALWAYS_INLINE(bool expectNToken(ast::SyntaxKind kind0, ast::SyntaxKind kind1, Kinds... kinds));
   ZC_ALWAYS_INLINE(bool consumeExpectedToken(ast::SyntaxKind kind));
   bool parseExpected(ast::SyntaxKind kind, bool shouldAdvance = true);
   bool parseOptional(ast::SyntaxKind kind);
+  ZC_ALWAYS_INLINE(bool parseNOptional(ast::SyntaxKind kind)) { return parseOptional(kind); }
+
+  template <typename... Kinds>
+  ZC_ALWAYS_INLINE(bool parseNOptional(ast::SyntaxKind kind0, ast::SyntaxKind kind1,
+                                       Kinds... kinds)) {
+    if (parseOptional(kind0)) { return true; }
+    return parseNOptional(kind1, kinds...);
+  }
+
+  zc::Maybe<zc::Own<ast::TokenNode>> parseOptionalToken(ast::SyntaxKind kind);
 
   void parseExpectedMatchingBrackets(ast::SyntaxKind openKind, ast::SyntaxKind closeKind,
                                      bool openParsed, source::SourceLoc openPos);
@@ -211,6 +231,11 @@ private:
   bool canParseSemicolon() const;
   bool tryParseSemicolon();
   bool parseSemicolon();
+  zc::Own<ast::BlockStatement> parseFunctionBlock();
+  zc::Maybe<zc::Own<ast::BlockStatement>> parseFunctionBlockOrSemicolon();
+  void parseSemicolonAfterPropertyName(const zc::Own<ast::Identifier>& name,
+                                       const zc::Maybe<zc::Own<ast::TypeNode>>& typeNode,
+                                       const zc::Maybe<zc::Own<ast::Expression>>& initializer);
 
   template <ast::NodeLike Node>
   zc::Own<Node> finishNode(zc::Own<Node>&& node, source::SourceLoc pos) {
@@ -250,29 +275,31 @@ private:
 
   template <ast::NodeLike T>
   zc::Vector<zc::Own<T>> parseDelimitedList(ParsingContext context,
-                                            zc::Function<zc::Maybe<zc::Own<T>>()> parseElement,
-                                            bool considerSemicolonAsDelimiter = false) {
+                                            zc::Function<zc::Maybe<zc::Own<T>>()> parseElement) {
     const ParsingContexts saveContext = getContext();
     setContext(saveContext | (1ull << context));
     zc::Vector<zc::Own<T>> list;
 
     while (true) {
       if (isListElement(context, /*inErrorRecovery*/ false)) {
-        const source::SourceLoc startPos = currentToken().getLocation();
+        const source::SourceLoc startPos = currentLoc();
         ZC_IF_SOME(result, parseElement()) {
           list.add(zc::mv(result));
 
-          if (consumeExpectedToken(ast::SyntaxKind::Comma)) { continue; }
+          if (parseOptional(ast::SyntaxKind::Comma)) {
+            // No need to check for a zero length node since we know we parsed a comma
+            continue;
+          }
 
           if (isListTerminator(context)) { break; }
 
           parseExpected(ast::SyntaxKind::Comma);
 
-          if (considerSemicolonAsDelimiter && expectToken(ast::SyntaxKind::Semicolon) &&
-              !currentToken().hasPrecedingLineBreak()) {
+          if (context == ParsingContext::ObjectLiteralMembers &&
+              expectToken(ast::SyntaxKind::Semicolon) && !hasPrecedingLineBreak()) {
             nextToken();
           }
-          if (startPos == currentToken().getLocation()) { nextToken(); }
+          if (startPos == currentLoc()) { nextToken(); }
           continue;
         }
       }
@@ -313,9 +340,9 @@ private:
 
   /// \brief Report an error at the specified start and end locations.
   template <diagnostics::DiagID ID, typename... Args>
-  diagnostics::InFlightDiagnostic parseErrorAt(source::SourceLoc start, source::SourceLoc end,
+  diagnostics::InFlightDiagnostic parseErrorAt(source::SourceLoc loc, source::SourceLoc end,
                                                Args&&... args) {
-    return parseErrorAtRange<ID>(source::SourceRange(start, end), zc::fwd<Args>(args)...);
+    return parseErrorAtRange<ID>(source::SourceRange(loc, end), zc::fwd<Args>(args)...);
   }
 
   /// \brief Report an error at the current token.
@@ -330,7 +357,7 @@ private:
     if (currentToken().is(tokenIfBlankName)) {
       parseErrorAtCurrentToken<BlankDiagnosticID>();
     } else {
-      parseErrorAtCurrentToken<NameDiagnosticID>(currentToken().getText(getSourceManager()));
+      parseErrorAtCurrentToken<NameDiagnosticID>(currentToken().getValue());
     }
   }
 
@@ -345,22 +372,45 @@ private:
 
   // --- Declarations ---
   zc::Maybe<zc::Own<ast::Statement>> parseDeclaration();
-  zc::Maybe<zc::Own<ast::VariableStatement>> parseVariableStatement();
-  zc::Maybe<zc::Own<ast::VariableDeclarationList>> parseVariableDeclarationList();
+  zc::Own<ast::VariableStatement> parseVariableStatement();
+  zc::Maybe<zc::Own<ast::VariableDeclaration>> parseVariableDeclaration();
+  zc::Maybe<zc::Own<ast::ParameterDeclaration>> parseParameterDeclaration();
+  zc::Own<ast::VariableDeclarationList> parseVariableDeclarationList();
   zc::Maybe<zc::Own<ast::FunctionDeclaration>> parseFunctionDeclaration();
 
   // Class & Interface
-  zc::Maybe<zc::Own<ast::ClassDeclaration>> parseClassDeclaration();
+  zc::Own<ast::ClassDeclaration> parseClassDeclaration();
   zc::Maybe<zc::Own<ast::InterfaceDeclaration>> parseInterfaceDeclaration();
-  zc::Maybe<zc::Own<ast::StructDeclaration>> parseStructDeclaration();
+  zc::Own<ast::StructDeclaration> parseStructDeclaration();
+  zc::Maybe<zc::Own<ast::EnumMember>> parseEnumMember();
   zc::Maybe<zc::Own<ast::EnumDeclaration>> parseEnumDeclaration();
 
-  zc::Maybe<zc::Own<ast::ClassElement>> parseClassElement();
-  zc::Vector<zc::Own<ast::ClassElement>> parseClassMembers();
-  zc::Maybe<zc::Own<ast::ClassElement>> parsePropertyDeclaration();
+  zc::Own<ast::ClassElement> parseClassElement();
+  zc::Vector<zc::Own<ast::ClassElement>> parseClassOrStructMembers(bool isStruct);
+  zc::Own<ast::ClassElement> parsePropertyDeclaration(
+      source::SourceLoc loc, zc::Vector<ast::SyntaxKind> modifiers, zc::Own<ast::Identifier> name,
+      zc::Maybe<zc::Own<ast::TokenNode>> questionToken);
+  zc::Own<ast::ClassElement> parsePropertyOrMethodDeclaration(
+      source::SourceLoc loc, zc::Vector<ast::SyntaxKind> modifiers);
+  zc::Own<ast::ClassElement> parseMethodDeclaration(
+      source::SourceLoc loc, zc::Vector<ast::SyntaxKind> modifiers, zc::Own<ast::Identifier> name,
+      zc::Maybe<zc::Own<ast::TokenNode>> questionToken);
+  zc::Own<ast::ClassElement> parseInitDeclaration(source::SourceLoc loc,
+                                                  zc::Vector<ast::SyntaxKind> modifiers);
+  zc::Own<ast::ClassElement> parseDeinitDeclaration(source::SourceLoc loc,
+                                                    zc::Vector<ast::SyntaxKind> modifiers);
+  zc::Own<ast::ClassElement> parseAccessorDeclaration(source::SourceLoc loc,
+                                                      zc::Vector<ast::SyntaxKind> modifiers,
+                                                      ast::SyntaxKind accessorKind);
 
   zc::Vector<zc::Own<ast::InterfaceElement>> parseInterfaceMembers();
   zc::Maybe<zc::Own<ast::InterfaceElement>> parseInterfaceElement();
+  zc::Maybe<zc::Own<ast::InterfaceElement>> parsePropertyOrMethodSignature(
+      source::SourceLoc loc, zc::Vector<ast::SyntaxKind> modifiers);
+  zc::Maybe<zc::Own<ast::InterfaceElement>> parsePropertySignature(
+      source::SourceLoc loc, zc::Vector<ast::SyntaxKind> modifiers, zc::Own<ast::Identifier> name,
+      zc::Maybe<zc::Own<ast::TokenNode>> questionToken);
+  zc::Maybe<zc::Own<ast::InterfaceElement>> parseMethodSignature();
 
   // Other Declarations
   zc::Maybe<zc::Own<ast::ErrorDeclaration>> parseErrorDeclaration();
@@ -371,7 +421,7 @@ private:
                                              bool permitConstAsModifier = true,
                                              bool stopOnStartOfClassStaticBlock = true);
   zc::Maybe<zc::Vector<zc::Own<ast::HeritageClause>>> parseHeritageClauses();
-  zc::Maybe<zc::Own<ast::HeritageClause>> parseHeritageClause();
+  zc::Own<ast::HeritageClause> parseHeritageClause();
 
   // --- Statements ---
   zc::Maybe<zc::Own<ast::Statement>> parseStatement();
@@ -380,7 +430,8 @@ private:
   zc::Maybe<zc::Own<ast::ExpressionStatement>> parseExpressionStatement();
   zc::Maybe<zc::Own<ast::IfStatement>> parseIfStatement();
   zc::Maybe<zc::Own<ast::WhileStatement>> parseWhileStatement();
-  zc::Maybe<zc::Own<ast::ForStatement>> parseForStatement();
+  zc::Maybe<zc::Own<ast::IterationStatement>> parseForStatement();
+  zc::Maybe<zc::Own<ast::LabeledStatement>> parseLabeledStatement();
   zc::Maybe<zc::Own<ast::BreakStatement>> parseBreakStatement();
   zc::Maybe<zc::Own<ast::ContinueStatement>> parseContinueStatement();
   zc::Maybe<zc::Own<ast::ReturnStatement>> parseReturnStatement();
@@ -388,92 +439,92 @@ private:
   zc::Maybe<zc::Own<ast::DebuggerStatement>> parseDebuggerStatement();
 
   // --- Expressions ---
-  zc::Maybe<zc::Own<ast::Expression>> parseExpression();
+  zc::Own<ast::Expression> parseExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseInitializer();
-  zc::Maybe<zc::Own<ast::Expression>> parseAssignmentExpressionOrHigher();
+  zc::Own<ast::Expression> parseAssignmentExpressionOrHigher();
 
   // Binary Expressions
-  zc::Maybe<zc::Own<ast::Expression>> parseBinaryExpressionOrHigher(
-      ast::OperatorPrecedence precedence);
-  zc::Maybe<zc::Own<ast::Expression>> parseBinaryExpressionRest(
-      zc::Own<ast::Expression> leftOperand, ast::OperatorPrecedence precedence,
-      source::SourceLoc startLoc);
+  zc::Own<ast::Expression> parseBinaryExpressionOrHigher(ast::OperatorPrecedence precedence);
+  zc::Own<ast::Expression> parseBinaryExpressionRest(zc::Own<ast::Expression> leftOperand,
+                                                     ast::OperatorPrecedence precedence,
+                                                     source::SourceLoc loc);
 
-  zc::Maybe<zc::Own<ast::Expression>> parseUnaryExpressionOrHigher();
+  zc::Own<ast::Expression> parseUnaryExpressionOrHigher();
 
   // Conditional & Logical
-  zc::Maybe<zc::Own<ast::ConditionalExpression>> parseConditionalExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseConditionalExpressionRest(
-      zc::Own<ast::Expression> leftOperand, source::SourceLoc startLoc);
-  zc::Maybe<zc::Own<ast::Expression>> parseShortCircuitExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseLogicalOrExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseLogicalAndExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseCoalesceExpression();
+  zc::Own<ast::Expression> parseConditionalExpressionRest(zc::Own<ast::Expression> leftOperand,
+                                                          source::SourceLoc loc);
+  zc::Own<ast::Expression> parseShortCircuitExpression();
+  zc::Own<ast::Expression> parseLogicalOrExpression();
+  zc::Own<ast::Expression> parseLogicalAndExpression();
+  zc::Own<ast::Expression> parseCoalesceExpression();
 
   // Bitwise
-  zc::Maybe<zc::Own<ast::Expression>> parseBitwiseOrExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseBitwiseXorExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseBitwiseAndExpression();
+  zc::Own<ast::Expression> parseBitwiseOrExpression();
+  zc::Own<ast::Expression> parseBitwiseXorExpression();
+  zc::Own<ast::Expression> parseBitwiseAndExpression();
 
   // Equality & Relational
-  zc::Maybe<zc::Own<ast::Expression>> parseEqualityExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseRelationalExpression();
+  zc::Own<ast::Expression> parseEqualityExpression();
+  zc::Own<ast::Expression> parseRelationalExpression();
 
   // Arithmetic
-  zc::Maybe<zc::Own<ast::Expression>> parseShiftExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseAdditiveExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseMultiplicativeExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseExponentiationExpression();
+  zc::Own<ast::Expression> parseShiftExpression();
+  zc::Own<ast::Expression> parseAdditiveExpression();
+  zc::Own<ast::Expression> parseMultiplicativeExpression();
+  zc::Own<ast::Expression> parseExponentiationExpression();
 
   // Unary & Cast
-  zc::Maybe<zc::Own<ast::CastExpression>> parseCastExpression();
+  zc::Own<ast::Expression> parseCastExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseUnaryExpression();
-  zc::Maybe<zc::Own<ast::UnaryExpression>> parseSimpleUnaryExpression();
-  zc::Maybe<zc::Own<ast::UnaryExpression>> parsePrefixUnaryExpression();
+  zc::Own<ast::UnaryExpression> parseSimpleUnaryExpression();
+  zc::Own<ast::UnaryExpression> parsePrefixUnaryExpression();
   zc::Maybe<zc::Own<ast::VoidExpression>> parseVoidExpression();
-  zc::Maybe<zc::Own<ast::TypeOfExpression>> parseTypeOfExpression();
-  zc::Maybe<zc::Own<ast::UpdateExpression>> parseUpdateExpression();
+  zc::Own<ast::TypeOfExpression> parseTypeOfExpression();
+  zc::Own<ast::UpdateExpression> parseUpdateExpression();
 
   // Left-Hand Side
-  zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseLeftHandSideExpressionOrHigher();
-  zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseMemberExpressionOrHigher();
-  zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseCallExpressionRest(
+  zc::Own<ast::LeftHandSideExpression> parseLeftHandSideExpressionOrHigher();
+  zc::Own<ast::LeftHandSideExpression> parseMemberExpressionOrHigher();
+  zc::Own<ast::LeftHandSideExpression> parseCallExpressionRest(
       source::SourceLoc loc, zc::Own<ast::LeftHandSideExpression> expr);
-  zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseMemberExpressionRest(
-      zc::Own<ast::LeftHandSideExpression> expr, source::SourceLoc startLoc,
-      bool allowOptionalChain);
-  zc::Maybe<zc::Own<ast::PropertyAccessExpression>> parsePropertyAccessExpressionRest(
+  zc::Own<ast::LeftHandSideExpression> parseMemberExpressionRest(
+      zc::Own<ast::LeftHandSideExpression> expr, source::SourceLoc loc, bool allowOptionalChain);
+  zc::Own<ast::PropertyAccessExpression> parsePropertyAccessExpressionRest(
       zc::Own<ast::LeftHandSideExpression> expression, bool questionDotToken,
       source::SourceLoc pos);
   zc::Maybe<zc::Own<ast::Identifier>> parseRightSideOfDot(
       bool allowIdentifierNames, bool allowUnicodeEscapeSequenceInIdentifierName);
-  zc::Maybe<zc::Own<ast::ElementAccessExpression>> parseElementAccessExpressionRest(
+  zc::Own<ast::ElementAccessExpression> parseElementAccessExpressionRest(
       zc::Own<ast::LeftHandSideExpression> expression, bool questionDotToken,
       source::SourceLoc pos);
 
   // Others
   zc::Maybe<zc::Own<ast::ExpressionWithTypeArguments>> parseExpressionWithTypeArguments();
-  zc::Maybe<zc::Own<ast::MemberExpression>> parseSuperExpression();
-  zc::Maybe<zc::Own<ast::MemberExpression>> parseImportCallExpression();
-  zc::Maybe<zc::Own<ast::AwaitExpression>> parseAwaitExpression();
-  zc::Maybe<zc::Own<ast::LeftHandSideExpression>> parseLeftHandSideExpression();
-  zc::Maybe<zc::Own<ast::NewExpression>> parseNewExpression();
-  zc::Maybe<zc::Own<ast::PrimaryExpression>> parsePrimaryExpression();
-  zc::Maybe<zc::Own<ast::ParenthesizedExpression>> parseParenthesizedExpression();
+  zc::Own<ast::MemberExpression> parseSuperExpression();
+  zc::Own<ast::MemberExpression> parseImportCallExpression();
+  zc::Own<ast::AwaitExpression> parseAwaitExpression();
+  zc::Own<ast::LeftHandSideExpression> parseLeftHandSideExpression();
+  zc::Own<ast::NewExpression> parseNewExpression();
+  zc::Own<ast::PrimaryExpression> parsePrimaryExpression();
+  zc::Own<ast::ParenthesizedExpression> parseParenthesizedExpression();
 
   // Literals
-  zc::Maybe<zc::Own<ast::LiteralExpression>> parseLiteralExpression();
-  zc::Maybe<zc::Own<ast::ArrayLiteralExpression>> parseArrayLiteralExpression();
-  zc::Maybe<zc::Own<ast::ObjectLiteralExpression>> parseObjectLiteralExpression();
+  zc::Own<ast::LiteralExpression> parseLiteralExpression();
+  zc::Own<ast::Expression> parseSpreadElement();
+  zc::Maybe<zc::Own<ast::Expression>> parseArrayLiteralElement();
+  zc::Own<ast::ArrayLiteralExpression> parseArrayLiteralExpression();
+  zc::Own<ast::ObjectLiteralExpression> parseObjectLiteralExpression();
+  zc::Maybe<zc::Own<ast::ObjectLiteralElement>> parseObjectLiteralElement();
   zc::Maybe<zc::Own<ast::StringLiteral>> parseStringLiteral();
   zc::Maybe<zc::Own<ast::IntegerLiteral>> parseIntegerLiteral();
   zc::Maybe<zc::Own<ast::FloatLiteral>> parseFloatLiteral();
   zc::Maybe<zc::Own<ast::BooleanLiteral>> parseBooleanLiteral();
   zc::Maybe<zc::Own<ast::NullLiteral>> parseNullLiteral();
 
-  zc::Maybe<zc::Own<ast::FunctionExpression>> parseFunctionExpression();
+  zc::Own<ast::FunctionExpression> parseFunctionExpression();
   zc::Maybe<zc::Own<ast::Identifier>> parseIdentifierExpression();
-  zc::Maybe<zc::Own<ast::Expression>> parseErrorDefaultExpression();
+  zc::Own<ast::Expression> parseErrorDefaultExpression();
 
   // --- Types ---
   zc::Maybe<zc::Own<ast::TypeNode>> parseType();
@@ -501,27 +552,40 @@ private:
   zc::Maybe<zc::Own<ast::Pattern>> parseIdentifierPattern();
   zc::Maybe<zc::Own<ast::Pattern>> parseTuplePattern();
   zc::Maybe<zc::Own<ast::Pattern>> parseStructurePattern();
-  zc::Maybe<zc::Own<ast::BindingPattern>> parseArrayBindingPattern();
-  zc::Maybe<zc::Own<ast::BindingPattern>> parseObjectBindingPattern();
+  zc::Maybe<zc::Own<ast::Pattern>> parseArrayPattern();
+  zc::Maybe<zc::Own<ast::Pattern>> parseIsPattern();
 
-  zc::Maybe<zc::Own<ast::Identifier>> createIdentifier(bool isIdentifier);
-  zc::Maybe<zc::Own<ast::Identifier>> parseIdentifier();
-  zc::Maybe<zc::Own<ast::Identifier>> parseIdentifierName();
-  zc::Maybe<zc::Own<ast::Identifier>> parseBindingIdentifier();
+  zc::OneOf<zc::Own<ast::BindingPattern>, zc::Own<ast::Identifier>>
+  parseIdentifierOrBindingPattern();
+  zc::Maybe<zc::Own<ast::BindingPattern>> parseBindingPattern();
+  zc::Own<ast::BindingPattern> parseArrayBindingPattern();
+  zc::Own<ast::BindingPattern> parseObjectBindingPattern();
+  zc::Maybe<zc::Own<ast::BindingElement>> parseObjectBindingElement();
+
+  zc::Own<ast::Identifier> createIdentifier(bool isIdentifier);
+  zc::Own<ast::Identifier> parsePropertyName();
+  zc::Own<ast::Identifier> parseIdentifier();
+  zc::Own<ast::Identifier> parseIdentifierName();
+  zc::Own<ast::Identifier> parseBindingIdentifier();
   zc::Maybe<zc::Own<ast::BindingElement>> parseBindingElement();
+  zc::Maybe<zc::Own<ast::BindingElement>> parseArrayBindingElement();
 
   // --- Lists & Arguments ---
-  zc::Vector<zc::Own<ast::TypeParameterDeclaration>> parseTypeParameters();
-  zc::Vector<zc::Own<ast::BindingElement>> parseParameters();
+  zc::Maybe<zc::Vector<zc::Own<ast::TypeParameterDeclaration>>> parseTypeParameters();
+  zc::Vector<zc::Own<ast::ParameterDeclaration>> parseParameters();
   zc::Vector<zc::Own<ast::CaptureElement>> parseCaptureClause();
   zc::Maybe<zc::Own<ast::CaptureElement>> parseCaptureElement();
   zc::Maybe<zc::Vector<zc::Own<ast::Expression>>> parseArgumentList();
   zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> tryParseTypeArgumentsInExpression();
   zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> parseTypeArguments();
-  zc::Vector<zc::Own<ast::Statement>> parseEmptyNodeList();
+
+  template <typename T>
+  zc::Vector<zc::Own<T>> parseEmptyNodeList() {
+    return zc::Vector<zc::Own<T>>();
+  }
 
   // --- Misc Parsing ---
-  zc::Maybe<zc::Own<ast::TokenNode>> parseTokenNode();
+  zc::Own<ast::TokenNode> parseTokenNode();
   zc::Maybe<zc::Own<ast::TokenNode>> parseExpectedToken(ast::SyntaxKind kind);
 
   // --- Start Checks ---
@@ -532,7 +596,9 @@ private:
   bool scanStartOfDeclaration();
   bool isStartOfParameter();
   bool isStartOfType(bool inStartOfParameter = false);
-  bool isStartOfInterfaceOrClassMember();
+  bool isStartOfClassMember();
+  bool isStartOfStructMember();
+  bool isStartOfInterfaceMember();
   bool isStartOfOptionalPropertyOrElementAccessChain();
 
   // --- Node/Context Checks ---
@@ -544,7 +610,7 @@ private:
   bool isModifier() const;
   bool isBinaryOperator() const;
   bool isIdentifierOrKeyword() const;
-  bool isLiteralPropertyName() const;
+  bool isLiteralPropertyName();
   bool isImportAttributeName() const;
   bool isHeritageClauseExtendsOrImplementsKeyword() const;
   bool isValidHeritageClauseObjectLiteral();

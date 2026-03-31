@@ -141,6 +141,8 @@ struct Lexer::Impl {
 
   void lex();
 
+  ast::SyntaxKind reScanGreaterToken();
+
   /// \brief Lex an identifier.
   /// \param prefixLength The length of the prefix (e.g., '$' for a global identifier).
   /// \return The lexed identifier as a string.
@@ -254,7 +256,9 @@ void Lexer::Impl::formToken(ast::SyntaxKind kind, zc::Maybe<zc::StringPtr> value
   source::SourceRange range(startLoc, endLoc);
 
   // Create token
-  state.token = Token(kind, range, value, state.tokenFlags);
+  state.token =
+      Token(kind, range, value.orDefault(stringPool.intern(state.tokenStartPtr, state.curPtr)),
+            state.tokenFlags);
 }
 
 void Lexer::Impl::processCommentDirective(const zc::byte* start, const zc::byte* end,
@@ -281,8 +285,7 @@ void Lexer::Impl::processCommentDirective(const zc::byte* start, const zc::byte*
   pos++;
 
   CommentDirectiveKind kind;
-  zc::StringPtr text =
-      stringPool.intern((zc::heapString(reinterpret_cast<const char*>(pos), end - pos)));
+  zc::StringPtr text = stringPool.intern(pos, end);
 
   if (text.startsWith("zom-expect-error")) {
     kind = CommentDirectiveKind::ExpectError;
@@ -564,22 +567,15 @@ void Lexer::Impl::lex() {
         return formToken(ast::SyntaxKind::Slash);
       case '0':
         if (charAt(1) == 'X' || charAt(1) == 'x') {
-          const zc::byte* start = state.curPtr;
           state.curPtr += 2;
           zc::StringPtr digits = lexHexDigits(1, true, true);
           if (digits == ""_zc) {
             error<diagnostics::DiagID::HexadecimalDigitExpected>();
             digits = "0"_zc;
           }
-          zc::StringPtr rawText = stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars());
-          zc::StringPtr tokenValue;
-          if (rawText.startsWith("0x") && rawText.slice(2) == digits) {
-            tokenValue = digits;
-          } else {
-            tokenValue = stringPool.intern("0x", digits);
-          }
+          zc::StringPtr tokenValue = stringPool.intern("0x", digits);
           state.tokenFlags |= TokenFlags::HexSpecifier;
-          return formToken(ast::SyntaxKind::IntegerLiteral, tokenValue);
+          return formToken(lexBigIntSuffix(tokenValue), tokenValue);
         }
         if (charAt(1) == 'B' || charAt(1) == 'b') {
           state.curPtr += 2;
@@ -590,7 +586,7 @@ void Lexer::Impl::lex() {
           }
           zc::StringPtr tokenValue = stringPool.intern("0b", digits);
           state.tokenFlags |= TokenFlags::BinarySpecifier;
-          return formToken(ast::SyntaxKind::IntegerLiteral, tokenValue);
+          return formToken(lexBigIntSuffix(tokenValue), tokenValue);
         }
         if (charAt(1) == 'O' || charAt(1) == 'o') {
           state.curPtr += 2;
@@ -601,7 +597,7 @@ void Lexer::Impl::lex() {
           }
           zc::StringPtr tokenValue = stringPool.intern("0o", digits);
           state.tokenFlags |= TokenFlags::OctalSpecifier;
-          return formToken(ast::SyntaxKind::IntegerLiteral, tokenValue);
+          return formToken(lexBigIntSuffix(tokenValue), tokenValue);
         }
         ZC_FALLTHROUGH;
       case '1' ... '9':
@@ -644,6 +640,14 @@ void Lexer::Impl::lex() {
         return formToken(ast::SyntaxKind::Equals);
       case '>':
         if (charAt(1) == '>') {
+          if (charAt(2) == '>') {
+            if (charAt(3) == '=') {
+              state.curPtr += 4;
+              return formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThanEquals);
+            }
+            state.curPtr += 3;
+            return formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan);
+          }
           if (charAt(2) == '=') {
             state.curPtr += 3;
             return formToken(ast::SyntaxKind::GreaterThanGreaterThanEquals);
@@ -658,7 +662,7 @@ void Lexer::Impl::lex() {
         state.curPtr++;
         return formToken(ast::SyntaxKind::GreaterThan);
       case '?':
-        if (charAt(1) == '.' && isdigit(charAt(2))) {
+        if (charAt(1) == '.' && !isdigit(charAt(2))) {
           state.curPtr += 2;
           return formToken(ast::SyntaxKind::QuestionDot);
         }
@@ -736,7 +740,7 @@ void Lexer::Impl::lex() {
           }
           errorAt<diagnostics::DiagID::XCanOnlyUsedAtStartOfFile>(state.curPtr, 2);
           state.curPtr++;
-          return formToken(ast::SyntaxKind::Unknown);
+          return formToken(ast::SyntaxKind::Unknown, "#"_zc);
         }
         state.curPtr++;
         return formToken(ast::SyntaxKind::Hash);
@@ -763,6 +767,35 @@ void Lexer::Impl::lex() {
   }
 }
 
+ast::SyntaxKind Lexer::Impl::reScanGreaterToken() {
+  if (!state.token.is(ast::SyntaxKind::GreaterThan)) { return state.token.getKind(); }
+
+  state.curPtr = state.tokenStartPtr + 1;
+
+  if (ch() == '>') {
+    if (charAt(1) == '>') {
+      if (charAt(2) == '=') {
+        state.curPtr += 3;
+        formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThanEquals);
+      } else {
+        state.curPtr += 2;
+        formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan);
+      }
+    } else if (charAt(1) == '=') {
+      state.curPtr += 2;
+      formToken(ast::SyntaxKind::GreaterThanGreaterThanEquals);
+    } else {
+      state.curPtr++;
+      formToken(ast::SyntaxKind::GreaterThanGreaterThan);
+    }
+  } else if (ch() == '=') {
+    state.curPtr++;
+    formToken(ast::SyntaxKind::GreaterThanEquals);
+  }
+
+  return state.token.getKind();
+}
+
 zc::Maybe<zc::StringPtr> Lexer::Impl::lexIdentifier(int32_t prefixLength) {
   const zc::byte* start = state.curPtr;
   state.curPtr += prefixLength;
@@ -778,10 +811,7 @@ zc::Maybe<zc::StringPtr> Lexer::Impl::lexIdentifier(int32_t prefixLength) {
         break;
       }
     }
-    if (ch < 0x80 && ch != '\\') {
-      return stringPool.intern(
-          zc::heapString(reinterpret_cast<const char*>(start), state.curPtr - start));
-    }
+    if (ch < 0x80 && ch != '\\') { return stringPool.intern(start, state.curPtr); }
     state.curPtr = start + prefixLength;
   }
 
@@ -797,8 +827,7 @@ zc::Maybe<zc::StringPtr> Lexer::Impl::lexIdentifier(int32_t prefixLength) {
       if (!isIdentifierPart(ch)) { break; }
     }
 
-    zc::StringPtr tokenValue = stringPool.intern(
-        zc::heapString(reinterpret_cast<const char*>(start), state.curPtr - start));
+    zc::StringPtr tokenValue = stringPool.intern(start, state.curPtr);
     if (ch == '\\') { tokenValue = stringPool.intern(tokenValue, lexIdentifierParts()); }
     return tokenValue;
   }
@@ -888,7 +917,7 @@ void Lexer::Impl::lexNumber() {
     if (exponentPart == ""_zc) {
       error<diagnostics::DiagID::DigitExpected>();
     } else {
-      exponentPreamble = stringPool.intern(zc::arrayPtr(end, startNumericPart).asChars());
+      exponentPreamble = stringPool.intern(end, startNumericPart);
       end = state.curPtr;
     }
   }
@@ -903,7 +932,7 @@ void Lexer::Impl::lexNumber() {
       tokenValue = stringPool.intern(tokenValue, exponentPreamble, exponentPart);
     }
   } else {
-    tokenValue = stringPool.intern(zc::arrayPtr(start, end).asChars());
+    tokenValue = stringPool.intern(start, end);
   }
 
   if (hasFlag(state.tokenFlags, TokenFlags::ContainsLeadingZero)) {
@@ -1017,7 +1046,7 @@ std::pair<zc::StringPtr, bool> Lexer::Impl::lexDigits() {
     state.curPtr++;
   }
   if (state.curPtr == start) { return {""_zc, isOctal}; }
-  return {stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars()), isOctal};
+  return {stringPool.intern(start, state.curPtr), isOctal};
 }
 
 ast::SyntaxKind Lexer::Impl::lexBigIntSuffix(zc::StringPtr& tokenValue) {
@@ -1038,6 +1067,8 @@ ast::SyntaxKind Lexer::Impl::lexBigIntSuffix(zc::StringPtr& tokenValue) {
                          ? strtoll(tokenValue.slice(2).cStr(), nullptr, 2)
                      : hasFlag(state.tokenFlags, TokenFlags::OctalSpecifier)
                          ? strtoll(tokenValue.slice(2).cStr(), nullptr, 8)
+                     : hasFlag(state.tokenFlags, TokenFlags::HexSpecifier)
+                         ? strtoll(tokenValue.slice(2).cStr(), nullptr, 16)
                          : tokenValue.parseAs<int64_t>();
 
   tokenValue = stringPool.intern(intValue);
@@ -1213,7 +1244,7 @@ zc::StringPtr Lexer::Impl::lexEscapeSequence(EscapeSequenceScanningFlags flags) 
         }
         return stringPool.intern(encodeUtf8(code));
       }
-      return stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars());
+      return stringPool.intern(start, state.curPtr);
     }
     case '8':
     case '9': {
@@ -1225,11 +1256,11 @@ zc::StringPtr Lexer::Impl::lexEscapeSequence(EscapeSequenceScanningFlags flags) 
               formatHexValue(c - '0'));
         } else {
           error<diagnostics::DiagID::EscapeSequenceNotAllowed>(
-              zc::heapString(zc::arrayPtr(start, state.curPtr).asChars()));
+              stringPool.intern(start, state.curPtr));
         }
         return stringPool.intern(encodeUtf8(c));
       }
-      return stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars());
+      return stringPool.intern(start, state.curPtr);
     }
     case 'b':
       return stringPool.intern('\b');
@@ -1252,7 +1283,7 @@ zc::StringPtr Lexer::Impl::lexEscapeSequence(EscapeSequenceScanningFlags flags) 
       state.curPtr -= 2;
       uint32_t codePoint =
           lexUnicodeEscape(hasFlag(flags, EscapeSequenceScanningFlags::ReportInvalidEscapeErrors));
-      if (codePoint < 0) { return stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars()); }
+      if (codePoint < 0) { return stringPool.intern(start, state.curPtr); }
       return stringPool.intern(encodeUtf8(codePoint));
     }
     case 'x': {
@@ -1262,7 +1293,7 @@ zc::StringPtr Lexer::Impl::lexEscapeSequence(EscapeSequenceScanningFlags flags) 
           if (hasFlag(flags, EscapeSequenceScanningFlags::ReportInvalidEscapeErrors)) {
             error<diagnostics::DiagID::InvalidCharacter>();
           }
-          return stringPool.intern(zc::arrayPtr(start, state.curPtr).asChars());
+          return stringPool.intern(start, state.curPtr);
         }
       }
       state.tokenFlags |= TokenFlags::HexEscape;
@@ -1326,7 +1357,7 @@ int32_t Lexer::Impl::lexUnicodeEscape(bool shouldEmitInvalidEscapeError) {
       return -1;
     }
 
-    if (ch() == '}') {
+    if (ch() != '}') {
       state.tokenFlags |= TokenFlags::ContainsInvalidEscape;
       if (shouldEmitInvalidEscapeError) {
         error<diagnostics::DiagID::UnterminatedUnicodeEscapeSequence>();
@@ -1340,10 +1371,11 @@ int32_t Lexer::Impl::lexUnicodeEscape(bool shouldEmitInvalidEscapeError) {
 }
 
 void Lexer::Impl::lexInvalidCharacter() {
+  const zc::byte* start = state.curPtr;
   auto [code, size] = charWithSize();
-  errorAt<diagnostics::DiagID::InvalidCharacter>(state.curPtr, size);
+  errorAt<diagnostics::DiagID::InvalidCharacter>(start, size);
   state.curPtr += size;
-  return formToken(ast::SyntaxKind::Unknown);
+  return formToken(ast::SyntaxKind::Unknown, stringPool.intern(start, size));
 }
 
 template <diagnostics::DiagID ID, typename... Args>
@@ -1371,6 +1403,8 @@ void Lexer::lex(Token& outToken) {
   outToken = impl->state.token;
 }
 
+ast::SyntaxKind Lexer::reScanGreaterToken() { return impl->reScanGreaterToken(); }
+
 void Lexer::restoreState(LexerState s, bool enableDiagnostics) {
   impl->state.curPtr = s.curPtr;
   impl->state.fullStartPtr = s.fullStartPtr;
@@ -1385,8 +1419,16 @@ const source::SourceLoc Lexer::getFullStartLoc() const {
   return source::SourceLoc(impl->state.fullStartPtr);
 }
 
+const source::SourceLoc Lexer::getTokenStartLoc() const {
+  return source::SourceLoc(impl->state.tokenStartPtr);
+}
+
 const zc::Vector<CommentDirective>& Lexer::getCommentDirectives() const {
   return impl->commentDirectives;
+}
+
+bool Lexer::hasPrecedingLineBreak() const {
+  return static_cast<bool>(impl->state.tokenFlags & TokenFlags::PrecedingLineBreak);
 }
 
 }  // namespace lexer

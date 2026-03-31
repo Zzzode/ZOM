@@ -1,0 +1,55 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+// Test closure with raises clause
+let raisesClosure = fun () -> unit raises Error {
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*raises.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "raisesClosure"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "FunctionExpression",
+// CHECK-NEXT:               "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "captures": [
+// CHECK-NEXT: 
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "returnType": {
+// CHECK-NEXT:                 "node": "ReturnType",
+// CHECK-NEXT:                 "type": {
+// CHECK-NEXT:                   "node": "UnitTypeNode",
+// CHECK-NEXT:                   "name": "unit"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "errorType": {
+// CHECK-NEXT:                   "node": "TypeReferenceNode",
+// CHECK-NEXT:                   "name": "Error"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "body": {
+// CHECK-NEXT:                 "node": "BlockStatement",
+// CHECK-NEXT:                 "children": [
+// CHECK-NEXT: 
+// CHECK-NEXT:                 ]
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

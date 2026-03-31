@@ -16,6 +16,9 @@
 
 #include <new>
 
+#include "string-pool.h"
+#include "zc/core/string.h"
+
 namespace zomlang {
 namespace compiler {
 namespace basic {
@@ -45,18 +48,37 @@ zc::StringPtr StringPool::intern(zc::ArrayPtr<const char> str) {
   return copy;
 }
 
+zc::StringPtr StringPool::intern(zc::ArrayPtr<const zc::byte> str) {
+  return intern(zc::arrayPtr(reinterpret_cast<const char*>(str.begin()), str.size()));
+}
+
 zc::StringPtr StringPool::intern(char c) {
   const char s[1] = {c};
   return intern(zc::arrayPtr(s, 1));
 }
 
+zc::StringPtr StringPool::intern(zc::byte c) { return intern(static_cast<char>(c)); }
+
 zc::StringPtr StringPool::intern(const char* str) { return intern(zc::StringPtr(str)); }
 
 zc::StringPtr StringPool::intern(const zc::String& str) { return intern(zc::StringPtr(str)); }
 
+zc::StringPtr StringPool::intern(const char* str, size_t len) {
+  return intern(zc::arrayPtr(str, len));
+}
+
+zc::StringPtr StringPool::intern(const zc::byte* str, size_t len) {
+  return intern(zc::arrayPtr(reinterpret_cast<const char*>(str), len));
+}
+
+zc::StringPtr StringPool::intern(const zc::byte* start, const zc::byte* end) {
+  return intern(zc::arrayPtr(reinterpret_cast<const char*>(start), end - start));
+}
+
 void StringPool::clear() {
   auto locked = state.lockExclusive();
   locked->strings.clear();
+
   locked->arena.~Arena();
   new (&locked->arena) zc::Arena();
 }

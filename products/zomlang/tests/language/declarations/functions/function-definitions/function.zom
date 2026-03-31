@@ -15,24 +15,24 @@ fun foo(n: i32, s: str) -> str {}
 // CHECK-NEXT:       },
 // CHECK-NEXT:       "parameters": [
 // CHECK-NEXT:         {
-// CHECK-NEXT:           "node": "BindingElement",
+// CHECK-NEXT:           "node": "ParameterDeclaration",
 // CHECK-NEXT:           "name": {
 // CHECK-NEXT:             "node": "Identifier",
 // CHECK-NEXT:             "name": "n"
 // CHECK-NEXT:           },
-// CHECK-NEXT:           "varType": {
+// CHECK-NEXT:           "type": {
 // CHECK-NEXT:             "node": "I32TypeNode",
 // CHECK-NEXT:             "name": "i32"
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "initializer": null
 // CHECK-NEXT:         },
 // CHECK-NEXT:         {
-// CHECK-NEXT:           "node": "BindingElement",
+// CHECK-NEXT:           "node": "ParameterDeclaration",
 // CHECK-NEXT:           "name": {
 // CHECK-NEXT:             "node": "Identifier",
 // CHECK-NEXT:             "name": "s"
 // CHECK-NEXT:           },
-// CHECK-NEXT:           "varType": {
+// CHECK-NEXT:           "type": {
 // CHECK-NEXT:             "node": "StrTypeNode",
 // CHECK-NEXT:             "name": "str"
 // CHECK-NEXT:           },

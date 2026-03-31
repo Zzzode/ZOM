@@ -81,6 +81,7 @@ CLAUDE.md
 
 # Custom
 .refs
+_thirdparty/
 
 # Scala
 .metals

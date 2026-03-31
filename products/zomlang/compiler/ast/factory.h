@@ -17,7 +17,9 @@
 #include <cstdint>
 
 #include "zc/core/common.h"
+#include "zc/core/one-of.h"
 #include "zc/core/string.h"
+#include "zc/core/vector.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/statement.h"
@@ -40,6 +42,7 @@ class ExportDeclaration;
 class BindingElement;
 class VariableDeclarationList;
 class FunctionDeclaration;
+class MethodDeclaration;
 class ClassDeclaration;
 class InterfaceDeclaration;
 class BlockStatement;
@@ -92,6 +95,11 @@ class LeftHandSideExpression;
 class ArrayLiteralExpression;
 class ObjectLiteralExpression;
 class ExpressionWithTypeArguments;
+
+class NamedTupleElement;
+class EnumMember;
+class GetAccessor;
+class SetAccessor;
 
 // Types
 class TypeNode;
@@ -158,52 +166,104 @@ zc::Own<ExportDeclaration> createExportDeclaration(
     zc::Own<ast::Expression>&& exportPath, zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none);
 
 /// Statement factory functions
-zc::Own<BindingElement> createBindingElement(zc::Own<Identifier> name,
-                                             zc::Maybe<zc::Own<TypeNode>> type = zc::none,
-                                             zc::Maybe<zc::Own<Expression>> init = zc::none);
+zc::Own<BindingElement> createBindingElement(
+    zc::Maybe<zc::Own<TokenNode>> dotDotDotToken, zc::Maybe<zc::Own<Identifier>> propertyName,
+    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> nameOrPattern,
+    zc::Maybe<zc::Own<Expression>> initialize);
+
+zc::Own<ParameterDeclaration> createParameterDeclaration(
+    zc::Vector<ast::SyntaxKind> modifiers, zc::Maybe<zc::Own<TokenNode>> dotDotDotToken,
+    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> name,
+    zc::Maybe<zc::Own<TokenNode>> questionToken, zc::Maybe<zc::Own<TypeNode>> type = zc::none,
+    zc::Maybe<zc::Own<Expression>> init = zc::none);
+
+zc::Own<VariableDeclaration> createVariableDeclaration(
+    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> name,
+    zc::Maybe<zc::Own<TypeNode>> type = zc::none, zc::Maybe<zc::Own<Expression>> init = zc::none);
 
 zc::Own<VariableDeclarationList> createVariableDeclarationList(
-    zc::Vector<zc::Own<BindingElement>>&& bindings);
+    zc::Vector<zc::Own<VariableDeclaration>>&& bindings);
 
 zc::Own<VariableStatement> createVariableStatement(zc::Own<VariableDeclarationList> declarations);
 
 zc::Own<FunctionDeclaration> createFunctionDeclaration(
-    zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<ReturnTypeNode>> returnType,
-    zc::Own<Statement> body);
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType, zc::Own<Statement> body);
 
-// Shorthand factory for interface method signatures (no body)
+zc::Own<MethodDeclaration> createMethodDeclaration(
+    zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+    zc::Maybe<zc::Own<ast::TokenNode>> optional,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType, zc::Maybe<zc::Own<Statement>> body);
+
+zc::Own<GetAccessor> createGetAccessorDeclaration(
+    zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType, zc::Maybe<zc::Own<Statement>> body);
+
+zc::Own<SetAccessor> createSetAccessorDeclaration(
+    zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType, zc::Maybe<zc::Own<Statement>> body);
+
+zc::Own<InitDeclaration> createInitDeclaration(
+    zc::Vector<ast::SyntaxKind> modifiers,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType, zc::Maybe<zc::Own<Statement>> body);
+
+zc::Own<DeinitDeclaration> createDeinitDeclaration(zc::Vector<ast::SyntaxKind> modifiers,
+                                                   zc::Maybe<zc::Own<Statement>> body);
+
 zc::Own<MethodSignature> createMethodSignature(
-    zc::Own<Identifier> name, bool optional,
-    zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters,
-    zc::Maybe<zc::Own<ReturnTypeNode>> returnType);
+    zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+    zc::Maybe<zc::Own<ast::TokenNode>> optional,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType = zc::none);
 
 zc::Own<PropertySignature> createPropertySignature(
-    zc::Own<Identifier> name, bool optional, zc::Maybe<zc::Own<TypeNode>> type,
+    zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+    zc::Maybe<zc::Own<ast::TokenNode>> optional, zc::Maybe<zc::Own<TypeNode>> type,
     zc::Maybe<zc::Own<Expression>> initializer = zc::none);
 
 zc::Own<SemicolonClassElement> createSemicolonClassElement();
+zc::Own<SemicolonInterfaceElement> createSemicolonInterfaceElement();
 
-zc::Own<PropertyDeclaration> createPropertyDeclaration(
-    zc::Own<Identifier> name, zc::Maybe<zc::Own<TypeNode>> type,
-    zc::Maybe<zc::Own<Expression>> initializer = zc::none);
+zc::Own<PropertyDeclaration> createPropertyDeclaration(zc::Vector<ast::SyntaxKind> modifiers,
+                                                       zc::Own<Identifier> name,
+                                                       zc::Maybe<zc::Own<TypeNode>> type,
+                                                       zc::Maybe<zc::Own<Expression>> initializer);
 
 zc::Own<ClassDeclaration> createClassDeclaration(
-    zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
     zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
     zc::Vector<zc::Own<ClassElement>>&& members);
 
 zc::Own<InterfaceDeclaration> createInterfaceDeclaration(
-    zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
     zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
     zc::Vector<zc::Own<InterfaceElement>>&& members);
 
-zc::Own<StructDeclaration> createStructDeclaration(zc::Own<Identifier> name,
-                                                   zc::Vector<zc::Own<Statement>>&& body);
+zc::Own<StructDeclaration> createStructDeclaration(
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
+    zc::Vector<zc::Own<ClassElement>>&& body);
+
+zc::Own<EnumMember> createEnumMember(zc::Own<Identifier> name,
+                                     zc::Maybe<zc::Own<Expression>> initializer = zc::none,
+                                     zc::Maybe<zc::Own<TupleTypeNode>> tupleType = zc::none);
 
 zc::Own<EnumDeclaration> createEnumDeclaration(zc::Own<Identifier> name,
-                                               zc::Vector<zc::Own<Statement>>&& body);
+                                               zc::Vector<zc::Own<EnumMember>>&& body);
 
 zc::Own<ErrorDeclaration> createErrorDeclaration(zc::Own<Identifier> name,
                                                  zc::Vector<zc::Own<Statement>>&& body);
@@ -245,6 +305,13 @@ zc::Own<ForStatement> createForStatement(zc::Maybe<zc::Own<Statement>> init,
                                          zc::Maybe<zc::Own<Expression>> update,
                                          zc::Own<Statement> body);
 
+zc::Own<ForInStatement> createForInStatement(zc::Own<Statement> initializer,
+                                             zc::Own<Expression> expression,
+                                             zc::Own<Statement> body);
+
+zc::Own<LabeledStatement> createLabeledStatement(zc::Own<Identifier> label,
+                                                 zc::Own<Statement> statement);
+
 /// Expression factory functions
 zc::Own<BinaryExpression> createBinaryExpression(zc::Own<Expression> left, zc::Own<TokenNode> op,
                                                  zc::Own<Expression> right);
@@ -255,9 +322,10 @@ zc::Own<PrefixUnaryExpression> createPrefixUnaryExpression(SyntaxKind op,
 zc::Own<PostfixUnaryExpression> createPostfixUnaryExpression(SyntaxKind op,
                                                              zc::Own<Expression> operand);
 
-zc::Own<ConditionalExpression> createConditionalExpression(zc::Own<Expression> test,
-                                                           zc::Own<Expression> consequent,
-                                                           zc::Own<Expression> alternate);
+zc::Own<ConditionalExpression> createConditionalExpression(
+    zc::Own<Expression> test, zc::Maybe<zc::Own<TokenNode>> questionToken,
+    zc::Own<Expression> consequent, zc::Maybe<zc::Own<TokenNode>> colonToken,
+    zc::Own<Expression> alternate);
 
 zc::Own<CallExpression> createCallExpression(
     zc::Own<Expression> callee, zc::Maybe<zc::Own<TokenNode>> questionDotToken,
@@ -289,28 +357,42 @@ zc::Own<AwaitExpression> createAwaitExpression(zc::Own<Expression> expression);
 zc::Own<NonNullExpression> createNonNullExpression(zc::Own<Expression> expression);
 
 zc::Own<ExpressionWithTypeArguments> createExpressionWithTypeArguments(
-    zc::Own<Expression> expression, zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments);
+    zc::Own<LeftHandSideExpression> expression,
+    zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments);
 
 zc::Own<CaptureElement> createCaptureElement(bool isByReference,
                                              zc::Maybe<zc::Own<Identifier>> identifier,
                                              bool isThis);
 
 zc::Own<FunctionExpression> createFunctionExpression(
-    zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
     zc::Vector<zc::Own<CaptureElement>>&& captures, zc::Maybe<zc::Own<TypeNode>> returnType,
     zc::Own<Statement> body);
 
 zc::Own<NewExpression> createNewExpression(zc::Own<Expression> callee,
-                                           zc::Vector<zc::Own<Expression>>&& arguments);
+                                           zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments,
+                                           zc::Maybe<zc::Vector<zc::Own<Expression>>> arguments);
 
 zc::Own<ParenthesizedExpression> createParenthesizedExpression(zc::Own<Expression> expression);
 
 zc::Own<ArrayLiteralExpression> createArrayLiteralExpression(
-    zc::Vector<zc::Own<Expression>>&& elements);
+    zc::Vector<zc::Own<Expression>>&& elements, bool multiLine = false);
 
 zc::Own<ObjectLiteralExpression> createObjectLiteralExpression(
-    zc::Vector<zc::Own<Expression>>&& properties);
+    zc::Vector<zc::Own<ObjectLiteralElement>>&& properties, bool multiLine = false);
+
+zc::Own<PropertyAssignment> createPropertyAssignment(
+    zc::Own<Identifier> name, zc::Maybe<zc::Own<Expression>> initializer,
+    zc::Maybe<zc::Own<TokenNode>> questionToken = zc::none);
+
+zc::Own<ShorthandPropertyAssignment> createShorthandPropertyAssignment(
+    zc::Own<Identifier> name, zc::Maybe<zc::Own<Expression>> objectAssignmentInitializer = zc::none,
+    zc::Maybe<zc::Own<TokenNode>> equalsToken = zc::none);
+
+zc::Own<SpreadAssignment> createSpreadAssignment(zc::Own<Expression> expression);
+
+zc::Own<SpreadElement> createSpreadElement(zc::Own<Expression> expression);
 
 zc::Own<Identifier> createIdentifier(zc::StringPtr name);
 
@@ -326,11 +408,18 @@ zc::Own<BooleanLiteral> createBooleanLiteral(bool value);
 
 zc::Own<NullLiteral> createNullLiteral();
 
+zc::Own<ThisExpression> createThisExpression();
+
 zc::Own<TemplateSpan> createTemplateSpan(zc::Own<Expression> expression,
                                          zc::Own<StringLiteral> literal);
 
 zc::Own<TemplateLiteralExpression> createTemplateLiteralExpression(
     zc::Own<StringLiteral> head, zc::Vector<zc::Own<TemplateSpan>>&& spans);
+
+zc::Own<TypeQueryNode> createTypeQueryNode(zc::Own<Expression> expression);
+
+zc::Own<NamedTupleElement> createNamedTupleElement(zc::Own<Identifier> name,
+                                                   zc::Own<TypeNode> type);
 
 /// Pattern factory functions
 // zc::Own<PrimaryPattern> createPrimaryPattern(zc::Own<Expression> expression);
@@ -341,12 +430,14 @@ zc::Own<IdentifierPattern> createIdentifierPattern(zc::Own<Identifier> identifie
 
 zc::Own<TuplePattern> createTuplePattern(zc::Vector<zc::Own<Pattern>>&& elements);
 
-zc::Own<StructurePattern> createStructurePattern(zc::Own<TypeReferenceNode> typeReference,
-                                                 zc::Vector<zc::Own<Pattern>>&& fields);
+zc::Own<StructurePattern> createStructurePattern(zc::Vector<zc::Own<Pattern>>&& fields);
+
+zc::Own<PatternProperty> createPatternProperty(zc::Own<Identifier> name,
+                                               zc::Maybe<zc::Own<Pattern>> pattern = zc::none);
 
 zc::Own<ArrayPattern> createArrayPattern(zc::Vector<zc::Own<Pattern>>&& elements);
 
-zc::Own<IsPattern> createIsPattern(zc::Own<Pattern> pattern, zc::Own<TypeNode> type);
+zc::Own<IsPattern> createIsPattern(zc::Own<TypeNode> type);
 
 zc::Own<ExpressionPattern> createExpressionPattern(zc::Own<Expression> expression);
 
@@ -354,7 +445,10 @@ zc::Own<EnumPattern> createEnumPattern(zc::Own<TypeReferenceNode> typeReference,
                                        zc::Own<Identifier> propertyName,
                                        zc::Maybe<zc::Own<TuplePattern>> tuplePattern = zc::none);
 
-zc::Own<AliasDeclaration> createAliasDeclaration(zc::Own<Identifier> name, zc::Own<TypeNode> type);
+zc::Own<AliasDeclaration> createAliasDeclaration(
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Own<TypeNode> type);
 
 zc::Own<DebuggerStatement> createDebuggerStatement();
 
@@ -380,8 +474,8 @@ zc::Own<ReturnTypeNode> createReturnType(zc::Own<TypeNode> type,
                                          zc::Maybe<zc::Own<TypeNode>> errorType);
 
 zc::Own<FunctionTypeNode> createFunctionType(
-    zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Own<ReturnTypeNode> returnType);
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters, zc::Own<ReturnTypeNode> returnType);
 
 zc::Own<OptionalTypeNode> createOptionalType(zc::Own<TypeNode> type);
 

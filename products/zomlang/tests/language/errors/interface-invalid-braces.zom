@@ -1,0 +1,22 @@
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+
+interface {{}
+
+
+// CHECK: Error [ZOM2011]: Identifier expected, found '{'
+// CHECK:   --> {{.*interface-invalid-braces.zom}}:3:11
+// CHECK:   |
+// CHECK: 3 | interface {{}
+// CHECK:   |           ^
+// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK:   --> {{.*interface-invalid-braces.zom}}:3:12
+// CHECK:   |
+// CHECK: 3 | interface {{}
+// CHECK:   |            ^
+// CHECK: Error [ZOM2025]: Expected '}'
+// CHECK:   --> {{.*interface-invalid-braces.zom}}:3:12
+// CHECK:   |
+// CHECK: 3 | interface {{}
+// CHECK:   |            ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

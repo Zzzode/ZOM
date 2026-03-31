@@ -26,6 +26,22 @@ namespace zomlang {
 namespace compiler {
 namespace ast {
 
+namespace {
+void dumpName(ASTDumper& dumper,
+              zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> name) {
+  ZC_SWITCH_ONEOF(name) {
+    ZC_CASE_ONEOF(maybeId, zc::Maybe<const Identifier&>) {
+      ZC_IF_SOME(id, maybeId) { id.accept(dumper); }
+    }
+    ZC_CASE_ONEOF(maybePattern, zc::Maybe<const BindingPattern&>) {
+      ZC_IF_SOME(pattern, maybePattern) { pattern.accept(dumper); }
+    }
+  }
+}
+
+void dumpName(ASTDumper& dumper, const Identifier& name) { name.accept(dumper); }
+}  // namespace
+
 struct ASTDumper::Impl {
   zc::Own<Serializer> serializer;
 
@@ -111,19 +127,18 @@ void ASTDumper::visit(const FunctionDeclaration& node) {
   impl->serializer->writeNodeStart("FunctionDeclaration"_zc);
 
   impl->serializer->writeChildStart("name"_zc);
-  node.getName().accept(*this);
+  dumpName(*this, node.getName());
   impl->serializer->writeChildEnd("name"_zc);
 
-  const auto& typeParams = node.getTypeParameters();
-  if (!typeParams.empty()) {
-    impl->serializer->writeArrayStart("typeParameters"_zc, typeParams.size());
-    for (const auto& param : typeParams) {
+  const auto& typeParameters = node.getTypeParameters();
+  if (typeParameters.size() > 0) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+    for (const auto& param : typeParameters) {
       impl->serializer->writeArrayElement();
       param.accept(*this);
     }
     impl->serializer->writeArrayEnd("typeParameters"_zc);
   }
-
   const auto& params = node.getParameters();
   impl->serializer->writeArrayStart("parameters"_zc, params.size());
   for (const auto& param : params) {
@@ -265,6 +280,17 @@ void ASTDumper::visit(const Identifier& node) {
   impl->serializer->writeNodeEnd("Identifier"_zc);
 }
 
+void ASTDumper::visit(const PatternProperty& node) {
+  impl->serializer->writeNodeStart("PatternProperty"_zc);
+  impl->serializer->writeProperty("name", node.getName().getText());
+  ZC_IF_SOME(pattern, node.getPattern()) {
+    impl->serializer->writeChildStart("pattern"_zc);
+    pattern.accept(*this);
+    impl->serializer->writeChildEnd("pattern"_zc);
+  }
+  impl->serializer->writeNodeEnd("PatternProperty"_zc);
+}
+
 void ASTDumper::visit(const ParenthesizedExpression& node) {
   impl->serializer->writeNodeStart("ParenthesizedExpression"_zc);
 
@@ -275,47 +301,29 @@ void ASTDumper::visit(const ParenthesizedExpression& node) {
   impl->serializer->writeNodeEnd("ParenthesizedExpression"_zc);
 }
 
-void ASTDumper::visit(const Node& node) {
-  impl->serializer->writeNodeStart("Node"_zc);
-  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
-  impl->serializer->writeNodeEnd("Node"_zc);
-}
+void ASTDumper::visit(const Node& node) { node.accept(*this); }
 
-void ASTDumper::visit(const Statement& node) {
-  impl->serializer->writeNodeStart("Statement"_zc);
-  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
-  impl->serializer->writeNodeEnd("Statement"_zc);
-}
+void ASTDumper::visit(const Statement& node) { node.accept(*this); }
 
-void ASTDumper::visit(const IterationStatement& node) {
-  impl->serializer->writeNodeStart("IterationStatement"_zc);
-  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
-  impl->serializer->writeNodeEnd("IterationStatement"_zc);
-}
+void ASTDumper::visit(const IterationStatement& node) { node.accept(*this); }
 
 void ASTDumper::visit(const DeclarationStatement& node) {
-  impl->serializer->writeNodeStart("DeclarationStatement"_zc);
-  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
-  impl->serializer->writeNodeEnd("DeclarationStatement"_zc);
+  static_cast<const Statement&>(node).accept(*this);
 }
 
-void ASTDumper::visit(const Expression& node) {
-  impl->serializer->writeNodeStart("Expression"_zc);
-  impl->serializer->writeProperty("kind", zc::str(static_cast<int>(node.getKind())));
-  impl->serializer->writeNodeEnd("Expression"_zc);
-}
+void ASTDumper::visit(const Expression& node) { node.accept(*this); }
 
 void ASTDumper::visit(const BindingElement& node) {
   impl->serializer->writeNodeStart("BindingElement"_zc);
 
   impl->serializer->writeChildStart("name"_zc);
-  node.getName().accept(*this);
+  dumpName(*this, node.getName());
   impl->serializer->writeChildEnd("name"_zc);
 
-  ZC_IF_SOME(type, node.getType()) {
-    impl->serializer->writeChildStart("varType"_zc);
-    type.accept(*this);
-    impl->serializer->writeChildEnd("varType"_zc);
+  ZC_IF_SOME(pattern, node.getBindingPattern()) {
+    impl->serializer->writeChildStart("bindingPattern"_zc);
+    pattern.accept(*this);
+    impl->serializer->writeChildEnd("bindingPattern"_zc);
   }
 
   impl->serializer->writeChildStart("initializer"_zc);
@@ -325,15 +333,9 @@ void ASTDumper::visit(const BindingElement& node) {
 
   impl->serializer->writeNodeEnd("BindingElement"_zc);
 }
-void ASTDumper::visit(const ClassElement& node) {
-  impl->serializer->writeNodeStart("ClassElement"_zc);
-  impl->serializer->writeNodeEnd("ClassElement"_zc);
-}
+void ASTDumper::visit(const ClassElement& node) { node.accept(*this); }
 
-void ASTDumper::visit(const InterfaceElement& node) {
-  impl->serializer->writeNodeStart("InterfaceElement"_zc);
-  impl->serializer->writeNodeEnd("InterfaceElement"_zc);
-}
+void ASTDumper::visit(const InterfaceElement& node) { node.accept(*this); }
 
 void ASTDumper::visit(const ModulePath& node) {
   impl->serializer->writeNodeStart("ModulePath"_zc);
@@ -348,81 +350,382 @@ void ASTDumper::visit(const ModulePath& node) {
 // Additional visit methods for missing AST node types
 void ASTDumper::visit(const TypeParameterDeclaration& node) {
   impl->serializer->writeNodeStart("TypeParameterDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeChildStart("constraint"_zc);
+  ZC_IF_SOME(constraint, node.getConstraint()) { constraint.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("constraint"_zc);
+
   impl->serializer->writeNodeEnd("TypeParameterDeclaration"_zc);
 }
 
 void ASTDumper::visit(const ClassDeclaration& node) {
   impl->serializer->writeNodeStart("ClassDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& typeParameters = node.getTypeParameters();
+  if (!typeParameters.empty()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+    for (const auto& param : typeParameters) {
+      impl->serializer->writeArrayElement();
+      param.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
+  }
+
+  const auto& heritageClauses = node.getHeritageClauses();
+  if (!heritageClauses.empty()) {
+    impl->serializer->writeArrayStart("heritageClauses"_zc, heritageClauses.size());
+    for (const auto& clause : heritageClauses) {
+      impl->serializer->writeArrayElement();
+      clause.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("heritageClauses"_zc);
+  }
+
+  const auto& members = node.getMembers();
+  impl->serializer->writeArrayStart("members"_zc, members.size());
+  for (const auto& member : members) {
+    impl->serializer->writeArrayElement();
+    member.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("members"_zc);
+
   impl->serializer->writeNodeEnd("ClassDeclaration"_zc);
 }
 
 void ASTDumper::visit(const InterfaceDeclaration& node) {
   impl->serializer->writeNodeStart("InterfaceDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& typeParameters = node.getTypeParameters();
+  if (!typeParameters.empty()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+    for (const auto& param : typeParameters) {
+      impl->serializer->writeArrayElement();
+      param.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
+  }
+
+  const auto& heritageClauses = node.getHeritageClauses();
+  if (!heritageClauses.empty()) {
+    impl->serializer->writeArrayStart("heritageClauses"_zc, heritageClauses.size());
+    for (const auto& clause : heritageClauses) {
+      impl->serializer->writeArrayElement();
+      clause.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("heritageClauses"_zc);
+  }
+
+  const auto& members = node.getMembers();
+  impl->serializer->writeArrayStart("members"_zc, members.size());
+  for (const auto& member : members) {
+    impl->serializer->writeArrayElement();
+    member.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("members"_zc);
+
   impl->serializer->writeNodeEnd("InterfaceDeclaration"_zc);
 }
 
 void ASTDumper::visit(const StructDeclaration& node) {
   impl->serializer->writeNodeStart("StructDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& typeParameters = node.getTypeParameters();
+  if (!typeParameters.empty()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+    for (const auto& param : typeParameters) {
+      impl->serializer->writeArrayElement();
+      param.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
+  }
+
+  const auto& heritageClauses = node.getHeritageClauses();
+  if (!heritageClauses.empty()) {
+    impl->serializer->writeArrayStart("heritageClauses"_zc, heritageClauses.size());
+    for (const auto& clause : heritageClauses) {
+      impl->serializer->writeArrayElement();
+      clause.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("heritageClauses"_zc);
+  }
+
+  const auto& members = node.getMembers();
+  impl->serializer->writeArrayStart("members"_zc, members.size());
+  for (const auto& member : members) {
+    impl->serializer->writeArrayElement();
+    member.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("members"_zc);
+
   impl->serializer->writeNodeEnd("StructDeclaration"_zc);
+}
+
+void ASTDumper::visit(const EnumMember& node) {
+  impl->serializer->writeNodeStart("EnumMember"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeChildStart("initializer"_zc);
+  ZC_IF_SOME(initializer, node.getInitializer()) { initializer.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("initializer"_zc);
+
+  impl->serializer->writeChildStart("tupleType"_zc);
+  ZC_IF_SOME(tupleType, node.getTupleType()) { tupleType.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("tupleType"_zc);
+
+  impl->serializer->writeNodeEnd("EnumMember"_zc);
 }
 
 void ASTDumper::visit(const EnumDeclaration& node) {
   impl->serializer->writeNodeStart("EnumDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& members = node.getMembers();
+  impl->serializer->writeArrayStart("members"_zc, members.size());
+  for (const auto& member : members) {
+    impl->serializer->writeArrayElement();
+    member.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("members"_zc);
+
   impl->serializer->writeNodeEnd("EnumDeclaration"_zc);
 }
 
 void ASTDumper::visit(const ErrorDeclaration& node) {
   impl->serializer->writeNodeStart("ErrorDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& members = node.getMembers();
+  impl->serializer->writeArrayStart("members"_zc, members.size());
+  for (const auto& member : members) {
+    impl->serializer->writeArrayElement();
+    member.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("members"_zc);
+
   impl->serializer->writeNodeEnd("ErrorDeclaration"_zc);
 }
 
 void ASTDumper::visit(const AliasDeclaration& node) {
   impl->serializer->writeNodeStart("AliasDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& typeParameters = node.getTypeParameters();
+  impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+  for (const auto& param : typeParameters) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("typeParameters"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  node.getType().accept(*this);
+  impl->serializer->writeChildEnd("type"_zc);
+
   impl->serializer->writeNodeEnd("AliasDeclaration"_zc);
 }
 
 void ASTDumper::visit(const IfStatement& node) {
   impl->serializer->writeNodeStart("IfStatement"_zc);
+
+  impl->serializer->writeChildStart("condition"_zc);
+  node.getCondition().accept(*this);
+  impl->serializer->writeChildEnd("condition"_zc);
+
+  impl->serializer->writeChildStart("thenStatement"_zc);
+  node.getThenStatement().accept(*this);
+  impl->serializer->writeChildEnd("thenStatement"_zc);
+
+  impl->serializer->writeChildStart("elseStatement"_zc);
+  ZC_IF_SOME(elseStatement, node.getElseStatement()) { elseStatement.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("elseStatement"_zc);
+
   impl->serializer->writeNodeEnd("IfStatement"_zc);
 }
 
 void ASTDumper::visit(const WhileStatement& node) {
   impl->serializer->writeNodeStart("WhileStatement"_zc);
+
+  impl->serializer->writeChildStart("condition"_zc);
+  node.getCondition().accept(*this);
+  impl->serializer->writeChildEnd("condition"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  node.getBody().accept(*this);
+  impl->serializer->writeChildEnd("body"_zc);
+
   impl->serializer->writeNodeEnd("WhileStatement"_zc);
 }
 
 void ASTDumper::visit(const ForStatement& node) {
   impl->serializer->writeNodeStart("ForStatement"_zc);
+
+  impl->serializer->writeChildStart("initializer"_zc);
+  ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("initializer"_zc);
+
+  impl->serializer->writeChildStart("condition"_zc);
+  ZC_IF_SOME(cond, node.getCondition()) { cond.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("condition"_zc);
+
+  impl->serializer->writeChildStart("update"_zc);
+  ZC_IF_SOME(upd, node.getUpdate()) { upd.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("update"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  node.getBody().accept(*this);
+  impl->serializer->writeChildEnd("body"_zc);
+
   impl->serializer->writeNodeEnd("ForStatement"_zc);
+}
+
+void ASTDumper::visit(const ForInStatement& node) {
+  impl->serializer->writeNodeStart("ForInStatement"_zc);
+
+  impl->serializer->writeChildStart("initializer"_zc);
+  node.getInitializer().accept(*this);
+  impl->serializer->writeChildEnd("initializer"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  node.getBody().accept(*this);
+  impl->serializer->writeChildEnd("body"_zc);
+
+  impl->serializer->writeNodeEnd("ForInStatement"_zc);
+}
+
+void ASTDumper::visit(const LabeledStatement& node) {
+  impl->serializer->writeNodeStart("LabeledStatement"_zc);
+
+  impl->serializer->writeChildStart("label"_zc);
+  node.getLabel().accept(*this);
+  impl->serializer->writeChildEnd("label"_zc);
+
+  impl->serializer->writeChildStart("statement"_zc);
+  node.getStatement().accept(*this);
+  impl->serializer->writeChildEnd("statement"_zc);
+
+  impl->serializer->writeNodeEnd("LabeledStatement"_zc);
 }
 
 void ASTDumper::visit(const BreakStatement& node) {
   impl->serializer->writeNodeStart("BreakStatement"_zc);
+
+  impl->serializer->writeChildStart("label"_zc);
+  ZC_IF_SOME(label, node.getLabel()) { label.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("label"_zc);
+
   impl->serializer->writeNodeEnd("BreakStatement"_zc);
 }
 
 void ASTDumper::visit(const ContinueStatement& node) {
   impl->serializer->writeNodeStart("ContinueStatement"_zc);
+
+  impl->serializer->writeChildStart("label"_zc);
+  ZC_IF_SOME(label, node.getLabel()) { label.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("label"_zc);
+
   impl->serializer->writeNodeEnd("ContinueStatement"_zc);
 }
 
 void ASTDumper::visit(const ReturnStatement& node) {
   impl->serializer->writeNodeStart("ReturnStatement"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  ZC_IF_SOME(expr, node.getExpression()) { expr.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("expression"_zc);
+
   impl->serializer->writeNodeEnd("ReturnStatement"_zc);
 }
 
 void ASTDumper::visit(const MatchStatement& node) {
   impl->serializer->writeNodeStart("MatchStatement"_zc);
+
+  impl->serializer->writeChildStart("discriminant"_zc);
+  node.getDiscriminant().accept(*this);
+  impl->serializer->writeChildEnd("discriminant"_zc);
+
+  const auto& clauses = node.getClauses();
+  impl->serializer->writeArrayStart("clauses"_zc, clauses.size());
+  for (const auto& clause : clauses) {
+    impl->serializer->writeArrayElement();
+    clause.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("clauses"_zc);
+
   impl->serializer->writeNodeEnd("MatchStatement"_zc);
 }
 
 void ASTDumper::visit(const MatchClause& node) {
   impl->serializer->writeNodeStart("MatchClause"_zc);
+
+  impl->serializer->writeChildStart("pattern"_zc);
+  node.getPattern().accept(*this);
+  impl->serializer->writeChildEnd("pattern"_zc);
+
+  impl->serializer->writeChildStart("guard"_zc);
+  ZC_IF_SOME(guard, node.getGuard()) { guard.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("guard"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  node.getBody().accept(*this);
+  impl->serializer->writeChildEnd("body"_zc);
+
   impl->serializer->writeNodeEnd("MatchClause"_zc);
 }
 
 void ASTDumper::visit(const DefaultClause& node) {
   impl->serializer->writeNodeStart("DefaultClause"_zc);
+
+  const auto& statements = node.getStatements();
+  impl->serializer->writeArrayStart("statements"_zc, statements.size());
+  for (const auto& stmt : statements) {
+    impl->serializer->writeArrayElement();
+    stmt.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("statements"_zc);
+
   impl->serializer->writeNodeEnd("DefaultClause"_zc);
 }
 
@@ -431,15 +734,9 @@ void ASTDumper::visit(const DebuggerStatement& node) {
   impl->serializer->writeNodeEnd("DebuggerStatement"_zc);
 }
 
-void ASTDumper::visit(const UnaryExpression& node) {
-  impl->serializer->writeNodeStart("UnaryExpression"_zc);
-  impl->serializer->writeNodeEnd("UnaryExpression"_zc);
-}
+void ASTDumper::visit(const UnaryExpression& node) { node.accept(*this); }
 
-void ASTDumper::visit(const UpdateExpression& node) {
-  impl->serializer->writeNodeStart("UpdateExpression"_zc);
-  impl->serializer->writeNodeEnd("UpdateExpression"_zc);
-}
+void ASTDumper::visit(const UpdateExpression& node) { node.accept(*this); }
 
 void ASTDumper::visit(const PrefixUnaryExpression& node) {
   impl->serializer->writeNodeStart("PrefixUnaryExpression"_zc);
@@ -477,68 +774,147 @@ void ASTDumper::visit(const PostfixUnaryExpression& node) {
   impl->serializer->writeNodeEnd("PostfixUnaryExpression"_zc);
 }
 
-void ASTDumper::visit(const LeftHandSideExpression& node) {
-  impl->serializer->writeNodeStart("LeftHandSideExpression"_zc);
-  impl->serializer->writeNodeEnd("LeftHandSideExpression"_zc);
-}
+void ASTDumper::visit(const LeftHandSideExpression& node) { node.accept(*this); }
 
-void ASTDumper::visit(const MemberExpression& node) {
-  impl->serializer->writeNodeStart("MemberExpression"_zc);
-  impl->serializer->writeNodeEnd("MemberExpression"_zc);
-}
+void ASTDumper::visit(const MemberExpression& node) { node.accept(*this); }
 
-void ASTDumper::visit(const PrimaryExpression& node) {
-  impl->serializer->writeNodeStart("PrimaryExpression"_zc);
-  impl->serializer->writeNodeEnd("PrimaryExpression"_zc);
-}
+void ASTDumper::visit(const PrimaryExpression& node) { node.accept(*this); }
 
 void ASTDumper::visit(const PropertyAccessExpression& node) {
   impl->serializer->writeNodeStart("PropertyAccessExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeProperty("questionDot"_zc, node.isQuestionDot() ? "true"_zc : "false"_zc);
+
   impl->serializer->writeNodeEnd("PropertyAccessExpression"_zc);
 }
 
 void ASTDumper::visit(const ElementAccessExpression& node) {
   impl->serializer->writeNodeStart("ElementAccessExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeChildStart("index"_zc);
+  node.getIndex().accept(*this);
+  impl->serializer->writeChildEnd("index"_zc);
+
+  impl->serializer->writeProperty("questionDot"_zc, node.isQuestionDot() ? "true"_zc : "false"_zc);
+
   impl->serializer->writeNodeEnd("ElementAccessExpression"_zc);
 }
 
 void ASTDumper::visit(const NewExpression& node) {
   impl->serializer->writeNodeStart("NewExpression"_zc);
+
+  impl->serializer->writeChildStart("callee"_zc);
+  node.getCallee().accept(*this);
+  impl->serializer->writeChildEnd("callee"_zc);
+
+  ZC_IF_SOME(args, node.getArguments()) {
+    impl->serializer->writeArrayStart("arguments"_zc, args.size());
+    for (const auto& arg : args) {
+      impl->serializer->writeArrayElement();
+      arg->accept(*this);
+    }
+    impl->serializer->writeArrayEnd("arguments"_zc);
+  }
+  else {
+    impl->serializer->writeChildStart("arguments"_zc);
+    impl->serializer->writeNull();
+    impl->serializer->writeChildEnd("arguments"_zc);
+  }
+
   impl->serializer->writeNodeEnd("NewExpression"_zc);
 }
 
 void ASTDumper::visit(const ConditionalExpression& node) {
   impl->serializer->writeNodeStart("ConditionalExpression"_zc);
+
+  impl->serializer->writeChildStart("test"_zc);
+  node.getTest().accept(*this);
+  impl->serializer->writeChildEnd("test"_zc);
+
+  impl->serializer->writeChildStart("consequent"_zc);
+  node.getConsequent().accept(*this);
+  impl->serializer->writeChildEnd("consequent"_zc);
+
+  impl->serializer->writeChildStart("alternate"_zc);
+  node.getAlternate().accept(*this);
+  impl->serializer->writeChildEnd("alternate"_zc);
+
   impl->serializer->writeNodeEnd("ConditionalExpression"_zc);
 }
 
 void ASTDumper::visit(const CallExpression& node) {
   impl->serializer->writeNodeStart("CallExpression"_zc);
+
+  impl->serializer->writeChildStart("callee"_zc);
+  node.getCallee().accept(*this);
+  impl->serializer->writeChildEnd("callee"_zc);
+
+  const auto& args = node.getArguments();
+  impl->serializer->writeArrayStart("arguments"_zc, args.size());
+  for (const auto& arg : args) {
+    impl->serializer->writeArrayElement();
+    arg.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("arguments"_zc);
+
   impl->serializer->writeNodeEnd("CallExpression"_zc);
 }
 
-void ASTDumper::visit(const LiteralExpression& node) {
-  impl->serializer->writeNodeStart("LiteralExpression"_zc);
-  impl->serializer->writeNodeEnd("LiteralExpression"_zc);
-}
+void ASTDumper::visit(const LiteralExpression& node) { node.accept(*this); }
 
-void ASTDumper::visit(const CastExpression& node) {
-  impl->serializer->writeNodeStart("CastExpression"_zc);
-  impl->serializer->writeNodeEnd("CastExpression"_zc);
-}
+void ASTDumper::visit(const CastExpression& node) { node.accept(*this); }
 
 void ASTDumper::visit(const AsExpression& node) {
   impl->serializer->writeNodeStart("AsExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeChildStart("targetType"_zc);
+  node.getTargetType().accept(*this);
+  impl->serializer->writeChildEnd("targetType"_zc);
+
   impl->serializer->writeNodeEnd("AsExpression"_zc);
 }
 
 void ASTDumper::visit(const ForcedAsExpression& node) {
   impl->serializer->writeNodeStart("ForcedAsExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeChildStart("targetType"_zc);
+  node.getTargetType().accept(*this);
+  impl->serializer->writeChildEnd("targetType"_zc);
+
   impl->serializer->writeNodeEnd("ForcedAsExpression"_zc);
 }
 
 void ASTDumper::visit(const ConditionalAsExpression& node) {
   impl->serializer->writeNodeStart("ConditionalAsExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeChildStart("targetType"_zc);
+  node.getTargetType().accept(*this);
+  impl->serializer->writeChildEnd("targetType"_zc);
+
   impl->serializer->writeNodeEnd("ConditionalAsExpression"_zc);
 }
 
@@ -616,19 +992,25 @@ void ASTDumper::visit(const TypeOfExpression& node) {
 
 void ASTDumper::visit(const AwaitExpression& node) {
   impl->serializer->writeNodeStart("AwaitExpression"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
   impl->serializer->writeNodeEnd("AwaitExpression"_zc);
 }
 
 void ASTDumper::visit(const FunctionExpression& node) {
   impl->serializer->writeNodeStart("FunctionExpression"_zc);
 
-  const auto& typeParams = node.getTypeParameters();
-  impl->serializer->writeArrayStart("typeParameters"_zc, typeParams.size());
-  for (const auto& param : typeParams) {
-    impl->serializer->writeArrayElement();
-    param.accept(*this);
+  ZC_IF_SOME(typeParams, node.getTypeParameters()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParams.size());
+    for (const auto& param : typeParams) {
+      impl->serializer->writeArrayElement();
+      param->accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
   }
-  impl->serializer->writeArrayEnd("typeParameters"_zc);
 
   const auto& params = node.getParameters();
   impl->serializer->writeArrayStart("parameters"_zc, params.size());
@@ -661,19 +1043,101 @@ void ASTDumper::visit(const FunctionExpression& node) {
 
 void ASTDumper::visit(const ArrayLiteralExpression& node) {
   impl->serializer->writeNodeStart("ArrayLiteralExpression"_zc);
+
+  const auto& elements = node.getElements();
+  impl->serializer->writeArrayStart("elements"_zc, elements.size());
+  for (const auto& element : elements) {
+    impl->serializer->writeArrayElement();
+    element.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("elements"_zc);
+
   impl->serializer->writeNodeEnd("ArrayLiteralExpression"_zc);
 }
 
 void ASTDumper::visit(const ObjectLiteralExpression& node) {
   impl->serializer->writeNodeStart("ObjectLiteralExpression"_zc);
+
+  const auto& properties = node.getProperties();
+  impl->serializer->writeArrayStart("properties"_zc, properties.size());
+  for (const auto& prop : properties) {
+    impl->serializer->writeArrayElement();
+    prop.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("properties"_zc);
+
   impl->serializer->writeNodeEnd("ObjectLiteralExpression"_zc);
 }
 
-// Type node visit methods
-void ASTDumper::visit(const TypeNode& node) {
-  impl->serializer->writeNodeStart("TypeNode"_zc);
-  impl->serializer->writeNodeEnd("TypeNode"_zc);
+void ASTDumper::visit(const ObjectLiteralElement& node) {
+  // Abstract
 }
+
+void ASTDumper::visit(const PropertyAssignment& node) {
+  impl->serializer->writeNodeStart("PropertyAssignment"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  node.getNameIdentifier().accept(*this);
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeChildStart("initializer"_zc);
+  ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("initializer"_zc);
+
+  ZC_IF_SOME(questionToken, node.getQuestionToken()) {
+    impl->serializer->writeChildStart("questionToken"_zc);
+    questionToken.accept(*this);
+    impl->serializer->writeChildEnd("questionToken"_zc);
+  }
+
+  impl->serializer->writeNodeEnd("PropertyAssignment"_zc);
+}
+
+void ASTDumper::visit(const ShorthandPropertyAssignment& node) {
+  impl->serializer->writeNodeStart("ShorthandPropertyAssignment"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  node.getNameIdentifier().accept(*this);
+  impl->serializer->writeChildEnd("name"_zc);
+
+  ZC_IF_SOME(init, node.getObjectAssignmentInitializer()) {
+    impl->serializer->writeChildStart("objectAssignmentInitializer"_zc);
+    init.accept(*this);
+    impl->serializer->writeChildEnd("objectAssignmentInitializer"_zc);
+  }
+
+  ZC_IF_SOME(equalsToken, node.getEqualsToken()) {
+    impl->serializer->writeChildStart("equalsToken"_zc);
+    equalsToken.accept(*this);
+    impl->serializer->writeChildEnd("equalsToken"_zc);
+  }
+
+  impl->serializer->writeNodeEnd("ShorthandPropertyAssignment"_zc);
+}
+
+void ASTDumper::visit(const SpreadAssignment& node) {
+  impl->serializer->writeNodeStart("SpreadAssignment"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeNodeEnd("SpreadAssignment"_zc);
+}
+
+void ASTDumper::visit(const SpreadElement& node) {
+  impl->serializer->writeNodeStart("SpreadElement"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeNodeEnd("SpreadElement"_zc);
+}
+
+// Type node visit methods
+void ASTDumper::visit(const TypeNode& node) { node.accept(*this); }
 
 void ASTDumper::visit(const TokenNode& node) {
   impl->serializer->writeNodeStart("TokenNode"_zc);
@@ -740,41 +1204,17 @@ void ASTDumper::visit(const ParenthesizedTypeNode& node) {
   impl->serializer->writeNodeEnd("ParenthesizedTypeNode"_zc);
 }
 
-void ASTDumper::visit(const PredefinedTypeNode& node) {
-  impl->serializer->writeNodeStart("PredefinedType"_zc);
-  impl->serializer->writeProperty("name"_zc, node.getName());
-  impl->serializer->writeNodeEnd("PredefinedType"_zc);
-}
+void ASTDumper::visit(const PredefinedTypeNode& node) { node.accept(*this); }
 
-void ASTDumper::visit(const Declaration& node) {
-  impl->serializer->writeNodeStart("Declaration"_zc);
-  impl->serializer->writeProperty("name", "Declaration");
-  impl->serializer->writeNodeEnd("Declaration"_zc);
-}
+void ASTDumper::visit(const Declaration& node) { node.accept(*this); }
 
-void ASTDumper::visit(const NamedDeclaration& node) {
-  impl->serializer->writeNodeStart("NamedDeclaration"_zc);
-  impl->serializer->writeProperty("name", "NamedDeclaration");
-  impl->serializer->writeNodeEnd("NamedDeclaration"_zc);
-}
+void ASTDumper::visit(const NamedDeclaration& node) { node.accept(*this); }
 
-void ASTDumper::visit(const Pattern& node) {
-  impl->serializer->writeNodeStart("Pattern"_zc);
-  impl->serializer->writeProperty("name", "Pattern");
-  impl->serializer->writeNodeEnd("Pattern"_zc);
-}
+void ASTDumper::visit(const Pattern& node) { node.accept(*this); }
 
-void ASTDumper::visit(const PrimaryPattern& node) {
-  impl->serializer->writeNodeStart("PrimaryPattern"_zc);
-  impl->serializer->writeProperty("name", "PrimaryPattern");
-  impl->serializer->writeNodeEnd("PrimaryPattern"_zc);
-}
+void ASTDumper::visit(const PrimaryPattern& node) { node.accept(*this); }
 
-void ASTDumper::visit(const BindingPattern& node) {
-  impl->serializer->writeNodeStart("BindingPattern"_zc);
-  impl->serializer->writeProperty("name", "BindingPattern");
-  impl->serializer->writeNodeEnd("BindingPattern"_zc);
-}
+void ASTDumper::visit(const BindingPattern& node) { node.accept(*this); }
 
 void ASTDumper::visit(const ObjectTypeNode& node) {
   impl->serializer->writeNodeStart("ObjectTypeNode"_zc);
@@ -823,13 +1263,14 @@ void ASTDumper::visit(const ReturnTypeNode& node) {
 void ASTDumper::visit(const FunctionTypeNode& node) {
   impl->serializer->writeNodeStart("FunctionTypeNode"_zc);
 
-  const auto& typeParams = node.getTypeParameters();
-  impl->serializer->writeArrayStart("typeParameters"_zc, typeParams.size());
-  for (const auto& param : typeParams) {
-    impl->serializer->writeArrayElement();
-    param.accept(*this);
+  ZC_IF_SOME(typeParams, node.getTypeParameters()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParams.size());
+    for (const auto& param : typeParams) {
+      impl->serializer->writeArrayElement();
+      param->accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
   }
-  impl->serializer->writeArrayEnd("typeParameters"_zc);
 
   const auto& params = node.getParameters();
   impl->serializer->writeArrayStart("parameters"_zc, params.size());
@@ -866,29 +1307,303 @@ void ASTDumper::visit(const TypeQueryNode& node) {
   impl->serializer->writeNodeEnd("TypeQueryNode"_zc);
 }
 
+void ASTDumper::visit(const NamedTupleElement& node) {
+  impl->serializer->writeNodeStart("NamedTupleElement"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  node.getType().accept(*this);
+  impl->serializer->writeChildEnd("type"_zc);
+
+  impl->serializer->writeNodeEnd("NamedTupleElement"_zc);
+}
+
 // Missing declaration visit methods
 void ASTDumper::visit(const MethodDeclaration& node) {
   impl->serializer->writeNodeStart("MethodDeclaration"_zc);
+
+  const auto& modifiers = node.getModifiers();
+  impl->serializer->writeArrayStart("modifiers"_zc, modifiers.size());
+  for (const auto& modifier : modifiers) {
+    impl->serializer->writeArrayElement();
+    impl->serializer->writeNodeStart("TokenNode"_zc);
+    ZC_IF_SOME(text, lexer::Token::getStaticTextForTokenKind(modifier)) {
+      impl->serializer->writeProperty("symbol"_zc, text);
+    }
+    impl->serializer->writeNodeEnd("TokenNode"_zc);
+  }
+  impl->serializer->writeArrayEnd("modifiers"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeProperty("optional"_zc, node.isOptional() ? "true"_zc : "false"_zc);
+
+  const auto& typeParameters = node.getTypeParameters();
+  if (!typeParameters.empty()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+    for (const auto& param : typeParameters) {
+      impl->serializer->writeArrayElement();
+      param.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
+  }
+
+  const auto& parameters = node.getParameters();
+  impl->serializer->writeArrayStart("parameters"_zc, parameters.size());
+  for (const auto& param : parameters) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("parameters"_zc);
+
+  impl->serializer->writeChildStart("returnType"_zc);
+  ZC_IF_SOME(returnType, node.getReturnType()) { returnType.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("returnType"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  ZC_IF_SOME(body, node.getBody()) { body.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("body"_zc);
+
   impl->serializer->writeNodeEnd("MethodDeclaration"_zc);
 }
 
-void ASTDumper::visit(const ConstructorDeclaration& node) {
-  impl->serializer->writeNodeStart("ConstructorDeclaration"_zc);
-  impl->serializer->writeNodeEnd("ConstructorDeclaration"_zc);
+void ASTDumper::visit(const GetAccessor& node) {
+  impl->serializer->writeNodeStart("GetAccessor"_zc);
+
+  const auto& modifiers = node.getModifiers();
+  impl->serializer->writeArrayStart("modifiers"_zc, modifiers.size());
+  for (const auto& modifier : modifiers) {
+    impl->serializer->writeArrayElement();
+    impl->serializer->writeNodeStart("TokenNode"_zc);
+    ZC_IF_SOME(text, lexer::Token::getStaticTextForTokenKind(modifier)) {
+      impl->serializer->writeProperty("symbol"_zc, text);
+    }
+    impl->serializer->writeNodeEnd("TokenNode"_zc);
+  }
+  impl->serializer->writeArrayEnd("modifiers"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& typeParameters = node.getTypeParameters();
+  if (!typeParameters.empty()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+    for (const auto& param : typeParameters) {
+      impl->serializer->writeArrayElement();
+      param.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
+  }
+
+  const auto& parameters = node.getParameters();
+  impl->serializer->writeArrayStart("parameters"_zc, parameters.size());
+  for (const auto& param : parameters) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("parameters"_zc);
+
+  impl->serializer->writeChildStart("returnType"_zc);
+  ZC_IF_SOME(returnType, node.getReturnType()) { returnType.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("returnType"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  ZC_IF_SOME(body, node.getBody()) { body.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("body"_zc);
+
+  impl->serializer->writeNodeEnd("GetAccessor"_zc);
+}
+
+void ASTDumper::visit(const SetAccessor& node) {
+  impl->serializer->writeNodeStart("SetAccessor"_zc);
+
+  const auto& modifiers = node.getModifiers();
+  impl->serializer->writeArrayStart("modifiers"_zc, modifiers.size());
+  for (const auto& modifier : modifiers) {
+    impl->serializer->writeArrayElement();
+    impl->serializer->writeNodeStart("TokenNode"_zc);
+    ZC_IF_SOME(text, lexer::Token::getStaticTextForTokenKind(modifier)) {
+      impl->serializer->writeProperty("symbol"_zc, text);
+    }
+    impl->serializer->writeNodeEnd("TokenNode"_zc);
+  }
+  impl->serializer->writeArrayEnd("modifiers"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& typeParameters = node.getTypeParameters();
+  if (!typeParameters.empty()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+    for (const auto& param : typeParameters) {
+      impl->serializer->writeArrayElement();
+      param.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
+  }
+
+  const auto& parameters = node.getParameters();
+  impl->serializer->writeArrayStart("parameters"_zc, parameters.size());
+  for (const auto& param : parameters) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("parameters"_zc);
+
+  impl->serializer->writeChildStart("returnType"_zc);
+  ZC_IF_SOME(returnType, node.getReturnType()) { returnType.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("returnType"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  ZC_IF_SOME(body, node.getBody()) { body.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("body"_zc);
+
+  impl->serializer->writeNodeEnd("SetAccessor"_zc);
+}
+
+void ASTDumper::visit(const InitDeclaration& node) {
+  impl->serializer->writeNodeStart("InitDeclaration"_zc);
+
+  const auto& modifiers = node.getModifiers();
+  impl->serializer->writeArrayStart("modifiers"_zc, modifiers.size());
+  for (const auto& modifier : modifiers) {
+    impl->serializer->writeArrayElement();
+    impl->serializer->writeNodeStart("TokenNode"_zc);
+    ZC_IF_SOME(text, lexer::Token::getStaticTextForTokenKind(modifier)) {
+      impl->serializer->writeProperty("symbol"_zc, text);
+    }
+    impl->serializer->writeNodeEnd("TokenNode"_zc);
+  }
+  impl->serializer->writeArrayEnd("modifiers"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  const auto& typeParameters = node.getTypeParameters();
+  if (!typeParameters.empty()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+    for (const auto& param : typeParameters) {
+      impl->serializer->writeArrayElement();
+      param.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
+  }
+
+  const auto& parameters = node.getParameters();
+  impl->serializer->writeArrayStart("parameters"_zc, parameters.size());
+  for (const auto& param : parameters) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("parameters"_zc);
+
+  impl->serializer->writeChildStart("returnType"_zc);
+  ZC_IF_SOME(returnType, node.getReturnType()) { returnType.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("returnType"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  ZC_IF_SOME(body, node.getBody()) { body.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("body"_zc);
+
+  impl->serializer->writeNodeEnd("InitDeclaration"_zc);
+}
+
+void ASTDumper::visit(const DeinitDeclaration& node) {
+  impl->serializer->writeNodeStart("DeinitDeclaration"_zc);
+
+  const auto& modifiers = node.getModifiers();
+  impl->serializer->writeArrayStart("modifiers"_zc, modifiers.size());
+  for (const auto& modifier : modifiers) {
+    impl->serializer->writeArrayElement();
+    impl->serializer->writeNodeStart("TokenNode"_zc);
+    ZC_IF_SOME(text, lexer::Token::getStaticTextForTokenKind(modifier)) {
+      impl->serializer->writeProperty("symbol"_zc, text);
+    }
+    impl->serializer->writeNodeEnd("TokenNode"_zc);
+  }
+  impl->serializer->writeArrayEnd("modifiers"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  ZC_IF_SOME(body, node.getBody()) { body.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("body"_zc);
+
+  impl->serializer->writeNodeEnd("DeinitDeclaration"_zc);
 }
 
 void ASTDumper::visit(const ParameterDeclaration& node) {
   impl->serializer->writeNodeStart("ParameterDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  ZC_IF_SOME(type, node.getType()) { type.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("type"_zc);
+
+  impl->serializer->writeChildStart("initializer"_zc);
+  ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("initializer"_zc);
+
   impl->serializer->writeNodeEnd("ParameterDeclaration"_zc);
 }
 
 void ASTDumper::visit(const PropertyDeclaration& node) {
   impl->serializer->writeNodeStart("PropertyDeclaration"_zc);
+
+  const auto& modifiers = node.getModifiers();
+  impl->serializer->writeArrayStart("modifiers"_zc, modifiers.size());
+  for (const auto& modifier : modifiers) {
+    impl->serializer->writeArrayElement();
+    impl->serializer->writeNodeStart("TokenNode"_zc);
+    ZC_IF_SOME(text, lexer::Token::getStaticTextForTokenKind(modifier)) {
+      impl->serializer->writeProperty("symbol"_zc, text);
+    }
+    impl->serializer->writeNodeEnd("TokenNode"_zc);
+  }
+  impl->serializer->writeArrayEnd("modifiers"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  ZC_IF_SOME(type, node.getType()) { type.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("type"_zc);
+
+  impl->serializer->writeChildStart("initializer"_zc);
+  ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("initializer"_zc);
+
   impl->serializer->writeNodeEnd("PropertyDeclaration"_zc);
 }
 
 void ASTDumper::visit(const MissingDeclaration& node) {
-  // TODO: Implement MissingDeclaration dumping
   impl->serializer->writeNodeStart("MissingDeclaration"_zc);
   impl->serializer->writeNodeEnd("MissingDeclaration"_zc);
 }
@@ -896,52 +1611,66 @@ void ASTDumper::visit(const SemicolonClassElement& node) {
   impl->serializer->writeNodeStart("SemicolonClassElement"_zc);
   impl->serializer->writeNodeEnd("SemicolonClassElement"_zc);
 }
+void ASTDumper::visit(const SemicolonInterfaceElement& node) {
+  impl->serializer->writeNodeStart("SemicolonInterfaceElement"_zc);
+  impl->serializer->writeNodeEnd("SemicolonInterfaceElement"_zc);
+}
 
 void ASTDumper::visit(const InterfaceBody& node) {
-  // TODO: Implement InterfaceBody dumping
   impl->serializer->writeNodeStart("InterfaceBody"_zc);
   impl->serializer->writeNodeEnd("InterfaceBody"_zc);
 }
 
 void ASTDumper::visit(const StructBody& node) {
-  // TODO: Implement StructBody dumping
   impl->serializer->writeNodeStart("StructBody"_zc);
   impl->serializer->writeNodeEnd("StructBody"_zc);
 }
 
 void ASTDumper::visit(const ErrorBody& node) {
-  // TODO: Implement ErrorBody dumping
   impl->serializer->writeNodeStart("ErrorBody"_zc);
   impl->serializer->writeNodeEnd("ErrorBody"_zc);
 }
 
 void ASTDumper::visit(const EnumBody& node) {
   impl->serializer->writeNodeStart("EnumBody"_zc);
-  // TODO: Implement EnumBody dumping
   impl->serializer->writeNodeEnd("EnumBody"_zc);
 }
 
 void ASTDumper::visit(const ArrayBindingPattern& node) {
   impl->serializer->writeNodeStart("ArrayBindingPattern"_zc);
-  // TODO: Implement ArrayBindingPattern dumping
+
+  const auto& elements = node.getElements();
+  impl->serializer->writeArrayStart("elements"_zc, elements.size());
+  for (const auto& element : elements) {
+    impl->serializer->writeArrayElement();
+    element.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("elements"_zc);
+
   impl->serializer->writeNodeEnd("ArrayBindingPattern"_zc);
 }
 
 void ASTDumper::visit(const ObjectBindingPattern& node) {
   impl->serializer->writeNodeStart("ObjectBindingPattern"_zc);
-  // TODO: Implement ObjectBindingPattern dumping
+
+  const auto& properties = node.getProperties();
+  impl->serializer->writeArrayStart("properties"_zc, properties.size());
+  for (const auto& prop : properties) {
+    impl->serializer->writeArrayElement();
+    prop.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("properties"_zc);
+
   impl->serializer->writeNodeEnd("ObjectBindingPattern"_zc);
 }
 
 void ASTDumper::visit(const ThisExpression& node) {
   impl->serializer->writeNodeStart("ThisExpression"_zc);
-  // TODO: Implement ThisExpression dumping
   impl->serializer->writeNodeEnd("ThisExpression"_zc);
 }
 
 void ASTDumper::visit(const SuperExpression& node) {
   impl->serializer->writeNodeStart("SuperExpression"_zc);
-  // TODO: Implement SuperExpression dumping
   impl->serializer->writeNodeEnd("SuperExpression"_zc);
 }
 
@@ -1032,82 +1761,222 @@ void ASTDumper::visit(const NullTypeNode& node) {
 // Signature node visit methods
 void ASTDumper::visit(const PropertySignature& node) {
   impl->serializer->writeNodeStart("PropertySignature"_zc);
-  // TODO: Implement PropertySignature dumping
+
+  const auto& modifiers = node.getModifiers();
+  impl->serializer->writeArrayStart("modifiers"_zc, modifiers.size());
+  for (const auto& modifier : modifiers) {
+    impl->serializer->writeArrayElement();
+    impl->serializer->writeNodeStart("TokenNode"_zc);
+    ZC_IF_SOME(text, lexer::Token::getStaticTextForTokenKind(modifier)) {
+      impl->serializer->writeProperty("symbol"_zc, text);
+    }
+    impl->serializer->writeNodeEnd("TokenNode"_zc);
+  }
+  impl->serializer->writeArrayEnd("modifiers"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeProperty("optional"_zc, node.isOptional() ? "true"_zc : "false"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  ZC_IF_SOME(type, node.getType()) { type.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("type"_zc);
+
+  impl->serializer->writeChildStart("initializer"_zc);
+  ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("initializer"_zc);
+
   impl->serializer->writeNodeEnd("PropertySignature"_zc);
 }
 
 void ASTDumper::visit(const MethodSignature& node) {
   impl->serializer->writeNodeStart("MethodSignature"_zc);
-  // TODO: Implement MethodSignature dumping
+
+  const auto& modifiers = node.getModifiers();
+  impl->serializer->writeArrayStart("modifiers"_zc, modifiers.size());
+  for (const auto& modifier : modifiers) {
+    impl->serializer->writeArrayElement();
+    impl->serializer->writeNodeStart("TokenNode"_zc);
+    ZC_IF_SOME(text, lexer::Token::getStaticTextForTokenKind(modifier)) {
+      impl->serializer->writeProperty("symbol"_zc, text);
+    }
+    impl->serializer->writeNodeEnd("TokenNode"_zc);
+  }
+  impl->serializer->writeArrayEnd("modifiers"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeProperty("optional"_zc, node.isOptional() ? "true"_zc : "false"_zc);
+
+  const auto& typeParameters = node.getTypeParameters();
+  if (!typeParameters.empty()) {
+    impl->serializer->writeArrayStart("typeParameters"_zc, typeParameters.size());
+    for (const auto& param : typeParameters) {
+      impl->serializer->writeArrayElement();
+      param.accept(*this);
+    }
+    impl->serializer->writeArrayEnd("typeParameters"_zc);
+  }
+
+  const auto& parameters = node.getParameters();
+  impl->serializer->writeArrayStart("parameters"_zc, parameters.size());
+  for (const auto& param : parameters) {
+    impl->serializer->writeArrayElement();
+    param.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("parameters"_zc);
+
+  impl->serializer->writeChildStart("returnType"_zc);
+  ZC_IF_SOME(returnType, node.getReturnType()) { returnType.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("returnType"_zc);
+
   impl->serializer->writeNodeEnd("MethodSignature"_zc);
 }
 
 // Body/Structure node visit methods
 void ASTDumper::visit(const ClassBody& node) {
-  writeNodeHeader("ClassBody");
-  // TODO: Implement ClassBody dumping
-  writeNodeFooter("ClassBody");
+  impl->serializer->writeNodeStart("ClassBody"_zc);
+  impl->serializer->writeNodeEnd("ClassBody"_zc);
 }
 
 // Missing visitor method implementations
 void ASTDumper::visit(const Module& node) {
-  writeNodeHeader("Module");
-  // TODO: Implement Module dumping
-  writeNodeFooter("Module");
+  impl->serializer->writeNodeStart("Module"_zc);
+  impl->serializer->writeNodeEnd("Module"_zc);
 }
 
 void ASTDumper::visit(const VariableDeclaration& node) {
-  writeNodeHeader("VariableDeclaration");
-  // TODO: Implement VariableDeclaration dumping
-  writeNodeFooter("VariableDeclaration");
+  impl->serializer->writeNodeStart("VariableDeclaration"_zc);
+
+  impl->serializer->writeChildStart("name"_zc);
+  dumpName(*this, node.getName());
+  impl->serializer->writeChildEnd("name"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  ZC_IF_SOME(type, node.getType()) { type.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("type"_zc);
+
+  impl->serializer->writeChildStart("initializer"_zc);
+  ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("initializer"_zc);
+
+  impl->serializer->writeNodeEnd("VariableDeclaration"_zc);
 }
 
 void ASTDumper::visit(const WildcardPattern& node) {
-  writeNodeHeader("WildcardPattern");
-  // TODO: Implement WildcardPattern dumping
-  writeNodeFooter("WildcardPattern");
+  impl->serializer->writeNodeStart("WildcardPattern"_zc);
+
+  impl->serializer->writeChildStart("typeAnnotation"_zc);
+  ZC_IF_SOME(type, node.getTypeAnnotation()) { type.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("typeAnnotation"_zc);
+
+  impl->serializer->writeNodeEnd("WildcardPattern"_zc);
 }
 
 void ASTDumper::visit(const IdentifierPattern& node) {
-  writeNodeHeader("IdentifierPattern");
-  // TODO: Implement IdentifierPattern dumping
-  writeNodeFooter("IdentifierPattern");
+  impl->serializer->writeNodeStart("IdentifierPattern"_zc);
+
+  impl->serializer->writeChildStart("identifier"_zc);
+  node.getIdentifier().accept(*this);
+  impl->serializer->writeChildEnd("identifier"_zc);
+
+  impl->serializer->writeChildStart("typeAnnotation"_zc);
+  ZC_IF_SOME(type, node.getTypeAnnotation()) { type.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("typeAnnotation"_zc);
+
+  impl->serializer->writeNodeEnd("IdentifierPattern"_zc);
 }
 
 void ASTDumper::visit(const TuplePattern& node) {
-  writeNodeHeader("TuplePattern");
-  // TODO: Implement TuplePattern dumping
-  writeNodeFooter("TuplePattern");
+  impl->serializer->writeNodeStart("TuplePattern"_zc);
+
+  const auto& elements = node.getElements();
+  impl->serializer->writeArrayStart("elements"_zc, elements.size());
+  for (const auto& element : elements) {
+    impl->serializer->writeArrayElement();
+    element.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("elements"_zc);
+
+  impl->serializer->writeNodeEnd("TuplePattern"_zc);
 }
 
 void ASTDumper::visit(const StructurePattern& node) {
-  writeNodeHeader("StructurePattern");
-  // TODO: Implement StructurePattern dumping
-  writeNodeFooter("StructurePattern");
+  impl->serializer->writeNodeStart("StructurePattern"_zc);
+
+  const auto& properties = node.getProperties();
+  impl->serializer->writeArrayStart("properties"_zc, properties.size());
+  for (const auto& prop : properties) {
+    impl->serializer->writeArrayElement();
+    prop.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("properties"_zc);
+
+  impl->serializer->writeNodeEnd("StructurePattern"_zc);
 }
 
 void ASTDumper::visit(const ArrayPattern& node) {
-  writeNodeHeader("ArrayPattern");
-  // TODO: Implement ArrayPattern dumping
-  writeNodeFooter("ArrayPattern");
+  impl->serializer->writeNodeStart("ArrayPattern"_zc);
+
+  const auto& elements = node.getElements();
+  impl->serializer->writeArrayStart("elements"_zc, elements.size());
+  for (const auto& element : elements) {
+    impl->serializer->writeArrayElement();
+    element.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("elements"_zc);
+
+  impl->serializer->writeNodeEnd("ArrayPattern"_zc);
 }
 
 void ASTDumper::visit(const IsPattern& node) {
-  writeNodeHeader("IsPattern");
-  // TODO: Implement IsPattern dumping
-  writeNodeFooter("IsPattern");
+  impl->serializer->writeNodeStart("IsPattern"_zc);
+
+  impl->serializer->writeChildStart("type"_zc);
+  node.getType().accept(*this);
+  impl->serializer->writeChildEnd("type"_zc);
+
+  impl->serializer->writeNodeEnd("IsPattern"_zc);
 }
 
 void ASTDumper::visit(const ExpressionPattern& node) {
-  writeNodeHeader("ExpressionPattern");
-  // TODO: Implement ExpressionPattern dumping
-  writeNodeFooter("ExpressionPattern");
+  impl->serializer->writeNodeStart("ExpressionPattern"_zc);
+
+  impl->serializer->writeChildStart("expression"_zc);
+  node.getExpression().accept(*this);
+  impl->serializer->writeChildEnd("expression"_zc);
+
+  impl->serializer->writeNodeEnd("ExpressionPattern"_zc);
 }
 
 void ASTDumper::visit(const EnumPattern& node) {
-  writeNodeHeader("EnumPattern");
-  // TODO: Implement EnumPattern dumping
-  writeNodeFooter("EnumPattern");
+  impl->serializer->writeNodeStart("EnumPattern"_zc);
+
+  impl->serializer->writeChildStart("typeReference"_zc);
+  ZC_IF_SOME(typeReference, node.getTypeReference()) { typeReference.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("typeReference"_zc);
+
+  impl->serializer->writeChildStart("propertyName"_zc);
+  node.getPropertyName().accept(*this);
+  impl->serializer->writeChildEnd("propertyName"_zc);
+
+  impl->serializer->writeChildStart("tuplePattern"_zc);
+  node.getTuplePattern().accept(*this);
+  impl->serializer->writeChildEnd("tuplePattern"_zc);
+
+  impl->serializer->writeNodeEnd("EnumPattern"_zc);
 }
 
 void ASTDumper::visit(const CaptureElement& node) {
@@ -1125,13 +1994,9 @@ void ASTDumper::visit(const CaptureElement& node) {
 }
 
 // Private helper methods implementation
-void ASTDumper::writeIndent(int indent) {
-  // TODO: Implement indentation if needed by serializer
-}
+void ASTDumper::writeIndent(int indent) {}
 
-void ASTDumper::writeLine(const zc::StringPtr text, int indent) {
-  // TODO: Implement line writing if needed by serializer
-}
+void ASTDumper::writeLine(const zc::StringPtr text, int indent) {}
 
 void ASTDumper::writeNodeHeader(const zc::StringPtr nodeType, int indent) {
   impl->serializer->writeNodeStart(nodeType);

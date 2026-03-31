@@ -15,14 +15,4 @@
 # Expression Tests
 # Tests for all types of expressions in ZomLang
 
-# TODO: Add subdirectories for specific expression test categories when implemented
-# - primary
-# - binary
-# - unary
-# - assignment
-# - call
-# - member
-# - conditional
-# - array
-# - object
-# - cast
+add_lit_ast_tests_from_directory(${CMAKE_CURRENT_SOURCE_DIR})

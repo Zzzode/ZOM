@@ -62,6 +62,7 @@ BREAK: 'break';
 CASE: 'case';
 CATCH: 'catch';
 CLASS: 'class';
+CONST: 'const';
 CONSTRUCTOR: 'constructor';
 CONTINUE: 'continue';
 DEBUGGER: 'debugger';
@@ -99,9 +100,10 @@ INTERFACE: 'interface';
 INTRINSIC: 'intrinsic';
 IS: 'is';
 KEYOF: 'keyof';
+LET: 'let';
 MATCH: 'match';
 MODULE: 'module';
-MUTABLE: 'mutable';
+MUTATING: 'mutating';
 NAMESPACE: 'namespace';
 NEVER: 'never';
 NEW: 'new';
@@ -141,7 +143,6 @@ UNIQUE: 'unique';
 UNIT: 'unit';
 USING: 'using';
 VAR: 'var';
-VOID: 'void';
 WHEN: 'when';
 WHILE: 'while';
 WITH: 'with';
@@ -223,6 +224,7 @@ ZERO: '0';
 BINARY_PREFIX: '0' [bB];
 OCTAL_PREFIX: '0' [oO];
 HEX_PREFIX: '0' [xX];
+N: 'n';
 
 // ================================================================================ STRING LITERALS
 SQUOTE: '\'';
@@ -237,7 +239,7 @@ SINGLE_ESCAPE_CHARACTER:
 	| BACKSLASH
 	| 'b'
 	| 'f'
-	| 'n'
+	| N
 	| 'r'
 	| 't'
 	| 'v';
@@ -256,7 +258,3 @@ CHAR_ESCAPE_SEQUENCE:
 		| HEX_ESCAPE_SEQUENCE
 		| UNICODE_ESCAPE_SEQUENCE
 	);
-
-// ================================================================================ DECLARATIONS
-
-LET_OR_CONST: 'let' | 'const';

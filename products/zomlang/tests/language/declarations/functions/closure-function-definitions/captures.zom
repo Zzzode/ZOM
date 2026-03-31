@@ -1,0 +1,73 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+// Test closure with capture clause
+let captureClosure = fun () use [x, &y, this] {
+  x
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*captures.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "captureClosure"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "FunctionExpression",
+// CHECK-NEXT:               "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "captures": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "CaptureElement",
+// CHECK-NEXT:                   "isByReference": "false",
+// CHECK-NEXT:                   "isThis": "false",
+// CHECK-NEXT:                   "identifier": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "x"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "CaptureElement",
+// CHECK-NEXT:                   "isByReference": "true",
+// CHECK-NEXT:                   "isThis": "false",
+// CHECK-NEXT:                   "identifier": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "y"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "CaptureElement",
+// CHECK-NEXT:                   "isByReference": "false",
+// CHECK-NEXT:                   "isThis": "true"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "body": {
+// CHECK-NEXT:                 "node": "BlockStatement",
+// CHECK-NEXT:                 "children": [
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "ExpressionStatement",
+// CHECK-NEXT:                     "expression": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "x"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 ]
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

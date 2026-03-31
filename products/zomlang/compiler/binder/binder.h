@@ -220,6 +220,7 @@ public:
   void visit(const ast::PrimaryPattern& node) override;
   void visit(const ast::BindingPattern& node) override;
   void visit(const ast::ClassElement& node) override;
+  void visit(const ast::ObjectLiteralElement& node) override;
   void visit(const ast::InterfaceElement& node) override;
 
   // Declaration visitors
@@ -233,10 +234,14 @@ public:
   void visit(const ast::EnumDeclaration& node) override;
   void visit(const ast::AliasDeclaration& node) override;
   void visit(const ast::MethodDeclaration& node) override;
-  void visit(const ast::ConstructorDeclaration& node) override;
+  void visit(const ast::GetAccessor& node) override;
+  void visit(const ast::SetAccessor& node) override;
+  void visit(const ast::InitDeclaration& node) override;
+  void visit(const ast::DeinitDeclaration& node) override;
   void visit(const ast::ParameterDeclaration& node) override;
   void visit(const ast::PropertyDeclaration& node) override;
   void visit(const ast::SemicolonClassElement& node) override;
+  void visit(const ast::SemicolonInterfaceElement& node) override;
   void visit(const ast::MissingDeclaration& node) override;
 
   // Statement visitors
@@ -245,6 +250,7 @@ public:
   void visit(const ast::IfStatement& node) override;
   void visit(const ast::WhileStatement& node) override;
   void visit(const ast::ForStatement& node) override;
+  void visit(const ast::ForInStatement& node) override;
   void visit(const ast::ReturnStatement& node) override;
   void visit(const ast::MatchStatement& node) override;
   void visit(const ast::MatchClause& node) override;
@@ -257,6 +263,7 @@ public:
   void visit(const ast::BinaryExpression& node) override;
   void visit(const ast::CallExpression& node) override;
   void visit(const ast::MemberExpression& node) override;
+  void visit(const ast::SpreadElement& node) override;
 
   // Module visitors
   void visit(const ast::SourceFile& sourceFile) override;
@@ -276,6 +283,7 @@ public:
   void visit(const ast::ReturnTypeNode& returnType) override;
   void visit(const ast::OptionalTypeNode& optionalType) override;
   void visit(const ast::TypeQueryNode& typeQuery) override;
+  void visit(const ast::NamedTupleElement& node) override;
 
   // Predefined type visitors
   void visit(const ast::BoolTypeNode& node) override;
@@ -307,8 +315,11 @@ public:
   // Other required visitors (default implementations)
   void visit(const ast::TypeParameterDeclaration& node) override;
   void visit(const ast::BindingElement& node) override;
+  void visit(const ast::EnumMember& node) override;
   void visit(const ast::ErrorDeclaration& node) override;
   void visit(const ast::EmptyStatement& node) override;
+  void visit(const ast::LabeledStatement& node) override;
+  void visit(const ast::PatternProperty& node) override;
   void visit(const ast::BreakStatement& node) override;
   void visit(const ast::ContinueStatement& node) override;
   void visit(const ast::DebuggerStatement& node) override;
@@ -345,6 +356,9 @@ public:
   void visit(const ast::CaptureElement& node) override;
   void visit(const ast::ArrayLiteralExpression& node) override;
   void visit(const ast::ObjectLiteralExpression& node) override;
+  void visit(const ast::PropertyAssignment& node) override;
+  void visit(const ast::ShorthandPropertyAssignment& node) override;
+  void visit(const ast::SpreadAssignment& node) override;
   void visit(const ast::ModulePath& modulePath) override;
   void visit(const ast::InterfaceBody& node) override;
   void visit(const ast::StructBody& node) override;

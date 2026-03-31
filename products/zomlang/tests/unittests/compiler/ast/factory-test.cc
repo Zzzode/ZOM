@@ -21,6 +21,7 @@
 #include "zomlang/compiler/ast/factory.h"
 
 #include "zc/core/common.h"
+#include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/ast.h"
@@ -33,6 +34,26 @@
 namespace zomlang {
 namespace compiler {
 namespace ast {
+
+static void expectIdentifierNameText(
+    zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> name,
+    zc::StringPtr expected) {
+  ZC_SWITCH_ONEOF(name) {
+    ZC_CASE_ONEOF(maybeId, zc::Maybe<const Identifier&>) {
+      ZC_IF_SOME(id, maybeId) { ZC_EXPECT(id.getText() == expected); }
+      else { ZC_FAIL_EXPECT("name should not be none"); }
+      return;
+    }
+    ZC_CASE_ONEOF(maybePattern, zc::Maybe<const BindingPattern&>) {
+      ZC_FAIL_EXPECT("name should be Identifier");
+      return;
+    }
+    ZC_CASE_ONEOF_DEFAULT {
+      ZC_FAIL_EXPECT("name should not be empty");
+      return;
+    }
+  }
+}
 
 ZC_TEST("ASTFactory: Basic Node Creation") {
   // Test basic AST node creation functionality
@@ -70,27 +91,27 @@ ZC_TEST("ASTFactory: Function Declaration Creation") {
   auto funcName = createIdentifier("testFunction"_zc);
 
   // Create parameters
-  zc::Vector<zc::Own<ast::BindingElement>> parameters;
+  zc::Vector<zc::Own<ast::ParameterDeclaration>> parameters;
   auto param1Name = createIdentifier("n"_zc);
-  auto param1 = createBindingElement(zc::mv(param1Name));
+  auto param1 = createParameterDeclaration({}, zc::none, zc::mv(param1Name), zc::none);
   parameters.add(zc::mv(param1));
 
   auto param2Name = createIdentifier("s"_zc);
-  auto param2 = createBindingElement(zc::mv(param2Name));
+  auto param2 = createParameterDeclaration({}, zc::none, zc::mv(param2Name), zc::none);
   parameters.add(zc::mv(param2));
 
   // Create function body (empty block statement)
   zc::Vector<zc::Own<ast::Statement>> bodyStatements;
   auto body = createBlockStatement(zc::mv(bodyStatements));
 
-  // Create type parameters (empty)
-  zc::Vector<zc::Own<ast::TypeParameterDeclaration>> typeParams;
+  // Create type parameters (absent)
+  zc::Maybe<zc::Vector<zc::Own<ast::TypeParameterDeclaration>>> typeParams = zc::none;
 
   // Create function declaration
   auto funcDecl = createFunctionDeclaration(zc::mv(funcName), zc::mv(typeParams),
                                             zc::mv(parameters), zc::none, zc::mv(body));
 
-  ZC_EXPECT(funcDecl->getName().getText() == "testFunction", "Function should have correct name");
+  expectIdentifierNameText(funcDecl->getName(), "testFunction");
   ZC_EXPECT(funcDecl->getParameters().size() == 2, "Function should have 2 parameters");
   ZC_EXPECT(funcDecl->getTypeParameters().size() == 0, "Function should have no type parameters");
   ZC_EXPECT(funcDecl->getReturnType() == nullptr, "Function should have no return type");
@@ -124,7 +145,8 @@ ZC_TEST("ASTFactory: Expression Creation") {
   auto test = createBooleanLiteral(true);
   auto consequent = createStringLiteral("true_branch"_zc);
   auto alternate = createStringLiteral("false_branch"_zc);
-  auto condExpr = createConditionalExpression(zc::mv(test), zc::mv(consequent), zc::mv(alternate));
+  auto condExpr = createConditionalExpression(zc::mv(test), zc::none, zc::mv(consequent), zc::none,
+                                              zc::mv(alternate));
 
   // ConditionalExpression always has test, consequent, and alternate (references, not pointers)
 }
@@ -134,10 +156,10 @@ ZC_TEST("ASTFactory: Statement Creation") {
   using namespace zomlang::compiler::ast::factory;
 
   // Test variable declaration creation
-  zc::Vector<zc::Own<ast::BindingElement>> bindings;
+  zc::Vector<zc::Own<ast::VariableDeclaration>> bindings;
   auto varName = createIdentifier("myVar"_zc);
   auto initValue = createFloatLiteral(100.0);
-  auto binding = createBindingElement(zc::mv(varName), zc::none, zc::mv(initValue));
+  auto binding = createVariableDeclaration(zc::mv(varName), zc::none, zc::mv(initValue));
   bindings.add(zc::mv(binding));
   auto varDecl = createVariableDeclarationList(zc::mv(bindings));
 
@@ -217,9 +239,8 @@ ZC_TEST("ASTFactory: Alias and Debugger Creation") {
   // Test AliasDeclaration creation
   auto aliasName = createIdentifier("MyAlias"_zc);
   auto targetType = createPredefinedType("i32"_zc);
-  auto aliasDecl = createAliasDeclaration(zc::mv(aliasName), zc::mv(targetType));
-  ZC_EXPECT(aliasDecl->getName().getText() == "MyAlias",
-            "AliasDeclaration should have correct name");
+  auto aliasDecl = createAliasDeclaration(zc::mv(aliasName), zc::none, zc::mv(targetType));
+  expectIdentifierNameText(aliasDecl->getName(), "MyAlias");
   // AliasDeclaration always has target type (reference, not pointer)
 
   // Test DebuggerStatement creation

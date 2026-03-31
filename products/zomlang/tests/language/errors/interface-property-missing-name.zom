@@ -1,0 +1,14 @@
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+
+interface I {
+  let : i32;
+}
+
+
+// CHECK: Error [ZOM2069]: Identifier expected
+// CHECK:   --> {{.*interface-property-missing-name.zom}}:4:6
+// CHECK:   |
+// CHECK: 4 |   let : i32;
+// CHECK:   |      ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,0 +1,130 @@
+// RUN: /opt/homebrew/bin/timeout 5s %zomc compile --dump-ast %s | %FileCheck %s
+
+interface Runnable {
+  fun run() -> void;
+}
+
+interface Comparable<T> {
+  fun compareTo(other: T) -> i32;
+}
+
+interface Named {
+  readonly let name: str;
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*interface-declaration.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "InterfaceDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Runnable"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MethodSignature",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "run"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": {
+// CHECK-NEXT:             "node": "ReturnType",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "TypeReferenceNode",
+// CHECK-NEXT:               "name": "void"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "InterfaceDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Comparable"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "TypeParameterDeclaration",
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "T"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "constraint": null
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MethodSignature",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "compareTo"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ParameterDeclaration",
+// CHECK-NEXT:               "name": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "other"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "type": {
+// CHECK-NEXT:                 "node": "TypeReferenceNode",
+// CHECK-NEXT:                 "name": "T"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "initializer": null
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": {
+// CHECK-NEXT:             "node": "ReturnType",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "I32TypeNode",
+// CHECK-NEXT:               "name": "i32"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "InterfaceDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Named"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertySignature",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "readonly"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "name"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "StrTypeNode",
+// CHECK-NEXT:             "name": "str"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

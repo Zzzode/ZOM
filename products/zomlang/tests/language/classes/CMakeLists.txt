@@ -15,6 +15,8 @@
 # Class Tests
 # Tests for class declarations, inheritance, and class features
 
+add_lit_ast_tests_from_directory(${CMAKE_CURRENT_SOURCE_DIR})
+
 # TODO: Add subdirectories for specific class test categories when implemented
 # - basic
 # - inheritance

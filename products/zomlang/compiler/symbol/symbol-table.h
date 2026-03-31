@@ -32,6 +32,7 @@ class ScopeManager;
 class Symbol;
 class TypeSymbol;
 class VariableSymbol;
+class ParameterSymbol;
 class FunctionSymbol;
 class ClassSymbol;
 class InterfaceSymbol;
@@ -60,6 +61,7 @@ public:
 
   /// \brief Convenient symbol creation methods
   VariableSymbol& createVariable(zc::StringPtr name, const Scope& scope);
+  ParameterSymbol& createParameter(zc::StringPtr name, const Scope& scope);
   FunctionSymbol& createFunction(zc::StringPtr name, const Scope& scope);
   ClassSymbol& createClass(zc::StringPtr name, const Scope& scope);
   InterfaceSymbol& createInterface(zc::StringPtr name, const Scope& scope);

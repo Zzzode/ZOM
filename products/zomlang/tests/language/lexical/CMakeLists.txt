@@ -15,10 +15,4 @@
 # Lexical Analysis Tests
 # Tests for tokenization, identifiers, keywords, literals, operators, etc.
 
-# TODO: Add subdirectories for specific lexical test categories when implemented
-# - identifiers
-# - keywords  
-# - literals
-# - operators
-# - comments
-# - whitespace
+add_lit_ast_tests_from_directory(${CMAKE_CURRENT_SOURCE_DIR})

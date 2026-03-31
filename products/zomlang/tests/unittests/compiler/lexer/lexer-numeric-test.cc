@@ -53,76 +53,68 @@ ZC_TEST("LexerNumericTest.ValidBinaryLiterals") {
   auto tokens = tokenize("0b101 0B101 0b0 0b1"_zc);
   ZC_EXPECT(tokens.size() == 5);
 
-  auto& sm = getSourceManager();
-
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[0].hasFlag(TokenFlags::BinarySpecifier));
-  ZC_EXPECT(tokens[0].getText(sm) == "0b101"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "5"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[1].hasFlag(TokenFlags::BinarySpecifier));
-  ZC_EXPECT(tokens[1].getText(sm) == "0b101"_zc);  // 0B normalized to 0b
+  ZC_EXPECT(tokens[1].getValue() == "5"_zc);  // 0B normalized to 0b
 
   ZC_EXPECT(tokens[2].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[2].hasFlag(TokenFlags::BinarySpecifier));
-  ZC_EXPECT(tokens[2].getText(sm) == "0b0"_zc);
+  ZC_EXPECT(tokens[2].getValue() == "0"_zc);
 
   ZC_EXPECT(tokens[3].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[3].hasFlag(TokenFlags::BinarySpecifier));
-  ZC_EXPECT(tokens[3].getText(sm) == "0b1"_zc);
+  ZC_EXPECT(tokens[3].getValue() == "1"_zc);
 }
 
 ZC_TEST("LexerNumericTest.ValidOctalLiterals") {
   auto tokens = tokenize("0o123 0O123 0o0 0o7"_zc);
   ZC_EXPECT(tokens.size() == 5);
 
-  auto& sm = getSourceManager();
-
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[0].hasFlag(TokenFlags::OctalSpecifier));
-  ZC_EXPECT(tokens[0].getText(sm) == "0o123"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "83"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[1].hasFlag(TokenFlags::OctalSpecifier));
-  ZC_EXPECT(tokens[1].getText(sm) == "0o123"_zc);  // 0O normalized to 0o
+  ZC_EXPECT(tokens[1].getValue() == "83"_zc);  // 0O normalized to 0o
 
   ZC_EXPECT(tokens[2].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[2].hasFlag(TokenFlags::OctalSpecifier));
-  ZC_EXPECT(tokens[2].getText(sm) == "0o0"_zc);
+  ZC_EXPECT(tokens[2].getValue() == "0"_zc);
 
   ZC_EXPECT(tokens[3].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[3].hasFlag(TokenFlags::OctalSpecifier));
-  ZC_EXPECT(tokens[3].getText(sm) == "0o7"_zc);
+  ZC_EXPECT(tokens[3].getValue() == "7"_zc);
 }
 
 ZC_TEST("LexerNumericTest.BinaryLiteralsWithSeparators") {
   auto tokens = tokenize("0b1_0_1 0b1100_1010"_zc);
   ZC_EXPECT(tokens.size() == 3);
 
-  auto& sm = getSourceManager();
-
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[0].hasFlag(TokenFlags::ContainsSeparator));
-  ZC_EXPECT(tokens[0].getText(sm) == "0b101"_zc);  // Separators stripped in value
+  ZC_EXPECT(tokens[0].getValue() == "5"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[1].hasFlag(TokenFlags::ContainsSeparator));
-  ZC_EXPECT(tokens[1].getText(sm) == "0b11001010"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "202"_zc);
 }
 
 ZC_TEST("LexerNumericTest.OctalLiteralsWithSeparators") {
   auto tokens = tokenize("0o1_2_3 0o77_66"_zc);
   ZC_EXPECT(tokens.size() == 3);
 
-  auto& sm = getSourceManager();
-
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[0].hasFlag(TokenFlags::ContainsSeparator));
-  ZC_EXPECT(tokens[0].getText(sm) == "0o123"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "83"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[1].hasFlag(TokenFlags::ContainsSeparator));
-  ZC_EXPECT(tokens[1].getText(sm) == "0o7766"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "4086"_zc);
 }
 
 ZC_TEST("LexerNumericTest.InvalidSeparators") {
@@ -144,78 +136,73 @@ ZC_TEST("LexerNumericTest.InvalidSeparators") {
 ZC_TEST("LexerNumericTest.ValidDecimalIntegers") {
   auto tokens = tokenize("0 1 123 9876543210"_zc);
   ZC_EXPECT(tokens.size() == 5);
-  auto& sm = getSourceManager();
 
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::IntegerLiteral));
-  ZC_EXPECT(tokens[0].getText(sm) == "0"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "0"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::IntegerLiteral));
-  ZC_EXPECT(tokens[1].getText(sm) == "1"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "1"_zc);
 
   ZC_EXPECT(tokens[2].is(ast::SyntaxKind::IntegerLiteral));
-  ZC_EXPECT(tokens[2].getText(sm) == "123"_zc);
+  ZC_EXPECT(tokens[2].getValue() == "123"_zc);
 
   ZC_EXPECT(tokens[3].is(ast::SyntaxKind::IntegerLiteral));
-  ZC_EXPECT(tokens[3].getText(sm) == "9876543210"_zc);
+  ZC_EXPECT(tokens[3].getValue() == "9876543210"_zc);
 }
 
 ZC_TEST("LexerNumericTest.DecimalWithSeparators") {
   auto tokens = tokenize("1_000 1_2_3"_zc);
   ZC_EXPECT(tokens.size() == 3);
-  auto& sm = getSourceManager();
 
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[0].hasFlag(TokenFlags::ContainsSeparator));
-  ZC_EXPECT(tokens[0].getText(sm) == "1000"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "1000"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::IntegerLiteral));
   ZC_EXPECT(tokens[1].hasFlag(TokenFlags::ContainsSeparator));
-  ZC_EXPECT(tokens[1].getText(sm) == "123"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "123"_zc);
 }
 
 ZC_TEST("LexerNumericTest.FloatingPointLiterals") {
   auto tokens = tokenize("3.14 0.123 10.5"_zc);
   ZC_EXPECT(tokens.size() == 4);  // 3 numbers + EOF
-  auto& sm = getSourceManager();
 
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::FloatLiteral));
-  ZC_EXPECT(tokens[0].getText(sm) == "3.14"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "3.14"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::FloatLiteral));
-  ZC_EXPECT(tokens[1].getText(sm) == "0.123"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "0.123"_zc);
 
   ZC_EXPECT(tokens[2].is(ast::SyntaxKind::FloatLiteral));
-  ZC_EXPECT(tokens[2].getText(sm) == "10.5"_zc);
+  ZC_EXPECT(tokens[2].getValue() == "10.5"_zc);
 }
 
 ZC_TEST("LexerNumericTest.ScientificLiterals") {
   auto tokens = tokenize("1e2 1.5e2 1e-1"_zc);
   ZC_EXPECT(tokens.size() == 4);
-  auto& sm = getSourceManager();
 
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::FloatLiteral));
   ZC_EXPECT(tokens[0].hasFlag(TokenFlags::Scientific));
-  ZC_EXPECT(tokens[0].getText(sm) == "100"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "100"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::FloatLiteral));
   ZC_EXPECT(tokens[1].hasFlag(TokenFlags::Scientific));
-  ZC_EXPECT(tokens[1].getText(sm) == "150"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "150"_zc);
 
   ZC_EXPECT(tokens[2].is(ast::SyntaxKind::FloatLiteral));
   ZC_EXPECT(tokens[2].hasFlag(TokenFlags::Scientific));
-  ZC_EXPECT(tokens[2].getText(sm) == "0.1"_zc);
+  ZC_EXPECT(tokens[2].getValue() == "0.1"_zc);
 }
 
 ZC_TEST("LexerNumericTest.BigIntLiterals") {
   auto tokens = tokenize("123n 1_000n"_zc);
   ZC_EXPECT(tokens.size() == 3);
-  auto& sm = getSourceManager();
 
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::BigIntLiteral));
-  ZC_EXPECT(tokens[0].getText(sm) == "123n"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "123n"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::BigIntLiteral));
-  ZC_EXPECT(tokens[1].getText(sm) == "1000n"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "1000n"_zc);
 }
 
 ZC_TEST("LexerNumericTest.DecimalInvalidSeparators") {
@@ -224,15 +211,13 @@ ZC_TEST("LexerNumericTest.DecimalInvalidSeparators") {
   auto tokens = tokenize("1__2 1_"_zc);
   ZC_EXPECT(tokens.size() == 3);  // 1__2, 1_, EOF
 
-  auto& sm = getSourceManager();
-
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::IntegerLiteral));
-  ZC_EXPECT(tokens[0].getText(sm) == "12"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "12"_zc);
   ZC_EXPECT(tokens[0].hasFlag(TokenFlags::ContainsSeparator));
   ZC_EXPECT(tokens[0].hasFlag(TokenFlags::ContainsInvalidSeparator));
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::IntegerLiteral));
-  ZC_EXPECT(tokens[1].getText(sm) == "1"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "1"_zc);
   ZC_EXPECT(tokens[1].hasFlag(TokenFlags::ContainsSeparator));
   ZC_EXPECT(tokens[1].hasFlag(TokenFlags::ContainsInvalidSeparator));
 }
@@ -243,13 +228,11 @@ ZC_TEST("LexerNumericTest.InvalidBigInts") {
   auto tokens = tokenize("1.5n 1e2n"_zc);
   ZC_EXPECT(tokens.size() == 3);
 
-  auto& sm = getSourceManager();
-
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::FloatLiteral));  // Should fallback to float
-  ZC_EXPECT(tokens[0].getText(sm) == "1.5"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "1.5"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::FloatLiteral));  // 1e2 is float
-  ZC_EXPECT(tokens[1].getText(sm) == "100"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "100"_zc);
 }
 
 ZC_TEST("LexerNumericTest.NumberFollowedByIdentifier") {
@@ -257,13 +240,11 @@ ZC_TEST("LexerNumericTest.NumberFollowedByIdentifier") {
   auto tokens = tokenize("123a"_zc);
   ZC_EXPECT(tokens.size() == 3);  // 123, a, EOF
 
-  auto& sm = getSourceManager();
-
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::IntegerLiteral));
-  ZC_EXPECT(tokens[0].getText(sm) == "123"_zc);
+  ZC_EXPECT(tokens[0].getValue() == "123"_zc);
 
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
-  ZC_EXPECT(tokens[1].getText(sm) == "a"_zc);
+  ZC_EXPECT(tokens[1].getValue() == "a"_zc);
 }
 
 }  // namespace lexer

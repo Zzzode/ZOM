@@ -61,7 +61,7 @@ class FileChecker:
     def normalize_json(self, content: str) -> str:
         """Normalize JSON content for comparison."""
         # Return content as-is to match original zomc output format
-        return content
+        return re.sub(r"\x1b\[[0-9;]*m", "", content)
 
     def match_pattern(self, pattern: str, content: str) -> bool:
         """Check if pattern matches in content."""

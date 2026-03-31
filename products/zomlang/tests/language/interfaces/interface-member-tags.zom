@@ -1,0 +1,95 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+interface I {
+  let x: i32 = 1;
+  const y: str;
+  fun foo(n: i32) -> i32;
+  ;
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*interface-member-tags.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "InterfaceDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "I"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertySignature",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "x"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "I32TypeNode",
+// CHECK-NEXT:             "name": "i32"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": {
+// CHECK-NEXT:             "node": "IntegerLiteral",
+// CHECK-NEXT:             "value": "1"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertySignature",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "y"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "StrTypeNode",
+// CHECK-NEXT:             "name": "str"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MethodSignature",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "foo"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ParameterDeclaration",
+// CHECK-NEXT:               "name": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "n"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "type": {
+// CHECK-NEXT:                 "node": "I32TypeNode",
+// CHECK-NEXT:                 "name": "i32"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "initializer": null
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": {
+// CHECK-NEXT:             "node": "ReturnType",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "I32TypeNode",
+// CHECK-NEXT:               "name": "i32"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "SemicolonInterfaceElement"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

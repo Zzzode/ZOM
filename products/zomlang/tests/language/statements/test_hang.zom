@@ -1,0 +1,113 @@
+// RUN: /opt/homebrew/bin/timeout 5s %zomc compile --dump-ast %s | %FileCheck %s
+
+fun testFor() {
+  for (let i = 0; i < 10; i++) {
+    x = x + i;
+  }
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*test_hang.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "FunctionDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "testFor"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "ForStatement",
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "VariableStatement",
+// CHECK-NEXT:               "declarations": {
+// CHECK-NEXT:                 "node": "VariableDeclarationList",
+// CHECK-NEXT:                 "bindings": [
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "VariableDeclaration",
+// CHECK-NEXT:                     "name": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "i"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "type": null,
+// CHECK-NEXT:                     "initializer": {
+// CHECK-NEXT:                       "node": "IntegerLiteral",
+// CHECK-NEXT:                       "value": "0"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 ]
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "condition": {
+// CHECK-NEXT:               "node": "BinaryExpression",
+// CHECK-NEXT:               "left": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "i"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "operator": {
+// CHECK-NEXT:                 "node": "TokenNode",
+// CHECK-NEXT:                 "symbol": "<"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "right": {
+// CHECK-NEXT:                 "node": "IntegerLiteral",
+// CHECK-NEXT:                 "value": "10"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "update": {
+// CHECK-NEXT:               "node": "PostfixUnaryExpression",
+// CHECK-NEXT:               "operand": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "i"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "operator": {
+// CHECK-NEXT:                 "node": "TokenNode",
+// CHECK-NEXT:                 "symbol": "++"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "body": {
+// CHECK-NEXT:               "node": "BlockStatement",
+// CHECK-NEXT:               "children": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ExpressionStatement",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "BinaryExpression",
+// CHECK-NEXT:                     "left": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "x"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "operator": {
+// CHECK-NEXT:                       "node": "TokenNode",
+// CHECK-NEXT:                       "symbol": "="
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "right": {
+// CHECK-NEXT:                       "node": "BinaryExpression",
+// CHECK-NEXT:                       "left": {
+// CHECK-NEXT:                         "node": "Identifier",
+// CHECK-NEXT:                         "name": "x"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "operator": {
+// CHECK-NEXT:                         "node": "TokenNode",
+// CHECK-NEXT:                         "symbol": "+"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "right": {
+// CHECK-NEXT:                         "node": "Identifier",
+// CHECK-NEXT:                         "name": "i"
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

@@ -16,12 +16,38 @@
 
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/classof.h"
 #include "zomlang/compiler/ast/expression.h"
+#include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/statement.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
+
+namespace {
+
+zc::Vector<SyntaxKind> getAllConcreteAstKinds() {
+  zc::Vector<SyntaxKind> result;
+#define AST_INTERFACE_NODE(Class, Parent)
+#define AST_ELEMENT_NODE(Class, ...) result.add(SyntaxKind::Class);
+#include "zomlang/compiler/ast/ast-nodes.def"
+#undef AST_ELEMENT_NODE
+#undef AST_INTERFACE_NODE
+  return result;
+}
+
+bool exerciseAllIsInterfaceFunctions(SyntaxKind kind) {
+  bool value = false;
+#define AST_INTERFACE_NODE(Class, Parent) value = value ^ is##Class(kind);
+#define AST_ELEMENT_NODE(Class, ...)
+#include "zomlang/compiler/ast/ast-nodes.def"
+#undef AST_ELEMENT_NODE
+#undef AST_INTERFACE_NODE
+  return value;
+}
+
+}  // namespace
 
 ZC_TEST("CastTest.Isa") {
   // Identifier
@@ -31,14 +57,6 @@ ZC_TEST("CastTest.Isa") {
   ZC_EXPECT(isa<Identifier>(node));
   ZC_EXPECT(isa<PrimaryExpression>(node));  // Inheritance check
   ZC_EXPECT(isa<Expression>(node));
-
-  // Debugging output for failure analysis
-  if (isa<Statement>(node)) {
-    // We cannot use zc::print here easily without including debug.h or similar,
-    // and zc::print might not be available. Using standard iostream for temporary debug
-    // or just rely on the assertion failure.
-    // For now, let's revert to just the assertion, but we know this is where it fails.
-  }
 
   ZC_EXPECT(!isa<Statement>(node));
 }
@@ -92,6 +110,52 @@ ZC_TEST("CastTest.OwnPtr") {
     zc::Own<Node> n = zc::heap<Identifier>("test"_zc);
     auto maybeLit = dyn_cast<StringLiteral>(zc::mv(n));
     ZC_EXPECT(maybeLit == zc::none);
+  }
+}
+
+ZC_TEST("CastTest.ClassofAndKindStringCoverage") {
+  auto kinds = getAllConcreteAstKinds();
+  ZC_EXPECT(kinds.size() > 0);
+
+  size_t trueCount = 0;
+  size_t falseCount = 0;
+
+  for (auto kind : kinds) {
+    ZC_EXPECT(isNode(kind));
+    (void)exerciseAllIsInterfaceFunctions(kind);
+
+    auto asString = _::syntaxKindToString(kind);
+    ZC_EXPECT(asString != "Unknown"_zc);
+
+    if (isExpression(kind)) {
+      ++trueCount;
+    } else {
+      ++falseCount;
+    }
+  }
+
+  ZC_EXPECT(trueCount > 0);
+  ZC_EXPECT(falseCount > 0);
+
+  ZC_EXPECT(_::syntaxKindToString(SyntaxKind::Plus) == "Unknown"_zc);
+}
+
+ZC_TEST("CastTest.OwnTransferCast") {
+  {
+    zc::Own<Node> node = zc::heap<Identifier>("test"_zc);
+    auto id = cast<Identifier>(zc::mv(node));
+    ZC_EXPECT(id->getText() == "test"_zc);
+  }
+
+  {
+    zc::Own<Node> node = zc::heap<Identifier>("test"_zc);
+    auto expr = cast<Expression>(zc::mv(node));
+    ZC_EXPECT(isa<Identifier>(*expr));
+  }
+
+  {
+    zc::Own<Node> node = zc::heap<Identifier>("test"_zc);
+    ZC_EXPECT_THROW_RECOVERABLE(FAILED, (void)cast<StringLiteral>(zc::mv(node)));
   }
 }
 

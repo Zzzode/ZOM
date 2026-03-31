@@ -169,6 +169,18 @@ TEST(String, parseAs) {
   EXPECT_EQ(heapString("1").parseAs<int>(), 1);
 }
 
+TEST(String, BinaryParse) {
+  EXPECT_EQ("0b101"_zc.parseAs<int64_t>(), 5);
+  EXPECT_EQ("-0b101"_zc.parseAs<int64_t>(), -5);
+  EXPECT_EQ("0B101"_zc.parseAs<int64_t>(), 5);
+}
+
+TEST(String, OctalParse) {
+  EXPECT_EQ("0o123"_zc.parseAs<int64_t>(), 83);
+  EXPECT_EQ("-0o123"_zc.parseAs<int64_t>(), -83);
+  EXPECT_EQ("0O123"_zc.parseAs<int64_t>(), 83);
+}
+
 TEST(String, tryParseAs) {
   ZC_EXPECT("0"_zc.tryParseAs<double>() == 0.0);
   ZC_EXPECT("0"_zc.tryParseAs<double>() == 0.0);

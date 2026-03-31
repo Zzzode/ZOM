@@ -41,12 +41,19 @@ public:
   // Interns a string from an ArrayPtr (not necessarily NUL-terminated).
   zc::StringPtr intern(zc::ArrayPtr<const char> str);
 
+  zc::StringPtr intern(zc::ArrayPtr<const zc::byte> str);
+
   // Interns a single character.
   zc::StringPtr intern(char c);
+  zc::StringPtr intern(zc::byte c);
 
   // Overloads to prevent template recursion and unnecessary allocations
   zc::StringPtr intern(const char* str);
   zc::StringPtr intern(const zc::String& str);
+  zc::StringPtr intern(const char* start, size_t len);
+
+  zc::StringPtr intern(const zc::byte* start, size_t len);
+  zc::StringPtr intern(const zc::byte* start, const zc::byte* end);
 
   // Interns a concatenation of multiple values or a single non-string value.
   // Uses zc::str() formatting.
@@ -55,8 +62,11 @@ public:
   template <typename T, typename... Args>
     requires((!std::is_same_v<std::decay_t<T>, zc::StringPtr> &&
               !std::is_same_v<std::decay_t<T>, zc::ArrayPtr<const char>> &&
+              !std::is_same_v<std::decay_t<T>, zc::ArrayPtr<const zc::byte>> &&
               !std::is_same_v<std::decay_t<T>, char> &&
+              !std::is_same_v<std::decay_t<T>, zc::byte> &&
               !std::is_same_v<std::decay_t<T>, const char*> &&
+              !std::is_same_v<std::decay_t<T>, const zc::byte*> &&
               !std::is_same_v<std::decay_t<T>, zc::String>) ||
              sizeof...(Args) > 0)
   zc::StringPtr intern(T&& first, Args&&... args) {

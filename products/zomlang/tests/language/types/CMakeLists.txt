@@ -15,10 +15,4 @@
 # Type System Tests
 # Tests for type declarations, type checking, and type inference
 
-# TODO: Add subdirectories for specific type test categories when implemented
-# - primitive-types
-# - composite-types
-# - generic-types
-# - type-aliases
-# - type-inference
-# - type-checking
+add_lit_ast_tests_from_directory(${CMAKE_CURRENT_SOURCE_DIR})

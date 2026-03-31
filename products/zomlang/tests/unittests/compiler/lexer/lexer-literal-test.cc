@@ -24,14 +24,12 @@ namespace compiler {
 namespace lexer {
 
 ZC_TEST("LexerLiteralTest.StringLiterals") {
-  const auto& sm = getSourceManager();
-
   // Case 1: Empty double-quoted string
   {
     auto tokens = tokenize("\"\""_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens[0].getText(sm) == ""_zc);
+    ZC_EXPECT(tokens[0].getValue() == ""_zc);
   }
 
   // Case 2: Empty single-quoted string
@@ -39,7 +37,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     auto tokens = tokenize("''"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens[0].getText(sm) == ""_zc);
+    ZC_EXPECT(tokens[0].getValue() == ""_zc);
   }
 
   // Case 3: Simple double-quoted string
@@ -47,7 +45,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     auto tokens = tokenize("\"hello\""_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens[0].getText(sm) == "hello"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "hello"_zc);
   }
 
   // Case 4: Simple single-quoted string
@@ -55,7 +53,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     auto tokens = tokenize("'world'"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens[0].getText(sm) == "world"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "world"_zc);
   }
 
   // Case 5: Escaped quotes
@@ -63,12 +61,12 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     auto tokens = tokenize("\"\\\"\""_zc);  // "\""
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens[0].getText(sm) == "\""_zc);
+    ZC_EXPECT(tokens[0].getValue() == "\""_zc);
 
     auto tokens2 = tokenize("'\\''"_zc);  // '\''
     ZC_EXPECT(tokens2.size() == 2);
     ZC_EXPECT(tokens2[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens2[0].getText(sm) == "'"_zc);
+    ZC_EXPECT(tokens2[0].getValue() == "'"_zc);
   }
 
   // Case 6: Mixed quotes
@@ -76,12 +74,12 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     auto tokens = tokenize("\"'\""_zc);  // "'"
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens[0].getText(sm) == "'"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "'"_zc);
 
     auto tokens2 = tokenize("'\"'"_zc);  // '"'
     ZC_EXPECT(tokens2.size() == 2);
     ZC_EXPECT(tokens2[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens2[0].getText(sm) == "\""_zc);
+    ZC_EXPECT(tokens2[0].getValue() == "\""_zc);
   }
 
   // Case 7: Common escapes
@@ -89,7 +87,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     auto tokens = tokenize("\"\\n\\t\\r\\\\\""_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens[0].getText(sm) == "\n\t\r\\"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "\n\t\r\\"_zc);
   }
 
   // Case 8: Unicode escape
@@ -98,7 +96,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     auto tokens = tokenize("\"\\u0041\""_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens[0].getText(sm) == "A"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "A"_zc);
   }
 }
 
@@ -161,7 +159,7 @@ ZC_TEST("LexerLiteralTest.TemplateLiterals") {
     auto tokens = tokenize("`hello world`"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::NoSubstitutionTemplateLiteral));
-    ZC_EXPECT(tokens[0].getText(getSourceManager()) == "hello world"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "hello world"_zc);
   }
 
   // TemplateHead
@@ -169,7 +167,7 @@ ZC_TEST("LexerLiteralTest.TemplateLiterals") {
     auto tokens = tokenize("`hello ${"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::TemplateHead));
-    ZC_EXPECT(tokens[0].getText(getSourceManager()) == "hello "_zc);
+    ZC_EXPECT(tokens[0].getValue() == "hello "_zc);
   }
 
   // EmptyTemplateLiteral
@@ -177,7 +175,7 @@ ZC_TEST("LexerLiteralTest.TemplateLiterals") {
     auto tokens = tokenize("``"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::NoSubstitutionTemplateLiteral));
-    ZC_EXPECT(tokens[0].getText(getSourceManager()) == ""_zc);
+    ZC_EXPECT(tokens[0].getValue() == ""_zc);
   }
 
   // MultilineTemplateLiteral
@@ -185,7 +183,7 @@ ZC_TEST("LexerLiteralTest.TemplateLiterals") {
     auto tokens = tokenize("`line1\nline2`"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::NoSubstitutionTemplateLiteral));
-    ZC_EXPECT(tokens[0].getText(getSourceManager()) == "line1\nline2"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "line1\nline2"_zc);
   }
 
   // UnterminatedTemplateLiteral
@@ -197,7 +195,7 @@ ZC_TEST("LexerLiteralTest.TemplateLiterals") {
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::NoSubstitutionTemplateLiteral));
     ZC_EXPECT(tokens[0].hasFlag(TokenFlags::Unterminated));
-    ZC_EXPECT(tokens[0].getText(sm) == "hello"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "hello"_zc);
     ZC_EXPECT(diags->hasErrors());
   }
 }

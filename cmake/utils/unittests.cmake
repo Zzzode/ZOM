@@ -81,7 +81,7 @@ function(add_lit_ast_test TEST_NAME SOURCE_FILE)
   # Create test that runs lit on the source file
   add_test(
     NAME ${TEST_FULL_NAME}
-    COMMAND ${LIT_EXECUTABLE} -v ${SOURCE_FILE}
+    COMMAND ${LIT_EXECUTABLE} -v --timeout=20 ${SOURCE_FILE}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
   )
 
@@ -117,7 +117,7 @@ function(add_lit_ast_test_with_check TEST_NAME SOURCE_FILE)
   # Create test that runs lit with FileCheck validation
   add_test(
     NAME ${TEST_FULL_NAME}
-    COMMAND ${LIT_EXECUTABLE} -v ${SOURCE_FILE}
+    COMMAND ${LIT_EXECUTABLE} -v --timeout=20 ${SOURCE_FILE}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
   )
 

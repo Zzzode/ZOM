@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+
+interface I
+let x: i32 = 1;
+
+
+// CHECK: Error [ZOM2025]: Expected '{'
+// CHECK:   --> {{.*interface-missing-body-open-brace.zom}}:4:1
+// CHECK:   |
+// CHECK: 4 | let x: i32 = 1;
+// CHECK:   | ^~~
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

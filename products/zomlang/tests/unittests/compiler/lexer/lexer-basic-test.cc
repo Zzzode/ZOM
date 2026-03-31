@@ -106,16 +106,13 @@ ZC_TEST("LexerBasicTest.WhitespaceAndLineBreaks") {
 }
 
 ZC_TEST("LexerBasicTest.UnicodeEscapeIdentifier") {
-  auto& sm = getSourceManager();
-
   // Case 1: Valid unicode escape start
   // \u0061 is 'a'
   {
     auto tokens = tokenize("\\u0061"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
-    ZC_EXPECT(tokens[0].getText(sm) == "\u0061");
-    ZC_EXPECT(tokens[0].getText(sm) == "a");
+    ZC_EXPECT(tokens[0].getValue() == "a");
   }
 
   // Case 2: Unicode escape combined with normal chars
@@ -124,8 +121,7 @@ ZC_TEST("LexerBasicTest.UnicodeEscapeIdentifier") {
     auto tokens = tokenize("\\u0061b"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
-    ZC_EXPECT(tokens[0].getText(sm) == "\u0061b");
-    ZC_EXPECT(tokens[0].getText(sm) == "ab");
+    ZC_EXPECT(tokens[0].getValue() == "ab");
   }
 
   // Case 3: Invalid unicode escape (not identifier start)
@@ -140,21 +136,19 @@ ZC_TEST("LexerBasicTest.UnicodeEscapeIdentifier") {
     ZC_EXPECT(tokens.size() == 3);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Unknown));
     ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
-    ZC_EXPECT(tokens[1].getText(sm) == "u0030");
+    ZC_EXPECT(tokens[1].getValue() == "u0030");
   }
 }
 
 ZC_TEST("LexerBasicTest.HashAndShebang") {
-  auto& sm = getSourceManager();
-
   // Case 1: #! at start of file (Shebang) -> ignored as comment
   {
-    // "#!/usr/bin/env zom\nvar a"
-    // Should tokenize as: var, a, EOF
+    // "#!/usr/bin/env zom\nlet a"
+    // Should tokenize as: let, a, EOF
     auto tokens = tokenize("#!/usr/bin/env zom\nlet a"_zc);
     ZC_EXPECT(tokens.size() == 3);
     ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
-    ZC_EXPECT(tokens[1].getText(sm) == "a");
+    ZC_EXPECT(tokens[1].getValue() == "a");
   }
 
   // Case 2: #! not at start of file -> Error + Unknown token
@@ -164,9 +158,9 @@ ZC_TEST("LexerBasicTest.HashAndShebang") {
     auto tokens = tokenize(" #!"_zc);
     ZC_EXPECT(tokens.size() == 3);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Unknown));
-    ZC_EXPECT(tokens[0].getText(sm) == "#"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "#"_zc);
     ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Exclamation));
-    ZC_EXPECT(tokens[1].getText(sm) == "!"_zc);
+    ZC_EXPECT(tokens[1].getValue() == "!"_zc);
   }
 
   // Case 3: # alone (Hash)
@@ -174,7 +168,7 @@ ZC_TEST("LexerBasicTest.HashAndShebang") {
     auto tokens = tokenize("#"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Hash));
-    ZC_EXPECT(tokens[0].getText(sm) == "#");
+    ZC_EXPECT(tokens[0].getValue() == "#");
   }
 }
 
@@ -190,13 +184,12 @@ ZC_TEST("LexerBasicTest.BinaryFileDetection") {
 }
 
 ZC_TEST("LexerBasicTest.UnicodeIdentifiersDefaultCase") {
-  auto& sm = getSourceManager();
   // "你好" - valid unicode identifier
   {
     auto tokens = tokenize("你好"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
-    ZC_EXPECT(tokens[0].getText(sm) == "你好");
+    ZC_EXPECT(tokens[0].getValue() == "你好");
   }
 }
 
@@ -210,15 +203,14 @@ ZC_TEST("LexerBasicTest.InvalidCharacter") {
 }
 
 ZC_TEST("LexerBasicTest.UnicodeWhitespace") {
-  auto& sm = getSourceManager();
   // \u00A0 is NBSP (No-Break Space). Should be treated as whitespace (skipped).
   // "a\u00A0b" -> Identifier(a), Identifier(b)
   auto tokens = tokenize("a\u00A0b"_zc);
   ZC_EXPECT(tokens.size() == 3);
   ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
-  ZC_EXPECT(tokens[0].getText(sm) == "a");
+  ZC_EXPECT(tokens[0].getValue() == "a");
   ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
-  ZC_EXPECT(tokens[1].getText(sm) == "b");
+  ZC_EXPECT(tokens[1].getValue() == "b");
 }
 
 ZC_TEST("LexerBasicTest.UnicodeLineBreak") {
@@ -232,45 +224,23 @@ ZC_TEST("LexerBasicTest.UnicodeLineBreak") {
 }
 
 ZC_TEST("LexerBasicTest.TokenTextFastPaths") {
-  auto& sm = getSourceManager();
-
-  // Value fast path: identifiers cache their value in Token::value.
   {
     auto tokens = tokenize("abc"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
-    ZC_IF_SOME(value, tokens[0].getValue()) { ZC_EXPECT(value == "abc"_zc); }
-    else { ZC_FAIL_EXPECT("Expected token value for identifier"); }
-    ZC_EXPECT(tokens[0].getText(sm) == "abc"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "abc"_zc);
   }
 
-  // Static text fast path: keywords/operators should return static text.
   {
     auto tokens = tokenize("let +"_zc);
     ZC_EXPECT(tokens.size() == 3);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::LetKeyword));
-    ZC_EXPECT(tokens[0].getText(sm) == "let"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "let"_zc);
     ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Plus));
-    ZC_EXPECT(tokens[1].getText(sm) == "+"_zc);
+    ZC_EXPECT(tokens[1].getValue() == "+"_zc);
   }
 
-  // Unknown kind: getStaticTextForTokenKind should return none.
   { ZC_EXPECT(Token::getStaticTextForTokenKind(ast::SyntaxKind::Identifier) == zc::none); }
-
-  // getTextWithBufferHint: null hint falls back to range extraction.
-  // Use a manually constructed token with a known range and no cached value.
-  {
-    auto bufferId = sm.addMemBufferCopy("xyz"_zc.asBytes(), "token_text_test.zom");
-    auto startLoc = sm.getLocForOffset(bufferId, 0);
-    auto endLoc = sm.getLocForOffset(bufferId, 3);
-    auto tokenRange = source::SourceRange(startLoc, endLoc);
-    Token token(ast::SyntaxKind::Identifier, tokenRange, zc::none);
-
-    ZC_EXPECT(token.getTextWithBufferHint(sm, nullptr) == "xyz"_zc);
-
-    const source::BufferId bufferHint(bufferId);
-    ZC_EXPECT(token.getTextWithBufferHint(sm, &bufferHint) == "xyz"_zc);
-  }
 }
 
 }  // namespace lexer

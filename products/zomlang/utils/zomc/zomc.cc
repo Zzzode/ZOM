@@ -182,32 +182,34 @@ public:
   }
 
   zc::MainBuilder::Validity emitOutput() {
-    // Trigger the parallel parsing process
-    bool success = driver->parseSources();
-
-    if (!success || driver->getDiagnosticEngine().hasErrors()) {
+    // 1. Parsing
+    if (!driver->parseSources() || driver->getDiagnosticEngine().hasErrors()) {
       return zc::str("Compilation failed due to parsing errors.");
     }
 
-    // Trigger the parallel binding process
-    success = driver->bindSources();
+    const auto& options = driver->getCompilerOptions();
 
-    if (!success || driver->getDiagnosticEngine().hasErrors()) {
+    // 2. Early AST Emission (skips binding)
+    // We handle AST emission here to allow inspecting the syntax tree without requiring a
+    // successful binding phase.
+    if (options.emission.outputType == basic::CompilerOptions::EmissionOptions::OutputType::AST ||
+        options.emission.dumpASTEnabled) {
+      return emitAST();
+    }
+
+    // 3. Binding
+    if (!driver->bindSources() || driver->getDiagnosticEngine().hasErrors()) {
       return zc::str("Compilation failed due to binding errors.");
     }
 
-    // If syntax-only mode, we're done after parsing and binding
-    const auto& options = driver->getCompilerOptions();
+    // 4. Syntax Only Check
     if (options.emission.syntaxOnly) {
       context.warning("Syntax check completed successfully.");
       return true;
     }
 
-    // Proceed with output generation based on type
+    // 5. Final Emission
     switch (options.emission.outputType) {
-      case basic::CompilerOptions::EmissionOptions::OutputType::AST:
-        return emitAST();
-
       case basic::CompilerOptions::EmissionOptions::OutputType::IR:
         return emitIR();
 
@@ -215,7 +217,7 @@ public:
         return emitBinary();
 
       default:
-        return zc::str("Unknown output type specified.");
+        return zc::str("Unknown or unsupported output type specified.");
     }
   }
 

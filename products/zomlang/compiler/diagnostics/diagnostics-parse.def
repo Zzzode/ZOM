@@ -24,6 +24,8 @@ DIAG(UnaryExpressionInExponentiation, kError,
      "A unary expression with the '{0}' operator is not allowed in the left hand side of an "
      "exponentiation expression. Consider enclosing the expression in parentheses",
      1)
+DIAG(InvalidOptionalChainFromNewExpression, kError,
+     "Invalid optional chain from a 'new' expression. Consider calling the constructor first", 0)
 DIAG(ReservedKeywordAsIdentifier, kError, "Reserved keyword '{0}' cannot be used as an identifier",
      1)
 DIAG(ExceptedIdentifier, kError, "Identifier expected, found '{0}'", 1)
@@ -40,6 +42,9 @@ DIAG(DidYouMean, kError, "Unknown keyword or identifier. Did you mean '{0}'?", 1
 DIAG(UnexpectedKeywordOrIdentifier, kError, "Unexpected keyword or identifier", 0)
 DIAG(TypePredicateOnlyInReturn, kError,
      "A type predicate is only allowed in return type position for functions and methods", 0)
+DIAG(CannotStartFunctionCallInTypeAnnotation, kError,
+     "Cannot start a function call in a type annotation", 0)
+DIAG(ExpectedForPropertyInitializer, kError, "Expected '=' for property initializer", 0)
 DIAG(ExpectedToken, kError, "Expected '{0}'", 1)
 DIAG(OctalLiteralsAreNotAllowedUseTheSyntax0o, kError,
      "Octal literals are not allowed. Use the syntax '{0}'", 1)
@@ -83,12 +88,15 @@ DIAG(XCanOnlyUsedAtStartOfFile, kError,
 DIAG(FileAppearsToBeBinary, kError, "File appears to be binary", 0)
 
 // Diagnostics for list parsing error recovery
+DIAG(DeclarationExpected, kError, "Declaration expected", 0)
 DIAG(DeclarationOrStatementExpected, kError, "Declaration or statement expected", 0)
 DIAG(CaseOrDefaultExpected, kError, "case or default expected", 0)
 DIAG(StatementExpected, kError, "Statement expected", 0)
 DIAG(PropertyOrSignatureExpected, kError, "Property or signature expected", 0)
 DIAG(UnexpectedTokenClassMemberExpected, kError,
-     "Unexpected token. A constructor, method, accessor, or property was expected", 0)
+     "Unexpected token. A property, method, accessor or constructor was expected", 0)
+DIAG(UnexpectedTokenStructMemberExpected, kError,
+     "Unexpected token. A property, method or accessor was expected", 0)
 DIAG(EnumMemberExpected, kError, "Enum member expected", 0)
 DIAG(ExpressionExpected, kError, "Expression expected", 0)
 DIAG(VariableDeclarationNameNotAllowed, kError,
@@ -108,3 +116,9 @@ DIAG(TypeExpected, kError, "Type expected", 0)
 DIAG(UnexpectedTokenExpected, kError, "Unexpected token expected", 0)
 DIAG(IdentifierExpected, kError, "Identifier expected", 0)
 DIAG(IdentifierOrStringLiteralExpected, kError, "Identifier or string literal expected", 0)
+DIAG(InterfaceMethodSignatureInitializerNotAllowed, kError,
+     "Interface method signatures cannot have initializers", 0)
+DIAG(DeclarationOrStatementExpectedAfterBlock, kError,
+     "Declaration or statement expected. This follows a block of statements, so if you intended to "
+     "write a destructuring assignment, you might need to wrap the whole assignment in parentheses",
+     0)

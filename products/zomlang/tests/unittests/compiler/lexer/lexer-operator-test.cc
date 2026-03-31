@@ -618,12 +618,11 @@ ZC_TEST("LexerOperatorTest.GreaterThanOperators") {
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::GreaterThanGreaterThanEquals));
   }
 
-  // Case 5: Complex sequence '>>>' -> '>>' then '>'
+  // Case 5: Unsigned right shift '>>>'
   {
     auto tokens = tokenize(">>>"_zc);
-    ZC_EXPECT(tokens.size() == 3);
-    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::GreaterThanGreaterThan));
-    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::GreaterThan));
+    ZC_EXPECT(tokens.size() == 2);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan));
   }
 
   // Case 6: Complex sequence '> >=' -> '>' then '>='
@@ -658,22 +657,21 @@ ZC_TEST("LexerOperatorTest.QuestionOperators") {
   }
 
   // Case 4: Question dot with digit '?.1'
-  // Based on code: matches if charAt(1) == '.' && isdigit(charAt(2))
+  // Based on code: does NOT match QuestionDot if charAt(2) is digit.
   {
     auto tokens = tokenize("?.1"_zc);
     ZC_EXPECT(tokens.size() == 3);
-    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::QuestionDot));
-    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::IntegerLiteral));
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Question));
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::FloatLiteral));
   }
 
   // Case 5: Question dot without digit '?.a'
-  // Should NOT match QuestionDot
+  // Should match QuestionDot
   {
     auto tokens = tokenize("?.a"_zc);
-    ZC_EXPECT(tokens.size() == 4);
-    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Question));
-    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Period));
-    ZC_EXPECT(tokens[2].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens.size() == 3);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::QuestionDot));
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
   }
 }
 

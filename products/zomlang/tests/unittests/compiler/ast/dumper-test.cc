@@ -59,13 +59,13 @@ ZC_TEST("ASTDumper.DumpSourceFileText") {
   ASTDumper dumper(zc::mv(serializer));
 
   zc::Vector<zc::Own<zomlang::compiler::ast::Statement>> statements;
-  zc::Vector<zc::Own<BindingElement>> bindings;
+  zc::Vector<zc::Own<VariableDeclaration>> decls;
   // Create a binding element for the variable declaration list
   auto identifier = ast::factory::createIdentifier("testVar"_zc);
-  auto bindingElement = ast::factory::createBindingElement(zc::mv(identifier));
-  bindings.add(zc::mv(bindingElement));
+  auto variable = ast::factory::createVariableDeclaration(zc::mv(identifier));
+  decls.add(zc::mv(variable));
 
-  auto variableDecl = ast::factory::createVariableDeclarationList(zc::mv(bindings));
+  auto variableDecl = ast::factory::createVariableDeclarationList(zc::mv(decls));
   auto variableStmt = ast::factory::createVariableStatement(zc::mv(variableDecl));
   statements.add(zc::mv(variableStmt));
 
@@ -123,10 +123,10 @@ ZC_TEST("ASTDumper.DumpSourceFileJson") {
   ASTDumper dumper(zc::mv(serializer));
 
   zc::Vector<zc::Own<Statement>> statements;
-  zc::Vector<zc::Own<BindingElement>> bindings;
+  zc::Vector<zc::Own<VariableDeclaration>> bindings;
   // Create a proper BindingElement with an identifier
   auto identifier = ast::factory::createIdentifier("testVar"_zc);
-  auto bindingElement = ast::factory::createBindingElement(zc::mv(identifier));
+  auto bindingElement = ast::factory::createVariableDeclaration(zc::mv(identifier));
   bindings.add(zc::mv(bindingElement));
 
   auto variableDecl = ast::factory::createVariableDeclarationList(zc::mv(bindings));
@@ -150,9 +150,9 @@ ZC_TEST("ASTDumper.DumpSourceFileXML") {
   ASTDumper dumper(zc::mv(serializer));
 
   zc::Vector<zc::Own<Statement>> statements;
-  zc::Vector<zc::Own<BindingElement>> bindings;
+  zc::Vector<zc::Own<VariableDeclaration>> bindings;
   auto identifier = ast::factory::createIdentifier("testVar"_zc);
-  auto bindingElement = ast::factory::createBindingElement(zc::mv(identifier));
+  auto bindingElement = ast::factory::createVariableDeclaration(zc::mv(identifier));
   bindings.add(zc::mv(bindingElement));
 
   auto variableDecl = ast::factory::createVariableDeclarationList(zc::mv(bindings));
@@ -419,8 +419,8 @@ ZC_TEST("ASTDumper.DumpConditionalExpressionText") {
   auto test = ast::factory::createBooleanLiteral(true);
   auto consequent = ast::factory::createStringLiteral("yes"_zc);
   auto alternate = ast::factory::createStringLiteral("no"_zc);
-  auto expr = ast::factory::createConditionalExpression(zc::mv(test), zc::mv(consequent),
-                                                        zc::mv(alternate));
+  auto expr = ast::factory::createConditionalExpression(zc::mv(test), zc::none, zc::mv(consequent),
+                                                        zc::none, zc::mv(alternate));
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
   ASTDumper dumper(zc::mv(serializer));
@@ -433,8 +433,8 @@ ZC_TEST("ASTDumper.DumpConditionalExpressionJSON") {
   auto test = ast::factory::createBooleanLiteral(true);
   auto consequent = ast::factory::createStringLiteral("yes"_zc);
   auto alternate = ast::factory::createStringLiteral("no"_zc);
-  auto expr = ast::factory::createConditionalExpression(zc::mv(test), zc::mv(consequent),
-                                                        zc::mv(alternate));
+  auto expr = ast::factory::createConditionalExpression(zc::mv(test), zc::none, zc::mv(consequent),
+                                                        zc::none, zc::mv(alternate));
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kJSON);
   ASTDumper dumper(zc::mv(serializer));
@@ -447,8 +447,8 @@ ZC_TEST("ASTDumper.DumpConditionalExpressionXML") {
   auto test = ast::factory::createBooleanLiteral(true);
   auto consequent = ast::factory::createStringLiteral("yes"_zc);
   auto alternate = ast::factory::createStringLiteral("no"_zc);
-  auto expr = ast::factory::createConditionalExpression(zc::mv(test), zc::mv(consequent),
-                                                        zc::mv(alternate));
+  auto expr = ast::factory::createConditionalExpression(zc::mv(test), zc::none, zc::mv(consequent),
+                                                        zc::none, zc::mv(alternate));
   MockOutputStream output;
   auto serializer = createTestSerializer(output, TestSerializerType::kXML);
   ASTDumper dumper(zc::mv(serializer));
@@ -567,9 +567,9 @@ ZC_TEST("ASTDumper.DumpEmptyStatementXML") {
 // Test FunctionDeclaration dumping
 ZC_TEST("ASTDumper.DumpFunctionDeclarationText") {
   auto funcName = ast::factory::createIdentifier("testFunc"_zc);
-  zc::Vector<zc::Own<ast::BindingElement>> parameters;
-  auto param = ast::factory::createBindingElement(ast::factory::createIdentifier("param"_zc),
-                                                  zc::none, zc::none);
+  zc::Vector<zc::Own<ast::ParameterDeclaration>> parameters;
+  auto param = ast::factory::createParameterDeclaration(
+      {}, zc::none, ast::factory::createIdentifier("param"_zc), zc::none, zc::none, zc::none);
   parameters.add(zc::mv(param));
 
   zc::Vector<zc::Own<ast::Statement>> bodyStatements;

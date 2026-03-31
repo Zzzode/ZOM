@@ -15,9 +15,4 @@
 # Module Tests
 # Tests for module system, imports, and exports
 
-# TODO: Add subdirectories for specific module test categories when implemented
-# - imports
-# - exports
-# - resolution
-# - circular-deps
-# - namespaces
+add_lit_ast_tests_from_directory(${CMAKE_CURRENT_SOURCE_DIR})

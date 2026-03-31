@@ -17,6 +17,7 @@
 #include <type_traits>
 
 #include "zc/core/common.h"
+#include "zc/core/debug.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/kinds.h"

@@ -16,6 +16,7 @@
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/one-of.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/cast.h"
 #include "zomlang/compiler/ast/expression.h"
@@ -35,6 +36,7 @@ struct DeclarationImpl::Impl {
 };
 
 DeclarationImpl::DeclarationImpl() noexcept : impl(zc::heap<Impl>()) {}
+DeclarationImpl::~DeclarationImpl() noexcept(false) = default;
 
 zc::Maybe<const symbol::Symbol&> DeclarationImpl::getSymbol() const { return impl->symbol; }
 
@@ -44,25 +46,43 @@ void DeclarationImpl::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) { impl-
 // NamedDeclarationImpl::Impl
 
 struct NamedDeclarationImpl::Impl {
-  const zc::Own<Identifier> name;
+  const zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> name;
 };
 
-NamedDeclarationImpl::NamedDeclarationImpl(zc::Own<Identifier> name) noexcept
+NamedDeclarationImpl::NamedDeclarationImpl(
+    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> name) noexcept
     : DeclarationImpl(), impl(zc::heap<Impl>(zc::mv(name))) {}
 
-const Identifier& NamedDeclarationImpl::getName() const { return *impl->name; }
+NamedDeclarationImpl::~NamedDeclarationImpl() noexcept(false) = default;
+
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+NamedDeclarationImpl::getName() const {
+  ZC_SWITCH_ONEOF(impl->name) {
+    ZC_CASE_ONEOF(identifier, zc::Own<ast::Identifier>) {
+      return zc::some<const Identifier&>(*identifier);
+    }
+    ZC_CASE_ONEOF(pattern, zc::Own<BindingPattern>) {
+      return zc::some<const BindingPattern&>(*pattern);
+    }
+  }
+  ZC_UNREACHABLE;
+}
 
 // ================================================================================
 // BindingElement::Impl
 
 struct BindingElement::Impl : private NamedDeclarationImpl, private NodeImpl {
-  const zc::Maybe<zc::Own<TypeNode>> type;
+  const zc::Maybe<zc::Own<TokenNode>> dotDotDotToken;
+  const zc::Maybe<zc::Own<Identifier>> propertyName;
   const zc::Maybe<zc::Own<Expression>> initializer;
 
-  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Own<TypeNode>> t, zc::Maybe<zc::Own<Expression>> init)
-      : NamedDeclarationImpl(zc::mv(n)),
+  Impl(zc::Maybe<zc::Own<TokenNode>> dotDotDotToken, zc::Maybe<zc::Own<Identifier>> propertyName,
+       zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> nameOrPattern,
+       zc::Maybe<zc::Own<Expression>> init)
+      : NamedDeclarationImpl(zc::mv(nameOrPattern)),
         NodeImpl(SyntaxKind::BindingElement),
-        type(zc::mv(t)),
+        dotDotDotToken(zc::mv(dotDotDotToken)),
+        propertyName(zc::mv(propertyName)),
         initializer(zc::mv(init)) {}
 
   using NamedDeclarationImpl::getName;
@@ -75,15 +95,15 @@ struct BindingElement::Impl : private NamedDeclarationImpl, private NodeImpl {
 // ================================================================================
 // BindingElement
 
-BindingElement::BindingElement(zc::Own<Identifier> name, zc::Maybe<zc::Own<TypeNode>> type,
-                               zc::Maybe<zc::Own<Expression>> initializer) noexcept
-    : NamedDeclaration(), impl(zc::heap<Impl>(zc::mv(name), zc::mv(type), zc::mv(initializer))) {}
+BindingElement::BindingElement(
+    zc::Maybe<zc::Own<TokenNode>> dotDotDotToken, zc::Maybe<zc::Own<Identifier>> propertyName,
+    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> nameOrPattern,
+    zc::Maybe<zc::Own<Expression>> initializer) noexcept
+    : NamedDeclaration(),
+      impl(zc::heap<Impl>(zc::mv(dotDotDotToken), zc::mv(propertyName), zc::mv(nameOrPattern),
+                          zc::mv(initializer))) {}
 
 BindingElement::~BindingElement() noexcept(false) = default;
-
-const Identifier& BindingElement::getName() const { return impl->getName(); }
-
-zc::Maybe<const TypeNode&> BindingElement::getType() const { return impl->type; }
 
 zc::Maybe<const Expression&> BindingElement::getInitializer() const { return impl->initializer; }
 
@@ -101,16 +121,38 @@ void BindingElement::setSourceRange(const source::SourceRange&& range) {
 
 const source::SourceRange& BindingElement::getSourceRange() const { return impl->getSourceRange(); }
 
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> BindingElement::getName()
+    const {
+  return impl->getName();
+}
+
+zc::Maybe<const BindingPattern&> BindingElement::getBindingPattern() const {
+  auto name = impl->getName();
+  ZC_SWITCH_ONEOF(name) {
+    ZC_CASE_ONEOF(maybeId, zc::Maybe<const Identifier&>) { return zc::none; }
+    ZC_CASE_ONEOF(maybePattern, zc::Maybe<const BindingPattern&>) { return maybePattern; }
+  }
+  ZC_UNREACHABLE;
+}
+
 // ================================================================================
 // ParameterDeclaration::Impl
 
 struct ParameterDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
+  const zc::Vector<ast::SyntaxKind> modifiers;
+  const zc::Maybe<zc::Own<TokenNode>> dotDotDotToken;
+  const zc::Maybe<zc::Own<TokenNode>> questionToken;
   const zc::Maybe<zc::Own<TypeNode>> type;
   const zc::Maybe<zc::Own<Expression>> initializer;
 
-  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Own<TypeNode>> t, zc::Maybe<zc::Own<Expression>> init)
+  Impl(zc::Vector<ast::SyntaxKind> mods, zc::Maybe<zc::Own<TokenNode>> ddd,
+       zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> n, zc::Maybe<zc::Own<TokenNode>> qt,
+       zc::Maybe<zc::Own<TypeNode>> t, zc::Maybe<zc::Own<Expression>> init)
       : NamedDeclarationImpl(zc::mv(n)),
         NodeImpl(SyntaxKind::ParameterDeclaration),
+        modifiers(zc::mv(mods)),
+        dotDotDotToken(zc::mv(ddd)),
+        questionToken(zc::mv(qt)),
         type(zc::mv(t)),
         initializer(zc::mv(init)) {}
 
@@ -124,14 +166,33 @@ struct ParameterDeclaration::Impl : private NamedDeclarationImpl, private NodeIm
 // ================================================================================
 // ParameterDeclaration
 
-ParameterDeclaration::ParameterDeclaration(zc::Own<Identifier> name,
-                                           zc::Maybe<zc::Own<TypeNode>> type,
-                                           zc::Maybe<zc::Own<Expression>> initializer) noexcept
-    : NamedDeclaration(), impl(zc::heap<Impl>(zc::mv(name), zc::mv(type), zc::mv(initializer))) {}
+ParameterDeclaration::ParameterDeclaration(
+    zc::Vector<ast::SyntaxKind> modifiers, zc::Maybe<zc::Own<TokenNode>> dotDotDotToken,
+    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> name,
+    zc::Maybe<zc::Own<TokenNode>> questionToken, zc::Maybe<zc::Own<TypeNode>> type,
+    zc::Maybe<zc::Own<Expression>> initializer) noexcept
+    : NamedDeclaration(),
+      impl(zc::heap<Impl>(zc::mv(modifiers), zc::mv(dotDotDotToken), zc::mv(name),
+                          zc::mv(questionToken), zc::mv(type), zc::mv(initializer))) {}
 
 ParameterDeclaration::~ParameterDeclaration() noexcept(false) = default;
 
-const Identifier& ParameterDeclaration::getName() const { return impl->getName(); }
+zc::ArrayPtr<const ast::SyntaxKind> ParameterDeclaration::getModifiers() const {
+  return impl->modifiers;
+}
+
+zc::Maybe<const TokenNode&> ParameterDeclaration::getDotDotDotToken() const {
+  return impl->dotDotDotToken;
+}
+
+zc::Maybe<const TokenNode&> ParameterDeclaration::getQuestionToken() const {
+  return impl->questionToken;
+}
+
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+ParameterDeclaration::getName() const {
+  return impl->getName();
+}
 
 zc::Maybe<const TypeNode&> ParameterDeclaration::getType() const { return impl->type; }
 
@@ -159,14 +220,24 @@ const source::SourceRange& ParameterDeclaration::getSourceRange() const {
   return impl->getSourceRange();
 }
 
+zc::Maybe<const BindingPattern&> ParameterDeclaration::getBindingPattern() const {
+  auto name = impl->getName();
+  ZC_SWITCH_ONEOF(name) {
+    ZC_CASE_ONEOF(maybeId, zc::Maybe<const Identifier&>) { return zc::none; }
+    ZC_CASE_ONEOF(maybePattern, zc::Maybe<const BindingPattern&>) { return maybePattern; }
+  }
+  ZC_UNREACHABLE;
+}
+
 // ================================================================================
 // VariableDeclaration::Impl
 
 struct VariableDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
   const zc::Maybe<zc::Own<TypeNode>> type;
-  const zc::Own<Expression> initializer;
+  const zc::Maybe<zc::Own<Expression>> initializer;
 
-  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Own<TypeNode>> t, zc::Own<Expression> init)
+  Impl(zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> n, zc::Maybe<zc::Own<TypeNode>> t,
+       zc::Maybe<zc::Own<Expression>> init)
       : NamedDeclarationImpl(zc::mv(n)),
         NodeImpl(SyntaxKind::VariableDeclaration),
         type(zc::mv(t)),
@@ -182,19 +253,31 @@ struct VariableDeclaration::Impl : private NamedDeclarationImpl, private NodeImp
 // ================================================================================
 // VariableDeclaration
 
-VariableDeclaration::VariableDeclaration(zc::Own<ast::Identifier> name,
-                                         zc::Maybe<zc::Own<ast::TypeNode>> type,
-                                         zc::Own<ast::Expression> initializer) noexcept
+VariableDeclaration::VariableDeclaration(
+    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> name, zc::Maybe<zc::Own<TypeNode>> type,
+    zc::Maybe<zc::Own<Expression>> initializer) noexcept
     : NamedDeclaration(), impl(zc::heap<Impl>(zc::mv(name), zc::mv(type), zc::mv(initializer))) {}
 
 VariableDeclaration::~VariableDeclaration() noexcept(false) = default;
 
-const Identifier& VariableDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+VariableDeclaration::getName() const {
+  return impl->getName();
+}
+
+zc::Maybe<const BindingPattern&> VariableDeclaration::getBindingPattern() const {
+  auto name = impl->getName();
+  ZC_SWITCH_ONEOF(name) {
+    ZC_CASE_ONEOF(maybeId, zc::Maybe<const Identifier&>) { return zc::none; }
+    ZC_CASE_ONEOF(maybePattern, zc::Maybe<const BindingPattern&>) { return maybePattern; }
+  }
+  ZC_UNREACHABLE;
+}
 
 zc::Maybe<const TypeNode&> VariableDeclaration::getType() const { return impl->type; }
 
 zc::Maybe<const Expression&> VariableDeclaration::getInitializer() const {
-  return *impl->initializer;
+  return impl->initializer;
 }
 
 SyntaxKind VariableDeclaration::getKind() const { return SyntaxKind::VariableDeclaration; }
@@ -221,9 +304,9 @@ const source::SourceRange& VariableDeclaration::getSourceRange() const {
 // VariableDeclarationList::Impl
 
 struct VariableDeclarationList::Impl : private NodeImpl {
-  const NodeList<BindingElement> bindings;
+  const NodeList<VariableDeclaration> bindings;
 
-  explicit Impl(zc::Vector<zc::Own<BindingElement>>&& b)
+  explicit Impl(zc::Vector<zc::Own<VariableDeclaration>>&& b)
       : NodeImpl(SyntaxKind::VariableDeclarationList), bindings(zc::mv(b)) {}
 
   // Forward NodeImpl methods
@@ -235,12 +318,12 @@ struct VariableDeclarationList::Impl : private NodeImpl {
 // VariableDeclarationList
 
 VariableDeclarationList::VariableDeclarationList(
-    zc::Vector<zc::Own<BindingElement>>&& bindings) noexcept
+    zc::Vector<zc::Own<VariableDeclaration>>&& bindings) noexcept
     : Node(), impl(zc::heap<Impl>(zc::mv(bindings))) {}
 
 VariableDeclarationList::~VariableDeclarationList() noexcept(false) = default;
 
-const NodeList<BindingElement>& VariableDeclarationList::getBindings() const {
+const NodeList<VariableDeclaration>& VariableDeclarationList::getBindings() const {
   return impl->bindings;
 }
 
@@ -301,17 +384,17 @@ struct FunctionDeclaration::Impl : private NamedDeclarationImpl,
                                    private LocalsContainerImpl,
                                    private NodeImpl {
   const NodeList<TypeParameterDeclaration> typeParameters;
-  const NodeList<BindingElement> parameters;
+  const NodeList<ParameterDeclaration> parameters;
   const zc::Maybe<zc::Own<ReturnTypeNode>> returnType;
   const zc::Own<Statement> body;
 
-  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<TypeParameterDeclaration>>&& tp,
-       zc::Vector<zc::Own<BindingElement>>&& p, zc::Maybe<zc::Own<ReturnTypeNode>> r,
+  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tp,
+       zc::Vector<zc::Own<ParameterDeclaration>>&& p, zc::Maybe<zc::Own<ReturnTypeNode>> r,
        zc::Own<Statement> b)
       : NamedDeclarationImpl(zc::mv(n)),
         LocalsContainerImpl(),
         NodeImpl(SyntaxKind::FunctionDeclaration),
-        typeParameters(zc::mv(tp)),
+        typeParameters(zc::mv(tp).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
         parameters(zc::mv(p)),
         returnType(zc::mv(r)),
         body(zc::mv(b)) {}
@@ -336,9 +419,10 @@ struct FunctionDeclaration::Impl : private NamedDeclarationImpl,
 // FunctionDeclaration
 
 FunctionDeclaration::FunctionDeclaration(
-    zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-    zc::Vector<zc::Own<BindingElement>>&& parameters, zc::Maybe<zc::Own<ReturnTypeNode>> returnType,
-    zc::Own<Statement> body) noexcept
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType, zc::Own<Statement> body) noexcept
     : DeclarationStatement(),
       LocalsContainer(),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(typeParameters), zc::mv(parameters),
@@ -346,13 +430,16 @@ FunctionDeclaration::FunctionDeclaration(
 
 FunctionDeclaration::~FunctionDeclaration() noexcept(false) = default;
 
-const Identifier& FunctionDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+FunctionDeclaration::getName() const {
+  return impl->getName();
+}
 
 const NodeList<TypeParameterDeclaration>& FunctionDeclaration::getTypeParameters() const {
   return impl->typeParameters;
 }
 
-const NodeList<BindingElement>& FunctionDeclaration::getParameters() const {
+const NodeList<ParameterDeclaration>& FunctionDeclaration::getParameters() const {
   return impl->parameters;
 }
 
@@ -403,15 +490,15 @@ const source::SourceRange& FunctionDeclaration::getSourceRange() const {
 
 struct ClassDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
   const NodeList<TypeParameterDeclaration> typeParameters;
-  const zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses;
+  const NodeList<HeritageClause> heritageClauses;
   const NodeList<ClassElement> members;
 
-  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<TypeParameterDeclaration>>&& tp,
+  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tp,
        zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> hc, zc::Vector<zc::Own<ClassElement>>&& m)
       : NamedDeclarationImpl(zc::mv(n)),
         NodeImpl(SyntaxKind::ClassDeclaration),
-        typeParameters(zc::mv(tp)),
-        heritageClauses(zc::mv(hc)),
+        typeParameters(zc::mv(tp).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
+        heritageClauses(zc::mv(hc).orDefault(zc::Vector<zc::Own<HeritageClause>>())),
         members(zc::mv(m)) {}
 
   // Forward NodeImpl methods
@@ -427,23 +514,27 @@ struct ClassDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
 // ================================================================================
 // ClassDeclaration
 
-ClassDeclaration::ClassDeclaration(zc::Own<Identifier> name,
-                                   zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-                                   zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
-                                   zc::Vector<zc::Own<ClassElement>>&& members) noexcept
+ClassDeclaration::ClassDeclaration(
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
+    zc::Vector<zc::Own<ClassElement>>&& members) noexcept
     : DeclarationStatement(),
       impl(zc::heap<Impl>(zc::mv(name), zc::mv(typeParameters), zc::mv(heritageClauses),
                           zc::mv(members))) {}
 
 ClassDeclaration::~ClassDeclaration() noexcept(false) = default;
 
-const Identifier& ClassDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+ClassDeclaration::getName() const {
+  return impl->getName();
+}
 
 const NodeList<TypeParameterDeclaration>& ClassDeclaration::getTypeParameters() const {
   return impl->typeParameters;
 }
 
-zc::Maybe<const zc::Vector<zc::Own<HeritageClause>>&> ClassDeclaration::getHeritageClauses() const {
+const NodeList<HeritageClause>& ClassDeclaration::getHeritageClauses() const {
   return impl->heritageClauses;
 }
 
@@ -472,15 +563,15 @@ const source::SourceRange& ClassDeclaration::getSourceRange() const {
 
 struct InterfaceDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
   const NodeList<TypeParameterDeclaration> typeParameters;
-  const zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses;
+  const NodeList<HeritageClause> heritageClauses;
   const NodeList<InterfaceElement> members;
 
-  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<TypeParameterDeclaration>>&& tp,
+  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tp,
        zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> hc, zc::Vector<zc::Own<InterfaceElement>>&& m)
       : NamedDeclarationImpl(zc::mv(n)),
         NodeImpl(SyntaxKind::InterfaceDeclaration),
-        typeParameters(zc::mv(tp)),
-        heritageClauses(zc::mv(hc)),
+        typeParameters(zc::mv(tp).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
+        heritageClauses(zc::mv(hc).orDefault(zc::Vector<zc::Own<HeritageClause>>())),
         members(zc::mv(m)) {}
 
   // Forward NodeImpl methods
@@ -497,7 +588,8 @@ struct InterfaceDeclaration::Impl : private NamedDeclarationImpl, private NodeIm
 // InterfaceDeclaration
 
 InterfaceDeclaration::InterfaceDeclaration(
-    zc::Own<Identifier> name, zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
     zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
     zc::Vector<zc::Own<InterfaceElement>>&& members) noexcept
     : DeclarationStatement(),
@@ -506,7 +598,18 @@ InterfaceDeclaration::InterfaceDeclaration(
 
 InterfaceDeclaration::~InterfaceDeclaration() noexcept(false) = default;
 
-const Identifier& InterfaceDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+InterfaceDeclaration::getName() const {
+  return impl->getName();
+}
+
+const NodeList<TypeParameterDeclaration>& InterfaceDeclaration::getTypeParameters() const {
+  return impl->typeParameters;
+}
+
+const NodeList<HeritageClause>& InterfaceDeclaration::getHeritageClauses() const {
+  return impl->heritageClauses;
+}
 
 const NodeList<InterfaceElement>& InterfaceDeclaration::getMembers() const { return impl->members; }
 
@@ -534,11 +637,16 @@ const source::SourceRange& InterfaceDeclaration::getSourceRange() const {
 // StructDeclaration::Impl
 
 struct StructDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
-  const NodeList<Statement> members;
+  const NodeList<TypeParameterDeclaration> typeParameters;
+  const NodeList<HeritageClause> heritageClauses;
+  const NodeList<ClassElement> members;
 
-  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<Statement>>&& m)
+  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tp,
+       zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> hc, zc::Vector<zc::Own<ClassElement>>&& m)
       : NamedDeclarationImpl(zc::mv(n)),
         NodeImpl(SyntaxKind::StructDeclaration),
+        typeParameters(zc::mv(tp).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
+        heritageClauses(zc::mv(hc).orDefault(zc::Vector<zc::Own<HeritageClause>>())),
         members(zc::mv(m)) {}
 
   // Forward NodeImpl methods
@@ -554,15 +662,31 @@ struct StructDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl 
 // ================================================================================
 // StructDeclaration
 
-StructDeclaration::StructDeclaration(zc::Own<Identifier> name,
-                                     zc::Vector<zc::Own<Statement>>&& members) noexcept
-    : DeclarationStatement(), impl(zc::heap<Impl>(zc::mv(name), zc::mv(members))) {}
+StructDeclaration::StructDeclaration(
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
+    zc::Vector<zc::Own<ClassElement>>&& members) noexcept
+    : DeclarationStatement(),
+      impl(zc::heap<Impl>(zc::mv(name), zc::mv(typeParameters), zc::mv(heritageClauses),
+                          zc::mv(members))) {}
 
 StructDeclaration::~StructDeclaration() noexcept(false) = default;
 
-const Identifier& StructDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+StructDeclaration::getName() const {
+  return impl->getName();
+}
 
-const NodeList<Statement>& StructDeclaration::getMembers() const { return impl->members; }
+const NodeList<TypeParameterDeclaration>& StructDeclaration::getTypeParameters() const {
+  return impl->typeParameters;
+}
+
+const NodeList<HeritageClause>& StructDeclaration::getHeritageClauses() const {
+  return impl->heritageClauses;
+}
+
+const NodeList<ClassElement>& StructDeclaration::getMembers() const { return impl->members; }
 
 SyntaxKind StructDeclaration::getKind() const { return SyntaxKind::StructDeclaration; }
 
@@ -583,12 +707,66 @@ const source::SourceRange& StructDeclaration::getSourceRange() const {
 }
 
 // ================================================================================
+// EnumMember::Impl
+
+struct EnumMember::Impl : private NamedDeclarationImpl, private NodeImpl {
+  const zc::Maybe<zc::Own<Expression>> initializer;
+  const zc::Maybe<zc::Own<TupleTypeNode>> tupleType;
+
+  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Own<Expression>> init,
+       zc::Maybe<zc::Own<TupleTypeNode>> tuple)
+      : NamedDeclarationImpl(zc::mv(n)),
+        NodeImpl(SyntaxKind::EnumMember),
+        initializer(zc::mv(init)),
+        tupleType(zc::mv(tuple)) {}
+
+  using NamedDeclarationImpl::getName;
+  using NamedDeclarationImpl::getSymbol;
+  using NamedDeclarationImpl::setSymbol;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+// ================================================================================
+// EnumMember
+
+EnumMember::EnumMember(zc::Own<Identifier> name, zc::Maybe<zc::Own<Expression>> initializer,
+                       zc::Maybe<zc::Own<TupleTypeNode>> tupleType) noexcept
+    : DeclarationStatement(),
+      impl(zc::heap<Impl>(zc::mv(name), zc::mv(initializer), zc::mv(tupleType))) {}
+
+EnumMember::~EnumMember() noexcept(false) = default;
+
+zc::Maybe<const Expression&> EnumMember::getInitializer() const { return impl->initializer; }
+
+zc::Maybe<const TupleTypeNode&> EnumMember::getTupleType() const { return impl->tupleType; }
+
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> EnumMember::getName()
+    const {
+  return impl->getName();
+}
+
+SyntaxKind EnumMember::getKind() const { return SyntaxKind::EnumMember; }
+
+void EnumMember::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+zc::Maybe<const symbol::Symbol&> EnumMember::getSymbol() const { return impl->getSymbol(); }
+
+void EnumMember::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) { impl->setSymbol(symbol); }
+
+void EnumMember::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& EnumMember::getSourceRange() const { return impl->getSourceRange(); }
+
+// ================================================================================
 // EnumDeclaration::Impl
 
 struct EnumDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
-  const NodeList<Statement> members;
+  const NodeList<EnumMember> members;
 
-  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<Statement>>&& m)
+  Impl(zc::Own<Identifier> n, zc::Vector<zc::Own<EnumMember>>&& m)
       : NamedDeclarationImpl(zc::mv(n)),
         NodeImpl(SyntaxKind::EnumDeclaration),
         members(zc::mv(m)) {}
@@ -607,14 +785,17 @@ struct EnumDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
 // EnumDeclaration
 
 EnumDeclaration::EnumDeclaration(zc::Own<Identifier> name,
-                                 zc::Vector<zc::Own<Statement>>&& members) noexcept
+                                 zc::Vector<zc::Own<EnumMember>>&& members) noexcept
     : DeclarationStatement(), impl(zc::heap<Impl>(zc::mv(name), zc::mv(members))) {}
 
 EnumDeclaration::~EnumDeclaration() noexcept(false) = default;
 
-const Identifier& EnumDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> EnumDeclaration::getName()
+    const {
+  return impl->getName();
+}
 
-const NodeList<Statement>& EnumDeclaration::getMembers() const { return impl->members; }
+const NodeList<EnumMember>& EnumDeclaration::getMembers() const { return impl->members; }
 
 SyntaxKind EnumDeclaration::getKind() const { return SyntaxKind::EnumDeclaration; }
 
@@ -664,7 +845,10 @@ ErrorDeclaration::ErrorDeclaration(zc::Own<Identifier> name,
 
 ErrorDeclaration::~ErrorDeclaration() noexcept(false) = default;
 
-const Identifier& ErrorDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+ErrorDeclaration::getName() const {
+  return impl->getName();
+}
 
 const NodeList<Statement>& ErrorDeclaration::getMembers() const { return impl->members; }
 
@@ -690,10 +874,15 @@ const source::SourceRange& ErrorDeclaration::getSourceRange() const {
 // AliasDeclaration::Impl
 
 struct AliasDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
+  const NodeList<TypeParameterDeclaration> typeParameters;
   const zc::Own<TypeNode> type;
 
-  Impl(zc::Own<Identifier> n, zc::Own<TypeNode> t)
-      : NamedDeclarationImpl(zc::mv(n)), NodeImpl(SyntaxKind::AliasDeclaration), type(zc::mv(t)) {}
+  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tps,
+       zc::Own<TypeNode> t)
+      : NamedDeclarationImpl(zc::mv(n)),
+        NodeImpl(SyntaxKind::AliasDeclaration),
+        typeParameters(zc::mv(tps).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
+        type(zc::mv(t)) {}
 
   // Forward NodeImpl methods
   using NodeImpl::getSourceRange;
@@ -708,12 +897,24 @@ struct AliasDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
 // ================================================================================
 // AliasDeclaration
 
-AliasDeclaration::AliasDeclaration(zc::Own<Identifier> name, zc::Own<TypeNode> type) noexcept
-    : NamedDeclaration(), Statement(), impl(zc::heap<Impl>(zc::mv(name), zc::mv(type))) {}
+AliasDeclaration::AliasDeclaration(
+    zc::Own<Identifier> name,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Own<TypeNode> type) noexcept
+    : NamedDeclaration(),
+      Statement(),
+      impl(zc::heap<Impl>(zc::mv(name), zc::mv(typeParameters), zc::mv(type))) {}
 
 AliasDeclaration::~AliasDeclaration() noexcept(false) = default;
 
-const Identifier& AliasDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+AliasDeclaration::getName() const {
+  return impl->getName();
+}
+
+const NodeList<TypeParameterDeclaration>& AliasDeclaration::getTypeParameters() const {
+  return impl->typeParameters;
+}
 
 const TypeNode& AliasDeclaration::getType() const { return *impl->type; }
 
@@ -1053,6 +1254,44 @@ SyntaxKind IfStatement::getKind() const { return SyntaxKind::IfStatement; }
 void IfStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
+// LabeledStatement::Impl
+
+struct LabeledStatement::Impl : private NodeImpl {
+  const zc::Own<Identifier> label;
+  const zc::Own<Statement> statement;
+
+  Impl(zc::Own<Identifier> l, zc::Own<Statement> s)
+      : NodeImpl(SyntaxKind::LabeledStatement), label(zc::mv(l)), statement(zc::mv(s)) {}
+
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+// ================================================================================
+// LabeledStatement
+
+LabeledStatement::LabeledStatement(zc::Own<Identifier> label, zc::Own<Statement> statement) noexcept
+    : impl(zc::heap<Impl>(zc::mv(label), zc::mv(statement))) {}
+
+LabeledStatement::~LabeledStatement() noexcept(false) = default;
+
+const Identifier& LabeledStatement::getLabel() const { return *impl->label; }
+
+const Statement& LabeledStatement::getStatement() const { return *impl->statement; }
+
+void LabeledStatement::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& LabeledStatement::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+SyntaxKind LabeledStatement::getKind() const { return SyntaxKind::LabeledStatement; }
+
+void LabeledStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
 // BreakStatement::Impl
 
 struct BreakStatement::Impl : private NodeImpl {
@@ -1300,9 +1539,8 @@ ForStatement::ForStatement(zc::Maybe<zc::Own<Statement>> init,
 
 ForStatement::~ForStatement() noexcept(false) = default;
 
-zc::Maybe<const Expression&> ForStatement::getInitializer() const {
-  // Note: This is a simplification - in reality, init could be a Statement
-  // For now, we'll return none to avoid compilation errors
+zc::Maybe<const Statement&> ForStatement::getInitializer() const {
+  ZC_IF_SOME(init, impl->init) { return *init; }
   return zc::none;
 }
 
@@ -1339,6 +1577,74 @@ zc::Maybe<const LocalsContainer&> ForStatement::getNextContainer() const {
 }
 
 void ForStatement::setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) {
+  const_cast<Impl*>(impl.get())->setNextContainer(nextContainer);
+}
+
+// ================================================================================
+// ForInStatement::Impl
+
+struct ForInStatement::Impl : private NodeImpl, private LocalsContainerImpl {
+  const zc::Own<Statement> initializer;
+  const zc::Own<Expression> expression;
+  const zc::Own<Statement> body;
+
+  Impl(zc::Own<Statement> i, zc::Own<Expression> e, zc::Own<Statement> b)
+      : NodeImpl(SyntaxKind::ForInStatement),
+        LocalsContainerImpl(),
+        initializer(zc::mv(i)),
+        expression(zc::mv(e)),
+        body(zc::mv(b)) {}
+
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+
+  // Forward LocalsContainerImpl methods
+  using LocalsContainerImpl::getLocals;
+  using LocalsContainerImpl::getNextContainer;
+  using LocalsContainerImpl::setLocals;
+  using LocalsContainerImpl::setNextContainer;
+};
+
+// ================================================================================
+// ForInStatement
+
+ForInStatement::ForInStatement(zc::Own<Statement> initializer, zc::Own<Expression> expression,
+                               zc::Own<Statement> body) noexcept
+    : IterationStatement(),
+      LocalsContainer(),
+      impl(zc::heap<Impl>(zc::mv(initializer), zc::mv(expression), zc::mv(body))) {}
+
+ForInStatement::~ForInStatement() noexcept(false) = default;
+
+const Statement& ForInStatement::getInitializer() const { return *impl->initializer; }
+
+const Expression& ForInStatement::getExpression() const { return *impl->expression; }
+
+const Statement& ForInStatement::getBody() const { return *impl->body; }
+
+void ForInStatement::setSourceRange(const source::SourceRange&& range) {
+  const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& ForInStatement::getSourceRange() const { return impl->getSourceRange(); }
+
+SyntaxKind ForInStatement::getKind() const { return SyntaxKind::ForInStatement; }
+
+void ForInStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+zc::Maybe<const symbol::SymbolTable&> ForInStatement::getLocals() const {
+  return impl->getLocals();
+}
+
+void ForInStatement::setLocals(zc::Maybe<const symbol::SymbolTable&> locals) {
+  const_cast<Impl*>(impl.get())->setLocals(locals);
+}
+
+zc::Maybe<const LocalsContainer&> ForInStatement::getNextContainer() const {
+  return impl->getNextContainer();
+}
+
+void ForInStatement::setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) {
   const_cast<Impl*>(impl.get())->setNextContainer(nextContainer);
 }
 
@@ -1385,15 +1691,17 @@ const source::SourceRange& HeritageClause::getSourceRange() const { return impl-
 // PropertySignature::Impl
 
 struct PropertySignature::Impl : private NamedDeclarationImpl, private NodeImpl {
-  const bool optional;
+  const zc::Vector<ast::SyntaxKind> modifiers;
+  const zc::Maybe<zc::Own<ast::TokenNode>> optional;
   const zc::Maybe<zc::Own<TypeNode>> type;
   const zc::Maybe<zc::Own<Expression>> initializer;
 
-  Impl(zc::Own<Identifier> n, bool opt, zc::Maybe<zc::Own<TypeNode>> t,
-       zc::Maybe<zc::Own<Expression>> init)
+  Impl(zc::Vector<ast::SyntaxKind> m, zc::Own<Identifier> n, zc::Maybe<zc::Own<ast::TokenNode>> opt,
+       zc::Maybe<zc::Own<TypeNode>> t, zc::Maybe<zc::Own<Expression>> init)
       : NamedDeclarationImpl(zc::mv(n)),
         NodeImpl(SyntaxKind::PropertySignature),
-        optional(opt),
+        modifiers(zc::mv(m)),
+        optional(zc::mv(opt)),
         type(zc::mv(t)),
         initializer(zc::mv(init)) {}
 
@@ -1404,18 +1712,30 @@ struct PropertySignature::Impl : private NamedDeclarationImpl, private NodeImpl 
   using NodeImpl::setSourceRange;
 };
 
-PropertySignature::PropertySignature(zc::Own<Identifier> name, bool optional,
+PropertySignature::PropertySignature(zc::Vector<ast::SyntaxKind> modifiers,
+                                     zc::Own<Identifier> name,
+                                     zc::Maybe<zc::Own<ast::TokenNode>> optional,
                                      zc::Maybe<zc::Own<TypeNode>> type,
                                      zc::Maybe<zc::Own<Expression>> initializer) noexcept
-    : impl(zc::heap<Impl>(zc::mv(name), optional, zc::mv(type), zc::mv(initializer))) {}
+    : impl(zc::heap<Impl>(zc::mv(modifiers), zc::mv(name), zc::mv(optional), zc::mv(type),
+                          zc::mv(initializer))) {}
 
 PropertySignature::~PropertySignature() noexcept(false) = default;
 
-const Identifier& PropertySignature::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+PropertySignature::getName() const {
+  return impl->getName();
+}
 
-bool PropertySignature::isOptional() const { return impl->optional; }
+zc::ArrayPtr<const ast::SyntaxKind> PropertySignature::getModifiers() const {
+  return impl->modifiers;
+}
+
+bool PropertySignature::isOptional() const { return impl->optional != zc::none; }
 
 zc::Maybe<const TypeNode&> PropertySignature::getType() const { return impl->type; }
+
+zc::Maybe<const Expression&> PropertySignature::getInitializer() const { return impl->initializer; }
 
 SyntaxKind PropertySignature::getKind() const { return SyntaxKind::PropertySignature; }
 
@@ -1441,18 +1761,21 @@ const source::SourceRange& PropertySignature::getSourceRange() const {
 struct MethodSignature::Impl : private NamedDeclarationImpl,
                                private LocalsContainerImpl,
                                private NodeImpl {
-  const bool optional;
+  const zc::Vector<ast::SyntaxKind> modifiers;
+  const zc::Maybe<zc::Own<ast::TokenNode>> optional;
   const NodeList<TypeParameterDeclaration> typeParameters;
-  const NodeList<BindingElement> parameters;
+  const NodeList<ParameterDeclaration> parameters;
   const zc::Maybe<zc::Own<ReturnTypeNode>> returnType;
 
-  Impl(zc::Own<Identifier> n, bool opt, zc::Vector<zc::Own<TypeParameterDeclaration>>&& tp,
-       zc::Vector<zc::Own<BindingElement>>&& p, zc::Maybe<zc::Own<ReturnTypeNode>> r)
+  Impl(zc::Vector<ast::SyntaxKind> m, zc::Own<Identifier> n, zc::Maybe<zc::Own<ast::TokenNode>> opt,
+       zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tp,
+       zc::Vector<zc::Own<ParameterDeclaration>>&& p, zc::Maybe<zc::Own<ReturnTypeNode>> r)
       : NamedDeclarationImpl(zc::mv(n)),
         LocalsContainerImpl(),
         NodeImpl(SyntaxKind::MethodSignature),
-        optional(opt),
-        typeParameters(zc::mv(tp)),
+        modifiers(zc::mv(m)),
+        optional(zc::mv(opt)),
+        typeParameters(zc::mv(tp).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
         parameters(zc::mv(p)),
         returnType(zc::mv(r)) {}
 
@@ -1467,24 +1790,35 @@ struct MethodSignature::Impl : private NamedDeclarationImpl,
   using NodeImpl::setSourceRange;
 };
 
-MethodSignature::MethodSignature(zc::Own<Identifier> name, bool optional,
-                                 zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-                                 zc::Vector<zc::Own<BindingElement>>&& parameters,
-                                 zc::Maybe<zc::Own<ReturnTypeNode>> returnType) noexcept
-    : impl(zc::heap<Impl>(zc::mv(name), optional, zc::mv(typeParameters), zc::mv(parameters),
-                          zc::mv(returnType))) {}
+MethodSignature::MethodSignature(
+    zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+    zc::Maybe<zc::Own<ast::TokenNode>> optional,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType) noexcept
+    : impl(zc::heap<Impl>(zc::mv(modifiers), zc::mv(name), zc::mv(optional), zc::mv(typeParameters),
+                          zc::mv(parameters), zc::mv(returnType))) {}
 
 MethodSignature::~MethodSignature() noexcept(false) = default;
 
-const Identifier& MethodSignature::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> MethodSignature::getName()
+    const {
+  return impl->getName();
+}
 
-bool MethodSignature::isOptional() const { return impl->optional; }
+zc::ArrayPtr<const ast::SyntaxKind> MethodSignature::getModifiers() const {
+  return impl->modifiers;
+}
+
+bool MethodSignature::isOptional() const { return impl->optional != zc::none; }
 
 const NodeList<TypeParameterDeclaration>& MethodSignature::getTypeParameters() const {
   return impl->typeParameters;
 }
 
-const NodeList<BindingElement>& MethodSignature::getParameters() const { return impl->parameters; }
+const NodeList<ParameterDeclaration>& MethodSignature::getParameters() const {
+  return impl->parameters;
+}
 
 zc::Maybe<const ReturnTypeNode&> MethodSignature::getReturnType() const { return impl->returnType; }
 
@@ -1522,6 +1856,50 @@ void MethodSignature::setNextContainer(zc::Maybe<const LocalsContainer&> nextCon
   impl->setNextContainer(nextContainer);
 }
 
+struct SemicolonInterfaceElement::Impl : private NamedDeclarationImpl, private NodeImpl {
+  Impl()
+      : NamedDeclarationImpl(zc::heap<Identifier>(zc::str(";"))),
+        NodeImpl(SyntaxKind::SemicolonInterfaceElement) {}
+
+  using NamedDeclarationImpl::getName;
+  using NamedDeclarationImpl::getSymbol;
+  using NamedDeclarationImpl::setSymbol;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+SemicolonInterfaceElement::SemicolonInterfaceElement() noexcept
+    : InterfaceElement(), impl(zc::heap<Impl>()) {}
+
+SemicolonInterfaceElement::~SemicolonInterfaceElement() noexcept(false) = default;
+
+SyntaxKind SemicolonInterfaceElement::getKind() const {
+  return SyntaxKind::SemicolonInterfaceElement;
+}
+
+void SemicolonInterfaceElement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+void SemicolonInterfaceElement::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& SemicolonInterfaceElement::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+SemicolonInterfaceElement::getName() const {
+  return impl->getName();
+}
+
+zc::Maybe<const symbol::Symbol&> SemicolonInterfaceElement::getSymbol() const {
+  return impl->getSymbol();
+}
+
+void SemicolonInterfaceElement::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) {
+  impl->setSymbol(symbol);
+}
+
 // ================================================================================
 // SemicolonClassElement::Impl
 
@@ -1556,7 +1934,10 @@ const source::SourceRange& SemicolonClassElement::getSourceRange() const {
   return impl->getSourceRange();
 }
 
-const Identifier& SemicolonClassElement::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+SemicolonClassElement::getName() const {
+  return impl->getName();
+}
 
 zc::Maybe<const symbol::Symbol&> SemicolonClassElement::getSymbol() const {
   return impl->getSymbol();
@@ -1567,16 +1948,498 @@ void SemicolonClassElement::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) {
 }
 
 // ================================================================================
+// MethodDeclaration::Impl
+
+struct MethodDeclaration::Impl : private NamedDeclarationImpl,
+                                 private LocalsContainerImpl,
+                                 private NodeImpl {
+  const zc::Vector<ast::SyntaxKind> modifiers;
+  const zc::Maybe<zc::Own<ast::TokenNode>> optional;
+  const NodeList<TypeParameterDeclaration> typeParameters;
+  const NodeList<ParameterDeclaration> parameters;
+  const zc::Maybe<zc::Own<ReturnTypeNode>> returnType;
+  const zc::Maybe<zc::Own<Statement>> body;
+
+  Impl(zc::Vector<ast::SyntaxKind> m, zc::Own<Identifier> n, zc::Maybe<zc::Own<ast::TokenNode>> opt,
+       zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tp,
+       zc::Vector<zc::Own<ParameterDeclaration>>&& p, zc::Maybe<zc::Own<ReturnTypeNode>> r,
+       zc::Maybe<zc::Own<Statement>> b)
+      : NamedDeclarationImpl(zc::mv(n)),
+        LocalsContainerImpl(),
+        NodeImpl(SyntaxKind::MethodDeclaration),
+        modifiers(zc::mv(m)),
+        optional(zc::mv(opt)),
+        typeParameters(zc::mv(tp).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
+        parameters(zc::mv(p)),
+        returnType(zc::mv(r)),
+        body(zc::mv(b)) {}
+
+  using LocalsContainerImpl::getLocals;
+  using LocalsContainerImpl::getNextContainer;
+  using LocalsContainerImpl::setLocals;
+  using LocalsContainerImpl::setNextContainer;
+  using NamedDeclarationImpl::getName;
+  using NamedDeclarationImpl::getSymbol;
+  using NamedDeclarationImpl::setSymbol;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+// ================================================================================
+// MethodDeclaration
+
+MethodDeclaration::MethodDeclaration(
+    zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+    zc::Maybe<zc::Own<ast::TokenNode>> optional,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType, zc::Maybe<zc::Own<Statement>> body) noexcept
+    : ClassElement(),
+      LocalsContainer(),
+      impl(zc::heap<Impl>(zc::mv(modifiers), zc::mv(name), zc::mv(optional), zc::mv(typeParameters),
+                          zc::mv(parameters), zc::mv(returnType), zc::mv(body))) {}
+
+MethodDeclaration::~MethodDeclaration() noexcept(false) = default;
+
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+MethodDeclaration::getName() const {
+  return impl->getName();
+}
+
+zc::ArrayPtr<const ast::SyntaxKind> MethodDeclaration::getModifiers() const {
+  return impl->modifiers;
+}
+
+bool MethodDeclaration::isOptional() const { return impl->optional != zc::none; }
+
+const NodeList<TypeParameterDeclaration>& MethodDeclaration::getTypeParameters() const {
+  return impl->typeParameters;
+}
+
+const NodeList<ParameterDeclaration>& MethodDeclaration::getParameters() const {
+  return impl->parameters;
+}
+
+zc::Maybe<const ReturnTypeNode&> MethodDeclaration::getReturnType() const {
+  return impl->returnType;
+}
+
+zc::Maybe<const Statement&> MethodDeclaration::getBody() const { return impl->body; }
+
+zc::Maybe<const symbol::SymbolTable&> MethodDeclaration::getLocals() const {
+  return impl->getLocals();
+}
+
+void MethodDeclaration::setLocals(zc::Maybe<const symbol::SymbolTable&> locals) {
+  impl->setLocals(locals);
+}
+
+zc::Maybe<const LocalsContainer&> MethodDeclaration::getNextContainer() const {
+  return impl->getNextContainer();
+}
+
+void MethodDeclaration::setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) {
+  impl->setNextContainer(nextContainer);
+}
+
+SyntaxKind MethodDeclaration::getKind() const { return SyntaxKind::MethodDeclaration; }
+
+void MethodDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+zc::Maybe<const symbol::Symbol&> MethodDeclaration::getSymbol() const { return impl->getSymbol(); }
+
+void MethodDeclaration::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) {
+  impl->setSymbol(symbol);
+}
+
+void MethodDeclaration::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& MethodDeclaration::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+struct InitDeclaration::Impl : private NamedDeclarationImpl,
+                               private LocalsContainerImpl,
+                               private NodeImpl {
+  const zc::Vector<ast::SyntaxKind> modifiers;
+  const NodeList<TypeParameterDeclaration> typeParameters;
+  const NodeList<ParameterDeclaration> parameters;
+  const zc::Maybe<zc::Own<ReturnTypeNode>> returnType;
+  const zc::Maybe<zc::Own<Statement>> body;
+
+  Impl(zc::Vector<ast::SyntaxKind> m, zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tp,
+       zc::Vector<zc::Own<ParameterDeclaration>>&& p, zc::Maybe<zc::Own<ReturnTypeNode>> r,
+       zc::Maybe<zc::Own<Statement>> b)
+      : NamedDeclarationImpl(zc::heap<Identifier>("init"_zc)),
+        LocalsContainerImpl(),
+        NodeImpl(SyntaxKind::InitDeclaration),
+        modifiers(zc::mv(m)),
+        typeParameters(zc::mv(tp).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
+        parameters(zc::mv(p)),
+        returnType(zc::mv(r)),
+        body(zc::mv(b)) {}
+
+  using LocalsContainerImpl::getLocals;
+  using LocalsContainerImpl::getNextContainer;
+  using LocalsContainerImpl::setLocals;
+  using LocalsContainerImpl::setNextContainer;
+  using NamedDeclarationImpl::getName;
+  using NamedDeclarationImpl::getSymbol;
+  using NamedDeclarationImpl::setSymbol;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+InitDeclaration::InitDeclaration(
+    zc::Vector<ast::SyntaxKind> modifiers,
+    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+    zc::Maybe<zc::Own<ReturnTypeNode>> returnType, zc::Maybe<zc::Own<Statement>> body) noexcept
+    : ClassElement(),
+      LocalsContainer(),
+      impl(zc::heap<Impl>(zc::mv(modifiers), zc::mv(typeParameters), zc::mv(parameters),
+                          zc::mv(returnType), zc::mv(body))) {}
+
+InitDeclaration::~InitDeclaration() noexcept(false) = default;
+
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> InitDeclaration::getName()
+    const {
+  return impl->getName();
+}
+
+zc::ArrayPtr<const ast::SyntaxKind> InitDeclaration::getModifiers() const {
+  return impl->modifiers;
+}
+
+const NodeList<TypeParameterDeclaration>& InitDeclaration::getTypeParameters() const {
+  return impl->typeParameters;
+}
+
+const NodeList<ParameterDeclaration>& InitDeclaration::getParameters() const {
+  return impl->parameters;
+}
+
+zc::Maybe<const ReturnTypeNode&> InitDeclaration::getReturnType() const { return impl->returnType; }
+
+zc::Maybe<const Statement&> InitDeclaration::getBody() const { return impl->body; }
+
+zc::Maybe<const symbol::SymbolTable&> InitDeclaration::getLocals() const {
+  return impl->getLocals();
+}
+
+void InitDeclaration::setLocals(zc::Maybe<const symbol::SymbolTable&> locals) {
+  impl->setLocals(locals);
+}
+
+zc::Maybe<const LocalsContainer&> InitDeclaration::getNextContainer() const {
+  return impl->getNextContainer();
+}
+
+void InitDeclaration::setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) {
+  impl->setNextContainer(nextContainer);
+}
+
+SyntaxKind InitDeclaration::getKind() const { return SyntaxKind::InitDeclaration; }
+
+void InitDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+zc::Maybe<const symbol::Symbol&> InitDeclaration::getSymbol() const { return impl->getSymbol(); }
+
+void InitDeclaration::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) {
+  impl->setSymbol(symbol);
+}
+
+void InitDeclaration::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& InitDeclaration::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+struct DeinitDeclaration::Impl : private NamedDeclarationImpl,
+                                 private LocalsContainerImpl,
+                                 private NodeImpl {
+  const zc::Vector<ast::SyntaxKind> modifiers;
+  const zc::Maybe<zc::Own<Statement>> body;
+
+  Impl(zc::Vector<ast::SyntaxKind> m, zc::Maybe<zc::Own<Statement>> b)
+      : NamedDeclarationImpl(zc::heap<Identifier>("deinit"_zc)),
+        LocalsContainerImpl(),
+        NodeImpl(SyntaxKind::DeinitDeclaration),
+        modifiers(zc::mv(m)),
+        body(zc::mv(b)) {}
+
+  using LocalsContainerImpl::getLocals;
+  using LocalsContainerImpl::getNextContainer;
+  using LocalsContainerImpl::setLocals;
+  using LocalsContainerImpl::setNextContainer;
+  using NamedDeclarationImpl::getName;
+  using NamedDeclarationImpl::getSymbol;
+  using NamedDeclarationImpl::setSymbol;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+DeinitDeclaration::DeinitDeclaration(zc::Vector<ast::SyntaxKind> modifiers,
+                                     zc::Maybe<zc::Own<Statement>> body) noexcept
+    : ClassElement(), LocalsContainer(), impl(zc::heap<Impl>(zc::mv(modifiers), zc::mv(body))) {}
+
+DeinitDeclaration::~DeinitDeclaration() noexcept(false) = default;
+
+zc::ArrayPtr<const ast::SyntaxKind> DeinitDeclaration::getModifiers() const {
+  return impl->modifiers;
+}
+
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+DeinitDeclaration::getName() const {
+  return impl->getName();
+}
+
+zc::Maybe<const Statement&> DeinitDeclaration::getBody() const { return impl->body; }
+
+zc::Maybe<const symbol::SymbolTable&> DeinitDeclaration::getLocals() const {
+  return impl->getLocals();
+}
+
+void DeinitDeclaration::setLocals(zc::Maybe<const symbol::SymbolTable&> locals) {
+  impl->setLocals(locals);
+}
+
+zc::Maybe<const LocalsContainer&> DeinitDeclaration::getNextContainer() const {
+  return impl->getNextContainer();
+}
+
+void DeinitDeclaration::setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) {
+  impl->setNextContainer(nextContainer);
+}
+
+SyntaxKind DeinitDeclaration::getKind() const { return SyntaxKind::DeinitDeclaration; }
+
+void DeinitDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+zc::Maybe<const symbol::Symbol&> DeinitDeclaration::getSymbol() const { return impl->getSymbol(); }
+
+void DeinitDeclaration::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) {
+  impl->setSymbol(symbol);
+}
+
+void DeinitDeclaration::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& DeinitDeclaration::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+struct GetAccessor::Impl : private NamedDeclarationImpl,
+                           private LocalsContainerImpl,
+                           private NodeImpl {
+  const zc::Vector<ast::SyntaxKind> modifiers;
+  const NodeList<TypeParameterDeclaration> typeParameters;
+  const NodeList<ParameterDeclaration> parameters;
+  const zc::Maybe<zc::Own<ReturnTypeNode>> returnType;
+  const zc::Maybe<zc::Own<Statement>> body;
+
+  Impl(zc::Vector<ast::SyntaxKind> m, zc::Own<Identifier> n,
+       zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tp,
+       zc::Vector<zc::Own<ParameterDeclaration>>&& p, zc::Maybe<zc::Own<ReturnTypeNode>> r,
+       zc::Maybe<zc::Own<Statement>> b)
+      : NamedDeclarationImpl(zc::mv(n)),
+        LocalsContainerImpl(),
+        NodeImpl(SyntaxKind::GetAccessor),
+        modifiers(zc::mv(m)),
+        typeParameters(zc::mv(tp).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
+        parameters(zc::mv(p)),
+        returnType(zc::mv(r)),
+        body(zc::mv(b)) {}
+
+  using LocalsContainerImpl::getLocals;
+  using LocalsContainerImpl::getNextContainer;
+  using LocalsContainerImpl::setLocals;
+  using LocalsContainerImpl::setNextContainer;
+  using NamedDeclarationImpl::getName;
+  using NamedDeclarationImpl::getSymbol;
+  using NamedDeclarationImpl::setSymbol;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+// ================================================================================
+// GetAccessor
+
+GetAccessor::GetAccessor(zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+                         zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                         zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+                         zc::Maybe<zc::Own<ReturnTypeNode>> returnType,
+                         zc::Maybe<zc::Own<Statement>> body) noexcept
+    : ClassElement(),
+      LocalsContainer(),
+      impl(zc::heap<Impl>(zc::mv(modifiers), zc::mv(name), zc::mv(typeParameters),
+                          zc::mv(parameters), zc::mv(returnType), zc::mv(body))) {}
+
+GetAccessor::~GetAccessor() noexcept(false) = default;
+
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> GetAccessor::getName()
+    const {
+  return impl->getName();
+}
+
+zc::ArrayPtr<const ast::SyntaxKind> GetAccessor::getModifiers() const { return impl->modifiers; }
+
+const NodeList<TypeParameterDeclaration>& GetAccessor::getTypeParameters() const {
+  return impl->typeParameters;
+}
+
+const NodeList<ParameterDeclaration>& GetAccessor::getParameters() const {
+  return impl->parameters;
+}
+
+zc::Maybe<const ReturnTypeNode&> GetAccessor::getReturnType() const { return impl->returnType; }
+
+zc::Maybe<const Statement&> GetAccessor::getBody() const { return impl->body; }
+
+zc::Maybe<const symbol::SymbolTable&> GetAccessor::getLocals() const { return impl->getLocals(); }
+
+void GetAccessor::setLocals(zc::Maybe<const symbol::SymbolTable&> locals) {
+  impl->setLocals(locals);
+}
+
+zc::Maybe<const LocalsContainer&> GetAccessor::getNextContainer() const {
+  return impl->getNextContainer();
+}
+
+void GetAccessor::setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) {
+  impl->setNextContainer(nextContainer);
+}
+
+SyntaxKind GetAccessor::getKind() const { return SyntaxKind::GetAccessor; }
+
+void GetAccessor::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+zc::Maybe<const symbol::Symbol&> GetAccessor::getSymbol() const { return impl->getSymbol(); }
+
+void GetAccessor::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) { impl->setSymbol(symbol); }
+
+void GetAccessor::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& GetAccessor::getSourceRange() const { return impl->getSourceRange(); }
+
+// ================================================================================
+// SetAccessor::Impl
+
+struct SetAccessor::Impl : private NamedDeclarationImpl,
+                           private LocalsContainerImpl,
+                           private NodeImpl {
+  const zc::Vector<ast::SyntaxKind> modifiers;
+  const NodeList<TypeParameterDeclaration> typeParameters;
+  const NodeList<ParameterDeclaration> parameters;
+  const zc::Maybe<zc::Own<ReturnTypeNode>> returnType;
+  const zc::Maybe<zc::Own<Statement>> body;
+
+  Impl(zc::Vector<ast::SyntaxKind> m, zc::Own<Identifier> n,
+       zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> tp,
+       zc::Vector<zc::Own<ParameterDeclaration>>&& p, zc::Maybe<zc::Own<ReturnTypeNode>> r,
+       zc::Maybe<zc::Own<Statement>> b)
+      : NamedDeclarationImpl(zc::mv(n)),
+        LocalsContainerImpl(),
+        NodeImpl(SyntaxKind::SetAccessor),
+        modifiers(zc::mv(m)),
+        typeParameters(zc::mv(tp).orDefault(zc::Vector<zc::Own<TypeParameterDeclaration>>())),
+        parameters(zc::mv(p)),
+        returnType(zc::mv(r)),
+        body(zc::mv(b)) {}
+
+  using LocalsContainerImpl::getLocals;
+  using LocalsContainerImpl::getNextContainer;
+  using LocalsContainerImpl::setLocals;
+  using LocalsContainerImpl::setNextContainer;
+  using NamedDeclarationImpl::getName;
+  using NamedDeclarationImpl::getSymbol;
+  using NamedDeclarationImpl::setSymbol;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setSourceRange;
+};
+
+// ================================================================================
+// SetAccessor
+
+SetAccessor::SetAccessor(zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+                         zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                         zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+                         zc::Maybe<zc::Own<ReturnTypeNode>> returnType,
+                         zc::Maybe<zc::Own<Statement>> body) noexcept
+    : ClassElement(),
+      LocalsContainer(),
+      impl(zc::heap<Impl>(zc::mv(modifiers), zc::mv(name), zc::mv(typeParameters),
+                          zc::mv(parameters), zc::mv(returnType), zc::mv(body))) {}
+
+SetAccessor::~SetAccessor() noexcept(false) = default;
+
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> SetAccessor::getName()
+    const {
+  return impl->getName();
+}
+
+zc::ArrayPtr<const ast::SyntaxKind> SetAccessor::getModifiers() const { return impl->modifiers; }
+
+const NodeList<TypeParameterDeclaration>& SetAccessor::getTypeParameters() const {
+  return impl->typeParameters;
+}
+
+const NodeList<ParameterDeclaration>& SetAccessor::getParameters() const {
+  return impl->parameters;
+}
+
+zc::Maybe<const ReturnTypeNode&> SetAccessor::getReturnType() const { return impl->returnType; }
+
+zc::Maybe<const Statement&> SetAccessor::getBody() const { return impl->body; }
+
+zc::Maybe<const symbol::SymbolTable&> SetAccessor::getLocals() const { return impl->getLocals(); }
+
+void SetAccessor::setLocals(zc::Maybe<const symbol::SymbolTable&> locals) {
+  impl->setLocals(locals);
+}
+
+zc::Maybe<const LocalsContainer&> SetAccessor::getNextContainer() const {
+  return impl->getNextContainer();
+}
+
+void SetAccessor::setNextContainer(zc::Maybe<const LocalsContainer&> nextContainer) {
+  impl->setNextContainer(nextContainer);
+}
+
+SyntaxKind SetAccessor::getKind() const { return SyntaxKind::SetAccessor; }
+
+void SetAccessor::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+zc::Maybe<const symbol::Symbol&> SetAccessor::getSymbol() const { return impl->getSymbol(); }
+
+void SetAccessor::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) { impl->setSymbol(symbol); }
+
+void SetAccessor::setSourceRange(const source::SourceRange&& range) {
+  impl->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& SetAccessor::getSourceRange() const { return impl->getSourceRange(); }
+
+// ================================================================================
 // PropertyDeclaration::Impl
 
 struct PropertyDeclaration::Impl : private NamedDeclarationImpl, private NodeImpl {
+  const zc::Vector<ast::SyntaxKind> modifiers;
   const zc::Maybe<zc::Own<TypeNode>> type;
   const zc::Maybe<zc::Own<Expression>> initializer;
 
-  Impl(zc::Own<Identifier> n, zc::Maybe<zc::Own<TypeNode>> t,
+  Impl(zc::Vector<ast::SyntaxKind> mods, zc::Own<Identifier> n, zc::Maybe<zc::Own<TypeNode>> t,
        zc::Maybe<zc::Own<Expression>> initializer)
       : NamedDeclarationImpl(zc::mv(n)),
         NodeImpl(SyntaxKind::PropertyDeclaration),
+        modifiers(zc::mv(mods)),
         type(zc::mv(t)),
         initializer(zc::mv(initializer)) {}
 
@@ -1590,16 +2453,29 @@ struct PropertyDeclaration::Impl : private NamedDeclarationImpl, private NodeImp
 // ================================================================================
 // PropertyDeclaration
 
-PropertyDeclaration::PropertyDeclaration(zc::Own<Identifier> name,
+PropertyDeclaration::PropertyDeclaration(zc::Vector<ast::SyntaxKind> modifiers,
+                                         zc::Own<Identifier> name,
                                          zc::Maybe<zc::Own<TypeNode>> type,
                                          zc::Maybe<zc::Own<Expression>> initializer) noexcept
-    : ClassElement(), impl(zc::heap<Impl>(zc::mv(name), zc::mv(type), zc::mv(initializer))) {}
+    : ClassElement(),
+      impl(zc::heap<Impl>(zc::mv(modifiers), zc::mv(name), zc::mv(type), zc::mv(initializer))) {}
 
 PropertyDeclaration::~PropertyDeclaration() noexcept(false) = default;
 
-const Identifier& PropertyDeclaration::getName() const { return impl->getName(); }
+zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>>
+PropertyDeclaration::getName() const {
+  return impl->getName();
+}
+
+zc::ArrayPtr<const ast::SyntaxKind> PropertyDeclaration::getModifiers() const {
+  return impl->modifiers;
+}
 
 zc::Maybe<const TypeNode&> PropertyDeclaration::getType() const { return impl->type; }
+
+zc::Maybe<const Expression&> PropertyDeclaration::getInitializer() const {
+  return impl->initializer;
+}
 
 SyntaxKind PropertyDeclaration::getKind() const { return SyntaxKind::PropertyDeclaration; }
 

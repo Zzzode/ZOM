@@ -1,0 +1,161 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+struct Point {
+  public let x: i32;
+  private const y: i32 = 1
+  fun hello() -> unit {
+    print("hello")
+  }
+}
+
+struct Pair<T> {
+  let left: T;
+  const right: T
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*struct-declarations.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "StructDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Point"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertyDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "public"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "x"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "I32TypeNode",
+// CHECK-NEXT:             "name": "i32"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertyDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "private"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "y"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "I32TypeNode",
+// CHECK-NEXT:             "name": "i32"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": {
+// CHECK-NEXT:             "node": "IntegerLiteral",
+// CHECK-NEXT:             "value": "1"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MethodDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "hello"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": {
+// CHECK-NEXT:             "node": "ReturnType",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "UnitTypeNode",
+// CHECK-NEXT:               "name": "unit"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "ExpressionStatement",
+// CHECK-NEXT:                 "expression": {
+// CHECK-NEXT:                   "node": "CallExpression",
+// CHECK-NEXT:                   "callee": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "print"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "arguments": [
+// CHECK-NEXT:                     {
+// CHECK-NEXT:                       "node": "StringLiteral",
+// CHECK-NEXT:                       "value": "hello"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   ]
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "StructDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Pair"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "TypeParameterDeclaration",
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "T"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "constraint": null
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertyDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "left"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "T"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertyDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "right"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "T"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

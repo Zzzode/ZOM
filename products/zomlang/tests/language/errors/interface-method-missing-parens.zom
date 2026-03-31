@@ -1,0 +1,41 @@
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+
+interface I {
+  fun foo -> i32;
+  let i -> i32;
+  const f: str;
+}
+
+
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*interface-method-missing-parens.zom}}:4:11
+// CHECK:   |
+// CHECK: 4 |   fun foo -> i32;
+// CHECK:   |           ^~
+// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK:   --> {{.*interface-method-missing-parens.zom}}:4:11
+// CHECK:   |
+// CHECK: 4 |   fun foo -> i32;
+// CHECK:   |           ^~
+// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK:   --> {{.*interface-method-missing-parens.zom}}:4:14
+// CHECK:   |
+// CHECK: 4 |   fun foo -> i32;
+// CHECK:   |              ^~~
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*interface-method-missing-parens.zom}}:5:9
+// CHECK:   |
+// CHECK: 5 |   let i -> i32;
+// CHECK:   |         ^~
+// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK:   --> {{.*interface-method-missing-parens.zom}}:5:9
+// CHECK:   |
+// CHECK: 5 |   let i -> i32;
+// CHECK:   |         ^~
+// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK:   --> {{.*interface-method-missing-parens.zom}}:5:12
+// CHECK:   |
+// CHECK: 5 |   let i -> i32;
+// CHECK:   |            ^~~
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

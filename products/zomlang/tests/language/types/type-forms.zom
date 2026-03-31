@@ -1,0 +1,165 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+let a: i32[] = xs;
+let b: i32? = null;
+let c: (i32 | str)[] = xs;
+let d: A & B = x;
+let e: i32 | str = x;
+let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+let g: (i32, name: str) = tup;
+let h: <T>(x: T) -> T raises Err = fn;
+let i: typeof foo.bar = v;
+
+
+// CHECK: Error [ZOM2025]: Expected ','
+// CHECK:   --> {{.*type-forms.zom}}:8:19
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                   ^
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*type-forms.zom}}:8:19
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                   ^
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*type-forms.zom}}:8:20
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                    ^
+// CHECK: Error [ZOM2056]: 'str' is not allowed as a variable declaration name
+// CHECK:   --> {{.*type-forms.zom}}:8:22
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                      ^~~
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*type-forms.zom}}:8:25
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                         ^
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*type-forms.zom}}:8:27
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                           ^~~
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*type-forms.zom}}:8:27
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                           ^~~
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*type-forms.zom}}:8:30
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                              ^
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:8:30
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                              ^
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:8:32
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                                ^~
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:8:34
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                                  ^
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*type-forms.zom}}:8:37
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                                     ^
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:8:37
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                                     ^
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:8:39
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                                       ^~~~
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:8:44
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                                            ^
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:8:46
+// CHECK:   |
+// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                                              ^
+// CHECK: Error [ZOM2025]: Expected ','
+// CHECK:   --> {{.*type-forms.zom}}:9:23
+// CHECK:   |
+// CHECK: 9 | let g: (i32, name: str) = tup;
+// CHECK:   |                       ^
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*type-forms.zom}}:9:23
+// CHECK:   |
+// CHECK: 9 | let g: (i32, name: str) = tup;
+// CHECK:   |                       ^
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*type-forms.zom}}:9:25
+// CHECK:   |
+// CHECK: 9 | let g: (i32, name: str) = tup;
+// CHECK:   |                         ^
+// CHECK: Error [ZOM2025]: Expected ','
+// CHECK:   --> {{.*type-forms.zom}}:10:8
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |        ^
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*type-forms.zom}}:10:8
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |        ^
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*type-forms.zom}}:10:8
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |        ^
+// CHECK: Error [ZOM2011]: Identifier expected, found '<'
+// CHECK:   --> {{.*type-forms.zom}}:10:8
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |        ^
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*type-forms.zom}}:10:13
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |             ^
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:10:13
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |             ^
+// CHECK: Error [ZOM2021]: Unexpected keyword or identifier
+// CHECK:   --> {{.*type-forms.zom}}:10:15
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |               ^
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:10:16
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |                ^
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:10:18
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |                  ^~
+// CHECK: Error [ZOM2021]: Unexpected keyword or identifier
+// CHECK:   --> {{.*type-forms.zom}}:10:21
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |                     ^
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*type-forms.zom}}:10:23
+// CHECK:    |
+// CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
+// CHECK:    |                       ^~~~~~
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

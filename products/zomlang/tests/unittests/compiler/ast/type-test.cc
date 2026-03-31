@@ -49,6 +49,7 @@ struct BaseTestVisitor : public Visitor {
   void visit(const InterfaceDeclaration& node) override {}
   void visit(const StructDeclaration& node) override {}
   void visit(const EnumDeclaration& node) override {}
+  void visit(const EnumMember& node) override {}
   void visit(const ErrorDeclaration& node) override {}
   void visit(const AliasDeclaration& node) override {}
   void visit(const VariableStatement& node) override {}
@@ -58,6 +59,9 @@ struct BaseTestVisitor : public Visitor {
   void visit(const IfStatement& node) override {}
   void visit(const WhileStatement& node) override {}
   void visit(const ForStatement& node) override {}
+  void visit(const ForInStatement& node) override {}
+  void visit(const LabeledStatement& node) override {}
+  void visit(const PatternProperty& node) override {}
   void visit(const BreakStatement& node) override {}
   void visit(const ContinueStatement& node) override {}
   void visit(const ReturnStatement& node) override {}
@@ -105,6 +109,11 @@ struct BaseTestVisitor : public Visitor {
   void visit(const ImportDeclaration& importDecl) override {}
   void visit(const ExportDeclaration& exportDecl) override {}
   void visit(const ClassElement& node) override {}
+  void visit(const ObjectLiteralElement& node) override {}
+  void visit(const PropertyAssignment& node) override {}
+  void visit(const ShorthandPropertyAssignment& node) override {}
+  void visit(const SpreadAssignment& node) override {}
+  void visit(const SpreadElement& node) override {}
   void visit(const InterfaceElement& node) override {}
   void visit(const TypeReferenceNode& typeRef) override {}
   void visit(const ArrayTypeNode& arrayType) override {}
@@ -117,17 +126,22 @@ struct BaseTestVisitor : public Visitor {
   void visit(const FunctionTypeNode& functionType) override {}
   void visit(const OptionalTypeNode& optionalType) override {}
   void visit(const TypeQueryNode& typeQuery) override {}
+  void visit(const NamedTupleElement& node) override {}
 
   // Add all missing visitor methods from ast-nodes.def
   void visit(const Module& node) override {}
   void visit(const VariableDeclaration& node) override {}
   void visit(const TypeParameterDeclaration& node) override {}
   void visit(const MethodDeclaration& node) override {}
-  void visit(const ConstructorDeclaration& node) override {}
+  void visit(const GetAccessor& node) override {}
+  void visit(const SetAccessor& node) override {}
+  void visit(const InitDeclaration& node) override {}
+  void visit(const DeinitDeclaration& node) override {}
   void visit(const ParameterDeclaration& node) override {}
   void visit(const PropertyDeclaration& node) override {}
   void visit(const MissingDeclaration& node) override {}
   void visit(const SemicolonClassElement& node) override {}
+  void visit(const SemicolonInterfaceElement& node) override {}
   void visit(const ArrayBindingPattern& node) override {}
   void visit(const ObjectBindingPattern& node) override {}
   void visit(const ThisExpression& node) override {}
@@ -198,7 +212,7 @@ ZC_TEST("TypeTest.UnionType") {
 
 ZC_TEST("TypeTest.FunctionType") {
   zc::Vector<zc::Own<TypeParameterDeclaration>> typeParams;
-  zc::Vector<zc::Own<BindingElement>> params;
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
   auto returnType = factory::createReturnType(factory::createPredefinedType("str"_zc), zc::none);
   auto type = factory::createFunctionType(zc::mv(typeParams), zc::mv(params), zc::mv(returnType));
 
@@ -421,11 +435,12 @@ ZC_TEST("TypeTest.ReturnTypeAccept") {
 
 // Test FunctionType with parameters
 ZC_TEST("TypeTest.FunctionTypeWithParameters") {
-  zc::Vector<zc::Own<TypeParameterDeclaration>> typeParams;
-  zc::Vector<zc::Own<BindingElement>> params;
+  zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParams = zc::none;
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
 
-  auto param = factory::createBindingElement(factory::createIdentifier("x"_zc),
-                                             factory::createPredefinedType("i32"_zc), zc::none);
+  auto param =
+      factory::createParameterDeclaration({}, zc::none, factory::createIdentifier("x"_zc), zc::none,
+                                          factory::createPredefinedType("i32"_zc), zc::none);
   params.add(zc::mv(param));
 
   auto returnType = factory::createReturnType(factory::createPredefinedType("str"_zc), zc::none);
@@ -433,14 +448,14 @@ ZC_TEST("TypeTest.FunctionTypeWithParameters") {
 
   ZC_EXPECT(type->getKind() == SyntaxKind::FunctionTypeNode);
   ZC_EXPECT(type->getParameters().size() == 1);
-  ZC_EXPECT(type->getTypeParameters().size() == 0);
+  ZC_EXPECT(type->getTypeParameters() == zc::none);
   ZC_EXPECT(type->getReturnType().getKind() == SyntaxKind::ReturnTypeNode);
 }
 
 // Test FunctionType accept method
 ZC_TEST("TypeTest.FunctionTypeAccept") {
-  zc::Vector<zc::Own<TypeParameterDeclaration>> typeParams;
-  zc::Vector<zc::Own<BindingElement>> params;
+  zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParams = zc::none;
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
   auto returnType = factory::createReturnType(factory::createPredefinedType("str"_zc), zc::none);
   auto type = factory::createFunctionType(zc::mv(typeParams), zc::mv(params), zc::mv(returnType));
 
@@ -537,7 +552,7 @@ ZC_TEST("TypeTest.ComplexIntersectionTypes") {
 
   // Create function type
   zc::Vector<zc::Own<TypeParameterDeclaration>> typeParams;
-  zc::Vector<zc::Own<BindingElement>> params;
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
   auto returnType = factory::createReturnType(factory::createPredefinedType("unit"_zc), zc::none);
   auto functionType =
       factory::createFunctionType(zc::mv(typeParams), zc::mv(params), zc::mv(returnType));
@@ -579,7 +594,7 @@ ZC_TEST("TypeTest.NestedTupleTypes") {
 ZC_TEST("TypeTest.ComplexFunctionTypes") {
   // Test function type with type parameters and complex return type
   zc::Vector<zc::Own<TypeParameterDeclaration>> typeParams;
-  zc::Vector<zc::Own<BindingElement>> params;
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
 
   // Add type parameter T
   auto typeParamName = factory::createIdentifier("T"_zc);
@@ -590,7 +605,8 @@ ZC_TEST("TypeTest.ComplexFunctionTypes") {
   auto paramName = factory::createIdentifier("items"_zc);
   auto paramTypeRef = factory::createTypeReference(factory::createIdentifier("T"_zc), zc::none);
   auto paramArrayType = factory::createArrayType(zc::mv(paramTypeRef));
-  auto param = factory::createBindingElement(zc::mv(paramName), zc::mv(paramArrayType), zc::none);
+  auto param = factory::createParameterDeclaration({}, zc::none, zc::mv(paramName), zc::none,
+                                                   zc::mv(paramArrayType), zc::none);
   params.add(zc::mv(param));
 
   // Return type: T | null
@@ -606,7 +622,7 @@ ZC_TEST("TypeTest.ComplexFunctionTypes") {
       factory::createFunctionType(zc::mv(typeParams), zc::mv(params), zc::mv(returnType));
 
   ZC_EXPECT(functionType->getKind() == SyntaxKind::FunctionTypeNode);
-  ZC_EXPECT(functionType->getTypeParameters().size() == 1);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(functionType->getTypeParameters()).size() == 1);
   ZC_EXPECT(functionType->getParameters().size() == 1);
   ZC_EXPECT(functionType->getReturnType().getType().getKind() == SyntaxKind::UnionTypeNode);
 }
@@ -621,11 +637,9 @@ ZC_TEST("TypeTest.OptionalComplexTypes") {
   ZC_EXPECT(optionalArrayType->getType().getKind() == SyntaxKind::ArrayTypeNode);
 
   // Test optional function type
-  zc::Vector<zc::Own<TypeParameterDeclaration>> typeParams;
-  zc::Vector<zc::Own<BindingElement>> params;
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
   auto returnType = factory::createReturnType(factory::createPredefinedType("unit"_zc), zc::none);
-  auto functionType =
-      factory::createFunctionType(zc::mv(typeParams), zc::mv(params), zc::mv(returnType));
+  auto functionType = factory::createFunctionType(zc::none, zc::mv(params), zc::mv(returnType));
   auto optionalFunctionType = factory::createOptionalType(zc::mv(functionType));
 
   ZC_EXPECT(optionalFunctionType->getKind() == SyntaxKind::OptionalTypeNode);

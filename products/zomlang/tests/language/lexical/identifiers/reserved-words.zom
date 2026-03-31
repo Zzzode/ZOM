@@ -1,0 +1,22 @@
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+
+let if = 1;
+
+
+// CHECK: Error [ZOM2056]: 'if' is not allowed as a variable declaration name
+// CHECK:   --> {{.*reserved-words.zom}}:3:5
+// CHECK:   |
+// CHECK: 3 | let if = 1;
+// CHECK:   |     ^~
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*reserved-words.zom}}:3:5
+// CHECK:   |
+// CHECK: 3 | let if = 1;
+// CHECK:   |     ^~
+// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK:   --> {{.*reserved-words.zom}}:3:8
+// CHECK:   |
+// CHECK: 3 | let if = 1;
+// CHECK:   |        ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

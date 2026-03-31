@@ -126,6 +126,7 @@ void ConsolingDiagnosticConsumer::Impl::printSourceLine(zc::OutputStream& output
   if (useColors) output.write("\033[1;31m"_zcb);  // Red for error marker
 
   // Handle multi-range tags
+  bool hasUnderline = false;
   if (diagnostic.getRanges().size() != 0) {
     zc::Vector<zc::ArrayPtr<const zc::byte>> underline;
     for (const auto& range : diagnostic.getRanges()) {
@@ -133,8 +134,13 @@ void ConsolingDiagnosticConsumer::Impl::printSourceLine(zc::OutputStream& output
       const auto end = range.getEnd().getOpaqueValue() - lineStart;
       for (int i = 0; i < end - start; ++i) { underline.add((i == 0) ? "^"_zcb : "~"_zcb); }
     }
-    output.write(underline.asPtr());
+    if (underline.size() > 0) {
+      output.write(underline.asPtr());
+      hasUnderline = true;
+    }
   }
+
+  if (!hasUnderline) { output.write("^"_zcb); }
 
   if (useColors) output.write(RESET_COLOR.asBytes());
   output.write("\n"_zcb);

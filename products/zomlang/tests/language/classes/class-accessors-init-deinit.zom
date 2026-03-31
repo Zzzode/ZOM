@@ -1,0 +1,193 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+class C {
+  public static let x: i32 = 1;
+  private const y: str = "s";
+
+  init(n: i32) { return; }
+  deinit { ; }
+
+  get value() -> i32 { return x; }
+  set value(n: i32) { return; }
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*class-accessors-init-deinit.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ClassDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "C"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertyDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "public"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "static"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "x"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "I32TypeNode",
+// CHECK-NEXT:             "name": "i32"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": {
+// CHECK-NEXT:             "node": "IntegerLiteral",
+// CHECK-NEXT:             "value": "1"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertyDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "private"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "y"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "StrTypeNode",
+// CHECK-NEXT:             "name": "str"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": {
+// CHECK-NEXT:             "node": "StringLiteral",
+// CHECK-NEXT:             "value": "s"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "InitDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "init"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ParameterDeclaration",
+// CHECK-NEXT:               "name": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "n"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "type": {
+// CHECK-NEXT:                 "node": "I32TypeNode",
+// CHECK-NEXT:                 "name": "i32"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "initializer": null
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "ReturnStatement",
+// CHECK-NEXT:                 "expression": null
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "DeinitDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "deinit"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "EmptyStatement"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "GetAccessor",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "value"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": {
+// CHECK-NEXT:             "node": "ReturnType",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "I32TypeNode",
+// CHECK-NEXT:               "name": "i32"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "ReturnStatement",
+// CHECK-NEXT:                 "expression": {
+// CHECK-NEXT:                   "node": "Identifier",
+// CHECK-NEXT:                   "name": "x"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "SetAccessor",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "value"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ParameterDeclaration",
+// CHECK-NEXT:               "name": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "n"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "type": {
+// CHECK-NEXT:                 "node": "I32TypeNode",
+// CHECK-NEXT:                 "name": "i32"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "initializer": null
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "ReturnStatement",
+// CHECK-NEXT:                 "expression": null
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

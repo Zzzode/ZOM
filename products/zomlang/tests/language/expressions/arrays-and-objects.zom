@@ -1,0 +1,18 @@
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+
+let arr = [1, 2, ...xs, 3];
+let obj = { a, b = 1, "sb": 2, 3: 4, ...rest };
+
+
+// CHECK: Error [ZOM2011]: Identifier expected, found 'sb'
+// CHECK:   --> {{.*arrays-and-objects.zom}}:4:23
+// CHECK:   |
+// CHECK: 4 | let obj = { a, b = 1, "sb": 2, 3: 4, ...rest };
+// CHECK:   |                       ^~~~
+// CHECK: Error [ZOM2011]: Identifier expected, found '3'
+// CHECK:   --> {{.*arrays-and-objects.zom}}:4:32
+// CHECK:   |
+// CHECK: 4 | let obj = { a, b = 1, "sb": 2, 3: 4, ...rest };
+// CHECK:   |                                ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

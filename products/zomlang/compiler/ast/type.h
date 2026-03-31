@@ -334,6 +334,24 @@ private:
   const zc::Own<Impl> impl;
 };
 
+// Named tuple element: name: T
+class NamedTupleElement final : public TypeNode {
+public:
+  NamedTupleElement(zc::Own<Identifier> name, zc::Own<TypeNode> type) noexcept;
+  ~NamedTupleElement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(NamedTupleElement);
+
+  const Identifier& getName() const;
+  const TypeNode& getType() const;
+
+  NODE_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  const zc::Own<Impl> impl;
+};
+
 // Tuple type: [T, U, ...]
 class TupleTypeNode final : public TypeNode {
 public:
@@ -373,15 +391,15 @@ private:
 // Function type: (T, U) -> R
 class FunctionTypeNode final : public TypeNode {
 public:
-  FunctionTypeNode(zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-                   zc::Vector<zc::Own<BindingElement>>&& parameters,
+  FunctionTypeNode(zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                   zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
                    zc::Own<ReturnTypeNode> returnType) noexcept;
   ~FunctionTypeNode() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(FunctionTypeNode);
 
-  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
-  const NodeList<BindingElement>& getParameters() const;
+  zc::Maybe<zc::ArrayPtr<const zc::Own<TypeParameterDeclaration>>> getTypeParameters() const;
+  const NodeList<ParameterDeclaration>& getParameters() const;
   const ReturnTypeNode& getReturnType() const;
 
   NODE_METHOD_DECLARE();

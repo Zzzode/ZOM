@@ -15,10 +15,4 @@
 # Semantic Analysis Tests
 # Tests for semantic analysis, type checking, and program validation
 
-# TODO: Add subdirectories for specific semantic test categories when implemented
-# - type-checking
-# - scope-resolution
-# - symbol-resolution
-# - control-flow-analysis
-# - dead-code-detection
-# - unreachable-code
+add_lit_ast_tests_from_directory(${CMAKE_CURRENT_SOURCE_DIR})

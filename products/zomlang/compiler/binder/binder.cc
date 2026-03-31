@@ -47,6 +47,19 @@ namespace binder {
 
 using diagnostics::DiagID;
 
+static zc::StringPtr getIdentifierName(const ast::NamedDeclaration& decl) {
+  zc::StringPtr name;
+  ZC_SWITCH_ONEOF(decl.getName()) {
+    ZC_CASE_ONEOF(maybeId, zc::Maybe<const ast::Identifier&>) {
+      ZC_IF_SOME(id, maybeId) { name = id.getText(); }
+    }
+    ZC_CASE_ONEOF(maybePat, zc::Maybe<const ast::BindingPattern&>) {
+      ZC_ASSERT(false, "Expected identifier");
+    }
+  }
+  return name;
+}
+
 // Implementation details for Binder class
 struct Binder::Impl {
   symbol::SymbolTable& symbolTable;
@@ -60,6 +73,9 @@ struct Binder::Impl {
 
   // Scope stack for tracking nested scopes
   zc::Vector<zc::Maybe<symbol::Scope&>> scopeStack;
+
+  zc::Vector<zc::String> ownedScopeNames;
+  uint32_t nextScopeId = 1;
 
   // Current symbol counter for unique IDs
   uint32_t nextSymbolId = 1;
@@ -94,12 +110,15 @@ void Binder::bindSourceFile(ast::SourceFile& sourceFile) {
   impl->context = BindingContext{};
   impl->containerStack.clear();
   impl->scopeStack.clear();
+  impl->ownedScopeNames.clear();
+  impl->nextScopeId = 1;
 
   // Initialize with global scope
   auto& scopeManager = impl->symbolTable.getScopeManager();
   ZC_IF_SOME(globalScope, scopeManager.getGlobalScopeMutable()) {
     impl->scopeStack.add(globalScope);
     impl->context.currentScope = globalScope;
+    impl->symbolTable.setCurrentScope(globalScope);
   }
   else { ZC_FAIL_REQUIRE("Global scope not found"); }
 
@@ -125,6 +144,11 @@ void Binder::addDeclarationToSymbol(symbol::Symbol& symbol, ast::Node& node,
     case ast::SyntaxKind::VariableDeclaration: {
       auto& varDecl = ast::cast<ast::VariableDeclaration&>(node);
       varDecl.setSymbol(symbol);
+      break;
+    }
+    case ast::SyntaxKind::ParameterDeclaration: {
+      auto& paramDecl = ast::cast<ast::ParameterDeclaration&>(node);
+      paramDecl.setSymbol(symbol);
       break;
     }
     case ast::SyntaxKind::FunctionDeclaration: {
@@ -268,6 +292,17 @@ void Binder::visit(const ast::ForStatement& node) {
   node.getBody().accept(*this);
 }
 
+void Binder::visit(const ast::ForInStatement& node) {
+  // Visit initializer
+  node.getInitializer().accept(*this);
+
+  // Visit expression
+  node.getExpression().accept(*this);
+
+  // Visit body
+  node.getBody().accept(*this);
+}
+
 void Binder::visit(const ast::ReturnStatement& node) {
   // Visit return expression if present
   ZC_IF_SOME(expr, node.getExpression()) { expr.accept(*this); }
@@ -361,9 +396,74 @@ void Binder::visit(const ast::FunctionTypeNode& functionType) {
 
 // Default implementations for other required visitors
 void Binder::visit(const ast::TypeParameterDeclaration& node) {}
-void Binder::visit(const ast::BindingElement& node) {}
-void Binder::visit(const ast::ErrorDeclaration& node) {}
+void Binder::visit(const ast::BindingElement& node) {
+  ZC_IF_SOME(pattern, node.getBindingPattern()) {
+    for (auto& element : pattern.getElements()) { element.accept(*this); }
+    ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+    return;
+  }
+
+  ZC_IF_SOME(scope, impl->context.currentScope) {
+    ZC_SWITCH_ONEOF(node.getName()) {
+      ZC_CASE_ONEOF(maybeId, zc::Maybe<const ast::Identifier&>) {
+        ZC_IF_SOME(identifier, maybeId) {
+          auto name = identifier.getText();
+          auto loc = node.getSourceRange().getStart();
+
+          if (impl->symbolTable.lookup(name, scope) != zc::none) {
+            impl->diagEng.diagnose<DiagID::RedeclareVariable>(loc, name);
+            return;
+          }
+
+          auto& symbol = impl->symbolTable.createVariable(name, scope);
+
+          symbol::SymbolFlags storageFlag = symbol::SymbolFlags::Local;
+          if (scope.getKind() == symbol::Scope::Kind::Global) {
+            storageFlag = symbol::SymbolFlags::Global;
+          }
+
+          addDeclarationToSymbol(symbol, const_cast<ast::BindingElement&>(node), storageFlag);
+        }
+      }
+      ZC_CASE_ONEOF(maybePattern, zc::Maybe<const ast::BindingPattern&>) {
+        ZC_IF_SOME(pattern, maybePattern) { pattern.accept(*this); }
+      }
+    }
+
+    ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+  }
+}
+
+void Binder::visit(const ast::EnumMember& node) {
+  ZC_IF_SOME(scope, impl->context.currentScope) {
+    auto name = getIdentifierName(node);
+    auto loc = node.getSourceRange().getStart();
+
+    if (impl->symbolTable.lookup(name, scope) != zc::none) {
+      impl->diagEng.diagnose<DiagID::RedeclareVariable>(loc, name);
+      return;
+    }
+
+    auto& symbol = impl->symbolTable.createVariable(name, scope);
+
+    // Enum members are immutable properties
+    symbol::SymbolFlags flags = symbol::SymbolFlags::Property | symbol::SymbolFlags::Immutable;
+    addDeclarationToSymbol(symbol, const_cast<ast::EnumMember&>(node), flags);
+
+    ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+    ZC_IF_SOME(type, node.getTupleType()) { type.accept(*this); }
+  }
+}
+
+void Binder::visit(const ast::ErrorDeclaration& node) {
+  // Error declaration doesn't bind symbols but might have children
+  for (const auto& member : node.getMembers()) { member.accept(*this); }
+}
 void Binder::visit(const ast::EmptyStatement& node) {}
+void Binder::visit(const ast::LabeledStatement& node) {
+  node.getLabel().accept(*this);
+  node.getStatement().accept(*this);
+}
 void Binder::visit(const ast::BreakStatement& node) {}
 void Binder::visit(const ast::ContinueStatement& node) {}
 void Binder::visit(const ast::DebuggerStatement& node) {}
@@ -393,7 +493,9 @@ void Binder::visit(const ast::ElementAccessExpression& node) {
 }
 void Binder::visit(const ast::NewExpression& node) {
   node.getCallee().accept(*this);
-  for (auto& arg : node.getArguments()) { arg.accept(*this); }
+  ZC_IF_SOME(args, node.getArguments()) {
+    for (const auto& arg : args) { arg->accept(*this); }
+  }
 }
 void Binder::visit(const ast::ParenthesizedExpression& node) { node.getExpression().accept(*this); }
 void Binder::visit(const ast::ConditionalExpression& node) {
@@ -448,8 +550,9 @@ void Binder::visit(const ast::FunctionExpression& node) {
   // Function expressions are anonymous functions that need special handling
   // They create their own scope and bind parameters and body
 
-  // Visit type parameters if present
-  for (const auto& typeParam : node.getTypeParameters()) { typeParam.accept(*this); }
+  ZC_IF_SOME(typeParameters, node.getTypeParameters()) {
+    for (const auto& typeParam : typeParameters) { typeParam->accept(*this); }
+  }
 
   // Visit parameters
   for (const auto& param : node.getParameters()) { param.accept(*this); }
@@ -473,6 +576,21 @@ void Binder::visit(const ast::ObjectLiteralExpression& node) {
   for (const auto& property : node.getProperties()) { property.accept(*this); }
 }
 
+void Binder::visit(const ast::ObjectLiteralElement& node) {
+  // Abstract interface, should not be visited directly
+}
+
+void Binder::visit(const ast::PropertyAssignment& node) {
+  node.getNameIdentifier().accept(*this);
+  ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+}
+
+void Binder::visit(const ast::ShorthandPropertyAssignment& node) {
+  node.getNameIdentifier().accept(*this);
+}
+
+void Binder::visit(const ast::SpreadAssignment& node) { node.getExpression().accept(*this); }
+
 void Binder::visit(const ast::ModulePath& node) {
   // Module paths are just identifiers, no special binding needed
 }
@@ -482,14 +600,111 @@ void Binder::visit(const ast::MethodDeclaration& node) {
   // TODO: Implement method declaration binding
 }
 
-void Binder::visit(const ast::ConstructorDeclaration& node) {
-  // Bind constructor declaration - special method for class instantiation
-  // TODO: Implement constructor declaration binding
+void Binder::visit(const ast::GetAccessor& node) {
+  ZC_IF_SOME(parentScope, impl->context.currentScope) {
+    auto name = getIdentifierName(node);
+
+    // Create scope for the accessor
+    zc::Maybe<symbol::Scope&> scopeParent = parentScope;
+    impl->ownedScopeNames.add(zc::str("get_accessor#", impl->nextScopeId++, ":", name));
+    symbol::Scope& scope = impl->symbolTable.getScopeManager().createScope(
+        symbol::Scope::Kind::Function, impl->ownedScopeNames.back(), scopeParent);
+
+    enterScope(scope);
+
+    for (auto& typeParam : node.getTypeParameters()) { typeParam.accept(*this); }
+    for (auto& param : node.getParameters()) { param.accept(*this); }
+    ZC_IF_SOME(returnType, node.getReturnType()) { returnType.accept(*this); }
+    ZC_IF_SOME(body, node.getBody()) { body.accept(*this); }
+
+    exitScope();
+  }
+}
+
+void Binder::visit(const ast::SetAccessor& node) {
+  ZC_IF_SOME(parentScope, impl->context.currentScope) {
+    auto name = getIdentifierName(node);
+
+    // Create scope for the accessor
+    zc::Maybe<symbol::Scope&> scopeParent = parentScope;
+    impl->ownedScopeNames.add(zc::str("set_accessor#", impl->nextScopeId++, ":", name));
+    symbol::Scope& scope = impl->symbolTable.getScopeManager().createScope(
+        symbol::Scope::Kind::Function, impl->ownedScopeNames.back(), scopeParent);
+
+    enterScope(scope);
+
+    for (auto& typeParam : node.getTypeParameters()) { typeParam.accept(*this); }
+    for (auto& param : node.getParameters()) { param.accept(*this); }
+    ZC_IF_SOME(returnType, node.getReturnType()) { returnType.accept(*this); }
+    ZC_IF_SOME(body, node.getBody()) { body.accept(*this); }
+
+    exitScope();
+  }
+}
+
+void Binder::visit(const ast::InitDeclaration& node) {
+  ZC_IF_SOME(parentScope, impl->context.currentScope) {
+    // Create scope for init
+    zc::Maybe<symbol::Scope&> scopeParent = parentScope;
+    impl->ownedScopeNames.add(zc::str("init#", impl->nextScopeId++));
+    symbol::Scope& scope = impl->symbolTable.getScopeManager().createScope(
+        symbol::Scope::Kind::Function, impl->ownedScopeNames.back(), scopeParent);
+
+    enterScope(scope);
+
+    for (auto& typeParam : node.getTypeParameters()) { typeParam.accept(*this); }
+    for (auto& param : node.getParameters()) { param.accept(*this); }
+    ZC_IF_SOME(returnType, node.getReturnType()) { returnType.accept(*this); }
+    ZC_IF_SOME(body, node.getBody()) { body.accept(*this); }
+
+    exitScope();
+  }
+}
+
+void Binder::visit(const ast::DeinitDeclaration& node) {
+  ZC_IF_SOME(parentScope, impl->context.currentScope) {
+    // Create scope for deinit
+    zc::Maybe<symbol::Scope&> scopeParent = parentScope;
+    impl->ownedScopeNames.add(zc::str("deinit#", impl->nextScopeId++));
+    symbol::Scope& scope = impl->symbolTable.getScopeManager().createScope(
+        symbol::Scope::Kind::Function, impl->ownedScopeNames.back(), scopeParent);
+
+    enterScope(scope);
+
+    ZC_IF_SOME(body, node.getBody()) { body.accept(*this); }
+
+    exitScope();
+  }
 }
 
 void Binder::visit(const ast::ParameterDeclaration& node) {
-  // Bind parameter declaration - create symbol for parameter
-  // TODO: Implement parameter declaration binding
+  ZC_IF_SOME(scope, impl->context.currentScope) {
+    ZC_SWITCH_ONEOF(node.getName()) {
+      ZC_CASE_ONEOF(maybeId, zc::Maybe<const ast::Identifier&>) {
+        ZC_IF_SOME(identifier, maybeId) {
+          auto name = identifier.getText();
+          auto loc = node.getSourceRange().getStart();
+
+          if (impl->symbolTable.lookup(name, scope) != zc::none) {
+            impl->diagEng.diagnose<DiagID::RedeclareParameter>(loc, name);
+            return;
+          }
+
+          auto& symbol = impl->symbolTable.createParameter(name, scope);
+
+          symbol::SymbolFlags storageFlag = symbol::SymbolFlags::Local;
+
+          addDeclarationToSymbol(symbol, const_cast<ast::ParameterDeclaration&>(node), storageFlag);
+        }
+      }
+      ZC_CASE_ONEOF(maybePattern, zc::Maybe<const ast::BindingPattern&>) {
+        ZC_IF_SOME(pattern, maybePattern) { pattern.accept(*this); }
+      }
+    }
+
+    ZC_IF_SOME(type, node.getType()) { type.accept(*this); }
+    ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }
+  }
 }
 
 void Binder::visit(const ast::PropertyDeclaration& node) {
@@ -500,6 +715,8 @@ void Binder::visit(const ast::PropertyDeclaration& node) {
 void Binder::visit(const ast::SemicolonClassElement& node) {
   // Semicolon class elements are empty, no binding needed.
 }
+
+void Binder::visit(const ast::SemicolonInterfaceElement& node) {}
 
 void Binder::visit(const ast::MissingDeclaration& node) {
   // Missing declarations are error recovery nodes, no binding needed
@@ -571,6 +788,11 @@ void Binder::visit(const ast::OptionalTypeNode& optionalType) {
 }
 void Binder::visit(const ast::TypeQueryNode& typeQuery) { typeQuery.getExpression().accept(*this); }
 
+void Binder::visit(const ast::NamedTupleElement& node) {
+  // Visit type
+  node.getType().accept(*this);
+}
+
 // Predefined type visitors - these are leaf nodes with no children to visit
 void Binder::visit(const ast::BoolTypeNode& node) {}
 void Binder::visit(const ast::I8TypeNode& node) {}
@@ -598,6 +820,10 @@ void Binder::visit(const ast::ObjectBindingPattern& node) {
   for (const auto& property : node.getProperties()) { property.accept(*this); }
 }
 
+void Binder::visit(const ast::PatternProperty& node) {
+  ZC_IF_SOME(pattern, node.getPattern()) { pattern.accept(*this); }
+}
+
 // Expression visitors
 void Binder::visit(const ast::ThisExpression& node) {
   // TODO: Implement this expression binding
@@ -606,6 +832,8 @@ void Binder::visit(const ast::ThisExpression& node) {
 void Binder::visit(const ast::SuperExpression& node) {
   // TODO: Implement super expression binding
 }
+
+void Binder::visit(const ast::SpreadElement& node) { node.getExpression().accept(*this); }
 
 // Module visitor
 void Binder::visit(const ast::Module& node) {
@@ -675,7 +903,31 @@ void Binder::visit(const ast::HeritageClause& node) {
 }
 
 void Binder::enterScope(symbol::Scope& scope) {
-  // TODO: Implement scope management
+  impl->scopeStack.add(scope);
+  impl->context.currentScope = scope;
+  impl->symbolTable.setCurrentScope(scope);
+}
+
+void Binder::exitScope() {
+  ZC_REQUIRE(!impl->scopeStack.empty(), "Scope stack is empty");
+
+  impl->scopeStack.removeLast();
+
+  if (!impl->scopeStack.empty()) {
+    ZC_IF_SOME(scope, impl->scopeStack.back()) {
+      impl->context.currentScope = scope;
+      impl->symbolTable.setCurrentScope(scope);
+    }
+    else {
+      impl->context.currentScope = zc::none;
+      impl->symbolTable.setCurrentScope(
+          ZC_ASSERT_NONNULL(impl->symbolTable.getScopeManager().getGlobalScope()));
+    }
+  } else {
+    impl->context.currentScope = zc::none;
+    impl->symbolTable.setCurrentScope(
+        ZC_ASSERT_NONNULL(impl->symbolTable.getScopeManager().getGlobalScope()));
+  }
 }
 
 ContainerFlags Binder::getContainerFlags(const ast::Node& node) const {
@@ -690,7 +942,7 @@ ContainerFlags Binder::getContainerFlags(const ast::Node& node) const {
       break;
     case SyntaxKind::FunctionDeclaration:
     case SyntaxKind::MethodDeclaration:
-    case SyntaxKind::ConstructorDeclaration:
+    case SyntaxKind::InitDeclaration:
       flags |= ContainerFlags::IsContainer | ContainerFlags::IsControlFlowContainer |
                ContainerFlags::IsFunctionLike | ContainerFlags::HasLocals |
                ContainerFlags::IsThisContainer;
@@ -741,8 +993,7 @@ zc::Maybe<const symbol::Symbol&> Binder::lookupSymbol(zc::StringPtr name) const 
 
 zc::Maybe<symbol::Symbol&> Binder::lookupSymbolInScope(zc::StringPtr name,
                                                        symbol::Scope& scope) const {
-  // TODO: Implement symbol lookup in specific scope
-  return zc::none;
+  return impl->symbolTable.lookupRecursive(name, scope);
 }
 
 void Binder::bindImportDeclaration(const ast::ImportDeclaration& importDecl) {
@@ -762,43 +1013,165 @@ void Binder::bindExportDeclaration(const ast::ExportDeclaration& exportDecl) {
 }
 
 void Binder::bindVariableDeclaration(const ast::VariableDeclaration& varDecl) {
-  // TODO: Implement variable declaration binding
-  // This would involve:
-  // 1. Creating a symbol for the variable
-  // 2. Adding it to the current scope
-  // 3. Processing the initializer if present
+  ZC_IF_SOME(scope, impl->context.currentScope) {
+    ZC_SWITCH_ONEOF(varDecl.getName()) {
+      ZC_CASE_ONEOF(maybeId, zc::Maybe<const ast::Identifier&>) {
+        ZC_IF_SOME(identifier, maybeId) {
+          auto name = identifier.getText();
+          auto loc = varDecl.getSourceRange().getStart();
+
+          if (impl->symbolTable.lookup(name, scope) != zc::none) {
+            impl->diagEng.diagnose<DiagID::RedeclareVariable>(loc, name);
+            return;
+          }
+
+          auto& symbol = impl->symbolTable.createVariable(name, scope);
+
+          symbol::SymbolFlags storageFlag = symbol::SymbolFlags::Local;
+          if (scope.getKind() == symbol::Scope::Kind::Global) {
+            storageFlag = symbol::SymbolFlags::Global;
+          }
+
+          addDeclarationToSymbol(symbol, const_cast<ast::VariableDeclaration&>(varDecl),
+                                 storageFlag);
+        }
+      }
+      ZC_CASE_ONEOF(maybePattern, zc::Maybe<const ast::BindingPattern&>) {
+        ZC_IF_SOME(pattern, maybePattern) { pattern.accept(*this); }
+      }
+    }
+
+    ZC_IF_SOME(type, varDecl.getType()) { type.accept(*this); }
+    ZC_IF_SOME(init, varDecl.getInitializer()) { init.accept(*this); }
+  }
 }
 
 void Binder::bindFunctionDeclaration(const ast::FunctionDeclaration& funcDecl) {
-  // TODO: Implement function declaration binding
-  // This would involve:
-  // 1. Creating a symbol for the function
-  // 2. Creating a new scope for the function body
-  // 3. Processing parameters and body
+  ZC_IF_SOME(parentScope, impl->context.currentScope) {
+    auto name = getIdentifierName(funcDecl);
+    auto loc = funcDecl.getSourceRange().getStart();
+
+    if (impl->symbolTable.lookup(name, parentScope) != zc::none) {
+      impl->diagEng.diagnose<DiagID::RedeclareFunction>(loc, name);
+      return;
+    }
+
+    auto& symbol = impl->symbolTable.createFunction(name, parentScope);
+
+    symbol::SymbolFlags storageFlag = symbol::SymbolFlags::Local;
+    if (parentScope.getKind() == symbol::Scope::Kind::Global) {
+      storageFlag = symbol::SymbolFlags::Global;
+    }
+    addDeclarationToSymbol(symbol, const_cast<ast::FunctionDeclaration&>(funcDecl), storageFlag);
+
+    zc::Maybe<symbol::Scope&> scopeParent = parentScope;
+    impl->ownedScopeNames.add(zc::str("function#", impl->nextScopeId++, ":", name));
+    symbol::Scope& funcScope = impl->symbolTable.getScopeManager().createScope(
+        symbol::Scope::Kind::Function, impl->ownedScopeNames.back(), scopeParent);
+
+    enterScope(funcScope);
+
+    const_cast<ast::FunctionDeclaration&>(funcDecl).setLocals(impl->symbolTable);
+
+    const auto& typeParameters = funcDecl.getTypeParameters();
+    for (const auto& typeParam : typeParameters) { typeParam.accept(*this); }
+    for (const auto& param : funcDecl.getParameters()) { param.accept(*this); }
+    ZC_IF_SOME(returnType, funcDecl.getReturnType()) { returnType.accept(*this); }
+
+    funcDecl.getBody().accept(*this);
+
+    exitScope();
+  }
 }
 
 void Binder::bindClassDeclaration(const ast::ClassDeclaration& classDecl) {
-  // TODO: Implement class declaration binding
-  // This would involve:
-  // 1. Creating a symbol for the class
-  // 2. Creating a new scope for class members
-  // 3. Processing class body and members
+  ZC_IF_SOME(parentScope, impl->context.currentScope) {
+    auto name = getIdentifierName(classDecl);
+    auto loc = classDecl.getSourceRange().getStart();
+
+    if (impl->symbolTable.lookup(name, parentScope) != zc::none) {
+      impl->diagEng.diagnose<DiagID::RedeclareClass>(loc, name);
+      return;
+    }
+
+    auto& symbol = impl->symbolTable.createClass(name, parentScope);
+
+    symbol::SymbolFlags storageFlag = symbol::SymbolFlags::Local;
+    if (parentScope.getKind() == symbol::Scope::Kind::Global) {
+      storageFlag = symbol::SymbolFlags::Global;
+    }
+    addDeclarationToSymbol(symbol, const_cast<ast::ClassDeclaration&>(classDecl), storageFlag);
+
+    zc::Maybe<symbol::Scope&> scopeParent = parentScope;
+    impl->ownedScopeNames.add(zc::str("class#", impl->nextScopeId++, ":", name));
+    symbol::Scope& classScope = impl->symbolTable.getScopeManager().createScope(
+        symbol::Scope::Kind::Class, impl->ownedScopeNames.back(), scopeParent);
+
+    enterScope(classScope);
+
+    const auto& typeParameters = classDecl.getTypeParameters();
+    for (const auto& typeParam : typeParameters) { typeParam.accept(*this); }
+
+    const auto& heritageClauses = classDecl.getHeritageClauses();
+    for (const auto& clause : heritageClauses) { clause.accept(*this); }
+    for (const auto& member : classDecl.getMembers()) {
+      if (auto* node = dynamic_cast<const ast::Node*>(&member)) { node->accept(*this); }
+    }
+
+    exitScope();
+  }
 }
 
 void Binder::bindInterfaceDeclaration(const ast::InterfaceDeclaration& interfaceDecl) {
-  // TODO: Implement interface declaration binding
-  // This would involve:
-  // 1. Creating a symbol for the interface
-  // 2. Processing interface members
-  // 3. Setting up inheritance relationships
+  ZC_IF_SOME(parentScope, impl->context.currentScope) {
+    auto name = getIdentifierName(interfaceDecl);
+    auto loc = interfaceDecl.getSourceRange().getStart();
+
+    if (impl->symbolTable.lookup(name, parentScope) != zc::none) {
+      impl->diagEng.diagnose<DiagID::RedeclareInterface>(loc, name);
+      return;
+    }
+
+    auto& symbol = impl->symbolTable.createInterface(name, parentScope);
+
+    symbol::SymbolFlags storageFlag = symbol::SymbolFlags::Local;
+    if (parentScope.getKind() == symbol::Scope::Kind::Global) {
+      storageFlag = symbol::SymbolFlags::Global;
+    }
+    addDeclarationToSymbol(symbol, const_cast<ast::InterfaceDeclaration&>(interfaceDecl),
+                           storageFlag);
+
+    zc::Maybe<symbol::Scope&> scopeParent = parentScope;
+    impl->ownedScopeNames.add(zc::str("interface#", impl->nextScopeId++, ":", name));
+    symbol::Scope& interfaceScope = impl->symbolTable.getScopeManager().createScope(
+        symbol::Scope::Kind::Interface, impl->ownedScopeNames.back(), scopeParent);
+
+    enterScope(interfaceScope);
+
+    for (const auto& member : interfaceDecl.getMembers()) {
+      if (auto* node = dynamic_cast<const ast::Node*>(&member)) { node->accept(*this); }
+    }
+
+    exitScope();
+  }
 }
 
 void Binder::bindBlockStatement(const ast::Node& block) {
-  // TODO: Implement block statement binding
-  // This would involve:
-  // 1. Creating a new block scope
-  // 2. Processing all statements in the block
-  // 3. Managing local variable declarations
+  auto& blockStmt = ast::cast<ast::BlockStatement>(block);
+
+  zc::Maybe<symbol::Scope&> parentScope = impl->context.currentScope;
+
+  impl->ownedScopeNames.add(zc::str("block#", impl->nextScopeId++));
+  symbol::Scope& scope = impl->symbolTable.getScopeManager().createScope(
+      symbol::Scope::Kind::Block, impl->ownedScopeNames.back(), parentScope);
+
+  enterScope(scope);
+
+  const_cast<ast::BlockStatement&>(blockStmt).setLocals(impl->symbolTable);
+
+  for (const auto& stmt : blockStmt.getStatements()) { stmt.accept(*this); }
+
+  exitScope();
 }
 
 void Binder::checkContextualIdentifier(const ast::Identifier& node) {

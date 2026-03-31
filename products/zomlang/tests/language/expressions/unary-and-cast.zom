@@ -1,0 +1,84 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+let a = 1;
+let b = ++a;
+let c = a--;
+let d = typeof a;
+let e = await a;
+let f = a as i32;
+let g = a as? i32;
+let h = a as! i32;
+
+
+// CHECK: Error [ZOM2010]: Reserved keyword 'await' cannot be used as an identifier
+// CHECK:   --> {{.*unary-and-cast.zom}}:7:9
+// CHECK:   |
+// CHECK: 7 | let e = await a;
+// CHECK:   |         ^~~~~
+// CHECK: Error [ZOM2025]: Expected ','
+// CHECK:   --> {{.*unary-and-cast.zom}}:7:15
+// CHECK:   |
+// CHECK: 7 | let e = await a;
+// CHECK:   |               ^
+// CHECK: Error [ZOM2025]: Expected ','
+// CHECK:   --> {{.*unary-and-cast.zom}}:8:11
+// CHECK:   |
+// CHECK: 8 | let f = a as i32;
+// CHECK:   |           ^~
+// CHECK: Error [ZOM2056]: 'as' is not allowed as a variable declaration name
+// CHECK:   --> {{.*unary-and-cast.zom}}:8:11
+// CHECK:   |
+// CHECK: 8 | let f = a as i32;
+// CHECK:   |           ^~
+// CHECK: Error [ZOM2056]: 'i32' is not allowed as a variable declaration name
+// CHECK:   --> {{.*unary-and-cast.zom}}:8:14
+// CHECK:   |
+// CHECK: 8 | let f = a as i32;
+// CHECK:   |              ^~~
+// CHECK: Error [ZOM2025]: Expected ','
+// CHECK:   --> {{.*unary-and-cast.zom}}:9:11
+// CHECK:   |
+// CHECK: 9 | let g = a as? i32;
+// CHECK:   |           ^~
+// CHECK: Error [ZOM2056]: 'as' is not allowed as a variable declaration name
+// CHECK:   --> {{.*unary-and-cast.zom}}:9:11
+// CHECK:   |
+// CHECK: 9 | let g = a as? i32;
+// CHECK:   |           ^~
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*unary-and-cast.zom}}:9:13
+// CHECK:   |
+// CHECK: 9 | let g = a as? i32;
+// CHECK:   |             ^
+// CHECK: Error [ZOM2056]: 'i32' is not allowed as a variable declaration name
+// CHECK:   --> {{.*unary-and-cast.zom}}:9:15
+// CHECK:   |
+// CHECK: 9 | let g = a as? i32;
+// CHECK:   |               ^~~
+// CHECK: Error [ZOM2025]: Expected ','
+// CHECK:   --> {{.*unary-and-cast.zom}}:10:11
+// CHECK:    |
+// CHECK: 10 | let h = a as! i32;
+// CHECK:    |           ^~
+// CHECK: Error [ZOM2056]: 'as' is not allowed as a variable declaration name
+// CHECK:   --> {{.*unary-and-cast.zom}}:10:11
+// CHECK:    |
+// CHECK: 10 | let h = a as! i32;
+// CHECK:    |           ^~
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*unary-and-cast.zom}}:10:13
+// CHECK:    |
+// CHECK: 10 | let h = a as! i32;
+// CHECK:    |             ^
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*unary-and-cast.zom}}:10:13
+// CHECK:    |
+// CHECK: 10 | let h = a as! i32;
+// CHECK:    |             ^
+// CHECK: Error [ZOM2010]: Reserved keyword 'i32' cannot be used as an identifier
+// CHECK:   --> {{.*unary-and-cast.zom}}:10:15
+// CHECK:    |
+// CHECK: 10 | let h = a as! i32;
+// CHECK:    |               ^~~
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

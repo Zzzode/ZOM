@@ -1,0 +1,98 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+enum E {
+  A,
+  B = 1,
+  C(i32),
+  D(name: str, age: i32)
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*enum-declarations.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "EnumDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "E"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "EnumMember",
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "A"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null,
+// CHECK-NEXT:           "tupleType": null
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "EnumMember",
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "B"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": {
+// CHECK-NEXT:             "node": "IntegerLiteral",
+// CHECK-NEXT:             "value": "1"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "tupleType": null
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "EnumMember",
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "C"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null,
+// CHECK-NEXT:           "tupleType": {
+// CHECK-NEXT:             "node": "TupleTypeNode",
+// CHECK-NEXT:             "elementTypes": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "I32TypeNode",
+// CHECK-NEXT:                 "name": "i32"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "EnumMember",
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "D"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null,
+// CHECK-NEXT:           "tupleType": {
+// CHECK-NEXT:             "node": "TupleTypeNode",
+// CHECK-NEXT:             "elementTypes": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "NamedTupleElement",
+// CHECK-NEXT:                 "name": {
+// CHECK-NEXT:                   "node": "Identifier",
+// CHECK-NEXT:                   "name": "name"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "type": {
+// CHECK-NEXT:                   "node": "StrTypeNode",
+// CHECK-NEXT:                   "name": "str"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "NamedTupleElement",
+// CHECK-NEXT:                 "name": {
+// CHECK-NEXT:                   "node": "Identifier",
+// CHECK-NEXT:                   "name": "age"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "type": {
+// CHECK-NEXT:                   "node": "I32TypeNode",
+// CHECK-NEXT:                   "name": "i32"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

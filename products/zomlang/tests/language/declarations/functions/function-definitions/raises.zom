@@ -1,0 +1,39 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+fun fail() -> unit raises Error {
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*raises.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "FunctionDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "fail"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "returnType": {
+// CHECK-NEXT:         "node": "ReturnType",
+// CHECK-NEXT:         "type": {
+// CHECK-NEXT:           "node": "UnitTypeNode",
+// CHECK-NEXT:           "name": "unit"
+// CHECK-NEXT:         },
+// CHECK-NEXT:         "errorType": {
+// CHECK-NEXT:           "node": "TypeReferenceNode",
+// CHECK-NEXT:           "name": "Error"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT: 
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

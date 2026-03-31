@@ -1,0 +1,125 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+alias OptStr = str?;
+alias U = i32 | str;
+alias I = A & B;
+alias Box<T> = { value: T };
+alias Constrained<T extends U> = T;
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*alias-declarations.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "OptStr"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "OptionalTypeNode",
+// CHECK-NEXT:         "type": {
+// CHECK-NEXT:           "node": "StrTypeNode",
+// CHECK-NEXT:           "name": "str"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "U"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "UnionTypeNode",
+// CHECK-NEXT:         "types": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "I32TypeNode",
+// CHECK-NEXT:             "name": "i32"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "StrTypeNode",
+// CHECK-NEXT:             "name": "str"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "I"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "IntersectionTypeNode",
+// CHECK-NEXT:         "types": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "A"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "B"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Box"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "TypeParameterDeclaration",
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "T"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "constraint": null
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "ObjectTypeNode",
+// CHECK-NEXT:         "members": [
+// CHECK-NEXT: 
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Constrained"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "TypeParameterDeclaration",
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "T"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "constraint": {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "U"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "TypeReferenceNode",
+// CHECK-NEXT:         "name": "T"
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

@@ -1,0 +1,74 @@
+// RUN: /opt/homebrew/bin/timeout 5s %zomc compile --dump-ast %s | %FileCheck %s
+
+fun testBreakContinue() {
+  loop1: while (true) {
+    break;
+    continue;
+    break loop1;
+    continue loop1;
+  }
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*break-continue.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "FunctionDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "testBreakContinue"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "LabeledStatement",
+// CHECK-NEXT:             "label": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "loop1"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "statement": {
+// CHECK-NEXT:               "node": "WhileStatement",
+// CHECK-NEXT:               "condition": {
+// CHECK-NEXT:                 "node": "BooleanLiteral",
+// CHECK-NEXT:                 "value": "true"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "body": {
+// CHECK-NEXT:                 "node": "BlockStatement",
+// CHECK-NEXT:                 "children": [
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "BreakStatement",
+// CHECK-NEXT:                     "label": null
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "ContinueStatement",
+// CHECK-NEXT:                     "label": null
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "BreakStatement",
+// CHECK-NEXT:                     "label": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "loop1"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "ContinueStatement",
+// CHECK-NEXT:                     "label": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "loop1"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 ]
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

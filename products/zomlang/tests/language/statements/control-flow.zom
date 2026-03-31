@@ -1,0 +1,390 @@
+// RUN: /opt/homebrew/bin/timeout 5s %zomc compile --dump-ast %s | %FileCheck %s
+
+fun testControlFlow() {
+  let x = 10;
+
+  // If statement
+  if (x > 5) {
+    x = x - 1;
+  } else {
+    x = x + 1;
+  }
+
+  // While statement
+  while (x > 0) {
+    x = x - 1;
+  }
+
+  // For statement
+  for (let i = 0; i < 10; i++) {
+    x = x + i;
+  }
+
+  // Match statement
+  match (x) {
+    when 0 => {
+      x = 100;
+    }
+    when 1 => x = 200;
+    default => x = 0;
+  }
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*control-flow.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "FunctionDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "testControlFlow"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableStatement",
+// CHECK-NEXT:             "declarations": {
+// CHECK-NEXT:               "node": "VariableDeclarationList",
+// CHECK-NEXT:               "bindings": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "VariableDeclaration",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "x"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "type": null,
+// CHECK-NEXT:                   "initializer": {
+// CHECK-NEXT:                     "node": "IntegerLiteral",
+// CHECK-NEXT:                     "value": "10"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "IfStatement",
+// CHECK-NEXT:             "condition": {
+// CHECK-NEXT:               "node": "BinaryExpression",
+// CHECK-NEXT:               "left": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "x"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "operator": {
+// CHECK-NEXT:                 "node": "TokenNode",
+// CHECK-NEXT:                 "symbol": ">"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "right": {
+// CHECK-NEXT:                 "node": "IntegerLiteral",
+// CHECK-NEXT:                 "value": "5"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "thenStatement": {
+// CHECK-NEXT:               "node": "BlockStatement",
+// CHECK-NEXT:               "children": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ExpressionStatement",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "BinaryExpression",
+// CHECK-NEXT:                     "left": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "x"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "operator": {
+// CHECK-NEXT:                       "node": "TokenNode",
+// CHECK-NEXT:                       "symbol": "="
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "right": {
+// CHECK-NEXT:                       "node": "BinaryExpression",
+// CHECK-NEXT:                       "left": {
+// CHECK-NEXT:                         "node": "Identifier",
+// CHECK-NEXT:                         "name": "x"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "operator": {
+// CHECK-NEXT:                         "node": "TokenNode",
+// CHECK-NEXT:                         "symbol": "-"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "right": {
+// CHECK-NEXT:                         "node": "IntegerLiteral",
+// CHECK-NEXT:                         "value": "1"
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "elseStatement": {
+// CHECK-NEXT:               "node": "BlockStatement",
+// CHECK-NEXT:               "children": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ExpressionStatement",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "BinaryExpression",
+// CHECK-NEXT:                     "left": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "x"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "operator": {
+// CHECK-NEXT:                       "node": "TokenNode",
+// CHECK-NEXT:                       "symbol": "="
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "right": {
+// CHECK-NEXT:                       "node": "BinaryExpression",
+// CHECK-NEXT:                       "left": {
+// CHECK-NEXT:                         "node": "Identifier",
+// CHECK-NEXT:                         "name": "x"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "operator": {
+// CHECK-NEXT:                         "node": "TokenNode",
+// CHECK-NEXT:                         "symbol": "+"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "right": {
+// CHECK-NEXT:                         "node": "IntegerLiteral",
+// CHECK-NEXT:                         "value": "1"
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "WhileStatement",
+// CHECK-NEXT:             "condition": {
+// CHECK-NEXT:               "node": "BinaryExpression",
+// CHECK-NEXT:               "left": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "x"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "operator": {
+// CHECK-NEXT:                 "node": "TokenNode",
+// CHECK-NEXT:                 "symbol": ">"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "right": {
+// CHECK-NEXT:                 "node": "IntegerLiteral",
+// CHECK-NEXT:                 "value": "0"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "body": {
+// CHECK-NEXT:               "node": "BlockStatement",
+// CHECK-NEXT:               "children": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ExpressionStatement",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "BinaryExpression",
+// CHECK-NEXT:                     "left": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "x"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "operator": {
+// CHECK-NEXT:                       "node": "TokenNode",
+// CHECK-NEXT:                       "symbol": "="
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "right": {
+// CHECK-NEXT:                       "node": "BinaryExpression",
+// CHECK-NEXT:                       "left": {
+// CHECK-NEXT:                         "node": "Identifier",
+// CHECK-NEXT:                         "name": "x"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "operator": {
+// CHECK-NEXT:                         "node": "TokenNode",
+// CHECK-NEXT:                         "symbol": "-"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "right": {
+// CHECK-NEXT:                         "node": "IntegerLiteral",
+// CHECK-NEXT:                         "value": "1"
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "ForStatement",
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "VariableStatement",
+// CHECK-NEXT:               "declarations": {
+// CHECK-NEXT:                 "node": "VariableDeclarationList",
+// CHECK-NEXT:                 "bindings": [
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "VariableDeclaration",
+// CHECK-NEXT:                     "name": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "i"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "type": null,
+// CHECK-NEXT:                     "initializer": {
+// CHECK-NEXT:                       "node": "IntegerLiteral",
+// CHECK-NEXT:                       "value": "0"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 ]
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "condition": {
+// CHECK-NEXT:               "node": "BinaryExpression",
+// CHECK-NEXT:               "left": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "i"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "operator": {
+// CHECK-NEXT:                 "node": "TokenNode",
+// CHECK-NEXT:                 "symbol": "<"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "right": {
+// CHECK-NEXT:                 "node": "IntegerLiteral",
+// CHECK-NEXT:                 "value": "10"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "update": {
+// CHECK-NEXT:               "node": "PostfixUnaryExpression",
+// CHECK-NEXT:               "operand": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "i"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "operator": {
+// CHECK-NEXT:                 "node": "TokenNode",
+// CHECK-NEXT:                 "symbol": "++"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "body": {
+// CHECK-NEXT:               "node": "BlockStatement",
+// CHECK-NEXT:               "children": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ExpressionStatement",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "BinaryExpression",
+// CHECK-NEXT:                     "left": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "x"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "operator": {
+// CHECK-NEXT:                       "node": "TokenNode",
+// CHECK-NEXT:                       "symbol": "="
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "right": {
+// CHECK-NEXT:                       "node": "BinaryExpression",
+// CHECK-NEXT:                       "left": {
+// CHECK-NEXT:                         "node": "Identifier",
+// CHECK-NEXT:                         "name": "x"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "operator": {
+// CHECK-NEXT:                         "node": "TokenNode",
+// CHECK-NEXT:                         "symbol": "+"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "right": {
+// CHECK-NEXT:                         "node": "Identifier",
+// CHECK-NEXT:                         "name": "i"
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "MatchStatement",
+// CHECK-NEXT:             "discriminant": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "x"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "clauses": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "MatchClause",
+// CHECK-NEXT:                 "pattern": {
+// CHECK-NEXT:                   "node": "ExpressionPattern",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "IntegerLiteral",
+// CHECK-NEXT:                     "value": "0"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "guard": null,
+// CHECK-NEXT:                 "body": {
+// CHECK-NEXT:                   "node": "BlockStatement",
+// CHECK-NEXT:                   "children": [
+// CHECK-NEXT:                     {
+// CHECK-NEXT:                       "node": "ExpressionStatement",
+// CHECK-NEXT:                       "expression": {
+// CHECK-NEXT:                         "node": "BinaryExpression",
+// CHECK-NEXT:                         "left": {
+// CHECK-NEXT:                           "node": "Identifier",
+// CHECK-NEXT:                           "name": "x"
+// CHECK-NEXT:                         },
+// CHECK-NEXT:                         "operator": {
+// CHECK-NEXT:                           "node": "TokenNode",
+// CHECK-NEXT:                           "symbol": "="
+// CHECK-NEXT:                         },
+// CHECK-NEXT:                         "right": {
+// CHECK-NEXT:                           "node": "IntegerLiteral",
+// CHECK-NEXT:                           "value": "100"
+// CHECK-NEXT:                         }
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   ]
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "MatchClause",
+// CHECK-NEXT:                 "pattern": {
+// CHECK-NEXT:                   "node": "ExpressionPattern",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "IntegerLiteral",
+// CHECK-NEXT:                     "value": "1"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "guard": null,
+// CHECK-NEXT:                 "body": {
+// CHECK-NEXT:                   "node": "ExpressionStatement",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "BinaryExpression",
+// CHECK-NEXT:                     "left": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "x"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "operator": {
+// CHECK-NEXT:                       "node": "TokenNode",
+// CHECK-NEXT:                       "symbol": "="
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "right": {
+// CHECK-NEXT:                       "node": "IntegerLiteral",
+// CHECK-NEXT:                       "value": "200"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "DefaultClause",
+// CHECK-NEXT:                 "statements": [
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "ExpressionStatement",
+// CHECK-NEXT:                     "expression": {
+// CHECK-NEXT:                       "node": "BinaryExpression",
+// CHECK-NEXT:                       "left": {
+// CHECK-NEXT:                         "node": "Identifier",
+// CHECK-NEXT:                         "name": "x"
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "operator": {
+// CHECK-NEXT:                         "node": "TokenNode",
+// CHECK-NEXT:                         "symbol": "="
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       "right": {
+// CHECK-NEXT:                         "node": "IntegerLiteral",
+// CHECK-NEXT:                         "value": "0"
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 ]
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

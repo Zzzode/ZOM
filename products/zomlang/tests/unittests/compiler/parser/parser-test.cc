@@ -15,15 +15,40 @@
 #include "zomlang/compiler/parser/parser.h"
 
 #include "zc/core/common.h"
+#include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/cast.h"
+#include "zomlang/compiler/ast/module.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
 namespace parser {
+
+static void expectIdentifierNameText(
+    zc::OneOf<zc::Maybe<const ast::Identifier&>, zc::Maybe<const ast::BindingPattern&>> name,
+    zc::StringPtr expected) {
+  ZC_SWITCH_ONEOF(name) {
+    ZC_CASE_ONEOF(maybeId, zc::Maybe<const ast::Identifier&>) {
+      ZC_IF_SOME(id, maybeId) { ZC_EXPECT(id.getText() == expected); }
+      else { ZC_FAIL_EXPECT("name should not be none"); }
+      return;
+    }
+    ZC_CASE_ONEOF(maybePattern, zc::Maybe<const ast::BindingPattern&>) {
+      ZC_FAIL_EXPECT("name should be Identifier");
+      return;
+    }
+    ZC_CASE_ONEOF_DEFAULT {
+      ZC_FAIL_EXPECT("name should not be empty");
+      return;
+    }
+  }
+}
 
 ZC_TEST("ParserTest.BasicParserCreation") {
   auto sourceManager = zc::heap<source::SourceManager>();
@@ -734,6 +759,50 @@ ZC_TEST("ParserTest.ParseInterfaceDeclaration") {
   ZC_EXPECT(result != zc::none, "Should parse interface declaration");
 }
 
+ZC_TEST("ParserTest.ParseInterfacePropertySignature") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("interface I { let x?: i32; const y: str; fun f<T>(a: i32) -> void; }").asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    ZC_EXPECT(statements.size() == 1, "Should contain a single top-level statement");
+
+    auto& ifaceDecl =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::InterfaceDeclaration>(
+            statements[0]);
+    const auto& members = ifaceDecl.getMembers();
+
+    ZC_EXPECT(members.size() == 3, "Should parse 3 interface members");
+    expectIdentifierNameText(members[0].getName(), "x"_zc);
+    expectIdentifierNameText(members[1].getName(), "y"_zc);
+    expectIdentifierNameText(members[2].getName(), "f"_zc);
+  }
+  else { ZC_EXPECT(false, "Parse should succeed"); }
+}
+
+ZC_TEST("ParserTest.ParseClassMemberMissingSemicolon") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("class C { x: i32 y: i32; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Parse should succeed with recovery");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Should emit MissingSemicolon diagnostic");
+}
+
 ZC_TEST("ParserTest.ParseStructDeclaration") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -949,6 +1018,312 @@ ZC_TEST("ParserTest.ParseMatchStatement") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse match statement with cases");
+}
+
+ZC_TEST("ParserTest.ParseClassHeritageClauses") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("class Child extends Base implements IFoo, IBar { }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    ZC_EXPECT(statements.size() == 1, "Should contain a single top-level statement");
+
+    auto& classDecl =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ClassDeclaration>(statements[0]);
+
+    const auto& clauses = classDecl.getHeritageClauses();
+    if (clauses.size() > 0) {
+      ZC_EXPECT(clauses.size() == 2, "Should parse extends + implements clauses");
+      ZC_EXPECT(clauses[0].getToken() == ::zomlang::compiler::ast::SyntaxKind::ExtendsKeyword,
+                "First clause should be extends");
+      ZC_EXPECT(clauses[1].getToken() == ::zomlang::compiler::ast::SyntaxKind::ImplementsKeyword,
+                "Second clause should be implements");
+
+      ZC_EXPECT(clauses[0].getTypes().size() == 1, "Extends should have one type");
+      ZC_EXPECT(clauses[1].getTypes().size() == 2, "Implements should have two types");
+    } else {
+      ZC_EXPECT(false, "Should parse heritage clauses");
+    }
+  }
+  else { ZC_EXPECT(false, "Parse should succeed"); }
+}
+
+ZC_TEST("ParserTest.ParseHeritageClauseDoubleComma") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("class C extends Base,, { }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Parse should succeed with recovery");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Should emit error for malformed heritage list");
+}
+
+ZC_TEST("ParserTest.ParseHeritageTypeArgumentsSameLine") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("class C extends Base<i32> { }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    auto& classDecl =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ClassDeclaration>(statements[0]);
+
+    const auto& clauses = classDecl.getHeritageClauses();
+    if (clauses.size() > 0) {
+      const auto& types = clauses[0].getTypes();
+      ZC_EXPECT(types.size() == 1, "Should have one extends type");
+      ZC_EXPECT(types[0]->getTypeArguments().size() == 1, "Should parse one type argument");
+    } else {
+      ZC_EXPECT(false, "Expected heritage clauses");
+    }
+  }
+  else { ZC_EXPECT(false, "Parse should succeed"); }
+}
+
+ZC_TEST("ParserTest.ParseHeritageTypeArgumentsWithLineBreak") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("class C extends Base<i32>\n{ }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    auto& classDecl =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ClassDeclaration>(statements[0]);
+
+    const auto& clauses = classDecl.getHeritageClauses();
+    if (clauses.size() > 0) {
+      const auto& types = clauses[0].getTypes();
+      ZC_EXPECT(types.size() == 1, "Should have one extends type");
+      ZC_EXPECT(types[0]->getTypeArguments().size() == 1, "Should parse one type argument");
+    } else {
+      ZC_EXPECT(false, "Expected heritage clauses");
+    }
+  }
+  else { ZC_EXPECT(false, "Parse should succeed"); }
+}
+
+ZC_TEST("ParserTest.ParseHeritageObjectLiteral") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("class C extends {} { x: i32; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    auto& classDecl =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ClassDeclaration>(statements[0]);
+
+    const auto& clauses = classDecl.getHeritageClauses();
+    if (clauses.size() > 0) {
+      const auto& types = clauses[0].getTypes();
+      ZC_EXPECT(types.size() == 1, "Should have one extends type");
+    } else {
+      ZC_EXPECT(false, "Expected heritage clauses");
+    }
+  }
+  else { ZC_EXPECT(false, "Parse should succeed"); }
+}
+
+ZC_TEST("ParserTest.ParseForStatement") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("for (i = 0; i < 3; i = i + 1) { }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse for statement");
+}
+
+ZC_TEST("ParserTest.ParseForStatementEmptyClauses") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("for (;;){ }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse for statement with empty clauses");
+}
+
+ZC_TEST("ParserTest.ParseDebuggerAndJumpStatements") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("debugger; break; continue loop; return; return 1;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse debugger/break/continue/return statements");
+}
+
+ZC_TEST("ParserTest.ParseOptionalChaining") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("obj?.prop; obj?.[0]; obj?.(1); obj?.; obj.; obj!.prop;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse optional chaining and recovery paths");
+}
+
+ZC_TEST("ParserTest.ParseNewExpressions") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("new Foo(1, 2).bar; new Foo[0]; new Foo;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse new expressions and member access chains");
+}
+
+ZC_TEST("ParserTest.NewExpressionInvalidOptionalChain") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("new Foo?.bar;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Parse should succeed with recovery");
+  ZC_EXPECT(diagnosticEngine->hasErrors(),
+            "Should diagnose invalid optional chain from new expression");
+}
+
+ZC_TEST("ParserTest.ParseUnaryOperators") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("void x; !true; ~x; +1; -1; -x ** 2;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse unary operators and exponentiation diagnostics path");
+}
+
+ZC_TEST("ParserTest.DestructuringAssignmentBlockError") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+
+  class MockConsumer : public diagnostics::DiagnosticConsumer {
+  public:
+    bool foundError = false;
+    void handleDiagnostic(const source::SourceManager&,
+                          const diagnostics::Diagnostic& diag) override {
+      if (diag.getId() == diagnostics::DiagID::DeclarationOrStatementExpectedAfterBlock) {
+        foundError = true;
+      }
+    }
+  };
+
+  auto consumer = zc::heap<MockConsumer>();
+  auto consumerPtr = consumer.get();
+  diagnosticEngine->addConsumer(zc::mv(consumer));
+
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("{ x: 1 } = y;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  parser.parse();
+
+  ZC_EXPECT(consumerPtr->foundError,
+            "Should report DeclarationOrStatementExpectedAfterBlock error");
+}
+
+ZC_TEST("ParserTest.DeinitDeclaration") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("class MyClass { deinit { } }").asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse class with deinit");
+}
+
+ZC_TEST("ParserTest.DeinitDeclarationWithModifiers") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("class MyClass { public deinit { } }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse class with public deinit");
+}
+
+ZC_TEST("ParserTest.ObjectLiteralFeatures") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  // Test shorthand (x), property assignment (y: 2), and spread (...z)
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let obj = { x, y: 2, ...z };").asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none,
+            "Should parse object literal with shorthand, assignment, and spread");
 }
 
 }  // namespace parser

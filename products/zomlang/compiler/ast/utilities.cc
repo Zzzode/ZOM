@@ -34,20 +34,17 @@ bool isDeclaration(const ast::Node& node) {
   const ast::SyntaxKind kind = node.getKind();
 
   return kind == ast::SyntaxKind::FunctionExpression || kind == ast::SyntaxKind::BindingElement ||
-         kind == ast::SyntaxKind::ClassDeclaration ||
-         kind == ast::SyntaxKind::ConstructorDeclaration ||
-         kind == ast::SyntaxKind::EnumDeclaration || kind == ast::SyntaxKind::EnumMember ||
-         kind == ast::SyntaxKind::ExportDeclaration ||
+         kind == ast::SyntaxKind::ClassDeclaration || kind == ast::SyntaxKind::EnumDeclaration ||
+         kind == ast::SyntaxKind::EnumMember || kind == ast::SyntaxKind::ExportDeclaration ||
          kind == ast::SyntaxKind::FunctionDeclaration ||
-         kind == ast::SyntaxKind::FunctionExpression || kind == ast::SyntaxKind::GetAccessor ||
          kind == ast::SyntaxKind::ImportDeclaration ||
          kind == ast::SyntaxKind::InterfaceDeclaration ||
          kind == ast::SyntaxKind::MethodDeclaration || kind == ast::SyntaxKind::MethodSignature ||
-
+         kind == ast::SyntaxKind::InitDeclaration ||
          kind == ast::SyntaxKind::ParameterDeclaration ||
          kind == ast::SyntaxKind::PropertyDeclaration ||
-         kind == ast::SyntaxKind::PropertySignature || kind == ast::SyntaxKind::SetAccessor ||
-         kind == ast::SyntaxKind::AliasDeclaration ||
+         kind == ast::SyntaxKind::PropertySignature || kind == ast::SyntaxKind::GetAccessor ||
+         kind == ast::SyntaxKind::SetAccessor || kind == ast::SyntaxKind::AliasDeclaration ||
          kind == ast::SyntaxKind::TypeParameterDeclaration ||
          kind == ast::SyntaxKind::VariableDeclarationList;
 }

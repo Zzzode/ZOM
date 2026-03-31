@@ -16,6 +16,7 @@
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/one-of.h"
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/classof.h"
 
@@ -28,7 +29,9 @@ class Expression;
 class Pattern;
 class PropertyDeclaration;
 class TypeNode;
+class TupleTypeNode;
 class ReturnTypeNode;
+class BindingPattern;
 
 class Statement : public Node {
 public:
@@ -94,6 +97,8 @@ class Declaration {
 public:
   ZC_DISALLOW_COPY_AND_MOVE(Declaration);
 
+  virtual void accept(Visitor& visitor) const = 0;
+
   /// \brief Get the symbol associated with this declaration
   virtual zc::Maybe<const symbol::Symbol&> getSymbol() const = 0;
 
@@ -109,7 +114,7 @@ protected:
 class DeclarationImpl {
 public:
   DeclarationImpl() noexcept;
-  ~DeclarationImpl() noexcept(false) = default;
+  ~DeclarationImpl() noexcept(false);
 
   /// \brief Get the symbol associated with this declaration
   zc::Maybe<const symbol::Symbol&> getSymbol() const;
@@ -131,7 +136,8 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(NamedDeclaration);
 
   /// \brief Get the name of this declaration
-  virtual const Identifier& getName() const = 0;
+  virtual zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> getName()
+      const = 0;
 
   GENERATE_CLASSOF_IMPL(NamedDeclaration);
 
@@ -141,19 +147,20 @@ protected:
 
 class NamedDeclarationImpl : public DeclarationImpl {
 public:
-  NamedDeclarationImpl(zc::Own<ast::Identifier> name) noexcept;
-  ~NamedDeclarationImpl() noexcept(false) = default;
+  NamedDeclarationImpl(zc::OneOf<zc::Own<ast::Identifier>, zc::Own<BindingPattern>> name) noexcept;
+  ~NamedDeclarationImpl() noexcept(false);
 
-  const Identifier& getName() const;
+  zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> getName() const;
 
 private:
   struct Impl;
   zc::Own<Impl> impl;
 };
 
-#define NAMED_DECLARATION_METHOD_DECL() \
-  DECLARATION_METHOD_DECL()             \
-  const Identifier& getName() const override;
+#define NAMED_DECLARATION_METHOD_DECL()                                               \
+  DECLARATION_METHOD_DECL()                                                           \
+  zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> getName() \
+      const override;
 
 class DeclarationStatement : public NamedDeclaration, public Statement {
 public:
@@ -165,14 +172,15 @@ protected:
 
 class BindingElement final : public NamedDeclaration, public Node {
 public:
-  BindingElement(zc::Own<Identifier> name, zc::Maybe<zc::Own<TypeNode>> type = zc::none,
+  BindingElement(zc::Maybe<zc::Own<TokenNode>> dotDotDotToken,
+                 zc::Maybe<zc::Own<Identifier>> propertyName,
+                 zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> nameOrPattern,
                  zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
   ~BindingElement() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(BindingElement);
 
-  /// \brief Get the type annotation for this binding element
-  zc::Maybe<const TypeNode&> getType() const;
+  zc::Maybe<const BindingPattern&> getBindingPattern() const;
 
   /// \brief Get the initializer expression for this binding element
   zc::Maybe<const Expression&> getInitializer() const;
@@ -185,36 +193,16 @@ private:
   zc::Own<Impl> impl;
 };
 
-class ParameterDeclaration final : public NamedDeclaration, public Node {
-public:
-  explicit ParameterDeclaration(zc::Own<Identifier> name,
-                                zc::Maybe<zc::Own<TypeNode>> type = zc::none,
-                                zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
-  ~ParameterDeclaration() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(ParameterDeclaration);
-
-  /// \brief Get the type annotation for this parameter declaration
-  zc::Maybe<const TypeNode&> getType() const;
-
-  /// \brief Get the initializer expression for this parameter declaration
-  zc::Maybe<const Expression&> getInitializer() const;
-
-  NODE_METHOD_DECLARE();
-  NAMED_DECLARATION_METHOD_DECL();
-
-private:
-  struct Impl;
-  zc::Own<Impl> impl;
-};
-
 class VariableDeclaration final : public NamedDeclaration, public Node {
 public:
-  VariableDeclaration(zc::Own<ast::Identifier> name, zc::Maybe<zc::Own<ast::TypeNode>> type,
-                      zc::Own<ast::Expression> initializer) noexcept;
+  VariableDeclaration(zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> name,
+                      zc::Maybe<zc::Own<TypeNode>> type = zc::none,
+                      zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
   ~VariableDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(VariableDeclaration);
+
+  zc::Maybe<const BindingPattern&> getBindingPattern() const;
 
   /// \brief Get the type annotation for this variable declaration
   zc::Maybe<const TypeNode&> getType() const;
@@ -230,14 +218,44 @@ private:
   zc::Own<Impl> impl;
 };
 
+class ParameterDeclaration final : public NamedDeclaration, public Node {
+public:
+  explicit ParameterDeclaration(zc::Vector<ast::SyntaxKind> modifiers,
+                                zc::Maybe<zc::Own<TokenNode>> dotDotDotToken,
+                                zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>> name,
+                                zc::Maybe<zc::Own<TokenNode>> questionToken,
+                                zc::Maybe<zc::Own<TypeNode>> type = zc::none,
+                                zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
+  ~ParameterDeclaration() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ParameterDeclaration);
+
+  zc::ArrayPtr<const ast::SyntaxKind> getModifiers() const;
+  zc::Maybe<const TokenNode&> getDotDotDotToken() const;
+  zc::Maybe<const BindingPattern&> getBindingPattern() const;
+  zc::Maybe<const TokenNode&> getQuestionToken() const;
+  /// \brief Get the type annotation for this parameter declaration
+  zc::Maybe<const TypeNode&> getType() const;
+
+  /// \brief Get the initializer expression for this parameter declaration
+  zc::Maybe<const Expression&> getInitializer() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
 class VariableDeclarationList final : public Node {
 public:
-  VariableDeclarationList(zc::Vector<zc::Own<BindingElement>>&& bindings) noexcept;
+  VariableDeclarationList(zc::Vector<zc::Own<VariableDeclaration>>&& bindings) noexcept;
   ~VariableDeclarationList() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(VariableDeclarationList);
 
-  const NodeList<BindingElement>& getBindings() const;
+  const NodeList<VariableDeclaration>& getBindings() const;
 
   NODE_METHOD_DECLARE();
 
@@ -284,8 +302,8 @@ private:
 class FunctionDeclaration final : public DeclarationStatement, public LocalsContainer {
 public:
   FunctionDeclaration(zc::Own<Identifier> name,
-                      zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-                      zc::Vector<zc::Own<BindingElement>>&& parameters,
+                      zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                      zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
                       zc::Maybe<zc::Own<ReturnTypeNode>> returnType,
                       zc::Own<Statement> body) noexcept;
   ~FunctionDeclaration() noexcept(false);
@@ -296,7 +314,7 @@ public:
   const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
 
   /// \brief Get the parameters of this function
-  const NodeList<BindingElement>& getParameters() const;
+  const NodeList<ParameterDeclaration>& getParameters() const;
 
   /// \brief Get the return type of this function
   zc::Maybe<const ReturnTypeNode&> getReturnType() const;
@@ -311,6 +329,16 @@ public:
 private:
   struct Impl;
   zc::Own<Impl> impl;
+};
+
+class ObjectLiteralElement : public NamedDeclaration {
+public:
+  ZC_DISALLOW_COPY_AND_MOVE(ObjectLiteralElement);
+
+  GENERATE_CLASSOF_IMPL(ObjectLiteralElement);
+
+protected:
+  ObjectLiteralElement() noexcept = default;
 };
 
 class ClassElement : public NamedDeclaration {
@@ -329,28 +357,6 @@ protected:
   InterfaceElement() noexcept = default;
 };
 
-class ClassDeclaration final : public DeclarationStatement {
-public:
-  ClassDeclaration(zc::Own<Identifier> name,
-                   zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-                   zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
-                   zc::Vector<zc::Own<ClassElement>>&& members) noexcept;
-  ~ClassDeclaration() noexcept(false);
-
-  ZC_DISALLOW_COPY_AND_MOVE(ClassDeclaration);
-
-  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
-  zc::Maybe<const zc::Vector<zc::Own<HeritageClause>>&> getHeritageClauses() const;
-  const NodeList<ClassElement>& getMembers() const;
-
-  NODE_METHOD_DECLARE();
-  NAMED_DECLARATION_METHOD_DECL();
-
-private:
-  struct Impl;
-  zc::Own<Impl> impl;
-};
-
 class HeritageClause final : public Node {
 public:
   HeritageClause(ast::SyntaxKind token,
@@ -363,6 +369,28 @@ public:
   const zc::Vector<zc::Own<ExpressionWithTypeArguments>>& getTypes() const;
 
   NODE_METHOD_DECLARE();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class ClassDeclaration final : public DeclarationStatement {
+public:
+  ClassDeclaration(zc::Own<Identifier> name,
+                   zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                   zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
+                   zc::Vector<zc::Own<ClassElement>>&& members) noexcept;
+  ~ClassDeclaration() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ClassDeclaration);
+
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
+  const NodeList<HeritageClause>& getHeritageClauses() const;
+  const NodeList<ClassElement>& getMembers() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
 
 private:
   struct Impl;
@@ -477,12 +505,48 @@ public:
 
   ZC_DISALLOW_COPY_AND_MOVE(ForStatement);
 
-  zc::Maybe<const Expression&> getInitializer() const;
+  zc::Maybe<const Statement&> getInitializer() const;
   zc::Maybe<const Expression&> getCondition() const;
   zc::Maybe<const Expression&> getUpdate() const;
 
   ITERATION_STATEMENT_METHOD_DECL();
   LOCALS_CONTAINER_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class ForInStatement final : public IterationStatement, public LocalsContainer {
+public:
+  ForInStatement(zc::Own<Statement> initializer, zc::Own<Expression> expression,
+                 zc::Own<Statement> body) noexcept;
+  ~ForInStatement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(ForInStatement);
+
+  const Statement& getInitializer() const;
+  const Expression& getExpression() const;
+
+  ITERATION_STATEMENT_METHOD_DECL();
+  LOCALS_CONTAINER_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class LabeledStatement final : public Statement {
+public:
+  LabeledStatement(zc::Own<Identifier> label, zc::Own<Statement> statement) noexcept;
+  ~LabeledStatement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(LabeledStatement);
+
+  const Identifier& getLabel() const;
+  const Statement& getStatement() const;
+
+  NODE_METHOD_DECLARE();
 
 private:
   struct Impl;
@@ -558,15 +622,16 @@ private:
 class InterfaceDeclaration final : public DeclarationStatement {
 public:
   InterfaceDeclaration(zc::Own<Identifier> name,
-                       zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
+                       zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
                        zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
                        zc::Vector<zc::Own<InterfaceElement>>&& members) noexcept;
   ~InterfaceDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(InterfaceDeclaration);
 
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
+  const NodeList<HeritageClause>& getHeritageClauses() const;
   const NodeList<InterfaceElement>& getMembers() const;
-  zc::ArrayPtr<const zc::Own<Identifier>> getExtends() const;
 
   NODE_METHOD_DECLARE();
   NAMED_DECLARATION_METHOD_DECL();
@@ -578,12 +643,36 @@ private:
 
 class StructDeclaration final : public DeclarationStatement {
 public:
-  StructDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<Statement>>&& members) noexcept;
+  StructDeclaration(zc::Own<Identifier> name,
+                    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                    zc::Maybe<zc::Vector<zc::Own<HeritageClause>>> heritageClauses,
+                    zc::Vector<zc::Own<ClassElement>>&& members) noexcept;
   ~StructDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(StructDeclaration);
 
-  const NodeList<Statement>& getMembers() const;
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
+  const NodeList<HeritageClause>& getHeritageClauses() const;
+  const NodeList<ClassElement>& getMembers() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class EnumMember final : public DeclarationStatement {
+public:
+  EnumMember(zc::Own<Identifier> name, zc::Maybe<zc::Own<Expression>> initializer = zc::none,
+             zc::Maybe<zc::Own<TupleTypeNode>> tupleType = zc::none) noexcept;
+  ~EnumMember() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(EnumMember);
+
+  zc::Maybe<const Expression&> getInitializer() const;
+  zc::Maybe<const TupleTypeNode&> getTupleType() const;
 
   NODE_METHOD_DECLARE();
   NAMED_DECLARATION_METHOD_DECL();
@@ -595,12 +684,12 @@ private:
 
 class EnumDeclaration final : public DeclarationStatement {
 public:
-  EnumDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<Statement>>&& members) noexcept;
+  EnumDeclaration(zc::Own<Identifier> name, zc::Vector<zc::Own<EnumMember>>&& members) noexcept;
   ~EnumDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(EnumDeclaration);
 
-  const NodeList<Statement>& getMembers() const;
+  const NodeList<EnumMember>& getMembers() const;
 
   NODE_METHOD_DECLARE();
   NAMED_DECLARATION_METHOD_DECL();
@@ -629,11 +718,14 @@ private:
 
 class AliasDeclaration final : public NamedDeclaration, public Statement {
 public:
-  AliasDeclaration(zc::Own<Identifier> name, zc::Own<TypeNode> type) noexcept;
+  AliasDeclaration(zc::Own<Identifier> name,
+                   zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                   zc::Own<TypeNode> type) noexcept;
   ~AliasDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(AliasDeclaration);
 
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
   const TypeNode& getType() const;
 
   NODE_METHOD_DECLARE();
@@ -728,13 +820,15 @@ private:
 
 class PropertySignature final : public InterfaceElement, public Node {
 public:
-  PropertySignature(zc::Own<Identifier> name, bool optional,
+  PropertySignature(zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+                    zc::Maybe<zc::Own<ast::TokenNode>> optional,
                     zc::Maybe<zc::Own<TypeNode>> type = zc::none,
                     zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
   ~PropertySignature() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(PropertySignature);
 
+  zc::ArrayPtr<const ast::SyntaxKind> getModifiers() const;
   bool isOptional() const;
 
   zc::Maybe<const TypeNode&> getType() const;
@@ -750,22 +844,39 @@ private:
 
 class MethodSignature final : public InterfaceElement, public LocalsContainer, public Node {
 public:
-  MethodSignature(zc::Own<Identifier> name, bool optional,
-                  zc::Vector<zc::Own<TypeParameterDeclaration>>&& typeParameters,
-                  zc::Vector<zc::Own<BindingElement>>&& parameters,
+  MethodSignature(zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+                  zc::Maybe<zc::Own<ast::TokenNode>> optional,
+                  zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                  zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
                   zc::Maybe<zc::Own<ReturnTypeNode>> returnType = zc::none) noexcept;
   ~MethodSignature() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(MethodSignature);
 
+  zc::ArrayPtr<const ast::SyntaxKind> getModifiers() const;
   bool isOptional() const;
   const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
-  const NodeList<BindingElement>& getParameters() const;
+  const NodeList<ParameterDeclaration>& getParameters() const;
   zc::Maybe<const ReturnTypeNode&> getReturnType() const;
 
   NODE_METHOD_DECLARE();
   NAMED_DECLARATION_METHOD_DECL();
   LOCALS_CONTAINER_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class SemicolonInterfaceElement final : public InterfaceElement, public Node {
+public:
+  SemicolonInterfaceElement() noexcept;
+  ~SemicolonInterfaceElement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(SemicolonInterfaceElement);
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
 
 private:
   struct Impl;
@@ -787,14 +898,142 @@ private:
   zc::Own<Impl> impl;
 };
 
+class MethodDeclaration final : public ClassElement, public LocalsContainer, public Node {
+public:
+  MethodDeclaration(zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+                    zc::Maybe<zc::Own<ast::TokenNode>> optional,
+                    zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                    zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+                    zc::Maybe<zc::Own<ReturnTypeNode>> returnType = zc::none,
+                    zc::Maybe<zc::Own<Statement>> body = zc::none) noexcept;
+  ~MethodDeclaration() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(MethodDeclaration);
+
+  zc::ArrayPtr<const ast::SyntaxKind> getModifiers() const;
+  bool isOptional() const;
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
+  const NodeList<ParameterDeclaration>& getParameters() const;
+  zc::Maybe<const ReturnTypeNode&> getReturnType() const;
+  zc::Maybe<const Statement&> getBody() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+  LOCALS_CONTAINER_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class InitDeclaration final : public ClassElement, public LocalsContainer, public Node {
+public:
+  InitDeclaration(zc::Vector<ast::SyntaxKind> modifiers,
+                  zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+                  zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+                  zc::Maybe<zc::Own<ReturnTypeNode>> returnType = zc::none,
+                  zc::Maybe<zc::Own<Statement>> body = zc::none) noexcept;
+  ~InitDeclaration() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(InitDeclaration);
+
+  zc::ArrayPtr<const ast::SyntaxKind> getModifiers() const;
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
+  const NodeList<ParameterDeclaration>& getParameters() const;
+  zc::Maybe<const ReturnTypeNode&> getReturnType() const;
+  zc::Maybe<const Statement&> getBody() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+  LOCALS_CONTAINER_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class DeinitDeclaration final : public ClassElement, public LocalsContainer, public Node {
+public:
+  explicit DeinitDeclaration(zc::Vector<ast::SyntaxKind> modifiers,
+                             zc::Maybe<zc::Own<Statement>> body) noexcept;
+  ~DeinitDeclaration() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(DeinitDeclaration);
+
+  zc::ArrayPtr<const ast::SyntaxKind> getModifiers() const;
+  zc::Maybe<const Statement&> getBody() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+  LOCALS_CONTAINER_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class GetAccessor final : public ClassElement, public LocalsContainer, public Node {
+public:
+  GetAccessor(zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+              zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+              zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+              zc::Maybe<zc::Own<ReturnTypeNode>> returnType = zc::none,
+              zc::Maybe<zc::Own<Statement>> body = zc::none) noexcept;
+  ~GetAccessor() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(GetAccessor);
+
+  zc::ArrayPtr<const ast::SyntaxKind> getModifiers() const;
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
+  const NodeList<ParameterDeclaration>& getParameters() const;
+  zc::Maybe<const ReturnTypeNode&> getReturnType() const;
+  zc::Maybe<const Statement&> getBody() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+  LOCALS_CONTAINER_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+class SetAccessor final : public ClassElement, public LocalsContainer, public Node {
+public:
+  SetAccessor(zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+              zc::Maybe<zc::Vector<zc::Own<TypeParameterDeclaration>>> typeParameters,
+              zc::Vector<zc::Own<ParameterDeclaration>>&& parameters,
+              zc::Maybe<zc::Own<ReturnTypeNode>> returnType = zc::none,
+              zc::Maybe<zc::Own<Statement>> body = zc::none) noexcept;
+  ~SetAccessor() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(SetAccessor);
+
+  zc::ArrayPtr<const ast::SyntaxKind> getModifiers() const;
+  const NodeList<TypeParameterDeclaration>& getTypeParameters() const;
+  const NodeList<ParameterDeclaration>& getParameters() const;
+  zc::Maybe<const ReturnTypeNode&> getReturnType() const;
+  zc::Maybe<const Statement&> getBody() const;
+
+  NODE_METHOD_DECLARE();
+  NAMED_DECLARATION_METHOD_DECL();
+  LOCALS_CONTAINER_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
 class PropertyDeclaration final : public ClassElement, public Node {
 public:
-  PropertyDeclaration(zc::Own<Identifier> name, zc::Maybe<zc::Own<TypeNode>> type,
+  PropertyDeclaration(zc::Vector<ast::SyntaxKind> modifiers, zc::Own<Identifier> name,
+                      zc::Maybe<zc::Own<TypeNode>> type,
                       zc::Maybe<zc::Own<Expression>> initializer = zc::none) noexcept;
   ~PropertyDeclaration() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(PropertyDeclaration);
 
+  zc::ArrayPtr<const ast::SyntaxKind> getModifiers() const;
   zc::Maybe<const TypeNode&> getType() const;
   zc::Maybe<const Expression&> getInitializer() const;
 

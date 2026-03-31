@@ -15,10 +15,4 @@
 # Statement Tests
 # Tests for all types of statements in ZomLang
 
-# TODO: Add subdirectories for specific statement test categories when implemented
-# - blocks
-# - control-flow
-# - loops
-# - jumps
-# - expression-statements
-# - try-catch
+add_lit_ast_tests_from_directory(${CMAKE_CURRENT_SOURCE_DIR})

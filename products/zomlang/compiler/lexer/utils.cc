@@ -208,7 +208,7 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "let"_zcb) return ast::SyntaxKind::LetKeyword;
   if (text == "match"_zcb) return ast::SyntaxKind::MatchKeyword;
   if (text == "module"_zcb) return ast::SyntaxKind::ModuleKeyword;
-  if (text == "mutable"_zcb) return ast::SyntaxKind::MutableKeyword;
+  if (text == "mutating"_zcb) return ast::SyntaxKind::MutatingKeyword;
   if (text == "namespace"_zcb) return ast::SyntaxKind::NamespaceKeyword;
   if (text == "never"_zcb) return ast::SyntaxKind::NeverKeyword;
   if (text == "new"_zcb) return ast::SyntaxKind::NewKeyword;
@@ -239,7 +239,6 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "undefined"_zcb) return ast::SyntaxKind::UndefinedKeyword;
   if (text == "unique"_zcb) return ast::SyntaxKind::UniqueKeyword;
   if (text == "using"_zcb) return ast::SyntaxKind::UsingKeyword;
-  if (text == "void"_zcb) return ast::SyntaxKind::VoidKeyword;
   if (text == "when"_zcb) return ast::SyntaxKind::WhenKeyword;
   if (text == "with"_zcb) return ast::SyntaxKind::WithKeyword;
   if (text == "yield"_zcb) return ast::SyntaxKind::YieldKeyword;

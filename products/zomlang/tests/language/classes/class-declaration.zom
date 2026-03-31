@@ -1,0 +1,324 @@
+// RUN: /opt/homebrew/bin/timeout 5s %zomc compile --dump-ast %s | %FileCheck %s
+
+class Animal {
+  public let name: str;
+
+  init(n: str) {
+    this.name = n;
+  }
+
+  public fun makeSound() -> str {
+    return "noise";
+  }
+}
+
+class Dog extends Animal {
+  private let breed: str;
+
+  init(n: str, b: str) {
+    super.init(n);
+    this.breed = b;
+  }
+
+  public fun makeSound() -> str {
+    return "Woof";
+  }
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*class-declaration.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ClassDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Animal"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertyDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "public"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "name"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "StrTypeNode",
+// CHECK-NEXT:             "name": "str"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "InitDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "init"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ParameterDeclaration",
+// CHECK-NEXT:               "name": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "n"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "type": {
+// CHECK-NEXT:                 "node": "StrTypeNode",
+// CHECK-NEXT:                 "name": "str"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "initializer": null
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "ExpressionStatement",
+// CHECK-NEXT:                 "expression": {
+// CHECK-NEXT:                   "node": "BinaryExpression",
+// CHECK-NEXT:                   "left": {
+// CHECK-NEXT:                     "node": "PropertyAccessExpression",
+// CHECK-NEXT:                     "expression": {
+// CHECK-NEXT:                       "node": "ThisExpression"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "name": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "name"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "questionDot": "false"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "operator": {
+// CHECK-NEXT:                     "node": "TokenNode",
+// CHECK-NEXT:                     "symbol": "="
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "right": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "n"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MethodDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "public"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "makeSound"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": {
+// CHECK-NEXT:             "node": "ReturnType",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "StrTypeNode",
+// CHECK-NEXT:               "name": "str"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "ReturnStatement",
+// CHECK-NEXT:                 "expression": {
+// CHECK-NEXT:                   "node": "StringLiteral",
+// CHECK-NEXT:                   "value": "noise"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ClassDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Dog"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "heritageClauses": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "HeritageClause",
+// CHECK-NEXT:           "token": {
+// CHECK-NEXT:             "node": "TokenNode",
+// CHECK-NEXT:             "symbol": "extends"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "types": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ExpressionWithTypeArguments",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "Animal"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ]
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "members": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "PropertyDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "private"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "breed"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "type": {
+// CHECK-NEXT:             "node": "StrTypeNode",
+// CHECK-NEXT:             "name": "str"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "initializer": null
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "InitDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "init"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ParameterDeclaration",
+// CHECK-NEXT:               "name": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "n"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "type": {
+// CHECK-NEXT:                 "node": "StrTypeNode",
+// CHECK-NEXT:                 "name": "str"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "initializer": null
+// CHECK-NEXT:             },
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "ParameterDeclaration",
+// CHECK-NEXT:               "name": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "b"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "type": {
+// CHECK-NEXT:                 "node": "StrTypeNode",
+// CHECK-NEXT:                 "name": "str"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "initializer": null
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "ExpressionStatement",
+// CHECK-NEXT:                 "expression": {
+// CHECK-NEXT:                   "node": "CallExpression",
+// CHECK-NEXT:                   "callee": {
+// CHECK-NEXT:                     "node": "PropertyAccessExpression",
+// CHECK-NEXT:                     "expression": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "super"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "name": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "init"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "questionDot": "false"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "arguments": [
+// CHECK-NEXT:                     {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "n"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   ]
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "ExpressionStatement",
+// CHECK-NEXT:                 "expression": {
+// CHECK-NEXT:                   "node": "BinaryExpression",
+// CHECK-NEXT:                   "left": {
+// CHECK-NEXT:                     "node": "PropertyAccessExpression",
+// CHECK-NEXT:                     "expression": {
+// CHECK-NEXT:                       "node": "ThisExpression"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "name": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "breed"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "questionDot": "false"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "operator": {
+// CHECK-NEXT:                     "node": "TokenNode",
+// CHECK-NEXT:                     "symbol": "="
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "right": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "b"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MethodDeclaration",
+// CHECK-NEXT:           "modifiers": [
+// CHECK-NEXT:             {
+// CHECK-NEXT:               "node": "TokenNode",
+// CHECK-NEXT:               "symbol": "public"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "name": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "makeSound"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "optional": "false",
+// CHECK-NEXT:           "parameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:           ],
+// CHECK-NEXT:           "returnType": {
+// CHECK-NEXT:             "node": "ReturnType",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "StrTypeNode",
+// CHECK-NEXT:               "name": "str"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "BlockStatement",
+// CHECK-NEXT:             "children": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "ReturnStatement",
+// CHECK-NEXT:                 "expression": {
+// CHECK-NEXT:                   "node": "StringLiteral",
+// CHECK-NEXT:                   "value": "Woof"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

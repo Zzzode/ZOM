@@ -130,7 +130,8 @@ numericLiteral:
 	decimalLiteral
 	| binaryIntegerLiteral
 	| octalIntegerLiteral
-	| hexIntegerLiteral;
+	| hexIntegerLiteral
+	| bigIntLiteral;
 
 decimalLiteral:
 	decimalIntegerLiteral PERIOD decimalDigits? exponentPart?
@@ -159,6 +160,9 @@ octalDigits:
 
 hexIntegerLiteral: HEX_PREFIX hexDigits;
 hexDigits: HEX_DIGIT (numericLiteralSeparator? HEX_DIGIT)*;
+
+bigIntLiteral:
+	DECIMAL_DIGIT (numericLiteralSeparator? DECIMAL_DIGIT)* N;
 
 //// =============================================================================== STRING LITERALS
 stringLiteral:
@@ -352,7 +356,6 @@ postfixUnaryExpression:
 // Prefix Unary Expression
 prefixUnaryExpression:
 	postfixUnaryExpression
-	| VOID prefixUnaryExpression
 	| TYPEOF prefixUnaryExpression
 	| PLUS prefixUnaryExpression
 	| MINUS prefixUnaryExpression
@@ -466,8 +469,8 @@ bindingPropertyList:
 	| bindingPropertyList COMMA bindingProperty;
 
 bindingProperty:
-	propertyName COLON bindingElement
-	| bindingIdentifier initializer?;
+	bindingIdentifier initializer?
+	| propertyName COLON bindingElement;
 
 // Initializer
 initializer: ASSIGN assignmentExpression;
@@ -522,7 +525,8 @@ breakableStatement: iterativeStatement;
 iterativeStatement:
 	whileStatement
 	| forStatement
-	| forInStatement;
+	| forInStatement
+	| forOfStatement;
 
 whileStatement: WHILE LPAREN expression RPAREN statement;
 
@@ -530,9 +534,16 @@ forStatement:
 	FOR LPAREN forInit? SEMICOLON expression? SEMICOLON forUpdate? RPAREN statement;
 
 forInStatement:
-	FOR LPAREN (variableDeclaration | expression) IN expression RPAREN statement;
+	FOR LPAREN (forDeclaration | leftHandSideExpression) IN expression RPAREN statement;
 
-forInit: expression | variableDeclaration;
+forOfStatement:
+	FOR LPAREN (forDeclaration | leftHandSideExpression) OF assignmentExpression RPAREN statement;
+
+forDeclaration: (LET | CONST) forBinding;
+
+forBinding: bindingIdentifier | bindingPattern;
+
+forInit: expression | variableStatement;
 
 forUpdate: expression;
 
@@ -589,7 +600,7 @@ declaration:
 	| structDeclaration
 	| errorDeclaration
 	| enumDeclaration
-	| variableDeclaration;
+	| variableStatement;
 
 //// ============================================================================== TYPES
 
@@ -701,9 +712,13 @@ parameter: bindingIdentifier typeAnnotation? initializer?;
 functionBody: statementList?;
 
 arrayBindingPattern: LBRACK bindingElementList? RBRACK;
+
 bindingElementList: bindingElement (COMMA bindingElement)*;
-bindingElement: bindingIdentifier typeAnnotation? initializer?;
-bindingList: bindingElement (COMMA bindingElement)*;
+
+bindingElement:
+	bindingIdentifier initializer?
+	| bindingPattern initializer?;
+
 methodSignature: propertyName QUESTION? callSignature;
 
 // ================================================================================ INTERFACE DECLARATIONS
@@ -711,7 +726,10 @@ interfaceDeclaration:
 	INTERFACE bindingIdentifier typeParameters? interfaceHeritage? LBRACE interfaceBody RBRACE;
 interfaceHeritage: EXTENDS interfaceTypeList;
 interfaceBody: interfaceElement*;
-interfaceElement: propertySignature | methodSignature;
+interfaceElement:
+	SEMICOLON
+	| accessibilityModifier? STATIC? (LET | CONST) propertySignature initializer? SEMICOLON?
+	| accessibilityModifier? STATIC? FUN methodSignature SEMICOLON?;
 
 // ================================================================================ TYPE ALIAS DECLARATIONS
 aliasDeclaration:
@@ -719,10 +737,13 @@ aliasDeclaration:
 
 // ================================================================================ STRUCT DECLARATIONS
 structDeclaration:
-	STRUCT bindingIdentifier typeParameters? LBRACE structBody? RBRACE;
+	STRUCT bindingIdentifier typeParameters? structTail;
 
-structBody: structMember (COMMA structMember)*;
-structMember: propertyName COLON type;
+structTail: structHeritage? LBRACE structBody RBRACE;
+structHeritage: IMPLEMENTS interfaceTypeList;
+structBody: structElementList?;
+structElementList: structElement+;
+structElement: propertyMemberDeclaration;
 
 // ================================================================================ ERROR DECLARATIONS
 errorDeclaration:
@@ -747,7 +768,14 @@ setAccessor:
 	SET propertyName LPAREN parameter RPAREN LBRACE functionBody RBRACE;
 
 // ================================================================================ LET AND CONST DECLARATIONS
-variableDeclaration: LET_OR_CONST bindingList;
+variableStatement: (LET | CONST) variableDeclarationList;
+
+variableDeclarationList:
+	variableDeclaration (COMMA variableDeclaration)*;
+
+variableDeclaration:
+	bindingIdentifier typeAnnotation? initializer?
+	| bindingPattern typeAnnotation? initializer;
 
 // ================================================================================ TYPES
 typeAnnotation: COLON type;
@@ -786,10 +814,12 @@ propertyMemberDeclaration:
 	| memberAccessorDeclaration;
 
 memberVariableDeclaration:
-	accessibilityModifier? STATIC? propertyName typeAnnotation? initializer?;
+	accessibilityModifier? STATIC? (LET | CONST) propertyName typeAnnotation? initializer? SEMICOLON
+		;
 
 memberFunctionDeclaration:
-	accessibilityModifier? STATIC? propertyName callSignature? LBRACE functionBody RBRACE;
+	accessibilityModifier? STATIC FUN propertyName callSignature? LBRACE functionBody RBRACE
+	| accessibilityModifier? MUTATING? FUN propertyName callSignature? LBRACE functionBody RBRACE;
 
 memberAccessorDeclaration:
 	accessibilityModifier? STATIC? (getAccessor | setAccessor);

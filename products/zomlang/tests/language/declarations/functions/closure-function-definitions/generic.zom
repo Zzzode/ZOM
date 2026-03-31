@@ -1,0 +1,79 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+// Test generic closure
+let genericClosure = fun <T> (val: T) -> T {
+  val
+}
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*generic.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "genericClosure"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "FunctionExpression",
+// CHECK-NEXT:               "typeParameters": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "TypeParameterDeclaration",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "T"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "constraint": null
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "parameters": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ParameterDeclaration",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "val"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "type": {
+// CHECK-NEXT:                     "node": "TypeReferenceNode",
+// CHECK-NEXT:                     "name": "T"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "captures": [
+// CHECK-NEXT: 
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "returnType": {
+// CHECK-NEXT:                 "node": "ReturnType",
+// CHECK-NEXT:                 "type": {
+// CHECK-NEXT:                   "node": "TypeReferenceNode",
+// CHECK-NEXT:                   "name": "T"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "body": {
+// CHECK-NEXT:                 "node": "BlockStatement",
+// CHECK-NEXT:                 "children": [
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "ExpressionStatement",
+// CHECK-NEXT:                     "expression": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "val"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 ]
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

@@ -1,0 +1,33 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+let a = risky()?!;
+let b = optional!!;
+
+
+// CHECK: Error [ZOM2011]: Identifier expected, found ';'
+// CHECK:   --> {{.*error-handling-operators.zom}}:3:18
+// CHECK:   |
+// CHECK: 3 | let a = risky()?!;
+// CHECK:   |                  ^
+// CHECK: Error [ZOM2025]: Expected ':'
+// CHECK:   --> {{.*error-handling-operators.zom}}:3:18
+// CHECK:   |
+// CHECK: 3 | let a = risky()?!;
+// CHECK:   |                  ^
+// CHECK: Error [ZOM2010]: Reserved keyword 'optional' cannot be used as an identifier
+// CHECK:   --> {{.*error-handling-operators.zom}}:4:9
+// CHECK:   |
+// CHECK: 4 | let b = optional!!;
+// CHECK:   |         ^~~~~~~~
+// CHECK: Error [ZOM2025]: Expected ','
+// CHECK:   --> {{.*error-handling-operators.zom}}:4:17
+// CHECK:   |
+// CHECK: 4 | let b = optional!!;
+// CHECK:   |                 ^~
+// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK:   --> {{.*error-handling-operators.zom}}:4:17
+// CHECK:   |
+// CHECK: 4 | let b = optional!!;
+// CHECK:   |                 ^~
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

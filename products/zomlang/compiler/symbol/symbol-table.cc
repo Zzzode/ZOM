@@ -118,6 +118,27 @@ VariableSymbol& SymbolTable::createVariable(zc::StringPtr name, const Scope& sco
   return result;
 }
 
+ParameterSymbol& SymbolTable::createParameter(zc::StringPtr name, const Scope& scope) {
+  // Create a default type for testing purposes
+  auto defaultType = BuiltInTypeSymbol::createUnit(SymbolId::create(impl->generateSymbolId()),
+                                                   source::SourceLoc{});
+
+  auto symbol = zc::heap<ParameterSymbol>(SymbolId::create(impl->generateSymbolId()), name,
+                                          SymbolFlags::Parameter | SymbolFlags::TermKind,
+                                          source::SourceLoc{}, zc::mv(defaultType));
+
+  ParameterSymbol& result = *symbol;
+  result.setScope(scope);
+
+  // Store in symbols collection
+  impl->symbols.add(zc::mv(symbol));
+
+  // Register for lookup
+  impl->registerSymbol(result);
+
+  return result;
+}
+
 FunctionSymbol& SymbolTable::createFunction(zc::StringPtr name, const Scope& scope) {
   // Create a default type for testing purposes
   auto defaultType = BuiltInTypeSymbol::createUnit(SymbolId::create(impl->generateSymbolId()),
