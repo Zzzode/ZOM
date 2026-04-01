@@ -63,39 +63,58 @@ class FileChecker:
         # Return content as-is to match original zomc output format
         return re.sub(r"\x1b\[[0-9;]*m", "", content)
 
+    def build_regex_pattern(self, pattern: str) -> Optional[str]:
+        """Convert a FileCheck-style pattern with inline regex blocks into a regex."""
+        if "{{" not in pattern and "[[" not in pattern:
+            return None
+
+        regex_parts = []
+        cursor = 0
+
+        while cursor < len(pattern):
+            regex_start = pattern.find("{{", cursor)
+            variable_start = pattern.find("[[", cursor)
+
+            starts = [pos for pos in (regex_start, variable_start) if pos != -1]
+            if not starts:
+                regex_parts.append(re.escape(pattern[cursor:]))
+                break
+
+            next_start = min(starts)
+            if next_start > cursor:
+                regex_parts.append(re.escape(pattern[cursor:next_start]))
+
+            if next_start == regex_start:
+                regex_end = pattern.find("}}", regex_start + 2)
+                if regex_end == -1:
+                    regex_parts.append(re.escape(pattern[regex_start:]))
+                    break
+
+                regex_parts.append(pattern[regex_start + 2 : regex_end])
+                cursor = regex_end + 2
+                continue
+
+            variable_end = pattern.find("]]", variable_start + 2)
+            if variable_end == -1:
+                regex_parts.append(re.escape(pattern[variable_start:]))
+                break
+
+            variable_body = pattern[variable_start + 2 : variable_end]
+            if ":" in variable_body:
+                _, variable_regex = variable_body.split(":", 1)
+                regex_parts.append(f"(?:{variable_regex})")
+            else:
+                regex_parts.append(re.escape(variable_body))
+
+            cursor = variable_end + 2
+
+        return "".join(regex_parts)
+
     def match_pattern(self, pattern: str, content: str) -> bool:
         """Check if pattern matches in content."""
-        # Handle special patterns
-        if pattern.startswith("{{") and pattern.endswith("}}"):
-            # Regex pattern
-            regex_pattern = pattern[2:-2]
+        regex_pattern = self.build_regex_pattern(pattern)
+        if regex_pattern is not None:
             return bool(re.search(regex_pattern, content, re.MULTILINE))
-
-        # Handle patterns with quoted regex values like "{{.*filename}}"
-        quoted_regex_match = re.search(r'"\{\{([^}]+)\}\}"', pattern)
-        if quoted_regex_match:
-            regex_part = quoted_regex_match.group(1)
-            # Create a pattern to find the corresponding quoted value in content
-            # Extract the context around the quoted regex
-            before_quote = pattern[: quoted_regex_match.start()]
-            after_quote = pattern[quoted_regex_match.end() :]
-
-            # Escape special regex characters in the context
-            before_escaped = re.escape(before_quote)
-            after_escaped = re.escape(after_quote)
-
-            # Create a regex to match the structure and capture the quoted value
-            full_pattern = before_escaped + r'"([^"]+)"' + after_escaped
-
-            # Search for the pattern in content
-            match = re.search(full_pattern, content)
-            if match:
-                quoted_value = match.group(1)
-                return bool(re.search(regex_part, quoted_value))
-            return False
-
-        # Handle variable substitution patterns like [[VAR:.*]]
-        pattern = re.sub(r"\[\[\w+:([^\]]+)\]\]", r"\1", pattern)
 
         # Simple substring match
         if not self.strict_whitespace:
