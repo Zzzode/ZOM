@@ -1,4 +1,4 @@
-// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
 
 error Err {
   Msg: "oops",

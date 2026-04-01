@@ -1,4 +1,4 @@
-// RUN: /opt/homebrew/bin/timeout 5s %zomc compile --dump-ast %s | %FileCheck %s
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
 
 fun main() {
   let x = 10;
