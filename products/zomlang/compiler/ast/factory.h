@@ -36,8 +36,11 @@ namespace ast {
 class SourceFile;
 class Statement;
 class Expression;
+class ModuleDeclaration;
 class ModulePath;
+class ImportSpecifier;
 class ImportDeclaration;
+class ExportSpecifier;
 class ExportDeclaration;
 class BindingElement;
 class VariableDeclarationList;
@@ -138,6 +141,7 @@ class ObjectBindingPattern;
 namespace factory {
 /// Create a new SourceFile Node.
 zc::Own<SourceFile> createSourceFile(zc::String&& fileName,
+                                     zc::Maybe<zc::Own<ModuleDeclaration>> moduleDeclaration,
                                      zc::Vector<zc::Own<ast::Statement>>&& statements);
 
 template <typename Node>
@@ -155,15 +159,25 @@ zc::Own<Node> createNodeWithRange(const source::SourceRange& range, Args&&... ar
 }
 
 /// Create a ModulePath node
-zc::Own<ModulePath> createModulePath(zc::Own<ast::StringLiteral>&& stringLiteral);
+zc::Own<ModulePath> createModulePath(zc::Vector<zc::Own<ast::Identifier>>&& segments);
+
+zc::Own<ModuleDeclaration> createModuleDeclaration(zc::Own<ModulePath>&& modulePath);
+
+zc::Own<ImportSpecifier> createImportSpecifier(
+    zc::Own<ast::Identifier>&& importedName, zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none);
 
 /// Create an ImportDeclaration node
 zc::Own<ImportDeclaration> createImportDeclaration(
-    zc::Own<ModulePath> modulePath, zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none);
+    zc::Own<ModulePath> modulePath, zc::Maybe<zc::Own<ast::Identifier>> alias,
+    zc::Vector<zc::Own<ImportSpecifier>>&& specifiers);
+
+zc::Own<ExportSpecifier> createExportSpecifier(
+    zc::Own<ast::Identifier>&& exportedName, zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none);
 
 /// Create an ExportDeclaration node
 zc::Own<ExportDeclaration> createExportDeclaration(
-    zc::Own<ast::Expression>&& exportPath, zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none);
+    zc::Maybe<zc::Own<ModulePath>> modulePath, zc::Vector<zc::Own<ExportSpecifier>>&& specifiers,
+    zc::Maybe<zc::Own<ast::Statement>> declaration = zc::none);
 
 /// Statement factory functions
 zc::Own<BindingElement> createBindingElement(

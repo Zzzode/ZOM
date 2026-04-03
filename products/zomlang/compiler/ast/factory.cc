@@ -32,22 +32,39 @@ namespace ast {
 namespace factory {
 
 zc::Own<SourceFile> createSourceFile(zc::String&& fileName,
+                                     zc::Maybe<zc::Own<ModuleDeclaration>> moduleDeclaration,
                                      zc::Vector<zc::Own<ast::Statement>>&& statements) {
-  return zc::heap<SourceFile>(zc::mv(fileName), zc::mv(statements));
+  return zc::heap<SourceFile>(zc::mv(fileName), zc::mv(moduleDeclaration), zc::mv(statements));
 }
 
-zc::Own<ModulePath> createModulePath(zc::Own<ast::StringLiteral>&& stringLiteral) {
-  return zc::heap<ModulePath>(zc::mv(stringLiteral));
+zc::Own<ModulePath> createModulePath(zc::Vector<zc::Own<ast::Identifier>>&& segments) {
+  return zc::heap<ModulePath>(zc::mv(segments));
 }
 
-zc::Own<ImportDeclaration> createImportDeclaration(zc::Own<ModulePath> modulePath,
-                                                   zc::Maybe<zc::Own<ast::Identifier>> alias) {
-  return zc::heap<ImportDeclaration>(zc::mv(modulePath), zc::mv(alias));
+zc::Own<ModuleDeclaration> createModuleDeclaration(zc::Own<ModulePath>&& modulePath) {
+  return zc::heap<ModuleDeclaration>(zc::mv(modulePath));
 }
 
-zc::Own<ExportDeclaration> createExportDeclaration(zc::Own<ast::Expression>&& exportPath,
-                                                   zc::Maybe<zc::Own<ast::Identifier>> alias) {
-  return zc::heap<ExportDeclaration>(zc::mv(exportPath), zc::mv(alias));
+zc::Own<ImportSpecifier> createImportSpecifier(zc::Own<ast::Identifier>&& importedName,
+                                               zc::Maybe<zc::Own<ast::Identifier>> alias) {
+  return zc::heap<ImportSpecifier>(zc::mv(importedName), zc::mv(alias));
+}
+
+zc::Own<ImportDeclaration> createImportDeclaration(
+    zc::Own<ModulePath> modulePath, zc::Maybe<zc::Own<ast::Identifier>> alias,
+    zc::Vector<zc::Own<ImportSpecifier>>&& specifiers) {
+  return zc::heap<ImportDeclaration>(zc::mv(modulePath), zc::mv(alias), zc::mv(specifiers));
+}
+
+zc::Own<ExportSpecifier> createExportSpecifier(zc::Own<ast::Identifier>&& exportedName,
+                                               zc::Maybe<zc::Own<ast::Identifier>> alias) {
+  return zc::heap<ExportSpecifier>(zc::mv(exportedName), zc::mv(alias));
+}
+
+zc::Own<ExportDeclaration> createExportDeclaration(
+    zc::Maybe<zc::Own<ModulePath>> modulePath, zc::Vector<zc::Own<ExportSpecifier>>&& specifiers,
+    zc::Maybe<zc::Own<ast::Statement>> declaration) {
+  return zc::heap<ExportDeclaration>(zc::mv(modulePath), zc::mv(specifiers), zc::mv(declaration));
 }
 
 // Statement factory functions

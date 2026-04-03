@@ -333,7 +333,7 @@ enum class SyntaxKind {
   LastPunctuation = RightBracket,
 
   // AST node ranges
-  FirstStatement = VariableStatement,
+  FirstStatement = ModuleDeclaration,
   LastStatement = DefaultClause,
 };
 

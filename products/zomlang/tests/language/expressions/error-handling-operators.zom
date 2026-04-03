@@ -24,7 +24,7 @@ let b = optional!!;
 // CHECK:   |
 // CHECK: 4 | let b = optional!!;
 // CHECK:   |                 ^~
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*error-handling-operators.zom}}:4:17
 // CHECK:   |
 // CHECK: 4 | let b = optional!!;

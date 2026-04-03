@@ -554,18 +554,18 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseRaisesClause() {
 zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseSourceFile");
 
-  // sourceFile: module;
-  // module: moduleBody?;
-  // moduleBody: moduleItemList;
-  // moduleItemList: moduleItem+;
+  // sourceFile: moduleDeclaration? moduleBody?;
 
   // Prim lexer to get the first token
   nextToken();
 
   source::SourceLoc loc = currentLoc();
 
-  zc::Vector<zc::Own<ast::Statement>> statements = parseList<ast::Statement>(
-      ParsingContext::SourceElements, ZC_BIND_METHOD(*this, parseModuleItem));
+  // Parse Module Declaration
+  auto moduleDeclaration = parseModuleDeclaration(/*isStartOfSourceFile*/ true);
+  // Parse Module Body
+  auto statements = parseList<ast::Statement>(ParsingContext::SourceElements,
+                                              ZC_BIND_METHOD(*this, parseStatement));
 
   trace::traceCounter(trace::TraceCategory::kParser, "Module items parsed"_zc,
                       zc::str(statements.size()));
@@ -573,54 +573,70 @@ zc::Maybe<zc::Own<ast::SourceFile>> Parser::parseSourceFile() {
   // Create the source file node
   zc::StringPtr fileName = getSourceManager().getIdentifierForBuffer(impl->bufferId);
   zc::Own<ast::SourceFile> sourceFile =
-      finishNode(ast::factory::createSourceFile(zc::str(fileName), zc::mv(statements)), loc);
+      finishNode(ast::factory::createSourceFile(zc::str(fileName), zc::mv(moduleDeclaration),
+                                                zc::mv(statements)),
+                 loc);
 
   trace::traceEvent(trace::TraceCategory::kParser, "Source file created"_zc, fileName);
   return finishNode(zc::mv(sourceFile), loc);
 }
 
-zc::Maybe<zc::Own<ast::Statement>> Parser::parseModuleItem() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseModuleItem");
+zc::Maybe<zc::Own<ast::ModuleDeclaration>> Parser::parseModuleDeclaration(
+    bool isStartOfSourceFile) {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseModuleDeclaration");
 
-  // moduleItem:
-  //   statementListItem
-  //   | exportDeclaration
-  //   | importDeclaration;
+  const lexer::Token& token = currentToken();
 
-  // Check for import declaration
-  if (expectToken(ast::SyntaxKind::ImportKeyword)) {
-    ZC_IF_SOME(importDecl, parseImportDeclaration()) { return zc::mv(importDecl); }
+  if (!token.is(ast::SyntaxKind::ModuleKeyword)) { return zc::none; }
+
+  if (!isStartOfSourceFile) {
+    parseErrorAtCurrentToken<diagnostics::DiagID::ModuleDeclarationMustBeFirst>();
   }
 
-  // Check for export declaration
-  if (expectToken(ast::SyntaxKind::ExportKeyword)) {
-    ZC_IF_SOME(exportDecl, parseExportDeclaration()) { return zc::mv(exportDecl); }
-  }
+  source::SourceLoc loc = token.getLocation();
+  nextToken();
 
-  // Otherwise, parse as statement (statementListItem)
-  return parseStatement();
+  ZC_IF_SOME(modulePath, parseModulePath()) {
+    parseSemicolon();
+    return finishNode(ast::factory::createModuleDeclaration(zc::mv(modulePath)), loc);
+  }
+  return zc::none;
 }
 
 zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseImportDeclaration");
-
-  // importDeclaration: IMPORT bindingIdentifier ASSIGN modulePath;
   const lexer::Token& token = currentToken();
-
-  // Expect IMPORT token
   if (!token.is(ast::SyntaxKind::ImportKeyword)) { return zc::none; }
 
   source::SourceLoc loc = token.getLocation();
-  nextToken();  // consume IMPORT
-
-  // Parse bindingIdentifier
-  auto bindingIdentifier = parseBindingIdentifier();
-  if (!currentToken().is(ast::SyntaxKind::Equals)) { return zc::none; }
-  nextToken();  // consume ASSIGN (=)
+  nextToken();
 
   ZC_IF_SOME(modulePath, parseModulePath()) {
-    return finishNode(
-        ast::factory::createImportDeclaration(zc::mv(modulePath), zc::mv(bindingIdentifier)), loc);
+    zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none;
+    zc::Vector<zc::Own<ast::ImportSpecifier>> specifiers;
+
+    if (currentToken().is(ast::SyntaxKind::AsKeyword)) {
+      nextToken();
+      if (!tokenIsIdentifierOrKeyword(currentToken())) { return zc::none; }
+      alias = parseIdentifierName();
+    } else if (currentToken().is(ast::SyntaxKind::Period) &&
+               lookAhead(1).is(ast::SyntaxKind::LeftBrace)) {
+      nextToken();
+      parseExpected(ast::SyntaxKind::LeftBrace);
+
+      while (!expectToken(ast::SyntaxKind::RightBrace) &&
+             !expectToken(ast::SyntaxKind::EndOfFile)) {
+        ZC_IF_SOME(specifier, parseImportSpecifier()) { specifiers.add(zc::mv(specifier)); }
+        if (!parseOptional(ast::SyntaxKind::Comma)) { break; }
+      }
+
+      parseExpected(ast::SyntaxKind::RightBrace);
+    }
+
+    parseSemicolon();
+    return finishNode(ast::factory::createImportDeclaration(zc::mv(modulePath), zc::mv(alias),
+                                                            zc::mv(specifiers)),
+                      loc);
   }
 
   return zc::none;
@@ -628,54 +644,102 @@ zc::Maybe<zc::Own<ast::ImportDeclaration>> Parser::parseImportDeclaration() {
 
 zc::Maybe<zc::Own<ast::ModulePath>> Parser::parseModulePath() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseModulePath");
+  if (!tokenIsIdentifierOrKeyword(currentToken())) { return zc::none; }
 
-  // modulePath: stringLiteral;
+  source::SourceLoc loc = currentLoc();
+  zc::Vector<zc::Own<ast::Identifier>> segments;
+  segments.add(parseIdentifierName());
 
-  const lexer::Token& token = currentToken();
-  source::SourceLoc loc = token.getLocation();
-
-  ZC_IF_SOME(stringLiteral, parseStringLiteral()) {
-    // Create ModulePath with the string literal
-    return finishNode(ast::factory::createModulePath(zc::mv(stringLiteral)), loc);
+  while (currentToken().is(ast::SyntaxKind::Period) && tokenIsIdentifierOrKeyword(lookAhead(1))) {
+    nextToken();
+    segments.add(parseIdentifierName());
   }
 
-  return zc::none;
+  return finishNode(ast::factory::createModulePath(zc::mv(segments)), loc);
 }
 
-zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseExportDeclaration");
+zc::Maybe<zc::Own<ast::ImportSpecifier>> Parser::parseImportSpecifier() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseImportSpecifier");
+  if (!tokenIsIdentifierOrKeyword(currentToken())) { return zc::none; }
 
-  // exportDeclaration: EXPORT bindingIdentifier (PERIOD bindingIdentifier)* (AS identifierName)?;
-  const lexer::Token& token = currentToken();
-
-  // Expect EXPORT token
-  if (!token.is(ast::SyntaxKind::ExportKeyword)) { return zc::none; }
-
-  source::SourceLoc loc = token.getLocation();
-  nextToken();  // consume EXPORT
-
-  // Parse first bindingIdentifier
-  zc::Own<ast::LeftHandSideExpression> exportPath = parseBindingIdentifier();
-
-  // Parse optional (PERIOD bindingIdentifier)*
-  while (currentToken().is(ast::SyntaxKind::Period)) {
-    nextToken();  // consume PERIOD
-
-    auto nextIdentifier = parseBindingIdentifier();
-    exportPath = ast::factory::createPropertyAccessExpression(zc::mv(exportPath),
-                                                              zc::mv(nextIdentifier), false);
-  }
-
-  // Parse optional (AS identifierName)?
+  source::SourceLoc loc = currentLoc();
+  auto importedName = parseIdentifierName();
   zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none;
-  if (currentToken().is(ast::SyntaxKind::AsKeyword)) {
-    nextToken();  // consume AS
 
+  if (currentToken().is(ast::SyntaxKind::AsKeyword)) {
+    nextToken();
     if (!tokenIsIdentifierOrKeyword(currentToken())) { return zc::none; }
     alias = parseIdentifierName();
   }
 
-  return finishNode(ast::factory::createExportDeclaration(zc::mv(exportPath), zc::mv(alias)), loc);
+  return finishNode(ast::factory::createImportSpecifier(zc::mv(importedName), zc::mv(alias)), loc);
+}
+
+zc::Maybe<zc::Own<ast::ExportSpecifier>> Parser::parseExportSpecifier() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseExportSpecifier");
+  if (!tokenIsIdentifierOrKeyword(currentToken())) { return zc::none; }
+
+  source::SourceLoc loc = currentLoc();
+  auto exportedName = parseIdentifierName();
+  zc::Maybe<zc::Own<ast::Identifier>> alias = zc::none;
+
+  if (currentToken().is(ast::SyntaxKind::AsKeyword)) {
+    nextToken();
+    if (!tokenIsIdentifierOrKeyword(currentToken())) { return zc::none; }
+    alias = parseIdentifierName();
+  }
+
+  return finishNode(ast::factory::createExportSpecifier(zc::mv(exportedName), zc::mv(alias)), loc);
+}
+
+zc::Maybe<zc::Own<ast::ExportDeclaration>> Parser::parseExportDeclaration() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseExportDeclaration");
+  const lexer::Token& token = currentToken();
+  if (!token.is(ast::SyntaxKind::ExportKeyword)) { return zc::none; }
+
+  source::SourceLoc loc = token.getLocation();
+  nextToken();
+
+  if (isStartOfDeclaration()) {
+    ZC_IF_SOME(declaration, parseDeclaration()) {
+      return finishNode(ast::factory::createExportDeclaration(
+                            zc::none, zc::Vector<zc::Own<ast::ExportSpecifier>>(),
+                            zc::Maybe<zc::Own<ast::Statement>>(zc::mv(declaration))),
+                        loc);
+    }
+  }
+
+  zc::Maybe<zc::Own<ast::ModulePath>> modulePath = zc::none;
+  zc::Vector<zc::Own<ast::ExportSpecifier>> specifiers;
+
+  if (currentToken().is(ast::SyntaxKind::LeftBrace)) {
+    nextToken();
+
+    while (!expectToken(ast::SyntaxKind::RightBrace) && !expectToken(ast::SyntaxKind::EndOfFile)) {
+      ZC_IF_SOME(specifier, parseExportSpecifier()) { specifiers.add(zc::mv(specifier)); }
+      if (!parseOptional(ast::SyntaxKind::Comma)) { break; }
+    }
+
+    parseExpected(ast::SyntaxKind::RightBrace);
+  } else {
+    ZC_IF_SOME(parsedModulePath, parseModulePath()) {
+      modulePath = zc::mv(parsedModulePath);
+      parseExpected(ast::SyntaxKind::Period);
+      parseExpected(ast::SyntaxKind::LeftBrace);
+
+      while (!expectToken(ast::SyntaxKind::RightBrace) &&
+             !expectToken(ast::SyntaxKind::EndOfFile)) {
+        ZC_IF_SOME(specifier, parseExportSpecifier()) { specifiers.add(zc::mv(specifier)); }
+        if (!parseOptional(ast::SyntaxKind::Comma)) { break; }
+      }
+
+      parseExpected(ast::SyntaxKind::RightBrace);
+    }
+  }
+
+  parseSemicolon();
+  return finishNode(
+      ast::factory::createExportDeclaration(zc::mv(modulePath), zc::mv(specifiers), zc::none), loc);
 }
 
 zc::Maybe<zc::Own<ast::Statement>> Parser::parseStatement() {
@@ -738,10 +802,16 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseStatement() {
       return parseAliasDeclaration();
     case ast::SyntaxKind::DebuggerKeyword:
       return parseDebuggerStatement();
+    case ast::SyntaxKind::ImportKeyword:
+    case ast::SyntaxKind::ExportKeyword:
+    case ast::SyntaxKind::ModuleKeyword:
+      if (isStartOfDeclaration()) { return parseDeclaration(); }
+      break;
     default:
-      // Try to parse as expression statement
-      return parseExpressionStatement();
+      break;
   }
+  // Try to parse as expression statement
+  return parseExpressionStatement();
 }
 
 bool Parser::isStartOfStatement() {
@@ -1973,6 +2043,12 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseDeclaration() {
       return parseErrorDeclaration();
     case ast::SyntaxKind::AliasKeyword:
       return parseAliasDeclaration();
+    case ast::SyntaxKind::ImportKeyword:
+      return parseImportDeclaration();
+    case ast::SyntaxKind::ExportKeyword:
+      return parseExportDeclaration();
+    case ast::SyntaxKind::ModuleKeyword:
+      return parseModuleDeclaration();
     default:
       return zc::none;
   }
@@ -4648,11 +4724,9 @@ bool Parser::scanStartOfDeclaration() {
 
       case ast::SyntaxKind::InterfaceKeyword:
       case ast::SyntaxKind::TypeKeyword:
-        return nextTokenIsIdentifierOnSameLine();
-
       case ast::SyntaxKind::ModuleKeyword:
       case ast::SyntaxKind::NamespaceKeyword:
-        return nextTokenIsIdentifierOrStringLiteralOnSameLine();
+        return nextTokenIsIdentifierOnSameLine();
 
       case ast::SyntaxKind::AbstractKeyword:
       case ast::SyntaxKind::AccessorKeyword:
@@ -4682,27 +4756,13 @@ bool Parser::scanStartOfDeclaration() {
 
       case ast::SyntaxKind::ImportKeyword:
         nextToken();
-        return currentToken().is(ast::SyntaxKind::StringLiteral) ||
-               currentToken().is(ast::SyntaxKind::Asterisk) ||
-               currentToken().is(ast::SyntaxKind::LeftBrace) ||
-               tokenIsIdentifierOrKeyword(currentToken());
+        return isIdentifier() && !currentToken().hasPrecedingLineBreak();
 
       case ast::SyntaxKind::ExportKeyword:
         nextToken();
-        if (currentToken().is(ast::SyntaxKind::Equals) ||
-            currentToken().is(ast::SyntaxKind::Asterisk) ||
-            currentToken().is(ast::SyntaxKind::LeftBrace) ||
-            currentToken().is(ast::SyntaxKind::DefaultKeyword) ||
-            currentToken().is(ast::SyntaxKind::AsKeyword) ||
-            currentToken().is(ast::SyntaxKind::At)) {
-          return true;
-        }
-        if (currentToken().is(ast::SyntaxKind::TypeKeyword)) {
-          nextToken();
-          return currentToken().is(ast::SyntaxKind::Asterisk) ||
-                 currentToken().is(ast::SyntaxKind::LeftBrace) ||
-                 (isIdentifier() && !currentToken().hasPrecedingLineBreak());
-        }
+        if (currentToken().hasPrecedingLineBreak()) { return false; }
+        if (currentToken().is(ast::SyntaxKind::LeftBrace)) { return true; }
+        if (isIdentifier()) { return true; }
         continue;
 
       case ast::SyntaxKind::StaticKeyword:

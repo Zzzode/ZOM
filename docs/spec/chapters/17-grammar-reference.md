@@ -80,13 +80,24 @@ Punctuator ::= '{' | '}' | '(' | ')' | '[' | ']' | '.' | '...' | ';' | ',' | ':'
 (* Program Structure *)
 Program ::= SourceFile
 SourceFile ::= ModuleDeclaration? ModuleItem*
-ModuleItem ::= StatementListItem | ExportDeclaration | ImportDeclaration
+ModuleDeclaration ::= 'module' ModuleName ';'
+ModuleItem ::= ImportDeclaration | ExportDeclaration | StatementListItem
+ModuleName ::= Identifier ('.' Identifier)*
 
-ImportDeclaration ::= 'import' ModulePath ('as' Identifier)? ';'
-ExportDeclaration ::= 'export' (ExportModule | ExportRename) ';'
-ModulePath ::= Identifier ('.' Identifier)*
-ExportModule ::= Identifier
-ExportRename ::= Identifier 'as' Identifier 'from' ModulePath
+ImportDeclaration ::= 'import' ImportClause ';'
+ImportClause ::= NamedImportClause | ModuleImportClause
+ModuleImportClause ::= ModuleName ('as' Identifier)?
+NamedImportClause ::= ModuleName '.' '{' ImportSpecifierList? '}'
+ImportSpecifierList ::= ImportSpecifier (',' ImportSpecifier)* ','?
+ImportSpecifier ::= Identifier ('as' Identifier)?
+
+ExportDeclaration ::= 'export' Declaration
+                    | 'export' ExportClause ';'
+ExportClause ::= LocalExportClause | ReexportClause
+LocalExportClause ::= '{' ExportSpecifierList? '}'
+ReexportClause ::= ModuleName '.' '{' ExportSpecifierList? '}'
+ExportSpecifierList ::= ExportSpecifier (',' ExportSpecifier)* ','?
+ExportSpecifier ::= Identifier ('as' Identifier)?
 
 (* Declarations *)
 Declaration ::= FunctionDeclaration

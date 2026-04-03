@@ -79,6 +79,10 @@ QWEN.md
 CLAUDE.md
 .claude
 
+# Codex
+AGENTS.md
+.codex
+
 # Custom
 .refs
 _thirdparty/

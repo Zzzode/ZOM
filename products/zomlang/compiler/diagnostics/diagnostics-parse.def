@@ -90,6 +90,8 @@ DIAG(FileAppearsToBeBinary, kError, "File appears to be binary", 0)
 // Diagnostics for list parsing error recovery
 DIAG(DeclarationExpected, kError, "Declaration expected", 0)
 DIAG(DeclarationOrStatementExpected, kError, "Declaration or statement expected", 0)
+DIAG(ModuleDeclarationMustBeFirst, kError,
+     "A module declaration can only appear at the top of a file", 0)
 DIAG(CaseOrDefaultExpected, kError, "case or default expected", 0)
 DIAG(StatementExpected, kError, "Statement expected", 0)
 DIAG(PropertyOrSignatureExpected, kError, "Property or signature expected", 0)

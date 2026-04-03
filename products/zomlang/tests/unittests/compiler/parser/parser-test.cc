@@ -704,31 +704,155 @@ ZC_TEST("ParserTest.ParseRaisesClause") {
   ZC_EXPECT(result != zc::none, "Should parse function with raises clause");
 }
 
-ZC_TEST("ParserTest.ParseImportDeclaration") {
+ZC_TEST("ParserTest.ParseModuleSyntax") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("import path = \"module\"").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("module graphics;\n"
+              "import math.geometry as geo;\n"
+              "import math.geometry.{Point as GeoPoint, distance};\n"
+              "export {GeoPoint, distance as calcDistance};\n"
+              "export math.geometry.{Point};\n")
+          .asBytes(),
+      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse import declaration");
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+
+    ZC_EXPECT(statements.size() == 4, "Should contain imports and exports");
+
+    ZC_IF_SOME(moduleDecl, sourceFile.getModuleDeclaration()) {
+      ZC_EXPECT(moduleDecl.getModulePath().getSegments().size() == 1,
+                "Module declaration should contain one segment");
+    }
+    else { ZC_EXPECT(false, "Should contain a module declaration"); }
+
+    auto& moduleImport =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ImportDeclaration>(statements[0]);
+    ZC_EXPECT(moduleImport.isModuleImport(), "First import should be a module import");
+    ZC_IF_SOME(alias, moduleImport.getAlias()) { ZC_EXPECT(alias.getText() == "geo"); }
+
+    auto& namedImport =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ImportDeclaration>(statements[1]);
+    ZC_EXPECT(namedImport.isNamedImport(), "Second import should be a named import");
+    ZC_EXPECT(namedImport.getSpecifiers().size() == 2, "Named import should have 2 specifiers");
+    ZC_EXPECT(namedImport.getSpecifiers()[0].getImportedName().getText() == "Point");
+    ZC_IF_SOME(alias, namedImport.getSpecifiers()[0].getAlias()) {
+      ZC_EXPECT(alias.getText() == "GeoPoint");
+    }
+
+    auto& exportList =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ExportDeclaration>(statements[2]);
+    ZC_EXPECT(exportList.isLocalExport(), "First export should be a local export");
+    ZC_EXPECT(exportList.getSpecifiers().size() == 2, "Local export should have 2 specifiers");
+
+    auto& reexport =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ExportDeclaration>(statements[3]);
+    ZC_EXPECT(reexport.isReExport(), "Second export should be a re-export");
+    ZC_IF_SOME(modulePath, reexport.getModulePath()) {
+      ZC_EXPECT(modulePath.getSegments().size() == 2, "Re-export path should have 2 segments");
+    }
+  }
+  else { ZC_EXPECT(false, "Should parse v1 module syntax"); }
 }
 
-ZC_TEST("ParserTest.ParseExportDeclaration") {
+ZC_TEST("ParserTest.ParseDeclarationSiteExport") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("export myModule").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("export fun distance() -> i32 { return 0; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse export declaration");
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    ZC_EXPECT(statements.size() == 1, "Should contain a single export declaration");
+
+    auto& exportDecl =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ExportDeclaration>(statements[0]);
+    ZC_EXPECT(exportDecl.isDeclarationExport(),
+              "Declaration-site export should be represented as an export declaration");
+    ZC_IF_SOME(declaration, exportDecl.getDeclaration()) {
+      ZC_EXPECT(declaration.getKind() == ast::SyntaxKind::FunctionDeclaration,
+                "Exported declaration should be a function");
+    }
+  }
+  else { ZC_EXPECT(false, "Should parse declaration-site export"); }
+}
+
+ZC_TEST("ParserTest.ModuleDeclarationMustBeFirst") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("import math.geometry;\n"
+                                                          "module graphics;\n"
+                                                          "let x = 1;\n")
+                                                      .asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+
+    ZC_EXPECT(statements.size() == 3,
+              "Late module declaration should not be accepted as a source element");
+    ZC_EXPECT(statements[0].getKind() == ast::SyntaxKind::ImportDeclaration,
+              "First statement should remain the import");
+    ZC_EXPECT(statements[1].getKind() == ast::SyntaxKind::ModuleDeclaration,
+              "Second statement should be the module declaration");
+    ZC_EXPECT(statements[2].getKind() == ast::SyntaxKind::VariableStatement,
+              "Third statement should be the variable declaration");
+    ZC_EXPECT(diagnosticEngine->hasErrors(),
+              "Late module declaration should produce a parse error");
+  }
+  else { ZC_EXPECT(false, "Parser should recover from a misplaced module declaration"); }
+}
+
+ZC_TEST("ParserTest.LegacyExportDefaultInBlockRecovers") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("fun outer() {\n"
+                                                          "  export default foo;\n"
+                                                          "  let x = 1;\n"
+                                                          "}\n")
+                                                      .asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& topLevelStatements = sourceFile.getStatements();
+    ZC_EXPECT(topLevelStatements.size() == 1, "Should parse the outer function");
+
+    auto& functionDecl =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::FunctionDeclaration>(
+            topLevelStatements[0]);
+    auto& body = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::BlockStatement>(
+        functionDecl.getBody());
+    const auto& bodyStatements = body.getStatements();
+
+    ZC_EXPECT(diagnosticEngine->hasErrors(), "Legacy export default should produce parse errors");
+    ZC_EXPECT(bodyStatements.size() >= 1,
+              "Parser should recover after invalid legacy export and keep later statements");
+    ZC_EXPECT(
+        bodyStatements[bodyStatements.size() - 1].getKind() == ast::SyntaxKind::VariableStatement,
+        "Recovered tail statement should be the variable declaration");
+  }
+  else { ZC_EXPECT(false, "Parser should recover from legacy export syntax"); }
 }
 
 ZC_TEST("ParserTest.ParseClassDeclaration") {

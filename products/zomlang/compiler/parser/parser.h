@@ -53,8 +53,11 @@ namespace ast {
 class SourceFile;
 class ImplementationModule;
 class ImplementationModuleElement;
+class ModuleDeclaration;
 class ImportDeclaration;
+class ImportSpecifier;
 class ExportDeclaration;
+class ExportSpecifier;
 class ModulePath;
 class ImplementationElement;
 
@@ -365,10 +368,13 @@ private:
 
   // --- Module and Source File ---
   zc::Maybe<zc::Own<ast::SourceFile>> parseSourceFile();
+  zc::Maybe<zc::Own<ast::ModuleDeclaration>> parseModuleDeclaration(
+      bool isStartOfSourceFile = false);
   zc::Maybe<zc::Own<ast::ImportDeclaration>> parseImportDeclaration();
   zc::Maybe<zc::Own<ast::ExportDeclaration>> parseExportDeclaration();
   zc::Maybe<zc::Own<ast::ModulePath>> parseModulePath();
-  zc::Maybe<zc::Own<ast::Statement>> parseModuleItem();
+  zc::Maybe<zc::Own<ast::ImportSpecifier>> parseImportSpecifier();
+  zc::Maybe<zc::Own<ast::ExportSpecifier>> parseExportSpecifier();
 
   // --- Declarations ---
   zc::Maybe<zc::Own<ast::Statement>> parseDeclaration();

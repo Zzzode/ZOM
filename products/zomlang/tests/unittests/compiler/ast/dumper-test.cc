@@ -69,7 +69,8 @@ ZC_TEST("ASTDumper.DumpSourceFileText") {
   auto variableStmt = ast::factory::createVariableStatement(zc::mv(variableDecl));
   statements.add(zc::mv(variableStmt));
 
-  auto sourceFile = ast::factory::createSourceFile(zc::str("test.zom"), zc::mv(statements));
+  auto sourceFile =
+      ast::factory::createSourceFile(zc::str("test.zom"), zc::none, zc::mv(statements));
 
   dumper.dump(*sourceFile);
 
@@ -133,7 +134,8 @@ ZC_TEST("ASTDumper.DumpSourceFileJson") {
   auto variableStmt = ast::factory::createVariableStatement(zc::mv(variableDecl));
   statements.add(zc::mv(variableStmt));
 
-  auto sourceFile = ast::factory::createSourceFile(zc::str("test.zom"), zc::mv(statements));
+  auto sourceFile =
+      ast::factory::createSourceFile(zc::str("test.zom"), zc::none, zc::mv(statements));
 
   dumper.dump(*sourceFile);
 
@@ -159,7 +161,8 @@ ZC_TEST("ASTDumper.DumpSourceFileXML") {
   auto variableStmt = ast::factory::createVariableStatement(zc::mv(variableDecl));
   statements.add(zc::mv(variableStmt));
 
-  auto sourceFile = ast::factory::createSourceFile(zc::str("test.zom"), zc::mv(statements));
+  auto sourceFile =
+      ast::factory::createSourceFile(zc::str("test.zom"), zc::none, zc::mv(statements));
 
   dumper.dump(*sourceFile);
 

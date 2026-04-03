@@ -35,10 +35,9 @@ config.suffixes = [".zom"]
 config.test_source_root = os.path.dirname(__file__)
 
 # test_exec_root: The root path where tests should be run.
-config.test_exec_root = os.path.join(config.test_source_root, "Output")
-
-# Ensure the output directory exists
-os.makedirs(config.test_exec_root, exist_ok=True)
+base_test_exec_root = os.path.join(config.test_source_root, "Output")
+os.makedirs(base_test_exec_root, exist_ok=True)
+config.test_exec_root = tempfile.mkdtemp(prefix="lit-", dir=base_test_exec_root)
 
 # excludes: A list of directories to exclude from the testsuite.
 config.excludes = ["CMakeLists.txt", "README.md", "Output"]
@@ -94,17 +93,15 @@ if not zomc_path:
 if not zomc_path:
     lit_config.fatal("Could not find zomc compiler")
 
-# FileCheck tool (we'll implement a simple version if not available)
-filecheck_path = lit.util.which("FileCheck", config.environment.get("PATH", ""))
-if not filecheck_path:
-    # Use our custom FileCheck implementation
-    filecheck_path = os.path.join(config.test_source_root, "tools", "filecheck.py")
+# FileCheck tool
+filecheck_path = os.path.join(config.test_source_root, "tools", "filecheck.py")
 
 # Tool substitutions
 config.substitutions.append(("%zomc", zomc_path))
 # %s is automatically replaced by lit with the test file path
 config.substitutions.append(("%t", os.path.join(config.test_exec_root, "temp")))
-config.substitutions.append(("%FileCheck", f"python3 {filecheck_path}"))
+filecheck_command = f"python3 {filecheck_path}"
+config.substitutions.append(("%FileCheck", filecheck_command))
 
 # Set environment variables
 config.environment["ZOMLANG_TEST_ROOT"] = config.test_source_root

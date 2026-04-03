@@ -4,22 +4,22 @@ let t: (i32, str) = (1, "hello");
 let t2: (x: i32, y: i32) = (10, 20);
 
 
-// CHECK: Error [ZOM2056]: 'str' is not allowed as a variable declaration name
+// CHECK: Error [ZOM2057]: 'str' is not allowed as a variable declaration name
 // CHECK:   --> {{.*tuple-types.zom}}:3:14
 // CHECK:   |
 // CHECK: 3 | let t: (i32, str) = (1, "hello");
 // CHECK:   |              ^~~
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*tuple-types.zom}}:3:17
 // CHECK:   |
 // CHECK: 3 | let t: (i32, str) = (1, "hello");
 // CHECK:   |                 ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*tuple-types.zom}}:3:19
 // CHECK:   |
 // CHECK: 3 | let t: (i32, str) = (1, "hello");
 // CHECK:   |                   ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*tuple-types.zom}}:3:21
 // CHECK:   |
 // CHECK: 3 | let t: (i32, str) = (1, "hello");
@@ -34,17 +34,17 @@ let t2: (x: i32, y: i32) = (10, 20);
 // CHECK:   |
 // CHECK: 4 | let t2: (x: i32, y: i32) = (10, 20);
 // CHECK:   |           ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*tuple-types.zom}}:4:11
 // CHECK:   |
 // CHECK: 4 | let t2: (x: i32, y: i32) = (10, 20);
 // CHECK:   |           ^
-// CHECK: Error [ZOM2056]: 'i32' is not allowed as a variable declaration name
+// CHECK: Error [ZOM2057]: 'i32' is not allowed as a variable declaration name
 // CHECK:   --> {{.*tuple-types.zom}}:4:13
 // CHECK:   |
 // CHECK: 4 | let t2: (x: i32, y: i32) = (10, 20);
 // CHECK:   |             ^~~
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*tuple-types.zom}}:4:16
 // CHECK:   |
 // CHECK: 4 | let t2: (x: i32, y: i32) = (10, 20);
@@ -54,17 +54,17 @@ let t2: (x: i32, y: i32) = (10, 20);
 // CHECK:   |
 // CHECK: 4 | let t2: (x: i32, y: i32) = (10, 20);
 // CHECK:   |                        ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*tuple-types.zom}}:4:24
 // CHECK:   |
 // CHECK: 4 | let t2: (x: i32, y: i32) = (10, 20);
 // CHECK:   |                        ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*tuple-types.zom}}:4:26
 // CHECK:   |
 // CHECK: 4 | let t2: (x: i32, y: i32) = (10, 20);
 // CHECK:   |                          ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*tuple-types.zom}}:4:28
 // CHECK:   |
 // CHECK: 4 | let t2: (x: i32, y: i32) = (10, 20);
