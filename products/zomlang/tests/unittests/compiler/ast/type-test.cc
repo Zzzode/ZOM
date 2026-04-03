@@ -105,8 +105,11 @@ struct BaseTestVisitor : public Visitor {
   void visit(const ArrayLiteralExpression& node) override {}
   void visit(const ObjectLiteralExpression& node) override {}
   void visit(const SourceFile& sourceFile) override {}
+  void visit(const ModuleDeclaration& moduleDecl) override {}
   void visit(const ModulePath& modulePath) override {}
+  void visit(const ImportSpecifier& importSpecifier) override {}
   void visit(const ImportDeclaration& importDecl) override {}
+  void visit(const ExportSpecifier& exportSpecifier) override {}
   void visit(const ExportDeclaration& exportDecl) override {}
   void visit(const ClassElement& node) override {}
   void visit(const ObjectLiteralElement& node) override {}
@@ -129,7 +132,6 @@ struct BaseTestVisitor : public Visitor {
   void visit(const NamedTupleElement& node) override {}
 
   // Add all missing visitor methods from ast-nodes.def
-  void visit(const Module& node) override {}
   void visit(const VariableDeclaration& node) override {}
   void visit(const TypeParameterDeclaration& node) override {}
   void visit(const MethodDeclaration& node) override {}

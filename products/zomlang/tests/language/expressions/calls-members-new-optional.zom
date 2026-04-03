@@ -11,12 +11,12 @@ let w = import("m");
 // CHECK:   |
 // CHECK: 4 | let y = new Foo(1, 2).bar[0].baz();
 // CHECK:   |                            ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*calls-members-new-optional.zom}}:4:28
 // CHECK:   |
 // CHECK: 4 | let y = new Foo(1, 2).bar[0].baz();
 // CHECK:   |                            ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*calls-members-new-optional.zom}}:4:29
 // CHECK:   |
 // CHECK: 4 | let y = new Foo(1, 2).bar[0].baz();
@@ -26,7 +26,7 @@ let w = import("m");
 // CHECK:   |
 // CHECK: 4 | let y = new Foo(1, 2).bar[0].baz();
 // CHECK:   |                                 ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*calls-members-new-optional.zom}}:4:33
 // CHECK:   |
 // CHECK: 4 | let y = new Foo(1, 2).bar[0].baz();
@@ -46,12 +46,12 @@ let w = import("m");
 // CHECK:   |
 // CHECK: 5 | let z = obj?.method(1)[0].field;
 // CHECK:   |                         ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*calls-members-new-optional.zom}}:5:25
 // CHECK:   |
 // CHECK: 5 | let z = obj?.method(1)[0].field;
 // CHECK:   |                         ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*calls-members-new-optional.zom}}:5:26
 // CHECK:   |
 // CHECK: 5 | let z = obj?.method(1)[0].field;
@@ -66,7 +66,7 @@ let w = import("m");
 // CHECK:   |
 // CHECK: 6 | let w = import("m");
 // CHECK:   |                   ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*calls-members-new-optional.zom}}:6:19
 // CHECK:   |
 // CHECK: 6 | let w = import("m");

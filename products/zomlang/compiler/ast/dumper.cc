@@ -60,6 +60,12 @@ void ASTDumper::visit(const SourceFile& node) {
 
   impl->serializer->writeProperty("fileName", node.getFileName());
 
+  ZC_IF_SOME(moduleDeclaration, node.getModuleDeclaration()) {
+    impl->serializer->writeChildStart("moduleDeclaration"_zc);
+    moduleDeclaration.accept(*this);
+    impl->serializer->writeChildEnd("moduleDeclaration"_zc);
+  }
+
   const auto& statements = node.getStatements();
   impl->serializer->writeArrayStart("statements"_zc, statements.size());
   for (const auto& stmt : statements) {
@@ -71,6 +77,16 @@ void ASTDumper::visit(const SourceFile& node) {
   impl->serializer->writeNodeEnd("SourceFile"_zc);
 }
 
+void ASTDumper::visit(const ModuleDeclaration& node) {
+  impl->serializer->writeNodeStart("ModuleDeclaration"_zc);
+
+  impl->serializer->writeChildStart("modulePath"_zc);
+  node.getModulePath().accept(*this);
+  impl->serializer->writeChildEnd("modulePath"_zc);
+
+  impl->serializer->writeNodeEnd("ModuleDeclaration"_zc);
+}
+
 void ASTDumper::visit(const ImportDeclaration& node) {
   impl->serializer->writeNodeStart("ImportDeclaration"_zc);
 
@@ -80,23 +96,70 @@ void ASTDumper::visit(const ImportDeclaration& node) {
 
   ZC_IF_SOME(alias, node.getAlias()) { impl->serializer->writeProperty("alias", alias.getText()); }
 
+  const auto& specifiers = node.getSpecifiers();
+  impl->serializer->writeArrayStart("specifiers"_zc, specifiers.size());
+  for (const auto& specifier : specifiers) {
+    impl->serializer->writeArrayElement();
+    specifier.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("specifiers"_zc);
+
   impl->serializer->writeNodeEnd("ImportDeclaration"_zc);
+}
+
+void ASTDumper::visit(const ImportSpecifier& node) {
+  impl->serializer->writeNodeStart("ImportSpecifier"_zc);
+
+  impl->serializer->writeChildStart("importedName"_zc);
+  node.getImportedName().accept(*this);
+  impl->serializer->writeChildEnd("importedName"_zc);
+
+  impl->serializer->writeChildStart("alias"_zc);
+  ZC_IF_SOME(alias, node.getAlias()) { alias.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("alias"_zc);
+
+  impl->serializer->writeNodeEnd("ImportSpecifier"_zc);
 }
 
 void ASTDumper::visit(const ExportDeclaration& node) {
   impl->serializer->writeNodeStart("ExportDeclaration"_zc);
 
-  impl->serializer->writeChildStart("exportPath"_zc);
-  node.getExportPath().accept(*this);
-  impl->serializer->writeChildEnd("exportPath"_zc);
+  impl->serializer->writeChildStart("modulePath"_zc);
+  ZC_IF_SOME(modulePath, node.getModulePath()) { modulePath.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("modulePath"_zc);
 
-  ZC_IF_SOME(alias, node.getAlias()) {
-    impl->serializer->writeChildStart("alias"_zc);
-    alias.accept(*this);
-    impl->serializer->writeChildEnd("alias"_zc);
+  const auto& specifiers = node.getSpecifiers();
+  impl->serializer->writeArrayStart("specifiers"_zc, specifiers.size());
+  for (const auto& specifier : specifiers) {
+    impl->serializer->writeArrayElement();
+    specifier.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("specifiers"_zc);
+
+  ZC_IF_SOME(declaration, node.getDeclaration()) {
+    impl->serializer->writeChildStart("declaration"_zc);
+    declaration.accept(*this);
+    impl->serializer->writeChildEnd("declaration"_zc);
   }
 
   impl->serializer->writeNodeEnd("ExportDeclaration"_zc);
+}
+
+void ASTDumper::visit(const ExportSpecifier& node) {
+  impl->serializer->writeNodeStart("ExportSpecifier"_zc);
+
+  impl->serializer->writeChildStart("exportedName"_zc);
+  node.getExportedName().accept(*this);
+  impl->serializer->writeChildEnd("exportedName"_zc);
+
+  impl->serializer->writeChildStart("alias"_zc);
+  ZC_IF_SOME(alias, node.getAlias()) { alias.accept(*this); }
+  else { impl->serializer->writeNull(); }
+  impl->serializer->writeChildEnd("alias"_zc);
+
+  impl->serializer->writeNodeEnd("ExportSpecifier"_zc);
 }
 
 void ASTDumper::visit(const VariableDeclarationList& node) {
@@ -340,9 +403,13 @@ void ASTDumper::visit(const InterfaceElement& node) { node.accept(*this); }
 void ASTDumper::visit(const ModulePath& node) {
   impl->serializer->writeNodeStart("ModulePath"_zc);
 
-  impl->serializer->writeChildStart("stringLiteral"_zc);
-  node.getStringLiteral().accept(*this);
-  impl->serializer->writeChildEnd("stringLiteral"_zc);
+  const auto& segments = node.getSegments();
+  impl->serializer->writeArrayStart("segments"_zc, segments.size());
+  for (const auto& segment : segments) {
+    impl->serializer->writeArrayElement();
+    segment.accept(*this);
+  }
+  impl->serializer->writeArrayEnd("segments"_zc);
 
   impl->serializer->writeNodeEnd("ModulePath"_zc);
 }
@@ -1847,11 +1914,6 @@ void ASTDumper::visit(const ClassBody& node) {
 }
 
 // Missing visitor method implementations
-void ASTDumper::visit(const Module& node) {
-  impl->serializer->writeNodeStart("Module"_zc);
-  impl->serializer->writeNodeEnd("Module"_zc);
-}
-
 void ASTDumper::visit(const VariableDeclaration& node) {
   impl->serializer->writeNodeStart("VariableDeclaration"_zc);
 

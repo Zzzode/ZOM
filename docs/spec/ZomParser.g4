@@ -827,21 +827,36 @@ memberAccessorDeclaration:
 // ================================================================================ INTERFACES
 
 // ================================================================================ SCRIPTS AND MODULES
-sourceFile: module;
-
-module: moduleBody?;
+sourceFile: moduleDeclaration? moduleBody?;
+moduleDeclaration: MODULE moduleName SEMICOLON;
+moduleName: identifier (PERIOD identifier)*;
 moduleBody: moduleItemList;
 moduleItemList: moduleItem+;
 moduleItem:
-	statementListItem
+	importDeclaration
 	| exportDeclaration
-	| importDeclaration;
+	| statementListItem;
 
-importDeclaration: IMPORT bindingIdentifier ASSIGN modulePath;
+importDeclaration: IMPORT importClause SEMICOLON;
 
-modulePath: stringLiteral;
+importClause: namedImportClause | moduleImportClause;
 
-exportDeclaration:
-	EXPORT bindingIdentifier (PERIOD bindingIdentifier)* (
-		AS identifierName
-	)?;
+moduleImportClause: moduleName (AS identifierName)?;
+
+namedImportClause: moduleName PERIOD LBRACE importSpecifierList? RBRACE;
+
+importSpecifierList: importSpecifier (COMMA importSpecifier)* COMMA?;
+
+importSpecifier: identifierName (AS identifierName)?;
+
+exportDeclaration: EXPORT declaration | EXPORT exportClause SEMICOLON;
+
+exportClause: localExportClause | reexportClause;
+
+localExportClause: LBRACE exportSpecifierList? RBRACE;
+
+reexportClause: moduleName PERIOD LBRACE exportSpecifierList? RBRACE;
+
+exportSpecifierList: exportSpecifier (COMMA exportSpecifier)* COMMA?;
+
+exportSpecifier: identifierName (AS identifierName)?;

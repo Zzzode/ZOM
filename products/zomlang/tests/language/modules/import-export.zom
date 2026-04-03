@@ -1,29 +1,134 @@
-// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
 
-import M = "m";
-export M;
-export M.Sub as Alias;
+module graphics;
+import math.geometry as geo;
+import math.geometry.{Point as GeoPoint, distance};
+export {GeoPoint, distance as calcDistance};
+export math.geometry.{Point};
 
 
-// CHECK: Error [ZOM2048]: Declaration or statement expected
-// CHECK:   --> {{.*import-export.zom}}:4:1
-// CHECK:   |
-// CHECK: 4 | export M;
-// CHECK:   | ^~~~~~
-// CHECK: Error [ZOM2048]: Declaration or statement expected
-// CHECK:   --> {{.*import-export.zom}}:5:1
-// CHECK:   |
-// CHECK: 5 | export M.Sub as Alias;
-// CHECK:   | ^~~~~~
-// CHECK: Error [ZOM2025]: Expected ';'
-// CHECK:   --> {{.*import-export.zom}}:5:14
-// CHECK:   |
-// CHECK: 5 | export M.Sub as Alias;
-// CHECK:   |              ^~
-// CHECK: Error [ZOM2048]: Declaration or statement expected
-// CHECK:   --> {{.*import-export.zom}}:5:14
-// CHECK:   |
-// CHECK: 5 | export M.Sub as Alias;
-// CHECK:   |              ^~
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: {
+// CHECK:   "node": "SourceFile",
+// CHECK:   "fileName": "{{.*import-export.zom}}",
+// CHECK:   "moduleDeclaration": {
+// CHECK:     "node": "ModuleDeclaration",
+// CHECK:     "modulePath": {
+// CHECK:       "node": "ModulePath",
+// CHECK:       "segments": [
+// CHECK:         {
+// CHECK:           "node": "Identifier",
+// CHECK:           "name": "graphics"
+// CHECK:         }
+// CHECK:       ]
+// CHECK:     }
+// CHECK:   },
+// CHECK:   "statements": [
+// CHECK:     {
+// CHECK:       "node": "ImportDeclaration",
+// CHECK:       "modulePath": {
+// CHECK:         "node": "ModulePath",
+// CHECK:         "segments": [
+// CHECK:           {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "math"
+// CHECK:           },
+// CHECK:           {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "geometry"
+// CHECK:           }
+// CHECK:         ]
+// CHECK:       },
+// CHECK:       "alias": "geo",
+// CHECK:       "specifiers": [
+// CHECK:       ]
+// CHECK:     },
+// CHECK:     {
+// CHECK:       "node": "ImportDeclaration",
+// CHECK:       "modulePath": {
+// CHECK:         "node": "ModulePath",
+// CHECK:         "segments": [
+// CHECK:           {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "math"
+// CHECK:           },
+// CHECK:           {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "geometry"
+// CHECK:           }
+// CHECK:         ]
+// CHECK:       },
+// CHECK:       "specifiers": [
+// CHECK:         {
+// CHECK:           "node": "ImportSpecifier",
+// CHECK:           "importedName": {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "Point"
+// CHECK:           },
+// CHECK:           "alias": {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "GeoPoint"
+// CHECK:           }
+// CHECK:         },
+// CHECK:         {
+// CHECK:           "node": "ImportSpecifier",
+// CHECK:           "importedName": {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "distance"
+// CHECK:           },
+// CHECK:           "alias": null
+// CHECK:         }
+// CHECK:       ]
+// CHECK:     },
+// CHECK:     {
+// CHECK:       "node": "ExportDeclaration",
+// CHECK:       "modulePath": null,
+// CHECK:       "specifiers": [
+// CHECK:         {
+// CHECK:           "node": "ExportSpecifier",
+// CHECK:           "exportedName": {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "GeoPoint"
+// CHECK:           },
+// CHECK:           "alias": null
+// CHECK:         },
+// CHECK:         {
+// CHECK:           "node": "ExportSpecifier",
+// CHECK:           "exportedName": {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "distance"
+// CHECK:           },
+// CHECK:           "alias": {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "calcDistance"
+// CHECK:           }
+// CHECK:         }
+// CHECK:       ]
+// CHECK:     },
+// CHECK:     {
+// CHECK:       "node": "ExportDeclaration",
+// CHECK:       "modulePath": {
+// CHECK:         "node": "ModulePath",
+// CHECK:         "segments": [
+// CHECK:           {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "math"
+// CHECK:           },
+// CHECK:           {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "geometry"
+// CHECK:           }
+// CHECK:         ]
+// CHECK:       },
+// CHECK:       "specifiers": [
+// CHECK:         {
+// CHECK:           "node": "ExportSpecifier",
+// CHECK:           "exportedName": {
+// CHECK:             "node": "Identifier",
+// CHECK:             "name": "Point"
+// CHECK:           },
+// CHECK:           "alias": null
+// CHECK:         }
+// CHECK:       ]
+// CHECK:     }
+// CHECK:   ]
+// CHECK: }

@@ -267,8 +267,11 @@ public:
 
   // Module visitors
   void visit(const ast::SourceFile& sourceFile) override;
+  void visit(const ast::ModuleDeclaration& moduleDecl) override;
   void visit(const ast::ImportDeclaration& importDecl) override;
+  void visit(const ast::ImportSpecifier& importSpecifier) override;
   void visit(const ast::ExportDeclaration& exportDecl) override;
+  void visit(const ast::ExportSpecifier& exportSpecifier) override;
 
   // Type visitors
   void visit(const ast::TypeReferenceNode& typeRef) override;
@@ -308,9 +311,6 @@ public:
   // Expression visitors
   void visit(const ast::ThisExpression& node) override;
   void visit(const ast::SuperExpression& node) override;
-
-  // Module visitor
-  void visit(const ast::Module& node) override;
 
   // Other required visitors (default implementations)
   void visit(const ast::TypeParameterDeclaration& node) override;

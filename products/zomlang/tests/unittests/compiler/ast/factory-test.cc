@@ -61,7 +61,7 @@ ZC_TEST("ASTFactory: Basic Node Creation") {
 
   // Test SourceFile creation
   zc::Vector<zc::Own<ast::Statement>> statements;
-  auto sourceFile = createSourceFile(zc::str("test.zom"), zc::mv(statements));
+  auto sourceFile = createSourceFile(zc::str("test.zom"), zc::none, zc::mv(statements));
   ZC_EXPECT(sourceFile->getFileName() == "test.zom", "SourceFile should have correct filename");
   ZC_EXPECT(sourceFile->getStatements().size() == 0, "SourceFile should have empty statements");
 

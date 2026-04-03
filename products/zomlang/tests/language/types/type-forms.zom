@@ -16,27 +16,27 @@ let i: typeof foo.bar = v;
 // CHECK:   |
 // CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK:   |                   ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*type-forms.zom}}:8:19
 // CHECK:   |
 // CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK:   |                   ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*type-forms.zom}}:8:20
 // CHECK:   |
 // CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK:   |                    ^
-// CHECK: Error [ZOM2056]: 'str' is not allowed as a variable declaration name
+// CHECK: Error [ZOM2057]: 'str' is not allowed as a variable declaration name
 // CHECK:   --> {{.*type-forms.zom}}:8:22
 // CHECK:   |
 // CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK:   |                      ^~~
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*type-forms.zom}}:8:25
 // CHECK:   |
 // CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK:   |                         ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*type-forms.zom}}:8:27
 // CHECK:   |
 // CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
@@ -96,12 +96,12 @@ let i: typeof foo.bar = v;
 // CHECK:   |
 // CHECK: 9 | let g: (i32, name: str) = tup;
 // CHECK:   |                       ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*type-forms.zom}}:9:23
 // CHECK:   |
 // CHECK: 9 | let g: (i32, name: str) = tup;
 // CHECK:   |                       ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*type-forms.zom}}:9:25
 // CHECK:   |
 // CHECK: 9 | let g: (i32, name: str) = tup;
@@ -111,7 +111,7 @@ let i: typeof foo.bar = v;
 // CHECK:    |
 // CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;
 // CHECK:    |        ^
-// CHECK: Error [ZOM2057]: Variable declaration expected
+// CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*type-forms.zom}}:10:8
 // CHECK:    |
 // CHECK: 10 | let h: <T>(x: T) -> T raises Err = fn;

@@ -58,8 +58,11 @@ public:
 
   // Visitor pattern finals for specific node types
   void visit(const SourceFile& sourceFile) final;
+  void visit(const ModuleDeclaration& moduleDecl) final;
   void visit(const ImportDeclaration& importDecl) final;
+  void visit(const ImportSpecifier& importSpecifier) final;
   void visit(const ExportDeclaration& exportDecl) final;
+  void visit(const ExportSpecifier& exportSpecifier) final;
   void visit(const VariableDeclarationList& varDecl) final;
   void visit(const VariableStatement& varStmt) final;
   void visit(const FunctionDeclaration& funcDecl) final;
@@ -209,7 +212,6 @@ public:
   void visit(const ClassBody& node) final;
 
   // Missing visitor methods for patterns and other nodes
-  void visit(const Module& node) final;
   void visit(const VariableDeclaration& node) final;
   void visit(const WildcardPattern& node) final;
   void visit(const IdentifierPattern& node) final;

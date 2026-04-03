@@ -73,10 +73,12 @@ AST_INTERFACE_NODE(InterfaceElement, NamedDeclaration)
 
 // Module nodes
 AST_ELEMENT_NODE(SourceFile, Node)
-AST_ELEMENT_NODE(Module, Node)
+AST_ELEMENT_NODE(ModuleDeclaration, Statement)
 AST_ELEMENT_NODE(ModulePath, Node)
-AST_ELEMENT_NODE(ImportDeclaration, Declaration)
-AST_ELEMENT_NODE(ExportDeclaration, Declaration)
+AST_ELEMENT_NODE(ImportSpecifier, Node)
+AST_ELEMENT_NODE(ImportDeclaration, Statement)
+AST_ELEMENT_NODE(ExportSpecifier, Node)
+AST_ELEMENT_NODE(ExportDeclaration, Statement)
 
 // Basic nodes
 AST_ELEMENT_NODE(Identifier, PrimaryExpression)

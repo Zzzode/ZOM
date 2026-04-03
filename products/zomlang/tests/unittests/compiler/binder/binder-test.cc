@@ -66,16 +66,24 @@ ZC_TEST("BinderTest.BindSourceFile_ManyNodes") {
   zc::Vector<zc::Own<ast::Statement>> statements;
 
   {
-    auto modulePath =
-        ast::factory::createModulePath(ast::factory::createStringLiteral("std/io"_zc));
-    statements.add(ast::factory::createImportDeclaration(zc::mv(modulePath),
-                                                         ast::factory::createIdentifier("io"_zc)));
+    zc::Vector<zc::Own<ast::Identifier>> segments;
+    segments.add(ast::factory::createIdentifier("std"_zc));
+    segments.add(ast::factory::createIdentifier("io"_zc));
+    auto modulePath = ast::factory::createModulePath(zc::mv(segments));
+    zc::Vector<zc::Own<ast::ImportSpecifier>> specifiers;
+    specifiers.add(ast::factory::createImportSpecifier(ast::factory::createIdentifier("io"_zc)));
+    statements.add(
+        ast::factory::createImportDeclaration(zc::mv(modulePath), zc::none, zc::mv(specifiers)));
   }
 
   {
-    auto exportPath = ast::factory::createStringLiteral("std/fmt"_zc);
-    statements.add(ast::factory::createExportDeclaration(zc::mv(exportPath),
-                                                         ast::factory::createIdentifier("fmt"_zc)));
+    zc::Vector<zc::Own<ast::Identifier>> segments;
+    segments.add(ast::factory::createIdentifier("std"_zc));
+    segments.add(ast::factory::createIdentifier("fmt"_zc));
+    auto exportPath = ast::factory::createModulePath(zc::mv(segments));
+    zc::Vector<zc::Own<ast::ExportSpecifier>> specifiers;
+    specifiers.add(ast::factory::createExportSpecifier(ast::factory::createIdentifier("fmt"_zc)));
+    statements.add(ast::factory::createExportDeclaration(zc::mv(exportPath), zc::mv(specifiers)));
   }
 
   {
@@ -325,8 +333,8 @@ ZC_TEST("BinderTest.BindSourceFile_ManyNodes") {
     statements.add(zc::mv(iface));
   }
 
-  auto sourceFile =
-      ast::factory::createSourceFile(zc::str("binder_many_nodes.zom"), zc::mv(statements));
+  auto sourceFile = ast::factory::createSourceFile(zc::str("binder_many_nodes.zom"), zc::none,
+                                                   zc::mv(statements));
   binder.bindSourceFile(*sourceFile);
 
   ZC_EXPECT(!test.diagEngine.hasErrors());
@@ -475,7 +483,7 @@ ZC_TEST("BinderTest.ContainerFlags") {
   BinderTest test;
   TestBinder binder(test.symbolTable, test.diagEngine);
 
-  auto sourceFile = ast::factory::createSourceFile(zc::str("binder_container_flags.zom"),
+  auto sourceFile = ast::factory::createSourceFile(zc::str("binder_container_flags.zom"), zc::none,
                                                    zc::Vector<zc::Own<ast::Statement>>{});
   ZC_EXPECT(binder.isContainer(*sourceFile));
 
@@ -553,8 +561,8 @@ ZC_TEST("BinderTest.VisitOptionals_Absent") {
     statements.add(zc::mv(match));
   }
 
-  auto sourceFile =
-      ast::factory::createSourceFile(zc::str("binder_visit_optionals.zom"), zc::mv(statements));
+  auto sourceFile = ast::factory::createSourceFile(zc::str("binder_visit_optionals.zom"), zc::none,
+                                                   zc::mv(statements));
   binder.bindSourceFile(*sourceFile);
 }
 
@@ -602,8 +610,8 @@ ZC_TEST("BinderTest.RedeclareFunctionInSameScope") {
                                                            zc::none, zc::mv(body)));
   }
 
-  auto sourceFile =
-      ast::factory::createSourceFile(zc::str("binder_redeclare_func.zom"), zc::mv(statements));
+  auto sourceFile = ast::factory::createSourceFile(zc::str("binder_redeclare_func.zom"), zc::none,
+                                                   zc::mv(statements));
   binder.bindSourceFile(*sourceFile);
 
   ZC_EXPECT(test.diagEngine.hasErrors());
@@ -625,8 +633,8 @@ ZC_TEST("BinderTest.RedeclareClassInSameScope") {
                                                         zc::none, zc::mv(members)));
   }
 
-  auto sourceFile =
-      ast::factory::createSourceFile(zc::str("binder_redeclare_class.zom"), zc::mv(statements));
+  auto sourceFile = ast::factory::createSourceFile(zc::str("binder_redeclare_class.zom"), zc::none,
+                                                   zc::mv(statements));
   binder.bindSourceFile(*sourceFile);
 
   ZC_EXPECT(test.diagEngine.hasErrors());
@@ -648,8 +656,8 @@ ZC_TEST("BinderTest.RedeclareInterfaceInSameScope") {
                                                             {}, zc::none, zc::mv(members)));
   }
 
-  auto sourceFile =
-      ast::factory::createSourceFile(zc::str("binder_redeclare_iface.zom"), zc::mv(statements));
+  auto sourceFile = ast::factory::createSourceFile(zc::str("binder_redeclare_iface.zom"), zc::none,
+                                                   zc::mv(statements));
   binder.bindSourceFile(*sourceFile);
 
   ZC_EXPECT(test.diagEngine.hasErrors());

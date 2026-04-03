@@ -370,9 +370,23 @@ void Binder::visit(const ast::SourceFile& sourceFile) {
   for (auto& stmt : sourceFile.getStatements()) { stmt.accept(*this); }
 }
 
+void Binder::visit(const ast::ModuleDeclaration& moduleDecl) {
+  moduleDecl.getModulePath().accept(*this);
+}
+
 void Binder::visit(const ast::ImportDeclaration& importDecl) { bindImportDeclaration(importDecl); }
 
+void Binder::visit(const ast::ImportSpecifier& importSpecifier) {
+  importSpecifier.getImportedName().accept(*this);
+  ZC_IF_SOME(alias, importSpecifier.getAlias()) { alias.accept(*this); }
+}
+
 void Binder::visit(const ast::ExportDeclaration& exportDecl) { bindExportDeclaration(exportDecl); }
+
+void Binder::visit(const ast::ExportSpecifier& exportSpecifier) {
+  exportSpecifier.getExportedName().accept(*this);
+  ZC_IF_SOME(alias, exportSpecifier.getAlias()) { alias.accept(*this); }
+}
 
 // Type visitors
 void Binder::visit(const ast::TypeReferenceNode& typeRef) {
@@ -835,11 +849,6 @@ void Binder::visit(const ast::SuperExpression& node) {
 
 void Binder::visit(const ast::SpreadElement& node) { node.getExpression().accept(*this); }
 
-// Module visitor
-void Binder::visit(const ast::Module& node) {
-  // TODO: Implement module binding
-}
-
 // Pattern visitors
 void Binder::visit(const ast::WildcardPattern& node) {
   // Wildcard patterns don't bind anything, they match everything
@@ -962,9 +971,6 @@ ContainerFlags Binder::getContainerFlags(const ast::Node& node) const {
     case SyntaxKind::BlockStatement:
       flags |= ContainerFlags::IsBlockScopedContainer;
       break;
-    case SyntaxKind::Module:
-      flags |= ContainerFlags::IsContainer | ContainerFlags::IsModuleContainer;
-      break;
     default:
       // No container flags for other node types
       break;
@@ -997,19 +1003,15 @@ zc::Maybe<symbol::Symbol&> Binder::lookupSymbolInScope(zc::StringPtr name,
 }
 
 void Binder::bindImportDeclaration(const ast::ImportDeclaration& importDecl) {
-  // TODO: Implement import declaration binding
-  // This would involve:
-  // 1. Resolving the module path
-  // 2. Creating symbols for imported names
-  // 3. Adding them to the current scope
+  importDecl.getModulePath().accept(*this);
+  for (const auto& specifier : importDecl.getSpecifiers()) { specifier.accept(*this); }
+  ZC_IF_SOME(alias, importDecl.getAlias()) { alias.accept(*this); }
 }
 
 void Binder::bindExportDeclaration(const ast::ExportDeclaration& exportDecl) {
-  // TODO: Implement export declaration binding
-  // This would involve:
-  // 1. Processing the exported declaration
-  // 2. Marking symbols as exported
-  // 3. Adding to module's export table
+  ZC_IF_SOME(modulePath, exportDecl.getModulePath()) { modulePath.accept(*this); }
+  for (const auto& specifier : exportDecl.getSpecifiers()) { specifier.accept(*this); }
+  ZC_IF_SOME(declaration, exportDecl.getDeclaration()) { declaration.accept(*this); }
 }
 
 void Binder::bindVariableDeclaration(const ast::VariableDeclaration& varDecl) {
