@@ -8,127 +8,128 @@ export math.geometry.{Point};
 
 
 // CHECK: {
-// CHECK:   "node": "SourceFile",
-// CHECK:   "fileName": "{{.*import-export.zom}}",
-// CHECK:   "moduleDeclaration": {
-// CHECK:     "node": "ModuleDeclaration",
-// CHECK:     "modulePath": {
-// CHECK:       "node": "ModulePath",
-// CHECK:       "segments": [
-// CHECK:         {
-// CHECK:           "node": "Identifier",
-// CHECK:           "name": "graphics"
-// CHECK:         }
-// CHECK:       ]
-// CHECK:     }
-// CHECK:   },
-// CHECK:   "statements": [
-// CHECK:     {
-// CHECK:       "node": "ImportDeclaration",
-// CHECK:       "modulePath": {
-// CHECK:         "node": "ModulePath",
-// CHECK:         "segments": [
-// CHECK:           {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "math"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "geometry"
-// CHECK:           }
-// CHECK:         ]
-// CHECK:       },
-// CHECK:       "alias": "geo",
-// CHECK:       "specifiers": [
-// CHECK:       ]
-// CHECK:     },
-// CHECK:     {
-// CHECK:       "node": "ImportDeclaration",
-// CHECK:       "modulePath": {
-// CHECK:         "node": "ModulePath",
-// CHECK:         "segments": [
-// CHECK:           {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "math"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "geometry"
-// CHECK:           }
-// CHECK:         ]
-// CHECK:       },
-// CHECK:       "specifiers": [
-// CHECK:         {
-// CHECK:           "node": "ImportSpecifier",
-// CHECK:           "importedName": {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "Point"
-// CHECK:           },
-// CHECK:           "alias": {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "GeoPoint"
-// CHECK:           }
-// CHECK:         },
-// CHECK:         {
-// CHECK:           "node": "ImportSpecifier",
-// CHECK:           "importedName": {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "distance"
-// CHECK:           },
-// CHECK:           "alias": null
-// CHECK:         }
-// CHECK:       ]
-// CHECK:     },
-// CHECK:     {
-// CHECK:       "node": "ExportDeclaration",
-// CHECK:       "modulePath": null,
-// CHECK:       "specifiers": [
-// CHECK:         {
-// CHECK:           "node": "ExportSpecifier",
-// CHECK:           "exportedName": {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "GeoPoint"
-// CHECK:           },
-// CHECK:           "alias": null
-// CHECK:         },
-// CHECK:         {
-// CHECK:           "node": "ExportSpecifier",
-// CHECK:           "exportedName": {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "distance"
-// CHECK:           },
-// CHECK:           "alias": {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "calcDistance"
-// CHECK:           }
-// CHECK:         }
-// CHECK:       ]
-// CHECK:     },
-// CHECK:     {
-// CHECK:       "node": "ExportDeclaration",
-// CHECK:       "modulePath": {
-// CHECK:         "node": "ModulePath",
-// CHECK:         "segments": [
-// CHECK:           {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "math"
-// CHECK:           },
-// CHECK:           {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "geometry"
-// CHECK:           }
-// CHECK:         ]
-// CHECK:       },
-// CHECK:       "specifiers": [
-// CHECK:         {
-// CHECK:           "node": "ExportSpecifier",
-// CHECK:           "exportedName": {
-// CHECK:             "node": "Identifier",
-// CHECK:             "name": "Point"
-// CHECK:           },
-// CHECK:           "alias": null
-// CHECK:         }
-// CHECK:       ]
-// CHECK:     }
-// CHECK:   ]
-// CHECK: }
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*import-export.zom}}",
+// CHECK-NEXT:   "moduleDeclaration": {
+// CHECK-NEXT:     "node": "ModuleDeclaration",
+// CHECK-NEXT:     "modulePath": {
+// CHECK-NEXT:       "node": "ModulePath",
+// CHECK-NEXT:       "segments": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "Identifier",
+// CHECK-NEXT:           "name": "graphics"
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   },
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ImportDeclaration",
+// CHECK-NEXT:       "modulePath": {
+// CHECK-NEXT:         "node": "ModulePath",
+// CHECK-NEXT:         "segments": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "math"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "geometry"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "alias": "geo",
+// CHECK-NEXT:       "specifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ImportDeclaration",
+// CHECK-NEXT:       "modulePath": {
+// CHECK-NEXT:         "node": "ModulePath",
+// CHECK-NEXT:         "segments": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "math"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "geometry"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "specifiers": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "ImportSpecifier",
+// CHECK-NEXT:           "importedName": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "Point"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "alias": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "GeoPoint"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "ImportSpecifier",
+// CHECK-NEXT:           "importedName": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "distance"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "alias": null
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExportDeclaration",
+// CHECK-NEXT:       "modulePath": null,
+// CHECK-NEXT:       "specifiers": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "ExportSpecifier",
+// CHECK-NEXT:           "exportedName": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "GeoPoint"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "alias": null
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "ExportSpecifier",
+// CHECK-NEXT:           "exportedName": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "distance"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "alias": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "calcDistance"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "ExportDeclaration",
+// CHECK-NEXT:       "modulePath": {
+// CHECK-NEXT:         "node": "ModulePath",
+// CHECK-NEXT:         "segments": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "math"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "geometry"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "specifiers": [
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "ExportSpecifier",
+// CHECK-NEXT:           "exportedName": {
+// CHECK-NEXT:             "node": "Identifier",
+// CHECK-NEXT:             "name": "Point"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "alias": null
+// CHECK-NEXT:         }
+// CHECK-NEXT:       ]
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

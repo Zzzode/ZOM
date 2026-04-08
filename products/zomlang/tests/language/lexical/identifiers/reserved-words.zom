@@ -3,7 +3,7 @@
 let if = 1;
 
 
-// CHECK: Error [ZOM2056]: 'if' is not allowed as a variable declaration name
+// CHECK: Error [ZOM2058]: 'if' is not allowed as a variable declaration name
 // CHECK:   --> {{.*reserved-words.zom}}:3:5
 // CHECK:   |
 // CHECK: 3 | let if = 1;
@@ -13,7 +13,7 @@ let if = 1;
 // CHECK:   |
 // CHECK: 3 | let if = 1;
 // CHECK:   |     ^~
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*reserved-words.zom}}:3:8
 // CHECK:   |
 // CHECK: 3 | let if = 1;

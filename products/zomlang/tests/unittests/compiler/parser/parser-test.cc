@@ -1089,6 +1089,20 @@ ZC_TEST("ParserTest.ParseTypeQueryInReturnType") {
   ZC_EXPECT(result != zc::none, "Should parse function with type query return type");
 }
 
+ZC_TEST("ParserTest.ParseFunctionTypeWithModifiedParameter") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("let transform: (readonly value: i32) -> i32 = fn;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse function type with a modified parameter");
+}
+
 ZC_TEST("ParserTest.ParseShortCircuitExpression") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);

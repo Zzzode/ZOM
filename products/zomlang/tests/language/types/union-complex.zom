@@ -1,0 +1,104 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+alias Mixed = A & B | C & D;
+alias Nested = A | B[]? | (C | D[])?;
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*union-complex.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Mixed"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "UnionTypeNode",
+// CHECK-NEXT:         "types": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "IntersectionTypeNode",
+// CHECK-NEXT:             "types": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "TypeReferenceNode",
+// CHECK-NEXT:                 "name": "A"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "TypeReferenceNode",
+// CHECK-NEXT:                 "name": "B"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "IntersectionTypeNode",
+// CHECK-NEXT:             "types": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "TypeReferenceNode",
+// CHECK-NEXT:                 "name": "C"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "TypeReferenceNode",
+// CHECK-NEXT:                 "name": "D"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Nested"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "UnionTypeNode",
+// CHECK-NEXT:         "types": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "A"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "OptionalTypeNode",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "ArrayTypeNode",
+// CHECK-NEXT:               "elementType": {
+// CHECK-NEXT:                 "node": "TypeReferenceNode",
+// CHECK-NEXT:                 "name": "B"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "OptionalTypeNode",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "ParenthesizedTypeNode",
+// CHECK-NEXT:               "type": {
+// CHECK-NEXT:                 "node": "UnionTypeNode",
+// CHECK-NEXT:                 "types": [
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "TypeReferenceNode",
+// CHECK-NEXT:                     "name": "C"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   {
+// CHECK-NEXT:                     "node": "ArrayTypeNode",
+// CHECK-NEXT:                     "elementType": {
+// CHECK-NEXT:                       "node": "TypeReferenceNode",
+// CHECK-NEXT:                       "name": "D"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 ]
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

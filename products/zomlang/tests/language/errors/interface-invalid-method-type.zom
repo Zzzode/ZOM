@@ -3,7 +3,7 @@
 interface Drawable { draw(): void; }
 
 
-// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK: Error [ZOM2053]: Property or signature expected
 // CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:22
 // CHECK:   |
 // CHECK: 3 | interface Drawable { draw(): void; }
@@ -18,12 +18,12 @@ interface Drawable { draw(): void; }
 // CHECK:   |
 // CHECK: 3 | interface Drawable { draw(): void; }
 // CHECK:   |                            ^
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:28
 // CHECK:   |
 // CHECK: 3 | interface Drawable { draw(): void; }
 // CHECK:   |                            ^
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:36
 // CHECK:   |
 // CHECK: 3 | interface Drawable { draw(): void; }

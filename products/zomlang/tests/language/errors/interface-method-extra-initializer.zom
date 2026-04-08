@@ -10,12 +10,12 @@ interface I {
 // CHECK:   |
 // CHECK: 4 |   fun foo() = 1;
 // CHECK:   |             ^
-// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK: Error [ZOM2053]: Property or signature expected
 // CHECK:   --> {{.*interface-method-extra-initializer.zom}}:4:13
 // CHECK:   |
 // CHECK: 4 |   fun foo() = 1;
 // CHECK:   |             ^
-// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK: Error [ZOM2053]: Property or signature expected
 // CHECK:   --> {{.*interface-method-extra-initializer.zom}}:4:15
 // CHECK:   |
 // CHECK: 4 |   fun foo() = 1;
@@ -25,7 +25,7 @@ interface I {
 // CHECK:   |
 // CHECK: 4 |   fun foo() = 1;
 // CHECK:   |               ^
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*interface-method-extra-initializer.zom}}:5:1
 // CHECK:   |
 // CHECK: 5 | }

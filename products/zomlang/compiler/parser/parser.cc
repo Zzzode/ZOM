@@ -1090,6 +1090,61 @@ bool Parser::nextIsParenthesizedOrFunctionType() {
   return token.is(ast::SyntaxKind::RightParen) || isStartOfParameter() || isStartOfType();
 }
 
+bool Parser::isStartOfFunctionType() {
+  if (expectToken(ast::SyntaxKind::LessThan)) { return true; }
+  return expectToken(ast::SyntaxKind::LeftParen) &&
+         lookAhead<bool>(ZC_BIND_METHOD(*this, isUnambiguouslyStartOfFunctionType));
+}
+
+bool Parser::skipFunctionTypeParameterStart() {
+  if (isModifier()) {
+    // Skip modifiers
+    parseModifiers(/*allowDecorators*/ false);
+  }
+
+  if (isIdentifier() || currentKind() == ast::SyntaxKind::ThisKeyword) {
+    nextToken();
+    return true;
+  }
+
+  if (expectNToken(ast::SyntaxKind::LeftBracket, ast::SyntaxKind::LeftBrace)) {
+    // Return true if we can parse an array or object binding pattern with no errors
+    const bool hadErrors = getDiagnosticEngine().hasErrors();
+    parseIdentifierOrBindingPattern();
+    return hadErrors == getDiagnosticEngine().hasErrors();
+  }
+  return false;
+}
+
+bool Parser::isUnambiguouslyStartOfFunctionType() {
+  nextToken();
+
+  if (currentKind() == ast::SyntaxKind::RightParen || currentKind() == ast::SyntaxKind::DotDotDot) {
+    // ( )
+    // ( ...
+    return true;
+  }
+
+  if (skipFunctionTypeParameterStart()) {
+    if (expectNToken(ast::SyntaxKind::Colon, ast::SyntaxKind::Comma, ast::SyntaxKind::Question,
+                     ast::SyntaxKind::Equals)) {
+      // ( xxx :
+      // ( xxx ,
+      // ( xxx ?
+      // ( xxx =
+      return true;
+    }
+
+    if (currentKind() == ast::SyntaxKind::RightParen) {
+      nextToken();
+      // ( xxx ) ->
+      return currentKind() == ast::SyntaxKind::Arrow;
+    }
+  }
+
+  return false;
+}
+
 bool Parser::nextTokenIsLeftParenOrLessThanOrDot() {
   nextToken();
   switch (currentKind()) {
@@ -3264,9 +3319,9 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseType() {
   //
   // Return the parsed `unionType` directly, the suffix processing is completed in
   // `parsePrimaryType`.
-  ZC_IF_SOME(type, parseUnionType()) { return zc::mv(type); }
+  if (isStartOfFunctionType()) { return parseFunctionType(); }
 
-  return zc::none;
+  return parseUnionTypeOrHigher();
 }
 
 zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseTypeAnnotation() {
@@ -3275,27 +3330,34 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseTypeAnnotation() {
   return parseOptional(ast::SyntaxKind::Colon) ? parseType() : zc::none;
 }
 
-zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseUnionType() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseUnionType");
+zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseUnionTypeOrHigher() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseUnionTypeOrHigher");
 
   // unionType:
   //   intersectionType (PIPE intersectionType)*;
   //
-  // Handles union types like A | B | C
+  // Parse the first constituent eagerly, then only wrap it in a UnionTypeNode
+  // once we know we actually saw a `|`. This mirrors the TypeScript parser's
+  // "parse X or higher" shape and keeps union parsing left-to-right while
+  // preserving intersection precedence.
 
   const source::SourceLoc loc = currentLoc();
 
-  ZC_IF_SOME(type, parseIntersectionType()) {
+  ZC_IF_SOME(firstType, parseIntersectionType()) {
+    if (!expectToken(ast::SyntaxKind::Bar)) { return zc::mv(firstType); }
+
     zc::Vector<zc::Own<ast::TypeNode>> types;
-    types.add(zc::mv(type));
+    types.add(zc::mv(firstType));
 
-    while (expectToken(ast::SyntaxKind::Bar)) {
-      nextToken();
-      ZC_IF_SOME(rightType, parseIntersectionType()) { types.add(zc::mv(rightType)); }
+    while (parseOptional(ast::SyntaxKind::Bar)) {
+      ZC_IF_SOME(nextType, parseIntersectionType()) {
+        types.add(zc::mv(nextType));
+        continue;
+      }
+
+      parseErrorAtCurrentToken<diagnostics::DiagID::TypeExpected>();
+      return zc::none;
     }
-
-    // Only create UnionType if there are multiple types
-    if (types.size() == 1) { return zc::mv(types[0]); }
 
     return finishNode(ast::factory::createUnionType(zc::mv(types)), loc);
   }
@@ -3475,32 +3537,60 @@ zc::Maybe<zc::Own<ast::ObjectTypeNode>> Parser::parseObjectType() {
   //
   // Handles object types like {prop: T, method(): U}
 
+  const source::SourceLoc loc = currentLoc();
+
   if (!consumeExpectedToken(ast::SyntaxKind::LeftBrace)) { return zc::none; }
 
   zc::Vector<zc::Own<ast::Node>> members;
 
   // Parse object type members
   if (!expectToken(ast::SyntaxKind::RightBrace)) {
-    do {
-      // Parse property signature: identifier COLON type
-      if (isIdentifier()) {
-        auto propertyName = parseIdentifier();
-        if (consumeExpectedToken(ast::SyntaxKind::Colon)) {
-          ZC_IF_SOME(propertyType, parseType()) {
-            // TODO: Implement PropertySignature properly
-            // For now, skip adding property signatures to avoid compilation error
-            (void)propertyName;  // Suppress unused variable warning
-            (void)propertyType;  // Suppress unused variable warning
-          }
-        }
+    while (true) {
+      const source::SourceLoc memberLoc = currentLoc();
+
+      if (!isLiteralPropertyName()) {
+        parseErrorAtCurrentToken<diagnostics::DiagID::TypeExpected>();
+        return zc::none;
       }
-    } while (consumeExpectedToken(ast::SyntaxKind::Comma) ||
-             consumeExpectedToken(ast::SyntaxKind::Semicolon));
+
+      auto name = parsePropertyName();
+      auto questionToken = parseOptionalToken(ast::SyntaxKind::Question);
+
+      if (expectNToken(ast::SyntaxKind::LeftParen, ast::SyntaxKind::LessThan)) {
+        auto typeParameters = parseTypeParameters();
+        auto parameters = parseParameters();
+        auto type = parseReturnType();
+        zc::Own<ast::Node> member =
+            finishNode(ast::factory::createMethodSignature(
+                           zc::Vector<ast::SyntaxKind>{}, zc::mv(name), zc::mv(questionToken),
+                           zc::mv(typeParameters), zc::mv(parameters), zc::mv(type)),
+                       memberLoc);
+        members.add(zc::mv(member));
+      } else {
+        auto type = parseTypeAnnotation();
+        zc::Own<ast::Node> member = finishNode(
+            ast::factory::createPropertySignature(zc::Vector<ast::SyntaxKind>{}, zc::mv(name),
+                                                  zc::mv(questionToken), zc::mv(type), zc::none),
+            memberLoc);
+        members.add(zc::mv(member));
+      }
+
+      if (consumeExpectedToken(ast::SyntaxKind::Comma) ||
+          consumeExpectedToken(ast::SyntaxKind::Semicolon)) {
+        if (expectToken(ast::SyntaxKind::RightBrace)) { break; }
+        continue;
+      }
+
+      if (expectToken(ast::SyntaxKind::RightBrace)) { break; }
+
+      parseExpected(ast::SyntaxKind::Comma);
+      if (expectToken(ast::SyntaxKind::RightBrace)) { break; }
+    }
   }
 
   if (!consumeExpectedToken(ast::SyntaxKind::RightBrace)) { return zc::none; }
 
-  return ast::factory::createObjectType(zc::mv(members));
+  return finishNode(ast::factory::createObjectType(zc::mv(members)), loc);
 }
 
 zc::Maybe<zc::Own<ast::TupleTypeNode>> Parser::parseTupleType() {
@@ -4438,6 +4528,8 @@ zc::Own<ast::ElementAccessExpression> Parser::parseElementAccessExpressionRest(
 
   // Parse the index expression inside brackets
   auto indexExpression = parseExpression();
+  parseExpected(ast::SyntaxKind::RightBracket);
+
   const bool isOptionalChain = questionDot || tryReparseOptionalChain(*expression);
   return finishNode(ast::factory::createElementAccessExpression(
                         zc::mv(expression), zc::mv(indexExpression), questionDot, isOptionalChain),
