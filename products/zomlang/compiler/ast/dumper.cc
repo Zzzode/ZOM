@@ -1003,13 +1003,15 @@ void ASTDumper::visit(const ExpressionWithTypeArguments& node) {
   impl->serializer->writeChildEnd("expression"_zc);
 
   const auto& typeArguments = node.getTypeArguments();
-  if (!typeArguments.empty()) {
-    impl->serializer->writeArrayStart("typeArguments"_zc, typeArguments.size());
-    for (const auto& typeArg : typeArguments) {
-      impl->serializer->writeArrayElement();
-      typeArg.accept(*this);
+  ZC_IF_SOME(args, typeArguments) {
+    if (!args.empty()) {
+      impl->serializer->writeArrayStart("typeArguments"_zc, args.size());
+      for (const auto& typeArg : args) {
+        impl->serializer->writeArrayElement();
+        typeArg.accept(*this);
+      }
+      impl->serializer->writeArrayEnd("typeArguments"_zc);
     }
-    impl->serializer->writeArrayEnd("typeArguments"_zc);
   }
 
   impl->serializer->writeNodeEnd("ExpressionWithTypeArguments"_zc);

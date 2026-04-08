@@ -46,8 +46,10 @@ struct TypeReferenceNode::Impl : private NodeImpl {
         name(zc::mv(name)),
         typeArguments(zc::mv(typeArguments)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -69,6 +71,10 @@ const source::SourceRange& TypeReferenceNode::getSourceRange() const {
 
 SyntaxKind TypeReferenceNode::getKind() const { return impl->getKind(); }
 
+NodeFlags TypeReferenceNode::getFlags() const { return impl->getFlags(); }
+void TypeReferenceNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void TypeReferenceNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ArrayTypeNode
@@ -78,8 +84,10 @@ struct ArrayTypeNode::Impl : private NodeImpl {
   explicit Impl(zc::Own<TypeNode> elementType)
       : NodeImpl(SyntaxKind::ArrayTypeNode), elementType(zc::mv(elementType)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -91,6 +99,10 @@ ArrayTypeNode::~ArrayTypeNode() noexcept(false) = default;
 const TypeNode& ArrayTypeNode::getElementType() const { return *impl->elementType; }
 
 SyntaxKind ArrayTypeNode::getKind() const { return impl->getKind(); }
+
+NodeFlags ArrayTypeNode::getFlags() const { return impl->getFlags(); }
+void ArrayTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void ArrayTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -107,8 +119,10 @@ struct UnionTypeNode::Impl : private NodeImpl {
   explicit Impl(zc::Vector<zc::Own<TypeNode>>&& types)
       : NodeImpl(SyntaxKind::UnionTypeNode), types(zc::mv(types)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -120,6 +134,10 @@ UnionTypeNode::~UnionTypeNode() noexcept(false) = default;
 const NodeList<TypeNode>& UnionTypeNode::getTypes() const { return impl->types; }
 
 SyntaxKind UnionTypeNode::getKind() const { return impl->getKind(); }
+
+NodeFlags UnionTypeNode::getFlags() const { return impl->getFlags(); }
+void UnionTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void UnionTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -136,8 +154,10 @@ struct IntersectionTypeNode::Impl : private NodeImpl {
   explicit Impl(zc::Vector<zc::Own<TypeNode>>&& types)
       : NodeImpl(SyntaxKind::IntersectionTypeNode), types(zc::mv(types)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -149,6 +169,10 @@ IntersectionTypeNode::~IntersectionTypeNode() noexcept(false) = default;
 const NodeList<TypeNode>& IntersectionTypeNode::getTypes() const { return impl->types; }
 
 SyntaxKind IntersectionTypeNode::getKind() const { return impl->getKind(); }
+
+NodeFlags IntersectionTypeNode::getFlags() const { return impl->getFlags(); }
+void IntersectionTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void IntersectionTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -167,8 +191,10 @@ struct ParenthesizedTypeNode::Impl : private NodeImpl {
   explicit Impl(zc::Own<TypeNode> type)
       : NodeImpl(SyntaxKind::ParenthesizedTypeNode), type(zc::mv(type)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -180,6 +206,10 @@ ParenthesizedTypeNode::~ParenthesizedTypeNode() noexcept(false) = default;
 const TypeNode& ParenthesizedTypeNode::getType() const { return *impl->type; }
 
 SyntaxKind ParenthesizedTypeNode::getKind() const { return impl->getKind(); }
+
+NodeFlags ParenthesizedTypeNode::getFlags() const { return impl->getFlags(); }
+void ParenthesizedTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void ParenthesizedTypeNode::setSourceRange(const source::SourceRange&& range) {
   impl->setSourceRange(zc::mv(range));
@@ -196,6 +226,10 @@ BoolTypeNode::BoolTypeNode() noexcept : PredefinedTypeNode() {}
 BoolTypeNode::~BoolTypeNode() noexcept(false) = default;
 zc::StringPtr BoolTypeNode::getName() const { return "bool"_zc; }
 SyntaxKind BoolTypeNode::getKind() const { return SyntaxKind::BoolTypeNode; }
+
+NodeFlags BoolTypeNode::getFlags() const { return NodeFlags::None; }
+void BoolTypeNode::setFlags(NodeFlags flags) { }
+
 void BoolTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void BoolTypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -209,6 +243,10 @@ I8TypeNode::I8TypeNode() noexcept : PredefinedTypeNode() {}
 I8TypeNode::~I8TypeNode() noexcept(false) = default;
 zc::StringPtr I8TypeNode::getName() const { return "i8"_zc; }
 SyntaxKind I8TypeNode::getKind() const { return SyntaxKind::I8TypeNode; }
+
+NodeFlags I8TypeNode::getFlags() const { return NodeFlags::None; }
+void I8TypeNode::setFlags(NodeFlags flags) { }
+
 void I8TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void I8TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -222,6 +260,10 @@ I16TypeNode::I16TypeNode() noexcept : PredefinedTypeNode() {}
 I16TypeNode::~I16TypeNode() noexcept(false) = default;
 zc::StringPtr I16TypeNode::getName() const { return "i16"_zc; }
 SyntaxKind I16TypeNode::getKind() const { return SyntaxKind::I16TypeNode; }
+
+NodeFlags I16TypeNode::getFlags() const { return NodeFlags::None; }
+void I16TypeNode::setFlags(NodeFlags flags) { }
+
 void I16TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void I16TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -235,6 +277,10 @@ I32TypeNode::I32TypeNode() noexcept : PredefinedTypeNode() {}
 I32TypeNode::~I32TypeNode() noexcept(false) = default;
 zc::StringPtr I32TypeNode::getName() const { return "i32"_zc; }
 SyntaxKind I32TypeNode::getKind() const { return SyntaxKind::I32TypeNode; }
+
+NodeFlags I32TypeNode::getFlags() const { return NodeFlags::None; }
+void I32TypeNode::setFlags(NodeFlags flags) { }
+
 void I32TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void I32TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -248,6 +294,10 @@ I64TypeNode::I64TypeNode() noexcept : PredefinedTypeNode() {}
 I64TypeNode::~I64TypeNode() noexcept(false) = default;
 zc::StringPtr I64TypeNode::getName() const { return "i64"_zc; }
 SyntaxKind I64TypeNode::getKind() const { return SyntaxKind::I64TypeNode; }
+
+NodeFlags I64TypeNode::getFlags() const { return NodeFlags::None; }
+void I64TypeNode::setFlags(NodeFlags flags) { }
+
 void I64TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void I64TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -261,6 +311,10 @@ U8TypeNode::U8TypeNode() noexcept : PredefinedTypeNode() {}
 U8TypeNode::~U8TypeNode() noexcept(false) = default;
 zc::StringPtr U8TypeNode::getName() const { return "u8"_zc; }
 SyntaxKind U8TypeNode::getKind() const { return SyntaxKind::U8TypeNode; }
+
+NodeFlags U8TypeNode::getFlags() const { return NodeFlags::None; }
+void U8TypeNode::setFlags(NodeFlags flags) { }
+
 void U8TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void U8TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -274,6 +328,10 @@ U16TypeNode::U16TypeNode() noexcept : PredefinedTypeNode() {}
 U16TypeNode::~U16TypeNode() noexcept(false) = default;
 zc::StringPtr U16TypeNode::getName() const { return "u16"_zc; }
 SyntaxKind U16TypeNode::getKind() const { return SyntaxKind::U16TypeNode; }
+
+NodeFlags U16TypeNode::getFlags() const { return NodeFlags::None; }
+void U16TypeNode::setFlags(NodeFlags flags) { }
+
 void U16TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void U16TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -287,6 +345,10 @@ U32TypeNode::U32TypeNode() noexcept : PredefinedTypeNode() {}
 U32TypeNode::~U32TypeNode() noexcept(false) = default;
 zc::StringPtr U32TypeNode::getName() const { return "u32"_zc; }
 SyntaxKind U32TypeNode::getKind() const { return SyntaxKind::U32TypeNode; }
+
+NodeFlags U32TypeNode::getFlags() const { return NodeFlags::None; }
+void U32TypeNode::setFlags(NodeFlags flags) { }
+
 void U32TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void U32TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -300,6 +362,10 @@ U64TypeNode::U64TypeNode() noexcept : PredefinedTypeNode() {}
 U64TypeNode::~U64TypeNode() noexcept(false) = default;
 zc::StringPtr U64TypeNode::getName() const { return "u64"_zc; }
 SyntaxKind U64TypeNode::getKind() const { return SyntaxKind::U64TypeNode; }
+
+NodeFlags U64TypeNode::getFlags() const { return NodeFlags::None; }
+void U64TypeNode::setFlags(NodeFlags flags) { }
+
 void U64TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void U64TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -313,6 +379,10 @@ F32TypeNode::F32TypeNode() noexcept : PredefinedTypeNode() {}
 F32TypeNode::~F32TypeNode() noexcept(false) = default;
 zc::StringPtr F32TypeNode::getName() const { return "f32"_zc; }
 SyntaxKind F32TypeNode::getKind() const { return SyntaxKind::F32TypeNode; }
+
+NodeFlags F32TypeNode::getFlags() const { return NodeFlags::None; }
+void F32TypeNode::setFlags(NodeFlags flags) { }
+
 void F32TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void F32TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -326,6 +396,10 @@ F64TypeNode::F64TypeNode() noexcept : PredefinedTypeNode() {}
 F64TypeNode::~F64TypeNode() noexcept(false) = default;
 zc::StringPtr F64TypeNode::getName() const { return "f64"_zc; }
 SyntaxKind F64TypeNode::getKind() const { return SyntaxKind::F64TypeNode; }
+
+NodeFlags F64TypeNode::getFlags() const { return NodeFlags::None; }
+void F64TypeNode::setFlags(NodeFlags flags) { }
+
 void F64TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void F64TypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -339,6 +413,10 @@ StrTypeNode::StrTypeNode() noexcept : PredefinedTypeNode() {}
 StrTypeNode::~StrTypeNode() noexcept(false) = default;
 zc::StringPtr StrTypeNode::getName() const { return "str"_zc; }
 SyntaxKind StrTypeNode::getKind() const { return SyntaxKind::StrTypeNode; }
+
+NodeFlags StrTypeNode::getFlags() const { return NodeFlags::None; }
+void StrTypeNode::setFlags(NodeFlags flags) { }
+
 void StrTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void StrTypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -352,6 +430,10 @@ UnitTypeNode::UnitTypeNode() noexcept : PredefinedTypeNode() {}
 UnitTypeNode::~UnitTypeNode() noexcept(false) = default;
 zc::StringPtr UnitTypeNode::getName() const { return "unit"_zc; }
 SyntaxKind UnitTypeNode::getKind() const { return SyntaxKind::UnitTypeNode; }
+
+NodeFlags UnitTypeNode::getFlags() const { return NodeFlags::None; }
+void UnitTypeNode::setFlags(NodeFlags flags) { }
+
 void UnitTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void UnitTypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -365,6 +447,10 @@ NullTypeNode::NullTypeNode() noexcept : PredefinedTypeNode() {}
 NullTypeNode::~NullTypeNode() noexcept(false) = default;
 zc::StringPtr NullTypeNode::getName() const { return "null"_zc; }
 SyntaxKind NullTypeNode::getKind() const { return SyntaxKind::NullTypeNode; }
+
+NodeFlags NullTypeNode::getFlags() const { return NodeFlags::None; }
+void NullTypeNode::setFlags(NodeFlags flags) { }
+
 void NullTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void NullTypeNode::setSourceRange(const source::SourceRange&& range) {
   // TODO: Implement source range tracking for predefined types
@@ -390,6 +476,10 @@ const NodeList<Node>& ObjectTypeNode::getMembers() const { return impl->members;
 
 SyntaxKind ObjectTypeNode::getKind() const { return SyntaxKind::ObjectTypeNode; }
 
+NodeFlags ObjectTypeNode::getFlags() const { return NodeFlags::None; }
+void ObjectTypeNode::setFlags(NodeFlags flags) { }
+
+
 void ObjectTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 void ObjectTypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -409,8 +499,10 @@ struct NamedTupleElement::Impl : private NodeImpl {
   Impl(zc::Own<Identifier> name, zc::Own<TypeNode> type)
       : NodeImpl(SyntaxKind::NamedTupleElement), name(zc::mv(name)), type(zc::mv(type)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -424,6 +516,10 @@ const Identifier& NamedTupleElement::getName() const { return *impl->name; }
 const TypeNode& NamedTupleElement::getType() const { return *impl->type; }
 
 SyntaxKind NamedTupleElement::getKind() const { return impl->getKind(); }
+
+NodeFlags NamedTupleElement::getFlags() const { return impl->getFlags(); }
+void NamedTupleElement::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void NamedTupleElement::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -442,8 +538,10 @@ struct TupleTypeNode::Impl : private NodeImpl {
   explicit Impl(zc::Vector<zc::Own<TypeNode>>&& elementTypes)
       : NodeImpl(SyntaxKind::TupleTypeNode), elementTypes(zc::mv(elementTypes)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -455,6 +553,10 @@ TupleTypeNode::~TupleTypeNode() noexcept(false) = default;
 const NodeList<TypeNode>& TupleTypeNode::getElementTypes() const { return impl->elementTypes; }
 
 SyntaxKind TupleTypeNode::getKind() const { return impl->getKind(); }
+
+NodeFlags TupleTypeNode::getFlags() const { return impl->getFlags(); }
+void TupleTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void TupleTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -472,8 +574,10 @@ struct ReturnTypeNode::Impl : private NodeImpl {
   Impl(zc::Own<TypeNode> type, zc::Maybe<zc::Own<TypeNode>> errorType)
       : NodeImpl(SyntaxKind::ReturnTypeNode), type(zc::mv(type)), errorType(zc::mv(errorType)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -495,6 +599,10 @@ const source::SourceRange& ReturnTypeNode::getSourceRange() const { return impl-
 
 SyntaxKind ReturnTypeNode::getKind() const { return impl->getKind(); }
 
+NodeFlags ReturnTypeNode::getFlags() const { return impl->getFlags(); }
+void ReturnTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ReturnTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // FunctionTypeNode
@@ -510,8 +618,10 @@ struct FunctionTypeNode::Impl : private NodeImpl {
         parameters(zc::mv(parameters)),
         returnType(zc::mv(returnType)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -537,6 +647,10 @@ const ReturnTypeNode& FunctionTypeNode::getReturnType() const { return *impl->re
 
 SyntaxKind FunctionTypeNode::getKind() const { return impl->getKind(); }
 
+NodeFlags FunctionTypeNode::getFlags() const { return impl->getFlags(); }
+void FunctionTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void FunctionTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
 }
@@ -554,8 +668,10 @@ struct OptionalTypeNode::Impl : private NodeImpl {
   explicit Impl(zc::Own<TypeNode> type)
       : NodeImpl(SyntaxKind::OptionalTypeNode), type(zc::mv(type)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -567,6 +683,10 @@ OptionalTypeNode::~OptionalTypeNode() noexcept(false) = default;
 const TypeNode& OptionalTypeNode::getType() const { return *impl->type; }
 
 SyntaxKind OptionalTypeNode::getKind() const { return impl->getKind(); }
+
+NodeFlags OptionalTypeNode::getFlags() const { return impl->getFlags(); }
+void OptionalTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void OptionalTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -585,8 +705,10 @@ struct TypeQueryNode::Impl : private NodeImpl {
   explicit Impl(zc::Own<Expression> expr)
       : NodeImpl(SyntaxKind::TypeQueryNode), expr(zc::mv(expr)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -605,6 +727,10 @@ const source::SourceRange& TypeQueryNode::getSourceRange() const { return impl->
 
 SyntaxKind TypeQueryNode::getKind() const { return impl->getKind(); }
 
+NodeFlags TypeQueryNode::getFlags() const { return impl->getFlags(); }
+void TypeQueryNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void TypeQueryNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // TypeParameterDeclaration
@@ -617,8 +743,10 @@ struct TypeParameterDeclaration::Impl : private NamedDeclarationImpl, private No
         constraint(zc::mv(constraint)) {}
 
   // Forward NodeImpl methods
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 
   // Forward NamedDeclarationImpl methods
@@ -651,6 +779,10 @@ const source::SourceRange& TypeParameterDeclaration::getSourceRange() const {
 }
 
 SyntaxKind TypeParameterDeclaration::getKind() const { return impl->getKind(); }
+
+NodeFlags TypeParameterDeclaration::getFlags() const { return impl->getFlags(); }
+void TypeParameterDeclaration::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void TypeParameterDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 

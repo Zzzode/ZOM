@@ -555,7 +555,9 @@ void Binder::visit(const ast::ConditionalAsExpression& node) {
 void Binder::visit(const ast::NonNullExpression& node) { node.getExpression().accept(*this); }
 void Binder::visit(const ast::ExpressionWithTypeArguments& node) {
   node.getExpression().accept(*this);
-  for (const auto& typeArg : node.getTypeArguments()) { typeArg.accept(*this); }
+  ZC_IF_SOME(typeArgs, node.getTypeArguments()) {
+    for (const auto& typeArg : typeArgs) { typeArg.accept(*this); }
+  }
 }
 void Binder::visit(const ast::VoidExpression& node) { node.getExpression().accept(*this); }
 void Binder::visit(const ast::TypeOfExpression& node) { node.getExpression().accept(*this); }

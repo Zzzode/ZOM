@@ -60,6 +60,8 @@ DIAG(
     "intended as an escape sequence, use the syntax '\\x{0}'",
     1)
 DIAG(EscapeSequenceNotAllowed, kError, "Escape sequence '{0}' is not allowed", 1)
+DIAG(UnicodeEscapeSequenceCannotAppearHere, kError, "Unicode escape sequence cannot appear here",
+     0)
 DIAG(HexadecimalDigitExpected, kError, "Hexadecimal digit expected", 0)
 DIAG(BinaryOrOctalDigitExpected, kError, "Binary or octal digit expected", 0)
 DIAG(OctalDigitExpected, kError, "Octal digit expected", 0)
@@ -124,3 +126,5 @@ DIAG(DeclarationOrStatementExpectedAfterBlock, kError,
      "Declaration or statement expected. This follows a block of statements, so if you intended to "
      "write a destructuring assignment, you might need to wrap the whole assignment in parentheses",
      0)
+DIAG(AnInstantiationExpressionCannotBeFollowedByAPropertyAccess, kError,
+     "An instantiation expression cannot be followed by a property access", 0)

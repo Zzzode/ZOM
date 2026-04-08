@@ -31,6 +31,7 @@ namespace ast {
 
 struct NodeImpl::Impl {
   SyntaxKind kind;
+  mutable NodeFlags flags = NodeFlags::None;
 
   source::SourceRange range;
 
@@ -49,6 +50,10 @@ const source::SourceRange& NodeImpl::getSourceRange() const { return impl->range
 
 SyntaxKind NodeImpl::getKind() const { return impl->kind; }
 
+NodeFlags NodeImpl::getFlags() const { return impl->flags; }
+
+void NodeImpl::setFlags(NodeFlags flags) const { impl->flags = flags; }
+
 // ================================================================================
 // TokenNode
 
@@ -56,8 +61,10 @@ struct TokenNode::Impl : private NodeImpl {
   explicit Impl(SyntaxKind kind) : NodeImpl(kind) {}
 
   // Forward NodeImpl methods
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -72,6 +79,10 @@ void TokenNode::setSourceRange(const source::SourceRange&& range) {
 const source::SourceRange& TokenNode::getSourceRange() const { return impl->getSourceRange(); }
 
 SyntaxKind TokenNode::getKind() const { return impl->getKind(); }
+
+NodeFlags TokenNode::getFlags() const { return impl->getFlags(); }
+void TokenNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void TokenNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 

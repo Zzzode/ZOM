@@ -150,6 +150,21 @@ bool isLeftHandSideExpression(const ast::Expression& expr) {
   }
 }
 
+zc::Maybe<const ast::Expression&> findOptionalChainBoundary(const ast::Expression& expression) {
+  if (ast::hasFlag(expression.getFlags(), ast::NodeFlags::OptionalChain)) { return expression; }
+  if (!ast::isa<ast::NonNullExpression>(expression)) { return zc::none; }
+  return findOptionalChainBoundary(ast::cast<ast::NonNullExpression>(expression).getExpression());
+}
+
+void markNonNullOptionalChain(ast::Expression& expression) {
+  if (!ast::isa<ast::NonNullExpression>(expression)) { return; }
+
+  expression.setFlags(expression.getFlags() | ast::NodeFlags::OptionalChain);
+  auto& next =
+      const_cast<ast::Expression&>(ast::cast<ast::NonNullExpression>(expression).getExpression());
+  markNonNullOptionalChain(next);
+}
+
 }  // namespace
 
 // ================================================================================
@@ -600,6 +615,7 @@ zc::Maybe<zc::Own<ast::ModuleDeclaration>> Parser::parseModuleDeclaration(
     parseSemicolon();
     return finishNode(ast::factory::createModuleDeclaration(zc::mv(modulePath)), loc);
   }
+
   return zc::none;
 }
 
@@ -1495,6 +1511,18 @@ zc::Own<ast::Identifier> Parser::parseIdentifier() {
 
 zc::Own<ast::Identifier> Parser::parseIdentifierName() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseIdentifierName");
+  return createIdentifier(lexer::isIdentifierOrKeyword(currentKind()));
+}
+
+zc::Own<ast::Identifier> Parser::parseIdentifierNameErrorOnUnicodeEscapeSequence() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser,
+                                 "parseIdentifierNameErrorOnUnicodeEscapeSequence");
+
+  if (currentToken().hasFlag(lexer::TokenFlags::UnicodeEscape) ||
+      currentToken().hasFlag(lexer::TokenFlags::ExtendedUnicodeEscape)) {
+    parseErrorAtCurrentToken<diagnostics::DiagID::UnicodeEscapeSequenceCannotAppearHere>();
+  }
+
   return createIdentifier(lexer::isIdentifierOrKeyword(currentKind()));
 }
 
@@ -2627,8 +2655,11 @@ zc::Own<ast::LeftHandSideExpression> Parser::parseCallExpressionRest(
     // Handle function calls with optional type arguments
     if (typeArguments != zc::none || expectToken(ast::SyntaxKind::LeftParen)) {
       ZC_IF_SOME(arguments, parseArgumentList()) {
+        const bool isOptionalChain =
+            questionDotToken != zc::none || tryReparseOptionalChain(*expression);
         auto callExpr = ast::factory::createCallExpression(
-            zc::mv(expression), zc::mv(questionDotToken), zc::mv(typeArguments), zc::mv(arguments));
+            zc::mv(expression), zc::mv(questionDotToken), zc::mv(typeArguments), zc::mv(arguments),
+            isOptionalChain);
         expression = finishNode(zc::mv(callExpr), loc);
         continue;
       }
@@ -2643,7 +2674,7 @@ zc::Own<ast::LeftHandSideExpression> Parser::parseCallExpressionRest(
       // Create missing identifier and property access expression
       auto name = ast::factory::createMissingIdentifier();  // Missing identifier placeholder
       auto propAccessExpr = ast::factory::createPropertyAccessExpression(
-          zc::mv(expression), zc::mv(name), true /* questionDot */);
+          zc::mv(expression), zc::mv(name), /*questionDot*/ true, /*isOptionalChain*/ true);
       expression = finishNode(zc::mv(propAccessExpr), loc);
     }
 
@@ -4312,24 +4343,87 @@ zc::Own<ast::VariableStatement> Parser::parseVariableStatement() {
   return finishNode(ast::factory::createVariableStatement(zc::mv(declarationList)), loc);
 }
 
+zc::Own<ast::Identifier> Parser::parseRightSideOfDot(
+    bool allowIdentifierNames, bool allowUnicodeEscapeSequenceInIdentifierName) {
+  // Technically a keyword is valid here as all identifiers and keywords are identifier names.
+  // However, often we'll encounter this in error situations when the identifier or keyword
+  // is actually starting another valid construct.
+  //
+  // So, we check for the following specific case:
+  //
+  //      name.
+  //      identifierOrKeyword identifierNameOrKeyword
+  //
+  // Note: the newlines are important here.  For example, if that above code
+  // were rewritten into:
+  //
+  //      name.identifierOrKeyword
+  //      identifierNameOrKeyword
+  //
+  // Then we would consider it valid.  That's because ASI would take effect and
+  // the code would be implicitly: "name.identifierOrKeyword; identifierNameOrKeyword".
+  // In the first case though, ASI will not take effect because there is not a
+  // line terminator after the identifier or keyword.
+  if (hasPrecedingLineBreak() && tokenIsIdentifierOrKeyword(currentToken())) {
+    const bool matchesPattern =
+        lookAhead<bool>(ZC_BIND_METHOD(*this, nextTokenIsIdentifierOrKeywordOnSameLine));
+
+    if (matchesPattern) {
+      // Report that we need an identifier.  However, report it right after the dot,
+      // and not on the next token.  This is because the next token might actually
+      // be an identifier and the error would be quite confusing.
+      parseErrorAt<diagnostics::DiagID::IdentifierExpected>(currentLoc(), currentLoc());
+      return ast::factory::createMissingIdentifier();
+    }
+  }
+
+  if (allowIdentifierNames) {
+    return allowUnicodeEscapeSequenceInIdentifierName
+               ? parseIdentifierName()
+               : parseIdentifierNameErrorOnUnicodeEscapeSequence();
+  }
+
+  return parseIdentifier();
+}
+
 zc::Own<ast::PropertyAccessExpression> Parser::parsePropertyAccessExpressionRest(
     zc::Own<ast::LeftHandSideExpression> expression, bool questionDot, source::SourceLoc pos) {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser,
                                  "parsePropertyAccessExpressionRest");
 
-  // Parse the property name (identifier)
-  if (isIdentifierOrKeyword()) {
-    auto identifier = parseIdentifierName();
-    return finishNode(ast::factory::createPropertyAccessExpression(zc::mv(expression),
-                                                                   zc::mv(identifier), questionDot),
-                      pos);
+  auto name = parseRightSideOfDot(/*allowIdentifierNames*/ true,
+                                  /*allowUnicodeEscapeSequenceInIdentifierName*/ true);
+  const bool isOptionalChain = questionDot || tryReparseOptionalChain(*expression);
+
+  if (ast::isa<ast::ExpressionWithTypeArguments>(*expression)) {
+    const auto& typeArguments =
+        ast::cast<ast::ExpressionWithTypeArguments>(*expression).getTypeArguments();
+
+    ZC_IF_SOME(t, typeArguments) {
+      const auto tbp = t.begin()->getSourceRange().getStart() - 1;
+      const auto tep = t.back()->getSourceRange().getEnd() + 1;
+      parseErrorAtRange<
+          diagnostics::DiagID::AnInstantiationExpressionCannotBeFollowedByAPropertyAccess>(
+          source::SourceRange(tbp, tep));
+    }
   }
 
-  // If we can't parse an identifier, create a missing identifier placeholder
-  auto missingIdentifier = ast::factory::createMissingIdentifier();
-  return finishNode(ast::factory::createPropertyAccessExpression(
-                        zc::mv(expression), zc::mv(missingIdentifier), questionDot),
-                    pos);
+  auto propertyAccess = ast::factory::createPropertyAccessExpression(
+      zc::mv(expression), zc::mv(name), questionDot, isOptionalChain);
+
+  return finishNode(zc::mv(propertyAccess), pos);
+}
+
+bool Parser::tryReparseOptionalChain(ast::LeftHandSideExpression& node) {
+  if (ast::hasFlag(node.getFlags(), ast::NodeFlags::OptionalChain)) { return true; }
+  if (!ast::isa<ast::NonNullExpression>(node)) { return false; }
+
+  const auto boundary =
+      findOptionalChainBoundary(ast::cast<ast::NonNullExpression>(node).getExpression());
+  if (boundary == zc::none) { return false; }
+
+  markNonNullOptionalChain(node);
+  return true;
 }
 
 zc::Own<ast::ElementAccessExpression> Parser::parseElementAccessExpressionRest(
@@ -4344,8 +4438,9 @@ zc::Own<ast::ElementAccessExpression> Parser::parseElementAccessExpressionRest(
 
   // Parse the index expression inside brackets
   auto indexExpression = parseExpression();
+  const bool isOptionalChain = questionDot || tryReparseOptionalChain(*expression);
   return finishNode(ast::factory::createElementAccessExpression(
-                        zc::mv(expression), zc::mv(indexExpression), questionDot),
+                        zc::mv(expression), zc::mv(indexExpression), questionDot, isOptionalChain),
                     pos);
 }
 

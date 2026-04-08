@@ -14,6 +14,7 @@
 
 #include "zomlang/compiler/ast/expression.h"
 
+#include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/ast.h"
@@ -65,8 +66,10 @@ struct PrefixUnaryExpression::Impl : private NodeImpl {
   Impl(SyntaxKind o, zc::Own<Expression> operand)
       : NodeImpl(SyntaxKind::PrefixUnaryExpression), op(o), operand(zc::mv(operand)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -82,6 +85,10 @@ const Expression& PrefixUnaryExpression::getOperand() const { return *impl->oper
 bool PrefixUnaryExpression::isPrefix() const { return true; }
 
 SyntaxKind PrefixUnaryExpression::getKind() const { return impl->getKind(); }
+
+NodeFlags PrefixUnaryExpression::getFlags() const { return impl->getFlags(); }
+void PrefixUnaryExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void PrefixUnaryExpression::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -102,8 +109,10 @@ struct PostfixUnaryExpression::Impl : private NodeImpl {
   Impl(SyntaxKind o, zc::Own<Expression> operand)
       : NodeImpl(SyntaxKind::PostfixUnaryExpression), op(o), operand(zc::mv(operand)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -119,6 +128,10 @@ const Expression& PostfixUnaryExpression::getOperand() const { return *impl->ope
 bool PostfixUnaryExpression::isPrefix() const { return false; }
 
 SyntaxKind PostfixUnaryExpression::getKind() const { return impl->getKind(); }
+
+NodeFlags PostfixUnaryExpression::getFlags() const { return impl->getFlags(); }
+void PostfixUnaryExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void PostfixUnaryExpression::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -138,8 +151,10 @@ struct Identifier::Impl : private NodeImpl {
 
   explicit Impl(zc::StringPtr n) : NodeImpl(SyntaxKind::Identifier), name(zc::mv(n)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -150,6 +165,10 @@ Identifier::~Identifier() noexcept(false) = default;
 const zc::StringPtr Identifier::getText() const { return impl->name; }
 
 SyntaxKind Identifier::getKind() const { return impl->getKind(); }
+
+NodeFlags Identifier::getFlags() const { return impl->getFlags(); }
+void Identifier::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void Identifier::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -172,8 +191,10 @@ struct PropertyAccessExpression::Impl : private NodeImpl {
         name(zc::mv(n)),
         questionDot(q) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -191,6 +212,10 @@ const LeftHandSideExpression& PropertyAccessExpression::getExpression() const {
 bool PropertyAccessExpression::isQuestionDot() const { return impl->questionDot; }
 
 SyntaxKind PropertyAccessExpression::getKind() const { return impl->getKind(); }
+
+NodeFlags PropertyAccessExpression::getFlags() const { return impl->getFlags(); }
+void PropertyAccessExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void PropertyAccessExpression::setSourceRange(const source::SourceRange&& range) {
   impl->setSourceRange(zc::mv(range));
@@ -218,8 +243,10 @@ struct ElementAccessExpression::Impl : private NodeImpl {
         index(zc::mv(i)),
         questionDot(q) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 
   zc::Maybe<const symbol::Symbol&> getSymbol() const { return symbol; }
@@ -244,6 +271,10 @@ const Expression& ElementAccessExpression::getIndex() const { return *impl->inde
 bool ElementAccessExpression::isQuestionDot() const { return impl->questionDot; }
 
 SyntaxKind ElementAccessExpression::getKind() const { return impl->getKind(); }
+
+NodeFlags ElementAccessExpression::getFlags() const { return impl->getFlags(); }
+void ElementAccessExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void ElementAccessExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -276,8 +307,10 @@ struct CaptureElement::Impl : private NodeImpl {
         isThis(ths),
         identifier(zc::mv(id)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -301,6 +334,10 @@ const source::SourceRange& CaptureElement::getSourceRange() const { return impl-
 
 SyntaxKind CaptureElement::getKind() const { return impl->getKind(); }
 
+NodeFlags CaptureElement::getFlags() const { return impl->getFlags(); }
+void CaptureElement::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void CaptureElement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -323,8 +360,10 @@ struct FunctionExpression::Impl : private NodeImpl {
         returnType(zc::mv(rt)),
         body(zc::mv(b)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 
   zc::Maybe<const symbol::Symbol&> getSymbol() const { return symbol; }
@@ -366,6 +405,10 @@ const source::SourceRange& FunctionExpression::getSourceRange() const {
 
 SyntaxKind FunctionExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags FunctionExpression::getFlags() const { return impl->getFlags(); }
+void FunctionExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void FunctionExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 zc::Maybe<const symbol::Symbol&> FunctionExpression::getSymbol() const { return impl->getSymbol(); }
@@ -383,8 +426,10 @@ struct WildcardPattern::Impl : private NodeImpl {
   explicit Impl(zc::Maybe<zc::Own<TypeNode>> typeAnnotation)
       : NodeImpl(SyntaxKind::WildcardPattern), typeAnnotation(zc::mv(typeAnnotation)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -407,6 +452,10 @@ const source::SourceRange& WildcardPattern::getSourceRange() const {
 
 SyntaxKind WildcardPattern::getKind() const { return impl->getKind(); }
 
+NodeFlags WildcardPattern::getFlags() const { return impl->getFlags(); }
+void WildcardPattern::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void WildcardPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -421,8 +470,10 @@ struct IdentifierPattern::Impl : private NodeImpl {
         identifier(zc::mv(identifier)),
         typeAnnotation(zc::mv(typeAnnotation)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -448,6 +499,10 @@ const source::SourceRange& IdentifierPattern::getSourceRange() const {
 
 SyntaxKind IdentifierPattern::getKind() const { return impl->getKind(); }
 
+NodeFlags IdentifierPattern::getFlags() const { return impl->getFlags(); }
+void IdentifierPattern::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void IdentifierPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -459,8 +514,10 @@ struct TuplePattern::Impl : private NodeImpl {
   explicit Impl(zc::Vector<zc::Own<Pattern>>&& elements)
       : NodeImpl(SyntaxKind::TuplePattern), elements(zc::mv(elements)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -479,6 +536,10 @@ const source::SourceRange& TuplePattern::getSourceRange() const { return impl->g
 
 SyntaxKind TuplePattern::getKind() const { return impl->getKind(); }
 
+NodeFlags TuplePattern::getFlags() const { return impl->getFlags(); }
+void TuplePattern::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void TuplePattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -490,8 +551,10 @@ struct StructurePattern::Impl : private NodeImpl {
   explicit Impl(zc::Vector<zc::Own<Pattern>>&& properties)
       : NodeImpl(SyntaxKind::StructurePattern), properties(zc::mv(properties)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -512,6 +575,10 @@ const source::SourceRange& StructurePattern::getSourceRange() const {
 
 SyntaxKind StructurePattern::getKind() const { return impl->getKind(); }
 
+NodeFlags StructurePattern::getFlags() const { return impl->getFlags(); }
+void StructurePattern::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void StructurePattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -523,8 +590,10 @@ struct ArrayPattern::Impl : private NodeImpl {
   explicit Impl(zc::Vector<zc::Own<Pattern>>&& elements)
       : NodeImpl(SyntaxKind::ArrayPattern), elements(zc::mv(elements)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -543,6 +612,10 @@ const source::SourceRange& ArrayPattern::getSourceRange() const { return impl->g
 
 SyntaxKind ArrayPattern::getKind() const { return impl->getKind(); }
 
+NodeFlags ArrayPattern::getFlags() const { return impl->getFlags(); }
+void ArrayPattern::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ArrayPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -553,8 +626,10 @@ struct IsPattern::Impl : private NodeImpl {
 
   explicit Impl(zc::Own<TypeNode> type) : NodeImpl(SyntaxKind::IsPattern), type(zc::mv(type)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -572,6 +647,10 @@ const source::SourceRange& IsPattern::getSourceRange() const { return impl->getS
 
 SyntaxKind IsPattern::getKind() const { return impl->getKind(); }
 
+NodeFlags IsPattern::getFlags() const { return impl->getFlags(); }
+void IsPattern::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void IsPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -584,8 +663,10 @@ struct PatternProperty::Impl : private NodeImpl {
   Impl(zc::Own<Identifier> name, zc::Maybe<zc::Own<Pattern>> pattern)
       : NodeImpl(SyntaxKind::PatternProperty), name(zc::mv(name)), pattern(zc::mv(pattern)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -612,6 +693,10 @@ const source::SourceRange& PatternProperty::getSourceRange() const {
 
 SyntaxKind PatternProperty::getKind() const { return impl->getKind(); }
 
+NodeFlags PatternProperty::getFlags() const { return impl->getFlags(); }
+void PatternProperty::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void PatternProperty::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -623,8 +708,10 @@ struct ExpressionPattern::Impl : private NodeImpl {
   explicit Impl(zc::Own<Expression> expression)
       : NodeImpl(SyntaxKind::ExpressionPattern), expression(zc::mv(expression)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -645,6 +732,10 @@ const source::SourceRange& ExpressionPattern::getSourceRange() const {
 
 SyntaxKind ExpressionPattern::getKind() const { return impl->getKind(); }
 
+NodeFlags ExpressionPattern::getFlags() const { return impl->getFlags(); }
+void ExpressionPattern::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ExpressionPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -662,8 +753,10 @@ struct EnumPattern::Impl : private NodeImpl {
         propertyName(zc::mv(propertyName)),
         tuplePattern(zc::mv(tuplePattern)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -688,6 +781,10 @@ const source::SourceRange& EnumPattern::getSourceRange() const { return impl->ge
 
 SyntaxKind EnumPattern::getKind() const { return impl->getKind(); }
 
+NodeFlags EnumPattern::getFlags() const { return impl->getFlags(); }
+void EnumPattern::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void EnumPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -706,8 +803,10 @@ struct NewExpression::Impl : private NodeImpl {
         typeArguments(zc::mv(typeArguments)),
         arguments(zc::mv(arguments)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 
   zc::Maybe<const symbol::Symbol&> getSymbol() const { return symbol; }
@@ -737,6 +836,10 @@ const source::SourceRange& NewExpression::getSourceRange() const { return impl->
 
 SyntaxKind NewExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags NewExpression::getFlags() const { return impl->getFlags(); }
+void NewExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void NewExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 zc::Maybe<const symbol::Symbol&> NewExpression::getSymbol() const { return impl->getSymbol(); }
@@ -749,8 +852,10 @@ void NewExpression::setSymbol(zc::Maybe<const symbol::Symbol&> symbol) { impl->s
 struct ThisExpression::Impl : private NodeImpl {
   Impl() : NodeImpl(SyntaxKind::ThisExpression) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -759,6 +864,10 @@ ThisExpression::ThisExpression() noexcept : impl(zc::heap<Impl>()) {}
 ThisExpression::~ThisExpression() noexcept(false) = default;
 
 SyntaxKind ThisExpression::getKind() const { return impl->getKind(); }
+
+NodeFlags ThisExpression::getFlags() const { return impl->getFlags(); }
+void ThisExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void ThisExpression::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -783,8 +892,10 @@ struct BinaryExpression::Impl : private NodeImpl {
         op(zc::mv(op)),
         right(zc::mv(right)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 
   zc::Maybe<const symbol::Symbol&> getSymbol() const { return symbol; }
@@ -812,6 +923,10 @@ const source::SourceRange& BinaryExpression::getSourceRange() const {
 }
 
 SyntaxKind BinaryExpression::getKind() const { return impl->getKind(); }
+
+NodeFlags BinaryExpression::getFlags() const { return impl->getFlags(); }
+void BinaryExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void BinaryExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -850,8 +965,10 @@ struct ConditionalExpression::Impl : private NodeImpl {
         colonToken(zc::mv(colonToken)),
         alternate(zc::mv(alternate)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -887,6 +1004,10 @@ const source::SourceRange& ConditionalExpression::getSourceRange() const {
 
 SyntaxKind ConditionalExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags ConditionalExpression::getFlags() const { return impl->getFlags(); }
+void ConditionalExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ConditionalExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -907,8 +1028,10 @@ struct CallExpression::Impl : private NodeImpl {
         typeArguments(zc::mv(typeArguments)),
         arguments(zc::mv(arguments)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -934,6 +1057,10 @@ const source::SourceRange& CallExpression::getSourceRange() const { return impl-
 
 SyntaxKind CallExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags CallExpression::getFlags() const { return impl->getFlags(); }
+void CallExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void CallExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -945,8 +1072,10 @@ struct ParenthesizedExpression::Impl : private NodeImpl {
   explicit Impl(zc::Own<Expression> expression) noexcept
       : NodeImpl(SyntaxKind::ParenthesizedExpression), expression(zc::mv(expression)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -967,6 +1096,10 @@ const source::SourceRange& ParenthesizedExpression::getSourceRange() const {
 
 SyntaxKind ParenthesizedExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags ParenthesizedExpression::getFlags() const { return impl->getFlags(); }
+void ParenthesizedExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ParenthesizedExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -978,8 +1111,10 @@ struct SpreadElement::Impl : private NodeImpl {
   explicit Impl(zc::Own<Expression> expression)
       : NodeImpl(SyntaxKind::SpreadElement), expression(zc::mv(expression)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -998,6 +1133,10 @@ const source::SourceRange& SpreadElement::getSourceRange() const { return impl->
 
 SyntaxKind SpreadElement::getKind() const { return impl->getKind(); }
 
+NodeFlags SpreadElement::getFlags() const { return impl->getFlags(); }
+void SpreadElement::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void SpreadElement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1013,8 +1152,10 @@ struct ArrayLiteralExpression::Impl : private NodeImpl, public LiteralExpression
         elements(zc::mv(elements)),
         multiLine(multiLine) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1040,6 +1181,10 @@ const source::SourceRange& ArrayLiteralExpression::getSourceRange() const {
 
 SyntaxKind ArrayLiteralExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags ArrayLiteralExpression::getFlags() const { return impl->getFlags(); }
+void ArrayLiteralExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ArrayLiteralExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1055,8 +1200,10 @@ struct ObjectLiteralExpression::Impl : private NodeImpl, public LiteralExpressio
         properties(zc::mv(properties)),
         multiLine(multiLine) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1084,6 +1231,10 @@ const source::SourceRange& ObjectLiteralExpression::getSourceRange() const {
 
 SyntaxKind ObjectLiteralExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags ObjectLiteralExpression::getFlags() const { return impl->getFlags(); }
+void ObjectLiteralExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ObjectLiteralExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1092,8 +1243,10 @@ struct StringLiteral::Impl : private NodeImpl, public LiteralExpressionImpl {
   explicit Impl(zc::StringPtr v)
       : NodeImpl(SyntaxKind::StringLiteral), LiteralExpressionImpl(zc::mv(v)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1114,6 +1267,10 @@ const source::SourceRange& StringLiteral::getSourceRange() const { return impl->
 
 SyntaxKind StringLiteral::getKind() const { return impl->getKind(); }
 
+NodeFlags StringLiteral::getFlags() const { return impl->getFlags(); }
+void StringLiteral::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void StringLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1125,8 +1282,10 @@ struct IntegerLiteral::Impl : private NodeImpl, public LiteralExpressionImpl {
   explicit Impl(int64_t value) noexcept
       : NodeImpl(SyntaxKind::IntegerLiteral), LiteralExpressionImpl(zc::str(value)), value(value) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1147,6 +1306,10 @@ const source::SourceRange& IntegerLiteral::getSourceRange() const { return impl-
 
 SyntaxKind IntegerLiteral::getKind() const { return impl->getKind(); }
 
+NodeFlags IntegerLiteral::getFlags() const { return impl->getFlags(); }
+void IntegerLiteral::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void IntegerLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1158,8 +1321,10 @@ struct FloatLiteral::Impl : private NodeImpl, public LiteralExpressionImpl {
   explicit Impl(double value) noexcept
       : NodeImpl(SyntaxKind::FloatLiteral), LiteralExpressionImpl(zc::str(value)), value(value) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1180,6 +1345,10 @@ const source::SourceRange& FloatLiteral::getSourceRange() const { return impl->g
 
 SyntaxKind FloatLiteral::getKind() const { return impl->getKind(); }
 
+NodeFlags FloatLiteral::getFlags() const { return impl->getFlags(); }
+void FloatLiteral::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void FloatLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1189,8 +1358,10 @@ struct BigIntLiteral::Impl : private NodeImpl, public LiteralExpressionImpl {
   explicit Impl(zc::StringPtr text) noexcept
       : NodeImpl(SyntaxKind::BigIntLiteral), LiteralExpressionImpl(text) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1209,6 +1380,10 @@ const source::SourceRange& BigIntLiteral::getSourceRange() const { return impl->
 
 SyntaxKind BigIntLiteral::getKind() const { return impl->getKind(); }
 
+NodeFlags BigIntLiteral::getFlags() const { return impl->getFlags(); }
+void BigIntLiteral::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void BigIntLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1222,8 +1397,10 @@ struct BooleanLiteral::Impl : private NodeImpl, public LiteralExpressionImpl {
         LiteralExpressionImpl(value ? "true" : "false"),
         value(value) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1244,6 +1421,10 @@ const source::SourceRange& BooleanLiteral::getSourceRange() const { return impl-
 
 SyntaxKind BooleanLiteral::getKind() const { return impl->getKind(); }
 
+NodeFlags BooleanLiteral::getFlags() const { return impl->getFlags(); }
+void BooleanLiteral::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void BooleanLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1252,8 +1433,10 @@ void BooleanLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 struct NullLiteral::Impl : private NodeImpl, public LiteralExpressionImpl {
   Impl() noexcept : NodeImpl(SyntaxKind::NullLiteral), LiteralExpressionImpl("null") {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1271,6 +1454,10 @@ const source::SourceRange& NullLiteral::getSourceRange() const { return impl->ge
 
 SyntaxKind NullLiteral::getKind() const { return impl->getKind(); }
 
+NodeFlags NullLiteral::getFlags() const { return impl->getFlags(); }
+void NullLiteral::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void NullLiteral::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1283,8 +1470,10 @@ struct TemplateSpan::Impl : private NodeImpl {
   Impl(zc::Own<Expression> e, zc::Own<StringLiteral> l)
       : NodeImpl(SyntaxKind::TemplateSpan), expression(zc::mv(e)), literal(zc::mv(l)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1305,6 +1494,10 @@ const source::SourceRange& TemplateSpan::getSourceRange() const { return impl->g
 
 SyntaxKind TemplateSpan::getKind() const { return impl->getKind(); }
 
+NodeFlags TemplateSpan::getFlags() const { return impl->getFlags(); }
+void TemplateSpan::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void TemplateSpan::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1320,8 +1513,10 @@ struct TemplateLiteralExpression::Impl : private NodeImpl, public LiteralExpress
         head(zc::mv(h)),
         spans(zc::mv(s)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1347,6 +1542,10 @@ const source::SourceRange& TemplateLiteralExpression::getSourceRange() const {
 
 SyntaxKind TemplateLiteralExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags TemplateLiteralExpression::getFlags() const { return impl->getFlags(); }
+void TemplateLiteralExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void TemplateLiteralExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1363,8 +1562,10 @@ struct AsExpression::Impl : private NodeImpl {
         targetType(zc::mv(targetType)),
         castImpl(*this->expression, *this->targetType) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1385,6 +1586,10 @@ const source::SourceRange& AsExpression::getSourceRange() const { return impl->g
 
 SyntaxKind AsExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags AsExpression::getFlags() const { return impl->getFlags(); }
+void AsExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void AsExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1401,8 +1606,10 @@ struct ForcedAsExpression::Impl : private NodeImpl {
         targetType(zc::mv(targetType)),
         castImpl(*this->expression, *this->targetType) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1428,6 +1635,10 @@ const source::SourceRange& ForcedAsExpression::getSourceRange() const {
 
 SyntaxKind ForcedAsExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags ForcedAsExpression::getFlags() const { return impl->getFlags(); }
+void ForcedAsExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ForcedAsExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1444,8 +1655,10 @@ struct ConditionalAsExpression::Impl : private NodeImpl {
         targetType(zc::mv(targetType)),
         castImpl(*this->expression, *this->targetType) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1473,6 +1686,10 @@ const source::SourceRange& ConditionalAsExpression::getSourceRange() const {
 
 SyntaxKind ConditionalAsExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags ConditionalAsExpression::getFlags() const { return impl->getFlags(); }
+void ConditionalAsExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ConditionalAsExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1484,8 +1701,10 @@ struct VoidExpression::Impl : private NodeImpl {
   explicit Impl(zc::Own<Expression> expression) noexcept
       : NodeImpl(SyntaxKind::VoidExpression), expression(zc::mv(expression)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1504,6 +1723,10 @@ const source::SourceRange& VoidExpression::getSourceRange() const { return impl-
 
 SyntaxKind VoidExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags VoidExpression::getFlags() const { return impl->getFlags(); }
+void VoidExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void VoidExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1515,8 +1738,10 @@ struct TypeOfExpression::Impl : private NodeImpl {
   explicit Impl(zc::Own<Expression> expression) noexcept
       : NodeImpl(SyntaxKind::TypeOfExpression), expression(zc::mv(expression)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1537,6 +1762,10 @@ const source::SourceRange& TypeOfExpression::getSourceRange() const {
 
 SyntaxKind TypeOfExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags TypeOfExpression::getFlags() const { return impl->getFlags(); }
+void TypeOfExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void TypeOfExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1548,8 +1777,10 @@ struct AwaitExpression::Impl : private NodeImpl {
   explicit Impl(zc::Own<Expression> expression) noexcept
       : NodeImpl(SyntaxKind::AwaitExpression), expression(zc::mv(expression)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1570,6 +1801,10 @@ const source::SourceRange& AwaitExpression::getSourceRange() const {
 
 SyntaxKind AwaitExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags AwaitExpression::getFlags() const { return impl->getFlags(); }
+void AwaitExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void AwaitExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
@@ -1580,8 +1815,10 @@ struct NonNullExpression::Impl : private NodeImpl {
   explicit Impl(zc::Own<Expression> expression) noexcept
       : NodeImpl(SyntaxKind::NonNullExpression), expression(zc::mv(expression)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1602,25 +1839,28 @@ const source::SourceRange& NonNullExpression::getSourceRange() const {
 
 SyntaxKind NonNullExpression::getKind() const { return impl->getKind(); }
 
+NodeFlags NonNullExpression::getFlags() const { return impl->getFlags(); }
+void NonNullExpression::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void NonNullExpression::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
 // ExpressionWithTypeArguments
 struct ExpressionWithTypeArguments::Impl : private NodeImpl {
   zc::Own<LeftHandSideExpression> expression;
-  NodeList<TypeNode> typeArguments;
+  zc::Maybe<NodeList<TypeNode>> typeArguments;
 
   Impl(zc::Own<LeftHandSideExpression> expression,
        zc::Maybe<zc::Vector<zc::Own<TypeNode>>> typeArguments) noexcept
       : NodeImpl(SyntaxKind::ExpressionWithTypeArguments),
         expression(zc::mv(expression)),
-        typeArguments([&]() {
-          ZC_IF_SOME(args, typeArguments) { return NodeList<TypeNode>(zc::mv(args)); }
-          else { return NodeList<TypeNode>(); }
-        }()) {}
+        typeArguments(zc::mv(typeArguments)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1635,7 +1875,7 @@ const LeftHandSideExpression& ExpressionWithTypeArguments::getExpression() const
   return *impl->expression;
 }
 
-const NodeList<TypeNode>& ExpressionWithTypeArguments::getTypeArguments() const {
+const zc::Maybe<NodeList<TypeNode>>& ExpressionWithTypeArguments::getTypeArguments() const {
   return impl->typeArguments;
 }
 
@@ -1644,13 +1884,19 @@ zc::Own<LeftHandSideExpression> ExpressionWithTypeArguments::takeExpression() {
 }
 
 zc::Maybe<zc::Vector<zc::Own<TypeNode>>> ExpressionWithTypeArguments::takeTypeArguments() {
-  if (impl->typeArguments.empty()) { return zc::none; }
-  zc::Vector<zc::Own<TypeNode>> result;
-  while (!impl->typeArguments.empty()) { result.add(impl->typeArguments.remove(0)); }
-  return zc::mv(result);
+  ZC_IF_SOME(t, impl->typeArguments) {
+    zc::Vector<zc::Own<TypeNode>> result;
+    while (!t.empty()) { result.add(t.remove(0)); }
+    return zc::mv(result);
+  }
+  return zc::none;
 }
 
 SyntaxKind ExpressionWithTypeArguments::getKind() const { return impl->getKind(); }
+
+NodeFlags ExpressionWithTypeArguments::getFlags() const { return impl->getFlags(); }
+void ExpressionWithTypeArguments::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void ExpressionWithTypeArguments::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -1678,8 +1924,10 @@ struct PropertyAssignment::Impl : private NamedDeclarationImpl, private NodeImpl
   using NamedDeclarationImpl::getName;
   using NamedDeclarationImpl::getSymbol;
   using NamedDeclarationImpl::setSymbol;
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1713,6 +1961,10 @@ zc::Maybe<const TokenNode&> PropertyAssignment::getQuestionToken() const {
 }
 
 SyntaxKind PropertyAssignment::getKind() const { return impl->getKind(); }
+
+NodeFlags PropertyAssignment::getFlags() const { return impl->getFlags(); }
+void PropertyAssignment::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void PropertyAssignment::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -1751,8 +2003,10 @@ struct ShorthandPropertyAssignment::Impl : private NamedDeclarationImpl, private
   using NamedDeclarationImpl::getName;
   using NamedDeclarationImpl::getSymbol;
   using NamedDeclarationImpl::setSymbol;
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -1788,6 +2042,10 @@ zc::Maybe<const TokenNode&> ShorthandPropertyAssignment::getEqualsToken() const 
 
 SyntaxKind ShorthandPropertyAssignment::getKind() const { return impl->getKind(); }
 
+NodeFlags ShorthandPropertyAssignment::getFlags() const { return impl->getFlags(); }
+void ShorthandPropertyAssignment::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ShorthandPropertyAssignment::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
 }
@@ -1820,8 +2078,10 @@ struct SpreadAssignment::Impl : private NodeImpl {
   explicit Impl(zc::Own<Expression> expression) noexcept
       : NodeImpl(SyntaxKind::SpreadAssignment), expression(zc::mv(expression)) {}
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 
   zc::Maybe<const symbol::Symbol&> getSymbol() const { return symbol; }
@@ -1836,6 +2096,10 @@ SpreadAssignment::~SpreadAssignment() noexcept(false) = default;
 const Expression& SpreadAssignment::getExpression() const { return *impl->expression; }
 
 SyntaxKind SpreadAssignment::getKind() const { return impl->getKind(); }
+
+NodeFlags SpreadAssignment::getFlags() const { return impl->getFlags(); }
+void SpreadAssignment::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void SpreadAssignment::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));

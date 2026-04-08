@@ -241,10 +241,12 @@ ZC_TEST("ExpressionTest.ElementAccessExpression") {
   auto maybeArrExpr = factory::createIdentifier("maybeArr"_zc);
   auto keyExpr = factory::createStringLiteral("key"_zc);
   auto optionalElementAccess =
-      factory::createElementAccessExpression(zc::mv(maybeArrExpr), zc::mv(keyExpr), true);
+      factory::createElementAccessExpression(
+          zc::mv(maybeArrExpr), zc::mv(keyExpr), true, true);
 
   ZC_EXPECT(optionalElementAccess->getKind() == SyntaxKind::ElementAccessExpression);
   ZC_EXPECT(optionalElementAccess->isQuestionDot() == true);
+  ZC_EXPECT(hasFlag(optionalElementAccess->getFlags(), NodeFlags::OptionalChain));
 }
 
 ZC_TEST("ExpressionTest.PropertyAccessExpression") {
@@ -261,10 +263,11 @@ ZC_TEST("ExpressionTest.PropertyAccessExpression") {
   auto optionalObjExpr = factory::createIdentifier("obj"_zc);
   auto optionalPropName = factory::createIdentifier("prop"_zc);
   auto optionalPropertyAccess = factory::createPropertyAccessExpression(
-      zc::mv(optionalObjExpr), zc::mv(optionalPropName), true);
+      zc::mv(optionalObjExpr), zc::mv(optionalPropName), true, true);
 
   ZC_EXPECT(optionalPropertyAccess->getKind() == SyntaxKind::PropertyAccessExpression);
   ZC_EXPECT(optionalPropertyAccess->isQuestionDot() == true);
+  ZC_EXPECT(hasFlag(optionalPropertyAccess->getFlags(), NodeFlags::OptionalChain));
 }
 
 ZC_TEST("ExpressionTest.Identifier") {

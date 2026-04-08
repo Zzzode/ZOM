@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <type_traits>
 
 #include "zc/core/common.h"
@@ -40,6 +41,46 @@ namespace ast {
 // Forward declarations
 class Visitor;
 
+enum class NodeFlags : uint32_t {
+  None = 0,
+  OptionalChain = 1u << 0,
+};
+
+constexpr NodeFlags operator|(NodeFlags lhs, NodeFlags rhs) {
+  return static_cast<NodeFlags>(static_cast<uint32_t>(lhs) | static_cast<uint32_t>(rhs));
+}
+
+constexpr NodeFlags operator&(NodeFlags lhs, NodeFlags rhs) {
+  return static_cast<NodeFlags>(static_cast<uint32_t>(lhs) & static_cast<uint32_t>(rhs));
+}
+
+constexpr NodeFlags operator^(NodeFlags lhs, NodeFlags rhs) {
+  return static_cast<NodeFlags>(static_cast<uint32_t>(lhs) ^ static_cast<uint32_t>(rhs));
+}
+
+constexpr NodeFlags operator~(NodeFlags flags) {
+  return static_cast<NodeFlags>(~static_cast<uint32_t>(flags));
+}
+
+inline NodeFlags& operator|=(NodeFlags& lhs, NodeFlags rhs) {
+  lhs = lhs | rhs;
+  return lhs;
+}
+
+inline NodeFlags& operator&=(NodeFlags& lhs, NodeFlags rhs) {
+  lhs = lhs & rhs;
+  return lhs;
+}
+
+inline NodeFlags& operator^=(NodeFlags& lhs, NodeFlags rhs) {
+  lhs = lhs ^ rhs;
+  return lhs;
+}
+
+constexpr bool hasFlag(NodeFlags flags, NodeFlags flag) {
+  return (flags & flag) != NodeFlags::None;
+}
+
 class Visitable {
 public:
   ZC_DISALLOW_COPY_AND_MOVE(Visitable);
@@ -64,6 +105,12 @@ public:
   /// \brief Get the syntax kind of this node
   virtual SyntaxKind getKind() const = 0;
 
+  /// \brief Get the node flags
+  virtual NodeFlags getFlags() const = 0;
+
+  /// \brief Set the node flags
+  virtual void setFlags(NodeFlags flags) = 0;
+
 protected:
   Node() noexcept = default;
 };
@@ -79,6 +126,9 @@ public:
 
   SyntaxKind getKind() const;
 
+  NodeFlags getFlags() const;
+  void setFlags(NodeFlags flags) const;
+
 private:
   struct Impl;
   zc::Own<Impl> impl;
@@ -88,6 +138,8 @@ private:
   void setSourceRange(const source::SourceRange&& range) override; \
   const source::SourceRange& getSourceRange() const override;      \
   SyntaxKind getKind() const override;                             \
+  NodeFlags getFlags() const override;                             \
+  void setFlags(NodeFlags flags) override;                         \
   void accept(Visitor& visitor) const override;
 
 class TokenNode final : public Node {
@@ -233,8 +285,10 @@ public:
 
   Iterator begin() { return Iterator(nodes, 0); }
   Iterator end() { return Iterator(nodes, nodes.size()); }
+  Iterator back() { return Iterator(nodes, nodes.size() - 1); }
   ConstIterator begin() const { return ConstIterator(nodes, 0); }
   ConstIterator end() const { return ConstIterator(nodes, nodes.size()); }
+  ConstIterator back() const { return ConstIterator(nodes, nodes.size() - 1); }
   ConstIterator cbegin() const { return ConstIterator(nodes, 0); }
   ConstIterator cend() const { return ConstIterator(nodes, nodes.size()); }
 
