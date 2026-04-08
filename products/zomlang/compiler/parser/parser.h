@@ -536,7 +536,7 @@ private:
   // --- Types ---
   zc::Maybe<zc::Own<ast::TypeNode>> parseType();
   zc::Maybe<zc::Own<ast::TypeNode>> parseTypeAnnotation();
-  zc::Maybe<zc::Own<ast::TypeNode>> parseUnionType();
+  zc::Maybe<zc::Own<ast::TypeNode>> parseUnionTypeOrHigher();
   zc::Maybe<zc::Own<ast::TypeNode>> parseIntersectionType();
   zc::Maybe<zc::Own<ast::TypeNode>> parsePostfixType();
   zc::Maybe<zc::Own<ast::TypeNode>> parseTypeAtom();
@@ -604,6 +604,9 @@ private:
   bool scanStartOfDeclaration();
   bool isStartOfParameter();
   bool isStartOfType(bool inStartOfParameter = false);
+  bool isStartOfFunctionType();
+  bool isUnambiguouslyStartOfFunctionType();
+  bool skipFunctionTypeParameterStart();
   bool isStartOfClassMember();
   bool isStartOfStructMember();
   bool isStartOfInterfaceMember();

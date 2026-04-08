@@ -5,7 +5,7 @@ interface I {
 }
 
 
-// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK: Error [ZOM2053]: Property or signature expected
 // CHECK:   --> {{.*interface-invalid-member-class.zom}}:4:3
 // CHECK:   |
 // CHECK: 4 |   class C {}
@@ -15,7 +15,7 @@ interface I {
 // CHECK:   |
 // CHECK: 4 |   class C {}
 // CHECK:   |   ^~~~~
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*interface-invalid-member-class.zom}}:5:1
 // CHECK:   |
 // CHECK: 5 | }

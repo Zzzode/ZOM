@@ -1,0 +1,58 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+alias Obj = { x: i32, y?: str };
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*object-types.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Obj"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "ObjectTypeNode",
+// CHECK-NEXT:         "members": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "PropertySignature",
+// CHECK-NEXT:             "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:             ],
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "x"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "optional": "false",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "I32TypeNode",
+// CHECK-NEXT:               "name": "i32"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": null
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "PropertySignature",
+// CHECK-NEXT:             "modifiers": [
+// CHECK-NEXT: 
+// CHECK-NEXT:             ],
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "y"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "optional": "true",
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "StrTypeNode",
+// CHECK-NEXT:               "name": "str"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": null
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

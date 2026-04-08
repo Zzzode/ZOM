@@ -1,0 +1,132 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+let f: ({x, y}: Pair) -> Pair = fn;
+let g: ([first, second]: Pair) -> Pair = fn;
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*function-type-binding-patterns.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "f"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "FunctionTypeNode",
+// CHECK-NEXT:               "parameters": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ParameterDeclaration",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "ObjectBindingPattern",
+// CHECK-NEXT:                     "properties": [
+// CHECK-NEXT:                       {
+// CHECK-NEXT:                         "node": "BindingElement",
+// CHECK-NEXT:                         "name": {
+// CHECK-NEXT:                           "node": "Identifier",
+// CHECK-NEXT:                           "name": "x"
+// CHECK-NEXT:                         },
+// CHECK-NEXT:                         "initializer": null
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       {
+// CHECK-NEXT:                         "node": "BindingElement",
+// CHECK-NEXT:                         "name": {
+// CHECK-NEXT:                           "node": "Identifier",
+// CHECK-NEXT:                           "name": "y"
+// CHECK-NEXT:                         },
+// CHECK-NEXT:                         "initializer": null
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     ]
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "type": {
+// CHECK-NEXT:                     "node": "TypeReferenceNode",
+// CHECK-NEXT:                     "name": "Pair"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "returnType": {
+// CHECK-NEXT:                 "node": "ReturnType",
+// CHECK-NEXT:                 "type": {
+// CHECK-NEXT:                   "node": "TypeReferenceNode",
+// CHECK-NEXT:                   "name": "Pair"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "fn"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "g"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "FunctionTypeNode",
+// CHECK-NEXT:               "parameters": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ParameterDeclaration",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "ArrayBindingPattern",
+// CHECK-NEXT:                     "elements": [
+// CHECK-NEXT:                       {
+// CHECK-NEXT:                         "node": "BindingElement",
+// CHECK-NEXT:                         "name": {
+// CHECK-NEXT:                           "node": "Identifier",
+// CHECK-NEXT:                           "name": "first"
+// CHECK-NEXT:                         },
+// CHECK-NEXT:                         "initializer": null
+// CHECK-NEXT:                       },
+// CHECK-NEXT:                       {
+// CHECK-NEXT:                         "node": "BindingElement",
+// CHECK-NEXT:                         "name": {
+// CHECK-NEXT:                           "node": "Identifier",
+// CHECK-NEXT:                           "name": "second"
+// CHECK-NEXT:                         },
+// CHECK-NEXT:                         "initializer": null
+// CHECK-NEXT:                       }
+// CHECK-NEXT:                     ]
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "type": {
+// CHECK-NEXT:                     "node": "TypeReferenceNode",
+// CHECK-NEXT:                     "name": "Pair"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "returnType": {
+// CHECK-NEXT:                 "node": "ReturnType",
+// CHECK-NEXT:                 "type": {
+// CHECK-NEXT:                   "node": "TypeReferenceNode",
+// CHECK-NEXT:                   "name": "Pair"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "fn"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

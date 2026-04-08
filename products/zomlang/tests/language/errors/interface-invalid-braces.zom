@@ -8,7 +8,7 @@ interface {{}
 // CHECK:   |
 // CHECK: 3 | interface {{}
 // CHECK:   |           ^
-// CHECK: Error [ZOM2051]: Property or signature expected
+// CHECK: Error [ZOM2053]: Property or signature expected
 // CHECK:   --> {{.*interface-invalid-braces.zom}}:3:12
 // CHECK:   |
 // CHECK: 3 | interface {{}

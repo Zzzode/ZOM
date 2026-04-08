@@ -1,0 +1,71 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+alias Chain = A | B | C;
+alias Precedence = A | B & C;
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*union-precedence.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Chain"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "UnionTypeNode",
+// CHECK-NEXT:         "types": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "A"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "B"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "C"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "AliasDeclaration",
+// CHECK-NEXT:       "name": {
+// CHECK-NEXT:         "node": "Identifier",
+// CHECK-NEXT:         "name": "Precedence"
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "typeParameters": [
+// CHECK-NEXT: 
+// CHECK-NEXT:       ],
+// CHECK-NEXT:       "type": {
+// CHECK-NEXT:         "node": "UnionTypeNode",
+// CHECK-NEXT:         "types": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "TypeReferenceNode",
+// CHECK-NEXT:             "name": "A"
+// CHECK-NEXT:           },
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "IntersectionTypeNode",
+// CHECK-NEXT:             "types": [
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "TypeReferenceNode",
+// CHECK-NEXT:                 "name": "B"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               {
+// CHECK-NEXT:                 "node": "TypeReferenceNode",
+// CHECK-NEXT:                 "name": "C"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             ]
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

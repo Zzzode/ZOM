@@ -25,12 +25,12 @@ let h = a as! i32;
 // CHECK:   |
 // CHECK: 8 | let f = a as i32;
 // CHECK:   |           ^~
-// CHECK: Error [ZOM2057]: 'as' is not allowed as a variable declaration name
+// CHECK: Error [ZOM2058]: 'as' is not allowed as a variable declaration name
 // CHECK:   --> {{.*unary-and-cast.zom}}:8:11
 // CHECK:   |
 // CHECK: 8 | let f = a as i32;
 // CHECK:   |           ^~
-// CHECK: Error [ZOM2057]: 'i32' is not allowed as a variable declaration name
+// CHECK: Error [ZOM2058]: 'i32' is not allowed as a variable declaration name
 // CHECK:   --> {{.*unary-and-cast.zom}}:8:14
 // CHECK:   |
 // CHECK: 8 | let f = a as i32;
@@ -40,17 +40,17 @@ let h = a as! i32;
 // CHECK:   |
 // CHECK: 9 | let g = a as? i32;
 // CHECK:   |           ^~
-// CHECK: Error [ZOM2057]: 'as' is not allowed as a variable declaration name
+// CHECK: Error [ZOM2058]: 'as' is not allowed as a variable declaration name
 // CHECK:   --> {{.*unary-and-cast.zom}}:9:11
 // CHECK:   |
 // CHECK: 9 | let g = a as? i32;
 // CHECK:   |           ^~
-// CHECK: Error [ZOM2058]: Variable declaration expected
+// CHECK: Error [ZOM2059]: Variable declaration expected
 // CHECK:   --> {{.*unary-and-cast.zom}}:9:13
 // CHECK:   |
 // CHECK: 9 | let g = a as? i32;
 // CHECK:   |             ^
-// CHECK: Error [ZOM2057]: 'i32' is not allowed as a variable declaration name
+// CHECK: Error [ZOM2058]: 'i32' is not allowed as a variable declaration name
 // CHECK:   --> {{.*unary-and-cast.zom}}:9:15
 // CHECK:   |
 // CHECK: 9 | let g = a as? i32;
@@ -60,12 +60,12 @@ let h = a as! i32;
 // CHECK:    |
 // CHECK: 10 | let h = a as! i32;
 // CHECK:    |           ^~
-// CHECK: Error [ZOM2057]: 'as' is not allowed as a variable declaration name
+// CHECK: Error [ZOM2058]: 'as' is not allowed as a variable declaration name
 // CHECK:   --> {{.*unary-and-cast.zom}}:10:11
 // CHECK:    |
 // CHECK: 10 | let h = a as! i32;
 // CHECK:    |           ^~
-// CHECK: Error [ZOM2058]: Variable declaration expected
+// CHECK: Error [ZOM2059]: Variable declaration expected
 // CHECK:   --> {{.*unary-and-cast.zom}}:10:13
 // CHECK:    |
 // CHECK: 10 | let h = a as! i32;

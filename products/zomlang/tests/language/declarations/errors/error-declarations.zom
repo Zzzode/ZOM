@@ -8,7 +8,7 @@ error Err {
 }
 
 
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*error-declarations.zom}}:3:1
 // CHECK:   |
 // CHECK: 3 | error Err {
@@ -33,17 +33,17 @@ error Err {
 // CHECK:   |
 // CHECK: 7 |   Named(code: i32, text: str)
 // CHECK:   |             ^
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*error-declarations.zom}}:7:13
 // CHECK:   |
 // CHECK: 7 |   Named(code: i32, text: str)
 // CHECK:   |             ^
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*error-declarations.zom}}:7:15
 // CHECK:   |
 // CHECK: 7 |   Named(code: i32, text: str)
 // CHECK:   |               ^~~
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*error-declarations.zom}}:7:18
 // CHECK:   |
 // CHECK: 7 |   Named(code: i32, text: str)
@@ -58,7 +58,7 @@ error Err {
 // CHECK:   |
 // CHECK: 7 |   Named(code: i32, text: str)
 // CHECK:   |                          ^~~
-// CHECK: Error [ZOM2048]: Declaration or statement expected
+// CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*error-declarations.zom}}:7:29
 // CHECK:   |
 // CHECK: 7 |   Named(code: i32, text: str)
