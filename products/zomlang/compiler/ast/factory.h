@@ -344,14 +344,15 @@ zc::Own<ConditionalExpression> createConditionalExpression(
 zc::Own<CallExpression> createCallExpression(
     zc::Own<Expression> callee, zc::Maybe<zc::Own<TokenNode>> questionDotToken,
     zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> typeArguments,
-    zc::Vector<zc::Own<Expression>>&& arguments);
+    zc::Vector<zc::Own<Expression>>&& arguments, bool isOptionalChain = false);
 
 zc::Own<PropertyAccessExpression> createPropertyAccessExpression(
-    zc::Own<LeftHandSideExpression> expression, zc::Own<Identifier> name, bool questionDot = false);
+    zc::Own<LeftHandSideExpression> expression, zc::Own<Identifier> name, bool questionDot = false,
+    bool isOptionalChain = false);
 
 zc::Own<ElementAccessExpression> createElementAccessExpression(
     zc::Own<LeftHandSideExpression> expression, zc::Own<Expression> index,
-    bool questionDot = false);
+    bool questionDot = false, bool isOptionalChain = false);
 
 zc::Own<AsExpression> createAsExpression(zc::Own<Expression> expression,
                                          zc::Own<TypeNode> targetType);

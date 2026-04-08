@@ -499,7 +499,8 @@ private:
   zc::Own<ast::PropertyAccessExpression> parsePropertyAccessExpressionRest(
       zc::Own<ast::LeftHandSideExpression> expression, bool questionDotToken,
       source::SourceLoc pos);
-  zc::Maybe<zc::Own<ast::Identifier>> parseRightSideOfDot(
+  bool tryReparseOptionalChain(ast::LeftHandSideExpression& node);
+  zc::Own<ast::Identifier> parseRightSideOfDot(
       bool allowIdentifierNames, bool allowUnicodeEscapeSequenceInIdentifierName);
   zc::Own<ast::ElementAccessExpression> parseElementAccessExpressionRest(
       zc::Own<ast::LeftHandSideExpression> expression, bool questionDotToken,
@@ -572,6 +573,7 @@ private:
   zc::Own<ast::Identifier> parsePropertyName();
   zc::Own<ast::Identifier> parseIdentifier();
   zc::Own<ast::Identifier> parseIdentifierName();
+  zc::Own<ast::Identifier> parseIdentifierNameErrorOnUnicodeEscapeSequence();
   zc::Own<ast::Identifier> parseBindingIdentifier();
   zc::Maybe<zc::Own<ast::BindingElement>> parseBindingElement();
   zc::Maybe<zc::Own<ast::BindingElement>> parseArrayBindingElement();

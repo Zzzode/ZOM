@@ -295,19 +295,37 @@ zc::Own<ConditionalExpression> createConditionalExpression(
 zc::Own<CallExpression> createCallExpression(
     zc::Own<Expression> callee, zc::Maybe<zc::Own<TokenNode>> questionDotToken,
     zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> typeArguments,
-    zc::Vector<zc::Own<Expression>>&& arguments) {
-  return zc::heap<CallExpression>(zc::mv(callee), zc::mv(questionDotToken), zc::mv(typeArguments),
-                                  zc::mv(arguments));
+    zc::Vector<zc::Own<Expression>>&& arguments, bool isOptionalChain) {
+  auto callExpression = zc::heap<CallExpression>(zc::mv(callee), zc::mv(questionDotToken),
+                                                 zc::mv(typeArguments), zc::mv(arguments));
+  if (isOptionalChain) {
+    callExpression->setFlags(callExpression->getFlags() | ast::NodeFlags::OptionalChain);
+  }
+  return callExpression;
 }
 
 zc::Own<PropertyAccessExpression> createPropertyAccessExpression(
-    zc::Own<LeftHandSideExpression> expression, zc::Own<Identifier> name, bool questionDot) {
-  return zc::heap<PropertyAccessExpression>(zc::mv(expression), zc::mv(name), questionDot);
+    zc::Own<LeftHandSideExpression> expression, zc::Own<Identifier> name, bool questionDot,
+    bool isOptionalChain) {
+  auto propertyAccessExpression =
+      zc::heap<PropertyAccessExpression>(zc::mv(expression), zc::mv(name), questionDot);
+  if (isOptionalChain) {
+    propertyAccessExpression->setFlags(propertyAccessExpression->getFlags() |
+                                       ast::NodeFlags::OptionalChain);
+  }
+  return propertyAccessExpression;
 }
 
 zc::Own<ElementAccessExpression> createElementAccessExpression(
-    zc::Own<LeftHandSideExpression> expression, zc::Own<Expression> index, bool questionDot) {
-  return zc::heap<ElementAccessExpression>(zc::mv(expression), zc::mv(index), questionDot);
+    zc::Own<LeftHandSideExpression> expression, zc::Own<Expression> index, bool questionDot,
+    bool isOptionalChain) {
+  auto elementAccessExpression =
+      zc::heap<ElementAccessExpression>(zc::mv(expression), zc::mv(index), questionDot);
+  if (isOptionalChain) {
+    elementAccessExpression->setFlags(elementAccessExpression->getFlags() |
+                                      ast::NodeFlags::OptionalChain);
+  }
+  return elementAccessExpression;
 }
 
 zc::Own<AsExpression> createAsExpression(zc::Own<Expression> expression,

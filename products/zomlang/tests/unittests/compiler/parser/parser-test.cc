@@ -19,7 +19,9 @@
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/cast.h"
+#include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/module.h"
+#include "zomlang/compiler/ast/statement.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -1214,7 +1216,7 @@ ZC_TEST("ParserTest.ParseHeritageTypeArgumentsSameLine") {
     if (clauses.size() > 0) {
       const auto& types = clauses[0].getTypes();
       ZC_EXPECT(types.size() == 1, "Should have one extends type");
-      ZC_EXPECT(types[0]->getTypeArguments().size() == 1, "Should parse one type argument");
+      ZC_EXPECT(ZC_ASSERT_NONNULL(types[0]->getTypeArguments()).size() == 1, "Should parse one type argument");
     } else {
       ZC_EXPECT(false, "Expected heritage clauses");
     }
@@ -1242,7 +1244,7 @@ ZC_TEST("ParserTest.ParseHeritageTypeArgumentsWithLineBreak") {
     if (clauses.size() > 0) {
       const auto& types = clauses[0].getTypes();
       ZC_EXPECT(types.size() == 1, "Should have one extends type");
-      ZC_EXPECT(types[0]->getTypeArguments().size() == 1, "Should parse one type argument");
+      ZC_EXPECT(ZC_ASSERT_NONNULL(types[0]->getTypeArguments()).size() == 1, "Should parse one type argument");
     } else {
       ZC_EXPECT(false, "Expected heritage clauses");
     }
@@ -1448,6 +1450,53 @@ ZC_TEST("ParserTest.ObjectLiteralFeatures") {
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none,
             "Should parse object literal with shorthand, assignment, and spread");
+}
+
+ZC_TEST("ParserTest.PropertyAccessRejectsUnicodeEscapeSequenceAfterDot") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+
+  class MockConsumer final : public diagnostics::DiagnosticConsumer {
+  public:
+    bool foundUnicodeEscapeSequenceCannotAppearHere = false;
+
+    void handleDiagnostic(const source::SourceManager&,
+                          const diagnostics::Diagnostic& diag) override {
+      if (diag.getId() == diagnostics::DiagID::UnicodeEscapeSequenceCannotAppearHere) {
+        foundUnicodeEscapeSequenceCannotAppearHere = true;
+      }
+    }
+  };
+
+  auto consumer = zc::heap<MockConsumer>();
+  auto consumerPtr = consumer.get();
+  diagnosticEngine->addConsumer(zc::mv(consumer));
+
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("obj.\\u0061;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    ZC_EXPECT(statements.size() == 1, "Should contain a single expression statement");
+
+    auto& expressionStatement =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ExpressionStatement>(
+            statements[0]);
+    auto& propertyAccess =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::PropertyAccessExpression>(
+            expressionStatement.getExpression());
+
+    ZC_EXPECT(propertyAccess.getName().getText() == "a"_zc,
+              "Unicode escape should still produce identifier text");
+    ZC_EXPECT(consumerPtr->foundUnicodeEscapeSequenceCannotAppearHere,
+              "Should report UnicodeEscapeSequenceCannotAppearHere");
+  }
+  else { ZC_EXPECT(false, "Parse should succeed with recovery"); }
 }
 
 }  // namespace parser

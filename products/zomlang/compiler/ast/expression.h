@@ -218,7 +218,7 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(ExpressionWithTypeArguments);
 
   const LeftHandSideExpression& getExpression() const;
-  const NodeList<TypeNode>& getTypeArguments() const;
+  const zc::Maybe<NodeList<TypeNode>>& getTypeArguments() const;
   zc::Own<LeftHandSideExpression> takeExpression();
   zc::Maybe<zc::Vector<zc::Own<TypeNode>>> takeTypeArguments();
 

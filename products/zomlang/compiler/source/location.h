@@ -48,6 +48,8 @@ public:
   bool operator<=(const SourceLoc& rhs) const { return ptr <= rhs.ptr; }
   bool operator>(const SourceLoc& rhs) const { return ptr > rhs.ptr; }
   bool operator>=(const SourceLoc& rhs) const { return ptr >= rhs.ptr; }
+  const zc::byte* operator-(unsigned offset) const { return ptr - offset; }
+  const zc::byte* operator+(unsigned offset) const { return ptr + offset; }
 
 private:
   const zc::byte* ptr;

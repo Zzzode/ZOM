@@ -45,7 +45,9 @@ struct SourceFile::Impl : private NodeImpl {
   const NodeList<ast::Statement> statements;
 
   // Forward NodeImpl methods
+  using NodeImpl::getFlags;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -70,6 +72,10 @@ zc::StringPtr SourceFile::getFileName() const { return impl->fileName; }
 
 SyntaxKind SourceFile::getKind() const { return SyntaxKind::SourceFile; }
 
+NodeFlags SourceFile::getFlags() const { return NodeFlags::None; }
+void SourceFile::setFlags(NodeFlags flags) { }
+
+
 void SourceFile::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 void SourceFile::setSourceRange(const source::SourceRange&& range) {
@@ -84,8 +90,10 @@ struct ModuleDeclaration::Impl : private NodeImpl {
 
   const zc::Own<ModulePath> modulePath;
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -97,6 +105,10 @@ ModuleDeclaration::~ModuleDeclaration() noexcept(false) = default;
 const ModulePath& ModuleDeclaration::getModulePath() const { return *impl->modulePath; }
 
 SyntaxKind ModuleDeclaration::getKind() const { return impl->getKind(); }
+
+NodeFlags ModuleDeclaration::getFlags() const { return impl->getFlags(); }
+void ModuleDeclaration::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void ModuleDeclaration::setSourceRange(const source::SourceRange&& range) {
   impl->setSourceRange(zc::mv(range));
@@ -114,7 +126,9 @@ struct ModulePath::Impl : private NodeImpl {
 
   const NodeList<ast::Identifier> segments;
 
+  using NodeImpl::getFlags;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -126,6 +140,10 @@ ModulePath::~ModulePath() noexcept(false) = default;
 const NodeList<ast::Identifier>& ModulePath::getSegments() const { return impl->segments; }
 
 SyntaxKind ModulePath::getKind() const { return SyntaxKind::ModulePath; }
+
+NodeFlags ModulePath::getFlags() const { return NodeFlags::None; }
+void ModulePath::setFlags(NodeFlags flags) { }
+
 
 void ModulePath::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -144,8 +162,11 @@ struct ImportSpecifier::Impl : private NodeImpl {
   const zc::Own<ast::Identifier> importedName;
   const zc::Maybe<zc::Own<ast::Identifier>> alias;
 
+  // Forward NodeImpl methods
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -163,6 +184,10 @@ zc::Maybe<const ast::Identifier&> ImportSpecifier::getAlias() const {
 }
 
 SyntaxKind ImportSpecifier::getKind() const { return impl->getKind(); }
+
+NodeFlags ImportSpecifier::getFlags() const { return impl->getFlags(); }
+void ImportSpecifier::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void ImportSpecifier::setSourceRange(const source::SourceRange&& range) {
   impl->setSourceRange(zc::mv(range));
@@ -186,8 +211,10 @@ struct ImportDeclaration::Impl : private NodeImpl {
   const zc::Maybe<zc::Own<ast::Identifier>> alias;
   const NodeList<ImportSpecifier> specifiers;
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -215,6 +242,10 @@ bool ImportDeclaration::isNamedImport() const { return impl->specifiers.size() >
 
 SyntaxKind ImportDeclaration::getKind() const { return impl->getKind(); }
 
+NodeFlags ImportDeclaration::getFlags() const { return impl->getFlags(); }
+void ImportDeclaration::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
+
 void ImportDeclaration::setSourceRange(const source::SourceRange&& range) {
   impl->setSourceRange(zc::mv(range));
 }
@@ -234,8 +265,10 @@ struct ExportSpecifier::Impl : private NodeImpl {
   const zc::Own<ast::Identifier> exportedName;
   const zc::Maybe<zc::Own<ast::Identifier>> alias;
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -253,6 +286,10 @@ zc::Maybe<const ast::Identifier&> ExportSpecifier::getAlias() const {
 }
 
 SyntaxKind ExportSpecifier::getKind() const { return impl->getKind(); }
+
+NodeFlags ExportSpecifier::getFlags() const { return impl->getFlags(); }
+void ExportSpecifier::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void ExportSpecifier::setSourceRange(const source::SourceRange&& range) {
   impl->setSourceRange(zc::mv(range));
@@ -276,8 +313,10 @@ struct ExportDeclaration::Impl : private NodeImpl {
   const NodeList<ExportSpecifier> specifiers;
   const zc::Maybe<zc::Own<ast::Statement>> declaration;
 
+  using NodeImpl::getFlags;
   using NodeImpl::getKind;
   using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
   using NodeImpl::setSourceRange;
 };
 
@@ -312,6 +351,10 @@ bool ExportDeclaration::isReExport() const { return impl->modulePath != zc::none
 bool ExportDeclaration::isDeclarationExport() const { return impl->declaration != zc::none; }
 
 SyntaxKind ExportDeclaration::getKind() const { return impl->getKind(); }
+
+NodeFlags ExportDeclaration::getFlags() const { return impl->getFlags(); }
+void ExportDeclaration::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
+
 
 void ExportDeclaration::setSourceRange(const source::SourceRange&& range) {
   impl->setSourceRange(zc::mv(range));
