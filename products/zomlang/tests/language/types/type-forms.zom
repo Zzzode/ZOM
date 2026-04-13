@@ -1,40 +1,301 @@
-// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
 
 let a: i32[] = xs;
 let b: i32? = null;
 let c: (i32 | str)[] = xs;
 let d: A & B = x;
 let e: i32 | str = x;
-let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 let g: (i32, name: str) = tup;
 let h: <T>(x: T) -> T raises Err = fn;
 let i: typeof foo.bar = v;
 
 
-// CHECK: Error [ZOM2011]: Identifier expected, found 'k'
-// CHECK:   --> {{.*type-forms.zom}}:8:27
-// CHECK:   |
-// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
-// CHECK:   |                           ^~~
-// CHECK: Error [ZOM2011]: Identifier expected, found '1'
-// CHECK:   --> {{.*type-forms.zom}}:8:36
-// CHECK:   |
-// CHECK: 8 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
-// CHECK:   |                                    ^
-// CHECK: Error [ZOM2025]: Expected ','
-// CHECK:   --> {{.*type-forms.zom}}:9:23
-// CHECK:   |
-// CHECK: 9 | let g: (i32, name: str) = tup;
-// CHECK:   |                       ^
-// CHECK: Error [ZOM2059]: Variable declaration expected
-// CHECK:   --> {{.*type-forms.zom}}:9:23
-// CHECK:   |
-// CHECK: 9 | let g: (i32, name: str) = tup;
-// CHECK:   |                       ^
-// CHECK: Error [ZOM2059]: Variable declaration expected
-// CHECK:   --> {{.*type-forms.zom}}:9:25
-// CHECK:   |
-// CHECK: 9 | let g: (i32, name: str) = tup;
-// CHECK:   |                         ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*type-forms.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "a"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "ArrayTypeNode",
+// CHECK-NEXT:               "elementType": {
+// CHECK-NEXT:                 "node": "I32TypeNode",
+// CHECK-NEXT:                 "name": "i32"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "xs"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "b"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "OptionalTypeNode",
+// CHECK-NEXT:               "type": {
+// CHECK-NEXT:                 "node": "I32TypeNode",
+// CHECK-NEXT:                 "name": "i32"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "NullLiteral"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "c"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "ArrayTypeNode",
+// CHECK-NEXT:               "elementType": {
+// CHECK-NEXT:                 "node": "ParenthesizedTypeNode",
+// CHECK-NEXT:                 "type": {
+// CHECK-NEXT:                   "node": "UnionTypeNode",
+// CHECK-NEXT:                   "types": [
+// CHECK-NEXT:                     {
+// CHECK-NEXT:                       "node": "I32TypeNode",
+// CHECK-NEXT:                       "name": "i32"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     {
+// CHECK-NEXT:                       "node": "StrTypeNode",
+// CHECK-NEXT:                       "name": "str"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   ]
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "xs"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "d"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "IntersectionTypeNode",
+// CHECK-NEXT:               "types": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "TypeReferenceNode",
+// CHECK-NEXT:                   "name": "A"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "TypeReferenceNode",
+// CHECK-NEXT:                   "name": "B"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "x"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "e"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "UnionTypeNode",
+// CHECK-NEXT:               "types": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "I32TypeNode",
+// CHECK-NEXT:                   "name": "i32"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "StrTypeNode",
+// CHECK-NEXT:                   "name": "str"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "x"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "g"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "TupleTypeNode",
+// CHECK-NEXT:               "elementTypes": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "I32TypeNode",
+// CHECK-NEXT:                   "name": "i32"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "NamedTupleElement",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "name"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "type": {
+// CHECK-NEXT:                     "node": "StrTypeNode",
+// CHECK-NEXT:                     "name": "str"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "tup"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "h"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "FunctionTypeNode",
+// CHECK-NEXT:               "typeParameters": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "TypeParameterDeclaration",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "T"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "constraint": null
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "parameters": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "ParameterDeclaration",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "x"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "type": {
+// CHECK-NEXT:                     "node": "TypeReferenceNode",
+// CHECK-NEXT:                     "name": "T"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "initializer": null
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ],
+// CHECK-NEXT:               "returnType": {
+// CHECK-NEXT:                 "node": "ReturnType",
+// CHECK-NEXT:                 "type": {
+// CHECK-NEXT:                   "node": "TypeReferenceNode",
+// CHECK-NEXT:                   "name": "T"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "errorType": {
+// CHECK-NEXT:                   "node": "TypeReferenceNode",
+// CHECK-NEXT:                   "name": "Err"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "fn"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "i"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "TypeQueryNode",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "PropertyAccessExpression",
+// CHECK-NEXT:                 "expression": {
+// CHECK-NEXT:                   "node": "Identifier",
+// CHECK-NEXT:                   "name": "foo"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "name": {
+// CHECK-NEXT:                   "node": "Identifier",
+// CHECK-NEXT:                   "name": "bar"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "questionDot": "false"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "v"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

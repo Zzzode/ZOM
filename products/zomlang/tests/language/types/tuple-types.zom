@@ -1,33 +1,118 @@
-// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
 
 let t: (i32, str) = (1, "hello");
 let t2: (x: i32, y: i32) = (10, 20);
 
 
-// CHECK: Error [ZOM2058]: 'str' is not allowed as a variable declaration name
-// CHECK:   --> {{.*tuple-types.zom}}:3:14
-// CHECK:   |
-// CHECK: 3 | let t: (i32, str) = (1, "hello");
-// CHECK:   |              ^~~
-// CHECK: Error [ZOM2059]: Variable declaration expected
-// CHECK:   --> {{.*tuple-types.zom}}:3:17
-// CHECK:   |
-// CHECK: 3 | let t: (i32, str) = (1, "hello");
-// CHECK:   |                 ^
-// CHECK: Error [ZOM2059]: Variable declaration expected
-// CHECK:   --> {{.*tuple-types.zom}}:3:19
-// CHECK:   |
-// CHECK: 3 | let t: (i32, str) = (1, "hello");
-// CHECK:   |                   ^
-// CHECK: Error [ZOM2059]: Variable declaration expected
-// CHECK:   --> {{.*tuple-types.zom}}:3:21
-// CHECK:   |
-// CHECK: 3 | let t: (i32, str) = (1, "hello");
-// CHECK:   |                     ^
-// CHECK: Error [ZOM2025]: Expected ';'
-// CHECK:   --> {{.*tuple-types.zom}}:3:21
-// CHECK:   |
-// CHECK: 3 | let t: (i32, str) = (1, "hello");
-// CHECK:   |                     ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*tuple-types.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "t"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "TupleTypeNode",
+// CHECK-NEXT:               "elementTypes": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "I32TypeNode",
+// CHECK-NEXT:                   "name": "i32"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "StrTypeNode",
+// CHECK-NEXT:                   "name": "str"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "ParenthesizedExpression",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "BinaryExpression",
+// CHECK-NEXT:                 "left": {
+// CHECK-NEXT:                   "node": "IntegerLiteral",
+// CHECK-NEXT:                   "value": "1"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "operator": {
+// CHECK-NEXT:                   "node": "TokenNode",
+// CHECK-NEXT:                   "symbol": ","
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "right": {
+// CHECK-NEXT:                   "node": "StringLiteral",
+// CHECK-NEXT:                   "value": "hello"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "t2"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "TupleTypeNode",
+// CHECK-NEXT:               "elementTypes": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "NamedTupleElement",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "x"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "type": {
+// CHECK-NEXT:                     "node": "I32TypeNode",
+// CHECK-NEXT:                     "name": "i32"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "NamedTupleElement",
+// CHECK-NEXT:                   "name": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "y"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "type": {
+// CHECK-NEXT:                     "node": "I32TypeNode",
+// CHECK-NEXT:                     "name": "i32"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "ParenthesizedExpression",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "BinaryExpression",
+// CHECK-NEXT:                 "left": {
+// CHECK-NEXT:                   "node": "IntegerLiteral",
+// CHECK-NEXT:                   "value": "10"
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "operator": {
+// CHECK-NEXT:                   "node": "TokenNode",
+// CHECK-NEXT:                   "symbol": ","
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 "right": {
+// CHECK-NEXT:                   "node": "IntegerLiteral",
+// CHECK-NEXT:                   "value": "20"
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }
