@@ -270,9 +270,10 @@ bool Parser::isListTerminator(ParsingContext context) const {
       // Tokens other than ')' are here for better error recovery
       return token.is(ast::SyntaxKind::RightParen) || token.is(ast::SyntaxKind::Semicolon);
     case ParsingContext::ArrayLiteralMembers:
-    case ParsingContext::TupleElementTypes:
     case ParsingContext::ArrayBindingElements:
       return token.is(ast::SyntaxKind::RightBracket);
+    case ParsingContext::TupleElementTypes:
+      return token.is(ast::SyntaxKind::RightParen);
     case ParsingContext::Parameters:
     case ParsingContext::RestProperties:
       // Tokens other than ')' and ']' (the latter for index signatures) are here for better error
@@ -1102,7 +1103,7 @@ bool Parser::skipFunctionTypeParameterStart() {
     parseModifiers(/*allowDecorators*/ false);
   }
 
-  if (isIdentifier() || currentKind() == ast::SyntaxKind::ThisKeyword) {
+  if (isIdentifier() || expectToken(ast::SyntaxKind::ThisKeyword)) {
     nextToken();
     return true;
   }
@@ -1119,26 +1120,62 @@ bool Parser::skipFunctionTypeParameterStart() {
 bool Parser::isUnambiguouslyStartOfFunctionType() {
   nextToken();
 
-  if (currentKind() == ast::SyntaxKind::RightParen || currentKind() == ast::SyntaxKind::DotDotDot) {
+  if (expectNToken(ast::SyntaxKind::RightParen, ast::SyntaxKind::DotDotDot)) {
     // ( )
     // ( ...
     return true;
   }
 
   if (skipFunctionTypeParameterStart()) {
-    if (expectNToken(ast::SyntaxKind::Colon, ast::SyntaxKind::Comma, ast::SyntaxKind::Question,
-                     ast::SyntaxKind::Equals)) {
-      // ( xxx :
-      // ( xxx ,
+    if (expectToken(ast::SyntaxKind::Comma)) {
+      // ( xxx ,  — could be function or named tuple, skip to closing paren
+      // and check for ->
+      while (!expectNToken(ast::SyntaxKind::RightParen, ast::SyntaxKind::EndOfFile)) {
+        nextToken();
+      }
+      if (expectToken(ast::SyntaxKind::RightParen)) {
+        nextToken();
+        return expectToken(ast::SyntaxKind::Arrow);
+      }
+      return false;
+    }
+
+    if (expectNToken(ast::SyntaxKind::Question, ast::SyntaxKind::Equals)) {
       // ( xxx ?
       // ( xxx =
       return true;
     }
 
-    if (currentKind() == ast::SyntaxKind::RightParen) {
+    if (expectToken(ast::SyntaxKind::Colon)) {
+      // ( xxx : — could be a named tuple element or function parameter
+      // Skip past the type to find ) and check for ->
+      nextToken();  // consume ':'
+      int depth = 0;
+      while (!expectToken(ast::SyntaxKind::EndOfFile)) {
+        if (expectNToken(ast::SyntaxKind::LeftParen, ast::SyntaxKind::LeftBracket,
+                         ast::SyntaxKind::LeftBrace, ast::SyntaxKind::LessThan)) {
+          depth++;
+        } else if (expectToken(ast::SyntaxKind::RightParen) && depth == 0) {
+          break;
+        } else if (expectNToken(ast::SyntaxKind::RightParen, ast::SyntaxKind::RightBracket,
+                                ast::SyntaxKind::RightBrace, ast::SyntaxKind::GreaterThan)) {
+          if (depth > 0) { depth--; }
+        } else if (expectToken(ast::SyntaxKind::Comma) && depth == 0) {
+          // More parameters/elements follow — continue to closing paren
+        }
+        nextToken();
+      }
+      if (expectToken(ast::SyntaxKind::RightParen)) {
+        nextToken();
+        return expectToken(ast::SyntaxKind::Arrow);
+      }
+      return false;
+    }
+
+    if (expectToken(ast::SyntaxKind::RightParen)) {
       nextToken();
       // ( xxx ) ->
-      return currentKind() == ast::SyntaxKind::Arrow;
+      return expectToken(ast::SyntaxKind::Arrow);
     }
   }
 
@@ -3410,8 +3447,8 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parsePostfixType() {
   zc::Maybe<zc::Own<ast::TypeNode>> maybeBase;
   switch (currentKind()) {
     case ast::SyntaxKind::LeftParen:
-      // Parenthesized type: (T)
-      maybeBase = parseParenthesizedType();
+      // Parenthesized type: (T) or tuple type: (T, U) or (name: T, other: U)
+      maybeBase = parseParenthesizedOrTupleType();
       break;
     case ast::SyntaxKind::LeftBrace:
       // Object type: {prop: T}
@@ -3514,19 +3551,84 @@ zc::Maybe<zc::Own<ast::FunctionTypeNode>> Parser::parseFunctionType() {
   return zc::none;
 }
 
-zc::Maybe<zc::Own<ast::ParenthesizedTypeNode>> Parser::parseParenthesizedType() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseParenthesizedType");
+zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseParenthesizedOrTupleType() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseParenthesizedOrTupleType");
 
-  source::SourceLoc loc = currentLoc();
+  // Parses either a parenthesized type (T) or a tuple type (T, U) or (name: T, other: U).
+  // Disambiguation: if there is exactly one element with no comma and no named prefix,
+  // it is a parenthesized type; otherwise it is a tuple type.
+
+  const source::SourceLoc loc = currentLoc();
 
   if (!consumeExpectedToken(ast::SyntaxKind::LeftParen)) { return zc::none; }
 
-  ZC_IF_SOME(type, parseType()) {
-    if (!consumeExpectedToken(ast::SyntaxKind::RightParen)) { return zc::none; }
+  // Empty parentheses: ()
+  if (expectToken(ast::SyntaxKind::RightParen)) {
+    nextToken();  // consume ')'
+    return finishNode(ast::factory::createTupleType(zc::Vector<zc::Own<ast::TypeNode>>{}), loc);
+  }
+
+  // Try to parse the first element, checking for named tuple element pattern: identifier ':'
+  zc::Vector<zc::Own<ast::TypeNode>> elements;
+  bool hasNamedElement = false;
+
+  // Try named element: identifier ':' type
+  if (currentToken().is(ast::SyntaxKind::Identifier)) {
+    ParserState state = mark();
+    auto name = parseIdentifier();
+    if (currentToken().is(ast::SyntaxKind::Colon)) {
+      nextToken();  // consume ':'
+      hasNamedElement = true;
+      ZC_IF_SOME(type, parseType()) {
+        elements.add(ast::factory::createNamedTupleElement(zc::mv(name), zc::mv(type)));
+      }
+      else { return zc::none; }
+    } else {
+      // Not a named element, rewind and parse as a regular type
+      rewind(state);
+    }
+  }
+
+  // If not a named element, parse as a regular type
+  if (!hasNamedElement) {
+    ZC_IF_SOME(type, parseType()) { elements.add(zc::mv(type)); }
+    else { return zc::none; }
+  }
+
+  // Check if there are more elements (comma-separated)
+  if (expectToken(ast::SyntaxKind::Comma)) {
+    // It's a tuple type — parse remaining elements
+    while (consumeExpectedToken(ast::SyntaxKind::Comma)) {
+      // Try named element
+      if (currentToken().is(ast::SyntaxKind::Identifier)) {
+        ParserState state = mark();
+        auto name = parseIdentifier();
+        if (currentToken().is(ast::SyntaxKind::Colon)) {
+          nextToken();  // consume ':'
+          ZC_IF_SOME(type, parseType()) {
+            elements.add(ast::factory::createNamedTupleElement(zc::mv(name), zc::mv(type)));
+          }
+          else { return zc::none; }
+          continue;
+        } else {
+          rewind(state);
+        }
+      }
+
+      ZC_IF_SOME(type, parseType()) { elements.add(zc::mv(type)); }
+      else { return zc::none; }
+    }
+  }
+
+  if (!consumeExpectedToken(ast::SyntaxKind::RightParen)) { return zc::none; }
+
+  // Single unnamed element with no comma → parenthesized type
+  if (elements.size() == 1 && !hasNamedElement) {
+    auto type = zc::mv(elements[0]);
     return finishNode(ast::factory::createParenthesizedType(zc::mv(type)), loc);
   }
 
-  return zc::none;
+  return finishNode(ast::factory::createTupleType(zc::mv(elements)), loc);
 }
 
 zc::Maybe<zc::Own<ast::ObjectTypeNode>> Parser::parseObjectType() {
@@ -4356,11 +4458,11 @@ zc::Vector<zc::Own<ast::CaptureElement>> Parser::parseCaptureClause() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseCaptureClause");
   zc::Vector<zc::Own<ast::CaptureElement>> captures;
 
-  if (currentKind() == ast::SyntaxKind::Identifier && currentToken().getValue() == "use"_zc) {
+  if (expectToken(ast::SyntaxKind::Identifier) && currentToken().getValue() == "use"_zc) {
     nextToken();  // consume 'use'
 
     if (consumeExpectedToken(ast::SyntaxKind::LeftBracket)) {
-      if (currentKind() != ast::SyntaxKind::RightBracket) {
+      if (!expectToken(ast::SyntaxKind::RightBracket)) {
         do {
           ZC_IF_SOME(capture, parseCaptureElement()) { captures.add(zc::mv(capture)); }
           else {
@@ -4380,15 +4482,15 @@ zc::Maybe<zc::Own<ast::CaptureElement>> Parser::parseCaptureElement() {
   bool isByReference = false;
   source::SourceLoc loc = currentLoc();
 
-  if (currentKind() == ast::SyntaxKind::Ampersand) {
+  if (expectToken(ast::SyntaxKind::Ampersand)) {
     isByReference = true;
     nextToken();
   }
 
-  if (currentKind() == ast::SyntaxKind::ThisKeyword) {
+  if (expectToken(ast::SyntaxKind::ThisKeyword)) {
     nextToken();
     return finishNode(ast::factory::createCaptureElement(isByReference, zc::none, true), loc);
-  } else if (currentKind() == ast::SyntaxKind::Identifier) {
+  } else if (expectToken(ast::SyntaxKind::Identifier)) {
     auto text = currentToken().getValue();
     auto id = ast::factory::createIdentifier(text);
     nextToken();
@@ -4937,9 +5039,8 @@ bool Parser::scanStartOfDeclaration() {
 
       case ast::SyntaxKind::GlobalKeyword:
         nextToken();
-        return currentToken().is(ast::SyntaxKind::LeftBrace) ||
-               currentToken().is(ast::SyntaxKind::Identifier) ||
-               currentToken().is(ast::SyntaxKind::ExportKeyword);
+        return expectNToken(ast::SyntaxKind::LeftBrace, ast::SyntaxKind::Identifier,
+                            ast::SyntaxKind::ExportKeyword);
 
       case ast::SyntaxKind::ImportKeyword:
         nextToken();

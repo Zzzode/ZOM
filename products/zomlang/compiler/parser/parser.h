@@ -547,7 +547,7 @@ private:
   zc::Maybe<zc::Own<ast::TupleTypeNode>> parseTupleType();
   zc::Maybe<zc::Own<ast::TypeReferenceNode>> parseTypeReference();
   zc::Maybe<zc::Own<ast::PredefinedTypeNode>> parsePredefinedType();
-  zc::Maybe<zc::Own<ast::ParenthesizedTypeNode>> parseParenthesizedType();
+  zc::Maybe<zc::Own<ast::TypeNode>> parseParenthesizedOrTupleType();
   zc::Maybe<zc::Own<ast::TypeParameterDeclaration>> parseTypeParameter();
   zc::Maybe<zc::Own<ast::TypeQueryNode>> parseTypeQuery();
   zc::Maybe<zc::Own<ast::Expression>> parseTypeQueryExpression();

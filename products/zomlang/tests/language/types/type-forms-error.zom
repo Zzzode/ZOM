@@ -1,0 +1,18 @@
+// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+
+// Object type literals with string/numeric property names are not yet supported
+let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+
+
+// CHECK: Error [ZOM2011]: Identifier expected, found 'k'
+// CHECK:   --> {{.*type-forms-error.zom}}:4:27
+// CHECK:   |
+// CHECK: 4 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                           ^~~
+// CHECK: Error [ZOM2011]: Identifier expected, found '1'
+// CHECK:   --> {{.*type-forms-error.zom}}:4:36
+// CHECK:   |
+// CHECK: 4 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK:   |                                    ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.
