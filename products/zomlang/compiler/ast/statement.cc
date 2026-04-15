@@ -112,8 +112,7 @@ zc::Maybe<const Expression&> BindingElement::getInitializer() const { return imp
 SyntaxKind BindingElement::getKind() const { return SyntaxKind::BindingElement; }
 
 NodeFlags BindingElement::getFlags() const { return NodeFlags::None; }
-void BindingElement::setFlags(NodeFlags flags) { }
-
+void BindingElement::setFlags(NodeFlags flags) {}
 
 void BindingElement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -211,8 +210,7 @@ zc::Maybe<const Expression&> ParameterDeclaration::getInitializer() const {
 SyntaxKind ParameterDeclaration::getKind() const { return SyntaxKind::ParameterDeclaration; }
 
 NodeFlags ParameterDeclaration::getFlags() const { return NodeFlags::None; }
-void ParameterDeclaration::setFlags(NodeFlags flags) { }
-
+void ParameterDeclaration::setFlags(NodeFlags flags) {}
 
 void ParameterDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -297,8 +295,7 @@ zc::Maybe<const Expression&> VariableDeclaration::getInitializer() const {
 SyntaxKind VariableDeclaration::getKind() const { return SyntaxKind::VariableDeclaration; }
 
 NodeFlags VariableDeclaration::getFlags() const { return NodeFlags::None; }
-void VariableDeclaration::setFlags(NodeFlags flags) { }
-
+void VariableDeclaration::setFlags(NodeFlags flags) {}
 
 void VariableDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -350,8 +347,7 @@ const NodeList<VariableDeclaration>& VariableDeclarationList::getBindings() cons
 SyntaxKind VariableDeclarationList::getKind() const { return SyntaxKind::VariableDeclarationList; }
 
 NodeFlags VariableDeclarationList::getFlags() const { return NodeFlags::None; }
-void VariableDeclarationList::setFlags(NodeFlags flags) { }
-
+void VariableDeclarationList::setFlags(NodeFlags flags) {}
 
 void VariableDeclarationList::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -394,8 +390,7 @@ const VariableDeclarationList& VariableStatement::getDeclarations() const {
 SyntaxKind VariableStatement::getKind() const { return SyntaxKind::VariableStatement; }
 
 NodeFlags VariableStatement::getFlags() const { return NodeFlags::None; }
-void VariableStatement::setFlags(NodeFlags flags) { }
-
+void VariableStatement::setFlags(NodeFlags flags) {}
 
 void VariableStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -500,8 +495,7 @@ void FunctionDeclaration::setNextContainer(zc::Maybe<const LocalsContainer&> nex
 SyntaxKind FunctionDeclaration::getKind() const { return SyntaxKind::FunctionDeclaration; }
 
 NodeFlags FunctionDeclaration::getFlags() const { return NodeFlags::None; }
-void FunctionDeclaration::setFlags(NodeFlags flags) { }
-
+void FunctionDeclaration::setFlags(NodeFlags flags) {}
 
 void FunctionDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -581,8 +575,7 @@ const NodeList<ClassElement>& ClassDeclaration::getMembers() const { return impl
 SyntaxKind ClassDeclaration::getKind() const { return SyntaxKind::ClassDeclaration; }
 
 NodeFlags ClassDeclaration::getFlags() const { return NodeFlags::None; }
-void ClassDeclaration::setFlags(NodeFlags flags) { }
-
+void ClassDeclaration::setFlags(NodeFlags flags) {}
 
 void ClassDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -660,8 +653,7 @@ const NodeList<InterfaceElement>& InterfaceDeclaration::getMembers() const { ret
 SyntaxKind InterfaceDeclaration::getKind() const { return SyntaxKind::InterfaceDeclaration; }
 
 NodeFlags InterfaceDeclaration::getFlags() const { return NodeFlags::None; }
-void InterfaceDeclaration::setFlags(NodeFlags flags) { }
-
+void InterfaceDeclaration::setFlags(NodeFlags flags) {}
 
 void InterfaceDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -741,8 +733,7 @@ const NodeList<ClassElement>& StructDeclaration::getMembers() const { return imp
 SyntaxKind StructDeclaration::getKind() const { return SyntaxKind::StructDeclaration; }
 
 NodeFlags StructDeclaration::getFlags() const { return NodeFlags::None; }
-void StructDeclaration::setFlags(NodeFlags flags) { }
-
+void StructDeclaration::setFlags(NodeFlags flags) {}
 
 void StructDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -805,8 +796,7 @@ zc::OneOf<zc::Maybe<const Identifier&>, zc::Maybe<const BindingPattern&>> EnumMe
 SyntaxKind EnumMember::getKind() const { return SyntaxKind::EnumMember; }
 
 NodeFlags EnumMember::getFlags() const { return NodeFlags::None; }
-void EnumMember::setFlags(NodeFlags flags) { }
-
+void EnumMember::setFlags(NodeFlags flags) {}
 
 void EnumMember::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -862,8 +852,7 @@ const NodeList<EnumMember>& EnumDeclaration::getMembers() const { return impl->m
 SyntaxKind EnumDeclaration::getKind() const { return SyntaxKind::EnumDeclaration; }
 
 NodeFlags EnumDeclaration::getFlags() const { return NodeFlags::None; }
-void EnumDeclaration::setFlags(NodeFlags flags) { }
-
+void EnumDeclaration::setFlags(NodeFlags flags) {}
 
 void EnumDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -923,8 +912,7 @@ const NodeList<Statement>& ErrorDeclaration::getMembers() const { return impl->m
 SyntaxKind ErrorDeclaration::getKind() const { return SyntaxKind::ErrorDeclaration; }
 
 NodeFlags ErrorDeclaration::getFlags() const { return NodeFlags::None; }
-void ErrorDeclaration::setFlags(NodeFlags flags) { }
-
+void ErrorDeclaration::setFlags(NodeFlags flags) {}
 
 void ErrorDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1003,8 +991,7 @@ const source::SourceRange& AliasDeclaration::getSourceRange() const {
 SyntaxKind AliasDeclaration::getKind() const { return SyntaxKind::AliasDeclaration; }
 
 NodeFlags AliasDeclaration::getFlags() const { return NodeFlags::None; }
-void AliasDeclaration::setFlags(NodeFlags flags) { }
-
+void AliasDeclaration::setFlags(NodeFlags flags) {}
 
 void AliasDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1045,8 +1032,9 @@ const source::SourceRange& DebuggerStatement::getSourceRange() const {
 SyntaxKind DebuggerStatement::getKind() const { return impl->getKind(); }
 
 NodeFlags DebuggerStatement::getFlags() const { return impl->getFlags(); }
-void DebuggerStatement::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
+void DebuggerStatement::setFlags(NodeFlags flags) {
+  const_cast<Impl*>(impl.get())->setFlags(flags);
+}
 
 void DebuggerStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1092,8 +1080,7 @@ const source::SourceRange& MatchClause::getSourceRange() const { return impl->ge
 SyntaxKind MatchClause::getKind() const { return SyntaxKind::MatchClause; }
 
 NodeFlags MatchClause::getFlags() const { return NodeFlags::None; }
-void MatchClause::setFlags(NodeFlags flags) { }
-
+void MatchClause::setFlags(NodeFlags flags) {}
 
 void MatchClause::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1124,8 +1111,7 @@ const NodeList<Statement>& DefaultClause::getStatements() const { return impl->s
 SyntaxKind DefaultClause::getKind() const { return SyntaxKind::DefaultClause; }
 
 NodeFlags DefaultClause::getFlags() const { return NodeFlags::None; }
-void DefaultClause::setFlags(NodeFlags flags) { }
-
+void DefaultClause::setFlags(NodeFlags flags) {}
 
 void DefaultClause::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1171,8 +1157,7 @@ const source::SourceRange& ArrayBindingPattern::getSourceRange() const {
 SyntaxKind ArrayBindingPattern::getKind() const { return SyntaxKind::ArrayBindingPattern; }
 
 NodeFlags ArrayBindingPattern::getFlags() const { return NodeFlags::None; }
-void ArrayBindingPattern::setFlags(NodeFlags flags) { }
-
+void ArrayBindingPattern::setFlags(NodeFlags flags) {}
 
 void ArrayBindingPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1218,8 +1203,7 @@ const source::SourceRange& ObjectBindingPattern::getSourceRange() const {
 SyntaxKind ObjectBindingPattern::getKind() const { return SyntaxKind::ObjectBindingPattern; }
 
 NodeFlags ObjectBindingPattern::getFlags() const { return NodeFlags::None; }
-void ObjectBindingPattern::setFlags(NodeFlags flags) { }
-
+void ObjectBindingPattern::setFlags(NodeFlags flags) {}
 
 void ObjectBindingPattern::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1264,8 +1248,7 @@ const source::SourceRange& BlockStatement::getSourceRange() const { return impl-
 SyntaxKind BlockStatement::getKind() const { return SyntaxKind::BlockStatement; }
 
 NodeFlags BlockStatement::getFlags() const { return NodeFlags::None; }
-void BlockStatement::setFlags(NodeFlags flags) { }
-
+void BlockStatement::setFlags(NodeFlags flags) {}
 
 void BlockStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1321,8 +1304,7 @@ const source::SourceRange& ExpressionStatement::getSourceRange() const {
 SyntaxKind ExpressionStatement::getKind() const { return SyntaxKind::ExpressionStatement; }
 
 NodeFlags ExpressionStatement::getFlags() const { return NodeFlags::None; }
-void ExpressionStatement::setFlags(NodeFlags flags) { }
-
+void ExpressionStatement::setFlags(NodeFlags flags) {}
 
 void ExpressionStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1372,8 +1354,7 @@ const source::SourceRange& IfStatement::getSourceRange() const { return impl->ge
 SyntaxKind IfStatement::getKind() const { return SyntaxKind::IfStatement; }
 
 NodeFlags IfStatement::getFlags() const { return NodeFlags::None; }
-void IfStatement::setFlags(NodeFlags flags) { }
-
+void IfStatement::setFlags(NodeFlags flags) {}
 
 void IfStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1415,8 +1396,7 @@ const source::SourceRange& LabeledStatement::getSourceRange() const {
 SyntaxKind LabeledStatement::getKind() const { return SyntaxKind::LabeledStatement; }
 
 NodeFlags LabeledStatement::getFlags() const { return NodeFlags::None; }
-void LabeledStatement::setFlags(NodeFlags flags) { }
-
+void LabeledStatement::setFlags(NodeFlags flags) {}
 
 void LabeledStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1455,8 +1435,7 @@ const source::SourceRange& BreakStatement::getSourceRange() const { return impl-
 SyntaxKind BreakStatement::getKind() const { return SyntaxKind::BreakStatement; }
 
 NodeFlags BreakStatement::getFlags() const { return NodeFlags::None; }
-void BreakStatement::setFlags(NodeFlags flags) { }
-
+void BreakStatement::setFlags(NodeFlags flags) {}
 
 void BreakStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1497,8 +1476,7 @@ const source::SourceRange& ContinueStatement::getSourceRange() const {
 SyntaxKind ContinueStatement::getKind() const { return SyntaxKind::ContinueStatement; }
 
 NodeFlags ContinueStatement::getFlags() const { return NodeFlags::None; }
-void ContinueStatement::setFlags(NodeFlags flags) { }
-
+void ContinueStatement::setFlags(NodeFlags flags) {}
 
 void ContinueStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1538,8 +1516,7 @@ const source::SourceRange& WhileStatement::getSourceRange() const { return impl-
 SyntaxKind WhileStatement::getKind() const { return SyntaxKind::WhileStatement; }
 
 NodeFlags WhileStatement::getFlags() const { return NodeFlags::None; }
-void WhileStatement::setFlags(NodeFlags flags) { }
-
+void WhileStatement::setFlags(NodeFlags flags) {}
 
 void WhileStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1582,8 +1559,7 @@ const source::SourceRange& ReturnStatement::getSourceRange() const {
 SyntaxKind ReturnStatement::getKind() const { return SyntaxKind::ReturnStatement; }
 
 NodeFlags ReturnStatement::getFlags() const { return NodeFlags::None; }
-void ReturnStatement::setFlags(NodeFlags flags) { }
-
+void ReturnStatement::setFlags(NodeFlags flags) {}
 
 void ReturnStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1614,8 +1590,7 @@ const source::SourceRange& EmptyStatement::getSourceRange() const { return impl-
 SyntaxKind EmptyStatement::getKind() const { return SyntaxKind::EmptyStatement; }
 
 NodeFlags EmptyStatement::getFlags() const { return NodeFlags::None; }
-void EmptyStatement::setFlags(NodeFlags flags) { }
-
+void EmptyStatement::setFlags(NodeFlags flags) {}
 
 void EmptyStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1656,8 +1631,7 @@ const source::SourceRange& MatchStatement::getSourceRange() const { return impl-
 SyntaxKind MatchStatement::getKind() const { return SyntaxKind::MatchStatement; }
 
 NodeFlags MatchStatement::getFlags() const { return NodeFlags::None; }
-void MatchStatement::setFlags(NodeFlags flags) { }
-
+void MatchStatement::setFlags(NodeFlags flags) {}
 
 void MatchStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1728,8 +1702,7 @@ const source::SourceRange& ForStatement::getSourceRange() const { return impl->g
 SyntaxKind ForStatement::getKind() const { return SyntaxKind::ForStatement; }
 
 NodeFlags ForStatement::getFlags() const { return NodeFlags::None; }
-void ForStatement::setFlags(NodeFlags flags) { }
-
+void ForStatement::setFlags(NodeFlags flags) {}
 
 void ForStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1799,8 +1772,7 @@ const source::SourceRange& ForInStatement::getSourceRange() const { return impl-
 SyntaxKind ForInStatement::getKind() const { return SyntaxKind::ForInStatement; }
 
 NodeFlags ForInStatement::getFlags() const { return NodeFlags::None; }
-void ForInStatement::setFlags(NodeFlags flags) { }
-
+void ForInStatement::setFlags(NodeFlags flags) {}
 
 void ForInStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1854,8 +1826,7 @@ const zc::Vector<zc::Own<ExpressionWithTypeArguments>>& HeritageClause::getTypes
 SyntaxKind HeritageClause::getKind() const { return SyntaxKind::HeritageClause; }
 
 NodeFlags HeritageClause::getFlags() const { return NodeFlags::None; }
-void HeritageClause::setFlags(NodeFlags flags) { }
-
+void HeritageClause::setFlags(NodeFlags flags) {}
 
 void HeritageClause::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -1920,8 +1891,7 @@ zc::Maybe<const Expression&> PropertySignature::getInitializer() const { return 
 SyntaxKind PropertySignature::getKind() const { return SyntaxKind::PropertySignature; }
 
 NodeFlags PropertySignature::getFlags() const { return NodeFlags::None; }
-void PropertySignature::setFlags(NodeFlags flags) { }
-
+void PropertySignature::setFlags(NodeFlags flags) {}
 
 void PropertySignature::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -2011,8 +1981,7 @@ zc::Maybe<const ReturnTypeNode&> MethodSignature::getReturnType() const { return
 SyntaxKind MethodSignature::getKind() const { return SyntaxKind::MethodSignature; }
 
 NodeFlags MethodSignature::getFlags() const { return NodeFlags::None; }
-void MethodSignature::setFlags(NodeFlags flags) { }
-
+void MethodSignature::setFlags(NodeFlags flags) {}
 
 void MethodSignature::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -2070,8 +2039,7 @@ SyntaxKind SemicolonInterfaceElement::getKind() const {
 }
 
 NodeFlags SemicolonInterfaceElement::getFlags() const { return NodeFlags::None; }
-void SemicolonInterfaceElement::setFlags(NodeFlags flags) { }
-
+void SemicolonInterfaceElement::setFlags(NodeFlags flags) {}
 
 void SemicolonInterfaceElement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -2123,8 +2091,7 @@ SemicolonClassElement::~SemicolonClassElement() noexcept(false) = default;
 SyntaxKind SemicolonClassElement::getKind() const { return SyntaxKind::SemicolonClassElement; }
 
 NodeFlags SemicolonClassElement::getFlags() const { return NodeFlags::None; }
-void SemicolonClassElement::setFlags(NodeFlags flags) { }
-
+void SemicolonClassElement::setFlags(NodeFlags flags) {}
 
 void SemicolonClassElement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -2249,8 +2216,7 @@ void MethodDeclaration::setNextContainer(zc::Maybe<const LocalsContainer&> nextC
 SyntaxKind MethodDeclaration::getKind() const { return SyntaxKind::MethodDeclaration; }
 
 NodeFlags MethodDeclaration::getFlags() const { return NodeFlags::None; }
-void MethodDeclaration::setFlags(NodeFlags flags) { }
-
+void MethodDeclaration::setFlags(NodeFlags flags) {}
 
 void MethodDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -2354,8 +2320,7 @@ void InitDeclaration::setNextContainer(zc::Maybe<const LocalsContainer&> nextCon
 SyntaxKind InitDeclaration::getKind() const { return SyntaxKind::InitDeclaration; }
 
 NodeFlags InitDeclaration::getFlags() const { return NodeFlags::None; }
-void InitDeclaration::setFlags(NodeFlags flags) { }
-
+void InitDeclaration::setFlags(NodeFlags flags) {}
 
 void InitDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -2435,8 +2400,7 @@ void DeinitDeclaration::setNextContainer(zc::Maybe<const LocalsContainer&> nextC
 SyntaxKind DeinitDeclaration::getKind() const { return SyntaxKind::DeinitDeclaration; }
 
 NodeFlags DeinitDeclaration::getFlags() const { return NodeFlags::None; }
-void DeinitDeclaration::setFlags(NodeFlags flags) { }
-
+void DeinitDeclaration::setFlags(NodeFlags flags) {}
 
 void DeinitDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -2540,8 +2504,7 @@ void GetAccessor::setNextContainer(zc::Maybe<const LocalsContainer&> nextContain
 SyntaxKind GetAccessor::getKind() const { return SyntaxKind::GetAccessor; }
 
 NodeFlags GetAccessor::getFlags() const { return NodeFlags::None; }
-void GetAccessor::setFlags(NodeFlags flags) { }
-
+void GetAccessor::setFlags(NodeFlags flags) {}
 
 void GetAccessor::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -2644,8 +2607,7 @@ void SetAccessor::setNextContainer(zc::Maybe<const LocalsContainer&> nextContain
 SyntaxKind SetAccessor::getKind() const { return SyntaxKind::SetAccessor; }
 
 NodeFlags SetAccessor::getFlags() const { return NodeFlags::None; }
-void SetAccessor::setFlags(NodeFlags flags) { }
-
+void SetAccessor::setFlags(NodeFlags flags) {}
 
 void SetAccessor::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -2714,8 +2676,7 @@ zc::Maybe<const Expression&> PropertyDeclaration::getInitializer() const {
 SyntaxKind PropertyDeclaration::getKind() const { return SyntaxKind::PropertyDeclaration; }
 
 NodeFlags PropertyDeclaration::getFlags() const { return NodeFlags::None; }
-void PropertyDeclaration::setFlags(NodeFlags flags) { }
-
+void PropertyDeclaration::setFlags(NodeFlags flags) {}
 
 void PropertyDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 

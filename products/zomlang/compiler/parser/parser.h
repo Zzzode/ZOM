@@ -500,8 +500,8 @@ private:
       zc::Own<ast::LeftHandSideExpression> expression, bool questionDotToken,
       source::SourceLoc pos);
   bool tryReparseOptionalChain(ast::LeftHandSideExpression& node);
-  zc::Own<ast::Identifier> parseRightSideOfDot(
-      bool allowIdentifierNames, bool allowUnicodeEscapeSequenceInIdentifierName);
+  zc::Own<ast::Identifier> parseRightSideOfDot(bool allowIdentifierNames,
+                                               bool allowUnicodeEscapeSequenceInIdentifierName);
   zc::Own<ast::ElementAccessExpression> parseElementAccessExpressionRest(
       zc::Own<ast::LeftHandSideExpression> expression, bool questionDotToken,
       source::SourceLoc pos);

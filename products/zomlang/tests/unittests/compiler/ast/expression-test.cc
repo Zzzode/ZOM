@@ -241,8 +241,7 @@ ZC_TEST("ExpressionTest.ElementAccessExpression") {
   auto maybeArrExpr = factory::createIdentifier("maybeArr"_zc);
   auto keyExpr = factory::createStringLiteral("key"_zc);
   auto optionalElementAccess =
-      factory::createElementAccessExpression(
-          zc::mv(maybeArrExpr), zc::mv(keyExpr), true, true);
+      factory::createElementAccessExpression(zc::mv(maybeArrExpr), zc::mv(keyExpr), true, true);
 
   ZC_EXPECT(optionalElementAccess->getKind() == SyntaxKind::ElementAccessExpression);
   ZC_EXPECT(optionalElementAccess->isQuestionDot() == true);

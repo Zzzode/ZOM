@@ -351,8 +351,8 @@ zc::Own<PropertyAccessExpression> createPropertyAccessExpression(
     bool isOptionalChain = false);
 
 zc::Own<ElementAccessExpression> createElementAccessExpression(
-    zc::Own<LeftHandSideExpression> expression, zc::Own<Expression> index,
-    bool questionDot = false, bool isOptionalChain = false);
+    zc::Own<LeftHandSideExpression> expression, zc::Own<Expression> index, bool questionDot = false,
+    bool isOptionalChain = false);
 
 zc::Own<AsExpression> createAsExpression(zc::Own<Expression> expression,
                                          zc::Own<TypeNode> targetType);
