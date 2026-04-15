@@ -713,6 +713,587 @@ ZC_TEST("ASTDumper.DumpUnionTypeXML") {
   ZC_ASSERT(result.contains("</UnionTypeNode>"));
 }
 
+// ============================================================================
+// New dump tests for uncovered node types (TEXT format)
+// ============================================================================
+
+// Test IfStatement
+ZC_TEST("ASTDumper.DumpIfStatementText") {
+  auto cond = ast::factory::createBooleanLiteral(true);
+  auto thenStmt = ast::factory::createEmptyStatement();
+  auto elseStmt = ast::factory::createEmptyStatement();
+  auto node = ast::factory::createIfStatement(zc::mv(cond), zc::mv(thenStmt), zc::mv(elseStmt));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("IfStatement {"));
+  ZC_ASSERT(result.contains("condition:"));
+  ZC_ASSERT(result.contains("thenStatement:"));
+  ZC_ASSERT(result.contains("elseStatement:"));
+}
+
+// Test WhileStatement
+ZC_TEST("ASTDumper.DumpWhileStatementText") {
+  auto cond = ast::factory::createBooleanLiteral(true);
+  auto body = ast::factory::createEmptyStatement();
+  auto node = ast::factory::createWhileStatement(zc::mv(cond), zc::mv(body));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("WhileStatement {"));
+  ZC_ASSERT(result.contains("condition:"));
+  ZC_ASSERT(result.contains("body:"));
+}
+
+// Test ForStatement
+ZC_TEST("ASTDumper.DumpForStatementText") {
+  auto init = ast::factory::createEmptyStatement();
+  auto cond = ast::factory::createBooleanLiteral(true);
+  auto update = ast::factory::createIntegerLiteral(1);
+  auto body = ast::factory::createEmptyStatement();
+  auto node =
+      ast::factory::createForStatement(zc::mv(init), zc::mv(cond), zc::mv(update), zc::mv(body));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ForStatement {"));
+}
+
+// Test LabeledStatement
+ZC_TEST("ASTDumper.DumpLabeledStatementText") {
+  auto label = ast::factory::createIdentifier("myLabel"_zc);
+  auto stmt = ast::factory::createEmptyStatement();
+  auto node = ast::factory::createLabeledStatement(zc::mv(label), zc::mv(stmt));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("LabeledStatement {"));
+  ZC_ASSERT(result.contains("label:"));
+  ZC_ASSERT(result.contains("myLabel"));
+}
+
+// Test BreakStatement
+ZC_TEST("ASTDumper.DumpBreakStatementText") {
+  auto node = ast::factory::createBreakStatement(zc::none);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("BreakStatement {"));
+}
+
+// Test ContinueStatement
+ZC_TEST("ASTDumper.DumpContinueStatementText") {
+  auto node = ast::factory::createContinueStatement(zc::none);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ContinueStatement {"));
+}
+
+// Test ReturnStatement
+ZC_TEST("ASTDumper.DumpReturnStatementText") {
+  auto node = ast::factory::createReturnStatement(zc::none);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ReturnStatement {"));
+}
+
+// Test ClassDeclaration
+ZC_TEST("ASTDumper.DumpClassDeclarationText") {
+  auto name = ast::factory::createIdentifier("MyClass"_zc);
+  zc::Vector<zc::Own<ast::ClassElement>> members;
+  auto node =
+      ast::factory::createClassDeclaration(zc::mv(name), zc::none, zc::none, zc::mv(members));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ClassDeclaration {"));
+  ZC_ASSERT(result.contains("MyClass"));
+}
+
+// Test InterfaceDeclaration
+ZC_TEST("ASTDumper.DumpInterfaceDeclarationText") {
+  auto name = ast::factory::createIdentifier("MyInterface"_zc);
+  zc::Vector<zc::Own<ast::InterfaceElement>> members;
+  auto node =
+      ast::factory::createInterfaceDeclaration(zc::mv(name), zc::none, zc::none, zc::mv(members));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("InterfaceDeclaration {"));
+  ZC_ASSERT(result.contains("MyInterface"));
+}
+
+// Test StructDeclaration
+ZC_TEST("ASTDumper.DumpStructDeclarationText") {
+  auto name = ast::factory::createIdentifier("MyStruct"_zc);
+  zc::Vector<zc::Own<ast::ClassElement>> members;
+  auto node =
+      ast::factory::createStructDeclaration(zc::mv(name), zc::none, zc::none, zc::mv(members));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("StructDeclaration {"));
+  ZC_ASSERT(result.contains("MyStruct"));
+}
+
+// Test EnumDeclaration with members
+ZC_TEST("ASTDumper.DumpEnumDeclarationText") {
+  auto name = ast::factory::createIdentifier("Color"_zc);
+  zc::Vector<zc::Own<ast::EnumMember>> members;
+  members.add(ast::factory::createEnumMember(ast::factory::createIdentifier("Red"_zc)));
+  members.add(ast::factory::createEnumMember(ast::factory::createIdentifier("Green"_zc)));
+  auto node = ast::factory::createEnumDeclaration(zc::mv(name), zc::mv(members));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("EnumDeclaration {"));
+  ZC_ASSERT(result.contains("Color"));
+  ZC_ASSERT(result.contains("Red"));
+  ZC_ASSERT(result.contains("Green"));
+}
+
+// Test ErrorDeclaration
+ZC_TEST("ASTDumper.DumpErrorDeclarationText") {
+  auto name = ast::factory::createIdentifier("MyError"_zc);
+  zc::Vector<zc::Own<ast::Statement>> body;
+  auto node = ast::factory::createErrorDeclaration(zc::mv(name), zc::mv(body));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ErrorDeclaration {"));
+  ZC_ASSERT(result.contains("MyError"));
+}
+
+// Test AliasDeclaration
+ZC_TEST("ASTDumper.DumpAliasDeclarationText") {
+  auto name = ast::factory::createIdentifier("MyAlias"_zc);
+  auto type = ast::factory::createPredefinedType("i32"_zc);
+  auto node = ast::factory::createAliasDeclaration(zc::mv(name), zc::none, zc::mv(type));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("AliasDeclaration {"));
+  ZC_ASSERT(result.contains("MyAlias"));
+}
+
+// Test MatchStatement
+ZC_TEST("ASTDumper.DumpMatchStatementText") {
+  auto discriminant = ast::factory::createIdentifier("value"_zc);
+  zc::Vector<zc::Own<ast::Statement>> clauses;
+  auto node = ast::factory::createMatchStatement(zc::mv(discriminant), zc::mv(clauses));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("MatchStatement {"));
+}
+
+// Test MatchClause
+ZC_TEST("ASTDumper.DumpMatchClauseText") {
+  auto pattern = ast::factory::createWildcardPattern();
+  auto body = ast::factory::createEmptyStatement();
+  auto node = ast::factory::createMatchClause(zc::mv(pattern), zc::none, zc::mv(body));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("MatchClause {"));
+}
+
+// Test DefaultClause
+ZC_TEST("ASTDumper.DumpDefaultClauseText") {
+  zc::Vector<zc::Own<ast::Statement>> statements;
+  auto node = ast::factory::createDefaultClause(zc::mv(statements));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("DefaultClause {"));
+}
+
+// Test ImportDeclaration
+ZC_TEST("ASTDumper.DumpImportDeclarationText") {
+  zc::Vector<zc::Own<ast::Identifier>> segments;
+  segments.add(ast::factory::createIdentifier("std"_zc));
+  segments.add(ast::factory::createIdentifier("io"_zc));
+  auto modulePath = ast::factory::createModulePath(zc::mv(segments));
+  zc::Vector<zc::Own<ast::ImportSpecifier>> specifiers;
+  auto node =
+      ast::factory::createImportDeclaration(zc::mv(modulePath), zc::none, zc::mv(specifiers));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ImportDeclaration {"));
+}
+
+// Test ExportDeclaration
+ZC_TEST("ASTDumper.DumpExportDeclarationText") {
+  zc::Vector<zc::Own<ast::ExportSpecifier>> specifiers;
+  specifiers.add(ast::factory::createExportSpecifier(ast::factory::createIdentifier("myFunc"_zc)));
+  auto node = ast::factory::createExportDeclaration(zc::none, zc::mv(specifiers), zc::none);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ExportDeclaration {"));
+}
+
+// Test SpreadElement
+ZC_TEST("ASTDumper.DumpSpreadElementText") {
+  auto expr = ast::factory::createIdentifier("items"_zc);
+  auto node = ast::factory::createSpreadElement(zc::mv(expr));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("SpreadElement {"));
+}
+
+// Test ArrayLiteralExpression
+ZC_TEST("ASTDumper.DumpArrayLiteralExpressionText") {
+  zc::Vector<zc::Own<ast::Expression>> elements;
+  elements.add(ast::factory::createIntegerLiteral(1));
+  elements.add(ast::factory::createIntegerLiteral(2));
+  auto node = ast::factory::createArrayLiteralExpression(zc::mv(elements), false);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ArrayLiteralExpression {"));
+}
+
+// Test ObjectLiteralExpression with PropertyAssignment
+ZC_TEST("ASTDumper.DumpObjectLiteralExpressionText") {
+  zc::Vector<zc::Own<ast::ObjectLiteralElement>> properties;
+  auto propName = ast::factory::createIdentifier("key"_zc);
+  auto propVal = ast::factory::createStringLiteral("value"_zc);
+  properties.add(
+      ast::factory::createPropertyAssignment(zc::mv(propName), zc::mv(propVal), zc::none));
+  auto node = ast::factory::createObjectLiteralExpression(zc::mv(properties), false);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ObjectLiteralExpression {"));
+}
+
+// Test PropertyAssignment
+ZC_TEST("ASTDumper.DumpPropertyAssignmentText") {
+  auto name = ast::factory::createIdentifier("propName"_zc);
+  auto init = ast::factory::createIntegerLiteral(42);
+  auto node = ast::factory::createPropertyAssignment(zc::mv(name), zc::mv(init), zc::none);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("PropertyAssignment {"));
+  ZC_ASSERT(result.contains("propName"));
+}
+
+// Test AsExpression
+ZC_TEST("ASTDumper.DumpAsExpressionText") {
+  auto expr = ast::factory::createIdentifier("x"_zc);
+  auto type = ast::factory::createPredefinedType("i32"_zc);
+  auto node = ast::factory::createAsExpression(zc::mv(expr), zc::mv(type));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("AsExpression {"));
+}
+
+// Test VoidExpression
+ZC_TEST("ASTDumper.DumpVoidExpressionText") {
+  auto expr = ast::factory::createIdentifier("x"_zc);
+  auto node = ast::factory::createVoidExpression(zc::mv(expr));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("VoidExpression {"));
+}
+
+// Test TypeOfExpression
+ZC_TEST("ASTDumper.DumpTypeOfExpressionText") {
+  auto expr = ast::factory::createIdentifier("x"_zc);
+  auto node = ast::factory::createTypeOfExpression(zc::mv(expr));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("TypeOfExpression {"));
+}
+
+// Test AwaitExpression
+ZC_TEST("ASTDumper.DumpAwaitExpressionText") {
+  auto expr = ast::factory::createIdentifier("promise"_zc);
+  auto node = ast::factory::createAwaitExpression(zc::mv(expr));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("AwaitExpression {"));
+}
+
+// Test NonNullExpression
+ZC_TEST("ASTDumper.DumpNonNullExpressionText") {
+  auto expr = ast::factory::createIdentifier("value"_zc);
+  auto node = ast::factory::createNonNullExpression(zc::mv(expr));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("NonNullExpression {"));
+}
+
+// Test NewExpression
+ZC_TEST("ASTDumper.DumpNewExpressionText") {
+  auto callee = ast::factory::createIdentifier("MyClass"_zc);
+  auto node = ast::factory::createNewExpression(zc::mv(callee), zc::none, zc::none);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("NewExpression {"));
+}
+
+// Test ThisExpression
+ZC_TEST("ASTDumper.DumpThisExpressionText") {
+  auto node = ast::factory::createThisExpression();
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ThisExpression {"));
+}
+
+// Test CaptureElement
+ZC_TEST("ASTDumper.DumpCaptureElementText") {
+  auto id = ast::factory::createIdentifier("captured"_zc);
+  auto node = ast::factory::createCaptureElement(false, zc::mv(id), false);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("CaptureElement {"));
+}
+
+// Test FunctionExpression
+ZC_TEST("ASTDumper.DumpFunctionExpressionText") {
+  zc::Vector<zc::Own<ast::TypeParameterDeclaration>> typeParams;
+  zc::Vector<zc::Own<ast::ParameterDeclaration>> params;
+  zc::Vector<zc::Own<ast::CaptureElement>> captures;
+  zc::Vector<zc::Own<ast::Statement>> bodyStmts;
+  auto body = ast::factory::createBlockStatement(zc::mv(bodyStmts));
+  auto node = ast::factory::createFunctionExpression(zc::mv(typeParams), zc::mv(params),
+                                                     zc::mv(captures), zc::none, zc::mv(body));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("FunctionExpression {"));
+}
+
+// Test WildcardPattern
+ZC_TEST("ASTDumper.DumpWildcardPatternText") {
+  auto node = ast::factory::createWildcardPattern();
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("WildcardPattern {"));
+}
+
+// Test IdentifierPattern
+ZC_TEST("ASTDumper.DumpIdentifierPatternText") {
+  auto id = ast::factory::createIdentifier("x"_zc);
+  auto node = ast::factory::createIdentifierPattern(zc::mv(id));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("IdentifierPattern {"));
+}
+
+// Test TuplePattern
+ZC_TEST("ASTDumper.DumpTuplePatternText") {
+  zc::Vector<zc::Own<ast::Pattern>> elements;
+  elements.add(ast::factory::createWildcardPattern());
+  auto node = ast::factory::createTuplePattern(zc::mv(elements));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("TuplePattern {"));
+}
+
+// Test StructurePattern
+ZC_TEST("ASTDumper.DumpStructurePatternText") {
+  zc::Vector<zc::Own<ast::Pattern>> fields;
+  fields.add(ast::factory::createWildcardPattern());
+  auto node = ast::factory::createStructurePattern(zc::mv(fields));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("StructurePattern {"));
+}
+
+// Test ArrayPattern
+ZC_TEST("ASTDumper.DumpArrayPatternText") {
+  zc::Vector<zc::Own<ast::Pattern>> elements;
+  elements.add(ast::factory::createWildcardPattern());
+  auto node = ast::factory::createArrayPattern(zc::mv(elements));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("ArrayPattern {"));
+}
+
+// Test IsPattern
+ZC_TEST("ASTDumper.DumpIsPatternText") {
+  auto type = ast::factory::createPredefinedType("i32"_zc);
+  auto node = ast::factory::createIsPattern(zc::mv(type));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("IsPattern {"));
+}
+
+// Test PropertyDeclaration
+ZC_TEST("ASTDumper.DumpPropertyDeclarationText") {
+  auto name = ast::factory::createIdentifier("myProp"_zc);
+  auto node = ast::factory::createPropertyDeclaration({}, zc::mv(name), zc::none, zc::none);
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("PropertyDeclaration {"));
+  ZC_ASSERT(result.contains("myProp"));
+}
+
+// Test MethodDeclaration
+ZC_TEST("ASTDumper.DumpMethodDeclarationText") {
+  auto name = ast::factory::createIdentifier("myMethod"_zc);
+  zc::Vector<zc::Own<ast::ParameterDeclaration>> params;
+  zc::Vector<zc::Own<ast::Statement>> bodyStmts;
+  auto body = ast::factory::createBlockStatement(zc::mv(bodyStmts));
+  auto node = ast::factory::createMethodDeclaration({}, zc::mv(name), zc::none, zc::none,
+                                                    zc::mv(params), zc::none, zc::mv(body));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("MethodDeclaration {"));
+  ZC_ASSERT(result.contains("myMethod"));
+}
+
+// Test InitDeclaration
+ZC_TEST("ASTDumper.DumpInitDeclarationText") {
+  zc::Vector<zc::Own<ast::ParameterDeclaration>> params;
+  zc::Vector<zc::Own<ast::Statement>> bodyStmts;
+  auto body = ast::factory::createBlockStatement(zc::mv(bodyStmts));
+  auto node =
+      ast::factory::createInitDeclaration({}, zc::none, zc::mv(params), zc::none, zc::mv(body));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("InitDeclaration {"));
+}
+
+// Test GetAccessor
+ZC_TEST("ASTDumper.DumpGetAccessorText") {
+  auto name = ast::factory::createIdentifier("myGetter"_zc);
+  zc::Vector<zc::Own<ast::ParameterDeclaration>> params;
+  zc::Vector<zc::Own<ast::Statement>> bodyStmts;
+  auto body = ast::factory::createBlockStatement(zc::mv(bodyStmts));
+  auto node = ast::factory::createGetAccessorDeclaration({}, zc::mv(name), zc::none, zc::mv(params),
+                                                         zc::none, zc::mv(body));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("GetAccessor {"));
+  ZC_ASSERT(result.contains("myGetter"));
+}
+
+// Test SetAccessor
+ZC_TEST("ASTDumper.DumpSetAccessorText") {
+  auto name = ast::factory::createIdentifier("mySetter"_zc);
+  zc::Vector<zc::Own<ast::ParameterDeclaration>> params;
+  zc::Vector<zc::Own<ast::Statement>> bodyStmts;
+  auto body = ast::factory::createBlockStatement(zc::mv(bodyStmts));
+  auto node = ast::factory::createSetAccessorDeclaration({}, zc::mv(name), zc::none, zc::mv(params),
+                                                         zc::none, zc::mv(body));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("SetAccessor {"));
+  ZC_ASSERT(result.contains("mySetter"));
+}
+
 }  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang
