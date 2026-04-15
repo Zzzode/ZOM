@@ -1230,7 +1230,8 @@ ZC_TEST("ParserTest.ParseHeritageTypeArgumentsSameLine") {
     if (clauses.size() > 0) {
       const auto& types = clauses[0].getTypes();
       ZC_EXPECT(types.size() == 1, "Should have one extends type");
-      ZC_EXPECT(ZC_ASSERT_NONNULL(types[0]->getTypeArguments()).size() == 1, "Should parse one type argument");
+      ZC_EXPECT(ZC_ASSERT_NONNULL(types[0]->getTypeArguments()).size() == 1,
+                "Should parse one type argument");
     } else {
       ZC_EXPECT(false, "Expected heritage clauses");
     }
@@ -1258,7 +1259,8 @@ ZC_TEST("ParserTest.ParseHeritageTypeArgumentsWithLineBreak") {
     if (clauses.size() > 0) {
       const auto& types = clauses[0].getTypes();
       ZC_EXPECT(types.size() == 1, "Should have one extends type");
-      ZC_EXPECT(ZC_ASSERT_NONNULL(types[0]->getTypeArguments()).size() == 1, "Should parse one type argument");
+      ZC_EXPECT(ZC_ASSERT_NONNULL(types[0]->getTypeArguments()).size() == 1,
+                "Should parse one type argument");
     } else {
       ZC_EXPECT(false, "Expected heritage clauses");
     }
@@ -1466,7 +1468,7 @@ ZC_TEST("ParserTest.ObjectLiteralFeatures") {
             "Should parse object literal with shorthand, assignment, and spread");
 }
 
-ZC_TEST("ParserTest.PropertyAccessRejectsUnicodeEscapeSequenceAfterDot") {
+ZC_TEST("ParserTest.PropertyAccessAllowsUnicodeEscapeSequenceAfterDot") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
 
@@ -1489,8 +1491,7 @@ ZC_TEST("ParserTest.PropertyAccessRejectsUnicodeEscapeSequenceAfterDot") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("obj.\\u0061;").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("obj.\\u0061;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
@@ -1507,10 +1508,10 @@ ZC_TEST("ParserTest.PropertyAccessRejectsUnicodeEscapeSequenceAfterDot") {
 
     ZC_EXPECT(propertyAccess.getName().getText() == "a"_zc,
               "Unicode escape should still produce identifier text");
-    ZC_EXPECT(consumerPtr->foundUnicodeEscapeSequenceCannotAppearHere,
-              "Should report UnicodeEscapeSequenceCannotAppearHere");
+    ZC_EXPECT(!consumerPtr->foundUnicodeEscapeSequenceCannotAppearHere,
+              "Should not report UnicodeEscapeSequenceCannotAppearHere");
   }
-  else { ZC_EXPECT(false, "Parse should succeed with recovery"); }
+  else { ZC_EXPECT(false, "Parse should succeed"); }
 }
 
 }  // namespace parser

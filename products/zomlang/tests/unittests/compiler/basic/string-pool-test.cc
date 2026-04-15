@@ -63,8 +63,7 @@ ZC_TEST("StringPool intern variadic") {
 
 ZC_TEST("StringPool clear") {
   StringPool pool;
-  // Get the address of the first interned string
-  const char* addr1 = pool.intern("hello").cStr();
+  pool.intern("hello");
 
   pool.clear();
 
@@ -72,7 +71,6 @@ ZC_TEST("StringPool clear") {
   const char* addr2 = pool.intern("hello").cStr();
 
   // The content should be the same
-  ZC_EXPECT(strcmp(addr1, "hello") == 0);
   ZC_EXPECT(strcmp(addr2, "hello") == 0);
 
   // Since we reconstruct the arena, the addresses might be different or the same
