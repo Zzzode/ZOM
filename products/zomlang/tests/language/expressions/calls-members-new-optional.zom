@@ -1,4 +1,4 @@
-// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
 
 let x = foo<i32, str>(1, "s");
 let y = new Foo(1, 2).bar[0].baz();
