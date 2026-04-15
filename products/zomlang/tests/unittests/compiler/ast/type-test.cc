@@ -648,6 +648,556 @@ ZC_TEST("TypeTest.OptionalComplexTypes") {
   ZC_EXPECT(optionalFunctionType->getType().getKind() == SyntaxKind::FunctionTypeNode);
 }
 
+// ================================================================================
+// Additional tests for comprehensive coverage
+// ================================================================================
+
+// Test IntersectionTypeNode with three types
+ZC_TEST("TypeTest.IntersectionTypeNodeThreeTypes") {
+  zc::Vector<zc::Own<TypeNode>> types;
+  types.add(factory::createPredefinedType("i32"_zc));
+  types.add(factory::createPredefinedType("str"_zc));
+  types.add(factory::createPredefinedType("bool"_zc));
+  auto type = factory::createIntersectionType(zc::mv(types));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::IntersectionTypeNode);
+  ZC_EXPECT(type->getTypes().size() == 3);
+  ZC_EXPECT(type->getTypes()[0].getKind() == SyntaxKind::I32TypeNode);
+  ZC_EXPECT(type->getTypes()[1].getKind() == SyntaxKind::StrTypeNode);
+  ZC_EXPECT(type->getTypes()[2].getKind() == SyntaxKind::BoolTypeNode);
+}
+
+// Test IntersectionTypeNode with complex nested types
+ZC_TEST("TypeTest.IntersectionTypeNodeNestedTypes") {
+  zc::Vector<zc::Own<TypeNode>> types;
+
+  // Add an array type
+  auto elemType = factory::createPredefinedType("i32"_zc);
+  types.add(factory::createArrayType(zc::mv(elemType)));
+
+  // Add a parenthesized type
+  auto innerType = factory::createPredefinedType("str"_zc);
+  types.add(factory::createParenthesizedType(zc::mv(innerType)));
+
+  auto type = factory::createIntersectionType(zc::mv(types));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::IntersectionTypeNode);
+  ZC_EXPECT(type->getTypes().size() == 2);
+  ZC_EXPECT(type->getTypes()[0].getKind() == SyntaxKind::ArrayTypeNode);
+  ZC_EXPECT(type->getTypes()[1].getKind() == SyntaxKind::ParenthesizedTypeNode);
+}
+
+// Test ParenthesizedTypeNode with union inner type
+ZC_TEST("TypeTest.ParenthesizedTypeNodeWithUnionInner") {
+  zc::Vector<zc::Own<TypeNode>> unionTypes;
+  unionTypes.add(factory::createPredefinedType("i32"_zc));
+  unionTypes.add(factory::createPredefinedType("str"_zc));
+  auto innerUnion = factory::createUnionType(zc::mv(unionTypes));
+
+  auto type = factory::createParenthesizedType(zc::mv(innerUnion));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::ParenthesizedTypeNode);
+  ZC_EXPECT(type->getType().getKind() == SyntaxKind::UnionTypeNode);
+}
+
+// ================================================================================
+// PredefinedTypeNode getName() tests for all types
+// ================================================================================
+
+ZC_TEST("TypeTest.PredefinedTypeBool") {
+  auto type = factory::createPredefinedType("bool"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::BoolTypeNode);
+  ZC_EXPECT(type->getName() == "bool");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeI8") {
+  auto type = factory::createPredefinedType("i8"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::I8TypeNode);
+  ZC_EXPECT(type->getName() == "i8");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeI16") {
+  auto type = factory::createPredefinedType("i16"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::I16TypeNode);
+  ZC_EXPECT(type->getName() == "i16");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeI32") {
+  auto type = factory::createPredefinedType("i32"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::I32TypeNode);
+  ZC_EXPECT(type->getName() == "i32");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeI64") {
+  auto type = factory::createPredefinedType("i64"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::I64TypeNode);
+  ZC_EXPECT(type->getName() == "i64");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeU8") {
+  auto type = factory::createPredefinedType("u8"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::U8TypeNode);
+  ZC_EXPECT(type->getName() == "u8");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeU16") {
+  auto type = factory::createPredefinedType("u16"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::U16TypeNode);
+  ZC_EXPECT(type->getName() == "u16");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeU32") {
+  auto type = factory::createPredefinedType("u32"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::U32TypeNode);
+  ZC_EXPECT(type->getName() == "u32");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeU64") {
+  auto type = factory::createPredefinedType("u64"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::U64TypeNode);
+  ZC_EXPECT(type->getName() == "u64");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeF32") {
+  auto type = factory::createPredefinedType("f32"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::F32TypeNode);
+  ZC_EXPECT(type->getName() == "f32");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeF64") {
+  auto type = factory::createPredefinedType("f64"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::F64TypeNode);
+  ZC_EXPECT(type->getName() == "f64");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeStr") {
+  auto type = factory::createPredefinedType("str"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::StrTypeNode);
+  ZC_EXPECT(type->getName() == "str");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeUnit") {
+  auto type = factory::createPredefinedType("unit"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::UnitTypeNode);
+  ZC_EXPECT(type->getName() == "unit");
+}
+
+ZC_TEST("TypeTest.PredefinedTypeNull") {
+  auto type = factory::createPredefinedType("null"_zc);
+  ZC_EXPECT(type->getKind() == SyntaxKind::NullTypeNode);
+  ZC_EXPECT(type->getName() == "null");
+}
+
+// Test PredefinedTypeNode accept for BoolTypeNode
+ZC_TEST("TypeTest.PredefinedTypeBoolAccept") {
+  auto type = factory::createPredefinedType("bool"_zc);
+
+  struct TestVisitor : public BaseTestVisitor {
+    bool visited = false;
+    void visit(const BoolTypeNode& node) override { visited = true; }
+  };
+
+  TestVisitor visitor;
+  type->accept(visitor);
+  ZC_EXPECT(visitor.visited);
+}
+
+// Test PredefinedTypeNode accept for I32TypeNode
+ZC_TEST("TypeTest.PredefinedTypeI32Accept") {
+  auto type = factory::createPredefinedType("i32"_zc);
+
+  struct TestVisitor : public BaseTestVisitor {
+    bool visited = false;
+    void visit(const I32TypeNode& node) override { visited = true; }
+  };
+
+  TestVisitor visitor;
+  type->accept(visitor);
+  ZC_EXPECT(visitor.visited);
+}
+
+// Test PredefinedTypeNode accept for StrTypeNode
+ZC_TEST("TypeTest.PredefinedTypeStrAccept") {
+  auto type = factory::createPredefinedType("str"_zc);
+
+  struct TestVisitor : public BaseTestVisitor {
+    bool visited = false;
+    void visit(const StrTypeNode& node) override { visited = true; }
+  };
+
+  TestVisitor visitor;
+  type->accept(visitor);
+  ZC_EXPECT(visitor.visited);
+}
+
+// Test PredefinedTypeNode accept for F64TypeNode
+ZC_TEST("TypeTest.PredefinedTypeF64Accept") {
+  auto type = factory::createPredefinedType("f64"_zc);
+
+  struct TestVisitor : public BaseTestVisitor {
+    bool visited = false;
+    void visit(const F64TypeNode& node) override { visited = true; }
+  };
+
+  TestVisitor visitor;
+  type->accept(visitor);
+  ZC_EXPECT(visitor.visited);
+}
+
+// Test PredefinedTypeNode accept for NullTypeNode
+ZC_TEST("TypeTest.PredefinedTypeNullAccept") {
+  auto type = factory::createPredefinedType("null"_zc);
+
+  struct TestVisitor : public BaseTestVisitor {
+    bool visited = false;
+    void visit(const NullTypeNode& node) override { visited = true; }
+  };
+
+  TestVisitor visitor;
+  type->accept(visitor);
+  ZC_EXPECT(visitor.visited);
+}
+
+// ================================================================================
+// ObjectTypeNode with PropertySignature members
+// ================================================================================
+
+ZC_TEST("TypeTest.ObjectTypeNodeWithMembers") {
+  zc::Vector<zc::Own<Node>> members;
+
+  // Add a PropertySignature member: name: str
+  auto propName = factory::createIdentifier("name"_zc);
+  auto propType = factory::createPredefinedType("str"_zc);
+  auto propSig =
+      factory::createPropertySignature({}, zc::mv(propName), zc::none, zc::mv(propType), zc::none);
+  members.add(zc::mv(propSig));
+
+  // Add another PropertySignature member: age: i32
+  auto ageName = factory::createIdentifier("age"_zc);
+  auto ageType = factory::createPredefinedType("i32"_zc);
+  auto ageSig =
+      factory::createPropertySignature({}, zc::mv(ageName), zc::none, zc::mv(ageType), zc::none);
+  members.add(zc::mv(ageSig));
+
+  auto objectType = factory::createObjectType(zc::mv(members));
+
+  ZC_EXPECT(objectType->getKind() == SyntaxKind::ObjectTypeNode);
+  ZC_EXPECT(objectType->getMembers().size() == 2);
+  ZC_EXPECT(objectType->getMembers()[0].getKind() == SyntaxKind::PropertySignature);
+  ZC_EXPECT(objectType->getMembers()[1].getKind() == SyntaxKind::PropertySignature);
+}
+
+// Test ObjectTypeNode with optional property
+ZC_TEST("TypeTest.ObjectTypeNodeWithOptionalProperty") {
+  zc::Vector<zc::Own<Node>> members;
+
+  auto propName = factory::createIdentifier("value"_zc);
+  auto propType = factory::createPredefinedType("i32"_zc);
+  auto questionToken = factory::createTokenNode(SyntaxKind::Question);
+  auto propSig = factory::createPropertySignature({}, zc::mv(propName), zc::mv(questionToken),
+                                                  zc::mv(propType), zc::none);
+  members.add(zc::mv(propSig));
+
+  auto objectType = factory::createObjectType(zc::mv(members));
+
+  ZC_EXPECT(objectType->getKind() == SyntaxKind::ObjectTypeNode);
+  ZC_EXPECT(objectType->getMembers().size() == 1);
+  ZC_EXPECT(objectType->getMembers()[0].getKind() == SyntaxKind::PropertySignature);
+}
+
+// ================================================================================
+// NamedTupleElement tests
+// ================================================================================
+
+ZC_TEST("TypeTest.NamedTupleElement") {
+  auto name = factory::createIdentifier("x"_zc);
+  auto type = factory::createPredefinedType("i32"_zc);
+  auto elem = factory::createNamedTupleElement(zc::mv(name), zc::mv(type));
+
+  ZC_EXPECT(elem->getKind() == SyntaxKind::NamedTupleElement);
+  ZC_EXPECT(elem->getName().getText() == "x");
+  ZC_EXPECT(elem->getType().getKind() == SyntaxKind::I32TypeNode);
+}
+
+ZC_TEST("TypeTest.NamedTupleElementWithComplexType") {
+  auto name = factory::createIdentifier("items"_zc);
+  auto innerType = factory::createPredefinedType("str"_zc);
+  auto arrayType = factory::createArrayType(zc::mv(innerType));
+  auto elem = factory::createNamedTupleElement(zc::mv(name), zc::mv(arrayType));
+
+  ZC_EXPECT(elem->getKind() == SyntaxKind::NamedTupleElement);
+  ZC_EXPECT(elem->getName().getText() == "items");
+  ZC_EXPECT(elem->getType().getKind() == SyntaxKind::ArrayTypeNode);
+}
+
+// Test NamedTupleElement accept method
+ZC_TEST("TypeTest.NamedTupleElementAccept") {
+  auto name = factory::createIdentifier("field"_zc);
+  auto type = factory::createPredefinedType("bool"_zc);
+  auto elem = factory::createNamedTupleElement(zc::mv(name), zc::mv(type));
+
+  struct TestVisitor : public BaseTestVisitor {
+    bool visited = false;
+    void visit(const NamedTupleElement& node) override { visited = true; }
+  };
+
+  TestVisitor visitor;
+  elem->accept(visitor);
+  ZC_EXPECT(visitor.visited);
+}
+
+// ================================================================================
+// TupleTypeNode with NamedTupleElement
+// ================================================================================
+
+ZC_TEST("TypeTest.TupleTypeWithNamedElements") {
+  zc::Vector<zc::Own<TypeNode>> elementTypes;
+
+  auto elem1Name = factory::createIdentifier("x"_zc);
+  auto elem1Type = factory::createPredefinedType("i32"_zc);
+  elementTypes.add(factory::createNamedTupleElement(zc::mv(elem1Name), zc::mv(elem1Type)));
+
+  auto elem2Name = factory::createIdentifier("y"_zc);
+  auto elem2Type = factory::createPredefinedType("str"_zc);
+  elementTypes.add(factory::createNamedTupleElement(zc::mv(elem2Name), zc::mv(elem2Type)));
+
+  auto tupleType = factory::createTupleType(zc::mv(elementTypes));
+
+  ZC_EXPECT(tupleType->getKind() == SyntaxKind::TupleTypeNode);
+  ZC_EXPECT(tupleType->getElementTypes().size() == 2);
+  ZC_EXPECT(tupleType->getElementTypes()[0].getKind() == SyntaxKind::NamedTupleElement);
+  ZC_EXPECT(tupleType->getElementTypes()[1].getKind() == SyntaxKind::NamedTupleElement);
+}
+
+// ================================================================================
+// ReturnTypeNode additional tests
+// ================================================================================
+
+// Test ReturnTypeNode with complex return type (union)
+ZC_TEST("TypeTest.ReturnTypeNodeWithUnionType") {
+  zc::Vector<zc::Own<TypeNode>> unionTypes;
+  unionTypes.add(factory::createPredefinedType("i32"_zc));
+  unionTypes.add(factory::createPredefinedType("null"_zc));
+  auto unionType = factory::createUnionType(zc::mv(unionTypes));
+
+  auto returnType = factory::createReturnType(zc::mv(unionType), zc::none);
+
+  ZC_EXPECT(returnType->getKind() == SyntaxKind::ReturnTypeNode);
+  ZC_EXPECT(returnType->getType().getKind() == SyntaxKind::UnionTypeNode);
+  ZC_EXPECT(returnType->getErrorType() == zc::none);
+}
+
+// Test ReturnTypeNode with predefined error type
+ZC_TEST("TypeTest.ReturnTypeNodeWithPredefinedErrorType") {
+  auto errorType = factory::createPredefinedType("str"_zc);
+  auto returnType =
+      factory::createReturnType(factory::createPredefinedType("bool"_zc), zc::mv(errorType));
+
+  ZC_EXPECT(returnType->getKind() == SyntaxKind::ReturnTypeNode);
+  ZC_EXPECT(returnType->getType().getKind() == SyntaxKind::BoolTypeNode);
+  ZC_IF_SOME(err, returnType->getErrorType()) {
+    ZC_EXPECT(err.getKind() == SyntaxKind::StrTypeNode);
+  }
+  else { ZC_FAIL_EXPECT("Expected error type to be present"); }
+}
+
+// ================================================================================
+// FunctionTypeNode additional tests
+// ================================================================================
+
+// Test FunctionTypeNode with type parameters
+ZC_TEST("TypeTest.FunctionTypeWithTypeParameters") {
+  zc::Vector<zc::Own<TypeParameterDeclaration>> typeParams;
+  auto tpName1 = factory::createIdentifier("T"_zc);
+  typeParams.add(factory::createTypeParameterDeclaration(zc::mv(tpName1), zc::none));
+
+  auto tpName2 = factory::createIdentifier("U"_zc);
+  typeParams.add(factory::createTypeParameterDeclaration(zc::mv(tpName2), zc::none));
+
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
+
+  auto returnType = factory::createReturnType(factory::createPredefinedType("unit"_zc), zc::none);
+  auto type = factory::createFunctionType(zc::mv(typeParams), zc::mv(params), zc::mv(returnType));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::FunctionTypeNode);
+  ZC_EXPECT(type->getParameters().size() == 0);
+  ZC_ASSERT(ZC_ASSERT_NONNULL(type->getTypeParameters()).size() == 2);
+  ZC_EXPECT(type->getReturnType().getType().getKind() == SyntaxKind::UnitTypeNode);
+}
+
+// Test FunctionTypeNode with multiple parameters
+ZC_TEST("TypeTest.FunctionTypeWithMultipleParameters") {
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
+
+  auto param1 =
+      factory::createParameterDeclaration({}, zc::none, factory::createIdentifier("a"_zc), zc::none,
+                                          factory::createPredefinedType("i32"_zc), zc::none);
+  params.add(zc::mv(param1));
+
+  auto param2 =
+      factory::createParameterDeclaration({}, zc::none, factory::createIdentifier("b"_zc), zc::none,
+                                          factory::createPredefinedType("str"_zc), zc::none);
+  params.add(zc::mv(param2));
+
+  auto param3 =
+      factory::createParameterDeclaration({}, zc::none, factory::createIdentifier("c"_zc), zc::none,
+                                          factory::createPredefinedType("bool"_zc), zc::none);
+  params.add(zc::mv(param3));
+
+  auto returnType = factory::createReturnType(factory::createPredefinedType("f64"_zc), zc::none);
+  auto type = factory::createFunctionType(zc::none, zc::mv(params), zc::mv(returnType));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::FunctionTypeNode);
+  ZC_EXPECT(type->getParameters().size() == 3);
+  ZC_EXPECT(type->getTypeParameters() == zc::none);
+  ZC_EXPECT(type->getReturnType().getType().getKind() == SyntaxKind::F64TypeNode);
+}
+
+// Test FunctionTypeNode with error return type
+ZC_TEST("TypeTest.FunctionTypeWithErrorReturnType") {
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
+
+  auto returnType = factory::createReturnType(factory::createPredefinedType("i32"_zc),
+                                              factory::createPredefinedType("str"_zc));
+  auto type = factory::createFunctionType(zc::none, zc::mv(params), zc::mv(returnType));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::FunctionTypeNode);
+  ZC_EXPECT(type->getReturnType().getType().getKind() == SyntaxKind::I32TypeNode);
+  ZC_IF_SOME(err, type->getReturnType().getErrorType()) {
+    ZC_EXPECT(err.getKind() == SyntaxKind::StrTypeNode);
+  }
+  else { ZC_FAIL_EXPECT("Expected error type in return type"); }
+}
+
+// ================================================================================
+// OptionalTypeNode additional tests
+// ================================================================================
+
+// Test OptionalTypeNode with predefined type
+ZC_TEST("TypeTest.OptionalTypeWithPredefinedType") {
+  auto baseType = factory::createPredefinedType("str"_zc);
+  auto type = factory::createOptionalType(zc::mv(baseType));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::OptionalTypeNode);
+  ZC_EXPECT(type->getType().getKind() == SyntaxKind::StrTypeNode);
+}
+
+// Test OptionalTypeNode with union type
+ZC_TEST("TypeTest.OptionalTypeWithUnionType") {
+  zc::Vector<zc::Own<TypeNode>> unionTypes;
+  unionTypes.add(factory::createPredefinedType("i32"_zc));
+  unionTypes.add(factory::createPredefinedType("str"_zc));
+  auto unionType = factory::createUnionType(zc::mv(unionTypes));
+
+  auto optionalType = factory::createOptionalType(zc::mv(unionType));
+
+  ZC_EXPECT(optionalType->getKind() == SyntaxKind::OptionalTypeNode);
+  ZC_EXPECT(optionalType->getType().getKind() == SyntaxKind::UnionTypeNode);
+}
+
+// Test nested optional type
+ZC_TEST("TypeTest.NestedOptionalType") {
+  auto innerBase = factory::createPredefinedType("i32"_zc);
+  auto innerOptional = factory::createOptionalType(zc::mv(innerBase));
+  auto outerOptional = factory::createOptionalType(zc::mv(innerOptional));
+
+  ZC_EXPECT(outerOptional->getKind() == SyntaxKind::OptionalTypeNode);
+  ZC_EXPECT(outerOptional->getType().getKind() == SyntaxKind::OptionalTypeNode);
+}
+
+// ================================================================================
+// TypeQueryNode additional tests
+// ================================================================================
+
+// Test TypeQueryNode with property access expression
+ZC_TEST("TypeTest.TypeQueryWithPropertyAccess") {
+  auto obj = factory::createIdentifier("obj"_zc);
+  auto prop = factory::createIdentifier("field"_zc);
+  auto expr = factory::createPropertyAccessExpression(zc::mv(obj), zc::mv(prop));
+  auto type = factory::createTypeQuery(zc::mv(expr));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::TypeQueryNode);
+  ZC_EXPECT(type->getExpression().getKind() == SyntaxKind::PropertyAccessExpression);
+}
+
+// ================================================================================
+// IntersectionTypeNode accept with concrete type verification
+// ================================================================================
+
+// Test that each intersection member can be cast to its concrete type
+ZC_TEST("TypeTest.IntersectionTypeNodeMemberCasting") {
+  zc::Vector<zc::Own<TypeNode>> types;
+  types.add(factory::createPredefinedType("i32"_zc));
+  types.add(factory::createTypeReference(factory::createIdentifier("Serializable"_zc), zc::none));
+  auto type = factory::createIntersectionType(zc::mv(types));
+
+  ZC_EXPECT(type->getTypes().size() == 2);
+
+  // Verify first member can be cast to PredefinedTypeNode
+  const auto& first = type->getTypes()[0];
+  ZC_EXPECT(first.getKind() == SyntaxKind::I32TypeNode);
+
+  // Verify second member is a TypeReferenceNode
+  const auto& second = type->getTypes()[1];
+  ZC_EXPECT(second.getKind() == SyntaxKind::TypeReferenceNode);
+}
+
+// ================================================================================
+// TupleTypeNode with mixed element types
+// ================================================================================
+
+ZC_TEST("TypeTest.TupleTypeNodeMixedElements") {
+  zc::Vector<zc::Own<TypeNode>> elementTypes;
+  elementTypes.add(factory::createPredefinedType("i32"_zc));
+  elementTypes.add(factory::createPredefinedType("str"_zc));
+  elementTypes.add(factory::createPredefinedType("bool"_zc));
+  elementTypes.add(factory::createPredefinedType("f64"_zc));
+
+  auto type = factory::createTupleType(zc::mv(elementTypes));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::TupleTypeNode);
+  ZC_EXPECT(type->getElementTypes().size() == 4);
+  ZC_EXPECT(type->getElementTypes()[0].getKind() == SyntaxKind::I32TypeNode);
+  ZC_EXPECT(type->getElementTypes()[1].getKind() == SyntaxKind::StrTypeNode);
+  ZC_EXPECT(type->getElementTypes()[2].getKind() == SyntaxKind::BoolTypeNode);
+  ZC_EXPECT(type->getElementTypes()[3].getKind() == SyntaxKind::F64TypeNode);
+}
+
+// ================================================================================
+// ParenthesizedTypeNode with nested parenthesized type
+// ================================================================================
+
+ZC_TEST("TypeTest.NestedParenthesizedType") {
+  auto innermost = factory::createPredefinedType("i32"_zc);
+  auto inner = factory::createParenthesizedType(zc::mv(innermost));
+  auto outer = factory::createParenthesizedType(zc::mv(inner));
+
+  ZC_EXPECT(outer->getKind() == SyntaxKind::ParenthesizedTypeNode);
+  ZC_EXPECT(outer->getType().getKind() == SyntaxKind::ParenthesizedTypeNode);
+
+  // Verify the innermost type through casting
+  const auto& innerType = ast::cast<ParenthesizedTypeNode>(outer->getType());
+  ZC_EXPECT(innerType.getType().getKind() == SyntaxKind::I32TypeNode);
+}
+
+// ================================================================================
+// UnionTypeNode accept with all unique type members
+// ================================================================================
+
+ZC_TEST("TypeTest.UnionTypeNodeAllPredefinedTypes") {
+  zc::Vector<zc::Own<TypeNode>> types;
+  types.add(factory::createPredefinedType("i32"_zc));
+  types.add(factory::createPredefinedType("str"_zc));
+  types.add(factory::createPredefinedType("bool"_zc));
+  types.add(factory::createPredefinedType("f64"_zc));
+  types.add(factory::createPredefinedType("unit"_zc));
+
+  auto type = factory::createUnionType(zc::mv(types));
+
+  ZC_EXPECT(type->getKind() == SyntaxKind::UnionTypeNode);
+  ZC_EXPECT(type->getTypes().size() == 5);
+}
+
 }  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang
