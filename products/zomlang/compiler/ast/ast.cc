@@ -83,7 +83,6 @@ SyntaxKind TokenNode::getKind() const { return impl->getKind(); }
 NodeFlags TokenNode::getFlags() const { return impl->getFlags(); }
 void TokenNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
 
-
 void TokenNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================

@@ -72,8 +72,9 @@ const source::SourceRange& TypeReferenceNode::getSourceRange() const {
 SyntaxKind TypeReferenceNode::getKind() const { return impl->getKind(); }
 
 NodeFlags TypeReferenceNode::getFlags() const { return impl->getFlags(); }
-void TypeReferenceNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
+void TypeReferenceNode::setFlags(NodeFlags flags) {
+  const_cast<Impl*>(impl.get())->setFlags(flags);
+}
 
 void TypeReferenceNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -102,7 +103,6 @@ SyntaxKind ArrayTypeNode::getKind() const { return impl->getKind(); }
 
 NodeFlags ArrayTypeNode::getFlags() const { return impl->getFlags(); }
 void ArrayTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
 
 void ArrayTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -138,7 +138,6 @@ SyntaxKind UnionTypeNode::getKind() const { return impl->getKind(); }
 NodeFlags UnionTypeNode::getFlags() const { return impl->getFlags(); }
 void UnionTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
 
-
 void UnionTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
 }
@@ -171,8 +170,9 @@ const NodeList<TypeNode>& IntersectionTypeNode::getTypes() const { return impl->
 SyntaxKind IntersectionTypeNode::getKind() const { return impl->getKind(); }
 
 NodeFlags IntersectionTypeNode::getFlags() const { return impl->getFlags(); }
-void IntersectionTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
+void IntersectionTypeNode::setFlags(NodeFlags flags) {
+  const_cast<Impl*>(impl.get())->setFlags(flags);
+}
 
 void IntersectionTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -208,8 +208,9 @@ const TypeNode& ParenthesizedTypeNode::getType() const { return *impl->type; }
 SyntaxKind ParenthesizedTypeNode::getKind() const { return impl->getKind(); }
 
 NodeFlags ParenthesizedTypeNode::getFlags() const { return impl->getFlags(); }
-void ParenthesizedTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
+void ParenthesizedTypeNode::setFlags(NodeFlags flags) {
+  const_cast<Impl*>(impl.get())->setFlags(flags);
+}
 
 void ParenthesizedTypeNode::setSourceRange(const source::SourceRange&& range) {
   impl->setSourceRange(zc::mv(range));
@@ -228,7 +229,7 @@ zc::StringPtr BoolTypeNode::getName() const { return "bool"_zc; }
 SyntaxKind BoolTypeNode::getKind() const { return SyntaxKind::BoolTypeNode; }
 
 NodeFlags BoolTypeNode::getFlags() const { return NodeFlags::None; }
-void BoolTypeNode::setFlags(NodeFlags flags) { }
+void BoolTypeNode::setFlags(NodeFlags flags) {}
 
 void BoolTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void BoolTypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -245,7 +246,7 @@ zc::StringPtr I8TypeNode::getName() const { return "i8"_zc; }
 SyntaxKind I8TypeNode::getKind() const { return SyntaxKind::I8TypeNode; }
 
 NodeFlags I8TypeNode::getFlags() const { return NodeFlags::None; }
-void I8TypeNode::setFlags(NodeFlags flags) { }
+void I8TypeNode::setFlags(NodeFlags flags) {}
 
 void I8TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void I8TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -262,7 +263,7 @@ zc::StringPtr I16TypeNode::getName() const { return "i16"_zc; }
 SyntaxKind I16TypeNode::getKind() const { return SyntaxKind::I16TypeNode; }
 
 NodeFlags I16TypeNode::getFlags() const { return NodeFlags::None; }
-void I16TypeNode::setFlags(NodeFlags flags) { }
+void I16TypeNode::setFlags(NodeFlags flags) {}
 
 void I16TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void I16TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -279,7 +280,7 @@ zc::StringPtr I32TypeNode::getName() const { return "i32"_zc; }
 SyntaxKind I32TypeNode::getKind() const { return SyntaxKind::I32TypeNode; }
 
 NodeFlags I32TypeNode::getFlags() const { return NodeFlags::None; }
-void I32TypeNode::setFlags(NodeFlags flags) { }
+void I32TypeNode::setFlags(NodeFlags flags) {}
 
 void I32TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void I32TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -296,7 +297,7 @@ zc::StringPtr I64TypeNode::getName() const { return "i64"_zc; }
 SyntaxKind I64TypeNode::getKind() const { return SyntaxKind::I64TypeNode; }
 
 NodeFlags I64TypeNode::getFlags() const { return NodeFlags::None; }
-void I64TypeNode::setFlags(NodeFlags flags) { }
+void I64TypeNode::setFlags(NodeFlags flags) {}
 
 void I64TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void I64TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -313,7 +314,7 @@ zc::StringPtr U8TypeNode::getName() const { return "u8"_zc; }
 SyntaxKind U8TypeNode::getKind() const { return SyntaxKind::U8TypeNode; }
 
 NodeFlags U8TypeNode::getFlags() const { return NodeFlags::None; }
-void U8TypeNode::setFlags(NodeFlags flags) { }
+void U8TypeNode::setFlags(NodeFlags flags) {}
 
 void U8TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void U8TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -330,7 +331,7 @@ zc::StringPtr U16TypeNode::getName() const { return "u16"_zc; }
 SyntaxKind U16TypeNode::getKind() const { return SyntaxKind::U16TypeNode; }
 
 NodeFlags U16TypeNode::getFlags() const { return NodeFlags::None; }
-void U16TypeNode::setFlags(NodeFlags flags) { }
+void U16TypeNode::setFlags(NodeFlags flags) {}
 
 void U16TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void U16TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -347,7 +348,7 @@ zc::StringPtr U32TypeNode::getName() const { return "u32"_zc; }
 SyntaxKind U32TypeNode::getKind() const { return SyntaxKind::U32TypeNode; }
 
 NodeFlags U32TypeNode::getFlags() const { return NodeFlags::None; }
-void U32TypeNode::setFlags(NodeFlags flags) { }
+void U32TypeNode::setFlags(NodeFlags flags) {}
 
 void U32TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void U32TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -364,7 +365,7 @@ zc::StringPtr U64TypeNode::getName() const { return "u64"_zc; }
 SyntaxKind U64TypeNode::getKind() const { return SyntaxKind::U64TypeNode; }
 
 NodeFlags U64TypeNode::getFlags() const { return NodeFlags::None; }
-void U64TypeNode::setFlags(NodeFlags flags) { }
+void U64TypeNode::setFlags(NodeFlags flags) {}
 
 void U64TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void U64TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -381,7 +382,7 @@ zc::StringPtr F32TypeNode::getName() const { return "f32"_zc; }
 SyntaxKind F32TypeNode::getKind() const { return SyntaxKind::F32TypeNode; }
 
 NodeFlags F32TypeNode::getFlags() const { return NodeFlags::None; }
-void F32TypeNode::setFlags(NodeFlags flags) { }
+void F32TypeNode::setFlags(NodeFlags flags) {}
 
 void F32TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void F32TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -398,7 +399,7 @@ zc::StringPtr F64TypeNode::getName() const { return "f64"_zc; }
 SyntaxKind F64TypeNode::getKind() const { return SyntaxKind::F64TypeNode; }
 
 NodeFlags F64TypeNode::getFlags() const { return NodeFlags::None; }
-void F64TypeNode::setFlags(NodeFlags flags) { }
+void F64TypeNode::setFlags(NodeFlags flags) {}
 
 void F64TypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void F64TypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -415,7 +416,7 @@ zc::StringPtr StrTypeNode::getName() const { return "str"_zc; }
 SyntaxKind StrTypeNode::getKind() const { return SyntaxKind::StrTypeNode; }
 
 NodeFlags StrTypeNode::getFlags() const { return NodeFlags::None; }
-void StrTypeNode::setFlags(NodeFlags flags) { }
+void StrTypeNode::setFlags(NodeFlags flags) {}
 
 void StrTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void StrTypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -432,7 +433,7 @@ zc::StringPtr UnitTypeNode::getName() const { return "unit"_zc; }
 SyntaxKind UnitTypeNode::getKind() const { return SyntaxKind::UnitTypeNode; }
 
 NodeFlags UnitTypeNode::getFlags() const { return NodeFlags::None; }
-void UnitTypeNode::setFlags(NodeFlags flags) { }
+void UnitTypeNode::setFlags(NodeFlags flags) {}
 
 void UnitTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void UnitTypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -449,7 +450,7 @@ zc::StringPtr NullTypeNode::getName() const { return "null"_zc; }
 SyntaxKind NullTypeNode::getKind() const { return SyntaxKind::NullTypeNode; }
 
 NodeFlags NullTypeNode::getFlags() const { return NodeFlags::None; }
-void NullTypeNode::setFlags(NodeFlags flags) { }
+void NullTypeNode::setFlags(NodeFlags flags) {}
 
 void NullTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 void NullTypeNode::setSourceRange(const source::SourceRange&& range) {
@@ -477,8 +478,7 @@ const NodeList<Node>& ObjectTypeNode::getMembers() const { return impl->members;
 SyntaxKind ObjectTypeNode::getKind() const { return SyntaxKind::ObjectTypeNode; }
 
 NodeFlags ObjectTypeNode::getFlags() const { return NodeFlags::None; }
-void ObjectTypeNode::setFlags(NodeFlags flags) { }
-
+void ObjectTypeNode::setFlags(NodeFlags flags) {}
 
 void ObjectTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -518,8 +518,9 @@ const TypeNode& NamedTupleElement::getType() const { return *impl->type; }
 SyntaxKind NamedTupleElement::getKind() const { return impl->getKind(); }
 
 NodeFlags NamedTupleElement::getFlags() const { return impl->getFlags(); }
-void NamedTupleElement::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
+void NamedTupleElement::setFlags(NodeFlags flags) {
+  const_cast<Impl*>(impl.get())->setFlags(flags);
+}
 
 void NamedTupleElement::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -556,7 +557,6 @@ SyntaxKind TupleTypeNode::getKind() const { return impl->getKind(); }
 
 NodeFlags TupleTypeNode::getFlags() const { return impl->getFlags(); }
 void TupleTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
 
 void TupleTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -601,7 +601,6 @@ SyntaxKind ReturnTypeNode::getKind() const { return impl->getKind(); }
 
 NodeFlags ReturnTypeNode::getFlags() const { return impl->getFlags(); }
 void ReturnTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
 
 void ReturnTypeNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -650,7 +649,6 @@ SyntaxKind FunctionTypeNode::getKind() const { return impl->getKind(); }
 NodeFlags FunctionTypeNode::getFlags() const { return impl->getFlags(); }
 void FunctionTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
 
-
 void FunctionTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
 }
@@ -686,7 +684,6 @@ SyntaxKind OptionalTypeNode::getKind() const { return impl->getKind(); }
 
 NodeFlags OptionalTypeNode::getFlags() const { return impl->getFlags(); }
 void OptionalTypeNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
 
 void OptionalTypeNode::setSourceRange(const source::SourceRange&& range) {
   const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
@@ -729,7 +726,6 @@ SyntaxKind TypeQueryNode::getKind() const { return impl->getKind(); }
 
 NodeFlags TypeQueryNode::getFlags() const { return impl->getFlags(); }
 void TypeQueryNode::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
 
 void TypeQueryNode::accept(Visitor& visitor) const { visitor.visit(*this); }
 
@@ -781,8 +777,9 @@ const source::SourceRange& TypeParameterDeclaration::getSourceRange() const {
 SyntaxKind TypeParameterDeclaration::getKind() const { return impl->getKind(); }
 
 NodeFlags TypeParameterDeclaration::getFlags() const { return impl->getFlags(); }
-void TypeParameterDeclaration::setFlags(NodeFlags flags) { const_cast<Impl*>(impl.get())->setFlags(flags); }
-
+void TypeParameterDeclaration::setFlags(NodeFlags flags) {
+  const_cast<Impl*>(impl.get())->setFlags(flags);
+}
 
 void TypeParameterDeclaration::accept(Visitor& visitor) const { visitor.visit(*this); }
 
