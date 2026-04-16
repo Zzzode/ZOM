@@ -1389,6 +1389,81 @@ ZC_TEST("ExpressionTest.NodeFlagsRoundTrip") {
   expectMutableFlagsRoundTrip(*spreadAssignment);
 }
 
+// ================================================================================
+// NonNullExpression Tests
+
+ZC_TEST("ExpressionTest.NonNullExpression") {
+  auto expr = factory::createIdentifier("maybe"_zc);
+  auto nonNull = factory::createNonNullExpression(zc::mv(expr));
+
+  ZC_EXPECT(nonNull->getKind() == SyntaxKind::NonNullExpression);
+  ZC_EXPECT(nonNull->getExpression().getKind() == SyntaxKind::Identifier);
+}
+
+ZC_TEST("ExpressionTest.NonNullExpressionWithComplexExpression") {
+  auto access = factory::createPropertyAccessExpression(
+      factory::createIdentifier("obj"_zc), factory::createIdentifier("field"_zc), false);
+  auto nonNull = factory::createNonNullExpression(zc::mv(access));
+
+  ZC_EXPECT(nonNull->getKind() == SyntaxKind::NonNullExpression);
+  ZC_EXPECT(nonNull->getExpression().getKind() == SyntaxKind::PropertyAccessExpression);
+}
+
+// ================================================================================
+// Optional Chaining Tests
+
+ZC_TEST("ExpressionTest.PropertyAccessExpressionOptionalChaining") {
+  auto expr = factory::createPropertyAccessExpression(factory::createIdentifier("obj"_zc),
+                                                      factory::createIdentifier("field"_zc), true);
+
+  ZC_EXPECT(expr->getKind() == SyntaxKind::PropertyAccessExpression);
+  ZC_EXPECT(expr->isQuestionDot());
+}
+
+ZC_TEST("ExpressionTest.PropertyAccessExpressionNoOptionalChaining") {
+  auto expr = factory::createPropertyAccessExpression(factory::createIdentifier("obj"_zc),
+                                                      factory::createIdentifier("field"_zc), false);
+
+  ZC_EXPECT(expr->getKind() == SyntaxKind::PropertyAccessExpression);
+  ZC_EXPECT(!expr->isQuestionDot());
+}
+
+ZC_TEST("ExpressionTest.PropertyAccessExpressionGetters") {
+  auto obj = factory::createIdentifier("myObject"_zc);
+  auto prop = factory::createIdentifier("property"_zc);
+  auto expr = factory::createPropertyAccessExpression(zc::mv(obj), zc::mv(prop), false);
+
+  ZC_EXPECT(expr->getExpression().getKind() == SyntaxKind::Identifier);
+  ZC_EXPECT(expr->getName().getText() == "property");
+}
+
+ZC_TEST("ExpressionTest.ElementAccessExpressionOptionalChaining") {
+  auto obj = factory::createIdentifier("array"_zc);
+  auto index = factory::createIntegerLiteral(0);
+  auto expr = factory::createElementAccessExpression(zc::mv(obj), zc::mv(index), true);
+
+  ZC_EXPECT(expr->getKind() == SyntaxKind::ElementAccessExpression);
+  ZC_EXPECT(expr->isQuestionDot());
+}
+
+ZC_TEST("ExpressionTest.CallExpressionOptionalChaining") {
+  auto callee = factory::createIdentifier("callback"_zc);
+  zc::Vector<zc::Own<Expression>> args;
+  auto expr = factory::createCallExpression(
+      zc::mv(callee), factory::createTokenNode(SyntaxKind::Question), zc::none, zc::mv(args), true);
+
+  ZC_EXPECT(expr->getKind() == SyntaxKind::CallExpression);
+}
+
+ZC_TEST("ExpressionTest.CallExpressionNoOptionalChaining") {
+  auto callee = factory::createIdentifier("function"_zc);
+  zc::Vector<zc::Own<Expression>> args;
+  auto expr =
+      factory::createCallExpression(zc::mv(callee), zc::none, zc::none, zc::mv(args), false);
+
+  ZC_EXPECT(expr->getKind() == SyntaxKind::CallExpression);
+}
+
 }  // namespace ast
 }  // namespace compiler
 }  // namespace zomlang

@@ -457,31 +457,9 @@ private:
 
   zc::Own<ast::Expression> parseUnaryExpressionOrHigher();
 
-  // Conditional & Logical
+  // Conditional
   zc::Own<ast::Expression> parseConditionalExpressionRest(zc::Own<ast::Expression> leftOperand,
                                                           source::SourceLoc loc);
-  zc::Own<ast::Expression> parseShortCircuitExpression();
-  zc::Own<ast::Expression> parseLogicalOrExpression();
-  zc::Own<ast::Expression> parseLogicalAndExpression();
-  zc::Own<ast::Expression> parseCoalesceExpression();
-
-  // Bitwise
-  zc::Own<ast::Expression> parseBitwiseOrExpression();
-  zc::Own<ast::Expression> parseBitwiseXorExpression();
-  zc::Own<ast::Expression> parseBitwiseAndExpression();
-
-  // Equality & Relational
-  zc::Own<ast::Expression> parseEqualityExpression();
-  zc::Own<ast::Expression> parseRelationalExpression();
-
-  // Arithmetic
-  zc::Own<ast::Expression> parseShiftExpression();
-  zc::Own<ast::Expression> parseAdditiveExpression();
-  zc::Own<ast::Expression> parseMultiplicativeExpression();
-  zc::Own<ast::Expression> parseExponentiationExpression();
-
-  // Unary & Cast
-  zc::Own<ast::Expression> parseCastExpression();
   zc::Maybe<zc::Own<ast::Expression>> parseUnaryExpression();
   zc::Own<ast::UnaryExpression> parseSimpleUnaryExpression();
   zc::Own<ast::UnaryExpression> parsePrefixUnaryExpression();
@@ -531,7 +509,6 @@ private:
 
   zc::Own<ast::FunctionExpression> parseFunctionExpression();
   zc::Maybe<zc::Own<ast::Identifier>> parseIdentifierExpression();
-  zc::Own<ast::Expression> parseErrorDefaultExpression();
 
   // --- Types ---
   zc::Maybe<zc::Own<ast::TypeNode>> parseType();
