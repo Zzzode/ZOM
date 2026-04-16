@@ -25,6 +25,18 @@ namespace zomlang {
 namespace compiler {
 namespace ast {
 
+static void expectMutableFlagsRoundTrip(Node& node) {
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+  node.setFlags(NodeFlags::OptionalChain);
+  ZC_EXPECT(hasFlag(node.getFlags(), NodeFlags::OptionalChain));
+}
+
+static void expectNoOpFlags(Node& node) {
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+  node.setFlags(NodeFlags::OptionalChain);
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+}
+
 // Base test visitor that implements all required methods
 struct BaseTestVisitor : public Visitor {
   void visit(const Node& node) override {}
@@ -1196,6 +1208,80 @@ ZC_TEST("TypeTest.UnionTypeNodeAllPredefinedTypes") {
 
   ZC_EXPECT(type->getKind() == SyntaxKind::UnionTypeNode);
   ZC_EXPECT(type->getTypes().size() == 5);
+}
+
+ZC_TEST("TypeTest.TypeNodeFlagsRoundTrip") {
+  auto typeReference =
+      factory::createTypeReference(factory::createIdentifier("Vector"_zc), zc::none);
+  expectMutableFlagsRoundTrip(*typeReference);
+
+  auto arrayType = factory::createArrayType(factory::createPredefinedType("i32"_zc));
+  expectMutableFlagsRoundTrip(*arrayType);
+
+  zc::Vector<zc::Own<TypeNode>> unionTypes;
+  unionTypes.add(factory::createPredefinedType("i32"_zc));
+  unionTypes.add(factory::createPredefinedType("str"_zc));
+  auto unionType = factory::createUnionType(zc::mv(unionTypes));
+  expectMutableFlagsRoundTrip(*unionType);
+
+  zc::Vector<zc::Own<TypeNode>> intersectionTypes;
+  intersectionTypes.add(factory::createPredefinedType("bool"_zc));
+  intersectionTypes.add(factory::createPredefinedType("str"_zc));
+  auto intersectionType = factory::createIntersectionType(zc::mv(intersectionTypes));
+  expectMutableFlagsRoundTrip(*intersectionType);
+
+  auto parenthesizedType =
+      factory::createParenthesizedType(factory::createPredefinedType("u32"_zc));
+  expectMutableFlagsRoundTrip(*parenthesizedType);
+
+  auto objectType = factory::createObjectType(zc::Vector<zc::Own<Node>>());
+  expectNoOpFlags(*objectType);
+
+  auto namedTupleElement = factory::createNamedTupleElement(
+      factory::createIdentifier("field"_zc), factory::createPredefinedType("str"_zc));
+  expectMutableFlagsRoundTrip(*namedTupleElement);
+
+  zc::Vector<zc::Own<TypeNode>> tupleElements;
+  tupleElements.add(factory::createPredefinedType("i32"_zc));
+  tupleElements.add(factory::createPredefinedType("bool"_zc));
+  auto tupleType = factory::createTupleType(zc::mv(tupleElements));
+  expectMutableFlagsRoundTrip(*tupleType);
+
+  auto returnType = factory::createReturnType(factory::createPredefinedType("unit"_zc), zc::none);
+  expectMutableFlagsRoundTrip(*returnType);
+
+  auto functionReturnType =
+      factory::createReturnType(factory::createPredefinedType("i32"_zc), zc::none);
+  auto functionType = factory::createFunctionType(
+      zc::none, zc::Vector<zc::Own<ParameterDeclaration>>(), zc::mv(functionReturnType));
+  expectMutableFlagsRoundTrip(*functionType);
+
+  auto optionalType = factory::createOptionalType(factory::createPredefinedType("i64"_zc));
+  expectMutableFlagsRoundTrip(*optionalType);
+
+  auto typeQuery = factory::createTypeQuery(factory::createIdentifier("value"_zc));
+  expectMutableFlagsRoundTrip(*typeQuery);
+
+  auto typeParameter = factory::createTypeParameterDeclaration(
+      factory::createIdentifier("T"_zc), factory::createPredefinedType("i32"_zc));
+  expectMutableFlagsRoundTrip(*typeParameter);
+}
+
+ZC_TEST("TypeTest.PredefinedTypeFlagsRemainNone") {
+  expectNoOpFlags(*factory::createPredefinedType("bool"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("i8"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("i16"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("i32"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("i64"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("u8"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("u16"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("u32"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("u64"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("f32"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("f64"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("str"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("unit"_zc));
+  expectNoOpFlags(*factory::createPredefinedType("null"_zc));
 }
 
 }  // namespace ast

@@ -1,13 +1,44 @@
 #include "zomlang/compiler/ast/module.h"
 
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/expression.h"
 #include "zomlang/compiler/ast/factory.h"
 #include "zomlang/compiler/ast/type.h"
+#include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
+
+namespace {
+
+source::SourceRange makeTestSourceRange(unsigned start, unsigned end) {
+  static const char kText[] = "module-range";
+  auto bytes = reinterpret_cast<const zc::byte*>(kText);
+  return source::SourceRange(source::SourceLoc(bytes + start), source::SourceLoc(bytes + end));
+}
+
+void expectMutableFlagsRoundTrip(Node& node) {
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+  node.setFlags(NodeFlags::OptionalChain);
+  ZC_EXPECT(hasFlag(node.getFlags(), NodeFlags::OptionalChain));
+}
+
+void expectNoOpFlags(Node& node) {
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+  node.setFlags(NodeFlags::OptionalChain);
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+}
+
+void expectSourceRangeRoundTrip(Node& node, const source::SourceRange& range) {
+  node.setSourceRange(source::SourceRange(range.getStart(), range.getEnd()));
+  const auto& actual = node.getSourceRange();
+  ZC_EXPECT(actual.getStart() == range.getStart());
+  ZC_EXPECT(actual.getEnd() == range.getEnd());
+}
+
+}  // namespace
 
 // ================================================================================
 // SourceFile Tests
@@ -459,6 +490,59 @@ ZC_TEST("ModuleTest: ExportDeclarationKind") {
 
   ZC_EXPECT(exportDecl->getKind() == SyntaxKind::ExportDeclaration,
             "ExportDeclaration should have correct kind");
+}
+
+ZC_TEST("ModuleTest: NodeFlagsAndSourceRanges") {
+  using namespace zomlang::compiler::ast::factory;
+
+  auto sourceFile =
+      createSourceFile(zc::str("flags.zom"), zc::none, zc::Vector<zc::Own<Statement>>());
+  expectNoOpFlags(*sourceFile);
+  expectSourceRangeRoundTrip(*sourceFile, makeTestSourceRange(0, 3));
+
+  zc::Vector<zc::Own<Identifier>> pathSegments;
+  pathSegments.add(createIdentifier("pkg"_zc));
+  pathSegments.add(createIdentifier("core"_zc));
+  auto modulePath = createModulePath(zc::mv(pathSegments));
+  expectNoOpFlags(*modulePath);
+  expectSourceRangeRoundTrip(*modulePath, makeTestSourceRange(1, 4));
+
+  zc::Vector<zc::Own<Identifier>> moduleDeclarationSegments;
+  moduleDeclarationSegments.add(createIdentifier("app"_zc));
+  moduleDeclarationSegments.add(createIdentifier("ui"_zc));
+  auto moduleDeclaration =
+      createModuleDeclaration(createModulePath(zc::mv(moduleDeclarationSegments)));
+  expectMutableFlagsRoundTrip(*moduleDeclaration);
+  expectSourceRangeRoundTrip(*moduleDeclaration, makeTestSourceRange(2, 5));
+
+  auto importSpecifier =
+      createImportSpecifier(createIdentifier("Button"_zc), createIdentifier("UiButton"_zc));
+  expectMutableFlagsRoundTrip(*importSpecifier);
+  expectSourceRangeRoundTrip(*importSpecifier, makeTestSourceRange(3, 6));
+
+  zc::Vector<zc::Own<ImportSpecifier>> importSpecifiers;
+  importSpecifiers.add(createImportSpecifier(createIdentifier("Dialog"_zc), zc::none));
+  zc::Vector<zc::Own<Identifier>> importDeclarationSegments;
+  importDeclarationSegments.add(createIdentifier("ui"_zc));
+  auto importDeclaration =
+      createImportDeclaration(createModulePath(zc::mv(importDeclarationSegments)),
+                              createIdentifier("widgets"_zc), zc::mv(importSpecifiers));
+  expectMutableFlagsRoundTrip(*importDeclaration);
+  expectSourceRangeRoundTrip(*importDeclaration, makeTestSourceRange(4, 7));
+
+  auto exportSpecifier =
+      createExportSpecifier(createIdentifier("Dialog"_zc), createIdentifier("Modal"_zc));
+  expectMutableFlagsRoundTrip(*exportSpecifier);
+  expectSourceRangeRoundTrip(*exportSpecifier, makeTestSourceRange(5, 8));
+
+  zc::Vector<zc::Own<ExportSpecifier>> exportSpecifiers;
+  exportSpecifiers.add(createExportSpecifier(createIdentifier("Dialog"_zc), zc::none));
+  zc::Vector<zc::Own<Identifier>> exportDeclarationSegments;
+  exportDeclarationSegments.add(createIdentifier("ui"_zc));
+  auto exportDeclaration = createExportDeclaration(
+      createModulePath(zc::mv(exportDeclarationSegments)), zc::mv(exportSpecifiers), zc::none);
+  expectMutableFlagsRoundTrip(*exportDeclaration);
+  expectSourceRangeRoundTrip(*exportDeclaration, makeTestSourceRange(6, 9));
 }
 
 }  // namespace ast

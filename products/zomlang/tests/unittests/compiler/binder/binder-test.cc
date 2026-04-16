@@ -719,6 +719,48 @@ ZC_TEST("BinderTest.ScopeResolution") {
   // exposed we primarily rely on no errors during binding for this unit test level
 }
 
+ZC_TEST("BinderTest.VisitModuleNodesDirectly") {
+  BinderTest test;
+  Binder binder(test.symbolTable, test.diagEngine);
+
+  zc::Vector<zc::Own<ast::Identifier>> moduleSegments;
+  moduleSegments.add(ast::factory::createIdentifier("std"_zc));
+  moduleSegments.add(ast::factory::createIdentifier("io"_zc));
+  auto moduleDecl =
+      ast::factory::createModuleDeclaration(ast::factory::createModulePath(zc::mv(moduleSegments)));
+  binder.visit(*moduleDecl);
+
+  zc::Vector<zc::Own<ast::ImportSpecifier>> importSpecifiers;
+  importSpecifiers.add(ast::factory::createImportSpecifier(
+      ast::factory::createIdentifier("Read"_zc), ast::factory::createIdentifier("Reader"_zc)));
+  zc::Vector<zc::Own<ast::Identifier>> importSegments;
+  importSegments.add(ast::factory::createIdentifier("fs"_zc));
+  auto importDecl = ast::factory::createImportDeclaration(
+      ast::factory::createModulePath(zc::mv(importSegments)),
+      ast::factory::createIdentifier("filesystem"_zc), zc::mv(importSpecifiers));
+  binder.visit(*importDecl);
+
+  auto importSpecifier = ast::factory::createImportSpecifier(
+      ast::factory::createIdentifier("Write"_zc), ast::factory::createIdentifier("Writer"_zc));
+  binder.visit(*importSpecifier);
+
+  zc::Vector<zc::Own<ast::ExportSpecifier>> exportSpecifiers;
+  exportSpecifiers.add(ast::factory::createExportSpecifier(
+      ast::factory::createIdentifier("format"_zc), ast::factory::createIdentifier("fmt"_zc)));
+  zc::Vector<zc::Own<ast::Identifier>> exportSegments;
+  exportSegments.add(ast::factory::createIdentifier("std"_zc));
+  exportSegments.add(ast::factory::createIdentifier("fmt"_zc));
+  auto exportDecl = ast::factory::createExportDeclaration(
+      ast::factory::createModulePath(zc::mv(exportSegments)), zc::mv(exportSpecifiers), zc::none);
+  binder.visit(*exportDecl);
+
+  auto exportSpecifier = ast::factory::createExportSpecifier(
+      ast::factory::createIdentifier("render"_zc), ast::factory::createIdentifier("draw"_zc));
+  binder.visit(*exportSpecifier);
+
+  ZC_EXPECT(!test.diagEngine.hasErrors());
+}
+
 }  // namespace binder
 }  // namespace compiler
 }  // namespace zomlang
