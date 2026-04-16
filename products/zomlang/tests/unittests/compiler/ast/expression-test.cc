@@ -27,6 +27,12 @@ namespace zomlang {
 namespace compiler {
 namespace ast {
 
+static void expectMutableFlagsRoundTrip(Node& node) {
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+  node.setFlags(NodeFlags::OptionalChain);
+  ZC_EXPECT(hasFlag(node.getFlags(), NodeFlags::OptionalChain));
+}
+
 ZC_TEST("ExpressionTest.BinaryExpressionCreation") {
   auto left = factory::createFloatLiteral(5.0);
   auto right = factory::createFloatLiteral(3.0);
@@ -1207,6 +1213,180 @@ ZC_TEST("ExpressionTest.ArrayLiteralExpression WithSpreadElements") {
   ZC_EXPECT(arrayExpr->getElements()[0].getKind() == SyntaxKind::IntegerLiteral);
   ZC_EXPECT(arrayExpr->getElements()[1].getKind() == SyntaxKind::SpreadElement);
   ZC_EXPECT(arrayExpr->getElements()[2].getKind() == SyntaxKind::IntegerLiteral);
+}
+
+ZC_TEST("ExpressionTest.NodeFlagsRoundTrip") {
+  auto prefixUnary = factory::createPrefixUnaryExpression(SyntaxKind::Exclamation,
+                                                          factory::createIdentifier("x"_zc));
+  expectMutableFlagsRoundTrip(*prefixUnary);
+
+  auto postfixUnary = factory::createPostfixUnaryExpression(SyntaxKind::PlusPlus,
+                                                            factory::createIdentifier("y"_zc));
+  expectMutableFlagsRoundTrip(*postfixUnary);
+
+  auto identifier = factory::createIdentifier("value"_zc);
+  expectMutableFlagsRoundTrip(*identifier);
+
+  auto propertyAccess = factory::createPropertyAccessExpression(
+      factory::createIdentifier("obj"_zc), factory::createIdentifier("field"_zc));
+  expectMutableFlagsRoundTrip(*propertyAccess);
+
+  auto elementAccess = factory::createElementAccessExpression(factory::createIdentifier("items"_zc),
+                                                              factory::createIntegerLiteral(0));
+  expectMutableFlagsRoundTrip(*elementAccess);
+
+  auto capture =
+      factory::createCaptureElement(false, factory::createIdentifier("captured"_zc), false);
+  expectMutableFlagsRoundTrip(*capture);
+
+  zc::Vector<zc::Own<ParameterDeclaration>> params;
+  params.add(
+      factory::createParameterDeclaration({}, zc::none,
+                                          zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>>(
+                                              factory::createIdentifier("input"_zc)),
+                                          zc::none));
+  auto functionExpression = factory::createFunctionExpression(
+      zc::none, zc::mv(params), zc::Vector<zc::Own<CaptureElement>>(), zc::none,
+      factory::createBlockStatement(zc::Vector<zc::Own<Statement>>()));
+  expectMutableFlagsRoundTrip(*functionExpression);
+
+  auto wildcardPattern = factory::createWildcardPattern();
+  expectMutableFlagsRoundTrip(*wildcardPattern);
+
+  auto identifierPattern = factory::createIdentifierPattern(factory::createIdentifier("id"_zc));
+  expectMutableFlagsRoundTrip(*identifierPattern);
+
+  zc::Vector<zc::Own<Pattern>> tupleElements;
+  tupleElements.add(factory::createIdentifierPattern(factory::createIdentifier("left"_zc)));
+  auto tuplePattern = factory::createTuplePattern(zc::mv(tupleElements));
+  expectMutableFlagsRoundTrip(*tuplePattern);
+
+  zc::Vector<zc::Own<Pattern>> arrayElements;
+  arrayElements.add(factory::createWildcardPattern());
+  auto arrayPattern = factory::createArrayPattern(zc::mv(arrayElements));
+  expectMutableFlagsRoundTrip(*arrayPattern);
+
+  auto isPattern = factory::createIsPattern(factory::createPredefinedType("bool"_zc));
+  expectMutableFlagsRoundTrip(*isPattern);
+
+  auto propertyPattern = factory::createWildcardPattern();
+  auto patternProperty =
+      factory::createPatternProperty(factory::createIdentifier("name"_zc), zc::mv(propertyPattern));
+  expectMutableFlagsRoundTrip(*patternProperty);
+
+  auto expressionPattern = factory::createExpressionPattern(factory::createIntegerLiteral(7));
+  expectMutableFlagsRoundTrip(*expressionPattern);
+
+  auto enumPattern = factory::createEnumPattern(
+      factory::createTypeReference(factory::createIdentifier("Color"_zc), zc::none),
+      factory::createIdentifier("Red"_zc), zc::none);
+  expectMutableFlagsRoundTrip(*enumPattern);
+
+  zc::Vector<zc::Own<Pattern>> structureFields;
+  structureFields.add(factory::createPatternProperty(factory::createIdentifier("field"_zc),
+                                                     factory::createWildcardPattern()));
+  auto structurePattern = factory::createStructurePattern(zc::mv(structureFields));
+  expectMutableFlagsRoundTrip(*structurePattern);
+
+  auto newExpression =
+      factory::createNewExpression(factory::createIdentifier("Widget"_zc), zc::none, zc::none);
+  expectMutableFlagsRoundTrip(*newExpression);
+
+  auto thisExpression = factory::createThisExpression();
+  expectMutableFlagsRoundTrip(*thisExpression);
+
+  auto binaryExpression = factory::createBinaryExpression(
+      factory::createIntegerLiteral(1), factory::createTokenNode(SyntaxKind::Plus),
+      factory::createIntegerLiteral(2));
+  expectMutableFlagsRoundTrip(*binaryExpression);
+
+  auto conditionalExpression = factory::createConditionalExpression(
+      factory::createBooleanLiteral(true), zc::none, factory::createIntegerLiteral(1), zc::none,
+      factory::createIntegerLiteral(0));
+  expectMutableFlagsRoundTrip(*conditionalExpression);
+
+  auto callExpression = factory::createCallExpression(
+      factory::createIdentifier("call"_zc), zc::none, zc::none, zc::Vector<zc::Own<Expression>>());
+  expectMutableFlagsRoundTrip(*callExpression);
+
+  auto parenthesizedExpression =
+      factory::createParenthesizedExpression(factory::createIdentifier("wrapped"_zc));
+  expectMutableFlagsRoundTrip(*parenthesizedExpression);
+
+  auto spreadElement = factory::createSpreadElement(factory::createIdentifier("items"_zc));
+  expectMutableFlagsRoundTrip(*spreadElement);
+
+  auto arrayLiteral = factory::createArrayLiteralExpression(zc::Vector<zc::Own<Expression>>());
+  expectMutableFlagsRoundTrip(*arrayLiteral);
+
+  auto objectLiteral =
+      factory::createObjectLiteralExpression(zc::Vector<zc::Own<ObjectLiteralElement>>());
+  expectMutableFlagsRoundTrip(*objectLiteral);
+
+  expectMutableFlagsRoundTrip(*factory::createStringLiteral("text"_zc));
+  expectMutableFlagsRoundTrip(*factory::createIntegerLiteral(1));
+  expectMutableFlagsRoundTrip(*factory::createFloatLiteral(1.5));
+  expectMutableFlagsRoundTrip(*zc::heap<BigIntLiteral>("123n"_zc));
+  expectMutableFlagsRoundTrip(*factory::createBooleanLiteral(true));
+  expectMutableFlagsRoundTrip(*factory::createNullLiteral());
+
+  auto templateSpan = factory::createTemplateSpan(factory::createIdentifier("name"_zc),
+                                                  factory::createStringLiteral("!"_zc));
+  expectMutableFlagsRoundTrip(*templateSpan);
+
+  zc::Vector<zc::Own<TemplateSpan>> templateSpans;
+  templateSpans.add(factory::createTemplateSpan(factory::createIdentifier("count"_zc),
+                                                factory::createStringLiteral(" items"_zc)));
+  auto templateLiteral = factory::createTemplateLiteralExpression(
+      factory::createStringLiteral("There are "_zc), zc::mv(templateSpans));
+  expectMutableFlagsRoundTrip(*templateLiteral);
+
+  auto asExpression = factory::createAsExpression(factory::createIdentifier("value"_zc),
+                                                  factory::createPredefinedType("str"_zc));
+  expectMutableFlagsRoundTrip(*asExpression);
+
+  auto forcedAsExpression = factory::createForcedAsExpression(
+      factory::createIdentifier("value"_zc), factory::createPredefinedType("i32"_zc));
+  expectMutableFlagsRoundTrip(*forcedAsExpression);
+
+  auto conditionalAsExpression = factory::createConditionalAsExpression(
+      factory::createIdentifier("value"_zc), factory::createPredefinedType("bool"_zc));
+  expectMutableFlagsRoundTrip(*conditionalAsExpression);
+
+  expectMutableFlagsRoundTrip(
+      *factory::createVoidExpression(factory::createIdentifier("ignored"_zc)));
+  expectMutableFlagsRoundTrip(
+      *factory::createTypeOfExpression(factory::createIdentifier("target"_zc)));
+  expectMutableFlagsRoundTrip(
+      *factory::createAwaitExpression(factory::createIdentifier("future"_zc)));
+
+  auto nonNullExpression = factory::createNonNullExpression(factory::createIdentifier("maybe"_zc));
+  expectMutableFlagsRoundTrip(*nonNullExpression);
+
+  zc::Vector<zc::Own<TypeNode>> expressionTypeArgs;
+  expressionTypeArgs.add(factory::createPredefinedType("i32"_zc));
+  auto expressionWithTypeArguments = factory::createExpressionWithTypeArguments(
+      factory::createIdentifier("List"_zc), zc::mv(expressionTypeArgs));
+  expectMutableFlagsRoundTrip(*expressionWithTypeArguments);
+  ZC_IF_SOME(takenTypeArgs, expressionWithTypeArguments->takeTypeArguments()) {
+    ZC_EXPECT(takenTypeArgs.size() == 1);
+  }
+  else { ZC_FAIL_EXPECT("type arguments should be moved out"); }
+
+  auto expressionWithoutTypeArguments =
+      factory::createExpressionWithTypeArguments(factory::createIdentifier("Plain"_zc), zc::none);
+  ZC_EXPECT(expressionWithoutTypeArguments->takeTypeArguments() == zc::none);
+
+  auto propertyAssignment = factory::createPropertyAssignment(
+      factory::createIdentifier("name"_zc), factory::createStringLiteral("value"_zc));
+  expectMutableFlagsRoundTrip(*propertyAssignment);
+
+  auto shorthandProperty = factory::createShorthandPropertyAssignment(
+      factory::createIdentifier("name"_zc), zc::none, zc::none);
+  expectMutableFlagsRoundTrip(*shorthandProperty);
+
+  auto spreadAssignment = factory::createSpreadAssignment(factory::createIdentifier("rest"_zc));
+  expectMutableFlagsRoundTrip(*spreadAssignment);
 }
 
 }  // namespace ast

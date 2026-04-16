@@ -69,6 +69,15 @@ ZC_TEST("SourceLocation CharSourceRangeInvalid") {
   ZC_EXPECT(text.size() == 0);
 }
 
+ZC_TEST("SourceLocation PointerArithmetic") {
+  static const char kText[] = "abcdef";
+  auto bytes = reinterpret_cast<const zc::byte*>(kText);
+  SourceLoc loc(bytes + 3);
+
+  ZC_EXPECT(loc - 2 == bytes + 1);
+  ZC_EXPECT(loc + 2 == bytes + 5);
+}
+
 }  // namespace source
 }  // namespace compiler
 }  // namespace zomlang

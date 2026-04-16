@@ -51,6 +51,18 @@ static void expectIdentifierNameText(
   }
 }
 
+static void expectNoOpFlags(Node& node) {
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+  node.setFlags(NodeFlags::OptionalChain);
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+}
+
+static void expectMutableFlagsRoundTrip(Node& node) {
+  ZC_EXPECT(node.getFlags() == NodeFlags::None);
+  node.setFlags(NodeFlags::OptionalChain);
+  ZC_EXPECT(hasFlag(node.getFlags(), NodeFlags::OptionalChain));
+}
+
 ZC_TEST("StatementTest.VariableDeclarationList") {
   zc::Vector<zc::Own<VariableDeclaration>> declarations;
   auto name = factory::createIdentifier("x"_zc);
@@ -834,6 +846,152 @@ ZC_TEST("StatementTest.ObjectBindingPattern") {
   auto objectBinding = factory::createObjectBindingPattern(zc::mv(properties));
   ZC_EXPECT(objectBinding->getKind() == SyntaxKind::ObjectBindingPattern);
   ZC_EXPECT(objectBinding->getProperties().size() == 1);
+}
+
+ZC_TEST("StatementTest.DeclarationFlagsRemainNone") {
+  auto bindingElement =
+      factory::createBindingElement(zc::none, zc::none,
+                                    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>>(
+                                        factory::createIdentifier("binding"_zc)),
+                                    zc::none);
+  expectNoOpFlags(*bindingElement);
+
+  auto parameter =
+      factory::createParameterDeclaration({}, zc::none,
+                                          zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>>(
+                                              factory::createIdentifier("param"_zc)),
+                                          zc::none);
+  expectNoOpFlags(*parameter);
+
+  auto variable =
+      factory::createVariableDeclaration(zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>>(
+          factory::createIdentifier("value"_zc)));
+  expectNoOpFlags(*variable);
+
+  zc::Vector<zc::Own<VariableDeclaration>> declarations;
+  declarations.add(
+      factory::createVariableDeclaration(zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>>(
+          factory::createIdentifier("item"_zc))));
+  auto declarationList = factory::createVariableDeclarationList(zc::mv(declarations));
+  expectNoOpFlags(*declarationList);
+
+  auto variableStatement = factory::createVariableStatement(
+      factory::createVariableDeclarationList(zc::Vector<zc::Own<VariableDeclaration>>()));
+  expectNoOpFlags(*variableStatement);
+
+  auto functionDeclaration = factory::createFunctionDeclaration(
+      factory::createIdentifier("run"_zc), zc::none, zc::Vector<zc::Own<ParameterDeclaration>>(),
+      zc::none, factory::createBlockStatement(zc::Vector<zc::Own<Statement>>()));
+  expectNoOpFlags(*functionDeclaration);
+
+  auto classDeclaration =
+      factory::createClassDeclaration(factory::createIdentifier("Widget"_zc), zc::none, zc::none,
+                                      zc::Vector<zc::Own<ClassElement>>());
+  expectNoOpFlags(*classDeclaration);
+
+  auto interfaceDeclaration =
+      factory::createInterfaceDeclaration(factory::createIdentifier("Shape"_zc), zc::none, zc::none,
+                                          zc::Vector<zc::Own<InterfaceElement>>());
+  expectNoOpFlags(*interfaceDeclaration);
+
+  auto structDeclaration =
+      factory::createStructDeclaration(factory::createIdentifier("Point"_zc), zc::none, zc::none,
+                                       zc::Vector<zc::Own<ClassElement>>());
+  expectNoOpFlags(*structDeclaration);
+
+  auto enumMember = factory::createEnumMember(factory::createIdentifier("Ready"_zc));
+  expectNoOpFlags(*enumMember);
+
+  zc::Vector<zc::Own<EnumMember>> enumMembers;
+  enumMembers.add(factory::createEnumMember(factory::createIdentifier("Busy"_zc)));
+  auto enumDeclaration =
+      factory::createEnumDeclaration(factory::createIdentifier("State"_zc), zc::mv(enumMembers));
+  expectNoOpFlags(*enumDeclaration);
+
+  zc::Vector<zc::Own<Statement>> errorMembers;
+  errorMembers.add(factory::createEmptyStatement());
+  auto errorDeclaration = factory::createErrorDeclaration(factory::createIdentifier("Problem"_zc),
+                                                          zc::mv(errorMembers));
+  expectNoOpFlags(*errorDeclaration);
+
+  auto aliasDeclaration = factory::createAliasDeclaration(
+      factory::createIdentifier("Id"_zc), zc::none, factory::createPredefinedType("i32"_zc));
+  expectNoOpFlags(*aliasDeclaration);
+}
+
+ZC_TEST("StatementTest.StatementAndMemberFlagsRemainNone") {
+  expectMutableFlagsRoundTrip(*factory::createDebuggerStatement());
+  expectNoOpFlags(*factory::createMatchClause(factory::createWildcardPattern(), zc::none,
+                                              factory::createEmptyStatement()));
+  expectNoOpFlags(*factory::createDefaultClause(zc::Vector<zc::Own<Statement>>()));
+
+  zc::Vector<zc::Own<BindingElement>> arrayElements;
+  arrayElements.add(
+      factory::createBindingElement(zc::none, zc::none,
+                                    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>>(
+                                        factory::createIdentifier("array"_zc)),
+                                    zc::none));
+  expectNoOpFlags(*factory::createArrayBindingPattern(zc::mv(arrayElements)));
+
+  zc::Vector<zc::Own<BindingElement>> objectElements;
+  objectElements.add(
+      factory::createBindingElement(zc::none, zc::none,
+                                    zc::OneOf<zc::Own<Identifier>, zc::Own<BindingPattern>>(
+                                        factory::createIdentifier("object"_zc)),
+                                    zc::none));
+  expectNoOpFlags(*factory::createObjectBindingPattern(zc::mv(objectElements)));
+
+  expectNoOpFlags(*factory::createBlockStatement(zc::Vector<zc::Own<Statement>>()));
+  expectNoOpFlags(*factory::createExpressionStatement(factory::createIntegerLiteral(1)));
+  expectNoOpFlags(*factory::createIfStatement(factory::createBooleanLiteral(true),
+                                              factory::createEmptyStatement(), zc::none));
+  expectNoOpFlags(*factory::createLabeledStatement(factory::createIdentifier("label"_zc),
+                                                   factory::createEmptyStatement()));
+  expectNoOpFlags(*factory::createBreakStatement(zc::none));
+  expectNoOpFlags(*factory::createContinueStatement(zc::none));
+  expectNoOpFlags(*factory::createWhileStatement(factory::createBooleanLiteral(false),
+                                                 factory::createEmptyStatement()));
+  expectNoOpFlags(*factory::createReturnStatement(zc::none));
+  expectNoOpFlags(*factory::createEmptyStatement());
+
+  zc::Vector<zc::Own<Statement>> matchClauses;
+  matchClauses.add(factory::createEmptyStatement());
+  expectNoOpFlags(
+      *factory::createMatchStatement(factory::createIdentifier("value"_zc), zc::mv(matchClauses)));
+
+  expectNoOpFlags(
+      *factory::createForStatement(zc::none, zc::none, zc::none, factory::createEmptyStatement()));
+  expectNoOpFlags(*factory::createForInStatement(factory::createEmptyStatement(),
+                                                 factory::createIdentifier("items"_zc),
+                                                 factory::createEmptyStatement()));
+
+  zc::Vector<zc::Own<ExpressionWithTypeArguments>> heritageTypes;
+  heritageTypes.add(
+      factory::createExpressionWithTypeArguments(factory::createIdentifier("Base"_zc), zc::none));
+  expectNoOpFlags(
+      *factory::createHeritageClause(SyntaxKind::ExtendsKeyword, zc::mv(heritageTypes)));
+
+  expectNoOpFlags(*factory::createPropertySignature({}, factory::createIdentifier("property"_zc),
+                                                    zc::none, zc::none, zc::none));
+  expectNoOpFlags(*factory::createMethodSignature(
+      {}, factory::createIdentifier("method"_zc), zc::none, zc::none,
+      zc::Vector<zc::Own<ParameterDeclaration>>(), zc::none));
+  expectNoOpFlags(*factory::createSemicolonInterfaceElement());
+  expectNoOpFlags(*factory::createSemicolonClassElement());
+  expectNoOpFlags(*factory::createMethodDeclaration(
+      {}, factory::createIdentifier("member"_zc), zc::none, zc::none,
+      zc::Vector<zc::Own<ParameterDeclaration>>(), zc::none, zc::none));
+  expectNoOpFlags(*factory::createInitDeclaration(
+      {}, zc::none, zc::Vector<zc::Own<ParameterDeclaration>>(), zc::none, zc::none));
+  expectNoOpFlags(*factory::createDeinitDeclaration({}, zc::none));
+  expectNoOpFlags(*factory::createGetAccessorDeclaration(
+      {}, factory::createIdentifier("value"_zc), zc::none,
+      zc::Vector<zc::Own<ParameterDeclaration>>(), zc::none, zc::none));
+  expectNoOpFlags(*factory::createSetAccessorDeclaration(
+      {}, factory::createIdentifier("value"_zc), zc::none,
+      zc::Vector<zc::Own<ParameterDeclaration>>(), zc::none, zc::none));
+  expectNoOpFlags(*factory::createPropertyDeclaration({}, factory::createIdentifier("field"_zc),
+                                                      zc::none, zc::none));
 }
 
 }  // namespace ast

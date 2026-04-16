@@ -972,6 +972,79 @@ ZC_TEST("ASTDumper.DumpExportDeclarationText") {
   ZC_ASSERT(result.contains("ExportDeclaration {"));
 }
 
+ZC_TEST("ASTDumper.DumpModuleSyntaxJson") {
+  zc::Vector<zc::Own<ast::Identifier>> moduleSegments;
+  moduleSegments.add(ast::factory::createIdentifier("graphics"_zc));
+  auto moduleDeclaration =
+      ast::factory::createModuleDeclaration(ast::factory::createModulePath(zc::mv(moduleSegments)));
+
+  zc::Vector<zc::Own<ast::Statement>> statements;
+
+  zc::Vector<zc::Own<ast::Identifier>> importSegments;
+  importSegments.add(ast::factory::createIdentifier("math"_zc));
+  importSegments.add(ast::factory::createIdentifier("geometry"_zc));
+  zc::Vector<zc::Own<ast::ImportSpecifier>> importSpecifiers;
+  importSpecifiers.add(ast::factory::createImportSpecifier(
+      ast::factory::createIdentifier("Point"_zc), ast::factory::createIdentifier("GeoPoint"_zc)));
+  importSpecifiers.add(
+      ast::factory::createImportSpecifier(ast::factory::createIdentifier("distance"_zc), zc::none));
+  statements.add(ast::factory::createImportDeclaration(
+      ast::factory::createModulePath(zc::mv(importSegments)), zc::none, zc::mv(importSpecifiers)));
+
+  zc::Vector<zc::Own<ast::ExportSpecifier>> exportSpecifiers;
+  exportSpecifiers.add(
+      ast::factory::createExportSpecifier(ast::factory::createIdentifier("Point"_zc), zc::none));
+  exportSpecifiers.add(
+      ast::factory::createExportSpecifier(ast::factory::createIdentifier("distance"_zc),
+                                          ast::factory::createIdentifier("calcDistance"_zc)));
+  statements.add(
+      ast::factory::createExportDeclaration(zc::none, zc::mv(exportSpecifiers), zc::none));
+
+  auto exportBody = ast::factory::createBlockStatement(zc::Vector<zc::Own<ast::Statement>>());
+  auto exportedFunction = ast::factory::createFunctionDeclaration(
+      ast::factory::createIdentifier("draw"_zc), zc::none,
+      zc::Vector<zc::Own<ast::ParameterDeclaration>>(), zc::none, zc::mv(exportBody));
+  statements.add(ast::factory::createExportDeclaration(
+      zc::none, zc::Vector<zc::Own<ast::ExportSpecifier>>(), zc::mv(exportedFunction)));
+
+  auto sourceFile = ast::factory::createSourceFile(zc::str("module.zom"), zc::mv(moduleDeclaration),
+                                                   zc::mv(statements));
+
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kJSON);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*sourceFile);
+
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("\"moduleDeclaration\": {"));
+  ZC_ASSERT(result.contains("\"node\": \"ModuleDeclaration\""));
+  ZC_ASSERT(result.contains("\"node\": \"ImportSpecifier\""));
+  ZC_ASSERT(result.contains("\"node\": \"ExportSpecifier\""));
+  ZC_ASSERT(result.contains("\"alias\": null"));
+  ZC_ASSERT(result.contains("\"name\": \"calcDistance\""));
+  ZC_ASSERT(result.contains("\"declaration\": {"));
+  ZC_ASSERT(result.contains("\"name\": \"draw\""));
+}
+
+ZC_TEST("ASTDumper.DumpExpressionWithTypeArgumentsJson") {
+  zc::Vector<zc::Own<ast::TypeNode>> typeArguments;
+  typeArguments.add(ast::factory::createPredefinedType("i32"_zc));
+  typeArguments.add(ast::factory::createPredefinedType("str"_zc));
+  auto node = ast::factory::createExpressionWithTypeArguments(
+      ast::factory::createIdentifier("Result"_zc), zc::mv(typeArguments));
+
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kJSON);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("\"node\": \"ExpressionWithTypeArguments\""));
+  ZC_ASSERT(result.contains("\"typeArguments\": ["));
+  ZC_ASSERT(result.contains("\"node\": \"I32TypeNode\""));
+  ZC_ASSERT(result.contains("\"node\": \"StrTypeNode\""));
+}
+
 // Test SpreadElement
 ZC_TEST("ASTDumper.DumpSpreadElementText") {
   auto expr = ast::factory::createIdentifier("items"_zc);
