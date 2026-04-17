@@ -107,6 +107,28 @@ config.substitutions.append(("%FileCheck", filecheck_command))
 config.environment["ZOMLANG_TEST_ROOT"] = config.test_source_root
 config.environment["ZOMLANG_BUILD_ROOT"] = os.environ.get("CMAKE_BINARY_DIR", "")
 
+# Coverage support: when ZOM_ENABLE_COVERAGE is set, inject coverage env vars
+# into every test command via preamble. We must set LLVM_PROFILE_FILE and
+# ZC_CLEAN_SHUTDOWN directly in the shell because lit may not reliably pass
+# config.environment through to subprocesses in all execution modes.
+if os.environ.get("ZOM_ENABLE_COVERAGE"):
+    coverage_dir = os.path.join(
+        os.environ.get("CMAKE_BINARY_DIR", ""), "coverage"
+    )
+    os.makedirs(coverage_dir, exist_ok=True)
+    profile_path = os.path.join(coverage_dir, "lit-%m.profraw")
+    # Replace the %zomc substitution with one that includes coverage env vars
+    for i, (pattern, _) in enumerate(config.substitutions):
+        if pattern == "%zomc":
+            config.substitutions[i] = (
+                "%zomc",
+                f"LLVM_PROFILE_FILE={profile_path} ZC_CLEAN_SHUTDOWN=1 {zomc_path}",
+            )
+            break
+    lit_config.note(
+        f"Coverage enabled: LLVM_PROFILE_FILE={profile_path}"
+    )
+
 # Timeout for individual tests (in seconds)
 lit_config.maxIndividualTestTime = 20
 

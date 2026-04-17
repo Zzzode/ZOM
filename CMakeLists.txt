@@ -30,6 +30,7 @@ add_subdirectory(examples)
 
 if(ZOM_ENABLE_COVERAGE)
   get_property(ALL_TESTS_GLOBAL GLOBAL PROPERTY ALL_TESTS_GLOBAL)
-  create_coverage_target(NAME coverage TARGETS ${ALL_TESTS_GLOBAL} EXCLUDES
-                         ".*\-test\.cc")
+  create_coverage_target(NAME coverage TARGETS ${ALL_TESTS_GLOBAL}
+                         EXTRA_OBJECTS zomc
+                         EXCLUDES ".*\-test\.cc")
 endif()
