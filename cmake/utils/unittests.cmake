@@ -86,10 +86,17 @@ function(add_lit_ast_test TEST_NAME SOURCE_FILE)
   )
 
   # Set test properties
+  set(TEST_ENV "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
+  if(ZOM_ENABLE_COVERAGE)
+    string(APPEND TEST_ENV
+      ";ZOM_ENABLE_COVERAGE=ON"
+    )
+  endif()
+
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
     LABELS "ast;lit;specification"
     TIMEOUT 30
-    ENVIRONMENT "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+    ENVIRONMENT "${TEST_ENV}"
   )
 endfunction()
 
@@ -122,10 +129,17 @@ function(add_lit_ast_test_with_check TEST_NAME SOURCE_FILE)
   )
 
   # Set test properties
+  set(TEST_ENV "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
+  if(ZOM_ENABLE_COVERAGE)
+    string(APPEND TEST_ENV
+      ";ZOM_ENABLE_COVERAGE=ON"
+    )
+  endif()
+
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
     LABELS "ast;lit;filecheck;specification"
     TIMEOUT 30
-    ENVIRONMENT "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}"
+    ENVIRONMENT "${TEST_ENV}"
   )
 endfunction()
 
@@ -140,9 +154,18 @@ function(add_regression_test TEST_NAME SOURCE_FILE ISSUE_NUMBER)
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   )
 
+  set(TEST_ENV "")
+  if(ZOM_ENABLE_COVERAGE)
+    set(TEST_ENV
+      "LLVM_PROFILE_FILE=${CMAKE_BINARY_DIR}/coverage/${TEST_FULL_NAME}.profraw"
+      "ZC_CLEAN_SHUTDOWN=1"
+    )
+  endif()
+
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
     LABELS "regression;issue-${ISSUE_NUMBER}"
     TIMEOUT 30
+    ENVIRONMENT "${TEST_ENV}"
   )
 endfunction()
 

@@ -7,7 +7,7 @@ function(add_coverage_to_test TEST_NAME)
 endfunction()
 
 function(create_coverage_target)
-  cmake_parse_arguments(COVERAGE "" "NAME" "TARGETS;EXCLUDES" ${ARGN})
+  cmake_parse_arguments(COVERAGE "" "NAME" "TARGETS;EXTRA_OBJECTS;EXCLUDES" ${ARGN})
 
   if(NOT TARGET ${COVERAGE_NAME})
     if(APPLE)
@@ -26,7 +26,7 @@ function(create_coverage_target)
 
     add_custom_target(
       ${COVERAGE_NAME}_run_tests
-      COMMAND timeout 60 ${CMAKE_CTEST_COMMAND} -C $<CONFIG> -j ${CMAKE_JOB_POOLS} || true
+      COMMAND timeout 300 ${CMAKE_CTEST_COMMAND} -C $<CONFIG> -j ${CMAKE_JOB_POOLS} || true
       WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
       COMMENT "Running tests for ${COVERAGE_NAME} (with 60s timeout)")
     add_dependencies(${COVERAGE_NAME}_run_tests ${COVERAGE_NAME}_create_dir)
@@ -46,6 +46,16 @@ function(create_coverage_target)
       get_target_property(TARGET_TYPE ${TARGET_NAME} TYPE)
       if(TARGET_TYPE STREQUAL "EXECUTABLE")
         list(APPEND COVERAGE_EXECUTABLE_FILES $<TARGET_FILE:${TARGET_NAME}>)
+      endif()
+    endforeach()
+
+    # Append extra object targets (e.g. zomc for lit test coverage)
+    foreach(TARGET_NAME ${COVERAGE_EXTRA_OBJECTS})
+      if(TARGET ${TARGET_NAME})
+        get_target_property(TARGET_TYPE ${TARGET_NAME} TYPE)
+        if(TARGET_TYPE STREQUAL "EXECUTABLE")
+          list(APPEND COVERAGE_EXECUTABLE_FILES $<TARGET_FILE:${TARGET_NAME}>)
+        endif()
       endif()
     endforeach()
 
