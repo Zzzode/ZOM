@@ -69,6 +69,7 @@ ast::OperatorPrecedence getBinaryOperatorPrecedence(ast::SyntaxKind tokenKind) {
     case ast::SyntaxKind::GreaterThan:
     case ast::SyntaxKind::LessThanEquals:
     case ast::SyntaxKind::GreaterThanEquals:
+    case ast::SyntaxKind::AsKeyword:
       return ast::OperatorPrecedence::kRelational;
     case ast::SyntaxKind::LessThanLessThan:
     case ast::SyntaxKind::GreaterThanGreaterThan:
@@ -1410,12 +1411,7 @@ zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> Parser::tryParseTypeArgumentsInExp
 
     if (!expectToken(ast::SyntaxKind::GreaterThan)) {
       do {
-        ZC_IF_SOME(typeArg, parseType()) { typeArguments.add(zc::mv(typeArg)); }
-        else {
-          // Parsing failed, restore state and return none
-          rewind(state);
-          return zc::none;
-        }
+        typeArguments.add(parseType());
       } while (consumeExpectedToken(ast::SyntaxKind::Comma));
     }
 
@@ -2367,16 +2363,13 @@ zc::Maybe<zc::Own<ast::AliasDeclaration>> Parser::parseAliasDeclaration() {
 
   if (!consumeExpectedToken(ast::SyntaxKind::Equals)) { return zc::none; }
 
-  ZC_IF_SOME(type, parseType()) {
-    if (!consumeExpectedToken(ast::SyntaxKind::Semicolon)) { return zc::none; }
-    source::SourceLoc endLoc = currentLoc();
+  auto type = parseType();
+  if (!consumeExpectedToken(ast::SyntaxKind::Semicolon)) { return zc::none; }
+  source::SourceLoc endLoc = currentLoc();
 
-    return finishNode(
-        ast::factory::createAliasDeclaration(zc::mv(name), zc::mv(typeParameters), zc::mv(type)),
-        loc, endLoc);
-  }
-
-  return zc::none;
+  return finishNode(
+      ast::factory::createAliasDeclaration(zc::mv(name), zc::mv(typeParameters), zc::mv(type)),
+      loc, endLoc);
 }
 
 // ================================================================================
@@ -2517,9 +2510,31 @@ zc::Own<ast::Expression> Parser::parseBinaryExpressionRest(zc::Own<ast::Expressi
     if (!consumeCurrentOperator) { break; }
 
     if (expectToken(ast::SyntaxKind::AsKeyword)) {
-      // 'as' is handled by the unary expression parser, which has higher
-      // precedence than binary operators handled here.
-      break;
+      const bool hasLineBreakBeforeAs = currentToken().hasPrecedingLineBreak();
+      if (hasLineBreakBeforeAs) {
+        parseErrorAtCurrentToken<diagnostics::DiagID::LineBreakNotAllowedBeforeAsCast>();
+      }
+
+      nextToken();
+
+      const bool isForcedCast =
+          expectToken(ast::SyntaxKind::Exclamation) && !currentToken().hasPrecedingLineBreak();
+      const bool isConditionalCast =
+          expectToken(ast::SyntaxKind::Question) && !currentToken().hasPrecedingLineBreak();
+
+      if (isForcedCast || isConditionalCast) { nextToken(); }
+
+      auto targetType = parseType();
+
+      if (isForcedCast) {
+        expr = finishNode(
+            ast::factory::createForcedAsExpression(zc::mv(expr), zc::mv(targetType)), loc);
+      } else if (isConditionalCast) {
+        expr = finishNode(
+            ast::factory::createConditionalAsExpression(zc::mv(expr), zc::mv(targetType)), loc);
+      } else {
+        expr = finishNode(ast::factory::createAsExpression(zc::mv(expr), zc::mv(targetType)), loc);
+      }
     } else {
       auto op = parseTokenNode();
       auto rightOperand = parseBinaryExpressionOrHigher(newPrecedence);
@@ -3046,7 +3061,7 @@ zc::Maybe<zc::Own<ast::ObjectLiteralElement>> Parser::parseObjectLiteralElement(
 // ================================================================================
 // Type parsing implementations
 
-zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseType() {
+zc::Own<ast::TypeNode> Parser::parseType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseType");
 
   // type: unionType;
@@ -3093,70 +3108,99 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseType() {
 zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseTypeAnnotation() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseTypeAnnotation");
 
-  return parseOptional(ast::SyntaxKind::Colon) ? parseType() : zc::none;
+  if (!parseOptional(ast::SyntaxKind::Colon)) { return zc::none; }
+  return parseType();
 }
 
-zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseUnionTypeOrHigher() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseUnionTypeOrHigher");
+zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseFunctionTypeToError(bool isUnionType) {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseFunctionTypeToError");
 
-  // unionType:
-  //   intersectionType (PIPE intersectionType)*;
-  //
-  // Parse the first constituent eagerly, then only wrap it in a UnionTypeNode
-  // once we know we actually saw a `|`. This mirrors the TypeScript parser's
-  // "parse X or higher" shape and keeps union parsing left-to-right while
-  // preserving intersection precedence.
+  if (!isStartOfFunctionType()) { return zc::none; }
 
-  const source::SourceLoc loc = currentLoc();
-
-  ZC_IF_SOME(firstType, parseIntersectionType()) {
-    if (!expectToken(ast::SyntaxKind::Bar)) { return zc::mv(firstType); }
-
-    zc::Vector<zc::Own<ast::TypeNode>> types;
-    types.add(zc::mv(firstType));
-
-    while (parseOptional(ast::SyntaxKind::Bar)) {
-      ZC_IF_SOME(nextType, parseIntersectionType()) {
-        types.add(zc::mv(nextType));
-        continue;
-      }
-
-      parseErrorAtCurrentToken<diagnostics::DiagID::TypeExpected>();
-      return zc::none;
-    }
-
-    return finishNode(ast::factory::createUnionType(zc::mv(types)), loc);
+  // Function type notation is not allowed directly as a constituent of a union
+  // or intersection. Parse it anyway so the AST stays recoverable, then attach a
+  // targeted diagnostic asking the user to add parentheses.
+  zc::Own<ast::TypeNode> type = parseFunctionType();
+  if (isUnionType) {
+    parseErrorAtRange<diagnostics::DiagID::FunctionTypeNotationMustBeParenthesizedInUnionType>(
+        type->getSourceRange());
+  }
+  else {
+    parseErrorAtRange<
+        diagnostics::DiagID::FunctionTypeNotationMustBeParenthesizedInIntersectionType>(
+        type->getSourceRange());
   }
 
-  return zc::none;
+  return type;
 }
 
-zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseIntersectionType() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseIntersectionType");
-
-  // intersectionType:
-  //   primaryType (AMPERSAND primaryType)*;
-  //
-  // Handles intersection types like A & B & C
-
+zc::Own<ast::TypeNode> Parser::parseUnionOrIntersectionType(
+    ast::SyntaxKind operatorToken, zc::Function<zc::Own<ast::TypeNode>()> parseConstituentType) {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseUnionOrIntersectionType");
   const source::SourceLoc loc = currentLoc();
+  const bool isUnionType = operatorToken == ast::SyntaxKind::Bar;
+  const bool hasLeadingOperator = parseOptional(operatorToken);
 
-  ZC_IF_SOME(type, parsePostfixType()) {
+  auto type = hasLeadingOperator
+                  ? parseFunctionTypeToError(isUnionType).orDefault([&]() {
+                      return parseConstituentType();
+                    })
+                  : parseConstituentType();
+
+  if (expectToken(operatorToken) || hasLeadingOperator) {
     zc::Vector<zc::Own<ast::TypeNode>> types;
     types.add(zc::mv(type));
 
-    while (expectToken(ast::SyntaxKind::Ampersand)) {
-      nextToken();
-      ZC_IF_SOME(rightType, parsePostfixType()) { types.add(zc::mv(rightType)); }
+    while (parseOptional(operatorToken)) {
+      types.add(parseFunctionTypeToError(isUnionType).orDefault([&]() {
+        return parseConstituentType();
+      }));
     }
 
-    // Only create IntersectionType if there are multiple types
-    if (types.size() == 1) { return zc::mv(types[0]); }
-
-    return finishNode(ast::factory::createIntersectionType(zc::mv(types)), loc);
+    switch (operatorToken) {
+      case ast::SyntaxKind::Bar:
+        return finishNode(ast::factory::createUnionType(zc::mv(types)), loc);
+      case ast::SyntaxKind::Ampersand:
+        return finishNode(ast::factory::createIntersectionType(zc::mv(types)), loc);
+      default:
+        ZC_UNREACHABLE;
+    }
   }
 
-  return zc::none;
+  return type;
+}
+
+zc::Own<ast::TypeNode> Parser::parseUnionTypeOrHigher() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseUnionTypeOrHigher");
+
+  // unionTypeOrHigher:
+  //   intersectionTypeOrHigher (PIPE intersectionTypeOrHigher)*;
+  //
+  // Shares the same skeleton as intersection parsing so leading operators and
+  // function-type constituents are handled consistently.
+  return parseUnionOrIntersectionType(ast::SyntaxKind::Bar,
+                                      ZC_BIND_METHOD(*this, parseIntersectionTypeOrHigher));
+}
+
+zc::Own<ast::TypeNode> Parser::parseIntersectionTypeOrHigher() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseIntersectionTypeOrHigher");
+
+  // intersectionTypeOrHigher:
+  //   postfixTypeOrHigher (AMPERSAND postfixTypeOrHigher)*;
+  //
+  // Handles intersection types like A & B & C
+
+  return parseUnionOrIntersectionType(ast::SyntaxKind::Ampersand,
+                                      ZC_BIND_METHOD(*this, parsePostfixTypeOrHigher));
+}
+
+zc::Own<ast::TypeNode> Parser::parsePostfixTypeOrHigher() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parsePostfixTypeOrHigher");
+
+  ZC_IF_SOME(type, parsePostfixType()) { return zc::mv(type); }
+
+  parseErrorAtCurrentToken<diagnostics::DiagID::TypeExpected>();
+  return finishNode(ast::factory::createPredefinedType("unit"_zc), currentLoc());
 }
 
 zc::Maybe<zc::Own<ast::TypeNode>> Parser::parsePostfixType() {
@@ -3254,7 +3298,7 @@ zc::Maybe<zc::Own<ast::ArrayTypeNode>> Parser::parseArrayType() {
   return zc::none;
 }
 
-zc::Maybe<zc::Own<ast::FunctionTypeNode>> Parser::parseFunctionType() {
+zc::Own<ast::FunctionTypeNode> Parser::parseFunctionType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseFunctionType");
 
   // Parse function type according to the grammar rule:
@@ -3271,13 +3315,9 @@ zc::Maybe<zc::Own<ast::FunctionTypeNode>> Parser::parseFunctionType() {
   // Parse parameter clause: (param1: Type1, param2: Type2)
   auto parameters = parseParameters();
   // Parse return type: -> type raises error
-  ZC_IF_SOME(returnType, parseReturnType()) {
-    return finishNode(ast::factory::createFunctionType(zc::mv(typeParameters), zc::mv(parameters),
-                                                       zc::mv(returnType)),
-                      loc);
-  }
-
-  return zc::none;
+  return finishNode(ast::factory::createFunctionType(zc::mv(typeParameters), zc::mv(parameters),
+                                                     parseRequiredReturnType()),
+                    loc);
 }
 
 zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseParenthesizedOrTupleType() {
@@ -3308,10 +3348,7 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseParenthesizedOrTupleType() {
     if (currentToken().is(ast::SyntaxKind::Colon)) {
       nextToken();  // consume ':'
       hasNamedElement = true;
-      ZC_IF_SOME(type, parseType()) {
-        elements.add(ast::factory::createNamedTupleElement(zc::mv(name), zc::mv(type)));
-      }
-      else { return zc::none; }
+      elements.add(ast::factory::createNamedTupleElement(zc::mv(name), parseType()));
     } else {
       // Not a named element, rewind and parse as a regular type
       rewind(state);
@@ -3320,8 +3357,7 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseParenthesizedOrTupleType() {
 
   // If not a named element, parse as a regular type
   if (!hasNamedElement) {
-    ZC_IF_SOME(type, parseType()) { elements.add(zc::mv(type)); }
-    else { return zc::none; }
+    elements.add(parseType());
   }
 
   // Check if there are more elements (comma-separated)
@@ -3334,18 +3370,14 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseParenthesizedOrTupleType() {
         auto name = parseIdentifier();
         if (currentToken().is(ast::SyntaxKind::Colon)) {
           nextToken();  // consume ':'
-          ZC_IF_SOME(type, parseType()) {
-            elements.add(ast::factory::createNamedTupleElement(zc::mv(name), zc::mv(type)));
-          }
-          else { return zc::none; }
+          elements.add(ast::factory::createNamedTupleElement(zc::mv(name), parseType()));
           continue;
         } else {
           rewind(state);
         }
       }
 
-      ZC_IF_SOME(type, parseType()) { elements.add(zc::mv(type)); }
-      else { return zc::none; }
+      elements.add(parseType());
     }
   }
 
@@ -3460,12 +3492,11 @@ zc::Maybe<zc::Own<ast::TupleTypeNode>> Parser::parseTupleType() {
         }
       }
 
-      ZC_IF_SOME(type, parseType()) {
-        ZC_IF_SOME(n, zc::mv(name)) {
-          elements.add(ast::factory::createNamedTupleElement(zc::mv(n), zc::mv(type)));
-        }
-        else { elements.add(zc::mv(type)); }
+      auto type = parseType();
+      ZC_IF_SOME(n, zc::mv(name)) {
+        elements.add(ast::factory::createNamedTupleElement(zc::mv(n), zc::mv(type)));
       }
+      else { elements.add(zc::mv(type)); }
     } while (consumeExpectedToken(ast::SyntaxKind::Comma));
   }
 
@@ -3492,8 +3523,7 @@ zc::Maybe<zc::Own<ast::TypeReferenceNode>> Parser::parseTypeReference() {
     zc::Vector<zc::Own<ast::TypeNode>> args;
     nextToken();  // consume '<'
     while (!expectToken(ast::SyntaxKind::GreaterThan)) {
-      ZC_IF_SOME(arg, parseType()) { args.add(zc::mv(arg)); }
-      else { return zc::none; }
+      args.add(parseType());
       if (!expectToken(ast::SyntaxKind::GreaterThan) &&
           !consumeExpectedToken(ast::SyntaxKind::Comma)) {
         break;
@@ -3615,7 +3645,7 @@ zc::Maybe<zc::Own<ast::Pattern>> Parser::parseStructurePattern() {
     if (consumeExpectedToken(ast::SyntaxKind::Colon)) {
       // Structure pattern properties are type annotations in Zom
       // e.g. { x: i32, y: str }
-      ZC_IF_SOME(type, parseType()) { nestedPattern = ast::factory::createIsPattern(zc::mv(type)); }
+      nestedPattern = ast::factory::createIsPattern(parseType());
     }
 
     auto prop = finishNode(ast::factory::createPatternProperty(zc::mv(name), zc::mv(nestedPattern)),
@@ -3658,10 +3688,7 @@ zc::Maybe<zc::Own<ast::Pattern>> Parser::parseIsPattern() {
 
   if (!consumeExpectedToken(ast::SyntaxKind::IsKeyword)) { return zc::none; }
 
-  ZC_IF_SOME(type, parseType()) {
-    return finishNode(ast::factory::createIsPattern(zc::mv(type)), loc);
-  }
-  return zc::none;
+  return finishNode(ast::factory::createIsPattern(parseType()), loc);
 }
 
 zc::OneOf<zc::Own<ast::BindingPattern>, zc::Own<ast::Identifier>>
@@ -4177,6 +4204,13 @@ zc::Maybe<zc::Own<ast::CaptureElement>> Parser::parseCaptureElement() {
 zc::Maybe<zc::Own<ast::ReturnTypeNode>> Parser::parseReturnType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseReturnType");
 
+  if (shouldParseReturnType(ast::SyntaxKind::Arrow)) { return parseRequiredReturnType(); }
+  return zc::none;
+}
+
+zc::Own<ast::ReturnTypeNode> Parser::parseRequiredReturnType() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseRequiredReturnType");
+
   // Parse optional return type or error return clause
   //
   // callSignature:
@@ -4185,15 +4219,17 @@ zc::Maybe<zc::Own<ast::ReturnTypeNode>> Parser::parseReturnType() {
   const lexer::Token token = currentToken();
   const source::SourceLoc loc = token.getLocation();
 
-  if (!consumeExpectedToken(ast::SyntaxKind::Arrow)) { return zc::none; }
+  zc::Maybe<zc::Own<ast::TypeNode>> errorType = zc::none;
+  if (consumeExpectedToken(ast::SyntaxKind::RaisesKeyword)) { errorType = parseType(); }
+  return finishNode(ast::factory::createReturnType(parseType(), zc::mv(errorType)), loc);
+}
 
-  ZC_IF_SOME(type, parseType()) {
-    zc::Maybe<zc::Own<ast::TypeNode>> errorType = zc::none;
-    if (consumeExpectedToken(ast::SyntaxKind::RaisesKeyword)) { errorType = parseType(); }
-    return finishNode(ast::factory::createReturnType(zc::mv(type), zc::mv(errorType)), loc);
+bool Parser::shouldParseReturnType(ast::SyntaxKind returnToken) {
+  if (expectToken(ast::SyntaxKind::Arrow)) {
+    parseExpected(ast::SyntaxKind::Arrow);
+    return true;
   }
-
-  return zc::none;
+  return false;
 }
 
 zc::Own<ast::VariableStatement> Parser::parseVariableStatement() {

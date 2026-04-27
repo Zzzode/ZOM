@@ -2019,8 +2019,24 @@ ZC_TEST("ParserTest.ParseCastExpression") {
       sourceManager->addMemBufferCopy(zc::str("let x = value as i32;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse cast expression");
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    ZC_EXPECT(statements.size() == 1, "Should contain one statement");
+
+    auto& variableStatement =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(
+            statements[0]);
+    const auto& declarations = variableStatement.getDeclarations().getBindings();
+    ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
+
+    ZC_IF_SOME(initializer, declarations[0].getInitializer()) {
+      ZC_EXPECT(initializer.getKind() == ast::SyntaxKind::AsExpression,
+                "Initializer should be parsed as an as-expression");
+    }
+    else { ZC_EXPECT(false, "Variable declaration should have an initializer"); }
+  }
+  else { ZC_EXPECT(false, "Should parse cast expression"); }
 }
 
 ZC_TEST("ParserTest.ParseOptionalCastExpression") {
@@ -2033,8 +2049,24 @@ ZC_TEST("ParserTest.ParseOptionalCastExpression") {
       sourceManager->addMemBufferCopy(zc::str("let x = value as? str;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse optional cast expression");
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    ZC_EXPECT(statements.size() == 1, "Should contain one statement");
+
+    auto& variableStatement =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(
+            statements[0]);
+    const auto& declarations = variableStatement.getDeclarations().getBindings();
+    ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
+
+    ZC_IF_SOME(initializer, declarations[0].getInitializer()) {
+      ZC_EXPECT(initializer.getKind() == ast::SyntaxKind::ConditionalAsExpression,
+                "Initializer should be parsed as a conditional as-expression");
+    }
+    else { ZC_EXPECT(false, "Variable declaration should have an initializer"); }
+  }
+  else { ZC_EXPECT(false, "Should parse optional cast expression"); }
 }
 
 ZC_TEST("ParserTest.ParseForceCastExpression") {
@@ -2047,8 +2079,57 @@ ZC_TEST("ParserTest.ParseForceCastExpression") {
       sourceManager->addMemBufferCopy(zc::str("let x = value as! f64;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse force cast expression");
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    ZC_EXPECT(statements.size() == 1, "Should contain one statement");
+
+    auto& variableStatement =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(
+            statements[0]);
+    const auto& declarations = variableStatement.getDeclarations().getBindings();
+    ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
+
+    ZC_IF_SOME(initializer, declarations[0].getInitializer()) {
+      ZC_EXPECT(initializer.getKind() == ast::SyntaxKind::ForcedAsExpression,
+                "Initializer should be parsed as a forced as-expression");
+    }
+    else { ZC_EXPECT(false, "Variable declaration should have an initializer"); }
+  }
+  else { ZC_EXPECT(false, "Should parse force cast expression"); }
+}
+
+ZC_TEST("ParserTest.ParseAsKeywordAfterLineBreakReportsErrorAndRecovers") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("let x = foo\nas(Bar);").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    ZC_EXPECT(statements.size() == 1,
+              "Parser should recover without splitting the invalid cast into another statement");
+    ZC_EXPECT(diagnosticEngine->hasErrors(),
+              "Line-break-separated as-cast should produce a parse error");
+
+    auto& variableStatement =
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(
+            statements[0]);
+    const auto& declarations = variableStatement.getDeclarations().getBindings();
+    ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
+
+    ZC_IF_SOME(initializer, declarations[0].getInitializer()) {
+      ZC_EXPECT(initializer.getKind() == ast::SyntaxKind::AsExpression,
+                "Initializer should preserve the cast structure after reporting the error");
+    }
+    else { ZC_EXPECT(false, "Variable declaration should have an initializer"); }
+  }
+  else { ZC_EXPECT(false, "Parser should recover from line-break-separated as-cast"); }
 }
 
 // ================================================================================
