@@ -511,15 +511,20 @@ private:
   zc::Maybe<zc::Own<ast::Identifier>> parseIdentifierExpression();
 
   // --- Types ---
-  zc::Maybe<zc::Own<ast::TypeNode>> parseType();
+  zc::Own<ast::TypeNode> parseType();
   zc::Maybe<zc::Own<ast::TypeNode>> parseTypeAnnotation();
-  zc::Maybe<zc::Own<ast::TypeNode>> parseUnionTypeOrHigher();
-  zc::Maybe<zc::Own<ast::TypeNode>> parseIntersectionType();
+  zc::Maybe<zc::Own<ast::TypeNode>> parseFunctionTypeToError(bool isUnionType);
+  zc::Own<ast::TypeNode> parseUnionOrIntersectionType(
+      ast::SyntaxKind operatorToken, zc::Function<zc::Own<ast::TypeNode>()> parseConstituentType);
+  zc::Own<ast::TypeNode> parseUnionTypeOrHigher();
+  zc::Own<ast::TypeNode> parseIntersectionTypeOrHigher();
+  zc::Own<ast::TypeNode> parsePostfixTypeOrHigher();
   zc::Maybe<zc::Own<ast::TypeNode>> parsePostfixType();
   zc::Maybe<zc::Own<ast::TypeNode>> parseTypeAtom();
   zc::Maybe<zc::Own<ast::ArrayTypeNode>> parseArrayType();
-  zc::Maybe<zc::Own<ast::FunctionTypeNode>> parseFunctionType();
+  zc::Own<ast::FunctionTypeNode> parseFunctionType();
   zc::Maybe<zc::Own<ast::ReturnTypeNode>> parseReturnType();
+  zc::Own<ast::ReturnTypeNode> parseRequiredReturnType();
   zc::Maybe<zc::Own<ast::ObjectTypeNode>> parseObjectType();
   zc::Maybe<zc::Own<ast::TupleTypeNode>> parseTupleType();
   zc::Maybe<zc::Own<ast::TypeReferenceNode>> parseTypeReference();
@@ -529,6 +534,9 @@ private:
   zc::Maybe<zc::Own<ast::TypeQueryNode>> parseTypeQuery();
   zc::Maybe<zc::Own<ast::Expression>> parseTypeQueryExpression();
   zc::Maybe<zc::Own<ast::TypeNode>> parseRaisesClause();
+
+  // --- Returns ---
+  bool shouldParseReturnType(ast::SyntaxKind returnToken);
 
   // --- Patterns & Identifiers ---
   zc::Maybe<zc::Own<ast::Pattern>> parsePattern();
