@@ -31,6 +31,7 @@ struct DiagnosticEngine::Impl {
   source::SourceManager& sourceManager;
   zc::Vector<zc::Own<DiagnosticConsumer>> consumers;
   DiagnosticState state;
+  size_t suppressionDepth = 0;
 };
 
 DiagnosticEngine::DiagnosticEngine(source::SourceManager& sourceManager)
@@ -42,6 +43,8 @@ void DiagnosticEngine::addConsumer(zc::Own<DiagnosticConsumer> consumer) {
 }
 
 void DiagnosticEngine::emit(const Diagnostic& diagnostic) {
+  if (impl->suppressionDepth > 0) { return; }
+
   // Check if this is an error-level diagnostic and update state
   const DiagnosticInfo& info = getDiagnosticInfo(diagnostic.getId());
   if (info.severity >= DiagSeverity::kError) { impl->state.setHadAnyError(); }
@@ -115,6 +118,14 @@ void DiagnosticEngine::formatDiagnosticMessage(const source::SourceManager& sm,
   // Output the remaining text
   if (lastPos < format.size()) { out.write(format.slice(lastPos, format.size()).asBytes()); }
 }
+
+void DiagnosticEngine::suppress() { ++impl->suppressionDepth; }
+
+void DiagnosticEngine::unsuppress() {
+  if (impl->suppressionDepth > 0) { --impl->suppressionDepth; }
+}
+
+bool DiagnosticEngine::isSuppressed() const { return impl->suppressionDepth > 0; }
 
 }  // namespace diagnostics
 }  // namespace compiler

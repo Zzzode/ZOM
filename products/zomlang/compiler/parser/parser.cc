@@ -1397,11 +1397,19 @@ zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> Parser::tryParseTypeArgumentsInExp
   // typeArguments: LT typeArgumentList GT;
   // typeArgumentList: type (COMMA type)*;
   // This function parses type arguments in expression context, like f<number>(42)
+  //
+  // Mirrors the tryParse speculation pattern: diagnostics emitted during the speculative parse
+  // must not leak to consumers when the parse fails (e.g. when `<` is actually a comparison
+  // operator, not a type argument opener).
 
   if (!expectToken(ast::SyntaxKind::LessThan)) { return zc::none; }
-  // TypeArguments must not be parsed in JavaScript files to avoid ambiguity with binary operators.
   // Save current parser state
   ParserState state = mark();
+
+  // Suppress diagnostics during speculative parsing.
+  // On success the type arguments were parsed correctly, so no errors were emitted.
+  // On failure the speculative diagnostics are discarded.
+  impl->diagnosticEngine.suppress();
 
   if (expectToken(ast::SyntaxKind::LessThan)) {
     nextToken();
@@ -1410,13 +1418,12 @@ zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> Parser::tryParseTypeArgumentsInExp
     zc::Vector<zc::Own<ast::TypeNode>> typeArguments;
 
     if (!expectToken(ast::SyntaxKind::GreaterThan)) {
-      do {
-        typeArguments.add(parseType());
-      } while (consumeExpectedToken(ast::SyntaxKind::Comma));
+      do { typeArguments.add(parseType()); } while (consumeExpectedToken(ast::SyntaxKind::Comma));
     }
 
     // If it doesn't have the closing `>` then it's definitely not a type argument list.
     if (!consumeExpectedToken(ast::SyntaxKind::GreaterThan)) {
+      impl->diagnosticEngine.unsuppress();
       rewind(state);
       return zc::none;
     }
@@ -1425,10 +1432,14 @@ zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>> Parser::tryParseTypeArgumentsInExp
     // treat it as such. If the type argument list is followed by `(` or a template literal, as in
     // `f<number>(42)`, we favor the type argument interpretation even though JavaScript would view
     // it as a relational expression.
-    if (canFollowTypeArgumentsInExpression()) { return zc::mv(typeArguments); }
+    if (canFollowTypeArgumentsInExpression()) {
+      impl->diagnosticEngine.unsuppress();
+      return zc::mv(typeArguments);
+    }
   }
 
   // Parsing failed or doesn't follow expected pattern, restore state
+  impl->diagnosticEngine.unsuppress();
   rewind(state);
   return zc::none;
 }
@@ -2368,8 +2379,8 @@ zc::Maybe<zc::Own<ast::AliasDeclaration>> Parser::parseAliasDeclaration() {
   source::SourceLoc endLoc = currentLoc();
 
   return finishNode(
-      ast::factory::createAliasDeclaration(zc::mv(name), zc::mv(typeParameters), zc::mv(type)),
-      loc, endLoc);
+      ast::factory::createAliasDeclaration(zc::mv(name), zc::mv(typeParameters), zc::mv(type)), loc,
+      endLoc);
 }
 
 // ================================================================================
@@ -2527,8 +2538,8 @@ zc::Own<ast::Expression> Parser::parseBinaryExpressionRest(zc::Own<ast::Expressi
       auto targetType = parseType();
 
       if (isForcedCast) {
-        expr = finishNode(
-            ast::factory::createForcedAsExpression(zc::mv(expr), zc::mv(targetType)), loc);
+        expr = finishNode(ast::factory::createForcedAsExpression(zc::mv(expr), zc::mv(targetType)),
+                          loc);
       } else if (isConditionalCast) {
         expr = finishNode(
             ast::factory::createConditionalAsExpression(zc::mv(expr), zc::mv(targetType)), loc);
@@ -3124,8 +3135,7 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseFunctionTypeToError(bool isUnionT
   if (isUnionType) {
     parseErrorAtRange<diagnostics::DiagID::FunctionTypeNotationMustBeParenthesizedInUnionType>(
         type->getSourceRange());
-  }
-  else {
+  } else {
     parseErrorAtRange<
         diagnostics::DiagID::FunctionTypeNotationMustBeParenthesizedInIntersectionType>(
         type->getSourceRange());
@@ -3141,11 +3151,10 @@ zc::Own<ast::TypeNode> Parser::parseUnionOrIntersectionType(
   const bool isUnionType = operatorToken == ast::SyntaxKind::Bar;
   const bool hasLeadingOperator = parseOptional(operatorToken);
 
-  auto type = hasLeadingOperator
-                  ? parseFunctionTypeToError(isUnionType).orDefault([&]() {
-                      return parseConstituentType();
-                    })
-                  : parseConstituentType();
+  auto type = hasLeadingOperator ? parseFunctionTypeToError(isUnionType).orDefault([&]() {
+    return parseConstituentType();
+  })
+                                 : parseConstituentType();
 
   if (expectToken(operatorToken) || hasLeadingOperator) {
     zc::Vector<zc::Own<ast::TypeNode>> types;
@@ -3356,9 +3365,7 @@ zc::Maybe<zc::Own<ast::TypeNode>> Parser::parseParenthesizedOrTupleType() {
   }
 
   // If not a named element, parse as a regular type
-  if (!hasNamedElement) {
-    elements.add(parseType());
-  }
+  if (!hasNamedElement) { elements.add(parseType()); }
 
   // Check if there are more elements (comma-separated)
   if (expectToken(ast::SyntaxKind::Comma)) {

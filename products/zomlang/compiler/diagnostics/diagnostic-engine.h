@@ -57,6 +57,13 @@ public:
 
   DiagnosticState& getState();
 
+  // Speculative parse support.
+  // suppress() prevents emit() from forwarding diagnostics to consumers or setting hadAnyError.
+  // unsuppress() restores normal emission. Nestable: suppression is active while depth > 0.
+  void suppress();
+  void unsuppress();
+  ZC_NODISCARD bool isSuppressed() const;
+
   /// \brief Report a diagnostic at the given location.
   /// \param loc The location of the diagnostic.
   /// \param id The diagnostic ID.

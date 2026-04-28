@@ -2025,8 +2025,7 @@ ZC_TEST("ParserTest.ParseCastExpression") {
     ZC_EXPECT(statements.size() == 1, "Should contain one statement");
 
     auto& variableStatement =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(
-            statements[0]);
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(statements[0]);
     const auto& declarations = variableStatement.getDeclarations().getBindings();
     ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
 
@@ -2055,8 +2054,7 @@ ZC_TEST("ParserTest.ParseOptionalCastExpression") {
     ZC_EXPECT(statements.size() == 1, "Should contain one statement");
 
     auto& variableStatement =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(
-            statements[0]);
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(statements[0]);
     const auto& declarations = variableStatement.getDeclarations().getBindings();
     ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
 
@@ -2085,8 +2083,7 @@ ZC_TEST("ParserTest.ParseForceCastExpression") {
     ZC_EXPECT(statements.size() == 1, "Should contain one statement");
 
     auto& variableStatement =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(
-            statements[0]);
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(statements[0]);
     const auto& declarations = variableStatement.getDeclarations().getBindings();
     ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
 
@@ -2118,8 +2115,7 @@ ZC_TEST("ParserTest.ParseAsKeywordAfterLineBreakReportsErrorAndRecovers") {
               "Line-break-separated as-cast should produce a parse error");
 
     auto& variableStatement =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(
-            statements[0]);
+        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(statements[0]);
     const auto& declarations = variableStatement.getDeclarations().getBindings();
     ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
 
