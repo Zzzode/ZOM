@@ -4226,9 +4226,10 @@ zc::Own<ast::ReturnTypeNode> Parser::parseRequiredReturnType() {
   const lexer::Token token = currentToken();
   const source::SourceLoc loc = token.getLocation();
 
+  auto type = parseType();
   zc::Maybe<zc::Own<ast::TypeNode>> errorType = zc::none;
   if (consumeExpectedToken(ast::SyntaxKind::RaisesKeyword)) { errorType = parseType(); }
-  return finishNode(ast::factory::createReturnType(parseType(), zc::mv(errorType)), loc);
+  return finishNode(ast::factory::createReturnType(zc::mv(type), zc::mv(errorType)), loc);
 }
 
 bool Parser::shouldParseReturnType(ast::SyntaxKind returnToken) {
