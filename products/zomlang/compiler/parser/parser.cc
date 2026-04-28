@@ -4211,7 +4211,7 @@ zc::Maybe<zc::Own<ast::CaptureElement>> Parser::parseCaptureElement() {
 zc::Maybe<zc::Own<ast::ReturnTypeNode>> Parser::parseReturnType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseReturnType");
 
-  if (shouldParseReturnType(ast::SyntaxKind::Arrow)) { return parseRequiredReturnType(); }
+  if (expectToken(ast::SyntaxKind::Arrow)) { return parseRequiredReturnType(); }
   return zc::none;
 }
 
@@ -4226,18 +4226,14 @@ zc::Own<ast::ReturnTypeNode> Parser::parseRequiredReturnType() {
   const lexer::Token token = currentToken();
   const source::SourceLoc loc = token.getLocation();
 
+  parseExpected(ast::SyntaxKind::Arrow);
+
   auto type = parseType();
+
   zc::Maybe<zc::Own<ast::TypeNode>> errorType = zc::none;
   if (consumeExpectedToken(ast::SyntaxKind::RaisesKeyword)) { errorType = parseType(); }
-  return finishNode(ast::factory::createReturnType(zc::mv(type), zc::mv(errorType)), loc);
-}
 
-bool Parser::shouldParseReturnType(ast::SyntaxKind returnToken) {
-  if (expectToken(ast::SyntaxKind::Arrow)) {
-    parseExpected(ast::SyntaxKind::Arrow);
-    return true;
-  }
-  return false;
+  return finishNode(ast::factory::createReturnType(zc::mv(type), zc::mv(errorType)), loc);
 }
 
 zc::Own<ast::VariableStatement> Parser::parseVariableStatement() {

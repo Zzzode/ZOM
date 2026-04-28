@@ -5,7 +5,7 @@ interface I {
 }
 
 
-// CHECK: Error [ZOM2071]: Identifier expected
+// CHECK: Error [ZOM2074]: Identifier expected
 // CHECK:   --> {{.*interface-property-missing-name.zom}}:4:6
 // CHECK:   |
 // CHECK: 4 |   let : i32;

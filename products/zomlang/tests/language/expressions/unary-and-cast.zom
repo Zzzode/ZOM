@@ -1,84 +1,195 @@
-// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
 
 let a = 1;
 let b = ++a;
 let c = a--;
 let d = typeof a;
-let e = await a;
 let f = a as i32;
 let g = a as? i32;
 let h = a as! i32;
 
 
-// CHECK: Error [ZOM2010]: Reserved keyword 'await' cannot be used as an identifier
-// CHECK:   --> {{.*unary-and-cast.zom}}:7:9
-// CHECK:   |
-// CHECK: 7 | let e = await a;
-// CHECK:   |         ^~~~~
-// CHECK: Error [ZOM2025]: Expected ','
-// CHECK:   --> {{.*unary-and-cast.zom}}:7:15
-// CHECK:   |
-// CHECK: 7 | let e = await a;
-// CHECK:   |               ^
-// CHECK: Error [ZOM2025]: Expected ','
-// CHECK:   --> {{.*unary-and-cast.zom}}:8:11
-// CHECK:   |
-// CHECK: 8 | let f = a as i32;
-// CHECK:   |           ^~
-// CHECK: Error [ZOM2058]: 'as' is not allowed as a variable declaration name
-// CHECK:   --> {{.*unary-and-cast.zom}}:8:11
-// CHECK:   |
-// CHECK: 8 | let f = a as i32;
-// CHECK:   |           ^~
-// CHECK: Error [ZOM2058]: 'i32' is not allowed as a variable declaration name
-// CHECK:   --> {{.*unary-and-cast.zom}}:8:14
-// CHECK:   |
-// CHECK: 8 | let f = a as i32;
-// CHECK:   |              ^~~
-// CHECK: Error [ZOM2025]: Expected ','
-// CHECK:   --> {{.*unary-and-cast.zom}}:9:11
-// CHECK:   |
-// CHECK: 9 | let g = a as? i32;
-// CHECK:   |           ^~
-// CHECK: Error [ZOM2058]: 'as' is not allowed as a variable declaration name
-// CHECK:   --> {{.*unary-and-cast.zom}}:9:11
-// CHECK:   |
-// CHECK: 9 | let g = a as? i32;
-// CHECK:   |           ^~
-// CHECK: Error [ZOM2059]: Variable declaration expected
-// CHECK:   --> {{.*unary-and-cast.zom}}:9:13
-// CHECK:   |
-// CHECK: 9 | let g = a as? i32;
-// CHECK:   |             ^
-// CHECK: Error [ZOM2058]: 'i32' is not allowed as a variable declaration name
-// CHECK:   --> {{.*unary-and-cast.zom}}:9:15
-// CHECK:   |
-// CHECK: 9 | let g = a as? i32;
-// CHECK:   |               ^~~
-// CHECK: Error [ZOM2025]: Expected ','
-// CHECK:   --> {{.*unary-and-cast.zom}}:10:11
-// CHECK:    |
-// CHECK: 10 | let h = a as! i32;
-// CHECK:    |           ^~
-// CHECK: Error [ZOM2058]: 'as' is not allowed as a variable declaration name
-// CHECK:   --> {{.*unary-and-cast.zom}}:10:11
-// CHECK:    |
-// CHECK: 10 | let h = a as! i32;
-// CHECK:    |           ^~
-// CHECK: Error [ZOM2059]: Variable declaration expected
-// CHECK:   --> {{.*unary-and-cast.zom}}:10:13
-// CHECK:    |
-// CHECK: 10 | let h = a as! i32;
-// CHECK:    |             ^
-// CHECK: Error [ZOM2025]: Expected ';'
-// CHECK:   --> {{.*unary-and-cast.zom}}:10:13
-// CHECK:    |
-// CHECK: 10 | let h = a as! i32;
-// CHECK:    |             ^
-// CHECK: Error [ZOM2010]: Reserved keyword 'i32' cannot be used as an identifier
-// CHECK:   --> {{.*unary-and-cast.zom}}:10:15
-// CHECK:    |
-// CHECK: 10 | let h = a as! i32;
-// CHECK:    |               ^~~
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*unary-and-cast.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "a"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "1"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "b"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "PrefixUnaryExpression",
+// CHECK-NEXT:               "operator": {
+// CHECK-NEXT:                 "node": "TokenNode",
+// CHECK-NEXT:                 "symbol": "++"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "operand": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "a"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "c"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "PostfixUnaryExpression",
+// CHECK-NEXT:               "operand": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "a"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "operator": {
+// CHECK-NEXT:                 "node": "TokenNode",
+// CHECK-NEXT:                 "symbol": "--"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "d"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "TypeOfExpression",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "a"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "f"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "AsExpression",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "a"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "targetType": {
+// CHECK-NEXT:                 "node": "I32TypeNode",
+// CHECK-NEXT:                 "name": "i32"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "g"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "ConditionalAsExpression",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "a"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "targetType": {
+// CHECK-NEXT:                 "node": "I32TypeNode",
+// CHECK-NEXT:                 "name": "i32"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "h"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "ForcedAsExpression",
+// CHECK-NEXT:               "expression": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "a"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "targetType": {
+// CHECK-NEXT:                 "node": "I32TypeNode",
+// CHECK-NEXT:                 "name": "i32"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }
