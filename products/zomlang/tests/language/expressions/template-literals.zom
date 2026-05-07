@@ -1,0 +1,96 @@
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
+
+let greeting = `hello`;
+let message = `hello ${name}, count ${count + 1}`;
+
+
+// CHECK: {
+// CHECK-NEXT:   "node": "SourceFile",
+// CHECK-NEXT:   "fileName": "{{.*template-literals.zom}}",
+// CHECK-NEXT:   "statements": [
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "greeting"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "TemplateLiteralExpression",
+// CHECK-NEXT:               "head": {
+// CHECK-NEXT:                 "node": "StringLiteral",
+// CHECK-NEXT:                 "value": "hello"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "spans": [
+// CHECK-NEXT: 
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "message"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": null,
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "TemplateLiteralExpression",
+// CHECK-NEXT:               "head": {
+// CHECK-NEXT:                 "node": "StringLiteral",
+// CHECK-NEXT:                 "value": "hello "
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "spans": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "TemplateSpan",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "name"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "literal": {
+// CHECK-NEXT:                     "node": "StringLiteral",
+// CHECK-NEXT:                     "value": ", count "
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 },
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "TemplateSpan",
+// CHECK-NEXT:                   "expression": {
+// CHECK-NEXT:                     "node": "BinaryExpression",
+// CHECK-NEXT:                     "left": {
+// CHECK-NEXT:                       "node": "Identifier",
+// CHECK-NEXT:                       "name": "count"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "operator": {
+// CHECK-NEXT:                       "node": "TokenNode",
+// CHECK-NEXT:                       "symbol": "+"
+// CHECK-NEXT:                     },
+// CHECK-NEXT:                     "right": {
+// CHECK-NEXT:                       "node": "IntegerLiteral",
+// CHECK-NEXT:                       "value": "1"
+// CHECK-NEXT:                     }
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "literal": {
+// CHECK-NEXT:                     "node": "StringLiteral",
+// CHECK-NEXT:                     "value": ""
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   ]
+// CHECK-NEXT: }

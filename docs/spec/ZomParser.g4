@@ -115,6 +115,7 @@ literal:
 	| booleanLiteral
 	| numericLiteral
 	| stringLiteral
+	| templateLiteral
 	| characterLiteral;
 
 //// =============================================================================== NIL LITERALS
@@ -213,6 +214,13 @@ lineContinuation: BACKSLASH lineTerminatorSequence;
 
 // ================================================================================ TEMPLATE LITERALS
 
+templateLiteral:
+	NO_SUBSTITUTION_TEMPLATE_LITERAL
+	| TEMPLATE_HEAD templateSpan+;
+
+templateSpan:
+	expression (TEMPLATE_MIDDLE | TEMPLATE_TAIL);
+
 codePoint:
 	hexDigits {
     String hexText = _input.getText(_localctx.hexDigits());
@@ -242,17 +250,8 @@ primaryExpression:
 	| literal
 	| arrayLiteral
 	| objectLiteral
-	| coverParenthesizedExpressionAndArrowParameterList;
-
-// Cover Parenthesized Expression and Arrow Parameter List
-coverParenthesizedExpressionAndArrowParameterList:
-	LPAREN expression RPAREN
-	| LPAREN expression COMMA RPAREN
-	| LPAREN RPAREN
-	| LPAREN ELLIPSIS bindingIdentifier RPAREN
-	| LPAREN ELLIPSIS bindingPattern RPAREN
-	| LPAREN expression COMMA ELLIPSIS bindingIdentifier RPAREN
-	| LPAREN expression COMMA ELLIPSIS bindingPattern RPAREN;
+	| functionExpression
+	| LPAREN expression RPAREN;
 
 // Object LiteralExpression
 objectLiteral:
@@ -699,7 +698,7 @@ typeQueryExpression: identifier ( PERIOD identifier)*;
 typeArguments: LT typeArgumentList GT;
 typeArgumentList: type (COMMA type)*;
 propertySignature: propertyName QUESTION? typeAnnotation;
-propertyName: identifier | stringLiteral | numericLiteral;
+propertyName: identifier;
 typeParameters: LT typeParameterList GT;
 typeParameterList: typeParameter (COMMA typeParameter)*;
 typeParameter: identifier constraint?;

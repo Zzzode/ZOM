@@ -81,7 +81,6 @@ class CallExpression;
 class MemberExpression;
 class UpdateExpression;
 class CastExpression;
-class VoidExpression;
 class TypeOfExpression;
 class AwaitExpression;
 class LeftHandSideExpression;
@@ -209,6 +208,7 @@ private:
   ZC_NODISCARD source::SourceLoc getTokenStartLoc() const;
   ZC_NODISCARD bool hasPrecedingLineBreak() const;
   ast::SyntaxKind reScanGreaterToken();
+  ast::SyntaxKind reScanTemplateToken();
 
   ZC_ALWAYS_INLINE(bool expectToken(ast::SyntaxKind kind));
   // Returns true if the current token matches any of the provided kinds.
@@ -463,7 +463,6 @@ private:
   zc::Maybe<zc::Own<ast::Expression>> parseUnaryExpression();
   zc::Own<ast::UnaryExpression> parseSimpleUnaryExpression();
   zc::Own<ast::UnaryExpression> parsePrefixUnaryExpression();
-  zc::Maybe<zc::Own<ast::VoidExpression>> parseVoidExpression();
   zc::Own<ast::TypeOfExpression> parseTypeOfExpression();
   zc::Own<ast::UpdateExpression> parseUpdateExpression();
 
@@ -496,6 +495,7 @@ private:
 
   // Literals
   zc::Own<ast::LiteralExpression> parseLiteralExpression();
+  zc::Own<ast::TemplateLiteralExpression> parseTemplateLiteralExpression();
   zc::Own<ast::Expression> parseSpreadElement();
   zc::Maybe<zc::Own<ast::Expression>> parseArrayLiteralElement();
   zc::Own<ast::ArrayLiteralExpression> parseArrayLiteralExpression();

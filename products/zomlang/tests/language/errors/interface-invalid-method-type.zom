@@ -1,32 +1,37 @@
 // RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
 
-interface Drawable { draw(): void; }
+interface Drawable { draw(): unit; }
 
 
 // CHECK: Error [ZOM2053]: Property or signature expected
 // CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:22
 // CHECK:   |
-// CHECK: 3 | interface Drawable { draw(): void; }
+// CHECK: 3 | interface Drawable { draw(): unit; }
 // CHECK:   |                      ^~~~
 // CHECK: Error [ZOM2025]: Expected '}'
 // CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:22
 // CHECK:   |
-// CHECK: 3 | interface Drawable { draw(): void; }
+// CHECK: 3 | interface Drawable { draw(): unit; }
 // CHECK:   |                      ^~~~
 // CHECK: Error [ZOM2025]: Expected ';'
 // CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:28
 // CHECK:   |
-// CHECK: 3 | interface Drawable { draw(): void; }
+// CHECK: 3 | interface Drawable { draw(): unit; }
 // CHECK:   |                            ^
 // CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:28
 // CHECK:   |
-// CHECK: 3 | interface Drawable { draw(): void; }
+// CHECK: 3 | interface Drawable { draw(): unit; }
 // CHECK:   |                            ^
+// CHECK: Error [ZOM2049]: Declaration or statement expected
+// CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:30
+// CHECK:   |
+// CHECK: 3 | interface Drawable { draw(): unit; }
+// CHECK:   |                              ^~~~
 // CHECK: Error [ZOM2049]: Declaration or statement expected
 // CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:36
 // CHECK:   |
-// CHECK: 3 | interface Drawable { draw(): void; }
+// CHECK: 3 | interface Drawable { draw(): unit; }
 // CHECK:   |                                    ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

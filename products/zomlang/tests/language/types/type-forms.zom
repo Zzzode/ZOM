@@ -1,6 +1,7 @@
 // RUN: %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
 
 let a: i32[] = xs;
+let a16: i16 = small;
 let b: i32? = null;
 let c: (i32 | str)[] = xs;
 let d: A & B = x;
@@ -35,6 +36,29 @@ let i: typeof foo.bar = v;
 // CHECK-NEXT:             "initializer": {
 // CHECK-NEXT:               "node": "Identifier",
 // CHECK-NEXT:               "name": "xs"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "VariableStatement",
+// CHECK-NEXT:       "declarations": {
+// CHECK-NEXT:         "node": "VariableDeclarationList",
+// CHECK-NEXT:         "bindings": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "VariableDeclaration",
+// CHECK-NEXT:             "name": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "a16"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "type": {
+// CHECK-NEXT:               "node": "I16TypeNode",
+// CHECK-NEXT:               "name": "i16"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "initializer": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "small"
 // CHECK-NEXT:             }
 // CHECK-NEXT:           }
 // CHECK-NEXT:         ]

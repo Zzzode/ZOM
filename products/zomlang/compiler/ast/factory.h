@@ -439,9 +439,11 @@ zc::Own<NamedTupleElement> createNamedTupleElement(zc::Own<Identifier> name,
 /// Pattern factory functions
 // zc::Own<PrimaryPattern> createPrimaryPattern(zc::Own<Expression> expression);
 
-zc::Own<WildcardPattern> createWildcardPattern();
+zc::Own<WildcardPattern> createWildcardPattern(
+    zc::Maybe<zc::Own<TypeNode>> typeAnnotation = zc::none);
 
-zc::Own<IdentifierPattern> createIdentifierPattern(zc::Own<Identifier> identifier);
+zc::Own<IdentifierPattern> createIdentifierPattern(
+    zc::Own<Identifier> identifier, zc::Maybe<zc::Own<TypeNode>> typeAnnotation = zc::none);
 
 zc::Own<TuplePattern> createTuplePattern(zc::Vector<zc::Own<Pattern>>&& elements);
 
@@ -456,7 +458,7 @@ zc::Own<IsPattern> createIsPattern(zc::Own<TypeNode> type);
 
 zc::Own<ExpressionPattern> createExpressionPattern(zc::Own<Expression> expression);
 
-zc::Own<EnumPattern> createEnumPattern(zc::Own<TypeReferenceNode> typeReference,
+zc::Own<EnumPattern> createEnumPattern(zc::Maybe<zc::Own<TypeReferenceNode>> typeReference,
                                        zc::Own<Identifier> propertyName,
                                        zc::Maybe<zc::Own<TuplePattern>> tuplePattern = zc::none);
 

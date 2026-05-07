@@ -857,7 +857,6 @@ bool Parser::isStartOfStatement() {
     case ast::SyntaxKind::BreakKeyword:      // break statement
     case ast::SyntaxKind::ReturnKeyword:     // return statement
     case ast::SyntaxKind::WithKeyword:       // with statement
-    case ast::SyntaxKind::SwitchKeyword:     // switch statement
     case ast::SyntaxKind::MatchKeyword:      // match statement
     case ast::SyntaxKind::ThrowKeyword:      // throw statement
     case ast::SyntaxKind::TryKeyword:        // try statement
@@ -987,6 +986,12 @@ ZC_ALWAYS_INLINE(ast::SyntaxKind Parser::currentKind() const) { return currentTo
 
 ast::SyntaxKind Parser::reScanGreaterToken() {
   ast::SyntaxKind kind = impl->lexer.reScanGreaterToken();
+  impl->token = impl->lexer.getCurrentState().token;
+  return kind;
+}
+
+ast::SyntaxKind Parser::reScanTemplateToken() {
+  ast::SyntaxKind kind = impl->lexer.reScanTemplateToken();
   impl->token = impl->lexer.getCurrentState().token;
   return kind;
 }
@@ -1592,6 +1597,17 @@ zc::Own<ast::Identifier> Parser::createIdentifier(bool isIdentifier) {
 zc::Own<ast::Identifier> Parser::parsePropertyName() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parsePropertyName");
 
+  if (expectToken(ast::SyntaxKind::LeftBracket)) {
+    const source::SourceLoc loc = currentLoc();
+    parseErrorAtCurrentToken<diagnostics::DiagID::ExceptedIdentifier>(currentToken().getValue());
+    nextToken();
+    while (!expectNToken(ast::SyntaxKind::RightBracket, ast::SyntaxKind::EndOfFile)) {
+      nextToken();
+    }
+    parseOptional(ast::SyntaxKind::RightBracket);
+    return finishNode(ast::factory::createMissingIdentifier(), loc);
+  }
+
   if (expectNToken(ast::SyntaxKind::StringLiteral, ast::SyntaxKind::IntegerLiteral,
                    ast::SyntaxKind::FloatLiteral, ast::SyntaxKind::BigIntLiteral)) {
     source::SourceLoc loc = currentLoc();
@@ -1778,13 +1794,13 @@ zc::Maybe<zc::Own<ast::ExpressionStatement>> Parser::parseExpressionStatement() 
 namespace {
 
 static const zc::StringPtr kViableKeywordSuggestions[] = {
-    "let"_zc,       "const"_zc,      "fun"_zc,      "class"_zc,  "interface"_zc, "module"_zc,
-    "namespace"_zc, "type"_zc,       "import"_zc,   "export"_zc, "return"_zc,    "if"_zc,
-    "else"_zc,      "for"_zc,        "while"_zc,    "switch"_zc, "new"_zc,       "try"_zc,
-    "throw"_zc,     "break"_zc,      "continue"_zc, "async"_zc,  "await"_zc,     "yield"_zc,
-    "extends"_zc,   "implements"_zc, "this"_zc,     "super"_zc,  "package"_zc,   "void"_zc,
-    "private"_zc,   "protected"_zc,  "public"_zc,   "static"_zc, "readonly"_zc,  "abstract"_zc,
-    "override"_zc,  "declare"_zc,    "get"_zc,      "set"_zc,    "enum"_zc};
+    "let"_zc,        "const"_zc,    "fun"_zc,      "class"_zc,    "interface"_zc, "module"_zc,
+    "namespace"_zc,  "type"_zc,     "import"_zc,   "export"_zc,   "return"_zc,    "if"_zc,
+    "else"_zc,       "for"_zc,      "while"_zc,    "new"_zc,      "try"_zc,       "throw"_zc,
+    "break"_zc,      "continue"_zc, "async"_zc,    "await"_zc,    "yield"_zc,     "extends"_zc,
+    "implements"_zc, "this"_zc,     "super"_zc,    "package"_zc,  "private"_zc,   "protected"_zc,
+    "public"_zc,     "static"_zc,   "readonly"_zc, "abstract"_zc, "override"_zc,  "declare"_zc,
+    "get"_zc,        "set"_zc,      "enum"_zc};
 
 size_t levenshteinDistance(zc::StringPtr s1, zc::StringPtr s2) {
   const size_t n = s1.size();
@@ -2572,7 +2588,6 @@ zc::Own<ast::Expression> Parser::parseUnaryExpressionOrHigher() {
   //
   // prefixUnaryExpression:
   //   postfixUnaryExpression
-  //   | VOID prefixUnaryExpression
   //   | TYPEOF prefixUnaryExpression
   //   | PLUS prefixUnaryExpression
   //   | MINUS prefixUnaryExpression
@@ -2649,27 +2664,6 @@ zc::Own<ast::UnaryExpression> Parser::parsePrefixUnaryExpression() {
   // Parse the operand (recursive call to parseSimpleUnaryExpression)
   return finishNode(
       ast::factory::createPrefixUnaryExpression(zc::mv(op), parseSimpleUnaryExpression()), loc);
-}
-
-// Void expression parsing
-zc::Maybe<zc::Own<ast::VoidExpression>> Parser::parseVoidExpression() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseVoidExpression");
-
-  // voidExpression:
-  //   VOID unaryExpression;
-  //
-  // Parse void operator expression
-
-  const source::SourceLoc loc = currentLoc();
-
-  nextToken();
-
-  // Parse the operand
-  auto operand = parseSimpleUnaryExpression();
-
-  // Create void expression
-  auto voidExpr = ast::factory::createVoidExpression(zc::mv(operand));
-  return finishNode(zc::mv(voidExpr), loc);
 }
 
 // TypeOf expression parsing
@@ -2873,10 +2867,13 @@ zc::Own<ast::PrimaryExpression> Parser::parsePrimaryExpression() {
     case ast::SyntaxKind::FloatLiteral:
     case ast::SyntaxKind::BigIntLiteral:
     case ast::SyntaxKind::StringLiteral:
+    case ast::SyntaxKind::NoSubstitutionTemplateLiteral:
     case ast::SyntaxKind::TrueKeyword:
     case ast::SyntaxKind::FalseKeyword:
     case ast::SyntaxKind::NullKeyword:
       return parseLiteralExpression();
+    case ast::SyntaxKind::TemplateHead:
+      return parseTemplateLiteralExpression();
     case ast::SyntaxKind::LeftParen:
       return parseParenthesizedExpression();
     case ast::SyntaxKind::LeftBracket:
@@ -2956,6 +2953,48 @@ zc::Own<ast::LiteralExpression> Parser::parseLiteralExpression() {
       ZC_UNREACHABLE;
     }
   }
+}
+
+zc::Own<ast::TemplateLiteralExpression> Parser::parseTemplateLiteralExpression() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseTemplateLiteralExpression");
+
+  const source::SourceLoc loc = currentLoc();
+  const lexer::Token headToken = currentToken();
+  parseExpected(ast::SyntaxKind::TemplateHead);
+
+  auto head = finishNode(ast::factory::createStringLiteral(headToken.getValue()),
+                         headToken.getRange().getStart(), headToken.getRange().getEnd());
+
+  zc::Vector<zc::Own<ast::TemplateSpan>> spans;
+  while (true) {
+    const source::SourceLoc spanLoc = currentLoc();
+    auto expression = parseExpression();
+
+    if (!expectToken(ast::SyntaxKind::RightBrace)) {
+      parseExpected(ast::SyntaxKind::RightBrace);
+      break;
+    }
+
+    const ast::SyntaxKind literalKind = reScanTemplateToken();
+    if (literalKind != ast::SyntaxKind::TemplateMiddle &&
+        literalKind != ast::SyntaxKind::TemplateTail) {
+      parseExpected(ast::SyntaxKind::TemplateTail);
+      break;
+    }
+
+    const lexer::Token literalToken = currentToken();
+    auto literal = finishNode(ast::factory::createStringLiteral(literalToken.getValue()),
+                              literalToken.getRange().getStart(), literalToken.getRange().getEnd());
+
+    spans.add(finishNode(ast::factory::createTemplateSpan(zc::mv(expression), zc::mv(literal)),
+                         spanLoc, literalToken.getRange().getEnd()));
+
+    nextToken();
+    if (literalKind == ast::SyntaxKind::TemplateTail) { break; }
+  }
+
+  return finishNode(ast::factory::createTemplateLiteralExpression(zc::mv(head), zc::mv(spans)),
+                    loc);
 }
 
 zc::Own<ast::Expression> Parser::parseSpreadElement() {
@@ -3477,8 +3516,6 @@ zc::Maybe<zc::Own<ast::TupleTypeNode>> Parser::parseTupleType() {
 
   if (!consumeExpectedToken(ast::SyntaxKind::LeftParen)) { return zc::none; }
 
-  // TODO: Implement TupleElement class
-  // zc::Vector<zc::Own<ast::TupleElement>> elements;
   zc::Vector<zc::Own<ast::TypeNode>> elements;
 
   if (!expectToken(ast::SyntaxKind::RightParen)) {
@@ -3548,14 +3585,15 @@ zc::Maybe<zc::Own<ast::PredefinedTypeNode>> Parser::parsePredefinedType() {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parsePredefinedType");
 
   // Parse predefined type according to the grammar rule:
-  // predefinedType: I8 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64 | STR | BOOL | NIL | UNIT
-  // These are the built-in primitive types in the ZOM language
+  // predefinedType: I8 | I16 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64 | STR | BOOL | NIL |
+  // UNIT These are the built-in primitive types in the ZOM language
 
   const lexer::Token& token = currentToken();
   const source::SourceLoc loc = token.getLocation();
 
   switch (token.getKind()) {
     case ast::SyntaxKind::I8Keyword:
+    case ast::SyntaxKind::I16Keyword:
     case ast::SyntaxKind::I32Keyword:
     case ast::SyntaxKind::I64Keyword:
     case ast::SyntaxKind::U8Keyword:
@@ -3584,8 +3622,65 @@ zc::Maybe<zc::Own<ast::Pattern>> Parser::parsePattern() {
   switch (currentKind()) {
     case ast::SyntaxKind::Underscore:
       return parseWildcardPattern();
-    case ast::SyntaxKind::Identifier:
-      return parseIdentifierPattern();
+    case ast::SyntaxKind::Identifier: {
+      const lexer::Token firstToken = currentToken();
+      if (firstToken.getValue() == "_"_zc &&
+          (isLookAhead(1, ast::SyntaxKind::Colon) ||
+           isLookAhead(1, ast::SyntaxKind::EqualsGreaterThan) ||
+           isLookAhead(1, ast::SyntaxKind::IfKeyword) || isLookAhead(1, ast::SyntaxKind::Comma) ||
+           isLookAhead(1, ast::SyntaxKind::Semicolon) ||
+           isLookAhead(1, ast::SyntaxKind::RightParen) ||
+           isLookAhead(1, ast::SyntaxKind::RightBracket) ||
+           isLookAhead(1, ast::SyntaxKind::RightBrace) ||
+           isLookAhead(1, ast::SyntaxKind::EndOfFile))) {
+        return parseWildcardPattern();
+      }
+
+      if (isLookAhead(1, ast::SyntaxKind::LeftParen)) {
+        const source::SourceLoc loc = currentLoc();
+        auto propertyName = parseIdentifier();
+        ZC_IF_SOME(pattern, parseTuplePattern()) {
+          auto tuplePattern = ast::cast<ast::TuplePattern>(zc::mv(pattern));
+          return finishNode(
+              ast::factory::createEnumPattern(zc::none, zc::mv(propertyName), zc::mv(tuplePattern)),
+              loc);
+        }
+      }
+
+      if (isLookAhead(1, ast::SyntaxKind::Period)) {
+        const source::SourceLoc loc = currentLoc();
+        auto typeReference =
+            finishNode(ast::factory::createTypeReference(
+                           ast::factory::createIdentifier(firstToken.getValue()),
+                           zc::Maybe<zc::Vector<zc::Own<ast::TypeNode>>>{zc::none}),
+                       firstToken.getRange().getStart(), firstToken.getRange().getEnd());
+        nextToken();
+        parseExpected(ast::SyntaxKind::Period);
+        auto propertyName = parseIdentifier();
+        zc::Maybe<zc::Own<ast::TuplePattern>> tuplePattern = zc::none;
+        if (expectToken(ast::SyntaxKind::LeftParen)) {
+          ZC_IF_SOME(pattern, parseTuplePattern()) {
+            tuplePattern = ast::cast<ast::TuplePattern>(zc::mv(pattern));
+          }
+        }
+        return finishNode(ast::factory::createEnumPattern(
+                              zc::mv(typeReference), zc::mv(propertyName), zc::mv(tuplePattern)),
+                          loc);
+      }
+
+      if (isLookAhead(1, ast::SyntaxKind::Colon) ||
+          isLookAhead(1, ast::SyntaxKind::EqualsGreaterThan) ||
+          isLookAhead(1, ast::SyntaxKind::IfKeyword) || isLookAhead(1, ast::SyntaxKind::Comma) ||
+          isLookAhead(1, ast::SyntaxKind::Semicolon) ||
+          isLookAhead(1, ast::SyntaxKind::RightParen) ||
+          isLookAhead(1, ast::SyntaxKind::RightBracket) ||
+          isLookAhead(1, ast::SyntaxKind::RightBrace) ||
+          isLookAhead(1, ast::SyntaxKind::EndOfFile)) {
+        return parseIdentifierPattern();
+      }
+
+      return ast::factory::createExpressionPattern(parseExpression());
+    }
     case ast::SyntaxKind::LeftParen:
       return parseTuplePattern();
     case ast::SyntaxKind::LeftBrace:
@@ -3606,19 +3701,15 @@ zc::Maybe<zc::Own<ast::Pattern>> Parser::parseWildcardPattern() {
   zc::Maybe<zc::Own<ast::TypeNode>> type;
   if (consumeExpectedToken(ast::SyntaxKind::Colon)) { type = parseType(); }
 
-  // TODO: Handle type annotation for wildcard patterns
-  static_cast<void>(type);
-  return finishNode(ast::factory::createWildcardPattern(), loc);
+  return finishNode(ast::factory::createWildcardPattern(zc::mv(type)), loc);
 }
 
 zc::Maybe<zc::Own<ast::Pattern>> Parser::parseIdentifierPattern() {
+  const source::SourceLoc loc = currentLoc();
   auto id = parseIdentifier();
   zc::Maybe<zc::Own<ast::TypeNode>> type;
-  if (consumeExpectedToken(ast::SyntaxKind::Colon)) {
-    type = parseType();
-    static_cast<void>(type);
-  }
-  return ast::factory::createIdentifierPattern(zc::mv(id));
+  if (consumeExpectedToken(ast::SyntaxKind::Colon)) { type = parseType(); }
+  return finishNode(ast::factory::createIdentifierPattern(zc::mv(id), zc::mv(type)), loc);
 }
 
 zc::Maybe<zc::Own<ast::Pattern>> Parser::parseTuplePattern() {

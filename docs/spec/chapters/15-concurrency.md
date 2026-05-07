@@ -27,14 +27,14 @@ async fun processUser(userId: i64) {
 ```zom
 // Parallel execution
 async fun fetchMultipleUsers(userIds: i64[]) -> User[] {
-    let tasks = userIds.map(id => fetchUserData(id));
+    let tasks = userIds.map(fun (id: UserId) -> Task<User> { return fetchUserData(id); });
     return await Promise.all(tasks);
 }
 
 // Racing operations
 async fun fetchWithTimeout(url: str, timeoutMs: i32) -> str {
     let fetchTask = httpClient.get(url);
-    let timeoutTask = Timer.delay(timeoutMs).then(() => {
+    let timeoutTask = Timer.delay(timeoutMs).then(fun () -> unit {
         throw TimeoutError("Request timed out");
     });
 

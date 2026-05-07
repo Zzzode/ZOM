@@ -142,6 +142,7 @@ struct Lexer::Impl {
   void lex();
 
   ast::SyntaxKind reScanGreaterToken();
+  ast::SyntaxKind reScanTemplateToken();
 
   /// \brief Lex an identifier.
   /// \param prefixLength The length of the prefix (e.g., '$' for a global identifier).
@@ -796,6 +797,18 @@ ast::SyntaxKind Lexer::Impl::reScanGreaterToken() {
   return state.token.getKind();
 }
 
+ast::SyntaxKind Lexer::Impl::reScanTemplateToken() {
+  if (!state.token.is(ast::SyntaxKind::RightBrace)) { return state.token.getKind(); }
+
+  state.curPtr = state.tokenStartPtr;
+  state.tokenFlags = TokenFlags::None;
+
+  zc::StringPtr value;
+  const ast::SyntaxKind kind = lexTemplateAndRetTokenValue(false, value);
+  formToken(kind, value);
+  return state.token.getKind();
+}
+
 zc::Maybe<zc::StringPtr> Lexer::Impl::lexIdentifier(int32_t prefixLength) {
   const zc::byte* start = state.curPtr;
   state.curPtr += prefixLength;
@@ -1404,6 +1417,8 @@ void Lexer::lex(Token& outToken) {
 }
 
 ast::SyntaxKind Lexer::reScanGreaterToken() { return impl->reScanGreaterToken(); }
+
+ast::SyntaxKind Lexer::reScanTemplateToken() { return impl->reScanTemplateToken(); }
 
 void Lexer::restoreState(LexerState s, bool enableDiagnostics) {
   impl->state.curPtr = s.curPtr;

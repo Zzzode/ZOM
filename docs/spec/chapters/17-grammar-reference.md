@@ -50,6 +50,9 @@ StringLiteral ::= '"' DoubleStringCharacter* '"' | "'" SingleStringCharacter* "'
 DoubleStringCharacter ::= ~["\\\r\n\u2028\u2029] | LineTerminator | '\\' EscapeSequence | LineContinuation
 SingleStringCharacter ::= ~['\\\r\n\u2028\u2029] | LineTerminator | '\\' EscapeSequence | LineContinuation
 
+TemplateLiteral ::= NoSubstitutionTemplateLiteral | TemplateHead TemplateSpan+
+TemplateSpan ::= Expression (TemplateMiddle | TemplateTail)
+
 EscapeSequence ::= CharacterEscapeSequence | '0' | HexEscapeSequence | UnicodeEscapeSequence
 CharacterEscapeSequence ::= '\\' ["\\bfnrtv]
 HexEscapeSequence ::= 'x' HEX_DIGIT HEX_DIGIT
@@ -306,7 +309,7 @@ PropertyDefinitionList ::= PropertyDefinition (',' PropertyDefinition)*
 PropertyDefinition ::= Identifier
                     | PropertyName ':' Expression
                     | '...' Expression
-PropertyName ::= Identifier | StringLiteral | NumericLiteral
+PropertyName ::= Identifier
 
 FunctionExpression ::= 'fun' CallSignature BlockStatement
 

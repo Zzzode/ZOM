@@ -123,16 +123,16 @@ declare
 if          else        match       when        default     case
 for         while       do          break       continue
 return      throw       try         catch       finally
-switch      debugger
+debugger
 ```
 
 ### Type Keywords
 
 ```
-i8          i32         i64         u8          u16
-u32         u64         f32         f64         bool
-str         null        unit        any         never
-object      symbol      bigint      undefined   void
+i8          i16         i32         i64         u8
+u16         u32         u64         f32         f64
+bool        str         null        unit        any
+never       object      symbol      bigint      undefined
 ```
 
 ### Modifier Keywords
@@ -371,5 +371,5 @@ Character literals represent single Unicode characters:
 !!          Force unwrap
 ?:          Error default
 ->          Arrow (function return type)
-=>          Rocket (lambda, match arms)
+=>          Rocket (match arms)
 ```

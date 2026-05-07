@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %s | %FileCheck %s
 
 interface Runnable {
-  fun run() -> void;
+  fun run() -> unit;
 }
 
 interface Comparable<T> {
@@ -40,8 +40,8 @@ interface Named {
 // CHECK-NEXT:           "returnType": {
 // CHECK-NEXT:             "node": "ReturnType",
 // CHECK-NEXT:             "type": {
-// CHECK-NEXT:               "node": "TypeReferenceNode",
-// CHECK-NEXT:               "name": "void"
+// CHECK-NEXT:               "node": "UnitTypeNode",
+// CHECK-NEXT:               "name": "unit"
 // CHECK-NEXT:             }
 // CHECK-NEXT:           }
 // CHECK-NEXT:         }

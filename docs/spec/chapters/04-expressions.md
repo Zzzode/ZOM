@@ -10,7 +10,7 @@ Expressions are constructs that evaluate to values. Zom provides a rich set of e
 4. **Binary Expressions**: Arithmetic, logical, comparison operators
 5. **Conditional Expressions**: Ternary operator
 6. **Assignment Expressions**: Value assignment
-7. **Closure Expressions**: Anonymous functions
+7. **Function Expressions**: Anonymous functions
 
 ## Primary Expressions
 
@@ -89,11 +89,10 @@ let person = {
     isActive: true
 };
 
-// Computed property names
-let key = "dynamicKey";
+// Object literal property names must be identifiers.
 let obj = {
-    [key]: "value",
-    ["computed" + "Key"]: 42
+    dynamicKey: "value",
+    computedKey: 42
 };
 
 // Property shorthand
@@ -348,35 +347,29 @@ result ||= defaultValue; // Logical OR assignment
 result ??= fallbackValue; // Null coalescing assignment
 ```
 
-## Closure Expressions
+## Function Expressions
 
-Closure expressions create anonymous functions:
+Function expressions create anonymous functions:
 
 ```zom
-// Basic closure
-let add = (a: i32, b: i32) => a + b;
+// Basic function expression
+let add = fun (a: i32, b: i32) -> i32 { return a + b; };
 
-// Closure with block body
-let complexOperation = (x: i32) => {
+// Function expression with block body
+let complexOperation = fun (x: i32) -> i32 {
     let doubled = x * 2;
     let squared = doubled * doubled;
     return squared;
 };
 
-// Closure with inferred types
+// Function expression as an argument
 let numbers = [1, 2, 3, 4, 5];
-let doubled = numbers.map(x => x * 2);
-let filtered = numbers.filter(x => x > 2);
+let doubled = numbers.map(fun (x: i32) -> i32 { return x * 2; });
+let filtered = numbers.filter(fun (x: i32) -> bool { return x > 2; });
 
-// Closure capturing variables
+// Function expression capturing variables
 let multiplier = 3;
-let multiply = (x: i32) => x * multiplier;
-
-// Async closure
-let asyncOperation = async (url: str) => {
-    let response = await fetch(url);
-    return await response.text();
-};
+let multiply = fun (x: i32) -> i32 { return x * multiplier; };
 ```
 
 ## Operator Precedence

@@ -88,6 +88,7 @@ public:
   void lex(Token& outToken);
 
   ZC_NODISCARD ast::SyntaxKind reScanGreaterToken();
+  ZC_NODISCARD ast::SyntaxKind reScanTemplateToken();
 
   /// \brief Restore the lexer state.
   /// \param s The state to restore.
