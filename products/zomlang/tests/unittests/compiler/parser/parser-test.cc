@@ -3425,13 +3425,14 @@ ZC_TEST("ParserTest.ParseMatchWithEnumPatternVariants") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("match result { Ok(value) => value, Result.Err => 0, _: i32 => 1, "
-              "value + 1 => 2 }")
+      zc::str("match (result) { when Ok(value) => value; when Result.Err => 0; "
+              "when _: i32 => 1; when value + 1 => 2; }")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(!diagnosticEngine->hasErrors());
 }
 
 /// Covers parsePropertyName - identifier property names
