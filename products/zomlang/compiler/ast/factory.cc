@@ -580,10 +580,13 @@ zc::Own<ContinueStatement> createContinueStatement(zc::Maybe<zc::Own<Identifier>
 //   return zc::heap<PrimaryPattern>();
 // }
 
-zc::Own<WildcardPattern> createWildcardPattern() { return zc::heap<WildcardPattern>(); }
+zc::Own<WildcardPattern> createWildcardPattern(zc::Maybe<zc::Own<TypeNode>> typeAnnotation) {
+  return zc::heap<WildcardPattern>(zc::mv(typeAnnotation));
+}
 
-zc::Own<IdentifierPattern> createIdentifierPattern(zc::Own<Identifier> identifier) {
-  return zc::heap<IdentifierPattern>(zc::mv(identifier));
+zc::Own<IdentifierPattern> createIdentifierPattern(zc::Own<Identifier> identifier,
+                                                   zc::Maybe<zc::Own<TypeNode>> typeAnnotation) {
+  return zc::heap<IdentifierPattern>(zc::mv(identifier), zc::mv(typeAnnotation));
 }
 
 zc::Own<TuplePattern> createTuplePattern(zc::Vector<zc::Own<Pattern>>&& elements) {
@@ -606,14 +609,12 @@ zc::Own<ExpressionPattern> createExpressionPattern(zc::Own<Expression> expressio
   return zc::heap<ExpressionPattern>(zc::mv(expression));
 }
 
-zc::Own<EnumPattern> createEnumPattern(zc::Own<TypeReferenceNode> typeReference,
+zc::Own<EnumPattern> createEnumPattern(zc::Maybe<zc::Own<TypeReferenceNode>> typeReference,
                                        zc::Own<Identifier> propertyName,
                                        zc::Maybe<zc::Own<TuplePattern>> tuplePattern) {
-  // TODO: Fix type conversion from TypeReferenceNode to Type
-  // For now, cast TypeReferenceNode to Type since TypeReferenceNode inherits from Type
-  zc::Maybe<zc::Own<TypeNode>> typeRef = zc::mv(typeReference);
+  zc::Maybe<zc::Own<TypeNode>> typeRef = zc::none;
+  ZC_IF_SOME(typeReferenceNode, zc::mv(typeReference)) { typeRef = zc::mv(typeReferenceNode); }
 
-  // TODO: Handle optional TuplePattern - for now create empty one if none provided
   zc::Own<TuplePattern> tuple;
   ZC_IF_SOME(tp, tuplePattern) { tuple = zc::mv(tp); }
   else { tuple = zc::heap<TuplePattern>(zc::Vector<zc::Own<Pattern>>()); }

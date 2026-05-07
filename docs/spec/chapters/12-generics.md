@@ -48,7 +48,7 @@ class Box<T> {
 
 // Usage
 let intBox = Box(42);
-let stringBox = intBox.map(x => x.toString());
+let stringBox = intBox.map(fun (x: i32) -> str { return x.toString(); });
 ```
 
 ### Generic Interfaces

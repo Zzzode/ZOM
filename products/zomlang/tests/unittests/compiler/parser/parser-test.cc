@@ -878,7 +878,7 @@ ZC_TEST("ParserTest.ParseInterfaceDeclaration") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface Drawable { draw(): void; }").asBytes(), "test.zom");
+      zc::str("interface Drawable { draw(): unit; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -892,7 +892,7 @@ ZC_TEST("ParserTest.ParseInterfacePropertySignature") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface I { let x?: i32; const y: str; fun f<T>(a: i32) -> void; }").asBytes(),
+      zc::str("interface I { let x?: i32; const y: str; fun f<T>(a: i32) -> unit; }").asBytes(),
       "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
@@ -1067,7 +1067,7 @@ ZC_TEST("ParserTest.ParseTypeQueryInFunctionParameter") {
 
   // Test type query in function parameter type
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun test(param: typeof MyClass.method) -> void {}").asBytes(), "test.zom");
+      zc::str("fun test(param: typeof MyClass.method) -> unit {}").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1385,8 +1385,8 @@ ZC_TEST("ParserTest.ParseUnaryOperators") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("void x; !true; ~x; +1; -1; -x ** 2;").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("!true; ~x; +1; -1; -x ** 2;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2920,6 +2920,20 @@ ZC_TEST("ParserTest.ParseTemplateLiteral") {
   ZC_EXPECT(result != zc::none);
 }
 
+ZC_TEST("ParserTest.ParseTemplateLiteralWithSubstitution") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("let x = `hello ${name}, count ${count + 1}`;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+}
+
 ZC_TEST("ParserTest.ParseStringLiteral") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -3299,7 +3313,7 @@ ZC_TEST("ParserTest.ParseInterfaceWithModifiers") {
   ZC_EXPECT(result != zc::none);
 }
 
-/// Covers isStartOfStatement edge cases - do-while, switch
+/// Covers isStartOfStatement edge cases - do-while
 ZC_TEST("ParserTest.ParseDoWhileStatement") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -3389,15 +3403,15 @@ ZC_TEST("ParserTest.ParseMatchWithArrayPattern") {
   ZC_EXPECT(result != zc::none);
 }
 
-/// Covers parsePropertyName - computed property names
-ZC_TEST("ParserTest.ParseComputedPropertyName") {
+/// Covers parsePropertyName - identifier property names
+ZC_TEST("ParserTest.ParseIdentifierPropertyName") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface I { fun [key: str](); }").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("interface I { fun key(); }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);

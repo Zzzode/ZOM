@@ -229,7 +229,6 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "set"_zcb) return ast::SyntaxKind::SetKeyword;
   if (text == "static"_zcb) return ast::SyntaxKind::StaticKeyword;
   if (text == "super"_zcb) return ast::SyntaxKind::SuperKeyword;
-  if (text == "switch"_zcb) return ast::SyntaxKind::SwitchKeyword;
   if (text == "symbol"_zcb) return ast::SyntaxKind::SymbolKeyword;
   if (text == "this"_zcb) return ast::SyntaxKind::ThisKeyword;
   if (text == "throw"_zcb) return ast::SyntaxKind::ThrowKeyword;
@@ -245,6 +244,7 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
 
   if (text == "bool"_zcb) return ast::SyntaxKind::BoolKeyword;
   if (text == "i8"_zcb) return ast::SyntaxKind::I8Keyword;
+  if (text == "i16"_zcb) return ast::SyntaxKind::I16Keyword;
   if (text == "i32"_zcb) return ast::SyntaxKind::I32Keyword;
   if (text == "i64"_zcb) return ast::SyntaxKind::I64Keyword;
   if (text == "u8"_zcb) return ast::SyntaxKind::U8Keyword;

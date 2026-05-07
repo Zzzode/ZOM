@@ -104,7 +104,6 @@ enum class SyntaxKind {
   SetKeyword,          // set
   StaticKeyword,       // static
   SuperKeyword,        // super
-  SwitchKeyword,       // switch
   SymbolKeyword,       // symbol
   ThisKeyword,         // this
   ThrowKeyword,        // throw

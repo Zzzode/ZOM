@@ -196,9 +196,9 @@ type Mapper<T, U> = (T -> U, T[]) -> U[];
 type SafeParser = (str) -> i32 raises ParseError;
 
 // Examples
-let add: BinaryOp = (a, b) => a + b;
-let getString: Supplier<str> = () => "hello";
-let print: Consumer<str> = (s) => console.log(s);
+let add: BinaryOp = fun (a: i32, b: i32) -> i32 { return a + b; };
+let getString: Supplier<str> = fun () -> str { return "hello"; };
+let print: Consumer<str> = fun (s: str) -> unit { console.log(s); };
 ```
 
 ### Object Types
@@ -256,7 +256,7 @@ fun greet(name: str): str {
 }
 
 // Complex type annotations
-let callback: (str) -> bool = (s) => s.length > 0;
+let callback: (str) -> bool = fun (s: str) -> bool { return s.length > 0; };
 let data: { id: i32, values: f64[] } = {
     id: 1,
     values: [1.0, 2.0, 3.0]

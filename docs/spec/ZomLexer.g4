@@ -86,6 +86,7 @@ FUN: 'fun';
 GET: 'get';
 GLOBAL: 'global';
 I8: 'i8';
+I16: 'i16';
 I32: 'i32';
 I64: 'i64';
 IF: 'if';
@@ -126,7 +127,6 @@ STATIC: 'static';
 STR: 'str';
 STRUCT: 'struct';
 SUPER: 'super';
-SWITCH: 'switch';
 SYMBOL: 'symbol';
 THIS: 'this';
 THROW: 'throw';
@@ -246,6 +246,17 @@ SINGLE_ESCAPE_CHARACTER:
 NON_ESCAPE_CHARACTER:
 	~['"\\bfnrtvxu0-9LF\u000A\u000D\u2028\u2029];
 // Any source character not part of an escape sequence
+
+// ================================================================================ TEMPLATE LITERALS
+TEMPLATE_ESCAPE_SEQUENCE: BACKSLASH .;
+NO_SUBSTITUTION_TEMPLATE_LITERAL:
+	'`' (~[`\\] | TEMPLATE_ESCAPE_SEQUENCE)* '`';
+TEMPLATE_HEAD:
+	'`' (~[`\\$] | TEMPLATE_ESCAPE_SEQUENCE | DOLLAR ~[{])* DOLLAR LBRACE;
+TEMPLATE_MIDDLE:
+	RBRACE (~[`\\$] | TEMPLATE_ESCAPE_SEQUENCE | DOLLAR ~[{])* DOLLAR LBRACE;
+TEMPLATE_TAIL:
+	RBRACE (~[`\\] | TEMPLATE_ESCAPE_SEQUENCE)* '`';
 
 // ================================================================================ CHARACTER LITERALS
 CHAR_LITERAL:

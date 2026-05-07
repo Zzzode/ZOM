@@ -224,8 +224,6 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "with"_zc;
     case ast::SyntaxKind::WhenKeyword:
       return "when"_zc;
-    case ast::SyntaxKind::SwitchKeyword:
-      return "switch"_zc;
     case ast::SyntaxKind::CaseKeyword:
       return "case"_zc;
     case ast::SyntaxKind::MatchKeyword:
@@ -248,6 +246,8 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "bool"_zc;
     case ast::SyntaxKind::I8Keyword:
       return "i8"_zc;
+    case ast::SyntaxKind::I16Keyword:
+      return "i16"_zc;
     case ast::SyntaxKind::I32Keyword:
       return "i32"_zc;
     case ast::SyntaxKind::I64Keyword:

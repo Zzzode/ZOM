@@ -1,6 +1,6 @@
 // RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
 
-// Object type literals with string/numeric property names are not yet supported
+// Object type literals only allow identifier property names.
 let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 
 

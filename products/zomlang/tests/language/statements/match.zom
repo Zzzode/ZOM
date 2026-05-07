@@ -8,7 +8,7 @@ match (x) {
   when [a, b] => 2;
   when is i32 => 3;
   when x + 1 => 4;
-  // when Result.Ok(v: i32) => v;
+  when Result.Ok(v: i32) => v;
   default => return 0;
 }
 
@@ -27,11 +27,7 @@ match (x) {
 // CHECK-NEXT:         {
 // CHECK-NEXT:           "node": "MatchClause",
 // CHECK-NEXT:           "pattern": {
-// CHECK-NEXT:             "node": "IdentifierPattern",
-// CHECK-NEXT:             "identifier": {
-// CHECK-NEXT:               "node": "Identifier",
-// CHECK-NEXT:               "name": "_"
-// CHECK-NEXT:             },
+// CHECK-NEXT:             "node": "WildcardPattern",
 // CHECK-NEXT:             "typeAnnotation": null
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "guard": null,
@@ -51,7 +47,10 @@ match (x) {
 // CHECK-NEXT:               "node": "Identifier",
 // CHECK-NEXT:               "name": "v"
 // CHECK-NEXT:             },
-// CHECK-NEXT:             "typeAnnotation": null
+// CHECK-NEXT:             "typeAnnotation": {
+// CHECK-NEXT:               "node": "I32TypeNode",
+// CHECK-NEXT:               "name": "i32"
+// CHECK-NEXT:             }
 // CHECK-NEXT:           },
 // CHECK-NEXT:           "guard": null,
 // CHECK-NEXT:           "body": {
@@ -73,7 +72,10 @@ match (x) {
 // CHECK-NEXT:                   "node": "Identifier",
 // CHECK-NEXT:                   "name": "a"
 // CHECK-NEXT:                 },
-// CHECK-NEXT:                 "typeAnnotation": null
+// CHECK-NEXT:                 "typeAnnotation": {
+// CHECK-NEXT:                   "node": "I32TypeNode",
+// CHECK-NEXT:                   "name": "i32"
+// CHECK-NEXT:                 }
 // CHECK-NEXT:               },
 // CHECK-NEXT:               {
 // CHECK-NEXT:                 "node": "IdentifierPattern",
@@ -81,7 +83,10 @@ match (x) {
 // CHECK-NEXT:                   "node": "Identifier",
 // CHECK-NEXT:                   "name": "b"
 // CHECK-NEXT:                 },
-// CHECK-NEXT:                 "typeAnnotation": null
+// CHECK-NEXT:                 "typeAnnotation": {
+// CHECK-NEXT:                   "node": "StrTypeNode",
+// CHECK-NEXT:                   "name": "str"
+// CHECK-NEXT:                 }
 // CHECK-NEXT:               }
 // CHECK-NEXT:             ]
 // CHECK-NEXT:           },
@@ -193,6 +198,73 @@ match (x) {
 // CHECK-NEXT:             "expression": {
 // CHECK-NEXT:               "node": "IntegerLiteral",
 // CHECK-NEXT:               "value": "3"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MatchClause",
+// CHECK-NEXT:           "pattern": {
+// CHECK-NEXT:             "node": "ExpressionPattern",
+// CHECK-NEXT:             "expression": {
+// CHECK-NEXT:               "node": "BinaryExpression",
+// CHECK-NEXT:               "left": {
+// CHECK-NEXT:                 "node": "Identifier",
+// CHECK-NEXT:                 "name": "x"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "operator": {
+// CHECK-NEXT:                 "node": "TokenNode",
+// CHECK-NEXT:                 "symbol": "+"
+// CHECK-NEXT:               },
+// CHECK-NEXT:               "right": {
+// CHECK-NEXT:                 "node": "IntegerLiteral",
+// CHECK-NEXT:                 "value": "1"
+// CHECK-NEXT:               }
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "guard": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "ExpressionStatement",
+// CHECK-NEXT:             "expression": {
+// CHECK-NEXT:               "node": "IntegerLiteral",
+// CHECK-NEXT:               "value": "4"
+// CHECK-NEXT:             }
+// CHECK-NEXT:           }
+// CHECK-NEXT:         },
+// CHECK-NEXT:         {
+// CHECK-NEXT:           "node": "MatchClause",
+// CHECK-NEXT:           "pattern": {
+// CHECK-NEXT:             "node": "EnumPattern",
+// CHECK-NEXT:             "typeReference": {
+// CHECK-NEXT:               "node": "TypeReferenceNode",
+// CHECK-NEXT:               "name": "Result"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "propertyName": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "Ok"
+// CHECK-NEXT:             },
+// CHECK-NEXT:             "tuplePattern": {
+// CHECK-NEXT:               "node": "TuplePattern",
+// CHECK-NEXT:               "elements": [
+// CHECK-NEXT:                 {
+// CHECK-NEXT:                   "node": "IdentifierPattern",
+// CHECK-NEXT:                   "identifier": {
+// CHECK-NEXT:                     "node": "Identifier",
+// CHECK-NEXT:                     "name": "v"
+// CHECK-NEXT:                   },
+// CHECK-NEXT:                   "typeAnnotation": {
+// CHECK-NEXT:                     "node": "I32TypeNode",
+// CHECK-NEXT:                     "name": "i32"
+// CHECK-NEXT:                   }
+// CHECK-NEXT:                 }
+// CHECK-NEXT:               ]
+// CHECK-NEXT:             }
+// CHECK-NEXT:           },
+// CHECK-NEXT:           "guard": null,
+// CHECK-NEXT:           "body": {
+// CHECK-NEXT:             "node": "ExpressionStatement",
+// CHECK-NEXT:             "expression": {
+// CHECK-NEXT:               "node": "Identifier",
+// CHECK-NEXT:               "name": "v"
 // CHECK-NEXT:             }
 // CHECK-NEXT:           }
 // CHECK-NEXT:         },
