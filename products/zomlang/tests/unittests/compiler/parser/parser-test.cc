@@ -2934,6 +2934,21 @@ ZC_TEST("ParserTest.ParseTemplateLiteralWithSubstitution") {
   ZC_EXPECT(result != zc::none);
 }
 
+ZC_TEST("ParserTest.ParseTemplateLiteralMissingCloseBrace") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("let x = `hello ${name;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors());
+}
+
 ZC_TEST("ParserTest.ParseStringLiteral") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -3403,6 +3418,22 @@ ZC_TEST("ParserTest.ParseMatchWithArrayPattern") {
   ZC_EXPECT(result != zc::none);
 }
 
+ZC_TEST("ParserTest.ParseMatchWithEnumPatternVariants") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("match result { Ok(value) => value, Result.Err => 0, _: i32 => 1, "
+              "value + 1 => 2 }")
+          .asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+}
+
 /// Covers parsePropertyName - identifier property names
 ZC_TEST("ParserTest.ParseIdentifierPropertyName") {
   auto sourceManager = zc::heap<source::SourceManager>();
@@ -3415,6 +3446,20 @@ ZC_TEST("ParserTest.ParseIdentifierPropertyName") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+}
+
+ZC_TEST("ParserTest.ParseInvalidPropertyNames") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("interface I { [key]: i32; \"name\": str; 1: i32; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 /// Covers parseBindingElement in destructuring

@@ -269,6 +269,8 @@ ZC_TEST("TokenTest.OperatorStaticText") {
             "null"_zc);
 
   // Test types
+  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::I16Keyword)) ==
+            "i16"_zc);
   ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::I32Keyword)) ==
             "i32"_zc);
   ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::F64Keyword)) ==
