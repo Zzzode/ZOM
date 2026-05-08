@@ -85,6 +85,8 @@ otherPunctuator:
 	| AND
 	| OR
 	| NULL_COALESCE
+	| ERROR_PROPAGATE
+	| FORCE_UNWRAP
 	| QUESTION
 	| COLON
 	| ASSIGN
@@ -365,18 +367,14 @@ prefixUnaryExpression:
 	| BIT_NOT prefixUnaryExpression
 	| NOT prefixUnaryExpression
 	| INC prefixUnaryExpression
-	| DEC prefixUnaryExpression
-	| AWAIT prefixUnaryExpression;
+	| DEC prefixUnaryExpression;
 
 // Unary Expression
 unaryExpression: prefixUnaryExpression;
 
-// Cast Expression
-castExpression: unaryExpression (AS (QUESTION | NOT)? type)*;
-
 // Exponentiation Expression
 exponentiationExpression:
-	castExpression
+	unaryExpression
 	| unaryExpression POW exponentiationExpression;
 
 // Multiplicative Expression
@@ -402,7 +400,8 @@ shiftExpression:
 // Relational Expression
 relationalExpression:
 	shiftExpression (
-		(LT | GT | LTE | GTE | IS | IN) shiftExpression
+		(LT | GT | LTE | GTE) shiftExpression
+		| AS (QUESTION | NOT)? type
 	)*;
 
 // Equality Expression
@@ -436,8 +435,9 @@ coalesceExpression:
 	logicalORExpression (NULL_COALESCE logicalORExpression)*;
 
 // Error Default Expression
+// The '?' and ':' tokens must be adjacent in source.
 errorDefaultExpression:
-	coalesceExpression (ERROR_DEFAULT coalesceExpression)*;
+	coalesceExpression (QUESTION COLON coalesceExpression)*;
 
 // Short Circuit Expression
 shortCircuitExpression: errorDefaultExpression;
@@ -511,7 +511,8 @@ statement:
 	| continueStatement
 	| breakStatement
 	| returnStatement
-	| debuggerStatement;
+	| debuggerStatement
+	| labeledStatement;
 
 emptyStatement: SEMICOLON;
 
@@ -545,7 +546,7 @@ forDeclaration: (LET | CONST) forBinding;
 
 forBinding: bindingIdentifier | bindingPattern;
 
-forInit: expression | variableStatement;
+forInit: expression | (LET | CONST) variableDeclarationList;
 
 forUpdate: expression;
 
@@ -557,6 +558,8 @@ returnStatement: RETURN expression? SEMICOLON;
 
 debuggerStatement: DEBUGGER SEMICOLON;
 
+labeledStatement: identifier COLON statement;
+
 matchStatement: MATCH LPAREN expression RPAREN matchBlock;
 matchBlock:
 	LBRACE matchClauses RBRACE
@@ -565,12 +568,12 @@ matchBlock:
 
 matchClauses: matchClause*;
 matchClause:
-	WHEN pattern guardClause? ROCKET (expression | block);
+	WHEN pattern guardClause? ROCKET statement;
 
 guardClause: IF expression;
 defaultClause: DEFAULT ROCKET statementList;
 
-pattern: primaryPattern (AS type)?;
+pattern: primaryPattern;
 
 primaryPattern:
 	wildcardPattern
@@ -584,14 +587,17 @@ primaryPattern:
 
 wildcardPattern: UNDERSCORE typeAnnotation?;
 identifierPattern: bindingIdentifier typeAnnotation?;
-tuplePattern: LPAREN tupleElements? RPAREN;
-tupleElements: tupleElement (COMMA tupleElement)*;
-tupleElement: bindingIdentifier typeAnnotation?;
-structurePattern: objectType;
-arrayPattern: arrayBindingPattern;
+tuplePattern: LPAREN patternList? RPAREN;
+patternList: pattern (COMMA pattern)* COMMA?;
+structurePattern: LBRACE patternPropertyList? RBRACE;
+patternPropertyList: patternProperty (COMMA patternProperty)* COMMA?;
+patternProperty: propertyName (COLON type)?;
+arrayPattern: LBRACK patternList? RBRACK;
 isPattern: IS type;
 expressionPattern: expression;
-enumPattern: typeReference? PERIOD propertyName tuplePattern;
+enumPattern:
+	propertyName tuplePattern
+	| typeReference PERIOD propertyName tuplePattern?;
 
 // ================================================================================ DECLARATIONS
 declaration:
@@ -607,7 +613,7 @@ declaration:
 //// ============================================================================== TYPES
 
 // Type
-type: unionType;
+type: functionType | unionType;
 
 // UnionType
 unionType: intersectionType (BIT_OR intersectionType)*;
@@ -633,6 +639,7 @@ parenthesizedType: LPAREN type RPAREN;
 // PredefinedType
 predefinedType:
 	I8
+	| I16
 	| I32
 	| I64
 	| U8
@@ -686,7 +693,7 @@ elementName: identifier;
 
 // FunctionType
 functionType:
-	typeParameters? parameterClause (ARROW type raisesClause?)?;
+	typeParameters? parameterClause ARROW type raisesClause?;
 
 // ParameterClause
 parameterClause: LPAREN parameterList? RPAREN;
@@ -735,7 +742,7 @@ interfaceElement:
 
 // ================================================================================ TYPE ALIAS DECLARATIONS
 aliasDeclaration:
-	ALIAS bindingIdentifier typeParameters? ASSIGN type;
+	ALIAS bindingIdentifier typeParameters? ASSIGN type SEMICOLON;
 
 // ================================================================================ STRUCT DECLARATIONS
 structDeclaration:
@@ -749,10 +756,7 @@ structElement: propertyMemberDeclaration;
 
 // ================================================================================ ERROR DECLARATIONS
 errorDeclaration:
-	ERROR bindingIdentifier typeParameters? LBRACE errorBody? RBRACE;
-
-errorBody: errorMember (COMMA errorMember)*;
-errorMember: propertyName ((ASSIGN expression) | tupleType)?;
+	ERROR bindingIdentifier LBRACE statementList? RBRACE;
 
 // ================================================================================ ENUM DECLARATIONS
 enumDeclaration: ENUM bindingIdentifier LBRACE enumBody? RBRACE;
@@ -770,7 +774,7 @@ setAccessor:
 	SET propertyName LPAREN parameter RPAREN LBRACE functionBody RBRACE;
 
 // ================================================================================ LET AND CONST DECLARATIONS
-variableStatement: (LET | CONST) variableDeclarationList;
+variableStatement: (LET | CONST) variableDeclarationList SEMICOLON;
 
 variableDeclarationList:
 	variableDeclaration (COMMA variableDeclaration)*;

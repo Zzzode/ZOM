@@ -56,6 +56,8 @@ ast::OperatorPrecedence getBinaryOperatorPrecedence(ast::SyntaxKind tokenKind) {
       return ast::OperatorPrecedence::kLogicalOr;
     case ast::SyntaxKind::AmpersandAmpersand:
       return ast::OperatorPrecedence::kLogicalAnd;
+    case ast::SyntaxKind::ErrorDefault:
+      return ast::OperatorPrecedence::kErrorDefault;
     case ast::SyntaxKind::Bar:
       return ast::OperatorPrecedence::kBitwiseOr;
     case ast::SyntaxKind::Caret:
@@ -64,6 +66,8 @@ ast::OperatorPrecedence getBinaryOperatorPrecedence(ast::SyntaxKind tokenKind) {
       return ast::OperatorPrecedence::kBitwiseAnd;
     case ast::SyntaxKind::EqualsEquals:
     case ast::SyntaxKind::ExclamationEquals:
+    case ast::SyntaxKind::EqualsEqualsEquals:
+    case ast::SyntaxKind::ExclamationEqualsEquals:
       return ast::OperatorPrecedence::kEquality;
     case ast::SyntaxKind::LessThan:
     case ast::SyntaxKind::GreaterThan:
@@ -76,7 +80,7 @@ ast::OperatorPrecedence getBinaryOperatorPrecedence(ast::SyntaxKind tokenKind) {
     case ast::SyntaxKind::GreaterThanGreaterThanGreaterThan:
       return ast::OperatorPrecedence::kShift;
     case ast::SyntaxKind::QuestionQuestion:
-      return ast::OperatorPrecedence::kLogicalOr;
+      return ast::OperatorPrecedence::kCoalesce;
     case ast::SyntaxKind::Plus:
     case ast::SyntaxKind::Minus:
       return ast::OperatorPrecedence::kAdditive;
@@ -114,6 +118,10 @@ bool isAssignmentOperator(ast::SyntaxKind tokenKind) {
     default:
       return false;
   }
+}
+
+bool isAdjacentTokenPair(const lexer::Token& left, const lexer::Token& right) {
+  return left.getRange().getEnd() == right.getRange().getStart();
 }
 
 // Check if expression is a left-hand side expression
@@ -2540,7 +2548,16 @@ zc::Own<ast::Expression> Parser::parseBinaryExpressionRest(zc::Own<ast::Expressi
   while (true) {
     const lexer::Token& token = currentToken();
 
-    ast::OperatorPrecedence newPrecedence = getBinaryOperatorPrecedence(token.getKind());
+    bool isErrorDefaultOperator = false;
+    if (token.is(ast::SyntaxKind::Question)) {
+      const lexer::Token lookAheadToken = lookAhead(1);
+      isErrorDefaultOperator =
+          lookAheadToken.is(ast::SyntaxKind::Colon) && isAdjacentTokenPair(token, lookAheadToken);
+    }
+
+    ast::OperatorPrecedence newPrecedence = isErrorDefaultOperator
+                                                ? ast::OperatorPrecedence::kErrorDefault
+                                                : getBinaryOperatorPrecedence(token.getKind());
 
     // Check the precedence to see if we should "take" this operator
     // - For left associative operator (all operator but **), consume the ,
@@ -2556,7 +2573,17 @@ zc::Own<ast::Expression> Parser::parseBinaryExpressionRest(zc::Own<ast::Expressi
 
     if (!consumeCurrentOperator) { break; }
 
-    if (expectToken(ast::SyntaxKind::AsKeyword)) {
+    if (isErrorDefaultOperator) {
+      const source::SourceLoc operatorLoc = currentLoc();
+      nextToken();
+      nextToken();
+      auto op =
+          finishNode(ast::factory::createTokenNode(ast::SyntaxKind::ErrorDefault), operatorLoc);
+      auto rightOperand = parseBinaryExpressionOrHigher(newPrecedence);
+      expr = finishNode(
+          ast::factory::createBinaryExpression(zc::mv(expr), zc::mv(op), zc::mv(rightOperand)),
+          loc);
+    } else if (expectToken(ast::SyntaxKind::AsKeyword)) {
       const bool hasLineBreakBeforeAs = currentToken().hasPrecedingLineBreak();
       if (hasLineBreakBeforeAs) {
         parseErrorAtCurrentToken<diagnostics::DiagID::LineBreakNotAllowedBeforeAsCast>();

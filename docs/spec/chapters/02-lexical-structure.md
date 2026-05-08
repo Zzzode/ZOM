@@ -369,7 +369,7 @@ Character literals represent single Unicode characters:
 ??          Null coalescing
 ?!          Error propagation
 !!          Force unwrap
-?:          Error default
+?:          Error default (parsed as '?' followed by ':')
 ->          Arrow (function return type)
 =>          Rocket (match arms)
 ```
