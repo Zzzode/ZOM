@@ -70,8 +70,8 @@ let multiline: str = "Line 1\nLine 2";
 ```zom
 let nothing: null = null;
 let empty: unit = ();
-fun crash() -> never {
-    throw "This function never returns";
+fun loopForever() -> never {
+    while (true) {}
 }
 ```
 

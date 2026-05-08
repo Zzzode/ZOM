@@ -217,18 +217,6 @@ let safeCast = someValue as i32;
 let optionalCast = someValue as? i32; // Returns null if cast fails
 ```
 
-### Await Expression
-
-Used in async functions to wait for asynchronous operations:
-
-```zom
-async fun fetchData() -> str {
-    let response = await httpClient.get("https://api.example.com/data");
-    let data = await response.json();
-    return data.message;
-}
-```
-
 ## Binary Expressions
 
 ### Arithmetic Operators
@@ -247,8 +235,8 @@ let power = a ** b;        // Exponentiation
 ```zom
 let equal = a == b;        // Equality
 let notEqual = a != b;     // Inequality
-let strictEqual = a === b; // Strict equality (type and value)
-let strictNotEqual = a !== b; // Strict inequality
+let sameReference = a === b; // Reference equality
+let differentReference = a !== b; // Reference inequality
 let less = a < b;          // Less than
 let greater = a > b;       // Greater than
 let lessEqual = a <= b;    // Less than or equal
@@ -378,7 +366,7 @@ Operators are evaluated in the following order (highest to lowest precedence):
 
 1. **Primary**: `()`, `[]`, `.`, `?.`
 2. **Postfix**: `++`, `--` (postfix)
-3. **Prefix**: `+`, `-`, `!`, `~`, `++`, `--` (prefix), `typeof`, `await`
+3. **Prefix**: `+`, `-`, `!`, `~`, `++`, `--` (prefix), `typeof`
 4. **Cast**: `as`, `as?`, `<Type>`
 5. **Exponentiation**: `**`
 6. **Multiplicative**: `*`, `/`, `%`

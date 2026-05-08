@@ -159,6 +159,9 @@ import      export      from        using       require
 with        yield
 ```
 
+Some reserved words are reserved for future language design. If a reserved word has no grammar rule
+in the current parser, using it as syntax is a parse error rather than a supported construct.
+
 ## Literals
 
 Literals represent constant values in source code.

@@ -8,7 +8,7 @@ Declarations introduce new named entities into a program's namespace. They defin
 2. **Function Declarations**: `fun`
 3. **Type Declarations**: `alias`, `interface`, `struct`, `enum`, `error`
 4. **Class Declarations**: `class`
-5. **Module Declarations**: `module`, `namespace`
+5. **Module Declarations**: `module`
 
 ## Variable Declarations
 
@@ -188,31 +188,15 @@ fun parseOrDefault<T = str>(input: str, defaultValue: T) -> T {
 }
 ```
 
-### Async Functions
+### Reserved Function Forms
 
-```zom
-// Async function declaration
-async fun fetchData(url: str) -> str {
-    let response = await httpClient.get(url);
-    return await response.text();
-}
-
-// Async function with error handling
-async fun safelyFetchData(url: str) -> str? {
-    try {
-        let response = await httpClient.get(url);
-        return await response.text();
-    } catch (error) {
-        print("Failed to fetch data: " + error.message);
-        return null;
-    }
-}
-```
+`async` and `await` are reserved words, but asynchronous function syntax is not part of the current
+parser grammar.
 
 ### Function with Error Handling
 
 ```zom
-// Function that can throw errors
+// Function that can return an error value
 fun divide(a: f64, b: f64) -> Result<f64, DivisionByZeroError> {
     if (b == 0.0) {
         return Failure(DivisionByZeroError("Cannot divide by zero"));

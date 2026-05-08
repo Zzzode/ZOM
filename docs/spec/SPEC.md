@@ -24,12 +24,12 @@ For the complete specification, please refer to the individual chapter files in 
 
 ### Advanced Features
 
-- [Error Handling](chapters/11-error-handling.md) - Exception handling and error propagation
+- [Error Handling](chapters/11-error-handling.md) - Explicit error values and error declarations
 - [Generics](chapters/12-generics.md) - Generic programming and type parameters
 - [Modules and Imports](chapters/13-modules-and-imports.md) - Code organization and namespaces
 - [Memory Management](chapters/14-memory-management.md) - Memory safety and resource management
-- [Concurrency](chapters/15-concurrency.md) - Async/await and concurrent programming
-- [Attributes and Annotations](chapters/16-attributes-and-annotations.md) - Metadata and compile-time directives
+- [Concurrency](chapters/15-concurrency.md) - Reserved for future concurrency design
+- [Attributes and Annotations](chapters/16-attributes-and-annotations.md) - Reserved metadata syntax
 
 ### Reference
 
