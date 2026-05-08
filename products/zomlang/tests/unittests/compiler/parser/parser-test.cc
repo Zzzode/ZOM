@@ -1665,6 +1665,7 @@ ZC_TEST("ParserTest.ParseForInLoop") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse for-in loop");
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Valid for-in loop should not diagnose");
 
   ZC_IF_SOME(root, result) {
     auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
@@ -1673,6 +1674,21 @@ ZC_TEST("ParserTest.ParseForInLoop") {
     ZC_EXPECT(statements[0].getKind() == ast::SyntaxKind::ForInStatement,
               "Statement should be a for-in statement");
   }
+}
+
+ZC_TEST("ParserTest.ParseForOfLoopReportsError") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("for (let x of items) { break; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Parser should recover from unsupported for-of syntax");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "for-of syntax should produce parse errors");
 }
 
 ZC_TEST("ParserTest.ParseSuperExpression") {

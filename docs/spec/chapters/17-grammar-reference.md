@@ -205,6 +205,7 @@ Statement ::= BlockStatement
            | MatchStatement
            | WhileStatement
            | ForStatement
+           | ForInStatement
            | ContinueStatement
            | BreakStatement
            | ReturnStatement
@@ -228,6 +229,9 @@ GuardClause ::= 'if' Expression
 WhileStatement ::= 'while' '(' Expression ')' Statement
 
 ForStatement ::= 'for' '(' ForInit? ';' Expression? ';' ForUpdate? ')' Statement
+ForInStatement ::= 'for' '(' (ForDeclaration | LeftHandSideExpression) 'in' Expression ')' Statement
+ForDeclaration ::= ('let' | 'const') ForBinding
+ForBinding ::= BindingIdentifier | BindingPattern
 ForInit ::= VariableDeclaration | Expression
 ForUpdate ::= Expression
 

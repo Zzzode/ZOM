@@ -528,8 +528,7 @@ breakableStatement: iterativeStatement;
 iterativeStatement:
 	whileStatement
 	| forStatement
-	| forInStatement
-	| forOfStatement;
+	| forInStatement;
 
 whileStatement: WHILE LPAREN expression RPAREN statement;
 
@@ -538,9 +537,6 @@ forStatement:
 
 forInStatement:
 	FOR LPAREN (forDeclaration | leftHandSideExpression) IN expression RPAREN statement;
-
-forOfStatement:
-	FOR LPAREN (forDeclaration | leftHandSideExpression) OF assignmentExpression RPAREN statement;
 
 forDeclaration: (LET | CONST) forBinding;
 
