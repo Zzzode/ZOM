@@ -286,26 +286,8 @@ fun divide(a: f64, b: f64) -> f64? {
 }
 ```
 
-#### `throw` Statement
-
-Throws an exception:
-
-```zom
-// Throw with error object
-fun validateAge(age: i32) {
-    if (age < 0) {
-        throw ValidationError("Age cannot be negative");
-    }
-    if (age > 150) {
-        throw ValidationError("Age seems unrealistic");
-    }
-}
-
-// Throw with string
-fun notImplemented() {
-    throw "This feature is not yet implemented";
-}
-```
+`throw`, `try`, `catch`, and `finally` are reserved words, but they are not part of the current
+statement grammar. Use explicit error values, `raises` annotations, and pattern matching instead.
 
 ## Labeled Statements
 

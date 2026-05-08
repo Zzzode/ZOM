@@ -16,7 +16,6 @@ Zom is a modern, statically-typed programming language designed for building rel
 - Memory safety without garbage collection
 - Pattern matching and algebraic data types
 - Generics with associated types
-- Async/await concurrency model
 - Powerful error handling with Result types
 - Module system with explicit imports/exports
 - Compile-time code generation

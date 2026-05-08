@@ -14,12 +14,12 @@ This directory contains the Zom language specification split into individual cha
 8. [Classes and Structures](08-classes-and-structures.md) - Object-oriented programming
 9. [Interfaces](09-interfaces.md) - Interface definitions and implementations
 10. [Enumerations](10-enumerations.md) - Enum types and variants
-11. [Error Handling](11-error-handling.md) - Exception handling and error types
+11. [Error Handling](11-error-handling.md) - Explicit error values and error declarations
 12. [Generics](12-generics.md) - Generic programming and type parameters
 13. [Modules and Imports](13-modules-and-imports.md) - Module system and code organization
 14. [Memory Management](14-memory-management.md) - Memory safety and resource management
-15. [Concurrency](15-concurrency.md) - Async/await and concurrent programming
-16. [Attributes and Annotations](16-attributes-and-annotations.md) - Metadata and compile-time directives
+15. [Concurrency](15-concurrency.md) - Reserved for future concurrency design
+16. [Attributes and Annotations](16-attributes-and-annotations.md) - Reserved metadata syntax
 17. [Grammar Reference](17-grammar-reference.md) - Complete ANTLR4 grammar definitions
 
 ## Organization
