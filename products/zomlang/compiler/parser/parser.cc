@@ -1541,7 +1541,6 @@ bool Parser::canFollowTypeArgumentsInExpression() {
   switch (token.getKind()) {
     // These tokens can follow a type argument list in a call expression.
     case ast::SyntaxKind::LeftParen:  // foo<x>(
-    case ast::SyntaxKind::Backtick:   // foo<T> `...` (template literal)
       return true;
 
     // A type argument list followed by `<` never makes sense, and a type argument list followed
@@ -1863,9 +1862,6 @@ zc::String getSpaceSuggestion(zc::StringPtr text) {
 void Parser::parseErrorForMissingSemicolonAfter(const ast::Expression& expr) {
   // We reach here when an expression statement is not followed by a semicolon.
   // Provide contextual diagnostics based on the next token to help recovery.
-
-  // TODO: Check for TaggedTemplateExpression when supported.
-  // Tagged template literals are sometimes used in places where only simple strings are allowed.
 
   // Check if the expression is a keyword-like identifier that might indicate a
   // malformed declaration.

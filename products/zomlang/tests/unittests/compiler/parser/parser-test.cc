@@ -2966,6 +2966,20 @@ ZC_TEST("ParserTest.ParseTemplateLiteralWithSubstitution") {
   ZC_EXPECT(result != zc::none);
 }
 
+ZC_TEST("ParserTest.ParseTaggedTemplateLiteralReportsError") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("tag<T>`hello`;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors());
+}
+
 ZC_TEST("ParserTest.ParseTemplateLiteralMissingCloseBrace") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
