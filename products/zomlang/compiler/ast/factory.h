@@ -52,6 +52,7 @@ class BlockStatement;
 class ExpressionStatement;
 class IfStatement;
 class WhileStatement;
+class DoWhileStatement;
 class ReturnStatement;
 class BreakStatement;
 class ContinueStatement;
@@ -290,6 +291,8 @@ zc::Own<IfStatement> createIfStatement(zc::Own<Expression> test, zc::Own<Stateme
                                        zc::Maybe<zc::Own<Statement>> alternate = zc::none);
 
 zc::Own<WhileStatement> createWhileStatement(zc::Own<Expression> test, zc::Own<Statement> body);
+
+zc::Own<DoWhileStatement> createDoWhileStatement(zc::Own<Statement> body, zc::Own<Expression> test);
 
 zc::Own<ReturnStatement> createReturnStatement(zc::Maybe<zc::Own<Expression>> argument = zc::none);
 

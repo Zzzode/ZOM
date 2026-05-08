@@ -239,6 +239,11 @@ zc::Own<WhileStatement> createWhileStatement(zc::Own<Expression> test, zc::Own<S
   return zc::heap<WhileStatement>(zc::mv(test), zc::mv(body));
 }
 
+zc::Own<DoWhileStatement> createDoWhileStatement(zc::Own<Statement> body,
+                                                 zc::Own<Expression> test) {
+  return zc::heap<DoWhileStatement>(zc::mv(body), zc::mv(test));
+}
+
 zc::Own<ReturnStatement> createReturnStatement(zc::Maybe<zc::Own<Expression>> argument) {
   return zc::heap<ReturnStatement>(zc::mv(argument));
 }

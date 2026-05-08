@@ -1521,6 +1521,48 @@ void WhileStatement::setFlags(NodeFlags flags) {}
 void WhileStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
 
 // ================================================================================
+// DoWhileStatement::Impl
+
+struct DoWhileStatement::Impl : private NodeImpl {
+  const zc::Own<Statement> body;
+  const zc::Own<Expression> condition;
+
+  Impl(zc::Own<Statement> b, zc::Own<Expression> c)
+      : NodeImpl(SyntaxKind::DoWhileStatement), body(zc::mv(b)), condition(zc::mv(c)) {}
+  using NodeImpl::getFlags;
+  using NodeImpl::getSourceRange;
+  using NodeImpl::setFlags;
+  using NodeImpl::setSourceRange;
+};
+
+// ================================================================================
+// DoWhileStatement
+
+DoWhileStatement::DoWhileStatement(zc::Own<Statement> body, zc::Own<Expression> condition) noexcept
+    : IterationStatement(), impl(zc::heap<Impl>(zc::mv(body), zc::mv(condition))) {}
+
+DoWhileStatement::~DoWhileStatement() noexcept(false) = default;
+
+const Expression& DoWhileStatement::getCondition() const { return *impl->condition; }
+
+const Statement& DoWhileStatement::getBody() const { return *impl->body; }
+
+void DoWhileStatement::setSourceRange(const source::SourceRange&& range) {
+  const_cast<Impl*>(impl.get())->setSourceRange(zc::mv(range));
+}
+
+const source::SourceRange& DoWhileStatement::getSourceRange() const {
+  return impl->getSourceRange();
+}
+
+SyntaxKind DoWhileStatement::getKind() const { return SyntaxKind::DoWhileStatement; }
+
+NodeFlags DoWhileStatement::getFlags() const { return NodeFlags::None; }
+void DoWhileStatement::setFlags(NodeFlags flags) {}
+
+void DoWhileStatement::accept(Visitor& visitor) const { visitor.visit(*this); }
+
+// ================================================================================
 // ReturnStatement::Impl
 
 struct ReturnStatement::Impl : private NodeImpl {

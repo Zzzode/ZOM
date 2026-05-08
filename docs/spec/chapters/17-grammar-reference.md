@@ -204,6 +204,7 @@ Statement ::= BlockStatement
            | IfStatement
            | MatchStatement
            | WhileStatement
+           | DoWhileStatement
            | ForStatement
            | ForInStatement
            | ContinueStatement
@@ -227,6 +228,7 @@ MatchArm ::= 'when' Pattern GuardClause? ('=>' Expression | BlockStatement)
 GuardClause ::= 'if' Expression
 
 WhileStatement ::= 'while' '(' Expression ')' Statement
+DoWhileStatement ::= 'do' Statement 'while' '(' Expression ')' ';'?
 
 ForStatement ::= 'for' '(' ForInit? ';' Expression? ';' ForUpdate? ')' Statement
 ForInStatement ::= 'for' '(' (ForDeclaration | LeftHandSideExpression) 'in' Expression ')' Statement

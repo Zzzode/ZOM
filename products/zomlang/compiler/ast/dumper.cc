@@ -655,6 +655,20 @@ void ASTDumper::visit(const WhileStatement& node) {
   impl->serializer->writeNodeEnd("WhileStatement"_zc);
 }
 
+void ASTDumper::visit(const DoWhileStatement& node) {
+  impl->serializer->writeNodeStart("DoWhileStatement"_zc);
+
+  impl->serializer->writeChildStart("body"_zc);
+  node.getBody().accept(*this);
+  impl->serializer->writeChildEnd("body"_zc);
+
+  impl->serializer->writeChildStart("condition"_zc);
+  node.getCondition().accept(*this);
+  impl->serializer->writeChildEnd("condition"_zc);
+
+  impl->serializer->writeNodeEnd("DoWhileStatement"_zc);
+}
+
 void ASTDumper::visit(const ForStatement& node) {
   impl->serializer->writeNodeStart("ForStatement"_zc);
 

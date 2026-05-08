@@ -436,6 +436,7 @@ private:
   zc::Maybe<zc::Own<ast::ExpressionStatement>> parseExpressionStatement();
   zc::Maybe<zc::Own<ast::IfStatement>> parseIfStatement();
   zc::Maybe<zc::Own<ast::WhileStatement>> parseWhileStatement();
+  zc::Maybe<zc::Own<ast::DoWhileStatement>> parseDoWhileStatement();
   zc::Maybe<zc::Own<ast::IterationStatement>> parseForStatement();
   zc::Maybe<zc::Own<ast::LabeledStatement>> parseLabeledStatement();
   zc::Maybe<zc::Own<ast::BreakStatement>> parseBreakStatement();

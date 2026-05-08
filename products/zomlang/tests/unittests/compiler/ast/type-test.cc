@@ -71,6 +71,7 @@ struct BaseTestVisitor : public Visitor {
   void visit(const ExpressionStatement& node) override {}
   void visit(const IfStatement& node) override {}
   void visit(const WhileStatement& node) override {}
+  void visit(const DoWhileStatement& node) override {}
   void visit(const ForStatement& node) override {}
   void visit(const ForInStatement& node) override {}
   void visit(const LabeledStatement& node) override {}

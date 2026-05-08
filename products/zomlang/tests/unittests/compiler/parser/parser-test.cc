@@ -3382,11 +3382,35 @@ ZC_TEST("ParserTest.ParseDoWhileStatement") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() { do { bar(); } while (true); }").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("do { bar(); } while (true);").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Valid do-while statement should not diagnose");
+
+  ZC_IF_SOME(root, result) {
+    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
+    const auto& statements = sourceFile.getStatements();
+    ZC_EXPECT(statements.size() == 1, "Should contain one do-while statement");
+    ZC_EXPECT(statements[0].getKind() == ast::SyntaxKind::DoWhileStatement,
+              "Statement should be a do-while statement");
+  }
+}
+
+ZC_TEST("ParserTest.ParseDoWhileStatementWithoutSemicolon") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("do { bar(); } while (true)").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(!diagnosticEngine->hasErrors(),
+            "Valid do-while statement without trailing semicolon should not diagnose");
 }
 
 /// Covers isStartOfType - predefined type keywords
