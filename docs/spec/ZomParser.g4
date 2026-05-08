@@ -337,7 +337,11 @@ optionalExpression:
 	)*;
 
 optionalChain:
-	OPTIONAL_CHAINING identifier (
+	OPTIONAL_CHAINING (
+		identifier
+		| LBRACK expression RBRACK
+		| arguments
+	) (
 		arguments
 		| LBRACK expression RBRACK
 		| PERIOD identifier

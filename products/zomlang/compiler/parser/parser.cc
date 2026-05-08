@@ -1298,7 +1298,8 @@ bool Parser::isStartOfInterfaceMember() {
 }
 
 bool Parser::isStartOfOptionalPropertyOrElementAccessChain() {
-  return expectToken(ast::SyntaxKind::QuestionDot) && nextTokenIsIdentifierOrKeywordOrLeftBracket();
+  return expectToken(ast::SyntaxKind::QuestionDot) &&
+         lookAhead<bool>(ZC_BIND_METHOD(*this, nextTokenIsIdentifierOrKeywordOrLeftBracket));
 }
 
 bool Parser::isHeritageClause() const {
@@ -2780,11 +2781,9 @@ zc::Own<ast::LeftHandSideExpression> Parser::parseCallExpressionRest(
     // Handle optional chaining error case
     if (questionDotToken != zc::none) {
       // We parsed `?.` but then failed to parse anything, so report a missing identifier here.
-      // TODO: Add proper diagnostic error reporting
-      // parseErrorAtCurrentToken(diagnostics::Identifier_expected);
+      parseErrorAt<diagnostics::DiagID::IdentifierExpected>(currentLoc(), currentLoc());
 
-      // Create missing identifier and property access expression
-      auto name = ast::factory::createMissingIdentifier();  // Missing identifier placeholder
+      auto name = ast::factory::createMissingIdentifier();
       auto propAccessExpr = ast::factory::createPropertyAccessExpression(
           zc::mv(expression), zc::mv(name), /*questionDot*/ true, /*isOptionalChain*/ true);
       expression = finishNode(zc::mv(propAccessExpr), loc);
@@ -4427,14 +4426,13 @@ zc::Own<ast::ElementAccessExpression> Parser::parseElementAccessExpressionRest(
     zc::Own<ast::LeftHandSideExpression> expression, bool questionDot, source::SourceLoc pos) {
   trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseElementAccessExpression");
 
-  zc::Maybe<zc::Own<ast::Expression>> assignmentExpression;
-  if (expectToken(ast::SyntaxKind::RightBracket)) {
-    // Error: expected expression inside brackets
-    assignmentExpression = ast::factory::createMissingIdentifier();
+  const bool missingIndexExpression = expectToken(ast::SyntaxKind::RightBracket);
+  if (missingIndexExpression) {
+    parseErrorAtCurrentToken<diagnostics::DiagID::ExpressionExpected>();
   }
 
-  // Parse the index expression inside brackets
-  auto indexExpression = parseExpression();
+  zc::Own<ast::Expression> indexExpression =
+      missingIndexExpression ? ast::factory::createMissingIdentifier() : parseExpression();
   parseExpected(ast::SyntaxKind::RightBracket);
 
   const bool isOptionalChain = questionDot || tryReparseOptionalChain(*expression);

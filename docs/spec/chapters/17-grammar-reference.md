@@ -282,12 +282,16 @@ MemberExpression ::= PrimaryExpression
                   | MemberExpression '[' Expression ']'
                   | MemberExpression '.' Identifier
                   | MemberExpression '?.' Identifier
+                  | MemberExpression '?.' '[' Expression ']'
 
 CallExpression ::= MemberExpression Arguments
+                | MemberExpression '?.' Arguments
                 | CallExpression Arguments
                 | CallExpression '[' Expression ']'
                 | CallExpression '.' Identifier
                 | CallExpression '?.' Identifier
+                | CallExpression '?.' '[' Expression ']'
+                | CallExpression '?.' Arguments
 
 Arguments ::= '(' ArgumentList? ')'
 ArgumentList ::= Expression (',' Expression)*
