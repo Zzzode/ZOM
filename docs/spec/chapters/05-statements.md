@@ -182,10 +182,13 @@ for (;;) {  // Infinite loop
 }
 ```
 
-#### `for-in` Loops (Enhanced for loops)
+#### `for-in` Loops (Iterator loops)
+
+`for-in` iterates over values produced by an iterable or iterator expression. It does not enumerate
+object property names.
 
 ```zom
-// Iterate over array elements
+// Iterate over array values
 let numbers = [1, 2, 3, 4, 5];
 for (let number in numbers) {
     print(number);
@@ -196,15 +199,15 @@ for (let char in "hello") {
     print(char);
 }
 
-// Iterate over object properties
+// Iterate over map entries
 let person = { name: "Alice", age: 30 };
-for (let key in person) {
-    print(key + ": " + person[key]);
+for (let entry in person.entries()) {
+    print(entry.key + ": " + entry.value);
 }
 
 // Iterate with index
-for (let (index, value) in numbers.enumerate()) {
-    print("Index " + index + ": " + value);
+for (let entry in numbers.enumerate()) {
+    print("Index " + entry.index + ": " + entry.value);
 }
 ```
 

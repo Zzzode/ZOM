@@ -255,13 +255,13 @@ bool Parser::isListTerminator(ParsingContext context) const {
       // If we can consume a semicolon (either explicitly, or with ASI), then consider us done
       // with parsing the list of variable declarators.
       // In the case where we're parsing the variable declarator of a 'for-in' statement, we
-      // are done if we see an 'in' keyword in front of us. Same with for-of
+      // are done if we see an 'in' keyword in front of us.
       // ERROR RECOVERY TWEAK:
       // For better error recovery, if we see an '->' then we just stop immediately.  We've got an
       // arrow function here and it's going to be very unlikely that we'll resynchronize and get
       // another variable declaration.
       return canParseSemicolon() || token.is(ast::SyntaxKind::InKeyword) ||
-             token.is(ast::SyntaxKind::OfKeyword) || token.is(ast::SyntaxKind::Arrow);
+             token.is(ast::SyntaxKind::Arrow);
     case ParsingContext::TypeParameters:
       // Tokens other than '>' are here for better error recovery
       return token.is(ast::SyntaxKind::GreaterThan) || token.is(ast::SyntaxKind::LeftParen) ||
