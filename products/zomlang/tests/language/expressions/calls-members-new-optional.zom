@@ -146,7 +146,7 @@ let z = obj?.method(1)[0].field;
 // CHECK-NEXT:                       "node": "Identifier",
 // CHECK-NEXT:                       "name": "method"
 // CHECK-NEXT:                     },
-// CHECK-NEXT:                     "questionDot": "false"
+// CHECK-NEXT:                     "questionDot": "true"
 // CHECK-NEXT:                   },
 // CHECK-NEXT:                   "arguments": [
 // CHECK-NEXT:                     {

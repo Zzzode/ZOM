@@ -1336,18 +1336,34 @@ ZC_TEST("ParserTest.ParseDebuggerAndJumpStatements") {
   ZC_EXPECT(result != zc::none, "Should parse debugger/break/continue/return statements");
 }
 
-ZC_TEST("ParserTest.ParseOptionalChaining") {
+ZC_TEST("ParserTest.ParseOptionalChainingForms") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("obj?.prop; obj?.[0]; obj?.(1); obj?.; obj.; obj!.prop;").asBytes(), "test.zom");
+      zc::str("obj?.prop; obj?.[0]; obj?.(1); obj?.prop?.[0]?.(1); obj!.prop;").asBytes(),
+      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse optional chaining and recovery paths");
+  ZC_EXPECT(result != zc::none, "Should parse optional chaining forms");
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Valid optional chaining should not diagnose");
+}
+
+ZC_TEST("ParserTest.ParseOptionalChainingRecovery") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("obj?.; obj?.[];").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Parse should succeed with optional chaining recovery");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Invalid optional chaining should diagnose");
 }
 
 ZC_TEST("ParserTest.ParseNewExpressions") {
@@ -2989,7 +3005,7 @@ ZC_TEST("ParserTest.ParseNonNullExpression") {
   ZC_EXPECT(result != zc::none);
 }
 
-ZC_TEST("ParserTest.ParseOptionalChaining") {
+ZC_TEST("ParserTest.ParseOptionalPropertyAccess") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3001,6 +3017,7 @@ ZC_TEST("ParserTest.ParseOptionalChaining") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(!diagnosticEngine->hasErrors());
 }
 
 ZC_TEST("ParserTest.ParseElementAccess") {
