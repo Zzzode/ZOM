@@ -488,7 +488,6 @@ private:
   zc::Maybe<zc::Own<ast::ExpressionWithTypeArguments>> parseExpressionWithTypeArguments();
   zc::Own<ast::MemberExpression> parseSuperExpression();
   zc::Own<ast::MemberExpression> parseImportCallExpression();
-  zc::Own<ast::AwaitExpression> parseAwaitExpression();
   zc::Own<ast::LeftHandSideExpression> parseLeftHandSideExpression();
   zc::Own<ast::NewExpression> parseNewExpression();
   zc::Own<ast::PrimaryExpression> parsePrimaryExpression();
@@ -611,8 +610,6 @@ private:
   bool isImportAttributeName() const;
   bool isHeritageClauseExtendsOrImplementsKeyword() const;
   bool isValidHeritageClauseObjectLiteral();
-  bool isUsingDeclaration();
-  bool isAwaitUsingDeclaration();
   bool canFollowTypeArgumentsInExpression();
 
   // --- Lookahead Checks ---
@@ -626,9 +623,6 @@ private:
   bool nextTokenIsIdentifierOnSameLine();
   bool nextTokenIsIdentifierOrStringLiteralOnSameLine();
   bool tokenIsIdentifierOrKeyword(const lexer::Token& token) const;
-  bool nextTokenIsEqualsOrSemicolonOrColonToken();
-  bool nextTokenIsBindingIdentifierOrStartOfDestructuringOnSameLine(bool disallowOf = false);
-  bool nextIsUsingKeywordThenBindingIdentifierOrStartOfObjectDestructuringOnSameLine();
 
 private:
   struct Impl;

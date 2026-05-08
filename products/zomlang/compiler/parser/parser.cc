@@ -847,7 +847,6 @@ bool Parser::isStartOfStatement() {
 
   switch (token.getKind()) {
     // Punctuation that can start statements
-    case ast::SyntaxKind::At:         // @decorator
     case ast::SyntaxKind::Semicolon:  // empty statement
     case ast::SyntaxKind::LeftBrace:  // block statement
     // Keywords that start statements
@@ -866,26 +865,17 @@ bool Parser::isStartOfStatement() {
     case ast::SyntaxKind::ContinueKeyword:   // continue statement
     case ast::SyntaxKind::BreakKeyword:      // break statement
     case ast::SyntaxKind::ReturnKeyword:     // return statement
-    case ast::SyntaxKind::WithKeyword:       // with statement
     case ast::SyntaxKind::MatchKeyword:      // match statement
-    case ast::SyntaxKind::ThrowKeyword:      // throw statement
-    case ast::SyntaxKind::TryKeyword:        // try statement
     case ast::SyntaxKind::DebuggerKeyword:   // debugger statement
       return true;
 
     // Keywords that might start statements depending on context
     case ast::SyntaxKind::ImportKeyword:
     case ast::SyntaxKind::ExportKeyword:
+    case ast::SyntaxKind::ModuleKeyword:
       return isStartOfDeclaration();
 
     // Access modifiers and other contextual keywords
-    case ast::SyntaxKind::AsyncKeyword:
-    case ast::SyntaxKind::DeclareKeyword:
-    case ast::SyntaxKind::ModuleKeyword:
-    case ast::SyntaxKind::NamespaceKeyword:
-    case ast::SyntaxKind::GlobalKeyword:
-      return true;
-
     case ast::SyntaxKind::AccessorKeyword:
     case ast::SyntaxKind::PublicKeyword:
     case ast::SyntaxKind::PrivateKeyword:
@@ -895,11 +885,7 @@ bool Parser::isStartOfStatement() {
     case ast::SyntaxKind::AbstractKeyword:
     case ast::SyntaxKind::OverrideKeyword:
       return isStartOfDeclaration() ||
-             !lookAhead<bool>([this]() { return nextTokenIsIdentifierOrKeywordOnSameLine(); });
-
-    // Using keyword for using declarations
-    case ast::SyntaxKind::UsingKeyword:
-      return true;
+             !lookAhead<bool>(ZC_BIND_METHOD(*this, nextTokenIsIdentifierOrKeywordOnSameLine));
 
     default:
       // Check if it's the start of an expression (which can be an expression statement)
@@ -955,9 +941,6 @@ bool Parser::isStartOfExpression() {
     case ast::SyntaxKind::PlusPlus:
     case ast::SyntaxKind::MinusMinus:
     case ast::SyntaxKind::LessThan:  // Type assertions
-    case ast::SyntaxKind::AwaitKeyword:
-    case ast::SyntaxKind::YieldKeyword:
-    case ast::SyntaxKind::At:  // Decorators
       return true;
 
     default:
@@ -1040,7 +1023,6 @@ bool Parser::isUpdateExpression() const {
     case ast::SyntaxKind::Exclamation:
     case ast::SyntaxKind::DeleteKeyword:
     case ast::SyntaxKind::TypeOfKeyword:
-    case ast::SyntaxKind::AwaitKeyword:
       return false;
     case ast::SyntaxKind::LessThan:
       // < can be used for generic type arguments or comparison operators
@@ -1076,7 +1058,7 @@ bool Parser::isModifier() const {
          token.is(ast::SyntaxKind::PublicKeyword) || token.is(ast::SyntaxKind::PrivateKeyword) ||
          token.is(ast::SyntaxKind::ProtectedKeyword) || token.is(ast::SyntaxKind::StaticKeyword) ||
          token.is(ast::SyntaxKind::ReadonlyKeyword) || token.is(ast::SyntaxKind::MutatingKeyword) ||
-         token.is(ast::SyntaxKind::AsyncKeyword) || token.is(ast::SyntaxKind::OverrideKeyword);
+         token.is(ast::SyntaxKind::OverrideKeyword);
 }
 
 bool Parser::isBinaryOperator() const {
@@ -2681,11 +2663,6 @@ zc::Own<ast::UnaryExpression> Parser::parseSimpleUnaryExpression() {
     case ast::SyntaxKind::TypeOfKeyword: {
       return parseTypeOfExpression();
     }
-    case ast::SyntaxKind::AwaitKeyword: {
-      // TODO: Add support for await expression
-      // if (isAwaitExpression()) { return parseAwaitExpression(); }
-      ZC_FALLTHROUGH;
-    }
     default:
       // Parse update expression for other cases
       return parseUpdateExpression();
@@ -3235,19 +3212,23 @@ zc::Own<ast::TypeNode> Parser::parseUnionOrIntersectionType(
   const bool isUnionType = operatorToken == ast::SyntaxKind::Bar;
   const bool hasLeadingOperator = parseOptional(operatorToken);
 
-  auto type = hasLeadingOperator ? parseFunctionTypeToError(isUnionType).orDefault([&]() {
-    return parseConstituentType();
-  })
-                                 : parseConstituentType();
+  zc::Own<ast::TypeNode> type;
+  if (hasLeadingOperator) {
+    ZC_IF_SOME(functionType, parseFunctionTypeToError(isUnionType)) { type = zc::mv(functionType); }
+    else { type = parseConstituentType(); }
+  } else {
+    type = parseConstituentType();
+  }
 
   if (expectToken(operatorToken) || hasLeadingOperator) {
     zc::Vector<zc::Own<ast::TypeNode>> types;
     types.add(zc::mv(type));
 
     while (parseOptional(operatorToken)) {
-      types.add(parseFunctionTypeToError(isUnionType).orDefault([&]() {
-        return parseConstituentType();
-      }));
+      ZC_IF_SOME(functionType, parseFunctionTypeToError(isUnionType)) {
+        types.add(zc::mv(functionType));
+      }
+      else { types.add(parseConstituentType()); }
     }
 
     switch (operatorToken) {
@@ -3918,18 +3899,6 @@ zc::Own<ast::BindingPattern> Parser::parseObjectBindingPattern() {
 
   parseExpected(ast::SyntaxKind::RightBrace);
   return finishNode(ast::factory::createObjectBindingPattern(zc::mv(elements)), pos);
-}
-
-zc::Own<ast::AwaitExpression> Parser::parseAwaitExpression() {
-  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseAwaitExpression");
-
-  // awaitExpression: AWAIT unaryExpression;
-
-  const source::SourceLoc loc = currentLoc();
-  nextToken();
-
-  auto expr = parseSimpleUnaryExpression();
-  return finishNode(ast::factory::createAwaitExpression(zc::mv(expr)), loc);
 }
 
 zc::Maybe<zc::Own<ast::DebuggerStatement>> Parser::parseDebuggerStatement() {
@@ -4854,42 +4823,23 @@ bool Parser::scanStartOfDeclaration() {
       case ast::SyntaxKind::AliasKeyword:
         return true;
 
-      case ast::SyntaxKind::UsingKeyword:
-        return isUsingDeclaration();
-
-      case ast::SyntaxKind::AwaitKeyword:
-        return isAwaitUsingDeclaration();
-
       case ast::SyntaxKind::InterfaceKeyword:
       case ast::SyntaxKind::TypeKeyword:
       case ast::SyntaxKind::ModuleKeyword:
-      case ast::SyntaxKind::NamespaceKeyword:
         return nextTokenIsIdentifierOnSameLine();
 
       case ast::SyntaxKind::AbstractKeyword:
       case ast::SyntaxKind::AccessorKeyword:
-      case ast::SyntaxKind::AsyncKeyword:
-      case ast::SyntaxKind::DeclareKeyword:
       case ast::SyntaxKind::PrivateKeyword:
       case ast::SyntaxKind::ProtectedKeyword:
       case ast::SyntaxKind::PublicKeyword:
       case ast::SyntaxKind::ReadonlyKeyword:
       case ast::SyntaxKind::OverrideKeyword: {
-        ast::SyntaxKind previousTokenKind = currentKind();
         nextToken();
         // ASI takes effect for this modifier.
         if (currentToken().hasPrecedingLineBreak()) { return false; }
-        if (previousTokenKind == ast::SyntaxKind::DeclareKeyword &&
-            currentToken().is(ast::SyntaxKind::TypeKeyword)) {
-          return true;
-        }
         continue;
       }
-
-      case ast::SyntaxKind::GlobalKeyword:
-        nextToken();
-        return expectNToken(ast::SyntaxKind::LeftBrace, ast::SyntaxKind::Identifier,
-                            ast::SyntaxKind::ExportKeyword);
 
       case ast::SyntaxKind::ImportKeyword:
         nextToken();
@@ -4934,40 +4884,6 @@ bool Parser::tokenIsIdentifierOrKeyword(const lexer::Token& token) const {
   return token.is(ast::SyntaxKind::Identifier) ||
          (token.getKind() >= ast::SyntaxKind::FirstKeyword &&
           token.getKind() <= ast::SyntaxKind::LastKeyword);
-}
-
-bool Parser::nextTokenIsEqualsOrSemicolonOrColonToken() {
-  nextToken();
-  const lexer::Token& token = currentToken();
-  return token.is(ast::SyntaxKind::Equals) || token.is(ast::SyntaxKind::Semicolon) ||
-         token.is(ast::SyntaxKind::Colon);
-}
-
-bool Parser::nextTokenIsBindingIdentifierOrStartOfDestructuringOnSameLine(bool disallowOf) {
-  nextToken();
-  const lexer::Token& token = currentToken();
-  if (disallowOf && token.is(ast::SyntaxKind::OfKeyword)) {
-    return lookAhead<bool>(ZC_BIND_METHOD(*this, nextTokenIsEqualsOrSemicolonOrColonToken));
-  }
-  return isBindingIdentifier() ||
-         (token.is(ast::SyntaxKind::LeftBrace) && !token.hasPrecedingLineBreak());
-}
-
-bool Parser::nextIsUsingKeywordThenBindingIdentifierOrStartOfObjectDestructuringOnSameLine() {
-  nextToken();
-  if (!currentToken().is(ast::SyntaxKind::UsingKeyword)) { return false; }
-  return nextTokenIsBindingIdentifierOrStartOfDestructuringOnSameLine(false);
-}
-
-bool Parser::isUsingDeclaration() {
-  return lookAhead<bool>([this]() {
-    return nextTokenIsBindingIdentifierOrStartOfDestructuringOnSameLine(/*disallowOf=*/false);
-  });
-}
-
-bool Parser::isAwaitUsingDeclaration() {
-  return lookAhead<bool>(ZC_BIND_METHOD(
-      *this, nextIsUsingKeywordThenBindingIdentifierOrStartOfObjectDestructuringOnSameLine));
 }
 
 }  // namespace parser
