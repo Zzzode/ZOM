@@ -30,7 +30,9 @@ enum class OperatorPrecedence : uint8_t {
   kLowest = 0,
   kComma,           // ,
   kAssignment,      // =, +=, -=, etc.
-  kConditional,     // ?:
+  kConditional,     // ? :
+  kErrorDefault,    // ?:
+  kCoalesce,        // ??
   kLogicalOr,       // ||
   kLogicalAnd,      // &&
   kBitwiseOr,       // |

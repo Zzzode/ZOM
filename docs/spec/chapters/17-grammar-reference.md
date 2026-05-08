@@ -23,7 +23,7 @@ NullLiteral ::= 'null'
 BooleanLiteral ::= 'true' | 'false'
 
 (* Numeric Literals *)
-NumericLiteral ::= DecimalLiteral | BinaryLiteral | OctalLiteral | HexLiteral
+NumericLiteral ::= DecimalLiteral | BinaryLiteral | OctalLiteral | HexLiteral | BigIntLiteral
 
 DecimalLiteral ::= DecimalIntegerLiteral ('.' DecimalDigits?)? ExponentPart?
                  | '.' DecimalDigits ExponentPart?
@@ -42,6 +42,7 @@ OctalDigits ::= OCTAL_DIGIT (NumericLiteralSeparator? OCTAL_DIGIT)*
 
 HexLiteral ::= '0' [xX] HexDigits
 HexDigits ::= HEX_DIGIT (NumericLiteralSeparator? HEX_DIGIT)*
+BigIntLiteral ::= DecimalDigits 'n'
 
 NumericLiteralSeparator ::= '_'
 
@@ -70,7 +71,7 @@ Punctuator ::= '{' | '}' | '(' | ')' | '[' | ']' | '.' | '...' | ';' | ',' | ':'
             | '<' | '>' | '<=' | '>='
             | '==' | '!=' | '===' | '!=='
             | '&' | '|' | '^' | '!' | '~'
-            | '&&' | '||' | '??' | '?!' | '!!' | '?:'
+            | '&&' | '||' | '??' | '?!' | '!!'
             | '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '**='
             | '<<=' | '>>=' | '>>>=' | '&=' | '|=' | '^='
             | '&&=' | '||=' | '??='
@@ -110,40 +111,56 @@ Declaration ::= FunctionDeclaration
              | StructDeclaration
              | ErrorDeclaration
              | EnumDeclaration
-             | VariableDeclaration
+             | VariableStatement
 
-VariableDeclaration ::= LetOrConst BindingList ';'
+VariableStatement ::= LetOrConst VariableDeclarationList ';'
 LetOrConst ::= 'let' | 'const'
-BindingList ::= BindingElement (',' BindingElement)*
-BindingElement ::= BindingIdentifier (':' TypeExpression)? ('=' Expression)?
+VariableDeclarationList ::= VariableDeclaration (',' VariableDeclaration)*
+VariableDeclaration ::= (BindingIdentifier | BindingPattern) TypeAnnotation? Initializer?
+Initializer ::= '=' AssignmentExpression
 
-FunctionDeclaration ::= Attribute* 'async'? 'fun' BindingIdentifier TypeParameters?
-                       CallSignature (BlockStatement | ';')
+FunctionDeclaration ::= 'fun' BindingIdentifier TypeParameters? ParameterClause
+                       ReturnType? BlockStatement
+ReturnType ::= '->' TypeExpression RaisesClause?
 
-ClassDeclaration ::= Attribute* 'abstract'? 'class' BindingIdentifier TypeParameters?
-                    ('extends' TypeExpression)? ('implements' InterfaceTypeList)?
-                    '{' ClassMember* '}'
+ClassDeclaration ::= 'class' BindingIdentifier TypeParameters? HeritageClauses?
+                    '{' ClassElement* '}'
+StructDeclaration ::= 'struct' BindingIdentifier TypeParameters? HeritageClauses?
+                     '{' ClassElement* '}'
+HeritageClauses ::= HeritageClause+
+HeritageClause ::= ('extends' | 'implements') ExpressionWithTypeArguments
+                  (',' ExpressionWithTypeArguments)*
 
 InterfaceDeclaration ::= 'interface' BindingIdentifier TypeParameters? InterfaceHeritage? '{' InterfaceBody '}'
 InterfaceHeritage ::= 'extends' InterfaceTypeList
 InterfaceBody ::= InterfaceElement*
-InterfaceElement ::= PropertySignature | MethodSignature
+InterfaceElement ::= ';'
+                   | Modifier* LetOrConst PropertySignature Initializer? ';'?
+                   | Modifier* 'fun' MethodSignature ';'?
 PropertySignature ::= PropertyName '?'? TypeAnnotation
-MethodSignature ::= PropertyName '?'? CallSignature
+MethodSignature ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType?
 
-StructDeclaration ::= 'struct' BindingIdentifier TypeParameters? '{' StructBody? '}'
-StructBody ::= StructMember (',' StructMember)*
-StructMember ::= PropertyName ':' TypeExpression
+ClassElement ::= ';'
+               | Modifier* InitDeclaration
+               | Modifier* DeinitDeclaration
+               | Modifier* AccessorDeclaration
+               | Modifier* LetOrConst PropertyDeclaration
+               | Modifier* 'fun' MethodDeclaration
+PropertyDeclaration ::= PropertyName '?'? TypeAnnotation? Initializer? ';'
+MethodDeclaration ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType? (BlockStatement | ';')
+InitDeclaration ::= 'init' TypeParameters? ParameterClause ReturnType? (BlockStatement | ';')
+DeinitDeclaration ::= 'deinit' (BlockStatement | ';')
+AccessorDeclaration ::= ('get' | 'set') PropertyName TypeParameters? ParameterClause ReturnType?
+                        (BlockStatement | ';')
+Modifier ::= 'public' | 'private' | 'protected' | 'static' | 'readonly' | 'mutating' | 'override'
 
-ErrorDeclaration ::= 'error' BindingIdentifier TypeParameters? '{' ErrorBody? '}'
-ErrorBody ::= ErrorMember (',' ErrorMember)*
-ErrorMember ::= PropertyName ':' TypeExpression
+ErrorDeclaration ::= 'error' BindingIdentifier '{' StatementList? '}'
 
 EnumDeclaration ::= 'enum' BindingIdentifier '{' EnumBody? '}'
 EnumBody ::= EnumMember (',' EnumMember)*
-EnumMember ::= PropertyName ('=' Expression)?
+EnumMember ::= PropertyName (('=' Expression) | TupleType)?
 
-AliasDeclaration ::= 'alias' BindingIdentifier TypeParameters? '=' TypeExpression
+AliasDeclaration ::= 'alias' BindingIdentifier TypeParameters? '=' TypeExpression ';'
 
 (* Type Expressions *)
 TypeExpression ::= UnionType
@@ -161,7 +178,7 @@ AtomType ::= ParenthesizedType
           | TypeQuery
 
 ParenthesizedType ::= '(' TypeExpression ')'
-PredefinedType ::= 'i8' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'
+PredefinedType ::= 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'
                 | 'f32' | 'f64' | 'str' | 'bool' | 'null' | 'unit'
 TypeReference ::= TypeName TypeArguments?
 TypeName ::= Identifier
@@ -174,14 +191,14 @@ TupleElementType ::= NamedTupleElement | TypeExpression
 NamedTupleElement ::= ElementName ':' TypeExpression
 ElementName ::= Identifier
 
-FunctionType ::= TypeParameters? ParameterClause ('->' TypeExpression RaisesClause?)?
+FunctionType ::= TypeParameters? ParameterClause '->' TypeExpression RaisesClause?
 ParameterClause ::= '(' ParameterList? ')'
 RaisesClause ::= 'raises' TypeList
 
 ObjectType ::= '{' TypeBody? '}'
 TypeBody ::= TypeMemberList (';' | ',')?
 TypeMemberList ::= TypeMember (';' TypeMember | ',' TypeMember)*
-TypeMember ::= PropertySignature
+TypeMember ::= PropertySignature | MethodSignature
 
 TypeParameters ::= '<' TypeParameterList '>'
 TypeParameterList ::= TypeParameter (',' TypeParameter)*
@@ -192,14 +209,23 @@ TypeArguments ::= '<' TypeArgumentList '>'
 TypeArgumentList ::= TypeExpression (',' TypeExpression)*
 
 TypeAnnotation ::= ':' TypeExpression
-CallSignature ::= TypeParameters? ParameterClause ('->' TypeExpression RaisesClause?)?
+CallSignature ::= TypeParameters? ParameterClause ReturnType?
 InterfaceTypeList ::= TypeReference (',' TypeReference)*
 TypeList ::= TypeExpression (',' TypeExpression)*
 BindingIdentifier ::= Identifier
+BindingPattern ::= ArrayBindingPattern | ObjectBindingPattern
+ArrayBindingPattern ::= '[' BindingElementList? ']'
+ObjectBindingPattern ::= '{' BindingPropertyList? '}'
+BindingElementList ::= BindingElement (',' BindingElement)* ','?
+BindingPropertyList ::= BindingProperty (',' BindingProperty)* ','?
+BindingElement ::= '...'? (BindingIdentifier | BindingPattern) Initializer?
+BindingProperty ::= '...'? (BindingIdentifier | PropertyName ':' BindingElement) Initializer?
+ExpressionWithTypeArguments ::= LeftHandSideExpression TypeArguments?
 
 (* Statements *)
 Statement ::= BlockStatement
-           | VariableDeclaration
+           | EmptyStatement
+           | VariableStatement
            | ExpressionStatement
            | IfStatement
            | MatchStatement
@@ -211,6 +237,7 @@ Statement ::= BlockStatement
            | BreakStatement
            | ReturnStatement
            | DebuggerStatement
+           | LabeledStatement
 
 BlockStatement ::= '{' StatementList? '}'
 StatementList ::= StatementListItem+
@@ -222,9 +249,10 @@ ExpressionStatement ::= Expression ';'
 
 IfStatement ::= 'if' '(' Expression ')' Statement ('else' Statement)?
 
-MatchStatement ::= 'match' '(' Expression ')' '{' MatchArm* '}'
-MatchArm ::= 'when' Pattern GuardClause? ('=>' Expression | BlockStatement)
-          | 'default' ('=>' Expression | BlockStatement)
+MatchStatement ::= 'match' '(' Expression ')' MatchBlock
+MatchBlock ::= '{' MatchClause* DefaultClause? '}'
+MatchClause ::= 'when' Pattern GuardClause? '=>' Statement
+DefaultClause ::= 'default' '=>' StatementList
 GuardClause ::= 'if' Expression
 
 WhileStatement ::= 'while' '(' Expression ')' Statement
@@ -234,7 +262,7 @@ ForStatement ::= 'for' '(' ForInit? ';' Expression? ';' ForUpdate? ')' Statement
 ForInStatement ::= 'for' '(' (ForDeclaration | LeftHandSideExpression) 'in' Expression ')' Statement
 ForDeclaration ::= ('let' | 'const') ForBinding
 ForBinding ::= BindingIdentifier | BindingPattern
-ForInit ::= VariableDeclaration | Expression
+ForInit ::= LetOrConst VariableDeclarationList | Expression
 ForUpdate ::= Expression
 
 ContinueStatement ::= 'continue' Identifier? ';'
@@ -242,21 +270,31 @@ BreakStatement ::= 'break' Identifier? ';'
 ReturnStatement ::= 'return' Expression? ';'
 
 DebuggerStatement ::= 'debugger' ';'
+LabeledStatement ::= Identifier ':' Statement
 
 (* Expressions *)
-Expression ::= AssignmentExpression
+Expression ::= AssignmentExpression (',' AssignmentExpression)*
 AssignmentExpression ::= ConditionalExpression
+                      | FunctionExpression
                       | LeftHandSideExpression AssignmentOperator AssignmentExpression
+AssignmentOperator ::= '=' | '+=' | '-=' | '*=' | '/=' | '%=' | '**='
+                     | '<<=' | '>>=' | '>>>=' | '&=' | '|=' | '^='
+                     | '&&=' | '||=' | '??='
 
-ConditionalExpression ::= LogicalORExpression ('?' AssignmentExpression ':' AssignmentExpression)?
+ConditionalExpression ::= ErrorDefaultExpression ('?' AssignmentExpression ':' AssignmentExpression)?
 
+ErrorDefaultExpression ::= CoalesceExpression (ErrorDefaultOperator CoalesceExpression)*
+ErrorDefaultOperator ::= '?:'
+                       (* parsed as adjacent '?' ':' tokens with no whitespace between them *)
+CoalesceExpression ::= LogicalORExpression ('??' LogicalORExpression)*
 LogicalORExpression ::= LogicalANDExpression ('||' LogicalANDExpression)*
 LogicalANDExpression ::= BitwiseORExpression ('&&' BitwiseORExpression)*
 BitwiseORExpression ::= BitwiseXORExpression ('|' BitwiseXORExpression)*
 BitwiseXORExpression ::= BitwiseANDExpression ('^' BitwiseANDExpression)*
 BitwiseANDExpression ::= EqualityExpression ('&' EqualityExpression)*
 EqualityExpression ::= RelationalExpression (('==' | '!=' | '===' | '!==') RelationalExpression)*
-RelationalExpression ::= ShiftExpression (('<' | '>' | '<=' | '>=' | 'is' | 'in') ShiftExpression)*
+RelationalExpression ::= ShiftExpression ((('<' | '>' | '<=' | '>=') ShiftExpression)
+                       | ('as' ('?' | '!')? TypeExpression))*
 ShiftExpression ::= AdditiveExpression (('<<' | '>>' | '>>>') AdditiveExpression)*
 AdditiveExpression ::= MultiplicativeExpression (('+' | '-') MultiplicativeExpression)*
 MultiplicativeExpression ::= ExponentiationExpression (('*' | '/' | '%') ExponentiationExpression)*
@@ -264,46 +302,47 @@ ExponentiationExpression ::= UnaryExpression ('**' ExponentiationExpression)?
 
 UnaryExpression ::= PostfixExpression
                  | UpdateExpression
-                 | ('++' | '--' | '+' | '-' | '!' | '~' | 'typeof' | 'await') UnaryExpression
-                 | CastExpression
-                 | AwaitExpression
-
-CastExpression ::= UnaryExpression ('as' | 'as?') TypeExpression
-                 | '<' TypeExpression '>' UnaryExpression
-
-AwaitExpression ::= 'await' UnaryExpression
-
-UpdateExpression ::= ('++' | '--') UnaryExpression
-                 | LeftHandSideExpression ('++' | '--')
+                 | ('+' | '-' | '!' | '~' | 'typeof') UnaryExpression
 
 PostfixExpression ::= LeftHandSideExpression PostfixSuffix*
+PostfixSuffix ::= '?!' | '!!' | '++' | '--'
+UpdateExpression ::= ('++' | '--') LeftHandSideExpression
+                 | LeftHandSideExpression ('++' | '--')
+
 LeftHandSideExpression ::= NewExpression
                         | CallExpression
                         | MemberExpression
+                        | OptionalExpression
 
 NewExpression ::= MemberExpression
                 | 'new' NewExpression
 
 MemberExpression ::= PrimaryExpression
+                  | SuperProperty
+                  | 'new' MemberExpression Arguments
                   | MemberExpression '[' Expression ']'
                   | MemberExpression '.' Identifier
-                  | MemberExpression '?.' Identifier
-                  | MemberExpression '?.' '[' Expression ']'
+
+SuperProperty ::= 'super' '.' Identifier
+SuperCall ::= 'super' Arguments
+ImportCall ::= 'import' Arguments
 
 CallExpression ::= MemberExpression Arguments
-                | MemberExpression '?.' Arguments
+                | SuperCall
+                | ImportCall
                 | CallExpression Arguments
                 | CallExpression '[' Expression ']'
                 | CallExpression '.' Identifier
-                | CallExpression '?.' Identifier
-                | CallExpression '?.' '[' Expression ']'
-                | CallExpression '?.' Arguments
+
+OptionalExpression ::= (MemberExpression | CallExpression) OptionalChain+
+OptionalChain ::= '?.' (Identifier | '[' Expression ']' | Arguments)
+                  (Arguments | '[' Expression ']' | '.' Identifier)*
 
 Arguments ::= '(' ArgumentList? ')'
-ArgumentList ::= Expression (',' Expression)*
+ArgumentList ::= (AssignmentExpression | '...' AssignmentExpression)
+                 (',' (AssignmentExpression | '...' AssignmentExpression))* ','?
 
 PrimaryExpression ::= 'this'
-                   | 'super'
                    | Identifier
                    | Literal
                    | ArrayLiteral
@@ -312,16 +351,21 @@ PrimaryExpression ::= 'this'
                    | '(' Expression ')'
 
 ArrayLiteral ::= '[' (ElementList)? ']'
-ElementList ::= Expression (',' Expression)*
+ElementList ::= (AssignmentExpression | '...' AssignmentExpression)
+              (',' (AssignmentExpression | '...' AssignmentExpression))* ','?
 
 ObjectLiteral ::= '{' (PropertyDefinitionList)? '}'
-PropertyDefinitionList ::= PropertyDefinition (',' PropertyDefinition)*
+PropertyDefinitionList ::= PropertyDefinition (',' PropertyDefinition)* ','?
 PropertyDefinition ::= Identifier
+                    | Identifier Initializer
                     | PropertyName ':' Expression
                     | '...' Expression
 PropertyName ::= Identifier
 
-FunctionExpression ::= 'fun' CallSignature BlockStatement
+FunctionExpression ::= 'fun' TypeParameters? ParameterClause CaptureClause? ReturnType? BlockStatement
+CaptureClause ::= 'use' '[' CaptureList? ']'
+CaptureList ::= CaptureElement (',' CaptureElement)*
+CaptureElement ::= '&'? Identifier | 'this'
 
 (* Patterns *)
 Pattern ::= PrimaryPattern
@@ -335,17 +379,20 @@ PrimaryPattern ::= WildcardPattern
                 | ExpressionPattern
                 | EnumPattern
 
-WildcardPattern ::= '_'
-IdentifierPattern ::= Identifier
-TuplePattern ::= '(' (Pattern (',' Pattern)*)? ')'
-StructurePattern ::= '{' (PropertyPattern (',' PropertyPattern)*)? '}'
-ArrayPattern ::= '[' (Pattern (',' Pattern)*)? ']'
+WildcardPattern ::= '_' TypeAnnotation?
+IdentifierPattern ::= Identifier TypeAnnotation?
+TuplePattern ::= '(' PatternList? ')'
+PatternList ::= Pattern (',' Pattern)* ','?
+StructurePattern ::= '{' PatternPropertyList? '}'
+PatternPropertyList ::= PatternProperty (',' PatternProperty)* ','?
+PatternProperty ::= PropertyName (':' TypeExpression)?
+ArrayPattern ::= '[' PatternList? ']'
 IsPattern ::= 'is' TypeExpression
 ExpressionPattern ::= Expression
-EnumPattern ::= TypeReference ('.' Identifier)?
-PropertyPattern ::= PropertyName ':' Pattern
+EnumPattern ::= PropertyName TuplePattern
+              | TypeReference '.' PropertyName TuplePattern?
 ```
 
-This completes the comprehensive Zom Language Specification. The document covers all major aspects of the language including lexical structure, types, expressions, statements, declarations, patterns, classes, interfaces, enumerations, error handling, generics, modules, memory management, concurrency, attributes, and the complete formal grammar.
+This completes the implementation-aligned Zom grammar reference for lexical structure, types, expressions, statements, declarations, patterns, classes, interfaces, enumerations, error handling, generics, modules, and the complete formal grammar.
 
 The specification provides detailed explanations, extensive examples, and serves as both a reference for language implementers and a guide for developers learning Zom. It follows the style and depth of modern language specifications like those for Swift and Kotlin, ensuring that all language features are thoroughly documented with clear semantics and usage patterns.

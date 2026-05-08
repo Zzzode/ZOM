@@ -656,7 +656,15 @@ ZC_TEST("LexerOperatorTest.QuestionOperators") {
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::QuestionQuestionEquals));
   }
 
-  // Case 4: Question dot with digit '?.1'
+  // Case 4: Question colon stays split for context-sensitive parsing
+  {
+    auto tokens = tokenize("\?:"_zc);
+    ZC_EXPECT(tokens.size() == 3);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Question));
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Colon));
+  }
+
+  // Case 5: Question dot with digit '?.1'
   // Based on code: does NOT match QuestionDot if charAt(2) is digit.
   {
     auto tokens = tokenize("?.1"_zc);
@@ -665,7 +673,7 @@ ZC_TEST("LexerOperatorTest.QuestionOperators") {
     ZC_EXPECT(tokens[1].is(ast::SyntaxKind::FloatLiteral));
   }
 
-  // Case 5: Question dot without digit '?.a'
+  // Case 6: Question dot without digit '?.a'
   // Should match QuestionDot
   {
     auto tokens = tokenize("?.a"_zc);

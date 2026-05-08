@@ -188,7 +188,6 @@ OR: '||';
 NULL_COALESCE: '??';
 ERROR_PROPAGATE: '?!';
 FORCE_UNWRAP: '!!';
-ERROR_DEFAULT: '?:';
 QUESTION: '?';
 COLON: ':';
 ASSIGN: '=';

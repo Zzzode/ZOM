@@ -308,6 +308,8 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "!"_zc;
     case ast::SyntaxKind::Question:
       return "?"_zc;
+    case ast::SyntaxKind::ErrorDefault:
+      return "?:"_zc;
     case ast::SyntaxKind::Colon:
       return ":"_zc;
     case ast::SyntaxKind::Semicolon:

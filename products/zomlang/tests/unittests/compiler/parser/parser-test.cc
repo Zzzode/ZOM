@@ -1888,6 +1888,7 @@ ZC_TEST("ParserTest.ParseStrictEqualityExpression") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse strict equality expression");
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Strict equality should not produce parse errors");
 }
 
 ZC_TEST("ParserTest.ParseStrictInequalityExpression") {
@@ -1902,6 +1903,37 @@ ZC_TEST("ParserTest.ParseStrictInequalityExpression") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse strict inequality expression");
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Strict inequality should not produce parse errors");
+}
+
+ZC_TEST("ParserTest.ParseErrorDefaultExpressionOperator") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = a ?: b;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse error default expression operator");
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Error default should not produce parse errors");
+}
+
+ZC_TEST("ParserTest.ParseSpacedQuestionColonAsInvalidConditionalExpression") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("let x = a ? : b;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Parser should recover from spaced question-colon");
+  ZC_EXPECT(diagnosticEngine->hasErrors(),
+            "Spaced question-colon should be an invalid conditional expression");
 }
 
 ZC_TEST("ParserTest.ParseLessThanExpression") {
@@ -2964,6 +2996,7 @@ ZC_TEST("ParserTest.ParseTemplateLiteralWithSubstitution") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(!diagnosticEngine->hasErrors());
 }
 
 ZC_TEST("ParserTest.ParseTaggedTemplateLiteralReportsError") {

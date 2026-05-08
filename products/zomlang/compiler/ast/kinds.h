@@ -195,6 +195,7 @@ enum class SyntaxKind {
 
   // Conditional operators
   Question,          // ?
+  ErrorDefault,      // ?:
   QuestionQuestion,  // ??
   QuestionDot,       // ?.
 
