@@ -749,6 +749,21 @@ ZC_TEST("ASTDumper.DumpWhileStatementText") {
   ZC_ASSERT(result.contains("body:"));
 }
 
+// Test DoWhileStatement
+ZC_TEST("ASTDumper.DumpDoWhileStatementText") {
+  auto body = ast::factory::createEmptyStatement();
+  auto cond = ast::factory::createBooleanLiteral(true);
+  auto node = ast::factory::createDoWhileStatement(zc::mv(body), zc::mv(cond));
+  MockOutputStream output;
+  auto serializer = createTestSerializer(output, TestSerializerType::kTEXT);
+  ASTDumper dumper(zc::mv(serializer));
+  dumper.dump(*node);
+  zc::String result = output.getBuffer();
+  ZC_ASSERT(result.contains("DoWhileStatement {"));
+  ZC_ASSERT(result.contains("body:"));
+  ZC_ASSERT(result.contains("condition:"));
+}
+
 // Test ForStatement
 ZC_TEST("ASTDumper.DumpForStatementText") {
   auto init = ast::factory::createEmptyStatement();

@@ -791,6 +791,8 @@ zc::Maybe<zc::Own<ast::Statement>> Parser::parseStatement() {
       return parseIfStatement();
     case ast::SyntaxKind::WhileKeyword:
       return parseWhileStatement();
+    case ast::SyntaxKind::DoKeyword:
+      return parseDoWhileStatement();
     case ast::SyntaxKind::ForKeyword:
       return parseForStatement();
     case ast::SyntaxKind::BreakKeyword:
@@ -1972,6 +1974,27 @@ zc::Maybe<zc::Own<ast::WhileStatement>> Parser::parseWhileStatement() {
   }
 
   return zc::none;
+}
+
+zc::Maybe<zc::Own<ast::DoWhileStatement>> Parser::parseDoWhileStatement() {
+  trace::ScopeTracer scopeTracer(trace::TraceCategory::kParser, "parseDoWhileStatement");
+
+  source::SourceLoc loc = currentLoc();
+  if (!consumeExpectedToken(ast::SyntaxKind::DoKeyword)) { return zc::none; }
+
+  zc::Own<ast::Statement> body;
+  ZC_IF_SOME(stmt, parseStatement()) { body = zc::mv(stmt); }
+  else { body = ast::factory::createEmptyStatement(); }
+
+  consumeExpectedToken(ast::SyntaxKind::WhileKeyword);
+  consumeExpectedToken(ast::SyntaxKind::LeftParen);
+
+  auto condition = parseExpression();
+  consumeExpectedToken(ast::SyntaxKind::RightParen);
+
+  tryParseSemicolon();
+
+  return finishNode(ast::factory::createDoWhileStatement(zc::mv(body), zc::mv(condition)), loc);
 }
 
 zc::Maybe<zc::Own<ast::IterationStatement>> Parser::parseForStatement() {

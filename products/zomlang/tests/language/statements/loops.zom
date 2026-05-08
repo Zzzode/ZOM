@@ -1,6 +1,7 @@
 // RUN: %zomc compile --dump-ast %s | %FileCheck %s
 
 while (true) { ; }
+do { ; } while (false);
 for (let i = 0; i < 10; i += 1) { ; }
 for (; ; ) { break; }
 for (let x in xs) { continue; }
@@ -24,6 +25,21 @@ for (x in xs) { ; }
 // CHECK-NEXT:             "node": "EmptyStatement"
 // CHECK-NEXT:           }
 // CHECK-NEXT:         ]
+// CHECK-NEXT:       }
+// CHECK-NEXT:     },
+// CHECK-NEXT:     {
+// CHECK-NEXT:       "node": "DoWhileStatement",
+// CHECK-NEXT:       "body": {
+// CHECK-NEXT:         "node": "BlockStatement",
+// CHECK-NEXT:         "children": [
+// CHECK-NEXT:           {
+// CHECK-NEXT:             "node": "EmptyStatement"
+// CHECK-NEXT:           }
+// CHECK-NEXT:         ]
+// CHECK-NEXT:       },
+// CHECK-NEXT:       "condition": {
+// CHECK-NEXT:         "node": "BooleanLiteral",
+// CHECK-NEXT:         "value": "false"
 // CHECK-NEXT:       }
 // CHECK-NEXT:     },
 // CHECK-NEXT:     {

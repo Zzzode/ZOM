@@ -278,6 +278,12 @@ void Binder::visit(const ast::WhileStatement& node) {
   node.getBody().accept(*this);
 }
 
+void Binder::visit(const ast::DoWhileStatement& node) {
+  // Visit body and condition in execution order
+  node.getBody().accept(*this);
+  node.getCondition().accept(*this);
+}
+
 void Binder::visit(const ast::ForStatement& node) {
   // Visit initialization if present
   ZC_IF_SOME(init, node.getInitializer()) { init.accept(*this); }

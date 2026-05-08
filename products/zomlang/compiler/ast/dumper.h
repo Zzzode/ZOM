@@ -127,6 +127,7 @@ public:
   void visit(const AliasDeclaration& node) final;
   void visit(const IfStatement& node) final;
   void visit(const WhileStatement& node) final;
+  void visit(const DoWhileStatement& node) final;
   void visit(const ForStatement& node) final;
   void visit(const ForInStatement& node) final;
   void visit(const LabeledStatement& node) final;

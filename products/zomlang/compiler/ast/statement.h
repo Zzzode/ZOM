@@ -467,6 +467,22 @@ private:
   zc::Own<Impl> impl;
 };
 
+class DoWhileStatement final : public IterationStatement {
+public:
+  DoWhileStatement(zc::Own<Statement> body, zc::Own<Expression> condition) noexcept;
+  ~DoWhileStatement() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(DoWhileStatement);
+
+  const Expression& getCondition() const;
+
+  ITERATION_STATEMENT_METHOD_DECL();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
 class ReturnStatement final : public Statement {
 public:
   explicit ReturnStatement(zc::Maybe<zc::Own<Expression>> expression = zc::none) noexcept;

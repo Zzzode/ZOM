@@ -368,6 +368,27 @@ ZC_TEST("StatementTest.WhileStatementAccept") {
 }
 
 // ================================================================================
+// DoWhileStatement Tests
+
+ZC_TEST("StatementTest.DoWhileStatement") {
+  auto body = factory::createEmptyStatement();
+  zc::Own<Expression> condition = factory::createBooleanLiteral(true);
+  auto stmt = factory::createDoWhileStatement(zc::mv(body), zc::mv(condition));
+
+  ZC_EXPECT(stmt->getKind() == SyntaxKind::DoWhileStatement);
+  ZC_EXPECT(stmt->getBody().getKind() == SyntaxKind::EmptyStatement);
+  ZC_EXPECT(stmt->getCondition().getKind() == SyntaxKind::BooleanLiteral);
+}
+
+ZC_TEST("StatementTest.DoWhileStatementAccept") {
+  auto body = factory::createEmptyStatement();
+  auto condition = factory::createBooleanLiteral(false);
+  auto stmt = factory::createDoWhileStatement(zc::mv(body), zc::mv(condition));
+
+  // Test visitor pattern
+}
+
+// ================================================================================
 // ForStatement Tests
 
 ZC_TEST("StatementTest.ForStatement") {
@@ -951,6 +972,8 @@ ZC_TEST("StatementTest.StatementAndMemberFlagsRemainNone") {
   expectNoOpFlags(*factory::createContinueStatement(zc::none));
   expectNoOpFlags(*factory::createWhileStatement(factory::createBooleanLiteral(false),
                                                  factory::createEmptyStatement()));
+  expectNoOpFlags(*factory::createDoWhileStatement(factory::createEmptyStatement(),
+                                                   factory::createBooleanLiteral(false)));
   expectNoOpFlags(*factory::createReturnStatement(zc::none));
   expectNoOpFlags(*factory::createEmptyStatement());
 

@@ -527,10 +527,13 @@ breakableStatement: iterativeStatement;
 
 iterativeStatement:
 	whileStatement
+	| doWhileStatement
 	| forStatement
 	| forInStatement;
 
 whileStatement: WHILE LPAREN expression RPAREN statement;
+
+doWhileStatement: DO statement WHILE LPAREN expression RPAREN SEMICOLON?;
 
 forStatement:
 	FOR LPAREN forInit? SEMICOLON expression? SEMICOLON forUpdate? RPAREN statement;

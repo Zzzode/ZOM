@@ -249,6 +249,7 @@ public:
   void visit(const ast::ExpressionStatement& node) override;
   void visit(const ast::IfStatement& node) override;
   void visit(const ast::WhileStatement& node) override;
+  void visit(const ast::DoWhileStatement& node) override;
   void visit(const ast::ForStatement& node) override;
   void visit(const ast::ForInStatement& node) override;
   void visit(const ast::ReturnStatement& node) override;
