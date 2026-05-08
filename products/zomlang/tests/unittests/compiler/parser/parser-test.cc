@@ -2496,7 +2496,7 @@ ZC_TEST("ParserTest.ParseSuperWithoutDotOrParen") {
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
-ZC_TEST("ParserTest.ParseAwaitExpression") {
+ZC_TEST("ParserTest.ParseAwaitExpressionReportsError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -2508,6 +2508,7 @@ ZC_TEST("ParserTest.ParseAwaitExpression") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Await syntax is not designed yet");
 }
 
 ZC_TEST("ParserTest.ParseFunctionExpression") {
@@ -3110,7 +3111,7 @@ ZC_TEST("ParserTest.ParseReturnStatement") {
   ZC_EXPECT(result != zc::none);
 }
 
-ZC_TEST("ParserTest.ParseThrowStatement") {
+ZC_TEST("ParserTest.ParseThrowStatementReportsError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3122,9 +3123,10 @@ ZC_TEST("ParserTest.ParseThrowStatement") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Throw statements are not supported");
 }
 
-ZC_TEST("ParserTest.ParseTryCatchStatement") {
+ZC_TEST("ParserTest.ParseTryCatchStatementReportsError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3136,9 +3138,10 @@ ZC_TEST("ParserTest.ParseTryCatchStatement") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Try-catch statements are not supported");
 }
 
-ZC_TEST("ParserTest.ParseTryFinallyStatement") {
+ZC_TEST("ParserTest.ParseTryFinallyStatementReportsError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3150,9 +3153,10 @@ ZC_TEST("ParserTest.ParseTryFinallyStatement") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Try-finally statements are not supported");
 }
 
-ZC_TEST("ParserTest.ParseTryCatchFinallyStatement") {
+ZC_TEST("ParserTest.ParseTryCatchFinallyStatementReportsError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3166,6 +3170,7 @@ ZC_TEST("ParserTest.ParseTryCatchFinallyStatement") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Try-catch-finally statements are not supported");
 }
 
 // ================================================================================
@@ -3259,8 +3264,8 @@ ZC_TEST("ParserTest.ParseTypeAliasDeclaration") {
   ZC_EXPECT(result != zc::none);
 }
 
-/// Covers parseDeclaration - namespace declarations
-ZC_TEST("ParserTest.ParseNamespaceDeclaration") {
+/// Covers unsupported namespace declarations
+ZC_TEST("ParserTest.ParseNamespaceDeclarationReportsError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3271,10 +3276,11 @@ ZC_TEST("ParserTest.ParseNamespaceDeclaration") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Namespace declarations are not supported");
 }
 
-/// Covers parseDeclaration - declare modifier
-ZC_TEST("ParserTest.ParseDeclareStatement") {
+/// Covers unsupported declare modifier
+ZC_TEST("ParserTest.ParseDeclareStatementReportsError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3285,6 +3291,7 @@ ZC_TEST("ParserTest.ParseDeclareStatement") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Declare syntax is not supported");
 }
 
 /// Covers parseLiteralExpression - various literal types
@@ -3728,8 +3735,8 @@ ZC_TEST("ParserTest.ParseClassWithBadToken") {
   ZC_EXPECT(result != zc::none);
 }
 
-/// Covers parsePattern in catch clause
-ZC_TEST("ParserTest.ParseCatchPattern") {
+/// Covers unsupported catch pattern syntax
+ZC_TEST("ParserTest.ParseCatchPatternReportsError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3740,6 +3747,7 @@ ZC_TEST("ParserTest.ParseCatchPattern") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Catch syntax is not supported");
 }
 
 /// Covers parseRaisesClause
@@ -3750,10 +3758,11 @@ ZC_TEST("ParserTest.ParseFunctionWithRaises") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() raises Error { throw Error(\"fail\"); }").asBytes(), "test.zom");
+      zc::str("fun foo() -> unit raises Error { return; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Raises clauses should parse without throw syntax");
 }
 
 /// Covers parseArrayType - standalone array type parsing
