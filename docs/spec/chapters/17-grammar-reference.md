@@ -64,7 +64,11 @@ LineContinuation ::= '\\' LineTerminatorSequence
 CharacterLiteral ::= "'" SingleStringCharacter "'"
 
 (* Punctuators *)
-Punctuator ::= '{' | '}' | '(' | ')' | '[' | ']' | '.' | '...' | ';' | ',' | ':' | '?'
+Punctuator ::= '::'                    (namespace separator, new SyntaxKind
+                                          ColonColon — Ch.16 §16.3.1; NO
+                                          whitespace between the two colons;
+                                          ': :' with space → ZOM0620)
+            | '{' | '}' | '(' | ')' | '[' | ']' | '.' | '...' | ';' | ',' | ':' | '?'
             | '+' | '-' | '*' | '/' | '%' | '**'
             | '++' | '--'
             | '<<' | '>>' | '>>>'
@@ -83,7 +87,14 @@ Punctuator ::= '{' | '}' | '(' | ')' | '[' | ']' | '.' | '...' | ';' | ',' | ':'
 ```ebnf
 (* Program Structure *)
 Program ::= SourceFile
-SourceFile ::= ModuleDeclaration? ModuleItem*
+SourceFile ::= Shebang? InnerAttributeList? ModuleDeclaration?
+               ModuleItem* EOF
+
+InnerAttributeList ::= InnerAttribute*
+InnerAttribute     ::= '#' '!' '[' AttrEntry ']'      (see Ch.16 §16.2 A-005)
+OuterAttribute     ::= '#' '[' AttrEntry ']'          (see Ch.16 §16.2 A-004)
+ModifierList       ::= ( OuterAttribute | ModifierKeyword )*
+
 ModuleDeclaration ::= 'module' ModuleName ';'
 ModuleItem ::= ImportDeclaration | ExportDeclaration | StatementListItem
 ModuleName ::= Identifier ('.' Identifier)*
@@ -104,17 +115,27 @@ ExportSpecifierList ::= ExportSpecifier (',' ExportSpecifier)* ','?
 ExportSpecifier ::= Identifier ('as' Identifier)?
 
 (* Declarations *)
-Declaration ::= FunctionDeclaration
-             | ClassDeclaration
-             | InterfaceDeclaration
-             | AliasDeclaration
-             | StructDeclaration
-             | ErrorDeclaration
-             | EnumDeclaration
-             | VariableStatement
+Declaration ::= ModifierList (
+                   LetDeclaration
+                 | ConstDeclaration
+                 | FunDeclaration
+                 | ClassDeclaration
+                 | StructDeclaration
+                 | InterfaceDeclaration
+                 | EnumDeclaration
+                 | ErrorDeclaration
+                 | AliasDeclaration
+                 | ModuleDeclaration
+                 | ExportDeclaration
+                 | ImportDeclaration
+                 | MarkerDeclaration
+                 | MarkerImplDeclaration
+               )
 
-VariableStatement ::= LetOrConst VariableDeclarationList ';'
-LetOrConst ::= 'let' | 'const'
+LetDeclaration   ::= 'let' VariableDeclarationList ';'
+ConstDeclaration ::= 'const' VariableDeclarationList ';'
+FunDeclaration   ::= 'fun' BindingIdentifier TypeParameters? ParameterClause
+                     ReturnType? BlockStatement
 VariableDeclarationList ::= VariableDeclaration (',' VariableDeclaration)*
 VariableDeclaration ::= (BindingIdentifier | BindingPattern) TypeAnnotation? Initializer?
 Initializer ::= '=' AssignmentExpression
@@ -152,7 +173,11 @@ InitDeclaration ::= 'init' TypeParameters? ParameterClause ReturnType? (BlockSta
 DeinitDeclaration ::= 'deinit' (BlockStatement | ';')
 AccessorDeclaration ::= ('get' | 'set') PropertyName TypeParameters? ParameterClause ReturnType?
                         (BlockStatement | ';')
-Modifier ::= 'public' | 'private' | 'protected' | 'static' | 'readonly' | 'mutating' | 'override'
+ModifierKeyword ::= 'public' | 'private' | 'protected'
+                  | 'static' | 'readonly' | 'mutating' | 'override'
+                  | 'export'
+                  | 'unsafe'              (marker impl prefix, Ch.16 A-019)
+                  | 'marker'              (contextual, Ch.16 A-017)
 
 ErrorDeclaration ::= 'error' BindingIdentifier '{' StatementList? '}'
 
@@ -161,6 +186,32 @@ EnumBody ::= EnumMember (',' EnumMember)*
 EnumMember ::= PropertyName (('=' Expression) | TupleType)?
 
 AliasDeclaration ::= 'alias' BindingIdentifier TypeParameters? '=' TypeExpression ';'
+
+(* Marker Declarations — Ch.16 A-017 / A-019 *)
+MarkerDeclaration
+    ::= 'marker' Identifier ( '=' BoundItem ( '+' BoundItem )* )? ';'
+
+MarkerImplDeclaration
+    ::= 'unsafe'? 'impl' '!'? attributePath typeArguments?
+        'for' TypeExpression whereClause? ( structBody | ';' )
+
+(* ── impl-head disambiguation — MarkerImpl vs ordinary TraitImpl ─────────
+   After the keyword 'impl', parser attempts MarkerImplDeclaration FIRST,
+   using the following committed prefix:
+     (a) '!' present                 → definitely marker impl.
+     (b) 'unsafe' '!'                → definitely marker impl.
+     (c) otherwise, try to parse an attributePath enforcing ≥2 segments
+         (Ch.16 §16.3.7 hard rule — ≥2 segments for all namespaced attrs).
+         If ≥2-segment path is present AND keyword 'for' is found after
+         the path's optional typeArguments → marker impl.
+     (d) If (c) fails (path is 1-segment, or no 'for' follows, or path is
+         not a marker in the parser-visible prelude bitmap) → fall back
+         to ordinary TraitImplDeclaration parsing.
+   Fallback records the two alternatives in a disambiguation side-channel
+   for S1; name resolution picks the valid one; if BOTH are valid after
+   resolution → ZOM0799 AmbiguousMarkerOrTraitImpl with a note: "use
+   'marker impl' prefix or qualify the marker to ≥2 segments to disambiguate."
+   ────────────────────────────────────────────────────────────────────── *)
 
 (* Type Expressions *)
 TypeExpression ::= UnionType
@@ -194,6 +245,11 @@ ElementName ::= Identifier
 FunctionType ::= TypeParameters? ParameterClause '->' TypeExpression RaisesClause?
 ParameterClause ::= '(' ParameterList? ')'
 RaisesClause ::= 'raises' TypeList
+TypeList     ::= TypeExpression ( ',' TypeExpression )* ','?
+    (* RaisesClause allows a comma-separated set of error types.
+       Example: 'fun f() -> T raises IoError, ParseError, ZOM80xx'
+       Sync requirement: parser's parseRaisesClause parses as a
+       comma-list (min size = 1), not a single Type. *)
 
 ObjectType ::= '{' TypeBody? '}'
 TypeBody ::= TypeMemberList (';' | ',')?
@@ -202,8 +258,15 @@ TypeMember ::= PropertySignature | MethodSignature
 
 TypeParameters ::= '<' TypeParameterList '>'
 TypeParameterList ::= TypeParameter (',' TypeParameter)*
-TypeParameter ::= Identifier Constraint?
-Constraint ::= 'extends' TypeExpression
+TypeParameter  ::= Identifier ( ':' BoundItem ( '+' BoundItem )* )? ','?
+BoundItem      ::= '!'? ( TypeExpression | MarkerPath )
+MarkerPath     ::= Identifier ( '::' Identifier )+
+    (* Example: <T: std::marker::Sendable + !std::marker::Shared,
+                 U: 'static + Linear>
+       Marker negation (!) is allowed — aligned with Ch.16 A-023.
+       The 'extends' keyword is retained for backward compatibility
+       (equivalent to ':'), but marker bindings MUST use ':' with
+       '+' separators and '!' for negation. *)
 
 TypeArguments ::= '<' TypeArgumentList '>'
 TypeArgumentList ::= TypeExpression (',' TypeExpression)*
@@ -241,11 +304,20 @@ Statement ::= BlockStatement
 
 BlockStatement ::= '{' StatementList? '}'
 StatementList ::= StatementListItem+
-StatementListItem ::= Statement | Declaration
+StatementListItem ::= ModifierList ( Statement | Declaration )
+    (* NOTE: Hash ∈ FIRST(StatementListItem) always denotes a ModifierList
+       containing an OuterAttribute. Hash is NEVER the start of an
+       attributeAnnotatedExpression at statement head. This is the
+       canonical S/R resolution for the "2 consecutive items with
+       leading attrs" scenario. *)
 
 EmptyStatement ::= ';'
 
-ExpressionStatement ::= Expression ';'
+ExpressionStatement ::= !OuterAttrStart AssignmentExpression ';'
+    (* OuterAttrStart = syntactic predicate: current token == Hash
+                         AND peek(1) == LeftBracket
+       (Negative lookahead.) Expression statements CANNOT begin with
+       an attribute; such a form is routed to StatementListItem instead. *)
 
 IfStatement ::= 'if' '(' Expression ')' Statement ('else' Statement)?
 
@@ -271,6 +343,32 @@ ReturnStatement ::= 'return' Expression? ';'
 
 DebuggerStatement ::= 'debugger' ';'
 LabeledStatement ::= Identifier ':' Statement
+    with the following co-normative FIRST/FOLLOW constraints:
+
+    (a) Contextual-priority: at the start of ANY StatementListItem, try
+        markerDeclaration (look for 'marker' + Identifier | '!') FIRST.
+        Only if that fails (recoverable) fall back to LabeledStatement.
+        This prevents 'marker: loop { break marker; }' from being parsed
+        as a marker declaration with a recovery error at ': loop'.
+
+    (b) Label FOLLOW set restriction: The 'Statement' child of a
+        LabeledStatement MUST have
+        FIRST(Statement) ∈ { if, match, while, do, for, loop, '{', ';' }
+        ∪ { Identifier ∈ {loop, while, for, match, if, block, switch} }.
+        In particular, 'label: fun f(){}' or 'label: struct S{}' are
+        SYNTAX ERRORS (declarations are not statements).
+
+    (c) Outer-attr insertion forbidden between label ':' and Statement:
+        After the ':' of a label, a Hash starting an OuterAttribute is
+        ZOM0602 with diagnostic: "Attach attributes BEFORE the label
+        (e.g. '#[attr] label: loop …') or INSIDE the controlled statement
+        body."
+        Rationale: Without (c),
+            loop1: #[zom::hint::unroll]
+            for x in xs { … }
+        produces two structurally different ASTs that are semantically
+        equivalent but differ on pretty-print / LSP incremental node
+        identity.
 
 (* Expressions *)
 Expression ::= AssignmentExpression (',' AssignmentExpression)*
@@ -350,11 +448,31 @@ PrimaryExpression ::= 'this'
                    | FunctionExpression
                    | '(' Expression ')'
 
+(* ── Control-flow exclusions from PrimaryExpression ─────────────────────
+   The following statement-level forms are NOT primary expressions and
+   CANNOT appear in expression position:
+       whileStatement, doWhileStatement, forStatement, forInStatement,
+       forOfStatement, doStatement, returnStatement, breakStatement,
+       continueStatement, debuggerStatement.
+   Hence 'return #[zom::hint::unroll] while COND { BODY }' is syntactically
+   impossible: the while is a Statement, not a primary expression, so the
+   '#[zom::hint::unroll]' attaches to the while-Statement via its
+   ModifierList slot (parse-tree B), NEVER as an attributeAnnotatedExpression.
+   This matches Ch.16 A-026a (contextual attachment disambiguation).
+   ────────────────────────────────────────────────────────────────────── *)
+
 ArrayLiteral ::= '[' (ElementList)? ']'
 ElementList ::= (AssignmentExpression | '...' AssignmentExpression)
               (',' (AssignmentExpression | '...' AssignmentExpression))* ','?
 
-ObjectLiteral ::= '{' (PropertyDefinitionList)? '}'
+ObjectLiteral ::= '{' ObjectLiteralElement (',' ObjectLiteralElement)* ','? '}'
+    (* Constraint: the Identifier of an ObjectLiteralElement in
+       statement position may NOT be one of:
+         struct | class | fun | enum | marker | alias | error | interface
+       (i.e. any contextual declaration keyword.)
+       This disambiguates struct-declaration-vs-object-literal when
+       combined with the statement-head Hash rule above. *)
+ObjectLiteralElement ::= PropertyDefinition
 PropertyDefinitionList ::= PropertyDefinition (',' PropertyDefinition)* ','?
 PropertyDefinition ::= Identifier
                     | Identifier Initializer
