@@ -1,0 +1,125 @@
+# Subagent manifest for ZOM AI Prompt system
+#
+# This file is the single register of all ZOM subagents. Adding a subagent
+# means: (1) create <id>.md in this directory, (2) add its row to this
+# manifest, (3) add its trigger rules to README.md routing table.
+#
+# id:           machine id, matches filename <id>.md and is what `Agent` /
+#               `Workflow` tool calls use as `subagent_type`.
+# name:         short human-readable label.
+# owns:         path globs this subagent is the designated owner of.
+#               A subagent may own zero globs (pure-review subagents) but
+#               every source path in the repo must be covered by at least
+#               one owner row somewhere in this manifest.
+# triggers:     keywords that, when they appear in a user message, make
+#               the task-router suggest routing to this subagent.
+# required-skills: skill names (without the /SKILL.md suffix) this subagent
+#               automatically pulls in when spawned.
+# escalation-to: subagent id(s) to pass unresolved work to.
+#
+# If you edit this file, also sync the mermaid routing diagram in README.md.
+
+subagents:
+  - id: task-router
+    name: Task Router
+    owns: []
+    triggers: [ "route", "assign", "split", "谁来做", "交给谁", "分任务", "workflow" ]
+    required-skills: [ build-ci ]
+    escalation-to: [ spec-audit ]
+
+  - id: lexer-parser
+    name: Lexer & Parser
+    owns:
+      - "products/zomlang/compiler/lexer/**"
+      - "products/zomlang/compiler/parser/**"
+      - "products/zomlang/compiler/ast/kinds.h"
+      - "docs/spec/chapters/02-lexical-structure.md"
+      - "docs/spec/chapters/04-expressions.md"
+      - "docs/spec/chapters/17-grammar-reference.md"
+      - "docs/spec/ZomLexer.g4"
+    triggers: [ "lexer", "token", "parser", "grammar", "precedence", "operator", "keyword", "EBNF", "?!", "!!" ]
+    required-skills: [ build-ci, lit-testing, spec-alignment, zc-library ]
+    escalation-to: [ spec-audit ]
+
+  - id: binder-checker
+    name: Binder & Type Checker
+    owns:
+      - "products/zomlang/compiler/binder/**"
+      - "products/zomlang/compiler/checker/**"
+      - "products/zomlang/compiler/ast/ast-visitor*"
+      - "docs/spec/chapters/06-declarations.md"
+      - "docs/spec/chapters/07-types.md"
+      - "docs/spec/chapters/08-generics.md"
+      - "docs/spec/chapters/09-traits.md"
+    triggers: [ "binder", "scope", "lookup", "type", "checker", "trait", "generic", "polymorphism", "Sendable", "Send", "Sync" ]
+    required-skills: [ build-ci, lit-testing, zc-library ]
+    escalation-to: [ verification ]
+
+  - id: module-system
+    name: Module System & Visibility
+    owns:
+      - "products/zomlang/compiler/symbol/**"
+      - "products/zomlang/compiler/driver/**"
+      - "docs/spec/chapters/12-modules.md"
+      - "docs/spec/chapters/13-visibility.md"
+      - "docs/spec/chapters/14-package.md"
+    triggers: [ "module", "import", "export", "pub", "visibility", "package", "session", "CompilerSession", "跨模块" ]
+    required-skills: [ build-ci, lit-testing, spec-alignment ]
+    escalation-to: [ spec-audit ]
+
+  - id: error-system
+    name: Error System & Diagnostics
+    owns:
+      - "products/zomlang/compiler/diagnostic/**"
+      - "docs/spec/chapters/10-error-handling.md"
+      - "docs/spec/chapters/11-diagnostics.md"
+    triggers: [ "error", "diagnostic", "raises", "try", "exception", "ZOM", "?!", "!!", "propagat" ]
+    required-skills: [ build-ci, lit-testing, spec-alignment ]
+    escalation-to: [ lexer-parser, binder-checker ]
+
+  - id: concurrency
+    name: Concurrency & Async Runtime
+    owns:
+      - "products/zomlang/runtime/**/task*"
+      - "products/zomlang/runtime/**/async*"
+      - "products/zomlang/runtime/**/actor*"
+      - "products/zomlang/runtime/**/channel*"
+      - "products/zomlang/runtime/**/scheduler*"
+      - "docs/spec/chapters/15-concurrency.md"
+      - "docs/spec/chapters/16-memory-model.md"
+    triggers: [ "async", "await", "concurr", "actor", "sendable", "task", "future", "channel", "cancel", "并发", "异步" ]
+    required-skills: [ build-ci, zc-library, lit-testing, ultracode-audit ]
+    escalation-to: [ runtime-memory, verification ]
+
+  - id: spec-audit
+    name: Spec Alignment & Spec/Impl Drift
+    owns:
+      - "docs/spec/**"
+      - "docs/reports/*spec-alignment*"
+    triggers: [ "spec", "grammar-ref", "align", "drift", "EBNF", "five-way", "audit" ]
+    required-skills: [ spec-alignment, ultracode-audit, build-ci ]
+    escalation-to: []
+
+  - id: runtime-memory
+    name: Runtime & Memory (zc core + FFI + ownership)
+    owns:
+      - "libraries/zc/**"
+      - "products/zomlang/runtime/**"
+      - "!products/zomlang/runtime/**/task*"
+      - "!products/zomlang/runtime/**/async*"
+      - "!products/zomlang/runtime/**/actor*"
+      - "!products/zomlang/runtime/**/channel*"
+      - "!products/zomlang/runtime/**/scheduler*"
+    triggers: [ "zc::", "Own<", "ArrayPtr", "Vector", "String", "Maybe", "memory", "heap", "stack", "drop", "free", "FFI", "Pimpl", "ownership" ]
+    required-skills: [ zc-library, build-ci ]
+    escalation-to: [ verification ]
+
+  - id: verification
+    name: Formal-ish Verification & Test Coverage
+    owns:
+      - "products/zomlang/tests/**"
+      - "examples/**"
+      - "docs/reports/*coverage*"
+    triggers: [ "test", "coverage", "lit", "FileCheck", "ztest", "fuzz", "XFAIL", "regen", "verify", "prove" ]
+    required-skills: [ build-ci, lit-testing ]
+    escalation-to: [ spec-audit ]
