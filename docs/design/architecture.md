@@ -17,7 +17,7 @@
 
 ## 1. Executive Scope & Non-Goals
 
-ZOM is a statically typed, ahead-of-time compiled systems programming language targeting LLVM 18 and later. The compiler emits native object files with zero mandatory runtime overhead; every language feature maps to deterministic machine code whose cost a reader can predict from source syntax alone. The design centers two non-negotiable pillars: memory safety without a garbage collector, and structured concurrency baked into the type system via the ownership, permission, and marker rules defined in `docs/design/ZIS.md` and the runtime discipline in `docs/concurrency/ZOM-ASYNC-CANONICAL-DESIGN.md`.
+ZOM is a statically typed, ahead-of-time compiled systems programming language targeting LLVM 18 and later. The compiler emits native object files with zero mandatory runtime overhead; every language feature maps to deterministic machine code whose cost a reader can predict from source syntax alone. The design centers two non-negotiable pillars: memory safety without a garbage collector, and structured concurrency baked into the type system via the ownership, permission, and marker rules defined in `docs/design/zis-internal-spec.md` and the runtime discipline in `docs/concurrency/zom-async-canonical-design.md`.
 
 The minimal viable language surface covers: nominal structs and enums with pattern matching, first-class functions with generics (monomorphized, trait-bounded), explicit `own` / `borrow` / `mut` permissions, `async fn` + `await` with a fixed single-thread-per-core executor, deterministic `defer` / `errdefer` finalization, and a thin foreign-function interface layer over C calling conventions. The standard library (`libraries/zc`) ships the allocator, containers, async runtime, and platform abstractions required to produce freestanding binaries on Linux, macOS, and Windows on AArch64 and x86_64.
 
@@ -58,7 +58,7 @@ The repository follows a flat filesystem layout under `src/` where each module o
 | Module (filesystem path) | Public Surface (3 key classes) | Purpose (1 line) | Data-In | Data-Out | Ownership Transfer |
 |---|---|---|---|---|---|
 | `src/lexer` | `Lexer`, `TokenStream`, `Token` | Convert source bytes into a bounded token sequence with source-location anchors | `zc::StringRef` source buffer + `FileID` | `zc::Own<TokenStream>` with 32-bit `SourceLoc` per token | Lexer consumes `StringRef` view; caller owns produced `TokenStream` |
-| `src/parser` | `Parser`, `SyntaxNode`, `SyntaxTree` | Build an append-only immutable syntax tree from a token stream according to the canonical grammar in `docs/design/DESIGN-DIMENSION-01-SYNTAX-EBNF.md` | `Borrow<TokenStream>` | `zc::Own<SyntaxTree>` | Parser borrows tokens; caller owns resulting tree |
+| `src/parser` | `Parser`, `SyntaxNode`, `SyntaxTree` | Build an append-only immutable syntax tree from a token stream according to the canonical grammar in `docs/design/design-dimension-01-syntax-ebnf.md` | `Borrow<TokenStream>` | `zc::Own<SyntaxTree>` | Parser borrows tokens; caller owns resulting tree |
 | `src/ast/kinds` | `NodeKind`, `TypeKind`, `LitKind` | Closed-enum taxonomies of every AST and type variant used across the pipeline | Compile-time generated tables | Header-only enumerations | Header-only; no heap ownership |
 | `src/ast/nodes` | `Decl`, `Stmt`, `Expr`, `TypeRepr` | Typed accessor views over `SyntaxNode` payload regions; zero-allocation projection | `Borrow<SyntaxNode>` | Strongly-typed view objects | Views are non-owning; lifetime bound to `SyntaxTree` |
 | `src/ast/builders` | `DeclBuilder`, `ExprBuilder`, `TypeBuilder` | Convenience factories used by parser and macro-style code emitters to construct well-formed `SyntaxNode` subtrees | Field-wise inputs | `zc::Own<SyntaxNode>` | Builders transfer produced nodes to enclosing tree |
@@ -66,11 +66,11 @@ The repository follows a flat filesystem layout under `src/` where each module o
 | `src/symbol/scopes` | `Scope`, `ScopeKind`, `ScopeIterator` | Hierarchical name-lookup containers supporting lexical, module, and trait dispatch levels | Inserted `Symbol*` | Resolved `SymbolRef` | Scopes are append-only post-bind |
 | `src/symbol/flags` | `DeclFlags`, `TypeFlags`, `PermSet` | Compact bitfield sets that encode permissions, mutability, linkage, and marker membership | Bitwise OR inputs | Packed 64-bit flag words | Value types; copied freely |
 | `src/symbol/tables` | `SymbolTable`, `Symbol`, `SymbolId` | Fused hash + stable-index storage for every named declaration across all translation units | `Name` + `ScopeId` inserts | `SymbolId` + `Symbol*` lookups | `SymbolTable` is COW across TUs; see §4 |
-| `src/checker` | `TypeChecker`, `TypeEnv`, `Constraint` | Unify types, discharge trait bounds, enforce permission flow, and resolve marker coherence per `docs/design/ZIS.md` §3–§5 | `Borrow<SyntaxTree>` + `ScopeTree` + `&mut TypeEnv` | Fully inferred `TypeEnv` with solved `TypeVar` | TypeEnv is COW; checker returns a new instance on error-free paths |
+| `src/checker` | `TypeChecker`, `TypeEnv`, `Constraint` | Unify types, discharge trait bounds, enforce permission flow, and resolve marker coherence per `docs/design/zis-internal-spec.md` §3–§5 | `Borrow<SyntaxTree>` + `ScopeTree` + `&mut TypeEnv` | Fully inferred `TypeEnv` with solved `TypeVar` | TypeEnv is COW; checker returns a new instance on error-free paths |
 | `src/diagnostic/codes` | `DiagCode`, `DiagRegistry`, `Severity` | Central registry of every diagnostic emitted by any subsystem; mirror of §8 | Static code metadata | `Expected<T>` style rich error payloads | POD; copied on emission |
 | `src/diagnostic/emitter` | `DiagnosticEngine`, `SourceManager`, `DiagRenderer` | Render typed diagnostics to terminal, SARIF, or JSON with caret lines, fix-it hints, and cross-reference anchors | `Diagnostic` record | Rendered text or structured output | Engine is owned by `CompilerSession`; renderer borrows all inputs |
 | `src/driver/CompilerSession` | `CompilerSession`, `SessionOptions`, `CompilationUnit` | Central coordinator that owns all shared state and sequences the pipeline across all stages | CLI args, source file list | Final artifact stream | Session owns every sub-object via `zc::Own`; see §7 |
-| `src/runtime` | `AsyncRuntime`, `Executor`, `Stackless` | The minimal async/concurrency runtime described in `docs/concurrency/ZOM-ASYNC-CANONICAL-DESIGN.md`; linked into user binaries, not part of the compiler process itself | Compiled user code references | Static archive `libruntime_zom.a` | Static linking; user binary owns the copy |
+| `src/runtime` | `AsyncRuntime`, `Executor`, `Stackless` | The minimal async/concurrency runtime described in `docs/concurrency/zom-async-canonical-design.md`; linked into user binaries, not part of the compiler process itself | Compiled user code references | Static archive `libruntime_zom.a` | Static linking; user binary owns the copy |
 | `src/libraries/zc` | `Allocator`, `String`, `Vec<T>`, `HashMap<K,V>` | Core vocabulary types used both by the compiler (as `libzc-host`) and user programs (as `libzc-target`) | Header / template instantiations | Inline and archive code | Value semantics with explicit `zc::Own<T>` move-only wrappers |
 | `src/tests/lit` | `LitRunner`, `FileCheck`, `ShTest` | LLVM-style integration test harness driving `zom` CLI with RUN directives | `.lit.zom` test files | PASS/FAIL/XFAIL counts | Runner owns subprocess handles; tests are never linked into the compiler |
 | `src/tests/unittest` | `ztest::Suite`, `ztest::Case`, `ztest::Expect` | Lightweight header-only unit test framework used by every module's `*_test.cpp` | Static test registrations | XML + console report | Header-only; no global heap state |
@@ -129,7 +129,7 @@ Passes inside the type-checker and marker-coherence phases execute in a fixed to
 | 5 | Expression type inference | `src/checker` | Signatures + trait impls | Every `Expr` node carries a solved `Type*` |
 | 6 | Pattern exhaustiveness | `src/checker` (match pass) | Expression types solved | `ZOM1002` raised for missing cases |
 | 7 | Permission / borrowck | `src/checker` (borrowck) | All types solved | `PermSet` annotated on every `Expr`; borrow-moves discharged |
-| 8 | Marker coherence | `src/checker` (coherence) | `PermSet` on expressions | `Send`, `Sync`, `Unpin` markers finalized per `docs/design/ZIS.md` §5 |
+| 8 | Marker coherence | `src/checker` (coherence) | `PermSet` on expressions | `Send`, `Sync`, `Unpin` markers finalized per `docs/design/zis-internal-spec.md` §5 |
 | 9 | Concurrency pass | `src/checker` (concurrency) | Marker coherence done | `ZOM8xxx` raised for cross-executor borrow escapes |
 | 10 | Attribute handler run | `src/parser` attr hooks | Full typed AST | Side effects and `ZOM06xx` diagnostics attached |
 | 11 | Lint pipeline | extensions `LintPass` | Pass 1–10 clean | `ZOM12xx` warnings emitted |
@@ -284,7 +284,7 @@ sequenceDiagram
         GTC-->>DRV: solved TypeEnv + diags per CU
     end
     DRV->>GTC: checkMarkerCoherence(globals)
-    GTC-->>DRV: coherence result (see ZIS.md §5)
+    GTC-->>DRV: coherence result (see zis-internal-spec.md §5)
     alt any error-severity diag
         DRV->>OW: render all diagnostics
         DRV->>CLI: exit(1)
@@ -410,7 +410,7 @@ private:
 
 ## 8. Diagnostic Numbering Plan
 
-Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by a four-digit decimal code in the closed range `0000`–`9999`. Codes are never reused; deprecating a diagnostic retires its code permanently. This table is the canonical allocation authority that `docs/design/ZIS.md` §2 reproduces bit-identically for the three columns `Range`, `Owner`, and `Min-Severity`.
+Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by a four-digit decimal code in the closed range `0000`–`9999`. Codes are never reused; deprecating a diagnostic retires its code permanently. This table is the canonical allocation authority that `docs/design/zis-internal-spec.md` §2 reproduces bit-identically for the three columns `Range`, `Owner`, and `Min-Severity`.
 
 | Range (start–end) | Subsystem | Owner (filesystem path) | Min-Severity | Example Code + Description |
 |---|---|---|---|---|
@@ -703,21 +703,21 @@ Coverage floors are enforced via `llvm-cov` gating in CI: lexer and parser modul
 |---|---|---|---|
 | 1 | LEX-01 | Lexer | Parser feeds ≥ 1,000,000 random tokens; no panic, no `Token::ERROR` recovery fallback outside dedicated error tests |
 | 2 | PAR-01 | Parser | Parser produces ≤ 2 µs per 1000 tokens of `hello_world.zom` on MacBook Pro M3 — benchmark gate |
-| 3 | PAR-02 | Parser | Every grammar rule in `DESIGN-DIMENSION-01-SYNTAX-EBNF.md` has ≥ 1 positive and ≥ 1 negative lit test |
+| 3 | PAR-02 | Parser | Every grammar rule in `design-dimension-01-syntax-ebnf.md` has ≥ 1 positive and ≥ 1 negative lit test |
 | 4 | BND-01 | Binder | 1024-CU diamond-module test binds without deadlock or `ZOM0805` false positive |
 | 5 | BND-02 | Binder | Every `ZOM03nn` diagnostic code is exercised by ≥ 1 dedicated lit test |
 | 6 | CHK-01 | Type Checker | 50,000 randomly-generated generic trait-solver queries complete with no crashes |
-| 7 | CHK-02 | Type Checker | Marker coherence engine discharges 100% of `ZIS.md` §5 examples with expected diagnostics |
+| 7 | CHK-02 | Type Checker | Marker coherence engine discharges 100% of `zis-internal-spec.md` §5 examples with expected diagnostics |
 | 8 | PERM-01 | Permission / Borrowck | Translated Miri test corpus of 1200 classic borrow-checker examples yields no false negatives |
 | 9 | CONC-01 | Concurrency Pass | Every `ZOM8xxx` diagnostic in §8 has ≥ 1 passing lit test validating exact error substring |
-| 10 | CONC-02 | Runtime | `docs/concurrency/ZOM-ASYNC-CANONICAL-DESIGN.md` example suite compiles, runs under TSan, and reports zero races |
+| 10 | CONC-02 | Runtime | `docs/concurrency/zom-async-canonical-design.md` example suite compiles, runs under TSan, and reports zero races |
 | 11 | IRG-01 | IRGen | `lli` executes 100% of post-type-check lit tests with output identical to native-compiled binaries |
 | 12 | BCK-01 | Backend | LLVM `verifyModule` returns clean for every object file emitted by the standard library test suite |
 | 13 | DIA-01 | Diagnostics | SARIF export round-trips every `ZOMnnnn` diagnostic in §8 example set with line + column within ±1 |
 | 14 | SESS-01 | CompilerSession | Valgrind reports 0 bytes definitely lost after compiling the full `libraries/zc` self-build |
 | 15 | PLUG-01 | Extensions | All four abstract classes in §10 have an in-tree reference implementation plus ≥ 2 unit tests per pure virtual method |
 | 16 | DOC-01 | Documentation | Every example block in this document compiles as C++20 header-only with the in-repo `zc` vocabulary types |
-| 17 | FFI-01 | FFI | Full `DESIGN-DIMENSION-03-RUNTIME-FFI-EXAMPLES.md` corpus links and executes correctly on Linux, macOS, Windows |
+| 17 | FFI-01 | FFI | Full `design-dimension-03-runtime-ffi-examples.md` corpus links and executes correctly on Linux, macOS, Windows |
 | 18 | SEC-01 | Security | No diagnostic renderer reads beyond `SourceLoc` bounds when given a fuzzed 2 GB source buffer |
 | 19 | PERF-01 | Build Throughput | End-to-end compilation of `libraries/zc` completes in < 10 seconds on 16-core reference hardware |
 | 20 | COV-01 | Coverage | All subsystem coverage floors (§11 Layer 3) are met; no module regresses more than 0.5 points |

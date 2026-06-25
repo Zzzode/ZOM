@@ -485,7 +485,7 @@ During S3 marker closure, `Channel<T>` inherits `T: Sendable` and propagates the
 ### 6.3 Checker-side variance tracking skeleton
 
 ```cpp
-// From docs/design/ADT.md §6.3 — canonical design
+// From docs/design/adt.md §6.3 — canonical design
 #pragma once
 #include "zom/base/own.h"
 #include "zom/base/small_vector.h"
@@ -646,7 +646,7 @@ enum CStatus { Ok = 0, IoErr(i32) = 1, ParseErr(str) = 2 }
 ### 9.5 CompilerSession::layout_of — type size/align entrypoint
 
 ```cpp
-// From docs/design/ADT.md §9.5 — canonical design
+// From docs/design/adt.md §9.5 — canonical design
 #pragma once
 #include "zom/base/own.h"
 #include "zom/base/small_vector.h"
@@ -791,7 +791,7 @@ Edges are read top-down: the source ADT inherits marker `M` exactly when every o
 ### 10.4 MarkerDeriveEngine — auto-derive decision skeleton
 
 ```cpp
-// From docs/design/ADT.md §10.4 — canonical design
+// From docs/design/adt.md §10.4 — canonical design
 #pragma once
 #include "zom/base/own.h"
 #include "zom/base/hash.h"

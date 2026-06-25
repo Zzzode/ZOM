@@ -5,7 +5,7 @@
 注意用户要求的是「设计维度3」，让我先确认一下这个维度在设计中的具体指代。结合用户可能引用的是ultracode审计工作流中「维度3：并发语义」（因为在zom-design-audit中「维度通常是6维度审计，维度3应该对应「并发与异步」维度。
 
 用户给的明确维度3关键词是「并发语义 运行时 边缘语义 FFI 示例」，与我读取的canonical设计文档完全对应。现在让我整理输出。</think_never_used_51bce0c785ca2f68081bfa7d91973934>
-根据您要求的**设计维度 3：并发语义 之 运行时架构 / 边缘语义 / FFI 互操作 / 示例 四个子维度的整理如下。所有内容锚定到 `/Users/bytedance/Develop/ZOM/docs/concurrency/ZOM-ASYNC-CANONICAL-DESIGN.md`（v1.0.0-rc1）。
+根据您要求的**设计维度 3：并发语义 之 运行时架构 / 边缘语义 / FFI 互操作 / 示例 四个子维度的整理如下。所有内容锚定到 `/Users/bytedance/Develop/ZOM/docs/concurrency/zom-async-canonical-design.md`（v1.0.0-rc1）。
 
 ---
 
@@ -392,7 +392,7 @@ fun main() -> Result<(), SystemError> {
 
 **核心源文件锚点**：
 
-- 主规范：`/Users/bytedance/Develop/ZOM/docs/concurrency/ZOM-ASYNC-CANONICAL-DESIGN.md`
+- 主规范：`/Users/bytedance/Develop/ZOM/docs/concurrency/zom-async-canonical-design.md`
 - Spec 章节占位（待重写）：`/Users/bytedance/Develop/ZOM/docs/spec/chapters/15-concurrency.md`（目前仅 11 行保留声明）
 - 审计报告：`/Users/bytedance/Develop/ZOM/docs/reports/zom-concurrency-audit-2026-06-24.md`（44 条 findings，0 critical / 18 high）
 - 敌对审计 10 条未闭环：上述文档 §附录 B
