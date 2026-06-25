@@ -54,7 +54,7 @@ editions unless explicitly reopened.
 
 ```mermaid
 graph LR
-    CODE[User source] --> RAISES[Declared raises: A, B]
+    CODE[User source] --> RAISES["Declared raises: A | B"]
     RAISES --> RETURN_TYPE[Function return: T | A | B]
     RETURN_TYPE --> CALLSITE[Call site]
     CALLSITE --> EXPLICIT[Explicit match]
@@ -149,7 +149,7 @@ with identical type ID.
 
 ```zom
 fun parse(json: str) -> Ast raises ParseError { ... }
-fun connect(host: str, port: u16) -> Socket raises[NetError, TimeoutError] { ... }
+fun connect(host: str, port: u16) -> Socket raises NetError | TimeoutError { ... }
 
 // Equivalent explicit union forms — identical types.
 fun parse(json: str) -> (Ast | ParseError) { ... }
@@ -157,17 +157,21 @@ fun connect(host: str, port: u16) -> (Socket | NetError | TimeoutError) { ... }
 ```
 
 Desugaring: `... -> T raises E` => `... -> (T | E)`;
-`... -> T raises[A, B, C]` => `... -> (T | A | B | C)`;
-`... -> T raises[]` => `... -> T`.
+`... -> T raises A | B | C` => `... -> (T | A | B | C)`.
+Omitting `raises` means the signature declares no recoverable error path:
+`... -> T` stays `... -> T`. `raises` has no comma-list, bracket-list, or
+empty-list form.
 
 ### `raises` Is Part of Function Identity
 
 Two function types differing only in their `raises` clause are distinct
-types. Widening (assigning a function whose error set is a strict subset of
-the target) is allowed. Narrowing is not. **ZOM0951 RaisesSignatureMismatch**
-fires when function-pointer assignment or trait-method impl declares an
-incompatible error set. Trait impls may widen their error sets; they may
-not narrow them.
+types. For function-pointer assignment, argument passing, overrides, and
+interface implementations, the actual callee's error set must be a subset
+of the target signature's error set. A callee that raises fewer error types
+is substitutable; a callee that raises any extra error type is not.
+**ZOM0951 RaisesSignatureMismatch** fires when a function-pointer
+assignment or interface-method implementation declares an incompatible
+error set.
 
 ### Error Subtype Inheritance
 
@@ -180,7 +184,7 @@ types; callers must upcast explicitly at match sites.
 ```zom
 // Execute a user block inside a DB transaction. Caller errors propagate;
 // DbError is added for machinery failures.
-fun with_db<T, E>(block: fun() -> T raises E) -> T raises[E, DbError] { ... }
+fun with_db<T, E>(block: fun() -> T raises E) -> T raises E | DbError { ... }
 ```
 
 See Chapter 12 Generics for bounds and `where` clause rules.
@@ -221,7 +225,7 @@ suggesting either adding them to `raises` or an explicit `match`.
 left-associative:
 
 ```zom
-get_config()?.read()?.parse()?
+get_config()?!.read()?!.parse()?!
 ```
 
 desugars left-to-right into three nested `match` expressions.
@@ -574,20 +578,20 @@ separate `async fun main` syntax. Zero Function Color design (Chapter 15).
 fun main() { println!("Hello, world!"); }
 
 // Recommended — typed errors, ?! propagation.
-fun main() raises AppError {
-    let cfg = parse_config("app.toml")?;
-    let db = connect_db(&cfg.db_url)?;
-    run_app(cfg, db)?;
+fun main() -> unit raises AppError {
+    let cfg = parse_config("app.toml")?!;
+    let db = connect_db(&cfg.db_url)?!;
+    run_app(cfg, db)?!;
 }
 
 // Implicitly async — await works directly in main body.
-fun main() raises AppError {
-    let r = http::get("https://example.com").await?;
+fun main() -> unit raises AppError {
+    let r = http::get("https://example.com").await?!;
     println!("{}", r.body);
 }
 ```
 
-Omitting `raises` is equivalent to `fun main() -> ()`.
+Omitting `raises` is equivalent to `fun main() -> unit`.
 
 ### Implicit Async Contract
 
@@ -719,7 +723,7 @@ table is the authoritative list of names and meanings.
 | Code | Name | Meaning |
 |---|---|---|
 | ZOM0950 | ErrorUnionAmbiguous | Ok and error variants share overlapping concrete types in `T \| E`. Wrap one side in a newtype or refactor. |
-| ZOM0951 | RaisesSignatureMismatch | Function-pointer assignment or trait impl has an incompatible raises set. Impls may only widen, not narrow. |
+| ZOM0951 | RaisesSignatureMismatch | Function-pointer assignment or interface impl has an incompatible raises set. The actual callee's error set must be a subset of the target signature's error set. |
 | ZOM0952 | CannotPropagateError | `?!` residual type not in enclosing raises. Add it or use explicit `match`. |
 | ZOM0953 | NotATryType | `?!` applied to a type that is neither an error union nor a `Try` implementor. |
 | ZOM0954 | TryResidualMismatch | A `Try::Residual` cannot coerce into the enclosing return union. Widen raises or switch to `match`. |
@@ -800,7 +804,7 @@ fun handle(req: Request) -> Response raises AppError {
     }
 }
 
-fun main() raises AppError {
+fun main() -> unit raises AppError {
     let cfg = match load_config() {
         Ok(c) -> c,
         Err(e) -> return Err(AppError::Config(e)),
@@ -831,12 +835,14 @@ forms and their grammatical categories for cross-reference.
 
 ```ebnf
 FunctionSig ::= 'fun' Identifier Generics '(' ParamList ')'
-                ( '->' Type )? RaisesClause? Block
-RaisesClause ::= 'raises' ( Type | '[' Type ( ',' Type )* ','? ']' )
+                ReturnType? Block
+ReturnType ::= '->' TypeExpression RaisesClause?
+RaisesClause ::= 'raises' TypeExpression
 ```
 
-The `raises` keyword binds to the return type. Desugaring inserts
-raised types into the return union before type checking.
+The `raises` keyword binds to the return type. The type expression may be a
+union such as `IoError | ParseError`. Desugaring inserts raised types into
+the return union before type checking.
 
 ### Postfix `?!` and `!!`
 
@@ -879,12 +885,12 @@ and helper attributes `#[source]`, `#[backtrace]`,
 | TBD | Frozen Design | Specified In |
 |---|---|---|
 | TBD-1 | Debug: unwind / Release: abort; `#![zom::panic(...)]` override | §11.6 Panic Strategy |
-| TBD-2 | `Result<T,E>` = structural `T \| E`; `raises[]` sugar; `?!` = match+return; all compile to tagged union IR | §11.1, §11.2, §11.3 |
+| TBD-2 | `Result<T,E>` = structural `T \| E`; `raises E` sugar; `?!` = match+return; all compile to tagged union IR | §11.1, §11.2, §11.3 |
 | TBD-3 | `T!!E` type = double error union; `expr!!` = unwrap-or-panic | §11.5 `!!` Dual-Axis Operator |
 | TBD-4 | Open `interface Try` with associated types; user-extensible; NOT object-safe | §11.4 The Open `Try` Interface |
 | TBD-5 | Value-error default for OOM (`Alloc.Error`); `#![zom::oom(panic)]` opt-out | §11.8 OOM Strategy |
 | TBD-6 | Cancellation = cooperative flag + awaken; never force-interrupt destructors; no CancelSafe in v1 | §11.12 Cooperative Cancellation |
 | TBD-7 | `catch_unwind` provided; lint restricts to FFI / error boundary | §11.7 `catch_unwind` |
 | TBD-8 | `Error` interface; `#[zom::derive(Error)]` auto-generation rules | §11.9 `Error` Interface and Derive |
-| TBD-9 | `fun main() raises E` supported; implicitly async; runtime exit contract | §11.10 `main()` and Top-Level Execution |
+| TBD-9 | `fun main() -> unit raises E` supported; implicitly async; runtime exit contract | §11.10 `main()` and Top-Level Execution |
 | TBD-10 | Panic backtrace always-on; error backtrace opt-in; Debug ON / Release OFF; `ZOM_BACKTRACE` env | §11.11 Backtrace Capture Strategy |

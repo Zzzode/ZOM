@@ -297,12 +297,11 @@ ElementName ::= Identifier
 
 FunctionType ::= TypeParameters? ParameterClause '->' TypeExpression RaisesClause?
 ParameterClause ::= '(' ParameterList? ')'
-RaisesClause ::= 'raises' TypeList
-TypeList     ::= TypeExpression ( ',' TypeExpression )* ','?
-    (* RaisesClause allows a comma-separated set of error types.
-       Example: 'fun f() -> T raises IoError, ParseError, ZOM80xx'
-       Sync requirement: parser's parseRaisesClause parses as a
-       comma-list (min size = 1), not a single Type. *)
+RaisesClause ::= 'raises' TypeExpression
+    (* Multiple error types are written as a union type expression.
+       Example: 'fun f() -> T raises IoError | ParseError | ZOM80xx'
+       Sync requirement: parser's raises clause parses exactly one
+       TypeExpression; there is no comma-list or bracket-list form. *)
 
 ObjectType ::= '{' TypeBody? '}'
 TypeBody ::= TypeMemberList (';' | ',')?

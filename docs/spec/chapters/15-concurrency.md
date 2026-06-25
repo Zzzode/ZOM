@@ -317,7 +317,7 @@ a marker coherence failure at drop-site. Joining a detached handle raises
 ```zom
 fun Scope::spawn<T>(this: &Scope, body: fun() -> T raises E) -> JoinHandle<T, E>
 fun join<T, E>(h: JoinHandle<T, E>) -> T | E | PanicInfo | Canceled
-fun Scope::cancel_all(this: &Scope) raises CancelAllWithoutPermission
+fun Scope::cancel_all(this: &Scope) -> unit raises CancelAllWithoutPermission
 ```
 
 Spawn statically verifies that `body` captures only `Sendable` values by move
@@ -1016,8 +1016,8 @@ already has children.
 Runtime exposes a single-slot exporter pointer:
 ```zom
 interface TraceExporter {
-  fun export(&self, spans: SpanBatch) -> () | ExportError;
-  fun shutdown(&self) -> ();
+  fun export(&self, spans: SpanBatch) -> unit | ExportError;
+  fun shutdown(&self) -> unit;
 }
 ```
 
