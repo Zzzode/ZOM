@@ -69,123 +69,125 @@ interface Monad<T> extends Functor<T> {
 
 ### Type Constraints
 
-Type constraints restrict which concrete types may be substituted for a generic parameter. A single constraint item is either an **interface** (behavioral contract) or a **marker** (structural predicate). Constraints are joined with `+` in a bound list.
+Type constraints restrict which concrete types may be substituted for a generic parameter. ZOM uses a **single unified bound list syntax**: both interface bounds and marker bounds appear in `:`-separated bound lists, joined by `+`. Interface bounds always accept the positive form; marker bounds additionally accept a `!` (negative) prefix.
 
-Constraint grammar:
+#### Bound List Grammar
+
 ```ebnf
-BoundList      ::= BoundItem ( '+' BoundItem )*
-BoundItem      ::= InterfaceType
-                 | MarkerBound
-MarkerBound    ::= '!'? ( Identifier | AttributeQualifiedPath )
+BoundList ::= BoundItem ( '+' BoundItem )*
+BoundItem ::= '!' MarkerPath
+            | InterfaceName ( '<' GenericArgs '>' )?
 ```
 
-Four concrete examples and two anti-examples:
+- **Positive interface bounds only.** Writing `fun f<T: !Drawable>(x: T)` is a hard error. Rationale: interfaces describe *behavioral obligations* — "does NOT implement Drawable" is not a useful static contract; refactoring into smaller, finer-grained interfaces achieves the same goal without requiring negative reasoning. The diagnostic is ZOM0422 `NegativeInterfaceBoundNotAllowed`.
+- **Marker bounds allow negation.** The form `!Shared` means "definitely does NOT impl the Shared marker". Marker negation is sound because markers are structural Boolean properties of types, closed under negative coherence (Ch.22 §22.3).
+- **Order-independence.** The bound set `{Drawable, Sendable, Shared}` describes exactly the same predicate as `{Sendable, Drawable, Shared}`. The tooling canonicalization convention is: interface bounds first, then marker bounds, each subgroup sorted alphabetically.
+- **Duplicate detection.** Duplicate bounds within the same list produce warning W1204 `DuplicateBound`, suppressed by default.
+
+#### Short Form vs. Where Clause
+
+ZOM offers two equivalent syntactic surfaces. The inline short form is preferred for simple cases; the `where` clause is preferred when type parameters each carry different, lengthy bound sets, or when bounds reference associated types.
 
 ```zom
-// Single interface bound
+// Short form (single type param, two bounds)
+fun draw<T: Drawable + Sendable>(x: T);
+
+// Equivalent long form — where clause
+fun draw<T>(x: T)
+where
+    T: Drawable,
+    T: Sendable,
+{
+    ...
+}
+```
+
+Where clause preferred when:
+1. Multiple type parameters, each with different bound sets.
+2. Bounds exceed the 80-column line-width rule in short form.
+3. Bounds reference associated types, e.g. `T::Item: Cloneable`.
+4. Bound conjunction involves more than three items (readability threshold).
+
+Four illustrative examples:
+
+```zom
+// 1. Single interface bound
 fun sort<T: Comparable<T>>(array: T[]) -> T[] {
-    // Implementation — T promises a total order via Comparable<T>::compareTo
     return array;
 }
 
-// Interface + 2 markers (interface first; ordering does not affect semantics)
+// 2. Interface + 2 markers. Ordering does not affect semantics.
 fun render_all<T: Drawable + Sendable + Shared>(surfaces: T[]) -> Canvas {
-    // T promises to render and be shareable across threads
-    return Canvas()
+    return Canvas();
 }
 
-// Interface + negated marker: !Sendable is a legitimate marker bound
+// 3. Interface + negated marker — !Sendable is legitimate
 fun spawn_local<T: Runnable + !Sendable>(task: T) -> LocalJoinHandle<T> {
-    // T promises to run but only on the current executor thread
-    return LocalJoinHandle(task)
+    return LocalJoinHandle(task);
 }
 
-// Where-clause form for complex multi-parameter cases
+// 4. Where clause for a complex multi-parameter signature
 fun complex_render<T, U>(surfaces: T[], transforms: U[]) -> Canvas
-    where T: Drawable + Sendable + Shared,
-          U: Transform + Linear {
-    return Canvas()
+where
+    T: Drawable + Sendable + Shared,
+    U: Transform + Linear,
+    T::Item: Cloneable,
+{
+    return Canvas();
 }
-
-// ============================================================
-// Anti-examples: compile-time errors
-// ============================================================
-
-// ERROR: Interfaces are behavioral contracts; negation is meaningless.
-//   fun f<T: !Drawable>(x: T) -> unit
-//   → ZOM0448 NegativeInterfaceBoundNotAllowed
-//
-// ERROR: Two different interface-satisfaction negations — use a more
-//   specific structural marker-bound instead if this intent is needed.
-//   fun g<T: !JsonSerializable + !BinarySerializable>(x: T) -> unit
-//   → ZOM0448 × 2
 ```
 
-Semantic rules for bound lists:
-
-1. **Order-independence within a bound list.** The set `{Drawable, Sendable, Shared}` describes exactly the same predicate as `{Sendable, Drawable, Shared}`. Tooling (linters, `zom fmt`) canonicalises to: interface bounds first, then marker bounds, each subgroup sorted alphabetically.
-2. **Duplicates produce W1204 DuplicateBound**, suppressed by default.
-3. **Conjunction with `&` (type-level intersection) is a TYPE EXPRESSION, not a bound.** `T: I1 + I2` = "T satisfies both I1 and I2". `I1 & I2` as a type = "the anonymous intersection type whose values satisfy both I1 and I2 simultaneously"; use `dyn (I1 & I2)` to name it as an existential.
-4. **Marker negation (`!`)** is legal only on marker bounds. On an interface name it emits ZOM0448.
-
-#### Marker Privileges in Where Clauses
-
-Marker bounds are Boolean predicates in a proper lattice, which grants them three
-syntactic privileges that interface bounds do not possess.
-
-1. **Negation.** A marker bound accepts a `!` prefix meaning "the target type
-   explicitly does NOT possess marker M". Interface bounds reject the `!`
-   prefix with ZOM0448 since behavioral negation lacks a proof procedure in
-   general.
-2. **Optional relaxation with `?`**. On auto-derived markers the syntax `?M`
-   means "T does NOT implicitly carry M as a precondition", relaxing the
-   default upper bound that the compiler assumes for parameters. Only meaningful
-   for markers that are auto-closed over primitive types by the language
-   prelude (Sendable, Shared, Sized). User-defined auto-markers inherit this
-   privilege in symmetric fashion.
-3. **Commutative / associative closure.** The expression `M1 + M2 + M3` forms
-   a proper Boolean conjunction: order does not matter (commutative) and
-   regrouping does not matter (associative). `zom fmt` canonicalises to
-   "interface bounds first, then markers, each subgroup alphabetically".
-   Interface bounds share the alphabetical-order rule but do NOT form a
-   closed lattice — there is no automatic way to combine `Drawable + Hashable`
-   into a named third interface.
+Two anti-examples:
 
 ```zom
-// Negation + conjunction (correct)
-fn spawn_single_writer<F, T>(f: F) -> JoinHandle<T>
-    where
-        F: FnOnce() -> T,
-        F: Sendable + !Shared + 'static,   // !Shared: requires NO shared-read aliasing
-        T: Sendable + Linear,              // Linear: must be consumed exactly-once
-    { ... }
+// ERROR — interface negation is not a meaningful static contract.
+// fun f<T: !Drawable>(x: T) -> unit;
+// → ZOM0422 NegativeInterfaceBoundNotAllowed
 
-// Relaxation for raw allocator (we do NOT require Send on the target type
-// because this function will not move T across threads — it only returns a
-// pointer that the caller later attaches semantics to).
-fn raw_alloc<T: ?Sized + ?Sendable>(size_bytes: usize) -> *mut T { ... }
+// ERROR — two interface negations; rewrite using structural marker bounds
+// fun g<T: !JsonSerializable + !BinarySerializable>(x: T) -> unit;
+// → ZOM0422 × 2
 ```
 
-Anti-example for interface negation (produces ZOM0448):
-```zom
-// ❌ ZOM0448 — interface negation is not permitted
-fn draw_except_shape<T>(x: T) where T: !Drawable;
-```
+#### Semantic Rules for Bound Lists
 
-#### Conjunction vs Intersection
+1. **Conjunction vs. type-intersection distinction.** The bound-list `+` operator (conjunction) is a *predicate on a single concrete type*. It must be distinguished from the type-level intersection operator `&` (Ch.03):
 
-The bound-list `+` operator (conjunction) describes a *predicate* on a single
-concrete type. It MUST be distinguished from the type-level intersection
-operator `&` (Ch.03):
+   | Construct            | Syntax                     | Level          | Meaning                                                  |
+   |----------------------|----------------------------|----------------|----------------------------------------------------------|
+   | Bound conjunction    | `T: Drawable + Sendable`   | Generic head   | "For the single concrete T, prove BOTH properties"       |
+   | Type intersection    | `Drawable & Movable`       | Type position  | "One value that simultaneously IS both types"            |
 
-| Construct            | Syntax                 | Level          | Meaning                                           |
-|----------------------|------------------------|----------------|---------------------------------------------------|
-| Bound conjunction    | `T: Drawable + Sendable` | Generic head   | "For the single concrete T, prove BOTH properties" |
-| Type intersection    | `Drawable & Movable`   | Type position  | "One value that simultaneously IS both types"     |
+   Type intersections `A & B` at type position are independent from the bound conjunction above. They are enforced structurally by the type checker as true sub-typing relationships, not as proof obligations on generic parameters. To name an intersection as an existential, write `dyn (Drawable & Movable)` (requires object-safe interfaces).
 
-Type intersections `A & B` at type position are independent from the bound
-conjunction above. They are enforced structurally by the type checker as
-true sub-typing relationships, not as proof obligations on generic parameters.
+2. **Marker negation `!` is legal only on marker bounds.** Applied to an interface name it raises ZOM0422.
+
+3. **Marker-only privileges in where clauses.** Markers are Boolean predicates in a proper lattice, which grants them three syntactic privileges that interface bounds do not possess:
+   - **Negation.** As above.
+   - **Optional relaxation with `?`.** On auto-derived markers the syntax `?M` means "T does NOT implicitly carry M as a precondition", relaxing the default upper bound. Meaningful only for prelude-closed markers (Sendable, Shared, Sized) and user-defined auto-markers.
+   - **Commutative / associative closure.** The expression `M1 + M2 + M3` forms a proper Boolean conjunction. Interface bounds share the alphabetical-order rule but do NOT form a closed lattice — there is no automatic way to combine `Drawable + Hashable` into a named third interface.
+
+   ```zom
+   fn spawn_single_writer<F, T>(f: F) -> JoinHandle<T>
+       where
+           F: FnOnce() -> T,
+           F: Sendable + !Shared,        // !Shared: requires no shared-read aliasing
+           T: Sendable + Linear,         // Linear: must be consumed exactly once
+   { ... }
+
+   // Relaxation for a raw allocator — do NOT require Sendable or Sized on T
+   fn raw_alloc<T: ?Sized + ?Sendable>(size_bytes: usize) -> *mut T { ... }
+   ```
+
+#### Bound Satisfaction at Call Site
+
+For each call to a generic function `f<T_real>()`, the compiler performs, for every bound declared on each type parameter:
+
+- **Interface bound** `T: I<...>` → a valid impl block must exist declaring `impl I<...> for T_real`. Failure raises a member of the ZOM04xx series (`ZOM0410 TraitBoundUnsatisfied` and friends; see chapter-level diagnostic table).
+- **Positive marker bound** `T: M` → the marker bitmap for `T_real` must have bit `M` set. Otherwise `ZOM0430 MarkerBoundMissing`.
+- **Negative marker bound** `T: !M` → the marker bitmap for `T_real` must have bit `M` explicitly clear (either by negative impl or by the negative-closure lattice rejecting derivation). Otherwise `ZOM0431 NegativeMarkerBoundViolated`.
+
+Bound satisfaction is also checked *inside* the generic body (prior to monomorphisation) against the declared bounds alone. The body may not assume any property of `T` that is not listed in its bound set; violations are diagnosed at body-check time via the same ZOM04xx diagnostic codes.
 
 ### Associated Types
 

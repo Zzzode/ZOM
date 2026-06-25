@@ -641,7 +641,16 @@ class SuspendEvent<T> {
     //              no linear-self, no GAT, all associated types bound).
     waker: RawTask?;
     contract: dyn SuspendContract<T>;
+    // The `dyn SuspendContract<T>` type is a two-word existential type (data pointer + vtable
+    // pointer) per spec Ch.03 §X. The vtable pointer carries erased dispatch targets. No
+    // borrow sigil is required because the dyn payload is itself a non-move fat-reference to
+    // the contract implementation object; lifetime is pinned by the Scope executor for the
+    // event's suspend-window.
 }
+// Field `contract` is a dyn existential type. Formal definition of `dyn I` existential
+// layout, dispatch, and object-safety rules appears in spec/chapters/03-types.md §X.
+// Object-safety verification requirements for SuspendContract<T>: see spec/chapters/
+// 09-interfaces.md §9 (rules OS-1..OS-7).
 
 // ====== Scope<R> — Structured Concurrency Scope (Linear indirect holding) ======
 //   Canonical: scope_guard was moved from the `lang` subspace to

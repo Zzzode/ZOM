@@ -365,7 +365,7 @@ let multiply = fun (x: i32) -> i32 { return x * multiplier; };
 Operators are evaluated in the following order (highest to lowest precedence):
 
 1. **Primary**: `()`, `[]`, `.`, `?.`
-2. **Postfix**: `++`, `--` (postfix)
+2. **Postfix**: `++`, `--` (postfix), `?!` (try/propagate), `!!` (unwrap/panic)
 3. **Prefix**: `+`, `-`, `!`, `~`, `++`, `--` (prefix), `typeof`
 4. **Cast**: `as`, `as?`, `<Type>`
 5. **Exponentiation**: `**`
@@ -380,6 +380,23 @@ Operators are evaluated in the following order (highest to lowest precedence):
 14. **Logical AND**: `&&`
 15. **Logical OR**: `||`
 16. **Null Coalescing**: `??`
-17. **Error Handling**: `?!`, `!!`, `?:`
+17. **Error Elvis**: `?:`
 18. **Conditional**: `? :`
 19. **Assignment**: `=`, `+=`, `-=`, etc.
+
+## Postfix Error-Handling Operators: `?!` and `!!`
+
+ZOM provides two built-in postfix operators for error-union and option-like types. Both belong to the postfix-expression tier, bind **left-associatively**, and share the same precedence rank as postfix `++` / `--`. Consequently, `a()?!.field` parses as `(a()?!).field`, `a()!!.call()` parses as `(a()!!).call()`, and `expr?! as T` parses as `(expr?!) as T` — the try and unwrap operations always complete before any cast or member access on the result.
+
+### `expr ?!` — Try / Propagate
+
+- **Operand requirement.** The operand's type MUST either be a union type `T | E` where `E` is a declared error (Ch.11 §11.3), or a type that implements the built-in `interface Try` (Ch.11 §11.4). Any other type raises ZOM0952 `CannotPropagateError` at type-check time, or ZOM0953 `NotATryType` if the operand does not satisfy the `Try` interface.
+- **Semantics for error-union `T | E`.** The operator desugars to a `match` that evaluates the operand, returns the `T` branch value if it is in the success arm, and performs an early `return Err(err)` from the enclosing function if it is in the error arm. The desugared form is defined co-normatively in Ch.11 §11.3.
+- **Semantics for `impl Try`.** The operator dispatches via `Try::branch(operand)`. If the branch result is `Residual`, the residual is re-wrapped into a full return-type value via `Try::fromResidual(residual)` and returned from the enclosing function. If the branch result is `Output`, that value is the value of the `?!` expression and execution continues normally. Mismatch between the residual kind and the enclosing function's declared return type is diagnosed as ZOM0954 `TryResidualMismatch`.
+- **Raises clause interaction.** Inside a function with an explicit `raises` clause, `?!` propagates only error variants declared in the clause. An error variant not listed in the raises set is diagnosed as ZOM0951 `RaisesSignatureMismatch` (Ch.11 §11.1).
+
+### `expr !!` — Unwrap / Panic
+
+- **Operand requirement.** The operand MUST be a union type with a present error or none case, or a type implementing `Try`. A bare non-union, non-`Try` operand is ZOM0953 `NotATryType`.
+- **Runtime semantics.** If the operand is on the success path, the operator unwraps and yields the success value. If the operand is on the error path, the program panics with a formatted message that includes (a) the stringification of the error payload, (b) the source span of the `!!` operator, and (c) a captured backtrace when backtrace support is available for the current target.
+- **Production-use lint.** Under the release profile, each use of `!!` that is not inside an explicit `assert!` / debug-conditional gate raises lint ZOM0955 `UnwrapInProduction`. The lint is suppressible on a per-item basis via `#[zom::lint::allow(ZOM0955)]` and is promoted to deny under the `safety-strict` profile preset.

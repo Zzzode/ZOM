@@ -192,7 +192,7 @@ InterfaceHeritage ::= 'extends' InterfaceTypeList
 InterfaceBody ::= InterfaceElement*
 InterfaceElement ::= ';'
                    | Modifier* LetOrConst PropertySignature Initializer? ';'?
-                   | Modifier* 'fun' MethodSignature ( BlockStatement | ';' )?
+                   | Modifier* 'fun' MethodSignature ( BlockStatement | ';' )
                       (* BlockStatement = default method body — Ch.09 §6 *)
 PropertySignature ::= PropertyName '?'? TypeAnnotation
 MethodSignature ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType?
@@ -256,8 +256,8 @@ MarkerImplDeclaration
 
 (* Standalone Interface Impl — Ch.09 §7 *)
 StandaloneImplDeclaration
-    ::= 'impl' TypeArguments? InterfaceType ( '+' MarkerPath )* 'for' TypeExpression
-        whereClause? '{' ( MethodDeclaration | AssociatedTypeAssignment )* '}'
+    ::= 'impl' TypeArguments? InterfaceBoundList 'for' Type
+        whereClause? '{' (MethodDeclaration | AssociatedTypeAssignment | ConstantDeclaration)* '}'
 AssociatedTypeAssignment ::= 'type' Identifier TypeParameters? '=' TypeExpression ';'
 
 (* Type Expressions *)
@@ -274,9 +274,12 @@ AtomType ::= ParenthesizedType
           | TupleType
           | FunctionType
           | TypeQuery
-          | DynType            (* existential type — Ch.03 §X *)
-DynType ::= 'dyn' InterfaceType ( '+' MarkerPath ( '+' MarkerPath )* )?
+          | DynType                (* existential type — Ch.03 §Existential Types *)
+DynType ::= 'dyn' InterfaceBoundList                          (* Ch.03 §Existential *)
+InterfaceBoundList ::= InterfaceName ( '<' GenericArgs '>' )? ( '+' MarkerPath )*
+InterfaceName ::= TypeName
 InterfaceType ::= TypeName TypeArguments?
+GenericArgs ::= TypeArgumentList
 
 ParenthesizedType ::= '(' TypeExpression ')'
 PredefinedType ::= 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'
