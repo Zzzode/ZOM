@@ -157,7 +157,8 @@ InterfaceHeritage ::= 'extends' InterfaceTypeList
 InterfaceBody ::= InterfaceElement*
 InterfaceElement ::= ';'
                    | Modifier* LetOrConst PropertySignature Initializer? ';'?
-                   | Modifier* 'fun' MethodSignature ';'?
+                   | Modifier* 'fun' MethodSignature ( BlockStatement | ';' )?
+                      (* BlockStatement = default method body — Ch.09 §6 *)
 PropertySignature ::= PropertyName '?'? TypeAnnotation
 MethodSignature ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType?
 
@@ -213,6 +214,12 @@ MarkerImplDeclaration
    'marker impl' prefix or qualify the marker to ≥2 segments to disambiguate."
    ────────────────────────────────────────────────────────────────────── *)
 
+(* Standalone Interface Impl — Ch.09 §7 *)
+StandaloneImplDeclaration
+    ::= 'impl' TypeArguments? InterfaceType ( '+' MarkerPath )* 'for' TypeExpression
+        whereClause? '{' ( MethodDeclaration | AssociatedTypeAssignment )* '}'
+AssociatedTypeAssignment ::= 'type' Identifier TypeParameters? '=' TypeExpression ';'
+
 (* Type Expressions *)
 TypeExpression ::= UnionType
 UnionType ::= IntersectionType ('|' IntersectionType)*
@@ -227,6 +234,9 @@ AtomType ::= ParenthesizedType
           | TupleType
           | FunctionType
           | TypeQuery
+          | DynType            (* existential type — Ch.03 §X *)
+DynType ::= 'dyn' InterfaceType ( '+' MarkerPath ( '+' MarkerPath )* )?
+InterfaceType ::= TypeName TypeArguments?
 
 ParenthesizedType ::= '(' TypeExpression ')'
 PredefinedType ::= 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'

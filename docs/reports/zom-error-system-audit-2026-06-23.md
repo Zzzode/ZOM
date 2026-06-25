@@ -1688,7 +1688,7 @@ ZOM 生态会出现：同一个功能，A 库用 `raises ErrorA`；B 库用 `enu
 
 (6) 严重性 medium 被夸大：影响面仅 !! 一个 operator；触发需用户显式书写；用户完全可改用 ?!/match 规避；且即便发生，abort 语义下 OS 回收了绝大多数资源。medium 应要求"广泛影响、默认路径、不可控"，此条均不满足。
 
-### 26. 🟠 [高] Box<dyn Error> 或 anyhow::Error 等价物不存在，跨 crate 统一错误类型不便利  
+### 26. 🟠 [高] Box<dyn Error> 或 anyhow::Error 等价物不存在，跨 crate 统一错误类型不便利  (RESOLVED 2026-06-25: formalized in spec/chapters/03-types.md §X Existential Types and spec/chapters/09-interfaces.md §9–§10)  
 **类别**: 类型模型 | **置信度**: 93%
 
 **问题描述**  
@@ -3340,7 +3340,7 @@ ZOM 的设计站在 Swift 6 typed throws 的同一侧：fun f() -> T raises E �
 3. 标准库整体未落地，而非 Error trait 一项缺失；缺少 erased fallback 是全局状态的子项，不是独立缺陷。
 4. Swift 6 正从 any Error 向 typed throws 收敛，ZOM 选择纯 typed throws 路线属于合法设计取舍，"缺少双模导致生态割裂"是推测性结论。
 
-### 52. 🟡 [中] 缺少 anyError / erased error / boxed-dyn-error 存在性与形式定义  
+### 52. 🟡 [中] 缺少 anyError / erased error / boxed-dyn-error 存在性与形式定义  (RESOLVED 2026-06-25: formalized in spec/chapters/03-types.md §X Existential Types and spec/chapters/09-interfaces.md §9–§10)  
 **类别**: 类型模型 | **置信度**: 91%
 
 **问题描述**  

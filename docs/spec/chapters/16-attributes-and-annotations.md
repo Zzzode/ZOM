@@ -909,10 +909,10 @@ I2a unsafe-gate propagation: applying a Tier-2 conjunction marker via
     cannot circumvent I2a merely by writing 'unsafe impl Macro' on the
     proc-macro crate side (see §16.10.2).
 
-### 16.10.2 The Macro trait (procedural Tier 2)
+### 16.10.2 The Macro interface (procedural Tier 2)
 
 ```
-trait Macro {
+interface Macro {
     // ── Contract ──────────────────────────────────────────────
     // • pure function:  f: TokenStream × TokenStream → TokenStream
     //   first argument  = attribute tokens (inside attrTokenTree)
@@ -1264,7 +1264,9 @@ For each operator `Op P`, `w ⊩ Op P` means "P holds at world w under modality 
 
 R11 For dyn-head types with a bound conjunction {M1 … Mn}, the FULL R0–R10
     closure is applied to the conjunction set, NOT only to the nominal
-    type-head's declared markers. Any pair (Mi, Mj) ∈ incompatible-table →
+    type-head's declared markers. Syntax for dyn-head existential types is defined in Ch.03 §X Existential Types and Ch.17 (DynType production).
+    The first bound after the `dyn` keyword MUST be an interface; marker-only existential is not a valid type form and raises ZOM0450 DynHeadMissingInterface. Subsequent bounds may be markers joined by `+`; repeating the `dyn` keyword inside the same list is ZOM0452 RepeatedDynPrefix.
+    Any pair (Mi, Mj) ∈ incompatible-table →
     S2b emits ZOM0763 DynBoundsCoherenceViolation with a span pointing at
     the dyn-head's bound-list.
 

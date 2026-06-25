@@ -630,9 +630,15 @@ class SuspendEvent<T> {
     // ZOM has no `&T` reference type.
     //   waker    = FFI opaque handle (nullable; C/C++ side is RawTask*;
     //              ZOM semantics use RawTask? to express nullable-opaque,
-    //              at runtime corresponding to a typed void* wrapper).
-    //   contract = trait object: in ZOM `dyn X` carries reference semantics by
-    //              default (pointer-type erasure); no borrow sigil is required.
+    //              corresponding to a typed void* wrapper at runtime).
+    //   contract = existential type per Ch.03 §X Existential Types
+    //              (Ch.17 DynType): `dyn SuspendContract<T>` is a 2-word
+    //              fat pointer (data_ptr + vtable_ptr). No borrow sigil is
+    //              required because the dyn payload already carries
+    //              pointer-semantics to the erased contract object.
+    //              Object-safety for SuspendContract<T> is verified by the
+    //              rules in Ch.09 §9 (no generic methods, no Self return,
+    //              no linear-self, no GAT, all associated types bound).
     waker: RawTask?;
     contract: dyn SuspendContract<T>;
 }
