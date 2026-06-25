@@ -769,6 +769,536 @@ logs **ZOM1007 RuntimeShutdownTimeout** before invoking `exit()`.
 
 ---
 
+## 15.12 Cross-Process Async Channels (Roadmap v2)
+
+In-process MPSC/MPMC channels (SS 15.7) have bounded in-memory transport
+semantics. Cross-process channels add OS-transport framing on top of the same
+`Sender<T>/Receiver<T>` trait surface so call-site code does not rewrite
+between IPC and intra-process paths. Transport selection is determined at
+channel construction time; the rest of the call chain (suspend/send/recv,
+cancel propagation, backpressure) is **uniform** with in-process channels.
+
+### 15.12.1 Transport Family
+
+| Constructor | Transport | Platform | Sendable bound on T | Max message |
+|---|---|---|---|---|
+| `channel::unix::<T>(path, cap)` | UNIX domain socket (SOCK_SEQPACKET) | Linux/macOS/*BSD | T: `Serialize + Sendable` | SO_SNDBUF |
+| `channel::unix_dgram::<T>(path)` | UNIX domain socket (SOCK_DGRAM, datagram) | POSIX | T: `Serialize + Sendable` | 64 KiB |
+| `channel::named_pipe::<T>(name, cap)` | Windows Named Pipe (PIPE_TYPE_MESSAGE) | Windows 10+ | T: `Serialize + Sendable` | 64 KiB |
+| `channel::uds::<T>(fd, cap)` | Pre-connected socket FD (any SOCK_STREAM/SOCK_SEQPACKET) | Any | T: `Serialize + Sendable` | transport MTU |
+
+The `Serialize` bound comes from the `interface serde::Serialize` contract
+(normative in `zom/serde`, Edition 2026). If the payload type is not
+`Serialize`, the spawn-safety checker emits **ZOM1095 ChannelPayloadNotSerializable**
+before transport-level code is even emitted.
+
+Abstract namespace UNIX sockets (Linux-only, leading NUL byte path) are
+available via `channel::unix_abstract::<T>(id)`; the id is up to 107 bytes
+after the NUL, consistent with Linux `man 7 unix`. Other platforms reject
+the constructor at compile time via `cfg(target_os = "linux")` (Ch.19) —
+**ZOM1096 IpcTransportUnsupported** otherwise.
+
+### 15.12.2 Wire Framing
+
+```
+| uint32 LE length | uint32 LE checksum | payload bytes | uint64 LE trace_id |
+```
+
+- **length** = payload bytes count (excludes header + trailer).
+- **checksum** = CRC-32C over `(length | payload)`;
+  on mismatch, receiver surfaces **ZOM1097 IpcFrameCorrupted** and closes the
+  channel — no partial delivery.
+- **trace_id** = propagated distributed-trace id (SS 15.14); 0 if no trace
+  context is active on the sender.
+- MTU upper bound 2^24; larger payloads require application-level chunking
+  (stream adapters in `zom/ipc/stream`).
+
+### 15.12.3 File Descriptor / HANDLE Passing
+
+For `unix_dgram` and `unix` (`SCM_RIGHTS` on POSIX; `WSADuplicateSocket` /
+`DuplicateHandle` on Windows), a family of typed wrappers `OwnedFd` /
+`OwnedHandle` / `SharedHandle` (all `marker Sendable`) encapsulate the OS
+handle. Cross-process passing is explicit: `channel::send_with_fds(msg,
+&[fd])`. Number of descriptors per message is bounded by
+`SCM_MAX_FDS_DEFAULT = 64`; over limit → **ZOM1098 IpcFdsExceedLimit** at
+compile-time via `static_assert`.
+
+### 15.12.4 Graceful Degradation
+
+All cross-process constructors return `(Sender<T>, Receiver<T>) | IpcError`
+rather than a bare pair. `IpcError` variants: `PathNotFound`,
+`PermissionDenied`, `AddressInUse`, `SocketCreateFailed`, `ConnectTimeout`.
+The diagnostic **ZOM1099 IpcConnectionFailed** surfaces at `block_on`-level
+when no application-code error handling is attached.
+
+---
+
+## 15.13 GPU / Coprocessor Dispatch (Roadmap v2)
+
+Heterogeneous compute dispatch is modeled as spawn-onto-accelerator: a
+`DeviceScope` represents one accelerator (CUDA SM, ROCm CU, OpenCL CQ,
+Apple Metal command queue), and `.spawn(device_scope, body)` schedules
+kernels. Host-device memory transfers use the standard `channel::*`
+abstraction with a device-specific serializer. This section defines the
+**normative shape** so vendor backends have a contract to conform to.
+
+### 15.13.1 Hardware Topology
+
+```zom
+use zom::rt::gpu;
+
+let mut topology = gpu::discover_topology();  // gpu::Topology
+// topology.devices: [gpu::Device]
+// each device has: vendor_id, device_id, num_compute_units, global_mem_bytes,
+//                  shared_mem_per_cu_bytes, numa_node, pci_bus_id
+let device = topology.devices[0]?;            // gpu::Device | GpuError
+```
+
+Vendor and model enumerations for the 2026 Edition baseline:
+NVIDIA (`nv`, compute capability 7.5+), AMD (`amd`, gfx906+),
+Intel (`intel`, Arc/DG2+), Apple (`apple`, Metal 3 family). Discovery uses
+the system-installed loader (CUDA Runtime / HIP Runtime / IGC / MTLDevice) —
+the ZOM runtime never ships its own shim to avoid ABI drift.
+
+### 15.13.2 DeviceScope, Streams, and Events
+
+A `DeviceScope` owns one or more `gpu::Stream`s. Streams are FIFO; enqueued
+kernels on the same stream execute in program order; different streams may
+interleave. `gpu::Event` provides explicit cross-stream synchronization.
+
+```zom
+let ds = gpu::DeviceScope::new(device)?;         // DeviceScope | GpuError
+let stream_a = ds.stream(gpu::StreamPriority::Normal)?;
+let stream_b = ds.stream(gpu::StreamPriority::High)?;
+
+// Spawn kernel-like task onto stream_b:
+stream_b.spawn(|| gpu::kernel::<256>(grid=1024, ||{ /* body */ }))?.await?;
+```
+
+The `gpu::kernel::<BLOCK>(grid, body)` builtin lowers to backend-specific
+shims (PTX launch, HIP `hipLaunchKernelGGL`, `MTLComputeCommandEncoder`
+dispatch). `body` captures are limited to `T: Shared + Pod`; captures that
+fail marker checks → **ZOM1084 GpuNonPodCapture**. Grid dimensions must be
+statically-evaluable integers → **ZOM1085 GpuNonConstGridDim** otherwise.
+
+### 15.13.3 Unified / Shared Memory Model
+
+ZOM defines three memory tiers:
+
+| Tier | Allocation | Visibility | Marker guarantee |
+|---|---|---|---|
+| **Host** | `heap.alloc<T>()` | CPU only | `Sendable` |
+| **Managed** | `ds.alloc_managed::<T>(n)` | CPU + ALL devices | `Sendable + Shared` (coherency page-fault based) |
+| **Device-local** | `ds.alloc_device::<T>(n)` | Device `ds` only | `!Sendable: cannot move across scopes` |
+
+Transfer semantics:
+- `memcpy<Managed, Host>` is synchronous on first-touch page fault;
+  application may explicitly `ds.prefetch(&buf, gpu::Destination::Cpu)` for
+  controlled overlap.
+- `memcpy<Device-local, *>` requires an explicit staging buffer in Managed
+  tier → **ZOM1086 GpuDirectTransferNotAllowed** at type-check if attempted
+  across tier boundaries.
+
+### 15.13.4 Fallback
+
+If the host has no accelerators, `gpu::discover_topology()` returns an empty
+device list — no hard error. A `zom::rt::gpu::fallback` module provides a
+CPU-backed `DeviceScope` implementing the same trait surface using rayon-
+style thread pools; performance is not normative, but API shape is. Backend
+selection is determined by the first successful loader probe in order:
+NV → AMD → Intel → Apple → fallback.
+
+---
+
+## 15.14 Distributed Tracing Propagation (Roadmap v2)
+
+Every `Scope` has an **implicit, zero-overhead** trace context: a 128-bit
+`trace_id` and 64-bit `span_id`. These fields are part of the Scope data
+structure (no dynamic allocation on the hot path). Context propagation
+follows the W3C Trace Context recommendation Level 2 (TR-trace-context-2,
+2023) — cross-crate interop with existing instrumentation ecosystems is a
+hard requirement.
+
+### 15.14.1 Propagation Rules (normative)
+
+1. **Spawn.** If a scope `P` spawns a child `C`, `C.trace_id = P.trace_id`
+   and `C.span_id = new_rand_u64()`. The parent-child edge is recorded in
+   `P.children` with a monotonic `spawn_ts_ns`.
+2. **Await.** The await-site registers a `link` from the callee `span_id`
+   back to the caller; links are preserved across process boundaries via the
+   `trace_id`/`span_id` fields in IPC framing (SS 15.12.2).
+3. **Cross-process send.** The IPC frame trailer copies the sender's
+   `trace_id` and a newly generated `span_id`; the receiver's scope adopts
+   that `trace_id` when its `recv()` returns `Ok(msg)`. If the receiver was
+   already inside a different trace, it records a `link` edge instead of
+   overwriting — never silently merge two traces.
+4. **GPU dispatch.** Each `kernel::<B>` spawn carries its caller's
+   `trace_id`/`span_id`; GPU timestamps (CUDA event / HIP event / Metal
+   counter sample) are normalized to host nanoseconds and written as
+   child spans of the enqueuing stream.
+5. **No propagation across `scope_local`.** Scope-local storage is *never*
+   used to carry trace context. The trace fields are in the scope header
+   itself; this avoids the "copy-on-write of scope-local caused trace to
+   silently fork" class of instrumentation bugs.
+
+### 15.14.2 Sampling Rate
+
+The global sampling rate is a crate-level config
+`#![zom::rt::trace_sampling = 0.001]` (default 0.1% of scopes record full
+trace data; 99.9% only carry the `trace_id`/`span_id` pair for context
+propagation without backend writes). Per-trace overrides via
+`scope.set_sampled(true)` → **ZOM1088 TraceAlreadyCommitted** if the scope
+already has children.
+
+### 15.14.3 Exporter Contract
+
+Runtime exposes a single-slot exporter pointer:
+```zom
+interface TraceExporter {
+  fun export(&self, spans: SpanBatch) -> () | ExportError;
+  fun shutdown(&self) -> ();
+}
+```
+
+The runtime writes no data on its own; if no exporter is registered (the
+default), instrumentation overhead is `sizeof(u128) + sizeof(u64)` per
+scope plus zero syscalls. Third-party exporters (OpenTelemetry OTLP,
+Jaeger Thrift, Zipkin, Prometheus exemplars) conform to `TraceExporter`
+and are registered with `zom::rt::install_trace_exporter(exporter)`.
+
+---
+
+## 15.15 Deterministic Replay (Roadmap v2)
+
+A common correctness failure mode for concurrent systems is heisenbugs that
+do not reproduce locally. ZOM provides a **record-and-replay facility**
+that, when enabled, records a total order of runtime-resolved decisions and
+enables deterministic re-execution of the exact same scheduling under a
+user-controlled debugger. The implementation follows the rr model
+(RR-journalled, OSDI 2017), adapted to greenlets.
+
+### 15.15.1 What Is Recorded
+
+Every non-deterministic event observable by user code is recorded to a
+`Zom.trace` binary trace file (16 KiB per buffer, double-buffered per
+worker thread):
+
+1. **Spawn decisions.** Which worker thread stole which greenlet, and when
+   (enqueue_ts_ns, dequeue_ts_ns, worker_id).
+2. **Atomic RMW resolution.** For `compare_exchange_weak`, whether the CAS
+   succeeds; for `fetch_*`, the pre-operation value.
+3. **Channel delivery order.** Per-channel, the sequence of (sender_span_id,
+   seqno) pairs as observed by the receiver.
+4. **I/O completion order.** For `fs`, `net`, and `ipc` syscalls wrapped by
+   `zom::rt`, the return value and errno. Raw syscalls outside the runtime
+   wrapper set are **not** recorded; such code opts out of replay and
+   surfaces **ZOM1091 DeterministicUnrecordedSyscall** at spawn-time if
+   the trace mode is `Record`.
+5. **Timer firings.** Per timer entry, the actual elapsed time in ns
+   (subject to timer slack) instead of the scheduled deadline.
+6. **GPU kernel completion.** Each `kernel::<B>` record carries the CUDA
+   event / HIP event / Metal timestamp delta.
+
+### 15.15.2 Replay Execution
+
+Replay mode is enabled by `ZOM_REPLAY_TRACE=/path/to/Zom.trace` env var.
+The runtime:
+
+1. Maps the trace file read-only.
+2. Starts with a single worker thread (deterministic uniprocessor mode).
+3. Before each runtime decision point, pops the corresponding record from
+   the trace and coerces the decision to match the recorded value.
+4. If user code observes a value that does not match the trace (e.g., the
+   code was recompiled, or an external side-effect happened), the runtime
+   emits **ZOM1092 DeterministicDivergence** with (pc, expected_bits,
+   actual_bits) and aborts — replay is *never* silently approximate.
+5. Attaches to a running debugger via `ptrace`/`mach_vm` on demand;
+   breakpoints set at `ZOM_REPLAY_BREAK=file:line` automatically trigger
+   after the recorded event count reaches the line.
+
+### 15.15.3 Limitations
+
+- Replay is single-process only. Cross-process replays require the user to
+  record *both* processes and re-synchronize their trace files by matching
+  the IPC `trace_id` fields.
+- Trace files are **not forward compatible across Edition bumps**; the
+  trace header carries `edition` + `runtime_sha256` so mismatches produce
+  a clear **ZOM1093 DeterministicTraceVersionMismatch** instead of a
+  silent wrong replay.
+- Recorded trace files grow at ~100–300 MB/hour per CPU core on a
+  microbenchmark-style workload; long runs should enable trace rotation
+  via `ZOM_TRACE_ROTATE_MB` (default 4096).
+
+---
+
+## 15.16 Fairness Formalization (normative)
+
+Without a written fairness contract, concurrent APIs have test-dependent
+behavior that drifts between platforms. ZOM locks the following five rules:
+
+### 15.16.1 Scope Scheduler Fairness
+
+**F-1 (Finite-delay stealing).** For any greenlet `G` that is ready and
+placed in a worker deque, there exists a finite bound `K` such that `G` is
+dequeued within `K` subsequent steal attempts across all workers, unless
+the scope owning `G` is cancelled.
+
+- `K = 2 × num_workers × (1 + depth_in_deque)`. Chase-Lev deque steal
+  at the head guarantees a ready task cannot starve; back-to-back steals
+  of newer tasks are bounded by the depth invariant.
+- Violation is a correctness bug in the runtime, not in user code.
+
+### 15.16.2 Channel Fairness
+
+**F-2 (SPSC ordering).** On an SPSC channel, the receiver observes messages
+in the exact order the transmitter sent them; reordering within one SPSC
+pair is a bug.
+
+**F-3 (MPMC bounded FIFO per-producer).** For each single producer on an
+MPMC channel, its messages arrive at the receiver(s) in FIFO order.
+*Cross*-producer ordering is not guaranteed (subject to enqueue CAS
+contention resolution, which is recorded for replay).
+
+### 15.16.3 Mutex Fairness
+
+**F-4 (Priority-ordered wakeup with FIFO within priority).** A PIP mutex
+(SS 15.8) wakes waiters in (priority desc, enqueue_ts asc) order. Two
+waiters at the same priority that enqueue on the same lock have
+deterministic FIFO wakeup relative to each other. This prevents "lucky
+waiter" starvation bugs. Uncontended locks have no queue so this rule
+reduces to a no-op.
+
+### 15.16.4 Timer Fairness
+
+**F-5 (No firings before deadline, monotonic).** A timer scheduled for
+deadline `D_ns` will *not* fire before the monotonic clock reaches `D_ns`
+(±1 timer tick slack, equal to the L1 wheel tick). Firing order is
+monotonic in deadline: if `D1 < D2`, timer 1 fires before timer 2.
+
+### 15.16.5 Violation Diagnostic
+
+If a debug-build runtime detects a violation of F-1 through F-5 via its
+internal assertions, it emits a runtime **ZOM1094 FairnessViolation** with
+the rule identifier (F-1..F-5) and a short description. Release builds do
+not ship fairness assertions — they are costly (extra CAS / timestamp per
+enqueue).
+
+---
+
+## 15.17 Deadlock Detector Heuristics (P2)
+
+Compile-time marker analysis rules out a large class of deadlocks
+(e.g. ZOM1040 catches re-entrant lock on the same task at compile time).
+The remaining cross-task deadlocks require runtime detection. ZOM ships a
+configurable `DeadlockDetector` using a wait-for graph approach (WFG,
+standard textbook algorithm from Holt 1972, generalized to the async greenlet model).
+
+### 15.17.1 WFG Construction
+
+- **Nodes:** every greenlet id, every OS thread id, every owned lock id,
+  every active channel-sender id.
+- **Edges (A → B, directed):** "A is waiting for B, and B is currently
+  held by another node C." Edges are added when a task suspends on
+  `mutex.lock()`, `condvar.wait()`, `channel.recv()`, `join(handle)`;
+  removed when the await-site resumes.
+- Each edge carries a `wait_start_ts_ns` and `waiting_on` enum discriminant.
+
+### 15.17.2 Detection Trigger
+
+The detector runs in a background worker thread (`detector_interval_ms`,
+default 500 ms). On each tick, it:
+
+1. Collects a consistent snapshot of the WFG (RCU-protected read of the
+   edge list; lock acquisition order observed under seqlock).
+2. Runs Tarjan's SCC algorithm to find strongly-connected components with
+   size ≥ 2.
+3. For every SCC, records the cycle, and escalates per `policy`:
+   - `Report` (default, release): emit **ZOM1044 DeadlockDetected** once
+     per unique cycle; never aborts user code.
+   - `Abort` (opt-in via `#![zom::rt::deadlock_policy = "abort"]`): emit
+     the diagnostic and call `abort()` — useful in CI where deadlocked
+     tests otherwise block the pipeline.
+   - `PanicCycle` (opt-in per-scope): `scope.set_deadlock_policy(PanicCycle)`
+     injects a synthetic `Deadlock` panic into one task in the cycle.
+     Which task is chosen is deterministic: the one with the smallest
+     greenlet id; this keeps re-runs reproducible with record-and-replay.
+
+### 15.17.3 False-Positive Mitigation
+
+A wait-for edge younger than `DEADLOCK_GRACE_MS` (default 200 ms) is
+excluded from the graph. This filter eliminates the "two tasks just
+happened to be waiting at the same time when the detector sampled" false
+positive that plagues naive detectors. The 200 ms threshold is tunable
+with the `ZOM_DEADLOCK_GRACE_MS` env variable; minimum 10 ms (below which
+false positives dominate).
+
+### 15.17.4 Integration with Cancellation
+
+If a deadlock SCC is detected under policy `Report` and the user has
+invoked `cancel_all` on the owning scope, the runtime records a
+**ZOM1045 DeadlockEscalatedByCancel** diagnostic and waits for the
+graceful cancel window (§15.10) to expire before escalation.
+
+---
+
+## 15.18 Architecture Diagrams (3 mermaid)
+
+The following three diagrams illustrate the P2 architecture layer on top
+of P1. Cross-references to P1 diagrams are maintained in each caption.
+
+### Diagram 4: End-to-End M:N Scheduler with IPC/GPU/Tracing
+
+```mermaid
+flowchart TB
+    subgraph CPUNODE["Host CPU + OS"]
+        direction TB
+        RUNTIME["Zom Async Runtime<br/>(M:N, work-stealing)"]
+        WK1["Worker 1 (NUMA Node 0)<br/>Chase-Lev deque"]
+        WK2["Worker 2 (NUMA Node 0)"]
+        WK3["Worker 3 (NUMA Node 1)"]
+        WK4["Worker 4 (NUMA Node 1)"]
+        DETECTOR["DeadlockDetector<br/>(WFG + Tarjan SCC, 500 ms)"]
+        TIMER["4-Level Timer Wheel<br/>L1/L2/L3/L4 cascade"]
+        TRACE["TraceCollector<br/>(W3C TraceContext Level 2)"]
+        TRACEEVENT["TraceExporter<br/>(OTLP/Jaeger/…)"]
+        REPLAY["Record&Replay<br/>Zom.trace file"]
+    end
+    RUNTIME --> WK1 & WK2 & WK3 & WK4
+    RUNTIME --> DETECTOR & TIMER & TRACE & REPLAY
+    TRACE --> TRACEEVENT
+
+    subgraph GREENLETS["Greenlets (N instances)"]
+        direction TB
+        G1["Scope S1<br/>trace_id=A span_id=S1"]
+        G2["Scope S2 (child of S1)<br/>trace_id=A span_id=S2"]
+        G3["Scope S3<br/>trace_id=B span_id=S3"]
+    end
+    WK1 --> G1; WK2 --> G2; WK4 --> G3
+
+    subgraph CHANNELS["Transport Layer (uniform Sender/Receiver)"]
+        INPROC["In-Process<br/>SPSC / MPSC / MPMC ring"]
+        UDS["Cross-Process<br/>UNIX Socket + Named Pipe"]
+        GPUCHAN["Device Transfer<br/>Async memcpy staging"]
+    end
+    GREENLETS -- spawn + marker check (Sendable/Shared) --> CHANNELS
+
+    subgraph ACCEL["Heterogeneous Nodes"]
+        GPU["GPU 0<br/>cudaStream A/B<br/>DeviceScope"]
+        IPCPEER["Remote Zom Process<br/>via UDS / Named Pipe<br/>trace_id propagated"]
+    end
+    CHANNELS --> GPU; CHANNELS --> IPCPEER
+    GPUCHAN -- GPU kernel enqueue --> GPU
+    GPU -- completion event --> TRACE
+    IPCPEER -- IPC frame trace_id trailer --> TRACE
+```
+
+Cross-reference: Diagram 2 in §15.1 (P1) covers the M:N layout from a
+NUMA-memory perspective; this Diagram 4 adds IPC/GPU/Tracing/Replay on top.
+
+### Diagram 5: Work-Stealing + Scope Trace-Propagation Flow
+
+```mermaid
+sequenceDiagram
+    participant P as Parent Scope (trace_id=A, span_id=P)
+    participant RT as Runtime Worker
+    participant C as Child Scope spawned (trace_id=A, span_id=C1)
+    participant CH as MPSC Channel (in-process)
+    participant REM as Remote Process (trace_id=A propagated)
+
+    Note over P: body.start()
+    P->>RT: spawn(|| worker_body())        [trace_id=A copied, span_id=C1 new]
+    RT-->>P: JoinHandle<C1>
+    RT->>C: resume worker_body
+    C->>CH: send(payload)                  [trace_id=A in trailer]
+    CH-->>C: backpressure suspend if full
+    Note over RT: Work-stealing: W2 idle → steals C from W1 deque head
+    RT->>C: resume (W2)
+    C->>REM: IPC send(payload)             [W3C traceparent header]
+    REM-->>C: Ack (trace_id=A, span_id=R1)
+    C->>P: join() ok(value)
+    P->>P: scope ends, spans flushed
+```
+
+Two normative properties are illustrated:
+1. Stealing preserves the greenlet's trace context (span_id never changes
+   across workers); steal operations record a `worker_id_changed` link.
+2. IPC-send attaches the caller's trace context; IPC-recv adopts it
+   per SS 15.14.1 Rule 3.
+
+### Diagram 6: 4-Level Timer Wheel Cascade (P1 + P2 unified)
+
+```mermaid
+flowchart LR
+    subgraph WHEEL["Timer Wheel (tick=1ms, slots=64 each level)"]
+        direction LR
+        L1["L1: ms wheel<br/>(ticks 0..63)<br/>fires every tick"]
+        L2["L2: sec wheel<br/>(64 slots × 64 ms)"]
+        L3["L3: min wheel<br/>(64 slots × 64² ms)"]
+        L4["L4: hr wheel<br/>(64 slots × 64³ ms)"]
+    end
+    ARR["Insert(deadline,D)"] --> CASCADE{"D falls in?"}
+    CASCADE -- "this revolution" --> L1
+    CASCADE -- "next revolution" --> L2
+    CASCADE -- "future" --> L3
+    CASCADE -- "distant future" --> L4
+
+    L1 -- "tick N expired" --> FIRE["Fire callbacks<br/>(synthetic waker → scope awaken)"]
+    L1 -- "tick wraps 63→0" --> L2
+    L2 -- "wrap → reinsert next level bucket" --> CASCADE2["Re-cascade into L1"]
+    CASCADE2 --> L1
+    L2 -- "wrap → next level" --> L3
+    L3 -- "wrap → re-cascade to L2" --> L2
+    L3 -- "wrap → next level" --> L4
+    L4 -- "wrap → re-cascade to L3" --> L3
+
+    FIRE -- "callback runs inside scope waker" --> AWAKE["Scope cancel flag check<br/>canceled timers → skip"]
+    FIRE -- "record actual firing ts" --> RECORD["Append to Deterministic Trace<br/>(SS 15.15 Replay)"]
+```
+
+Cross-reference: SS 15.6 (P1) defines the 4-level timer internals; this
+Diagram 6 adds the cascade + waker + record&replay integration paths that
+are part of P2.
+
+---
+
+## 15.19 P2 Diagnostic Extensions (ZOM1044–ZOM1099)
+
+| Code | Name | Severity | Trigger |
+|------|------|----------|---------|
+| ZOM1095 | ChannelPayloadNotSerializable | Error | Cross-process channel T bound `Serialize` not satisfied |
+| ZOM1096 | IpcTransportUnsupported | Error | `unix_abstract` / `named_pipe` on unsupported OS |
+| ZOM1097 | IpcFrameCorrupted | Error | IPC frame checksum mismatch; channel closed |
+| ZOM1098 | IpcFdsExceedLimit | Error | `send_with_fds` count exceeds `SCM_MAX_FDS_DEFAULT` |
+| ZOM1099 | IpcConnectionFailed | Warning | Cross-process constructor returned `IpcError` unhandled |
+| ZOM1084 | GpuNonPodCapture | Error | GPU kernel closure captures non-`Pod + Shared` type |
+| ZOM1085 | GpuNonConstGridDim | Error | Grid dimension of `kernel::<B>` not statically evaluable |
+| ZOM1086 | GpuDirectTransferNotAllowed | Error | `memcpy<Device-local, Host>` without staging buffer |
+| ZOM1087 | GpuBackendUnavailable | Warning | No vendor loader found; falling back to CPU |
+| ZOM1088 | TraceAlreadyCommitted | Warning | `set_sampled(true)` on a scope with recorded children |
+| ZOM1089 | TraceExporterMissing | Warning | Sampling > 0 but no `TraceExporter` installed |
+| ZOM1091 | DeterministicUnrecordedSyscall | Error | Raw syscall outside runtime wrapper in `Record` mode |
+| ZOM1092 | DeterministicDivergence | Error | Replay observation differs from trace bits |
+| ZOM1093 | DeterministicTraceVersionMismatch | Error | Trace header edition/runtime_sha256 does not match |
+| ZOM1094 | FairnessViolation | Warning | Debug-build runtime detects F-1..F-5 rule break |
+| ZOM1044 | DeadlockDetected | Warning | WFG SCC ≥ 2 detected (not PanicCycle policy) |
+| ZOM1045 | DeadlockEscalatedByCancel | Warning | Deadlock SCC but `cancel_all` active; waiting grace window |
+
+Rows above extend SS 15.11. Full 43 + 17 = 60 rows are bit-identically
+registered in `docs/design/ARCHITECTURE.md` SS 8 and
+`docs/design/compiler-contracts.md` SS 2.
+
+Cross-references:
+- GPU marker diagnostics reuse the marker pass (Ch.16 SS 16.12) with the
+  new diagnostic codes above.
+- Fairness and deadlock diagnostics are runtime-reported diagnostics, not
+  type-check diagnostics; they are in the ZOM10xx concurrency band for
+  discoverability alongside the static spawn-safety checks.
+- IPC payload serialization errors reference `serde::Serialize` as an
+  `interface` contract — cross-crate coherence is governed by the orphan
+  rule (Ch.22 SS 22).
+
+---
+
 ## 15.11 Diagnostic Table ZOM10xx
 
 The table below is the normative list of diagnostics emitted by the
