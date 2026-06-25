@@ -111,7 +111,8 @@ The following identifiers are reserved as keywords and cannot be used as regular
 
 ```
 class       struct      interface   enum        error
-fun         let         const       var         alias
+fun         mut         let         const       var
+alias
 type        module      namespace   package     constructor
 init        deinit      get         set         accessor
 declare
@@ -139,7 +140,7 @@ never       object      symbol      bigint      undefined
 
 ```
 public      private     protected   static      abstract
-readonly    mutable     async       await       override
+readonly    mutating    async       await       override
 immediate   intrinsic   global      unique      out
 ```
 
@@ -161,6 +162,11 @@ with        yield
 
 Some reserved words are reserved for future language design. If a reserved word has no grammar rule
 in the current parser, using it as syntax is a parse error rather than a supported construct.
+
+`mut`, `let`, and `const` deliberately occupy separate declaration roles. `mut` introduces mutable
+runtime bindings, `let` introduces immutable runtime bindings, and `const` introduces compile-time
+constants. `var` is reserved only so the parser can produce a targeted diagnostic that directs code
+to `mut`.
 
 ## Literals
 

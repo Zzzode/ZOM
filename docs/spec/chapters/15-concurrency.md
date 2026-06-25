@@ -774,7 +774,7 @@ logs **ZOM1007 RuntimeShutdownTimeout** before invoking `exit()`.
 
 The table below is the normative list of diagnostics emitted by the
 concurrency checker pass and the async runtime. Each row below is
-bit-identically registered in `docs/design/ARCHITECTURE.md` SS 8 and
+bit-identically registered in `docs/design/architecture.md` SS 8 and
 `docs/design/compiler-contracts.md` SS 2. Severities: all Error except the
 10 entries explicitly marked Warning (Suppressible: Yes).
 
@@ -908,7 +908,7 @@ abstraction with a device-specific serializer. This section defines the
 ```zom
 use zom::rt::gpu;
 
-let mut topology = gpu::discover_topology();  // gpu::Topology
+let topology = gpu::discover_topology();  // gpu::Topology
 // topology.devices: [gpu::Device]
 // each device has: vendor_id, device_id, num_compute_units, global_mem_bytes,
 //                  shared_mem_per_cu_bytes, numa_node, pci_bus_id
@@ -1345,7 +1345,7 @@ are part of P2.
 | ZOM1045 | DeadlockEscalatedByCancel | Warning | Deadlock SCC but `cancel_all` active; waiting grace window |
 
 Rows above extend SS 15.11. Full 43 + 17 = 60 rows are bit-identically
-registered in `docs/design/ARCHITECTURE.md` SS 8 and
+registered in `docs/design/architecture.md` SS 8 and
 `docs/design/compiler-contracts.md` SS 2.
 
 Cross-references:

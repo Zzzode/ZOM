@@ -70,10 +70,11 @@ By splitting the specification into focused chapters, we achieve:
 
 The grammar definitions are maintained in sync with the ANTLR4 parser files:
 
-- [`ZomParser.g4`](../../grammar/ZomParser.g4) - Parser grammar rules
-- [`ZomLexer.g4`](../../grammar/ZomLexer.g4) - Lexer tokens and keywords
+- [`ZomParser.g4`](ZomParser.g4) - Parser grammar rules
+- [`ZomLexer.g4`](ZomLexer.g4) - Lexer tokens and keywords
 
-For details on grammar consistency, see [`CONSISTENCY_REVIEW.md`](CONSISTENCY_REVIEW.md).
+For details on grammar consistency, see the repository spec-alignment rule in
+[`../../.agents/rules/spec-alignment.md`](../../.agents/rules/spec-alignment.md).
 
 ## Contributing
 

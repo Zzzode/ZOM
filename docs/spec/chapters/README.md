@@ -33,7 +33,7 @@ Each chapter is a self-contained Markdown file that covers a specific aspect of 
 
 ## Original Source
 
-These chapters were extracted from the original `SPEC.md` file to eliminate redundancy and improve organization. The content has been preserved while being restructured for better accessibility.
+These chapters were extracted from the original `specification.md` file to eliminate redundancy and improve organization. The content has been preserved while being restructured for better accessibility.
 
 ## Contributing
 
@@ -48,7 +48,8 @@ When making changes to the specification:
 
 The grammar definitions in Chapter 17 should remain consistent with the ANTLR4 grammar files:
 
-- `ZomParser.g4` - Parser grammar rules
-- `ZomLexer.g4` - Lexer tokens and keywords
+- [`ZomParser.g4`](../ZomParser.g4) - Parser grammar rules
+- [`ZomLexer.g4`](../ZomLexer.g4) - Lexer tokens and keywords
 
-Refer to `CONSISTENCY_REVIEW.md` for details on maintaining this consistency.
+Refer to [`../../../.agents/rules/spec-alignment.md`](../../../.agents/rules/spec-alignment.md)
+for details on maintaining this consistency.

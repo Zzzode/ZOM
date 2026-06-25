@@ -4,37 +4,67 @@ Declarations introduce new named entities into a program's namespace. They defin
 
 ## Declaration Categories
 
-1. **Variable Declarations**: `let`, `const`, `var`
+1. **Value Declarations**: `mut`, `let`, `const`
 2. **Function Declarations**: `fun`
 3. **Type Declarations**: `alias`, `interface`, `struct`, `enum`, `error`
 4. **Class Declarations**: `class`
 5. **Module Declarations**: `module`
 
-## Variable Declarations
+## Value Declarations
+
+ZOM separates runtime binding mutability from compile-time constants:
+
+- `mut` declares a mutable runtime binding.
+- `let` declares an immutable runtime binding.
+- `const` declares a compile-time constant.
+
+Runtime bindings are block-scoped. `const` declarations are available wherever declarations are
+accepted, but their initializer must be evaluable by the constant evaluator.
+Only `mut` bindings may be reassigned or used as mutable places, including calls that require a
+mutable receiver or mutable borrow. `let` bindings may be read, moved, or immutably borrowed, but
+may not be reassigned or mutably borrowed.
+
+For fields, `let` denotes immutable storage after object initialization. A `let` field may be
+definitely assigned by the owning `init` path before `this` escapes; after initialization it follows
+the same immutable-place rule as a local `let`.
+
+### `mut` Declarations
+
+Declare mutable runtime bindings:
+
+```zom
+// Basic mutable declaration
+mut count = 0;
+mut name = "Alice";
+
+// With explicit type annotation
+mut age: i32 = 25;
+mut height: f64 = 5.8;
+
+// Multiple declarations
+mut x = 10, y = 20, z = 30;
+
+// Uninitialized declaration (requires type annotation)
+mut result: str;
+if (condition) {
+    result = "success";
+} else {
+    result = "failure";
+}
+```
 
 ### `let` Declarations
 
-Declare mutable variables:
+Declare immutable runtime bindings:
 
 ```zom
-// Basic let declaration
+// Basic immutable declaration
 let count = 0;
 let name = "Alice";
 
 // With explicit type annotation
 let age: i32 = 25;
 let height: f64 = 5.8;
-
-// Multiple declarations
-let x = 10, y = 20, z = 30;
-
-// Uninitialized declaration (requires type annotation)
-let result: str;
-if (condition) {
-    result = "success";
-} else {
-    result = "failure";
-}
 
 // Destructuring declaration
 let (first, second) = getTuple();
@@ -44,17 +74,17 @@ let [head, ...tail] = getArray();
 
 ### `const` Declarations
 
-Declare immutable constants:
+Declare compile-time constants:
 
 ```zom
-// Basic const declaration
+// Basic compile-time constants
 const PI = 3.14159;
 const MAX_SIZE = 1000;
 
 // With explicit type
 const GREETING: str = "Hello, World!";
 
-// Complex constants
+// Compile-time aggregate constants
 const CONFIG = {
     host: "localhost",
     port: 8080,
@@ -63,26 +93,19 @@ const CONFIG = {
 
 // Computed constants
 const AREA = PI * RADIUS * RADIUS;
-
-// Destructuring const
-const { width, height } = getDimensions();
-const [r, g, b] = getColor();
 ```
 
-### `var` Declarations
+`const` declarations require an initializer and bind identifiers only. Destructuring `const`
+declarations are not part of v1. Runtime calls, allocation, I/O, non-deterministic operations, and
+ordinary function calls are rejected unless the callee is explicitly admitted to const evaluation by
+a future const-function design. A `const` has no stable storage address; it is a named compile-time
+value that may be substituted at use sites. Storage-backed global objects are intentionally separate
+from `const`.
 
-Declare variables with function scope (legacy, prefer `let`):
+### Rejected `var`
 
-```zom
-// Basic var declaration
-var oldStyle = "legacy";
-
-// Function-scoped (not block-scoped)
-if (true) {
-    var functionScoped = "visible outside block";
-}
-print(functionScoped); // This works (unlike let)
-```
+`var` is reserved only to produce a targeted diagnostic. It is not a declaration form in ZOM. Use
+`mut` for mutable block-scoped runtime bindings.
 
 ## Function Declarations
 
@@ -128,7 +151,7 @@ fun createUser(name: str, email: str, age?: i32) {
 
 // Rest parameters
 fun sum(...numbers: i32[]) -> i32 {
-    let total = 0;
+    mut total = 0;
     for (let num in numbers) {
         total += num;
     }
@@ -457,7 +480,7 @@ class Person {
 ```zom
 class BankAccount {
     public let accountNumber: str;
-    private let balance: f64;
+    private mut balance: f64;
     protected let owner: str;
 
     public init(accountNumber: str, owner: str, initialBalance: f64 = 0.0) {
@@ -558,8 +581,8 @@ class SortedList<T: Comparable> {
 
     private fun findInsertionPoint(item: T) -> i32 {
         // Binary search implementation
-        let left = 0;
-        let right = this.items.length;
+        mut left = 0;
+        mut right = this.items.length;
 
         while (left < right) {
              let mid = (left + right) / 2;

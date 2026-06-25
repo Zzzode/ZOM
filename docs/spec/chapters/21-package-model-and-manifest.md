@@ -1,7 +1,7 @@
 # Chapter 21 — Package Model, Manifest & Workspaces
 
 **Version:** ZOM Language Specification v1.0.0-rc1
-**Range allocation (diagnostics):** Module/package = `ZOM0800–ZOM0899` (see `docs/design/ARCHITECTURE.md` §8).
+**Range allocation (diagnostics):** Module/package = `ZOM0800–ZOM0899` (see `docs/design/architecture.md` §8).
 **Cross-references:** Ch.13 Modules and Imports, Ch.16 Attributes and Annotations, `docs/design/compiler-contracts.md` §9.
 
 ---
@@ -729,7 +729,7 @@ ZOM0875 MissingEditionField: manifest at path/to/Zom.toml is missing
 string).
 ```
 
-This is a semantic validation error (see ARCHITECTURE.md §8 for the
+This is a semantic validation error (see architecture.md §8 for the
 `0800–0899` range allocation); it is enforced before any other field in
 `[package]` is interpreted.
 
@@ -943,7 +943,7 @@ shared `target/` directory.
 ## 21.9 Diagnostic Codes (New in This Chapter)
 
 The following codes are introduced here. They MUST be registered in the
-authoritative diagnostic registry maintained in `ARCHITECTURE.md §8` and
+authoritative diagnostic registry maintained in `architecture.md §8` and
 `compiler-contracts.md §2` by the synchronization process.
 
 - **ZOM0870 PackageNotFound** (Error) — Requested package name has no

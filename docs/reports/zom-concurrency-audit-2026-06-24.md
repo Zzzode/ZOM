@@ -661,7 +661,7 @@ C/C++/Rust 均将数据竞争定义为 UB，Java 定义非 volatile 的数据竞
 
 已核验的四点事实：
 
-1. 规范中四大名词（Future/Task/Promise/JoinHandle）确实缺位：grep 全 docs/spec/chapters/ 仅在 06-declarations.md:232 的 alias 示例中命中一次 `Promise<T>`，且与它配对的 `AsyncOperation<T>` 同样只是示例别名、非内建类型定义。SPEC.md 第 31 行把并发章节标注为"Reserved"。
+1. 规范中四大名词（Future/Task/Promise/JoinHandle）确实缺位：grep 全 docs/spec/chapters/ 仅在 06-declarations.md:232 的 alias 示例中命中一次 `Promise<T>`，且与它配对的 `AsyncOperation<T>` 同样只是示例别名、非内建类型定义。specification.md 第 31 行把并发章节标注为"Reserved"。
 
 2. AST 类型语法层零占位：/Users/bytedance/Develop/ZOM/products/zomlang/compiler/ast/type.h 包含 Bool/Str/Unit/Null/I8..U64/F32/F64/Object/Tuple/Array/Union/Intersection/Function/Optional/Parenthesized/ReturnType/TypeReference/TypeQuery/NamedTupleElement 共 21 种 TypeNode 子类，无 TaskTypeNode / FutureTypeNode / PromiseTypeNode / JoinHandleTypeNode，grep 结果为零。
 
@@ -876,7 +876,7 @@ parseUpdateExpression() 中 PostfixSuffix 循环仅处理 `++` 和 `--`，未消
 
 **原证据 A**：`docs/spec/chapters/15-concurrency.md` 全文无 cancel/cancellation/preempt/yield/drop 字样 —— **核验为真**。我用 grep 对该文件匹配上述关键词，零命中（EXIT:0 但无行输出）。整章内容仅 7 行声明"Concurrency syntax is reserved for future language design"，不含对取消模型三要素（时机 / 传播 / 清理）的任何文字。
 
-此外，我对 `docs/spec/chapters/*.md` + `SPEC.md` 全文再做了一次 cancel/CancellationToken/JoinError/CancelError/ScopeCancelled 联合检索，**零命中**。取消语义在规范层确属空白。
+此外，我对 `docs/spec/chapters/*.md` + `specification.md` 全文再做了一次 cancel/CancellationToken/JoinError/CancelError/ScopeCancelled 联合检索，**零命中**。取消语义在规范层确属空白。
 
 **原证据 B**：`libraries/zc/async/async.h:~910` 处存在 Canceler 类，仅宿主级 C++ —— **核验为真**。Canceler 定义位于 L846-933（类声明 + AdapterImpl 模板），实现全部在 zc 命名空间、`<coroutine>` 与 Promise 体系内，是 C++ 库对宿主代码的 API。进一步检索 `products/zomlang/compiler/` 全目录（ast/binder/symbol/diagnostics），`cancel/Cancel` **零命中**，Canceler 从未出现在语言级编译管道中。
 

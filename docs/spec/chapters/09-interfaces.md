@@ -300,7 +300,7 @@ Generic standalone impls may use a `where`-clause to constrain type parameters. 
 impl<T> Debug for Vec<T> where T: Debug {
     fun fmt(f: &mut Formatter) {
         f.write_char('[');
-        for (let i = 0; i < this.length; i = i + 1) {
+        for (mut i = 0; i < this.length; i = i + 1) {
             if i > 0 { f.write_str(", "); }
             Debug::fmt(this[i], f);
         }
@@ -528,7 +528,7 @@ interface Writer {
 }
 
 fun write_all(w: &mut dyn Writer, data: u8[]) {
-    let mut remaining = data.length;
+    mut remaining = data.length;
     while remaining > 0 {
         let written = w.write_bytes(data.slice(data.length - remaining));
         remaining = remaining - written;

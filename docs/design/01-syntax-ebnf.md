@@ -59,10 +59,10 @@ flowchart TD
 
 | Layer | Corresponding section in this document | Corresponding file path |
 |---|---|---|
-| UTF-8 encoding | Section 3.1 Source file characters | Lexer `compiler/lexer/` |
+| UTF-8 encoding | Section 3.1 Source file characters | Lexer `products/zomlang/compiler/lexer/` |
 | Lexical | Sections 3.2-3.7 | `ZomLexer.g4` (MUST be synchronized) |
 | Syntactic | All of Section 4 | `ZomParser.g4` (MUST be synchronized) |
-| AST kind mapping | Section 8 Five-way consistency index | `include/zom/ast/kinds.h` |
+| AST kind mapping | Section 8 Five-way consistency index | `products/zomlang/compiler/ast/kinds.h` |
 | Operator precedence | Section 5 | Lines 363-386 of `docs/spec/chapters/04-expressions.md` |
 
 ---
@@ -315,6 +315,7 @@ ExportSpec       ::= Identifier ( 'as' Identifier )?
 
 ```ebnf
 Declaration ::= VariableStatement
+              | ConstDeclaration
               | FunctionDecl
               | ClassDecl
               | StructDecl
@@ -327,15 +328,27 @@ Declaration ::= VariableStatement
 #### 4.3.1 Variable Declarations
 
 ```ebnf
-VariableStatement  ::= 'let' VariableDeclList ';'
-                     | 'const' VariableDeclList ';'
+VariableStatement  ::= ( 'mut' | 'let' ) VariableDeclList ';'
 
 VariableDeclList   ::= VariableDecl (',' VariableDecl)*
 VariableDecl       ::= ( BindingIdent | BindingPattern ) TypeAnnotation? Initializer?
-                     (* const + BindingPattern REQUIRES Initializer; const + BindingIdent REQUIRES Initializer
-                        let + pattern without Initializer is an error *)
+                     (* mut without Initializer requires TypeAnnotation.
+                        let without Initializer is accepted only where definite assignment can prove
+                        exactly one write before first read. *)
 Initializer        ::= '=' AssignmentExpression
+
+ConstDeclaration   ::= 'const' ConstDeclList ';'
+ConstDeclList      ::= ConstDecl (',' ConstDecl)*
+ConstDecl          ::= BindingIdent TypeAnnotation? '=' ConstExpression
+ConstExpression    ::= AssignmentExpression
+                     (* semantically restricted to expressions accepted by const-eval *)
 ```
+
+`mut` and `let` are runtime bindings. Only `mut` may be reassigned or used as a mutable place.
+`const` is a compile-time value, requires an initializer, binds identifiers only in v1, and has no
+stable storage address.
+For object fields, `let` may be definitely assigned by the owning `init` path before `this` escapes;
+after initialization, it is immutable.
 
 #### 4.3.2 Function Declarations
 
@@ -370,14 +383,17 @@ ClassElement   ::= ';'
                  | Modifier* DeinitDecl
                  | Modifier* AccessorDecl
                  | Modifier* PropertyDecl
+                 | Modifier* AssociatedConstDecl
                  | Modifier* MethodDecl
 
 Modifier       ::= 'public' | 'private' | 'protected'
                  | 'static' | 'readonly' | 'mutating' | 'override'
                  | 'abstract'
 
-PropertyDecl   ::= ( 'let' | 'const' ) PropertyName
+PropertyStorage ::= 'mut' | 'let'
+PropertyDecl   ::= PropertyStorage PropertyName
                     '?'? TypeAnnotation? Initializer? ';'
+AssociatedConstDecl ::= 'const' BindingIdent TypeAnnotation? '=' ConstExpression ';'
 MethodDecl     ::= 'fun' PropertyName TypeParameters?
                     ParameterClause ReturnType?
                     ( BlockStatement | ';' )
@@ -415,7 +431,8 @@ InterfaceDecl  ::= 'interface' BindingIdent TypeParameters? InterfaceHeritage?
 InterfaceHeritage ::= 'extends' InterfaceTypeList
 InterfaceBody   ::= InterfaceElement*
 InterfaceElement ::= ';'
-                  | Modifier* ( 'let' | 'const' ) PropertySignature Initializer? ';'?
+                  | Modifier* PropertyStorage PropertySignature Initializer? ';'?
+                  | Modifier* AssociatedConstDecl
                   | Modifier* 'fun' MethodSignature ';'?
 
 PropertySignature ::= PropertyName '?'? TypeAnnotation
@@ -557,7 +574,7 @@ StatementListItem   ::= Statement | Declaration
 EmptyStatement      ::= ';'
 
 ExpressionStatement ::= Expression ';'
-                      {the first token MUST NOT be `{`, `class`, `struct`, `enum`, `let`, `const`,
+                      {the first token MUST NOT be `{`, `class`, `struct`, `enum`, `mut`, `let`, `const`,
                         `fun`, `interface`, `error`, `alias`, `module`, to avoid being parsed as a declaration}
 
 IfStatement         ::= 'if' '(' Expression ')' Statement ( 'else' Statement )?
@@ -574,9 +591,9 @@ DoWhileStatement    ::= 'do' Statement 'while' '(' Expression ')' ';'?
 
 ForStatement        ::= 'for' '(' ForInit? ';' Expression? ';' ForUpdate? ')' Statement
 ForInStatement      ::= 'for' '(' ( ForDeclaration | LeftHandSideExpr ) 'in' Expression ')' Statement
-ForDeclaration      ::= ( 'let' | 'const' ) ForBinding
+ForDeclaration      ::= ( 'mut' | 'let' ) ForBinding
 ForBinding          ::= BindingIdent | BindingPattern
-ForInit             ::= ( 'let' | 'const' ) VariableDeclList | Expression
+ForInit             ::= ( 'mut' | 'let' ) VariableDeclList | Expression
 ForUpdate           ::= Expression
 
 ContinueStatement   ::= 'continue' Identifier? ';'
@@ -933,7 +950,7 @@ From highest (1) to lowest (21); within the same precedence, operators associate
 
 | Group | Keywords |
 |---|---|
-| Declaration | `class` `struct` `interface` `enum` `error` `fun` `let` `const` `alias` `init` `deinit` `get` `set` |
+| Declaration | `class` `struct` `interface` `enum` `error` `fun` `mut` `let` `const` `alias` `init` `deinit` `get` `set` |
 | Control flow | `if` `else` `match` `when` `default` `for` `while` `do` `break` `continue` `return` `debugger` `in` |
 | Type | `i8` `i16` `i32` `i64` `u8` `u16` `u32` `u64` `f32` `f64` `bool` `str` `char` `null` `unit` `never` `any` |
 | Modifier | `public` `private` `protected` `static` `readonly` `mutating` `override` `abstract` |
@@ -951,7 +968,7 @@ From highest (1) to lowest (21); within the same precedence, operators associate
 |---|---|---|
 | `throw` `try` `catch` `finally` | Exceptional control flow (ZOM uses explicit return + pattern) | ZOM5001 ReservedSyntax |
 | `async` `await` | Async signatures (ZOM uses the zero-color model) | ZOM5002 AsyncAwaitDisabled |
-| `var` | Function-scoped variable (ZOM uses let/const block scope; removed in v1) | ZOM5003 VarKeywordRemoved |
+| `var` | Function-scoped variable (ZOM uses `mut` / `let` block scope; removed in v1) | ZOM5003 VarKeywordRemoved |
 | `actor` `channel` | Concurrency primitives (v1 uses library types rather than keywords) | ZOM5004 ActorAsLibraryType |
 | `yield` `generator` | Generators (not implemented in v1) | ZOM5005 GeneratorSyntaxReserved |
 | `namespace` `package` | Organizational units (v1 uses `module` dotted paths) | ZOM5006 NamespaceAsModulePath |
@@ -995,7 +1012,7 @@ a Five-Way Consistency Index entry in Section 8.
 Per AGENTS.md Section Spec Alignment Rules, the following is the cross-reference index between this specification and the other four sources of truth.
 "Checkmark" denotes verified alignment; "circular arrow" denotes an implementation correction required in the next commit.
 
-| Production in this document | 1) Lexical Chapter 02 | 2) ZomLexer.g4 | 3) 17-grammar-ref | 4) Expr Semantics 04 | 5) Implementation (compiler/) |
+| Production in this document | 1) Lexical Chapter 02 | 2) ZomLexer.g4 | 3) 17-grammar-ref | 4) Expr Semantics 04 | 5) Implementation (`products/zomlang/compiler/`) |
 |---|---|---|---|---|---|
 | Section 3.3 Whitespace/LineTerm | Checkmark Section Whitespace and Line Terminators | Checkmark TAB/VT/FF/LF/CR/LS/PS | Checkmark | -- | Circular arrow lexical layer |
 | Section 3.4 Comments | Checkmark Section Comments | Checkmark SINGLE/MULTI_LINE_COMMENT | Checkmark | -- | Checkmark lexer/comments.cc |
@@ -1028,7 +1045,7 @@ Per AGENTS.md Section Spec Alignment Rules, the following is the cross-reference
 
 ## 9. Validation Example Library
 
-The following examples are intended for `lit` regression testing and cover all newly-added productions and drift corrections. Each example MUST have a corresponding `.zom` + `.check` file under `tests/language/`.
+The following examples are intended for `lit` regression testing and cover all newly-added productions and drift corrections. Each example MUST have a corresponding `.zom` FileCheck test under `products/zomlang/tests/language/`.
 
 ### T1 Basic Module / Import / Export
 

@@ -1,7 +1,7 @@
 # Chapter 23 — Visibility Ladder
 
 > **Normative**
-> This chapter defines the full visibility, extensibility, and export-control model of the ZOM language. Together with Chapter 13 (Modules and Imports) and Chapter 16 (Attributes and Annotations), it forms the complete specification of who may observe, extend, and re-export every symbol in a ZOM program. Diagnostic codes referenced in this chapter are defined in ARCHITECTURE.md section 8 (codes 0700–0799 for orphan-rule violations and codes 0800–0899 for module-related violations). Implementations MUST emit the exact numeric codes cited; error-message prose is normative only where explicitly quoted.
+> This chapter defines the full visibility, extensibility, and export-control model of the ZOM language. Together with Chapter 13 (Modules and Imports) and Chapter 16 (Attributes and Annotations), it forms the complete specification of who may observe, extend, and re-export every symbol in a ZOM program. Diagnostic codes referenced in this chapter are defined in architecture.md section 8 (codes 0700–0799 for orphan-rule violations and codes 0800–0899 for module-related violations). Implementations MUST emit the exact numeric codes cited; error-message prose is normative only where explicitly quoted.
 
 ---
 
@@ -103,7 +103,7 @@ Three mutually exclusive tokens control extensibility: `final`, `sealed`, and `o
 
 -   **`final`.** A `final interface` cannot be implemented by any user declaration. Only compiler-provided built-in types may carry implementations of a final interface. This is reserved for marker interfaces such as the compiler-built-in copy semantics that cannot be authored in user code. A user `impl I for T {}` against a final interface is an error in the 0830–0839 band.
 
--   **(default, no keyword).** The interface is open: any module that can see the interface may implement it, subject to the orphan and coherence rules (Chapter 13 §13.7 and ARCHITECTURE.md codes 0700–0799).
+-   **(default, no keyword).** The interface is open: any module that can see the interface may implement it, subject to the orphan and coherence rules (Chapter 13 §13.7 and architecture.md codes 0700–0799).
 
 -   **`sealed`.** Implementation is restricted to the declaring crate, or to modules listed in the `#[zom::sealed(allow = [...])]` allow-list together with their descendant modules. A user impl of a sealed interface from outside the crate and outside the allow-list MUST reuse **ZOM0720 SealedInterfaceImplOutsideCrate** from the orphan diagnostic band, with an error message that includes the concrete allow-list at the violation site (see §23.4 for the normative template).
 
@@ -506,4 +506,4 @@ The eight-level ladder, the three extensibility states, and the two-state export
 -   No existing keyword is assigned a new normative meaning in a way that would change the meaning of a valid program from the current edition.
 -   Any new keyword is either a reserved keyword in the current edition or is gated by the edition mechanism of Zom.toml.
 
-Implementations SHOULD reserve diagnostic band space for future visibility and orphan codes (bands 0700–0799 and 0800–0899) as described in ARCHITECTURE.md section 8, and MUST NOT reuse codes in those bands for non-specified purposes.
+Implementations SHOULD reserve diagnostic band space for future visibility and orphan codes (bands 0700–0799 and 0800–0899) as described in architecture.md section 8, and MUST NOT reuse codes in those bands for non-specified purposes.

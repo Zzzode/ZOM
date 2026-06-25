@@ -889,8 +889,8 @@ ZOM 若要实现 Collection/Iterator/Comparable 等标准库抽象就没有语�
 - Checker 类整体被注释（空实现）。binder 只做符号绑定和重名检查，不做类型兼容、接口一致性、子类型验证。
 - where 子句需要多类型变量联合约束求解，关联类型需要 interface impl member 一致性检查——这些在类型检查基础能力（表达式推断、赋值兼容、接口方法签名匹配）都不存在的阶段，先做语法 AST 纯属过度设计。当前实现与形式语法的边界一致是正确的工程裁剪。
 
-【6】规范文档的层次与 SPEC.md 的说明
-- SPEC.md 第54-61行明确声明语法维护在 EBNF + ZomLexer.g4 + ZomParser.g4 三合一体系中，章节 prose 只是解释性文字。
+【6】规范文档的层次与 specification.md 的说明
+- specification.md 第54-61行明确声明语法维护在 EBNF + ZomLexer.g4 + ZomParser.g4 三合一体系中，章节 prose 只是解释性文字。
 - 问题声称的"双缺失"前提是"规范已经声明要支持"，但按项目自己的规范来源分层，这个前提不成立。
 
 ### 12. 🟠 [高] 测试文件 error-declarations.zom 使用的 error 语法既不被 parser 支持也不符合规范  
@@ -1024,7 +1024,7 @@ parser-test.cc:970 行 `ZC_EXPECT(result != zc::none, "Should parse error declar
 ## 四、设计目标 vs 实现路径断层
 - 01-introduction.md:21 明确列出 "Compile-time code generation"。
 - docs/plans/ 目录下仅有 2026-04-03 的模块系统计划，**没有任何编译时代码生成/宏系统设计文档**。
-- docs/design/ 下的 adt.md / architecture.md / compiler-contracts.md 全为占位空文件。
+- docs/design/ 下的 algebraic-data-types.md / architecture.md / compiler-contracts.md 全为占位空文件。
 - 词法层也未显式把 `$` 标记为"已在模板字符串中部分占用、标识符用法待收敛"（当前只在模板字符串内 1120 行用了 `${` 分支，其余位置把 `$name` 一概当普通标识符）。
 
 ## 五、breaking change 风险定量分析
@@ -1056,7 +1056,7 @@ parser-test.cc:970 行 `ZC_EXPECT(result != zc::none, "Should parse error declar
 
 - 反对方: 七条核心反证：
 
-1. **版本为 0.0.1-dev，「breaking change」概念不成立**。CMakeLists.txt 第 5 行：`set(VERSION 0.0.1-dev)`。全项目（README.md、OVERVIEW.md、01-introduction.md）无任何「stable」「backward compatibility」「v1 冻结」承诺。将 pre-alpha 阶段的「未来扩展会影响现有语法」拔高为 design flaw，属于范畴错误 — 所有尚未实现的语法在稳定化前都潜在是「breaking change source」，按此逻辑 async/await/attributes/try-catch 等几十项未实装特性全是同等严重度的缺陷。
+1. **版本为 0.0.1-dev，「breaking change」概念不成立**。CMakeLists.txt 第 5 行：`set(VERSION 0.0.1-dev)`。全项目（README.md、overview.md、01-introduction.md）无任何「stable」「backward compatibility」「v1 冻结」承诺。将 pre-alpha 阶段的「未来扩展会影响现有语法」拔高为 design flaw，属于范畴错误 — 所有尚未实现的语法在稳定化前都潜在是「breaking change source」，按此逻辑 async/await/attributes/try-catch 等几十项未实装特性全是同等严重度的缺陷。
 
 2. **`$` 字符的多义性模式已经在词法层成功建立**。ZomLexer.g4 第 26 行 `DOLLAR: '$'` 是独立 token 类；第 251-256 行模板字面量规则已实现 `${expr}` 插值，且 parser.cc:2980 `parseTemplateLiteralExpression()` 完整落地。这证明 `$` 同时作为 IdentifierStartChar 与插值前缀的消歧在架构上已被解决（上下文敏感的词法切分）。未来若引入 `$name` 式宏变量，不过是复用同一模式。`$` 标识符合法绝不构成宏的障碍 — JavaScript/PHP/Shell 等大量语言共享完全相同的 `$` 双义性且运行良好。
 
@@ -2259,7 +2259,7 @@ static zc::Own<BuiltInTypeSymbol> createUnit(SymbolId id, ...);`
    - 有 `!hasPrecedingLineBreak()` 保护，遵循 ASI 规则，设计明显经过考虑
    - 配套有 `findOptionalChainBoundary` / `markNonNullOptionalChain` 等辅助函数与可选链交互逻辑
 
-5. "也许 SPEC.md 或 design/adt.md 等其他文档中有补充说明" — 反证失败：全文档检索无果。
+5. "也许 specification.md 或 design/algebraic-data-types.md 等其他文档中有补充说明" — 反证失败：全文档检索无果。
 
 **额外发现（与该问题方向相反的不匹配，加剧整体不一致性）：**
 - Spec 声明的 `?!`（ErrorPropagate）PostfixSuffix：Lexer.cc 中未切分为独立 token，Parser 中也无消费路径；error-handling-operators.zom 第3行 `risky()?!;` 实际报 ZOM2011/ZOM2025（被误当作三元 `?:` 开头），证实未实现
@@ -3218,7 +3218,7 @@ FunctionTypeSymbol::isMoreSpecificThan() 返回常量 false；TypeSymbol 没有�
 
 一、原问题 4 项主张的独立逐项验证：
 
-(1) 设计目标确实写出 "Seamless integration with existing C/C++ codebases"（`docs/spec/chapters/01-introduction.md:10`），spec 全文（17 章 + OVERVIEW + SPEC.md + design/ + plans/）中 `extern`/`foreign`/`FFI`/`cdecl`/`C ABI` 等术语 **0 次出现**。—**证实**。
+(1) 设计目标确实写出 "Seamless integration with existing C/C++ codebases"（`docs/spec/chapters/01-introduction.md:10`），spec 全文（17 章 + OVERVIEW + specification.md + design/ + plans/）中 `extern`/`foreign`/`FFI`/`cdecl`/`C ABI` 等术语 **0 次出现**。—**证实**。
 
 (2) SymbolFlags：`Extern(1ULL << 57)`、`Builtin(1ULL << 52)` 存在于 `symbol-flags.h:143,148`，并被纳入 `MetaFlags` mask。但：
    - AST `ast-nodes.def` / `kinds.h` 中 **无** ExternDeclaration / ForeignDeclaration 节点；
@@ -4870,7 +4870,7 @@ parser 的 isModifier() 包含 AbstractKeyword，但规范 Modifier 定义只列
 **1. 泛型策略（monomorphization vs type erasure）文档缺失 — 确认成立**
 - 对 docs/spec/chapters/ 全文 grep `monomorph|erasure|单态|擦除|ABI|dyn trait|vtable` — 零命中。 (RESOLVED 2026-06-25: dyn existential type added; see 03-types.md §X and 09-interfaces.md §9.)
 - 第 12 章《Generics》（135 行）只有语法示例（identity、Box<T>、Comparable、where 子句、associated type、Option<T>），完全没有任何"实现策略 / 对象布局 / 代码尺寸 / 实例化时机"的段落。
-- docs/design/ 目录（adt.md / architecture.md / compiler-contracts.md）全部为空占位文件，不存在 GENERICS.md。
+- docs/design/ 目录（algebraic-data-types.md / architecture.md / compiler-contracts.md）全部为空占位文件，不存在 GENERICS.md。
 - 因此"零成本抽象→单态化"和"C 无缝互操作→ABI 稳定"两个目标确实同时写在 01-introduction.md 里，但没有任何权衡说明，两条路径的下游差异（vtable vs 代码膨胀、跨 .so、调试信息、标准库二进制兼容）完全未被讨论。 (RESOLVED 2026-06-25: dyn existential type added; see 03-types.md §X and 09-interfaces.md §9.)
 
 **2. 与 C 互操作章节未对齐泛型导出 — 确认成立**

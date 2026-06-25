@@ -343,7 +343,7 @@ impl Socket for MacosTcpSocket {
 export class Button {
     x: i32;
     y: i32;
-    var label_text: str;
+    mut label_text: str;
 
     fun label() -> str { return self.label_text; }
 

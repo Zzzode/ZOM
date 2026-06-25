@@ -376,7 +376,7 @@ lexer.cc:665 case '?' 分支加入 charAt(1) == '!' 分支返回 ErrorPropagate 
 **评审备注**
 - 确认方: 独立核验结论：F5 真实，严重度维持 high。
 
-证据 1：规范完全无入口函数/程序执行语义章节。全 17 章 grep main 仅在 13-modules-and-imports.md:222 出现一次且是模块名示例；grep entry、startup、exit、uncaught 全部为 0。文法参考 17-grammar-reference.md:84-88 只定义 Program = SourceFile 静态容器，没有说执行哪个函数、缺 main 如何、main 返回什么。SPEC.md、chapters/README.md 章节列表也没有程序结构章节。
+证据 1：规范完全无入口函数/程序执行语义章节。全 17 章 grep main 仅在 13-modules-and-imports.md:222 出现一次且是模块名示例；grep entry、startup、exit、uncaught 全部为 0。文法参考 17-grammar-reference.md:84-88 只定义 Program = SourceFile 静态容器，没有说执行哪个函数、缺 main 如何、main 返回什么。specification.md、chapters/README.md 章节列表也没有程序结构章节。
 
 证据 2：错误处理章没有定义顶层传播。11-error-handling.md 反复强调所有 error 必须显式处理（通过 match、?!、?:、!!），但没有回答 main 的 caller 是谁——当 caller 不存在时，那套显式处理约束自然形成语义真空，等于 UB。另外 `raises Never` 全文 0 次出现，Never 作为 bottom 类型只在 03-types.md:67 一句带过，没有语义约束。
 
@@ -570,7 +570,7 @@ binder.cc 中已实现 `RedeclareVariable` / `RedeclareParameter` / `RedeclareFu
   结论：用户无法"在 ZOM 中写完美的 raises 链并调 C 库"——因为用户目前连写"一个能编译运行的、raises 被语义校验过的 ZOM 函数"都做不到。把跨 ABI 的桥接问题提升到 medium，等于在一栋连地基都未打完的建筑里抱怨"电梯没有语音报层"。
 
 (2) 夸大问题类别（错误地归入 `ecosystem` 中"已落地功能的生态缺失"）：
-  - 规范层面：SPEC.md 共 17 章（1-17 章），**没有 FFI/Interop 章节**；15 章（Concurrency）和 16 章（Attributes）明确标记"Reserved for future"，但**没有任何一章承诺 FFI/extern 属于当前版本范围**。规范 `11-error-handling.md`、`03-types.md`、`17-grammar-reference.md` 中 `grep -i ffi\|extern\|calling.convention\|errno\|GetLastError\|interop` 均为 0 条。
+  - 规范层面：specification.md 共 17 章（1-17 章），**没有 FFI/Interop 章节**；15 章（Concurrency）和 16 章（Attributes）明确标记"Reserved for future"，但**没有任何一章承诺 FFI/extern 属于当前版本范围**。规范 `11-error-handling.md`、`03-types.md`、`17-grammar-reference.md` 中 `grep -i ffi\|extern\|calling.convention\|errno\|GetLastError\|interop` 均为 0 条。
   - 规范**唯一提及 Interoperability** 的地方是 `01-introduction.md:10` 的设计原则 bullet（"Seamless integration with existing C/C++ codebases"），属愿景层描述，与同段的"Compile-time code generation"、"Memory safety without garbage collection"等并列——而这些愿景条目绝大多数也未实现。
   结论：FFI/extern 本身不是"spec 有、实现缺"的 gap，而是"spec roadmap 尚未进入"的未来特性。把未来特性未落地称作"错误系统完全缺失"，属于把设计阶段的未开始项当作已交付功能的 bug，与类别 `ecosystem`（暗示功能已存在、生态周边缺失）不匹配。
 
@@ -1825,7 +1825,7 @@ Rust 常见错误处理组合子依赖 Result 方法，ZOM 中没有方法调用
 - 方法调用语法（证明语法层可用）：/Users/bytedance/Develop/ZOM/products/zomlang/compiler/parser/parser.h（第 472-477 行 parseMemberExpressionOrHigher 等）、parser.cc 中 6 处 createPropertyAccessExpression
 - 无标准库佐证：stdlib/prelude/builtins 目录均不存在，/Users/bytedance/Develop/ZOM/products/zomlang/runtime/ 仅有 CMakeLists.txt
 - 反对方: 1. 前提虚假：原描述称「ZOM 中没有方法调用语法」，但 parser.cc:3964-4422 存在完整的 parseMemberExpressionRest / parsePropertyAccessExpressionRest / parseCallExpressionRest 实现，PropertyAccessExpression + CallExpression AST 节点健全，calls-members-new-optional.zom 测试已验证 obj?.method(1)[0].field 链式调用，方法调用语法客观存在。
-2. 设计哲学混淆：map_err / and_then / or_else / try_join / try_for_each / inspect_err 六个组合子在规范全文（11-error-handling.md / 04-expressions.md / SPEC.md）中搜索结果为 0，说明项目从未承诺提供 Rust 风格的 Result 方法链式 API。ZOM 选定的主路径是原生 raises + ?! / !! / ?: 三大运算符 + match 穷尽匹配，这是 Swift/TypeScript 风格路线而非 Rust 路线。用 Rust 清单去要求 ZOM 等价于要求 Go 必须有 Option<T>，属跨语言套模板而非客观缺陷。
+2. 设计哲学混淆：map_err / and_then / or_else / try_join / try_for_each / inspect_err 六个组合子在规范全文（11-error-handling.md / 04-expressions.md / specification.md）中搜索结果为 0，说明项目从未承诺提供 Rust 风格的 Result 方法链式 API。ZOM 选定的主路径是原生 raises + ?! / !! / ?: 三大运算符 + match 穷尽匹配，这是 Swift/TypeScript 风格路线而非 Rust 路线。用 Rust 清单去要求 ZOM 等价于要求 Go 必须有 Option<T>，属跨语言套模板而非客观缺陷。
 3. 核心能力可用，非阻塞：规范 11-error-handling.md 第 20-41 行与第 60-95 行已完整演示纯用 match + return error 实现所有传播/转换/默认值注入场景，组合子只是减少行数的语法糖，不增加表达力。任何 result.and_then(f).map_err(g) 都可机械改写为 match 分支，开发者完全能完成常见任务，不满足 high 级「核心功能缺失」判据。
 4. 「跨 crate 行为不一致」被夸大：规范 97-99 行明确 User-Defined Result 是「你也可以用」的降级通道而非主路径；主推的原生 raises 是语言内置，跨 crate 天然一致。用户若自造 Result enum，还有 06-declarations.md:418-428 的 error extends 继承机制 + interface 声明（规范声明章节第 9 行已列出 interface 为声明类别之一）可用来自定义统一接口，无需内建 Error trait。
 5. checker.cc 为空（28 行 namespace 空壳）是独立的全局 P0 缺口，不应与「组合子缺失」合并记账。即使 checker 完整实现，组合子的存在与否也取决于标准库，二者是不同层面问题。
@@ -2412,7 +2412,7 @@ Hash token 被切出（lexer.cc:746-747），但 parser 没有任何 `SyntaxKind
 - /Users/bytedance/Develop/ZOM/products/zomlang/compiler/checker/checker.cc（空实现）
 - /Users/bytedance/Develop/ZOM/products/zomlang/compiler/binder/binder.cc
 
-- 反对方: 1. 类别不成立（非 spec-impl-mismatch）：第 16 章全文（10 行）显式声明 "Attribute and annotation syntax is reserved for future language design"，SPEC.md 目录项也写着 "Reserved metadata syntax"；实现层 ast/kinds.h、ast-nodes.def 也无 Attribute/Derive/ProcMacro 节点定义，两者完全对齐。同构的第 15 章（并发）也用同一句式声明保留，从未被视作 mismatch。
+- 反对方: 1. 类别不成立（非 spec-impl-mismatch）：第 16 章全文（10 行）显式声明 "Attribute and annotation syntax is reserved for future language design"，specification.md 目录项也写着 "Reserved metadata syntax"；实现层 ast/kinds.h、ast-nodes.def 也无 Attribute/Derive/ProcMacro 节点定义，两者完全对齐。同构的第 15 章（并发）也用同一句式声明保留，从未被视作 mismatch。
 
 2. 前提张冠李戴（derive(Error) / #[from] / #[error] 是 Rust 概念而非 ZOM 承诺）：对 docs/spec 所有章节 grep "derive" / "#[from]" / "#[error]" / "thiserror" / "anyhow" / "proc_macro" / "Error trait" / "From trait" 全部为零。ZOM 从未承诺 Rust 式派生宏体系。ZOM 的错误类型有自己的原生声明语法——`error` 关键字（spec 11-error-handling.md:11、06-declarations.md:393-432）+ `raises` 子句 + 联合类型，derive(Error) 在 Rust 中承担的 "自动实现 Display/Error trait/From 转换" 三件事，在 ZOM 的原生模型里本来就不以 trait + 派生宏的方式提供。
 
@@ -3408,7 +3408,7 @@ Swift 6 typed throws 允许 do/catch 直接按错误 variant 模式匹配并自�
 - 确认方: 独立核验得出的关键事实：
 
 (一) 原主张 1——「没有内建 Error 协议约束所有 error 变体」：真实。
-- 在 `06-declarations.md`/`11-error-handling.md`/`07-patterns.md`/`03-types.md` 四份章节与 `SPEC.md` 全文范围内，`grep` 搜索 `Error.*(protocol|trait|interface)`、`conform Error`、`any Error`、`some Error`、`existential`、`隐式` 全部 0 命中。
+- 在 `06-declarations.md`/`11-error-handling.md`/`07-patterns.md`/`03-types.md` 四份章节与 `specification.md` 全文范围内，`grep` 搜索 `Error.*(protocol|trait|interface)`、`conform Error`、`any Error`、`some Error`、`existential`、`隐式` 全部 0 命中。
 - `error` 声明（`06-declarations.md:393-432`）只给了字段、泛型、`extends` 继承三个维度的语法，没有说明它隐式实现任何接口/协议。因此"所有 error 共享一个可擦除的顶层 Error 类型"在规范层面不存在。
 
 (二) 原主张 2——「match 对 error 联合的 downcast/穷尽规则未定义」：真实。
@@ -3617,7 +3617,7 @@ ZOM 已经把 try/catch/throw/finally 注册为保留字（规范称「不使用
 - Parser 层：`parseStatement()` switch 无对应 case，所有保留字 fallthrough 到 `UnexpectedKeywordOrIdentifier`，**没有专门的「保留但未支持」错误码**（诊断码审计里也缺 `TryStatementNotSupported`）。
 
 ### D. 与 ZOM 其他保留项的横向对比（我自己补充的证据）
-- `SPEC.md:31` `chapters/15-concurrency.md` 与 `SPEC.md:32` `chapters/16-attributes-and-annotations.md`：整章明确是 `Reserved for future`。错误/异常系统没有对应位置的「未来方向」章节或小节。
+- `specification.md:31` `chapters/15-concurrency.md` 与 `specification.md:32` `chapters/16-attributes-and-annotations.md`：整章明确是 `Reserved for future`。错误/异常系统没有对应位置的「未来方向」章节或小节。
 - `06-declarations.md:191-194`：`Reserved Function Forms` 小节给 async/await 未来演进做了说明。保留字 throw/try/catch/finally 没有对应的「Reserved Control Flow Forms」小节。
 
 ## 对原报告的细化与修正

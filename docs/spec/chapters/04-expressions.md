@@ -309,13 +309,23 @@ let grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : "F";
 ### Simple Assignment
 
 ```zom
-let x = 42;
-y = x + 10;
+mut x = 42;
+x = x + 10;
 ```
 
 ### Compound Assignment
 
 ```zom
+mut x = 1;
+mut y = 10;
+mut z = 4;
+mut w = 16;
+mut a = 5;
+mut b = 2;
+mut flags = 0b1010;
+mut value = 1;
+mut result = true;
+
 x += 5;    // Equivalent to: x = x + 5
 y -= 3;    // Equivalent to: y = y - 3
 z *= 2;    // Equivalent to: z = z * 2

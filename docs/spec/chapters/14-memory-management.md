@@ -86,7 +86,7 @@ fun manualMemory() {
     let ptr = allocate<i32>(1000); // Allocate array of 1000 integers
 
     // Use the memory
-    for (let i = 0; i < 1000; ++i) {
+    for (mut i = 0; i < 1000; ++i) {
         ptr[i] = i * i;
     }
 

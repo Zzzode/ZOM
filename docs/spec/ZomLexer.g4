@@ -104,6 +104,7 @@ KEYOF: 'keyof';
 LET: 'let';
 MATCH: 'match';
 MODULE: 'module';
+MUT: 'mut';
 MUTATING: 'mutating';
 NAMESPACE: 'namespace';
 NEVER: 'never';

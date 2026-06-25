@@ -2,7 +2,7 @@
 
 **Version:** ZOM Language Specification v1.0.0-rc1
 **Diagnostic allocation:** `ZOM0700–ZOM0799` — Orphan rule / impl locality
-(see `docs/design/ARCHITECTURE.md` §8) and `ZOM0500–ZOM0599` for marker /
+(see `docs/design/architecture.md` §8) and `ZOM0500–ZOM0599` for marker /
 coherence (same section).
 **Cross-references:** `docs/design/compiler-contracts.md` §9 (alias
 normalization Step 0 and the three-phase negative closure), Ch.9
@@ -451,7 +451,7 @@ and the conflicting impl sites.
 
 The following codes are introduced here. They SHALL be registered in
 the authoritative diagnostic registry (the two tables in
-`ARCHITECTURE.md` §8 and `compiler-contracts.md` §2) by the canonical
+`architecture.md` §8 and `compiler-contracts.md` §2) by the canonical
 registry synchronization step. Each entry below lists code, name,
 severity, and a one-line canonical message.
 

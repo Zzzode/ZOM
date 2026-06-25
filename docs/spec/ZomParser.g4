@@ -542,11 +542,11 @@ forStatement:
 forInStatement:
 	FOR LPAREN (forDeclaration | leftHandSideExpression) IN expression RPAREN statement;
 
-forDeclaration: (LET | CONST) forBinding;
+forDeclaration: (MUT | LET) forBinding;
 
 forBinding: bindingIdentifier | bindingPattern;
 
-forInit: expression | (LET | CONST) variableDeclarationList;
+forInit: expression | (MUT | LET) variableDeclarationList;
 
 forUpdate: expression;
 
@@ -608,6 +608,7 @@ declaration:
 	| structDeclaration
 	| errorDeclaration
 	| enumDeclaration
+	| constDeclaration
 	| variableStatement;
 
 //// ============================================================================== TYPES
@@ -737,7 +738,8 @@ interfaceHeritage: EXTENDS interfaceTypeList;
 interfaceBody: interfaceElement*;
 interfaceElement:
 	SEMICOLON
-	| accessibilityModifier? STATIC? (LET | CONST) propertySignature initializer? SEMICOLON?
+	| accessibilityModifier? STATIC? (MUT | LET) propertySignature initializer? SEMICOLON?
+	| accessibilityModifier? constDeclaration
 	| accessibilityModifier? STATIC? FUN methodSignature SEMICOLON?;
 
 // ================================================================================ TYPE ALIAS DECLARATIONS
@@ -773,8 +775,8 @@ getAccessor:
 setAccessor:
 	SET propertyName LPAREN parameter RPAREN LBRACE functionBody RBRACE;
 
-// ================================================================================ LET AND CONST DECLARATIONS
-variableStatement: (LET | CONST) variableDeclarationList SEMICOLON;
+// ================================================================================ MUT, LET, AND CONST DECLARATIONS
+variableStatement: (MUT | LET) variableDeclarationList SEMICOLON;
 
 variableDeclarationList:
 	variableDeclaration (COMMA variableDeclaration)*;
@@ -782,6 +784,16 @@ variableDeclarationList:
 variableDeclaration:
 	bindingIdentifier typeAnnotation? initializer?
 	| bindingPattern typeAnnotation? initializer;
+
+constDeclaration: CONST constDeclarationList SEMICOLON;
+
+constDeclarationList:
+	constDeclarationItem (COMMA constDeclarationItem)*;
+
+constDeclarationItem:
+	bindingIdentifier typeAnnotation? ASSIGN constExpression;
+
+constExpression: assignmentExpression;
 
 // ================================================================================ TYPES
 typeAnnotation: COLON type;
@@ -820,8 +832,8 @@ propertyMemberDeclaration:
 	| memberAccessorDeclaration;
 
 memberVariableDeclaration:
-	accessibilityModifier? STATIC? (LET | CONST) propertyName typeAnnotation? initializer? SEMICOLON
-		;
+	accessibilityModifier? STATIC? (MUT | LET) propertyName typeAnnotation? initializer? SEMICOLON
+		| accessibilityModifier? constDeclaration;
 
 memberFunctionDeclaration:
 	accessibilityModifier? STATIC FUN propertyName callSignature? LBRACE functionBody RBRACE

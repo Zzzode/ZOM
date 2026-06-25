@@ -148,7 +148,8 @@ QualifiedPath ::= PathPrefix? Identifier ( '::' Identifier )*
 
 (* Declarations *)
 Declaration ::= ModifierList (
-                   LetDeclaration
+                   MutDeclaration
+                 | LetDeclaration
                  | ConstDeclaration
                  | FunDeclaration
                  | ClassDeclaration
@@ -166,13 +167,23 @@ Declaration ::= ModifierList (
                  | MarkerImplDeclaration
                )
 
+MutDeclaration   ::= 'mut' VariableDeclarationList ';'
 LetDeclaration   ::= 'let' VariableDeclarationList ';'
-ConstDeclaration ::= 'const' VariableDeclarationList ';'
+ConstDeclaration ::= 'const' ConstDeclarationList ';'
 FunDeclaration   ::= 'fun' BindingIdentifier TypeParameters? ParameterClause
                      ReturnType? BlockStatement
 VariableDeclarationList ::= VariableDeclaration (',' VariableDeclaration)*
 VariableDeclaration ::= (BindingIdentifier | BindingPattern) TypeAnnotation? Initializer?
 Initializer ::= '=' AssignmentExpression
+ConstDeclarationList ::= ConstDeclarationItem (',' ConstDeclarationItem)*
+ConstDeclarationItem ::= BindingIdentifier TypeAnnotation? '=' ConstExpression
+ConstExpression ::= AssignmentExpression
+    (* Semantically restricted to expressions accepted by the constant evaluator. *)
+
+(* `mut` and `let` are runtime bindings. Only `mut` may be reassigned or used
+   as a mutable place. `const` is a compile-time value and has no stable
+   storage address. A `let` field may be definitely assigned by its owning
+   `init` path before `this` escapes; after initialization it is immutable. *)
 
 FunctionDeclaration ::= 'fun' BindingIdentifier TypeParameters? ParameterClause
                        ReturnType? BlockStatement
@@ -191,17 +202,21 @@ InterfaceDeclaration ::= ClassExtensibility? ModifierList 'interface' BindingIde
 InterfaceHeritage ::= 'extends' InterfaceTypeList
 InterfaceBody ::= InterfaceElement*
 InterfaceElement ::= ';'
-                   | Modifier* LetOrConst PropertySignature Initializer? ';'?
+                   | Modifier* PropertyStorage PropertySignature Initializer? ';'?
+                   | Modifier* ConstantDeclaration
                    | Modifier* 'fun' MethodSignature ( BlockStatement | ';' )
                       (* BlockStatement = default method body — Ch.09 §6 *)
 PropertySignature ::= PropertyName '?'? TypeAnnotation
 MethodSignature ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType?
+PropertyStorage ::= 'mut' | 'let'
+ConstantDeclaration ::= 'const' BindingIdentifier TypeAnnotation? '=' ConstExpression ';'
 
 ClassElement ::= ';'
                | Modifier* InitDeclaration
                | Modifier* DeinitDeclaration
                | Modifier* AccessorDeclaration
-               | Modifier* LetOrConst PropertyDeclaration
+               | Modifier* PropertyStorage PropertyDeclaration
+               | Modifier* ConstantDeclaration
                | Modifier* 'fun' MethodDeclaration
 PropertyDeclaration ::= PropertyName '?'? TypeAnnotation? Initializer? ';'
 MethodDeclaration ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType? (BlockStatement | ';')
@@ -353,6 +368,8 @@ Statement ::= BlockStatement
            | DebuggerStatement
            | LabeledStatement
 
+VariableStatement ::= ('mut' | 'let') VariableDeclarationList ';'
+
 BlockStatement ::= '{' StatementList? '}'
 StatementList ::= StatementListItem+
 StatementListItem ::= ModifierList ( Statement | Declaration )
@@ -383,9 +400,9 @@ DoWhileStatement ::= 'do' Statement 'while' '(' Expression ')' ';'?
 
 ForStatement ::= 'for' '(' ForInit? ';' Expression? ';' ForUpdate? ')' Statement
 ForInStatement ::= 'for' '(' (ForDeclaration | LeftHandSideExpression) 'in' Expression ')' Statement
-ForDeclaration ::= ('let' | 'const') ForBinding
+ForDeclaration ::= ('mut' | 'let') ForBinding
 ForBinding ::= BindingIdentifier | BindingPattern
-ForInit ::= LetOrConst VariableDeclarationList | Expression
+ForInit ::= ('mut' | 'let') VariableDeclarationList | Expression
 ForUpdate ::= Expression
 
 ContinueStatement ::= 'continue' Identifier? ';'
@@ -727,6 +744,9 @@ QualifiedPath ::= PathPrefix? Identifier ( '::' Identifier )*
 | `ImportDeclaration`      | `import`                                             |
 | `ExportDeclaration`      | `export`                                             |
 | `InlineModuleDeclaration`| `mod`, or any leading `Visibility` + `mod`           |
+| `MutDeclaration`         | `mut`                                                |
+| `LetDeclaration`         | `let`                                                |
+| `ConstDeclaration`       | `const`                                              |
 | `ClassDeclaration`       | `class`, any `ClassExtensibility` keyword, or any member of `FIRST(ModifierList)` |
 | `InterfaceDeclaration`   | `interface`, any `ClassExtensibility` keyword, or any member of `FIRST(ModifierList)` |
 

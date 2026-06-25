@@ -1,7 +1,7 @@
 # Chapter 24 — Module Resolution Algorithm
 
 > **Normative**
-> This chapter defines the algorithm that converts a symbolic module path (for example `math.geometry.projections`) together with an ordered list of search directories into a concrete loaded source buffer or a well-specified diagnostic. It is the bridge between the symbol-level module system of Chapter 13 and the host filesystem. Diagnostic codes referenced in this chapter are defined in ARCHITECTURE.md section 8 (codes 0800–0899 for module-related violations).
+> This chapter defines the algorithm that converts a symbolic module path (for example `math.geometry.projections`) together with an ordered list of search directories into a concrete loaded source buffer or a well-specified diagnostic. It is the bridge between the symbol-level module system of Chapter 13 and the host filesystem. Diagnostic codes referenced in this chapter are defined in architecture.md section 8 (codes 0800–0899 for module-related violations).
 
 ---
 

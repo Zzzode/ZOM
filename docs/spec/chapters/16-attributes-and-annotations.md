@@ -189,6 +189,7 @@ topLevelDeclaration                                             (* [A-013] *)
       | markerDeclaration          (* NEW: declares a user marker trait *)
       | markerImplDeclaration      (* NEW: impl [!] Marker for T      *)
       | implDeclaration            (* existing ordinary impl block    *)
+      | constDeclaration
       | variableStatement
     )
   ;
@@ -202,7 +203,7 @@ visibilityKeyword                                               (* [A-015] *)
   ;
 
 keywordModifier                                                 (* [A-016] *)
-  = 'static' | 'readonly' | 'mutating' | 'override' | 'const'
+  = 'static' | 'readonly' | 'mutating' | 'override'
   ;
 
 (* ---------- [A-017..A-018] Marker interface declaration (user markers, Tier-2) ---------- *)
@@ -256,7 +257,7 @@ typeParameter                                                   (* [A-023] *)
 (* ---------- [A-024] Statement attrs (limited) ---------- *)
 
 statementListItem                                               (* [A-024] *)
-  = OuterAttribute* statement                (* attr on while/for/return/match/let *)
+  = OuterAttribute* statement                (* attr on while/for/return/match/mut/let *)
   ;
 
 (* ---------- [A-025] Block-statement head allows inner attrs ---------- *)
@@ -475,7 +476,7 @@ Concrete anchor positions (non-exhaustive):
 
 pub fun example() {
     #![zom::lint::deny(ZOM0800)]   // inner: applies to the function body scope
-    #[zom::inline]                 // outer: applies to the let-binding's initialiser expr
+    #[zom::inline]                 // outer: applies to the binding's initialiser expr
     let x = compute();
 }
 ```
@@ -489,11 +490,11 @@ Every attribute and marker resolves to one of eight semantic targets. The target
 | 1 | **item** | `StructDeclaration`, `ClassDeclaration`, `InterfaceDeclaration`, `EnumDeclaration`, `ErrorDeclaration`, `AliasDeclaration`, `FunctionDeclaration`, `ModuleDeclaration`, `ImplDeclaration`, `MarkerDeclaration`, `MarkerImplDeclaration` | `#[zom::repr(C)]`, `#[std::marker::Sendable]`, `#[zom::ffi::no_mangle]` |
 | 2 | **param** | `ParameterDeclaration` (includes closure parameters) | `@variadic`, `#[zom::param::unused]` |
 | 3 | **expr** | `PrimaryExpression` (via `attributeAnnotatedExpression`; restricted to Tier-0 whitelist: `inline`, `cold`, `must_consume`, `hint::unroll`) | `#[zom::inline] f(x)` |
-| 4 | **stmt** | `Statement` (via `statementListItem`; limited to control-flow and `let`) | `#[zom::allow(ZOM0743)] for x in … {}` |
+| 4 | **stmt** | `Statement` (via `statementListItem`; limited to control-flow and `mut` / `let`) | `#[zom::allow(ZOM0743)] for x in … {}` |
 | 5 | **type** | `TypeExpression` (in `wherePred`, `typeParameter`, field type, function type) | `T: Sendable + !Shared` bounds |
 | 6 | **field** | `PropertyDeclaration`, `PropertySignature` (carries `modifiers`) | `#[zom::doc = "raw OS fd"] fd: i32` |
 | 7 | **pattern** | `BindingPattern` (match arms, destructuring `let`) | `#[zom::allow(unused)] (a, _b)` |
-| 8 | **local-bind** | `VariableDeclaration` (inside `VariableStatement`) | `#[zom::allow(unused_mut)] let mut x = …` |
+| 8 | **local-bind** | `VariableDeclaration` (inside `VariableStatement`) | `#[zom::allow(unused_mut)] mut x = …` |
 
 ### 16.4.3 AST attachment algorithm (concrete)
 
@@ -1963,7 +1964,7 @@ pub fun old_busted_api_v1(path: &str) -> Handle
 /// MUST be used; discarding it silently is almost certainly a bug.
 #[std::marker::MustUse]
 pub fun checked_sum(items: &[i64]) -> Result<i64, OverflowError> {
-    var sum: i64 = 0;
+    mut sum: i64 = 0;
     for (item in items) {
         match (sum.checked_add(*item)) {
             when Some(v) => sum = v;
@@ -2054,7 +2055,7 @@ error[ZOM0603]: non-whitelisted attribute attached to an expression
    |
    = note: expression attributes are restricted to the Tier-0 whitelist:
            { zom::inline, zom::cold, zom::must_consume, zom::hint::unroll }.
-   = help: move the attribute to the surrounding item (e.g. the `let` binding
+   = help: move the attribute to the surrounding item (e.g. the binding
            or the enclosing function).
 ```
 
@@ -2132,7 +2133,7 @@ error[ZOM0613]: attribute `zom::ffi::no_mangle` cannot attach to an alias
     ^^^^^^^^
 
 error[ZOM0617]: flat (un-namespaced) attribute names are not allowed
-  --> src/lib.rs:11:5
+  --> src/lib.zom:11:5
    |
 11 |     #[Sendable]
    |       ^^^^^^^^ expected a fully-qualified path with ≥ 2 segments,
@@ -2151,7 +2152,7 @@ error[ZOM0617]: flat (un-namespaced) attribute names are not allowed
        ^^^^^^^^^^^^^^^^^^^^^^^
 
 error[ZOM0701]: unjustified negative impl
-  --> src/lib.rs:44:6
+  --> src/lib.zom:44:6
    |
 44 |     impl !std::marker::Sendable for MyStruct;
    |          ^^^^^^^^^^^^^^^^^^^^^^^
@@ -2200,7 +2201,7 @@ error[ZOM0710]: marker coherence violation
        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 error[ZOM0702]: orphan negative impl
-  --> src/lib.rs:1:6
+  --> src/lib.zom:1:6
    |
  1 | impl !std::marker::Sendable for std::vec::Vec<T>;
    |      ^^^^^^^^^^^^^^^^^^^^^^ marker `Sendable` is not local to this crate
@@ -2407,28 +2408,33 @@ The three legacy entries will NOT be removed before ZOM 2.0. The warnings `W7105
 
 ### 16.18.1 Per-module LOC estimates (central delta only; excludes tests)
 
-Derived from `finalImplementationEstimate` with finer per-module granularity. Range confidence ±12%.
+Derived from `finalImplementationEstimate` with finer per-module granularity.
+Range confidence ±12%. Paths are repo-relative and follow the current ZOM tree:
+compiler code belongs under `products/zomlang/compiler/`, runtime code belongs
+under `products/zomlang/runtime/`, and tests belong under
+`products/zomlang/tests/`. Planned-only components are explicitly labeled and
+must use the same product-scoped hierarchy when introduced.
 
 | Module | Subsystem | LOC | Notes |
 |---|---|---:|---|
-| AST | `ast-nodes.def`, `ast.h`, `ast.cc` | 90 | 2 interface + 9 element nodes (ModifierList, OuterAttribute, InnerAttribute, AttributePathNode, PositionalAttrArg, NamedAttrArg, AttrTokenTree, AttributeMarkerDecl, MarkerImplDecl, MarkerBound). |
-| AST | `classof.cc` | 55 | 9 new concrete cases, 2 interface branches. |
-| AST | `visitor.h` | 0 | Auto-generated from X-macro. |
-| AST | `dumper.cc` | 95 | Pretty-print Outer/Inner/Path/ModifierList/Impl/MarkerDecl. |
-| AST | `serializer.cc` | 130 | 9 new encode/decode pairs. |
-| AST | `factory.cc` | 130 | Builder helpers for 9 node kinds. |
+| AST | `products/zomlang/compiler/ast/{ast-nodes.def,ast.h,ast.cc}` | 90 | 2 interface + 9 element nodes (ModifierList, OuterAttribute, InnerAttribute, AttributePathNode, PositionalAttrArg, NamedAttrArg, AttrTokenTree, AttributeMarkerDecl, MarkerImplDecl, MarkerBound). |
+| AST | `products/zomlang/compiler/ast/classof.cc` | 55 | 9 new concrete cases, 2 interface branches. |
+| AST | `products/zomlang/compiler/ast/visitor.h` | 0 | Auto-generated from X-macro. |
+| AST | `products/zomlang/compiler/ast/dumper.cc` | 95 | Pretty-print Outer/Inner/Path/ModifierList/Impl/MarkerDecl. |
+| AST | `products/zomlang/compiler/ast/serializer.cc` | 130 | 9 new encode/decode pairs. |
+| AST | `products/zomlang/compiler/ast/factory.cc` | 130 | Builder helpers for 9 node kinds. |
 | **AST subtotal** | | **500** | **Matches finalAST delta.** |
-| Lexer | `lexer.cc` (ColonColon + shebang) | 75 | |
-| Parser | `parser_attr.cc`, `parser_marker.cc`, modifications to `parser_decl.cc`, `parser_type.cc`, `parser_expr.cc`, `parser_stmt.cc` | 1 350 | `tryParseAttributeStart()` lookahead table, `parseModifierList()`, 8-target attachment algorithm, desugaring of `@Ident(args?)`, `markerDeclaration` / `markerImplDeclaration` productions, `attributeAnnotatedExpression` whitelist gate. |
-| Binder | `binder/resolve_attr.cc`, `binder/doc_param_synth.cc` | 900 | S0a AttributePath resolution (3-namespace cascade), S0b negative-bound resolve, S0c DocParamSynthesisPass, S0d MarkerImplDecl candidate registration. |
-| Macro engine | `macro/attr_engine.cc`, `macro/token_stream.cc`, `macro/sandbox.cc` | 2 000 | Tier-2 isolation sandbox (16 GiB / 60 s caps), TokenStream impl, `Macro` trait dispatch, cycle detection via generation counter, `pre_expansion_attrs` side-table, incr. comp. hooks. |
-| Checker WFF + Orphan | `checker/s1_attr_wff.cc`, `checker/s1_orphan.cc` | 1 200 | ArgsSchema validator for 20 Tier-0 + 18 Tier-1 entries, target validation, arity, orphan rule, negative-impl justification, flat-name enforcement. |
-| Checker Lattice + Closure | `checker/s2_lattice.cc`, `checker/s3_closure.cc` | 1 400 | R0–R9 graph, user `marker M = …` conjunction closure, cycle detection, monotone fixpoint with 3-round early-out, negative impl exclusion, coherence check, deterministic sort. |
-| Checker Usage gates | `checker/s4_usage_gates.cc` | 2 000 | G1–G6 concurrency gate implementations (CFG traversal, live-slot walk at await points, Linear one-shot consume checker), lint allow/deny frame stack, diagnostic uplifts. |
+| Lexer | `products/zomlang/compiler/lexer/lexer.cc` | 75 | ColonColon and shebang handling in the current lexer implementation. |
+| Parser | `products/zomlang/compiler/parser/{parser.cc,parser.h}` | 1 350 | `tryParseAttributeStart()` lookahead table, `parseModifierList()`, 8-target attachment algorithm, desugaring of `@Ident(args?)`, `markerDeclaration` / `markerImplDeclaration` productions, `attributeAnnotatedExpression` whitelist gate. |
+| Binder | `products/zomlang/compiler/binder/{binder.cc,utilities.cc}` | 900 | S0a AttributePath resolution (3-namespace cascade), S0b negative-bound resolve, S0c DocParamSynthesisPass, S0d MarkerImplDecl candidate registration. |
+| Macro engine | `products/zomlang/compiler/macro/` (planned) | 2 000 | Tier-2 isolation sandbox (16 GiB / 60 s caps), TokenStream impl, `Macro` trait dispatch, cycle detection via generation counter, `pre_expansion_attrs` side-table, incr. comp. hooks. |
+| Checker WFF + Orphan | `products/zomlang/compiler/checker/` | 1 200 | ArgsSchema validator for 20 Tier-0 + 18 Tier-1 entries, target validation, arity, orphan rule, negative-impl justification, flat-name enforcement. |
+| Checker Lattice + Closure | `products/zomlang/compiler/checker/` | 1 400 | R0–R9 graph, user `marker M = ...` conjunction closure, cycle detection, monotone fixpoint with 3-round early-out, negative impl exclusion, coherence check, deterministic sort. |
+| Checker Usage gates | `products/zomlang/compiler/checker/` | 2 000 | G1–G6 concurrency gate implementations (CFG traversal, live-slot walk at await points, Linear one-shot consume checker), lint allow/deny frame stack, diagnostic uplifts. |
 | **Checker subtotal** | | **4 600** | **Matches finalCheckerStages estimate.** |
-| Lowering + Codegen | `lower/attr_lower.cc`, hooks into `mir_builder`, `llvm_codegen` | 550 | MarkerSet (u64 bitset) attachment, `zom::repr → layout`, `zom::ffi::* → LLVM module flags`, hint flags into `CallSite`, marker erasure before LLVM, exclusion bitmap into crate metadata (.zom-cmi). |
-| LSP support | `lsp/completion_attr.cc`, `lsp/hover_attr.cc`, `lsp/rename_attr.cc`, `lsp/references_attr.cc` | 260 | 16.16 schema implementations. |
-| Rustdoc extraction | `rustdoc/attr_extract.cc` | 220 | Walk ModifierList for `zom::doc::*`, emit DocParam / Returns / Raises sections; marker-table rendering for type pages. |
+| Lowering + Codegen | `products/zomlang/compiler/backend/` (planned) | 550 | MarkerSet (u64 bitset) attachment, `zom::repr -> layout`, `zom::ffi::* -> LLVM module flags`, hint flags into `CallSite`, marker erasure before LLVM, exclusion bitmap into crate metadata (.zom-cmi). |
+| LSP support | `products/zomlang/tools/lsp/` (planned) | 260 | 16.16 schema implementations. |
+| Documentation extraction | `products/zomlang/tools/docs/` (planned) | 220 | Walk ModifierList for `zom::doc::*`, emit DocParam / Returns / Raises sections; marker-table rendering for type pages. |
 | **Production-code total** | | **10 455** | |
 | Tests | (per-module tests; see next table) | **6 400** | |
 | **Grand total** | | **16 855** | Within 3.4% of `finalImplementationEstimate::totalLOC = 16305`; inside ±12% confidence band. |
@@ -2437,16 +2443,16 @@ Derived from `finalImplementationEstimate` with finer per-module granularity. Ra
 
 | Test suite | Approx. LOC | Coverage goal | Passing gate |
 |---|---:|---|---|
-| `tests/parser/attr_*.zom` | 900 | Every production in EBNF A-001…A-026; every ZOM0601..ZOM0604, ZOM0617 error case from §16.15; formatter round-trip of `@`-sugar. | CI (parse success + AST dump diff + pretty-print round-trip). |
-| `tests/binder/attr_*.zom` | 500 | Namespace resolution (zom::, std::marker::, dep::*::*); shadowing; root-ns disambiguation `::`. | CI. |
-| `tests/checker/s1_wff_*.zom` | 600 | Every Tier-0 + Tier-1 ArgsSchema + target; error cases in 16.15 cases 5–9. | CI. |
-| `tests/checker/s2_lattice_*.zom` | 400 | R0–R9 edge reachability; user-marker cycles (ZOM0615); I2 staging-invariant check (macro expansion + lattice closure equivalence). | CI + randomized nightly (fuzz 10 000 random marker-bound DAGs). |
-| `tests/checker/s3_coherence_*.zom` | 400 | ZOM0710..ZOM0712; `unsafe impl Shared for Mutex<T>` override accepted; missing-unsafe → ZOM0751. | CI. |
-| `tests/checker/s4_gates_*.zom` | 1 500 | G1–G6 gates. Each gate has positive and negative tests; each includes the exact diagnostic snippet from §16.15. `sanitize="suspend"` runtime-test companion for G4. | CI + sanitizer nightly (ASAN, TSAN, SUSPEND-SAN). |
-| `tests/macro/attr_macro_*.zom` | 900 | `marker M = A + B` structural; proc-macro `Macro` trait contracts; OOM/timeout/cycle (ZOM0680..ZOM0684). Determinism test: 32 parallel runs on the same input must produce identical TokenStream output hashes. | CI. Determinism + sanitizer nightly. |
-| `tests/lower/codegen_attr_*.zom` | 400 | `repr(C)` layout assertions; `no_mangle` / `link_name` symbol inspection; marker zero-cost: grep LLVM IR for *absence* of marker-related metadata; RUNTIME_REIFIED `.zom_meta` section content. | CI + cross-target nightly (x86_64-linux, arm64-darwin, riscv64-linux). |
-| `tests/lsp/attr_*.ts` (TypeScript LSP client harness) | 400 | Completion ranking; hover schema; goto-def; rename propagation; find-references categorisation. | CI against `zom-lsp` binary. |
-| `tests/format/attr_*.zom` | 300 | Idempotent formatter on every sample in §16.14; source-position of `@` preserved. | CI. |
+| `products/zomlang/tests/language/attributes/parser-attr-*.zom` | 900 | Every production in EBNF A-001...A-026; every ZOM0601..ZOM0604, ZOM0617 error case from §16.15; formatter round-trip of `@`-sugar. | CI (parse success + AST dump diff + pretty-print round-trip). |
+| `products/zomlang/tests/language/attributes/binder-attr-*.zom` | 500 | Namespace resolution (zom::, std::marker::, dep::*::*); shadowing; root-ns disambiguation `::`. | CI. |
+| `products/zomlang/tests/language/attributes/checker-s1-wff-*.zom` | 600 | Every Tier-0 + Tier-1 ArgsSchema + target; error cases in 16.15 cases 5-9. | CI. |
+| `products/zomlang/tests/language/attributes/checker-s2-lattice-*.zom` | 400 | R0-R9 edge reachability; user-marker cycles (ZOM0615); I2 staging-invariant check (macro expansion + lattice closure equivalence). | CI + randomized nightly (fuzz 10 000 random marker-bound DAGs). |
+| `products/zomlang/tests/language/attributes/checker-s3-coherence-*.zom` | 400 | ZOM0710..ZOM0712; `unsafe impl Shared for Mutex<T>` override accepted; missing-unsafe -> ZOM0751. | CI. |
+| `products/zomlang/tests/language/attributes/checker-s4-gates-*.zom` | 1 500 | G1-G6 gates. Each gate has positive and negative tests; each includes the exact diagnostic snippet from §16.15. `sanitize="suspend"` runtime-test companion for G4. | CI + sanitizer nightly (ASAN, TSAN, SUSPEND-SAN). |
+| `products/zomlang/tests/language/attributes/macro-attr-*.zom` | 900 | `marker M = A + B` structural; proc-macro `Macro` trait contracts; OOM/timeout/cycle (ZOM0680..ZOM0684). Determinism test: 32 parallel runs on the same input must produce identical TokenStream output hashes. | CI. Determinism + sanitizer nightly. |
+| `products/zomlang/tests/language/attributes/codegen-attr-*.zom` | 400 | `repr(C)` layout assertions; `no_mangle` / `link_name` symbol inspection; marker zero-cost: grep LLVM IR for *absence* of marker-related metadata; RUNTIME_REIFIED `.zom_meta` section content. | CI + cross-target nightly (x86_64-linux, arm64-darwin, riscv64-linux). |
+| `products/zomlang/tests/regression/lsp/attr-*.ts` (planned TypeScript LSP client harness) | 400 | Completion ranking; hover schema; goto-def; rename propagation; find-references categorisation. | CI against `zom-lsp` binary. |
+| `products/zomlang/tests/language/attributes/format-attr-*.zom` | 300 | Idempotent formatter on every sample in §16.14; source-position of `@` preserved. | CI. |
 | **Test subtotal** | **6 300** | | |
 
 ### 16.18.3 Phased delivery milestones

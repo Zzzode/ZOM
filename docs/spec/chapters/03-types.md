@@ -94,7 +94,7 @@ Union types represent values that can be one of several types:
 type StringOrNumber = str | i32;
 type Result = Success | Error;
 
-let value: StringOrNumber = "hello";
+mut value: StringOrNumber = "hello";
 value = 42; // Also valid
 
 fun process(input: str | i32 | bool) {
@@ -571,4 +571,3 @@ Cross-reference. The interaction of `Ordering::Release` and
 Ch.15 SS 15.0. The `Shared` marker satisfaction for `Atomic<T>` is used
 by the concurrency pass in Ch.15 SS 15.9 to permit `&Atomic<T>`
 reference captures across spawn boundaries without a diagnostic.
-

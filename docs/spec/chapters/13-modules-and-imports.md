@@ -332,7 +332,7 @@ Explicit named imports resolve before namespace imports; namespace imports resol
 
 ## Diagnostic Code Reference
 
-The following diagnostic codes are emitted by the module, import, and export subsystem. Each code is listed in ARCHITECTURE.md section 8 with its canonical error message and severity class. This table serves only as a cross-reference so that readers of this chapter can map prose rules to numeric codes.
+The following diagnostic codes are emitted by the module, import, and export subsystem. Each code is listed in architecture.md section 8 with its canonical error message and severity class. This table serves only as a cross-reference so that readers of this chapter can map prose rules to numeric codes.
 
 | Code    | Short Name                         | Raised by                                                                   |
 |---------|------------------------------------|-----------------------------------------------------------------------------|
@@ -515,7 +515,7 @@ The following features are intentionally excluded from the v1 module design:
 - Wildcard/glob import (`use path::*`) and wildcard re-export. The v2 plan for glob imports is locked: glob-imported names are considered AFTER all explicit-import and local-declaration names for every lookup, so glob imports by themselves never create ambiguity errors. This locked decision is normative for v1's exclusion scope; it is not an open design question.
 - Default export
 - Expression-based export such as exporting arbitrary property-access expressions
-- Top-level mutable `let` at module scope (use `static` instead)
+- Top-level `mut` at module scope (use `static` instead)
 - Source-file concatenation constructs such as `include!` or `#include`
 - Script mode (omitting a module declaration to run a file top-to-bottom as an ad-hoc program)
 

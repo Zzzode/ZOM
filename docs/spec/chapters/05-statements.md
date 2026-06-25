@@ -30,7 +30,7 @@ An empty statement consists of just a semicolon:
 ;  // Empty statement
 
 // Sometimes useful in loops
-for (let i = 0; i < 10; ++i) ;
+for (mut i = 0; i < 10; ++i) ;
 ```
 
 ## Block Statements
@@ -138,7 +138,7 @@ match (point) {
 
 ```zom
 // Basic while loop
-let i = 0;
+mut i = 0;
 while (i < 10) {
     print(i);
     ++i;
@@ -161,17 +161,17 @@ while (true) {
 
 ```zom
 // C-style for loop
-for (let i = 0; i < 10; ++i) {
+for (mut i = 0; i < 10; ++i) {
     print(i);
 }
 
 // For loop with multiple variables
-for (let i = 0, j = 10; i < j; ++i, --j) {
+for (mut i = 0, j = 10; i < j; ++i, --j) {
     print("i: " + i + ", j: " + j);
 }
 
 // For loop with complex initialization and update
-for (let node = head; node != null; node = node.next) {
+for (mut node = head; node != null; node = node.next) {
     processNode(node);
 }
 
@@ -215,8 +215,9 @@ for (let entry in numbers.enumerate()) {
 
 ```zom
 // Execute at least once
+mut input: str;
 do {
-    let input = readInput();
+    input = readInput();
     processInput(input);
 } while (input != "quit");
 ```
@@ -229,14 +230,14 @@ Exits the nearest enclosing loop or match statement:
 
 ```zom
 // Break from loop
-for (let i = 0; i < 100; ++i) {
+for (mut i = 0; i < 100; ++i) {
     if (i == 50) break;
     print(i);
 }
 
 // Labeled break (break from nested loops)
-outer: for (let i = 0; i < 10; ++i) {
-    for (let j = 0; j < 10; ++j) {
+outer: for (mut i = 0; i < 10; ++i) {
+    for (mut j = 0; j < 10; ++j) {
         if (i * j > 20) break outer;
         print("(" + i + ", " + j + ")");
     }
@@ -249,14 +250,14 @@ Skips the rest of the current loop iteration:
 
 ```zom
 // Skip even numbers
-for (let i = 0; i < 10; ++i) {
+for (mut i = 0; i < 10; ++i) {
     if (i % 2 == 0) continue;
     print(i); // Only prints odd numbers
 }
 
 // Labeled continue
-outer: for (let i = 0; i < 5; ++i) {
-    for (let j = 0; j < 5; ++j) {
+outer: for (mut i = 0; i < 5; ++i) {
+    for (mut j = 0; j < 5; ++j) {
         if (j == 2) continue outer;
         print("(" + i + ", " + j + ")");
     }
@@ -298,7 +299,7 @@ Statements can be labeled for use with break and continue:
 mainLoop: while (true) {
     let input = readInput();
 
-    innerLoop: for (let i = 0; i < input.length; ++i) {
+    innerLoop: for (mut i = 0; i < input.length; ++i) {
         if (input[i] == 'q') break mainLoop;
         if (input[i] == 's') continue mainLoop;
         processCharacter(input[i]);

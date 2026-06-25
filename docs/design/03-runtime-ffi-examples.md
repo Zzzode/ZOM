@@ -1,6 +1,6 @@
 Design Dimension 3: Concurrency Semantics -- Runtime Architecture / Edge Semantics / FFI Interop / Examples.
 
-The following organizes the four sub-dimensions of **Design Dimension 3: Concurrency Semantics** -- Runtime Architecture / Edge Semantics / FFI Interop / Examples. All content is anchored to `/Users/bytedance/Develop/ZOM/docs/concurrency/zom-async-canonical-design.md` (v1.0.0-rc1).
+The following organizes the four sub-dimensions of **Design Dimension 3: Concurrency Semantics** -- Runtime Architecture / Edge Semantics / FFI Interop / Examples. All content is anchored to `docs/concurrency/zom-async-canonical-design.md` (v1.0.0-rc1).
 
 ---
 
@@ -155,8 +155,8 @@ fun read_file_c(path: str, max_bytes: usize) -> Result<Vec<u8>, SystemError> {
         // open POSIX file descriptor via libc FFI
         let fd = open(path.as_ptr(), O_RDONLY, 0);
         if fd < 0 { return Err(SystemError::Io { code: -errno(), detail: "open" }); }
-        let mut buf = Vec<u8>::with_capacity(max_bytes);
-        let mut total = 0;
+        mut buf = Vec<u8>::with_capacity(max_bytes);
+        mut total = 0;
         while total < max_bytes {
             // read up to remaining bytes into buffer tail
             let n = read(fd, buf.as_mut_ptr().add(total), max_bytes - total);
@@ -251,7 +251,7 @@ const CAP: u32     = 256;
 
 /// Producer: sends 1..ITEMS; automatically suspends when full (backpressure)
 fun producer(tx: Sender<u32>) -> Result<u64, SystemError> {
-    let mut checksum: u64 = 0;
+    mut checksum: u64 = 0;
     for (i in 1u32..=ITEMS) {
         tx.send(i)?;              // suspend until send_ev when queue full
         checksum += i as u64;
@@ -262,11 +262,11 @@ fun producer(tx: Sender<u32>) -> Result<u64, SystemError> {
 
 /// Worker: recv computes digit sum and writes to sink
 fun worker(rx: Receiver<u32>, tx: Sender<u32>) -> Result<u64, SystemError> {
-    let mut local_sum: u64 = 0;
+    mut local_sum: u64 = 0;
     loop {
         match rx.recv() {           // suspend when empty; all senders closed -> None
             Some(v) => {
-                let mut n = v; let mut s = 0u32;
+                mut n = v; mut s = 0u32;
                 while n > 0 { s += n % 10; n /= 10; }
                 tx.send(s)?;
                 local_sum += s as u64;
@@ -278,7 +278,7 @@ fun worker(rx: Receiver<u32>, tx: Sender<u32>) -> Result<u64, SystemError> {
 }
 
 fun sink(rx: Receiver<u32>) -> Result<u64, SystemError> {
-    let mut total: u64 = 0;
+    mut total: u64 = 0;
     loop {
         match rx.recv() { Some(v) => total += v as u64, None => break, }
     }
@@ -294,7 +294,7 @@ fun main() -> Result<(), SystemError> {
         // into_shared / dup splits a single endpoint into N shared endpoints
         let worker_rxs = work_rx.into_shared(N_WORKERS);
         let worker_txs = res_tx.dup(N_WORKERS);
-        let mut h_workers = Vec::with_capacity(N_WORKERS as usize);
+        mut h_workers = Vec::with_capacity(N_WORKERS as usize);
         for (i in 0..N_WORKERS) {
             h_workers.push(spawn {
                 worker(worker_rxs[i as usize], worker_txs[i as usize])
@@ -323,8 +323,8 @@ import zom::time::{sleep, milliseconds};
 
 /// Worker: raises Panic with roughly 10% probability
 fun worker(id: u32, iterations: u32) -> Result<u64, SystemError> {
-    let mut rng = thread_rng();
-    let mut counter: u64 = 0;
+    mut rng = thread_rng();
+    mut counter: u64 = 0;
     for (_ in 0..iterations) {
         if rng.gen::<u8>() < 26 {
             raise SystemError::Panic {
@@ -345,7 +345,7 @@ fun main() -> Result<(), SystemError> {
         ErrorPolicy::OneForOne(max_restarts = 3),
         fun(scope: &Scope<Vec<Result<u64, SystemError>>>)
             -> Result<Vec<Result<u64, SystemError>>, SystemError> {
-            let mut handles = Vec::new();
+            mut handles = Vec::new();
             for (id in ids.iter()) {
                 // supervisor internally rebuilds handle after crash; restart count <= maximum 3 times
                 handles.push(spawn { worker(*id, 50) });
@@ -393,7 +393,7 @@ fun main() -> Result<(), SystemError> {
 
 **Core source file anchors**:
 
-- Main specification: `/Users/bytedance/Develop/ZOM/docs/concurrency/zom-async-canonical-design.md`
-- Spec chapter placeholder (pending rewrite): `/Users/bytedance/Develop/ZOM/docs/spec/chapters/15-concurrency.md` (currently holds only 11 lines of reserved declarations)
-- Audit report: `/Users/bytedance/Develop/ZOM/docs/reports/zom-concurrency-audit-2026-06-24.md` (44 findings, 0 critical / 18 high)
+- Main specification: `docs/concurrency/zom-async-canonical-design.md`
+- Spec chapter placeholder (pending rewrite): `docs/spec/chapters/15-concurrency.md` (currently holds only 11 lines of reserved declarations)
+- Audit report: `docs/reports/zom-concurrency-audit-2026-06-24.md` (44 findings, 0 critical / 18 high)
 - Hostile audit 10 unclosed items: Appendix B of the above document
