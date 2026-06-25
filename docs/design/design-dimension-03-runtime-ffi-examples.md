@@ -1,148 +1,143 @@
-现在我已经有了足够的信息。让我再确认一下用户的请求："设计维度 3：并发语义 运行时 边缘语义 FFI 示例"。
+Design Dimension 3: Concurrency Semantics -- Runtime Architecture / Edge Semantics / FFI Interop / Examples.
 
-用户要求我综合设计文档中的并发语义（设计维度3）中关于运行时、边缘语义、FFI 的内容进行整理，并给出示例。让我基于已有的材料，整理出一份清晰的说明文档。
-
-注意用户要求的是「设计维度3」，让我先确认一下这个维度在设计中的具体指代。结合用户可能引用的是ultracode审计工作流中「维度3：并发语义」（因为在zom-design-audit中「维度通常是6维度审计，维度3应该对应「并发与异步」维度。
-
-用户给的明确维度3关键词是「并发语义 运行时 边缘语义 FFI 示例」，与我读取的canonical设计文档完全对应。现在让我整理输出。</think_never_used_51bce0c785ca2f68081bfa7d91973934>
-根据您要求的**设计维度 3：并发语义 之 运行时架构 / 边缘语义 / FFI 互操作 / 示例 四个子维度的整理如下。所有内容锚定到 `/Users/bytedance/Develop/ZOM/docs/concurrency/zom-async-canonical-design.md`（v1.0.0-rc1）。
+The following organizes the four sub-dimensions of **Design Dimension 3: Concurrency Semantics** -- Runtime Architecture / Edge Semantics / FFI Interop / Examples. All content is anchored to `/Users/bytedance/Develop/ZOM/docs/concurrency/zom-async-canonical-design.md` (v1.0.0-rc1).
 
 ---
 
-## 一、运行时（§8 运行时模型）
+## 1. Runtime (Section 8 Runtime Model)
 
-### 1.1 总体架构（M:N + work-stealing + 双级 IO Reactor）
+### 1.1 Overall Architecture (M:N + work-stealing + two-level IO Reactor)
 
 ```mermaid
 flowchart TB
-    subgraph GLOBAL [全局层]
-        INJ[全局注入队列 FIFO<br/>bounded = 1<<16]
+    subgraph GLOBAL [Global Layer]
+        INJ[Global Injection Queue FIFO<br/>bounded = 1<<16]
         DRIVER[IO Driver Thread<br/>epoll/kqueue/IOCP]
-        BLOCKPOOL[阻塞线程池<br/>core=8, max=512<br/>idle 60s 回收]
-        TIMER[分层 Timer Wheel<br/>4 级 × 256 槽 = 2^32 ns ≈ 4.3 s]
+        BLOCKPOOL[Blocking Thread Pool<br/>core=8, max=512<br/>idle 60s reclamation]
+        TIMER[Hierarchical Timer Wheel<br/>4 levels x 256 slots = 2^32 ns ~= 4.3 s]
     end
-    subgraph WORKERS [Workers N = CPU 核数]
-        W1[Worker 1<br/>本地队列 LIFO 256<br/>Reactor kqueue]
-        W2[Worker 2<br/>本地队列 LIFO 256<br/>Reactor kqueue]
+    subgraph WORKERS [Workers N = CPU cores]
+        W1[Worker 1<br/>local queue LIFO 256<br/>Reactor kqueue]
+        W2[Worker 2<br/>local queue LIFO 256<br/>Reactor kqueue]
         WN[Worker N<br/>...]
     end
 
     SPAWN[spawn / spawn_scope] -->|push| W1
     DETACHED[spawn detached] -->|static-lifetime check| INJ
     BLOCKING[spawn blocking] --> BLOCKPOOL
-    IOAPI[net / file / pipe fd] -->|注册| DRIVER
+    IOAPI[net / file / pipe fd] -->|register| DRIVER
 
-    W1 -->|空闲| STEAL1[随机窃取 W2..N 尾部 half]
-    INJ -->|批处理 pop 32| W1
-    DRIVER -->|fd 就绪| W1
-    TIMER -->|到期| W1
+    W1 -->|idle| STEAL1[randomly steal half from W2..N tail]
+    INJ -->|batch pop 32| W1
+    DRIVER -->|fd ready| W1
+    TIMER -->|expired| W1
 ```
 
-### 1.2 调度循环（单 Worker 五步优先级）
+### 1.2 Scheduler Loop (Single Worker Five-Step Priority)
 
-1. **本地 LIFO 队尾**（cache-friendly，父任务刚 spawn 的子任务先运行）
-2. **全局注入队列批处理 pop 32 个**（均摊全局锁开销）
-3. **work-steal**：随机挑其他 Worker，窃取队列前半（chunk = min(remaining/2, 32)
-4. **park 等待三类信号之一**：全局新任务 / IO Driver fd 就绪 / 其他 Worker 窃取唤醒
-5. 被唤醒后回到步骤 1
+1. **Local LIFO queue tail** (cache-friendly; child tasks just spawned by the parent run first)
+2. **Global injection queue batch pop of 32 items** (amortize global lock cost)
+3. **work-steal**: randomly select another Worker, steal the first half of its queue (chunk = min(remaining/2, 32))
+4. **park awaiting one of three signals**: global new task / IO Driver fd ready / another Worker steals-and-wakes
+5. After waking, return to step 1
 
-### 1.3 双级 IO Reactor
+### 1.3 Two-Level IO Reactor
 
-| 层级 | 职责 |
+| Level | Responsibility |
 |---|---|
-| 主 IO Driver（全局唯一） | epoll 主 fd，所有 IO Read/Write/Accept 的 SuspendEvent 最终由其监听 |
-| Per-Worker Reactor | Worker 自己的 epoll/kqueue；本地事件（Channel/Mutex/Timer/TaskComplete）不经过主 Driver |
-| 跨 Worker fd 迁移 | `EPOLL_CTL_DEL(old) → `EPOLL_CTL_ADD(new)` 原子注册，全局注册锁 + 版本号防 ABA |
-| Windows IOCP | OVERLAPPED 投递完成包，Driver 线程路由到空闲 Worker |
+| Main IO Driver (global singleton) | epoll main fd; all IO Read/Write/Accept SuspendEvents are ultimately listened to by it |
+| Per-Worker Reactor | Worker's own epoll/kqueue; local events (Channel/Mutex/Timer/TaskComplete) do not pass through the main Driver |
+| Cross-Worker fd migration | `EPOLL_CTL_DEL(old) -> EPOLL_CTL_ADD(new)` atomic registration, global registration lock + version number to prevent ABA |
+| Windows IOCP | OVERLAPPED posts completion packets; Driver thread routes to idle Worker |
 
-### 1.4 三层公平性 + 防饥饿
+### 1.4 Three-Tier Fairness + Starvation Prevention
 
-| 层级 | 机制 | 成本 |
+| Tier | Mechanism | Cost |
 |---|---|---|
-| Budget 预算 | 每任务 budget = 2 ms / 1024 次等价数；CFG 回边自动 checkpoint；归零时等价 `suspend yield_once()` | ~1 原子减 |
-| Epoch 公平周期计数器 | 全局 epoch 单调递增；调度器优先 epoch 最老的可运行任务 | 排序加权 |
-| 确定性调度种子（det_sched） | `-Z deterministic=SEED:TICKS`；CI 默认 3 组不同 SEED 跑并发测试 | 0，用于可复现 |
-| CPU/IO 双级就绪队列 | CPU : IO = 3:1 **硬配额**（连续 3 次 CPU 出队后**强制**1 次 IO 出队） | 计数器 |
+| Budget | Per-task budget = 2 ms / 1024 equivalence ticks; CFG back-edges force automatic checkpoint; on exhaustion equivalent to `suspend yield_once()` | ~1 atomic decrement |
+| Epoch fairness counter | Global epoch monotonically increasing; scheduler prefers runnable tasks with oldest epoch | weighted ordering |
+| Deterministic scheduling seed (det_sched) | `-Z deterministic=SEED:TICKS`; CI runs concurrency tests with 3 distinct SEEDs by default | 0, for reproducibility |
+| CPU/IO dual-level ready queue | CPU : IO = 3:1 **hard quota** (after 3 consecutive CPU dequeues **mandate** 1 IO dequeue) | counter |
 
 ### 1.5 Timer Wheel
 
-- **4 级 × 256 槽 = 2^32 ns ≈ 4.3 s
-- 最细粒度槽 = 1ns（实际分辨率 ~1μs，tick 周期决定）
-- 取消：intrusive list O(1) 摘除
+- **4 levels x 256 slots = 2^32 ns ~= 4.3 s
+- Finest-grained slot = 1ns (actual resolution ~1us, determined by tick period)
+- Cancelation: intrusive list O(1) removal
 
 ---
 
-## 二、边缘语义（§9 Panic / 栈增长 / 锁顺序）
+## 2. Edge Semantics (Section 9 Panic / Stack Growth / Lock Order)
 
-### 2.1 Suspend 期间 Panic（6 步严格顺序）
+### 2.1 Panic During Suspend (6 strict steps)
 
 ```
-panic 发生
+panic occurs
    │
    ▼
-① TaskHeader.panic_pending = true；CancelToken.requested = true
-   │ （停止向外级联，先清理自身）
+1. TaskHeader.panic_pending = true; CancelToken.requested = true
+   │  (stop outward cascade, clean up self first)
    ▼
-② 零级 unwind：从当前 SP 向上，按 RAII 顺序调用每个栈帧的 drop
-   │  所有 suspend 点活跃的 Linear 值执行 linear-drop
+2. Zero-level unwind: from current SP upward, call drop for each stack frame in RAII order
+   │  perform linear-drop on all Linear values live at suspend points
    ▼
-③  ┌─ Double-Panic（P05）触发？
-   │  ├─ 记录两个 panic payload（文件/行/列/消息）
-   │  ├─ 不再递归 unwind
-   │  ├─ 对未 unwind 的栈帧执行 linear-only cleanup（§B.5）
-   │  └─ 报告 SystemError::DoublePanic{..., leaked_count, linear_cleaned_count} 到 Supervisor
-   │  Policy=Abort → 进程 abort(3)
+3.  ┌─ Double-Panic (P05) triggered?
+   │  ├─ record both panic payloads (file/line/column/message)
+   │  ├─ do not recurse unwind
+   │  ├─ perform linear-only cleanup on un-wound stack frames (Section B.5)
+   │  └─ report SystemError::DoublePanic{..., leaked_count, linear_cleaned_count} to Supervisor
+   │  Policy=Abort -> process abort(3)
    ▼
-④ 任务状态 → Faulted(Panic/DoublePanic；未 consume 句柄注册到 Scope errors
+4. Task state -> Faulted(Panic/DoublePanic; un-consumed handle registered in Scope errors
    ▼
-⑤ 从该任务向上沿 Scope 树逐层级联，每个 parent 按 ErrorPolicy 决定策略
-   │  CancelOnFirstError → 向下取消所有兄弟/侄子
-   │  OneForOne → 仅重启崩溃任务
+5. Cascade upward along the Scope tree from this task; each parent decides strategy per ErrorPolicy
+   │  CancelOnFirstError -> downward-cancel all siblings/nephews
+   │  OneForOne -> only restart the crashed task
    ▼
-⑥ 资源释放结束，Scope drop
+6. Resource release finished; Scope drop
 ```
 
-**关键约束**：panic unwind 路径中**绝对禁止 suspend**（AUD-DO-01 修复）。若 Scope 正处于 unwind 中，其 drop 中 join_all 需跳过 suspend，改为「仅设 CancelToken 不等待」。
+**Key constraint**: suspend is **strictly forbidden** inside the panic unwind path (AUD-DO-01 fix). If a Scope is currently unwinding, the join_all inside its drop must skip suspend and fall back to "set CancelToken only without waiting".
 
-### 2.2 栈增长 / 分段栈 / 栈溢出
+### 2.2 Stack Growth / Segmented Stacks / Stack Overflow
 
-| 项 | 规格 |
+| Item | Specification |
 |---|---|
-| 首段默认 | 64 KiB 虚拟地址 + demand-paged 物理页 |
-| 增长触发 | 函数序言：「当前栈帧大小 + SP 距段尾 < 4 KiB」→ runtime `__zom_stack_grow()` |
-| Guard page | 每段前后各 1 页 `PROT_NONE` |
-| 栈溢出处理 | SIGSEGV → SA_ONSTACK handler → 识别 Task → **精确 panic 到任务级，不崩溃进程** |
-| suspend/resume 栈不变式 | 保存上下文不包括跨段指针；resume 时 runtime 重建段链 |
-| VLA 跨 suspend | 编译器**禁止**（ZOM8007 ERROR）→ 必须堆分配 |
+| First segment default | 64 KiB virtual address + demand-paged physical pages |
+| Growth trigger | Function prologue: "current stack frame size + SP distance to segment tail < 4 KiB" -> runtime `__zom_stack_grow()` |
+| Guard page | 1 page `PROT_NONE` before and after each segment |
+| Stack overflow handling | SIGSEGV -> SA_ONSTACK handler -> identify Task -> **precise task-level panic, process does not crash** |
+| suspend/resume stack invariant | saved context excludes cross-segment pointers; runtime rebuilds segment chain on resume |
+| VLA across suspend | Compiler **forbids** (ZOM8007 ERROR) -> must heap-allocate |
 
-### 2.3 锁顺序规则
+### 2.3 Lock Order Rules
 
-**编译期（lint ZOM8006/8007）：
+**Compile-time (lint ZOM8006/8007):**
 
-| 场景 | 等级 | 机制 |
+| Scenario | Level | Mechanism |
 |---|---|---|
-| MutexGuard 跨 suspend 活跃 | **ERROR** ZOM8006 | `NoInternalMutability` 负 impl + 活跃变量分析 |
-| 同 Scope 内多 Mutex 不同顺序获取 | WARNING ZOM8007 | 顺序冲突图构建 + 环检测 |
-| RwLock{Read,Write}Guard 跨 suspend | ERROR ZOM8006 | 同上负 impl |
+| MutexGuard held live across suspend | **ERROR** ZOM8006 | `NoInternalMutability` negative impl + live variable analysis |
+| Multiple Mutexes acquired in different orders within the same Scope | WARNING ZOM8007 | order conflict graph construction + cycle detection |
+| RwLock{Read,Write}Guard across suspend | ERROR ZOM8006 | same negative impl as above |
 
-**运行时（det_sched 模式）：
-- 全局「锁等待有向图」，边 A→B = 持有 A 的任务等待 B
-- 每次 `lock()` 做 DFS 环检测，发现环即打印完整 cycle 链并**确定性 panic**
+**Runtime (det_sched mode):**
+- Global "lock-wait directed graph", edge A->B = task holding A is waiting for B
+- Each `lock()` call performs a DFS cycle detection; on cycle discovery print the full cycle chain and **deterministically panic**
 
-**三种新增枚举死锁场景（AUD-DL-01）**：
-1. **反向压力跨层死锁**：Scope drop 时 join_all 检测到「worker 本地队列为空但子任务数 > 0」→ 执行 same-worker 内联调度（不 park）
-2. **Supervisor 重启风暴**：重启密度阈值检查，超过则策略升级
-3. **Reactor 路由死锁**：锁顺序强制「永远先 worker reactor 锁 → 再全局注册锁」，与路由方向一致
+**Three newly-enumerated deadlock scenarios (AUD-DL-01):**
+1. **Back-pressure cross-layer deadlock**: on Scope drop, join_all detects "worker local queue empty but child task count > 0" -> executes same-worker inline scheduling (no park)
+2. **Supervisor restart storm**: restart density threshold check; strategy escalates when exceeded
+3. **Reactor routing deadlock**: lock order mandates "always acquire worker reactor lock first -> then global registration lock", consistent with routing direction
 
 ---
 
-## 三、FFI 与 C 互操作（§10）
+## 3. FFI and C Interop (Section 10)
 
-### 3.1 ZOM → 阻塞 C API
+### 3.1 ZOM -> Blocking C API
 
-强制门控：所有阻塞 C API 必须通过 `spawn blocking` 投递到阻塞线程池；`extern "C"` 参数/返回必须 `repr(C)` + `Sendable`。
+Mandatory gating: all blocking C APIs must be dispatched through `spawn blocking` to the blocking thread pool; `extern "C"` parameters/returns must be `repr(C)` + `Sendable`.
 
-**完整示例（§10.1）**：
+**Complete example (Section 10.1)**:
 
 ```zom
 @extern("c", header="fcntl.h")
@@ -157,16 +152,19 @@ import zom::error::SystemError;
 
 fun read_file_c(path: str, max_bytes: usize) -> Result<Vec<u8>, SystemError> {
     let h = spawn blocking fun() -> Result<Vec<u8>, SystemError> {
+        // open POSIX file descriptor via libc FFI
         let fd = open(path.as_ptr(), O_RDONLY, 0);
         if fd < 0 { return Err(SystemError::Io { code: -errno(), detail: "open" }); }
         let mut buf = Vec<u8>::with_capacity(max_bytes);
         let mut total = 0;
         while total < max_bytes {
+            // read up to remaining bytes into buffer tail
             let n = read(fd, buf.as_mut_ptr().add(total), max_bytes - total);
             if n < 0 { close(fd); return Err(SystemError::Io { code: -errno(), detail: "read" }); }
             if n == 0 { break; }
             total = total + n as usize;
         }
+        // always close fd before returning regardless of success
         close(fd);
         buf.set_len(total);
         Ok(buf)
@@ -175,17 +173,17 @@ fun read_file_c(path: str, max_bytes: usize) -> Result<Vec<u8>, SystemError> {
 }
 ```
 
-### 3.2 C → ZOM 异步任务（Opaque ABI + 回调）
+### 3.2 C -> ZOM Async Tasks (Opaque ABI + Callbacks)
 
-C 头文件稳定 ABI：`ZOM_FFI_VERSION = 20260624`。核心思想：**ZOM 内 TaskHandle 是 Linear，C 侧 `ZomTask*` 是 refcounted，二者解耦**（P17 修复）。
+Stable C header ABI: `ZOM_FFI_VERSION = 20260624`. Core principle: **TaskHandle inside ZOM is Linear; `ZomTask*` on the C side is refcounted; the two are decoupled** (P17 fix).
 
-**C 调用 ZOM 异步示例**：
+**Example of C calling a ZOM async function**:
 
 ```c
-/* zom_concurrency.h —— 节选（完整定义见规范 §10.2）
- *  核心：retain/release 对称、on_complete 回调、take_result 移动语义
+/* zom_concurrency.h -- excerpt (full definition in spec Section 10.2)
+ *  Core: symmetric retain/release, on_complete callback, take_result move semantics
  */
-typedef struct ZomTask ZomTask;   // 对应 TaskHandle<T>，refcounted
+typedef struct ZomTask ZomTask;   // corresponds to TaskHandle<T>, refcounted
 typedef void (*ZomTaskCallback)(ZomTask* t, void* userdata);
 
 ZomTask*  zom_task_retain(ZomTask* t);
@@ -196,21 +194,24 @@ void         zom_task_free_result(void* result_ptr, size_t size);
 ZomError    zom_task_cancel(ZomTask* t);
 ```
 
-**使用示例**：
+**Usage example**:
 
 ```c
-// C 侧调用 ZOM 暴露的异步 HTTP GET
+// C side calling an async HTTP GET exposed by ZOM
 extern ZomTask* zom_http_get(const char* url, size_t url_len);
 extern ZomError zom_result_to_str(const void* p, size_t s, char* out, size_t out_cap);
 
 static void on_http_done(ZomTask* t, void* userdata) {
+    // extract the result payload; must be freed via zom_task_free_result
     void *p = NULL; size_t sz = 0;
     if (zom_task_take_result(t, &p, &sz) == ZOM_OK) {
         char buf[256];
+        // convert opaque result bytes to NUL-terminated string for display
         zom_result_to_str(p, sz, buf, sizeof(buf));
         printf("HTTP resp: %s\n", buf);
         zom_task_free_result(p, sz);
     }
+    // symmetrically release the task handle whether or not result was taken
     zom_task_release(t);
 }
 
@@ -218,26 +219,26 @@ void run(void) {
     zom_runtime_init(4, 64);
     ZomTask* t = zom_http_get("https://example.com/", 21);
     zom_task_on_complete(t, on_http_done, NULL);
-    // C 事件循环继续；ZOM runtime worker 后台运行
+    // C event loop continues; ZOM runtime workers run in background
 }
 ```
 
-### 3.3 跨边界内存契约
+### 3.3 Cross-Boundary Memory Contract
 
-| 方向 | 保证 | 实现 |
+| Direction | Guarantee | Implementation |
 |---|---|---|
-| **ZOM → C** | C 端 `zom_event_signal` 前写入的普通内存，ZOM suspend 返回后必然可见 | `SuspendEvent::set()` 内部 `atomic_store(READY, release)` + ZOM 侧 `atomic_load(READY, acquire)` 成对栅栏，无需额外 fence |
-| **C → ZOM** | 非 SuspendEvent 路径共享内存通信 | ZOM 侧必须显式 `Atomic*` + `ZomMemoryOrder`；否则 Sendable/Shared 门控编译期拦截 |
-| **Linear 跨边界** | ZOM 内 Linear；C 侧 refcounted；ASan 模式兜底 | `retain`/`release` 对称；ASan 检测 release 后二次 retain/poll |
-| **AUD-FC-01 修复** | 裸 OS 线程 → ZOM 运行时边界 | `#[zom::requires_executor]` 属性 + 编译期 caller-location 检查；裸线程调用含 suspend 的库函数 → lint ERROR；`extern "C"` 入口需显式 `zom_runtime_enter()` |
+| **ZOM -> C** | Ordinary memory written by C side before `zom_event_signal` is necessarily visible after ZOM suspend returns | `SuspendEvent::set()` internal `atomic_store(READY, release)` paired with ZOM side `atomic_load(READY, acquire)` fence; no extra fence required |
+| **C -> ZOM** | Shared-memory communication on non-SuspendEvent paths | ZOM side must explicitly use `Atomic*` + `ZomMemoryOrder`; otherwise Sendable/Shared gating intercepts at compile time |
+| **Linear across boundary** | Linear inside ZOM; refcounted on C side; ASan mode fallback | Symmetric `retain`/`release`; ASan detects double retain/poll after release |
+| **AUD-FC-01 fix** | Bare OS thread -> ZOM runtime boundary | `#[zom::requires_executor]` attribute + compile-time caller-location check; bare thread calling a library function containing suspend -> lint ERROR; `extern "C"` entry points require explicit `zom_runtime_enter()` |
 
 ---
 
-## 四、完整示例程序（§11，4 个完整示例）
+## 4. Complete Example Programs (Section 11, 4 complete examples)
 
-### 示例 11.3 有界 MPMC：1 生产 / 4 工作 / 1 汇聚
+### Example 11.3 Bounded MPMC: 1 Producer / 4 Workers / 1 Sink
 
-**核心展示**：Channel backpressure（CAP=256）、Linear RAII close、`join_all、共享端点拆分。
+**Core demonstration**: Channel backpressure (CAP=256), Linear RAII close, `join_all`, shared endpoint splitting.
 
 ```zom
 import zom::sync::{spawn_scope, Channel, Sender, Receiver, join_all};
@@ -248,22 +249,22 @@ const ITEMS: u32   = 100_000;
 const N_WORKERS: u32 = 4;
 const CAP: u32     = 256;
 
-/// 生产者：发送 1..ITEMS，满时自动 suspend（backpressure）
+/// Producer: sends 1..ITEMS; automatically suspends when full (backpressure)
 fun producer(tx: Sender<u32>) -> Result<u64, SystemError> {
     let mut checksum: u64 = 0;
     for (i in 1u32..=ITEMS) {
-        tx.send(i)?;              // 队列满时 suspend until send_ev
+        tx.send(i)?;              // suspend until send_ev when queue full
         checksum += i as u64;
     }
-    // tx RAII drop = 自动 close（Linear auto-consume
+    // tx RAII drop = automatic close (Linear auto-consume)
     Ok(checksum)
 }
 
-/// 工作者：recv 计算数字位和写入 sink
+/// Worker: recv computes digit sum and writes to sink
 fun worker(rx: Receiver<u32>, tx: Sender<u32>) -> Result<u64, SystemError> {
     let mut local_sum: u64 = 0;
     loop {
-        match rx.recv() {           // 空时 suspend；全部 sender close → None
+        match rx.recv() {           // suspend when empty; all senders closed -> None
             Some(v) => {
                 let mut n = v; let mut s = 0u32;
                 while n > 0 { s += n % 10; n /= 10; }
@@ -290,7 +291,7 @@ fun main() -> Result<(), SystemError> {
         let (res_tx,  res_rx)  = Channel::<u32>::bounded(CAP * 2).split();
 
         let h_prod = spawn { producer(work_tx) };
-        // into_shared / dup 把单一端点拆为 N 个共享端点
+        // into_shared / dup splits a single endpoint into N shared endpoints
         let worker_rxs = work_rx.into_shared(N_WORKERS);
         let worker_txs = res_tx.dup(N_WORKERS);
         let mut h_workers = Vec::with_capacity(N_WORKERS as usize);
@@ -312,7 +313,7 @@ fun main() -> Result<(), SystemError> {
 }
 ```
 
-### 示例 11.4 Supervisor 树：3 工作者 OneForOne 重启
+### Example 11.4 Supervisor Tree: 3 Workers OneForOne Restart
 
 ```zom
 import zom::sync::{supervisor_scope, ErrorPolicy, join_all};
@@ -320,7 +321,7 @@ import zom::error::SystemError;
 import zom::rand::{thread_rng, Rng};
 import zom::time::{sleep, milliseconds};
 
-/// 工作者：约 10% 概率 raise Panic
+/// Worker: raises Panic with roughly 10% probability
 fun worker(id: u32, iterations: u32) -> Result<u64, SystemError> {
     let mut rng = thread_rng();
     let mut counter: u64 = 0;
@@ -337,7 +338,7 @@ fun worker(id: u32, iterations: u32) -> Result<u64, SystemError> {
     Ok(counter)
 }
 
-/// OneForOne(max_restart = 3)；单崩溃单重启，超过后策略升级
+/// OneForOne(max_restart = 3); single-crash single-restart, strategy escalates after exceeding limit
 fun main() -> Result<(), SystemError> {
     let ids = [1u32, 2, 3];
     let result = supervisor_scope(
@@ -346,7 +347,7 @@ fun main() -> Result<(), SystemError> {
             -> Result<Vec<Result<u64, SystemError>>, SystemError> {
             let mut handles = Vec::new();
             for (id in ids.iter()) {
-                // supervisor 在崩溃后内部重建 handle，重启计数 <= 最多 3 次
+                // supervisor internally rebuilds handle after crash; restart count <= maximum 3 times
                 handles.push(spawn { worker(*id, 50) });
             }
             Ok(join_all(handles.as_slice()))
@@ -373,26 +374,26 @@ fun main() -> Result<(), SystemError> {
 
 ---
 
-## 五、敌对审计未闭环缺陷（附录 B，实现前必须闭环的 showstopper）
+## 5. Hostile Audit Unclosed Defects (Appendix B, showstoppers that must be closed before implementation)
 
-| ID | 严重度 | 标题 | 修复优先级 |
+| ID | Severity | Title | Fix Priority |
 |---|---|---|---|
-| B.1 AUD-FC-01 | 🔴 Critical | 零函数颜色在运行时边界静默违反（裸 OS 线程 → ZOM 运行时） | P0，实现前闭环 |
-| B.2 AUD-DL-01 | 🔴 Critical | 三种未枚举死锁（跨层/重启风暴/Reactor 路由） | P0 |
-| B.3 AUD-DR-01 | 🔴 Critical | Channel 单 waker 竞态 + Shared 未负 impl UnsafeCell | P0 |
-| B.4 AUD-DO-01 | 🟠 High | Scope RAII drop 中 suspend 与 panic unwind 互斥矛盾 | P1，并行实现 |
-| B.5 AUD-DO-02 | 🟠 High | Double-Panic 路径静默泄漏 + 永久 Mutex 毒化 | P1 |
-| B.6 AUD-ST-01 | 🟠 High | select 确定性索引饥饿 + CPU/IO 软权重 | P1 |
-| B.7 AUD-NU-01 | 🟠 High | TaskHeader + 全局队列 false-sharing | P1 |
-| B.8 AUD-CT-01 | 🟠 High | 多处声称编译期强制实际不可 sound | P1 |
-| B.9 AUD-RL-01 | 🟡 Medium | spawn_scope 生命周期门控 HRTB 缺口 | P2 |
-| B.10 AUD-RL-02 | 🟡 Medium | Receiver/Sender Drop 路径不完整 | P2 |
+| B.1 AUD-FC-01 | Critical | Zero function color silently violated at runtime boundary (bare OS thread -> ZOM runtime) | P0, close before implementation |
+| B.2 AUD-DL-01 | Critical | Three unenumerated deadlocks (cross-layer / restart storm / Reactor routing) | P0 |
+| B.3 AUD-DR-01 | Critical | Channel single-waker race + Shared missing negative impl for UnsafeCell | P0 |
+| B.4 AUD-DO-01 | High | Scope RAII drop suspend and panic unwind mutually exclusive contradiction | P1, parallel implementation |
+| B.5 AUD-DO-02 | High | Double-Panic path silent leak + permanent Mutex poisoning | P1 |
+| B.6 AUD-ST-01 | High | select deterministic index starvation + CPU/IO soft weight | P1 |
+| B.7 AUD-NU-01 | High | TaskHeader + global queue false-sharing | P1 |
+| B.8 AUD-CT-01 | High | Multiple claims of compile-time enforcement not actually sound | P1 |
+| B.9 AUD-RL-01 | Medium | spawn_scope lifetime gating HRTB gap | P2 |
+| B.10 AUD-RL-02 | Medium | Receiver/Sender Drop path incomplete | P2 |
 
 ---
 
-**核心源文件锚点**：
+**Core source file anchors**:
 
-- 主规范：`/Users/bytedance/Develop/ZOM/docs/concurrency/zom-async-canonical-design.md`
-- Spec 章节占位（待重写）：`/Users/bytedance/Develop/ZOM/docs/spec/chapters/15-concurrency.md`（目前仅 11 行保留声明）
-- 审计报告：`/Users/bytedance/Develop/ZOM/docs/reports/zom-concurrency-audit-2026-06-24.md`（44 条 findings，0 critical / 18 high）
-- 敌对审计 10 条未闭环：上述文档 §附录 B
+- Main specification: `/Users/bytedance/Develop/ZOM/docs/concurrency/zom-async-canonical-design.md`
+- Spec chapter placeholder (pending rewrite): `/Users/bytedance/Develop/ZOM/docs/spec/chapters/15-concurrency.md` (currently holds only 11 lines of reserved declarations)
+- Audit report: `/Users/bytedance/Develop/ZOM/docs/reports/zom-concurrency-audit-2026-06-24.md` (44 findings, 0 critical / 18 high)
+- Hostile audit 10 unclosed items: Appendix B of the above document

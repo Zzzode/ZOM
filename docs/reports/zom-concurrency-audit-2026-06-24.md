@@ -266,7 +266,7 @@ SymbolFlags 虽然有 Unsafe 位（1ULL << 39），但 lexer/parser 中没有 un
 未来的 Mutex::get_mut（无锁引用）、Atomic::compare_exchange_weak、裸指针读写等并发不安全 API 没有语言级的强制审计点。所有并发不安全操作只能靠文档说明，无法在编译期被编译器强制要求显式声明。
 
 **修复建议**  
-在 v1 中至少完成三件事：(1) 在 lexical 章节把 unsafe 加入 Future Reserved Keywords；(2) 在 parser 中预留 unsafeFn / unsafeBlock 的 parse 骨架（立即报 Unsupported）；(3) 在 Concurrent API 设计文档中列出至少 10 个需要 unsafe 门控的具体签名（如 Mutex::get_mut_unchecked、Arc::make_mut、atomic.store with relaxed order on non-atomic）。
+在 v1 中至少完成三件事：(1) 在 lexical 章节把 unsafe 加入 Future Reserved Keywords；(2) 在 parser 中预留 unsafeFn / unsafeBlock 的 parse 骨架（立即报 Unsupported）；(3) 在 Concurrent API 设计文档中列出至少 10 个需要 unsafe 门控的具体签名（如 Mutex::get_mut_unchecked、Arc::make_mut、atomic.store with relaxed order on non-atomic）。 (RESOLVED 2026-06-26: Ch.15 SS 15.8 PIP mutex with priority-ordered + FIFO-within-priority wakeup (F-4 fairness rule))
 **评审备注**
 - 确认方: ## 核验后的精确证据表（附修正）
 
@@ -1345,7 +1345,7 @@ zc 提供的高层并发原语完整且 unittest 覆盖充分：
 **类别**: 调度器/执行器 | **置信度**: 98%
 
 **问题描述**  
-EventLoop 的队列只有 depthFirstInsertPoint（Promise 回调链、类似 DFS）和 breadthFirstInsertPoint（evalLater 显式让渡，类似 BFS）两个插入点。没有 per-event 权重、没有时间片、没有最长运行时间上限、没有 starvation 检测、没有尾延迟预算。yieldUntilWouldSleep 只是在 sleep 前执行一轮，不是公平性原语。单个长回调就能延迟所有其它事件。
+EventLoop 的队列只有 depthFirstInsertPoint（Promise 回调链、类似 DFS）和 breadthFirstInsertPoint（evalLater 显式让渡，类似 BFS）两个插入点。没有 per-event 权重、没有时间片、没有最长运行时间上限、没有 starvation 检测、没有尾延迟预算。yieldUntilWouldSleep 只是在 sleep 前执行一轮，不是公平性原语。单个长回调就能延迟所有其它事件。 (RESOLVED 2026-06-26: Ch.15 SS 15.16 fairness formalization, F-1 bounded-stealing rule + K=2×N×(1+d) guarantee)
 
 **证据**
   - /Users/bytedance/Develop/ZOM/libraries/zc/async/async.h:1260 — `_::Event** depthFirstInsertPoint = &head; _::Event** breadthFirstInsertPoint = &head;`

@@ -88,7 +88,7 @@ UserRecord
 // Unicode identifiers
 π
 α_beta
-变量名
+café
 идентификатор
 
 // With escape sequences
