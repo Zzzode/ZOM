@@ -17,7 +17,7 @@
 
 ## 1. Executive Scope & Non-Goals
 
-ZOM is a statically typed, ahead-of-time compiled systems programming language targeting LLVM 18 and later. The compiler emits native object files with zero mandatory runtime overhead; every language feature maps to deterministic machine code whose cost a reader can predict from source syntax alone. The design centers two non-negotiable pillars: memory safety without a garbage collector, and structured concurrency baked into the type system via the ownership, permission, and marker rules defined in `docs/design/zis-internal-spec.md` and the runtime discipline in `docs/concurrency/zom-async-canonical-design.md`.
+ZOM is a statically typed, ahead-of-time compiled systems programming language targeting LLVM 18 and later. The compiler emits native object files with zero mandatory runtime overhead; every language feature maps to deterministic machine code whose cost a reader can predict from source syntax alone. The design centers two non-negotiable pillars: memory safety without a garbage collector, and structured concurrency baked into the type system via the ownership, permission, and marker rules defined in `docs/design/compiler-contracts.md` and the runtime discipline in `docs/concurrency/zom-async-canonical-design.md`.
 
 The minimal viable language surface covers: nominal structs and enums with pattern matching, first-class functions with generics (monomorphized, trait-bounded), explicit `own` / `borrow` / `mut` permissions, `async fn` + `await` with a fixed single-thread-per-core executor, deterministic `defer` / `errdefer` finalization, and a thin foreign-function interface layer over C calling conventions. The standard library (`libraries/zc`) ships the allocator, containers, async runtime, and platform abstractions required to produce freestanding binaries on Linux, macOS, and Windows on AArch64 and x86_64.
 
@@ -66,7 +66,7 @@ The repository follows a flat filesystem layout under `src/` where each module o
 | `src/symbol/scopes` | `Scope`, `ScopeKind`, `ScopeIterator` | Hierarchical name-lookup containers supporting lexical, module, and trait dispatch levels | Inserted `Symbol*` | Resolved `SymbolRef` | Scopes are append-only post-bind |
 | `src/symbol/flags` | `DeclFlags`, `TypeFlags`, `PermSet` | Compact bitfield sets that encode permissions, mutability, linkage, and marker membership | Bitwise OR inputs | Packed 64-bit flag words | Value types; copied freely |
 | `src/symbol/tables` | `SymbolTable`, `Symbol`, `SymbolId` | Fused hash + stable-index storage for every named declaration across all translation units | `Name` + `ScopeId` inserts | `SymbolId` + `Symbol*` lookups | `SymbolTable` is COW across TUs; see §4 |
-| `src/checker` | `TypeChecker`, `TypeEnv`, `Constraint` | Unify types, discharge trait bounds, enforce permission flow, and resolve marker coherence per `docs/design/zis-internal-spec.md` §3–§5 | `Borrow<SyntaxTree>` + `ScopeTree` + `&mut TypeEnv` | Fully inferred `TypeEnv` with solved `TypeVar` | TypeEnv is COW; checker returns a new instance on error-free paths |
+| `src/checker` | `TypeChecker`, `TypeEnv`, `Constraint` | Unify types, discharge trait bounds, enforce permission flow, and resolve marker coherence per `docs/design/compiler-contracts.md` §3–§5 | `Borrow<SyntaxTree>` + `ScopeTree` + `&mut TypeEnv` | Fully inferred `TypeEnv` with solved `TypeVar` | TypeEnv is COW; checker returns a new instance on error-free paths |
 | `src/diagnostic/codes` | `DiagCode`, `DiagRegistry`, `Severity` | Central registry of every diagnostic emitted by any subsystem; mirror of §8 | Static code metadata | `Expected<T>` style rich error payloads | POD; copied on emission |
 | `src/diagnostic/emitter` | `DiagnosticEngine`, `SourceManager`, `DiagRenderer` | Render typed diagnostics to terminal, SARIF, or JSON with caret lines, fix-it hints, and cross-reference anchors | `Diagnostic` record | Rendered text or structured output | Engine is owned by `CompilerSession`; renderer borrows all inputs |
 | `src/driver/CompilerSession` | `CompilerSession`, `SessionOptions`, `CompilationUnit` | Central coordinator that owns all shared state and sequences the pipeline across all stages | CLI args, source file list | Final artifact stream | Session owns every sub-object via `zc::Own`; see §7 |
@@ -129,7 +129,7 @@ Passes inside the type-checker and marker-coherence phases execute in a fixed to
 | 5 | Expression type inference | `src/checker` | Signatures + trait impls | Every `Expr` node carries a solved `Type*` |
 | 6 | Pattern exhaustiveness | `src/checker` (match pass) | Expression types solved | `ZOM1002` raised for missing cases |
 | 7 | Permission / borrowck | `src/checker` (borrowck) | All types solved | `PermSet` annotated on every `Expr`; borrow-moves discharged |
-| 8 | Marker coherence | `src/checker` (coherence) | `PermSet` on expressions | `Send`, `Sync`, `Unpin` markers finalized per `docs/design/zis-internal-spec.md` §5 |
+| 8 | Marker coherence | `src/checker` (coherence) | `PermSet` on expressions | `Send`, `Sync`, `Unpin` markers finalized per `docs/design/compiler-contracts.md` §5 |
 | 9 | Concurrency pass | `src/checker` (concurrency) | Marker coherence done | `ZOM8xxx` raised for cross-executor borrow escapes |
 | 10 | Attribute handler run | `src/parser` attr hooks | Full typed AST | Side effects and `ZOM06xx` diagnostics attached |
 | 11 | Lint pipeline | extensions `LintPass` | Pass 1–10 clean | `ZOM12xx` warnings emitted |
@@ -284,7 +284,7 @@ sequenceDiagram
         GTC-->>DRV: solved TypeEnv + diags per CU
     end
     DRV->>GTC: checkMarkerCoherence(globals)
-    GTC-->>DRV: coherence result (see zis-internal-spec.md §5)
+    GTC-->>DRV: coherence result (see compiler-contracts.md §5)
     alt any error-severity diag
         DRV->>OW: render all diagnostics
         DRV->>CLI: exit(1)
@@ -410,7 +410,7 @@ private:
 
 ## 8. Diagnostic Numbering Plan
 
-Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by a four-digit decimal code in the closed range `0000`–`9999`. Codes are never reused; deprecating a diagnostic retires its code permanently. This table is the canonical allocation authority that `docs/design/zis-internal-spec.md` §2 reproduces bit-identically for the three columns `Range`, `Owner`, and `Min-Severity`.
+Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by a four-digit decimal code in the closed range `0000`–`9999`. Codes are never reused; deprecating a diagnostic retires its code permanently. This table is the canonical allocation authority that `docs/design/compiler-contracts.md` §2 reproduces bit-identically for the three columns `Range`, `Owner`, and `Min-Severity`.
 
 | Range (start–end) | Subsystem | Owner (filesystem path) | Min-Severity | Example Code + Description |
 |---|---|---|---|---|
@@ -707,7 +707,7 @@ Coverage floors are enforced via `llvm-cov` gating in CI: lexer and parser modul
 | 4 | BND-01 | Binder | 1024-CU diamond-module test binds without deadlock or `ZOM0805` false positive |
 | 5 | BND-02 | Binder | Every `ZOM03nn` diagnostic code is exercised by ≥ 1 dedicated lit test |
 | 6 | CHK-01 | Type Checker | 50,000 randomly-generated generic trait-solver queries complete with no crashes |
-| 7 | CHK-02 | Type Checker | Marker coherence engine discharges 100% of `zis-internal-spec.md` §5 examples with expected diagnostics |
+| 7 | CHK-02 | Type Checker | Marker coherence engine discharges 100% of `compiler-contracts.md` §5 examples with expected diagnostics |
 | 8 | PERM-01 | Permission / Borrowck | Translated Miri test corpus of 1200 classic borrow-checker examples yields no false negatives |
 | 9 | CONC-01 | Concurrency Pass | Every `ZOM8xxx` diagnostic in §8 has ≥ 1 passing lit test validating exact error substring |
 | 10 | CONC-02 | Runtime | `docs/concurrency/zom-async-canonical-design.md` example suite compiles, runs under TSan, and reports zero races |
