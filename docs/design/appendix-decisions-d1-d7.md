@@ -47,7 +47,7 @@
 **推荐方案**：条件通过（CONDITIONAL GO）——保留三核心 marker 方向，必须在实现前完成 7 项强制修正
 
 **语法契合度**：语法层 3 处不匹配，严重度 HIGH：
-① 设计文档全线使用 `trait` 关键字（§7.1 `unsafe trait Sendable {}`），但 SPEC ch.09 仅定义了 `interface` 关键字（`interface Drawable { ... }`），`class Button implements X, Y {}` 为唯一实现路径。独立 `impl<T> Sendable for Foo {}` 语法、`negative impl` 语法、`auto_trait` 修饰符——三者在当前语法中均不存在。
+① 设计文档全线使用 `trait` 关键字（§7.1 `unsafe trait Sendable {}`），但 SPEC ch.09 仅定义了 `interface` 关键字（`interface Drawable { ... }`），`impl I for T {}` 独立块为唯一实现路径。独立 `impl<T> Sendable for Foo {}` 语法、`negative impl` 语法、`auto_trait` 修饰符——三者在当前语法中均不存在。
 ② 设计大量使用 `#[linear]` / `#[zom::runtime_only]` / `#[zom::scope_guard]` 等内建属性，但 SPEC ch.16 明文声明「Attribute and annotation syntax is reserved for future language design」。
 ③ `unsafe` 关键字/语法块在任一 SPEC 章节（ch.09 interfaces、ch.12 generics、ch.14 memory）中均未出现；`unsafe trait` 与 `unsafe impl` 的语法合法性为零。
 三者合计：设计方向正确，但语法载体与现有 SPEC 完全断裂。需在落地前统一关键字命名体系，且不能违反 NP-6（仅 suspend/spawn 两个新并发关键字）——建议复用 `interface` 并扩展修饰符，不引入 `trait` 新关键字。
@@ -81,14 +81,14 @@
 - R1🔴 关键字命名战争：设计内部统一使用 `trait`，SPEC 使用 `interface`。若不提前统一，实现中途将出现 AST 节点 / diagnostic 命名 / 文档三方不互通。必须在立项 48 小时内定案，推荐方案：复用 `interface`（`unsafe marker interface Sendable` 语法，新增 `marker` 修饰符 + `unsafe` 关键字，不引入 `trait` 新关键字）。
 - R2🔴 UnsafeCell 负 impl 缺失导致整体系 sound：若 B.3-B 不在实现第一行代码前写入规范正文，编译期会静默放行最核心的数据竞争场景。该问题在 Rust 历史上是 2015 年 pre-1.0 的 CVE 级缺陷，ZOM 没有理由重复犯错。
 - R3🟠 Linear 检查器在 panic-unwind 边界的双标语义：正常路径编译期强保证，异常路径运行时 best-effort。若不显式文档化并降级为「在 unsafe 块中可被绕过」，用户会形成错误心智模型（「Linear = 永远恰好一次」），在 FFI + panic 组合场景出现资源泄漏或 double-free。
-- R4🟠 Auto-trait 与 OOP interface 现有设计的哲学冲突：SPEC ch.09 的 interface 目前是 nominal + class-implements 的 OOP 模型（class 内部写 implements，每类显式声明）。Auto-trait 本质是 structural（按字段结构自动推导），两者在同一 interface 关键字下共存需要明确的「marker interface 与普通 interface 的分裂规则」——最典型的冲突：`class Foo implements Bar {}` 显式实现普通 interface Bar，同时 auto-trait Sendable 因为字段有 `*mut u8` 而隐式为 !Sendable，用户在类声明处看不到这一点。
+- R4🟠 Auto-trait 与 OOP interface 现有设计的哲学冲突：SPEC ch.09 的 interface 目前是 nominal + class-implements 的 OOP 模型（class 内部写 implements，每类显式声明）。Auto-trait 本质是 structural（按字段结构自动推导），两者在同一 interface 关键字下共存需要明确的「marker interface 与普通 interface 的分裂规则」——最典型的冲突：`impl Bar for Foo {}` 显式实现普通 interface Bar，同时 auto-trait Sendable 因为字段有 `*mut u8` 而隐式为 !Sendable，用户在类声明处看不到这一点。
 - R5🟠 HRTB 能力缺口：若借用分析器未达 HRTB 级别即启动 spawn_scope 实现，P10 会降级为运行时检查，编译期 18/20 的陷阱覆盖率数字即不成立，整体对外宣称的「18 compile / 1 runtime / 1 sanitizer」矩阵需立即修订为 16/3/1。
 - R6🟡 跨 suspend 锁检查（NoInternalMutability）的假阳性/假阴性平衡：liveness 若采用 lexical scope（简单实现），`drop(guard); suspend;` 这种显式 drop 会被错误判为 ZOM8006；若采用 flow-sensitive（正确实现），复杂度上升一个数量级且诊断信息难以理解。用户体验与正确性的矛盾点。
 - R7🟡 `Movable` 负 impl 的传播不透明：类型因依赖 OS TLS 而负 impl Movable，聚合了它的 struct 自动 !Movable，用户在 3 层嵌套后无法定位原因。必须在诊断中给出完整的负 impl 传播链，类似 Rust 的 `the trait Send is not implemented for *mut u8` 的字段级展开。
 
 **下游绑定约束**：
 
-D2 标记体系决议向下游绑定以下 5 条不可变约束，任何后续并发子系统设计（运行时、scope、channel、FFI）不得违反：\n\n【DS-1 关键字约束】 不得引入 `trait` 作为新关键字。所有 marker 语义必须通过扩展 `interface` 表达（新增修饰符 `marker` / `unsafe` / `auto`；实现语法统一为 `impl InterfaceName for TypeName {}`，与 OOP 的 `class implements` 分流）。\n\n【DS-2 原子顺序约束】 跨 `Sendable` 边界的内存可见性保证为「C11 SeqCst 语义的子集」：spawn 将任务入队的原子操作（§5.2 `原子 push`）与 worker 取出任务的原子 pop 之间构成天然的 release-acquire 对，用户无需额外 fence。文档化这一保证，避免下游 FFI 层过度插入屏障。\n\n【DS-3 Linear 不可绕过约束】 Linear 类型的编译期检查在 `unsafe` 块中可以被显式绕过（`unsafe { forget(linear_value) }`），但编译器必须在 UNSAFE_USAGE 诊断列表中输出具体 Linear 类型名与行号。纯 safe 代码中 Linear 必须维持编译期 100% 保证。\n\n【DS-4 陷阱矩阵公开约束】 若 R5（HRTB 缺口）在实现阶段未解决，P10 必须立即从 `compile` 降级为 `compile+runtime`，20 陷阱矩阵对外公开数字由 18/1/1 修正为 16/3/1，并在 CHANGELOG 首条显示。禁止虚假宣传编译期覆盖率。\n\n【DS-5 B.3 前置条件约束】 编译器首条支持 marker 的提交必须包含 `UnsafeCell<T>` 的 `!Shared` 负 impl + 对应 lit 测试（L03-bis：`struct X{ c: UnsafeCell<u32> }` 被 spawn 以 `&X` 捕获 → ZOM8002 错误）。缺失该测试，整条 PR 不得合入。"}
+D2 标记体系决议向下游绑定以下 5 条不可变约束，任何后续并发子系统设计（运行时、scope、channel、FFI）不得违反：\n\n【DS-1 关键字约束】 不得引入 `trait` 作为新关键字。所有 marker 语义必须通过扩展 `interface` 表达（新增修饰符 `marker` / `unsafe` / `auto`；实现语法统一为 `impl InterfaceName for TypeName {}`（接口与 marker 共享的统一实现语法））。\n\n【DS-2 原子顺序约束】 跨 `Sendable` 边界的内存可见性保证为「C11 SeqCst 语义的子集」：spawn 将任务入队的原子操作（§5.2 `原子 push`）与 worker 取出任务的原子 pop 之间构成天然的 release-acquire 对，用户无需额外 fence。文档化这一保证，避免下游 FFI 层过度插入屏障。\n\n【DS-3 Linear 不可绕过约束】 Linear 类型的编译期检查在 `unsafe` 块中可以被显式绕过（`unsafe { forget(linear_value) }`），但编译器必须在 UNSAFE_USAGE 诊断列表中输出具体 Linear 类型名与行号。纯 safe 代码中 Linear 必须维持编译期 100% 保证。\n\n【DS-4 陷阱矩阵公开约束】 若 R5（HRTB 缺口）在实现阶段未解决，P10 必须立即从 `compile` 降级为 `compile+runtime`，20 陷阱矩阵对外公开数字由 18/1/1 修正为 16/3/1，并在 CHANGELOG 首条显示。禁止虚假宣传编译期覆盖率。\n\n【DS-5 B.3 前置条件约束】 编译器首条支持 marker 的提交必须包含 `UnsafeCell<T>` 的 `!Shared` 负 impl + 对应 lit 测试（L03-bis：`struct X{ c: UnsafeCell<u32> }` 被 spawn 以 `&X` 捕获 → ZOM8002 错误）。缺失该测试，整条 PR 不得合入。"}
 
 **否决方案**：
 

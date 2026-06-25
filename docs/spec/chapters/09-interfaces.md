@@ -19,7 +19,7 @@ interface Movable {
 ### Interface Implementation
 
 ```zom
-class Button implements Drawable, Movable {
+class Button {
     private let position: Point;
     private let size: Size;
     private let text: str;
@@ -29,8 +29,9 @@ class Button implements Drawable, Movable {
         this.size = size;
         this.text = text;
     }
+}
 
-    // Implementing Drawable
+impl Drawable for Button {
     public fun draw() {
         // Draw button implementation
         print("Drawing button: " + this.text);
@@ -39,8 +40,9 @@ class Button implements Drawable, Movable {
     public fun getBounds() -> Rectangle {
         return Rectangle(this.position, this.size);
     }
+}
 
-    // Implementing Movable
+impl Movable for Button {
     public fun move(deltaX: f64, deltaY: f64) {
         this.position.x += deltaX;
         this.position.y += deltaY;
@@ -104,10 +106,12 @@ interface Collection<T> {
     fun size() -> i32;
 }
 
-class ArrayList<T> implements Collection<T> {
-    type Iterator = ArrayListIterator<T>;
-
+class ArrayList<T> {
     private let items: T[];
+}
+
+impl Collection<T> for ArrayList<T> {
+    type Iterator = ArrayListIterator<T>;
 
     public fun iterator() -> ArrayListIterator<T> {
         return ArrayListIterator(this.items);
@@ -163,7 +167,7 @@ A concrete logger class only needs to provide `log`; `info`, `warn`, and `error`
 
 DIM-1: Default methods may ONLY call other interface methods, they may NOT access class-specific fields or state. Violating the body restriction is a semantic error emitted as `ZOM0432 DefaultMethodAccessesNonInterfaceState`. This restriction preserves interface-safety: a default body must remain valid for every possible future implementor of the interface.
 
-DIM-2: If a class declares `implements I` and provides its own method with the same name and signature, the class method ALWAYS wins. The class-level override takes precedence over any default provided by the interface or by any of that interface's ancestors.
+DIM-2: If a standalone `impl I for T` block provides its own method with the same name and signature, the concrete impl ALWAYS wins. The user-provided impl method takes precedence over any default provided by the interface or by any of that interface's ancestors.
 
 DIM-3: Default methods on extended interfaces follow nearest-precedes-ancestor resolution, consistent with the diamond inheritance rules specified in §8.
 
@@ -204,7 +208,9 @@ AssociatedTypeAssignment
   ;
 ```
 
-Semantically, a standalone `impl I for T` block produces vtable entries equivalent to the same methods appearing inside a `class T implements I` declaration. If both forms are present for the same `(T, I)` pair within the same crate the compiler emits `ZOM0505 DuplicateInterfaceImpl`, since the vtable layout would be ambiguous.
+An interface implementation is written as a standalone `impl I (+ M*)* for T { ... }` block placed anywhere in the same crate as either `I` or `T` (see §12 Orphan Rule). This is the only language surface for attaching interface methods to a type — ZOM does not provide a heritage-clause syntax for inlining interface methods inside a class body.
+
+If two distinct `impl I for T` blocks exist for the same nominal `(I, T)` pair within the same crate, the compiler emits `ZOM0505 DuplicateInterfaceImpl`, since the vtable layout would be ambiguous.
 
 #### Orphan rule
 
@@ -290,11 +296,11 @@ DR-4: A marker bound attached via `impl I + M for T` is NEVER ambiguous, because
 
 #### Diamond-resolution flowchart
 
-The flowchart below traces the dispatch of a call `c.foo()` on an instance `c` of a class `C` that implements `IA` and `IB`, where both interfaces extend a common `IBase` and each may define its own default for `foo`.
+The flowchart below traces the dispatch of a call `c.foo()` on an instance `c` of a class `C` for which both `impl IA for C` and `impl IB for C` exist, where both interfaces extend a common `IBase` and each may define its own default for `foo`.
 
 ```mermaid
 flowchart TD
-    A[Class C implements IA, IB] --> B{Does C override foo?}
+    A[Class C + impl IA for C + impl IB for C] --> B{Does C override foo?}
     B -->|Yes| C[Dispatch to C::foo]
     B -->|No| D[Compute MRO post-order left-to-right]
     D --> E[IBase -> IA -> IB]
@@ -320,10 +326,22 @@ interface IBase { fun foo() -> str; }
 interface IA extends IBase { fun foo() -> str { return "A"; } }
 interface IB extends IBase { fun foo() -> str { return "B"; } }
 
-class C implements IA, IB {
-    fun foo() -> str {
+class C { ... }
+
+impl IA for C {
+    fun foo(self) -> str {
+        /* C's resolution */
         return IA::foo(this);
     }
+}
+
+impl IB for C {
+    /* C already provided foo in impl IA for C above;
+       this one never runs for unqualified c.foo()
+       per rule DR-1 (most specific user-provided
+       concrete impl wins over interface defaults
+       and competing-interface siblings).
+       If the caller wants IB's foo they write IB::foo(this). */
 }
 ```
 

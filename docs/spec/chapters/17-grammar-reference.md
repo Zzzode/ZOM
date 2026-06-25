@@ -149,7 +149,7 @@ ClassDeclaration ::= 'class' BindingIdentifier TypeParameters? HeritageClauses?
 StructDeclaration ::= 'struct' BindingIdentifier TypeParameters? HeritageClauses?
                      '{' ClassElement* '}'
 HeritageClauses ::= HeritageClause+
-HeritageClause ::= ('extends' | 'implements') ExpressionWithTypeArguments
+HeritageClause ::= 'extends' ExpressionWithTypeArguments
                   (',' ExpressionWithTypeArguments)*
 
 InterfaceDeclaration ::= 'interface' BindingIdentifier TypeParameters? InterfaceHeritage? '{' InterfaceBody '}'

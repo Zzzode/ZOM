@@ -365,8 +365,7 @@ Parameter       ::= '...'? BindingIdent TypeAnnotation? Initializer?
 ClassDecl      ::= 'class' BindingIdent TypeParameters? ClassHeritage?
                    '{' ClassElement* '}'
 
-ClassHeritage  ::= 'extends' TypeRef ( ',' InterfaceTypeList )?
-                 | 'implements' InterfaceTypeList
+ClassHeritage  ::= 'extends' TypeRef
 
 ClassElement   ::= ';'
                  | Modifier* InitDecl
@@ -396,10 +395,9 @@ AccessorDecl   ::= ( 'get' | 'set' ) PropertyName ParameterClause
 #### 4.3.4 结构体声明
 
 ```ebnf
-StructDecl     ::= 'struct' BindingIdent TypeParameters? StructHeritage?
+StructDecl     ::= 'struct' BindingIdent TypeParameters?
                    '{' StructElement* '}'
 
-StructHeritage ::= 'implements' InterfaceTypeList
 StructElement  ::= StructFieldDecl
                  | MethodDecl
                  | AccessorDecl
@@ -942,7 +940,7 @@ spawn -> x + y
 | 控制流 | `if` `else` `match` `when` `default` `for` `while` `do` `break` `continue` `return` `debugger` `in` |
 | 类型 | `i8` `i16` `i32` `i64` `u8` `u16` `u32` `u64` `f32` `f64` `bool` `str` `char` `null` `unit` `never` `any` |
 | 修饰 | `public` `private` `protected` `static` `readonly` `mutating` `override` `abstract` |
-| 操作 | `as` `is` `typeof` `new` `this` `super` `extends` `implements` `raises` |
+| 操作 | `as` `is` `typeof` `new` `this` `super` `extends` `raises` |
 | 模块 | `module` `import` `export` `as` |
 | 并发 | `suspend` `spawn` |
 | Marker | `Sendable` `Shared` `Linear` `NoInternalMutability` |
