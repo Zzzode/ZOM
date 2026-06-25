@@ -1024,7 +1024,7 @@ parser-test.cc:970 行 `ZC_EXPECT(result != zc::none, "Should parse error declar
 ## 四、设计目标 vs 实现路径断层
 - 01-introduction.md:21 明确列出 "Compile-time code generation"。
 - docs/plans/ 目录下仅有 2026-04-03 的模块系统计划，**没有任何编译时代码生成/宏系统设计文档**。
-- docs/design/ 下的 adt.md / architecture.md / zis-internal-spec.md 全为占位空文件。
+- docs/design/ 下的 adt.md / architecture.md / compiler-contracts.md 全为占位空文件。
 - 词法层也未显式把 `$` 标记为"已在模板字符串中部分占用、标识符用法待收敛"（当前只在模板字符串内 1120 行用了 `${` 分支，其余位置把 `$name` 一概当普通标识符）。
 
 ## 五、breaking change 风险定量分析
@@ -4870,7 +4870,7 @@ parser 的 isModifier() 包含 AbstractKeyword，但规范 Modifier 定义只列
 **1. 泛型策略（monomorphization vs type erasure）文档缺失 — 确认成立**
 - 对 docs/spec/chapters/ 全文 grep `monomorph|erasure|单态|擦除|ABI|dyn trait|vtable` — 零命中。
 - 第 12 章《Generics》（135 行）只有语法示例（identity、Box<T>、Comparable、where 子句、associated type、Option<T>），完全没有任何"实现策略 / 对象布局 / 代码尺寸 / 实例化时机"的段落。
-- docs/design/ 目录（adt.md / architecture.md / zis-internal-spec.md）全部为空占位文件，不存在 GENERICS.md。
+- docs/design/ 目录（adt.md / architecture.md / compiler-contracts.md）全部为空占位文件，不存在 GENERICS.md。
 - 因此"零成本抽象→单态化"和"C 无缝互操作→ABI 稳定"两个目标确实同时写在 01-introduction.md 里，但没有任何权衡说明，两条路径的下游差异（vtable vs 代码膨胀、跨 .so、调试信息、标准库二进制兼容）完全未被讨论。
 
 **2. 与 C 互操作章节未对齐泛型导出 — 确认成立**
@@ -4884,7 +4884,7 @@ parser 的 isModifier() 包含 AbstractKeyword，但规范 Modifier 定义只列
 - (1) 默认单态化 + (2) 运行时多态走 trait object + (3) 泛型 C 导出需显式实例化：这三条建议是 Rust 风格的成熟分层方案，与当前 `interface` 承担 trait 角色（`interface Comparable<T>` 等语法已写在 spec 第 9/12 章）这一现状相吻合；建议新增 `dyn Interface` 语法，但当前 AST 里没有 `DynTypeNode` 或 trait object 专用类型节点，也需要在 symbol 层引入 VTableSlot/Indirection 等标志。若采纳，实现端至少需补：ast/type.h 新增节点、parser 接入 `dyn` 关键字、symbol-flags 引入 trait object 相关位、design/GENERICS.md 正式文档。
 
 **最终判断**：问题 F12 的核心论断（"泛型编译策略未显式抉择、与互操作目标不对齐"）真实成立，有独立 grep 证据和文档现状支持；次要证据点（Template/Generics 命名摇摆）被部分推翻，且因 TypeChecker/后端仍在 0 实现阶段，实际返工风险比原陈述描述的要低一级——因此严重度从原评估的 low 修正为 info（是一个需要补文档的决策缺口，但不是会导致当前代码返工的 bug），如果团队认为"后续设计工作会被前期不一致的 Symbol 层决策（如 Generic vs Template 双位并存）误导"，可上调到 low。
-- 反对方: 1. 项目阶段错位：当前只完成 Lexer→Parser→Binder，Checker 为空命名空间，codegen/IR/backend 完全不存在（zis-internal-spec.md 为空文件，driver 无 check/codegen 阶段）。泛型实现策略是后端级决策，依赖中间表示、ABI、运行时等当前完全缺失的模块，现阶段不决策属于正常工程实践。
+- 反对方: 1. 项目阶段错位：当前只完成 Lexer→Parser→Binder，Checker 为空命名空间，codegen/IR/backend 完全不存在（compiler-contracts.md 为空文件，driver 无 check/codegen 阶段）。泛型实现策略是后端级决策，依赖中间表示、ABI、运行时等当前完全缺失的模块，现阶段不决策属于正常工程实践。
 
 2. AST/符号系统已隐含单态化倾向：TypeParameterDeclaration（声明侧）+ TypeReferenceNode/ExpressionWithTypeArguments/CallExpression 三处 typeArguments（实例化侧）三段式完整保留类型实参，symbol-flags 有 Generic/Dependent/Higher 位，TypeParameterSymbol 有 Variance 枚举——这些都是编译期单态化模型的典型前端表示，与 type erasure 的早期擦除模型不兼容。
 
