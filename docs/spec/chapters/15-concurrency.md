@@ -709,7 +709,8 @@ capture sites inside `body`, classifies each as move-capture or
 reference-capture, and then enforces:
 
 1. **Move-captured value of type T.** Requires `T: Sendable` (marker,
-   Ch.16). The marker engine (Ch.9 SS 9, Phases A/B/C) must return a
+   Ch.16). The marker engine (compiler-contracts §9, Phases A/B/C)
+   must return a
    positive `Sendable` bit for T; otherwise **ZOM1050 NotSendable** is
    emitted at the capture site, with a primary span on the spawn call and
    secondary notes on each offending capture. Typical triggers: captured
@@ -768,6 +769,66 @@ top-level runtime shutdown exceeds the configured grace period, the driver
 logs **ZOM1007 RuntimeShutdownTimeout** before invoking `exit()`.
 
 ---
+
+## 15.11 Diagnostic Table ZOM10xx
+
+The table below is the normative list of diagnostics emitted by the
+concurrency checker pass and the async runtime. Each row below is
+bit-identically registered in `docs/design/ARCHITECTURE.md` SS 8 and
+`docs/design/compiler-contracts.md` SS 2. Severities: all Error except the
+10 entries explicitly marked Warning (Suppressible: Yes).
+
+| Code | Name | Severity | Trigger |
+|------|------|----------|---------|
+| ZOM1000 | ScopeNotFound | Error | Referenced scope id does not exist or already terminated |
+| ZOM1001 | ScopeAlreadyCanceled | Error | Second `cancel_all` call on a scope whose cancel flag is already set |
+| ZOM1002 | ScopeDroppedWhileRunning | Error | Scope handle dropped before nested children joined |
+| ZOM1003 | ChildNotFoundInSupervisor | Error | Supervisor restart references a child id not in its child map |
+| ZOM1004 | SupervisorMaxRestarts | Error | Supervisor exceeded `max_restarts` within `restart_period` |
+| ZOM1005 | TaskPanicIsolated | Warning | Panic inside task caught at scope boundary; propagated to join handle |
+| ZOM1006 | NestedRuntimeStart | Error | `block_on` called from within a thread that already runs a runtime |
+| ZOM1007 | RuntimeShutdownTimeout | Error | Top-level runtime did not cleanly shut down within graceful window |
+| ZOM1010 | ScopeLocalUninitialized | Error | Scope-local read before first `set` |
+| ZOM1011 | ScopeLocalTypeMismatch | Error | Scope-local stored value type does not match declared static type |
+| ZOM1012 | ScopeLocalAlreadyInitialized | Error | `set` on an already-initialized `once` scope-local |
+| ZOM1020 | TimerHandleInvalid | Error | Timer handle generation counter does not match wheel slot |
+| ZOM1021 | TimerExpiredWhileCancelled | Warning | Cancel issued on a timer that has already fired |
+| ZOM1022 | TimerWheelCapacityExceeded | Warning | Live timer count exceeded `WHEEL_MAX_ENTRIES` |
+| ZOM1030 | ChannelNotSpsc | Error | Second concurrent producer detected on an `spsc::Sender` |
+| ZOM1031 | ChannelClosed | Error | Operation attempted on channel whose both halves are gone |
+| ZOM1032 | ChannelBipartisanDisconnect | Warning | Sender/Receiver dropped mid in-flight transfer |
+| ZOM1033 | SenderHalfDropped | Error | `recv()` on channel whose only sender has been dropped |
+| ZOM1034 | ReceiverHalfDropped | Error | `send()` on channel whose only receiver has been dropped |
+| ZOM1035 | ChannelFull | Warning | `try_send` failed because all capacity slots are occupied |
+| ZOM1036 | ChannelEmpty | Warning | `try_recv` failed because no message is queued |
+| ZOM1037 | CapacityZero | Error | `channel(0)` or `mpsc::channel(0)`: zero capacity is not allowed |
+| ZOM1040 | MutexDeadlockSuspected | Error | Same task tries to re-lock a non-reentrant Mutex it already owns |
+| ZOM1041 | MutexPoisoned | Warning | `lock()` on a Mutex whose previous holder panicked |
+| ZOM1042 | RwLockReadersExceeded | Error | `read()` saturates reader-count field on a saturated `RwLock` |
+| ZOM1043 | CondvarMismatchedMutex | Warning | `condvar.wait(guard)` where guard is from a different Mutex |
+| ZOM1050 | NotSendable | Error | `spawn` body captures value whose type is `!Sendable` |
+| ZOM1051 | NotShared | Error | `spawn` body captures `&T` where T is `!Shared` |
+| ZOM1052 | IncomparableMemoryOrder | Error | Atomic method invoked with ordering outside its allowed set |
+| ZOM1053 | AtomicAlignmentInvalid | Error | `Atomic<T>` instantiated for a type not in the canonical valid list |
+| ZOM1054 | DoubleJoin | Error | `join()` called twice on the same `JoinHandle` |
+| ZOM1055 | JoinOnDetachedHandle | Error | `join()` called on a handle previously passed to `detach()` |
+| ZOM1060 | NumaNodeOutOfRange | Error | `affinity(N)` requested a NUMA node beyond the host's count |
+| ZOM1061 | WorkerThreadAffinityFailed | Error | OS `setaffinity` call failed for a worker thread |
+| ZOM1062 | ParkTimeoutSpuriousWakeupPolicyIgnored | Warning | Park timeout wakeup policy not supported on this kernel |
+| ZOM1070 | FfiRustAsyncABIInvalid | Error | Rust-async bridge shim signature mismatch detected at load time |
+| ZOM1071 | FfiRustFuturePollPanicked | Error | Rust future panicked inside `poll`; surfaced as PanicInfo |
+| ZOM1072 | FfiRustWakerLeaks | Warning | Waker refcount imbalance detected at ZOM scope shutdown |
+| ZOM1080 | SelectEmptySet | Warning | `select([])` called with zero handles |
+| ZOM1081 | RaceEmptySet | Warning | `race([])` called with zero handles |
+| ZOM1082 | JoinEmptySet | Warning | `join_all([])` called with zero handles |
+| ZOM1083 | ZipArityMismatch | Warning | `zip` / `zipN` invoked with incorrect handle arity |
+| ZOM1090 | CancelAllWithoutPermission | Error | `cancel_all` on a scope whose policy does not permit cancellation |
+
+Cross-references: marker diagnostics ZOM05xx (Ch.16 SS 16.12) govern the
+unsafe impl of Sendable/Shared; Ch.11 SS 11 defines `Canceled` as part of
+the standard error union used by `join` and every combinator above; Ch.22
+SS 22.4 constrains unsafe impl of Sendable markers via the orphan rule.
+
 
 ## 15.12 Cross-Process Async Channels (Roadmap v2)
 
@@ -1298,62 +1359,3 @@ Cross-references:
   rule (Ch.22 SS 22).
 
 ---
-
-## 15.11 Diagnostic Table ZOM10xx
-
-The table below is the normative list of diagnostics emitted by the
-concurrency checker pass and the async runtime. Each row below is
-bit-identically registered in `docs/design/ARCHITECTURE.md` SS 8 and
-`docs/design/compiler-contracts.md` SS 2. Severities: all Error except the
-10 entries explicitly marked Warning (Suppressible: Yes).
-
-| Code | Name | Severity | Trigger |
-|------|------|----------|---------|
-| ZOM1000 | ScopeNotFound | Error | Referenced scope id does not exist or already terminated |
-| ZOM1001 | ScopeAlreadyCanceled | Error | Second `cancel_all` call on a scope whose cancel flag is already set |
-| ZOM1002 | ScopeDroppedWhileRunning | Error | Scope handle dropped before nested children joined |
-| ZOM1003 | ChildNotFoundInSupervisor | Error | Supervisor restart references a child id not in its child map |
-| ZOM1004 | SupervisorMaxRestarts | Error | Supervisor exceeded `max_restarts` within `restart_period` |
-| ZOM1005 | TaskPanicIsolated | Warning | Panic inside task caught at scope boundary; propagated to join handle |
-| ZOM1006 | NestedRuntimeStart | Error | `block_on` called from within a thread that already runs a runtime |
-| ZOM1007 | RuntimeShutdownTimeout | Error | Top-level runtime did not cleanly shut down within graceful window |
-| ZOM1010 | ScopeLocalUninitialized | Error | Scope-local read before first `set` |
-| ZOM1011 | ScopeLocalTypeMismatch | Error | Scope-local stored value type does not match declared static type |
-| ZOM1012 | ScopeLocalAlreadyInitialized | Error | `set` on an already-initialized `once` scope-local |
-| ZOM1020 | TimerHandleInvalid | Error | Timer handle generation counter does not match wheel slot |
-| ZOM1021 | TimerExpiredWhileCancelled | Warning | Cancel issued on a timer that has already fired |
-| ZOM1022 | TimerWheelCapacityExceeded | Warning | Live timer count exceeded `WHEEL_MAX_ENTRIES` |
-| ZOM1030 | ChannelNotSpsc | Error | Second concurrent producer detected on an `spsc::Sender` |
-| ZOM1031 | ChannelClosed | Error | Operation attempted on channel whose both halves are gone |
-| ZOM1032 | ChannelBipartisanDisconnect | Warning | Sender/Receiver dropped mid in-flight transfer |
-| ZOM1033 | SenderHalfDropped | Error | `recv()` on channel whose only sender has been dropped |
-| ZOM1034 | ReceiverHalfDropped | Error | `send()` on channel whose only receiver has been dropped |
-| ZOM1035 | ChannelFull | Warning | `try_send` failed because all capacity slots are occupied |
-| ZOM1036 | ChannelEmpty | Warning | `try_recv` failed because no message is queued |
-| ZOM1037 | CapacityZero | Error | `channel(0)` or `mpsc::channel(0)`: zero capacity is not allowed |
-| ZOM1040 | MutexDeadlockSuspected | Error | Same task tries to re-lock a non-reentrant Mutex it already owns |
-| ZOM1041 | MutexPoisoned | Warning | `lock()` on a Mutex whose previous holder panicked |
-| ZOM1042 | RwLockReadersExceeded | Error | `read()` saturates reader-count field on a saturated `RwLock` |
-| ZOM1043 | CondvarMismatchedMutex | Warning | `condvar.wait(guard)` where guard is from a different Mutex |
-| ZOM1050 | NotSendable | Error | `spawn` body captures value whose type is `!Sendable` |
-| ZOM1051 | NotShared | Error | `spawn` body captures `&T` where T is `!Shared` |
-| ZOM1052 | IncomparableMemoryOrder | Error | Atomic method invoked with ordering outside its allowed set |
-| ZOM1053 | AtomicAlignmentInvalid | Error | `Atomic<T>` instantiated for a type not in the canonical valid list |
-| ZOM1054 | DoubleJoin | Error | `join()` called twice on the same `JoinHandle` |
-| ZOM1055 | JoinOnDetachedHandle | Error | `join()` called on a handle previously passed to `detach()` |
-| ZOM1060 | NumaNodeOutOfRange | Error | `affinity(N)` requested a NUMA node beyond the host's count |
-| ZOM1061 | WorkerThreadAffinityFailed | Error | OS `setaffinity` call failed for a worker thread |
-| ZOM1062 | ParkTimeoutSpuriousWakeupPolicyIgnored | Warning | Park timeout wakeup policy not supported on this kernel |
-| ZOM1070 | FfiRustAsyncABIInvalid | Error | Rust-async bridge shim signature mismatch detected at load time |
-| ZOM1071 | FfiRustFuturePollPanicked | Error | Rust future panicked inside `poll`; surfaced as PanicInfo |
-| ZOM1072 | FfiRustWakerLeaks | Warning | Waker refcount imbalance detected at ZOM scope shutdown |
-| ZOM1080 | SelectEmptySet | Warning | `select([])` called with zero handles |
-| ZOM1081 | RaceEmptySet | Warning | `race([])` called with zero handles |
-| ZOM1082 | JoinEmptySet | Warning | `join_all([])` called with zero handles |
-| ZOM1083 | ZipArityMismatch | Warning | `zip` / `zipN` invoked with incorrect handle arity |
-| ZOM1090 | CancelAllWithoutPermission | Error | `cancel_all` on a scope whose policy does not permit cancellation |
-
-Cross-references: marker diagnostics ZOM05xx (Ch.16 SS 16.12) govern the
-unsafe impl of Sendable/Shared; Ch.11 SS 11 defines `Canceled` as part of
-the standard error union used by `join` and every combinator above; Ch.22
-SS 22.4 constrains unsafe impl of Sendable markers via the orphan rule.
