@@ -986,7 +986,7 @@ spawn -> x + y
 | G2 | `RelationExpr` 缺少 `is` 操作符 | 17-grammar 未在 EBNF 中列出 `is`；04-expressions §Type Check Operators 与 07-patterns §Type Patterns 均使用 | 在 `RelationalExpr` 中加入 `\| 'is' TypeExpr` | `val is str` 是 ZOM 模式匹配基础 |
 | G3 | 单元素元组 `(x)` 与括号表达式二义 | 17-grammar 未区分，ANTLR 解析器走括号表达式 | 新增 `TupleLiteral`，单元素要求 `(x,)` | 与 Swift/Kotlin/Python 一致，消除歧义 |
 | G4 | 缺少 `char` 预定义类型 | 字符字面量 `'x'` 存在但未声明宿主类型 | 加入 `PredefinedType ::= ... \| 'char'` | 对齐 §3.6.4 CharacterLiteral |
-| G5 | 缺少并发关键字 `suspend` / `spawn` 的语法规则 | 15-concurrency.md 标记"保留但未实现"；并发设计 v1.0.0-rc1 已定稿 | 加入 §4.9 完整 EBNF + 语义 | 对齐 `ZOM-ASYNC-CANONICAL-DESIGN.md` §5 |
+| G5 | 缺少并发关键字 `suspend` / `spawn` 的语法规则 | 15-concurrency.md 标记"保留但未实现"；并发设计 v1.0.0-rc1 已定稿 | 加入 §4.9 完整 EBNF + 语义 | 对齐 `zom-async-canonical-design.md` §5 |
 | G6 | 缺少属性语法 `#[...]` | 16-attributes-and-annotations.md 标记"保留"；并发设计大量使用内建属性 | 加入 §4.8 完整 EBNF + 白名单 | 为 scope_guard / linear / must_consume 提供语法载体 |
 | G7 | 缺少 MarkerType 产生式 | 并发设计 §6 marker trait（Sendable/Shared/Linear/NoInternalMutability） 无处挂载 | 加入 `AtomType` 的 `MarkerType` 分支 | 允许在 `fun write(t: T) where T: Sendable` 中使用 |
 | G8 | `?!` / `!!` 优先级描述矛盾 | 04-expressions.md 表中列于优先级 17（与 `?:` 同），但 EBNF 作为 PostfixSuffix（优先级 3） | 统一为 Postfix 优先级 3；`?:` 保持 18 | 后缀操作符紧密绑定是行业最佳实践 |

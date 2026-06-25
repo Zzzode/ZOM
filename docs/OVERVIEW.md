@@ -1,5 +1,5 @@
 ## Documentation Map
 
-- [Architecture](design/ARCHITECTURE.md)
+- [Architecture](design/architecture.md)
 - [Spec](spec/SPEC.md)
   - [Syntax](spec/SYNTAX.md)

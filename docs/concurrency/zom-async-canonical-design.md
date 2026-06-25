@@ -140,7 +140,7 @@ constructed purely within the corresponding subspace of the modal model.
 
 ## 3. Eight Foundational Decisions (Phase 2 Seven Independent Experts + 2026-06-24 Canonical Judge D8 Ruling)
 
-> Each expert independently reviewed, producing a recommended option, four supporting reasons, a rejected option list, a risk list, and a downstream constraint set. D1–D7 are the recommendations from seven Phase 2 independent experts; **D8 is the 2026-06-24 Canonical Judge Design formal freeze ruling on the attribute and marker system**, which supersedes and replaces the "TBD placeholder" entries in the former D6. See the full 37 KB text in appendix `APPENDIX-DECISIONS-D1-D7.md`; the full D8 ruling document is `CANONICAL-JUDGE-ATTRIBUTE-SYSTEM.json` (nine submodules: AST / Checker / EBNF / Lexer / Marker / Namespaces / Negative-Impl / Retention / Soundness).
+> Each expert independently reviewed, producing a recommended option, four supporting reasons, a rejected option list, a risk list, and a downstream constraint set. D1–D7 are the recommendations from seven Phase 2 independent experts; **D8 is the 2026-06-24 Canonical Judge Design formal freeze ruling on the attribute and marker system**, which supersedes and replaces the "TBD placeholder" entries in the former D6. See the full 37 KB text in appendix `appendix-decisions-d1-d7.md`; the full D8 ruling document is `CANONICAL-JUDGE-ATTRIBUTE-SYSTEM.json` (nine submodules: AST / Checker / EBNF / Lexer / Marker / Namespaces / Negative-Impl / Retention / Soundness).
 
 ### D1 · Error Channel: `raises(E)` and `Result<T,E>` Unified Underlying `T|E`
 
@@ -330,7 +330,7 @@ declaration block and §10.2 `09-interfaces.md` manifest entry.
 
 ## 4. Syntax Layer EBNF (Nine Chapters, incl. suspend / spawn / Attribute Whitelist)
 
-> The **full text** is approximately 1187 lines and has been written to the standalone file `docs/design/DESIGN-DIMENSION-01-SYNTAX-EBNF.md`; only the **new/corrected key points directly related to concurrency** are presented here. Readers requiring the complete EBNF / lexical grammar / five-way consistency matrix / T1~T7 verification examples should follow that file.
+> The **full text** is approximately 1187 lines and has been written to the standalone file `docs/design/design-dimension-01-syntax-ebnf.md`; only the **new/corrected key points directly related to concurrency** are presented here. Readers requiring the complete EBNF / lexical grammar / five-way consistency matrix / T1~T7 verification examples should follow that file.
 
 ### 4.0 New Concurrency Syntax Summary
 
@@ -390,7 +390,7 @@ FunctionSignature ::=
 ;
 ```
 
-### 4.1 Ten Drift Corrections (G1–G10, taken from DESIGN-DIMENSION-01 §7)
+### 4.1 Ten Drift Corrections (G1–G10, taken from design-dimension-01-syntax-ebnf §7)
 
 | ID | Content | Concurrency Impact |
 |---|---|---|
@@ -460,7 +460,7 @@ rc1 phase: 100% parseable syntax (L0 guarantee); Tier-0 ArgsSchema / target-node
 
 ## 5. Core Types and Marker Interface Matrix
 
-> The marker interface system and core concurrency types in this section derive from the D1 error-channel unification + D2 concurrency-safety-marker decisions. For an audit of the current state of the underlying type system (type-system gaps, Interface matrix, Error variants, Linear status and implementation roadmap), read D1/D2's full decision text in `docs/design/APPENDIX-DECISIONS-D1-D7.md`.
+> The marker interface system and core concurrency types in this section derive from the D1 error-channel unification + D2 concurrency-safety-marker decisions. For an audit of the current state of the underlying type system (type-system gaps, Interface matrix, Error variants, Linear status and implementation roadmap), read D1/D2's full decision text in `docs/design/appendix-decisions-d1-d7.md`.
 
 ### 5.1 Full Set of Concurrency-Related Error Variants (ZOM Native Syntax)
 
@@ -745,7 +745,7 @@ fun <T> Receiver<T>.recv(self) -> T raises Cancelled | ScopeAbandoned;
 
 ## 6. Runtime Architecture / Edge Semantics / FFI C-ABI / Examples
 
-> The full text is 397 lines (including mermaid architecture diagrams, pseudocode, C header files, and 4 complete ZOM examples). Please read `docs/design/DESIGN-DIMENSION-03-RUNTIME-FFI-EXAMPLES.md`. This section is a summary of the core conclusions and decision bindings.
+> The full text is 397 lines (including mermaid architecture diagrams, pseudocode, C header files, and 4 complete ZOM examples). Please read `docs/design/design-dimension-03-runtime-ffi-examples.md`. This section is a summary of the core conclusions and decision bindings.
 
 ### 6.1 Overall Architecture Mermaid Summary
 
@@ -891,7 +891,7 @@ void      zom_event_cancel(ZomEvent*);
 
 ### 6.7 Four Complete Examples (200+ lines × 4 full source files)
 
-See §11 of `DESIGN-DIMENSION-03`:
+See §11 of `design-dimension-03-runtime-ffi-examples`:
 1. `parallel_map_1M.zom` — spawn_scope + Task<T> + Cancelled raises + ?!
 2. `http_get_cancel.zom` — with_timeout(1s) single + with_deadline(3s) overall control + race + match error
 3. `mpmc_1p4w1s.zom` — Channel bounded / into_shared_receivers(4) / Linear auto close
@@ -1035,11 +1035,11 @@ Release Blockers are 12 items identified by Adversarial Audit B that **must be r
 
 | Path | Size | Notes |
 |---|---|---|
-| **`docs/concurrency/ZOM-ASYNC-CANONICAL-DESIGN.md` (this file)** | ≈ 93K | **Final deliverable**: single entry point, 12-chapter complete structure (§3 D8 Canonical freeze ruling added / Adversarial Audit summary / 12 blockers) |
+| **`docs/concurrency/zom-async-canonical-design.md` (this file)** | ≈ 93K | **Final deliverable**: single entry point, 12-chapter complete structure (§3 D8 Canonical freeze ruling added / Adversarial Audit summary / 12 blockers) |
 | `docs/spec/chapters/16-attributes-and-markers.md` (**Canonical rewrite in this pass — original 11-line placeholder → production-grade spec**) | ≈ 67K / 1812 lines | **Official attributes + marker spec**: original file was an 11-line placeholder at rc1-draft stage ("this chapter reserved for a future attribute-system design"). After completion of the 2026-06-24 Canonical Judge Design process, **no longer treated as "reserved for the future"**, rewritten to production-grade spec. Covers: (1) Lexer rules (ColonColon / Shebang / At / Hash single-char tokens — 0 compound tokens); (2) Parser LL(2) EBNF (Outer/Inner Attribute / attributeEntry 3 forms / attributePath ≥ 2 segment hard rule / ModifierList / markerDeclaration / markerImplDeclaration / BoundForm / WhereClause extensions — all strictly LL(1), Hash disambiguation is LL(2)); (3) AST 9 concrete nodes + 2 interface nodes delta (ModifierList/Outer/Inner/AttributePath/PositionalAttrArg/NamedAttrArg/AttrTokenTree/AttributeMarkerDecl/MarkerImplDecl/MarkerBound, X-macro visitor zero-change + serializer + factory totaling ≈ 490 LOC); (4) Binder S0 name resolution 3 paths (zom::* / std::marker::* / dep::<crate>::*) + DocParamSynthesisPass + 9 diagnostics ZOM0601–ZOM0617; (5) Checker S1–S5 6-stage pipeline (WFF/Tier/Lattice/Closure/Usage/Lowering) + 200 diagnostics (ZOM0600–ZOM0699 attribute-system / ZOM0700–ZOM0799 marker-related / concurrency gates); (6) 9 R0–R9 lattice propagation rules (Shared≤Sendable, TaskBound≤¬Sendable, Copy≤¬Linear, Pod≤ZeroInit+NoUninit+Copy, StableAbi≤Pod, Discriminant≤Sized, NoSuspendHazard≤SuspendSafe, Linear⇒¬Copy, NoInteriorMuta⇒Shared default) + 5 negative-impl semantic rules + orphan rule + justification check; (7) 10 Tier-0 zom::* subspaces + 15 Tier-1 std::marker::* + Pod family marker list; (8) @ parameter-sugar (ParameterDecl position only) + LegacyBareWhitelist 3 items; (9) Implementation estimate 16,305 ±12% LOC breakdown (AST 500 / Binder 900 / Checker 4600 / Lexer 75 / LSP 260 / Macro 2000 / Parser 1350 / Rustdoc 220 / Test 6400); (10) 9-modal Kripke semantics + Soundness proof skeleton over 3-world reachability. This file is the **official normative spec**; mutually complementary to the D8 ruling. Downstream implementations must treat the 16-chapter + `CANONICAL-JUDGE-ATTRIBUTE-SYSTEM.json` as the dual sources of truth. |
-| `docs/design/DESIGN-DIMENSION-01-SYNTAX-EBNF.md` | 51,788 B / 1,187 lines | Full syntax-layer EBNF (lexer + parser + attributes + concurrency + five-way consistency + T1~T7 verification), produced independently by the dim1 agent; Attribute section cross-checked against 16-chapter |
-| `docs/design/APPENDIX-DECISIONS-D1-D7.md` | 66,975 B / 292 lines | **Complete decision text** of the seven decision experts (including type system / Interface matrix / Linear gap audit, reasons / risks / downstream constraints / rejected options expanded line-by-line) |
-| `docs/design/DESIGN-DIMENSION-03-RUNTIME-FFI-EXAMPLES.md` | 17,098 B / 397 lines | Runtime architecture diagrams / pseudocode / edge-semantics 6-step / C ABI header / 4 complete examples |
+| `docs/design/design-dimension-01-syntax-ebnf.md` | 51,788 B / 1,187 lines | Full syntax-layer EBNF (lexer + parser + attributes + concurrency + five-way consistency + T1~T7 verification), produced independently by the dim1 agent; Attribute section cross-checked against 16-chapter |
+| `docs/design/appendix-decisions-d1-d7.md` | 66,975 B / 292 lines | **Complete decision text** of the seven decision experts (including type system / Interface matrix / Linear gap audit, reasons / risks / downstream constraints / rejected options expanded line-by-line) |
+| `docs/design/design-dimension-03-runtime-ffi-examples.md` | 17,098 B / 397 lines | Runtime architecture diagrams / pseudocode / edge-semantics 6-step / C ABI header / 4 complete examples |
 | `docs/design/DESIGN-DIMENSION-04-ASSURANCE-ROADMAP.md` | 28,477 B / 421 lines | Rejected alternatives / open problems / compliance test suite / four-phase roadmap |
 | `docs/design/APPENDIX-AUDIT-B-CREDIBILITY.md` | 16,199 B / 143 lines | Credibility audit: 11 overclaims original + corrected / Appendix B 10-item closure table / 35 findings mapping / Top-10 Unaddressed |
 | `CANONICAL-JUDGE-ATTRIBUTE-SYSTEM.json` (**new formal ruling file**) | ≈ 38K / 7 modules | Machine-readable ruling output of Canonical Judge Design: finalAST / finalCheckerStages / finalEBNF / finalLexerRules / finalMarkerSyntax / finalNamespaces / finalNegativeImplSyntax / finalImplementationEstimate / finalRetention / finalSoundnessSketch — 10 submodules, forming "one document + one JSON" dual truth-source with the 16-chapter |
