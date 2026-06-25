@@ -302,7 +302,7 @@ and fix-its are provided by the central diagnostic registry spec.
 mod tcp;   // resolved to tcp.zom, tcp_linux.zom, tcp_macos.zom, ... per §19.5
 
 export interface Socket {
-    fun connect(addr: str) raises NetError;
+    fun connect(addr: str) -> unit raises NetError;
     fun send(buf: [u8]) -> u64 raises NetError;
 }
 
@@ -318,7 +318,7 @@ struct LinuxTcpSocket {
 }
 
 impl Socket for LinuxTcpSocket {
-    fun connect(addr: str) raises NetError { /* ... */ }
+    fun connect(addr: str) -> unit raises NetError { /* ... */ }
     fun send(buf: [u8]) -> u64 raises NetError { /* ... */ }
 }
 ```
@@ -332,7 +332,7 @@ struct MacosTcpSocket {
 }
 
 impl Socket for MacosTcpSocket {
-    fun connect(addr: str) raises NetError { /* ... */ }
+    fun connect(addr: str) -> unit raises NetError { /* ... */ }
     fun send(buf: [u8]) -> u64 raises NetError { /* ... */ }
 }
 ```

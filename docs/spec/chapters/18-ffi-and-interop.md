@@ -54,7 +54,7 @@ RawPointerType    ::= '*' ( 'const' | 'mut' )? TypeName
    - A type that does not impl `FfiSafe` is rejected with **ZOM1802 NonFfiSafeType**.
 2. **No ZOM Linear types.** Linear-typed parameters or return values are rejected at signature-check time (ZOM1810 LinearIncompatibleFfi) because the C caller has no ownership model and could leak or double-free the opaque payload. The opaque-pointer pattern `*const OpaqueTag` / `*mut OpaqueTag` works around this restriction: ownership is expressed through pointer identity, not through a ZOM-level Linear value.
 3. **No bodies.** Functions inside an `extern` block are declarations only; writing a body is an error: **ZOM1804 ExternFunctionBody**.
-4. **`raises` clause for setjmp/longjmp-style raise.** Writing `extern fun foo() raises FFIError;` declares that the foreign implementation may raise an error via the C helper `zom_raise_error`. If the foreign code panics or longjmps without a matching `raises` clause, the behavior is undefined and no diagnostic is emitted at compile time for the foreign side; the runtime, however, will trap if `--runtime-checks` is enabled.
+4. **`raises` clause for setjmp/longjmp-style raise.** Writing `extern fun foo() -> unit raises FFIError;` declares that the foreign implementation may raise an error via the C helper `zom_raise_error`. If the foreign code panics or longjmps without a matching `raises` clause, the behavior is undefined and no diagnostic is emitted at compile time for the foreign side; the runtime, however, will trap if `--runtime-checks` is enabled.
 
 ### Example — POSIX I/O
 

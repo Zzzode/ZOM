@@ -63,7 +63,7 @@ let multiline: str = "Line 1\nLine 2";
 ### Special Types
 
 - **`null`**: The type of the `null` value, representing absence
-- **`unit`**: The type `()`, used for functions that don't return a value
+- **`unit`**: The type used for functions that don't return a value; its only value is `()`
 - **`never`**: The bottom type, for functions that never return
 - **`any`**: The top type, can hold any value (use sparingly)
 
@@ -540,7 +540,7 @@ pointer atomics additionally provide the arithmetic fetch-* family.
 |--------|-----------------------------|---------|
 | `new` | `fun new(value: T) -> Self` | constructed atomic |
 | `load` | `fun load(this: &Self, order: Ordering) -> T` | current value |
-| `store` | `fun store(this: &Self, value: T, order: Ordering) -> ()` | unit |
+| `store` | `fun store(this: &Self, value: T, order: Ordering) -> unit` | unit |
 | `swap` | `fun swap(this: &Self, value: T, order: Ordering) -> T` | previous value |
 | `compare_exchange_strong` | `fun compare_exchange_strong(this: &Self, expected: &mut T, desired: T, succ: Ordering, fail: Ordering) -> (T, bool)` | prior value + success flag |
 | `compare_exchange_weak` | `fun compare_exchange_weak(this: &Self, expected: &mut T, desired: T, succ: Ordering, fail: Ordering) -> (T, bool)` | prior value + success flag; may spuriously return false |
