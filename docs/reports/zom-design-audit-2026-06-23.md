@@ -4863,7 +4863,7 @@ parser 的 isModifier() 包含 AbstractKeyword，但规范 Modifier 定义只列
 若不先定策略，TypeChecker 的类型表示 (TypeSymbol 携带实例化信息还是共用模板)、IR 的类型标签、后端代码生成的结构都会被返工。
 
 **修复建议**  
-在 docs/design/ 新增 GENERICS.md，明确：(1) 默认单态化 (匹配零成本抽象)；(2) 提供 `dyn Interface` / type-erased 指针作为 trait object 形式的运行时多态补充 (用于跨动态库)；(3) 与 C 互操作：非泛型函数直接 extern C，泛型函数必须显式实例化后才能导出。
+在 docs/design/ 新增 GENERICS.md，明确：(1) 默认单态化 (匹配零成本抽象)；(2) 提供 `dyn Interface` / type-erased 指针作为 trait object 形式的运行时多态补充 (用于跨动态库)；(3) 与 C 互操作：非泛型函数直接 extern C，泛型函数必须显式实例化后才能导出。  (RESOLVED 2026-06-25: dyn Interface + impl I for T forms now specified in spec Ch.03 §X and Ch.09 §7)
 **评审备注**
 - 确认方: ### 独立证据汇总（与原证据互补/修正）
 
@@ -4881,7 +4881,7 @@ parser 的 isModifier() 包含 AbstractKeyword，但规范 Modifier 定义只列
 - `Generic (1ULL << 43)` 在 Type system 组，`Template (1ULL << 54)` 在 Compiler & meta 组并进入 `CompilerMask = Synthetic | Builtin | Template`。两者是正交概念（"泛型定义" vs "编译器生成的模板化实例缓存条目"），不是一词两译。但需要指出的是：spec 全文只用 "Generics"、完全未使用 "Template" 这个语义层面的词，除了 template literal（模板字符串）之外，因此符号层引入 Template 作为 flag 名**仍然是值得澄清的命名歧义**，只是不属于"设计摇摆"那种严重级别。
 
 **4. 对"建议"的独立评估**
-- (1) 默认单态化 + (2) 运行时多态走 trait object + (3) 泛型 C 导出需显式实例化：这三条建议是 Rust 风格的成熟分层方案，与当前 `interface` 承担 trait 角色（`interface Comparable<T>` 等语法已写在 spec 第 9/12 章）这一现状相吻合；建议新增 `dyn Interface` 语法，但当前 AST 里没有 `DynTypeNode` 或 trait object 专用类型节点，也需要在 symbol 层引入 VTableSlot/Indirection 等标志。若采纳，实现端至少需补：ast/type.h 新增节点、parser 接入 `dyn` 关键字、symbol-flags 引入 trait object 相关位、design/GENERICS.md 正式文档。
+- (1) 默认单态化 + (2) 运行时多态走 trait object + (3) 泛型 C 导出需显式实例化：这三条建议是 Rust 风格的成熟分层方案，与当前 `interface` 承担 trait 角色（`interface Comparable<T>` 等语法已写在 spec 第 9/12 章）这一现状相吻合；建议新增 `dyn Interface` 语法，但当前 AST 里没有 `DynTypeNode` 或 trait object 专用类型节点，也需要在 symbol 层引入 VTableSlot/Indirection 等标志。若采纳，实现端至少需补：ast/type.h 新增节点、parser 接入 `dyn` 关键字、symbol-flags 引入 trait object 相关位、design/GENERICS.md 正式文档。  (RESOLVED 2026-06-25: dyn existential types implemented per spec Ch.03 §X; standalone impl I for T in Ch.09 §7)
 
 **最终判断**：问题 F12 的核心论断（"泛型编译策略未显式抉择、与互操作目标不对齐"）真实成立，有独立 grep 证据和文档现状支持；次要证据点（Template/Generics 命名摇摆）被部分推翻，且因 TypeChecker/后端仍在 0 实现阶段，实际返工风险比原陈述描述的要低一级——因此严重度从原评估的 low 修正为 info（是一个需要补文档的决策缺口，但不是会导致当前代码返工的 bug），如果团队认为"后续设计工作会被前期不一致的 Symbol 层决策（如 Generic vs Template 双位并存）误导"，可上调到 low。
 - 反对方: 1. 项目阶段错位：当前只完成 Lexer→Parser→Binder，Checker 为空命名空间，codegen/IR/backend 完全不存在（compiler-contracts.md 为空文件，driver 无 check/codegen 阶段）。泛型实现策略是后端级决策，依赖中间表示、ABI、运行时等当前完全缺失的模块，现阶段不决策属于正常工程实践。
