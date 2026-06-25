@@ -68,7 +68,7 @@ shared) vocabulary uniformly.
 | Module (filesystem path) | Public Surface (3 key classes) | Purpose (1 line) | Data-In | Data-Out | Ownership Transfer |
 |---|---|---|---|---|---|
 | `products/zomlang/compiler/lexer` | `Lexer`, `TokenStream`, `Token` | Convert source bytes into a bounded token sequence with source-location anchors | `zc::StringRef` source buffer + `FileID` | `zc::Own<TokenStream>` with 32-bit `SourceLoc` per token | Lexer consumes `StringRef` view; caller owns produced `TokenStream` |
-| `products/zomlang/compiler/parser` | `Parser`, `SyntaxNode`, `SyntaxTree` | Build an append-only immutable syntax tree from a token stream according to the canonical grammar in `docs/design/01-syntax-ebnf.md` | `Borrow<TokenStream>` | `zc::Own<SyntaxTree>` | Parser borrows tokens; caller owns resulting tree |
+| `products/zomlang/compiler/parser` | `Parser`, `SyntaxNode`, `SyntaxTree` | Build an append-only immutable syntax tree from a token stream according to the canonical grammar in `docs/design/syntax-ebnf.md` | `Borrow<TokenStream>` | `zc::Own<SyntaxTree>` | Parser borrows tokens; caller owns resulting tree |
 | `products/zomlang/compiler/ast` | `NodeKind`, `TypeKind`, `LitKind` | Closed-enum taxonomies of every AST and type variant used across the pipeline | Compile-time generated tables | Header-only enumerations | Header-only; no heap ownership |
 | `products/zomlang/compiler/ast` | `Decl`, `Stmt`, `Expr`, `TypeRepr` | Typed accessor views over `SyntaxNode` payload regions; zero-allocation projection | `Borrow<SyntaxNode>` | Strongly-typed view objects | Views are non-owning; lifetime bound to `SyntaxTree` |
 | `products/zomlang/compiler/ast` | `DeclBuilder`, `ExprBuilder`, `TypeBuilder` | Convenience factories used by parser and macro-style code emitters to construct well-formed `SyntaxNode` subtrees | Field-wise inputs | `zc::Own<SyntaxNode>` | Builders transfer produced nodes to enclosing tree |
@@ -864,7 +864,7 @@ Coverage floors are enforced via `llvm-cov` gating in CI: lexer and parser modul
 |---|---|---|---|
 | 1 | LEX-01 | Lexer | Parser feeds ≥ 1,000,000 random tokens; no panic, no `Token::ERROR` recovery fallback outside dedicated error tests |
 | 2 | PAR-01 | Parser | Parser produces ≤ 2 µs per 1000 tokens of `hello_world.zom` on MacBook Pro M3 — benchmark gate |
-| 3 | PAR-02 | Parser | Every grammar rule in `01-syntax-ebnf.md` has ≥ 1 positive and ≥ 1 negative lit test |
+| 3 | PAR-02 | Parser | Every grammar rule in `syntax-ebnf.md` has ≥ 1 positive and ≥ 1 negative lit test |
 | 4 | BND-01 | Binder | 1024-CU diamond-module test binds without deadlock or `ZOM0805` false positive |
 | 5 | BND-02 | Binder | Every `ZOM03nn` diagnostic code is exercised by ≥ 1 dedicated lit test |
 | 6 | CHK-01 | Type Checker | 50,000 randomly-generated generic trait-solver queries complete with no crashes |
@@ -878,7 +878,7 @@ Coverage floors are enforced via `llvm-cov` gating in CI: lexer and parser modul
 | 14 | SESS-01 | CompilerSession | Valgrind reports 0 bytes definitely lost after compiling the full `libraries/zc` self-build |
 | 15 | PLUG-01 | Extensions | All four abstract classes in §10 have an in-tree reference implementation plus ≥ 2 unit tests per pure virtual method |
 | 16 | DOC-01 | Documentation | Every example block in this document compiles as C++20 header-only with the in-repo `zc` vocabulary types |
-| 17 | FFI-01 | FFI | Full `03-runtime-ffi-examples.md` corpus links and executes correctly on Linux, macOS, Windows |
+| 17 | FFI-01 | FFI | Full `runtime-ffi-examples.md` corpus links and executes correctly on Linux, macOS, Windows |
 | 18 | SEC-01 | Security | No diagnostic renderer reads beyond `SourceLoc` bounds when given a fuzzed 2 GB source buffer |
 | 19 | PERF-01 | Build Throughput | End-to-end compilation of `libraries/zc` completes in < 10 seconds on 16-core reference hardware |
 | 20 | COV-01 | Coverage | All subsystem coverage floors (§11 Layer 3) are met; no module regresses more than 0.5 points |
