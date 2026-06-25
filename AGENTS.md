@@ -19,16 +19,31 @@ Project-wide guidance for AI coding agents working on the ZOM language repositor
    grammar? Spec chapter describing something the parser rejects? Placeholder AST
    node with zero callers? **Delete it.** Revert the deletion later if we need it.
 5. **English throughout all artifacts** — code, comments, identifiers, spec
-   chapters, diagnostic messages, audit reports, design documents, and
-   **especially every git commit message and subject line**.
-   **No Chinese anywhere in the repository except this single sentence.**
-   You must think in English, produce all code and docs in English, and
-   only translate the final reply to Chinese when addressing the user.
-6. **Commit messages are ASCII-English only.** No CJK characters, no
+   chapters, diagnostic messages, audit reports, design documents, commit
+   messages.
+   - **No Chinese anywhere in the repository.** If you encounter Chinese in a
+     file, rewrite it to English in the same change — do **not** leave a Chinese
+     section as-is and append an English translation. Delete the Chinese.
+   - This single paragraph is the **only** tolerated Chinese text in the entire
+     repo, and it is tolerated exclusively because it *states* the rule.
+   - You MUST produce all code, docs, commit messages in English. Translate your
+     reasoning to Chinese only when speaking to the user in the chat reply.
+6. **NO "legacy / deprecated / discarded / Rust-style / bad-old-way" comparative
+   prose in design docs.** Do NOT keep tables that contrast "what we used to
+   write in Rust" with "what ZOM writes now", do NOT leave headings or bullets
+   that say "(淘汰/废弃/残留/反面例子/已淘汰/deprecated form)", do NOT preserve
+   counter-examples "for reference".
+   - If the spec says X is the syntax, write X. Delete every trace of the old
+     syntax. A reader should not be able to infer *any* prior design existed
+     from reading the current document.
+   - Migration / changelog / rationale content, if genuinely useful, lives
+     **only** in a per-release CHANGELOG.md outside the normative spec.
+     Migration notes inside a spec chapter or canonical design doc are banned.
+7. **Commit messages are ASCII-English only.** No CJK characters, no
    non-ASCII punctuation in the subject or body. `git log --oneline` must
    be cleanly grepable with an ASCII regex. See also `§ Git Commits`
    below and `.agents/rules/design-principles.md` § Radical Refactoring.
-7. If a tool call fails with a syntax error, read the tool definition and retry
+8. If a tool call fails with a syntax error, read the tool definition and retry
    with the correct shape. Do not silently skip the step.
 
 Additional path-scoped rules live in `.agents/rules/*.md`. Skills loadable via
