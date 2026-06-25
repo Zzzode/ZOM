@@ -28,7 +28,7 @@ For the complete specification, please refer to the individual chapter files in 
 - [Generics](chapters/12-generics.md) - Generic programming and type parameters
 - [Modules and Imports](chapters/13-modules-and-imports.md) - Code organization and namespaces
 - [Memory Management](chapters/14-memory-management.md) - Memory safety and resource management
-- [Concurrency](chapters/15-concurrency.md) - Reserved for future concurrency design
+- [Concurrency](chapters/15-concurrency.md) - DRF-SC memory model, M:N work-stealing scheduler, scope/task system with 5 combinators, supervisor tree, atomics, bounded backpressure channels, priority-inheritance mutex, scope-local storage, timer wheel internals
 - [Attributes and Annotations](chapters/16-attributes-and-annotations.md) - Reserved metadata syntax
 
 ### Reference

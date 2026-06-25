@@ -446,3 +446,129 @@ let data: { id: i32, values: f64[] } = {
     values: [1.0, 2.0, 3.0]
 };
 ```
+
+## Atomic<T> Family
+
+### Atomic Types
+
+Primitive atomic types map 1:1 to C++20 `std::atomic<T>` and provide the
+industry-standard SC-DRF memory model documented in Ch.15 SS 15.0.
+`Atomic<T>` is **not** generic over arbitrary `T`. The normative set of
+valid instantiations is closed and listed below. Any attempt to form
+`Atomic<SomeStruct>` or `Atomic<SomeEnum>` where the element is not in the
+table below raises **ZOM1053 AtomicAlignmentInvalid** at compile time.
+
+| Canonical alias | Shorthand for | Guaranteed lock-free | Size (bytes) |
+|-----------------|---------------|---------------------:|-------------:|
+| `AtomicBool`    | `Atomic<bool>` | yes | 1 |
+| `AtomicI8`      | `Atomic<i8>`  | yes | 1 |
+| `AtomicI16`     | `Atomic<i16>` | yes | 2 |
+| `AtomicI32`     | `Atomic<i32>` | yes | 4 |
+| `AtomicI64`     | `Atomic<i64>` | yes | 8 |
+| `AtomicIsize`   | `Atomic<isize>` | yes | pointer width |
+| `AtomicU8`      | `Atomic<u8>`  | yes | 1 |
+| `AtomicU16`     | `Atomic<u16>` | yes | 2 |
+| `AtomicU32`     | `Atomic<u32>` | yes | 4 |
+| `AtomicU64`     | `Atomic<u64>` | yes | 8 |
+| `AtomicUsize`   | `Atomic<usize>` | yes | pointer width |
+| `AtomicPtr<T>`  | `Atomic<*mut T>` | yes | pointer width |
+
+### Layout
+
+Every `Atomic<T>` in the table above has memory layout:
+
+```
+repr(C, align(align_of::<T>()))
+struct Atomic<T> { value: T }  // private field, opaque size
+```
+
+Formally: `size_of::<Atomic<T>>() == size_of::<T>()`,
+`align_of::<Atomic<T>>() == align_of::<T>()`, and no padding is introduced
+between the outer `Atomic` and the inner `T`. The inner `T` is not directly
+accessible; it is only read or written through the atomic accessors below.
+An `Atomic<T>` value is never implicitly copied or cloned. `Atomic<T>`
+carries the `Linear` marker (Ch.16) and **never** the `Copy` marker. It
+does carry the `Shared` marker so references to a single `Atomic<T>` may
+be safely shared across any number of scopes or threads.
+
+### Ordering Enum
+
+```zom
+enum Ordering {
+    Relaxed,
+    Consume,
+    Acquire,
+    Release,
+    AcqRel,
+    SeqCst,
+}
+```
+
+Semantics. Each variant imposes a progressively stronger set of ordering
+guarantees over surrounding non-atomic and atomic accesses. The lattice
+below shows the "strictly stronger than" relation: a program valid at a
+weaker ordering remains valid at any stronger one, but not vice versa.
+
+```mermaid
+flowchart BT
+    Relaxed -->|"no RF, no SR, only atomicity"| Consume
+    Consume -->|"data-dep RF only"| Acquire
+    Release -->|"all prior SR after"| AcqRel
+    Acquire -->|"all later RF before"| AcqRel
+    AcqRel -->|"Acquire + Release together"| SeqCst
+    SeqCst -->|"single total order S over all SeqCst ops"| SC_["SC guarantee"]
+```
+
+Ordering-vs-operation compatibility matrix. Calling a method with an
+ordering outside its allowed set raises
+**ZOM1052 IncomparableMemoryOrder** at compile time.
+
+| Operation        | Allowed orderings                                             |
+|------------------|----------------------------------------------------------------|
+| `load()`         | `Relaxed`, `Consume`, `Acquire`, `SeqCst`                      |
+| `store()`        | `Relaxed`, `Release`, `SeqCst`                                 |
+| `swap()` / RMW   | all six: `Relaxed`, `Consume`, `Acquire`, `Release`, `AcqRel`, `SeqCst` |
+| `compare_exchange_*` success | `Relaxed`, `Acquire`, `Release`, `AcqRel`, `SeqCst` — **not** `Consume` |
+| `compare_exchange_*` failure | `Relaxed`, `Consume`, `Acquire`, `SeqCst` — **not** `Release`, `AcqRel` |
+
+### API Summary
+
+Every valid `Atomic<T>` above provides the common methods below. Integer and
+pointer atomics additionally provide the arithmetic fetch-* family.
+
+| Method | Signature (on `Atomic<T>`) | Returns |
+|--------|-----------------------------|---------|
+| `new` | `fun new(value: T) -> Self` | constructed atomic |
+| `load` | `fun load(this: &Self, order: Ordering) -> T` | current value |
+| `store` | `fun store(this: &Self, value: T, order: Ordering) -> ()` | unit |
+| `swap` | `fun swap(this: &Self, value: T, order: Ordering) -> T` | previous value |
+| `compare_exchange_strong` | `fun compare_exchange_strong(this: &Self, expected: &mut T, desired: T, succ: Ordering, fail: Ordering) -> (T, bool)` | prior value + success flag |
+| `compare_exchange_weak` | `fun compare_exchange_weak(this: &Self, expected: &mut T, desired: T, succ: Ordering, fail: Ordering) -> (T, bool)` | prior value + success flag; may spuriously return false |
+| `fetch_add` | `fun fetch_add(this: &Self, delta: T, order: Ordering) -> T` | previous value (integers + ptr atomics) |
+| `fetch_sub` | `fun fetch_sub(this: &Self, delta: T, order: Ordering) -> T` | previous value (integers + ptr atomics) |
+| `fetch_and` | `fun fetch_and(this: &Self, val: T, order: Ordering) -> T` | previous value (integer atomics) |
+| `fetch_or` | `fun fetch_or(this: &Self, val: T, order: Ordering) -> T` | previous value (integer atomics) |
+| `fetch_xor` | `fun fetch_xor(this: &Self, val: T, order: Ordering) -> T` | previous value (integer atomics) |
+
+Semantics of `compare_exchange_strong` vs `_weak`. Both perform an atomic
+CAS on the location: iff the current value bit-equality-compares with
+`*expected`, the location is updated to `desired` using `succ` ordering;
+otherwise `*expected` is overwritten with the observed value using `fail`
+ordering. `strong` never returns `false` spuriously; `weak` is permitted
+to return `false` even when the value matched, enabling a single-CAS
+implementation on platforms that lack a native strong CAS. Loops using
+`compare_exchange_weak` are canonical and generate fewer instructions on
+LL/SC architectures; loops using `compare_exchange_strong` avoid an extra
+branch handling the spurious-failure case.
+
+`AtomicPtr<T>` arithmetic. `fetch_add(delta)` and `fetch_sub(delta)` on
+`AtomicPtr<T>` scale `delta` by `size_of::<T>()` bytes, matching C++
+pointer arithmetic. Byte-level pointer arithmetic must cast to
+`AtomicU8*` or use `AtomicUsize` and cast back after.
+
+Cross-reference. The interaction of `Ordering::Release` and
+`Ordering::Acquire` with the happens-before relation is specified in
+Ch.15 SS 15.0. The `Shared` marker satisfaction for `Atomic<T>` is used
+by the concurrency pass in Ch.15 SS 15.9 to permit `&Atomic<T>`
+reference captures across spawn boundaries without a diagnostic.
+
