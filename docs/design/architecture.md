@@ -443,9 +443,14 @@ Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by
 | 0400–0499 | Type checker / unification | `src/checker` | Error | `ZOM0454` = Cannot coerce concrete type `T` to `dyn I` — interface `I` is not object-safe or marker-closure failed → Error |
 | 0400–0499 | Type checker / unification | `src/checker` | Warning | `ZOM0477` = Unused type parameter with no trait bounds → Warning |
 | 0500–0599 | Marker / coherence engine | `src/checker` (coherence pass) | Error | `ZOM0501` = Impl of marker `Send` for type `*mut T` conflicts with negative impl in scope → Error |
+| 0500–0599 | Marker / coherence engine | `src/checker` | Error | `ZOM0502` = MarkerNameClash: a marker, interface, class, and alias cannot share the same identifier in the type namespace → Error |
 | 0500–0599 | Marker / coherence engine | `src/checker` (coherence pass) | Error | `ZOM0505` = Duplicate standalone `impl I for T` — two impl blocks provide the same (interface, type) pair → Error |
 | 0500–0599 | Marker / coherence engine | `src/checker` (coherence pass) | Error | `ZOM0508` = Diamond-resolution ambiguous: multiple inherited impls provide `foo`; disambiguate with `InterfaceName::foo(this)` → Error |
+| 0500–0599 | Marker / coherence engine | `src/checker` | Error | `ZOM0517` = MarkerCannotHaveMethods: a marker declaration contains a block body, method signature, or associated type; markers are zero-method structural predicates. Use interface for behavior → Error |
+| 0500–0599 | Marker / coherence engine | `src/checker` | Error | `ZOM0519` = MarkerCycle: derived-marker declaration transitively references itself (e.g. marker A = A + B). Break the cycle at one participating marker → Error |
 | 0500–0599 | Marker / coherence engine | `src/checker` (coherence pass) | Error | `ZOM0524` = Closure captured value is `!Sync` yet escaped to `spawn()` call boundary → Error |
+| 0500–0599 | Marker / coherence engine | `src/checker` | Error | `ZOM0531` = AutoMarkerUnionAmbiguous: an auto marker cannot be structurally derived for union types or untagged enums; write an explicit positive or negative impl → Error |
+| 0500–0599 | Marker / coherence engine | `src/checker` | Error | `ZOM0535` = UnsafeMarkerImplRequiresUnsafe: impl M for T on an unsafe marker requires the unsafe keyword; attest soundness via `unsafe impl M for T` → Error |
 | 0500–0599 | Marker / coherence engine | `src/checker` (coherence pass) | Note | `ZOM0588` = Coherence scope originates from module declared here → Note |
 | 0600–0699 | Attributes / annotations | `src/parser` + attribute handlers | Error | `ZOM0611` = Attribute namespace `vendor` missing reverse-domain prefix (expected `com.vendor.xxx`) → Error |
 | 0600–0699 | Attributes / annotations | `src/parser` + attribute handlers | Error | `ZOM0630` = `@inline(never)` applied to generic function with only in-MTU callers → Error |

@@ -128,6 +128,65 @@ Semantic rules for bound lists:
 3. **Conjunction with `&` (type-level intersection) is a TYPE EXPRESSION, not a bound.** `T: I1 + I2` = "T satisfies both I1 and I2". `I1 & I2` as a type = "the anonymous intersection type whose values satisfy both I1 and I2 simultaneously"; use `dyn (I1 & I2)` to name it as an existential.
 4. **Marker negation (`!`)** is legal only on marker bounds. On an interface name it emits ZOM0448.
 
+#### Marker Privileges in Where Clauses
+
+Marker bounds are Boolean predicates in a proper lattice, which grants them three
+syntactic privileges that interface bounds do not possess.
+
+1. **Negation.** A marker bound accepts a `!` prefix meaning "the target type
+   explicitly does NOT possess marker M". Interface bounds reject the `!`
+   prefix with ZOM0448 since behavioral negation lacks a proof procedure in
+   general.
+2. **Optional relaxation with `?`**. On auto-derived markers the syntax `?M`
+   means "T does NOT implicitly carry M as a precondition", relaxing the
+   default upper bound that the compiler assumes for parameters. Only meaningful
+   for markers that are auto-closed over primitive types by the language
+   prelude (Sendable, Shared, Sized). User-defined auto-markers inherit this
+   privilege in symmetric fashion.
+3. **Commutative / associative closure.** The expression `M1 + M2 + M3` forms
+   a proper Boolean conjunction: order does not matter (commutative) and
+   regrouping does not matter (associative). `zom fmt` canonicalises to
+   "interface bounds first, then markers, each subgroup alphabetically".
+   Interface bounds share the alphabetical-order rule but do NOT form a
+   closed lattice — there is no automatic way to combine `Drawable + Hashable`
+   into a named third interface.
+
+```zom
+// Negation + conjunction (correct)
+fn spawn_single_writer<F, T>(f: F) -> JoinHandle<T>
+    where
+        F: FnOnce() -> T,
+        F: Sendable + !Shared + 'static,   // !Shared: requires NO shared-read aliasing
+        T: Sendable + Linear,              // Linear: must be consumed exactly-once
+    { ... }
+
+// Relaxation for raw allocator (we do NOT require Send on the target type
+// because this function will not move T across threads — it only returns a
+// pointer that the caller later attaches semantics to).
+fn raw_alloc<T: ?Sized + ?Sendable>(size_bytes: usize) -> *mut T { ... }
+```
+
+Anti-example for interface negation (produces ZOM0448):
+```zom
+// ❌ ZOM0448 — interface negation is not permitted
+fn draw_except_shape<T>(x: T) where T: !Drawable;
+```
+
+#### Conjunction vs Intersection
+
+The bound-list `+` operator (conjunction) describes a *predicate* on a single
+concrete type. It MUST be distinguished from the type-level intersection
+operator `&` (Ch.03):
+
+| Construct            | Syntax                 | Level          | Meaning                                           |
+|----------------------|------------------------|----------------|---------------------------------------------------|
+| Bound conjunction    | `T: Drawable + Sendable` | Generic head   | "For the single concrete T, prove BOTH properties" |
+| Type intersection    | `Drawable & Movable`   | Type position  | "One value that simultaneously IS both types"     |
+
+Type intersections `A & B` at type position are independent from the bound
+conjunction above. They are enforced structurally by the type checker as
+true sub-typing relationships, not as proof obligations on generic parameters.
+
 ### Associated Types
 
 ```zom
