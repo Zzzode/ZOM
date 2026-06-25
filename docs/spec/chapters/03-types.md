@@ -201,94 +201,125 @@ let getString: Supplier<str> = fun () -> str { return "hello"; };
 let print: Consumer<str> = fun (s: str) -> unit { console.log(s); };
 ```
 
+### Never / Bottom Type (`!`)
+
+The **never type** (written `!`, pronounced "never" or "bottom") is the type with no values at all. A function whose declared return type is `!` is guaranteed to never return normally — every execution path either diverges infinitely, exits the process, or transfers control out of the enclosing scope via a non-local jump (panic, return, break, continue).
+
+**Formation.** The never type is written as a standalone `!` token in any type position. It has no parameters, no qualifiers, and no user-extensible surface.
+
+**Subtyping.** `!` is a **subtype of every other type**. It is the unique bottom element of the ZOM type lattice. No other type carries this property. This means that whenever a value of type `T` is expected, a value of type `!` can be supplied and the type checker accepts it as `T` without further conversion.
+
+**Expressions that produce `!`:**
+
+- `panic!(...)` macro invocation and any equivalent builtin.
+- `return expr;` when evaluated in expression position: the synthetic type of a `return` statement as an expression is `!`, because control never reaches whatever follows it.
+- `break` and `continue` (loop-exit control-flow constructs).
+- `exit(code)`, `abort()`, `unreachable!()`, `todo!()` builtins.
+- An infinite `loop { }` whose body contains no reachable exit path.
+- A match arm whose body evaluates to `!` allows the whole match expression to coerce to the broader type of the remaining arms, even if the arms would otherwise be incompatible.
+
+**Example — diverging function:**
+```zom
+fun diverge() -> ! { loop { } }
+```
+
+**Example — match arm coercion:**
+```zom
+let x = match opt {
+    Some(v) -> v,
+    None -> return Err("empty"),   // arm body type = !, coerces to typeof(v)
+};
+```
+
+**Algebraic simplification during type normalization.** For any type `T`:
+
+- `T | !` normalizes to `T`. Since `!` has no inhabitants, adding it to a union is the identity operation.
+- `T & !` normalizes to `!`. Intersecting any type with the empty set yields the empty set.
+
+These two rules apply unconditionally at every union- and intersection-formation site. They are part of the canonicalizer's rewrite system before subtype or bound checks are performed.
+
+**Generic bound satisfaction.** The never type satisfies **all** bounds trivially and vacuously. If a function requires `T: Drawable + Linear + Sendable + ...`, then `!` satisfies the conjunction without needing any concrete impl. The justification is proof-irrelevant: since there can never be a value of type `!`, any property claimed about such a value is classically true.
+
+**Diagnostic reference.** ZOM0330 `NeverTypeCoerceFail` should never occur in practice. It is emitted only if the compiler encounters a degenerate case where `!` cannot be coerced into an expected type, which indicates an internal consistency bug in the type-normalization pipeline. The user-visible message carries an ICE-report link because the condition is not user-fixable.
+
 ### Existential Types (dyn)
 
-#### 2.1 Purpose
+#### Purpose
 
-Existential types provide first-class runtime values that hide a concrete type behind an interface contract. They are the mechanism ZOM uses to express heterogeneous collections of values that share a common behavior, callbacks whose concrete closure types cannot be named, and dependency-injected service objects whose implementations vary at runtime.
+Existential types provide first-class, compile-time-unknown concrete types whose concrete identity is erased and whose behavior is dispatched at runtime through a vtable. They are ZOM's mechanism for heterogeneous collections sharing a common behavior, callbacks whose concrete closure types cannot be named, and dependency-injected service objects whose implementations vary at runtime.
 
-ZOM follows the explicit existential erasure model. An `interface I` declaration is a *bound*: a predicate placed on type variables inside generics. It is not, by itself, a type that can appear in a value position. To treat "any value whose type implements I" as a first-class, runtime-manifest type, the programmer MUST write `dyn I`. This spelling makes the cost of boxing, heap allocation (when required), and vtable indirection VISIBLE at every call site.
+ZOM follows an **explicit existential erasure model (Swift 6 `any` semantics)**, a normative locked decision. An `interface I { ... }` declaration introduces ONLY a *bound*: a predicate placed on type variables inside generics. It does **not** by itself introduce a type that can appear in a value position. To treat "any value whose type implements I" as a first-class runtime-manifest type, the programmer MUST write `dyn I`. This spelling makes the cost of boxing (when required) and vtable indirection VISIBLE at every use site.
 
-Other language designs have chosen the implicit path: mentioning an interface name in type position silently constructs an erased, boxed object. ZOM rejects this path in favor of cost predictability. Every allocation and every indirect call is written explicitly in source; reviewers reading a function signature can determine, without consulting a separate optimizer report, whether a parameter is passed monomorphically (zero cost, concrete type) or through an indirection table (runtime dispatch, potential heap traffic).
+The C#/Java implicit conversion pattern is explicitly REJECTED. There is NO automatic coercion of a class implementing I to "type I". A variable declaration `let x: Drawable = Circle()` is a static error — the programmer must write `let x: dyn Drawable = Circle();`.
 
-Existential types interact cleanly with ZOM's marker system (Ch.16 §16.12.3) and its object-safety rules (Ch.09 §9). Only object-safe interfaces may appear after `dyn`; this is enforced by the type checker with diagnostic ZOM0449 InterfaceNotObjectSafe.
+Coercion occurs ONLY when the target type is explicitly declared as `dyn I` (in a function parameter, variable type annotation, struct field, or return type position). The coercion itself is FREE: it performs no clone, no move-copy of the payload, and allocates only when the concrete value cannot be stored inline-sized (determined per target ABI). The cost is purely fat-pointer construction: two words written into the destination slot.
 
-#### 2.2 Syntax
+Existential types interact cleanly with ZOM's marker system (Ch.16 §16.12.3 R11) and its object-safety rules (Ch.09 §9 OS-4). Only object-safe interfaces may appear after `dyn`; this is enforced by the type checker. An interface with an unbound associated type used in a `dyn` context raises diagnostic ZOM0334 DynUnassociatedType.
 
-The grammar for existential types is given below (see also Ch.17 DynType):
+#### Grammar
+
+The canonical grammar for existential types is reproduced below. See Ch.17 DynType and InterfaceBoundList productions for the authoritative version.
 
 ```
-DynType              ::= 'dyn' InterfaceType ( '+' MarkerConjunction )?
-InterfaceType        ::= Identifier TypeArguments?
-MarkerConjunction    ::= MarkerItem ( '+' MarkerItem )*
-MarkerItem           ::= '!'? ( Identifier | AttributeQualifiedPath )
+ExistentialType      ::= 'dyn' InterfaceBoundList
+InterfaceBoundList   ::= InterfaceName ( '<' GenericArgs '>' )? ( '+' MarkerPath )*
 ```
 
-Legal forms:
+Valid forms:
 
 ```zom
 let a: dyn Drawable = ...;
-let b: dyn Iterator<Item = u8> = ...;
-let c: dyn Read + Sendable = ...;
-let d: dyn Read + Write + Sendable + Shared = ...;
-fun e(error: (dyn Error)) -> dyn Drawable;
-let f: Vec<dyn FnOnce(i32) -> str> = ...;
+let b: dyn Iterator<Item = T> = ...;
+let c: dyn Read + Sendable + Shared = ...;
 ```
 
-Illegal forms and their diagnostics:
+Invalid forms and their diagnostics:
 
 | Form | Diagnostic |
 |------|------------|
-| `let x: dyn = value;` (`dyn` head without interface) | ZOM0450 DynHeadMissingInterface |
-| `let x: dyn (Drawable \| Printable) = value;` (union on the `dyn` head) | ZOM0451 DynHeadNotInterface |
-| `let x: dyn Drawable + dyn Sendable = value;` (repeated `dyn` prefix) | ZOM0452 RepeatedDynPrefix |
-| `let x: dyn Drawable + !Drawable = value;` (negation of the bound interface) | ZOM0448 NegativeInterfaceBoundNotAllowed |
+| `let x: dyn = value;` (bare `dyn` with no following interface) | ZOM0340 DynEmpty |
+| `let x: dyn (i32 \| str) = value;` (non-interface after `dyn`) | ZOM0341 DynNonInterface |
+| `let x: dyn Error + dyn Sendable = value;` (repeated `dyn` prefix) | ZOM0342 DynRepeatedPrefix |
+| `let x: dyn Iterator = value;` (associated type `Item` not bound) | ZOM0334 DynUnassociatedType |
 
-#### 2.3 Semantics
+#### Semantics — Three Normative Rules
 
-- `dyn I` is a first-class language type. It IS sized on all targets.
-- The default memory representation on all targets is TWO MACHINE WORDS, referred to as a *fat pointer*.
-- Word 0: `data_ptr`. A pointer to the erased concrete object, with opaque pointee type `*mut ()`.
-- Word 1: `vtable_ptr`. A pointer to a static, immutable, per-(concrete-type, interface) virtual dispatch table. Each distinct pair `(T, I)` where `T: I` produces exactly one vtable at code-generation time.
-- Coercion rule: If `T: I + M1 + ... + Mn` (i.e., the concrete type `T` implements interface `I` and every marker listed in the conjunction), then a value of type `T` COERCES to `dyn I + M1 + ... + Mn`.
-- Coercion is automatic ONLY at explicit-type-annotation sites: `let` bindings with annotations, function arguments, function return positions, struct fields, and generic type arguments that have been resolved to a concrete `dyn` type. Coercion is NOT automatic in the absence of a type annotation; the inference engine never produces an existential type as its solution. This is the core explicit-erasure rule.
-- No double-boxing: a coercion from `dyn I` to `dyn I` is idempotent and a no-op at runtime. A coercion from `dyn I` to `dyn J`, where `I extends J`, is a *re-blessing*: the same fat pointer is carried forward but `vtable_ptr` is adjusted to reference (or reinterpreted as) the J-prefix of the original I-vtable. No heap allocation, no copy of the underlying concrete object.
+1. **First-class type.** `dyn I` IS a standalone, sized, first-class language type. The interface declaration alone does NOT introduce a usable type.
+2. **No implicit interface-to-type coercion.** There is no automatic conversion from `Circle implements Drawable` to a value of "type `Drawable`". Any spelling that treats an interface name as a type in value position (without the `dyn` prefix) is a static error. No opt-in, no compatibility flag, no legacy mode.
+3. **Explicit-annotation coercion sites only.** Coercion from a concrete `T implements I` to `dyn I` fires exclusively at sites where the target type is textually declared as `dyn I` (or a generic type argument resolved to `dyn I`). The type inference engine NEVER produces an existential type as its solution — coercion is never inferred from context alone.
 
-#### 2.4 Memory Layout and Calling Convention
+#### Runtime Layout (2-word fat pointer)
 
-On a 64-bit platform, `dyn Drawable` has the following layout:
+The default memory representation on all targets is **two machine words**, referred to as a *fat pointer*. The `dyn Drawable` value layout on a 64-bit target is shown below.
 
 ```mermaid
-classDiagram
-    class DynI {
-        +void* data_ptr      @ offset 0
-        +VTable* vtable_ptr  @ offset 8
-    }
-    class VTable {
-        +fn_ptr drop_in_place @ slot -1 (always present)
-        +size_t size
-        +size_t align
-        +u64    marker_bitmap (Sendable/Shared/Linear/...)
-        +fn_ptr method1
-        +fn_ptr method2
-        +...
-    }
-    class ConcreteT {
-        +fields...
-    }
-    DynI --> VTable : vtable_ptr references
-    DynI --> ConcreteT : data_ptr points to
+graph LR
+    subgraph DYN ["dyn Drawable value — 2 words (16 bytes on 64-bit)"]
+        D_PTR["<b>data_ptr</b>: *mut ()<br/>offset 0x00, 8 bytes"]
+        V_PTR["<b>vtable_ptr</b>: *const VTable<br/>offset 0x08, 8 bytes"]
+    end
+    D_PTR --> PAYLOAD["Concrete Circle payload<br/>(stack, heap, or inline storage)"]
+    V_PTR --> VTBL["VTable for (Circle, Drawable) — static immutable"]
+    VTBL --> SLOT0["vtable[0] = Drawable::draw"]
+    VTBL --> SLOT1["vtable[1] = Drawable::bounds"]
+    VTBL --> SLOTN["vtable[N-1] = Drop::drop_in_place<br/>(LAST slot — always present)"]
 ```
 
-- `size_of::<dyn I>()`: 16 bytes on 64-bit targets, 8 bytes on 32-bit targets.
-- `align_of::<dyn I>()`: equals the natural pointer alignment of the target (8 on 64-bit, 4 on 32-bit).
-- Slot `-1` is ALWAYS `drop_in_place(*mut ())`. This slot is never repurposed and is part of the cross-crate ABI stability guarantee for `dyn` objects.
-- The `marker_bitmap` field is 64 bits wide. Ch.16 R11 G6 runtime double-check consults this bitmap at spawn-accept time; the layout of bits matches `enum MarkerId`, with LSB (bit 0) assigned to `Sendable`, bit 1 to `Shared`, bit 2 to `Linear`, and subsequent markers assigned in declaration order of the standard marker prelude. Custom markers occupy user-space bits starting at bit 32.
-- Method pointer order in the vtable matches interface declaration order, with superinterface methods flattened in post-order, left-to-right MRO traversal of the `extends` DAG. This order is part of the cross-crate ABI contract for a given interface version.
+Formal layout invariants:
 
-#### 2.5 Variance
+- **Size:** `size_of::<dyn I>() = 2 * ptr_size`. 16 bytes on 64-bit, 8 bytes on 32-bit.
+- **Alignment:** `align_of::<dyn I>() = ptr_align`.
+- **Word 0 (data_ptr):** A pointer to the erased concrete object, with opaque pointee type `*mut ()`. Never null for a well-formed `dyn I` value.
+- **Word 1 (vtable_ptr):** A pointer to a static, immutable, per-(concrete-type, interface) virtual dispatch table. Each distinct pair `(T, I)` where `T implements I` produces exactly one vtable at code-generation time.
+- **VTable ordering:** Methods are arranged in post-order traversal of the interface inheritance chain, left-to-right MRO, with method names in declaration order within each interface.
+- **Last slot rule:** The FINAL slot of every vtable is ALWAYS `drop_in_place(*mut ())` — the drop-glue function pointer for the erased concrete type. This slot is never repurposed and is part of the cross-crate ABI stability guarantee.
+- **Implicit prefix words:** Immediately before the first method slot (at negative offsets from `vtable_ptr`), implementations store three additional words: `size: usize`, `align: usize`, `marker_bitmap: u64`. These are accessed via negative-offset loads by the runtime support for size queries and marker propagation.
 
-The default variance of every type parameter referenced inside an interface is **invariant** when that interface is instantiated as a `dyn` type. This matches ZOM's global, safety-first variance policy: all generics default to invariant, and programmers opt into co- or contra-variance explicitly via the `#[zom::variance(...)]` attribute applied to the interface.
+The `marker_bitmap` prefix word is consulted by Ch.16 §16.12.3 R11 G6's runtime double-check at spawn-accept time. Bit layout is LSB-first in declaration order of the standard marker prelude: bit 0 = `Sendable`, bit 1 = `Shared`, bit 2 = `Linear`, bit 3 = `SuspendSafe`, bit 4 = `NoSuspendHazard`, bit 5 = `TaskBound`. User-defined markers occupy bits starting at bit 32.
+
+#### Variance
+
+The default variance of every type parameter referenced inside an interface is **invariant** when that interface is instantiated as a `dyn` type. This matches ZOM's global, safety-first variance default: all generics are invariant, and programmers opt into co- or contravariance explicitly via `#[zom::variance(...)]` applied to the interface declaration. (Cross-reference: Ch.12 Generics, variance attributes.)
 
 A `dyn Producer<Cat>` is NOT a subtype of `dyn Producer<Animal>` unless `Producer` is declared with a covariant out-parameter:
 
@@ -300,37 +331,59 @@ interface Producer<out T> {
 // dyn Producer<Cat> coerces to dyn Producer<Animal>
 ```
 
-Opt-in variance is enforced at interface-declaration time against method signatures; any use of `T` in a contravariant position (parameter, writable field) invalidates the `cov` attribute with diagnostic ZOM0453 VarianceConflict. Variance attributes are inherited through `extends`; combining an inherited `cov` parameter with a local `contra` use is diagnosed as ZOM0454 InheritedVarianceConflict.
+Covariance is only sound when the interface PRODUCES values of type T and never CONSUMES them. Attempting to declare `#[zom::variance(cov)]` on an interface that uses T in a contravariant (parameter) position raises diagnostic ZOM0453 VarianceConflict. Variance attributes are inherited through `extends`; combining an inherited `cov` parameter with a local `contra` use raises ZOM0454 InheritedVarianceConflict.
 
-#### 2.6 Marker Propagation on dyn Objects
+#### Marker Propagation
 
-Given `dyn I + M1 + M2`:
+For a type `dyn I + M1 + M2`:
 
-- DECLARED marker bits = {M1} ∪ {M2} ∪ (closure over marker traits implied by I's own declared default marker-impls, transitively through the `extends` chain).
-- ACTUAL marker bits (embedded in the vtable `marker_bitmap` at coercion site) = DECLARED ∩ (marker set of the concrete type T being coerced).
-- A `dyn` object never carries more marker privileges than its DECLARED bound-list permits, even if the underlying concrete T satisfies additional markers. This is a soundness rule: a signature that promises only `dyn I + Shared` must not allow callers to assume `Sendable` merely because the runtime value happens to be `Sendable`.
-- The runtime marker bitmap consulted by Ch.16 R11 G6 is the CLOSURE of the ACTUAL marker bits over the 3-phase negative closure: seed ¬M, blanket marker-propagation rules, and unsafe-override marker assertions.
+- **DECLARED marker bits** = {M1, M2} ∪ (transitive closure over marker markers implied by I's own declared default marker-impls through the `extends` chain).
+- **ACTUAL marker bits** (embedded at coercion site into the vtable `marker_bitmap` prefix word) = DECLARED ∩ (marker set of the concrete type T being coerced).
+- A `dyn` object NEVER carries more marker privileges than its DECLARED bound-list permits, even if the underlying concrete T happens to satisfy additional markers. This is a soundness rule: a function signature promising only `dyn I + Shared` must not allow downstream callers to assume `Sendable` merely because a particular runtime value is `Sendable`.
+- To re-declare additional markers on an existential, the user writes a re-coercion with the extended bound-list: `x as dyn I + Sendable + Shared`. This succeeds only if the concrete T's marker set contains the new markers; otherwise the coercion site raises ZOM16xx MarkerCoerceFail.
+- The Ch.16 R11 G6 runtime double-check consults the 3-phase negative closure of the ACTUAL marker bits at spawn-accept time.
 
 Example:
 
 ```zom
 let circle = Circle(radius: 5.0);
-let x: dyn Drawable + Sendable = circle as dyn Drawable + Sendable;
+let x: dyn Drawable + Sendable = circle;    // coerce Circle → dyn Drawable + Sendable
 ```
 
-At the coercion site, the compiler: (1) verifies `Circle: Drawable` and `Circle: Sendable`; (2) emits a reference to the static `(Circle, Drawable)` vtable; (3) records marker bits `{Drawable-closure} ∩ {Circle-marker-set} = {Sendable, Shared (inherited default if declared)}` in the vtable's `marker_bitmap` field.
+At this coercion site the compiler: (1) verifies `Circle implements Drawable` and `Circle: Sendable`; (2) emits a reference to the static `(Circle, Drawable)` vtable; (3) records marker bits equal to DECLARED ∩ `Circle.marker_set()` into the vtable's `marker_bitmap` prefix word.
 
-#### 2.7 Upcasting
+#### Dispatch
 
-Rule: If `I extends J`, and a value has type `dyn I + M1 + ... + Mn`, then that value coerces to `dyn J + M1 + ... + Mn` with ZERO runtime cost.
+A method call on an existential value is compiled as an indirect jump through the vtable:
 
-Only `vtable_ptr` is offset: J's method slots form a leading sub-slice of I's vtable, so the upcast is either a pointer reinterpretation (when J is exactly I's first superinterface) or a small compile-time-constant byte offset (when J is deeper in the flattened prefix). No allocations and no copies of the underlying object are performed.
+```
+dyn_I.method(args)   ⟹   (*vtable_ptr)[method_index](data_ptr, args...)
+```
 
-The explicit upcast syntax `x as dyn J` is optional but allowed, and is recommended in review-hostile code paths where the implicit coercion could be mistaken for a new allocation. No downcast syntax exists at the language level; programmers who need runtime type recovery should route through the `any` top type and the library-level `Any.downcast_ref::<T>()` facility.
+The `method_index` is calculated **statically** at each call site from the interface's post-order flattened declaration order. The per-call runtime cost is exactly one indirect jump plus the standard calling-convention register/memory traffic for the arguments; there is zero additional per-call bookkeeping beyond the indirect-branch predictor miss penalty.
 
-#### 2.8 Downcasting Policy (explicit no-language-support)
+#### Upcasting
 
-`dyn I.is<T>()?` and `dyn I.downcast::<T>()` are deliberately NOT part of ZOM v1.0. Supporting per-vtable RTTI for every `dyn`-instantiated interface would require emitting type-id hashes and equality comparisons for every `(T, I)` pair used across a compiled program, substantially bloating binary size, static relocation tables, and link time for large codebases, while also introducing a permanent ABI surface that would constrain future vtable layout changes. Users who genuinely need dynamic downcast on a specific interface hierarchy are expected to declare an explicit `as_any() -> any` method on that interface themselves, and invoke library-level downcast helpers on the resulting `any` value. The built-in `any` type supports this path as a first-class facility for the standard library. This is an explicit, documented non-goal for ZOM v1, not an omission.
+Rule: If `interface I extends J`, and a value has type `dyn I + M1 + ... + Mn`, then that value coerces to `dyn J + M1 + ... + Mn` with **ZERO runtime cost**.
+
+Upcast operates exclusively on the vtable pointer. The post-order flattening rule guarantees that J's method slots form a strict leading sub-slice of I's vtable. Therefore, the upcast is either a pointer reinterpretation (when J is exactly I's first superinterface) or a compile-time-constant byte offset applied to `vtable_ptr` (when J is deeper in the flattened prefix). The `data_ptr` is never modified. No heap allocation and no copy of the underlying concrete object are performed.
+
+The explicit upcast syntax `x as dyn J` is optional but allowed. It is recommended in review-hostile code paths where the implicit coercion could be mistaken for a new allocation by reviewers unfamiliar with the upcast-is-free guarantee.
+
+#### Downcasting Policy — No Language-Level Support
+
+`dyn I.is<T>()` and `dyn I.downcast::<T>()` are deliberately NOT part of ZOM v1.0. Supporting per-vtable RTTI for every `dyn`-instantiated interface would require emitting type-id hashes and equality comparisons for every `(T, I)` pair used across a compiled program, substantially bloating binary size, static relocation tables, and link time for large codebases, while also introducing a permanent ABI surface that constrains future vtable layout changes.
+
+Users who genuinely need runtime type recovery on a specific interface hierarchy are expected to declare an explicit `as_any() -> any` method on that interface:
+
+```zom
+interface Drawable {
+    fun draw(this: &Self);
+    fun as_any(this: &Self) -> any;   // user-written reflection hook
+}
+```
+
+and then invoke library-level `Any.downcast_ref::<T>()` helpers on the resulting `any` value. The built-in `any` type supports this path as a first-class facility in the standard library. This is an explicit, documented non-goal for ZOM v1, not an omission.
 
 ### Object Types
 

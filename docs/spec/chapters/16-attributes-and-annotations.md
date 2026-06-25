@@ -824,6 +824,92 @@ T0-23 zom::param::move
       // Targets: ParameterDeclaration (only).
       // Schema :  unit/bare.
 
+T0-24 zom::panic(strategy)
+      // Crate-level panic strategy override. Selects how panics are
+      // translated at code-generation time for every profile, overriding
+      // the profile-based default declared in Zom.toml `[profile.*].panic`.
+      // Grammar  : zom::panic = '(' ( "unwind" | "abort" ) ')'
+      // Scope    : crate root only. Written as #![zom::panic(abort)].
+      // Semantics: "unwind" causes unwinding with drop-elaboration of
+      //   stack frames up to a catch_unwind boundary. "abort" causes
+      //   immediate process abort on panic, zero drop glue executed.
+      // Conflict: if both this attribute and Zom.toml `[profile.*].panic`
+      //   specify explicit and *different* strategies for the same crate,
+      //   emit ZOM0963 PanicStrategyInconsistent with spans pointing at
+      //   both declaration sites.
+
+T0-25 zom::oom(strategy)
+      // Crate-level out-of-memory policy selector.
+      // Grammar  : zom::oom = '(' ( "error" | "panic" ) ')'
+      // Scope    : crate root only. Default = "error" (TBD-5 cross-ref).
+      // Semantics: "error" — every built-in allocation function returns a
+      //   union `T | AllocError` rather than panicking, forcing the
+      //   caller to handle OOM explicitly via `?!` or match. "panic" —
+      //   all allocation functions skip the union return and raise a
+      //   panic on OOM; callers cannot observe the failure via `?!`.
+      // Diagnostics: if "panic" is chosen and downstream code still
+      //   expects an error-union return, the checker emits a tailored
+      //   variant of ZOM0951 RaisesSignatureMismatch citing the
+      //   `#[zom::oom(panic)]` attribute as the reason.
+
+T0-26 zom::error(trace)
+      // Backtrace-capture selector for Error instances.
+      // Grammar  : zom::error = '(' ( "trace" ) ')'
+      // Scope    : crate root (applies blanket to every impl Error in
+      //   the crate) OR a specific enum variant / struct declaration
+      //   (targeted override, narrower scope wins).
+      // Semantics: when an Error-instance is *constructed* (not when it
+      //   is propagated via `?!`), the runtime captures a stack
+      //   backtrace and stores it in the Error's hidden side-table slot,
+      //   or in an explicit `Backtrace` field if one is annotated with
+      //   `#[backtrace]` (see T0-28). Cross-reference TBD-10 for the
+      //   runtime side-table design.
+
+T0-27 zom::error_boundary
+      // Panic-boundary wrapper for FFI entry points.
+      // Grammar  : zom::error_boundary (unit, no arguments).
+      // Scope    : function-level. Canonically applied to `extern "C"`
+      //   functions that are callable from foreign code, but permitted
+      //   on any function.
+      // Semantics: at code-generation time, the function body is
+      //   implicitly wrapped in a `zom::panic::catch_unwind(|| body)`.
+      //   If the closure panics, the boundary catches the unwind,
+      //   converts the panic payload into a clean error return. The
+      //   boundary has two effects:
+      //     (1) it is undefined behavior for an unwinding panic to cross
+      //         an `extern "C"` ABI boundary without this wrapper;
+      //     (2) the ZOM0965 UndefinedBehaviorOnUnwind diagnostic is
+      //         *suppressed* for any function annotated with this
+      //         attribute.
+      //   See Ch.18 §18.4 for the FFI-level expansion and Ch.11 for the
+      //   error-type mapping.
+
+T0-28 zom::derive(Error)
+      // Compiler-driven auto-derivation of the Error interface.
+      // Grammar  : zom::derive( '(' 'Error' ( ',' ErrorDeriveMeta )* ')' )
+      //            ErrorDeriveMeta = 'debug' | 'display' | 'default'
+      // Scope    : enum declarations and struct declarations only. Any
+      //   other target → ZOM0960 DeriveErrorOnNonEnumStruct.
+      // Semantics: synthesizes impls for the three methods of
+      //   `interface Error`:
+      //     1. `display(self) -> String` using variant/struct name or a
+      //        per-variant `#[message = "..."]` string template.
+      //     2. `source(self) -> Option<&dyn Error>` derived from fields
+      //        annotated with the helper attribute `#[source]`.
+      //     3. `backtrace(self) -> Option<&Backtrace>` derived from the
+      //        first field typed `Backtrace` and annotated `#[backtrace]`;
+      //        falls back to the compiler-owned side-table otherwise.
+      // Helper attributes:
+      //   `#[source]` on a field — feeds its value into `Error::source()`.
+      //   `#[backtrace]` on a `Backtrace`-typed field — uses user-supplied
+      //        storage instead of the compiler side-table.
+      //   `#[message = "..."]` on an enum variant — custom display
+      //        template, parsed with the standard `format!` mini-language
+      //        using variant fields as substitution variables.
+      // Diagnostics: ZOM0961 ErrorFieldInvalid if `#[source]` /
+      //   `#[backtrace]` / `#[message]` appear on a node whose type or
+      //   position does not match the expected schema.
+
 ---
 
 ## 16.9 Tier 1 stdlib marker attributes
@@ -1265,7 +1351,8 @@ For each operator `Op P`, `w ⊩ Op P` means "P holds at world w under modality 
 
 R11 For dyn-head types with a bound conjunction {M1 … Mn}, the FULL R0–R10
     closure is applied to the conjunction set, NOT only to the nominal
-    type-head's declared markers. Syntax for dyn-head existential types is defined in Ch.03 §X Existential Types and Ch.17 (DynType production).
+    type-head's declared markers. Interface name is required as the first bound after `dyn`; subsequent marker bounds use `+`. Repeating the `dyn` keyword for additional bounds is an error (ZOM0342 DynRepeatedPrefix).
+    Syntax for dyn-head existential types is defined in Ch.03 §X Existential Types and Ch.17 (DynType production).
     The first bound after the `dyn` keyword MUST be an interface; marker-only existential is not a valid type form and raises ZOM0450 DynHeadMissingInterface. Subsequent bounds may be markers joined by `+`; repeating the `dyn` keyword inside the same list is ZOM0452 RepeatedDynPrefix.
     Any pair (Mi, Mj) ∈ incompatible-table →
     S2b emits ZOM0763 DynBoundsCoherenceViolation with a span pointing at
@@ -1278,6 +1365,8 @@ R11 For dyn-head types with a bound conjunction {M1 … Mn}, the FULL R0–R10
     nominal syntactic checking alone is insufficient. G6 is extended
     below with a runtime-type-id bitmap check to catch cases where the
     concrete erased object violates R1 after S2b's static closure.
+
+    The `dyn` existential type is formally defined in Ch.03 §Existential Types. The grammar for `dyn I + M1 + M2` appears in Ch.17 AtomType + DynType production.
 
 G6 runtime double-check (L2): for dyn objects that passed syntactic G6 gate
 in S4, the runtime type-id's marker-bitmap is consulted; if the bitmap's
@@ -1569,7 +1658,7 @@ Markers are a separate mechanism from interfaces precisely because the former en
 
 ```zom
 fun single_writer<T>(x: T) where T: Sendable + !Shared { ... }  // OK: structural negation
-fun broken<T>(x: T)       where T: !Drawable { ... }           // ZOM0448: behavioral negation meaningless
+fun broken<T>(x: T)       where T: !Drawable { ... }           // ZOM0422: behavioral negation meaningless
 ```
 
 Principle: structure is Boolean (a type *definitely does not* have interior mutability). Behavior is not — "doesn't draw" is unprovable in general and would collapse the interface-subtyping lattice. Only marker bounds carry negation; interface bounds always require a positive witness.

@@ -19,8 +19,12 @@
 15-concurrency.md
 16-attributes-and-annotations.md
 17-grammar-reference.md
+18-ffi-and-interop.md
+19-conditional-compilation.md
+20-edition-and-stability.md
 21-package-model-and-manifest.md
 22-orphan-rule-and-coherence.md
 23-visibility-ladder.md
 24-module-resolution-algorithm.md
 25-standard-prelude.md
+26-registry-and-resolver.md

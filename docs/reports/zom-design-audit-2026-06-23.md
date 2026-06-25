@@ -4868,10 +4868,10 @@ parser 的 isModifier() 包含 AbstractKeyword，但规范 Modifier 定义只列
 - 确认方: ### 独立证据汇总（与原证据互补/修正）
 
 **1. 泛型策略（monomorphization vs type erasure）文档缺失 — 确认成立**
-- 对 docs/spec/chapters/ 全文 grep `monomorph|erasure|单态|擦除|ABI|dyn trait|vtable` — 零命中。
+- 对 docs/spec/chapters/ 全文 grep `monomorph|erasure|单态|擦除|ABI|dyn trait|vtable` — 零命中。 (RESOLVED 2026-06-25: dyn existential type added; see 03-types.md §X and 09-interfaces.md §9.)
 - 第 12 章《Generics》（135 行）只有语法示例（identity、Box<T>、Comparable、where 子句、associated type、Option<T>），完全没有任何"实现策略 / 对象布局 / 代码尺寸 / 实例化时机"的段落。
 - docs/design/ 目录（adt.md / architecture.md / compiler-contracts.md）全部为空占位文件，不存在 GENERICS.md。
-- 因此"零成本抽象→单态化"和"C 无缝互操作→ABI 稳定"两个目标确实同时写在 01-introduction.md 里，但没有任何权衡说明，两条路径的下游差异（vtable vs 代码膨胀、跨 .so、调试信息、标准库二进制兼容）完全未被讨论。
+- 因此"零成本抽象→单态化"和"C 无缝互操作→ABI 稳定"两个目标确实同时写在 01-introduction.md 里，但没有任何权衡说明，两条路径的下游差异（vtable vs 代码膨胀、跨 .so、调试信息、标准库二进制兼容）完全未被讨论。 (RESOLVED 2026-06-25: dyn existential type added; see 03-types.md §X and 09-interfaces.md §9.)
 
 **2. 与 C 互操作章节未对齐泛型导出 — 确认成立**
 - `extern` / `extern "C"` / `linkage` / `ABI` 在全 spec 中只在 01-introduction.md 出现 1 处目标口号 ("Seamless integration with existing C/C++ codebases")，没有正式规范章节。

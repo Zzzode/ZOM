@@ -35,10 +35,20 @@ For the complete specification, please refer to the individual chapter files in 
 
 - [Grammar Reference](chapters/17-grammar-reference.md) - Complete ANTLR4 grammar definitions
 
+### Cross-Cutting Systems
+
+- [FFI & Interop](chapters/18-ffi-and-interop.md) — `extern "C"` boundary, no_mangle exports, FfiSafe marker, `repr(C)` layout, panic boundary & error_boundary attribute, C-string conversions
+- [Conditional Compilation](chapters/19-conditional-compilation.md) — `#[zom::cfg(predicate)]` attribute, all/any/not combinators, file-name suffix gating, manifest `[features]`, gated-declaration semantics
+- [Edition Model & Stability](chapters/20-edition-and-stability.md) — year-string editions, per-crate opt-in scope, allow/warn/deny/forbid lint tiers, 4-step lint-promotion cycle, SemVer contracts, `no_core` unstable exception
+
 ### Module Infrastructure
 
 - [Package Model, Manifest & Workspaces](chapters/21-package-model-and-manifest.md) - Package model, Zom.toml schema, editions, dependency resolution and build scripts
 - [Orphan Rule & Cross-Crate Coherence](chapters/22-orphan-rule-and-coherence.md) - Impl locality, negative-impl 3-phase closure, coherence matrix and cross-crate metadata rules
+- [Visibility Ladder](chapters/23-visibility-ladder.md) — 8-level private→export ladder, sealed/final/open extensibility (default FINAL), 6×4 truth table for isPublic() single source of truth
+- [Module Resolution Algorithm](chapters/24-module-resolution-algorithm.md) — dual filesystem convention (`foo.zom` ⊕ `foo/mod.zom` → ZOM0881), resolveModule() pseudocode, sibling-directory fallback
+- [Standard Prelude](chapters/25-standard-prelude.md) — normative 11 types + 6 markers + 16 functions/macros symbol list, 4-level injection ordering, no_std/core swap contract, edition-gated symbols
+- [Registry & PubGrub Resolver (Roadmap v2)](chapters/26-registry-and-resolver.md) — HTTP REST API, index.git NDJSON layout, PubGrub algorithm lock, min-version-first policy, `Zom.lock` TOML schema, cache layout, provenance & supply chain contracts
 
 ## About This Organization
 

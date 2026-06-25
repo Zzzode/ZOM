@@ -1692,7 +1692,7 @@ ZOM 生态会出现：同一个功能，A 库用 `raises ErrorA`；B 库用 `enu
 **类别**: 类型模型 | **置信度**: 93%
 
 **问题描述**  
-动态分派能力缺失：没有 existential type、没有 trait object、没有任何形式的 type-erased 统一错误容器。
+动态分派能力缺失：没有 existential type、没有 trait object、没有任何形式的 type-erased 统一错误容器。 (RESOLVED 2026-06-25: dyn existential type formalized in spec/chapters/03-types.md §X; object-safety in spec/chapters/09-interfaces.md §9.)
 
 **证据**
   - /Users/bytedance/Develop/ZOM/docs/spec/chapters/03-types.md:1 — `(全文无 existential / dyn / any 等动态分派概念)`
@@ -1706,7 +1706,7 @@ ZOM 生态会出现：同一个功能，A 库用 `raises ErrorA`；B 库用 `enu
 **修复建议**  
 引入可选项：(a) 语言内建 any Error existential；(b) 统一任何声明语法；(c) prelude 提供 ErrorBox 类型别名 = Error trait 对象。三者至少落一个。
 **评审备注**
-- 确认方: 问题核心判断：真实存在。ZOM 类型系统当前既没有动态分派语法（existential/dyn/trait object），也没有内建 Error 协议与统一包装，同时符号层 6 个 TypeSymbol 派生类零支持动态分派；`any` 虽在规范中出现但语义与实现双残缺，不足作为 anyhow/Box<dyn Error> 等价物。严重度降级为 high 而非 critical：因为闭合 union 与显式 match 的组合仍能写出可编译的跨库错误聚合代码（只是样板 O(N) 而非 O(1)），不构成"语言不可用"级阻塞，属于 type-model 层高影响但可绕过的能力缺失。相关文件路径：
+- 确认方: 问题核心判断：真实存在。ZOM 类型系统当前既没有动态分派语法（existential/dyn/trait object），也没有内建 Error 协议与统一包装，同时符号层 6 个 TypeSymbol 派生类零支持动态分派；`any` 虽在规范中出现但语义与实现双残缺，不足作为 anyhow/Box<dyn Error> 等价物。 (RESOLVED 2026-06-25: dyn existential type formalized in spec/chapters/03-types.md §X; object-safety in spec/chapters/09-interfaces.md §9.) 严重度降级为 high 而非 critical：因为闭合 union 与显式 match 的组合仍能写出可编译的跨库错误聚合代码（只是样板 O(N) 而非 O(1)），不构成"语言不可用"级阻塞，属于 type-model 层高影响但可绕过的能力缺失。相关文件路径：
 - 规范：/Users/bytedance/Develop/ZOM/docs/spec/chapters/03-types.md（:68 仅提及 any；全文无 existential/dyn）
 - 规范：/Users/bytedance/Develop/ZOM/docs/spec/chapters/06-declarations.md（:393-432 error 声明，仅支持单继承 extends，无内建 Error 接口）
 - 规范：/Users/bytedance/Develop/ZOM/docs/spec/chapters/11-error-handling.md（全章使用 `raises A | B` 静态联合，无任何错误擦除/聚合语法）
@@ -3344,7 +3344,7 @@ ZOM 的设计站在 Swift 6 typed throws 的同一侧：fun f() -> T raises E �
 **类别**: 类型模型 | **置信度**: 91%
 
 **问题描述**  
-跨 trait 对象传播错误时，具体 error 类型通常需要擦除（`any Error` / `Box<dyn Error>`）。ZOM 规范未定义：（1）所有 error 类型是否默认实现一个内建 `Error` trait；（2）是否存在顶层的擦除类型 `anyError` / `error`；（3）具体错误能否向上转型到该擦除类型；（4）raises 能否接受擦除类型（`-> T raises anyError`）。
+跨 trait 对象传播错误时，具体 error 类型通常需要擦除（`any Error` / `Box<dyn Error>`）。ZOM 规范未定义：（1）所有 error 类型是否默认实现一个内建 `Error` trait；（2）是否存在顶层的擦除类型 `anyError` / `error`；（3）具体错误能否向上转型到该擦除类型；（4）raises 能否接受擦除类型（`-> T raises anyError`）。 (RESOLVED 2026-06-25: dyn existential type formalized in spec/chapters/03-types.md §X; object-safety in spec/chapters/09-interfaces.md §9.)
 
 **证据**
   - /Users/bytedance/Develop/ZOM/docs/spec/chapters/06-declarations.md:393 — `error 声明章节`
@@ -3375,7 +3375,7 @@ trait 方法、动态分发、plugin/extension 等跨边界编程场景无法以
    - 全仓库 grep 验证：`anyError\|any Error\|Error protocol\|Error trait\|IsErrorProtocol\|erased\|dyn Error\|boxed` 在 `docs/spec/` 和 `products/zomlang/compiler/` 两个目录下**命中 0 条**。
 
 3. **影响分析**
-   - 问题的四个子项（内建 Error protocol 存在性 / anyError 顶层擦除类型存在性 / E <: anyError 子类型 / raises anyError 可接受性）在规范与实现中**同时为 0 状态**，不是单点遗漏而是整组设计未定。
+   - 问题的四个子项（内建 Error protocol 存在性 / anyError 顶层擦除类型存在性 / E <: anyError 子类型 / raises anyError 可接受性）在规范与实现中**同时为 0 状态**，不是单点遗漏而是整组设计未定。 (RESOLVED 2026-06-25: dyn existential type formalized in spec/chapters/03-types.md §X; object-safety in spec/chapters/09-interfaces.md §9.)
    - 与 `checker/checker.cc` 空壳、`FunctionTypeSymbol` 无 raises 字段等已确认的后端空洞（缺口 A/C）相比，本问题属于"规范+实现双缺失"的 type-model 层空白，而非单纯实现问题。
    - 跨边界场景的具体阻塞：trait 方法 `fun read(path: str) -> Data raises anyError` 无法声明；plugin 接口的动态分发无法以统一 error 类型暴露；用户只能手写 `MyErrorProtocol` + 手动 downcast，这会使 `?!` / `?:` 等原生操作符（本应工作于 raises 标注的联合类型）与用户自定义 protocol 脱节。
 
