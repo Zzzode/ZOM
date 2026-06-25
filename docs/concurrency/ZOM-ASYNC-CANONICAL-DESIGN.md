@@ -431,7 +431,7 @@ error FfiNull(param_name: str) extends BaseError
 error FfiAbiMismatch(expected: str, got: str) extends BaseError
 
 // 联合类型别名（用户可直接在 raises 中使用）
-type ConcurrencyError =
+alias ConcurrencyError =
     Cancelled | Timeout | IoError | Panic | Poisoned
   | ScopeAbandoned | DeadlineExceeded | DoublePanic | FfiNull | FfiAbiMismatch
 ;
