@@ -242,8 +242,16 @@ the trigger matrix in `.agents/subagents/README.md`.
 ## Git Commits
 
 - Keep commit scope honest: one logical change per commit.
-- Title format: `area(scope): imperative summary`, e.g.
-  `docs(reports): add concurrency audit (44 findings)`.
+- Commit titles MUST follow Conventional Commits:
+  `type(scope): imperative summary`.
+- `type` MUST be one of `feat`, `fix`, `docs`, `style`, `refactor`, `perf`,
+  `test`, or `chore`. Use `!` before `:` for breaking changes, e.g.
+  `feat(parser)!: reject legacy operator syntax`.
+- `scope` is required and should name the affected product or subsystem, e.g.
+  `parser`, `lexer`, `binder`, `spec`, `agents`, `repo`, or `zc`.
+- The subject MUST be an imperative ASCII-English phrase with no trailing
+  period. Do not use bare sentence titles such as `Implement parser support`
+  or `Align spec with grammar`; amend them before push.
 - **Subject and body are ASCII-English only.** No CJK characters, no
   non-ASCII quotation marks or dashes. `git log --oneline` must match
   `^[0-9a-f]{7} [ -~]+$` (printable ASCII). Any commit containing
