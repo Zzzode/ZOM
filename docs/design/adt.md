@@ -76,7 +76,7 @@ ClassDeclaration        ::= AttributeList? 'class' Identifier
                             TypeParameters?
                             HeritageClauses? '{' ClassMember* '}' ;
 
-HeritageClauses         ::= ( 'implements' InterfaceName ( ',' InterfaceName )* )? ;
+HeritageClauses         ::= ( 'extends' TypeName )? ;
 
 ClassMember             ::= AttributeList? AccessibilityModifier?
                             ( FieldDeclaration
