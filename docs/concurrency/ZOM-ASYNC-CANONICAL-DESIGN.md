@@ -36,7 +36,7 @@
 | 1 | 语法载体 | Rust 风格 `trait Sendable / &'scope 生命周期参数 / where T:Bound 泛型界 / #[repr(C)]` 贯穿全文 | **彻底移除**。改用 ZOM 真实语法：`interface` + `error` + `raises A\|B` + `@zom::marker` + 联合类型 `T\|E`；`Result<T,E>` 是 `06-declarations.md:227` 你自己定义的 `alias Result<T,E> = T | E`（完全合法，不是 Rust 语法） | `trait / & / where` 在 17-grammar-reference.md、ZomParser.g4、kinds.h 中均无定义（语法基线已核实，见 §3 D1/D2/D6）；Result 被之前错误归为"非法"，已在文档首部正式撤回 |
 | 2 | 错误通道 | 强行「raises 和 Result 二选一」互斥、取消其中之一 | **双轨合一**：`raises E` 是返回值 `T\|E` 的编译器校验轨（声明层语义）；`Result<T,E>` 是同类型的具名别名（构造层方便），两者底层是同一个 SetType（`T | E`），互转零成本。用户自造 `enum Result` 保持 nominal，通过 Try interface 桥 | Parser 已把 `raises` 解析为 `TypeNode`（天然承载联合）；错误系统审计缺口 C + 设计审计 Finding 18 四形式冲突，统一为"底层同一、上层两入口" |
 | 3 | 并发安全标记/接口形式 | `#[auto_trait] unsafe trait Sendable` 加 `impl !Shared for UnsafeCell` / Rust trait 形式 | **marker 三表面模型（同步 Canonical Judge Design D8，全 bare unit）**。上下文关键字 `marker M;` + `#[std::marker::*]` 属性附着 + `[unsafe] impl [!] M for T [where …]`：<br/>**Surface 1（属性附着）** `#[std::marker::Sendable]` / `#[std::marker::Shared]` 等（全 bare unit，无参数）；<br/>**Surface 2（泛型界）** `T: Sendable + !Shared` where 子句 / 泛型界；<br/>**Surface 3（显式 impl）** `impl !std::marker::Shared for UnsafeCell<T>` 中缀 `!` 负 impl / `unsafe impl<T> … for …` 正覆盖。**语义对齐 Rust Send/Sync，命名/载体显式偏离**。7 项强制修正已写入 D2 决议；D8 已冻结命名空间与 EBNF | 避免用户看到 `Sendable` 就假设 100% Rust 等价；且 ZOM 有 `interface` 不需要再发明 `trait` 关键字；负 impl 从 `#[negative_impl(…)]` 属性改为中缀 `impl !`，语义的全局一致性在语法面立即可见 |
-| 4 | 生命周期门控 | `spawn_scope<R>(body: fun(scope: &Scope) -> R)` + 隐式 HRTB，声称 100% 编译期 | **词法块 + 编译器内建有限 HRTB 特例**：`spawn_scope(fun(scope) { ... })` 闭包捕获的静态分析仅限 **lexical 词法范围**；超出范围降级为 runtime scope_stack 验证。公开陷阱矩阵 18/1/1 → 16/3/1 诚实修正 | TypeChecker 为空壳，没有通用 HRTB；Rust 用 5 年才 sound。**绝不虚标编译期保证** |
+| 4 | 生命周期门控 | （已淘汰，Rust 污染写法）`spawn_scope<R>(body: fun(scope: &Scope) -> R)` + 隐式 HRTB，声称 100% 编译期 | **词法块 + 编译器内建有限 HRTB 特例**：`spawn_scope(fun(scope) { ... })` 闭包捕获的静态分析仅限 **lexical 词法范围**；超出范围降级为 runtime scope_stack 验证。公开陷阱矩阵 18/1/1 → 16/3/1 诚实修正 | TypeChecker 为空壳，没有通用 HRTB；Rust 用 5 年才 sound。**绝不虚标编译期保证** |
 | 5 | 任务模型 | Stackless enum generator + Future 体系 | **Stackful Segmented M:N（链式分段栈 + work-stealing + per-worker reactor）**。stackless 仅作为 debug/det_sched 参考解释器保留。复用 zc 库已有 18KLoC FiberStack 资产 | stackless/Future 体系与 §9.2 分段栈规范冲突、FICallback 无法桥接、调试信息质量劣化；stackful 对零颜色 NP-1 支撑零妥协 |
 | 6 | 函数颜色 | 严格零颜色或严格 async 签名 | **混合方案**：默认零颜色 + 静态推导 + `#[zom::hint::suspend_capable]` 显式标注 + **FFI/Drop 边界强制显式**。裸 OS 线程入口必须 `zom_runtime_enter()` 或 `#[zom::concurrency::assume_executor_context]`，否则 FATAL lint | 敌对审计 B.1 / B.4 证明严格零颜色会在裸 OS 线程 → suspend 路径上静默崩溃；严格显式又违反 NP-1。取 Swift 6 风格折中 |
 | 7 | 属性体系 | 混用 Rust 式 `#[...]` 与 ZOM 式 `@...`，无命名空间管理 | **Canonical Judge Design D8 冻结方案**：三句法面 + 三层命名空间 + 三 tier 架构。主形态 `#[ns::name(args)]`；参数糖 `@name(args?)`（仅 ParameterDecl 位置，100% 降格为 `#[zom::param::name]`）。Tier-0 `zom::*`（LCT 所有，RFC+2/3 投票准入）；Tier-1 `std::marker::*` + `std::*`（标准库）；Tier-2 `<crate>::attr::*`（用户/库作者）。Tier-0 语义骨架 + Tier-1 marker 闭包 + Tier-2 用户定义 marker 全量生产就绪，不存在"保留给未来"的 placeholder | 避免 Swift/Java 注解命名冲突；`zom` 与 `std` 分层保证 FFI `unsafe` 场景在 import 前可用；命名空间强制 ≥2 段，裸名仅 3 条 LegacyBareWhitelist（deprecated/inline/cold）+ 警告 W7105 |
@@ -162,7 +162,7 @@ constructed purely within the corresponding subspace of the modal model.
 |---|---|
 | 推荐 | **保留 Sendable/Shared/Linear 三核心方向，必须在实现前完成 7 项强制修正**： |
 | **CR-1 关键字** | 不得引入 `trait` 新关键字。统一语法（同步 Canonical Judge Design — §3 D8）：<br/>**Surface 1 Attribute Form** `#[std::marker::Sendable]` / `#[std::marker::Linear]`（≥2 段命名空间路径，非命名空间裸名禁止）；<br/>**Surface 2 Bound Form** `T: Sendable + !Shared`（where 子句 / 泛型界，裸名经 prelude 指向 `std::marker::*`）；<br/>**Surface 3 Impl Form** `unsafe impl !? std::marker::Marker [typeArgs] for T where … (; | {body})`（中缀 `!` 负 impl，**禁止** `#[negative_impl(M)]` 属性形式）；<br/>**声明 Form** `marker M = B1 + B2 … where … ;`（Tier-2 用户 marker，内建由编译器注入） |
-| **CR-2 UnsafeCell 负 impl** | 编译器首条 marker PR 必须提交 `UnsafeCell<T> !Shared` + lit 测试（L03-bis：struct 含 UnsafeCell + &X 捕获 spawn → ZOM8002）。缺失阻塞合入 |
+| **CR-2 UnsafeCell 负 impl** | 编译器首条 marker PR 必须提交 `impl<T> !std::marker::Shared for UnsafeCell<T>` + lit 测试（L03-bis：struct 含 UnsafeCell + 闭包捕获 X 后 spawn → ZOM8002）。缺失阻塞合入 |
 | **CR-3 Linear 双标语义** | 正常控制流 L1 恰好一次消费；panic-unwind 路径走 linear-only-cleanup（跳过用户 deinit、仅跑资源回收），文档显式声明。unsafe 中可 `forget(x)` 绕过，诊断输出具体 Linear 类型名 |
 | **CR-4 Marker 与 OOP 分裂** | interface 分三类：普通 OOP interface（class implements 显式）、marker interface（空体 + structural 字段递归）、unsafe marker（显式声明负 impl 白名单）。三类不可混用同一 interface |
 | **CR-5 陷阱矩阵诚实化** | P10 由 L1 → L2（lexical + runtime scope_stack）；公开数字由 18/1/1 → 16/3/1，CHANGELOG 首条 |
@@ -520,9 +520,10 @@ class Task<T> {
     // consume self；若已 cancel 或 faulted，返回对应 error 变体
     fun await(self) -> T raises Cancelled | Panic;
     // 非 consume；仅设置取消令牌位
-    fun cancel(self: &Task) -> unit;
+    //  （ZOM 无 &T 语法；裸 self 即 non-move 引用语义；要 move 需显式 #[zom::param::move] self）
+    fun cancel(self) -> unit;
     // 非 consume；读原子状态
-    fun status(self: &Task) -> TaskStatus;
+    fun status(self) -> TaskStatus;
 }
 
 enum TaskStatus { Pending, Running, Suspended, Completed, Faulted, Cancelled, Zombie }
@@ -530,8 +531,9 @@ enum TaskStatus { Pending, Running, Suspended, Completed, Faulted, Cancelled, Zo
 // ====== SuspendContract<T> interface —— 唯一挂起契约 ======
 interface SuspendContract<T> {
     // 注册一个 SuspendEvent；合约在 ready 时触发 set_completion
+    //   ev 参数默认 non-move 引用语义；要 move 才写 #[zom::param::move] ev
     #[zom::lang::runtime_only]                    // Tier-0 内建属性；原 lang::runtime_only
-    fun register(self, ev: &SuspendEvent<T>) -> unit;
+    fun register(self, ev: SuspendEvent<T>) -> unit;
 
     // 取消感知：合约实现返回 true 表示已响应取消
     #[zom::lang::runtime_only]
@@ -546,8 +548,13 @@ enum SuspendState { Pending, Ready(T), Cancelled }
 #[zom::repr(C, align(64))]
 class SuspendEvent<T> {
     state: Atomic<SuspendState<T>>;
-    waker: Atomic<&RawTask>;   // 允许 null；C/C++ FFI 为 opaque 指针
-    contract: &dyn SuspendContract<T>;
+    // ZOM 没有 &T 引用类型。
+    //   waker  = FFI opaque 句柄（可空；C/C++ 层为 RawTask*；ZOM 语义用 RawTask?
+    //            表示 nullable-opaque，运行时对应 void* 的 typed 封装）
+    //   contract = trait-object：ZOM 中 'dyn X' 默认携带引用语义（指针擦除类型），
+    //              不必再写借用符号
+    waker: RawTask?;
+    contract: dyn SuspendContract<T>;
 }
 
 // ====== Scope<R> —— 结构化并发作用域（Linear 间接持有） ======
@@ -560,13 +567,14 @@ class SuspendEvent<T> {
 #[zom::concurrency::scope_guard]
 #[std::marker::Linear]
 class Scope<R> {
-    fun id(self: &Scope) -> u64;
-    fun is_cancelled(self: &Scope) -> bool;
+    // ZOM 无 &T：self 裸写 = non-move 引用语义
+    fun id(self) -> u64;
+    fun is_cancelled(self) -> bool;
     // Linear 副作用：所有子 Task 句柄由 Scope 内部注册（外部不暴露 Linear leak）
-    fun cancel_all(self: &Scope) raises Cancelled;
+    fun cancel_all(self) raises Cancelled;
     // spawn 绑定到本 Scope；body 的借用静态分析仅限 lexical 闭包内部
     //   参数属性从 lang::move → Canonical Surface 1 zom::param::move
-    fun spawn<T>(self: &Scope, #[zom::param::move] body: fun() -> T)
+    fun spawn<T>(self, #[zom::param::move] body: fun() -> T)
         -> Task<T> raises Cancelled
         // Surface 2 Bound Form：T: Sendable（prelude 裸名合法）
         where T: std::marker::Sendable;
@@ -738,7 +746,8 @@ class Scope<R> {
 // Canonical Judge Design 生产级伪代码（字段名 / 诊断码与实现 1:1）
 // 第一次 panic（设 task.panicking = true，记录 Panic 变体）
 // unwind 过程中，某个 user deinit 再次 panic（第二次）：
-fun handle_double_panic(task: &RawTask, second_panic: &Panic) {
+//   ZOM 无 &T：task / second_panic 裸写 = non-move 引用语义（不 Linear-consume）
+fun handle_double_panic(task: RawTask, second_panic: Panic) {
     task.double_panicked = true;
     // Linear-only-cleanup：遍历 Linear 槽位，
     // 跳过 fun deinit()（用户代码可能第三次 panic），
@@ -825,13 +834,13 @@ void      zom_event_cancel(ZomEvent*);
 | 1 | `unsafe trait Sendable {}` / rc1 `#[lang::marker] #[lang::auto_impl] #[lang::unsafe_marker] interface Sendable {}` | **Surface 1 Attribute Form** `#[std::marker::Sendable]` 标注<br/>**声明层** `marker Sendable;`（编译器内置，用户 Tier-2 用同语法）<br/>**unsafe 覆盖** 用 Surface 3 `unsafe impl std::marker::Shared for Mutex<T> where …` | 不引入 trait 关键字；三语法面严格分工（标注 / 泛型界 / 显式 impl）；负 impl 从属性升为独立声明 |
 | 2 | `impl !Shared for UnsafeCell<T>` / rc1 `#[lang::negative_impl(Shared)] class UnsafeCell<T> {}` | **Surface 3 Impl Form 中缀 `!`** `impl !std::marker::Shared for std::cell::UnsafeCell<T>;`（全局事实在语法层立即可见） | 属性形式 `#[negative_impl(…)]` 被禁止（D8 Negative Impl Syntax 裁决 §Forbidden）； orphan rule / justification check 由 S1 WFF 统一校验 |
 | 3 | **（写法一 非法）** `fn foo<T>() -> Result<T, SystemError> where T: Sendable`（Rust 式 `where`）<br/>**（写法二 完全合法）** `fun foo<T>() -> Result<T, Cancelled\|IoError\|Panic>`（`alias Result = T\|E`）<br/>**（写法三 完全合法）** `fun foo<T>() -> T raises Cancelled\|IoError\|Panic` | `fun foo<T: std::marker::Sendable>() -> T raises Cancelled\|IoError\|Panic` 或等价 `fun foo<T: std::marker::Sendable>() -> Result<T, Cancelled\|IoError\|Panic>`（T 界写入参数声明，使用 Surface 2 Bound Form `T: Sendable` 或带完整路径）；**where 子句现已启用**：`fun foo<T>() -> T raises Cancelled where T: std::marker::Sendable + !std::marker::Shared`（rc1 "WhereClause 未启用" 修正，已同步 D8 finalEBNF） | where 子句从 "保留语法位" 升级为生产级；`T: !Sendable` 负 bound 被允许（Surface 2 MarkerBound `!attributePath`）；raises 与 Result 双轨合一（D1 修正版） |
-| 4 | `scope: &'scope Scope<R>` | `scope: &Scope<R>`（生命周期不写进签名，由编译器内建 HRTB 特例分析） | 不暴露通用 HRTB；跨函数降级 runtime |
+| 4 | （已淘汰，Rust 污染）`scope: &'scope Scope<R>` | （也淘汰，Rust 残留）`scope: &Scope<R>`（生命周期不写进签名，由编译器内建有限 HRTB 特例分析）→ **ZOM 正确写法：裸写 `scope: Scope<R>`，默认 non-move 引用语义** | 不暴露通用 HRTB；跨函数降级 runtime；ZOM 无 `&T` 借用语法，默认参数即 non-move，要 move 才加 `#[zom::param::move]` |
 | 5 | `MutexGuard<'scope, T>` | `MutexGuard<T>`（生命周期参数移除，guard 实现 `impl !std::marker::NoSuspendHazard for MutexGuard<T>` 负 impl） | 简单化；flow-sensitive 分析支持 |
 | 6 | `#[repr(C, align(64))]` / rc1 `#[lang::repr_c] #[lang::repr_align(64)]` | `#[zom::repr(C, align(64))]`（Tier-0 zom::layout 子空间，单一 call-form 参数） | 单一命名空间单一属性承载全部布局提示；rc1 的两属性分裂已合并，与 D8 finalEBNF `attributeEntry` call-form 对齐 |
 | 7 | **（非法）** `Result<T, E>::Ok(x)` / `Result<T, E>::Err(e)`（Rust 关联构造器写法）<br/>**（合法）** `Success(x)` / `Failure(e)`（`06-declarations.md:200-214` 的变体构造器）<br/>**（合法）** 直接 `return x` / `return e`（配合 raises + ?! 传播） | 值通道直接返回；错误变体走 `?!`；对 FFI/强类型场景用 `Success(x)`/`Failure(e)` 构造（底层等价返回 `T\|E`） | 三入口零成本互转；取消 Rust 式关联项语法 |
 | 8 | `trait SuspendContract<T> { type Completion; }` | `interface SuspendContract<T> { ... }`（T 直接作 Completion，去 associated type） | 不引入 associated type 语法 |
 | 9 | rc1 `#[zom::concurrency::scope_guard]` 与 `#[repr(C)]` 混用 / `@lang::repr_c` 糖 | 统一 `#[zom::concurrency::scope_guard]` / `#[zom::repr(C, align(64))]` 主形态；参数糖 `@variadic args: ...`（**仅 ParameterDecl 位置**，100% 降格为 `#[zom::param::variadic]`；`@` 不允许作为 attribute 通用糖） | AST 单形态，双语法不漂移；`@` 通用糖被 D8 L4 Lexer Rules 明确禁止（仅 Parameter 位置） |
-| 10 | `spawn_scope<T>(fun f(scope: &Scope<T>) -> T): T` / rc1 `#[lang::scope_guard]` 识别 | `spawn_scope<T>(body: fun(scope) -> T) -> T raises ScopeAbandoned`（`#[zom::concurrency::scope_guard]` + 编译器内建有限 HRTB 特例分析） | 显式错误语义；闭包签名更简洁；scope_guard 入 Tier-0 规范命名空间 |
+| 10 | （已淘汰，Rust 污染）`spawn_scope<T>(fun f(scope: &Scope<T>) -> T): T` / rc1 `#[lang::scope_guard]` 识别 | `spawn_scope<T>(body: fun(scope) -> T) -> T raises ScopeAbandoned`（`#[zom::concurrency::scope_guard]` + 编译器内建有限 HRTB 特例分析） | 显式错误语义；闭包签名更简洁；scope_guard 入 Tier-0 规范命名空间 |
 
 ### 7.2 12 条否决方案（含 RA-9/RA-10 新增）
 
@@ -858,7 +867,7 @@ void      zom_event_cancel(ZomEvent*);
 |---|---|---|---|
 | L01 | `suspend until e` 解析 | ✓ 通过 | L0 |
 | L02 | `spawn blocking priority(high) { ... }` 解析 | ✓ | L0 |
-| L03-bis | **D2 CR-2 UnsafeCell !Shared**（`&X` 捕获 spawn，X 含 UnsafeCell） | ZOM8002 ERROR | L2 |
+| L03-bis | **D2 CR-2 UnsafeCell !Shared**（闭包捕获 X 后 spawn，X 含 UnsafeCell） | ZOM8002 ERROR | L2 |
 | L05 | Task<T> 未 consume | ZOM8004 ERROR | L2 |
 | L06 | 跨 suspend 持有 MutexGuard | ZOM8006 ERROR（flow-sensitive，drop 后放行） | L2 |
 | L10 | `#[zom::concurrency::detached]` 缺失 + 非 static 引用 → spawn detached | ZOM8010 ERROR | L1/L2 |
@@ -1000,10 +1009,10 @@ void      zom_event_cancel(ZomEvent*);
 | OC-4 | medium | SupervisorScope 重启 payload = 编译期 Sendable 保证跨线程安全 | `dyn Trait` type-erasure 后 Sendable 信息丢失；FFI `void*` 参数传入的 payload 无法穿透 indirection 验证 | §5.4：泛型实例化 ✓L1；type-erased/dyn ⚠️L2 runtime trait object downcast 检查 |
 | OC-5 | medium | spawn 按值/按引用捕获 = 编译期 Sendable/Shared 静态检查（ZOM8001/2/3） | fn 内部 transmute / FFI void* 中间层绕过 auto_trait；trait 对象 Sendable 边界在 type-erasure 处丢失 | §5.4 P01/P03：显式签名/闭包捕获 ✓L1；指针间接/type-erasure ↯L3 lint WARNING + runtime type_id 校验 |
 | OC-6 | medium | FFI extern "C" 参数/返回值 = 编译期强制 Sendable + repr(C) | 仅覆盖函数签名层；函数体内部将 `*u8` recv 回 T、或通过 transmute 重新解释的场景编译期不可见 | §6.6：签名层 ✓L1 强制；unsafe 块内重解释 ↯L3 ASan/TSan 模式门控；ZOM8012 FATAL |
-| OC-7 | medium | OneForOne 重启 body 闭包 = 编译期 'static + Sendable + Clone | 闭包捕获的 `&Scope` 通过 unsafe 全局寄存可脱离 spawn_scope 生命周期；同 B.9 HRTB 缺口 | §3 D3：safe 代码 ✓L1 约束；通用 HRTB 未实现前 ⚠️L2 spawn_scope 文档 unsafe 前置条件 |
+| OC-7 | medium | OneForOne 重启 body 闭包 = 编译期 'static + Sendable + Clone | 闭包捕获的 scope 引用通过 unsafe 全局寄存可脱离 spawn_scope 生命周期；同 B.9 HRTB 缺口 | §3 D3：safe 代码 ✓L1 约束；通用 HRTB 未实现前 ⚠️L2 spawn_scope 文档 unsafe 前置条件 |
 | OC-8 | high | suspend 点活跃变量 = 编译期强制 NoInternalMutability（ZOM8006 ERROR） | 第三方库的 `impl Drop` 若调用含 suspend 的库函数（零颜色下签名不可见），Drop trait 普遍语义假设不 suspend | §5.4 P18：用户显式 suspend 点 ✓L1；`impl Drop` 方法体加 ZOM8013 ERROR（含 suspend/调用 suspend 族函数） |
 | OC-9 | high | Linear 类型跨所有控制流路径 = 恰好一次消费（类型系统保证） | double-panic unwind 路径：第一次 panic 的部分 unwind 帧不执行 drop，其中 Linear 资源永久泄漏 | §5.4 P02：正常/panic unwind ✓L1；double-panic ⚠️L2 linear-only cleanup 兜底 + LeakReport（§6.5） |
-| OC-10 | high | P10 spawn 捕获引用生命周期短于任务 = 编译期闭环 | 依赖完整 HRTB 能力（`for<'a> FnOnce(&'a Scope<R>)`）+ 完整 borrow 逃逸分析；若借用分析器未达 Rust NLL 级则不 sound | §3 D3 + §5.4 P10：**公开声明 lexical 才是 L1**；否则 ⚠️L2 compile+runtime；spawn_scope 文档 unsafe 前置条件 |
+| OC-10 | high | P10 spawn 捕获 scope 引用生命周期短于任务 = 编译期闭环 | 依赖完整 HRTB 能力 + 完整 borrow 逃逸分析；若借用分析器未达 Rust NLL 级则不 sound（ZOM 当前：不引入 `&T` 借用语法，改为 non-move 默认参数语义 + scope identity runtime bitmap） | §3 D3 + §5.4 P10：**公开声明 lexical 才是 L1**；否则 ⚠️L2 compile+runtime；spawn_scope 文档 unsafe 前置条件 |
 | OC-11 | medium | 跨门控表 Sendable 检查 = 泛型参数 T: Sendable 的所有实例化场景编译期覆盖 | T 通过 dyn Trait 对象或 FFI void* 间接实例化时，auto_trait Sendable 的正/负 impl 信息在 type-erasure 边界丢失 | §5.4：显式泛型实例化 ✓L1；type-erasure 边界 ↯L3 runtime Any::type_id + 安全 trait downcast |
 
 ---
@@ -1040,7 +1049,7 @@ void      zom_event_cancel(ZomEvent*);
 | 7 | DES-006 | 规范-实现承诺高于能力（虚标方法论） | Medium（B.8 推广到三份文档） | releaseBlocker #7/#9/#10 |
 | 8 | DES-22/25/27 | Linear / 边界 / null / use-after-cleanup 联合缺位 | Medium（L1 检查整体） | D7 阶段 2 + Linear use-def 检查器 |
 | 9 | CON-H05 | 无 unsafe 语法逃生舱，并发 unsafe API 无法门控 | Medium（所有降级为 unsafe 的场景需语法位） | D8 Tier-0 `zom::lang::unsafe_block` 属性；独立语法 RFC |
-| 10 | DES-19 | ARC 引用计数不提供多线程下数据竞争保证 | Medium（ARC 常被用户误以为自动解决并发） | 文档化：Shared 与 ARC 正交；示例中禁止 `&Arc<NonShared>` 模式 |
+| 10 | DES-19 | ARC 引用计数不提供多线程下数据竞争保证 | Medium（ARC 常被用户误以为自动解决并发） | 文档化：Shared 与 ARC 正交；示例中禁止「将 NonShared 对象装入 ARC 然后跨 task 共享」模式（即错误理解为「ARC 包裹 → 天然 Shared」） |
 
 ### 里程碑节点
 
