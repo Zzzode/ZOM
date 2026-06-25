@@ -188,9 +188,14 @@ EnumMember ::= PropertyName (('=' Expression) | TupleType)?
 
 AliasDeclaration ::= 'alias' BindingIdentifier TypeParameters? '=' TypeExpression ';'
 
-(* Marker Declarations — Ch.16 A-017 / A-019 *)
+(* Marker Declarations — Ch.16 §16.14.2 (four styles) *)
 MarkerDeclaration
-    ::= 'marker' Identifier ( '=' BoundItem ( '+' BoundItem )* )? ';'
+    ::= ( 'auto' | 'unsafe' )? 'marker' Identifier TypeParameters?
+        ( '=' MarkerConjunction )? ';'
+
+MarkerConjunction ::= MarkerPath ( '+' MarkerPath )*
+MarkerPath        ::= '!'? ( Identifier | QualifiedMarkerPath )
+QualifiedMarkerPath ::= Identifier ( '::' Identifier )+
 
 MarkerImplDeclaration
     ::= 'unsafe'? 'impl' '!'? attributePath typeArguments?
@@ -270,7 +275,6 @@ TypeParameters ::= '<' TypeParameterList '>'
 TypeParameterList ::= TypeParameter (',' TypeParameter)*
 TypeParameter  ::= Identifier ( ':' BoundItem ( '+' BoundItem )* )? ','?
 BoundItem      ::= '!'? ( TypeExpression | MarkerPath )
-MarkerPath     ::= Identifier ( '::' Identifier )+
     (* Example: <T: std::marker::Sendable + !std::marker::Shared,
                  U: 'static + Linear>
        Marker negation (!) is allowed — aligned with Ch.16 A-023.

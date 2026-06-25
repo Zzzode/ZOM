@@ -20,7 +20,8 @@ An **attribute** is a metadata value `#[<namespace-path> ( <args>? )]` or `#![<n
 6. The Tier 2 user-macro programming interface contract (16.10).
 7. The deterministic checker pipeline with stage ordering, I/O contracts, and failure semantics (16.11).
 8. The formal modal-logic model underpinning marker interfaces (16.12) and negative-impl logic (16.13).
-9. Worked examples (16.14), a diagnostic specification (16.15), LSP/IDE rules (16.16), compatibility governance (16.17), and implementation cost notes (16.18).
+9. A practical user guide for the marker system (16.14), including worked examples in an appendix.
+10. A diagnostic specification (16.15), LSP/IDE rules (16.16), compatibility governance (16.17), and implementation cost notes (16.18).
 
 **Out of scope.** The concrete *syntax* of user-written proc-macro bodies (as opposed to the Macro trait interface) is deferred to the compile-time-reflection chapter; only the input/output contract and stage isolation appear here. Runtime reflection beyond the RUNTIME_REIFIED tier's metadata blob is not specified.
 
@@ -1429,11 +1430,266 @@ The (Unsafe-Override) rule is the critical escape hatch that lets `Mutex<T>` ove
 
 ---
 
-## 16.14 Worked code examples
+## 16.14 Marker System: User Guide (Practical)
+
+### 16.14.0 Overview
+
+A `marker` declares a zero-method structural property — a Boolean lattice predicate that classifies *what a type IS*, in deliberate contrast to an `interface`, which describes *what a type can DO*. Every marker is ultimately represented by a single bit (or, for 3-valued unsafe markers, a lattice cell) in a per-type 64-bit marker bitmap maintained by the compiler. Three syntactic surfaces are orthogonal and interchangeable: attribute form, standalone impl form, and bound / type-position form. All three surface forms compile to the same internal 64-bit marker-bitmap representation and feed the exact same lattice-based coherence and bound-check machinery.
+
+### 16.14.1 Three Orthogonal Surfaces
+
+| Surface | Syntax | Semantics | When to use |
+| --- | --- | --- | --- |
+| (A) Attribute form | `#[zom::marker::M]` or `#[crate::marker::M]` written directly on a `struct` / `class` / `enum` / `union` declaration | Attaches marker `M` at the type-declaration site. For `auto marker` the compiler validates field-recursion and derives the positive or negative impl automatically. | ~90 % of user code — the most ergonomic surface for types defined locally. |
+| (B) Standalone impl form | `impl [!] M for T;` or `unsafe impl [!] M for T;` with an optional `where` clause | Attaches or detaches `M` anywhere the orphan rule permits (local `T` **or** local `M`). Blanket impls over generics are written here. | External types, cross-crate attachments, blanket impls, unsafe overrides, explicit negative impls. |
+| (C) Bound / type-position form | `T: M + !N` in a `<T>` binder or `where` clause; `dyn I + M + !N` in an existential head | Consumer-side predicate: the compiler checks that the bitmap of the concrete type `T` is a superset of the required set. | Generic constraints, FFI gates, `spawn()` / nursery signatures, existential packing. |
+
+All three surfaces compile to the same 64-bit bitmap per type. Attribute form (A) is purely syntactic sugar: the name-resolution stage (S1b per the pipeline in §16.11) rewrites each `#[M]` written on a type declaration into an auto-generated standalone `impl M for T;` at the same declaration site, before any lattice work begins. Surface (B) is therefore the canonical, desugared form; surfaces (A) and (C) are convenience layers.
+
+### 16.14.2 Four Declaration Styles
+
+ZOM provides exactly four declaration shapes for user markers. Every marker declaration falls into exactly one style; mixing modifiers (`auto marker … = … ;` or `unsafe auto marker …`) is prohibited by the grammar.
+
+#### 16.14.2.1 Style 1 — Basic Marker (≈ 90 % of use cases)
+
+```ebnf
+BasicMarkerDecl ::= 'marker' Identifier ';'
+```
+
+```zom
+marker Json;
+marker DatabaseSafe;
+marker UiThreadOnly;
+```
+
+Rules.
+
+- A basic marker carries **zero** built-in recursion rules (contrast with `auto marker`, Style 3). To attach `M` to a type, the user **must** explicitly use surface (A) or surface (B).
+- No block body and no methods are permitted. Any attempt to write a block body or a method inside a marker declaration fires `ZOM0517 MarkerCannotHaveMethods`.
+- Basic markers are always 2-valued Boolean predicates: a given `T` either has an explicit `impl M for T;` (true) or an explicit `impl !M for T;` (false), or neither is present (unresolved — falls back to 3-valued reasoning in the trait solver and must be resolved by the time a consumer writes a bound).
+
+#### 16.14.2.2 Style 2 — Derived / Conjunctive Marker
+
+```ebnf
+DerivedMarkerDecl ::= 'marker' Identifier '=' MarkerConjunction ';'
+MarkerConjunction  ::= MarkerPath ('+' MarkerPath)*
+MarkerPath         ::= '!'? (Identifier | QualifiedMarkerPath)
+```
+
+```zom
+// Semantic macro. Equivalent to a compiler-generated blanket impl:
+//   impl Value for T where T: Sendable + !Shared + 'static;
+marker Value = Sendable + !Shared + 'static;
+
+fun process<T>(x: T) where T: Value { ... }  // equivalent, shorter
+```
+
+Rules.
+
+- The right-hand side is a `+`-conjunction. Order is semantically irrelevant; the compiler normalises into a sorted set internally.
+- The derived marker is rewritten on-the-fly during name resolution (S1b) into a blanket impl: `impl M for T where T: <conjunction>;`. Diagnostic messages **always** expand the derived-marker name into its full conjunction when reporting failures (e.g. `T does not satisfy Value → T does not satisfy !Shared`). Users never debug opaque derived-marker names.
+- Self-reference (`marker A = A + B;`) and any mutual-cycle through derived markers fires `ZOM0519 MarkerCycle` at stage S1b. Derived markers may reference other derived markers on the right-hand side; the compiler builds a DAG and topologically sorts the expansion.
+
+#### 16.14.2.3 Style 3 — Auto Marker (field-recursive)
+
+```ebnf
+AutoMarkerDecl ::= 'auto' 'marker' Identifier ';'
+```
+
+```zom
+// Declares a recursion rule: a struct S is ZeroCopyCompatible IFF every
+// direct field of S is ZeroCopyCompatible. Users seed the recursion by
+// writing impls on primitive types; primitives have no fields so the
+// recursion terminates without further effort on those types.
+auto marker ZeroCopyCompatible;
+
+// Seed: attach to primitives (users must write these explicitly)
+impl ZeroCopyCompatible for u8;
+impl ZeroCopyCompatible for u16;
+impl ZeroCopyCompatible for u32;
+impl ZeroCopyCompatible for i32;
+impl ZeroCopyCompatible for u64;
+impl ZeroCopyCompatible for usize;
+impl ZeroCopyCompatible for f32;
+impl ZeroCopyCompatible for f64;
+
+// Derived automatically by field recursion:
+//   auto-impl ZeroCopyCompatible for [u8; 4];
+//   auto-impl ZeroCopyCompatible for PackageHeader;  // all fields u32/u64
+//   auto-impl ZeroCopyCompatible for (u32, u64);
+// structs containing Box<T> or UnsafeCell<T> get !ZeroCopyCompatible automatically
+```
+
+Rules.
+
+- Recursion rule is **positive-default**: if every direct field of a struct, tuple, or tagged enum variant satisfies the `auto marker M`, the enclosing aggregate **does** satisfy `M` and the compiler emits a virtual positive impl. If **any** direct field fails, the compiler derives `!M` for the aggregate.
+- On `union` types or **untagged enums**, recursion is structurally ambiguous: auto-derivation halts and the type has no seed impl for `M`. The user must write an explicit positive or negative impl; failure to do so when the type is used in an auto-recursing context fires `ZOM0531 AutoMarkerUnionAmbiguous`.
+- Primitive types (`u8`..`f64`, `()`, `str` slice, `*const T`, etc.) do **not** auto-imply any user-defined auto-marker; the user **must** seed them explicitly. This prevents accidental propagation of user-defined semantic contracts across primitive boundaries.
+
+#### 16.14.2.4 Style 4 — Unsafe Marker (100 % manual, no auto rules)
+
+```ebnf
+UnsafeMarkerDecl ::= 'unsafe' 'marker' Identifier ';'
+```
+
+```zom
+// Compiles to ZERO automated rules. EVERY impl site MUST be written
+// with explicit `unsafe impl ...;` keyword. Compiler trusts the user
+// completely — no field-recursion, no blanket-check.
+unsafe marker FfiLayoutStable;
+
+unsafe impl FfiLayoutStable for u8;
+unsafe impl FfiLayoutStable for u16;
+unsafe impl FfiLayoutStable for u32;
+unsafe impl FfiLayoutStable for i32;
+unsafe impl FfiLayoutStable for u64;
+unsafe impl FfiLayoutStable for usize;
+unsafe impl FfiLayoutStable for f32;
+unsafe impl FfiLayoutStable for f64;
+unsafe impl<T: FfiLayoutStable> FfiLayoutStable for *const T;
+unsafe impl<T: FfiLayoutStable> FfiLayoutStable for *mut T;
+```
+
+Rules.
+
+- No recursion, no derivation, no auto-negation. If no explicit `unsafe impl M for T` exists for a given `T`, `M` is **unknown** for `T` (not assumed true and not assumed false). In marker-lattice terms, `M` lives in a 3-valued domain `{ true, false, unknown }` for user-facing impl purposes; unknown values are only acceptable as long as no consumer writes a bound that queries `M` on that concrete `T`.
+- The `unsafe` keyword is **mandatory** on every impl site for unsafe markers. Omitting it fires `ZOM0535 UnsafeMarkerImplRequiresUnsafe`.
+- Primary use case: ABI contracts, FFI boundaries, GPU memory layouts, and any case where correctness relies on invariants **outside** the compiler's observable type system.
+
+### 16.14.3 Marker Naming Rules
+
+- Markers share the top-level **type** namespace with classes, interfaces, enums, and aliases. Name clashes with any of those fire `ZOM0502 MarkerNameClash`.
+- Recommended convention (enforced as lint `W5101 MarkerNamingConvention` by `zom fmt`): suffix marker names with `-able`, `-Safe`, or `-Compatible` (e.g. `Sendable`, `ZeroCopyCompatible`, `FfiLayoutStable`). Derived / conjunctive markers prefer noun forms (e.g. `Value`).
+
+### 16.14.4 Three Privileges of Marker Bounds (vs. Interface Bounds)
+
+Markers are a separate mechanism from interfaces precisely because the former enjoys three structural privileges that behavioral interfaces cannot.
+
+1. **Negation `!M` is allowed.**
+
+```zom
+fun single_writer<T>(x: T) where T: Sendable + !Shared { ... }  // OK: structural negation
+fun broken<T>(x: T)       where T: !Drawable { ... }           // ZOM0448: behavioral negation meaningless
+```
+
+Principle: structure is Boolean (a type *definitely does not* have interior mutability). Behavior is not — "doesn't draw" is unprovable in general and would collapse the interface-subtyping lattice. Only marker bounds carry negation; interface bounds always require a positive witness.
+
+2. **Optional-relax `?M` is allowed** (only meaningful for auto-derived markers / auto-traits).
+
+```zom
+// By default auto-derived T implicitly carries {Sendable, Shared} as
+// upper bounds. The `?Sendable` syntax in the parameter head relaxes
+// this — reads "T does not need to be Sendable".
+fun raw_alloc<T: ?Sized + ?Sendable>(size: usize) -> *mut T { ... }
+```
+
+Optional-relax is exclusively a bound-side operation; it cannot appear in an `impl` head because it does not declare a fact — it *removes* a default assumption about a type parameter. Writing `?M` on a non-auto marker fires `W5102 OptionalRelaxOnNonAutoMarker` (lint, downgraded from hard error to preserve generality of future compiler features).
+
+3. **Commutative / Associative Lattice.** `M + N` and `N + M` are literally identical predicates; `(M + N) + P` and `M + (N + P)` are also identical. While interface bounds are order-independent (rule 1 of Chapter 12 — Type Constraints), the underlying impl graph does **not** form a closed lattice (e.g. `Drawable + Hashable` does not automatically produce a third named interface). Marker conjunctions, by contrast, form a proper Boolean lattice: every finite set of markers has a unique conjunction, a unique disjunction, and a unique complement, all representable on the 64-bit bitmap.
+
+### 16.14.5 Dataflow: From Marker Declaration to Bound Check
+
+```mermaid
+flowchart LR
+    A[Stage S1b Name Resolution\n1. marker M declaration  \n2. derive / unsafe / auto flags stored] --> B[S2 Lattice\nSeed bits:\n   explicit impl M for T\n   explicit impl !M for T]
+    B --> C[S2 Lattice\nBlanket closure:\n   auto-recurse fields\n   derived-marker expand\n   unsafe-marker no-ops\n   produce 64-bit bitmap per (T,M)]
+    C --> D[S3d Coherence\n3-valued unknown resolution\nmarker-incompat matrix check]
+    D --> E[S4 Usage Gates\nwhere T: M + !N\nspawn / FFI / channel gates\ndyn I + M head checks]
+    E --> F{bitmap(T) ⊇ required set?}
+    F -->|Yes| G[Compilation proceeds]
+    F -->|No| H[ZOM0440-0454 / 05xx / 8xxx\nwith full conjunction expansion]
+```
+
+The 64-bit bitmap per type is determined once per `(crate, T)` pair at the end of stage S2 and is subsequently treated as an immutable value. Downstream crates consume the bitmap via the crate-metadata side-channel (a per-T u64 word encoded in the crate's metadata index, plus a marker-name → bit-position mapping). No runtime computation is performed for markers retained at Tier 0 or Tier 1; only RUNTIME_REIFIED Tier 2 markers (see §16.6) materialise an actual lookup at runtime, typically for dynamic-subtype queries on `dyn Any + M` existentials.
+
+### 16.14.6 Complete Worked Example: FFI Boundary Gate
+
+The following walk-through covers end-to-end usage of an `unsafe marker` from declaration through seed primitives, struct attachment, and downstream FFI gate enforcement.
+
+```zom
+// ===== Library author (crate: ffi-core) =====
+
+// Step 1: Declare the marker
+unsafe marker FfiLayoutStable;
+
+// Step 2: Seed primitives
+unsafe impl FfiLayoutStable for u8;
+unsafe impl FfiLayoutStable for u16;
+unsafe impl FfiLayoutStable for u32;
+unsafe impl FfiLayoutStable for i32;
+unsafe impl FfiLayoutStable for u64;
+unsafe impl FfiLayoutStable for usize;
+unsafe impl FfiLayoutStable for f32;
+unsafe impl FfiLayoutStable for f64;
+unsafe impl<T: FfiLayoutStable> FfiLayoutStable for *const T;
+unsafe impl<T: FfiLayoutStable> FfiLayoutStable for *mut T;
+```
+
+```zom
+// Step 3: A struct whose fields are all in the whitelist → no per-field impl needed
+#[repr(C)]
+struct Win32Handle {
+    handle: u64,
+    metadata: *const u8,
+}
+// User must write this ONE line for the struct, since FfiLayoutStable
+// is unsafe (Style 4):
+unsafe impl FfiLayoutStable for Win32Handle;
+```
+
+```zom
+// ===== Downstream consumer =====
+
+// Step 4: FFI function signature enforces via bound
+extern "C" fun register_handle<T>(p: *const T) where T: FfiLayoutStable;
+
+// Step 5: Legal call — Win32Handle ✓
+let h: Win32Handle = Win32Handle { handle: 42, metadata: null() };
+register_handle(&h as *const Win32Handle);   // OK
+
+// Step 6: Illegal call — JavaString has JNIEnv (not in whitelist)
+struct JavaString { ptr: *mut JNIEnv; len: usize; }
+unsafe impl FfiLayoutStable for JavaString;  // ⚠ requires UNSAFE: user must attest
+
+let js = JavaString { ptr: env, len: 12 };
+register_handle(&js as *const JavaString);
+// If user skipped the unsafe impl line above: ZOM0588 FfiLayoutViolation
+// "JavaString does not satisfy FfiLayoutStable because field ptr: *mut JNIEnv
+//  has no impl FfiLayoutStable for JNIEnv"
+```
+
+The key practical take-away: with a single `unsafe marker` declaration plus roughly one dozen seed lines, a library author obtains a compile-time enforceable ABI contract that downstream consumers cannot bypass without writing their own `unsafe impl` — and every such attestation is trivially grep-able in code review.
+
+### 16.14.7 Five Absolute Rules for User Markers (Avoiding Pitfalls)
+
+1. **R1 — Markers are always zero methods.** If you want behavior, write an `interface`, not a `marker`. Attempting to add methods fires `ZOM0517 MarkerCannotHaveMethods`.
+2. **R2 — Non-auto markers never propagate by field recursion.** You must explicitly attach the marker to every type. The `auto marker` modifier is the **only** opt-in for propagation. This is deliberate: Rust's `Send` / `Sync` auto-propagate for historical reasons; ZOM separates the concern so users can reason locally without looking into private fields of upstream types.
+3. **R3 — Name uniqueness in the type namespace.** A marker, an interface, a class, an enum, and an alias cannot share the same identifier in the same scope. Violations fire `ZOM0502 MarkerNameClash`.
+4. **R4 — The marker-incompatibility matrix applies to user markers, not just built-in ones.** Library crates can register their own incompatible pairs via the crate-level inner attribute `#![zom::marker::incompat(Linear, Shared)]` (syntax stable as of v1.0). Violations fire in the same `ZOM0520`–`ZOM0529` diagnostic range as the built-in pairs.
+5. **R5 — Unions and untagged enums require an explicit impl for auto markers.** Field-level structural recursion is ambiguous when multiple variants carry different fields or the same offset is shared across union arms. Missing explicit impls fire `ZOM0531 AutoMarkerUnionAmbiguous`.
+
+### 16.14.8 User Markers vs. Built-in Markers: Full Parity
+
+The ZOM marker system treats user-defined markers as **first-class citizens** alongside the six canonical concurrency markers (`Sendable`, `Shared`, `Linear`, `SuspendSafe`, `NoSuspendHazard`, `TaskBound`) and the nine layout markers (`ZeroCopy`, `Pod`, `StableAbi`, etc.). The matrix below compares the two along eight dimensions; the key take-away is that **only one row** exhibits a material difference.
+
+| Dimension | Built-in (Sendable, Shared, ZeroCopy, StableAbi, …) | User-defined (MyM, Value, FfiLayoutStable, …) |
+| --- | --- | --- |
+| Declaration syntax | `marker Sendable;` in the implicit prelude, auto-imported everywhere. | `marker MyM;` in any user module; imported normally via `use crate::marker::MyM;`. Identical grammar rule (`BasicMarkerDecl`) with optional `auto` / `unsafe` / derived modifiers on both. |
+| Impl syntax (positive / negative / unsafe) | `impl Sendable for T;`, `impl !Shared for T;`, `unsafe impl Shared for Mutex<T>;` — identical forms. | Exactly the same three forms supported. No syntactic difference whatsoever. |
+| Appearance in `where` clause | `T: Sendable + !Shared + Linear`. | `T: FfiLayoutStable + MyM + !Value`. Identical bound-syntax and lattice-join logic. |
+| Appearance in `dyn` head | `dyn Drawable + Sendable + Shared` (bitmap packed into the vtable prefix word). | `dyn Drawable + FfiLayoutStable + MyM` — exactly the same bitmap packing (§16.6.2). |
+| Orphan-rule semantics | Local `impl` of built-in `M` for upstream `T` is prohibited by the orphan rule unless `T` is local (standard). | Identical: impl allowed when **either** the marker `M` or the type `T` is local to the crate. Blanket impls require at least one local per side. |
+| Retention tier (default) | Tier 1 `STDLIB_MARKER` (metadata-only, no runtime reflection blob by default). | Tier 2 `USER_MARKER` default; users may upgrade via `#[zom::retention(runtime_reified)]` to obtain reflection metadata. Default tier is the only semantic delta that differs by marker origin. |
+| Runtime bitmap bit allocation | Bits 0..31 reserved for built-in markers in the 64-bit per-type bitmap. Crate metadata carries a fixed mapping from marker path → bit index for these. | Bits 32..63 assigned on a per-(crate, marker) basis during metadata loading. Downstream crates re-map via the metadata index so the bitmap remains stable within a single compilation. Bit-space allocation strategy is identical; only the default offset differs. |
+| Auto-recursion default behavior | `Sendable` / `Shared` are **pre-seeded** on all primitives and `()`. All other built-in auto markers are pre-seeded per their semantic contract. | User `auto marker M` is **never pre-seeded** on primitives; the user must write explicit seed impls (Rule R2 in §16.14.7). This is the **only** behavioral difference between built-in and user auto markers at the lattice level. |
+
+In summary: user markers and built-in markers share the same EBNF grammar, the same pipeline stages, the same diagnostic codes, the same `dyn` packing, the same orphan rule, and the same 64-bit bitmap representation. The default retention tier and the primitive pre-seed convention are the **only** two material distinctions; neither affects user-facing syntax or correctness reasoning.
+
+### 16.14.9 Worked examples (appendix)
 
 Five worked examples, required by the charter. All code blocks are syntactically valid ZOM per 16.2.
 
-### 16.14.1 Example 1 — Six concurrency markers declared and implemented
+#### 16.14.9.1 Example 1 — Six concurrency markers declared and implemented
 
 ```zom
 // ── Definitions ──────────────────────────────────────────────
@@ -1503,7 +1759,7 @@ fun nursery_run<T, F>(body: F) -> Result<T, NurseryError>
 }
 ```
 
-### 16.14.2 Example 2 — UnsafeCell negative impl (the canonical negative)
+#### 16.14.9.2 Example 2 — UnsafeCell negative impl (the canonical negative)
 
 ```zom
 // ── Stdlib definition ────────────────────────────────────────
@@ -1548,7 +1804,7 @@ impl<T> std::marker::TaskBound for UnsafeCell<T>
 // unsafe override gets ZOM0710 CoherenceViolation.
 ```
 
-### 16.14.3 Example 3 — `repr(C)` FFI struct with StableAbi
+#### 16.14.9.3 Example 3 — `repr(C)` FFI struct with StableAbi
 
 ```zom
 /// A C-compatible point, safe to pass across shared-library boundaries.
@@ -1578,7 +1834,7 @@ pub extern fun make_point(x: f32, y: f32) -> *mut Point {
 }
 ```
 
-### 16.14.4 Example 4 — Deprecated function
+#### 16.14.9.4 Example 4 — Deprecated function
 
 ```zom
 // Uses LegacyBareWhitelist: emits W7105 DeprecatedBareAttribute.
@@ -1611,7 +1867,7 @@ pub fun old_busted_api_v1(path: &str) -> Handle
 // ═════════════════════════════════════════════════════════════
 ```
 
-### 16.14.5 Example 5 — `must_use` Result function + lint gating
+#### 16.14.9.5 Example 5 — `must_use` Result function + lint gating
 
 ```zom
 /// Compute sum of a slice. The return value carries the final sum and

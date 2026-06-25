@@ -95,9 +95,14 @@ The table below is the **authoritative copy** of the ZOM diagnostic-code range a
 | 0400–0499 | Type checker / unification | `src/zc/typeck/` | Error | No | `ZOM0454` = Cannot coerce concrete type `T` to `dyn I` — interface `I` is not object-safe or marker-closure failed → Error |
 | 0400–0499 | Type checker / unification | `src/zc/typeck/` | Warning | Yes | `ZOM0477` = Unused type parameter with no trait bounds → Warning |
 | 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Error | No | `ZOM0501` = Impl of marker `Sendable` for type `*mut T` conflicts with negative impl in scope → Error |
+| 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Error | No | `ZOM0502` = MarkerNameClash: a marker, interface, class, and alias cannot share the same identifier in the type namespace → Error |
 | 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Error | No | `ZOM0505` = Duplicate standalone `impl I for T` — two impl blocks provide the same (interface, type) pair → Error |
 | 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Error | No | `ZOM0508` = Diamond-resolution ambiguous: multiple inherited impls provide `foo`; disambiguate with `InterfaceName::foo(this)` → Error |
+| 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Error | No | `ZOM0517` = MarkerCannotHaveMethods: a marker declaration contains a block body, method signature, or associated type; markers are zero-method structural predicates. Use interface for behavior → Error |
+| 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Error | No | `ZOM0519` = MarkerCycle: derived-marker declaration transitively references itself (e.g. marker A = A + B). Break the cycle at one participating marker → Error |
 | 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Error | No | `ZOM0524` = Closure captured value is `!Shared` yet escaped to `spawn()` call boundary → Error |
+| 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Error | No | `ZOM0531` = AutoMarkerUnionAmbiguous: an auto marker cannot be structurally derived for union types or untagged enums; write an explicit positive or negative impl → Error |
+| 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Error | No | `ZOM0535` = UnsafeMarkerImplRequiresUnsafe: impl M for T on an unsafe marker requires the unsafe keyword; attest soundness via `unsafe impl M for T` → Error |
 | 0500–0599 | Marker / coherence engine | `src/zc/typeck/marker/` | Note | Yes | `ZOM0588` = Coherence scope originates from module declared here → Note |
 | 0600–0699 | Attributes / annotations | `src/zc/parser/attr/` | Error | No | `ZOM0611` = Attribute namespace `vendor` missing reverse-domain prefix (expected `com.vendor.xxx`) → Error |
 | 0600–0699 | Attributes / annotations | `src/zc/parser/attr/` | Error | No | `ZOM0630` = `#[inline(never)]` applied to generic function with only in-MTU callers → Error |
