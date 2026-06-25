@@ -35,6 +35,11 @@ For the complete specification, please refer to the individual chapter files in 
 
 - [Grammar Reference](chapters/17-grammar-reference.md) - Complete ANTLR4 grammar definitions
 
+### Module Infrastructure
+
+- [Package Model, Manifest & Workspaces](chapters/21-package-model-and-manifest.md) - Package model, Zom.toml schema, editions, dependency resolution and build scripts
+- [Orphan Rule & Cross-Crate Coherence](chapters/22-orphan-rule-and-coherence.md) - Impl locality, negative-impl 3-phase closure, coherence matrix and cross-crate metadata rules
+
 ## About This Organization
 
 The specification was previously contained in a single large file, which led to:

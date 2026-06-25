@@ -114,6 +114,38 @@ ReexportClause ::= ModuleName '.' '{' ExportSpecifierList? '}'
 ExportSpecifierList ::= ExportSpecifier (',' ExportSpecifier)* ','?
 ExportSpecifier ::= Identifier ('as' Identifier)?
 
+(* ── Module grammar additions (Ch.13 §Modules and Imports) ──────────
+   A Visibility generalizes the prior ModifierKeyword visibility set.
+   At TOP LEVEL of a module, only `export` and the epsilon (private)
+   forms are meaningful. Inside class/interface/struct/enum bodies the
+   additional MemberModifier keywords (public / private / protected)
+   apply alongside the usual static / mutating / override / sealed /
+   final / open extensibility tokens.                                    *)
+
+InlineModuleDeclaration ::= Visibility? 'mod' Identifier
+                            ( '{' ModuleItem* '}' | ';' )
+PackageDeclaration      ::= 'package' PackageName (':' VersionString)? ';'
+                                (* full VersionString syntax in Manifest annex *)
+
+Visibility ::= 'export'
+             | 'pub' '(' 'crate' ')'
+             | 'pub' '(' 'package' ')'
+             | 'pub' '(' 'super' ')'
+             | 'pub' '(' 'self' ')'
+             | 'pub' '(' 'in' QualifiedPath ')'
+             | epsilon
+
+MemberModifier ::= Visibility | 'static' | 'mutating' | 'override'
+                 | 'sealed' | 'final'  | 'open'
+                 | 'readonly' | 'unsafe' | 'marker'
+
+ClassExtensibility ::= 'sealed' | 'final' | 'open'
+
+PathPrefix    ::= 'crate::' | 'self::' | 'super::' | '::'
+QualifiedPath ::= PathPrefix? Identifier ( '::' Identifier )*
+
+(* ── end Ch.13 grammar additions ───────────────────────────────────── *)
+
 (* Declarations *)
 Declaration ::= ModifierList (
                    LetDeclaration
@@ -126,6 +158,8 @@ Declaration ::= ModifierList (
                  | ErrorDeclaration
                  | AliasDeclaration
                  | ModuleDeclaration
+                 | InlineModuleDeclaration
+                 | PackageDeclaration
                  | ExportDeclaration
                  | ImportDeclaration
                  | MarkerDeclaration
@@ -144,15 +178,16 @@ FunctionDeclaration ::= 'fun' BindingIdentifier TypeParameters? ParameterClause
                        ReturnType? BlockStatement
 ReturnType ::= '->' TypeExpression RaisesClause?
 
-ClassDeclaration ::= 'class' BindingIdentifier TypeParameters? HeritageClauses?
-                    '{' ClassElement* '}'
-StructDeclaration ::= 'struct' BindingIdentifier TypeParameters? HeritageClauses?
-                     '{' ClassElement* '}'
+ClassDeclaration ::= ClassExtensibility? ModifierList 'class' BindingIdentifier
+                     TypeParameters? HeritageClauses? '{' ClassElement* '}'
+StructDeclaration ::= ModifierList 'struct' BindingIdentifier TypeParameters?
+                      HeritageClauses? '{' ClassElement* '}'
 HeritageClauses ::= HeritageClause+
 HeritageClause ::= 'extends' ExpressionWithTypeArguments
                   (',' ExpressionWithTypeArguments)*
 
-InterfaceDeclaration ::= 'interface' BindingIdentifier TypeParameters? InterfaceHeritage? '{' InterfaceBody '}'
+InterfaceDeclaration ::= ClassExtensibility? ModifierList 'interface' BindingIdentifier
+                         TypeParameters? InterfaceHeritage? '{' InterfaceBody '}'
 InterfaceHeritage ::= 'extends' InterfaceTypeList
 InterfaceBody ::= InterfaceElement*
 InterfaceElement ::= ';'
@@ -174,9 +209,9 @@ InitDeclaration ::= 'init' TypeParameters? ParameterClause ReturnType? (BlockSta
 DeinitDeclaration ::= 'deinit' (BlockStatement | ';')
 AccessorDeclaration ::= ('get' | 'set') PropertyName TypeParameters? ParameterClause ReturnType?
                         (BlockStatement | ';')
-ModifierKeyword ::= 'public' | 'private' | 'protected'
-                  | 'static' | 'readonly' | 'mutating' | 'override'
-                  | 'export'
+ModifierKeyword ::= Visibility
+                  | MemberModifier
+                  | 'public' | 'private' | 'protected'   (* member-level inside bodies *)
                   | 'unsafe'              (marker impl prefix, Ch.16 A-019)
                   | 'marker'              (contextual, Ch.16 A-017)
 
@@ -525,6 +560,176 @@ EnumPattern ::= PropertyName TuplePattern
               | TypeReference '.' PropertyName TuplePattern?
 ```
 
-This completes the implementation-aligned Zom grammar reference for lexical structure, types, expressions, statements, declarations, patterns, classes, interfaces, enumerations, error handling, generics, modules, and the complete formal grammar.
+## Module System Grammar (Authoritative)
 
-The specification provides detailed explanations, extensive examples, and serves as both a reference for language implementers and a guide for developers learning Zom. It follows the style and depth of modern language specifications like those for Swift and Kotlin, ensuring that all language features are thoroughly documented with clear semantics and usage patterns.
+This sub-section restates and expands the module-related grammar rules scattered throughout the Syntactic Grammar section above into a single authoritative block. It mirrors the Chapter 13 Modules and Imports specification in full. Every production here is normative; implementations MUST parse module declarations, imports, exports, and inline modules according to these productions.
+
+### Module Declarations
+
+```ebnf
+(* ── Module declarations ────────────────────────────────────────── *)
+
+(* A `module` clause at the head of a source file declares the dotted
+   symbol path of that file. It is optional for crate-root files, whose
+   implicit module name is the crate name from the manifest. When
+   present, it must be the first non-comment, non-shebang item in the
+   file. A duplicate `module` declaration within one crate raises
+   ZOM0850 DuplicateModuleDeclaration. See Ch.13 §Module Declaration. *)
+
+ModuleDeclaration ::= 'module' ModuleName ';'
+ModuleName        ::= Identifier ('.' Identifier)*
+
+(* A `package` declaration is optional in source files. It is a
+   forward-reference to the PackageName/VersionString grammar from the
+   Manifest annex. When present it declares the published package
+   metadata for that crate root; typically it is written only in
+   generated or regenerated manifest headers. *)
+
+PackageDeclaration ::= 'package' PackageName (':' VersionString)? ';'
+```
+
+### Import Declarations
+
+```ebnf
+(* ── Import declarations ────────────────────────────────────────── *)
+
+(* Zom v1 supports two mutually-exclusive import forms. Placing an
+   import anywhere other than module-root scope is ZOM0840
+   ImportMustBeTopLevel. *)
+
+ImportDeclaration ::= 'import' ImportClause ';'
+
+ImportClause      ::= ModuleImportClause
+                    | NamedImportClause
+
+(* Form A: Namespace import. Binds the final segment (or alias) as a
+   NamespaceSymbol whose backing scope is the target module's EXPORT
+   scope. Clash on local name -> ZOM0820 AmbiguousImport. *)
+ModuleImportClause ::= ModuleName ('as' Identifier)?
+
+(* Form B: Named import. Each specifier is resolved against the
+   target's EXPORT scope only. Missing/non-exported symbols raise
+   ZOM0815 SymbolNotExported. *)
+NamedImportClause ::= ModuleName '.' '{' ImportSpecifierList? '}'
+ImportSpecifierList ::= ImportSpecifier (',' ImportSpecifier)* ','?
+ImportSpecifier   ::= Identifier ('as' Identifier)?
+
+(* Separator convention reminder (Ch.13 §Path Qualification and
+   Disambiguation): module-path segments in `import` always use `.`;
+   item-path selection inside expressions/types always uses `::`. The
+   form `import a.b.C` is a syntax error — users must write
+   `import a.b.{C}` for named selection. *)
+```
+
+### Export Declarations
+
+```ebnf
+(* ── Export declarations ────────────────────────────────────────── *)
+
+(* Three forms with disjoint FIRST sets:
+   (a) Declaration-site `export` — starts with `export` followed by
+       any Declaration keyword. Raises ZOM0845 ExportMustBeTopLevel if
+       the declaration is not at module-root scope.
+   (b) Local export-list `export { A, B as C };`. Raises ZOM0827 if A
+       or B is not declared in the module's root scope, ZOM0828 on
+       duplicate exported target names, ZOM0821 if the symbol binding
+       is not in root scope.
+   (c) Re-export `export mod.path.{ A, B as C };`. Looks up each
+       symbol in the target module's EXPORT scope only; non-exported
+       symbols raise ZOM0825 ReexportNonExportedSymbol. Cross-module
+       private-access attempts additionally raise
+       ZOM0830 PrivateAccessCrossBoundary when the target's private
+       scope is probed by an intermediate tool. *)
+
+ExportDeclaration ::= 'export' Declaration
+                    | 'export' ExportClause ';'
+
+ExportClause      ::= LocalExportClause
+                    | ReexportClause
+
+LocalExportClause ::= '{' ExportSpecifierList? '}'
+ReexportClause    ::= ModuleName '.' '{' ExportSpecifierList? '}'
+
+ExportSpecifierList ::= ExportSpecifier (',' ExportSpecifier)* ','?
+ExportSpecifier   ::= Identifier ('as' Identifier)?
+```
+
+### Inline Modules and Paths
+
+```ebnf
+(* ── Inline modules, visibility, and qualified paths ───────────── *)
+
+(* Inline submodule declaration. The body form `mod foo { ... }`
+   creates a new child ModuleScope in the symbol table. The header
+   form `mod foo;` instructs the compiler to load the submodule from
+   disk via the filesystem-convention rules in Ch.13 §Filesystem
+   Conventions; ambiguity (both `foo.zom` and `foo/mod.zom` present)
+   raises ZOM0881 ModulePathAmbiguous. Visibility modifiers control
+   importability of the submodule; bare `mod` is module-private. *)
+
+InlineModuleDeclaration ::= Visibility? 'mod' Identifier
+                            ( '{' ModuleItem* '}' | ';' )
+
+(* Visibility ladder. `export` is the only keyword that promotes a
+   symbol across crate boundaries. The remaining `pub(...)` forms
+   restrict visibility to progressively narrower scopes. At the TOP
+   LEVEL of a module only `export` and the epsilon (private) form are
+   meaningful; the finer `pub(...)` forms are primarily used on
+   `InlineModuleDeclaration` and on class/interface members, where
+   they are interpreted by the member-level modifier grammar. *)
+
+Visibility ::= 'export'
+             | 'pub' '(' 'crate' ')'
+             | 'pub' '(' 'package' ')'
+             | 'pub' '(' 'super' ')'
+             | 'pub' '(' 'self' ')'
+             | 'pub' '(' 'in' QualifiedPath ')'
+             | epsilon
+
+(* MemberModifier extends Visibility with member-only tokens. The
+   ClassExtensibility tokens (`sealed`, `final`, `open`) are applied
+   BEFORE the ModifierList on class and interface declarations, so
+   that extensibility is a first-class, non-reorderable syntactic
+   decision. Defaults: classes and interfaces are `final` by default
+   — the user must write `open class X` for an extensible class, and
+   `sealed interface Y` for a closed hierarchy. Class members default
+   to module-private; interface methods default to public. *)
+
+MemberModifier       ::= Visibility
+                       | 'static'
+                       | 'readonly'
+                       | 'mutating'
+                       | 'override'
+                       | 'sealed'
+                       | 'final'
+                       | 'open'
+                       | 'unsafe'
+                       | 'marker'
+ClassExtensibility   ::= 'sealed' | 'final' | 'open'
+
+(* Four explicit path prefixes for qualified item paths. `::` is a
+   strict synonym of `crate::` in v1; it is reserved for future use as
+   a cross-crate absolute path prefix. Item paths always use `::` for
+   segment separation; module paths use `.`. *)
+
+PathPrefix    ::= 'crate::' | 'self::' | 'super::' | '::'
+QualifiedPath ::= PathPrefix? Identifier ( '::' Identifier )*
+```
+
+### FIRST / FOLLOW Notes
+
+| Production               | FIRST set (keywords)                                 |
+|--------------------------|------------------------------------------------------|
+| `ModuleDeclaration`      | `module`                                             |
+| `PackageDeclaration`     | `package`                                            |
+| `ImportDeclaration`      | `import`                                             |
+| `ExportDeclaration`      | `export`                                             |
+| `InlineModuleDeclaration`| `mod`, or any leading `Visibility` + `mod`           |
+| `ClassDeclaration`       | `class`, any `ClassExtensibility` keyword, or any member of `FIRST(ModifierList)` |
+| `InterfaceDeclaration`   | `interface`, any `ClassExtensibility` keyword, or any member of `FIRST(ModifierList)` |
+
+The disambiguation between `InlineModuleDeclaration` (body form) and `InlineModuleDeclaration` (header form `;`) is resolved by the single-token lookahead after the identifier: `'{'` commits to the body form, and `';'` commits to the header form.
+
+---
+
+This completes the implementation-aligned Zom grammar reference for lexical structure, types, expressions, statements, declarations, patterns, classes, interfaces, enumerations, error handling, generics, modules, and the complete formal grammar.
