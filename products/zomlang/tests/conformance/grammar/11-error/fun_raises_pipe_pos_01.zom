@@ -2,4 +2,4 @@
 // Covers rule: funDecl, raisesClause, typeList
 // Expected: ACCEPT
 
-fun foo() raises E1 | E2 -> i32;
+fun foo() -> i32 raises E1 | E2;

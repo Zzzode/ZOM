@@ -1,0 +1,8 @@
+// §20.4 extern block containing a variadic-parameter style foreign fun (Cdecl ABI)
+// Covers rule: externDecl (externBlockDecl + "Cdecl" ABI checkExternAbiFormat)
+// Expected: ACCEPT
+// ExpectedDiagnostic: none
+extern "Cdecl" {
+    fun printf(fmt: str) -> i32;
+    fun fprintf(stream: u64, fmt: str) -> i32;
+}

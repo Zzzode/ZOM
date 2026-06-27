@@ -2,7 +2,7 @@
 // Covers rule: classDecl, extendsClause, standaloneImplDeclaration
 // Expected: ACCEPT
 
-abstract class Shape extends Object {
+abstract class Shape : Object {
     abstract fun area() -> f64;
 }
 impl Drawable for Shape { }

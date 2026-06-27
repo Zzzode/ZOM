@@ -2,4 +2,4 @@
 // Covers rule: postfixType
 // Expected: ACCEPT
 
-alias Cube = i32[][][];
+alias Cube = [[[i32]]];

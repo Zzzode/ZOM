@@ -2,9 +2,9 @@
 // Covers rule: interfaceDeclaration
 // Expected: ACCEPT
 
-public interface Iterator<T> extends Iterable {
+public interface Iterator<T> : Iterable {
     type Item;
     type Index = u64;
     fun next() -> Option<Self.Item>;
-    get current -> Self.Item;
+    get current() -> Self.Item;
 }

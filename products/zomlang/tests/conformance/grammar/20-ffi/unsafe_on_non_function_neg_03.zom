@@ -1,0 +1,5 @@
+// §20.5 Unsafe applied to a bare literal — NOT a block or function
+// Covers rule: unsafeBlockExpr (requires LBRACE after keyword)
+// Expected: REJECT
+// ExpectedDiagnostic: line
+let x = unsafe 42;

@@ -1,0 +1,5 @@
+// §21.2 Unbalanced parentheses inside a macro token tree — nested group never closed
+// Covers rule: macroToken (macroParenGroup requires matching RPAREN — missing → error)
+// Expected: REJECT
+// ExpectedDiagnostic: line
+let _ = m!( a(b );

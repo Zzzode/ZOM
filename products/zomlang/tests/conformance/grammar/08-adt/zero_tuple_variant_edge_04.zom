@@ -3,7 +3,7 @@
 // Expected: ACCEPT
 
 enum Event {
-    Click(),
+    Click(unit),
     Key(str),
     Tick,
 }

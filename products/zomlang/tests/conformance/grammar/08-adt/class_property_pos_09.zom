@@ -4,6 +4,6 @@
 
 class Person {
     private mut _name: str;
-    public get name -> str { return self._name; }
+    public get name() -> str { return self._name; }
     public set name(v: str) -> unit { self._name = v; }
 }

@@ -1,0 +1,6 @@
+// §19.3.1 CfgAtom valued equality (ASSIGN single-equals char)
+// Covers rule: cfgAtom, attrCfg, cfgPredicate
+// Expected: ACCEPT
+// ExpectedDiagnostic: none
+#[zom::cfg(target_os = "linux")]
+fun linux_only() -> i32 { return 42; }

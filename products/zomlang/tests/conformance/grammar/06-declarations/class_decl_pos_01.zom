@@ -3,6 +3,6 @@
 // Expected: ACCEPT
 
 class Point {
-    x: i32;
-    y: i32;
+    let x: i32;
+    let y: i32;
 }

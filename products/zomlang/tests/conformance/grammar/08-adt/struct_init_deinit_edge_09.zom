@@ -5,5 +5,5 @@
 struct Node {
     id: i32 = 0;
     label: str = "";
-    children: Node[] = [];
+    children: [Node] = [];
 }

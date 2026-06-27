@@ -4,5 +4,5 @@
 
 class ReadOnly {
     private mut _v: i32 = 0;
-    get val -> i32 { return self._v; }
+    get val() -> i32 { return self._v; }
 }

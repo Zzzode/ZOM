@@ -2,4 +2,4 @@
 // Covers rule: postfixType
 // Expected: ACCEPT
 
-alias Matrix = i32[][];
+alias Matrix = [[i32]];

@@ -3,6 +3,6 @@
 // Expected: ACCEPT
 
 class Result<T, E = unit> {
-    ok: T;
-    err: E;
+    let ok: T;
+    let err: E;
 }

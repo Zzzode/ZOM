@@ -1,0 +1,8 @@
+// §20.4 extern block opaque type alias: FILE bound to an unseen C struct impl
+// Covers rule: externItem (externTypeAlias alt, opaque soft-keyword enabled)
+// Expected: ACCEPT
+// ExpectedDiagnostic: none
+extern "C" {
+    type FILE = opaque FILE_IMPL;
+    type DIR  = opaque DIR_IMPL;
+}

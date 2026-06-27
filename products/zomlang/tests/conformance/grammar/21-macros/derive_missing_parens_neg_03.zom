@@ -1,0 +1,6 @@
+// §21.4 `#[derive Trait]` without mandatory wrapping parens — native syntax error
+// Covers rule: outerAttribute + attrItem (derive-form needs LPAREN/RPAREN around items)
+// Expected: REJECT
+// ExpectedDiagnostic: line
+#[derive Debug]
+struct X;

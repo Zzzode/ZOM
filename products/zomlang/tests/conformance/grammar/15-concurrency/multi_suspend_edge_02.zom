@@ -2,7 +2,7 @@
 // Covers rule: multi_suspend
 // Expected: ACCEPT
 
-fun step(flag1: &Bool, flag2: &Bool) {
+fun step(flag1: Bool, flag2: Bool) {
     suspend;
     suspend until *flag1;
     suspend;

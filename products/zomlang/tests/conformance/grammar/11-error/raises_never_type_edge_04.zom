@@ -2,4 +2,4 @@
 // Covers rule: raisesClause, neverType
 // Expected: ACCEPT
 
-fun pure() raises never -> i32 { return 42; }
+fun pure() -> i32 raises never { return 42; }

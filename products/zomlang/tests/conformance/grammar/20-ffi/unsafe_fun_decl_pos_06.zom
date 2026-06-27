@@ -1,0 +1,9 @@
+// §20.2 / §20.5 `unsafe extern "system"` block: caller guarantees FFI safety
+// Covers rule: externDecl (externBlockDecl with optional unsafeTok prefix)
+// Expected: ACCEPT
+// ExpectedDiagnostic: none
+unsafe extern "system" {
+    fun malloc(sz: usize) -> u64;
+    fun free(p: u64);
+    fun memcpy(dst: u64, src: u64, n: usize) -> u64;
+}

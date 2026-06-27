@@ -3,6 +3,6 @@
 // Expected: ACCEPT
 
 class Box<T> {
-    private value: T;
-    fun get() -> T { return this.value; }
+    private let value: T;
+    fun get() -> T { return self.value; }
 }

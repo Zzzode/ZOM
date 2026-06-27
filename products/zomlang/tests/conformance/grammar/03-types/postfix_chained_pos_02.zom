@@ -2,4 +2,4 @@
 // Covers rule: postfixType (typeArray)
 // Expected: ACCEPT
 
-alias IntArr = i32[];
+alias IntArr = [i32];

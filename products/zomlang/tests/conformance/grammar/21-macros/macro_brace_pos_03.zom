@@ -1,0 +1,11 @@
+// §21.1 Function-like macro invocation with brace delimiter `name!{tt}`
+// Covers rule: macroInvocationExpr (LBRACE alt — comma-separated KV literal style)
+// Expected: ACCEPT
+// ExpectedDiagnostic: none
+fun json_map_demo() -> unit {
+    let obj = json_map!{
+        "name": player_name,
+        "score": high_score
+    };
+    return obj;
+}

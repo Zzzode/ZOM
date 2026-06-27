@@ -3,7 +3,7 @@
 // Expected: ACCEPT
 
 #[repr(u8)]
-export enum Color[T] {
+export enum Color<T> {
     Red,
     Green,
     Blue,

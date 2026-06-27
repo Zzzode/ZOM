@@ -5,7 +5,7 @@
 interface Flyable { fun fly() -> unit; }
 interface Swimmable { fun swim() -> unit; }
 class Animal { fun breathe() -> unit { } }
-class Duck extends Animal {
+class Duck : Animal {
     override fun fly() -> unit { }
     fun swim() -> unit { }
 }

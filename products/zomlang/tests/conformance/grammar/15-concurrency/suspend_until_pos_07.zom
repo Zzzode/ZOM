@@ -2,6 +2,6 @@
 // Covers rule: suspend_until
 // Expected: ACCEPT
 
-fun wait(flag: &Bool) {
+fun wait(flag: Bool) {
     suspend until *flag;
 }

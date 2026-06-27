@@ -1,0 +1,6 @@
+// §19.3.1 CfgAtom bare key existence check
+// Covers rule: cfgAtom, cfgPredicate, attrCfg
+// Expected: ACCEPT
+// ExpectedDiagnostic: none
+#[zom::cfg(unix)]
+fun on_unix() -> i32 { return 0; }

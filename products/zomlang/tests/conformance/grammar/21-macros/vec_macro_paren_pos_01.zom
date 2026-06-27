@@ -1,0 +1,8 @@
+// §21.1 Function-like macro invocation with parenthesized token tree
+// Covers rule: macroInvocationExpr (LPAREN alt), macroTokenTree (literal + punct)
+// Expected: ACCEPT
+// ExpectedDiagnostic: none
+fun build_vec() -> unit {
+    let v = vec!(1, 2, 3, 4, 5);
+    return v;
+}

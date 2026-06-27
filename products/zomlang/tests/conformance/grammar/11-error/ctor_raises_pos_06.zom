@@ -4,5 +4,5 @@
 
 class Foo {
     init(x: i32) raises InitError { self.y = x; }
-    y: i32;
+    let y: i32;
 }

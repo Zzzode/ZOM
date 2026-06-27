@@ -1,0 +1,7 @@
+// §20.2 extern declaration with NO explicit ABI string (falls back to default)
+// Covers rule: externDecl (optional DOUBLE_STRING_LITERAL omitted)
+// Expected: ACCEPT
+// ExpectedDiagnostic: none
+extern {
+    fun simple_bridge(x: i32) -> bool;
+}

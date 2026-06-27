@@ -2,6 +2,6 @@
 // Covers rule: suspend_until_complex
 // Expected: ACCEPT
 
-fun wait(a: &Bool, b: &Bool, t: i32, limit: i32) {
+fun wait(a: Bool, b: Bool, t: i32, limit: i32) {
     suspend until (*a && *b) || (t > limit ? true : false);
 }

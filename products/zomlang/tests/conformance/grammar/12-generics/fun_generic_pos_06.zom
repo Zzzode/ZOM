@@ -2,4 +2,4 @@
 // Covers rule: funDeclaration
 // Expected: ACCEPT
 
-fun swap<T>(a: T, b: T): (T, T) { return (b, a); }
+fun swap<T>(a: T, b: T) -> (T, T) { return (b, a); }

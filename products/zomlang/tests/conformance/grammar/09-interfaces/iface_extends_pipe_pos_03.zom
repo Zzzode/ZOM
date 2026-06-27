@@ -2,6 +2,6 @@
 // Covers rule: interfaceDeclaration (EXTENDS typeList with PIPE sep G9)
 // Expected: ACCEPT
 
-interface IOReader extends Readable | Closable | Disposable {
-    fun read(buf: u8[]) -> i32;
+interface IOReader : Readable + Closable + Disposable {
+    fun read(buf: [u8]) -> i32;
 }

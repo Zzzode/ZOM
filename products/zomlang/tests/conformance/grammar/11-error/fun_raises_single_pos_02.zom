@@ -2,4 +2,4 @@
 // Covers rule: funDecl, raisesClause
 // Expected: ACCEPT
 
-fun bar() raises NotFound -> bool;
+fun bar() -> bool raises NotFound;

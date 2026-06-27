@@ -3,6 +3,6 @@
 // Expected: ACCEPT
 
 enum Option<T> {
-    None;
-    Some(T);
+    None,
+    Some(T),
 }

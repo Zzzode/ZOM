@@ -2,4 +2,4 @@
 // Covers rule: typeList
 // Expected: REJECT
 
-fun bad() raises A, B, C -> void;
+fun bad() -> void raises A, B, C;

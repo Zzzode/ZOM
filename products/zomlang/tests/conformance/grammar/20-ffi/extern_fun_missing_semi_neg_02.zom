@@ -1,0 +1,7 @@
+// §20.4 Extern fun decl inside block missing terminating SEMICOLON — native syntax error
+// Covers rule: externItem (funDecl SEMICOLON branch — SEMICOLON absent → ANTLR error)
+// Expected: REJECT
+// ExpectedDiagnostic: line
+extern "C" {
+    fun x() -> i32
+}

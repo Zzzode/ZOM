@@ -11,8 +11,8 @@ interface LargeIface {
     fun set(i: u64, v: Item) -> unit;
     fun contains(v: Item) -> bool;
     fun find(pred: (Item) -> bool) -> i64;
-    fun map<U>(f: (Item) -> U) -> U[];
-    fun filter(pred: (Item) -> bool) -> Item[];
+    fun map<U>(f: (Item) -> U) -> [U];
+    fun filter(pred: (Item) -> bool) -> [Item];
     fun reduce<A>(acc: A, f: (A, Item) -> A) -> A;
     get isEmpty() -> bool;
     get length() -> u64;

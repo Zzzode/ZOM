@@ -3,5 +3,5 @@
 // Expected: ACCEPT
 
 class C<T> {
-    fun map<U>(f: (T) => U) -> C<U> { panic(); }
+    fun map<U>(f: fun(T) -> U) -> C<U> { panic(); }
 }
