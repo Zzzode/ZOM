@@ -89,3 +89,13 @@ _thirdparty/
 
 # Scala
 .metals
+
+# ANTLR 4 generated artifacts (source-of-truth is the two .g4 files)
+docs/spec/ZomLexer.interp
+docs/spec/ZomLexer.java
+docs/spec/ZomLexer.tokens
+docs/spec/ZomParser.interp
+docs/spec/ZomParser.java
+docs/spec/ZomParser.tokens
+docs/spec/ZomParserBaseListener.java
+docs/spec/ZomParserListener.java
