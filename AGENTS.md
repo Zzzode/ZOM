@@ -275,6 +275,96 @@ the trigger matrix in `.agents/subagents/README.md`.
 
 ---
 
+## ANTLR 4 .g4 Authoring Rules (ZOM-G4-PATTERN-001 ~ 003)
+
+> These rules apply to every edit of `docs/spec/ZomLexer.g4` and
+> `docs/spec/ZomParser.g4`, and to any generated-parser wrapper in
+> `products/zomlang/compiler/parser/` that injects ANTLR actions.
+> Cross-reference: `docs/spec/chapters/19-conditional-compilation.md §19.13`
+> (worked example) and `products/zomlang/tests/conformance/grammar/README.md
+> § Semantic Predicate Matrix` (suite-wide matrix).
+
+### ZOM-G4-PATTERN-001: Tail-Parser-Action Safety Pattern
+
+> Purpose: avoid ALL(\*) Simulator Poisoning (spurious `NoViableAltException`
+> on semantically valid input).
+
+Every parser action that needs to `throw ParseCancellationException` to
+produce an rc=2 diagnostic **must** follow these placement rules:
+
+- ✅ **MUST** be placed **after the very last terminal token** of its
+  alternative (i.e., execute only after the alt has consumed every
+  non-ε token it intends to match).
+- ❌ **MUST NOT** be placed before a gated semantic predicate
+  (`{p}?`) or anywhere else on a prediction-reachable ATN path.
+- ❌ **MUST NOT** be placed between terminals in the middle of an
+  alternative.
+- ❌ **MUST NOT** be embedded inside a `{...}?` semantic predicate
+  body — ANTLR catches any `RuntimeException` raised there and
+  silently coerces the predicate to `false`, so the diagnostic is
+  lost and the grammar appears to accept illegal input.
+
+Failure to honour this rule was the direct cause of the full V1–V4
+regression cycle for `attrItem : attrZomCfg`: `{ throw PCE }` lived on a
+prediction-reachable path → simulator poisoned the entire alt → gated
+predicate `{peekIsZomCfgParen}?` could never rescue it at runtime → NVA
+on every `#[zom::cfg(...)]` attribute.
+
+### ZOM-G4-PATTERN-002: Gated Predicate Complementary Partitioning
+
+When a rule has N top-level alternatives that share a non-empty common
+prefix, **gate every alt** with a member of a disjoint, exhaustive
+predicate family.
+
+Concretely: if `alt1` is guarded by `{p}?`, then `alt2` must be guarded
+by `{!p && q}?`, `alt3` by `{!p && !q && r}?`, and so on, so that the
+disjunction of all guards is syntactically `true` (P ∧ ¬P coverage).
+
+Benefits:
+
+- Guarantees the DFA is conflict-free. SLL (strong LL(1)) is sufficient
+  to take the decision; the simulator never needs to fall back to the
+  full ALL(\*) closure.
+- Eliminates `antlr4 -Werror` diagnostics of the form
+  *"non-LL(1) decision: more than one alternative matches input X"*.
+- Makes the intent of each alternative locally obvious to reviewers.
+
+### ZOM-G4-PATTERN-003: Subrule Delegation for Nested Labels
+
+ANTLR 4 reports `error(50): label assigned to ... which is inside a
+rewrite/replacement predicate block` (or the equivalent
+`label in nested group not supported` diagnostic) when a labelled
+alternative appears inside a grouped sub-rule, e.g.
+
+```
+// ILLEGAL (error 50):
+cfgAtom
+    : IDENTIFIER ( v=valuedRhs | b=bareRhs | bad=badRhs )
+    ;
+```
+
+The correct rewrite preserves the common prefix and moves each labelled
+form into its own single-alt subrule, where labelling is legal:
+
+```
+// LEGAL (PATTERN-003):
+cfgAtom
+    : IDENTIFIER ( valuedCfgAtomRhs | bareCfgAtomRhs | badRhsCfgAtomRhs )
+    ;
+
+valuedCfgAtomRhs
+    : op=cfgOp value=CFG_VALUE   // single alt → labels OK
+    ;
+```
+
+An additional benefit: at the entry of each subrule, `LA(1)` (the
+one-token lookahead) points *after* the shared `IDENTIFIER` prefix,
+which fixes a subtle offset bug that otherwise forces predicates to
+use `LA(2)` / `LA(3)` manually and drift from the natural grammar
+shape.
+
+---
+
 *This file is the top-level entry point. Detailed rules, skills, and subagent
 specs live under `.agents/`. Read `design-principles.md` before any design decision;
 read `task-router-agent.md` before any non-trivial implementation.*
