@@ -1,0 +1,7 @@
+// §8.2 Abstract + Static modifier combination REJECT (predicate)
+// Covers rule: modifierList
+// Expected: REJECT
+
+class C {
+    abstract static fun f() -> i32;
+}

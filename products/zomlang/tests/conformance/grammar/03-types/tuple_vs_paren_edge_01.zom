@@ -1,0 +1,5 @@
+// §4.8 TupleType: 3-tuple with trailing comma
+// Covers rule: atomType (typeTuple)
+// Expected: ACCEPT
+
+alias Three = (i32, str, bool,);

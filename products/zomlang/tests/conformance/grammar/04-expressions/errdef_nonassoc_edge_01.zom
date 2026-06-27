@@ -1,0 +1,5 @@
+// §4.6 ErrorDefault right-assoc chain (grammar permits it)
+// Covers rule: errorDefaultExpr
+// Expected: ACCEPT
+
+let x = a ?: b ?: c;

@@ -1,0 +1,8 @@
+// §12.1 SingleTypeParamUnitDefault
+// Covers rule: typeParameter
+// Expected: ACCEPT
+
+class Result<T, E = unit> {
+    ok: T;
+    err: E;
+}

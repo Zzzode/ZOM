@@ -1,0 +1,5 @@
+// §4.8 Union with wrong operator (|| instead of |)
+// Covers rule: unionType (BIT_OR required; OR is wrong token)
+// Expected: REJECT
+
+alias OrOp = A || B;

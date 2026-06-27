@@ -1,0 +1,10 @@
+// §4.5 Break / Continue
+// Covers rule: breakStatement, continueStatement
+// Expected: ACCEPT
+
+fun f() {
+    while (true) {
+        break;
+        continue;
+    }
+}

@@ -1,0 +1,5 @@
+// §4.8 PostfixType: standalone [ ] without base type
+// Covers rule: postfixType (LBRACK RBRACK cannot start typeExpr)
+// Expected: REJECT
+
+alias NoBase = [];

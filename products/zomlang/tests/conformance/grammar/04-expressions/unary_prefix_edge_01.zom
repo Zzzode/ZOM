@@ -1,0 +1,6 @@
+// §4.6 Multiple unary operators
+// Covers rule: unaryExpr
+// Expected: ACCEPT
+
+let x = - -a;
+let y = !!flag;

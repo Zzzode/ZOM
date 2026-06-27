@@ -1,0 +1,7 @@
+// §4.2 Interfaces
+// Covers rule: interfaceDeclaration (extends generic interface with wildcard)
+// Expected: ACCEPT
+
+interface Numeric<T> extends Comparable<T> | Hash<T> {
+    fun add(other: T) -> T;
+}

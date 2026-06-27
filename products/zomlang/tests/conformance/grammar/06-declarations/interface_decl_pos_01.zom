@@ -1,0 +1,7 @@
+// §6.4 InterfaceDecl
+// Covers rule: interfaceDecl
+// Expected: ACCEPT
+
+interface Drawable {
+    fun draw();
+}

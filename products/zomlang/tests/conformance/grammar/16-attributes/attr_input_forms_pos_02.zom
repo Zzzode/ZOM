@@ -1,0 +1,6 @@
+// §16.2 Attribute Input
+// Covers rule: attrInput
+// Expected: ACCEPT
+
+#[cfg::feature(x = "value", y = 42)]
+fun bar();

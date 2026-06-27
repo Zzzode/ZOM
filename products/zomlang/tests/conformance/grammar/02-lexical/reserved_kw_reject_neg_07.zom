@@ -1,0 +1,5 @@
+// §3.8 Keywords reserved try catch
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+fun f() { try {} catch (e) {} }

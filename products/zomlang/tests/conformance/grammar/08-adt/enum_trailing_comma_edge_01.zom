@@ -1,0 +1,10 @@
+// §8.3 EnumVariantList (without trailing comma vs with)
+// Covers rule: enumVariantList
+// Expected: ACCEPT
+
+enum Dir {
+    North,
+    South,
+    East,
+    West
+}

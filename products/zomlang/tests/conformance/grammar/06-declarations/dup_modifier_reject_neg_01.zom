@@ -1,0 +1,5 @@
+// §6.1 ModifierList
+// Covers rule: checkModifierList (duplicate)
+// Expected: REJECT
+
+public public fun f() {}

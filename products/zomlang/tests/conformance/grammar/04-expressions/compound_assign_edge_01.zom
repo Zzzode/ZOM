@@ -1,0 +1,7 @@
+// §4.6 Compound assignment with ??= and right operand
+// Covers rule: assignmentExpr
+// Expected: ACCEPT
+
+fun f() {
+  x ??= y ?? z;
+}

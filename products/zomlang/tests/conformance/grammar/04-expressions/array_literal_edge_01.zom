@@ -1,0 +1,5 @@
+// §4.6 Array empty
+// Covers rule: arrayLiteral
+// Expected: ACCEPT
+
+let a = [];

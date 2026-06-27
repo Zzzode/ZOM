@@ -1,0 +1,6 @@
+// §16 Attribute Path Format (multi-segment)
+// Covers rule: attributePath, three segments
+// Expected: ACCEPT
+
+#[std::fmt::display]
+fun fmt_path();

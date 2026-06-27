@@ -1,0 +1,8 @@
+// §4.2 Interfaces
+// Covers rule: standaloneImplDeclaration (PLUS conjunction)
+// Expected: ACCEPT
+
+class FileStream {
+    fun read(buf: u8[]) -> i32 { return 0; }
+}
+impl Reader + Writer + Seekable for FileStream { }

@@ -1,0 +1,8 @@
+// §4.5 Expression statement with call expression
+// Covers rule: expressionStatement
+// Expected: ACCEPT
+
+fun g() {}
+fun f() {
+    g();
+}

@@ -1,0 +1,6 @@
+// §16.1 AttributePath Single Component REJECT
+// Covers rule: attributePath, requires >=1 COLONCOLON
+// Expected: REJECT
+
+#[short]
+fun only_one_segment();

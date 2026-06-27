@@ -1,0 +1,10 @@
+// §8.3 EnumVariantList
+// Covers rule: enumVariantList (trailing comma allowed)
+// Expected: ACCEPT
+
+enum Suit {
+    Clubs,
+    Diamonds,
+    Hearts,
+    Spades,
+}

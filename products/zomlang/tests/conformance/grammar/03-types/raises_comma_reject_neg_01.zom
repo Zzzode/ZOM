@@ -1,0 +1,5 @@
+// §4.8 G9: raises TypeList uses PIPE, not comma
+// Covers rule: typeList (RAISES with comma-list rejected)
+// Expected: REJECT
+
+fun f() -> i32 raises IoError, ParseError;

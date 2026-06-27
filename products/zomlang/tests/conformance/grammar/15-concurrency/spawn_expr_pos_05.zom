@@ -1,0 +1,7 @@
+// §7.3 ConcurrentFeatures
+// Covers rule: spawn_expr
+// Expected: ACCEPT
+
+fun main() {
+    let t = spawn compute(1, 2);
+}

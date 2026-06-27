@@ -1,0 +1,5 @@
+// §4.6 standalone ! BottomType REJECT (no such token in expression)
+// Covers rule: unaryExpr
+// Expected: REJECT
+
+let x: ! = panic();

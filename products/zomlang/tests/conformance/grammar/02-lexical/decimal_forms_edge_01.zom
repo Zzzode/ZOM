@@ -1,0 +1,8 @@
+// §3.5.1 DecimalLiteral
+// Covers rule: DECIMAL_LITERAL
+// Expected: ACCEPT
+
+let a = 0;
+let b = 0.0e0;
+let c = 9_;
+let d = 5__.0;

@@ -1,0 +1,8 @@
+// §3.4 Comments edge
+// Covers rule: LINE_COMMENT, BLOCK_COMMENT
+// Expected: ACCEPT
+
+// comment at start of file
+/// doc comment
+/** block doc comment */
+let x = 1; // trailing comment

@@ -1,0 +1,5 @@
+// §4.8 FunctionType, Raises clause pipe-only
+// Covers rule: typeList
+// Expected: REJECT
+
+fun bad() raises A, B, C -> void;

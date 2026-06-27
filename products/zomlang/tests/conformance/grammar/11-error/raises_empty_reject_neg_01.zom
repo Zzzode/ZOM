@@ -1,0 +1,5 @@
+// §4.8 FunctionType, Raises clause
+// Covers rule: raisesClause, typeList
+// Expected: REJECT
+
+fun bad() raises -> i32;

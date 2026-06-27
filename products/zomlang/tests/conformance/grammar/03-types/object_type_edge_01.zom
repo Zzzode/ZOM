@@ -1,0 +1,5 @@
+// §4.8 ObjectType with trailing comma + mut field
+// Covers rule: atomType (typeObject, structFieldType MUT)
+// Expected: ACCEPT
+
+alias Muts = { mut x: i32, y: str, };

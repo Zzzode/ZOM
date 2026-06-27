@@ -1,0 +1,5 @@
+// §4.8 FunctionType, Precedence
+// Covers rule: raisesClause, unionType, intersectionType
+// Expected: ACCEPT
+
+fun f() raises A | B & C -> void;

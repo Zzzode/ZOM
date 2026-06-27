@@ -1,0 +1,10 @@
+// §4.6 Postfix L-R
+// Covers rule: postfixExpr (exprPostfixOp)
+// Expected: ACCEPT
+
+fun f() {
+  let a = x++;
+  let b = y--;
+  let c = z?!;
+  let d = w!!;
+}

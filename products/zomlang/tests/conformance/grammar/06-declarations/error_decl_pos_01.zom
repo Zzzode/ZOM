@@ -1,0 +1,8 @@
+// §6.6 ErrorDecl
+// Covers rule: errorDecl
+// Expected: ACCEPT
+
+error IoError {
+    code: i32;
+    message: string;
+}

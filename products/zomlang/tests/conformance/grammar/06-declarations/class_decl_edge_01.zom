@@ -1,0 +1,8 @@
+// §6.2 ClassDecl
+// Covers rule: classDecl, extendsClause, standaloneImplDeclaration
+// Expected: ACCEPT
+
+abstract class Shape extends Object {
+    abstract fun area() -> f64;
+}
+impl Drawable for Shape { }

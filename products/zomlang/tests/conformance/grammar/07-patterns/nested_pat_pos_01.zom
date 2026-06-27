@@ -1,0 +1,8 @@
+// §4.7 NestedPatterns
+// Covers rule: patStruct, patArray, patTuple, patWildcard, bindPat
+// Expected: ACCEPT
+
+struct S { a: [i32], b: (i32, i32), e: i32 }
+match (s) {
+    S { a: [x, y, ...rest], b: (c, d), e: _ } : { print(x + y + c + d); }
+}

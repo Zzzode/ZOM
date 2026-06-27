@@ -1,0 +1,7 @@
+// §4.2 Interfaces
+// Covers rule: interfaceDeclaration (no where clause — syntax does not support it)
+// Expected: REJECT
+
+interface BadIface<T> where T: Eq {
+    fun eq(other: T) -> bool;
+}

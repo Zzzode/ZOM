@@ -1,0 +1,6 @@
+// §3.7 Punctuators
+// Covers rule: HASH_LBRACK (lexer rejects split)
+// Expected: REJECT
+
+# [attr]
+fun f() {}

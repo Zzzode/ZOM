@@ -1,0 +1,7 @@
+// §4.5 For-in missing IN keyword
+// Covers rule: forInStatement
+// Expected: REJECT
+
+fun f(arr: [i32]) {
+    for (let x arr) {}
+}

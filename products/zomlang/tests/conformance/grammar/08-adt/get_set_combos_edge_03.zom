@@ -1,0 +1,8 @@
+// §8.2 Property GET without SET
+// Covers rule: classProperty (SET companion absent)
+// Expected: ACCEPT
+
+class ReadOnly {
+    private mut _v: i32 = 0;
+    get val -> i32 { return self._v; }
+}

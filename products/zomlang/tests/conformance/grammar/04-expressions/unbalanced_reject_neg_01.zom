@@ -1,0 +1,5 @@
+// §4.6 Unbalanced paren (missing RPAREN)
+// Covers rule: parenExpression
+// Expected: REJECT
+
+let x = (a + b;

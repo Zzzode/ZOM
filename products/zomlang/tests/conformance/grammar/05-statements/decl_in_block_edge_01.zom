@@ -1,0 +1,9 @@
+// §4.5 Let with readonly binding inside block
+// Covers rule: letDeclaration
+// Expected: ACCEPT
+
+fun f() {
+    let x = 1;
+    mut y = 2;
+    y = x;
+}

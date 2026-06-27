@@ -1,0 +1,7 @@
+// §3.5.1 DecimalLiteral
+// Covers rule: DECIMAL_LITERAL
+// Expected: ACCEPT
+
+let a = 1_000;
+let b = 1_000_000;
+let c = 3.141_592;

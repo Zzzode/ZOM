@@ -1,0 +1,5 @@
+// §4.6 Equality above Relational
+// Covers rule: equalityExpr / relationalExpr
+// Expected: ACCEPT
+
+let x = 3 < y == true;

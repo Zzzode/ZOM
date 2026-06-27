@@ -1,0 +1,5 @@
+// §4.1 ModuleDeclaration
+// Covers rule: moduleDeclaration
+// Expected: ACCEPT
+
+module foo;

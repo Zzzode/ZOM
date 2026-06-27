@@ -1,0 +1,5 @@
+// §4.6 Nested lambda expression
+// Covers rule: lambdaExpr
+// Expected: ACCEPT
+
+let f = (x: i32) => (y: i32) => x + y;

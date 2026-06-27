@@ -1,0 +1,5 @@
+// §4.7 Expressions, Force Unwrap
+// Covers rule: postfix, FORCE_UNWRAP token !!
+// Expected: ACCEPT
+
+let v = maybe.optVal!!;

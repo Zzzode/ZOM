@@ -1,0 +1,7 @@
+// §4.7 BindPatDoubleAtReject
+// Covers rule: bindPat
+// Expected: REJECT
+
+match (v) {
+    a @ b @ p : { print(a); }
+}

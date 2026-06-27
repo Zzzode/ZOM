@@ -1,0 +1,5 @@
+// §4.6 Comma inside parens = 2-tuple (tupleLiteral)
+// Covers rule: tupleLiteral
+// Expected: ACCEPT
+
+let pair: (i32, i32) = (1, 2);

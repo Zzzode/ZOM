@@ -1,0 +1,8 @@
+// §4.2 ImportDeclaration
+// Covers rule: importDecl
+// Expected: ACCEPT
+
+import a::b;
+import c::d as d2;
+import e::f::{g, h as hh};
+import i::j::k;

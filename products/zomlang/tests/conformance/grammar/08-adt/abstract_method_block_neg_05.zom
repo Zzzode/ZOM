@@ -1,0 +1,7 @@
+// §8.2 Abstract method with blockBody (predicate-enforced: abstract + block → weak REJECT)
+// Covers rule: classMethod
+// Expected: REJECT
+
+abstract class Base {
+    abstract fun foo() -> i32 { return 0; }
+}

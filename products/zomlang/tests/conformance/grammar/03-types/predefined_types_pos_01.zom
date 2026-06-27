@@ -1,0 +1,5 @@
+// §4.8 PredefinedTypes
+// Covers rule: predefinedType
+// Expected: ACCEPT
+
+alias AllInts = i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64;

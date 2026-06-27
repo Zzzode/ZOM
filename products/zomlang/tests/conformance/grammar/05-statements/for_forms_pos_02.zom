@@ -1,0 +1,7 @@
+// §4.5 ForInStatement
+// Covers rule: forInStatement
+// Expected: ACCEPT
+
+fun f(arr: [i32]) {
+    for (let x in arr) {}
+}

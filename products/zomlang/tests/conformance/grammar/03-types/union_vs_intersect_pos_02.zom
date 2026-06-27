@@ -1,0 +1,5 @@
+// §4.8 Union vs Intersect precedence: A & B | C = (A&B) | C
+// Covers rule: unionType, intersectionType
+// Expected: ACCEPT
+
+alias Prec = A & B | C;

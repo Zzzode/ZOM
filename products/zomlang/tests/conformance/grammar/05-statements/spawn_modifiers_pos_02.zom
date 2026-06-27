@@ -1,0 +1,7 @@
+// §4.5 SpawnStatement with priority(high) modifier
+// Covers rule: spawnStatement
+// Expected: ACCEPT
+
+fun f() {
+    spawn priority(high) {};
+}

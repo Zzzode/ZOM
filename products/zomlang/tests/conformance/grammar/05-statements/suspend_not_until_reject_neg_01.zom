@@ -1,0 +1,7 @@
+// §4.5 Suspend with wrong soft keyword (should be 'until')
+// Covers rule: suspendStatement (checkSuspendUntil predicate)
+// Expected: REJECT
+
+fun f(x: bool) {
+    suspend while x;
+}

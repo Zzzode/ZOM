@@ -1,0 +1,5 @@
+// §4.6 BitLogicStacking
+// Covers rule: logicalOrExpr / logicalAndExpr / bitwiseOrExpr / bitwiseXorExpr / bitwiseAndExpr
+// Expected: ACCEPT
+
+let x = a && b | c ^ d & e || f;

@@ -1,0 +1,5 @@
+// §3.3 Identifiers - reserved as ident
+// Covers rule: IDENTIFIER (hard keyword boundary)
+// Expected: REJECT
+
+let class = 5;

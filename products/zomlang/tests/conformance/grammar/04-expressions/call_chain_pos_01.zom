@@ -1,0 +1,5 @@
+// §4.6 Call / Member / Index chain L-R
+// Covers rule: callExpr (exprCall / exprMember / exprIndex)
+// Expected: ACCEPT
+
+let x = obj.get(arr, 1)?.name[0];

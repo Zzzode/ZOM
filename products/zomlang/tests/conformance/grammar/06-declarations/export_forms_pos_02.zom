@@ -1,0 +1,5 @@
+// §4.4 Exports
+// Covers rule: exportDecl
+// Expected: ACCEPT
+
+public fun hello() {}

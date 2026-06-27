@@ -1,0 +1,14 @@
+// §8.1 StructDeclaration
+// Covers rule: structDeclaration
+// Expected: ACCEPT
+
+public struct Vec3<T: numeric> {
+    public mut x: T;
+    public mut y: T;
+    readonly z: T;
+    static count: i32 = 0;
+    const UNIT: Vec3<f32> = { x: 1.0, y: 0.0, z: 0.0, };
+    init(x: T, y: T, z: T) { self.x = x; self.y = y; self.z = z; }
+    deinit() {}
+    fun dot(other: Vec3<T>) -> T { return self.x * other.x + self.y * other.y + self.z * other.z; }
+}

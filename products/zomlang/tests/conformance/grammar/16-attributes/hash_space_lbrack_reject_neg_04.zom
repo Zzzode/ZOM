@@ -1,0 +1,6 @@
+// §16 Compound Hash-Bracket Token (Space REJECT)
+// Covers rule: HASH_LBRACK compound token
+// Expected: REJECT
+
+# [foo::bar]
+fun spaced_hash();

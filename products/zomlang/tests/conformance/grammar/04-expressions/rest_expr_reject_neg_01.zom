@@ -1,0 +1,5 @@
+// §4.6 Rest ... in array literal REJECT (only pattern context)
+// Covers rule: arrayLiteral
+// Expected: REJECT
+
+let x = [...arr];

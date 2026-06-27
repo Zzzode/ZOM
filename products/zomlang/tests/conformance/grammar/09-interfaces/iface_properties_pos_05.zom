@@ -1,0 +1,10 @@
+// §4.2 Interfaces
+// Covers rule: interfaceProperty
+// Expected: ACCEPT
+
+interface UserRecord {
+    get id() -> u64;
+    get name() -> str;
+    set name(v: str) -> unit;
+    set email(v: str) -> unit;
+}

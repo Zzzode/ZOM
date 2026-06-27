@@ -1,0 +1,8 @@
+// §4.7 ExpressionPatternFallback
+// Covers rule: patExpression
+// Expected: ACCEPT
+
+match (v) {
+    (1 + 2) : { print("three"); }
+    (f(x)) : { print("call"); }
+}

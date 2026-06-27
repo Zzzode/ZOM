@@ -1,0 +1,5 @@
+// §4.8 FunctionType returning never (divergent function)
+// Covers rule: functionType (returnType = never)
+// Expected: ACCEPT
+
+alias DivFn = () -> never;

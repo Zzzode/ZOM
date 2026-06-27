@@ -1,0 +1,8 @@
+// §4.7 Tuple1Pattern
+// Covers rule: patTuple
+// Expected: ACCEPT
+
+let (x,) = (5,);
+match (t) {
+    (a,) : { print(a); }
+}

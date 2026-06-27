@@ -1,0 +1,7 @@
+// §4.2 Interfaces
+// Covers rule: interfaceAssocType (SEMICOLON required)
+// Expected: REJECT
+
+interface BadIface {
+    type T
+}

@@ -1,0 +1,10 @@
+// §4.2 Interfaces
+// Covers rule: interfaceAssocType
+// Expected: ACCEPT
+
+interface Collection {
+    type Item;
+    type Iter<T>;
+    type Error : Error;
+    type State = Closed | Open;
+}

@@ -1,0 +1,7 @@
+// §4.5 Break missing semicolon
+// Covers rule: breakStatement
+// Expected: REJECT
+
+fun f() {
+    while (true) { break }
+}

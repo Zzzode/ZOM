@@ -1,0 +1,5 @@
+// §4.8 FunctionType
+// Covers rule: funDecl, raisesClause, typeList
+// Expected: ACCEPT
+
+fun foo() raises E1 | E2 -> i32;

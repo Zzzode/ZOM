@@ -1,0 +1,5 @@
+// §4.6 Multiple ternary deeply nested right-assoc
+// Covers rule: conditionalExpr
+// Expected: ACCEPT
+
+let v = a ? b : c ? d : e ? f : g;

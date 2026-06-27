@@ -1,0 +1,7 @@
+// §4.6 spawn with modifiers
+// Covers rule: exprSpawn / spawnModifierList
+// Expected: ACCEPT
+
+fun f() {
+  let t = spawn detached priority(high) { 1 };
+}

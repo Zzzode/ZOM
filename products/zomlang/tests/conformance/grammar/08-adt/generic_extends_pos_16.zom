@@ -1,0 +1,12 @@
+// §8.2 GenericExtends
+// Covers rule: classDeclaration (EXTENDS with type args)
+// Expected: ACCEPT
+
+class Base<T> {
+    val: T;
+    init(v: T) { self.val = v; }
+}
+class Derived<T> extends Base<T?> {
+    extra: i32 = 0;
+    init(v: T, extra: i32) { super.init(v); self.extra = extra; }
+}

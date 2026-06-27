@@ -1,0 +1,5 @@
+// §4.6 Precedence smoke 2
+// Covers rule: conditionalExpr / nullCoalesceExpr
+// Expected: ACCEPT
+
+let x = a ? b : c ?? d;

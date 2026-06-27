@@ -1,0 +1,7 @@
+// §4.5 WhileStatement
+// Covers rule: whileStatement
+// Expected: ACCEPT
+
+fun f() {
+    while (true) { break; }
+}

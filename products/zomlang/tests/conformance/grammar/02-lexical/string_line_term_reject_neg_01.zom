@@ -1,0 +1,6 @@
+// §3.6.2 StringLiteral
+// Covers rule: DOUBLE_STRING_LITERAL
+// Expected: REJECT
+
+let x = "hello
+world";

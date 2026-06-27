@@ -1,0 +1,8 @@
+// §8.x Marker impl (REJECT — marker impl requires qualified path)
+// Covers rule: declaration (markerImpl G11 disambiguation)
+// Expected: REJECT
+
+// Marker impl must use qualified path like `marker impl core::marker::Send for T;`
+// Here `Foo` is a 1-segment path — parser commits at `marker` but fails
+// G11 guard (needs at least 1 ::).
+marker impl Foo for Bar { }

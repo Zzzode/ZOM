@@ -1,0 +1,7 @@
+// §3.5.2 BigIntLiteral
+// Covers rule: BIGINT_LITERAL
+// Expected: ACCEPT
+
+let a = 123n;
+let b = 0n;
+let c = 9_007_199_254_740_993n;

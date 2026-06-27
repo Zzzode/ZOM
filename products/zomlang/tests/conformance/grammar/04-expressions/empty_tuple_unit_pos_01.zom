@@ -1,0 +1,5 @@
+// §4.6 Empty tuple (unit)
+// Covers rule: literal (UNIT) / tupleLiteral
+// Expected: ACCEPT
+
+let u = ();

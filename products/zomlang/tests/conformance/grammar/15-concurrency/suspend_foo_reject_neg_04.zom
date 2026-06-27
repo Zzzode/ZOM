@@ -1,0 +1,7 @@
+// §7.3 ConcurrentFeatures
+// Covers rule: suspend_foo_reject
+// Expected: REJECT
+
+fun bad(flag: Bool) {
+    suspend flag;
+}

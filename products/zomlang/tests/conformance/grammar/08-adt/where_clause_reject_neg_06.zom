@@ -1,0 +1,7 @@
+// §8.1 Struct with WHERE clause (REJECT per 24-truth: where clause not in structDeclaration)
+// Covers rule: structDeclaration
+// Expected: REJECT
+
+struct S<T> where T: Eq {
+    val: T;
+}

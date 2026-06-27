@@ -1,0 +1,7 @@
+// §4.1 ModuleDeclaration
+// Covers rule: moduleDeclaration
+// Expected: REJECT
+
+module a {
+    module b {}
+}

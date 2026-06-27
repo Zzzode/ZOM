@@ -1,0 +1,5 @@
+// §4.6 import() expression
+// Covers rule: primaryExpr (exprImportCall)
+// Expected: ACCEPT
+
+let mod = import("path");

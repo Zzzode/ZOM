@@ -1,0 +1,9 @@
+// §8.1 Struct with struct initializer default expressions
+// Covers rule: structField (ASSIGN expression for field init)
+// Expected: ACCEPT
+
+struct Node {
+    id: i32 = 0;
+    label: str = "";
+    children: Node[] = [];
+}

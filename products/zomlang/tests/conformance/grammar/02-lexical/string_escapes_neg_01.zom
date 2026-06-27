@@ -1,0 +1,5 @@
+// §3.6.2 StringLiteral escapes
+// Covers rule: UNICODE_ESCAPE
+// Expected: REJECT
+
+let x = "\u{11FFFF}";

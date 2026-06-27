@@ -1,0 +1,5 @@
+// §4.2 ImportDeclaration
+// Covers rule: importSpecList
+// Expected: ACCEPT
+
+import pkg::{a, b as bb, c, d as dd};

@@ -1,0 +1,5 @@
+// §6.1 ModifierList
+// Covers rule: rejected modifiers (unsafe)
+// Expected: REJECT
+
+unsafe fun danger() {}

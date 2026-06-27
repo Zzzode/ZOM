@@ -1,0 +1,5 @@
+// §4.8 TypeAlias: missing semicolon
+// Covers rule: typeAliasDeclaration (requires SEMICOLON)
+// Expected: REJECT
+
+alias A = i32

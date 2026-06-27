@@ -1,0 +1,7 @@
+// §4.5 BlockBody (empty block)
+// Covers rule: blockBody
+// Expected: ACCEPT
+
+fun f() {
+    {}
+}

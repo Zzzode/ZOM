@@ -1,0 +1,8 @@
+// §4.7 EnumPatternColonColonRejection
+// Covers rule: patEnum
+// Expected: REJECT
+
+enum Color { Red, Green, Blue }
+match (c) {
+    Color::Red : { print("red"); }
+}

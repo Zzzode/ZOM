@@ -1,0 +1,5 @@
+// §4.6 Equality + relational combined
+// Covers rule: equalityExpr / relationalExpr
+// Expected: ACCEPT
+
+let r = (x == y) == (a < b);

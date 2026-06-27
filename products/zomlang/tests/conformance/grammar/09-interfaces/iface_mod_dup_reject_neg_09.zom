@@ -1,0 +1,7 @@
+// §4.2 Interfaces
+// Covers rule: checkModifierList (duplicate modifier predicate)
+// Expected: REJECT
+
+interface BadIface {
+    public public fun dup() -> unit;
+}

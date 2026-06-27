@@ -1,0 +1,5 @@
+// §4.6 namespace keyword reserved (ZOM5006) at module level
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+namespace foo;

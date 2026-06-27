@@ -1,0 +1,5 @@
+// §4.8 Variance (rejected per 24-truth table) -> in/out on type parameter
+// Covers rule: typeParameter (variance NOT supported)
+// Expected: REJECT
+
+alias V<in T> = T;

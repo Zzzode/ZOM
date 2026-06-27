@@ -1,0 +1,8 @@
+// §6.5 EnumDecl
+// Covers rule: enumDecl, enumVariant
+// Expected: ACCEPT
+
+enum Option<T> {
+    None;
+    Some(T);
+}

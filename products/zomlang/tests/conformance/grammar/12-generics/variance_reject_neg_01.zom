@@ -1,0 +1,5 @@
+// §12.2 VarianceAnnotationsRejected
+// Covers rule: typeParameter
+// Expected: REJECT
+
+fun f<in T, out U>(a: T, b: U) -> unit { return unit; }

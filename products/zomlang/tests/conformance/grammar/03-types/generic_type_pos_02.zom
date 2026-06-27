@@ -1,0 +1,5 @@
+// §4.8 GenericType with complex type args (optional + union)
+// Covers rule: atomType (typeNamed with typeArgList containing union/optional)
+// Expected: ACCEPT
+
+alias Complex = Foo<i32? | str, u64[]>;

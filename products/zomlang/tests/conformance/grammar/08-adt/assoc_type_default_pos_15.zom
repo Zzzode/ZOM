@@ -1,0 +1,9 @@
+// §8.4 AssociatedTypeDefault
+// Covers rule: interfaceAssocType
+// Expected: ACCEPT
+
+interface Container {
+    type Element;
+    type Size = u64;
+    type Key : Hash = str;
+}

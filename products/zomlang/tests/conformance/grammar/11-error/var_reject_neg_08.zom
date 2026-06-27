@@ -1,0 +1,5 @@
+// §4.6 Declarations, Reserved syntax
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+var x: i32 = 5;

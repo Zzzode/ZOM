@@ -1,0 +1,7 @@
+// §4.7 IsPatternWithoutTypeReject
+// Covers rule: patIs
+// Expected: REJECT
+
+match (v) {
+    is : { print("nothing"); }
+}

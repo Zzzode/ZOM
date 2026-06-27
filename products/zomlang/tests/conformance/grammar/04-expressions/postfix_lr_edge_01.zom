@@ -1,0 +1,8 @@
+// §4.6 Chained postfix left-right
+// Covers rule: postfixExpr
+// Expected: ACCEPT
+
+fun f() {
+  let x = 0;
+  let y = x++?!!?;
+}

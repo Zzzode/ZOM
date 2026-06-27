@@ -1,0 +1,5 @@
+// §4.6 Coalesce right-assoc
+// Covers rule: nullCoalesceExpr
+// Expected: ACCEPT
+
+let x = a ?? b ?? c;

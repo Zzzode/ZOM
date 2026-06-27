@@ -1,0 +1,5 @@
+// §4.3 Imports
+// Covers rule: importDecl
+// Expected: ACCEPT
+
+import std::io as myio;

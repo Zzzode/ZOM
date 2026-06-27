@@ -1,0 +1,5 @@
+// §4.6 new expression
+// Covers rule: primaryExpr (exprNew)
+// Expected: ACCEPT
+
+let o = new Box(123);

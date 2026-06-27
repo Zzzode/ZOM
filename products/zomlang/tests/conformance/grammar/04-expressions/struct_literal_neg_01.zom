@@ -1,0 +1,6 @@
+// §4.6 Positional struct syntax (newtype) REJECT
+// Covers rule: structLiteral
+// Expected: REJECT
+
+struct Box(i32);
+let b = Box(123);

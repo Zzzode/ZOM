@@ -1,0 +1,5 @@
+// §4.2 ImportDeclaration
+// Covers rule: attrPath
+// Expected: REJECT
+
+import std::io::;

@@ -1,0 +1,5 @@
+// §6.2 ClassDecl
+// Covers rule: classExtensibility rejected (open/final/sealed on class)
+// Expected: REJECT
+
+open class Base {}

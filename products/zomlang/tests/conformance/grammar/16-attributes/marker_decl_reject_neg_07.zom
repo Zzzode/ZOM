@@ -1,0 +1,5 @@
+// §16 Marker Declaration REJECT per 24-truth
+// Covers rule: moduleItem, marker declaration forms not allowed
+// Expected: REJECT
+
+marker FooMarker;

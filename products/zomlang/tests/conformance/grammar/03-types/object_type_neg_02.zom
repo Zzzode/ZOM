@@ -1,0 +1,5 @@
+// §4.8 ObjectType: all-mut empty is still valid, but field without type is not
+// Covers rule: structFieldType (COLON typeExpr required after identifier)
+// Expected: REJECT
+
+alias Bad2 = { x, y };

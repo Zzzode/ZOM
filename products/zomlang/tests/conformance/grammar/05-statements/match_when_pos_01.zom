@@ -1,0 +1,11 @@
+// §4.5 MatchStatement with when guard
+// Covers rule: matchStatement
+// Expected: ACCEPT
+
+fun f(x: i32) {
+    match (x) {
+        1 if 2 > 1: return;
+        2: return;
+        default: return;
+    }
+}

@@ -1,0 +1,8 @@
+// §4.7 StructPatternTrailingComma
+// Covers rule: patStruct
+// Expected: ACCEPT
+
+struct S { x: i32, y: i32 }
+match (s) {
+    S { x: a, y: b, } : { print(a); }
+}

@@ -1,0 +1,5 @@
+// §3.7 ReservedKeywords
+// Covers rule: channel_reject
+// Expected: REJECT
+
+channel C<i32>

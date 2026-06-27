@@ -1,0 +1,6 @@
+// §3.3 Identifiers
+// Covers rule: IDENTIFIER
+// Expected: ACCEPT
+
+let a‌b = 1;
+let x‍y = 2;

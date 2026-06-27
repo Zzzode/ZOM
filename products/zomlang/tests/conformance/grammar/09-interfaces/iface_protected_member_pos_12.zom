@@ -1,0 +1,10 @@
+// §4.2 Interfaces
+// Covers rule: interfaceMember (PROTECTED modifier + empty modifierList)
+// Expected: ACCEPT
+
+interface MixedAccess {
+    protected fun helper() -> unit;
+    protected get ctx() -> Context;
+    fun publicOp() -> unit;
+    get id() -> u64;
+}

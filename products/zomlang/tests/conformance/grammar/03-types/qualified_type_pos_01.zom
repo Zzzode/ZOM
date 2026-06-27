@@ -1,0 +1,5 @@
+// §4.8 QualifiedType
+// Covers rule: atomType (typeQualified via attributePath)
+// Expected: ACCEPT
+
+alias Q = std::collections::HashMap;

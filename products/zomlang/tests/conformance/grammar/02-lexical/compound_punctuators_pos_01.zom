@@ -1,0 +1,9 @@
+// §3.7 Punctuators
+// Covers rule: COLON_COLON, QUESTION_DOT etc
+// Expected: ACCEPT
+
+fun f(a: i32) {
+    let x = a?.prop;
+    let y = a ?? 5;
+    let z = x ** 2;
+}

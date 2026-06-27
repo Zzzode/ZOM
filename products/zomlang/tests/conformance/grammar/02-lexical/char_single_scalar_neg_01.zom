@@ -1,0 +1,5 @@
+// §3.6.1 CharLiteral
+// Covers rule: CHAR_LITERAL
+// Expected: REJECT
+
+let x = 'ab';

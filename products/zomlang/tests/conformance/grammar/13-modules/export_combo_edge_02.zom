@@ -1,0 +1,10 @@
+// §4.2 ExportDeclaration
+// Covers rule: exportDecl
+// Expected: ACCEPT
+
+#[repr(u8)]
+export enum Color[T] {
+    Red,
+    Green,
+    Blue,
+}

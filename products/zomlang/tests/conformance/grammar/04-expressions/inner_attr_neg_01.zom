@@ -1,0 +1,6 @@
+// §4.6 #![…] inner attributes REJECT
+// Covers rule: sourceFile
+// Expected: REJECT
+
+#![allow(unused)]
+let x = 1;

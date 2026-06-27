@@ -1,0 +1,6 @@
+// §16 Inner Attribute REJECT
+// Covers rule: outerAttribute, HASH_LBRACK vs HASH_BANG_LBRACK
+// Expected: REJECT
+
+#![allow::dead_code]
+fun nope();

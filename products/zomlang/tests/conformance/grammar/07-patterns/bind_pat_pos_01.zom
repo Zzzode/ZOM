@@ -1,0 +1,6 @@
+// §4.7 BindPattern
+// Covers rule: bindPat
+// Expected: ACCEPT
+
+let x = 5;
+let y @ (a, b) = ((1, 2), 3);

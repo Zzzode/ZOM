@@ -1,0 +1,5 @@
+// §4.6 Power above Unary
+// Covers rule: powerExpr / unaryExpr
+// Expected: ACCEPT
+
+let x = -a ** 2;

@@ -1,0 +1,5 @@
+// §4.6 var keyword reserved (ZOM5003) in declaration
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+var x = 1;

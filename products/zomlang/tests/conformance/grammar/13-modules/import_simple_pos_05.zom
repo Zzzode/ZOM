@@ -1,0 +1,5 @@
+// §4.2 ImportDeclaration
+// Covers rule: importDecl
+// Expected: ACCEPT
+
+import std::io;

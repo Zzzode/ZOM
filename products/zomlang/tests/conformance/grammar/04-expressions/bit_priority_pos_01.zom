@@ -1,0 +1,5 @@
+// §4.6 Bitwise priority stack
+// Covers rule: bitwiseAndExpr / bitwiseXorExpr / bitwiseOrExpr
+// Expected: ACCEPT
+
+let x = a ^ b | c & d;

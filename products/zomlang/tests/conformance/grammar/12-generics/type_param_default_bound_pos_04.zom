@@ -1,0 +1,5 @@
+// §12.2 TypeParameterBoundWithDefault
+// Covers rule: typeParameter
+// Expected: ACCEPT
+
+fun f<T: number = i32>(x: T) -> T { return x; }

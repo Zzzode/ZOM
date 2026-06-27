@@ -1,0 +1,9 @@
+// §4.7 WhenGuard
+// Covers rule: matchClause
+// Expected: ACCEPT
+
+match (n) {
+    x if x > 0 : { print("pos"); }
+    x if x < 0 : { print("neg"); }
+    0 : { print("zero"); }
+}

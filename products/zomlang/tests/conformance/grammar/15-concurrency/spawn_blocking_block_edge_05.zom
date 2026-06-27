@@ -1,0 +1,9 @@
+// §7.3 ConcurrentFeatures
+// Covers rule: spawn_blocking
+// Expected: ACCEPT
+
+fun blocking_block() {
+    let r = spawn blocking {
+        return heavy_cpu();
+    };
+}

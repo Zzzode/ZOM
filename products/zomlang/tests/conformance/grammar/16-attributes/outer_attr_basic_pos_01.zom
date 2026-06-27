@@ -1,0 +1,6 @@
+// §16 Attributes
+// Covers rule: outerAttribute
+// Expected: ACCEPT
+
+#[test::case]
+fun foo();

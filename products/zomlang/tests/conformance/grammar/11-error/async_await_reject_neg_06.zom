@@ -1,0 +1,6 @@
+// §4.5 Statements, Reserved syntax
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+let x = async { return 1; };
+fun f() { let a = await p; }

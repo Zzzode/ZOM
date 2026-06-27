@@ -1,0 +1,5 @@
+// §4.2 ImportDeclaration
+// Covers rule: importSpec
+// Expected: REJECT
+
+import std::io::*;

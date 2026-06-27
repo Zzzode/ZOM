@@ -1,0 +1,8 @@
+// §4.7 CharLiteralPattern
+// Covers rule: patLiteral
+// Expected: ACCEPT
+
+match (c) {
+    'a' : { print("a"); }
+    'z' : { print("z"); }
+}

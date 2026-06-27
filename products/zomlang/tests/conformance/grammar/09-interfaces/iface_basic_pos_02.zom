@@ -1,0 +1,7 @@
+// §4.2 Interfaces
+// Covers rule: interfaceDeclaration
+// Expected: ACCEPT
+
+public interface Container<T> extends Iterable {
+    fun size() -> i32;
+}

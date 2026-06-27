@@ -1,0 +1,5 @@
+// §3.9 Tuple vs Paren Type (1-element disambiguation)
+// Covers rule: tupleType (G3 disambiguation — trailing comma required for 1-tuple)
+// Expected: REJECT
+
+alias OneT = (i32,);

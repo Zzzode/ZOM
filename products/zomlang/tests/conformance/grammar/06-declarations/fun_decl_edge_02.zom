@@ -1,0 +1,5 @@
+// §6.7 FunDecl
+// Covers rule: funDecl, SEMICOLON form (abstract/external)
+// Expected: ACCEPT
+
+abstract fun process();

@@ -1,0 +1,5 @@
+// §4.5 Reserved syntax ZOM5007: type
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+type A = i32;

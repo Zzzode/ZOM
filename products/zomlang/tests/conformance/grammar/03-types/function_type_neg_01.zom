@@ -1,0 +1,5 @@
+// §4.8 FunctionType: arrow without parameters (no parens)
+// Covers rule: functionType (parameterList requires LPAREN RPAREN)
+// Expected: REJECT
+
+alias NoParen = i32 -> str;

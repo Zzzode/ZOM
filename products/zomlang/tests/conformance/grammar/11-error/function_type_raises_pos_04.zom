@@ -1,0 +1,5 @@
+// §4.8 FunctionType
+// Covers rule: functionType, raisesClause
+// Expected: ACCEPT
+
+let cb: (i32, str) -> bool raises IOError | ParseError = handler;

@@ -1,0 +1,7 @@
+// §4.5 For-in with mut binding
+// Covers rule: forInStatement (MUT pattern)
+// Expected: ACCEPT
+
+fun f(arr: [i32]) {
+    for (mut x in arr) { x = x + 1; }
+}

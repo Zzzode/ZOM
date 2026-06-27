@@ -1,0 +1,7 @@
+// §4.6 Complex call member index chain with optional chaining
+// Covers rule: callExpr
+// Expected: ACCEPT
+
+fun f() {
+  let x = a.b?.c?.()?.[0]?.d;
+}

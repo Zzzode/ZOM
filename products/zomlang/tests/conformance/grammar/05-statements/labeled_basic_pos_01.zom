@@ -1,0 +1,9 @@
+// §4.5 LabeledStatement
+// Covers rule: labeledStatement
+// Expected: ACCEPT
+
+fun f() {
+    outer: while (true) {
+        break outer;
+    }
+}

@@ -1,0 +1,7 @@
+// §4.5 Expression statement missing semicolon
+// Covers rule: expressionStatement
+// Expected: REJECT
+
+fun f() {
+    let x = 1
+}

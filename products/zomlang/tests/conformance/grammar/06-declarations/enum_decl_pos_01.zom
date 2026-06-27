@@ -1,0 +1,9 @@
+// §6.5 EnumDecl
+// Covers rule: enumDecl
+// Expected: ACCEPT
+
+enum Color {
+    Red;
+    Green;
+    Blue;
+}

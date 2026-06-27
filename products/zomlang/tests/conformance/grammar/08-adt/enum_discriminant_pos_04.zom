@@ -1,0 +1,10 @@
+// §8.3 EnumDiscriminant
+// Covers rule: enumVariant (ASSIGN expression branch)
+// Expected: ACCEPT
+
+enum Color {
+    Red = 0,
+    Green = 1,
+    Blue = 2,
+    White = 255,
+}

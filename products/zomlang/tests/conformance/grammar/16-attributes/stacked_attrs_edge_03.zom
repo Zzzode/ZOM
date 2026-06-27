@@ -1,0 +1,6 @@
+// §16 Stacked Attributes
+// Covers rule: outerAttributeList, multiple on single item stacked
+// Expected: ACCEPT
+
+#[a::b]#[c::d]#[e::f(g=1)]
+fun stacked();

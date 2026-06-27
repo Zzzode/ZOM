@@ -1,0 +1,7 @@
+// §7.3 ConcurrentFeatures
+// Covers rule: spawn_priority_nocall_reject
+// Expected: REJECT
+
+fun bad() {
+    let t = spawn priority do_work();
+}

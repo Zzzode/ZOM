@@ -1,0 +1,8 @@
+// §16 Attribute on Class Member
+// Covers rule: classMember, outerAttributeList
+// Expected: ACCEPT
+
+class C {
+  #[getter::auto]
+  public name: String;
+}

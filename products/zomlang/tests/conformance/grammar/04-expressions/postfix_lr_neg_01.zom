@@ -1,0 +1,7 @@
+// §4.6 Postfix on literal missing actual postfix
+// Covers rule: postfixExpr
+// Expected: REJECT
+
+fun f() {
+  5++;
+}

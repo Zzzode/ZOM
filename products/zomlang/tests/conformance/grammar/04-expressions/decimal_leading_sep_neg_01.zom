@@ -1,0 +1,5 @@
+// §4.6 decimal leading separator REJECT
+// Covers rule: DECIMAL_LITERAL scanner predicate
+// Expected: REJECT
+
+let x = _123;

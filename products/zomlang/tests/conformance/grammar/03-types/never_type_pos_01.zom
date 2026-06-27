@@ -1,0 +1,5 @@
+// §4.8 NeverType standalone
+// Covers rule: predefinedType (NEVER)
+// Expected: ACCEPT
+
+alias N = never;

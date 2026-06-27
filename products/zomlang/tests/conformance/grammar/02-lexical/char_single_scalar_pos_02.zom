@@ -1,0 +1,8 @@
+// §3.6.1 CharLiteral
+// Covers rule: CHAR_LITERAL
+// Expected: ACCEPT
+
+let a = '\n';
+let b = '\t';
+let c = '\\';
+let d = '\'';

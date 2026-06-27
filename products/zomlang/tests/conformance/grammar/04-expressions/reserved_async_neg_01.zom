@@ -1,0 +1,5 @@
+// §4.6 async reserved (ZOM5002) as expression block
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+let x = async { 1 };

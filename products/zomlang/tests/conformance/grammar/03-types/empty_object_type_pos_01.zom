@@ -1,0 +1,5 @@
+// §4.8 EmptyObjectType {} valid
+// Covers rule: atomType (typeObject with empty structFieldType list)
+// Expected: ACCEPT
+
+alias Empty = {};

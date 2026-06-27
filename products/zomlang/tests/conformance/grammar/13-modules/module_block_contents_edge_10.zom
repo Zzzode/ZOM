@@ -1,0 +1,8 @@
+// §4.1 ModuleDeclaration
+// Covers rule: blockBody
+// Expected: ACCEPT
+
+module outer {
+    fun a() -> i32 { return 1; }
+    fun b() -> i32 { return 2; }
+}

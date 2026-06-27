@@ -1,0 +1,6 @@
+// §16.1 AttributePath Dot Separator REJECT
+// Covers rule: attributePath, requires COLONCOLON not DOT
+// Expected: REJECT
+
+#[serde.rename]
+fun dot_attr();

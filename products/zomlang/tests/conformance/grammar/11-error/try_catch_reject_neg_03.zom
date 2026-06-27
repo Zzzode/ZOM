@@ -1,0 +1,7 @@
+// §4.5 Statements, Reserved syntax
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+fun foo() {
+    try { bar(); } catch(e) { }
+}

@@ -1,0 +1,6 @@
+// §4.8 Null and Unit types
+// Covers rule: predefinedType (NULL, UNIT)
+// Expected: ACCEPT
+
+alias Nl = null;
+alias Ut = unit;

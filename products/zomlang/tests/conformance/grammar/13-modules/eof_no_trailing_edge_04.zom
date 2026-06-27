@@ -1,0 +1,7 @@
+// §4.2 ExportDeclaration
+// Covers rule: exportDecl
+// Expected: ACCEPT
+
+export fun a() -> i32 { return 1; }
+export struct S { x: i32 }
+export enum E { A, B }

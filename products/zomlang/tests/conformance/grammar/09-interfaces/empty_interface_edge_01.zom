@@ -1,0 +1,5 @@
+// §4.2 Interfaces
+// Covers rule: interfaceBody (empty)
+// Expected: ACCEPT
+
+public interface Marker { }

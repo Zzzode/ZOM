@@ -1,0 +1,9 @@
+// §4.2 Interfaces
+// Covers rule: structDeclaration + standaloneImplDeclaration (soft keyword impl)
+// Expected: ACCEPT
+
+struct Point {
+    x: i32;
+    y: i32;
+}
+impl Drawable + Hashable for Point { }

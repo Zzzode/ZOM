@@ -1,0 +1,6 @@
+// §16 Comment Inside Attribute Brackets
+// Covers rule: outerAttribute, comment
+// Expected: ACCEPT
+
+#[/* doc comment inside attr */ doc::alias("help")]
+fun with_comment();

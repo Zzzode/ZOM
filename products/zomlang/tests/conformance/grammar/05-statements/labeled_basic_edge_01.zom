@@ -1,0 +1,9 @@
+// §4.5 Label on blockBody (C25 allows label on control/block)
+// Covers rule: labeledStatement
+// Expected: ACCEPT
+
+fun f() {
+    blk: {
+        break blk;
+    }
+}

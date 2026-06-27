@@ -1,0 +1,5 @@
+// §3.7 ReservedKeywords
+// Covers rule: actor_reject
+// Expected: REJECT
+
+actor A {}

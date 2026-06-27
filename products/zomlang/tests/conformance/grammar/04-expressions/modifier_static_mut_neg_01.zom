@@ -1,0 +1,5 @@
+// §4.6 modifier static + mutating conflict
+// Covers rule: modifierList predicate
+// Expected: REJECT
+
+static mutating func f() {}

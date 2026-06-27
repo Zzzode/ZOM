@@ -1,0 +1,6 @@
+// §16 Attribute Expression Input
+// Covers rule: attrInput, expression form
+// Expected: ACCEPT
+
+#[validate::range(get_min() ..= get_max())]
+fun expr_attr();

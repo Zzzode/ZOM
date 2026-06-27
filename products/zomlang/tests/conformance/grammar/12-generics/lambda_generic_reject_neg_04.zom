@@ -1,0 +1,5 @@
+// §12.4 LambdaGenericsRejected
+// Covers rule: lambdaExpr
+// Expected: REJECT
+
+val f = <T>(x: T) => x;

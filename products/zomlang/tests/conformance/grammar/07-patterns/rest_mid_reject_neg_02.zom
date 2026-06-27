@@ -1,0 +1,7 @@
+// §4.7 RestMustBeLastInArray
+// Covers rule: patArray, patRest
+// Expected: REJECT
+
+match (arr) {
+    [a, ...mid, z] : { print(a); }
+}

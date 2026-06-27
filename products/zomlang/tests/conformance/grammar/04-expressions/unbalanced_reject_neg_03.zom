@@ -1,0 +1,6 @@
+// §4.6 Unbalanced brace (missing RBRACE structLiteral)
+// Covers rule: structLiteral
+// Expected: REJECT
+
+struct S { x: i32 }
+let s = S { x: 1;

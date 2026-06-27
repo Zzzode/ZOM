@@ -1,0 +1,5 @@
+// §4.6 Missing ternary condition colon and else
+// Covers rule: conditionalExpr
+// Expected: REJECT
+
+let x = ? b : c;

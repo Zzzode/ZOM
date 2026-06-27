@@ -1,0 +1,5 @@
+// §4.8 ObjectType: missing COLON in struct field type
+// Covers rule: structFieldType (requires COLON typeExpr)
+// Expected: REJECT
+
+alias Bad = { x i32 };

@@ -1,0 +1,5 @@
+// §4.8 FunctionType: zero-parameter function returning unit
+// Covers rule: functionType
+// Expected: ACCEPT
+
+alias F0 = () -> unit;

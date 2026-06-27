@@ -1,0 +1,5 @@
+// §4.6 Nested parens
+// Covers rule: parenExpression
+// Expected: ACCEPT
+
+let x = ((y));

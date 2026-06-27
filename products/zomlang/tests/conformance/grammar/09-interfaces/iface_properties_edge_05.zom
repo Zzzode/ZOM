@@ -1,0 +1,8 @@
+// §4.2 Interfaces
+// Covers rule: interfaceDeclaration (SET-only property — no GET required by grammar)
+// Expected: ACCEPT
+
+interface SetOnly {
+    set sink(v: str) -> unit;
+    set counter(v: i32) -> unit;
+}

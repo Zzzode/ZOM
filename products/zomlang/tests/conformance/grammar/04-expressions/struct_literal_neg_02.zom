@@ -1,0 +1,6 @@
+// §4.6 structLiteral with brace enum variant form (in expression)
+// Covers rule: structLiteral
+// Expected: REJECT
+
+enum E { A(i32) }
+let e = E::A(1);

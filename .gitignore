@@ -60,6 +60,7 @@ compile_commands.json
 
 # Antlr
 .antlr
+.antlr_build
 
 # Trae
 .trae

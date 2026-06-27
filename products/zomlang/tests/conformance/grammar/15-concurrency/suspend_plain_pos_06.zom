@@ -1,0 +1,9 @@
+// §7.3 ConcurrentFeatures
+// Covers rule: suspend_plain
+// Expected: ACCEPT
+
+fun coop() {
+    let a = 1;
+    suspend;
+    let b = 2;
+}

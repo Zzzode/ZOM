@@ -1,0 +1,5 @@
+// §4.8 Chained postfix: 3D array
+// Covers rule: postfixType
+// Expected: ACCEPT
+
+alias Cube = i32[][][];

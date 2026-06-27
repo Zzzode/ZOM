@@ -1,0 +1,7 @@
+// §4.2 Interfaces
+// Covers rule: checkModifierList (ABSTRACT + STATIC cannot coexist predicate)
+// Expected: REJECT
+
+interface BadIface {
+    abstract static fun bad() -> unit;
+}

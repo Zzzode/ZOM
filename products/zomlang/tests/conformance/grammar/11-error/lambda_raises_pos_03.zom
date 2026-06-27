@@ -1,0 +1,5 @@
+// §4.5 Statements
+// Covers rule: lambdaExpr, raisesClause
+// Expected: ACCEPT
+
+let f = () -> i32 raises IOError => 42;

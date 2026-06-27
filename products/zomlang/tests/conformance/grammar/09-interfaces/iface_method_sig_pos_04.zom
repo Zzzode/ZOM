@@ -1,0 +1,10 @@
+// §4.2 Interfaces
+// Covers rule: interfaceMethod
+// Expected: ACCEPT
+
+interface Compute {
+    public fun add(a: i32, b: i32) -> i32;
+    fun mul(x: f64, y: f64) -> f64 raises MathError;
+    fun greet(name: str) -> str raises IOError | EncodingError;
+    abstract fun exec(cmd: str) -> unit;
+}

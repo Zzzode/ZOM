@@ -1,0 +1,10 @@
+// §4.7 LiteralPattern
+// Covers rule: patLiteral
+// Expected: ACCEPT
+
+match (v) {
+    42 : { print("yes"); }
+    "hello" : { print("greet"); }
+    true : { print("t"); }
+    null : { print("n"); }
+}

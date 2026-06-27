@@ -1,0 +1,7 @@
+// §3.6.3 TemplateLiteral
+// Covers rule: TEMPLATE_HEAD, TEMPLATE_MIDDLE, TEMPLATE_TAIL
+// Expected: ACCEPT
+
+let a = `hello`;
+let b = `hello ${name}`;
+let c = `a ${x} b ${y} c`;

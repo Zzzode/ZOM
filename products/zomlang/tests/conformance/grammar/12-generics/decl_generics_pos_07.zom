@@ -1,0 +1,8 @@
+// §12.3 GenericClass
+// Covers rule: classDeclaration
+// Expected: ACCEPT
+
+class Box<T> {
+    private value: T;
+    fun get() -> T { return this.value; }
+}

@@ -1,0 +1,5 @@
+// §3.8 Keywords reserved
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+package foo;

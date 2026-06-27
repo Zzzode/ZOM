@@ -1,0 +1,5 @@
+// §12.1 TypeParameters
+// Covers rule: typeParameters
+// Expected: ACCEPT
+
+fun id<T>(x: T) -> T { return x; }

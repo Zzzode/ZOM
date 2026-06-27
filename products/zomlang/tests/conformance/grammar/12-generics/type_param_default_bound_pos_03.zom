@@ -1,0 +1,5 @@
+// §12.2 TypeParameterDefaults
+// Covers rule: typeParameter
+// Expected: ACCEPT
+
+fun f<T=unit>(x: T) -> T { return x; }

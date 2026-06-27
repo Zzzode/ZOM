@@ -1,0 +1,5 @@
+// §4.8 TupleType
+// Covers rule: atomType (typeTuple)
+// Expected: ACCEPT
+
+alias TwoTuple = (i32, str);

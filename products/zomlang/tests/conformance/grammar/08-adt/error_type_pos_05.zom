@@ -1,0 +1,8 @@
+// §10.1 ErrorDeclaration
+// Covers rule: errorDeclaration
+// Expected: ACCEPT
+
+public error IoError {
+    code: i32;
+    message: str;
+}

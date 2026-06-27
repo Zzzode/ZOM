@@ -1,0 +1,7 @@
+// §4.2 ExportDeclaration
+// Covers rule: funDecl
+// Expected: ACCEPT
+
+export fun map[T, U](xs: [T], f: fun(T) -> U) -> [U] {
+    return [];
+}

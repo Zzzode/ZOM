@@ -1,0 +1,6 @@
+// §4.6 StructLiteral anonymous (no identifier)
+// Covers rule: structLiteral
+// Expected: ACCEPT
+
+struct S { x: i32, y: i32, }
+let s: S = { x: 1, y: 2 };

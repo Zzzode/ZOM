@@ -1,0 +1,7 @@
+// §4.5 Empty match (no clauses, no default)
+// Covers rule: matchStatement
+// Expected: ACCEPT
+
+fun f(x: i32) {
+    match (x) {}
+}

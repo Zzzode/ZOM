@@ -1,0 +1,7 @@
+// §4.2 Interfaces
+// Covers rule: checkModifierList (STATIC + MUTATING cannot coexist predicate)
+// Expected: REJECT
+
+interface BadIface {
+    static mutating fun bad() -> unit;
+}

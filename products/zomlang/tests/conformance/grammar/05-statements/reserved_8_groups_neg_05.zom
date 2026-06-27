@@ -1,0 +1,7 @@
+// §4.5 Reserved syntax ZOM5005: yield
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+fun f() {
+    yield 1;
+}

@@ -1,0 +1,8 @@
+// §16 Multiple Outer Attributes
+// Covers rule: outerAttributeList
+// Expected: ACCEPT
+
+#[inline::always]
+#[test::case]
+#[allow::dead_code]
+fun multi() -> i32 { return 1; }

@@ -1,0 +1,7 @@
+// §6.4 ClassDeclaration, Deinitializer
+// Covers rule: classCtor (DEINIT alternative), raisesClause
+// Expected: ACCEPT
+
+class Bar {
+    deinit() raises CleanupError { cleanup(); }
+}

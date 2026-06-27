@@ -1,0 +1,5 @@
+// §4.8 PostfixType (Array)
+// Covers rule: postfixType (typeArray)
+// Expected: ACCEPT
+
+alias IntArr = i32[];

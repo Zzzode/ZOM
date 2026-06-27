@@ -1,0 +1,8 @@
+// §4.2 Interfaces
+// Covers rule: classDeclaration (EXTENDS + generics) + standaloneImplDeclaration
+// Expected: ACCEPT
+
+class HashMap<K, V> extends MapBase {
+    let items: (K, V)[];
+}
+impl Map<K, V> + Hashable for HashMap<K, V> { }

@@ -1,0 +1,6 @@
+// §4.8 AttrPath: outer attribute requires path with >=1 :: (G11)
+// Covers rule: attributePath (single identifier rejected)
+// Expected: REJECT
+
+#[test]
+alias X = i32;

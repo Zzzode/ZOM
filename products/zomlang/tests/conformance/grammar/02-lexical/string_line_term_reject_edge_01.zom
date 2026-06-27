@@ -1,0 +1,8 @@
+// §3.6.2 StringLiteral
+// Covers rule: DOUBLE_STRING_LITERAL, SINGLE_STRING_LITERAL
+// Expected: ACCEPT
+
+let a = "";
+let b = '';
+let c = "a";
+let d = 'b';

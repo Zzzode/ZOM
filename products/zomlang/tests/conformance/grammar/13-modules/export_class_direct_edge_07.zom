@@ -1,0 +1,8 @@
+// §4.2 ExportDeclaration
+// Covers rule: classDecl
+// Expected: ACCEPT
+
+export class Point {
+    let x: i32 = 0;
+    let y: i32 = 0;
+}

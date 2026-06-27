@@ -1,0 +1,7 @@
+// §4.6 Call / member / index + optional chaining + postfix
+// Covers rule: callExpr / postfixExpr
+// Expected: ACCEPT
+
+fun f() {
+  let r = obj?.method()?.field[0]!!;
+}

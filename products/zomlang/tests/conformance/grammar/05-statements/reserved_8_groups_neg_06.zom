@@ -1,0 +1,5 @@
+// §4.5 Reserved syntax ZOM5006: namespace / package
+// Covers rule: reservedSyntax
+// Expected: REJECT
+
+namespace foo {};

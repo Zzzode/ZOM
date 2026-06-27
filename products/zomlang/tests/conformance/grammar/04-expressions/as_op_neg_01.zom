@@ -1,0 +1,5 @@
+// §4.6 as! force-cast REJECT
+// Covers rule: relationalExpr
+// Expected: REJECT
+
+let x = v as! i32;

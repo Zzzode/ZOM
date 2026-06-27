@@ -1,0 +1,10 @@
+// §8.4 InterfaceDeclaration
+// Covers rule: interfaceDeclaration
+// Expected: ACCEPT
+
+public interface Iterator<T> extends Iterable {
+    type Item;
+    type Index = u64;
+    fun next() -> Option<Self.Item>;
+    get current -> Self.Item;
+}

@@ -1,0 +1,8 @@
+// §8.1 StructField missing semicolon
+// Covers rule: structField
+// Expected: REJECT
+
+struct S {
+    x: i32
+    y: i32;
+}

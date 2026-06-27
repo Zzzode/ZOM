@@ -1,0 +1,5 @@
+// §4.8 FunctionType, Raises Never
+// Covers rule: raisesClause, neverType
+// Expected: ACCEPT
+
+fun pure() raises never -> i32 { return 42; }

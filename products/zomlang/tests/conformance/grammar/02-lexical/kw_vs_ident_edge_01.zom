@@ -1,0 +1,12 @@
+// §3.8 Keywords
+// Covers rule: IDENTIFIER (soft keywords)
+// Expected: ACCEPT
+
+let detached = 1;
+let blocking = 2;
+let priority = 3;
+let until = 4;
+let auto = 5;
+let use = 6;
+let high = 7;
+let low = 8;

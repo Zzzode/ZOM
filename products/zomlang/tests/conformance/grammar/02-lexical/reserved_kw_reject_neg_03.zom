@@ -1,0 +1,6 @@
+// §3.8 Keywords reserved impl
+// Covers rule: declaration (reject incomplete standalone impl)
+// Expected: REJECT
+
+// Broken: standalone impl requires '{}' block (no terminator here).
+impl Foo for Bar

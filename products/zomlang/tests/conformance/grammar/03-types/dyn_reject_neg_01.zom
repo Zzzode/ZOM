@@ -1,0 +1,5 @@
+// §4.8 Dyn existential type (rejected per 24-truth)
+// Covers rule: atomType (dyn NOT a predefinedType / keyword)
+// Expected: REJECT
+
+alias D = dyn Read;

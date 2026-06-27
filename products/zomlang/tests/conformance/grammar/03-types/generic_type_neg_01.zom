@@ -1,0 +1,5 @@
+// §4.8 GenericType: missing closing GT
+// Covers rule: typeParameters / typeArgList (require genericClose)
+// Expected: REJECT
+
+alias MissClose = HashMap<i32, str;

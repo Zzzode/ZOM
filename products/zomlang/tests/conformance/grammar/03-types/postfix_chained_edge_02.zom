@@ -1,0 +1,5 @@
+// §4.8 Chained postfix: double optional T??
+// Covers rule: postfixType
+// Expected: ACCEPT
+
+alias DoubOpt = str??;

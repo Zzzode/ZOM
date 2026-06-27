@@ -1,0 +1,8 @@
+// §3.6.2 StringLiteral
+// Covers rule: DOUBLE_STRING_LITERAL
+// Expected: ACCEPT
+
+let a = "hello\nworld";
+let b = '\t';
+let c = "\u{1F600}";
+let d = "\x41";

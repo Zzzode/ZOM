@@ -1,0 +1,5 @@
+// §4.6 char literal multiple code points REJECT
+// Covers rule: CHAR_LITERAL predicate
+// Expected: REJECT
+
+let c = 'ab';

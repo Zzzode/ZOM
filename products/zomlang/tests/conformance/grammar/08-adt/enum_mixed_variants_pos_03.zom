@@ -1,0 +1,10 @@
+// §8.3 EnumDeclaration
+// Covers rule: enumVariant
+// Expected: ACCEPT
+
+enum Message {
+    Quit = 1,
+    Move(i32),
+    Write(str | i32),
+    ChangeColor(u8, u8, u8) = 10,
+}

@@ -1,0 +1,5 @@
+// §4.8 Complex combined: function returning union of intersection + optional tuple
+// Covers rule: functionType, unionType, intersectionType, postfixType, typeTuple
+// Expected: ACCEPT
+
+alias Cmplx = (i32) -> (A & B) | (str, bool)?;

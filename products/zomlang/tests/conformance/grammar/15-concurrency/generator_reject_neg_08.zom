@@ -1,0 +1,7 @@
+// §3.7 ReservedKeywords
+// Covers rule: generator_reject
+// Expected: REJECT
+
+generator gen() {
+    yield 1;
+}

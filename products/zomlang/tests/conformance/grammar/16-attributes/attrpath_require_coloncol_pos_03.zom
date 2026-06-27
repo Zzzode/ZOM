@@ -1,0 +1,6 @@
+// §16.1 AttributePath
+// Covers rule: attributePath
+// Expected: ACCEPT
+
+#[serde::rename]
+struct S { name: String, }

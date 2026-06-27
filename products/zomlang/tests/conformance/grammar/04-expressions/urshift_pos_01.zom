@@ -1,0 +1,7 @@
+// §4.6 URSHIFT vs RSHIFT
+// Covers rule: shiftExpr
+// Expected: ACCEPT
+
+let a = x > > > 2;
+let b = y >> 1;
+let c = z << 3;

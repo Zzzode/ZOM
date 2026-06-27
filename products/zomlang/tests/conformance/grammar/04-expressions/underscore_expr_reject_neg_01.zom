@@ -1,0 +1,5 @@
+// §4.6 UNDERSCORE is not a valid expression
+// Covers rule: primaryExpr
+// Expected: REJECT
+
+let x = _;

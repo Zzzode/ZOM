@@ -1,0 +1,5 @@
+// §4.6 spawn expression
+// Covers rule: primaryExpr (exprSpawn)
+// Expected: ACCEPT
+
+let t = spawn { 1 + 2 };

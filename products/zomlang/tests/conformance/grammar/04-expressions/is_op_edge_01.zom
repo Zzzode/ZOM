@@ -1,0 +1,5 @@
+// §4.6 Combined is + relational
+// Covers rule: relationalExpr
+// Expected: ACCEPT
+
+let b = x < 10 && x is i32;
