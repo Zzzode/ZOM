@@ -1,5 +1,0 @@
-// §4.8 Union 3-way: A | B | C
-// Covers rule: unionType
-// Expected: ACCEPT
-
-alias ThreeU = A | B | C;

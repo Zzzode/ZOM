@@ -1,0 +1,5 @@
+section: "§8.2 ClassDeclaration"
+covers_rule: "classDeclaration + standaloneImplDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

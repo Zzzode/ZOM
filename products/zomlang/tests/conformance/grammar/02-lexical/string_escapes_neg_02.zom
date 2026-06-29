@@ -1,5 +1,0 @@
-// §3.6.2 StringLiteral escapes - \uXXXX with non-hex
-// Covers rule: UNICODE_ESCAPE (validate)
-// Expected: REJECT
-
-let x = "\u{ZZZZ}";

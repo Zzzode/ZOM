@@ -1,0 +1,5 @@
+section: "§4.8 G9: raises TypeList uses PIPE, not comma"
+covers_rule: "typeList (RAISES with comma-list rejected)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

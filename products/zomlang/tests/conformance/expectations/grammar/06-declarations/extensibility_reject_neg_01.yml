@@ -1,0 +1,5 @@
+section: "§6.2 ClassDecl"
+covers_rule: "classExtensibility rejected (open/final/sealed on class)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,5 @@
+fun spawn_chain() {
+    spawn detached {
+        spawn detached side_effect();
+    };
+}

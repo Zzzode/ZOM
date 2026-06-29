@@ -1,0 +1,5 @@
+section: "§4.6 Combined is + relational"
+covers_rule: "relationalExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

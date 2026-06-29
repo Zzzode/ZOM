@@ -1,0 +1,1 @@
+alias OtherBasics = bool | str | char | f32 | f64;

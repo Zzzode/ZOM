@@ -1,8 +1,0 @@
-// §4.5 Statements
-// Covers rule: debuggerStmt
-// Expected: ACCEPT
-
-fun inspect() {
-    debugger;
-    return;
-}

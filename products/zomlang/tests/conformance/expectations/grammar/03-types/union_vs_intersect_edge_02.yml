@@ -1,0 +1,5 @@
+section: "§4.8 Complex combined: function returning union of intersection + optional tuple"
+covers_rule: "functionType, unionType, intersectionType, postfixType, typeTuple"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

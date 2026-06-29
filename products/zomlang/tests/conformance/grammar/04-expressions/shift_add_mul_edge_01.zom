@@ -1,5 +1,0 @@
-// §4.6 Shift + bitwise mix
-// Covers rule: shiftExpr / bitwiseAndExpr
-// Expected: ACCEPT
-
-let x = (a << 2) & 0xff;

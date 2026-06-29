@@ -1,0 +1,5 @@
+section: "§16 Attribute Placement"
+covers_rule: "moduleItem, outerAttributeList before import"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

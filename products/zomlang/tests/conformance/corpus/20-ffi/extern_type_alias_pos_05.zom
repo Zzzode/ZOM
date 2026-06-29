@@ -1,0 +1,4 @@
+extern "C" {
+    type FILE = opaque FILE_IMPL;
+    type DIR  = opaque DIR_IMPL;
+}

@@ -1,7 +1,0 @@
-// §4.2 Interfaces
-// Covers rule: interfaceMethod (SEMICOLON required; block body is classMethod only)
-// Expected: REJECT
-
-interface BadIface {
-    fun bad() -> i32 { return 1; }
-}

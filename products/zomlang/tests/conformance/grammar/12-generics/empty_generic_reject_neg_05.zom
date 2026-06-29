@@ -1,5 +1,0 @@
-// §12.4 EmptyGenericArgsRejected
-// Covers rule: typeArgList
-// Expected: REJECT
-
-alias E = Foo<>;

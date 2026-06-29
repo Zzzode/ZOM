@@ -1,8 +1,0 @@
-// §8.3 EnumGenerics
-// Covers rule: enumDeclaration (typeParameters branch)
-// Expected: ACCEPT
-
-enum Result<T, E> {
-    Ok(T),
-    Err(E),
-}

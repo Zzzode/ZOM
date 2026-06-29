@@ -1,7 +1,0 @@
-// §4.5 Suspend without semicolon (required terminator)
-// Covers rule: suspendStatement
-// Expected: REJECT
-
-fun f() {
-    suspend
-}

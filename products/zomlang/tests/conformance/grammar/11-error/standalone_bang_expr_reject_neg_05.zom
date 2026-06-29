@@ -1,5 +1,0 @@
-// §4.7 Expressions, BottomType standalone
-// Covers rule: expression
-// Expected: REJECT
-
-let bang = !;

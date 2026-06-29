@@ -1,5 +1,0 @@
-// §4.8 FunctionType
-// Covers rule: functionType
-// Expected: ACCEPT
-
-alias Fn = (i32, str) -> bool;

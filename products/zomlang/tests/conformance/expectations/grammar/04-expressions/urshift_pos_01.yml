@@ -1,0 +1,5 @@
+section: "§4.6 URSHIFT vs RSHIFT"
+covers_rule: "shiftExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

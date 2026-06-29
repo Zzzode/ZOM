@@ -1,0 +1,5 @@
+interface AbstractStuff {
+    abstract fun pure() -> unit;
+    public abstract type Key : Hash + Eq;
+    static fun create() -> Self;
+}

@@ -1,8 +1,0 @@
-// §8.2 SET property without preceding GET (REJECT: classProperty requires GET first)
-// Covers rule: classProperty
-// Expected: REJECT
-
-class C {
-    private mut _v: i32;
-    set value(v: i32) -> unit { self._v = v; }
-}

@@ -1,0 +1,5 @@
+section: "§4.6 ErrorDefault right-assoc chain (grammar permits it)"
+covers_rule: "errorDefaultExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,5 @@
+unsafe extern "system" {
+    fun malloc(sz: usize) -> u64;
+    fun free(p: u64);
+    fun memcpy(dst: u64, src: u64, n: usize) -> u64;
+}

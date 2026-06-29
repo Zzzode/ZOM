@@ -1,0 +1,6 @@
+error Err {
+  Msg: "oops",
+  Code = 404,
+  Data(i32, str),
+  Named(code: i32, text: str)
+}

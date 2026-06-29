@@ -1,7 +1,0 @@
-// §6.9 LetDecl, ConstDecl
-// Covers rule: letDecl, constDecl
-// Expected: ACCEPT
-
-let x = 42;
-mut y = 10;
-const PI = 3.14;

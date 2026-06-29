@@ -1,0 +1,9 @@
+let a: i32[] = xs;
+let a16: i16 = small;
+let b: i32? = null;
+let c: (i32 | str)[] = xs;
+let d: A & B = x;
+let e: i32 | str = x;
+let g: (i32, name: str) = tup;
+let h: <T>(x: T) -> T raises Err = fn;
+let i: typeof foo.bar = v;

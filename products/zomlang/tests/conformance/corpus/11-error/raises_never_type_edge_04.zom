@@ -1,0 +1,1 @@
+fun pure() -> i32 raises never { return 42; }

@@ -1,0 +1,5 @@
+struct Connection {
+    fd: i32;
+    init(path: str) raises IoError { self.fd = 0; }
+    deinit() raises IoError { }
+}

@@ -1,0 +1,3 @@
+interface BadIface {
+    abstract static fun bad() -> unit;
+}

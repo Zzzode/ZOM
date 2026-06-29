@@ -1,0 +1,5 @@
+section: "§4.2 ImportDeclaration"
+covers_rule: "attrPath"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

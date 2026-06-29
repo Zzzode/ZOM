@@ -1,5 +1,0 @@
-// §12.2 HigherOrderBounds
-// Covers rule: typeParameter (EXTENDS parameterised bound)
-// Expected: ACCEPT
-
-fun f<T: Foo<U>, U: number>(a: T, b: U) -> T { return a; }

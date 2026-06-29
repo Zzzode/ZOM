@@ -1,0 +1,5 @@
+section: "§4.6 UNDERSCORE is not a valid expression"
+covers_rule: "primaryExpr"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

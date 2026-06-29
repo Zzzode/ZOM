@@ -1,0 +1,5 @@
+section: "§4.8 PostfixType (Chained: optional array)"
+covers_rule: "postfixType"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

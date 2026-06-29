@@ -1,7 +1,0 @@
-// §4.7 RestMustBeLastInTuple
-// Covers rule: patTuple, patRest
-// Expected: REJECT
-
-match (t) {
-    (a, ...mid, z) : { print(a + z); }
-}

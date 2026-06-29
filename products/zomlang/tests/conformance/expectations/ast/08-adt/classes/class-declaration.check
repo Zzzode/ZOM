@@ -1,0 +1,2 @@
+// RUN: %zomc compile --dump-ast %corpus/08-adt/classes/class-declaration.zom | %FileCheck %s
+// CHECK: {"root":7,"nodes":[{"id":1,"kind":284,"payload":[0,0,0]},{"id":2,"kind":278,"payload":[1,0,0]},{"id":3,"kind":233,"payload":[2,0,0]},{"id":4,"kind":284,"payload":[0,0,0]},{"id":5,"kind":278,"payload":[2,0,0]},{"id":6,"kind":233,"payload":[5,0,0]},{"id":7,"kind":368,"payload":[1,0,0]}]}

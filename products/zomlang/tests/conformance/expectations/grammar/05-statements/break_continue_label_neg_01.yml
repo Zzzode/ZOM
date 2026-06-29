@@ -1,0 +1,5 @@
+section: "§4.5 Break missing semicolon"
+covers_rule: "breakStatement"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

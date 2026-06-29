@@ -1,0 +1,4 @@
+struct S { x: i32, y: i32 }
+match (s) {
+    S { x, y: pat } : { print(x + pat); }
+}

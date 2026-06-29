@@ -1,6 +1,0 @@
-// §4.2 ImportDeclaration
-// Covers rule: moduleItem
-// Expected: ACCEPT
-
-#[inline]
-import foo::bar;

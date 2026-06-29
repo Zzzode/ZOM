@@ -1,0 +1,5 @@
+section: "§4.4 Exports"
+covers_rule: "exportDecl, exportGroup"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

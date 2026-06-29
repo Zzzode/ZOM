@@ -1,0 +1,5 @@
+section: "§12.1 MultipleTypeParameters"
+covers_rule: "typeParameters"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

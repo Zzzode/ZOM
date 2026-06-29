@@ -1,8 +1,0 @@
-// §4.7 RestPattern
-// Covers rule: patRest
-// Expected: ACCEPT
-
-let [a, ...rest] = [1, 2, 3, 4];
-match (arr) {
-    [first, ...] : { print(first); }
-}

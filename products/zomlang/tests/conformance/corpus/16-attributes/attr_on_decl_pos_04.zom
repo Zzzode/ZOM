@@ -1,0 +1,2 @@
+#[deprecated::note("Use baz instead")]
+fun qux() -> i32 { return 0; }

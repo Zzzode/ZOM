@@ -1,7 +1,0 @@
-// §4.2 Interfaces
-// Covers rule: interfaceAssocType (all fields combined)
-// Expected: ACCEPT
-
-interface FullAssoc {
-    type Element<T, U> : Show + Hash = T | U;
-}

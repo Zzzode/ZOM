@@ -1,7 +1,0 @@
-// §3.3 Identifiers
-// Covers rule: IDENTIFIER
-// Expected: ACCEPT
-
-let cafe = 42;
-let \u{7F51} = "net";
-let \u{4E2D}\u{6587} = "zh";

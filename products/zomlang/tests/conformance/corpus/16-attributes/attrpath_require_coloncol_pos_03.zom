@@ -1,0 +1,2 @@
+#[serde::rename]
+struct S { name: String, }

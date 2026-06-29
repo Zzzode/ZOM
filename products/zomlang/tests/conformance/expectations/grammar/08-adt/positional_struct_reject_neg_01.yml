@@ -1,0 +1,5 @@
+section: "§8.1 StructDeclaration (G6: positional/newtype struct REJECT)"
+covers_rule: "structDeclaration"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

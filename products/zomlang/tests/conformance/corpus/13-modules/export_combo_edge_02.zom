@@ -1,0 +1,6 @@
+#[repr(u8)]
+export enum Color<T> {
+    Red,
+    Green,
+    Blue,
+}

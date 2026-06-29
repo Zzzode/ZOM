@@ -1,0 +1,5 @@
+// Test legacy octal literals which are not allowed
+let x = 0123;
+
+
+// Verify that the value is still parsed correctly as octal (83) despite the error

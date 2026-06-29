@@ -1,5 +1,0 @@
-// §4.8 FunctionType
-// Covers rule: funDecl, raisesClause
-// Expected: ACCEPT
-
-fun bar() -> bool raises NotFound;

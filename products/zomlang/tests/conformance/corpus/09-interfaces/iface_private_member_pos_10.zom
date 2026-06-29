@@ -1,0 +1,4 @@
+interface Internals {
+    private fun internalOp() -> unit;
+    private get buffer() -> [u8];
+}

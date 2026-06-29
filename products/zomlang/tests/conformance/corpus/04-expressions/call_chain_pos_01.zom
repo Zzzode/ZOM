@@ -1,0 +1,1 @@
+let x = obj.get(arr, 1)?.name[0];

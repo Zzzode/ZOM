@@ -1,8 +1,0 @@
-// §4.5 Statement
-// Covers rule: expressionStmt
-// Expected: ACCEPT
-
-fun f() -> i32 {
-    use;
-    return 0;
-}

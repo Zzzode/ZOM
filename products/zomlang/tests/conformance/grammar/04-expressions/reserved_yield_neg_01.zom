@@ -1,7 +1,0 @@
-// §4.6 yield reserved (ZOM5005) in expression
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-fun f() {
-  yield 1;
-}

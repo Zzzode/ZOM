@@ -1,5 +1,0 @@
-// §4.6 modifier list duplicate — abstract static conflict
-// Covers rule: modifierList predicate
-// Expected: REJECT
-
-abstract static class Foo {}

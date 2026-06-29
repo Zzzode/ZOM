@@ -1,0 +1,5 @@
+section: "§4.6 Rest ... in array literal REJECT (only pattern context)"
+covers_rule: "arrayLiteral"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

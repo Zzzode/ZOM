@@ -1,0 +1,5 @@
+section: "§4.7 BindPattern"
+covers_rule: "bindPat"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

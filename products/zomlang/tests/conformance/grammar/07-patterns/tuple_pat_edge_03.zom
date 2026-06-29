@@ -1,8 +1,0 @@
-// §4.7 TupleTrailingComma
-// Covers rule: patTuple
-// Expected: ACCEPT
-
-let (x, y,) = (1, 2);
-match (t) {
-    (a, b, c,) : { print(a); }
-}

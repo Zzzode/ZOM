@@ -1,0 +1,5 @@
+section: "§3.3 Identifiers with \\u escapes (supplementary)"
+covers_rule: "IDENTIFIER"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

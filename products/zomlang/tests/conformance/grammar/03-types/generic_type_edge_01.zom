@@ -1,5 +1,0 @@
-// §4.8 GenericType nested: Vec<Vec<T>> with RSHIFT close
-// Covers rule: atomType (typeNamed + genericClose RSHIFT)
-// Expected: ACCEPT
-
-alias Nested = Vec<Vec<i32>>;

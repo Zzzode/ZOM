@@ -1,0 +1,5 @@
+section: "§4.5 Label immediately followed by #[…] outer attribute (C25 #1 predicate)"
+covers_rule: "labeledStatement (checkLabelNoAttrAfterLabel)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

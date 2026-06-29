@@ -3,8 +3,8 @@
 """
 Snapshot regeneration tool for ZomLang AST tests.
 
-This tool automatically regenerates CHECK comments in lit test files
-by running the zomc compiler and capturing its AST output.
+This tool regenerates CHECK comments in AST expectation files by running the
+zomc compiler on the matching source under conformance/corpus.
 """
 
 import argparse
@@ -27,6 +27,12 @@ class SnapshotRegenerator:
         self.zomc_path = zomc_path
         self.cmake_binary_dir = cmake_binary_dir
         self.preset = preset
+        self.repo_root = Path(__file__).resolve().parents[4]
+        self.conformance_root = (
+            self.repo_root / "products" / "zomlang" / "tests" / "conformance"
+        )
+        self.corpus_root = self.conformance_root / "corpus"
+        self.ast_expectation_root = self.conformance_root / "expectations" / "ast"
 
     def _zomc_path_in_build_dir(self, build_dir: Path) -> Path:
         return build_dir / "products" / "zomlang" / "utils" / "zomc" / "zomc"
@@ -47,8 +53,6 @@ class SnapshotRegenerator:
         if zomc_in_path:
             return zomc_in_path
 
-        script_dir = Path(__file__).parent.parent.parent.parent.parent
-
         if self.preset:
             candidates = [f"build-{self.preset}"]
         else:
@@ -61,7 +65,7 @@ class SnapshotRegenerator:
             ]
 
         for build_dir in candidates:
-            potential_path = self._zomc_path_in_build_dir(script_dir / build_dir)
+            potential_path = self._zomc_path_in_build_dir(self.repo_root / build_dir)
             if potential_path.exists():
                 return str(potential_path)
 
@@ -195,14 +199,48 @@ class SnapshotRegenerator:
         except Exception:
             return False
 
-    def read_test_file(self, test_file: str) -> List[str]:
-        """Read test file and return lines."""
-        with open(test_file, "r", encoding="utf-8") as f:
+    def resolve_source_and_expectation(self, target: str) -> Tuple[Path, Path]:
+        """Resolve a corpus source or AST expectation to both paths."""
+        path = Path(target).resolve()
+
+        if path.suffix == ".check":
+            rel = path.relative_to(self.ast_expectation_root).with_suffix(".zom")
+            return self.corpus_root / rel, path
+
+        if path.suffix == ".zom":
+            rel = path.relative_to(self.corpus_root)
+            return path, (self.ast_expectation_root / rel).with_suffix(".check")
+
+        raise RuntimeError(f"unsupported snapshot target suffix: {path}")
+
+    def default_run_line(self, source_file: Path, returncode: int) -> str:
+        """Create a RUN line for a new AST expectation file."""
+        rel = source_file.relative_to(self.corpus_root).as_posix()
+        if returncode == 0:
+            return f"// RUN: %zomc compile --dump-ast %corpus/{rel} | %FileCheck %s"
+        return f"// RUN: ! %zomc compile --dump-ast %corpus/{rel} 2>&1 | %FileCheck %s"
+
+    def normalize_run_line(
+        self, line: str, source_file: Path, returncode: int
+    ) -> str:
+        """Keep existing RUN lines unless the source path or status changed."""
+        rel = source_file.relative_to(self.corpus_root).as_posix()
+        stripped = line.strip()
+        expects_failure = stripped.startswith("// RUN: !")
+        actual_failure = returncode != 0
+        if f"%corpus/{rel}" not in stripped or expects_failure != actual_failure:
+            return self.default_run_line(source_file, returncode) + "\n"
+        return line
+
+    def read_lines(self, path: Path) -> List[str]:
+        """Read a text file and return lines."""
+        with open(path, "r", encoding="utf-8") as f:
             return f.readlines()
 
-    def write_test_file(self, test_file: str, lines: List[str]):
-        """Write lines back to test file."""
-        with open(test_file, "w", encoding="utf-8") as f:
+    def write_lines(self, path: Path, lines: List[str]):
+        """Write lines to a text file."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
             f.writelines(lines)
 
     def remove_existing_checks(self, lines: List[str]) -> List[str]:
@@ -218,11 +256,12 @@ class SnapshotRegenerator:
                 filtered_lines.append(line)
         return filtered_lines
 
-    def regenerate_snapshot(self, test_file: str, append_mode: bool = False):
+    def regenerate_snapshot(self, target: str, append_mode: bool = False):
         """Regenerate snapshot for a single test file."""
-        print(f"Regenerating snapshot for: {test_file}")
+        source_file, expectation_file = self.resolve_source_and_expectation(target)
+        print(f"Regenerating snapshot for: {source_file}")
 
-        returncode, output = self.run_zomc(test_file)
+        returncode, output = self.run_zomc(str(source_file))
         output = output.rstrip()
 
         if returncode == 0 and self._is_json_output(output):
@@ -230,8 +269,10 @@ class SnapshotRegenerator:
         else:
             check_lines = self.format_diagnostics_for_check(output)
 
-        # Read existing test file
-        lines = self.read_test_file(test_file)
+        if expectation_file.exists():
+            lines = self.read_lines(expectation_file)
+        else:
+            lines = [self.default_run_line(source_file, returncode) + "\n"]
 
         if append_mode:
             # Remove trailing empty lines and ensure exactly 2 empty lines before CHECK comments
@@ -252,6 +293,21 @@ class SnapshotRegenerator:
             # Remove existing CHECK comments and trailing empty lines
             filtered_lines = self.remove_existing_checks(lines)
 
+            has_run_line = any(
+                line.strip().startswith("// RUN:") for line in filtered_lines
+            )
+            if not has_run_line:
+                filtered_lines.insert(
+                    0, self.default_run_line(source_file, returncode) + "\n"
+                )
+            else:
+                filtered_lines = [
+                    self.normalize_run_line(line, source_file, returncode)
+                    if line.strip().startswith("// RUN:")
+                    else line
+                    for line in filtered_lines
+                ]
+
             # Remove trailing empty lines
             while filtered_lines and filtered_lines[-1].strip() == "":
                 filtered_lines.pop()
@@ -270,19 +326,26 @@ class SnapshotRegenerator:
             lines = filtered_lines
 
         # Write back to file
-        self.write_test_file(test_file, lines)
-        print(f"✓ Updated {test_file}")
+        self.write_lines(expectation_file, lines)
+        print(f"✓ Updated {expectation_file}")
 
     def regenerate_directory(self, directory: str, append_mode: bool = False):
-        """Regenerate snapshots for all .zom files in directory."""
+        """Regenerate snapshots for all corpus sources or expectations."""
+        directory_path = Path(directory).resolve()
+        suffix = (
+            ".check"
+            if directory_path == self.ast_expectation_root
+            or self.ast_expectation_root in directory_path.parents
+            else ".zom"
+        )
         test_files = []
         for root, dirs, files in os.walk(directory):
             for file in files:
-                if file.endswith(".zom"):
+                if file.endswith(suffix):
                     test_files.append(os.path.join(root, file))
 
         if not test_files:
-            print(f"No .zom test files found in {directory}")
+            print(f"No {suffix} test files found in {directory}")
             return
 
         for test_file in sorted(test_files):

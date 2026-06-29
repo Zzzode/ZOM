@@ -1,0 +1,1 @@
+alias Many<A, B, C, D,> = (A, B, C, D);

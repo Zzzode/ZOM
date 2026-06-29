@@ -1,5 +1,0 @@
-// §4.8 GenericType with simple params
-// Covers rule: atomType (typeNamed + typeArgList)
-// Expected: ACCEPT
-
-alias G = HashMap<i32, str>;

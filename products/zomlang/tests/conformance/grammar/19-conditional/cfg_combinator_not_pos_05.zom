@@ -1,6 +1,0 @@
-// §19.3.2 not(P) negation
-// Covers rule: cfgNot, cfgAtom, cfgPredicate, attrCfg
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-#[zom::cfg(not(windows))]
-fun non_windows() -> i32 { return 3; }

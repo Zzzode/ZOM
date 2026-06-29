@@ -1,0 +1,2 @@
+#[/* doc comment inside attr */ doc::alias("help")]
+fun with_comment();

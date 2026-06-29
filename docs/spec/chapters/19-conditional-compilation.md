@@ -855,4 +855,4 @@ is formally registered as:
 >
 > Cross references:
 > - `AGENTS.md § ANTLR 4 .g4 Authoring Rules (ZOM-G4-PATTERN-001 ~ 003)`
-> - `products/zomlang/tests/conformance/grammar/README.md § Semantic Predicate Matrix`
+> - `products/zomlang/tests/conformance/runners/grammar/README.md § Semantic Predicate Matrix`

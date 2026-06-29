@@ -1,0 +1,5 @@
+section: "§16 Attributes"
+covers_rule: "outerAttribute"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

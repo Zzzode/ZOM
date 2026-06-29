@@ -1,0 +1,5 @@
+section: "§4.7 MutDestructure"
+covers_rule: "letDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

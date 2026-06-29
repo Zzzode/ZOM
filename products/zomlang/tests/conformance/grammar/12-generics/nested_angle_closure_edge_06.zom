@@ -1,5 +1,0 @@
-// §12.4 GenericInstantiationThreeLevelClosure
-// Covers rule: genericClose (URSHIFT used as 3-close workaround)
-// Expected: ACCEPT
-
-alias Deep = A<B<C<T> > >;

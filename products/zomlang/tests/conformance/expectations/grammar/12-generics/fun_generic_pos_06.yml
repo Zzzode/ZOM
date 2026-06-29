@@ -1,0 +1,5 @@
+section: "§12.3 GenericFunction"
+covers_rule: "funDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

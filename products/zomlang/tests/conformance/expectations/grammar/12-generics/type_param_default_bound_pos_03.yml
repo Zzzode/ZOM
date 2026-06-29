@@ -1,0 +1,5 @@
+section: "§12.2 TypeParameterDefaults"
+covers_rule: "typeParameter"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

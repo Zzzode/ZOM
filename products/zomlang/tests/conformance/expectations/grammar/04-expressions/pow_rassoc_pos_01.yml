@@ -1,0 +1,5 @@
+section: "§4.6 Power right-assoc"
+covers_rule: "powerExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

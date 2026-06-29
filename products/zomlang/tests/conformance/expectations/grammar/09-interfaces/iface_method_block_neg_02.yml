@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "interfaceMethod (SEMICOLON required; block body is classMethod only)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

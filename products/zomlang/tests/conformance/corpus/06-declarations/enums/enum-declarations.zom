@@ -1,0 +1,6 @@
+enum E {
+  A,
+  B = 1,
+  C(i32),
+  D(name: str, age: i32)
+}

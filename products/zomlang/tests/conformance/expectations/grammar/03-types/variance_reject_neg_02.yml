@@ -1,0 +1,5 @@
+section: "§4.8 Variance (rejected): 'out' on generic parameter"
+covers_rule: "typeParameter"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

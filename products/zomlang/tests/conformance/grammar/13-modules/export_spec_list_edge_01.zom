@@ -1,5 +1,0 @@
-// §4.2 ExportDeclaration
-// Covers rule: exportSpecList
-// Expected: ACCEPT
-
-export { a, b as b2, c as c2, d };

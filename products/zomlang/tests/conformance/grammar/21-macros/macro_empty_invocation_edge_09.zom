@@ -1,7 +1,0 @@
-// §21.2 Empty token tree in macro invocation: `todo!()` (macroToken* zero iterations)
-// Covers rule: macroTokenTree (epsilon alt — macroToken* == 0 tokens)
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-fun abort() -> never {
-    return todo!();
-}

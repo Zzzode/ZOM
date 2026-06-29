@@ -1,0 +1,2 @@
+/** block doc comment */
+let x = 1; // trailing comment

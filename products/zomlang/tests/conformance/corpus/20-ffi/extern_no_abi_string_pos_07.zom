@@ -1,0 +1,3 @@
+extern {
+    fun simple_bridge(x: i32) -> bool;
+}

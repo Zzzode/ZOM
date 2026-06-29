@@ -1,9 +1,0 @@
-// RUN: %zomc compile --dump-ast %s | %FileCheck %s
-
-// Test generic closure
-let genericClosure = fun <T> (val: T) -> T {
-  val
-}
-
-
-// CHECK: {"root":7,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":130,"payload":[2,0,0]},{"id":3,"kind":132,"payload":[18,0,2]},{"id":4,"kind":132,"payload":[20,3,0]},{"id":5,"kind":235,"payload":[1,0,4]},{"id":6,"kind":233,"payload":[5,0,0]},{"id":7,"kind":368,"payload":[1,0,0]}]}

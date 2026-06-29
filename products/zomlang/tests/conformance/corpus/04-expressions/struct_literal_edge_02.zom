@@ -1,0 +1,3 @@
+struct Box { x: i32 }
+let x = 1;
+let b = Box { x, };

@@ -1,6 +1,0 @@
-// §19.3.1 CfgAtom valued form: RHS MUST be DOUBLE_STRING_LITERAL (not unquoted bare identifier)
-// Covers rule: cfgAtom (3-alt group: alt 2 fires — CfgOp present but no quoted RHS → ZOM1900)
-// Expected: REJECT
-// ExpectedDiagnostic: ZOM1900
-#[zom::cfg(target_os = linux)]
-fun unquoted_value_in_cfg() -> i32 { return 15; }

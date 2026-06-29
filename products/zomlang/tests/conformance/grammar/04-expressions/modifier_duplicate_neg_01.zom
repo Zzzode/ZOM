@@ -1,5 +1,0 @@
-// §4.6 modifier duplicate
-// Covers rule: modifierList predicate
-// Expected: REJECT
-
-public public class Foo {}

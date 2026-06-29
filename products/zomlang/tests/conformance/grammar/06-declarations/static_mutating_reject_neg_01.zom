@@ -1,5 +1,0 @@
-// §6.1 ModifierList
-// Covers rule: checkModifierList (STATIC + MUTATING)
-// Expected: REJECT
-
-static mutating fun f() {}

@@ -1,0 +1,5 @@
+section: "§6.1 ModifierList"
+covers_rule: "rejected modifiers (sealed)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

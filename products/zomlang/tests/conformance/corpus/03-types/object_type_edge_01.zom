@@ -1,0 +1,1 @@
+alias Muts = { mut x: i32, y: str, };

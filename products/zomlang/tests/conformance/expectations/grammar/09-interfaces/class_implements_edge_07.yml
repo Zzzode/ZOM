@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "structDeclaration + standaloneImplDeclaration (soft keyword impl)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

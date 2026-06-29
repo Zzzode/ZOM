@@ -1,6 +1,0 @@
-// §4.8 Null literal type and unit type as union members
-// Covers rule: unionType, predefinedType
-// Expected: ACCEPT
-
-alias Maybe = str | null;
-alias ResultUnit = unit | Error;

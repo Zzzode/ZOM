@@ -1,0 +1,5 @@
+fun fire() {
+    spawn detached {
+        side_effect();
+    }
+}

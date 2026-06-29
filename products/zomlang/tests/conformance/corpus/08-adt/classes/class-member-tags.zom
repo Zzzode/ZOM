@@ -1,0 +1,5 @@
+class C {
+  let x: i32 = 1;
+  const y: str = "hi";
+  fun id(n: i32) -> i32 { return n; }
+}

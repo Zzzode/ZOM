@@ -1,0 +1,5 @@
+section: "§4.8 PostfixType: standalone [ ] without base type"
+covers_rule: "postfixType (LBRACK RBRACK cannot start typeExpr)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

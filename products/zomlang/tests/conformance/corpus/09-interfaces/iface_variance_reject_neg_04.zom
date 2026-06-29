@@ -1,0 +1,3 @@
+interface BadIface<in T> {
+    fun consume(v: T) -> unit;
+}

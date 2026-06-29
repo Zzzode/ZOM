@@ -1,6 +1,0 @@
-// §16 Empty Attribute REJECT
-// Covers rule: outerAttribute, requires attributePath
-// Expected: REJECT
-
-#[]
-fun empty();

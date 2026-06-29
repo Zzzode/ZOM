@@ -1,7 +1,0 @@
-// §7.3 ConcurrentFeatures
-// Covers rule: spawn_multi_mods
-// Expected: ACCEPT
-
-fun run() {
-    let t = spawn detached blocking priority(high) do_io();
-}

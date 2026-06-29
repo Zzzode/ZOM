@@ -1,0 +1,5 @@
+section: "§8.2 GenericExtends"
+covers_rule: "classDeclaration (EXTENDS with type args)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

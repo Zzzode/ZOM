@@ -1,0 +1,2 @@
+#[zom::cfg(any(target_os = "linux", target_os = "macos"))]
+fun desktop() -> i32 { return 2; }

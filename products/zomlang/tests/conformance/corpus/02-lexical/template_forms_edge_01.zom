@@ -1,0 +1,3 @@
+let a = `hello`;
+let b = `hello ${name}`;
+let c = `a ${x} b ${y} c`;

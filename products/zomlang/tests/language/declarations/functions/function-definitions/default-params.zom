@@ -1,7 +1,0 @@
-// RUN: %zomc compile --dump-ast %s | %FileCheck %s
-
-fun defaults(x: i32 = 0) {
-}
-
-
-// CHECK: {"root":6,"nodes":[{"id":1,"kind":281,"payload":[2,0,0]},{"id":2,"kind":282,"payload":[1,0,1]},{"id":3,"kind":226,"payload":[1,0,0]},{"id":4,"kind":277,"payload":[1,2,0]},{"id":5,"kind":233,"payload":[4,0,0]},{"id":6,"kind":368,"payload":[1,0,1]}]}

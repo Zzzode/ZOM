@@ -1,5 +1,0 @@
-// §4.2 ExportDeclaration
-// Covers rule: exportDecl
-// Expected: ACCEPT
-
-export fun foo() -> i32 { return 0; }

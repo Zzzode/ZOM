@@ -1,0 +1,6 @@
+extern "system" {
+    fun malloc(sz: usize) -> u64;
+    fun calloc(n: usize, sz: usize) -> u64;
+    fun realloc(p: u64, sz: usize) -> u64;
+    fun c_free(p: u64);
+}

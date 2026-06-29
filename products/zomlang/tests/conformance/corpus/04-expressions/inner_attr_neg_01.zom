@@ -1,0 +1,2 @@
+#![allow(unused)]
+let x = 1;

@@ -1,0 +1,3 @@
+interface BadIface {
+    fun bad() -> i32 { return 1; }
+}

@@ -1,0 +1,11 @@
+match (x) {
+  when _ => 0;
+  when v: i32 => v;
+  when (a: i32, b: str) if a > 0 => a;
+  when { x: i32, y: str } => 1;
+  when [a, b] => 2;
+  when is i32 => 3;
+  when x + 1 => 4;
+  when Result.Ok(v: i32) => v;
+  default => return 0;
+}

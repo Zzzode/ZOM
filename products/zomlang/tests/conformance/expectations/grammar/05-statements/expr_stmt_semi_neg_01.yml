@@ -1,0 +1,5 @@
+section: "§4.5 Expression statement missing semicolon"
+covers_rule: "expressionStatement"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

@@ -1,7 +1,0 @@
-// §20.2 Extern ABI "Rust" is NOT in the permitted set — semantic predicate ZOM2001
-// Covers rule: checkExternAbiFormat → ParseCancellationException ZOM2001
-// Expected: REJECT
-// ExpectedDiagnostic: ZOM2001
-extern "Rust" {
-    fun from_rust(x: i32) -> bool;
-}

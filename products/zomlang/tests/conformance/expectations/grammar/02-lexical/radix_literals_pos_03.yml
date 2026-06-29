@@ -1,0 +1,5 @@
+section: "§3.5.5 HexLiteral"
+covers_rule: "HEX_LITERAL"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,5 @@
+section: "§4.5 Label on blockBody (C25 allows label on control/block)"
+covers_rule: "labeledStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

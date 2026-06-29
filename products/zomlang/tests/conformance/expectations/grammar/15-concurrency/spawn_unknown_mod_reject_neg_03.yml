@@ -1,0 +1,5 @@
+section: "§7.3 ConcurrentFeatures"
+covers_rule: "spawn_unknown_mod_reject"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

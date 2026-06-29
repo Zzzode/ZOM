@@ -1,8 +1,0 @@
-// §4.7 StructPatternShorthand
-// Covers rule: structPatternField
-// Expected: ACCEPT
-
-struct S { x: i32, y: i32 }
-match (s) {
-    S { x, y: pat } : { print(x + pat); }
-}

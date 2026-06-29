@@ -1,0 +1,7 @@
+interface Base {
+  fun foo();
+}
+
+interface Derived extends Base {
+  fun bar();
+}

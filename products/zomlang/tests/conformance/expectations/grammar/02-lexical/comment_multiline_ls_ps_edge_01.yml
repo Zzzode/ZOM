@@ -1,0 +1,7 @@
+section: "§3.4 Comments edge"
+covers_rule: "LINE_COMMENT, BLOCK_COMMENT"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes:
+  - "comment at start of file"
+  - "/ doc comment"

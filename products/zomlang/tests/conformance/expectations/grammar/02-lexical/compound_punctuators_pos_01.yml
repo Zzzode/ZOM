@@ -1,0 +1,5 @@
+section: "§3.7 Punctuators"
+covers_rule: "COLON_COLON, QUESTION_DOT etc"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

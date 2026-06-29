@@ -1,5 +1,0 @@
-// §4.8 IntersectionType
-// Covers rule: intersectionType
-// Expected: ACCEPT
-
-alias Both = A & B;

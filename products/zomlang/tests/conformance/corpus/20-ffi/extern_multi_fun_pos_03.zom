@@ -1,0 +1,6 @@
+extern "zom-cdecl" {
+    fun open(path: str, flags: i32) -> i32;
+    fun read(fd: i32, buf: str, len: u64) -> i64;
+    fun write(fd: i32, buf: str, len: u64) -> i64;
+    fun close(fd: i32) -> i32;
+}

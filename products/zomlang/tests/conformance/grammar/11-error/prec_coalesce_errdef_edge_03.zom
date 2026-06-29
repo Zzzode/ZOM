@@ -1,5 +1,0 @@
-// §4.7 Expressions, Coalesce + ErrorDefault precedence
-// Covers rule: expression, NULL_COALESCE, ERROR_DEFAULT
-// Expected: ACCEPT
-
-let x = a ?? b ?: c;

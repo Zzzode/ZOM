@@ -1,0 +1,5 @@
+section: "§4.6 ArrayLiteral"
+covers_rule: "arrayLiteral"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

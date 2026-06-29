@@ -1,0 +1,4 @@
+fun f() -> i32 {
+    import std::io as i;
+    return 1;
+}

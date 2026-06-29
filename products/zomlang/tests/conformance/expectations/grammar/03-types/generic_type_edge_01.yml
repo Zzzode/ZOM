@@ -1,0 +1,5 @@
+section: "§4.8 GenericType nested: Vec<Vec<T>> with RSHIFT close"
+covers_rule: "atomType (typeNamed + genericClose RSHIFT)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

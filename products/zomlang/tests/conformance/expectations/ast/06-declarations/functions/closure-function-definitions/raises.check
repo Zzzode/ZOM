@@ -1,0 +1,2 @@
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/raises.zom | %FileCheck %s
+// CHECK: {"root":4,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":235,"payload":[1,0,0]},{"id":3,"kind":233,"payload":[2,0,0]},{"id":4,"kind":368,"payload":[1,0,0]}]}

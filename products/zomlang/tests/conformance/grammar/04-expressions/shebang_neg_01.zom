@@ -1,6 +1,0 @@
-// §4.6 #! shebang not allowed
-// Covers rule: sourceFile
-// Expected: REJECT
-
-#!/usr/bin/env zom
-let x = 1;

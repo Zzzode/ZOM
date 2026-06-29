@@ -1,0 +1,8 @@
+class Base<T> {
+    let val: T;
+    init(v: T) { self.val = v; }
+}
+class Derived<T> : Base<T?> {
+    let extra: i32 = 0;
+    init(v: T, extra: i32) { super.init(v); self.extra = extra; }
+}

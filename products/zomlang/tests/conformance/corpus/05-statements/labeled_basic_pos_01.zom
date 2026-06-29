@@ -1,0 +1,5 @@
+fun f() {
+    outer: while (true) {
+        break outer;
+    }
+}

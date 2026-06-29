@@ -1,0 +1,5 @@
+section: "§8.3 EnumDiscriminant"
+covers_rule: "enumVariant (ASSIGN expression branch)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

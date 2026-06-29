@@ -1,0 +1,5 @@
+section: "§4.5 While missing parens around condition"
+covers_rule: "whileStatement"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

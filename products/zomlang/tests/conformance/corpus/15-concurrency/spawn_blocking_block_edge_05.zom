@@ -1,0 +1,5 @@
+fun blocking_block() {
+    let r = spawn blocking {
+        return heavy_cpu();
+    };
+}

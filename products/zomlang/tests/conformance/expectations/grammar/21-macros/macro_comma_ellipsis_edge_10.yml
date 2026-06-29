@@ -1,0 +1,5 @@
+section: "§21.3.1 Macro pattern trailing \",...\" — variadic rest match"
+covers_rule: "macroPattern (COMMA ELLIPSIS tail terminal after captures)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

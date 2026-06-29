@@ -1,5 +1,0 @@
-// §4.6 Simple ternary
-// Covers rule: conditionalExpr (exprTernary)
-// Expected: ACCEPT
-
-let x = cond ? a : b;

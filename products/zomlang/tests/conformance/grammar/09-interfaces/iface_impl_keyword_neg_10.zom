@@ -1,6 +1,0 @@
-// §4.2 Interfaces
-// Covers rule: declaration (reject incomplete impl body)
-// Expected: REJECT
-
-// Broken: standalone impl is missing body (must be '{}' block or ';' marker).
-impl Debug for Foo

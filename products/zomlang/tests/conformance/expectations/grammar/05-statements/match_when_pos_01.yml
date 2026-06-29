@@ -1,0 +1,5 @@
+section: "§4.5 MatchStatement with when guard"
+covers_rule: "matchStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

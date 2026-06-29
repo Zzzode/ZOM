@@ -1,0 +1,2 @@
+#[zom::cfg(target_os = "linux")]
+fun linux_only() -> i32 { return 42; }

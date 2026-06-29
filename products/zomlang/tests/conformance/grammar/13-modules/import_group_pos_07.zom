@@ -1,5 +1,0 @@
-// §4.2 ImportDeclaration
-// Covers rule: importDecl
-// Expected: ACCEPT
-
-import std::{fs, path as p, math};

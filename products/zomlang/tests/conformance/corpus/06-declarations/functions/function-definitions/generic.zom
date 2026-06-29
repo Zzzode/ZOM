@@ -1,0 +1,2 @@
+fun generic<T>(x: T) -> T {
+}

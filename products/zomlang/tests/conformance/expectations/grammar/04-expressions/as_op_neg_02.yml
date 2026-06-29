@@ -1,0 +1,5 @@
+section: "§4.6 dyn existential type — use in as REJECT"
+covers_rule: "relationalExpr / typeExpr"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

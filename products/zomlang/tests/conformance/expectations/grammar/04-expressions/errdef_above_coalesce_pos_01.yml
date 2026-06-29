@@ -1,0 +1,5 @@
+section: "§4.6 ErrorDefault above NullCoalesce"
+covers_rule: "errorDefaultExpr / nullCoalesceExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

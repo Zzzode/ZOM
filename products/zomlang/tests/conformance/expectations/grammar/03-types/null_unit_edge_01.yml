@@ -1,0 +1,5 @@
+section: "§4.8 Null literal type and unit type as union members"
+covers_rule: "unionType, predefinedType"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

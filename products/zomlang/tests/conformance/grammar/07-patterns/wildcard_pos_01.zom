@@ -1,7 +1,0 @@
-// §4.7 WildcardPattern
-// Covers rule: wildcardPat
-// Expected: ACCEPT
-
-match (v) {
-    _ : { return 0; }
-}

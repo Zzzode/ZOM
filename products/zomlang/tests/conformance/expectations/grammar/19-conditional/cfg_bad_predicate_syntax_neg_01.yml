@@ -1,0 +1,5 @@
+section: "§19.3 Malformed cfg predicate: missing closing paren (syntax error)"
+covers_rule: "cfgPredicate (parenthesis mismatch → ANTLR native syntax error)"
+expected: "REJECT"
+expected_diagnostic: "line"
+notes: []

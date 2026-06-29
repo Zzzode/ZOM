@@ -1,0 +1,5 @@
+section: "§4.7 UnderscoreRejectedInBindPat"
+covers_rule: "bindPat, checkBindPat"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

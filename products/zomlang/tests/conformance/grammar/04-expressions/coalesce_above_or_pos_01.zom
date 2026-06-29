@@ -1,5 +1,0 @@
-// §4.6 Coalesce above LogicalOr
-// Covers rule: nullCoalesceExpr / logicalOrExpr
-// Expected: ACCEPT
-
-let x = a || b ?? c;

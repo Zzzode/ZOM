@@ -1,0 +1,5 @@
+section: "§4.5 Spawn without semicolon (spawn allows optional SEMICOLON)"
+covers_rule: "spawnStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

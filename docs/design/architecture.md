@@ -56,8 +56,8 @@ The language surface shrinks further to a compact supported-target matrix below.
 The repository follows the product-scoped layout used by the current ZOM tree.
 Compiler implementation files live under `products/zomlang/compiler/`, runtime
 code lives under `products/zomlang/runtime/`, shared vocabulary code lives under
-`libraries/zc/`, language-level lit tests live under
-`products/zomlang/tests/language/`, and compiler unit tests live under
+`libraries/zc/`, language-level conformance tests live under
+`products/zomlang/tests/conformance/`, and compiler unit tests live under
 `products/zomlang/tests/unittests/compiler/`. No implementation directory is
 rooted at `src/`. Future compiler stages must be added under the same
 `products/zomlang/compiler/<stage>/` hierarchy rather than introducing a second
@@ -81,7 +81,7 @@ shared) vocabulary uniformly.
 | `products/zomlang/compiler/driver` | `CompilerSession`, `SessionOptions`, `CompilationUnit` | Central coordinator that owns all shared state and sequences the pipeline across all stages | CLI args, source file list | Final artifact stream | Session owns every sub-object via `zc::Own`; see §7 |
 | `products/zomlang/runtime` | `AsyncRuntime`, `Executor`, `Stackless` | The minimal async/concurrency runtime described in `docs/concurrency/zom-async-canonical-design.md`; linked into user binaries, not part of the compiler process itself | Compiled user code references | Static archive `libruntime_zom.a` | Static linking; user binary owns the copy |
 | `libraries/zc` | `Allocator`, `String`, `Vec<T>`, `HashMap<K,V>` | Core vocabulary types used both by the compiler (as `libzc-host`) and user programs (as `libzc-target`) | Header / template instantiations | Inline and archive code | Value semantics with explicit `zc::Own<T>` move-only wrappers |
-| `products/zomlang/tests/language` | `LitRunner`, `FileCheck`, `ShTest` | LLVM-style integration test harness driving `zomc` CLI with RUN directives | `.zom` test files | PASS/FAIL/XFAIL counts | Runner owns subprocess handles; tests are never linked into the compiler |
+| `products/zomlang/tests/conformance` | `LitRunner`, `FileCheck`, `ShTest`, `GrammarRunner` | Shared source corpus with runner-specific expectations for frontend conformance | `.zom` sources plus `.check` / `.yml` expectations | PASS/FAIL/XFAIL counts | Runners own subprocess handles; tests are never linked into the compiler |
 | `products/zomlang/tests/unittests/compiler` | `ztest::Suite`, `ztest::Case`, `ztest::Expect` | Lightweight unit test framework used by compiler module `*-test.cc` files | Static test registrations | XML + console report | Test binaries link against in-tree compiler libraries |
 | `products/zomlang/compiler/irgen` (planned) | `IRBuilder`, `IRModule`, `IRInst` | Lower typed AST into SSA form suitable for LLVM ingestion; future landing zone once frontend freezes | `Borrow<TypeEnv>` + `Borrow<const ast::Tree>` | `zc::Own<IRModule>` | IR is consumed by backend; builder transfers ownership |
 | `products/zomlang/compiler/backend` (planned) | `LLVMEmitter`, `ObjectWriter`, `LinkerDriver` | Produce native `.o` / `.obj` files and drive the system linker to emit executables or shared libraries | `Borrow<IRModule>` + target triple | Object bytes or `stdout` assembly | Backend owns LLVM context for each TU; outputs are written through `ObjectWriter` |
@@ -851,7 +851,7 @@ Every hook receives immutable `const&` views of AST nodes; mutating hooks such a
 
 The test suite decomposes into three independent layers with separate ownership and coverage targets.
 
-**Layer 1: lit integration tests.** `products/zomlang/tests/language` mirrors the LLVM lit architecture used by the current tree. Every category directory such as `expressions/`, `statements/`, `types/`, `modules/`, or `errors/` holds `.zom` files whose `// RUN:` lines invoke `zomc` subcommands and pipe output through `FileCheck`. One file exercises exactly one diagnostic code or one positive feature. Negative tests assert presence of a specific `ZOMnnnn` prefix plus a substring of the error message; positive tests assert exact stdout or exit code.
+**Layer 1: conformance integration tests.** `products/zomlang/tests/conformance/corpus` holds pure `.zom` sources grouped by spec chapter. `products/zomlang/tests/conformance/expectations/ast` holds lit/FileCheck `.check` files whose `// RUN:` lines invoke `zomc` subcommands and pipe output through `FileCheck`; `products/zomlang/tests/conformance/expectations/grammar` holds ANTLR ACCEPT/REJECT metadata. One expectation exercises exactly one diagnostic code or one positive feature. Negative tests assert presence of a specific `ZOMnnnn` prefix plus a substring of the error message; positive tests assert exact stdout or exit code.
 
 **Layer 2: ztest unit tests.** Compiler unit tests live under `products/zomlang/tests/unittests/compiler/<module>/` and use the repo's `*-test.cc` naming convention. The ztest framework itself lives under `libraries/zc/ztest`; compiler tests link against the relevant in-tree compiler library rather than adding sibling test directories under implementation modules. Unit tests for lexer, parser, binder, and checker construct their inputs programmatically and assert on typed return values rather than rendered text.
 

@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "interfaceMethod (MUTATING modifier)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

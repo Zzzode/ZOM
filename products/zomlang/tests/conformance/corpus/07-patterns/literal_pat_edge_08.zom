@@ -1,0 +1,4 @@
+match (c) {
+    'a' : { print("a"); }
+    'z' : { print("z"); }
+}

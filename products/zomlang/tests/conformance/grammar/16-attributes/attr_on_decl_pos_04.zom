@@ -1,6 +1,0 @@
-// §16 Attribute Placement
-// Covers rule: moduleItem, outerAttributeList
-// Expected: ACCEPT
-
-#[deprecated::note("Use baz instead")]
-fun qux() -> i32 { return 0; }

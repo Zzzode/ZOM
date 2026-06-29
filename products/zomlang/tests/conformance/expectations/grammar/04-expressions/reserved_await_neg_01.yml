@@ -1,0 +1,5 @@
+section: "§4.6 await reserved (ZOM5002) as unary"
+covers_rule: "unaryExpr"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

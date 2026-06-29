@@ -1,7 +1,0 @@
-// §4.5 While with single non-block statement body
-// Covers rule: whileStatement
-// Expected: ACCEPT
-
-fun f(x: i32) {
-    while (x > 0) x = x - 1;
-}

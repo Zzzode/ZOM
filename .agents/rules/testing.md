@@ -52,21 +52,23 @@ For any non-trivial function `Xxx` in the compiler:
 ## AST / Frontend Tests (LLVM lit + FileCheck)
 
 Lit tests are the **source of truth** for spec ↔ implementation alignment.
-Each `.zom` source under `products/zomlang/tests/language/` is a lit test.
+Each AST conformance case has a pure source under
+`products/zomlang/tests/conformance/corpus/` and a matching lit/FileCheck
+expectation under `products/zomlang/tests/conformance/expectations/ast/`.
 
 ### Required Preamble
 
-Every test file starts with at least:
+Every AST expectation file starts with at least:
 
-```zom
-// RUN: zomlangc --dump-ast %s 2>&1 | FileCheck %s
+```text
+// RUN: %zomc compile --dump-ast %corpus/05-statements/example.zom 2>&1 | %FileCheck %s
 ```
 
 Optional modifiers:
 
 | Modifier | Use when |
 |---|---|
-| `// RUN: ! zomlangc --dump-ast %s …` | The source is *expected* to exit non-zero (parse error, type error). |
+| `// RUN: ! %zomc compile --dump-ast %corpus/... 2>&1 ...` | The source is *expected* to exit non-zero (parse error, type error). |
 | `// XFAIL: *` | The test currently fails and the root cause is tracked in a finding / issue. `XFAIL` without a linked bug / finding number is rejected. |
 | `// REQUIRES: linux` / `// UNSUPPORTED: darwin` | Test targets platform-specific behavior. |
 
@@ -84,7 +86,8 @@ Optional modifiers:
 Run:
 
 ```bash
-python3 products/zomlang/tests/tools/regen-lit.py products/zomlang/tests/language/path/to/test.zom
+python3 products/zomlang/tests/tools/regen-lit.py \
+  products/zomlang/tests/conformance/corpus/path/to/test.zom
 ```
 
 This rewrites FileCheck lines to match the *current* actual output. After

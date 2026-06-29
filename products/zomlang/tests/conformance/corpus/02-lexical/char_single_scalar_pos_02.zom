@@ -1,0 +1,4 @@
+let a = '\n';
+let b = '\t';
+let c = '\\';
+let d = '\'';

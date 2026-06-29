@@ -1,0 +1,5 @@
+section: "§4.7 Expressions, ErrorDefault"
+covers_rule: "expression, ERROR_DEFAULT token"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

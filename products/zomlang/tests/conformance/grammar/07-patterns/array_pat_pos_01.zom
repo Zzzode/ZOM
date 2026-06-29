@@ -1,8 +1,0 @@
-// §4.7 ArrayPattern
-// Covers rule: patArray
-// Expected: ACCEPT
-
-let [a, b, c] = [1, 2, 3];
-match (arr) {
-    [x, y] : { print(x + y); }
-}

@@ -1,0 +1,3 @@
+match (v) {
+    a @ b @ p : { print(a); }
+}

@@ -1,0 +1,1 @@
+fun f<T=unit>(x: T) -> T { return x; }

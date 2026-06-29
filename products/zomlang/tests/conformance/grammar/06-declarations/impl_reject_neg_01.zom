@@ -1,6 +1,0 @@
-// §6 Declarations
-// Covers rule: declaration (reject malformed impl)
-// Expected: REJECT
-
-// Broken: missing 'for Type' clause; braces look like struct literal, not body.
-impl { x: i32 }

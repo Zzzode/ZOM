@@ -1,0 +1,11 @@
+interface Runnable {
+  fun run() -> unit;
+}
+
+interface Comparable<T> {
+  fun compareTo(other: T) -> i32;
+}
+
+interface Named {
+  readonly let name: str;
+}

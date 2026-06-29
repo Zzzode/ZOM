@@ -1,0 +1,5 @@
+section: "§8.2 Property GET without SET"
+covers_rule: "classProperty (SET companion absent)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

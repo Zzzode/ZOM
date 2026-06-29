@@ -1,0 +1,1 @@
+let _ = vec marker_without_bang(1, 2, 3);

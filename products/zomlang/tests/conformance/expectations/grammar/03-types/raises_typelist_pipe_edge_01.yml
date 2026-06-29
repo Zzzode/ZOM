@@ -1,0 +1,5 @@
+section: "§4.8 FunctionType with raises single type"
+covers_rule: "functionType (RAISES typeList single element)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

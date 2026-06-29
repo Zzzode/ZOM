@@ -1,5 +1,0 @@
-// §4.3 Imports
-// Covers rule: importDecl, importGroup
-// Expected: ACCEPT
-
-import std::collections::{HashMap, HashSet};

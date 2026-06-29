@@ -1,5 +1,0 @@
-// §6.3 StructDecl
-// Covers rule: structDecl
-// Expected: REJECT
-
-struct Foo(i32, i32);

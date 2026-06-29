@@ -1,0 +1,3 @@
+let a = 0xDEAD_BEEF;
+let b = 0xff;
+let c = 0X1A2B3C;

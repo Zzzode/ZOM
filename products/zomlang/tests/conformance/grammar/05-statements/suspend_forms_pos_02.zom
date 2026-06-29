@@ -1,7 +1,0 @@
-// §4.5 SuspendStatement (until form)
-// Covers rule: suspendStatement
-// Expected: ACCEPT
-
-fun f(x: bool) {
-    suspend until x;
-}

@@ -1,0 +1,4 @@
+class C {
+  #[getter::auto]
+  public name: String;
+}

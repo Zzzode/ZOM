@@ -1,0 +1,5 @@
+section: "§4.6 Single identifier struct literal with shorthand + trailing comma"
+covers_rule: "structLiteral"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

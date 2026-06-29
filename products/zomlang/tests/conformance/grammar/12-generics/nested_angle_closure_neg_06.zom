@@ -1,5 +1,0 @@
-// §12.4 FourLevelNestedClosureUnsupported
-// Covers rule: genericClose
-// Expected: REJECT
-
-alias TooDeep = A<B<C<D<T> > >>;

@@ -1,0 +1,2 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/template-literals.zom | %FileCheck %s
+// CHECK: {"root":9,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":106,"payload":[1,0,0]},{"id":3,"kind":235,"payload":[1,0,2]},{"id":4,"kind":233,"payload":[3,0,0]},{"id":5,"kind":69,"payload":[2,0,0]},{"id":6,"kind":132,"payload":[0,0,0]},{"id":7,"kind":235,"payload":[5,0,6]},{"id":8,"kind":233,"payload":[7,0,0]},{"id":9,"kind":368,"payload":[2,0,0]}]}

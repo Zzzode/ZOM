@@ -1,0 +1,5 @@
+section: "§7.3 ConcurrentFeatures"
+covers_rule: "suspend_until"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

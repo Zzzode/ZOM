@@ -1,0 +1,5 @@
+section: "§4.6 import() expression"
+covers_rule: "primaryExpr (exprImportCall)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

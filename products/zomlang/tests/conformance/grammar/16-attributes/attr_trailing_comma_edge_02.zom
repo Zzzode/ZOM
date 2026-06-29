@@ -1,6 +1,0 @@
-// §16 Trailing Comma In Attribute List
-// Covers rule: attrInput, KV-list trailing comma
-// Expected: ACCEPT
-
-#[repr::packed(align = 8, endian = "big",)]
-struct Packed { a: i32, b: i64, }

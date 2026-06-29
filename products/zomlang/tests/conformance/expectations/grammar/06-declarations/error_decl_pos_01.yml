@@ -1,0 +1,5 @@
+section: "§6.6 ErrorDecl"
+covers_rule: "errorDecl"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

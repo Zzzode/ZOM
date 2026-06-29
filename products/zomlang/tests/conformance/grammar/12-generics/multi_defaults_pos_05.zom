@@ -1,5 +1,0 @@
-// §12.1 MultipleTypeParameters
-// Covers rule: typeParameters
-// Expected: ACCEPT
-
-fun foo<T, U = unit, V: number>(a: T, b: U) -> V { panic(); }

@@ -1,0 +1,5 @@
+section: "§4.6 var keyword reserved (ZOM5003) in declaration"
+covers_rule: "reservedSyntax"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

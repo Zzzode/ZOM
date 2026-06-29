@@ -1,0 +1,5 @@
+section: "§8.2 ClassProperty"
+covers_rule: "classProperty"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,5 @@
+section: "§7.3 ConcurrentFeatures"
+covers_rule: "spawn_priority_wrong_arg"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

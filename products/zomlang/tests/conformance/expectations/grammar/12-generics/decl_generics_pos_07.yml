@@ -1,0 +1,5 @@
+section: "§12.3 GenericClass"
+covers_rule: "classDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

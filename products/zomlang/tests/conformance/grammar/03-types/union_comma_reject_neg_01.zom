@@ -1,5 +1,0 @@
-// §4.8 Union comma-separated: must use PIPE, not comma
-// Covers rule: unionType (rejects COMMA between union members)
-// Expected: REJECT
-
-alias U = i32, str;

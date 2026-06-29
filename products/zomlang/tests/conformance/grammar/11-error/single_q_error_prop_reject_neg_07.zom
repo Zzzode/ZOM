@@ -1,5 +1,0 @@
-// §4.7 Expressions, Single ? error propagation not allowed
-// Covers rule: expression
-// Expected: REJECT
-
-fun f() raises X { return foo()?; }

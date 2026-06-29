@@ -1,0 +1,5 @@
+section: "§4.6 char literal multiple code points REJECT"
+covers_rule: "CHAR_LITERAL predicate"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

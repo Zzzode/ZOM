@@ -1,0 +1,9 @@
+enum Weekday {
+    Monday = 1,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday = 5,
+    Saturday,
+    Sunday,
+}

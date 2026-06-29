@@ -1,0 +1,5 @@
+section: "§19.4.3 ZOM1903 FeatureUndeclared — feature = \"\" requires non-empty value"
+covers_rule: "cfgAtom (checkCfgFeatureAtomFormat predicate)"
+expected: "REJECT"
+expected_diagnostic: "ZOM1903"
+notes: []

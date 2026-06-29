@@ -1,0 +1,5 @@
+section: "§8.3 EnumGenerics"
+covers_rule: "enumDeclaration (typeParameters branch)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

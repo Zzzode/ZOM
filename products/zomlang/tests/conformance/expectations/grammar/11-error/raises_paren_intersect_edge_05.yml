@@ -1,0 +1,5 @@
+section: "§4.8 FunctionType, Parenthesised intersection in raises"
+covers_rule: "raisesClause, parenType"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,5 @@
+section: "§4.8 ObjectType with trailing comma + mut field"
+covers_rule: "atomType (typeObject, structFieldType MUT)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

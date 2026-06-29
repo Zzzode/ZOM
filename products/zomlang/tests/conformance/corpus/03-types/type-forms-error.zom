@@ -1,0 +1,2 @@
+// Object type literals only allow identifier property names.
+let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;

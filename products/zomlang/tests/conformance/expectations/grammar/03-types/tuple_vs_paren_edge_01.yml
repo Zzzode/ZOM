@@ -1,0 +1,5 @@
+section: "§4.8 TupleType: 3-tuple with trailing comma"
+covers_rule: "atomType (typeTuple)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

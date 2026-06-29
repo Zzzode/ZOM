@@ -1,0 +1,1 @@
+alias QG = std::collections::HashMap<i32, str>;

@@ -1,0 +1,5 @@
+section: "§3.7 Punctuators"
+covers_rule: "HASH_LBRACK (lexer rejects split)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

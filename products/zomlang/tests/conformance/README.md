@@ -1,39 +1,63 @@
 # ZomLang Conformance Tests
 
-`conformance/` is the language source corpus and runner orchestration area.
-Source fixtures describe language behavior; runner layers decide which compiler
-surface is being checked.
+`conformance/` is the language conformance source and runner area. It has one
+source corpus and separate runner-specific expectations.
+
+## Layout
+
+```text
+conformance/
+├── corpus/            # Pure .zom source fixtures, grouped by spec chapter
+├── expectations/      # Runner-specific oracle files
+│   ├── ast/
+│   ├── binder/
+│   ├── diagnostics/
+│   ├── e2e/
+│   └── grammar/
+└── runners/           # Executable runner glue registered with CTest
+    ├── ast/
+    ├── binder/
+    ├── diagnostics/
+    ├── e2e/
+    └── grammar/
+```
+
+Source files must not contain runner-specific directives such as `RUN`,
+`CHECK`, `Expected`, or `ExpectedDiagnostic`. Those belong in the matching
+expectation file.
 
 ## Runner Layers
 
-| Layer | CTest label | Source today | Oracle |
+| Layer | CTest label | Source | Oracle |
 |---|---|---|---|
-| Grammar | `conformance-grammar` | `conformance/grammar/**/*.zom` | ANTLR ACCEPT/REJECT headers |
-| AST | `conformance-ast` | `language/**/*.zom` | lit/FileCheck `RUN:` and `CHECK:` lines |
+| Grammar | `conformance-grammar` | `corpus/**/*.zom` | `expectations/grammar/**/*.yml` |
+| AST | `conformance-ast` | `corpus/**/*.zom` | `expectations/ast/**/*.check` |
 
-Future layers should reuse the same source corpus where possible:
+Future layers must reuse `corpus/` and add only their own expectation schema and
+runner.
 
-| Layer | Intended oracle |
-|---|---|
-| Diagnostics | Stable diagnostic codes and spans |
-| E2E | Program output, exit status, or runtime behavior |
-| Binder | Symbol, scope, and import/export facts |
+## Chapter Directories
 
-## Direction
+The corpus is grouped by spec chapter:
 
-The corpus should converge on shared fixture metadata instead of separate
-source trees per runner. A fixture can then say which layers apply:
-
-```yaml
-spec: "05-statements"
-tags: [statements, loops]
-expect:
-  grammar: accept
-  ast: accept
-  diagnostics: []
-  e2e: skip
+```text
+02-lexical/
+03-types/
+04-expressions/
+05-statements/
+06-declarations/
+07-patterns/
+08-adt/
+09-interfaces/
+11-error/
+12-generics/
+13-modules/
+15-concurrency/
+16-attributes/
+19-conditional/
+20-ffi/
+21-macros/
 ```
 
-This change is intentionally staged. The current CMake wiring already exposes
-grammar and AST checks under common conformance labels while preserving the
-existing physical fixture locations.
+Use nested construct directories only when they clarify the source fixture. Do
+not create runner-owned source trees.

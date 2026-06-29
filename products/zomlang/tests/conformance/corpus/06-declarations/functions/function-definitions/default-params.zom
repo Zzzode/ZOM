@@ -1,0 +1,2 @@
+fun defaults(x: i32 = 0) {
+}

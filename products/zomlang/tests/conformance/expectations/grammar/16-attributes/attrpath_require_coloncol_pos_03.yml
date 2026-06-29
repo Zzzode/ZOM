@@ -1,0 +1,5 @@
+section: "§16.1 AttributePath"
+covers_rule: "attributePath"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

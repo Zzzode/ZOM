@@ -1,8 +1,0 @@
-// §4.2 Interfaces
-// Covers rule: interfaceMethod (PRIVATE modifier)
-// Expected: ACCEPT
-
-interface Internals {
-    private fun internalOp() -> unit;
-    private get buffer() -> [u8];
-}

@@ -1,9 +1,0 @@
-// §4.5 Explicit semicolons for expression statements
-// Covers rule: expressionStatement
-// Expected: ACCEPT
-
-fun f(x: i32) {
-    x = 1;
-    x + 1;
-    x;
-}

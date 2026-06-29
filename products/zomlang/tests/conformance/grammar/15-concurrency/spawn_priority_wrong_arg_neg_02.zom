@@ -1,7 +1,0 @@
-// §7.3 ConcurrentFeatures
-// Covers rule: spawn_priority_wrong_arg
-// Expected: REJECT
-
-fun bad() {
-    let t = spawn priority(urgent) do_work();
-}

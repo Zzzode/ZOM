@@ -1,8 +1,0 @@
-// §20.2 extern block with "C" ABI wrapping a single foreign fun decl
-// Covers rule: externDecl (externBlockDecl alt), externBlock, externItem
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-extern "C" {
-    fun printf(fmt: str) -> i32;
-    fun free(p: u64);
-}

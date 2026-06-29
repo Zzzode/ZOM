@@ -1,9 +1,0 @@
-// §7.3 ConcurrentFeatures
-// Covers rule: spawn_raise_in_block
-// Expected: ACCEPT
-
-fun fallible() raises IoError {
-    let t = spawn {
-        maybe_fail() raises?;
-    };
-}

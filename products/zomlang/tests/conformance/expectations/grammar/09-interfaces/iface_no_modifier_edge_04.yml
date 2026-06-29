@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "interfaceMember (member without modifier prefix; modifierList allows 0 modifiers)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

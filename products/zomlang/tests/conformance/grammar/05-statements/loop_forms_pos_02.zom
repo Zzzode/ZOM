@@ -1,7 +1,0 @@
-// §4.5 DoWhileStatement
-// Covers rule: doWhileStatement
-// Expected: ACCEPT
-
-fun f() {
-    do { break; } while (true);
-}

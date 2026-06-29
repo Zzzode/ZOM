@@ -1,0 +1,3 @@
+match (arr) {
+    [a, b, c : { print(a); }
+}

@@ -1,7 +1,0 @@
-// §4.7 RestAtFrontTupleReject
-// Covers rule: patTuple
-// Expected: REJECT
-
-match (t) {
-    (...rest, z) : { print(z); }
-}

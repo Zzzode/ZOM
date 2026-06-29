@@ -1,5 +1,0 @@
-// §4.5 Lambda with multi raises and body block
-// Covers rule: lambdaExpr, raisesClause
-// Expected: ACCEPT
-
-let h = (a: i32) -> i32 raises E1 | E2 | E3 => { return a * 2; };

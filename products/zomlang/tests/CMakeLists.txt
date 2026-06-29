@@ -21,9 +21,6 @@ enable_testing()
 # Unit Tests - Low-level component tests
 add_subdirectory(unittests)
 
-# Language AST tests - FileCheck runner over conformance source fixtures
-add_subdirectory(language)
-
 # Conformance runner orchestration
 add_subdirectory(conformance)
 

@@ -1045,7 +1045,7 @@ Per AGENTS.md Section Spec Alignment Rules, the following is the cross-reference
 
 ## 9. Validation Example Library
 
-The following examples are intended for `lit` regression testing and cover all newly-added productions and drift corrections. Each example MUST have a corresponding `.zom` FileCheck test under `products/zomlang/tests/language/`.
+The following examples are intended for conformance regression testing and cover all newly-added productions and drift corrections. Each example MUST have a corresponding `.zom` source under `products/zomlang/tests/conformance/corpus/` and a matching runner expectation under `products/zomlang/tests/conformance/expectations/`.
 
 ### T1 Basic Module / Import / Export
 

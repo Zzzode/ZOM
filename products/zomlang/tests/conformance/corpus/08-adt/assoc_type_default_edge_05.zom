@@ -1,0 +1,5 @@
+interface Builder {
+    type Output;
+    type Error;
+    fun build() -> Result<Self.Output, Self.Error>;
+}

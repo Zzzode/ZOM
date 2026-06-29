@@ -1,7 +1,0 @@
-// §7.3 ConcurrentFeatures
-// Covers rule: nested_spawn_expr
-// Expected: ACCEPT
-
-fun main() {
-    let x = 1 + spawn priority(low) { return 2; };
-}

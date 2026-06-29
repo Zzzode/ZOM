@@ -1,5 +1,0 @@
-// §4.6 Nested array and tuple combos
-// Covers rule: arrayLiteral / tupleLiteral
-// Expected: ACCEPT
-
-let m = [(1, 2), (3, 4)];

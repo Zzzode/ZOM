@@ -1,6 +1,0 @@
-// §19.4.3 ZOM1903 FeatureUndeclared — feature = "" requires non-empty value
-// Covers rule: cfgAtom (checkCfgFeatureAtomFormat predicate)
-// Expected: REJECT
-// ExpectedDiagnostic: ZOM1903
-#[zom::cfg(feature = "")]
-fun bad_feature() -> i32 { return 14; }

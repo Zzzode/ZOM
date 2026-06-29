@@ -1,0 +1,3 @@
+generator gen() {
+    yield 1;
+}

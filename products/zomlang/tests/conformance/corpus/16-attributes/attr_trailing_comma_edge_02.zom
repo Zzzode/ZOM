@@ -1,0 +1,2 @@
+#[repr::packed(align = 8, endian = "big",)]
+struct Packed { a: i32, b: i64, }

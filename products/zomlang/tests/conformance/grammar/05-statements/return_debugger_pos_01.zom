@@ -1,8 +1,0 @@
-// §4.5 ReturnStatement and DebuggerStatement
-// Covers rule: returnStatement, debuggerStatement
-// Expected: ACCEPT
-
-fun f() -> i32 {
-    debugger;
-    return 42;
-}

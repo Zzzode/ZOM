@@ -1,0 +1,5 @@
+section: "§4.7 Expressions, BottomType standalone"
+covers_rule: "expression"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

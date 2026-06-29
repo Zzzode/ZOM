@@ -1,0 +1,1 @@
+alias Obj = { x: i32, y?: str };

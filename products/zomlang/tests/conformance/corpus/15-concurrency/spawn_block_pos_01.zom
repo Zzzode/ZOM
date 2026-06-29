@@ -1,0 +1,6 @@
+fun main() {
+    let t = spawn {
+        let x = 1;
+        return x;
+    };
+}

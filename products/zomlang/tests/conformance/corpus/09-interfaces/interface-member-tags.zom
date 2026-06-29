@@ -1,0 +1,6 @@
+interface I {
+  let x: i32 = 1;
+  const y: str;
+  fun foo(n: i32) -> i32;
+  ;
+}

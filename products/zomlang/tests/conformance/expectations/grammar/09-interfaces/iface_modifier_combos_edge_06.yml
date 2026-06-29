@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "interfaceDeclaration (OVERRIDE + READONLY modifiers on members)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

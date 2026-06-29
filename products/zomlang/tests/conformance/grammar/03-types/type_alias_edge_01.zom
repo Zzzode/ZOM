@@ -1,5 +1,0 @@
-// §4.2 TypeAlias with many type params + trailing comma
-// Covers rule: typeAliasDeclaration, typeParameters
-// Expected: ACCEPT
-
-alias Many<A, B, C, D,> = (A, B, C, D);

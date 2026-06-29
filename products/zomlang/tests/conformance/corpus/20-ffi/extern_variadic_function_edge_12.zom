@@ -1,0 +1,4 @@
+extern "Cdecl" {
+    fun printf(fmt: str) -> i32;
+    fun fprintf(stream: u64, fmt: str) -> i32;
+}

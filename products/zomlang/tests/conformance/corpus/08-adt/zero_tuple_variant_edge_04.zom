@@ -1,0 +1,5 @@
+enum Event {
+    Click(unit),
+    Key(str),
+    Tick,
+}

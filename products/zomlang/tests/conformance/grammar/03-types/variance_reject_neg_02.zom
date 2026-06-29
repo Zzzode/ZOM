@@ -1,5 +1,0 @@
-// §4.8 Variance (rejected): 'out' on generic parameter
-// Covers rule: typeParameter
-// Expected: REJECT
-
-alias V2<out T> = T;

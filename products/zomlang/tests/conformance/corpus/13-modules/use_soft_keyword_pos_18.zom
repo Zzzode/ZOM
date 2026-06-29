@@ -1,0 +1,4 @@
+fun f() -> i32 {
+    use;
+    return 0;
+}

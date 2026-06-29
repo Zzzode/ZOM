@@ -1,0 +1,5 @@
+section: "§8.2 Static + Mutating modifier combination REJECT (predicate)"
+covers_rule: "modifierList"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

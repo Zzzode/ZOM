@@ -1,0 +1,3 @@
+interface FullAssoc {
+    type Element<T, U> : Show + Hash = T | U;
+}

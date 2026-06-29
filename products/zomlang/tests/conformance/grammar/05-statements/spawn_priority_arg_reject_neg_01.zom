@@ -1,7 +1,0 @@
-// §4.5 Spawn priority with invalid arg (not high/low)
-// Covers rule: spawnModifier (checkSpawnModifierCall predicate)
-// Expected: REJECT
-
-fun f() {
-    spawn priority(other) {};
-}

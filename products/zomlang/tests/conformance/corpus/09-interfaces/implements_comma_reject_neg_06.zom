@@ -1,0 +1,2 @@
+class BadClass { }
+impl Reader | Writer for BadClass { }

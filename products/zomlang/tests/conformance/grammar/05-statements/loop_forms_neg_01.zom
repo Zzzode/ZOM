@@ -1,7 +1,0 @@
-// §4.5 While missing parens around condition
-// Covers rule: whileStatement
-// Expected: REJECT
-
-fun f() {
-    while true { break; }
-}

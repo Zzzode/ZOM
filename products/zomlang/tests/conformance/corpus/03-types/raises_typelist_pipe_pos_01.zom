@@ -1,0 +1,1 @@
+alias FnR = (i32) -> str raises IoError | ParseError;

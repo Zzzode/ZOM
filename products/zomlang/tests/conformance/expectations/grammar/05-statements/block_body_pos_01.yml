@@ -1,0 +1,5 @@
+section: "§4.5 BlockBody (empty block)"
+covers_rule: "blockBody"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

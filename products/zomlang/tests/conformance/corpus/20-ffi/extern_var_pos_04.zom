@@ -1,0 +1,4 @@
+extern "C" {
+    variable errno: i32;
+    variable sys_nerr: u32;
+}

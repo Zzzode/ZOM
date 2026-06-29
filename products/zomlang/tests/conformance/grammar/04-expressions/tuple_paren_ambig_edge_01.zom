@@ -1,5 +1,0 @@
-// §4.6 3-tuple with trailing comma
-// Covers rule: tupleLiteral
-// Expected: ACCEPT
-
-let t = (1, 2, 3,);

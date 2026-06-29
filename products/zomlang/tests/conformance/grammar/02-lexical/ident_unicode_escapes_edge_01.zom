@@ -1,8 +1,0 @@
-// §3.3 Identifiers
-// Covers rule: IDENTIFIER
-// Expected: ACCEPT
-
-let _x = 1;
-let x_ = 2;
-let x_y = 3;
-let $x = 4;

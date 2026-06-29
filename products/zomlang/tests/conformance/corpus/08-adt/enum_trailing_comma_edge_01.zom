@@ -1,0 +1,6 @@
+enum Dir {
+    North,
+    South,
+    East,
+    West
+}

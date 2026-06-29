@@ -1,9 +1,0 @@
-// §8.3 ZeroTupleVariant
-// Covers rule: enumVariant (LPAREN typeList RPAREN with 0-tuple = unit)
-// Expected: ACCEPT
-
-enum Event {
-    Click(unit),
-    Key(str),
-    Tick,
-}

@@ -1,8 +1,0 @@
-// §8.2 Abstract method declaration (semicolon-only form)
-// Covers rule: classMethod (ABSTRACT modifier + SEMICOLON)
-// Expected: ACCEPT
-
-abstract class Base {
-    abstract fun describe() -> str;
-    abstract fun operate(x: i32) -> i32;
-}

@@ -1,5 +1,0 @@
-// §3.8 Keywords reserved throw
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-fun f() { throw 1; }

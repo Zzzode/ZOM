@@ -1,5 +1,0 @@
-// §4.6 CommaExpression
-// Covers rule: expression (exprComma)
-// Expected: ACCEPT
-
-let x = a, b, c;

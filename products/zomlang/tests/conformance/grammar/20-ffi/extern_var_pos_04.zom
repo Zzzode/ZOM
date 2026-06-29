@@ -1,8 +1,0 @@
-// §20.4 extern block "variable" soft-keyword declares a thread-local C errno
-// Covers rule: externItem (externVarDecl alt)
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-extern "C" {
-    variable errno: i32;
-    variable sys_nerr: u32;
-}

@@ -1,0 +1,2 @@
+let greeting = `hello`;
+let message = `hello ${name}, count ${count + 1}`;

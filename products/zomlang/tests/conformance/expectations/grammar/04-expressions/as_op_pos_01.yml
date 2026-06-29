@@ -1,0 +1,5 @@
+section: "§4.6 as operator (relational tier 10)"
+covers_rule: "relationalExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

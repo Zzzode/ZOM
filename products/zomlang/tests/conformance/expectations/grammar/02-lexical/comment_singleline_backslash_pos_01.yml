@@ -1,0 +1,6 @@
+section: "Section 3.4 SingleLineComment"
+covers_rule: "SINGLE_LINE_COMMENT + predicate 4, which allows backslashes."
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes:
+  - "this comment has \\ backslash \\ characters \\\\ path\\to\\file"

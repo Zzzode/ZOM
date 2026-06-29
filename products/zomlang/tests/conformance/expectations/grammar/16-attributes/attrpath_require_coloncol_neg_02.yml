@@ -1,0 +1,5 @@
+section: "§16.1 AttributePath Dot Separator REJECT"
+covers_rule: "attributePath, requires COLONCOLON not DOT"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

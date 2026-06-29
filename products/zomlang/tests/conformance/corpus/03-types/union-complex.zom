@@ -1,0 +1,2 @@
+alias Mixed = A & B | C & D;
+alias Nested = A | B[]? | (C | D[])?;

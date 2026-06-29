@@ -1,0 +1,5 @@
+section: "§10.1 ErrorDeclaration"
+covers_rule: "errorDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

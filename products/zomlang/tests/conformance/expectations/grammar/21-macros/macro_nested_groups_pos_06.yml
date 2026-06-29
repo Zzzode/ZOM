@@ -1,0 +1,5 @@
+section: "§21.2 Nested balanced delimiter groups inside a macro token tree"
+covers_rule: "macroToken (macroParenGroup + macroBrackGroup + macroBraceGroup mixed)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

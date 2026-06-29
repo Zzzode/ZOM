@@ -1,0 +1,5 @@
+section: "§4.5 ForInStatement"
+covers_rule: "forInStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

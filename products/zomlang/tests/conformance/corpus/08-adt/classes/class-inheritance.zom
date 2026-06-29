@@ -1,0 +1,7 @@
+class Base {
+  fun foo() {}
+}
+
+class Derived extends Base {
+  fun bar() {}
+}

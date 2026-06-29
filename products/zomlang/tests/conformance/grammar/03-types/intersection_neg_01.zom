@@ -1,5 +1,0 @@
-// §4.8 Intersection with wrong operator (&& instead of &)
-// Covers rule: intersectionType (BIT_AND required; AND is wrong token)
-// Expected: REJECT
-
-alias AndOp = A && B;

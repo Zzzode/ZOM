@@ -1,0 +1,5 @@
+section: "§4.8 TypeAlias: missing semicolon"
+covers_rule: "typeAliasDeclaration (requires SEMICOLON)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,3 @@
+class Bar {
+    deinit() raises CleanupError { cleanup(); }
+}

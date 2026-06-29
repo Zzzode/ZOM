@@ -266,8 +266,9 @@ The table below is the **authoritative copy** of the ZOM diagnostic-code range a
 
 Each 100-block inside an extensible row is allocated by the subsystem owner via
 the diagnostic definition files under `products/zomlang/compiler/diagnostics/`.
-Concrete language diagnostics are exercised by lit tests under
-`products/zomlang/tests/language/<subsystem>/`, and compiler-only diagnostic
+Concrete language diagnostics are exercised by conformance sources under
+`products/zomlang/tests/conformance/corpus/` plus matching expectations under
+`products/zomlang/tests/conformance/expectations/`, and compiler-only diagnostic
 plumbing is exercised by ztest suites under
 `products/zomlang/tests/unittests/compiler/diagnostics/`. The emitted registry
 is generated from `diagnostics-common.def`, `diagnostics-parse.def`, and

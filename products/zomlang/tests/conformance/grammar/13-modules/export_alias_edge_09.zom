@@ -1,5 +1,0 @@
-// §4.2 ExportDeclaration
-// Covers rule: exportDecl
-// Expected: ACCEPT
-
-export alias Result<T, E> = Ok(T) | Err(E);

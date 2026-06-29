@@ -1,5 +1,0 @@
-// §4.6 Shift Add Mul priority
-// Covers rule: shiftExpr / additiveExpr / multiplicativeExpr
-// Expected: ACCEPT
-
-let x = a + b * c << 2;

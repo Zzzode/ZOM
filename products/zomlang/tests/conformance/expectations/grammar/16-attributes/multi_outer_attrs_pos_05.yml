@@ -1,0 +1,5 @@
+section: "§16 Multiple Outer Attributes"
+covers_rule: "outerAttributeList"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,6 +1,0 @@
-// §21.4 Near-empty derive list: #[zom::derive(Marker)] single-trait derive
-// Covers rule: outerAttribute, attr (genericMultiSeg + single-identifier arg)
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-#[zom::derive(UnitMarker)]
-struct EmptyMarker {}

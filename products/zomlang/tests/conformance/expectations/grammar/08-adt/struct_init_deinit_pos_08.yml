@@ -1,0 +1,5 @@
+section: "§8.1 StructCtor"
+covers_rule: "structCtor"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

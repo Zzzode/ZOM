@@ -1,0 +1,5 @@
+section: "§4.6 TupleLiteral disambiguation G3 — 1-tuple"
+covers_rule: "tupleLiteral"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

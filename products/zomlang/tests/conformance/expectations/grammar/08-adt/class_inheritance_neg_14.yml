@@ -1,0 +1,5 @@
+section: "§8.x sealed modifier (REJECT per 24-truth: sealed/open/final/unsafe NOT in modifier alternatives)"
+covers_rule: "modifier"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

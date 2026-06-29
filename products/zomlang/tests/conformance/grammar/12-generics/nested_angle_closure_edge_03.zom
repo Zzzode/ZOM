@@ -1,7 +1,0 @@
-// §12.4 NestedAngleClosureDouble
-// Covers rule: genericClose, typeArgList
-// Expected: ACCEPT
-
-class HashMap<K, V> {}
-class Vec<T> {}
-alias Nested = HashMap<K, Vec<V>>;

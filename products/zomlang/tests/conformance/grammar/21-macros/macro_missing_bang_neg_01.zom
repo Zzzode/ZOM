@@ -1,5 +1,0 @@
-// §21.1 Macro invocation missing mandatory bang introducer
-// Covers rule: macroInvocationExpr (NOT token required — absent here)
-// Expected: REJECT
-// ExpectedDiagnostic: line
-let _ = vec marker_without_bang(1, 2, 3);

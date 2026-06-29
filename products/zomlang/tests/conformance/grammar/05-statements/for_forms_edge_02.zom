@@ -1,9 +1,0 @@
-// §4.5 For with expression-list init (comma)
-// Covers rule: forInit, expressionList
-// Expected: ACCEPT
-
-fun f() {
-    let a = 0;
-    let b = 0;
-    for (a = 1, b = 2; a < 10; a = a + 1) {}
-}

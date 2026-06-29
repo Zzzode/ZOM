@@ -1,0 +1,12 @@
+struct Point {
+  public let x: i32;
+  private const y: i32 = 1
+  fun hello() -> unit {
+    print("hello")
+  }
+}
+
+struct Pair<T> {
+  let left: T;
+  const right: T
+}

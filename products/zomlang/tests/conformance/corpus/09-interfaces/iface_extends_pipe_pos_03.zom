@@ -1,0 +1,3 @@
+interface IOReader : Readable + Closable + Disposable {
+    fun read(buf: [u8]) -> i32;
+}

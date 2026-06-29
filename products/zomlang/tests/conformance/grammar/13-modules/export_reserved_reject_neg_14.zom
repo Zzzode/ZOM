@@ -1,5 +1,0 @@
-// §4.2 ExportDeclaration
-// Covers rule: exportSpec
-// Expected: REJECT
-
-export { static, async };

@@ -1,0 +1,2 @@
+#[route::register(get("/api/v1/users"), priority = 10, cache = "dynamic")]
+fun handler();

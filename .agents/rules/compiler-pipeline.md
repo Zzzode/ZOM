@@ -87,7 +87,7 @@ coordination happens via well-defined types.
 - [ ] Postfix operators defined in `PostfixSuffix` are all consumed in the
       `parseUpdateExpression` loop. No postfix operator is handled at a
       different (higher/lower) precedence level.
-- [ ] Every `XFAIL` test under `tests/language/**` has a ticket or tracking
+- [ ] Every `XFAIL` test under `tests/conformance/expectations/ast/**` has a ticket or tracking
       note. An `XFAIL` test whose root cause has been fixed must be upgraded
       (expectation corrected, `XFAIL` marker removed) immediately.
 

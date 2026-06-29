@@ -1,0 +1,5 @@
+section: "§8.2 Nested class declaration inside class body (REJECT: classMember does not include declaration types)"
+covers_rule: "classMember"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

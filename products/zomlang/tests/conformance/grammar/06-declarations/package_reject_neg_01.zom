@@ -1,5 +1,0 @@
-// §4.2 Package
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-package foo.bar;

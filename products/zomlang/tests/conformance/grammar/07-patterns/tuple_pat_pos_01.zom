@@ -1,8 +1,0 @@
-// §4.7 TuplePattern
-// Covers rule: patTuple
-// Expected: ACCEPT
-
-let (x, y) = (1, 2);
-match (p) {
-    (a, b, c) : { print(a + b + c); }
-}

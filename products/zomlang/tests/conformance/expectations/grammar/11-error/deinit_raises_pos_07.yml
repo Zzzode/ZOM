@@ -1,0 +1,5 @@
+section: "§6.4 ClassDeclaration, Deinitializer"
+covers_rule: "classCtor (DEINIT alternative), raisesClause"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

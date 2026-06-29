@@ -1,0 +1,6 @@
+interface NoModifiers {
+    fun bare() -> unit;
+    get x() -> i32;
+    set x(v: i32) -> unit;
+    type T;
+}

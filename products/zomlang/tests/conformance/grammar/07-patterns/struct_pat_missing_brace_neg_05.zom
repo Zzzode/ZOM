@@ -1,8 +1,0 @@
-// §4.7 StructPatternMissingBraceReject
-// Covers rule: patStruct
-// Expected: REJECT
-
-struct S { x: i32, y: i32 }
-match (s) {
-    S x: a : { print(a); }
-}

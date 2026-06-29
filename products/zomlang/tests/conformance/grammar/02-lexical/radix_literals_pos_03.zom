@@ -1,7 +1,0 @@
-// §3.5.5 HexLiteral
-// Covers rule: HEX_LITERAL
-// Expected: ACCEPT
-
-let a = 0xDEAD_BEEF;
-let b = 0xff;
-let c = 0X1A2B3C;

@@ -1,5 +1,0 @@
-// §4.4 Exports
-// Covers rule: exportDecl, exportGroup
-// Expected: ACCEPT
-
-export {Foo, bar, Baz as Qux};

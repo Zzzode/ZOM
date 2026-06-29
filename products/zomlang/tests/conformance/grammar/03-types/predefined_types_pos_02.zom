@@ -1,5 +1,0 @@
-// §4.8 PredefinedTypes
-// Covers rule: predefinedType
-// Expected: ACCEPT
-
-alias OtherBasics = bool | str | char | f32 | f64;

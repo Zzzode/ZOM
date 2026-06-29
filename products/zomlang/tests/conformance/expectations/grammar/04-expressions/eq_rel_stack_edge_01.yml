@@ -1,0 +1,5 @@
+section: "§4.6 Equality + relational combined"
+covers_rule: "equalityExpr / relationalExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

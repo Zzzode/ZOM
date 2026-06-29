@@ -1,0 +1,5 @@
+section: "§3.8 Keywords reserved throw"
+covers_rule: "reservedSyntax"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

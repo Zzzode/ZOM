@@ -1,0 +1,4 @@
+#[inline::always]
+#[test::case]
+#[allow::dead_code]
+fun multi() -> i32 { return 1; }

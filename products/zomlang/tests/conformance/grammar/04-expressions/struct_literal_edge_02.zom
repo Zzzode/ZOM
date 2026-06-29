@@ -1,7 +1,0 @@
-// §4.6 Single identifier struct literal with shorthand + trailing comma
-// Covers rule: structLiteral
-// Expected: ACCEPT
-
-struct Box { x: i32 }
-let x = 1;
-let b = Box { x, };

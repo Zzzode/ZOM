@@ -1,7 +1,0 @@
-// §4.6 Assignment chain (right-assoc)
-// Covers rule: assignmentExpr
-// Expected: ACCEPT
-
-fun f() {
-  a = b = c;
-}

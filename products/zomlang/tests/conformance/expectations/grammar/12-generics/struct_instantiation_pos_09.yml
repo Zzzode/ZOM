@@ -1,0 +1,5 @@
+section: "§12.4 StructInstantiationWithGenericArgs"
+covers_rule: "structLiteral, typeNamed, typeArgList"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

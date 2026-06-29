@@ -1,9 +1,0 @@
-// §7.3 ConcurrentFeatures
-// Covers rule: spawn_detached
-// Expected: ACCEPT
-
-fun fire() {
-    spawn detached {
-        side_effect();
-    }
-}

@@ -1,5 +1,0 @@
-// §4.2 ExportDeclaration
-// Covers rule: exportDecl
-// Expected: ACCEPT
-
-export std::{A as AX, B as BX};

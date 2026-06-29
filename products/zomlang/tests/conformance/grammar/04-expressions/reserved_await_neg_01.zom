@@ -1,5 +1,0 @@
-// §4.6 await reserved (ZOM5002) as unary
-// Covers rule: unaryExpr
-// Expected: REJECT
-
-let x = await p;

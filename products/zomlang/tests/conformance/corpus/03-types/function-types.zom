@@ -1,0 +1,1 @@
+let h: <T>(x: T) -> T raises Err = fn;

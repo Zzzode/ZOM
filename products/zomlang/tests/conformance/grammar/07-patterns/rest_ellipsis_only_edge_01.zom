@@ -1,7 +1,0 @@
-// §4.7 RestOnlyInTuple
-// Covers rule: patRest, patTuple
-// Expected: ACCEPT
-
-match (t) {
-    (...) : { print("rest only"); }
-}

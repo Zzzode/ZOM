@@ -1,5 +1,0 @@
-// §4.2 ImportDeclaration
-// Covers rule: importGroup
-// Expected: REJECT
-
-import std::{*};

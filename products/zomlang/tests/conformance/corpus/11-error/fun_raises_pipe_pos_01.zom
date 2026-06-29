@@ -1,0 +1,1 @@
+fun foo() -> i32 raises E1 | E2;

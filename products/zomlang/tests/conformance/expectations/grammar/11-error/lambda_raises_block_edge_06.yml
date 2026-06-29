@@ -1,0 +1,5 @@
+section: "§4.5 Lambda with multi raises and body block"
+covers_rule: "lambdaExpr, raisesClause"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

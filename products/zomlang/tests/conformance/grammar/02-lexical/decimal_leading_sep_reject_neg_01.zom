@@ -1,5 +1,0 @@
-// §3.5.1 DecimalLiteral
-// Covers rule: DECIMAL_LITERAL
-// Expected: REJECT
-
-let x = _123;

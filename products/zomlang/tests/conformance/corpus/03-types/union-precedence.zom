@@ -1,0 +1,2 @@
+alias Chain = A | B | C;
+alias Precedence = A | B & C;

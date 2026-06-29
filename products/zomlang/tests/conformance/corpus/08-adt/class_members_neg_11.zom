@@ -1,0 +1,3 @@
+struct S {
+    static mutating fun f() -> unit { }
+}

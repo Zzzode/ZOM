@@ -1,0 +1,3 @@
+struct S<T> where T: Eq {
+    val: T;
+}

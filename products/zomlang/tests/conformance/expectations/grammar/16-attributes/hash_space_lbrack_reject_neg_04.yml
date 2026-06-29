@@ -1,0 +1,5 @@
+section: "§16 Compound Hash-Bracket Token (Space REJECT)"
+covers_rule: "HASH_LBRACK compound token"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,8 @@
+fun testBreakContinue() {
+  loop1: while (true) {
+    break;
+    continue;
+    break loop1;
+    continue loop1;
+  }
+}

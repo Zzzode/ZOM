@@ -1,0 +1,5 @@
+section: "§4.5 Spawn with name-only priority (requires call form)"
+covers_rule: "spawnModifier (checkSpawnModifierName predicate)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

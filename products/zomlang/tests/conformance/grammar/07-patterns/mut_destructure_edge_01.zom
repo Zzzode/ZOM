@@ -1,6 +1,0 @@
-// §4.7 MutDestructure
-// Covers rule: letDeclaration
-// Expected: ACCEPT
-
-mut (a, b) = (1, 2);
-mut [x, y, ...rest] = [1, 2, 3, 4];

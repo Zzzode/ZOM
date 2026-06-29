@@ -1,0 +1,5 @@
+section: "§4.2 ExportDeclaration"
+covers_rule: "exportDecl"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,5 @@
+section: "§8.4 InterfaceDeclaration"
+covers_rule: "interfaceDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

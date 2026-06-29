@@ -1,0 +1,5 @@
+section: "§16 Inner Attribute REJECT"
+covers_rule: "outerAttribute, HASH_LBRACK vs HASH_BANG_LBRACK"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

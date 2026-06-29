@@ -1,0 +1,4 @@
+extern "C" {
+    fun printf(fmt: str) -> i32;
+    fun free(p: u64);
+}

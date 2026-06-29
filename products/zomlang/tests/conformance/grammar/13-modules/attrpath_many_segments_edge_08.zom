@@ -1,5 +1,0 @@
-// §4.2 ImportDeclaration
-// Covers rule: attrPath
-// Expected: ACCEPT
-
-import very::deeply::nested::module::path::name as mod;

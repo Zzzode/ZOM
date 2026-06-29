@@ -1,0 +1,6 @@
+interface Collection {
+    type Item;
+    type Iter<T>;
+    type Error : Error;
+    type State = Closed | Open;
+}

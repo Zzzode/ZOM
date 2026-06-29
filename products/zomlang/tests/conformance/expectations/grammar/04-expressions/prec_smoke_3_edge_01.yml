@@ -1,0 +1,5 @@
+section: "§4.6 Call / member / index + optional chaining + postfix"
+covers_rule: "callExpr / postfixExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

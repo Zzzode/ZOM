@@ -1,0 +1,5 @@
+fun f() {
+    let x = 1;
+    mut y = 2;
+    y = x;
+}

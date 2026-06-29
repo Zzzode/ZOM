@@ -1,8 +1,0 @@
-// §4.7 LiteralBoolPattern
-// Covers rule: patLiteral, checkBoolLiteral
-// Expected: ACCEPT
-
-match (b) {
-    true : { print("T"); }
-    false : { print("F"); }
-}

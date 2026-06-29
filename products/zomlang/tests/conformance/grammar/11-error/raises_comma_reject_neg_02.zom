@@ -1,5 +1,0 @@
-// §4.8 FunctionType, Raises clause pipe-only
-// Covers rule: typeList
-// Expected: REJECT
-
-fun bad() -> void raises A, B, C;

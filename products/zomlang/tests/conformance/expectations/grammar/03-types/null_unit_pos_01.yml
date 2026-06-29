@@ -1,0 +1,5 @@
+section: "§4.8 Null and Unit types"
+covers_rule: "predefinedType (NULL, UNIT)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,1 @@
+alias Q = std::collections::HashMap;

@@ -1,0 +1,2 @@
+#[serde.rename]
+fun dot_attr();

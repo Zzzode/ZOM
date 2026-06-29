@@ -1,9 +1,0 @@
-// §21.4 Multi-trait derive: #[zom::derive(Debug, Clone, Copy)] before struct
-// Covers rule: outerAttribute, attr (genericMultiSeg + attrInput comma list)
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-#[zom::derive(Debug, Clone, Copy)]
-struct Point {
-    x: i32,
-    y: i32,
-}

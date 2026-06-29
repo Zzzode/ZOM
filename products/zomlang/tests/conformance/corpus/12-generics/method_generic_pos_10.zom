@@ -1,0 +1,3 @@
+class C<T> {
+    fun map<U>(f: fun(T) -> U) -> C<U> { panic(); }
+}

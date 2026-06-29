@@ -1,0 +1,5 @@
+section: "§4.6 standalone ! BottomType REJECT (no such token in expression)"
+covers_rule: "unaryExpr"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

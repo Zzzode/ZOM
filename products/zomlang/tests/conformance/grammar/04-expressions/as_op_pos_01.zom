@@ -1,5 +1,0 @@
-// §4.6 as operator (relational tier 10)
-// Covers rule: relationalExpr
-// Expected: ACCEPT
-
-let x = v as i32;

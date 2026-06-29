@@ -1,0 +1,1 @@
+let b = typeof (x as i32);

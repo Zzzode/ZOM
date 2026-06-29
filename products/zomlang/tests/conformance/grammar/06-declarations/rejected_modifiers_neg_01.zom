@@ -1,5 +1,0 @@
-// §6.1 ModifierList
-// Covers rule: rejected modifiers (sealed)
-// Expected: REJECT
-
-sealed class C {}

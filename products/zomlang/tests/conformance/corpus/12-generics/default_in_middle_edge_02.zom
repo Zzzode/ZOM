@@ -1,0 +1,1 @@
+fun f<T, U = i32, V>(a: T, b: U, c: V) -> (T, U, V) { return (a, b, c); }

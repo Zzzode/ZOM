@@ -1,5 +1,0 @@
-// §4.6 Range ..< not a binary operator
-// Covers rule: shiftExpr / additiveExpr
-// Expected: REJECT
-
-let x = a ..< b;

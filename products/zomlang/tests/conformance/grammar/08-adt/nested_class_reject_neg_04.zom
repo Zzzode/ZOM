@@ -1,8 +1,0 @@
-// §8.2 Nested class declaration inside class body (REJECT: classMember does not include declaration types)
-// Covers rule: classMember
-// Expected: REJECT
-
-class Outer {
-    class Inner {
-    }
-}

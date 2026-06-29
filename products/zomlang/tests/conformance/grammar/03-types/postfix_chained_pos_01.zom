@@ -1,5 +1,0 @@
-// §4.8 PostfixType (Optional)
-// Covers rule: postfixType (typeOptional)
-// Expected: ACCEPT
-
-alias OptStr = str?;

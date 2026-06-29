@@ -1,5 +1,0 @@
-// §4.6 as + typeof chain
-// Covers rule: relationalExpr / unaryExpr
-// Expected: ACCEPT
-
-let b = typeof (x as i32);

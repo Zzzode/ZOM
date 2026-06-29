@@ -1,0 +1,5 @@
+section: "§3.9 Tuple vs Paren Type (1-element disambiguation)"
+covers_rule: "tupleType (G3 disambiguation — trailing comma required for 1-tuple)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

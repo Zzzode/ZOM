@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "checkModifierList (ABSTRACT + STATIC cannot coexist predicate)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

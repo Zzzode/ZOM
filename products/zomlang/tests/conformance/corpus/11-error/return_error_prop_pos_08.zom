@@ -1,0 +1,1 @@
+fun call() raises X { return fetch()?!; }

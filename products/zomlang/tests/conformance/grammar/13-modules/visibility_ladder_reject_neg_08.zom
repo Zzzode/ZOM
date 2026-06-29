@@ -1,5 +1,0 @@
-// §4.2 ExportDeclaration
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-export pub(crate) fun foo() {}

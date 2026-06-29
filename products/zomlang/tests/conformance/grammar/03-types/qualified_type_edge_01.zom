@@ -1,5 +1,0 @@
-// §4.8 Qualified generic type: std::collections::HashMap<K, V>
-// Covers rule: atomType (typeQualified + typeArgList)
-// Expected: ACCEPT
-
-alias QG = std::collections::HashMap<i32, str>;

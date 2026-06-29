@@ -1,7 +1,0 @@
-// §4.5 Single-statement if body (non-block)
-// Covers rule: ifStatement
-// Expected: ACCEPT
-
-fun f(x: i32) {
-    if (x > 0) return;
-}

@@ -1,0 +1,6 @@
+fun f() {
+  let a = x++;
+  let b = y--;
+  let c = z?!;
+  let d = w!!;
+}

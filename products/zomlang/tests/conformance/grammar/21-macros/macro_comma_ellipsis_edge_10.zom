@@ -1,9 +1,0 @@
-// §21.3.1 Macro pattern trailing ",..." — variadic rest match
-// Covers rule: macroPattern (COMMA ELLIPSIS tail terminal after captures)
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-macro count! {
-    ( $first:expr, $rest:expr, ... ) => {
-        $first + count!($rest, ...)
-    }
-}

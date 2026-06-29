@@ -1,0 +1,5 @@
+section: "§6.1 ModifierList"
+covers_rule: "checkModifierList (STATIC + MUTATING)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

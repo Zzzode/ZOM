@@ -65,84 +65,6 @@ function(add_ztest_unit_test TEST_NAME TEST_SOURCE)
   endif()
 endfunction()
 
-# Function to add a lit-based AST test
-# Usage: add_lit_ast_test(test_name source_file)
-function(add_lit_ast_test TEST_NAME SOURCE_FILE)
-  # Find lit executable if not already found
-  if(NOT DEFINED LIT_EXECUTABLE OR NOT LIT_EXECUTABLE)
-    find_program(LIT_EXECUTABLE NAMES lit)
-    if(NOT LIT_EXECUTABLE)
-      message(FATAL_ERROR "LLVM lit executable not found. Please install lit first")
-    endif()
-  endif()
-
-  set(TEST_FULL_NAME "ast-${TEST_NAME}")
-
-  # Create test that runs lit on the source file
-  add_test(
-    NAME ${TEST_FULL_NAME}
-    COMMAND ${LIT_EXECUTABLE} -v --timeout=20 ${SOURCE_FILE}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
-  )
-
-  # Set test properties
-  set(TEST_ENV "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
-  if(ZOM_ENABLE_COVERAGE)
-    string(APPEND TEST_ENV
-      ";ZOM_ENABLE_COVERAGE=ON"
-    )
-  endif()
-
-  set_tests_properties(${TEST_FULL_NAME} PROPERTIES
-    LABELS "conformance;conformance-ast;ast;lit;specification"
-    TIMEOUT 30
-    ENVIRONMENT "${TEST_ENV}"
-  )
-endfunction()
-
-# Legacy function for backward compatibility (deprecated)
-# Usage: add_language_test(test_name source_file)
-function(add_language_test TEST_NAME SOURCE_FILE)
-  message(DEPRECATION "add_language_test is deprecated. Use add_lit_ast_test instead.")
-  add_lit_ast_test(${TEST_NAME} ${SOURCE_FILE})
-endfunction()
-
-# Function to add a lit-based AST test with FileCheck validation
-# Usage: add_lit_ast_test_with_check(test_name source_file)
-# Note: The source file should contain CHECK directives for validation
-function(add_lit_ast_test_with_check TEST_NAME SOURCE_FILE)
-  # Find lit executable if not already found
-  if(NOT DEFINED LIT_EXECUTABLE OR NOT LIT_EXECUTABLE)
-    find_program(LIT_EXECUTABLE NAMES lit)
-    if(NOT LIT_EXECUTABLE)
-      message(FATAL_ERROR "LLVM lit executable not found. Please install lit first")
-    endif()
-  endif()
-
-  set(TEST_FULL_NAME "lit-${TEST_NAME}")
-
-  # Create test that runs lit with FileCheck validation
-  add_test(
-    NAME ${TEST_FULL_NAME}
-    COMMAND ${LIT_EXECUTABLE} -v --timeout=20 ${SOURCE_FILE}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
-  )
-
-  # Set test properties
-  set(TEST_ENV "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
-  if(ZOM_ENABLE_COVERAGE)
-    string(APPEND TEST_ENV
-      ";ZOM_ENABLE_COVERAGE=ON"
-    )
-  endif()
-
-  set_tests_properties(${TEST_FULL_NAME} PROPERTIES
-    LABELS "conformance;conformance-ast;ast;lit;filecheck;specification"
-    TIMEOUT 30
-    ENVIRONMENT "${TEST_ENV}"
-  )
-endfunction()
-
 # Function to add a regression test
 # Usage: add_regression_test(test_name source_file issue_number)
 function(add_regression_test TEST_NAME SOURCE_FILE ISSUE_NUMBER)
@@ -183,29 +105,6 @@ function(add_performance_test TEST_NAME EXECUTABLE_TARGET)
     LABELS "performance;benchmark"
     TIMEOUT 300  # 5 minutes for performance tests
   )
-endfunction()
-
-# Function to discover and add all .zom files in a directory as lit AST tests
-# Usage: add_lit_ast_tests_from_directory(directory_path)
-function(add_lit_ast_tests_from_directory DIRECTORY_PATH)
-  file(GLOB_RECURSE ZOM_FILES "${DIRECTORY_PATH}/*.zom")
-
-  foreach(ZOM_FILE ${ZOM_FILES})
-    # Get relative path from the directory
-    file(RELATIVE_PATH REL_PATH "${DIRECTORY_PATH}" "${ZOM_FILE}")
-
-    # Create test name from relative path
-    string(REPLACE "/" "-" TEST_NAME "${REL_PATH}")
-    string(REPLACE ".zom" "" TEST_NAME "${TEST_NAME}")
-
-    # Check if the file contains CHECK directives
-    file(READ "${ZOM_FILE}" ZOM_CONTENT)
-    if(ZOM_CONTENT MATCHES "// CHECK")
-      add_lit_ast_test_with_check("${TEST_NAME}" "${ZOM_FILE}")
-    else()
-      add_lit_ast_test("${TEST_NAME}" "${ZOM_FILE}")
-    endif()
-  endforeach()
 endfunction()
 
 # Function to discover and add all *-test.cc files in a directory as ztest unit tests

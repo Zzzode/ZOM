@@ -1,0 +1,5 @@
+section: "§16 Marker Declaration REJECT per 24-truth"
+covers_rule: "moduleItem, marker declaration forms not allowed"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

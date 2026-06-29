@@ -1,0 +1,5 @@
+section: "§4.5 Return without expression (void return)"
+covers_rule: "returnStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,4 @@
+// Test closure with capture clause
+let captureClosure = fun () use [x, &y, this] {
+  x
+}

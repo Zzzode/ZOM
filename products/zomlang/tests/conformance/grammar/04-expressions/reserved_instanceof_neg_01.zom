@@ -1,5 +1,0 @@
-// §4.6 instanceof reserved (ZOM5008)
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-let b = x instanceof Object;

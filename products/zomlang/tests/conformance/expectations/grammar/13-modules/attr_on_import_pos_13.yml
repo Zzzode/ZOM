@@ -1,0 +1,5 @@
+section: "§4.2 ImportDeclaration"
+covers_rule: "moduleItem"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

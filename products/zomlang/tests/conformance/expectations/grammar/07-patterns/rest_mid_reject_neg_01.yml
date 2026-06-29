@@ -1,0 +1,5 @@
+section: "§4.7 RestMustBeLastInTuple"
+covers_rule: "patTuple, patRest"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

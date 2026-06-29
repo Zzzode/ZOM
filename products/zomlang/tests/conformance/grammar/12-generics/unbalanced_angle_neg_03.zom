@@ -1,5 +1,0 @@
-// §12.1 UnbalancedClosingAngle
-// Covers rule: typeParameters, genericClose
-// Expected: REJECT
-
-fun f<T, U>>(a: T, b: U) -> unit { return unit; }

@@ -1,0 +1,4 @@
+/* this comment
+contains U+2028 LS
+and U+2029 PS as separators */
+let x = 5;

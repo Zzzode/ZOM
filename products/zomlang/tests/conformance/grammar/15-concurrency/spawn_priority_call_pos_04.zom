@@ -1,8 +1,0 @@
-// §7.3 ConcurrentFeatures
-// Covers rule: spawn_priority_call
-// Expected: ACCEPT
-
-fun main() {
-    let hi = spawn priority(high) do_work();
-    let lo = spawn priority(low) do_work();
-}

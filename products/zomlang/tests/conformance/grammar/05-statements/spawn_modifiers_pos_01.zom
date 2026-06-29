@@ -1,7 +1,0 @@
-// §4.5 SpawnStatement with detached modifier
-// Covers rule: spawnStatement
-// Expected: ACCEPT
-
-fun f() {
-    spawn detached { let x = 1; };
-}

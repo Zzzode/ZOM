@@ -1,0 +1,5 @@
+section: "§4.5 Dangling else — else binds to nearest if"
+covers_rule: "ifStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

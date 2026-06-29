@@ -32,8 +32,8 @@ Missing any one of them is a bug, even if the other four agree.
 2. Update the EBNF in chapter 17 (3).
 3. Update the precedence / semantics in chapter 04 (4) *if* it involves an operator.
 4. Update `ast/kinds.h` + lexer + parser (5) to match (1-4).
-5. Add or regenerate a lit test under `tests/language/` that FileChecks the
-   resulting AST / diagnostic.
+5. Add or regenerate a lit expectation under `tests/conformance/expectations/ast/`
+   with a matching source under `tests/conformance/corpus/`.
 6. Run `/skill spec-alignment` to confirm no regressions in the other 40 constructs.
 
 **Do not do (5) without (1-4).** Do not do (1-4) without (5).
@@ -55,7 +55,7 @@ The spec is **not a design wishlist or a product roadmap.**
 ### Hard Rule for Wishful Spec
 
 > If a subsection of the spec has no corresponding parser acceptance test under
-> `tests/language/` and no parser path that produces it, the subsection must be
+> `tests/conformance/` and no parser path that produces it, the subsection must be
 > re-written to honestly describe what the parser *does* accept today, OR the
 > construct must be fully implemented in the same PR.
 

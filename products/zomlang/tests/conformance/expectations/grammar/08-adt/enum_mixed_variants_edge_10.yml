@@ -1,0 +1,5 @@
+section: "§8.3 Enum single variant (edge: variant list length = 1)"
+covers_rule: "enumVariantList"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

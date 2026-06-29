@@ -1,0 +1,1 @@
+alias AndOp = A && B;

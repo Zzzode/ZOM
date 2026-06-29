@@ -1,7 +1,0 @@
-// §8.4 Interface method with blockBody (REJECT: interfaceMethod enforces SEMICOLON)
-// Covers rule: interfaceMethod
-// Expected: REJECT
-
-interface Foo {
-    fun bar() -> unit { }
-}

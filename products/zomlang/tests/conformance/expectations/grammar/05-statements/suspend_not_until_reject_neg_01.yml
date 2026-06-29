@@ -1,0 +1,5 @@
+section: "§4.5 Suspend with wrong soft keyword (should be 'until')"
+covers_rule: "suspendStatement (checkSuspendUntil predicate)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

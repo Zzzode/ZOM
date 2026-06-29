@@ -1,5 +1,0 @@
-// §4.6 typeof typeof (double)
-// Covers rule: unaryExpr
-// Expected: ACCEPT
-
-let t = typeof typeof x;

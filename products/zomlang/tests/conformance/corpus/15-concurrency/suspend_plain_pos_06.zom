@@ -1,0 +1,5 @@
+fun coop() {
+    let a = 1;
+    suspend;
+    let b = 2;
+}

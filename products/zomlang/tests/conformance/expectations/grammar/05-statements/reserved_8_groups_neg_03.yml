@@ -1,0 +1,5 @@
+section: "§4.5 Reserved syntax ZOM5003: var"
+covers_rule: "reservedSyntax"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

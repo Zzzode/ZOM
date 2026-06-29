@@ -1,7 +1,0 @@
-// §4.6 Comma separated expression list context
-// Covers rule: expression (exprComma)
-// Expected: ACCEPT
-
-fun f() {
-  let _ = (a, b, c);
-}

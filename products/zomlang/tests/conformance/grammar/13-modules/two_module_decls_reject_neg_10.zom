@@ -1,6 +1,0 @@
-// §4.1 ModuleDeclaration
-// Covers rule: moduleDeclaration
-// Expected: REJECT
-
-module foo;
-module bar;

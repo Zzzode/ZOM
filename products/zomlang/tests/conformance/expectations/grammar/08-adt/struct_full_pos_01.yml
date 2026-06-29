@@ -1,0 +1,7 @@
+section: "§8.1 StructDeclaration"
+covers_rule: "structDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes:
+  - "NOTE: struct bodies do not accept static or const value members. Keep these"
+  - "constants at module scope."

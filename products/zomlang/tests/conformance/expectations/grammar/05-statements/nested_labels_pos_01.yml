@@ -1,0 +1,5 @@
+section: "§4.5 Chained (nested) labels"
+covers_rule: "labeledStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,5 @@
+section: "§4.8 FunctionType, Raises Never"
+covers_rule: "raisesClause, neverType"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

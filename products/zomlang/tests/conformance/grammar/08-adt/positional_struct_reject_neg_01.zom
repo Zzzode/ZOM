@@ -1,5 +1,0 @@
-// §8.1 StructDeclaration (G6: positional/newtype struct REJECT)
-// Covers rule: structDeclaration
-// Expected: REJECT
-
-struct Positional(i32, str);

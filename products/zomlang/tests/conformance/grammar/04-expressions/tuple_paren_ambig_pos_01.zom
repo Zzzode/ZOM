@@ -1,6 +1,0 @@
-// §4.6 TupleLiteral disambiguation G3 — 1-tuple
-// Covers rule: tupleLiteral
-// Expected: ACCEPT
-
-let t1 = (a,);
-let t2 = (a, b);

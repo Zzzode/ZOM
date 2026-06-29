@@ -1,5 +1,0 @@
-// §4.6 Power right-assoc
-// Covers rule: powerExpr
-// Expected: ACCEPT
-
-let x = 2 ** 3 ** 4;

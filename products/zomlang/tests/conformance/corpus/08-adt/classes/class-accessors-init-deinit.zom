@@ -1,0 +1,10 @@
+class C {
+  public static let x: i32 = 1;
+  private const y: str = "s";
+
+  init(n: i32) { return; }
+  deinit { ; }
+
+  get value() -> i32 { return x; }
+  set value(n: i32) { return; }
+}

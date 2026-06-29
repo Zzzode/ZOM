@@ -1,0 +1,5 @@
+section: "§4.6 Complex call member index chain with optional chaining"
+covers_rule: "callExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

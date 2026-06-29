@@ -1,5 +1,0 @@
-// §4.8 ObjectType
-// Covers rule: atomType (typeObject)
-// Expected: ACCEPT
-
-alias Point = { x: i32, y: i32 };

@@ -1,7 +1,0 @@
-// §7.3 ConcurrentFeatures
-// Covers rule: spawn_blocking
-// Expected: ACCEPT
-
-fun read_file(path: String) -> String {
-    return spawn blocking read_sync(path);
-}

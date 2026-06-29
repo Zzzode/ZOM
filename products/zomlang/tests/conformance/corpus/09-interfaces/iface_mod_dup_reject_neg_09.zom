@@ -1,0 +1,3 @@
+interface BadIface {
+    public public fun dup() -> unit;
+}

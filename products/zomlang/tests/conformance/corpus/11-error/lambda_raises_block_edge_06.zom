@@ -1,0 +1,1 @@
+let h = (a: i32) -> i32 raises E1 | E2 | E3 => { return a * 2; };

@@ -1,0 +1,7 @@
+let a = null;
+let b = true;
+let c = false;
+let d = 42;
+let e = "hello";
+let f = 'x';
+let g = this;

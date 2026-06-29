@@ -1,0 +1,5 @@
+section: "§16 Comment Inside Attribute Brackets"
+covers_rule: "outerAttribute, comment"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

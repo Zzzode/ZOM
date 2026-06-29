@@ -1,0 +1,5 @@
+let a = +x;
+let b = -y;
+let c = !flag;
+let d = ~mask;
+let e = typeof v;

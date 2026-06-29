@@ -1,0 +1,5 @@
+section: "§4.5 If without parens around condition"
+covers_rule: "ifStatement"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

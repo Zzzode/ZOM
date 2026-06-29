@@ -1,7 +1,0 @@
-// §8.3 EnumVariant (G6: brace enum variant REJECT)
-// Covers rule: enumVariant
-// Expected: REJECT
-
-enum Shape {
-    Point { x: i32, y: i32 },
-}

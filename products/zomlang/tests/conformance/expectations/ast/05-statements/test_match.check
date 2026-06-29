@@ -1,0 +1,2 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/test_match.zom | %FileCheck %s
+// CHECK: {"root":8,"nodes":[{"id":1,"kind":282,"payload":[0,0,0]},{"id":2,"kind":130,"payload":[2,0,0]},{"id":3,"kind":228,"payload":[2,0,0]},{"id":4,"kind":233,"payload":[3,0,0]},{"id":5,"kind":226,"payload":[0,1,0]},{"id":6,"kind":277,"payload":[1,1,0]},{"id":7,"kind":233,"payload":[6,0,0]},{"id":8,"kind":368,"payload":[1,0,1]}]}

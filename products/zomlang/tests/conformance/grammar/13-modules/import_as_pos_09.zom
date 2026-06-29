@@ -1,5 +1,0 @@
-// §4.2 ImportDeclaration
-// Covers rule: importSpec
-// Expected: ACCEPT
-
-import net::http::client as hc;

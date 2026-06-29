@@ -1,0 +1,5 @@
+section: "§20.1 Unsafe block whose value is its final expression (tail expr, no semicolon)"
+covers_rule: "unsafeBlockExpr (trailing expression alt — statement* expression)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

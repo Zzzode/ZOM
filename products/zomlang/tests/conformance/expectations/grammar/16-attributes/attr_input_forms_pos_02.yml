@@ -1,0 +1,5 @@
+section: "§16.2 Attribute Input"
+covers_rule: "attrInput"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

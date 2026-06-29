@@ -1,5 +1,0 @@
-// §3.8 Keywords reserved async
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-async fun f() {}

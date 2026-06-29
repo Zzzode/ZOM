@@ -1,0 +1,5 @@
+section: "§20.2 Non-\"C\" ABI string: \"system\" (platform-default calling convention)"
+covers_rule: "checkExternAbiFormat (permitted set member \"system\")"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

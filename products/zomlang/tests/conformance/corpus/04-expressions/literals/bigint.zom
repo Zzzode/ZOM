@@ -1,0 +1,5 @@
+// Test for BigInt suffix logic
+let a = 123n;
+let b = 0x123n;
+let c = 0b101n;
+let d = 0o123n;

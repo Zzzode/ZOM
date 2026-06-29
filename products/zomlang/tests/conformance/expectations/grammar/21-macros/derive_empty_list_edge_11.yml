@@ -1,0 +1,5 @@
+section: "§21.4 Near-empty derive list: #[zom::derive(Marker)] single-trait derive"
+covers_rule: "outerAttribute, attr (genericMultiSeg + single-identifier arg)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

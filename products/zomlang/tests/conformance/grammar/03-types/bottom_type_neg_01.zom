@@ -1,5 +1,0 @@
-// §4.8 BottomType: ! standalone token REJECTED per 24-truth
-// Covers rule: atomType (! BottomType NOT in grammar; BANG is unknown at type position)
-// Expected: REJECT
-
-alias Bot = !;

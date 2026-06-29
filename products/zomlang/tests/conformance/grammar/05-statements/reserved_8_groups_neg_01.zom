@@ -1,7 +1,0 @@
-// §4.5 Reserved syntax ZOM5001: throw
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-fun f() {
-    throw 1;
-}

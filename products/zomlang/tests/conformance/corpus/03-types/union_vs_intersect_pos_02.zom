@@ -1,0 +1,1 @@
+alias Prec = A & B | C;

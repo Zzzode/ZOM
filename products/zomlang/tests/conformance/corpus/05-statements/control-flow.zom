@@ -1,0 +1,29 @@
+fun testControlFlow() {
+  let x = 10;
+
+  // If statement
+  if (x > 5) {
+    x = x - 1;
+  } else {
+    x = x + 1;
+  }
+
+  // While statement
+  while (x > 0) {
+    x = x - 1;
+  }
+
+  // For statement
+  for (let i = 0; i < 10; i++) {
+    x = x + i;
+  }
+
+  // Match statement
+  match (x) {
+    when 0 => {
+      x = 100;
+    }
+    when 1 => x = 200;
+    default => x = 0;
+  }
+}

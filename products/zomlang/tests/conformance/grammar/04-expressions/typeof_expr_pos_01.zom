@@ -1,5 +1,0 @@
-// §4.6 typeof expression (unary tier 5)
-// Covers rule: unaryExpr
-// Expected: ACCEPT
-
-let t = typeof 123;

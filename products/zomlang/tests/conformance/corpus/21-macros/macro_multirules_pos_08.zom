@@ -1,0 +1,8 @@
+macro choose! {
+    ( $a:expr ) => {
+        $a
+    };
+    ( $a:expr, $b:expr ) => {
+        if cond() { $a } else { $b }
+    }
+}

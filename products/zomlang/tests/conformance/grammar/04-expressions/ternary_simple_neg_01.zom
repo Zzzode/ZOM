@@ -1,5 +1,0 @@
-// §4.6 Missing ternary colon
-// Covers rule: conditionalExpr
-// Expected: REJECT
-
-let x = a ? b;

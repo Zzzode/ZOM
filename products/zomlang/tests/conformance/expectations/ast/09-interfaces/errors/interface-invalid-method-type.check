@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/errors/interface-invalid-method-type.zom 2>&1 | %FileCheck %s
+// CHECK: Error [ZOM2053]: Property or signature expected
+// CHECK:   --> {{.*interface-invalid-method-type.zom}}:3:22
+// CHECK:   |
+// CHECK: 3 | interface Drawable { draw(): unit; }
+// CHECK:   |                      ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

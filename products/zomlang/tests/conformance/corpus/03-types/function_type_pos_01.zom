@@ -1,0 +1,1 @@
+alias Fn = (i32, str) -> bool;

@@ -1,7 +1,0 @@
-// §3.5.4 OctalLiteral
-// Covers rule: OCTAL_LITERAL
-// Expected: ACCEPT
-
-let a = 0o755;
-let b = 0o123_456;
-let c = 0O77;

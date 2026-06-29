@@ -1,7 +1,0 @@
-// §7.3 ConcurrentFeatures
-// Covers rule: suspend_until
-// Expected: ACCEPT
-
-fun wait(flag: Bool) {
-    suspend until *flag;
-}

@@ -1,7 +1,0 @@
-// §4.2 Interfaces
-// Covers rule: interfaceDeclaration (EXTENDS typeList with PIPE sep G9)
-// Expected: ACCEPT
-
-interface IOReader : Readable + Closable + Disposable {
-    fun read(buf: [u8]) -> i32;
-}

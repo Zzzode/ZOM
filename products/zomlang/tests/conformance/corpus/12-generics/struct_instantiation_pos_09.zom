@@ -1,0 +1,2 @@
+struct Foo<T, U> { x: T; y: U; }
+fun mk() -> Foo<i32, str?> { return Foo { x: 1, y: null }; }

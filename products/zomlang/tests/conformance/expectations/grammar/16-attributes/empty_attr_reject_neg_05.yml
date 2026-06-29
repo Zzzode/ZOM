@@ -1,0 +1,5 @@
+section: "§16 Empty Attribute REJECT"
+covers_rule: "outerAttribute, requires attributePath"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

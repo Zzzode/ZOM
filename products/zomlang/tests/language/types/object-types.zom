@@ -1,6 +1,0 @@
-// RUN: %zomc compile --dump-ast %s | %FileCheck %s
-
-alias Obj = { x: i32, y?: str };
-
-
-// CHECK: {"root":3,"nodes":[{"id":1,"kind":287,"payload":[1,0,0]},{"id":2,"kind":233,"payload":[1,0,0]},{"id":3,"kind":368,"payload":[1,0,0]}]}

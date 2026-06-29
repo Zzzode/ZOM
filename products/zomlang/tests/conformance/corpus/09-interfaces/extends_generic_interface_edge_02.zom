@@ -1,0 +1,3 @@
+interface Numeric<T> : Comparable<T> + Hash<T> {
+    fun add(other: T) -> T;
+}

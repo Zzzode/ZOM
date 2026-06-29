@@ -1,0 +1,5 @@
+section: "§6.2 ClassDecl"
+covers_rule: "classDecl, extendsClause, standaloneImplDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

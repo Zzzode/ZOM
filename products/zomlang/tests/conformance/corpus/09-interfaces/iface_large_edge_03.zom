@@ -1,0 +1,16 @@
+interface LargeIface {
+    type Item;
+    type Iter;
+    type Error : Error;
+    fun size() -> u64;
+    fun get(i: u64) -> Item;
+    fun set(i: u64, v: Item) -> unit;
+    fun contains(v: Item) -> bool;
+    fun find(pred: (Item) -> bool) -> i64;
+    fun map<U>(f: (Item) -> U) -> [U];
+    fun filter(pred: (Item) -> bool) -> [Item];
+    fun reduce<A>(acc: A, f: (A, Item) -> A) -> A;
+    get isEmpty() -> bool;
+    get length() -> u64;
+    set length(v: u64) -> unit;
+}

@@ -1,0 +1,5 @@
+section: "§4.6 Call / Member / Index chain L-R"
+covers_rule: "callExpr (exprCall / exprMember / exprIndex)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

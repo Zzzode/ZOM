@@ -1,0 +1,4 @@
+fun f() -> i32 {
+    debugger;
+    return 42;
+}

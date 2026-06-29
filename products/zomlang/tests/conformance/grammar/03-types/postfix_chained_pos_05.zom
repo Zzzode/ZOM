@@ -1,5 +1,0 @@
-// §4.8 PostfixType (2D array)
-// Covers rule: postfixType
-// Expected: ACCEPT
-
-alias Matrix = [[i32]];

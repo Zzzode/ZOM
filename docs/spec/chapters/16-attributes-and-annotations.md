@@ -2442,16 +2442,16 @@ must use the same product-scoped hierarchy when introduced.
 
 | Test suite | Approx. LOC | Coverage goal | Passing gate |
 |---|---:|---|---|
-| `products/zomlang/tests/language/attributes/parser-attr-*.zom` | 900 | Every production in EBNF A-001...A-026; every ZOM0601..ZOM0604, ZOM0617 error case from §16.15; formatter round-trip of `@`-sugar. | CI (parse success + AST dump diff + pretty-print round-trip). |
-| `products/zomlang/tests/language/attributes/binder-attr-*.zom` | 500 | Namespace resolution (zom::, std::marker::, dep::*::*); shadowing; root-ns disambiguation `::`. | CI. |
-| `products/zomlang/tests/language/attributes/checker-s1-wff-*.zom` | 600 | Every Tier-0 + Tier-1 ArgsSchema + target; error cases in 16.15 cases 5-9. | CI. |
-| `products/zomlang/tests/language/attributes/checker-s2-lattice-*.zom` | 400 | R0-R9 edge reachability; user-marker cycles (ZOM0615); I2 staging-invariant check (macro expansion + lattice closure equivalence). | CI + randomized nightly (fuzz 10 000 random marker-bound DAGs). |
-| `products/zomlang/tests/language/attributes/checker-s3-coherence-*.zom` | 400 | ZOM0710..ZOM0712; `unsafe impl Shared for Mutex<T>` override accepted; missing-unsafe -> ZOM0751. | CI. |
-| `products/zomlang/tests/language/attributes/checker-s4-gates-*.zom` | 1 500 | G1-G6 gates. Each gate has positive and negative tests; each includes the exact diagnostic snippet from §16.15. `sanitize="suspend"` runtime-test companion for G4. | CI + sanitizer nightly (ASAN, TSAN, SUSPEND-SAN). |
-| `products/zomlang/tests/language/attributes/macro-attr-*.zom` | 900 | `marker M = A + B` structural; proc-macro `Macro` trait contracts; OOM/timeout/cycle (ZOM0680..ZOM0684). Determinism test: 32 parallel runs on the same input must produce identical TokenStream output hashes. | CI. Determinism + sanitizer nightly. |
-| `products/zomlang/tests/language/attributes/codegen-attr-*.zom` | 400 | `repr(C)` layout assertions; `no_mangle` / `link_name` symbol inspection; marker zero-cost: grep LLVM IR for *absence* of marker-related metadata; RUNTIME_REIFIED `.zom_meta` section content. | CI + cross-target nightly (x86_64-linux, arm64-darwin, riscv64-linux). |
+| `products/zomlang/tests/conformance/corpus/16-attributes/parser-attr-*.zom` | 900 | Every production in EBNF A-001...A-026; every ZOM0601..ZOM0604, ZOM0617 error case from §16.15; formatter round-trip of `@`-sugar. | CI (parse success + AST dump diff + pretty-print round-trip). |
+| `products/zomlang/tests/conformance/corpus/16-attributes/binder-attr-*.zom` | 500 | Namespace resolution (zom::, std::marker::, dep::*::*); shadowing; root-ns disambiguation `::`. | CI. |
+| `products/zomlang/tests/conformance/corpus/16-attributes/checker-s1-wff-*.zom` | 600 | Every Tier-0 + Tier-1 ArgsSchema + target; error cases in 16.15 cases 5-9. | CI. |
+| `products/zomlang/tests/conformance/corpus/16-attributes/checker-s2-lattice-*.zom` | 400 | R0-R9 edge reachability; user-marker cycles (ZOM0615); I2 staging-invariant check (macro expansion + lattice closure equivalence). | CI + randomized nightly (fuzz 10 000 random marker-bound DAGs). |
+| `products/zomlang/tests/conformance/corpus/16-attributes/checker-s3-coherence-*.zom` | 400 | ZOM0710..ZOM0712; `unsafe impl Shared for Mutex<T>` override accepted; missing-unsafe -> ZOM0751. | CI. |
+| `products/zomlang/tests/conformance/corpus/16-attributes/checker-s4-gates-*.zom` | 1 500 | G1-G6 gates. Each gate has positive and negative tests; each includes the exact diagnostic snippet from §16.15. `sanitize="suspend"` runtime-test companion for G4. | CI + sanitizer nightly (ASAN, TSAN, SUSPEND-SAN). |
+| `products/zomlang/tests/conformance/corpus/16-attributes/macro-attr-*.zom` | 900 | `marker M = A + B` structural; proc-macro `Macro` trait contracts; OOM/timeout/cycle (ZOM0680..ZOM0684). Determinism test: 32 parallel runs on the same input must produce identical TokenStream output hashes. | CI. Determinism + sanitizer nightly. |
+| `products/zomlang/tests/conformance/corpus/16-attributes/codegen-attr-*.zom` | 400 | `repr(C)` layout assertions; `no_mangle` / `link_name` symbol inspection; marker zero-cost: grep LLVM IR for *absence* of marker-related metadata; RUNTIME_REIFIED `.zom_meta` section content. | CI + cross-target nightly (x86_64-linux, arm64-darwin, riscv64-linux). |
 | `products/zomlang/tests/regression/lsp/attr-*.ts` (planned TypeScript LSP client harness) | 400 | Completion ranking; hover schema; goto-def; rename propagation; find-references categorisation. | CI against `zom-lsp` binary. |
-| `products/zomlang/tests/language/attributes/format-attr-*.zom` | 300 | Idempotent formatter on every sample in §16.14; source-position of `@` preserved. | CI. |
+| `products/zomlang/tests/conformance/corpus/16-attributes/format-attr-*.zom` | 300 | Idempotent formatter on every sample in §16.14; source-position of `@` preserved. | CI. |
 | **Test subtotal** | **6 300** | | |
 
 ### 16.18.3 Phased delivery milestones

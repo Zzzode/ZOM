@@ -1,0 +1,5 @@
+section: "§8.2 Extends + Impl (heritage + standalone impl)"
+covers_rule: "classDeclaration (EXTENDS) + standaloneImplDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

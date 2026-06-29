@@ -1,6 +1,0 @@
-// §16 Attribute Placement
-// Covers rule: moduleItem, outerAttributeList before import
-// Expected: ACCEPT
-
-#[prelude::default]
-import std::collections::HashMap;

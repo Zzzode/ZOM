@@ -1,7 +1,0 @@
-// §4.5 Dangling else — else binds to nearest if
-// Covers rule: ifStatement
-// Expected: ACCEPT
-
-fun f(x: bool, y: bool) {
-    if (x) if (y) { return 1; } else { return 2; }
-}

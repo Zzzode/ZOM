@@ -1,0 +1,5 @@
+section: "§4.6 Coalesce above LogicalOr"
+covers_rule: "nullCoalesceExpr / logicalOrExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

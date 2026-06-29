@@ -1,0 +1,1 @@
+fun f<T: number = i32>(x: T) -> T { return x; }

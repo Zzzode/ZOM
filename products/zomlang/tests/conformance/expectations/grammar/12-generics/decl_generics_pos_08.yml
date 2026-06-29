@@ -1,0 +1,5 @@
+section: "§12.3 GenericEnumInterfaceAlias"
+covers_rule: "enumDeclaration, interfaceDeclaration, typeAliasDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

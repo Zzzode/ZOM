@@ -1,0 +1,5 @@
+macro count! {
+    ( $first:expr, $rest:expr, ... ) => {
+        $first + count!($rest, ...)
+    }
+}

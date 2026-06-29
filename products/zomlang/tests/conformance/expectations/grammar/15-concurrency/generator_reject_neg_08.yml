@@ -1,0 +1,5 @@
+section: "§3.7 ReservedKeywords"
+covers_rule: "generator_reject"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

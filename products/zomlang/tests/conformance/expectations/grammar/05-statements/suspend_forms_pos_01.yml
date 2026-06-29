@@ -1,0 +1,5 @@
+section: "§4.5 SuspendStatement (simple form)"
+covers_rule: "suspendStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

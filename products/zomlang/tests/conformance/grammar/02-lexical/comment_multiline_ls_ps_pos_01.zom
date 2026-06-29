@@ -1,8 +1,0 @@
-// §3.4 Comments
-// Covers rule: BLOCK_COMMENT
-// Expected: ACCEPT
-
-/* this comment
-contains U+2028 LS
-and U+2029 PS as separators */
-let x = 5;

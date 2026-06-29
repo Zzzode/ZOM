@@ -1,8 +1,0 @@
-// §21.4 Derive helper with KV args: #[zom::derive(T(k="v"))]
-// Covers rule: outerAttribute, attr (genericMultiSeg), attrInput (KV-pair form)
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-#[zom::derive(Serde(rename_all = "camelCase"))]
-struct ApiResponse {
-    status_code: i32;
-}

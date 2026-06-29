@@ -1,0 +1,5 @@
+section: "§4.6 Range .. not a binary operator"
+covers_rule: "shiftExpr / additiveExpr"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

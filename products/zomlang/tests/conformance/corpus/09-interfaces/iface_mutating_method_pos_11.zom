@@ -1,0 +1,5 @@
+interface Counter {
+    mutating fun inc() -> unit;
+    mutating fun reset() -> unit;
+    get value() -> i64;
+}

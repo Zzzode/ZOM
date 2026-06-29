@@ -1,0 +1,5 @@
+section: "§3.5.2 BigIntLiteral"
+covers_rule: "BIGINT_LITERAL"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

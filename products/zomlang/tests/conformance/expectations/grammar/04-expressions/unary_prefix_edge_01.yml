@@ -1,0 +1,5 @@
+section: "§4.6 Multiple unary operators"
+covers_rule: "unaryExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

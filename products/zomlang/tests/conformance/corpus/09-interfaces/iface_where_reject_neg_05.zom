@@ -1,0 +1,3 @@
+interface BadIface<T> where T: Eq {
+    fun eq(other: T) -> bool;
+}

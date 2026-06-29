@@ -1,7 +1,0 @@
-// §4.6 ArrayLiteral
-// Covers rule: arrayLiteral
-// Expected: ACCEPT
-
-let arr1 = [1, 2, 3];
-let arr2 = [1, 2, 3,];
-let empty = [];

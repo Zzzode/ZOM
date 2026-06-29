@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "interfaceDeclaration (SET-only property — no GET required by grammar)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

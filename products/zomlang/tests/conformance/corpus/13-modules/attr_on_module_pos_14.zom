@@ -1,0 +1,2 @@
+#[deprecated]
+module hello;

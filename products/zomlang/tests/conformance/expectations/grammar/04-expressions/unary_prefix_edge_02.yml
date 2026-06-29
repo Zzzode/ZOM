@@ -1,0 +1,5 @@
+section: "§4.6 PreIncDec chained"
+covers_rule: "preIncrementExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

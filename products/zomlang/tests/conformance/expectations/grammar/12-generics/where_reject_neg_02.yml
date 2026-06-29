@@ -1,0 +1,5 @@
+section: "§12.2 WhereClauseRejected"
+covers_rule: "funDeclaration"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

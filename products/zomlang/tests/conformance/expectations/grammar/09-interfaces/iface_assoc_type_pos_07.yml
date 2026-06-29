@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "interfaceAssocType (all fields combined)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

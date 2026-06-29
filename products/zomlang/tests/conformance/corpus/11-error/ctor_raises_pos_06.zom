@@ -1,0 +1,4 @@
+class Foo {
+    init(x: i32) raises InitError { self.y = x; }
+    let y: i32;
+}

@@ -1,0 +1,5 @@
+section: "§4.8 ObjectType"
+covers_rule: "atomType (typeObject)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

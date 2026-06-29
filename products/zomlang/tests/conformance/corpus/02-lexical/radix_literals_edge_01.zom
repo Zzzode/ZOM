@@ -1,0 +1,4 @@
+let a = 0b0;
+let b = 0o0;
+let c = 0x0;
+let d = 0B1_;

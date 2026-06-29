@@ -1,0 +1,6 @@
+while (true) { ; }
+do { ; } while (false);
+for (let i = 0; i < 10; i += 1) { ; }
+for (; ; ) { break; }
+for (let x in xs) { continue; }
+for (x in xs) { ; }

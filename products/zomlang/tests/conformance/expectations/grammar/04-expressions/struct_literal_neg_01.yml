@@ -1,0 +1,5 @@
+section: "§4.6 Positional struct syntax (newtype) REJECT"
+covers_rule: "structLiteral"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

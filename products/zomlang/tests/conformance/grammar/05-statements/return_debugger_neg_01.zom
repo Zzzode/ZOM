@@ -1,7 +1,0 @@
-// §4.5 Return missing semicolon
-// Covers rule: returnStatement
-// Expected: REJECT
-
-fun f() {
-    return
-}

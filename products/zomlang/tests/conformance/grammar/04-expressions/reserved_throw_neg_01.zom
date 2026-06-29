@@ -1,7 +1,0 @@
-// §4.6 throw keyword reserved (ZOM5001) in expression context
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-fun f() {
-  throw err;
-}

@@ -1,0 +1,5 @@
+section: "§4.8 FunctionType"
+covers_rule: "funDecl, raisesClause, typeList"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

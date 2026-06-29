@@ -1,0 +1,5 @@
+section: "§3.7 Punctuators all compound"
+covers_rule: "HASH_LBRACK, COLON_COLON, QUESTION_COLON etc"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

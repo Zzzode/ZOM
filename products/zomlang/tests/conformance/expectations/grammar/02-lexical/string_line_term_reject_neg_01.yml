@@ -1,0 +1,5 @@
+section: "§3.6.2 StringLiteral"
+covers_rule: "DOUBLE_STRING_LITERAL"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

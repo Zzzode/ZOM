@@ -1,5 +1,0 @@
-// §12.2 TypeParameterBounds
-// Covers rule: typeParameter
-// Expected: ACCEPT
-
-fun f<T: number>(x: T) -> T { return x; }

@@ -1,0 +1,5 @@
+section: "§4.7 IsPattern"
+covers_rule: "patIs"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

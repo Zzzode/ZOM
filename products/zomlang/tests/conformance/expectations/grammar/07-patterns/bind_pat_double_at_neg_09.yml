@@ -1,0 +1,5 @@
+section: "§4.7 BindPatDoubleAtReject"
+covers_rule: "bindPat"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

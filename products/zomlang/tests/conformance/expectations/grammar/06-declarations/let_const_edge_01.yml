@@ -1,0 +1,5 @@
+section: "§6.9 LetDecl, ConstDecl"
+covers_rule: "letDecl, constDecl"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,7 +1,0 @@
-// §6.7 FunDecl
-// Covers rule: funDecl
-// Expected: ACCEPT
-
-fun add(a: i32, b: i32) -> i32 {
-    return a + b;
-}

@@ -1,6 +1,0 @@
-// §16 Attribute with Complex Expression (Call + String + Number)
-// Covers rule: attrInput, expression form with complex content
-// Expected: ACCEPT
-
-#[route::register(get("/api/v1/users"), priority = 10, cache = "dynamic")]
-fun handler();

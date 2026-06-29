@@ -1,0 +1,2 @@
+enum E { A(i32) }
+let e = E::A(1);

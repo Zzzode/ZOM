@@ -1,6 +1,0 @@
-// §19.6.2 ZOM1901 CfgOnExpression — cfg gate on return statement (non-block form)
-// Covers rule: moduleItemStatementCfgGated (checkStatementCfgGate predicate)
-// Expected: REJECT
-// ExpectedDiagnostic: ZOM1901
-#[zom::cfg(unix)]
-return 42;

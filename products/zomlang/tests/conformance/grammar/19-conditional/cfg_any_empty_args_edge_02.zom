@@ -1,6 +1,0 @@
-// §19.3.2 any() — empty arg list evaluates to FALSE (disjunction identity)
-// Covers rule: cfgAny (empty-args alt), cfgPredicate, attrCfg
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-#[zom::cfg(any())]
-fun never_enabled() -> i32 { return 0; }

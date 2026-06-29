@@ -1,0 +1,10 @@
+// Test BigInt literals with binary and octal suffixes and normalization
+let a = 10n;
+
+let b = 0b10n;
+
+let c = 0o10n;
+
+let d = 0b1111_0000n;
+
+let e = 0o755n;

@@ -1,0 +1,8 @@
+fun demo() -> i32 {
+    let result = unsafe {
+        ffi_dangerous_op();
+        touch_raw_memory();
+        0
+    };
+    return result;
+}

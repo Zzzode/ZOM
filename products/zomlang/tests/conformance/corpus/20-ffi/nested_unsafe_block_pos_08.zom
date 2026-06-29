@@ -1,0 +1,8 @@
+unsafe extern "Cdecl" {
+    fun open(path: str, flags: i32, mode: i32) -> i32;
+    fun fstat(fd: i32, buf: u64) -> i32;
+    fun mmap(addr: u64, len: usize, prot: i32, flags: i32,
+             fd: i32, off: u64) -> u64;
+    fun munmap(addr: u64, len: usize) -> i32;
+    fun close(fd: i32) -> i32;
+}

@@ -1,0 +1,5 @@
+section: "§4.6 Comma inside parens = 2-tuple (tupleLiteral)"
+covers_rule: "tupleLiteral"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

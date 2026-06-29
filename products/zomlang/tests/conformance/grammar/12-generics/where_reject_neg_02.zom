@@ -1,5 +1,0 @@
-// §12.2 WhereClauseRejected
-// Covers rule: funDeclaration
-// Expected: REJECT
-
-fun f<T, U>(a: T, b: U) -> unit where T: Eq, U: Hash { return unit; }

@@ -1,0 +1,6 @@
+section: "Section 3.5.1 NumericLiterals"
+covers_rule: "DECIMAL_LITERAL / BINARY_LITERAL / OCTAL_LITERAL / HEX_LITERAL"
+expected: "REJECT"
+expected_diagnostic: ""
+notes:
+  - "Predicate 1 trigger: numeric bodies with leading, trailing, or repeated separators reject."

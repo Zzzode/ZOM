@@ -1,7 +1,0 @@
-// §4.5 IfStatement
-// Covers rule: ifStatement
-// Expected: ACCEPT
-
-fun f(i: i32) {
-    if (i > 0) { return; }
-}

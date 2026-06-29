@@ -1,5 +1,0 @@
-// §12.1 TrailingCommaInTypeParameters
-// Covers rule: typeParameters
-// Expected: ACCEPT
-
-fun f<T, U,>(a: T, b: U) -> unit { return unit; }

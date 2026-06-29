@@ -1,0 +1,5 @@
+section: "§4.6 Missing ternary colon"
+covers_rule: "conditionalExpr"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

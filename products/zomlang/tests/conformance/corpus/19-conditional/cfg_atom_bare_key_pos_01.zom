@@ -1,0 +1,2 @@
+#[zom::cfg(unix)]
+fun on_unix() -> i32 { return 0; }

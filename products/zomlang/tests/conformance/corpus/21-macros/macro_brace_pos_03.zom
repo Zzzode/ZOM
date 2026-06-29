@@ -1,0 +1,7 @@
+fun json_map_demo() -> unit {
+    let obj = json_map!{
+        "name": player_name,
+        "score": high_score
+    };
+    return obj;
+}

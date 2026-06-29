@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "interfaceDeclaration (large interface with 10+ members)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

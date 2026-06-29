@@ -1,0 +1,2 @@
+#[zom::cfg(not(windows))]
+fun non_windows() -> i32 { return 3; }

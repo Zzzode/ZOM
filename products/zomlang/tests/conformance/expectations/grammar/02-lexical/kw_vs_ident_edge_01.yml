@@ -1,0 +1,5 @@
+section: "§3.8 Keywords"
+covers_rule: "IDENTIFIER (soft keywords)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

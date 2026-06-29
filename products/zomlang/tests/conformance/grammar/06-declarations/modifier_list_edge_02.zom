@@ -1,5 +1,0 @@
-// §6.1 ModifierList
-// Covers rule: modifierList, checkModifierList
-// Expected: ACCEPT
-
-protected readonly mutating fun adjust() {}

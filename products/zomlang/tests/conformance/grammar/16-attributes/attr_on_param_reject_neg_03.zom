@@ -1,5 +1,0 @@
-// §16 Attribute on Parameter REJECT
-// Covers rule: parameter, no outerAttributeList prefix
-// Expected: REJECT
-
-fun foo(#[deprecated::arg] x: i32);

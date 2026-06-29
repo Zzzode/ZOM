@@ -1,0 +1,5 @@
+section: "§8.4 AssociatedTypeDefault"
+covers_rule: "interfaceAssocType"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

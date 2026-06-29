@@ -1,0 +1,5 @@
+section: "§4.7 NestedPatterns"
+covers_rule: "patStruct, patArray, patTuple, patWildcard, bindPat"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

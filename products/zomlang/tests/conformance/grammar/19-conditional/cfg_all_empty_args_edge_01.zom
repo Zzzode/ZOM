@@ -1,6 +1,0 @@
-// §19.3.2 all() — empty arg list evaluates to TRUE (conjunction identity)
-// Covers rule: cfgAll (empty-args alt), cfgPredicate, attrCfg
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-#[zom::cfg(all())]
-fun always_enabled() -> i32 { return 0; }

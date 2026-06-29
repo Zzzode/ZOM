@@ -1,0 +1,5 @@
+section: "§12.1 SingleTypeParamUnitDefault"
+covers_rule: "typeParameter"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,5 +1,0 @@
-// §4.8 UnionType
-// Covers rule: unionType
-// Expected: ACCEPT
-
-alias Choice = A | B;

@@ -1,0 +1,2 @@
+#[zom::cfg(any())]
+fun never_enabled() -> i32 { return 0; }

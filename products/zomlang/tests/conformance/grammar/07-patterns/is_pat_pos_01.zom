@@ -1,8 +1,0 @@
-// §4.7 IsPattern
-// Covers rule: patIs
-// Expected: ACCEPT
-
-match (v) {
-    is i32 : { print("int"); }
-    is str : { print("str"); }
-}

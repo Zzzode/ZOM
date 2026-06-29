@@ -1,7 +1,0 @@
-// §21.2 Deep (4-level) nesting of heterogeneous macro invocation delimiter types
-// Covers rule: macroTokenTree (4× balanced-group descent — brace → brack → paren → paren)
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-fun deep() -> unit {
-    let _ = a!{ b![ c!( d!() ) ] };
-}

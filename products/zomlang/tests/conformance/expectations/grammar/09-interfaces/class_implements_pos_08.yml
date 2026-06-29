@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "standaloneImplDeclaration (PLUS conjunction)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,9 +1,0 @@
-// §4.2 Interfaces
-// Covers rule: interfaceDeclaration (ABSTRACT modifier with PUBLIC STATIC-like combos — ABSTRACT alone on assoc type)
-// Expected: ACCEPT
-
-interface AbstractStuff {
-    abstract fun pure() -> unit;
-    public abstract type Key : Hash + Eq;
-    static fun create() -> Self;
-}

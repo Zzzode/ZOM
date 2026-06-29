@@ -1,5 +1,0 @@
-// §4.5 Statements, Reserved syntax
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-fun bad() { throw Error(); }

@@ -1,5 +1,0 @@
-// §4.8 PostfixType (Chained: optional array)
-// Covers rule: postfixType
-// Expected: ACCEPT
-
-alias OptArrStr = [str]?;

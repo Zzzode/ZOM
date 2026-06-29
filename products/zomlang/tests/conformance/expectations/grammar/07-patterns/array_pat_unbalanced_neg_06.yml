@@ -1,0 +1,5 @@
+section: "§4.7 ArrayPatternUnbalancedBracketReject"
+covers_rule: "patArray"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

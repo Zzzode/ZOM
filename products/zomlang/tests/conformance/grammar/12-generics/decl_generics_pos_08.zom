@@ -1,9 +1,0 @@
-// §12.3 GenericEnumInterfaceAlias
-// Covers rule: enumDeclaration, interfaceDeclaration, typeAliasDeclaration
-// Expected: ACCEPT
-
-enum Option<T> { Some(T), None }
-interface Mappable<K, V> { fun get(k: K) -> V; }
-alias Dict<K, V> = HashMap<K, V>;
-struct Pair<A, B> { fst: A; snd: B; }
-error NotFound<K> { key: K; }

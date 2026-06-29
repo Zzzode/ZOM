@@ -1,5 +1,0 @@
-// §4.7 UnderscoreRejectedInBindPat
-// Covers rule: bindPat, checkBindPat
-// Expected: REJECT
-
-let _ @ p = 5;

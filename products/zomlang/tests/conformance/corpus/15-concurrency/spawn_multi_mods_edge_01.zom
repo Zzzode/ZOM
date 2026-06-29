@@ -1,0 +1,3 @@
+fun run() {
+    let t = spawn detached blocking priority(high) do_io();
+}

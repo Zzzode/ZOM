@@ -1,0 +1,2 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/object-types.zom | %FileCheck %s
+// CHECK: {"root":3,"nodes":[{"id":1,"kind":287,"payload":[1,0,0]},{"id":2,"kind":233,"payload":[1,0,0]},{"id":3,"kind":368,"payload":[1,0,0]}]}

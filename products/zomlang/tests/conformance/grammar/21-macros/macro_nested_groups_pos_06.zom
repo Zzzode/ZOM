@@ -1,7 +1,0 @@
-// §21.2 Nested balanced delimiter groups inside a macro token tree
-// Covers rule: macroToken (macroParenGroup + macroBrackGroup + macroBraceGroup mixed)
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-fun nested_tt() -> unit {
-    let _ = outer!{ inner!( (a)(b)[c]{d} ) };
-}

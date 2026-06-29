@@ -1,0 +1,2 @@
+#[zom::cfg(debug)]
+if true { const A: i32 = 1; } else { const A: i32 = 2; }

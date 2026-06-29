@@ -1,0 +1,4 @@
+public error IoError {
+    code: i32;
+    message: str;
+}

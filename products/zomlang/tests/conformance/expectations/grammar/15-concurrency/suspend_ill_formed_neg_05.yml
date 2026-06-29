@@ -1,0 +1,5 @@
+section: "§7.3 ConcurrentFeatures"
+covers_rule: "suspend_ill_formed"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

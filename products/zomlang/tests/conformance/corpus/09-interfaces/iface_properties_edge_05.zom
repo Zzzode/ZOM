@@ -1,0 +1,4 @@
+interface SetOnly {
+    set sink(v: str) -> unit;
+    set counter(v: i32) -> unit;
+}

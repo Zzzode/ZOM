@@ -1,0 +1,2 @@
+alias Maybe = str | null;
+alias ResultUnit = unit | Error;

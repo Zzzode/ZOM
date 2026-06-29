@@ -1,0 +1,1 @@
+alias FnR1 = () -> i32 raises IoError;

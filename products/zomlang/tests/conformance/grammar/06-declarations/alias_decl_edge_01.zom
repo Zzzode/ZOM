@@ -1,5 +1,0 @@
-// §6.8 TypeAlias
-// Covers rule: typeAlias, typeParameters
-// Expected: ACCEPT
-
-alias Pair<T> = (T, T);

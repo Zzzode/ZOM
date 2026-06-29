@@ -1,0 +1,5 @@
+section: "§4.6 Compound assignment with ??= and right operand"
+covers_rule: "assignmentExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

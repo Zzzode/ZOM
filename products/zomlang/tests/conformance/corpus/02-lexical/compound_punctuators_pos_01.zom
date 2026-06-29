@@ -1,0 +1,5 @@
+fun f(a: i32) {
+    let x = a?.prop;
+    let y = a ?? 5;
+    let z = x ** 2;
+}

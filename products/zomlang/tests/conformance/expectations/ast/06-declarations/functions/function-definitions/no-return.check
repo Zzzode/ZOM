@@ -1,0 +1,2 @@
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/function-definitions/no-return.zom | %FileCheck %s
+// CHECK: {"root":5,"nodes":[{"id":1,"kind":282,"payload":[0,0,0]},{"id":2,"kind":226,"payload":[0,0,0]},{"id":3,"kind":277,"payload":[1,1,0]},{"id":4,"kind":233,"payload":[3,0,0]},{"id":5,"kind":368,"payload":[1,0,0]}]}

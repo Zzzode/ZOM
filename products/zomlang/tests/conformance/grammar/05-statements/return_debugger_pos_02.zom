@@ -1,7 +1,0 @@
-// §4.5 Return without expression (void return)
-// Covers rule: returnStatement
-// Expected: ACCEPT
-
-fun f() {
-    return;
-}

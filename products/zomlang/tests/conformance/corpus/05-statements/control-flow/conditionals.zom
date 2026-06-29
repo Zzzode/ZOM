@@ -1,0 +1,29 @@
+fun main() {
+  let x = 10;
+
+  if (x > 5) {
+    x = x - 1;
+  }
+
+  if (x < 0) {
+    x = 0;
+  } else {
+    x = x + 1;
+  }
+
+  if (x == 1) {
+    x = 2;
+  } else if (x == 2) {
+    x = 3;
+  } else {
+    x = 4;
+  }
+
+  match (x) {
+    when 1 => {
+      x = 100;
+    }
+    when 2 => x = 200;
+    default => x = 0;
+  }
+}

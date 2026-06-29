@@ -1,5 +1,0 @@
-// §6.8 TypeAlias
-// Covers rule: typeAlias
-// Expected: ACCEPT
-
-alias Id = i64;

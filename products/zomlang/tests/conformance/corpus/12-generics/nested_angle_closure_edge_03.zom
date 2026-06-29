@@ -1,0 +1,3 @@
+class HashMap<K, V> {}
+class Vec<T> {}
+alias Nested = HashMap<K, Vec<V>>;

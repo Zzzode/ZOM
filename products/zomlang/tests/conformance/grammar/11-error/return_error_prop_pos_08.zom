@@ -1,5 +1,0 @@
-// §4.5 Statements, Return
-// Covers rule: returnStmt, postfixOp
-// Expected: ACCEPT
-
-fun call() raises X { return fetch()?!; }

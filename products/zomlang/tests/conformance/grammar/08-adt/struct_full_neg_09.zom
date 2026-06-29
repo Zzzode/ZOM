@@ -1,7 +1,0 @@
-// §8.2 Duplicate modifier (predicate checkModifierList)
-// Covers rule: modifierList
-// Expected: REJECT
-
-struct S {
-    public public x: i32;
-}

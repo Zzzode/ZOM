@@ -1,7 +1,0 @@
-// §4.7 LiteralMultiCharReject
-// Covers rule: CHAR_LITERAL
-// Expected: REJECT
-
-match (c) {
-    'ab' : { print("multi"); }
-}

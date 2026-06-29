@@ -1,0 +1,4 @@
+class Result<T, E = unit> {
+    let ok: T;
+    let err: E;
+}

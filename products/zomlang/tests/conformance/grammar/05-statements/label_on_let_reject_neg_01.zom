@@ -1,7 +1,0 @@
-// §4.5 Label on let declaration (C25 #2: label only on control/block)
-// Covers rule: labeledStatement + letDeclaration
-// Expected: REJECT
-
-fun f() {
-    lab: let x = 1;
-}

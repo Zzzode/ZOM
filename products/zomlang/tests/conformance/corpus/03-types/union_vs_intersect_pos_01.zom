@@ -1,0 +1,1 @@
+alias Choice = A | B;

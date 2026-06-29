@@ -1,0 +1,5 @@
+section: "§4.8 AttrPath: outer attribute requires path with >=1 :: (G11)"
+covers_rule: "attributePath (single identifier rejected)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

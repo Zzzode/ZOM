@@ -1,0 +1,5 @@
+section: "§4.5 SuspendStatement (until form)"
+covers_rule: "suspendStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

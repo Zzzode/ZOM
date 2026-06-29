@@ -13,23 +13,27 @@ diff carefully — mechanical regeneration is not automatic approval.
 
 ## Anatomy of a Lit Test
 
-Every `.zom` file under `products/zomlang/tests/language/**` is a lit test.
+Every AST conformance test has two files:
 
-```zom
+- Source: `products/zomlang/tests/conformance/corpus/<chapter>/<path>.zom`
+- Expectation: `products/zomlang/tests/conformance/expectations/ast/<chapter>/<path>.check`
+
+```text
 // REQUIRES: default
-// RUN: zomlangc --dump-ast %s 2>&1 | FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/11-error/error-propagate.zom 2>&1 | %FileCheck %s
 // XFAIL: * — ERR-001: `?!` token not lexed yet. Remove when fixed.
-
-pub fn main() {
-    let x = 42;
-    x?!;
-}
-
 // CHECK:      TranslationUnit
 // CHECK-NEXT:   FunctionDecl name="main" visibility="Pub"
 // CHECK-NEXT:     Block
 // CHECK:          VarDecl name="x" initializer=IntegerLiteral(42)
 // CHECK:          ErrorDefaultOperator
+```
+
+```zom
+pub fn main() {
+    let x = 42;
+    x?!;
+}
 ```
 
 ### Directive Cheat Sheet
@@ -52,18 +56,14 @@ pub fn main() {
 ## Where to Put New Tests
 
 ```
-products/zomlang/tests/language/
-├── lexer/           // token-level: operators, keywords, numbers, errors
-├── parser/          // grammar paths: expressions, statements, declarations
-├── binder/          // symbol resolution, imports, scope
-├── diagnostics/     // specific ZOMxxxx codes and messages
-├── expressions/     // precedence, associativity, postfix suffixes
-├── statements/      // if / for / while / do-while / match
-└── modifiers/       // pub / static / const / … modifiers
+products/zomlang/tests/conformance/
+├── corpus/<chapter>/                 // pure ZOM source
+└── expectations/ast/<chapter>/        // lit RUN + FileCheck oracle
 ```
 
 Pick the deepest relevant directory. One feature → one test file is fine;
-do not create one mega-file that tests 12 unrelated things.
+do not create one mega-file that tests 12 unrelated things. Source files stay
+free of RUN/CHECK directives.
 
 ---
 
@@ -72,7 +72,8 @@ do not create one mega-file that tests 12 unrelated things.
 **After any change to parser, binder, AST dump, or diagnostics:**
 
 ```bash
-python3 products/zomlang/tests/tools/regen-lit.py products/zomlang/tests/language/<path>/<test>.zom
+python3 products/zomlang/tests/tools/regen-lit.py \
+  products/zomlang/tests/conformance/corpus/<chapter>/<path>/<test>.zom
 ```
 
 **Then — this is the human step:**
@@ -88,7 +89,8 @@ To regenerate the whole suite (rare — only after a broad refactor like
 `SyntaxKind` renumbering):
 
 ```bash
-python3 products/zomlang/tests/tools/regen-lit.py products/zomlang/tests/language/
+python3 products/zomlang/tests/tools/regen-lit.py \
+  products/zomlang/tests/conformance/corpus/
 ```
 
 Confirm the diff is exactly what you expected before committing.
@@ -123,10 +125,10 @@ Key rules:
 
 ```bash
 # Run just this test, verbose:
-ctest --preset default -R lit -I "tests/language/path/to/test" --verbose
+ctest --preset default -R lit-<chapter>-<path>-<test> --verbose
 
 # Or directly:
-zomlangc --dump-ast products/zomlang/tests/language/parser/xxx.zom
+zomc compile --dump-ast products/zomlang/tests/conformance/corpus/<chapter>/<path>/xxx.zom
 ```
 
 Most lit failures fall into one of these buckets — diagnose in order:

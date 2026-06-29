@@ -1,0 +1,6 @@
+import std::io;
+export { x };
+import net::http as h;
+fun f() {}
+export fun g() -> i32 { return 0; }
+import data::{A, B as C};

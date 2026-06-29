@@ -1,0 +1,5 @@
+section: "§4.2 Interfaces"
+covers_rule: "interfaceMember (INIT/DEINIT not part of interfaceMember → reject)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

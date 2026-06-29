@@ -1,0 +1,5 @@
+section: "§4.7 LiteralMultiCharReject"
+covers_rule: "CHAR_LITERAL"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

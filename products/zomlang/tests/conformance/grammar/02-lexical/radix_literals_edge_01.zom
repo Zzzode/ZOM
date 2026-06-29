@@ -1,8 +1,0 @@
-// §3.5.3/4/5 Binary/Octal/Hex edge zero
-// Covers rule: BINARY_LITERAL, OCTAL_LITERAL, HEX_LITERAL
-// Expected: ACCEPT
-
-let a = 0b0;
-let b = 0o0;
-let c = 0x0;
-let d = 0B1_;

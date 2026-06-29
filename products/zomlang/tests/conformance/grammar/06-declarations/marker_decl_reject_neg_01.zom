@@ -1,5 +1,0 @@
-// §6 Declarations
-// Covers rule: marker declaration rejected
-// Expected: REJECT
-
-marker Send;

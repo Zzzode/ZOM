@@ -1,0 +1,4 @@
+#[zom::derive(Serde(rename_all = "camelCase"))]
+struct ApiResponse {
+    status_code: i32;
+}

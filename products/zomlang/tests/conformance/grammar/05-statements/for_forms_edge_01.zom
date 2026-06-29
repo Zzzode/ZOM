@@ -1,7 +1,0 @@
-// §4.5 C-style for with empty parts
-// Covers rule: forStatement (all optional)
-// Expected: ACCEPT
-
-fun f() {
-    for (;;) { break; }
-}

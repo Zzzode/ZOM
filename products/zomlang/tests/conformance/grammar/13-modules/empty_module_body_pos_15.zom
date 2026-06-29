@@ -1,5 +1,0 @@
-// §4.1 ModuleDeclaration
-// Covers rule: blockBody
-// Expected: ACCEPT
-
-module empty {}

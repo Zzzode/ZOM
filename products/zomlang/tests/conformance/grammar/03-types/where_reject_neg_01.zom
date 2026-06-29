@@ -1,5 +1,0 @@
-// §4.8 Where clause (rejected per 24-truth) -> where on declaration
-// Covers rule: declaration (where-clause NOT present in grammar)
-// Expected: REJECT
-
-fun id<T>() where T: Ord {}

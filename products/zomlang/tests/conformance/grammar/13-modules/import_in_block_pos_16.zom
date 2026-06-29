@@ -1,8 +1,0 @@
-// §4.2 ImportDeclaration
-// Covers rule: declaration
-// Expected: ACCEPT
-
-fun f() -> i32 {
-    import std::io as i;
-    return 1;
-}

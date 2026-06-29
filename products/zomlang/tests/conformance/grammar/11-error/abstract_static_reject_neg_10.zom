@@ -1,7 +1,0 @@
-// §6.3 Modifiers, Mutually exclusive
-// Covers rule: modifierList
-// Expected: REJECT
-
-class C {
-    abstract static func f() -> void;
-}

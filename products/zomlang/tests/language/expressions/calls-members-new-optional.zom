@@ -1,8 +1,0 @@
-// RUN: %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
-
-let x = foo<i32, str>(1, "s");
-let y = new Foo(1, 2).bar[0].baz();
-let z = obj?.method(1)[0].field;
-
-
-// CHECK: {"root":16,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":103,"payload":[10,1,0]},{"id":3,"kind":106,"payload":[1,0,0]},{"id":4,"kind":130,"payload":[2,0,0]},{"id":5,"kind":131,"payload":[4,0,2]},{"id":6,"kind":235,"payload":[1,0,5]},{"id":7,"kind":233,"payload":[6,0,0]},{"id":8,"kind":69,"payload":[3,0,0]},{"id":9,"kind":131,"payload":[0,2,0]},{"id":10,"kind":235,"payload":[8,0,9]},{"id":11,"kind":233,"payload":[10,0,0]},{"id":12,"kind":69,"payload":[4,0,0]},{"id":13,"kind":130,"payload":[5,0,0]},{"id":14,"kind":235,"payload":[12,0,13]},{"id":15,"kind":233,"payload":[14,0,0]},{"id":16,"kind":368,"payload":[2,0,2]}]}

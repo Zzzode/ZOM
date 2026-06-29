@@ -1,5 +1,0 @@
-// §4.5 Reserved syntax ZOM5004: actor / channel
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-actor A {};

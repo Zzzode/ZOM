@@ -1,7 +1,0 @@
-// §4.6 delete reserved (ZOM5008) as unary
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-fun f() {
-  delete p;
-}

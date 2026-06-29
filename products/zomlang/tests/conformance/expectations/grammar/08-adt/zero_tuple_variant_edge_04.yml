@@ -1,0 +1,5 @@
+section: "§8.3 ZeroTupleVariant"
+covers_rule: "enumVariant (LPAREN typeList RPAREN with 0-tuple = unit)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,0 +1,5 @@
+section: "§19.3.2 any() — empty arg list evaluates to FALSE (disjunction identity)"
+covers_rule: "cfgAny (empty-args alt), cfgPredicate, attrCfg"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

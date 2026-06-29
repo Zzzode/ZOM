@@ -1,5 +1,0 @@
-// §4.2 TypeAlias declaration
-// Covers rule: declaration (typeAliasDeclaration)
-// Expected: ACCEPT
-
-alias MyType<T> = Vec<T>;

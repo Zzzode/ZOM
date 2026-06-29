@@ -1,0 +1,5 @@
+section: "§4.8 Variance (rejected per 24-truth table) -> in/out on type parameter"
+covers_rule: "typeParameter (variance NOT supported)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

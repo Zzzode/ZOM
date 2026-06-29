@@ -1,0 +1,6 @@
+fun f() {
+    outer: inner: while (true) {
+        break outer;
+        continue inner;
+    }
+}

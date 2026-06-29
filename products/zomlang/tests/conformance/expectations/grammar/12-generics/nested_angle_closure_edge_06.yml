@@ -1,0 +1,5 @@
+section: "§12.4 GenericInstantiationThreeLevelClosure"
+covers_rule: "genericClose (URSHIFT used as 3-close workaround)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

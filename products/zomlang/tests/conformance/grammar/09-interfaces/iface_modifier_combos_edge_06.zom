@@ -1,8 +1,0 @@
-// §4.2 Interfaces
-// Covers rule: interfaceDeclaration (OVERRIDE + READONLY modifiers on members)
-// Expected: ACCEPT
-
-interface OverrideReadonly {
-    override fun toString() -> str;
-    readonly get tag() -> str;
-}

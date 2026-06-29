@@ -1,6 +1,0 @@
-// §19.3 CfgPredicate 3-level nesting: all(any(all(...)), not(...))
-// Covers rule: cfgAll, cfgAny, cfgNot, cfgAtom (full grammar tree)
-// Expected: ACCEPT
-// ExpectedDiagnostic: none
-#[zom::cfg(all(any(all(unix, debug), target_os = "windows"), not(miri)))]
-fun nested_gate() -> i32 { return 9; }

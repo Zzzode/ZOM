@@ -1,5 +1,0 @@
-// §4.8 PostfixType (Chained: array of optional)
-// Covers rule: postfixType
-// Expected: ACCEPT
-
-alias ArrOpt = [i32?];

@@ -1,7 +1,0 @@
-// §3.2 Whitespace
-// Covers rule: WHITESPACE
-// Expected: ACCEPT
-
-let x	=	5;
-let   y   =   10;
-let	z	=	x	+	y;

@@ -1,0 +1,5 @@
+interface Container {
+    type Element;
+    type Size = u64;
+    type Key : Hash = str;
+}

@@ -1,0 +1,8 @@
+#[zom::cfg(zomc_version >= "1.5.0")]
+fun new_feature() -> i32 { return 7; }
+
+#[zom::cfg(android_api_level >= "33")]
+fun modern_android() -> i32 { return 8; }
+
+#[zom::cfg(zomc_version < "2.0.0")]
+fun legacy() -> i32 { return 9; }

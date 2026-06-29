@@ -1,0 +1,5 @@
+section: "§16 Trailing Comma In Attribute List"
+covers_rule: "attrInput, KV-list trailing comma"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

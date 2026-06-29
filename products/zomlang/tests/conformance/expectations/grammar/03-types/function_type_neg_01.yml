@@ -1,0 +1,5 @@
+section: "§4.8 FunctionType: arrow without parameters (no parens)"
+covers_rule: "functionType (parameterList requires LPAREN RPAREN)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

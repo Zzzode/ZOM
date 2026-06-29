@@ -1,0 +1,5 @@
+section: "§4.5 Statements, Return"
+covers_rule: "returnStmt, postfixOp"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

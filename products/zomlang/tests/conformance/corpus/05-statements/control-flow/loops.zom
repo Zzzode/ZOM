@@ -1,0 +1,15 @@
+fun main() {
+  let i = 0;
+  while (i < 10) {
+    i = i + 1;
+  }
+
+  for (let j = 0; j < 10; j = j + 1) {
+    i = i + j;
+  }
+
+  let arr = [1, 2, 3];
+  for (let item in arr) {
+    i = i + item;
+  }
+}

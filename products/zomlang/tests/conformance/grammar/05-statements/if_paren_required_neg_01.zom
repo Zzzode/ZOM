@@ -1,7 +1,0 @@
-// §4.5 If without parens around condition
-// Covers rule: ifStatement
-// Expected: REJECT
-
-fun f(x: bool) {
-    if x { return; }
-}

@@ -1,7 +1,0 @@
-// §4.2 Interfaces
-// Covers rule: typeParameter (no variance allowed; 'in' is IDENTIFIER, cannot begin a typeParam. 'out' keyword
-// Expected: REJECT
-
-interface BadIface<in T> {
-    fun consume(v: T) -> unit;
-}

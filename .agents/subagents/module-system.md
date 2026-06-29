@@ -53,7 +53,7 @@ docs/spec/chapters/14-package.md
 
 - [ ] `cmake --build --preset sanitizer` passes.
 - [ ] `ctest --preset default` passes.
-- [ ] A new `examples/` or `tests/language/` multi-file test exercises
+- [ ] A new `examples/` or `tests/conformance/` multi-file test exercises
       cross-TU import / export if any path in that area changed.
 - [ ] `/skill spec-alignment` confirms chapters 12/13/14 have no drift vs
       the implementation.

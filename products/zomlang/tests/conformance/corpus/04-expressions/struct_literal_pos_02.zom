@@ -1,0 +1,4 @@
+struct Foo { x: i32, y: i32, z: i32, }
+let x = 1;
+let y = 2;
+let f = Foo { x, y, z: 3 };

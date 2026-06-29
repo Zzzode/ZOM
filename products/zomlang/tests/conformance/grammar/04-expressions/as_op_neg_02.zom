@@ -1,5 +1,0 @@
-// §4.6 dyn existential type — use in as REJECT
-// Covers rule: relationalExpr / typeExpr
-// Expected: REJECT
-
-let x = v as dyn;

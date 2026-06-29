@@ -1,5 +1,0 @@
-// §8.x sealed modifier (REJECT per 24-truth: sealed/open/final/unsafe NOT in modifier alternatives)
-// Covers rule: modifier
-// Expected: REJECT
-
-sealed class C { }

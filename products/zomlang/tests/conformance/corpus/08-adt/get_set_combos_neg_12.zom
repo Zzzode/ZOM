@@ -1,0 +1,4 @@
+class C {
+    private mut _v: i32;
+    set value(v: i32) -> unit { self._v = v; }
+}

@@ -1,9 +1,0 @@
-// §4.2 Interfaces
-// Covers rule: interfaceMethod (MUTATING modifier)
-// Expected: ACCEPT
-
-interface Counter {
-    mutating fun inc() -> unit;
-    mutating fun reset() -> unit;
-    get value() -> i64;
-}

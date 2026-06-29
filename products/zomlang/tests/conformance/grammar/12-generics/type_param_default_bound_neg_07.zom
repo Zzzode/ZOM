@@ -1,5 +1,0 @@
-// §12.2 MultipleExtendsRejected
-// Covers rule: typeParameter
-// Expected: REJECT
-
-fun f<T: A extends B>(x: T) -> T { return x; }

@@ -1,0 +1,5 @@
+section: "§4.5 Explicit semicolons for expression statements"
+covers_rule: "expressionStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

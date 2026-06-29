@@ -1,7 +1,0 @@
-// §7.3 ConcurrentFeatures
-// Covers rule: suspend_ill_formed
-// Expected: REJECT
-
-fun bad() {
-    suspend
-}

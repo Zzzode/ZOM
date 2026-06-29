@@ -1,0 +1,5 @@
+section: "§16 Attribute on Class Member"
+covers_rule: "classMember, outerAttributeList"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

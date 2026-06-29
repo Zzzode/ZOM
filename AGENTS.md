@@ -123,7 +123,7 @@ ctest --preset default -R unittest
 ctest --preset default --output-on-failure
 
 # Regenerate FileCheck expectations for a lit test (after parser/spec change)
-python3 products/zomlang/tests/tools/regen-lit.py products/zomlang/tests/language/path/to/test.zom
+python3 products/zomlang/tests/tools/regen-lit.py products/zomlang/tests/conformance/corpus/path/to/test.zom
 ```
 
 #### Quality Gates
@@ -281,7 +281,7 @@ the trigger matrix in `.agents/subagents/README.md`.
 > `docs/spec/ZomParser.g4`, and to any generated-parser wrapper in
 > `products/zomlang/compiler/parser/` that injects ANTLR actions.
 > Cross-reference: `docs/spec/chapters/19-conditional-compilation.md §19.13`
-> (worked example) and `products/zomlang/tests/conformance/grammar/README.md
+> (worked example) and `products/zomlang/tests/conformance/runners/grammar/README.md
 > § Semantic Predicate Matrix` (suite-wide matrix).
 
 ### ZOM-G4-PATTERN-001: Tail-Parser-Action Safety Pattern

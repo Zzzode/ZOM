@@ -1,0 +1,5 @@
+section: "§4.7 RestMustBeLastInArray"
+covers_rule: "patArray, patRest"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

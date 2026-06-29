@@ -1,0 +1,5 @@
+section: "§4.7 StructPatternTrailingComma"
+covers_rule: "patStruct"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

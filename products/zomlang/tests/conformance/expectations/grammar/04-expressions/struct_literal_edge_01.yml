@@ -1,0 +1,5 @@
+section: "§4.6 StructLiteral anonymous (no identifier)"
+covers_rule: "structLiteral"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

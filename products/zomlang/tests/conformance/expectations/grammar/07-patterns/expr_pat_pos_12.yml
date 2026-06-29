@@ -1,0 +1,5 @@
+section: "§4.7 ExpressionPatternFallback"
+covers_rule: "patExpression"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

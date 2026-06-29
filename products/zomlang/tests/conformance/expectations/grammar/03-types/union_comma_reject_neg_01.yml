@@ -1,0 +1,5 @@
+section: "§4.8 Union comma-separated: must use PIPE, not comma"
+covers_rule: "unionType (rejects COMMA between union members)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

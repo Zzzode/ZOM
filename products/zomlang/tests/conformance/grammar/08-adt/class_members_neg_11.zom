@@ -1,7 +1,0 @@
-// §8.2 Static + Mutating modifier combination REJECT (predicate)
-// Covers rule: modifierList
-// Expected: REJECT
-
-struct S {
-    static mutating fun f() -> unit { }
-}

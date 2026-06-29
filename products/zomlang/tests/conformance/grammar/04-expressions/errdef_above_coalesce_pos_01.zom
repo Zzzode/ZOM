@@ -1,5 +1,0 @@
-// §4.6 ErrorDefault above NullCoalesce
-// Covers rule: errorDefaultExpr / nullCoalesceExpr
-// Expected: ACCEPT
-
-let x = a ?? b ?: c;

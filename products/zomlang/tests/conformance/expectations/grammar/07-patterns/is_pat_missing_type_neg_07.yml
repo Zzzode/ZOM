@@ -1,0 +1,5 @@
+section: "§4.7 IsPatternWithoutTypeReject"
+covers_rule: "patIs"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

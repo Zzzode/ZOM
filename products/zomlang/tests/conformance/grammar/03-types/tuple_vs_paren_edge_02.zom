@@ -1,5 +1,0 @@
-// §4.8 G10: 1-element paren = parenthesised type (NOT tuple)
-// Covers rule: atomType (typeTuple single element reduces to parens + typeExpr)
-// Expected: ACCEPT
-
-alias ParenSingle = (i32);

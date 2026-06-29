@@ -1,5 +1,0 @@
-// §4.6 Chained comparison (syntactically valid)
-// Covers rule: relationalExpr
-// Expected: ACCEPT
-
-let x = a < b < c;

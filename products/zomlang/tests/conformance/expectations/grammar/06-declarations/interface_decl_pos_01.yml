@@ -1,0 +1,5 @@
+section: "§6.4 InterfaceDecl"
+covers_rule: "interfaceDecl"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

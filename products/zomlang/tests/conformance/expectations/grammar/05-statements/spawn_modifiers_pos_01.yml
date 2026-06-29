@@ -1,0 +1,5 @@
+section: "§4.5 SpawnStatement with detached modifier"
+covers_rule: "spawnStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

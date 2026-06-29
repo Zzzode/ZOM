@@ -1,0 +1,5 @@
+let strictEqual = lhs === rhs;
+let strictNotEqual = lhs !== rhs;
+let fallback = value ?: defaultValue;
+let compact = value?:defaultValue;
+let mixed = primary ?: secondary ?? tertiary || quaternary;

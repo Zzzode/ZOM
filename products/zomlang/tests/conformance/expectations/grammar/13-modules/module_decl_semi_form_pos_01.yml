@@ -1,0 +1,5 @@
+section: "§4.1 ModuleDeclaration"
+covers_rule: "moduleDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

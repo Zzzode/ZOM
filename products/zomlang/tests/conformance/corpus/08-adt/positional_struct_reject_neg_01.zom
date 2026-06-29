@@ -1,0 +1,1 @@
+struct Positional(i32, str);

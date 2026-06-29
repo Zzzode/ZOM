@@ -1,6 +1,0 @@
-// §8.1 Empty struct
-// Covers rule: structBody
-// Expected: ACCEPT
-
-struct Empty {
-}

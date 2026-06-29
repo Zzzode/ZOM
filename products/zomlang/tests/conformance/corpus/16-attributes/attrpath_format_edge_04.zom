@@ -1,0 +1,2 @@
+#[std::fmt::display]
+fun fmt_path();

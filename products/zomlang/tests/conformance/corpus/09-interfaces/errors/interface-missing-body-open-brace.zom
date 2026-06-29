@@ -1,0 +1,2 @@
+interface I
+let x: i32 = 1;

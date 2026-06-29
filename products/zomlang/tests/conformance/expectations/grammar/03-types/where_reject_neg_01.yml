@@ -1,0 +1,5 @@
+section: "§4.8 Where clause (rejected per 24-truth) -> where on declaration"
+covers_rule: "declaration (where-clause NOT present in grammar)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

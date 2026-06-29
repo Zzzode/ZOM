@@ -1,0 +1,5 @@
+section: "§4.6 Chained comparison (syntactically valid)"
+covers_rule: "relationalExpr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

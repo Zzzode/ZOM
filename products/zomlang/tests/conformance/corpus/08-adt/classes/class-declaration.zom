@@ -1,0 +1,24 @@
+class Animal {
+  public let name: str;
+
+  init(n: str) {
+    this.name = n;
+  }
+
+  public fun makeSound() -> str {
+    return "noise";
+  }
+}
+
+class Dog extends Animal {
+  private let breed: str;
+
+  init(n: str, b: str) {
+    super.init(n);
+    this.breed = b;
+  }
+
+  public fun makeSound() -> str {
+    return "Woof";
+  }
+}

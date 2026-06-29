@@ -1,0 +1,4 @@
+while (true) { break label; }
+while (true) { continue label; }
+fun f() -> i32 { return 1; }
+fun g() { return; }

@@ -1,5 +1,0 @@
-// §4.6 Precedence smoke 1
-// Covers rule: full expression precedence
-// Expected: ACCEPT
-
-let x = a || b ?? c && d;

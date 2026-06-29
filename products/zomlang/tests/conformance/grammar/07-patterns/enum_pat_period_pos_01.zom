@@ -1,9 +1,0 @@
-// §4.7 EnumPatternPeriodForm
-// Covers rule: patEnum
-// Expected: ACCEPT
-
-enum Result { Ok(i32), Err(str) }
-match (r) {
-    Result.Ok(v) : { print(v); }
-    Result.Err(msg) : { print(msg); }
-}

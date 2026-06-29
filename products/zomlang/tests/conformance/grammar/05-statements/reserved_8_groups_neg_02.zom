@@ -1,7 +1,0 @@
-// §4.5 Reserved syntax ZOM5002: async / await
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-fun f() {
-    async { return; };
-}

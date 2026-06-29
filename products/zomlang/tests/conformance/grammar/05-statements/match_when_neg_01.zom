@@ -1,7 +1,0 @@
-// §4.5 Match missing parens around scrutinee
-// Covers rule: matchStatement
-// Expected: REJECT
-
-fun f(x: i32) {
-    match x { _: return; }
-}

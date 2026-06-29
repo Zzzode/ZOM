@@ -1,0 +1,6 @@
+fun step(flag1: Bool, flag2: Bool) {
+    suspend;
+    suspend until *flag1;
+    suspend;
+    suspend until *flag2;
+}

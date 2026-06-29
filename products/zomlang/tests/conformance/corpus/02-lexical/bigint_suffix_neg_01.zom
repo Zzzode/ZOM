@@ -1,0 +1,3 @@
+let x = 0x_n;
+let y = 0b_n;
+let z = 0o_n;

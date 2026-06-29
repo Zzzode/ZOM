@@ -1,0 +1,5 @@
+section: "§7.3 ConcurrentFeatures"
+covers_rule: "nested_spawn_expr"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

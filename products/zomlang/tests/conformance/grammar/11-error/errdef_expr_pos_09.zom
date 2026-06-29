@@ -1,5 +1,0 @@
-// §4.7 Expressions, ErrorDefault
-// Covers rule: expression, ERROR_DEFAULT token
-// Expected: ACCEPT
-
-let x = lookup(key) ?: 0;

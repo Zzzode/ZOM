@@ -1,5 +1,0 @@
-// §4.5 Reserved syntax ZOM5003: var
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-var x = 1;

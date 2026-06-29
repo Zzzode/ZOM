@@ -1,0 +1,5 @@
+section: "§4.8 Intersection with wrong operator (&& instead of &)"
+covers_rule: "intersectionType (BIT_AND required; AND is wrong token)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

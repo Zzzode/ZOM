@@ -1,8 +1,0 @@
-// §6.2 ClassDecl
-// Covers rule: classDecl
-// Expected: ACCEPT
-
-class Point {
-    let x: i32;
-    let y: i32;
-}

@@ -1,8 +1,0 @@
-// §8.3 Enum missing discriminant expression after ASSIGN
-// Covers rule: enumVariant
-// Expected: REJECT
-
-enum E {
-    A = ,
-    B,
-}

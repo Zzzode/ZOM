@@ -1,0 +1,5 @@
+section: "§4.6 #![…] inner attributes REJECT"
+covers_rule: "sourceFile"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

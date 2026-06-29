@@ -1,7 +1,0 @@
-// §8.3 Enum single variant (edge: variant list length = 1)
-// Covers rule: enumVariantList
-// Expected: ACCEPT
-
-enum Singleton {
-    Only,
-}

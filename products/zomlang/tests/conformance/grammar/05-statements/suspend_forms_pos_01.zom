@@ -1,7 +1,0 @@
-// §4.5 SuspendStatement (simple form)
-// Covers rule: suspendStatement
-// Expected: ACCEPT
-
-fun f() {
-    suspend;
-}

@@ -1,0 +1,5 @@
+section: "§4.5 Expression statement with call expression"
+covers_rule: "expressionStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

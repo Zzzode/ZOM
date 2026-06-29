@@ -1,0 +1,5 @@
+section: "§4.7 Expressions, Single ? error propagation not allowed"
+covers_rule: "expression"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

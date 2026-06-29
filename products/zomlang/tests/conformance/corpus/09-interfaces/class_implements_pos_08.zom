@@ -1,0 +1,4 @@
+class FileStream {
+    fun read(buf: [u8]) -> i32 { return 0; }
+}
+impl Reader + Writer + Seekable for FileStream { }

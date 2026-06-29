@@ -1,0 +1,5 @@
+section: "§4.8 Union with wrong operator (|| instead of |)"
+covers_rule: "unionType (BIT_OR required; OR is wrong token)"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

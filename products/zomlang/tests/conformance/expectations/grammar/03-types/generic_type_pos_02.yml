@@ -1,0 +1,5 @@
+section: "§4.8 GenericType with complex type args (optional + union)"
+covers_rule: "atomType (typeNamed with typeArgList containing union/optional)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

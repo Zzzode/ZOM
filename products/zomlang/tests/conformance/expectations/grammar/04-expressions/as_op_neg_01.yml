@@ -1,0 +1,5 @@
+section: "§4.6 as! force-cast REJECT"
+covers_rule: "relationalExpr"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

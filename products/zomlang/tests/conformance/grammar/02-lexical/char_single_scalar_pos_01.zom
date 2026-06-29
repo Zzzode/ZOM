@@ -1,7 +1,0 @@
-// §3.6.1 CharLiteral
-// Covers rule: CHAR_LITERAL
-// Expected: ACCEPT
-
-let a = 'a';
-let b = 'Z';
-let c = '$';

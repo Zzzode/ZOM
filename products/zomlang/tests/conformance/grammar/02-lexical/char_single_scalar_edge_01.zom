@@ -1,8 +1,0 @@
-// §3.6.1 CharLiteral edge
-// Covers rule: CHAR_LITERAL
-// Expected: ACCEPT
-
-let a = '\0';
-let b = '\r';
-let c = '\b';
-let d = '\f';

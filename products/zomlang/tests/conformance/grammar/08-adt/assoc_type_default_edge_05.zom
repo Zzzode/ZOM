@@ -1,9 +1,0 @@
-// §8.4 InterfaceAssociatedType without bound nor default
-// Covers rule: interfaceAssocType
-// Expected: ACCEPT
-
-interface Builder {
-    type Output;
-    type Error;
-    fun build() -> Result<Self.Output, Self.Error>;
-}

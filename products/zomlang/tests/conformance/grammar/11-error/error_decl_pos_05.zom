@@ -1,9 +1,0 @@
-// §6.7 ErrorDeclaration
-// Covers rule: errorDecl
-// Expected: ACCEPT
-
-error NetworkError {
-    code: i32;
-    message: str;
-    fun describe() -> str { return self.message; }
-}

@@ -1,0 +1,5 @@
+section: "§8.2 Abstract method with blockBody (predicate-enforced: abstract + block → weak REJECT)"
+covers_rule: "classMethod"
+expected: "REJECT"
+expected_diagnostic: ""
+notes: []

@@ -12,11 +12,11 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-# Conformance tests are organized by source corpus and runner/oracle. Existing
-# AST lit tests are registered from tests/language for now; grammar conformance
-# is registered here as an ANTLR-backed runner over the grammar corpus.
+# Conformance tests are organized around a shared source corpus and separate
+# runner/oracle layers. Only executable runners are registered with CTest.
 
-add_subdirectory(grammar)
+add_subdirectory(runners/grammar)
+add_subdirectory(runners/ast)
 
 add_custom_target(check-conformance
   COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -L "conformance"

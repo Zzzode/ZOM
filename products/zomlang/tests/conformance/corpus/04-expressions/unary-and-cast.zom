@@ -1,0 +1,7 @@
+let a = 1;
+let b = ++a;
+let c = a--;
+let d = typeof a;
+let f = a as i32;
+let g = a as? i32;
+let h = a as! i32;

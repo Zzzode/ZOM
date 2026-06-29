@@ -1,0 +1,2 @@
+#[prelude::default]
+import std::collections::HashMap;

@@ -1,9 +1,0 @@
-// §4.5 Match with wildcard pattern
-// Covers rule: matchStatement, matchClause
-// Expected: ACCEPT
-
-fun f(x: i32) {
-    match (x) {
-        _: return;
-    }
-}

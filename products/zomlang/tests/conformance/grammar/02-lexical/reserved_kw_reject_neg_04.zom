@@ -1,5 +1,0 @@
-// §3.8 Keywords reserved unsafe
-// Covers rule: reservedSyntax
-// Expected: REJECT
-
-unsafe fun f() {}

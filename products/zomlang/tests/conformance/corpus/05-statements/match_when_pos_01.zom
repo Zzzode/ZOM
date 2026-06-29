@@ -1,0 +1,7 @@
+fun f(x: i32) {
+    match (x) {
+        1 if 2 > 1: return;
+        2: return;
+        default: return;
+    }
+}

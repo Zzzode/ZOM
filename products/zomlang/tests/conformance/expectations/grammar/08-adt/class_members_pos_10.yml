@@ -1,0 +1,5 @@
+section: "§8.2 ClassMembers"
+covers_rule: "classMember (all alternatives)"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

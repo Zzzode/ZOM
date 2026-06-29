@@ -1,7 +1,0 @@
-// §4.5 Spawn with name-only priority (requires call form)
-// Covers rule: spawnModifier (checkSpawnModifierName predicate)
-// Expected: REJECT
-
-fun f() {
-    spawn priority {};
-}

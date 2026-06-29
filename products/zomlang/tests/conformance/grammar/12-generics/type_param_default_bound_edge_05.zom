@@ -1,8 +1,0 @@
-// §12.1 SingleTypeParamUnitDefault
-// Covers rule: typeParameter
-// Expected: ACCEPT
-
-class Result<T, E = unit> {
-    let ok: T;
-    let err: E;
-}
