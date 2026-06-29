@@ -1,0 +1,6 @@
+// Section 3.3 Identifiers
+// Covers rule: IDENTIFIER with a leading Unicode escape.
+// Predicate 3 trigger: a leading \u{...} code point above U+10FFFF must be rejected.
+// Expected: REJECT
+
+let \u{110000} = "bad";

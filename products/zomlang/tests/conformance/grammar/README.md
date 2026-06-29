@@ -49,7 +49,8 @@ Lines after the header are the actual source code fed to the parser. Blank lines
 
 ## Usage
 
-Run the test harness from the `tests/grammar/` directory (or the repo root -- the runner resolves paths relative to its own location).
+Run the test harness from this directory or from the repository root. The
+runner resolves paths relative to its own location.
 
 ```bash
 # Run every .zom fixture in the suite
@@ -64,6 +65,17 @@ bash run_tests.sh concurrent      # 15-concurrency
 # (file path or content contains "neg" or the canonical "_neg_" segment)
 bash run_tests.sh negative
 ```
+
+CTest registration:
+
+```bash
+ctest --preset default -L conformance-grammar --output-on-failure
+cmake --build --preset sanitizer --target check-conformance-grammar
+```
+
+Generated ANTLR output is written outside the source corpus. CTest sets
+`ZOM_CONFORMANCE_BUILD_DIR` to the build tree. Direct shell runs default to
+`build/conformance-grammar`.
 
 Exit codes: `0` = all tests passed, `1` = one or more verdicts mismatched, `2` = a fixture was missing its 4-line header.
 
@@ -90,7 +102,7 @@ Exit codes: `0` = all tests passed, `1` = one or more verdicts mismatched, `2` =
 
 The ZOM grammar relies on a carefully chosen mix of semantic predicates and
 parser actions. Not every form is safe to combine with `throw
-ParseCancellationException` — the ALL(*) simulator can silently poison a
+ParseCancellationException`; the ALL(*) simulator can silently poison a
 DFA state and turn a valid source into a spurious `NoViableAltException`.
 The table below summarises the canonical forms used across `ZomParser.g4`
 and is the authoritative reference for writing new predicates.
@@ -101,11 +113,11 @@ adopting the Tail-Parser-Action pattern for `#[zom::cfg(...)]` diagnostics).
 
 | Kind | Trigger syntax | Simulator visible? | Can throw PCE? | Typical use |
 |---|---|---|---|---|
-| ✅ **Tail Parser Action** (`ZOM-G4-PATTERN-001`) | `{code}` placed **after the last terminal** of an alt | **NO** (benign ε-edge) | ✅ YES — rc=2, exact position | **All REJECT-level diagnostics (ZOMxxxx) that need rc=2 (abort-on-error) semantics.** This is the *recommended* form for new REJECT diagnostics. |
-| Gated Predicate | `{p}?` as alt **prefix** | YES | ❌ NO — swallowed as `predicate=false` | Disambiguation between structurally overlapping alternatives (path selection). **Never** throw from inside the body. |
-| Free Predicate | `{p}?` placed in the **middle** of an alt | YES | ❌ NO — swallowed as `predicate=false` | Structural validation with *soft* failure (grammar falls back to other alternatives / reports a generic syntax error). |
-| Parser Action (mid-alt) | `{code}` placed between terminals | YES | ❌ NO — **poisons the DFA alt**, producing spurious NoViableAlt | **DO NOT USE.** Historically the source of every V1–V4 NVA regression for `attrZomCfg`. |
-| Validating Predicate (legacy) | `{check()}` — historical form | YES | ❌ NO | Historical artefact. Phased out across the grammar; no new uses accepted. |
+| **Tail Parser Action** (`ZOM-G4-PATTERN-001`) | `{code}` placed **after the last terminal** of an alt | **NO** (benign epsilon edge) | YES, rc=2 with exact position | **All REJECT-level diagnostics (ZOMxxxx) that need rc=2 abort-on-error semantics.** This is the recommended form for new REJECT diagnostics. |
+| Gated Predicate | `{p}?` as alt **prefix** | YES | NO, swallowed as `predicate=false` | Disambiguation between structurally overlapping alternatives. Never throw from inside the body. |
+| Free Predicate | `{p}?` placed in the **middle** of an alt | YES | NO, swallowed as `predicate=false` | Structural validation with soft failure. The grammar falls back to other alternatives or reports a generic syntax error. |
+| Parser Action (mid-alt) | `{code}` placed between terminals | YES | NO, poisons the DFA alt | Do not use. This form caused the V1-V4 NVA regression cycle for `attrZomCfg`. |
+| Historical Validating Predicate | `{check()}` historical form | YES | NO | Existing artifact only. No new uses accepted. |
 
 ## Semantic Predicate Trigger Matrix
 
@@ -125,9 +137,9 @@ Each semantic predicate in the grammar has explicit trigger coverage in the suit
 | `char literal single-scalar` (char literal holds exactly one Unicode scalar value) | `02-lexical/char_single_scalar_pos_01.zom`, `02-lexical/char_single_scalar_pos_02.zom`, `02-lexical/char_single_scalar_edge_01.zom`, `02-lexical/char_single_scalar_neg_01.zom`, `04-expressions/char_literal_neg_01.zom` |
 | `decimal leading-sep` (DECIMAL_LITERAL reject `_` as leading separator) | `02-lexical/decimal_leading_sep_reject_neg_01.zom`, `02-lexical/decimal_forms_pos_03.zom`, `02-lexical/radix_literals_pos_01.zom`, `04-expressions/decimal_leading_sep_neg_01.zom` |
 | `unicode escape range` (validates `\u{...}` escapes fit Unicode scalar range and use hex digits) | `02-lexical/string_escapes_pos_01.zom`, `02-lexical/string_escapes_neg_01.zom`, `02-lexical/string_escapes_neg_02.zom`, `02-lexical/ident_unicode_escapes_pos_01.zom`, `02-lexical/ident_zwnj_zwj_edge_01.zom` |
-| `peekIsZomCfgParen` (§19 deterministic attr dispatcher — 4-token bounded lookahead converts unlimited ALL(*) prediction into local decision; prevents attrGeneric fallback on malformed cfg bodies) | Every fixture in `19-conditional/` (15/15) plus every generic `#[generic::attr(args)]` fixture under `16-attributes/` (both paths exercised) |
-| `checkStatementCfgGate` (§19.6.2 ZOM1901 CfgOnExpression — standalone block only; rejects cfg on if/for/return/let/mut/expression statements) | `19-conditional/cfg_block_statement_gate_edge_04.zom`, `19-conditional/cfg_on_let_statement_neg_02.zom`, `19-conditional/cfg_on_if_statement_neg_03.zom` |
-| `rejectCfgPredicateBad` (§19.3 ZOM1900 CfgPredicateMalformed — catch-all alt when combinator/atom alternatives all fail) | `19-conditional/cfg_bad_predicate_syntax_neg_01.zom` (bracket mismatch — ANTLR native syntax error), `19-conditional/cfg_illegal_cmp_operator_neg_05.zom` (unquoted atom value — valued-alt token mismatch) |
+| `peekIsZomCfgParen` (§19 deterministic attr dispatcher: 4-token bounded lookahead converts unlimited ALL(*) prediction into local decision; prevents attrGeneric fallback on malformed cfg bodies) | Every fixture in `19-conditional/` (15/15) plus every generic `#[generic::attr(args)]` fixture under `16-attributes/` (both paths exercised) |
+| `checkStatementCfgGate` (§19.6.2 ZOM1901 CfgOnExpression: standalone block only; rejects cfg on if/for/return/let/mut/expression statements) | `19-conditional/cfg_block_statement_gate_edge_04.zom`, `19-conditional/cfg_on_let_statement_neg_02.zom`, `19-conditional/cfg_on_if_statement_neg_03.zom` |
+| `rejectCfgPredicateBad` (§19.3 ZOM1900 CfgPredicateMalformed: catch-all alt when combinator/atom alternatives all fail) | `19-conditional/cfg_bad_predicate_syntax_neg_01.zom` (bracket mismatch: ANTLR native syntax error), `19-conditional/cfg_illegal_cmp_operator_neg_05.zom` (unquoted atom value: valued-alt token mismatch) |
 | `checkCfgAtomShape` (structural validation: bare-key vs valued-atom paths) | All 15 fixtures in `19-conditional/` exercise cfgAtom through the predicate pipeline; specific cases: `cfg_atom_bare_key_pos_01.zom` (bare), `cfg_atom_equality_pos_02.zom` (valued), `cfg_version_compare_pos_06.zom` (ordered comparisons) |
 | `checkCfgFeatureAtomFormat` (§19.4.3 ZOM1903 FeatureUndeclared — `feature = ""` requires non-empty RHS) | `19-conditional/cfg_feature_empty_value_neg_04.zom` |
 

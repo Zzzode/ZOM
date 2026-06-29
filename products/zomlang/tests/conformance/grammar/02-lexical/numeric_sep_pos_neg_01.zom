@@ -1,0 +1,10 @@
+// Section 3.5.1 NumericLiterals
+// Covers rule: DECIMAL_LITERAL / BINARY_LITERAL / OCTAL_LITERAL / HEX_LITERAL
+// Predicate 1 trigger: numeric bodies with leading, trailing, or repeated separators reject.
+// Expected: REJECT
+
+let a = 0x_FF;
+let b = 0xFF_;
+let c = 0b__01;
+let d = 0o77_;
+let e = 1__23;

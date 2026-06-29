@@ -1,0 +1,8 @@
+// Section 3.4 SingleLineComment
+// Covers rule: SINGLE_LINE_COMMENT + predicate 4, which allows backslashes.
+// Expected: ACCEPT
+
+// this comment has \ backslash \ characters \\ path\to\file
+let x = 1;
+// escape like \n or \u{41} must be ignored in comment
+let y = 2;  // trailing \ backslash OK

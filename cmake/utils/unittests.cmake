@@ -94,7 +94,7 @@ function(add_lit_ast_test TEST_NAME SOURCE_FILE)
   endif()
 
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
-    LABELS "ast;lit;specification"
+    LABELS "conformance;conformance-ast;ast;lit;specification"
     TIMEOUT 30
     ENVIRONMENT "${TEST_ENV}"
   )
@@ -137,7 +137,7 @@ function(add_lit_ast_test_with_check TEST_NAME SOURCE_FILE)
   endif()
 
   set_tests_properties(${TEST_FULL_NAME} PROPERTIES
-    LABELS "ast;lit;filecheck;specification"
+    LABELS "conformance;conformance-ast;ast;lit;filecheck;specification"
     TIMEOUT 30
     ENVIRONMENT "${TEST_ENV}"
   )

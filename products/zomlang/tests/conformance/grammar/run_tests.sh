@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
-# run_tests.sh — ZOM Grammar Conformance 测试套件驱动
+# run_tests.sh - ZOM grammar conformance test driver
 #
-# 位置: products/zomlang/tests/conformance/grammar/run_tests.sh
+# Location: products/zomlang/tests/conformance/grammar/run_tests.sh
 #
-# 做什么:
-#   - 增量构建 ANTLR .g4 (位于 docs/spec/)
-#   - 增量生成 Java parser + 自写 ParseTool
-#   - 遍历 13 子目录 * 511 个 .zom fixture
-#   - 对每个 fixture: 解析 4 行 header → 调 ParseTool → 判定 ACCEPT/REJECT → 汇总
+# Responsibilities:
+#   - Incrementally build ANTLR grammars from docs/spec/.
+#   - Generate the Java lexer/parser and compile the local ParseTool helper.
+#   - Traverse every .zom fixture under this grammar corpus.
+#   - Parse each fixture header, run ParseTool, and compare ACCEPT/REJECT verdicts.
 #
-# 为什么不用 grun/TestRig?
-#   ANTLR 4.13 分离式 lexer+parser grammar 的 TestRig 有 ClassCastException
-#   (Parser.asSubclass) 问题，用 ParseTool.java + 反射直调 parser。
+# Why not grun/TestRig?
+#   ANTLR 4.13 TestRig can throw ClassCastException for split lexer/parser
+#   grammars. ParseTool.java directly invokes the requested parser rule.
 #
-# 用法:
-#   bash products/zomlang/tests/conformance/grammar/run_tests.sh             # 全量
-#   bash run_tests.sh 04-expressions                                         # 路径过滤
-#   bash run_tests.sh _neg_                                                  # 仅负例
-#   bash run_tests.sh reservedSyntax                                         # 规则名过滤
+# Usage:
+#   bash products/zomlang/tests/conformance/grammar/run_tests.sh
+#   bash run_tests.sh 04-expressions
+#   bash run_tests.sh _neg_
+#   bash run_tests.sh reservedSyntax
 
 set -u
 set -o pipefail
 
 # ------------------------------------------------------------------
-# 路径定位（脚本所在目录 + repo root）
+# Path discovery: script directory plus repository root.
 # ------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -z "$SCRIPT_DIR" ] && SCRIPT_DIR=.
 
-# 找 repo root（向上爬直到看到 docs/spec 目录）
+# Find the repository root by walking up until docs/spec exists.
 _repo_root="$SCRIPT_DIR"
 while [ "$_repo_root" != "/" ] && [ ! -d "$_repo_root/docs/spec" ]; do
   _repo_root="$(dirname "$_repo_root")"
@@ -40,10 +40,11 @@ fi
 
 REPO_ROOT="$_repo_root"
 SPEC_DIR="$REPO_ROOT/docs/spec"
-# 测试根目录：脚本所在目录（13 子目录 *.zom）
+# Test root: this script directory and its .zom fixture subdirectories.
 TEST_ROOT="$SCRIPT_DIR"
-# Build 目录：放在 SCRIPT_DIR 下
-BUILD_DIR="$SCRIPT_DIR/.antlr_build"
+# Build directory: CTest passes a build-tree path; direct shell use defaults to
+# the repository build area instead of writing generated files into the corpus.
+BUILD_DIR="${ZOM_CONFORMANCE_BUILD_DIR:-$REPO_ROOT/build/conformance-grammar}"
 
 ANTLRJAR="${ANTLRJAR:-/opt/homebrew/Cellar/antlr/4.13.2/antlr-4.13.2-complete.jar}"
 JAVA_BIN="${JAVA_BIN:-/usr/bin/java}"
@@ -52,7 +53,7 @@ JAVAC_BIN="${JAVAC_BIN:-/usr/bin/javac}"
 PATTERN="${1:-}"
 
 # ==================================================================
-# 增量 ANTLR 生成 + javac
+# Incremental ANTLR generation and javac compilation.
 # ==================================================================
 need_rebuild=0
 if [ ! -d "$BUILD_DIR" ] || [ ! -f "$BUILD_DIR/ZomParser.class" ]; then
@@ -72,7 +73,7 @@ if [ "$need_rebuild" = "1" ]; then
     >/dev/null 2>/tmp/zom_antlr_err
   rc=$?
   if [ $rc != 0 ] || [ ! -f "$BUILD_DIR/ZomParser.java" ]; then
-    echo "[FATAL] antlr4 生成失败 (exit $rc)" >&2
+    echo "[FATAL] antlr4 generation failed (exit $rc)" >&2
     cat /tmp/zom_antlr_err >&2
     exit 1
   fi
@@ -80,7 +81,7 @@ if [ "$need_rebuild" = "1" ]; then
     >/dev/null 2>/tmp/zom_javac_err
   rc=$?
   if [ $rc != 0 ]; then
-    echo "[FATAL] javac 编译失败 (exit $rc)" >&2
+    echo "[FATAL] javac compilation failed (exit $rc)" >&2
     cat /tmp/zom_javac_err >&2
     exit 1
   fi
@@ -89,7 +90,7 @@ if [ "$need_rebuild" = "1" ]; then
 fi
 
 # ==================================================================
-# ParseTool 辅助类（内置源码，首次自动编译）
+# ParseTool helper source. The helper is generated and compiled on demand.
 # ==================================================================
 if [ ! -f "$BUILD_DIR/ParseTool.class" ] || [ /tmp/ParseTool.java -nt "$BUILD_DIR/ParseTool.class" ]; then
   if [ -f /tmp/ParseTool.java ]; then
@@ -150,7 +151,7 @@ JEOF
     >/dev/null 2>/tmp/zom_parsetool_javac
   rc=$?
   if [ $rc != 0 ]; then
-    echo "[FATAL] ParseTool.java 编译失败 (exit $rc):" >&2
+    echo "[FATAL] ParseTool.java compilation failed (exit $rc):" >&2
     cat /tmp/zom_parsetool_javac >&2
     exit 1
   fi
@@ -158,21 +159,38 @@ JEOF
 fi
 CP="$ANTLRJAR:$BUILD_DIR"
 
+header_value() {
+  local key="$1"
+  local file="$2"
+  sed -nE "s|^//[[:space:]]*${key}:[[:space:]]*(.*)[[:space:]]*$|\\1|p" "$file" \
+    | head -n 1 \
+    | tr -d '\r'
+}
+
+expected_verdict() {
+  local value="$1"
+  case "$value" in
+    ACCEPT*) echo "ACCEPT" ;;
+    REJECT*) echo "REJECT" ;;
+    *) echo "$value" ;;
+  esac
+}
+
 # ==================================================================
-# 遍历测试文件（用 process substitution 避免 while 子 shell 丢失关联数组）
+# Traverse fixtures. Process substitution keeps associative arrays in this shell.
 # ==================================================================
 total=0 pass=0 fail=0
 declare -A dir_pass dir_fail dir_total
 fail_files=()
 
 while IFS= read -r -d '' f; do
-  # 过滤器
+  # Optional path or rule-name filter.
   if [ -n "$PATTERN" ]; then
     header_rule=""
     if printf '%s' "$f" | grep -qF "$PATTERN"; then
       :
     else
-      header_rule=$(sed -n '2p' "$f" | awk -F': ' '{print $2}' | tr -d '\r')
+      header_rule=$(header_value "Covers rule" "$f")
       if [ -z "$header_rule" ] || ! printf '%s' "$header_rule" | grep -qF "$PATTERN"; then
         continue
       fi
@@ -180,9 +198,12 @@ while IFS= read -r -d '' f; do
   fi
   total=$((total+1))
   rel="${f#$TEST_ROOT/}"
-  rule=$(sed -n '2p'    "$f" | awk -F': ' '{print $2}' | tr -d '\r')
-  expect=$(sed -n '3p'  "$f" | awk '{print $NF}' | tr -d '\r')
-  diag=$(sed -n '4p'    "$f" | sed -E 's|^// ExpectedDiagnostic:||;s|^ *||' | tr -d '\r')
+  rule=$(header_value "Covers rule" "$f")
+  expect=$(expected_verdict "$(header_value "Expected" "$f")")
+  diag=$(header_value "ExpectedDiagnostic" "$f")
+  case "$diag" in
+    none|None|NONE) diag="" ;;
+  esac
   [ -z "$rule" ] && rule="(unspecified)"
   subdir="${rel%%/*}"
   dir_total[$subdir]=$(( ${dir_total[$subdir]:-0} + 1 ))
@@ -243,7 +264,8 @@ $stderr"
 done < <(find "$TEST_ROOT" -type f -name '*.zom' -print0 | sort -z)
 
 # ==================================================================
-# 汇总（子目录 pass/fail 现在可见，因为 while 在主 shell 执行）
+# Summary. Directory pass/fail counters are visible because the loop ran in
+# this shell.
 # ==================================================================
 echo
 echo "=============================================================="
@@ -278,7 +300,7 @@ covered=$(grep -rh "^// Covers rule:" "$TEST_ROOT" 2>/dev/null \
   | awk -F': ' '{print $2}' | sort -u | wc -l | tr -d ' ')
 
 total_rules=$(awk '
-  # 跳过注释行
+  # Skip comment lines.
   /^[[:space:]]*\/\// { next }
   /^[a-zA-Z][a-zA-Z0-9_]*[[:space:]]*:/ {
     sub(":.*", "", $1)
@@ -321,14 +343,14 @@ if [ "$covered" -lt "$total_rules" ] 2>/dev/null; then
 fi
 
 # ==================================================================
-# 失败列表 & exit
+# Failure list and exit status.
 # ==================================================================
 if [ $fail -gt 0 ]; then
   echo
   echo "=============================================================="
   echo "  FAILURES ($fail):"
   echo "=============================================================="
-  for ff in "${fail_files[@]}"; do echo "    ✗ $ff"; done
+  for ff in "${fail_files[@]}"; do echo "    x $ff"; done
   exit 1
 fi
 echo "ALL PASSED."

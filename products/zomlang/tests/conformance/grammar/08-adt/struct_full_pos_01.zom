@@ -2,8 +2,8 @@
 // Covers rule: structDeclaration
 // Expected: ACCEPT
 
-// NOTE: struct 体内不允许 static/const 值成员（只能放在 class 内或 module 顶层；顶层 declaration 无 static 修饰，
-// 所以把 static count 改成顶层 const，const UNIT 也提顶层）。
+// NOTE: struct bodies do not accept static or const value members. Keep these
+// constants at module scope.
 const Vec3_COUNT: i32 = 0;
 const Vec3_UNIT: Vec3<f32> = Vec3<f32> { x: 1.0, y: 0.0, z: 0.0, };
 

@@ -21,8 +21,11 @@ enable_testing()
 # Unit Tests - Low-level component tests
 add_subdirectory(unittests)
 
-# Language Tests - Language specification compliance tests
+# Language AST tests - FileCheck runner over conformance source fixtures
 add_subdirectory(language)
+
+# Conformance runner orchestration
+add_subdirectory(conformance)
 
 # Performance Tests - Benchmarks and performance regression tests
 if(ZOM_ENABLE_PERFORMANCE_TESTS)
@@ -43,11 +46,6 @@ add_custom_target(check-integration
   COMMENT "Running integration tests"
 )
 
-add_custom_target(check-language
-  COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -R "language-"
-  COMMENT "Running language specification tests"
-)
-
 add_custom_target(check-regression
   COMMAND ${CMAKE_CTEST_COMMAND} --output-on-failure -R "regression-"
   COMMENT "Running regression tests"
@@ -61,6 +59,5 @@ add_custom_target(check-all
 # Add dependencies
 add_dependencies(check-unit zomc)
 add_dependencies(check-integration zomc)
-add_dependencies(check-language zomc)
 add_dependencies(check-regression zomc)
 add_dependencies(check-all zomc)

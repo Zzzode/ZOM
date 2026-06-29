@@ -1,0 +1,8 @@
+// Section 3.5.2 BigIntLiteral
+// Covers rule: BIGINT_LITERAL
+// Predicate 2 trigger: BigInt suffix n has zero preceding digits after separators.
+// Expected: REJECT
+
+let x = 0x_n;
+let y = 0b_n;
+let z = 0o_n;
