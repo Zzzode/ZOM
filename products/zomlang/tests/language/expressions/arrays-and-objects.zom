@@ -8,11 +8,12 @@ let obj = { a, b = 1, "sb": 2, 3: 4, ...rest };
 // CHECK:   --> {{.*arrays-and-objects.zom}}:4:23
 // CHECK:   |
 // CHECK: 4 | let obj = { a, b = 1, "sb": 2, 3: 4, ...rest };
-// CHECK:   |                       ^~~~
+// CHECK:   |                       ^
 // CHECK: Error [ZOM2011]: Identifier expected, found '3'
 // CHECK:   --> {{.*arrays-and-objects.zom}}:4:32
 // CHECK:   |
 // CHECK: 4 | let obj = { a, b = 1, "sb": 2, 3: 4, ...rest };
 // CHECK:   |                                ^
+// CHECK: /Users/bytedance/Develop/ZOM/products/zomlang/compiler/basic/thread-pool.cc:89: error: Task executed with exception: ; e.getDescription() = expected contains(node); AST list element is outside this tree
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

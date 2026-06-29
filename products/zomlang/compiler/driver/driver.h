@@ -17,6 +17,7 @@
 #include "zc/core/map.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 
@@ -31,11 +32,6 @@ class SourceManager;
 namespace diagnostics {
 class DiagnosticEngine;
 }  // namespace diagnostics
-
-namespace ast {
-class Node;
-class SourceFile;
-}  // namespace ast
 
 namespace symbol {
 class SymbolTable;
@@ -71,9 +67,13 @@ public:
   /// \return True if binding succeeded without fatal errors, false otherwise.
   bool bindSources();
 
-  /// Get the parsed ASTs
-  /// \return A reference to the map of buffer IDs to AST nodes
-  const zc::HashMap<source::BufferId, zc::Own<ast::Node>>& getASTs() const;
+  /// Get the parsed syntax trees.
+  /// \return A reference to the map of buffer IDs to syntax trees.
+  const zc::HashMap<source::BufferId, ast::Tree>& getASTs() const;
+
+  /// Get binder metadata keyed by buffer ID.
+  /// \return A reference to the map of buffer IDs to binder metadata.
+  const zc::HashMap<source::BufferId, ast::BindingMetadata>& getBindingMetadata() const;
 
   /// Get the symbol table used by the compiler.
   /// \return A reference to the symbol table

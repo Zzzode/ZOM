@@ -1,4 +1,4 @@
-// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
 
 error Err {
   Msg: "oops",
@@ -8,60 +8,4 @@ error Err {
 }
 
 
-// CHECK: Error [ZOM2049]: Declaration or statement expected
-// CHECK:   --> {{.*error-declarations.zom}}:3:1
-// CHECK:   |
-// CHECK: 3 | error Err {
-// CHECK:   | ^~~~~
-// CHECK: Error [ZOM2020]: Unknown keyword or identifier. Did you mean 'for'?
-// CHECK:   --> {{.*error-declarations.zom}}:3:7
-// CHECK:   |
-// CHECK: 3 | error Err {
-// CHECK:   |       ^~~
-// CHECK: Error [ZOM2010]: Reserved keyword 'i32' cannot be used as an identifier
-// CHECK:   --> {{.*error-declarations.zom}}:6:8
-// CHECK:   |
-// CHECK: 6 |   Data(i32, str),
-// CHECK:   |        ^~~
-// CHECK: Error [ZOM2010]: Reserved keyword 'str' cannot be used as an identifier
-// CHECK:   --> {{.*error-declarations.zom}}:6:13
-// CHECK:   |
-// CHECK: 6 |   Data(i32, str),
-// CHECK:   |             ^~~
-// CHECK: Error [ZOM2025]: Expected ';'
-// CHECK:   --> {{.*error-declarations.zom}}:7:13
-// CHECK:   |
-// CHECK: 7 |   Named(code: i32, text: str)
-// CHECK:   |             ^
-// CHECK: Error [ZOM2049]: Declaration or statement expected
-// CHECK:   --> {{.*error-declarations.zom}}:7:13
-// CHECK:   |
-// CHECK: 7 |   Named(code: i32, text: str)
-// CHECK:   |             ^
-// CHECK: Error [ZOM2049]: Declaration or statement expected
-// CHECK:   --> {{.*error-declarations.zom}}:7:15
-// CHECK:   |
-// CHECK: 7 |   Named(code: i32, text: str)
-// CHECK:   |               ^~~
-// CHECK: Error [ZOM2049]: Declaration or statement expected
-// CHECK:   --> {{.*error-declarations.zom}}:7:18
-// CHECK:   |
-// CHECK: 7 |   Named(code: i32, text: str)
-// CHECK:   |                  ^
-// CHECK: Error [ZOM2010]: Reserved keyword 'str' cannot be used as an identifier
-// CHECK:   --> {{.*error-declarations.zom}}:7:26
-// CHECK:   |
-// CHECK: 7 |   Named(code: i32, text: str)
-// CHECK:   |                          ^~~
-// CHECK: Error [ZOM2021]: Unexpected keyword or identifier
-// CHECK:   --> {{.*error-declarations.zom}}:7:26
-// CHECK:   |
-// CHECK: 7 |   Named(code: i32, text: str)
-// CHECK:   |                          ^~~
-// CHECK: Error [ZOM2049]: Declaration or statement expected
-// CHECK:   --> {{.*error-declarations.zom}}:7:29
-// CHECK:   |
-// CHECK: 7 |   Named(code: i32, text: str)
-// CHECK:   |                             ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: {"root":4,"nodes":[{"id":1,"kind":284,"payload":[0,0,0]},{"id":2,"kind":286,"payload":[1,1,0]},{"id":3,"kind":233,"payload":[2,0,0]},{"id":4,"kind":368,"payload":[1,0,0]}]}

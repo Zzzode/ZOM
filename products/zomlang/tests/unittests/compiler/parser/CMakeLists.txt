@@ -1,5 +1,6 @@
-
-add_ztest_unit_tests_from_directory(
-  ${CMAKE_CURRENT_SOURCE_DIR}
-  LIBRARIES frontend
-)
+file(GLOB PARSER_TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/*-test.cc")
+foreach(TEST_FILE IN LISTS PARSER_TEST_FILES)
+  file(RELATIVE_PATH REL_PATH "${CMAKE_CURRENT_SOURCE_DIR}" "${TEST_FILE}")
+  get_filename_component(TEST_NAME "${TEST_FILE}" NAME_WE)
+  add_ztest_unit_test("${TEST_NAME}" "${TEST_FILE}" LIBRARIES frontend)
+endforeach()

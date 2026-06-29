@@ -5,30 +5,10 @@ interface I {
 }
 
 
-// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK: Error [ZOM2076]: Interface method signatures cannot have initializers
 // CHECK:   --> {{.*interface-method-extra-initializer.zom}}:4:13
 // CHECK:   |
 // CHECK: 4 |   fun foo() = 1;
 // CHECK:   |             ^
-// CHECK: Error [ZOM2053]: Property or signature expected
-// CHECK:   --> {{.*interface-method-extra-initializer.zom}}:4:13
-// CHECK:   |
-// CHECK: 4 |   fun foo() = 1;
-// CHECK:   |             ^
-// CHECK: Error [ZOM2053]: Property or signature expected
-// CHECK:   --> {{.*interface-method-extra-initializer.zom}}:4:15
-// CHECK:   |
-// CHECK: 4 |   fun foo() = 1;
-// CHECK:   |               ^
-// CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*interface-method-extra-initializer.zom}}:4:15
-// CHECK:   |
-// CHECK: 4 |   fun foo() = 1;
-// CHECK:   |               ^
-// CHECK: Error [ZOM2049]: Declaration or statement expected
-// CHECK:   --> {{.*interface-method-extra-initializer.zom}}:5:1
-// CHECK:   |
-// CHECK: 5 | }
-// CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

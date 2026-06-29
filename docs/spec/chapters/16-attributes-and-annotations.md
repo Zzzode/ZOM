@@ -2417,12 +2417,11 @@ must use the same product-scoped hierarchy when introduced.
 
 | Module | Subsystem | LOC | Notes |
 |---|---|---:|---|
-| AST | `products/zomlang/compiler/ast/{ast-nodes.def,ast.h,ast.cc}` | 90 | 2 interface + 9 element nodes (ModifierList, OuterAttribute, InnerAttribute, AttributePathNode, PositionalAttrArg, NamedAttrArg, AttrTokenTree, AttributeMarkerDecl, MarkerImplDecl, MarkerBound). |
-| AST | `products/zomlang/compiler/ast/classof.cc` | 55 | 9 new concrete cases, 2 interface branches. |
-| AST | `products/zomlang/compiler/ast/visitor.h` | 0 | Auto-generated from X-macro. |
-| AST | `products/zomlang/compiler/ast/dumper.cc` | 95 | Pretty-print Outer/Inner/Path/ModifierList/Impl/MarkerDecl. |
-| AST | `products/zomlang/compiler/ast/serializer.cc` | 130 | 9 new encode/decode pairs. |
-| AST | `products/zomlang/compiler/ast/factory.cc` | 130 | Builder helpers for 9 node kinds. |
+| AST schema | `products/zomlang/compiler/ast/schema.yml` | 90 | Attribute payload definitions for ModifierList, OuterAttribute, InnerAttribute, AttributePath, PositionalAttrArg, NamedAttrArg, AttrTokenTree, AttributeMarkerDecl, MarkerImplDecl, and MarkerBound. |
+| AST generated accessors | `products/zomlang/compiler/ast/generated/` | 55 | Schema-generated kind constants, field offsets, and typed accessors. |
+| AST tree | `products/zomlang/compiler/ast/{tree.h,tree.cc}` | 95 | `ast::Tree`, `Node`, `NodeId`, `NodeList`, and parser-facing construction APIs. |
+| AST dumping | `products/zomlang/utils/zomc/zomc.cc` | 130 | JSON syntax-tree dump backed by `ast::Tree` node records and payload words. |
+| AST builder integration | `products/zomlang/compiler/parser/{parser.cc,parser.h}` | 130 | Builder calls for schema node kinds and source ranges. |
 | **AST subtotal** | | **500** | **Matches finalAST delta.** |
 | Lexer | `products/zomlang/compiler/lexer/lexer.cc` | 75 | ColonColon and shebang handling in the current lexer implementation. |
 | Parser | `products/zomlang/compiler/parser/{parser.cc,parser.h}` | 1 350 | `tryParseAttributeStart()` lookahead table, `parseModifierList()`, 8-target attachment algorithm, desugaring of `@Ident(args?)`, `markerDeclaration` / `markerImplDeclaration` productions, `attributeAnnotatedExpression` whitelist gate. |

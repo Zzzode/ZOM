@@ -149,7 +149,7 @@ def _node_kind_name_from_value(node_value):
   addr = _get_value_address(node_value)
   if addr == 0:
     return ""
-  expr = f"((const zomlang::compiler::ast::Node*)0x{addr:x})->getKind()"
+  expr = f"((const zomlang::compiler::ast::Node*)0x{addr:x})->kind"
   kind_value = node_value.GetFrame().EvaluateExpression(expr)
   if not kind_value.IsValid():
     return ""
@@ -161,7 +161,7 @@ def _node_text_from_value(node_value):
   addr = _get_value_address(node_value)
   if addr == 0:
     return ""
-  expr = f"((const zomlang::compiler::ast::Node*)0x{addr:x})->getSourceRange()"
+  expr = f"((const zomlang::compiler::ast::Node*)0x{addr:x})->range"
   range_value = node_value.GetFrame().EvaluateExpression(expr)
   if not range_value.IsValid():
     return ""

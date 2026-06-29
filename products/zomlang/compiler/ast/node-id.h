@@ -14,23 +14,27 @@
 
 #pragma once
 
+#include <cstdint>
+
 namespace zomlang {
 namespace compiler {
 namespace ast {
 
-class Node;
-enum class SyntaxKind;
+/// \brief Stable syntax-node handle owned by an ast::Tree.
+///
+/// NodeId{0} is empty. Valid tree nodes start at one so NodeId::value can index
+/// side tables directly after subtracting one.
+struct NodeId final {
+  uint32_t value = 0;
 
-bool isNode(SyntaxKind kind);
+  constexpr NodeId() noexcept = default;
+  constexpr explicit NodeId(uint32_t raw) noexcept : value(raw) {}
 
-#define AST_ELEMENT_NODE(Class, ...)
-#define AST_INTERFACE_NODE(Class, Parent) bool is##Class(SyntaxKind kind);
-#include "zomlang/compiler/ast/ast-nodes.def"
-#undef AST_ELEMENT_NODE
-#undef AST_INTERFACE_NODE
-
-#define GENERATE_CLASSOF_IMPL(name) \
-  static bool classof(const Node& node) { return is##name(node.getKind()); }
+  constexpr explicit operator bool() const noexcept { return value != 0; }
+  constexpr bool operator==(NodeId other) const noexcept { return value == other.value; }
+  constexpr bool operator!=(NodeId other) const noexcept { return value != other.value; }
+  constexpr bool operator<(NodeId other) const noexcept { return value < other.value; }
+};
 
 }  // namespace ast
 }  // namespace compiler

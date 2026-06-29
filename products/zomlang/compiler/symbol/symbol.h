@@ -15,8 +15,9 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/source/location.h"
+#include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/symbol-flags.h"
 #include "zomlang/compiler/symbol/symbol-id.h"
 
@@ -25,10 +26,6 @@ namespace compiler {
 
 namespace source {
 class SourceManager;
-}
-
-namespace ast {
-class Node;
 }
 
 namespace symbol {
@@ -69,6 +66,20 @@ enum class SymbolKind {
 };
 
 enum class Visibility { Public, Private, Protected, Internal };
+
+/// \brief Stable declaration reference stored by symbols.
+struct DeclarationRef final {
+  source::BufferId buffer;
+  ast::NodeId node;
+
+  DeclarationRef(source::BufferId buffer, ast::NodeId node) noexcept
+      : buffer(zc::mv(buffer)), node(node) {}
+
+  bool operator==(const DeclarationRef& other) const {
+    return buffer == other.buffer && node == other.node;
+  }
+  bool operator!=(const DeclarationRef& other) const { return !operator==(other); }
+};
 
 /// \brief Symbol base class following pimpl pattern
 ///
@@ -133,9 +144,9 @@ public:
   zc::Maybe<const TypeSymbol&> getType() const;
   void setType(zc::Maybe<TypeSymbol&> type);
 
-  zc::ArrayPtr<const zc::Maybe<const ast::Node&>> getDeclarationNodes() const;
-  void addDeclarationNode(zc::Maybe<const ast::Node&> node);
-  void removeDeclarationNode(const ast::Node& node);
+  zc::ArrayPtr<const DeclarationRef> getDeclarationRefs() const;
+  void addDeclarationRef(DeclarationRef ref);
+  void removeDeclarationRef(const DeclarationRef& ref);
 
   // Visibility and access
   bool isPublic() const;

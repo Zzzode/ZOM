@@ -8,6 +8,6 @@ let x: i32 = 1;
 // CHECK:   --> {{.*interface-missing-body-open-brace.zom}}:4:1
 // CHECK:   |
 // CHECK: 4 | let x: i32 = 1;
-// CHECK:   | ^~~
+// CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

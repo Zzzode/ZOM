@@ -6,9 +6,9 @@ interface I {
 
 
 // CHECK: Error [ZOM2074]: Identifier expected
-// CHECK:   --> {{.*interface-property-missing-name.zom}}:4:6
+// CHECK:   --> {{.*interface-property-missing-name.zom}}:4:7
 // CHECK:   |
 // CHECK: 4 |   let : i32;
-// CHECK:   |      ^
+// CHECK:   |       ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,0 +1,1294 @@
+version: "2.0"
+project: "zomlang"
+status: "ACCEPTED"
+
+# This file is the implementation-side source of truth for syntax node payloads.
+# Generated files are emitted into products/zomlang/compiler/ast/generated/ and
+# are compiled as part of the main ast target in namespace zomlang::compiler::ast.
+
+enums:
+
+  # §19 Conditional Compilation CfgOp
+  CfgOpKind:
+    type: uint8
+    values: [ Eq, NotEq, And, Or, In, Contains, StartsWith, EndsWith ]
+
+  # §20 FFI ABI convention
+  Abi:
+    type: uint16
+    values: [ Cdecl, Stdcall, Fastcall, Swift, Rust, ZomNative, VarArgs ]
+
+  # §21 Macros three brace shapes
+  MacroBrace:
+    type: uint8
+    values: [ Paren, Brack, Brace ]
+
+  # §19.8 CfgAtom value three forms
+  CfgAtomValueKind:
+    type: uint8
+    values: [ None, String, Ident ]
+
+  # §4 Expressions · Spawn modifier
+  SpawnModKind:
+    type: uint8
+    values: [ None, Detached, Blocking, PriorityHigh, PriorityLow ]
+
+  # §12 Generics · Where clause bound
+  WhereBoundKind:
+    type: uint8
+    values: [ Lt, Le, Eq, Ne, Ge, Gt, Subtype, Implements, SendableMarker ]
+
+  # §8 Struct extensibility (three-way choice, fully partitioned per §PATTERN-002)
+  ClassExtensibility:
+    type: uint8
+    values: [ Sealed, Final, Open ]
+
+  # §4.9 Concurrency · Detached modifier
+  SuspendMode:
+    type: uint8
+    values: [ Bare, Until, OnTimeout ]
+
+  ArenaScope:
+    type: uint8
+    values: [ Parser, Binder, Lowering ]
+
+categories:
+  Module:          { first: 0x170, last: 0x17F, desc: "source files and module paths" }
+  Attribute:       { first: 0x00, last: 0x0F, desc: "§19 conditional / attribute" }
+  FFI:             { first: 0x10, last: 0x1F, desc: "§20 extern / unsafe" }
+  Macros:          { first: 0x20, last: 0x2F, desc: "§21 macro_rules / invocation" }
+  EnumVariant:     { first: 0x30, last: 0x3F, desc: "§10 enum three-form variants" }
+  Pattern:         { first: 0x40, last: 0x5F, desc: "§7 patterns (exhaustive match)" }
+  LiteralExpr:     { first: 0x60, last: 0x7F, desc: "§4 literals + basic expressions" }
+  Expr:            { first: 0x80, last: 0xBF, desc: "§4 expressions (RangeSyntax Expr union = LiteralExpr ∪ Expr)" }
+  Type:            { first: 0xC0, last: 0xDF, desc: "§3 type expressions" }
+  Statement:       { first: 0xE0, last: 0x10F, desc: "§5 statements" }
+  Declaration:     { first: 0x110, last: 0x16F, desc: "§6 declarations" }
+
+# ── G2 sc4 / sc6 augmentation: Category-Abstract Unions ──────────────────
+# The names listed below are NOT concrete variant ids — they are UNION /
+# SUPERSET predicates used only inside `cast:` target validations and the
+# RangeSyntax classifier. They must NOT appear in any variant's `id:` field.
+# Self-check 4 treats any cast target present in this list as a "sub-type"
+# of the category that its name describes; the cross-category disjointness
+# check (sc6) skips them (they are purposefully overlapping unions).
+union_predicates:
+  - Expression       # LiteralExpr ∪ Expr ∪ UnsafeBlockExpr ∪ MacroInvocationExpr ∪ ...
+  - TypeExpr         # any variant whose id lies in Type [0xC0..0xDF]
+  - Statement        # Statement category ∪ SuspendStatement expansion
+  - Declaration      # Declaration category (see categories block above)
+  - Pattern          # Pattern category
+  - CfgPredicate     # CfgAtom ∪ CfgAll ∪ CfgAny ∪ CfgNot ∪ CfgOp
+  - Identifier       # Named variant: IdentPath / IdentExpr / plain Identifier
+  - BlockStmt        # BlockExpression (statement-as-expression block body)
+  - TokenNode        # Leaf variants produced by the lexer (identifier tokens, literal terminal wrappers)
+  - ParameterDecl    # FunctionParameterDecl / FFIParameterDecl union
+  - TypeParamDecl    # Generic type parameter declaration variants
+  - PropertyDecl     # Struct property declaration variants
+  - ClassElement     # MethodDecl / FieldDecl / AssociatedTypeDecl union
+  - PositionalFieldDecl # Positional struct / positional newtype field variants
+# ───────────────────────────────────────────────────────────
+variants:
+
+# 0x170..0x17F Source / Module roots
+  - id: 0x170
+    name: SourceFile
+    doc: "Compilation-unit root node"
+    fields:
+      - {name: file_name, type: StringId}
+      - {name: module, type: NodeId, cast: ModuleDeclaration, optional: true}
+      - {name: statements, type: NodeList, cast: StatementListItem}
+
+  - id: 0x171
+    name: ModulePath
+    doc: "Qualified module path"
+    fields:
+      - {name: segments, type: IdentList}
+
+  - id: 0x172
+    name: ImportDeclaration
+    doc: "import path[.{specifiers}] [as alias];"
+    fields:
+      - {name: path, type: NodeId, cast: ModulePath}
+      - {name: specifiers, type: NodeList, optional: true}
+
+  - id: 0x173
+    name: ExportDeclaration
+    doc: "export declaration or export list"
+    fields:
+      - {name: declaration, type: NodeId, optional: true}
+      - {name: specifiers, type: NodeList, optional: true}
+
+# 0x00..0x0F Attribute / Conditional (9)
+  - id: 0x000
+    name: AttributeList
+    doc:  "Attr list (intrusive head+len)"
+    fields:
+      - {name: attrs, type: NodeList, cast: Attribute}
+
+  - id: 0x001
+    name: AttributePath
+    doc:  "Attr path zom::cfg::unix / marker::Sendable (255 seg bound)"
+    fields:
+      - {name: segments, type: IdentList, maxlen: 255}
+      - {name: leading, type: uint8, enum: ["None", Crate, Self, Super, Root]}
+
+  - id: 0x002
+    name: Attribute
+    doc:  "General #[path(arg1, arg2)] attribute"
+    fields:
+      - {name: path, type: NodeId, cast: AttributePath}
+      - {name: args, type: NodeList, cast: Expression}
+
+  - id: 0x003
+    name: ZomCfgAttribute
+    doc:  "#[zom::cfg(pred)] dedicated conditional compilation node"
+    fields:
+      - {name: pred, type: NodeId, cast: CfgPredicate}
+
+  - id: 0x004
+    name: CfgAtom
+    doc:  "Conditional atom: bare key / key = 'str' / key = IDENT"
+    fields:
+      - {name: key, type: NodeId, cast: AttributePath}
+      - {name: vk, type: CfgAtomValueKind}
+      - {name: value_or_id, type: uint64}
+
+  - id: 0x005
+    name: CfgAll
+    doc:  "all(pred, pred, ...)"
+    fields:
+      - {name: preds, type: NodeList, cast: CfgPredicate}
+
+  - id: 0x006
+    name: CfgAny
+    doc:  "any(pred, pred, ...)"
+    fields:
+      - {name: preds, type: NodeList, cast: CfgPredicate}
+
+  - id: 0x007
+    name: CfgNot
+    doc:  "not(pred)"
+    fields:
+      - {name: inner, type: NodeId, cast: CfgPredicate}
+
+  - id: 0x008
+    name: CfgOp
+    doc:  "Binary cfg comparison: == / != / in / contains / starts_with / ends_with"
+    fields:
+      - {name: op, type: CfgOpKind}
+      - {name: lhs, type: NodeId}
+      - {name: rhs, type: NodeId}
+
+# 0x10..0x1F FFI / Unsafe (8)
+  - id: 0x010
+    name: ExternDecl
+    bases: [NamedDeclaration]
+    doc:  "extern fun name(params) -> Ret raises E;"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: abi, type: Abi, default: Cdecl}
+      - {name: params, type: NodeList, cast: ParameterDecl}
+      - {name: ret_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: raises_ty, type: NodeId, cast: TypeExpr, optional: true}
+
+  - id: 0x011
+    name: UnsafeBlockExpr
+    doc:  "unsafe { ... } boundary that MUST enclose FFI calls"
+    fields:
+      - {name: body, type: NodeId, cast: BlockStmt}
+
+  - id: 0x012
+    name: ExternBlock
+    doc:  "extern 'ABI' { extern fun ... ; extern var ... }"
+    fields:
+      - {name: abi, type: Abi, default: Cdecl}
+      - {name: items, type: NodeList, cast: ExternDecl}
+
+  - id: 0x013
+    name: FFIParameterDecl
+    doc:  "extern fun parameter (distinct from generic ParameterDecl)"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+      - {name: attrs, type: NodeId, cast: AttributeList, optional: true}
+
+  - id: 0x014
+    name: ExternVarDecl
+    bases: [NamedDeclaration]
+    doc:  "extern var name: T; — imported global"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+      - {name: abi, type: Abi, default: Cdecl}
+      - {name: is_mut, type: bool}
+
+  - id: 0x015
+    name: ExternStaticDecl
+    bases: [NamedDeclaration]
+    doc:  "extern static NAME: T = value;"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+      - {name: abi, type: Abi, default: Cdecl}
+      - {name: init, type: NodeId, cast: Expression, optional: true}
+
+  - id: 0x016
+    name: FFIConstDecl
+    bases: [NamedDeclaration]
+    doc:  "extern const NAME: T;"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+      - {name: abi, type: Abi, default: Cdecl}
+
+  - id: 0x017
+    name: FFILinkSpec
+    doc:  "Resolved link_name / link_section / align payload"
+    fields:
+      - {name: link_name, type: StringId, optional: true}
+      - {name: link_section, type: StringId, optional: true}
+      - {name: link_align, type: uint32, optional: true}
+
+# 0x20..0x2F Macros (12)
+  - id: 0x020
+    name: MacroInvocationExpr
+    doc:  "foo!(...) / foo![...] / foo!{...}"
+    fields:
+      - {name: name, type: NodeId, cast: Identifier}
+      - {name: brace, type: MacroBrace}
+      - {name: tt, type: NodeList}
+
+  - id: 0x021
+    name: MacroRulesDecl
+    bases: [NamedDeclaration]
+    doc:  "macro_rules! name { pattern => expansion ; ... }"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: rules, type: NodeList, cast: MacroRule}
+
+  - id: 0x022
+    name: MacroRule
+    doc:  "Single match arm: matcher to expansion"
+    fields:
+      - {name: pattern, type: NodeId, cast: MacroPattern}
+      - {name: expand, type: NodeId, cast: MacroTokenTree}
+
+  - id: 0x023
+    name: MacroPattern
+    doc:  "matcher: $i:ident $(, $rest:expr),*"
+    fields:
+      - {name: frags, type: NodeList, cast: MacroFragment}
+
+  - id: 0x024
+    name: MacroFragment
+    doc:  "Fragment kind: ident/expr/ty/stmt/pat (14 kinds)"
+    fields:
+      - {name: binding_name, type: IdentId, optional: true}
+      - {name: frag_kind, type: uint8, enum: MacroFragmentKind}
+      - {name: is_repetition, type: bool}
+      - {name: sep, type: uint8, enum: ["None", Comma, Semicolon, Colon]}
+
+  - id: 0x025
+    name: MacroTokenTree
+    doc:  "Expand-side nestable token tree"
+    fields:
+      - {name: tokens, type: NodeList, cast: TokenNode}
+
+  - id: 0x026
+    name: DeriveList
+    doc:  "#[derive(Debug, Clone, Hash)]"
+    fields:
+      - {name: items, type: NodeList, cast: DeriveItem}
+
+  - id: 0x027
+    name: DeriveItem
+    doc:  "Single trait derive name + optional args"
+    fields:
+      - {name: trait_path, type: NodeId, cast: AttributePath}
+      - {name: args, type: NodeList, cast: Expression, optional: true}
+
+  - id: 0x028
+    name: MacroQuasiQuote
+    doc:  "#(...) quasi-quote inside macro expansion body"
+    fields:
+      - {name: depth, type: uint8}
+      - {name: body, type: NodeId, cast: MacroTokenTree}
+
+  - id: 0x029
+    name: MacroUnquote
+    doc:  "$id / $(expr) unquote in quasi-quoted tree"
+    fields:
+      - {name: expr, type: NodeId, cast: Expression}
+
+  - id: 0x02A
+    name: MacroDelimitedGroup
+    doc:  "Delimited token group preserved for hygiene"
+    fields:
+      - {name: brace, type: MacroBrace}
+      - {name: tokens, type: NodeList, cast: TokenNode}
+
+  - id: 0x02B
+    name: ProcMacroDecl
+    bases: [NamedDeclaration]
+    doc:  "proc_macro fun name(tt) -> TokenStream;"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: kind, type: uint8, enum: [Bang, Attr, Derive]}
+      - {name: params, type: NodeList, cast: ParameterDecl}
+      - {name: attributes, type: NodeId, cast: AttributeList, optional: true}
+
+# 0x30..0x3F Enum Variants (13)
+  - id: 0x030
+    name: UnitVariant
+    bases: [DeclarationStatement]
+    doc:  "enum E { Plain = 1 } (no fields, optional discriminant)"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: has_disc, type: bool}
+      - {name: disc, type: BigIntId, optional: true}
+
+  - id: 0x031
+    name: TupleVariant
+    bases: [DeclarationStatement]
+    doc:  "enum E { Color(u8, u8, u8) } (positional fields)"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: nfields, type: uint16}
+      - {name: tys, type: NodeList, cast: TypeExpr}
+      - {name: has_disc, type: bool}
+      - {name: disc, type: BigIntId, optional: true}
+
+  - id: 0x032
+    name: StructVariant
+    bases: [DeclarationStatement]
+    doc:  "enum E { Point { x: i32, y: i32 } } (named fields)"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: nfields, type: uint16}
+      - {name: fields, type: NodeList, cast: PropertyDecl}
+      - {name: has_disc, type: bool}
+      - {name: disc, type: BigIntId, optional: true}
+
+  - id: 0x033
+    name: EnumDeclaration
+    bases: [NamedDeclaration]
+    doc:  "Enum declaration (supports mixed three-variant declarations)"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: extensibility, type: ClassExtensibility}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: nvars, type: uint16}
+      - {name: variants_id, type: NodeId, cast: EnumVariantList}
+      - {name: base_repr, type: uint8, enum: EnumReprKind, default: I32}
+
+  - id: 0x03C
+    name: EnumVariantList
+    doc:  "Container for enum variant nodes (keeps EnumDecl payload ≤24B)"
+    fields:
+      - {name: nvars, type: uint16}
+      - {name: variants, type: NodeList}
+
+  - id: 0x034
+    name: AssociatedConstVariant
+    doc:  "Variant-level associated const discriminant"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: const_expr, type: NodeId, cast: Expression}
+      - {name: has_disc, type: bool}
+      - {name: disc, type: BigIntId, optional: true}
+
+  - id: 0x035
+    name: EnumMemberAlias
+    doc:  "Variant alias: enum E { X = Y }"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: target_path, type: NodeId, cast: Identifier}
+
+  - id: 0x036
+    name: EnumVariantAttr
+    doc:  "Attributes attached to a single enum member"
+    fields:
+      - {name: attrs, type: NodeId, cast: AttributeList}
+      - {name: variant, type: NodeId}
+
+  - id: 0x037
+    name: DiscriminantRef
+    doc:  "Explicit discriminant synthesized during lowering"
+    fields:
+      - {name: owner_enum, type: NodeId, cast: EnumDeclaration}
+      - {name: variant_index, type: uint32}
+
+  - id: 0x038
+    name: EnumExtendsClause
+    doc:  "enum E : u16 { ... } explicit base-repr clause"
+    fields:
+      - {name: base_ty, type: NodeId, cast: TypeExpr}
+      - {name: is_explicit, type: bool}
+
+  - id: 0x039
+    name: RawVariant
+    doc:  "Raw union variant — one untagged field for FFI unions"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+
+  - id: 0x03A
+    name: EnumReprAttr
+    doc:  "Expanded #[repr(IntKind)] payload on EnumDeclaration"
+    fields:
+      - {name: repr_kind, type: uint8, enum: EnumReprKind, default: I32}
+      - {name: is_explicit, type: bool}
+
+# 0x40..0x5F Patterns (20)
+  - id: 0x040
+    name: RestPattern
+    doc:  "...rest / ... (tail binding in Tuple/Struct/Array/Object)"
+    fields:
+      - {name: binding, type: IdentId, optional: true}
+
+  - id: 0x041
+    name: LiteralPattern
+    doc:  "Literal pattern in match arm (numeric / char / string / bool / null)"
+    fields:
+      - {name: kind, type: uint8, enum: LiteralPatternKind}
+      - {name: value, type: uint64}
+
+  - id: 0x042
+    name: IsPattern
+    doc:  "expr is Type — pattern-level is"
+    fields:
+      - {name: ty, type: NodeId, cast: TypeExpr}
+
+  - id: 0x043
+    name: WildcardPattern
+    doc:  "_ wildcard (irrefutable)"
+    fields:
+      - {name: ty, type: NodeId, cast: TypeExpr, optional: true}
+
+  - id: 0x044
+    name: BindingPattern
+    doc:  "name @ pattern bind + sub-pattern"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: is_mut, type: bool}
+      - {name: is_ref, type: bool}
+      - {name: sub, type: NodeId, cast: Pattern, optional: true}
+
+  - id: 0x045
+    name: IdentifierPattern
+    doc:  "Single binding identifier (always irrefutable)"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: ty, type: NodeId, cast: TypeExpr, optional: true}
+
+  - id: 0x046
+    name: TuplePattern
+    doc:  "(p1, p2, ..pn) tuple destructuring"
+    fields:
+      - {name: pats, type: NodeList, cast: Pattern}
+
+  - id: 0x047
+    name: StructPattern
+    doc:  "Type { field: pat, ..rest } destructuring"
+    fields:
+      - {name: ty_path, type: NodeId, cast: Identifier, optional: true}
+      - {name: fields, type: NodeList, cast: PatternProperty}
+      - {name: rest, type: NodeId, cast: RestPattern, optional: true}
+
+  - id: 0x048
+    name: PatternProperty
+    doc:  "Single field inside struct/object pattern"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: short_form, type: bool}
+      - {name: pat, type: NodeId, cast: Pattern, optional: true}
+
+  - id: 0x049
+    name: ArrayPattern
+    doc:  "[p0, p1, ..rest] fixed-width array destructuring"
+    fields:
+      - {name: pats, type: NodeList, cast: Pattern}
+      - {name: rest, type: NodeId, cast: RestPattern, optional: true}
+
+  - id: 0x04A
+    name: SpawnExpression
+    bases: [Expression]
+    doc:  "spawn detached { ... } / spawn priority(high) { ... }"
+    fields:
+      - {name: mod_, type: SpawnModKind}
+      - {name: body, type: NodeId, cast: BlockStmt}
+
+# 0x60..0x7F Literal / Leaf Expressions (25)
+  - id: 0x060
+    name: PositionalStructCtorExpr
+    doc:  "Foo(1, 2, 3) positional struct constructor"
+    fields:
+      - {name: struct_path, type: NodeId, cast: Identifier}
+      - {name: nargs, type: uint16}
+      - {name: args, type: NodeList, cast: Expression}
+
+  - id: 0x061
+    name: TupleLiteral1
+    doc:  "(a,) forced 1-tuple (disambiguated vs ParenthesizedExpr)"
+    fields:
+      - {name: elem, type: NodeId, cast: Expression}
+
+  - id: 0x062
+    name: ErrorDefaultExpr
+    doc:  "a ?: fallback error-default operator"
+    fields:
+      - {name: primary, type: NodeId, cast: Expression}
+      - {name: fallback, type: NodeId, cast: Expression}
+
+  - id: 0x063
+    name: NullCoalesceExpr
+    doc:  "a ?? fallback null coalesce"
+    fields:
+      - {name: primary, type: NodeId, cast: Expression}
+      - {name: fallback, type: NodeId, cast: Expression}
+
+  - id: 0x064
+    name: IsExpression
+    doc:  "expr is TypeExpr (strict type test, does not trigger coerce)"
+    fields:
+      - {name: expr, type: NodeId, cast: Expression}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+
+  - id: 0x065
+    name: NullLiteral
+    doc:  "null literal (inhabits the null type)"
+    fields:
+      []
+
+  - id: 0x066
+    name: BoolLiteral
+    doc:  "true / false literal"
+    fields:
+      - {name: value, type: bool}
+
+  - id: 0x067
+    name: IntLiteral
+    doc:  "Arbitrary base integer literal"
+    fields:
+      - {name: base, type: uint8}
+      - {name: value, type: BigIntId}
+
+  - id: 0x068
+    name: FloatLiteralExpr
+    doc:  "IEEE-754 floating-point literal"
+    fields:
+      - {name: width, type: uint8}
+      - {name: value, type: FloatId}
+
+  - id: 0x069
+    name: BigIntLiteral
+    doc:  "123n arbitrary-precision big integer literal"
+    fields:
+      - {name: value, type: BigIntId}
+
+  - id: 0x06A
+    name: StrLiteral
+    doc:  "Double-quoted string (supports escapes)"
+    fields:
+      - {name: value, type: StringId}
+      - {name: is_raw, type: bool}
+      - {name: prefix, type: uint8, enum: ["None", f, r, b, br]}
+
+  - id: 0x06B
+    name: ArrayLiteral
+    doc:  "[a, b, c] array literal"
+    fields:
+      - {name: elems, type: NodeList, cast: Expression}
+
+  - id: 0x06C
+    name: TupleLiteral
+    doc:  "(a, b, c) n-ary tuple (n>=2)"
+    fields:
+      - {name: elems, type: NodeList, cast: Expression}
+
+# 0x80..0xBF Expressions (44)
+  - id: 0x080
+    name: WherePred
+    doc:  "Single where predicate (Subtype / Implements / SendableMarker)"
+    fields:
+      - {name: kind, type: WhereBoundKind}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+      - {name: bound, type: NodeId, cast: TypeExpr}
+
+  - id: 0x081
+    name: ThisExpr
+    doc:  "this receiver in class/struct methods"
+    fields:
+      []
+
+  - id: 0x082
+    name: IdentExpr
+    doc:  "Plain identifier in expression position"
+    fields:
+      - {name: name, type: IdentId}
+
+  - id: 0x083
+    name: CallExpression
+    doc:  "callee(a1, a2, ...) general call"
+    fields:
+      - {name: callee, type: NodeId, cast: Expression}
+      - {name: args, type: NodeList, cast: Expression}
+
+  - id: 0x084
+    name: BinaryExpr
+    doc:  "Arithmetic / bitwise / logical / relational op"
+    fields:
+      - {name: op, type: uint16, enum: [Add, Sub, Mul, Div, Mod, Pow, Shl, Shr, UShr, BitAnd, BitOr, BitXor, LogAnd, LogOr, Eq, Ne, StrictEq, StrictNe, Lt, Le, Gt, Ge]}
+      - {name: lhs, type: NodeId, cast: Expression}
+      - {name: rhs, type: NodeId, cast: Expression}
+
+  - id: 0x085
+    name: ConditionalExpr
+    doc:  "cond ? a : b ternary conditional"
+    fields:
+      - {name: cond, type: NodeId, cast: Expression}
+      - {name: then_expr, type: NodeId, cast: Expression}
+      - {name: else_expr, type: NodeId, cast: Expression}
+
+# 0xC0..0xDF Type Expressions (25)
+  - id: 0x0C0
+    name: DynTypeExpr
+    doc:  "Existential: dyn Display + Sendable + 'static"
+    fields:
+      - {name: ifaces_id, type: NodeId, cast: DynTypeIfaceList}
+      - {name: markers_id, type: NodeId, cast: DynTypeMarkerList, optional: true}
+      - {name: has_lifetime, type: bool}
+      - {name: lifetime, type: IdentId, optional: true}
+
+  - id: 0x0CB
+    name: DynTypeIfaceList
+    doc:  "Container for dyn trait ifaces (keeps DynTypeExpr payload ≤24B)"
+    fields:
+      - {name: n_ifaces, type: uint8}
+      - {name: ifaces, type: NodeList, cast: TypeExpr}
+
+  - id: 0x0CC
+    name: DynTypeMarkerList
+    doc:  "Container for dyn lifetime + marker list"
+    fields:
+      - {name: n_markers, type: uint8}
+      - {name: markers, type: NodeList, cast: AttributePath}
+
+  - id: 0x0C1
+    name: BottomTypeExpr
+    doc:  "Bottom type ! — only valid in type context"
+    fields:
+      []
+
+  - id: 0x0C2
+    name: FixedArrayTypeExpr
+    doc:  "[T; N] fixed-length array type"
+    fields:
+      - {name: elem, type: NodeId, cast: TypeExpr}
+      - {name: len_expr, type: NodeId, cast: Expression}
+
+  - id: 0x0C3
+    name: SliceArrayTypeExpr
+    doc:  "[T] dynamic slice"
+    fields:
+      - {name: elem, type: NodeId, cast: TypeExpr}
+
+  - id: 0x0C4
+    name: OptionalTypeExpr
+    doc:  "T? (null-coalescing prerequisite)"
+    fields:
+      - {name: inner, type: NodeId, cast: TypeExpr}
+      - {name: double, type: bool}
+
+  - id: 0x0C5
+    name: NamedTypeExpr
+    doc:  "Plain type name reference"
+    fields:
+      - {name: path, type: NodeId, cast: Identifier}
+      - {name: args, type: NodeList, cast: TypeExpr, optional: true}
+
+  - id: 0x0C6
+    name: PredefinedTypeExpr
+    doc:  "i8/i16/.../unit/never/any predefined type token"
+    fields:
+      - {name: kind, type: uint8, enum: [I8, I16, I32, I64, U8, U16, U32, U64, F32, F64, Bool, Str, Char, Null, Unit, Never, Any]}
+
+  - id: 0x0C7
+    name: FunctionTypeExpr
+    doc:  "(P1,P2) -> R raises E type-level arrow"
+    fields:
+      - {name: params, type: NodeList, cast: TypeExpr}
+      - {name: ret_ty, type: NodeId, cast: TypeExpr}
+      - {name: raises, type: NodeId, cast: TypeExpr, optional: true}
+
+  - id: 0x0C8
+    name: UnionTypeExpr
+    doc:  "A | B | C untagged union"
+    fields:
+      - {name: alts, type: NodeList, cast: TypeExpr}
+
+  - id: 0x0C9
+    name: IntersectionTypeExpr
+    doc:  "A & B & C intersection"
+    fields:
+      - {name: alts, type: NodeList, cast: TypeExpr}
+
+  - id: 0x0CA
+    name: ArrayTypeExpr
+    doc:  "T[] / T[N] array or slice type"
+    fields:
+      - {name: elem, type: NodeId, cast: TypeExpr}
+      - {name: len_expr, type: NodeId, cast: Expression, optional: true}
+
+# 0xE0..0x10F Statements
+  - id: 0x0E0
+    name: SuspendStatement
+    bases: [Statement]
+    doc:  "suspend; / suspend until predicate;"
+    fields:
+      - {name: mode, type: SuspendMode}
+      - {name: until_cond, type: NodeId, cast: Expression, optional: true}
+      - {name: on_timeout_ms, type: uint32, optional: true}
+
+  - id: 0x0E1
+    name: UntilClause
+    doc:  "suspend until expr child node (binder wait-queue helper)"
+    fields:
+      - {name: cond, type: NodeId, cast: Expression}
+
+  - id: 0x0E2
+    name: BlockStmt
+    doc:  "{ stmt* } statement-level block"
+    fields:
+      - {name: stmts, type: NodeList, cast: StatementListItem}
+
+  - id: 0x0E3
+    name: IfStmt
+    doc:  "if (cond) then [else else_]"
+    fields:
+      - {name: cond, type: NodeId, cast: Expression}
+      - {name: then_stmt, type: NodeId, cast: Statement}
+      - {name: else_stmt, type: NodeId, cast: Statement, optional: true}
+
+  - id: 0x0E4
+    name: MatchStmt
+    doc:  "match (scrutinee) { when p => s ... } statement form"
+    fields:
+      - {name: scrutinee, type: NodeId, cast: Expression}
+      - {name: arms, type: NodeList, cast: MatchArmStmt}
+
+  - id: 0x0E5
+    name: WhileStmt
+    doc:  "while (cond) body"
+    fields:
+      - {name: cond, type: NodeId, cast: Expression}
+      - {name: body, type: NodeId, cast: Statement}
+
+  - id: 0x0E6
+    name: ForStmt
+    doc:  "C-style for (init; cond; update) body"
+    fields:
+      - {name: init, type: NodeId, cast: Statement, optional: true}
+      - {name: cond, type: NodeId, cast: Expression, optional: true}
+      - {name: update, type: NodeId, cast: Expression, optional: true}
+      - {name: body, type: NodeId, cast: Statement}
+
+  - id: 0x0E7
+    name: BreakStmt
+    doc:  "break [label];"
+    fields:
+      - {name: label, type: IdentId, optional: true}
+
+  - id: 0x0E8
+    name: ReturnStmt
+    doc:  "return [value];"
+    fields:
+      - {name: value, type: NodeId, cast: Expression, optional: true}
+
+  - id: 0x0E9
+    name: StatementListItem
+    doc:  "Tagged wrapper inside BlockStmt items; item list head+item (Statement or Declaration as statement (Statement"
+    fields:
+      - {name: item, type: NodeId}
+      - {name: attrs, type: NodeId, cast: AttributeList, optional: true}
+
+  - id: 0x0EA
+    name: MatchArmStmt
+    doc:  "when pattern guard? => body (match arm statement"
+    fields:
+      - {name: pattern, type: NodeId, cast: Pattern}
+      - {name: guard, type: NodeId, cast: Expression, optional: true}
+      - {name: body, type: NodeId, cast: Statement}
+
+  - id: 0x0EB
+    name: LetStmt
+    doc:  "let pattern[: type] = init (initialisation statement"
+    fields:
+      - {name: pattern, type: NodeId, cast: Pattern}
+      - {name: ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: init, type: NodeId, cast: Expression}
+
+  - id: 0x0EC
+    name: ModuleDeclaration
+    doc: "module path;"
+    fields:
+      - {name: path, type: NodeId, cast: ModulePath}
+
+  - id: 0x0ED
+    name: ExpressionStatement
+    doc: "expression;"
+    fields:
+      - {name: expression, type: NodeId, cast: Expression, optional: true}
+
+  - id: 0x0EE
+    name: EmptyStatement
+    doc: ";"
+    fields: []
+
+  - id: 0x0EF
+    name: LabeledStatement
+    doc: "label: statement"
+    fields:
+      - {name: label, type: IdentId}
+      - {name: statement, type: NodeId, cast: Statement, optional: true}
+
+  - id: 0x0F0
+    name: ForInStatement
+    doc: "for (binding in expression) body"
+    fields:
+      - {name: binding, type: NodeId, cast: Pattern, optional: true}
+      - {name: expression, type: NodeId, cast: Expression, optional: true}
+      - {name: body, type: NodeId, cast: Statement, optional: true}
+
+  - id: 0x0F1
+    name: DoWhileStatement
+    doc: "do body while (cond);"
+    fields:
+      - {name: body, type: NodeId, cast: Statement, optional: true}
+      - {name: cond, type: NodeId, cast: Expression, optional: true}
+
+  - id: 0x0F2
+    name: DebuggerStatement
+    doc: "debugger;"
+    fields: []
+
+  - id: 0x0F3
+    name: ContinueStatement
+    doc: "continue [label];"
+    fields:
+      - {name: label, type: IdentId, optional: true}
+
+# 0x110..0x16F Declarations
+  - id: 0x110
+    name: StandaloneImplDecl
+    bases: [DeclarationStatement]
+    doc:  "impl Hash for MyType where T: Send { fn hash(...) -> u64; ... }"
+    fields:
+      - {name: is_unsafe, type: bool}
+      - {name: ifaces_id, type: NodeId, cast: ImplIfaceList, optional: true}
+      - {name: for_ty, type: NodeId, cast: TypeExpr}
+      - {name: where_, type: NodeId, cast: WhereClause, optional: true}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: members_id, type: NodeId, cast: ClassMemberList, optional: true}
+
+  - id: 0x111
+    name: MarkerImpl
+    bases: [DeclarationStatement]
+    doc:  "unsafe impl !marker::Sendable for *mut T { }"
+    fields:
+      - {name: is_unsafe, type: bool}
+      - {name: is_negated, type: bool}
+      - {name: marker_path, type: NodeId, cast: AttributePath}
+      - {name: for_ty, type: NodeId, cast: TypeExpr}
+      - {name: where_, type: NodeId, cast: WhereClause, optional: true}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+
+  - id: 0x112
+    name: WhereClause
+    doc:  "where T: Send + 'static, U: PartialEq<T>"
+    fields:
+      - {name: preds, type: NodeList, cast: WherePred}
+
+  - id: 0x113
+    name: MarkerDeclaration
+    doc:  "auto marker Sendable<T> = Marker1 + Marker2 + Marker3;"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: is_auto, type: bool}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: n_markers, type: uint8}
+      - {name: markers, type: NodeList, cast: AttributePath}
+
+  - id: 0x114
+    name: PositionalStructDecl
+    bases: [NamedDeclaration]
+    doc:  "struct Rgb(u8, u8, u8); / newtype struct Name(str);"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: extensibility, type: ClassExtensibility}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: nfields, type: uint16}
+      - {name: fields, type: NodeList, cast: PositionalFieldDecl}
+
+  - id: 0x115
+    name: FunctionDecl
+    bases: [NamedDeclaration]
+    doc:  "fun name(params) -> Ret raises E { body }"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: params_id, type: NodeId, cast: FunctionParameterList}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: ret_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: raises_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: body, type: NodeId, cast: BlockStmt}
+
+  - id: 0x116
+    name: ClassDecl
+    bases: [NamedDeclaration]
+    doc:  "class Name<T> extends Base { ... }"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: extensibility, type: ClassExtensibility}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: extends, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: members_id, type: NodeId, cast: ClassMemberList, optional: true}
+
+  - id: 0x117
+    name: StructDecl
+    bases: [NamedDeclaration]
+    doc:  "struct Name<T> { field: T, ... }"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: extensibility, type: ClassExtensibility}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: members_id, type: NodeId, cast: ClassMemberList, optional: true}
+
+  - id: 0x118
+    name: GenericParams
+    doc:  "<T: Copy, U: Debug = u32> generic parameter list wrapper (shared node to keep parent Decl payloads ≤24B)"
+    fields:
+      - {name: nparams, type: uint16}
+      - {name: params, type: NodeList, cast: TypeParamDecl}
+
+  - id: 0x119
+    name: FunctionParameterDecl
+    bases: [NamedDeclaration]
+    doc:  "positional function parameter: name : T [= default]"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+      - {name: default_, type: NodeId, cast: Expression, optional: true}
+      - {name: attrs, type: NodeId, cast: AttributeList, optional: true}
+
+  - id: 0x11A
+    name: FunctionParameterList
+    doc:  "(a : T, b : U, ...) function parameter list wrapper (keeps FunctionDecl payload ≤24B)"
+    fields:
+      - {name: nparams, type: uint16}
+      - {name: params, type: NodeList, cast: ParameterDecl}
+
+  - id: 0x11B
+    name: ImplIfaceList
+    doc:  "impl A + B + C : IList (comma-list of implemented ifaces for impl-block declarations)"
+    fields:
+      - {name: n_ifaces, type: uint8}
+      - {name: ifaces, type: NodeList, cast: TypeExpr}
+
+  - id: 0x11C
+    name: ClassMemberList
+    doc:  "Sequential container of class/struct/interface body members (shared so parent payloads stay ≤24B)"
+    fields:
+      - {name: nmembers, type: uint16}
+      - {name: members, type: NodeList, cast: ClassElement}
+
+  - id: 0x11D
+    name: InterfaceDecl
+    bases: [NamedDeclaration]
+    doc: "interface Name { members }"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: members_id, type: NodeId, cast: ClassMemberList, optional: true}
+
+  - id: 0x11E
+    name: ErrorDecl
+    bases: [NamedDeclaration]
+    doc: "error Name { members }"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: members_id, type: NodeId, cast: ClassMemberList, optional: true}
+
+  - id: 0x11F
+    name: AliasDecl
+    bases: [NamedDeclaration]
+    doc: "type Name = Type;"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: target, type: NodeId, cast: TypeExpr, optional: true}
+
+# 3. Derived Information (does not affect storage, pure codegen aid)
+# ───────────────────────────────────────────────────────────
+derived:
+
+  # ── 3.1 Range constants for FirstXXX / LastXXX helpers ────
+  #   All ranges line up with each category's first-id .. first-id+len-1.
+  #   (Generated from BLOCKS layout table in schema generator.)
+  - kind: RangeSyntax
+    from: AttributeList       # 0x000
+    to:   CfgOp               # 0x008
+    name: FirstAttributeFamily / LastAttributeFamily
+
+  - kind: RangeSyntax
+    from: ExternDecl          # 0x010
+    to:   FFILinkSpec         # 0x017
+    name: FirstFFIFamily / LastFFIFamily
+
+  - kind: RangeSyntax
+    from: MacroInvocationExpr # 0x020
+    to:   ProcMacroDecl       # 0x02B
+    name: FirstMacroFamily / LastMacroFamily
+
+  - kind: RangeSyntax
+    from: UnitVariant         # 0x030
+    to:   EnumReprAttr        # 0x03A
+    name: FirstEnumVariantFamily / LastEnumVariantFamily
+
+  - kind: RangeSyntax
+    from: StandaloneImplDecl  # kept as alias; actual range below
+    to:   MarkerImpl
+    name: FirstImplFamily / LastImplFamily
+
+  - kind: RangeSyntax
+    from: RestPattern         # 0x040
+    to:   SpawnExpression     # 0x04A
+    name: FirstPatternFamily / LastPatternFamily
+
+  - kind: RangeSyntax
+    from: PositionalStructCtorExpr # 0x060
+    to:   TupleLiteral        # 0x06C
+    name: FirstLiteralExprFamily / LastLiteralExprFamily
+
+  - kind: RangeSyntax
+    from: WherePred           # 0x080
+    to:   ConditionalExpr     # 0x085
+    name: FirstExprFamily / LastExprFamily
+
+  - kind: RangeSyntax
+    from: DynTypeExpr         # 0x0C0
+    to:   ArrayTypeExpr       # 0x0CA
+    name: FirstTypeFamily / LastTypeFamily
+
+  - kind: RangeSyntax
+    from: SuspendStatement    # 0x0E0
+    to:   LetStmt             # 0x0EB
+    name: FirstStmtFamily / LastStmtFamily
+
+  - kind: RangeSyntax
+    from: StandaloneImplDecl  # 0x0F0
+    to:   FunctionParameterDecl  # 0x0F9
+    name: FirstDeclFamily / LastDeclFamily
+
+  # ── 3.2 Classification predicates (isExpr / isStmt / isDecl)
+  - kind: Category
+    name: isExpression
+    includes:
+      # Expr range (0x080..0x085)
+      - WherePred
+      - ThisExpr
+      - IdentExpr
+      - CallExpression
+      - BinaryExpr
+      - ConditionalExpr
+      # LiteralExpr range (0x060..0x06C) counts as expressions
+      - PositionalStructCtorExpr
+      - TupleLiteral1
+      - ErrorDefaultExpr
+      - NullCoalesceExpr
+      - IsExpression
+      - NullLiteral
+      - BoolLiteral
+      - IntLiteral
+      - FloatLiteral
+      - BigIntLiteral
+      - StrLiteral
+      - ArrayLiteral
+      - TupleLiteral
+      # FFI expression-ish
+      - UnsafeBlockExpr
+      # Macro invocation
+      - MacroInvocationExpr
+      # Pattern expression-ish (SpawnExpression lives in Pattern range)
+      - SpawnExpression
+
+  - kind: Category
+    name: isStatement
+    includes:
+      # Stmt range (0x0E0..0x0EB)
+      - SuspendStatement
+      - UntilClause
+      - BlockStmt
+      - IfStmt
+      - MatchStmt
+      - WhileStmt
+      - ForStmt
+      - BreakStmt
+      - ReturnStmt
+      - StatementListItem
+      - MatchArmStmt
+      - LetStmt
+
+  - kind: Category
+    name: isNamedDeclaration
+    includes:
+      # Range nodes with bases=[NamedDeclaration]
+      - ExternDecl
+      - MacroRulesDecl
+      - UnitVariant
+      - TupleVariant
+      - StructVariant
+      - EnumDeclaration
+      - PositionalStructDecl
+      - ExternVarDecl
+      - ExternStaticDecl
+      - FFIConstDecl
+      - ProcMacroDecl
+      - StandaloneImplDecl
+      - MarkerImpl
+      - FunctionDecl
+      - ClassDecl
+      - StructDecl
+      - FunctionParameterDecl
+
+  # ── 3.3 Reflection metadata (NodeSchema[SyntaxKind] → fieldName/offset/typeName)
+  - kind: Reflection
+    purpose: "Auto-generated for LSP hover + Debugger pretty-printer + serialization schema"
+
+  # ── 3.4 G2 Disjoint-Category Ranges (generated from categories: block above)
+  #    For every category listed in §2b (Attribute, FFI, Macros, ..., Internal):
+  #    kind: RangeSyntax → first_id=<category.first> last_id=<category.last>
+  #    This produces `is<Category>Name(SyntaxKind)` constexpr predicates during codegen.
+  #    Self-check 6 (§4.3) verifies non-overlap *before* these rows are expanded.
+
+# ───────────────────────────────────────────────────────────
+# 3b. G2 Well-Formedness Self-Checks (6 rules · runs before codegen)
+# Documented in ast-data-structure.md §4.3. Modifying this list requires
+# updating both the Python code generator implementation AND §4.3 listing
+# AND the changelog. DO NOT edit silently.
+# ───────────────────────────────────────────────────────────
+self_checks:
+  - id: sc1_variant_count_matches_enum
+    severity: fatal            # any failure → codegen aborts
+    applies_to: [variants, enums/SyntaxKind]
+    rule: "len(variants) == len(SyntaxKind enum entries)"
+    rationale: "Schema and generated enum must stay in lock-step; drift → silent UB on cast"
+
+  - id: sc2_payload_fits_24B
+    severity: fatal
+    applies_to: [every variant.fields]
+    rule: "sizeof(payload) ≤ codegen.payload_total_bytes (24 B by default)"
+    rationale: "P2 SOP invariant: every Node must pack into 32 B = header 8B + payload 24B"
+
+  - id: sc3_field_type_allowlist
+    severity: fatal
+    applies_to: [every field]
+    rule: "field.type present in field_types: block (§4 below) OR is a generated enum"
+    rationale: "Prevents P2/P4 violations (Own<T>, raw pointers, cross-Arena references) at schema-edit time"
+
+  - id: sc4_cast_target_valid_and_category_compatible
+    severity: fatal
+    applies_to: [every field with cast:]
+    rule: "cast target ∈ variants ∪ categories ∪ union_predicates  ∧  src_category ⊆ dst_category"
+    rationale: "G2 rule 4 — catches typos and cross-category UB; typed variant traversal relies on subset relation. Union_predicates (Expression/TypeExpr/CfgPredicate/…) are allowed as 'category unions' for cast targets; sc4 expands them to the constituent concrete variants during the check."
+
+  - id: sc5_named_decl_has_IdentId
+    severity: warning          # warning so that draft schema with stub payloads can still generate
+    applies_to: [variants with bases: [NamedDeclaration]]
+    rule: "∃ at least one field with type = IdentId"
+    rationale: "G2 rule 5 — nodes claiming to be NamedDeclarations must bind a name; IdentId field is the convention"
+
+  - id: sc6_categories_disjoint
+    severity: fatal
+    applies_to: [categories block]
+    rule: "∀ pairs (A, B) of categories: range(A) ∩ range(B) = ∅"
+    rationale: "G2 rule 6 — RangeSyntax-derived predicates isExpr/isStmt/isDecl require non-overlapping ids"
+
+# ───────────────────────────────────────────────────────────
+# 3c. G3 Binary Stable Serialisation + Schema Fingerprint
+# Documented in ast-data-structure.md §7.1.
+# ───────────────────────────────────────────────────────────
+schema_fingerprint:
+  algorithm: SHA-256                 # 32 B · little-endian · written into every cache header
+  canonicalizer:
+    strip_comments: true             # drop YAML comments and whitespace between tokens
+    sort_keys: [enums, categories, variants, derived, self_checks, field_types, codegen]
+    variant_sort: by_id_hex          # emit variant rows in ascending id order (not file order)
+  failure_modes:
+    on_mismatch: reject_and_reparse  # never try to reinterpret a mismatched cache (UB-free)
+    on_checksum_mismatch: hard_fail  # corruption detected → halt with diag::AST_cache_corrupt
+
+binary_serde:
+  format_version: 1                  # uint16 LE · header byte offset 8
+  magic: "ZOMAST\0\0"                # uint64 · header byte offset 0
+  header_size_B: 64                  # multiple of 64 B / cacheline aligned
+  checksum: FNV1a_32_sections_1_5    # 4 B trailer · protects Node[] + 4 intern pools
+  section_order: [nodes, idents, strings, bigints, floats, checksum]
+  alignment_B: 64                    # mmap offset alignment
+
+# ───────────────────────────────────────────────────────────
+# 4. Field type lookup table (used by the code generator)
+# ───────────────────────────────────────────────────────────
+field_type_mapping:
+  NodeId:         { cpp: "uint32_t", size: 4,  align: 4 }
+  NodeList:       { cpp: "NodeList",       size: 8, align: 4, comment: "len≤2^16-1; oversized lists require splitting" }
+  IdentList:      { cpp: "IdentList",      size: 8, align: 4, comment: "IdentId vector, same pack layout as NodeList" }
+  IdentId:        { cpp: "uint32_t", size: 4,  align: 4 }
+  StringId:       { cpp: "uint32_t", size: 4,  align: 4 }
+  FloatId:        { cpp: "uint32_t", size: 4,  align: 4 }
+  BigIntId:       { cpp: "uint32_t", size: 4,  align: 4 }
+  bool:           { cpp: "bool",     size: 1,  align: 1, pack: "bitfield" }
+  uint8:          { cpp: "uint8_t",  size: 1,  align: 1 }
+  uint16:         { cpp: "uint16_t", size: 2,  align: 2 }
+  uint32:         { cpp: "uint32_t", size: 4,  align: 4 }
+  uint64:         { cpp: "uint64_t", size: 8,  align: 8 }
+  Loc32:          { cpp: "::zomlang::compiler::source::Loc32", size: 4, align: 4, comment: "22b line + 10b column" }
+  CfgOpKind:      { cpp: "CfgOpKind", size: 1, align: 1 }
+  Abi:            { cpp: "Abi",       size: 2, align: 2 }
+  MacroBrace:     { cpp: "MacroBrace",size: 1, align: 1 }
+  CfgAtomValueKind: { cpp: "CfgAtomValueKind", size: 1, align: 1 }
+  SpawnModKind:   { cpp: "SpawnModKind",   size: 1, align: 1 }
+  WhereBoundKind: { cpp: "WhereBoundKind", size: 1, align: 1 }
+  ClassExtensibility: { cpp: "ClassExtensibility", size: 1, align: 1 }
+  SuspendMode:    { cpp: "SuspendMode", size: 1, align: 1 }
+
+  # G1 (ArenaBorrow §5.3): compiler-phase scope enum
+  ArenaScope:     { cpp: "ArenaScope", size: 1, align: 1 }
+
+# ───────────────────────────────────────────────────────────
+# 5. Code generation parameters
+# ───────────────────────────────────────────────────────────
+codegen:
+  target_cpp_standard: 20
+  node_size_bytes: 32                 # Header 8 + Payload 24
+  header_offset_loc:   4              # Loc32 starts at offset 4
+  header_total_bytes: 8
+  payload_total_bytes: 24
+  max_node_count: 16777216            # 2^24 = 16M per Arena
+  asserts_in_debug: true              # boundary / type-cast ASan assertions
+  generate_reflection: true           # NodeSchema[]
+  generate_json_dump: true
+  generate_fnv1a_hash: true
+  generate_deep_equal: true
+  generate_clone:     true            # Arena-to-Arena
+  generate_arena_borrow_typed_handles: true
+  arena_borrow_forward_declare_variants: true
+  serde_format_version: 1
+
+  # G2 (Self-check 6 + category ranges)
+  generate_category_ranges: true
+  category_predicate_prefix: isCategory_
+
+# ============================================================
+# EOF
+# ============================================================

@@ -681,7 +681,7 @@ class LayoutEngine {
 
   // Helpers — shared concrete impls in base class.
   static auto round_up(size_t value, size_t align) noexcept -> size_t;
-  static auto niche_width(const class TypeNode* payload_t) noexcept -> size_t;
+  static auto niche_width(const class SemanticType* payload_t) noexcept -> size_t;
   static bool has_niche_optimization(const class ADTNode* sum) noexcept;
 
  protected:
@@ -820,7 +820,7 @@ class MarkerDeriveEngine {
   virtual bool can_derive_sum(MarkerId marker,
                               const ADTNode& sum) const;
   virtual bool field_satisfies(MarkerId marker,
-                               const class TypeNode& field_ty) const;
+                               const class SemanticType& field_ty) const;
   virtual bool marker_is_always_opt_in(MarkerId marker) const noexcept;
 
  private:
@@ -861,5 +861,13 @@ Fifteen release-blocking test cases. Each has a (name, ZOM source sketch, expect
 | RB-15 | Discriminant explicit + repr(u16) overflow | `#[zom::repr(u16)] enum X { A = 70000 }` | Compile ERROR ZOM0612 "discriminant 70000 exceeds u16 range". |
 
 All fifteen tests must pass on the `sanitizer` preset (`-Z sanitizer` = address + UB + leak) before the ADT system is declared complete. RB-12 additionally runs under three distinct CMake presets (`release-linux-x64`, `release-macos-arm64`, `release-win-x64`) in CI to catch layout drift across targets.
+
+### AST Node Representation
+The Struct and Enum forms in this document are represented by dedicated schema
+variants in the compiler AST. Unit, tuple, and struct enum variants each carry
+their own payload shape, and positional structs are separate declaration nodes.
+The AST layout is defined in [ast-data-structure.md](ast-data-structure.md);
+the implementation schema lives at
+`products/zomlang/compiler/ast/schema.yml`.
 
 <!-- File stats: 12 ## headings, 43 ### headings, 6 ebnf blocks, 19 zom blocks, 3 cpp blocks, 3 mermaid blocks -->

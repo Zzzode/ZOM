@@ -68,15 +68,14 @@ shared) vocabulary uniformly.
 | Module (filesystem path) | Public Surface (3 key classes) | Purpose (1 line) | Data-In | Data-Out | Ownership Transfer |
 |---|---|---|---|---|---|
 | `products/zomlang/compiler/lexer` | `Lexer`, `TokenStream`, `Token` | Convert source bytes into a bounded token sequence with source-location anchors | `zc::StringRef` source buffer + `FileID` | `zc::Own<TokenStream>` with 32-bit `SourceLoc` per token | Lexer consumes `StringRef` view; caller owns produced `TokenStream` |
-| `products/zomlang/compiler/parser` | `Parser`, `SyntaxNode`, `SyntaxTree` | Build an append-only immutable syntax tree from a token stream according to the canonical grammar in `docs/design/syntax-ebnf.md` | `Borrow<TokenStream>` | `zc::Own<SyntaxTree>` | Parser borrows tokens; caller owns resulting tree |
-| `products/zomlang/compiler/ast` | `NodeKind`, `TypeKind`, `LitKind` | Closed-enum taxonomies of every AST and type variant used across the pipeline | Compile-time generated tables | Header-only enumerations | Header-only; no heap ownership |
-| `products/zomlang/compiler/ast` | `Decl`, `Stmt`, `Expr`, `TypeRepr` | Typed accessor views over `SyntaxNode` payload regions; zero-allocation projection | `Borrow<SyntaxNode>` | Strongly-typed view objects | Views are non-owning; lifetime bound to `SyntaxTree` |
-| `products/zomlang/compiler/ast` | `DeclBuilder`, `ExprBuilder`, `TypeBuilder` | Convenience factories used by parser and macro-style code emitters to construct well-formed `SyntaxNode` subtrees | Field-wise inputs | `zc::Own<SyntaxNode>` | Builders transfer produced nodes to enclosing tree |
-| `products/zomlang/compiler/binder` | `Binder`, `ScopeTree`, `NameResolution` | Walk unbound AST, introduce lexical scopes, resolve every identifier to a symbol, and reject shadowing violations | `Borrow<SyntaxTree>` + `Borrow<SymbolTable>` | `Borrow<ScopeTree>` (mutates input symbol table in place) | Scope tree is owned by `CompilerSession`; binder mutates by borrow |
+| `products/zomlang/compiler/parser` | `Parser`, `TreeBuilder`, `ast::Tree` | Build the immutable schema-backed AST for one source buffer | Token stream view | `ast::Tree` | Parser owns construction and returns the finished move-only tree |
+| `products/zomlang/compiler/ast` | `Tree`, `Node`, `NodeId` | Own syntax nodes, source ranges, payload words, and child-list storage | Parser construction calls | Immutable tree API | Tree owns nodes and lists; consumers borrow by const reference |
+| `products/zomlang/compiler/ast` | `NodePayload`, `NodeList`, generated accessors | Provide schema-defined payload layout and reflection metadata | `schema.yml` code generation | Generated headers | Header-only generated API in the main `ast` target |
+| `products/zomlang/compiler/binder` | `Binder`, `BindingMetadata`, `NameResolution` | Walk unbound AST, introduce lexical scopes, and resolve identifiers to symbols | `Borrow<const ast::Tree>` + `Borrow<SymbolTable>` | `BindingMetadata` + symbol updates | Binder writes semantic side tables keyed by `NodeId` |
 | `products/zomlang/compiler/symbol` | `Scope`, `ScopeKind`, `ScopeIterator` | Hierarchical name-lookup containers supporting lexical, module, and trait dispatch levels | Inserted `Symbol*` | Resolved `SymbolRef` | Scopes are append-only post-bind |
 | `products/zomlang/compiler/symbol` | `DeclFlags`, `TypeFlags`, `PermSet` | Compact bitfield sets that encode permissions, mutability, linkage, and marker membership | Bitwise OR inputs | Packed 64-bit flag words | Value types; copied freely |
 | `products/zomlang/compiler/symbol` | `SymbolTable`, `Symbol`, `SymbolId` | Fused hash + stable-index storage for every named declaration across all translation units | `Name` + `ScopeId` inserts | `SymbolId` + `Symbol*` lookups | `SymbolTable` is COW across TUs; see §4 |
-| `products/zomlang/compiler/checker` | `TypeChecker`, `TypeEnv`, `Constraint` | Unify types, discharge trait bounds, enforce permission flow, and resolve marker coherence per `docs/design/compiler-contracts.md` §3–§5 | `Borrow<SyntaxTree>` + `ScopeTree` + `&mut TypeEnv` | Fully inferred `TypeEnv` with solved `TypeVar` | TypeEnv is COW; checker returns a new instance on error-free paths |
+| `products/zomlang/compiler/checker` | `TypeChecker`, `TypeEnv`, `Constraint` | Unify types, discharge trait bounds, enforce permission flow, and resolve marker coherence per `docs/design/compiler-contracts.md` §3–§5 | `Borrow<const ast::Tree>` + `BindingMetadata` + `&mut TypeEnv` | Fully inferred `TypeEnv` with solved `TypeVar` | TypeEnv is COW; checker returns a new instance on error-free paths |
 | `products/zomlang/compiler/diagnostics` | `DiagCode`, `DiagRegistry`, `Severity` | Central registry of every diagnostic emitted by any subsystem; mirror of §8 | Static code metadata | `Expected<T>` style rich error payloads | POD; copied on emission |
 | `products/zomlang/compiler/diagnostics` | `DiagnosticEngine`, `SourceManager`, `DiagRenderer` | Render typed diagnostics to terminal, SARIF, or JSON with caret lines, fix-it hints, and cross-reference anchors | `Diagnostic` record | Rendered text or structured output | Engine is owned by `CompilerSession`; renderer borrows all inputs |
 | `products/zomlang/compiler/driver` | `CompilerSession`, `SessionOptions`, `CompilationUnit` | Central coordinator that owns all shared state and sequences the pipeline across all stages | CLI args, source file list | Final artifact stream | Session owns every sub-object via `zc::Own`; see §7 |
@@ -84,7 +83,7 @@ shared) vocabulary uniformly.
 | `libraries/zc` | `Allocator`, `String`, `Vec<T>`, `HashMap<K,V>` | Core vocabulary types used both by the compiler (as `libzc-host`) and user programs (as `libzc-target`) | Header / template instantiations | Inline and archive code | Value semantics with explicit `zc::Own<T>` move-only wrappers |
 | `products/zomlang/tests/language` | `LitRunner`, `FileCheck`, `ShTest` | LLVM-style integration test harness driving `zomc` CLI with RUN directives | `.zom` test files | PASS/FAIL/XFAIL counts | Runner owns subprocess handles; tests are never linked into the compiler |
 | `products/zomlang/tests/unittests/compiler` | `ztest::Suite`, `ztest::Case`, `ztest::Expect` | Lightweight unit test framework used by compiler module `*-test.cc` files | Static test registrations | XML + console report | Test binaries link against in-tree compiler libraries |
-| `products/zomlang/compiler/irgen` (planned) | `IRBuilder`, `IRModule`, `IRInst` | Lower typed AST into SSA form suitable for LLVM ingestion; future landing zone once frontend freezes | `Borrow<TypeEnv>` + `SyntaxTree` | `zc::Own<IRModule>` | IR is consumed by backend; builder transfers ownership |
+| `products/zomlang/compiler/irgen` (planned) | `IRBuilder`, `IRModule`, `IRInst` | Lower typed AST into SSA form suitable for LLVM ingestion; future landing zone once frontend freezes | `Borrow<TypeEnv>` + `Borrow<const ast::Tree>` | `zc::Own<IRModule>` | IR is consumed by backend; builder transfers ownership |
 | `products/zomlang/compiler/backend` (planned) | `LLVMEmitter`, `ObjectWriter`, `LinkerDriver` | Produce native `.o` / `.obj` files and drive the system linker to emit executables or shared libraries | `Borrow<IRModule>` + target triple | Object bytes or `stdout` assembly | Backend owns LLVM context for each TU; outputs are written through `ObjectWriter` |
 
 ## 3. Frontend Pipeline
@@ -96,7 +95,7 @@ flowchart TD
     A[Source bytes<br/>FileID + StringRef] -->|raw chars + location map| B[Lexer]
     B -->|Token[] with SourceLoc| C[TokenStream]
     C -->|sequential token view| D[Parser]
-    D -->|append-only SyntaxNode DAG| E[SyntaxTree / AST]
+    D -->|schema-backed ast::Tree| E[AST Tree]
     E -->|node walk + name insertions| F[Binder]
     F -->|ident -> SymbolId bindings| G[ScopeTree + Symbols]
     G -->|typed lookup context| H[TypeChecker]
@@ -116,13 +115,20 @@ Every stage above publishes explicit invariants that downstream code may uncondi
 1. Source buffers registered through `CompilerSession::addSource` are never freed or moved for the lifetime of the session; every `SourceLoc` returned by any stage dereferences into a stable byte address.
 2. The lexer produces at most one `ERROR` token per malformed byte run; error recovery resynchronizes at the next whitespace, newline, or top-level keyword boundary.
 3. `TokenStream` is a random-access `Span<Token>` whose length and contents are immutable on return from the lexer; no parser or plugin may shrink, reorder, or mutate contained tokens.
-4. The parser either returns a well-formed `SyntaxTree` whose root kind is `NodeKind::Module`, or aborts with at least one syntax diagnostic; partial trees are never propagated downstream.
-5. AST is append-only immutable after the parse phase; no pointer to `SyntaxNode` may be mutated, relocated, or freed after the `Parser::parseModule` call returns.
-6. The binder runs exactly once per `SyntaxTree`; re-running the binder on an already-bound tree is an ICE because `ScopeTree` insertion is monotonic and non-idempotent.
+4. The parser either returns a well-formed `ast::Tree` whose root kind is `SourceFile`, or aborts with at least one syntax diagnostic; partial trees are never propagated downstream.
+5. AST storage is immutable after the parse phase; no consumer may mutate `Node`, `NodeList`, or payload storage after `Parser::parse()` returns.
+
+> #### AST Data Structure Design
+> The compiler AST is an arena-owned syntax tree keyed by `NodeId`. The parser
+> returns an immutable `ast::Tree`; binder and checker data are stored in side
+> tables keyed by `NodeId`. The complete design is documented in
+> [ast-data-structure.md](ast-data-structure.md), and the implementation schema
+> lives at `products/zomlang/compiler/ast/schema.yml`.
+6. The binder runs exactly once per `ast::Tree`; re-running the binder on an already-bound tree is an ICE because scope insertion is monotonic and non-idempotent.
 7. After bind completes without fatal diagnostics, every identifier node in the AST resolves to a non-zero `SymbolId`; unresolved names are caught exclusively by the binder, never by the type checker.
 8. `ScopeTree` edges form a forest (one tree per CU, plus one synthetic global scope); cycles in the parent pointer chain are an ICE and are verified during scope finalization.
 9. The type checker terminates in bounded steps equal to `O(declarations * trait-bounds * max-depth-8)`; recursive unification without progress is detected and raised as `ZOM04xx` rather than looping.
-10. When type checking succeeds, every `TypeRepr` node in the AST carries a cached solved `Type*` pointer; downstream stages dereference this pointer directly and never re-run unification.
+10. When type checking succeeds, solved type information is stored in checker-owned side tables keyed by `NodeId`; downstream stages read those tables and never re-run unification.
 11. `TypeEnv` produced by a successful check is frozen; mutations after freeze are detected via generation counters and raise an ICE.
 12. The IR builder lowers each declaration exactly once; duplicate `IRInst` emission for the same symbol is a logic error caught by `IRModule` symbol registration.
 13. The backend either produces a complete object file or attaches LLVM-verifier diagnostics to the session and returns an error `Expected`; truncated object files are never written to disk.
@@ -152,7 +158,7 @@ The table below documents the core structures that transit the pipeline, identif
 | Structure | Created By | Immutabilized By | Read By | Copied or Shared |
 |---|---|---|---|---|
 | `Token` | `Lexer::nextToken` | `Lexer` after full buffer scan (stream frozen) | `Parser`, `DiagnosticEngine` | Shared by `Span<const Token>` pointer — never copied after lex |
-| `SyntaxNode` | `Parser::makeNode` via builders | `Parser::parseModule` on return | Binder, Checker, IRGen, DiagnosticEngine | Shared by pointer — tree is append-only post-parse |
+| `ast::Tree` / `ast::Node` | `TreeBuilder::makeNode` | `Parser::parse()` on return | Binder, Checker, IRGen, DiagnosticEngine | Shared by const tree reference; syntax storage is immutable post-parse |
 | `Scope*` | `Binder::enterScope` | `Binder::finalize` after walk completes | Checker, LintPasses, IRGen | Shared by pointer — mutations after finalize are ICE |
 | `Symbol*` | `Binder::declare` via `SymbolTable::intern` | First successful global type-check resolution | Binder (other CUs), Checker, IRGen | Shared by pointer; payload fields with `PermSet` are COW |
 | `TypeVar` | `TypeChecker::freshVar` | `TypeEnv::freeze` after solve | Checker, IRGen (for debug metadata only) | Copied into each COW snapshot of `TypeEnv` |
@@ -196,8 +202,8 @@ graph LR
     end
     subgraph Foundation
         ASTK[ast/kinds]
-        ASTN[ast/nodes]
-        ASTB[ast/builders]
+        ASTN[ast/tree]
+        ASTB[ast/generated]
         DIA[diagnostic]
         ZC[libraries/zc]
     end
@@ -274,8 +280,8 @@ sequenceDiagram
         end
     and per-CU parse (after lex CU completes)
         loop for each CU
-            DRV->>PAR: parseModule(CU.tokens)
-            PAR-->>DRV: Own<SyntaxTree> + CU-local diags
+            DRV->>PAR: parse(CU.tokens)
+            PAR-->>DRV: ast::Tree + CU-local diags
         end
     and per-CU bind (after parse CU completes)
         loop for each CU
@@ -356,7 +362,7 @@ namespace irgen      { class IRModule; }
 namespace sourcemgr  { class SourceManager; }
 namespace symbol     { class SymbolTable; class SymbolId; }
 namespace types      { class TypeEnv; class Type; }
-namespace ast        { class SyntaxTree; }
+namespace ast        { class Tree; }
 
 namespace driver {
 
@@ -404,7 +410,7 @@ public:
   /// Number of translation units registered.
   uint32_t translationUnitCount() const noexcept;
   /// Fetch the parsed AST for a CU by index (nullptr if parse failed).
-  const ast::SyntaxTree* syntaxTree(uint32_t cuIndex) const noexcept;
+  const ast::Tree* syntaxTree(uint32_t cuIndex) const noexcept;
   /// Snapshot option block — never returns a mutable reference.
   const SessionOptions& options() const noexcept;
 
@@ -416,7 +422,7 @@ private:
 } // namespace zom
 ```
 
-`CompilerSession` is the sole owner of the `DiagnosticEngine`, `SourceManager`, global `SymbolTable`, per-CU `SyntaxTree` list, per-CU `TypeEnv` cache, and any loaded plugins registered through the extension points in §10. All cross-module lookups route through the session; no module stores a direct pointer to another module's state at static-initialization time. The `compileAndEmit` convenience method chains `runFrontend`, `runTypeCheck`, `runIRGen`, and the backend emit step in order, returning early on the first `Error` propagated.
+`CompilerSession` is the sole owner of the `DiagnosticEngine`, `SourceManager`, global `SymbolTable`, per-CU `ast::Tree` list, per-CU `TypeEnv` cache, and any loaded plugins registered through the extension points in §10. All cross-module lookups route through the session; no module stores a direct pointer to another module's state at static-initialization time. The `compileAndEmit` convenience method chains `runFrontend`, `runTypeCheck`, `runIRGen`, and the backend emit step in order, returning early on the first `Error` propagated.
 
 ## 8. Diagnostic Numbering Plan
 
@@ -537,7 +543,7 @@ Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by
 | 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` (ffi pass) | Warning | `ZOM1830` = `...` varargs in extern block require platform support that is unavailable on the current architecture (e.g. some wasm profiles) → Warning |
 | 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` (cfg pass) | Error | `ZOM1900` = CfgPredicateParseFailure: `zom::cfg` attribute predicate parse failure (unbalanced parens, unknown combinator, malformed atom) → Error |
 | 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` (cfg pass) | Error | `ZOM1901` = CfgOnExpression: `zom::cfg` attribute applied to expression position (expression-level gating not supported) → Error |
-| 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` (cfg pass) | Warning | `ZOM1902` = UnknownCfgKey: unknown cfg key used in predicate; may not evaluate on this compiler (not a hard error to allow forward compat) → Warning |
+| 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` (cfg pass) | Error | `ZOM1902` = UnknownCfgKey: cfg predicate references a key not declared by the current compiler target model or package manifest -> Error |
 | 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` (cfg pass) | Error | `ZOM1903` = UndeclaredFeatureRef: cfg predicate references `feature = "foo"` but feature `foo` not declared in manifest `[features]` → Error |
 | 1900–1949 | Conditional Compilation | `products/zomlang/compiler/modules` | Error | `ZOM1904` = FeatureCycle: feature dependency graph contains a cycle (e.g. `features.foo = ["bar"]`, `features.bar = ["foo"]`) → Error |
 | 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` (concurrency pass) + `products/zomlang/runtime` | Error | `ZOM1000` = ScopeNotFound: referenced scope id does not exist or already terminated → Error |
@@ -607,10 +613,10 @@ Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by
 | 1300–1399 | Driver / CLI / options | `products/zomlang/compiler/driver` | Error | `ZOM1303` = Unknown flag `--magical` passed to `zom build` → Error |
 | 1300–1399 | Driver / CLI / options | `products/zomlang/compiler/driver` | Warning | `ZOM1340` = Debug build with LTO enabled produces excessive link times → Warning |
 | 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` (resolver) | Error | `ZOM2001` = ForbidLintDowngrade: attempted to lower a FORBID-level lint via `#[zom::allow(...)]`; forbid lints cannot be suppressed → Error |
-| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` (resolver) | Warning | `ZOM2002` = DeprecatedInCurrentEdition: language construct used is deprecated in current edition and will error in the next edition → Warning |
-| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` (future-compat) | Warning | `ZOM2003` = FutureCompatLint: future-compatibility lint; this diagnostic will promote to Deny (hard error) in the next declared edition → Warning |
+| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` (resolver) | Error | `ZOM2002` = RemovedLanguageConstruct: source uses a construct that is not part of the active language definition -> Error |
+| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` (resolver) | Error | `ZOM2003` = UnsupportedEditionMode: source or command-line options request an edition mode not implemented by this compiler -> Error |
 | 1400–1999 | Reserved for future type-system sub-features | `products/zomlang/compiler/checker` (reserved) | Error | `ZOM14xx` block held for specialization, variance, and lifetime sub-typing diagnostics → Error |
-| 2050–2999 | Reserved for trait / impl solver | `products/zomlang/compiler/checker` (solver) | Error | `ZOM2xxx` block held for solver overflow, recursion, and chalk-compatibility diagnostics → Error |
+| 2050–2999 | Reserved for trait / impl solver | `products/zomlang/compiler/checker` (solver) | Error | `ZOM2xxx` block held for solver overflow, recursion, and solver model diagnostics -> Error |
 | 3000–3999 | Reserved for permission / borrowck | `products/zomlang/compiler/checker` (borrowck) | Error | `ZOM3xxx` block held for permission tree, borrow, and NLL-style diagnostics → Error |
 | 4000–4999 | Reserved for constant evaluator | `products/zomlang/compiler/checker` (comptime + const-eval) | Error | `ZOM4xxx` block held for extended comptime, const generics, and interpreter diagnostics → Error |
 | 5000–5999 | Reserved for incremental rebuild cache | `products/zomlang/compiler/driver` (incr cache) | Error | `ZOM5xxx` block held for cache hit/miss, fingerprint mismatch, and corruption diagnostics → Error |
@@ -643,11 +649,11 @@ The severity hierarchy and command-line flag matrix below translate user intent 
 
 The compiler itself is a heavily concurrent C++ process. The driver schedules per-CU work onto a fixed-size `zc::ThreadPool` sized to `min(CU_count, physical_cores * 2)`, defaulting to 32-way on a 16-core host. The three frontend stages — lex, parse, and bind — form a per-CU pipeline where each stage fires as soon as the previous stage for the same CU completes; independent CUs never synchronize until the fan-out barrier in §6. The global type-checker decomposes into a `TaskGraph` where each node represents a single declaration or a batch of trait-implementation obligations, and edges encode declaration-order and trait-coherence dependencies; the thread pool drains ready nodes until the graph empties or an error forces early cancellation.
 
-The thread-safety strategy rests on two properties. First, post-parse AST is append-only immutable by invariant §3.5, so every worker thread reads the same `SyntaxNode*` pointers without synchronization overhead. Second, every mutable shared structure carries an explicit per-bucket or per-entry lock whose granularity is listed below. Lock ordering is global: `RwLock` in the `SymbolTable` always nests inside `CompilerSession` generation locks, never the reverse. The full build runs under ThreadSanitizer nightly per §11; any TSan-reported data race is a release blocker by default.
+The thread-safety strategy rests on two properties. First, post-parse AST storage is immutable by invariant §3.5, so every worker thread reads the same `ast::Tree` through const references without synchronization overhead. Second, every mutable shared structure carries an explicit per-bucket or per-entry lock whose granularity is listed below. Lock ordering is global: `RwLock` in the `SymbolTable` always nests inside `CompilerSession` generation locks, never the reverse. The full build runs under ThreadSanitizer nightly per §11; any TSan-reported data race is a release blocker by default.
 
 | Data Structure | Thread Safety Strategy | Lock Granularity |
 |---|---|---|
-| `SyntaxTree` / `SyntaxNode` | Immutable post-parse — zero synchronization | Not applicable (no writes after parse) |
+| `ast::Tree` / `ast::Node` | Immutable post-parse — zero synchronization | Not applicable (no writes after parse) |
 | `TokenStream` | Immutable post-lex — zero synchronization | Not applicable (no writes after lex) |
 | `SymbolTable` | Per-bucket `zc::RwLock` + COW snapshot during fan-out | 4096 buckets; each bucket lock guards 64-symbol slab |
 | `ScopeTree` | Per-`Scope*` append-only `Mutex` during bind; immutable post-finalize | One `Mutex` per scope node |
@@ -716,11 +722,14 @@ protected:
 #include "zom/ADT/Expected.h"
 #include "zom/ADT/Own.h"
 #include "zom/ADT/StringRef.h"
-#include "zom/ast/nodes/DeclFwd.h"
-#include "zom/ast/nodes/Param.h"
-#include "zom/ast/nodes/Struct.h"
+#include "zom/ast/tree.h"
 
 namespace zom::extensions {
+
+struct SyntaxRef {
+  const ast::Tree& tree;
+  ast::NodeId node;
+};
 
 class AttributeHandler {
 public:
@@ -732,16 +741,13 @@ public:
   virtual bool canHandle(StringRef fullyQualifiedName) const = 0;
 
   /// Invoked after the binder resolves an attribute on a function declaration.
-  virtual Error onAttachToFn(ast::FunctionDecl& fn,
-                             const ast::Attribute& attr) = 0;
+  virtual Error onAttachToFn(SyntaxRef fn, SyntaxRef attr) = 0;
 
-  /// Invoked after the binder resolves an attribute on a struct declaration.
-  virtual Error onAttachToStruct(ast::StructDecl& st,
-                                 const ast::Attribute& attr) = 0;
+  /// Invoked after the binder resolves an attribute on a record declaration.
+  virtual Error onAttachToRecord(SyntaxRef record, SyntaxRef attr) = 0;
 
   /// Invoked after the binder resolves an attribute on a function parameter.
-  virtual Error onAttachToParam(ast::ParamDecl& param,
-                                const ast::Attribute& attr) = 0;
+  virtual Error onAttachToParam(SyntaxRef param, SyntaxRef attr) = 0;
 
 protected:
   AttributeHandler();
@@ -758,9 +764,7 @@ protected:
 #pragma once
 #include "zom/ADT/Own.h"
 #include "zom/ADT/StringRef.h"
-#include "zom/ast/nodes/Expr.h"
-#include "zom/ast/nodes/Stmt.h"
-#include "zom/ast/nodes/Decl.h"
+#include "zom/ast/tree.h"
 #include "zom/diagnostic/DiagnosticBuilder.h"
 
 namespace zom::extensions {
@@ -774,17 +778,14 @@ public:
   virtual StringRef name() const = 0;
 
   /// Invoked once per function definition after type check succeeds.
-  virtual void onFnDef(const ast::FunctionDecl& fn,
-                       diagnostic::DiagnosticBuilder& db) = 0;
+  virtual void onFnDef(SyntaxRef fn, diagnostic::DiagnosticBuilder& db) = 0;
 
   /// Invoked for every statement inside a function body; return false to
   /// skip descending into children.
-  virtual bool onStmt(const ast::Stmt& stmt,
-                      diagnostic::DiagnosticBuilder& db) = 0;
+  virtual bool onStmt(SyntaxRef stmt, diagnostic::DiagnosticBuilder& db) = 0;
 
   /// Invoked for every expression (post-order); emit zero or more diagnostics.
-  virtual void onExpr(const ast::Expr& expr,
-                      diagnostic::DiagnosticBuilder& db) = 0;
+  virtual void onExpr(SyntaxRef expr, diagnostic::DiagnosticBuilder& db) = 0;
 
 protected:
   LintPass();

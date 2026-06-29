@@ -14,8 +14,7 @@
 
 #include "zomlang/compiler/basic/frontend.h"
 
-#include "zomlang/compiler/ast/ast.h"
-#include "zomlang/compiler/ast/module.h"
+#include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/binder.h"
@@ -24,48 +23,32 @@
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
+#include "zomlang/compiler/symbol/symbol.h"
 
 namespace zomlang {
 namespace compiler {
 namespace basic {
 
-/// Implementation of performParse
-zc::Maybe<zc::Own<ast::Node>> performParse(const source::SourceManager& sm,
-                                           diagnostics::DiagnosticEngine& diagnosticEngine,
-                                           const LangOptions& langOpts,
-                                           basic::StringPool& stringPool,
-                                           const source::BufferId& bufferId) {
+zc::Maybe<ast::Tree> performParse(const source::SourceManager& sm,
+                                  diagnostics::DiagnosticEngine& diagnosticEngine,
+                                  const LangOptions& langOpts, basic::StringPool& stringPool,
+                                  const source::BufferId& bufferId) {
   // Create a Parser instance
   parser::Parser parser(sm, diagnosticEngine, langOpts, stringPool, bufferId);
-  // Assuming Parser::parse now returns the AST or null on failure
-  zc::Maybe<zc::Own<ast::Node>> ast = parser.parse();
+  zc::Maybe<ast::Tree> tree = parser.parse();
 
   // Check for parsing errors
   if (diagnosticEngine.hasErrors()) {
     return zc::none;  // Return none if parsing reported errors
   }
 
-  // Return the parsed AST (or none if parser returned none)
-  return ast;  // NRVO optimization
+  return zc::mv(tree);
 }
 
-/// Implementation of performBind
 bool performBind(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
-                 ast::Node& ast) {
-  // Cast to SourceFile for binding
-  if (auto* sourceFile = dynamic_cast<ast::SourceFile*>(&ast)) {
-    // Create a binder instance
-    binder::Binder binder(symbolTable, diagnosticEngine);
-
-    // Perform binding for the source file
-    binder.bindSourceFile(*sourceFile);
-
-    // Return true if no errors occurred during binding
-    return !diagnosticEngine.hasErrors();
-  }
-
-  // If the AST is not a SourceFile, we can't bind it
-  return false;
+                 const ast::Tree& tree, ast::BindingMetadata& metadata) {
+  binder::Binder binder(symbolTable, diagnosticEngine, tree, metadata);
+  return binder.bind();
 }
 
 }  // namespace basic

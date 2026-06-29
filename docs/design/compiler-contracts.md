@@ -25,8 +25,8 @@ This document, the ZOM Internal Specification (ZIS), defines the **contracts** b
 Fifteen internal contract areas are enumerated below. Each contract area is assigned a two-letter subsystem prefix and a sequential number namespace so that individual invariants can be cited unambiguously in code comments, PR review notes, and ICE reports.
 
 1. **Lex to Parser (L2P-xx)** — token stream shape, trivia attachment, span conventions, and error-propagation token contract. Defined in section 4.
-2. **Parser to AST (P2A-xx)** — SyntaxKind coverage, acyclicity, depth limits, child ordering, and orphan-kind elimination rules. Defined in section 5.
-3. **Parser to Binder (P2B-xx)** — NodeId uniqueness, ModuleDecl completeness, scope tree production, undeclared-reference emission rules, and shadowing behavior. Defined in section 6.
+2. **Parser to AST (P2A-xx)** — schema coverage, `NodeId` reachability, `NodeList` ordering, source spans, and orphan-kind elimination rules. Defined in section 5.
+3. **Parser to Binder (P2B-xx)** — syntax-reference stability, source-file completeness, scope tree production, undeclared-reference emission rules, and shadowing behavior. Defined in section 6.
 4. **Binder to TypeChecker (B2T-xx)** — Symbol pointer validity, unresolved-type placeholder preservation, raises-clause binding, and marker constraint re-running. Defined in section 7.
 5. **TypeChecker to Runtime (T2R-xx)** — zero-cost concurrency gating, marker verification shift, scope-exit-noexcept enforcement, and eradication of runtime marker queries. Defined in section 8.
 6. **TypeChecker to Orphan Engine (bidirectional)** — alias normalization ordering, negative-impl bitmap closure, and blanket-override sequencing. Defined in section 9.
@@ -45,7 +45,7 @@ The diagram below shows the eight core entities of the compiler pipeline and the
 ```mermaid
 erDiagram
     Lexer        ||--|| Parser              : "L2P-01..L2P-08"
-    Parser       ||--o{ SyntaxNode          : "P2A-01..P2A-08"
+    Parser       ||--|| ASTTree             : "P2A-01..P2A-08"
     Parser       ||--|| Binder              : "P2B-01..P2B-09"
     Binder       ||--|| TypeChecker         : "B2T-01..B2T-07"
     TypeChecker  ||--o{ OrphanEngine        : "T2O-01..T2O-10"
@@ -179,7 +179,7 @@ The table below is the **authoritative copy** of the ZOM diagnostic-code range a
 | 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM1830` = `...` varargs in extern block require platform support that is unavailable on the current architecture (e.g. some wasm profiles) → Warning |
 | 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` | Error | No | `ZOM1900` = CfgPredicateParseFailure: `zom::cfg` attribute predicate parse failure (unbalanced parens, unknown combinator, malformed atom) → Error |
 | 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` | Error | No | `ZOM1901` = CfgOnExpression: `zom::cfg` attribute applied to expression position (expression-level gating not supported) → Error |
-| 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM1902` = UnknownCfgKey: unknown cfg key used in predicate; may not evaluate on this compiler (not a hard error to allow forward compat) → Warning |
+| 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` | Error | No | `ZOM1902` = UnknownCfgKey: cfg predicate references a key not declared by the current compiler target model or package manifest -> Error |
 | 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` | Error | No | `ZOM1903` = UndeclaredFeatureRef: cfg predicate references `feature = "foo"` but feature `foo` not declared in manifest `[features]` → Error |
 | 1900–1949 | Conditional Compilation | `products/zomlang/compiler/modules` | Error | No | `ZOM1904` = FeatureCycle: feature dependency graph contains a cycle (e.g. `features.foo = ["bar"]`, `features.bar = ["foo"]`) → Error |
 | 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1000` = ScopeNotFound: referenced scope id does not exist or already terminated → Error |
@@ -249,10 +249,10 @@ The table below is the **authoritative copy** of the ZOM diagnostic-code range a
 | 1300–1399 | Driver / CLI / options | `products/zomlang/compiler/driver` | Error | No | `ZOM1303` = Unknown flag `--magical` passed to `zom build` → Error |
 | 1300–1399 | Driver / CLI / options | `products/zomlang/compiler/driver` | Warning | Yes | `ZOM1340` = Debug build with LTO enabled produces excessive link times → Warning |
 | 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` | Error | No | `ZOM2001` = ForbidLintDowngrade: attempted to lower a FORBID-level lint via `#[zom::allow(...)]`; forbid lints cannot be suppressed → Error |
-| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM2002` = DeprecatedInCurrentEdition: language construct used is deprecated in current edition and will error in the next edition → Warning |
-| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM2003` = FutureCompatLint: future-compatibility lint; this diagnostic will promote to Deny (hard error) in the next declared edition → Warning |
+| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` | Error | No | `ZOM2002` = RemovedLanguageConstruct: source uses a construct that is not part of the active language definition -> Error |
+| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` | Error | No | `ZOM2003` = UnsupportedEditionMode: source or command-line options request an edition mode not implemented by this compiler -> Error |
 | 1400–1999 | Reserved for future type-system sub-features | `products/zomlang/compiler/checker` (reserved) | Error | No | `ZOM14xx` block held for specialization, variance, and permission sub-typing diagnostics → Error |
-| 2050–2999 | Reserved for trait / impl solver | `products/zomlang/compiler/checker` | Error | No | `ZOM2xxx` block held for solver overflow, recursion, and chalk-compatibility diagnostics → Error |
+| 2050–2999 | Reserved for trait / impl solver | `products/zomlang/compiler/checker` | Error | No | `ZOM2xxx` block held for solver overflow, recursion, and solver model diagnostics -> Error |
 | 3000–3999 | Reserved for permission / borrowck | `products/zomlang/compiler/checker` | Error | No | `ZOM3xxx` block held for permission tree and NLL-style diagnostics → Error |
 | 4000–4999 | Reserved for constant evaluator | `products/zomlang/compiler/checker` | Error | No | `ZOM4xxx` block held for extended comptime, const generics, and interpreter diagnostics → Error |
 | 5000–5999 | Reserved for incremental rebuild cache | `products/zomlang/compiler/driver` | Error | No | `ZOM5xxx` block held for cache hit/miss, fingerprint mismatch, and corruption diagnostics → Error |
@@ -281,6 +281,12 @@ Additional structural rules for the 100-block sub-allocation:
 - Block `ZOMx020–ZOMx069` carries specific, named semantic diagnostics (one per programmer mistake, each with a canonical short-name slug).
 - Block `ZOMx070–ZOMx089` carries lint-level diagnostics that may be `allow`'d per scope.
 - Block `ZOMx090–ZOMx099` carries `deny`-by-default or `forbid`-by-default entries that are not allowed to be downgraded inside user code.
+
+> #### AST representation contract
+> Syntax nodes are value payloads in `ast::Tree`, addressed by `ast::NodeId`.
+> Semantic data is stored in side tables keyed by `NodeId`; AST nodes do not own binder,
+> checker, or symbol metadata. The layout contract is documented in
+> [ast-data-structure.md](ast-data-structure.md).
 
 ---
 
@@ -389,64 +395,83 @@ static_assert(sizeof(Token) == 32, "Token size must not regress; perf-sensitive 
 
 ## 5. Parser to AST Contract
 
-The parser produces a tree of `SyntaxNode` instances that together form the canonical AST. Every node is owned by a `SyntaxArena` whose lifetime is tied to the `Session`; nodes are never freed individually. The invariants below govern shape, coverage, and reachability; violation produces ICE codes in the ZOM92xx series.
+The parser produces one immutable `ast::Tree` per source buffer. Each syntax node
+is a value record addressed by `ast::NodeId`; child lists are stored in
+dedicated `NodeList` storage and resolved through `Tree::list()`. The
+invariants below govern shape, coverage, and reachability; violation produces
+ICE codes in the ZOM92xx series.
 
-**P2A-01 SyntaxKind Surjectivity.** Each `SyntaxKind` enumerated in `products/zomlang/compiler/ast/kinds.h` (the count is pinned at >= 200 concrete kinds) has at least one parser production path that yields a node of that kind. A CI job diffs the set of kinds against a `ParserCoverage` registry of reachable parser paths; any kind that is not reached by any `parseXxx` function body must be removed from `kinds.h` in the same PR that introduces the gap.
+**P2A-01 Schema Coverage.** Every concrete AST node kind is declared in
+`products/zomlang/compiler/ast/schema.yml` and generated into
+`products/zomlang/compiler/ast/generated/node-kind.inc`. `ast/kinds.h` includes
+that generated list directly. A node kind that is not part of the schema is not
+part of the AST.
 
-**P2A-02 Parser Injectivity.** Each parser production path yields exactly **one** outermost `SyntaxKind`. If a single parse routine can return one of several possible kinds (e.g., `parseExpr` returning `BinaryExpr`, `CallExpr`, `LiteralExpr`, etc.), each leaf return statement is annotated with a `ZOM_PARSER_RETURNS(kind)` macro that records it in the `ParserCoverage` registry; every annotated kind is a separate entry for the purposes of P2A-01.
+**P2A-02 Parser Result Shape.** `Parser::parse()` returns `zc::Maybe<ast::Tree>`.
+On success, `Tree::root()` points to exactly one `SourceFile` node. The
+`SourceFile` payload contains the optional `ModuleDeclaration` node and the
+ordered top-level `NodeList` of statements and declarations.
 
-**P2A-03 AST Acyclicity.** The parent-child relation on `SyntaxNode` defines a forest. Cycles are impossible by construction: the `SyntaxArena` allocates nodes in bump order and parent pointers are never back-patched; every pointer assignment is a write of a fresh child into a parent's child slot before the parent is returned to the caller. Debug builds assert that every `SyntaxNode*` stored in a child slot is allocated at a higher bump-arena index than the parent.
+**P2A-03 NodeId Locality.** `NodeId{0}` is the empty value. Every non-empty
+`NodeId` is valid only inside its owning `Tree`, and `Tree::contains(id)` is the
+authority for membership. Cross-stage references that outlive a local tree
+context carry both `source::BufferId` and `ast::NodeId`.
 
-**P2A-04 Maximum Depth Constraint.** No root-to-leaf path in any AST tree exceeds 1024 nodes. Depth is computed as the count of internal `SyntaxNode` hops (tokens / terminal leaves do not add to depth). Exceeding this limit produces diagnostic **ZOM0280 NodeDepthExceeded** (a user-visible Error, not an ICE) and halts parse-tree construction. The parser enforces the limit inside `Parser::beginNode()` and recovers by emitting a synthetic terminal node at the overflow point.
+**P2A-04 AST Acyclicity.** The parent-child relation encoded by schema fields and
+`NodeList` handles defines a directed acyclic graph rooted at `SourceFile`.
+Parser construction appends nodes and lists through `TreeBuilder`; debug builds
+assert that every child `NodeId` placed into a list belongs to the same tree.
 
-**P2A-05 Per-Kind Child Ordering.** For each `SyntaxKind K`, the list of child `SyntaxNode`s in `SyntaxNode::children()` is produced in a fully deterministic, documented order that is invariant across parser invocations over equivalent input. IDE structural-outline code, pretty-printers, and `SyntaxWriter` serialization depend on this order; changing it is a breaking change to the `compile_commands.json` incremental cache and requires a version bump in the session's `AST_SCHEMA_VERSION`.
+**P2A-05 Per-Kind Payload Ordering.** For each `SyntaxKind K`, payload word
+layout and child order are defined by `schema.yml` and generated constants in
+`generated/node-payload.h`. Hand-written code uses generated accessors or named
+word constants instead of numeric payload indexes.
 
-**P2A-06 Node Spans Are Contained In Parent Spans.** For every non-root node `N` with parent `P`, `P.sourceRange().contains(N.sourceRange())` holds. Bracket tokens and synthesized recovery nodes never leak beyond their parent's span. The span of a `FunctionDecl` node, for example, always includes its signature, its body, and all attached attributes; an IDE folding range built from spans is therefore correct by construction.
+**P2A-06 Node Spans Are Contained In Parent Spans.** For every non-root node `N`
+with parent `P`, `P.range` contains `N.range`. Bracket tokens and synthesized
+recovery nodes never leak beyond their parent's span. IDE folding ranges,
+diagnostic highlights, and AST dumps rely on this containment rule.
 
-**P2A-07 Ident Spans Match Ident Tokens Exactly.** Every `IdentSyntax` node's `sourceRange()` is identical to the range of the `Identifier` token that produced it. The parser is forbidden from widening or narrowing an identifier span (e.g., to include surrounding whitespace or attribute markers) because rename refactoring, goto-definition, and identifier-highlighting features depend on exact byte-accurate ranges.
+**P2A-07 Identifier Spans Match Identifier Tokens Exactly.** Every identifier
+syntax node's `range` is identical to the `Identifier` token that produced it.
+The parser is forbidden from widening or narrowing an identifier range because
+rename refactoring, goto-definition, and identifier highlighting depend on
+byte-accurate ranges.
 
-**P2A-08 No Orphan SyntaxKinds Rule.** Any `SyntaxKind` declared in `kinds.h` that has no `parseXxx` code path (verified by `ParserCoverage`) is treated as **orphan** and must be deleted from `kinds.h` in the PR that detected the orphan. The only exceptions are kinds explicitly marked with a `/// ZOM-INTERNAL: synthesized by lower XXX` comment; such kinds are produced exclusively by AST-lowering or rewrite passes and are annotated with `ZOM_SYNTH_KIND(kind)` so that the coverage check skips them.
+**P2A-08 No Orphan SyntaxKinds Rule.** Any schema node kind that has no parser,
+lowering, or explicitly documented synthetic producer is an orphan and must be
+deleted from `schema.yml` in the same change that detects the orphan. The AST
+target does not carry placeholder node kinds.
 
 ```cpp
 // products/zomlang/compiler/ast/ast.h
-namespace zc::ast {
+namespace zomlang::compiler::ast {
 
-enum class SyntaxKind : uint16_t; // forward declared; generated in kinds.h
-class SyntaxVisitor;
-class SyntaxArena;
-
-/// Base class for every concrete AST node. All instances are arena-allocated;
-/// the class has a protected non-virtual destructor. Subclasses are emitted by
-/// tblgen from SyntaxNodes.td; hand-written subclasses are prohibited.
-class SyntaxNode {
-public:
-    virtual ~SyntaxNode() = default;
-
-    /// Returns the concrete kind of this node; always matches the static subclass.
-    virtual SyntaxKind           kind()        const = 0;
-    /// Returns the ordered list of child SyntaxNodes (not tokens).
-    virtual llvm::ArrayRef<SyntaxNode const*> children() const = 0;
-    /// Returns the half-open byte range covering this node and all descendants.
-    virtual SourceRange          sourceRange() const = 0;
-    /// Double-dispatch entry for the visitor system.
-    virtual void                 accept(SyntaxVisitor&) const = 0;
-
-    // ... uniform utility methods (getParent, dump, etc.) implemented in terms
-    // of the four pure-virtual entries above ...
+struct Node final {
+    SyntaxKind kind = SyntaxKind::Unknown;
+    source::SourceRange range;
+    NodePayload payload;
 };
 
-} // namespace zc::ast
+class Tree final {
+public:
+    NodeId root() const;
+    const Node& node(NodeId id) const;
+    zc::ArrayPtr<const NodeId> list(NodeList list) const;
+};
+
+} // namespace zomlang::compiler::ast
 ```
 
 ---
 
 ## 6. Parser to Binder Contract
 
-The **Binder** (`products/zomlang/compiler/binder`) walks the AST produced by the parser, constructs a module-level scope forest, resolves every identifier reference to a `Symbol*` or explicitly marks it unresolved, and produces per-file `NamedDecl` records that the TypeChecker subsequently consumes. The nine invariants below are the sole contract between the parser's output and the binder's input; the binder must not rely on parser internals beyond what is listed.
+The **Binder** (`products/zomlang/compiler/binder`) walks the AST produced by the parser, constructs a module-level scope forest, resolves every identifier reference to a symbol id or explicitly marks it unresolved, and writes per-node semantic state into `ast::BindingMetadata`. The nine invariants below are the sole contract between the parser's output and the binder's input; the binder must not rely on parser internals beyond what is listed.
 
-**P2B-01 NodeId Uniqueness.** Every `IdentSyntax` node, every `NamedDecl` node, and every `LabelSyntax` node receives a globally unique `NodeId` (64-bit) at parse time. IDs are allocated monotonically; 0 is reserved for the "anonymous" sentinel. The binder keyes every symbol table, every scope edge, and every reference-edge on `NodeId`. Duplicate `NodeId` values at binder entry produce ICE ZOM9311.
+**P2B-01 Syntax Reference Stability.** Every declaration and identifier reference is represented by a `NodeId` that is unique inside its owning `ast::Tree`. Symbols that need durable declaration locations store `{ BufferId, NodeId }`. Duplicate `NodeId` values inside one tree, or a symbol declaration reference pointing outside its source tree, produce ICE ZOM9311.
 
-**P2B-02 ModuleDecl Fully Populated.** For every file (translation unit) reachable from the root crate via `mod` declarations, the parser has produced a `ModuleDecl` node whose `items` child list contains every top-level item in the file. The binder does not re-read the filesystem to discover items; any unparsed reachable file is a parser bug that the binder reports via ICE ZOM9312.
+**P2B-02 SourceFile Fully Populated.** For every parsed file, the parser has produced a `SourceFile` node whose `statements` `NodeList` contains every top-level item and whose optional `module` field points to the file's `ModuleDeclaration` when present. The binder does not re-read the filesystem to discover parsed items; any unparsed reachable file is a parser bug that the binder reports via ICE ZOM9312.
 
 **P2B-03 Single-Pass Post-Order Scope Construction.** The binder performs exactly **one** post-order walk of the AST to build the scope forest. It does not revisit nodes. Scopes are created on the way down (pre) and populated on the way up (post); every declaration is inserted into the correct scope exactly once. The scope forest is therefore a tree rooted at the crate scope; cross-module edges are represented as `ImportEdge` records that point from the importing module's scope into the imported module's public symbol layer.
 
@@ -490,9 +515,9 @@ static_assert(alignof(Symbol) >= 8, "Symbol pointer bits must be taggable.");
 
 ## 7. Binder to TypeChecker Contract
 
-The TypeChecker (`products/zomlang/compiler/checker`) consumes the binder's outputs -- scope forest, symbol table, per-reference `Symbol*` pointers, and module-level `ImportEdge` graph -- and performs type inference, unification, raises-clause subtyping, and marker lattice closure. The seven invariants below define what the TypeChecker may *assume* on input and what the Binder is therefore *required* to establish.
+The TypeChecker (`products/zomlang/compiler/checker`) consumes the binder's outputs -- scope forest, symbol table, per-node `ast::BindingMetadata`, and module-level `ImportEdge` graph -- and performs type inference, unification, raises-clause subtyping, and marker lattice closure. The seven invariants below define what the TypeChecker may *assume* on input and what the Binder is therefore *required* to establish.
 
-**B2T-01 Every Ident Has Non-Null Symbol.** After the binder completes successfully, every `IdentSyntax` node in the AST has a non-null `Symbol*` attached. The sentinel `Symbol::unresolvedSentinel()` is used in place of `nullptr` for undeclared references (P2B-04). The TypeChecker's first line of code in any visitor that dereferences an Ident is therefore allowed to `zc::_ASSERT(ident->symbol() != nullptr)`; seeing a null pointer produces ICE ZOM9401.
+**B2T-01 Every Ident Has Symbol Metadata.** After the binder completes successfully, every identifier reference node has an entry in `BindingMetadata::symbol(NodeId)`. The unresolved symbol id is used for undeclared references (P2B-04). The TypeChecker checks metadata before using a symbol; a missing metadata entry for a bound identifier produces ICE ZOM9401.
 
 **B2T-02 Unresolved-Type Placeholders Are Preserved.** When the binder encounters a generic call whose type argument cannot be syntactically resolved (e.g., `foo::bar::<_>(42)` with a `_` type hole), it inserts an `UnresolvedType` sentinel node into the AST rather than inventing a type. The TypeChecker is the only component allowed to replace these sentinels with concrete types during inference. The binder is forbidden from filling in type holes heuristically.
 
@@ -645,38 +670,36 @@ Extensions may register `AttributeHandler` implementations to claim non-builtin 
 // products/zomlang/compiler/driver/extension-attribute-handler.h
 namespace zc::ext {
 
+struct SyntaxRef {
+    const ast::Tree& tree;
+    ast::NodeId node;
+};
+
 class AttributeHandler {
 public:
     virtual ~AttributeHandler() = default;
 
     /// Returns true if this handler is the authoritative owner of the
     /// attribute path. Must be deterministic; must not depend on the AST.
-    virtual bool canHandle(ast::AttributePath const& path) const = 0;
+    virtual bool canHandle(zc::StringPtr fullyQualifiedName) const = 0;
 
-    /// Called when the parser attaches this attribute to a FunctionDecl.
-    virtual void onFn(Session& sess, ast::FunctionDecl& fn,
-                      ast::Attribute const& attr) = 0;
+    /// Called when the parser attaches this attribute to a function declaration.
+    virtual void onFn(Session& sess, SyntaxRef fn, SyntaxRef attr) = 0;
 
-    /// Called when the parser attaches this attribute to a StructDecl,
-    /// ClassDecl, or EnumDecl node. Dispatched per-kind internally.
-    virtual void onStruct(Session& sess, ast::RecordDecl& rec,
-                          ast::Attribute const& attr) = 0;
+    /// Called when the parser attaches this attribute to a record declaration.
+    virtual void onRecord(Session& sess, SyntaxRef record, SyntaxRef attr) = 0;
 
     /// Called when the parser attaches this attribute to a parameter in a
     /// function signature or closure capture list.
-    virtual void onParam(Session& sess, ast::ParamDecl& param,
-                         ast::Attribute const& attr) = 0;
+    virtual void onParam(Session& sess, SyntaxRef param, SyntaxRef attr) = 0;
 };
 
 // Lifetime/ownership rules (AttributeHandler):
-// (1) AST node references (`ast::FunctionDecl&`, etc.) are stable for the
-//     entire session (arena-allocated); pointers may be retained across
-//     hook calls only if the extension also retains a Session reference
-//     it verifies at each access.
-// (2) `ast::Attribute const&` is owned by the AST; copies are safe because
-//     Attribute is a value type.
-// (3) Handlers must not allocate new AST nodes outside of
-//     `Session::astArena()`; doing so invalidates P2A-03 (acyclicity).
+// (1) Hooks receive syntax references as `{Tree, NodeId}` pairs. The tree owns
+//     the node storage for the duration of the session.
+// (2) Attribute payloads are read through generated schema accessors.
+// (3) Handlers must not allocate AST nodes directly; syntax construction is
+//     confined to parser-owned `TreeBuilder` instances.
 } // namespace zc::ext
 ```
 
@@ -786,7 +809,7 @@ The core golden rule of compiler-internal error handling:
 
 > **"ICE only on compiler bugs, never on bad source code."**
 
-Every internal error originates from either (a) a programmer mistake in user source code, which must produce a user-visible diagnostic in the ranges defined by section 2 with a severity in the Error-to-Help lattice, or (b) a broken invariant in the compiler itself, which must produce an ICE payload and abort the session. There is no third category. Any condition that is detectable from the source text alone (including invalid UTF-8, unmatched brackets, type errors, concurrency-gate violations) must never trigger an ICE. Conversely, any condition that cannot possibly be caused by any valid or invalid source text (null `Symbol*` where B2T-01 promises a non-null pointer, a `SyntaxKind` whose `children()` list contains the wrong count, diagnostic codes absent from the authoritative table) must produce an ICE.
+Every internal error originates from either (a) a programmer mistake in user source code, which must produce a user-visible diagnostic in the ranges defined by section 2 with a severity in the Error-to-Help lattice, or (b) a broken invariant in the compiler itself, which must produce an ICE payload and abort the session. There is no third category. Any condition that is detectable from the source text alone (including invalid UTF-8, unmatched brackets, type errors, concurrency-gate violations) must never trigger an ICE. Conversely, any condition that cannot possibly be caused by any valid or invalid source text (missing symbol metadata where B2T-01 promises a symbol id, a `SyntaxKind` whose schema payload cannot be decoded, diagnostic codes absent from the authoritative table) must produce an ICE.
 
 ### 11.1 Assertion versus ICE Macro
 
@@ -800,7 +823,7 @@ The two internal macros are `zc::_ASSERT` for debug-only, cheap-to-evaluate loca
 | Performance cost         | Zero in Release                                    | Evaluates format args in all modes                    |
 | Intended usage           | Local, hot-path sanity checks                     | Any contract violation (L2P/P2A/B2T/T2R, etc.)        |
 | `msg` requirement        | C string literal                                  | Format string with `%s`/`%d` specifiers               |
-| Example                  | `zc::_ASSERT(idx < v.size(), "OOB");`             | `ZOM_ICE("Binder", "null Symbol* for NodeId={}", id);`|
+| Example                  | `zc::_ASSERT(idx < v.size(), "OOB");`             | `ZOM_ICE("Binder", "missing symbol metadata for NodeId={}", id);`|
 | Retry / recovery         | None                                              | Registered ICE handlers may snapshot then abort       |
 
 ### 11.2 Log Severity Hierarchy
@@ -825,11 +848,11 @@ The eight ICE codes below are the minimum set required by the first-party subsys
 |-------------|-----------|----------------------------------------------------------------|
 | ICE-LEX-001 | Lexer     | Lexer state desynchronization: `tokenStream.size()` disagree with `sourceFile.bytes()` consumed count (ZOM9110) |
 | ICE-LEX-002 | Lexer     | Trivia attachment violated L2P-04: standalone trivia token in stream |
-| ICE-PARSE-001 | Parser  | `SyntaxNode` returned from `parseXxx` with `kind()` not matching `ZOM_PARSER_RETURNS` annotation |
+| ICE-PARSE-001 | Parser  | `Parser::parse()` returned a tree whose root is not `SourceFile` |
 | ICE-PARSE-002 | Parser  | Bracket pair mismatch: `matchClose()` returned offset that is not a `]`/`)`/`}` token kind (L2P-08 corruption) |
 | ICE-BIND-001 | Binder  | Duplicate `NodeId` observed while inserting into symbol table (P2B-01) |
-| ICE-BIND-002 | Binder  | Reachable file missing `ModuleDecl` in AST (P2B-02)            |
-| ICE-TC-001  | TypeChecker | Null `Symbol*` dereferenced on Ident node (B2T-01)            |
+| ICE-BIND-002 | Binder  | Reachable file missing a populated `SourceFile` AST (P2B-02)  |
+| ICE-TC-001  | TypeChecker | Missing symbol metadata for identifier node (B2T-01)         |
 | ICE-TC-002  | TypeChecker | Orphan engine returned `¬M` for Phase-A-seeded `+M` bit        |
 | ICE-TC-003  | TypeChecker | Marker incompatibility table query returned verdict for unknown (M1, M2) pair |
 

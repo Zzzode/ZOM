@@ -1,33 +1,7 @@
-// RUN: ! %zomc compile --dump-ast %s 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %s | %FileCheck %s
 
 let a = risky()?!;
 let b = optional!!;
 
 
-// CHECK: Error [ZOM2011]: Identifier expected, found ';'
-// CHECK:   --> {{.*error-handling-operators.zom}}:3:18
-// CHECK:   |
-// CHECK: 3 | let a = risky()?!;
-// CHECK:   |                  ^
-// CHECK: Error [ZOM2025]: Expected ':'
-// CHECK:   --> {{.*error-handling-operators.zom}}:3:18
-// CHECK:   |
-// CHECK: 3 | let a = risky()?!;
-// CHECK:   |                  ^
-// CHECK: Error [ZOM2010]: Reserved keyword 'optional' cannot be used as an identifier
-// CHECK:   --> {{.*error-handling-operators.zom}}:4:9
-// CHECK:   |
-// CHECK: 4 | let b = optional!!;
-// CHECK:   |         ^~~~~~~~
-// CHECK: Error [ZOM2025]: Expected ','
-// CHECK:   --> {{.*error-handling-operators.zom}}:4:17
-// CHECK:   |
-// CHECK: 4 | let b = optional!!;
-// CHECK:   |                 ^~
-// CHECK: Error [ZOM2059]: Variable declaration expected
-// CHECK:   --> {{.*error-handling-operators.zom}}:4:17
-// CHECK:   |
-// CHECK: 4 | let b = optional!!;
-// CHECK:   |                 ^~
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: {"root":8,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":130,"payload":[2,0,0]},{"id":3,"kind":235,"payload":[1,0,2]},{"id":4,"kind":233,"payload":[3,0,0]},{"id":5,"kind":69,"payload":[3,0,0]},{"id":6,"kind":235,"payload":[5,0,0]},{"id":7,"kind":233,"payload":[6,0,0]},{"id":8,"kind":368,"payload":[1,0,0]}]}

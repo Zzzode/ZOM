@@ -667,6 +667,14 @@ void Lexer::Impl::lex() {
           state.curPtr += 2;
           return formToken(ast::SyntaxKind::QuestionDot);
         }
+        if (charAt(1) == '!') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::ErrorPropagate);
+        }
+        if (charAt(1) == ':') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::ErrorDefault);
+        }
         if (charAt(1) == '?') {
           if (charAt(2) == '=') {
             state.curPtr += 3;

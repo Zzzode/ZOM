@@ -9,16 +9,6 @@ interface I {
 // CHECK:   --> {{.*interface-invalid-member-class.zom}}:4:3
 // CHECK:   |
 // CHECK: 4 |   class C {}
-// CHECK:   |   ^~~~~
-// CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*interface-invalid-member-class.zom}}:4:3
-// CHECK:   |
-// CHECK: 4 |   class C {}
-// CHECK:   |   ^~~~~
-// CHECK: Error [ZOM2049]: Declaration or statement expected
-// CHECK:   --> {{.*interface-invalid-member-class.zom}}:5:1
-// CHECK:   |
-// CHECK: 5 | }
-// CHECK:   | ^
+// CHECK:   |   ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,0 +1,224 @@
+---
+title: ZOM AST Data Structure Design
+status: ACCEPTED
+author: ZOM Compiler Team
+date: 2026-06-28
+schema: products/zomlang/compiler/ast/schema.yml
+---
+
+# ZOM AST Data Structure Design
+
+This document defines the canonical AST representation for the ZOM compiler.
+The implementation lives in `products/zomlang/compiler/ast/`, is exposed by the
+CMake target named `ast`, and uses the namespace
+`zomlang::compiler::ast`.
+
+## Pipeline Contract
+
+The parser returns an owning immutable `ast::Tree`. The binder, checker, dumps,
+serializers, tests, and later compiler stages consume that same tree API. Syntax
+storage is separated from semantic metadata.
+
+```mermaid
+flowchart LR
+  Source["Source buffer"] --> Lexer["Lexer"]
+  Lexer --> Parser["Parser"]
+  Parser --> Tree["ast::Tree"]
+  Tree --> Binder["Binder"]
+  Binder --> Meta["ast::BindingMetadata<br/>NodeId to parent / scope / symbol"]
+  Binder --> Symbols["SymbolTable<br/>DeclarationRef = BufferId + NodeId"]
+  Tree --> Dumps["AST dump and serialization"]
+```
+
+## Core Types
+
+`NodeId` is the stable local reference to a syntax node inside one owning
+`Tree`.
+
+```cpp
+struct NodeId final {
+  uint32_t value = 0;
+
+  constexpr explicit operator bool() const noexcept { return value != 0; }
+};
+```
+
+`NodeId{0}` is the empty value. Valid node ids are non-zero and are checked with
+`Tree::contains(NodeId)`.
+
+`Node` is a fixed payload record. It contains only syntax data.
+
+```cpp
+struct Node final {
+  SyntaxKind kind = SyntaxKind::Unknown;
+  source::SourceRange range;
+  NodePayload payload;
+};
+```
+
+`NodePayload` is a compact fixed-width payload area:
+
+```cpp
+struct NodePayload final {
+  uint32_t words[6] = {};
+};
+```
+
+Generated constants and accessors assign semantic meaning to payload words for
+each schema node. Hand-written code uses generated names instead of numeric word
+indexes.
+
+`NodeList` is an independent list handle over contiguous `NodeId` storage:
+
+```cpp
+struct NodeList final {
+  uint32_t first = 0;
+  uint32_t size = 0;
+};
+```
+
+List elements are not encoded as synthetic syntax nodes. `Tree::list(NodeList)`
+resolves a list handle to `zc::ArrayPtr<const NodeId>`.
+
+## Tree Ownership
+
+`Tree` owns all syntax nodes and list storage for one parsed source file.
+
+```cpp
+class Tree final {
+public:
+  NodeId root() const;
+  size_t nodeCount() const;
+  bool contains(NodeId id) const;
+  const Node& node(NodeId id) const;
+  zc::ArrayPtr<const Node> nodes() const;
+  zc::ArrayPtr<const NodeId> list(NodeList list) const;
+};
+```
+
+`TreeBuilder` is the only mutable construction API.
+
+```cpp
+class TreeBuilder final {
+public:
+  NodeId makeNode(SyntaxKind kind, source::SourceRange range,
+                  NodePayload payload = {});
+  NodeList makeList(zc::ArrayPtr<const NodeId> nodes);
+  void setRoot(NodeId id);
+  Tree finish();
+};
+```
+
+Finished trees are move-only and immutable.
+
+## Source File Shape
+
+`SourceFile` is the root node. `ModuleDeclaration` is a schema node referenced
+from the `SourceFile` payload when a file declares a module.
+
+```yaml
+- id: 0x170
+  name: SourceFile
+  fields:
+    - {name: file_name, type: StringId}
+    - {name: module, type: NodeId, cast: ModuleDeclaration, optional: true}
+    - {name: statements, type: NodeList, cast: StatementListItem}
+
+- id: 0x0EC
+  name: ModuleDeclaration
+  fields:
+    - {name: path, type: NodeId, cast: ModulePath}
+```
+
+The generated payload constants define the root layout:
+
+```cpp
+payload.words[kSourceFileFileNameWord]
+payload.words[kSourceFileModuleWord]
+payload.words[kSourceFileStatementsFirstWord]
+payload.words[kSourceFileStatementsSizeWord]
+```
+
+## Semantic Metadata
+
+Syntax nodes never store symbols, scopes, types, denotations, or checker state.
+The binder writes semantic state into side tables keyed by `NodeId`.
+
+```cpp
+class BindingMetadata final {
+public:
+  void resizeFor(const Tree& tree);
+  void setParent(NodeId node, NodeId parent);
+  NodeId parent(NodeId node) const;
+  void setScope(NodeId node, uint32_t scopeId);
+  uint32_t scope(NodeId node) const;
+  void setSymbol(NodeId node, symbol::SymbolId symbolId);
+  symbol::SymbolId symbol(NodeId node) const;
+};
+```
+
+Symbols store durable declaration locations as a source buffer id plus node id:
+
+```cpp
+struct DeclarationRef final {
+  source::BufferId buffer;
+  ast::NodeId node;
+};
+```
+
+## Schema And Generation
+
+`products/zomlang/compiler/ast/schema.yml` is the implementation-side source of
+truth for syntax node payloads. `scripts/codegen/gen_ast.py` emits generated
+headers into `products/zomlang/compiler/ast/generated/`.
+
+| File | Purpose |
+|---|---|
+| `generated/node-kind.inc` | `SyntaxKind` node rows included by `ast/kinds.h` |
+| `generated/node-payload.h` | Payload word counts and named payload indexes |
+| `generated/node-accessors.h` | Node kind names and schema helper functions |
+| `generated/node-traverse.h` | Generic tree traversal entry points |
+| `generated/node-schema.h` | Reflection metadata for dumpers and tests |
+
+Generated files are compiled through the main `ast` target and stay in the
+`zomlang::compiler::ast` namespace.
+
+## Parser Contract
+
+`Parser::parse()` produces `zc::Maybe<ast::Tree>`. Parser construction appends
+nodes and lists through `TreeBuilder`, records source ranges on every node, and
+sets `Tree::root()` to a `SourceFile` node before returning.
+
+The parser emits `ModuleDeclaration`, `ImportDeclaration`, and
+`ExportDeclaration` nodes directly through the schema. Top-level source
+statements are represented by the `SourceFile.statements` `NodeList`.
+
+## Binder Contract
+
+The binder walks `Tree` by `NodeId`, reads node payloads through schema-defined
+layout, and writes parent, scope, and symbol ids into `BindingMetadata`.
+
+```mermaid
+flowchart TD
+  Root["Tree::root()"] --> SourceFile["SourceFile"]
+  SourceFile --> Statements["NodeList statements"]
+  Statements --> Node["Statement / Declaration NodeId"]
+  Node --> Metadata["BindingMetadata side tables"]
+```
+
+## Verification Gates
+
+Changes to the AST representation require:
+
+```bash
+cmake --preset sanitizer
+cmake --build --preset sanitizer -j
+ctest --preset default --output-on-failure
+python3 scripts/check-format.py
+```
+
+Schema changes also require regenerating generated AST headers:
+
+```bash
+python3 scripts/codegen/gen_ast.py --write
+```

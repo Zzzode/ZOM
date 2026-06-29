@@ -5,9 +5,14 @@ interface I {
 
 
 // CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*interface-missing-body-close-brace.zom}}:14:1
-// CHECK:    |
-// CHECK: 14 |
-// CHECK:    | ^
+// CHECK:   --> {{.*interface-missing-body-close-brace.zom}}:4:13
+// CHECK:   |
+// CHECK: 4 |   let x: i32;
+// CHECK:   |             ^
+// CHECK: Error [ZOM2025]: Expected '}'
+// CHECK:   --> {{.*interface-missing-body-close-brace.zom}}:4:13
+// CHECK:   |
+// CHECK: 4 |   let x: i32;
+// CHECK:   |             ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

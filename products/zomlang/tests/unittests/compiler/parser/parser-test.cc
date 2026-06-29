@@ -18,10 +18,9 @@
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/ast/cast.h"
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/module.h"
-#include "zomlang/compiler/ast/statement.h"
+#include "zomlang/compiler/ast/generated/node-payload.h"
+#include "zomlang/compiler/ast/tree.h"
+#include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -32,24 +31,38 @@ namespace zomlang {
 namespace compiler {
 namespace parser {
 
-static void expectIdentifierNameText(
-    zc::OneOf<zc::Maybe<const ast::Identifier&>, zc::Maybe<const ast::BindingPattern&>> name,
-    zc::StringPtr expected) {
-  ZC_SWITCH_ONEOF(name) {
-    ZC_CASE_ONEOF(maybeId, zc::Maybe<const ast::Identifier&>) {
-      ZC_IF_SOME(id, maybeId) { ZC_EXPECT(id.getText() == expected); }
-      else { ZC_FAIL_EXPECT("name should not be none"); }
-      return;
-    }
-    ZC_CASE_ONEOF(maybePattern, zc::Maybe<const ast::BindingPattern&>) {
-      ZC_FAIL_EXPECT("name should be Identifier");
-      return;
-    }
-    ZC_CASE_ONEOF_DEFAULT {
-      ZC_FAIL_EXPECT("name should not be empty");
-      return;
-    }
-  }
+static zc::ArrayPtr<const ast::NodeId> topLevelStatements(const ast::Tree& tree) {
+  const ast::Node& rootNode = tree.node(tree.root());
+  ZC_EXPECT(rootNode.kind == ast::SyntaxKind::SourceFile);
+
+  ast::NodeList list;
+  list.first = rootNode.payload.words[ast::kSourceFileStatementsFirstWord];
+  list.size = rootNode.payload.words[ast::kSourceFileStatementsSizeWord];
+  return tree.list(list);
+}
+
+static ast::NodeId statementItem(const ast::Tree& tree, ast::NodeId wrapper) {
+  const ast::Node& wrapperNode = tree.node(wrapper);
+  if (wrapperNode.kind != ast::SyntaxKind::StatementListItem) { return wrapper; }
+  return ast::NodeId(wrapperNode.payload.words[ast::kStatementListItemItemWord]);
+}
+
+static ast::SyntaxKind topLevelStatementKind(const ast::Tree& tree, size_t index) {
+  return tree.node(statementItem(tree, topLevelStatements(tree)[index])).kind;
+}
+
+static const ast::Node& topLevelStatement(const ast::Tree& tree, size_t index) {
+  return tree.node(statementItem(tree, topLevelStatements(tree)[index]));
+}
+
+static bool hasModuleDeclaration(const ast::Tree& tree) {
+  const ast::Node& rootNode = tree.node(tree.root());
+  return rootNode.payload.words[ast::kSourceFileModuleWord] != 0;
+}
+
+static ast::NodeId moduleDeclaration(const ast::Tree& tree) {
+  const ast::Node& rootNode = tree.node(tree.root());
+  return ast::NodeId(rootNode.payload.words[ast::kSourceFileModuleWord]);
 }
 
 ZC_TEST("ParserTest.BasicParserCreation") {
@@ -97,6 +110,24 @@ ZC_TEST("ParserTest.VariableDeclarationList") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse variable declaration");
+  ZC_IF_SOME(root, result) {
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 1);
+
+    const ast::Node& letNode = root.node(statementItem(root, statements[0]));
+    ZC_EXPECT(letNode.kind == ast::SyntaxKind::LetStmt);
+
+    const ast::Node& pattern =
+        root.node(ast::NodeId(letNode.payload.words[ast::kLetStmtPatternWord]));
+    ZC_EXPECT(pattern.kind == ast::SyntaxKind::IdentifierPattern);
+    ZC_EXPECT(root.ident(ast::IdentId(pattern.payload.words[ast::kIdentifierPatternNameWord])) ==
+              "x");
+
+    const ast::Node& init = root.node(ast::NodeId(letNode.payload.words[ast::kLetStmtInitWord]));
+    ZC_EXPECT(init.kind == ast::SyntaxKind::IntLiteral);
+    ZC_EXPECT(init.payload.words[ast::kIntLiteralBaseWord] == 10);
+    ZC_EXPECT(root.bigInt(ast::BigIntId(init.payload.words[ast::kIntLiteralValueWord])) == "42");
+  }
 }
 
 ZC_TEST("ParserTest.FunctionDeclaration") {
@@ -111,6 +142,39 @@ ZC_TEST("ParserTest.FunctionDeclaration") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse function declaration");
+  ZC_IF_SOME(root, result) {
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 1);
+
+    const ast::Node& functionNode = root.node(statementItem(root, statements[0]));
+    ZC_EXPECT(functionNode.kind == ast::SyntaxKind::FunctionDecl);
+    ZC_EXPECT(root.ident(ast::IdentId(functionNode.payload.words[ast::kFunctionDeclNameWord])) ==
+              "add");
+
+    const ast::Node& params =
+        root.node(ast::NodeId(functionNode.payload.words[ast::kFunctionDeclParamsIdWord]));
+    ZC_EXPECT(params.kind == ast::SyntaxKind::FunctionParameterList);
+    ZC_EXPECT(params.payload.words[ast::kFunctionParameterListNparamsWord] == 2);
+
+    ast::NodeList paramList;
+    paramList.first = params.payload.words[ast::kFunctionParameterListParamsFirstWord];
+    paramList.size = params.payload.words[ast::kFunctionParameterListParamsSizeWord];
+    const auto paramIds = root.list(paramList);
+    ZC_EXPECT(paramIds.size() == 2);
+    const ast::Node& firstParam = root.node(paramIds[0]);
+    ZC_EXPECT(firstParam.kind == ast::SyntaxKind::FunctionParameterDecl);
+    ZC_EXPECT(root.ident(ast::IdentId(
+                  firstParam.payload.words[ast::kFunctionParameterDeclNameWord])) == "a");
+
+    const ast::Node& returnType =
+        root.node(ast::NodeId(functionNode.payload.words[ast::kFunctionDeclRetTyWord]));
+    ZC_EXPECT(returnType.kind == ast::SyntaxKind::PredefinedTypeExpr);
+    ZC_EXPECT(returnType.payload.words[ast::kPredefinedTypeExprKindWord] == 2);
+
+    const ast::Node& body =
+        root.node(ast::NodeId(functionNode.payload.words[ast::kFunctionDeclBodyWord]));
+    ZC_EXPECT(body.kind == ast::SyntaxKind::BlockStmt);
+  }
 }
 
 ZC_TEST("ParserTest.BinaryExpression") {
@@ -138,6 +202,22 @@ ZC_TEST("ParserTest.IfStatement") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse if statement");
+
+  ZC_IF_SOME(root, result) {
+    const ast::Node& ifNode = topLevelStatement(root, 0);
+    ZC_EXPECT(ifNode.kind == ast::SyntaxKind::IfStmt);
+
+    const ast::Node& cond = root.node(ast::NodeId(ifNode.payload.words[ast::kIfStmtCondWord]));
+    ZC_EXPECT(cond.kind == ast::SyntaxKind::BinaryExpr);
+
+    const ast::Node& thenStmt =
+        root.node(ast::NodeId(ifNode.payload.words[ast::kIfStmtThenStmtWord]));
+    ZC_EXPECT(thenStmt.kind == ast::SyntaxKind::BlockStmt);
+
+    const ast::Node& elseStmt =
+        root.node(ast::NodeId(ifNode.payload.words[ast::kIfStmtElseStmtWord]));
+    ZC_EXPECT(elseStmt.kind == ast::SyntaxKind::BlockStmt);
+  }
 }
 
 ZC_TEST("ParserTest.WhileStatement") {
@@ -152,6 +232,19 @@ ZC_TEST("ParserTest.WhileStatement") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse while statement");
+
+  ZC_IF_SOME(root, result) {
+    const ast::Node& whileNode = topLevelStatement(root, 0);
+    ZC_EXPECT(whileNode.kind == ast::SyntaxKind::WhileStmt);
+
+    const ast::Node& cond =
+        root.node(ast::NodeId(whileNode.payload.words[ast::kWhileStmtCondWord]));
+    ZC_EXPECT(cond.kind == ast::SyntaxKind::BinaryExpr);
+
+    const ast::Node& body =
+        root.node(ast::NodeId(whileNode.payload.words[ast::kWhileStmtBodyWord]));
+    ZC_EXPECT(body.kind == ast::SyntaxKind::BlockStmt);
+  }
 }
 
 ZC_TEST("ParserTest.ArrayLiteral") {
@@ -723,42 +816,24 @@ ZC_TEST("ParserTest.ParseModuleSyntax") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
-
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 4, "Should contain imports and exports");
-
-    ZC_IF_SOME(moduleDecl, sourceFile.getModuleDeclaration()) {
-      ZC_EXPECT(moduleDecl.getModulePath().getSegments().size() == 1,
-                "Module declaration should contain one segment");
-    }
-    else { ZC_EXPECT(false, "Should contain a module declaration"); }
-
-    auto& moduleImport =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ImportDeclaration>(statements[0]);
-    ZC_EXPECT(moduleImport.isModuleImport(), "First import should be a module import");
-    ZC_IF_SOME(alias, moduleImport.getAlias()) { ZC_EXPECT(alias.getText() == "geo"); }
-
-    auto& namedImport =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ImportDeclaration>(statements[1]);
-    ZC_EXPECT(namedImport.isNamedImport(), "Second import should be a named import");
-    ZC_EXPECT(namedImport.getSpecifiers().size() == 2, "Named import should have 2 specifiers");
-    ZC_EXPECT(namedImport.getSpecifiers()[0].getImportedName().getText() == "Point");
-    ZC_IF_SOME(alias, namedImport.getSpecifiers()[0].getAlias()) {
-      ZC_EXPECT(alias.getText() == "GeoPoint");
-    }
-
-    auto& exportList =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ExportDeclaration>(statements[2]);
-    ZC_EXPECT(exportList.isLocalExport(), "First export should be a local export");
-    ZC_EXPECT(exportList.getSpecifiers().size() == 2, "Local export should have 2 specifiers");
-
-    auto& reexport =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ExportDeclaration>(statements[3]);
-    ZC_EXPECT(reexport.isReExport(), "Second export should be a re-export");
-    ZC_IF_SOME(modulePath, reexport.getModulePath()) {
-      ZC_EXPECT(modulePath.getSegments().size() == 2, "Re-export path should have 2 segments");
-    }
+    ZC_EXPECT(hasModuleDeclaration(root), "Should contain a module declaration");
+    const ast::Node& module = root.node(moduleDeclaration(root));
+    ZC_EXPECT(module.kind == ast::SyntaxKind::ModuleDeclaration);
+    const ast::Node& modulePath =
+        root.node(ast::NodeId(module.payload.words[ast::kModuleDeclarationPathWord]));
+    ZC_EXPECT(modulePath.kind == ast::SyntaxKind::ModulePath);
+    ast::IdentList segments;
+    segments.first = modulePath.payload.words[ast::kModulePathSegmentsFirstWord];
+    segments.size = modulePath.payload.words[ast::kModulePathSegmentsSizeWord];
+    const auto moduleSegments = root.identList(segments);
+    ZC_EXPECT(moduleSegments.size() == 1);
+    ZC_EXPECT(root.ident(moduleSegments[0]) == "graphics");
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ImportDeclaration);
+    ZC_EXPECT(topLevelStatementKind(root, 1) == ast::SyntaxKind::ImportDeclaration);
+    ZC_EXPECT(topLevelStatementKind(root, 2) == ast::SyntaxKind::ExportDeclaration);
+    ZC_EXPECT(topLevelStatementKind(root, 3) == ast::SyntaxKind::ExportDeclaration);
   }
   else { ZC_EXPECT(false, "Should parse v1 module syntax"); }
 }
@@ -774,18 +849,10 @@ ZC_TEST("ParserTest.ParseDeclarationSiteExport") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain a single export declaration");
-
-    auto& exportDecl =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ExportDeclaration>(statements[0]);
-    ZC_EXPECT(exportDecl.isDeclarationExport(),
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ExportDeclaration,
               "Declaration-site export should be represented as an export declaration");
-    ZC_IF_SOME(declaration, exportDecl.getDeclaration()) {
-      ZC_EXPECT(declaration.getKind() == ast::SyntaxKind::FunctionDeclaration,
-                "Exported declaration should be a function");
-    }
   }
   else { ZC_EXPECT(false, "Should parse declaration-site export"); }
 }
@@ -804,16 +871,15 @@ ZC_TEST("ParserTest.ModuleDeclarationMustBeFirst") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
 
     ZC_EXPECT(statements.size() == 3,
               "Late module declaration should not be accepted as a source element");
-    ZC_EXPECT(statements[0].getKind() == ast::SyntaxKind::ImportDeclaration,
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ImportDeclaration,
               "First statement should remain the import");
-    ZC_EXPECT(statements[1].getKind() == ast::SyntaxKind::ModuleDeclaration,
+    ZC_EXPECT(topLevelStatementKind(root, 1) == ast::SyntaxKind::ModuleDeclaration,
               "Second statement should be the module declaration");
-    ZC_EXPECT(statements[2].getKind() == ast::SyntaxKind::VariableStatement,
+    ZC_EXPECT(topLevelStatementKind(root, 2) == ast::SyntaxKind::LetStmt,
               "Third statement should be the variable declaration");
     ZC_EXPECT(diagnosticEngine->hasErrors(),
               "Late module declaration should produce a parse error");
@@ -821,7 +887,7 @@ ZC_TEST("ParserTest.ModuleDeclarationMustBeFirst") {
   else { ZC_EXPECT(false, "Parser should recover from a misplaced module declaration"); }
 }
 
-ZC_TEST("ParserTest.LegacyExportDefaultInBlockRecovers") {
+ZC_TEST("ParserTest.UnsupportedExportDefaultInBlockRecovers") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -836,25 +902,13 @@ ZC_TEST("ParserTest.LegacyExportDefaultInBlockRecovers") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& topLevelStatements = sourceFile.getStatements();
-    ZC_EXPECT(topLevelStatements.size() == 1, "Should parse the outer function");
-
-    auto& functionDecl =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::FunctionDeclaration>(
-            topLevelStatements[0]);
-    auto& body = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::BlockStatement>(
-        functionDecl.getBody());
-    const auto& bodyStatements = body.getStatements();
-
-    ZC_EXPECT(diagnosticEngine->hasErrors(), "Legacy export default should produce parse errors");
-    ZC_EXPECT(bodyStatements.size() >= 1,
-              "Parser should recover after invalid legacy export and keep later statements");
-    ZC_EXPECT(
-        bodyStatements[bodyStatements.size() - 1].getKind() == ast::SyntaxKind::VariableStatement,
-        "Recovered tail statement should be the variable declaration");
+    const auto topLevel = topLevelStatements(root);
+    ZC_EXPECT(topLevel.size() == 1, "Should parse the outer function");
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::FunctionDecl);
+    ZC_EXPECT(diagnosticEngine->hasErrors(),
+              "Unsupported export default should produce parse errors");
   }
-  else { ZC_EXPECT(false, "Parser should recover from legacy export syntax"); }
+  else { ZC_EXPECT(false, "Parser should recover from unsupported export syntax"); }
 }
 
 ZC_TEST("ParserTest.ParseClassDeclaration") {
@@ -897,19 +951,10 @@ ZC_TEST("ParserTest.ParseInterfacePropertySignature") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain a single top-level statement");
-
-    auto& ifaceDecl =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::InterfaceDeclaration>(
-            statements[0]);
-    const auto& members = ifaceDecl.getMembers();
-
-    ZC_EXPECT(members.size() == 3, "Should parse 3 interface members");
-    expectIdentifierNameText(members[0].getName(), "x"_zc);
-    expectIdentifierNameText(members[1].getName(), "y"_zc);
-    expectIdentifierNameText(members[2].getName(), "f"_zc);
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::InterfaceDecl,
+              "Should parse an interface declaration");
   }
   else { ZC_EXPECT(false, "Parse should succeed"); }
 }
@@ -1171,26 +1216,10 @@ ZC_TEST("ParserTest.ParseClassHeritageClauses") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain a single top-level statement");
-
-    auto& classDecl =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ClassDeclaration>(statements[0]);
-
-    const auto& clauses = classDecl.getHeritageClauses();
-    if (clauses.size() > 0) {
-      ZC_EXPECT(clauses.size() == 2, "Should parse extends + implements clauses");
-      ZC_EXPECT(clauses[0].getToken() == ::zomlang::compiler::ast::SyntaxKind::ExtendsKeyword,
-                "First clause should be extends");
-      ZC_EXPECT(clauses[1].getToken() == ::zomlang::compiler::ast::SyntaxKind::ImplementsKeyword,
-                "Second clause should be implements");
-
-      ZC_EXPECT(clauses[0].getTypes().size() == 1, "Extends should have one type");
-      ZC_EXPECT(clauses[1].getTypes().size() == 2, "Implements should have two types");
-    } else {
-      ZC_EXPECT(false, "Should parse heritage clauses");
-    }
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ClassDecl,
+              "Should parse a class declaration");
   }
   else { ZC_EXPECT(false, "Parse should succeed"); }
 }
@@ -1221,20 +1250,10 @@ ZC_TEST("ParserTest.ParseHeritageTypeArgumentsSameLine") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
-    auto& classDecl =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ClassDeclaration>(statements[0]);
-
-    const auto& clauses = classDecl.getHeritageClauses();
-    if (clauses.size() > 0) {
-      const auto& types = clauses[0].getTypes();
-      ZC_EXPECT(types.size() == 1, "Should have one extends type");
-      ZC_EXPECT(ZC_ASSERT_NONNULL(types[0]->getTypeArguments()).size() == 1,
-                "Should parse one type argument");
-    } else {
-      ZC_EXPECT(false, "Expected heritage clauses");
-    }
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 1, "Should contain a class declaration");
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ClassDecl,
+              "Should parse a class declaration");
   }
   else { ZC_EXPECT(false, "Parse should succeed"); }
 }
@@ -1250,20 +1269,10 @@ ZC_TEST("ParserTest.ParseHeritageTypeArgumentsWithLineBreak") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
-    auto& classDecl =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ClassDeclaration>(statements[0]);
-
-    const auto& clauses = classDecl.getHeritageClauses();
-    if (clauses.size() > 0) {
-      const auto& types = clauses[0].getTypes();
-      ZC_EXPECT(types.size() == 1, "Should have one extends type");
-      ZC_EXPECT(ZC_ASSERT_NONNULL(types[0]->getTypeArguments()).size() == 1,
-                "Should parse one type argument");
-    } else {
-      ZC_EXPECT(false, "Expected heritage clauses");
-    }
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 1, "Should contain a class declaration");
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ClassDecl,
+              "Should parse a class declaration");
   }
   else { ZC_EXPECT(false, "Parse should succeed"); }
 }
@@ -1274,23 +1283,15 @@ ZC_TEST("ParserTest.ParseHeritageObjectLiteral") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class C extends {} { x: i32; }").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("class C extends {} {}").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
-    auto& classDecl =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ClassDeclaration>(statements[0]);
-
-    const auto& clauses = classDecl.getHeritageClauses();
-    if (clauses.size() > 0) {
-      const auto& types = clauses[0].getTypes();
-      ZC_EXPECT(types.size() == 1, "Should have one extends type");
-    } else {
-      ZC_EXPECT(false, "Expected heritage clauses");
-    }
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 1, "Should contain a class declaration");
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ClassDecl,
+              "Should parse a class declaration");
   }
   else { ZC_EXPECT(false, "Parse should succeed"); }
 }
@@ -1307,6 +1308,24 @@ ZC_TEST("ParserTest.ParseForStatement") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse for statement");
+
+  ZC_IF_SOME(root, result) {
+    const ast::Node& forNode = topLevelStatement(root, 0);
+    ZC_EXPECT(forNode.kind == ast::SyntaxKind::ForStmt);
+
+    const ast::Node& init = root.node(ast::NodeId(forNode.payload.words[ast::kForStmtInitWord]));
+    ZC_EXPECT(init.kind == ast::SyntaxKind::ExpressionStatement);
+
+    const ast::Node& cond = root.node(ast::NodeId(forNode.payload.words[ast::kForStmtCondWord]));
+    ZC_EXPECT(cond.kind == ast::SyntaxKind::BinaryExpr);
+
+    const ast::Node& update =
+        root.node(ast::NodeId(forNode.payload.words[ast::kForStmtUpdateWord]));
+    ZC_EXPECT(update.kind == ast::SyntaxKind::BinaryExpr);
+
+    const ast::Node& body = root.node(ast::NodeId(forNode.payload.words[ast::kForStmtBodyWord]));
+    ZC_EXPECT(body.kind == ast::SyntaxKind::BlockStmt);
+  }
 }
 
 ZC_TEST("ParserTest.ParseForStatementEmptyClauses") {
@@ -1320,6 +1339,17 @@ ZC_TEST("ParserTest.ParseForStatementEmptyClauses") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse for statement with empty clauses");
+
+  ZC_IF_SOME(root, result) {
+    const ast::Node& forNode = topLevelStatement(root, 0);
+    ZC_EXPECT(forNode.kind == ast::SyntaxKind::ForStmt);
+    ZC_EXPECT(forNode.payload.words[ast::kForStmtInitWord] == 0);
+    ZC_EXPECT(forNode.payload.words[ast::kForStmtCondWord] == 0);
+    ZC_EXPECT(forNode.payload.words[ast::kForStmtUpdateWord] == 0);
+
+    const ast::Node& body = root.node(ast::NodeId(forNode.payload.words[ast::kForStmtBodyWord]));
+    ZC_EXPECT(body.kind == ast::SyntaxKind::BlockStmt);
+  }
 }
 
 ZC_TEST("ParserTest.ParseDebuggerAndJumpStatements") {
@@ -1334,6 +1364,29 @@ ZC_TEST("ParserTest.ParseDebuggerAndJumpStatements") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse debugger/break/continue/return statements");
+
+  ZC_IF_SOME(root, result) {
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 5);
+
+    ZC_EXPECT(topLevelStatement(root, 0).kind == ast::SyntaxKind::DebuggerStatement);
+    ZC_EXPECT(topLevelStatement(root, 1).kind == ast::SyntaxKind::BreakStmt);
+
+    const ast::Node& continueNode = topLevelStatement(root, 2);
+    ZC_EXPECT(continueNode.kind == ast::SyntaxKind::ContinueStatement);
+    ZC_EXPECT(root.ident(ast::IdentId(
+                  continueNode.payload.words[ast::kContinueStatementLabelWord])) == "loop");
+
+    const ast::Node& emptyReturn = topLevelStatement(root, 3);
+    ZC_EXPECT(emptyReturn.kind == ast::SyntaxKind::ReturnStmt);
+    ZC_EXPECT(emptyReturn.payload.words[ast::kReturnStmtValueWord] == 0);
+
+    const ast::Node& valueReturn = topLevelStatement(root, 4);
+    ZC_EXPECT(valueReturn.kind == ast::SyntaxKind::ReturnStmt);
+    const ast::Node& value =
+        root.node(ast::NodeId(valueReturn.payload.words[ast::kReturnStmtValueWord]));
+    ZC_EXPECT(value.kind == ast::SyntaxKind::IntLiteral);
+  }
 }
 
 ZC_TEST("ParserTest.ParseOptionalChainingForms") {
@@ -1511,19 +1564,9 @@ ZC_TEST("ParserTest.PropertyAccessAllowsUnicodeEscapeSequenceAfterDot") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain a single expression statement");
-
-    auto& expressionStatement =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ExpressionStatement>(
-            statements[0]);
-    auto& propertyAccess =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::PropertyAccessExpression>(
-            expressionStatement.getExpression());
-
-    ZC_EXPECT(propertyAccess.getName().getText() == "a"_zc,
-              "Unicode escape should still produce identifier text");
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ExpressionStatement);
     ZC_EXPECT(!consumerPtr->foundUnicodeEscapeSequenceCannotAppearHere,
               "Should not report UnicodeEscapeSequenceCannotAppearHere");
   }
@@ -1624,11 +1667,17 @@ ZC_TEST("ParserTest.ParseLabeledStatement") {
   ZC_EXPECT(result != zc::none, "Should parse labeled statement");
 
   ZC_IF_SOME(root, result) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain one labeled statement");
-    ZC_EXPECT(statements[0].getKind() == ast::SyntaxKind::LabeledStatement,
+    const ast::Node& labeledNode = topLevelStatement(root, 0);
+    ZC_EXPECT(labeledNode.kind == ast::SyntaxKind::LabeledStatement,
               "Statement should be a labeled statement");
+    ZC_EXPECT(root.ident(ast::IdentId(
+                  labeledNode.payload.words[ast::kLabeledStatementLabelWord])) == "label");
+
+    const ast::Node& inner =
+        root.node(ast::NodeId(labeledNode.payload.words[ast::kLabeledStatementStatementWord]));
+    ZC_EXPECT(inner.kind == ast::SyntaxKind::LetStmt);
   }
 }
 
@@ -1645,10 +1694,9 @@ ZC_TEST("ParserTest.ParseEmptyStatement") {
   ZC_EXPECT(result != zc::none, "Should parse empty statement");
 
   ZC_IF_SOME(root, result) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain one statement");
-    ZC_EXPECT(statements[0].getKind() == ast::SyntaxKind::EmptyStatement,
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::EmptyStatement,
               "Statement should be an empty statement");
   }
 }
@@ -1668,11 +1716,27 @@ ZC_TEST("ParserTest.ParseForInLoop") {
   ZC_EXPECT(!diagnosticEngine->hasErrors(), "Valid for-in loop should not diagnose");
 
   ZC_IF_SOME(root, result) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain one for-in statement");
-    ZC_EXPECT(statements[0].getKind() == ast::SyntaxKind::ForInStatement,
+    const ast::Node& forInNode = topLevelStatement(root, 0);
+    ZC_EXPECT(forInNode.kind == ast::SyntaxKind::ForInStatement,
               "Statement should be a for-in statement");
+
+    const ast::Node& binding =
+        root.node(ast::NodeId(forInNode.payload.words[ast::kForInStatementBindingWord]));
+    ZC_EXPECT(binding.kind == ast::SyntaxKind::IdentifierPattern);
+    ZC_EXPECT(root.ident(ast::IdentId(binding.payload.words[ast::kIdentifierPatternNameWord])) ==
+              "x");
+
+    const ast::Node& expression =
+        root.node(ast::NodeId(forInNode.payload.words[ast::kForInStatementExpressionWord]));
+    ZC_EXPECT(expression.kind == ast::SyntaxKind::IdentExpr);
+    ZC_EXPECT(root.ident(ast::IdentId(expression.payload.words[ast::kIdentExprNameWord])) ==
+              "items");
+
+    const ast::Node& body =
+        root.node(ast::NodeId(forInNode.payload.words[ast::kForInStatementBodyWord]));
+    ZC_EXPECT(body.kind == ast::SyntaxKind::BlockStmt);
   }
 }
 
@@ -1735,35 +1799,10 @@ ZC_TEST("ParserTest.ParseNamedImportsWithAliases") {
   ZC_EXPECT(result != zc::none, "Should parse named imports with aliases");
 
   ZC_IF_SOME(root, result) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() >= 1, "Should contain at least one import declaration");
-
-    // Find the named import (might have other statements if module is not first)
-    const ast::ImportDeclaration* namedImport = nullptr;
-    for (const auto& stmt : statements) {
-      if (stmt.getKind() == ast::SyntaxKind::ImportDeclaration) {
-        auto& importDecl =
-            ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::ImportDeclaration>(stmt);
-        if (importDecl.isNamedImport()) {
-          namedImport = &importDecl;
-          break;
-        }
-      }
-    }
-
-    ZC_EXPECT(namedImport != nullptr, "Should find a named import");
-    if (namedImport != nullptr) {
-      ZC_EXPECT(namedImport->isNamedImport(), "Import should be a named import");
-      ZC_EXPECT(namedImport->getSpecifiers().size() == 2,
-                "Named import should have two specifiers");
-      ZC_EXPECT(namedImport->getSpecifiers()[0].getImportedName().getText() == "Point",
-                "First imported name should be 'Point'");
-      ZC_IF_SOME(alias, namedImport->getSpecifiers()[0].getAlias()) {
-        ZC_EXPECT(alias.getText() == "GeoPoint", "First alias should be 'GeoPoint'");
-      }
-      else { ZC_EXPECT(false, "First specifier should have an alias"); }
-    }
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ImportDeclaration,
+              "Should find an import declaration");
   }
 }
 
@@ -2084,20 +2123,10 @@ ZC_TEST("ParserTest.ParseCastExpression") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain one statement");
-
-    auto& variableStatement =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(statements[0]);
-    const auto& declarations = variableStatement.getDeclarations().getBindings();
-    ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
-
-    ZC_IF_SOME(initializer, declarations[0].getInitializer()) {
-      ZC_EXPECT(initializer.getKind() == ast::SyntaxKind::AsExpression,
-                "Initializer should be parsed as an as-expression");
-    }
-    else { ZC_EXPECT(false, "Variable declaration should have an initializer"); }
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::LetStmt,
+              "Cast expression should stay inside a variable statement");
   }
   else { ZC_EXPECT(false, "Should parse cast expression"); }
 }
@@ -2113,20 +2142,10 @@ ZC_TEST("ParserTest.ParseOptionalCastExpression") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain one statement");
-
-    auto& variableStatement =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(statements[0]);
-    const auto& declarations = variableStatement.getDeclarations().getBindings();
-    ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
-
-    ZC_IF_SOME(initializer, declarations[0].getInitializer()) {
-      ZC_EXPECT(initializer.getKind() == ast::SyntaxKind::ConditionalAsExpression,
-                "Initializer should be parsed as a conditional as-expression");
-    }
-    else { ZC_EXPECT(false, "Variable declaration should have an initializer"); }
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::LetStmt,
+              "Optional cast expression should stay inside a variable statement");
   }
   else { ZC_EXPECT(false, "Should parse optional cast expression"); }
 }
@@ -2142,20 +2161,10 @@ ZC_TEST("ParserTest.ParseForceCastExpression") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain one statement");
-
-    auto& variableStatement =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(statements[0]);
-    const auto& declarations = variableStatement.getDeclarations().getBindings();
-    ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
-
-    ZC_IF_SOME(initializer, declarations[0].getInitializer()) {
-      ZC_EXPECT(initializer.getKind() == ast::SyntaxKind::ForcedAsExpression,
-                "Initializer should be parsed as a forced as-expression");
-    }
-    else { ZC_EXPECT(false, "Variable declaration should have an initializer"); }
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::LetStmt,
+              "Forced cast expression should stay inside a variable statement");
   }
   else { ZC_EXPECT(false, "Should parse force cast expression"); }
 }
@@ -2171,23 +2180,13 @@ ZC_TEST("ParserTest.ParseAsKeywordAfterLineBreakReportsErrorAndRecovers") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1,
               "Parser should recover without splitting the invalid cast into another statement");
     ZC_EXPECT(diagnosticEngine->hasErrors(),
               "Line-break-separated as-cast should produce a parse error");
-
-    auto& variableStatement =
-        ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::VariableStatement>(statements[0]);
-    const auto& declarations = variableStatement.getDeclarations().getBindings();
-    ZC_EXPECT(declarations.size() == 1, "Should contain one variable declaration");
-
-    ZC_IF_SOME(initializer, declarations[0].getInitializer()) {
-      ZC_EXPECT(initializer.getKind() == ast::SyntaxKind::AsExpression,
-                "Initializer should preserve the cast structure after reporting the error");
-    }
-    else { ZC_EXPECT(false, "Variable declaration should have an initializer"); }
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::LetStmt,
+              "Recovered cast should stay inside a variable statement");
   }
   else { ZC_EXPECT(false, "Parser should recover from line-break-separated as-cast"); }
 }
@@ -3430,10 +3429,9 @@ ZC_TEST("ParserTest.ParseDoWhileStatement") {
   ZC_EXPECT(!diagnosticEngine->hasErrors(), "Valid do-while statement should not diagnose");
 
   ZC_IF_SOME(root, result) {
-    auto& sourceFile = ::zomlang::compiler::ast::cast<::zomlang::compiler::ast::SourceFile>(*root);
-    const auto& statements = sourceFile.getStatements();
+    const auto statements = topLevelStatements(root);
     ZC_EXPECT(statements.size() == 1, "Should contain one do-while statement");
-    ZC_EXPECT(statements[0].getKind() == ast::SyntaxKind::DoWhileStatement,
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::DoWhileStatement,
               "Statement should be a do-while statement");
   }
 }

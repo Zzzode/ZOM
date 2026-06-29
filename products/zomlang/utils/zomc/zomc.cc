@@ -19,10 +19,7 @@
 #include "zc/core/io.h"
 #include "zc/core/main.h"
 #include "zc/core/string.h"
-#include "zomlang/compiler/ast/dumper.h"
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/serializer.h"
-#include "zomlang/compiler/ast/type.h"
+#include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/io-utils.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
@@ -326,36 +323,82 @@ private:
     }
   }
 
-  /// Dumps all ASTs to the given output stream
-  zc::Own<ast::Serializer> createSerializer(
-      basic::CompilerOptions::EmissionOptions::SerializerType type, zc::OutputStream& output) {
-    switch (type) {
-      case basic::CompilerOptions::EmissionOptions::SerializerType::kJSON:
-        return zc::heap<ast::JSONSerializer>(output);
-      case basic::CompilerOptions::EmissionOptions::SerializerType::kXML:
-        return zc::heap<ast::XMLSerializer>(output);
-      case basic::CompilerOptions::EmissionOptions::SerializerType::kTEXT:
-      default:
-        return zc::heap<ast::TextSerializer>(output);
-    }
-  }
-
   zc::MainBuilder::Validity dumpASTsToStream(
       zc::OutputStream& outputStream, const auto& asts,
       basic::CompilerOptions::EmissionOptions::SerializerType format) {
-    auto serializer = createSerializer(format, outputStream);
-    ast::ASTDumper dumper(zc::mv(serializer));
-
     for (const auto& entry : asts) {
       const source::BufferId& bufferId = entry.key;
-      const ast::Node& astNode = *entry.value;
+      const ast::Tree& tree = entry.value;
 
       writeBufferHeader(outputStream, bufferId, format);
-      dumper.dump(astNode);
+      dumpTree(outputStream, tree, format);
       writeBufferFooter(outputStream, format);
     }
 
     return true;
+  }
+
+  static void dumpTree(zc::OutputStream& outputStream, const ast::Tree& tree,
+                       basic::CompilerOptions::EmissionOptions::SerializerType format) {
+    switch (format) {
+      case basic::CompilerOptions::EmissionOptions::SerializerType::kJSON:
+        dumpTreeJson(outputStream, tree);
+        break;
+      case basic::CompilerOptions::EmissionOptions::SerializerType::kXML:
+        dumpTreeXml(outputStream, tree);
+        break;
+      case basic::CompilerOptions::EmissionOptions::SerializerType::kTEXT:
+      default:
+        dumpTreeText(outputStream, tree);
+        break;
+    }
+  }
+
+  static void dumpTreeText(zc::OutputStream& outputStream, const ast::Tree& tree) {
+    outputStream.write(zc::str("root: ", static_cast<uint64_t>(tree.root().value), "\n").asBytes());
+    uint64_t index = 1;
+    for (const auto& node : tree.nodes()) {
+      outputStream.write(zc::str("node ", index, ": kind=", static_cast<uint64_t>(node.kind),
+                                 " payload=[", static_cast<uint64_t>(node.payload.words[0]), ",",
+                                 static_cast<uint64_t>(node.payload.words[1]), ",",
+                                 static_cast<uint64_t>(node.payload.words[2]), "]\n")
+                             .asBytes());
+      ++index;
+    }
+  }
+
+  static void dumpTreeJson(zc::OutputStream& outputStream, const ast::Tree& tree) {
+    outputStream.write(
+        zc::str("{\"root\":", static_cast<uint64_t>(tree.root().value), ",\"nodes\":[").asBytes());
+    bool first = true;
+    uint64_t index = 1;
+    for (const auto& node : tree.nodes()) {
+      if (!first) { outputStream.write(","_zcb); }
+      first = false;
+      outputStream.write(zc::str("{\"id\":", index, ",\"kind\":", static_cast<uint64_t>(node.kind),
+                                 ",\"payload\":[", static_cast<uint64_t>(node.payload.words[0]),
+                                 ",", static_cast<uint64_t>(node.payload.words[1]), ",",
+                                 static_cast<uint64_t>(node.payload.words[2]), "]}")
+                             .asBytes());
+      ++index;
+    }
+    outputStream.write("]}"_zcb);
+  }
+
+  static void dumpTreeXml(zc::OutputStream& outputStream, const ast::Tree& tree) {
+    outputStream.write(
+        zc::str("<tree root=\"", static_cast<uint64_t>(tree.root().value), "\">").asBytes());
+    uint64_t index = 1;
+    for (const auto& node : tree.nodes()) {
+      outputStream.write(zc::str("<node id=\"", index, "\" kind=\"",
+                                 static_cast<uint64_t>(node.kind), "\" payload0=\"",
+                                 static_cast<uint64_t>(node.payload.words[0]), "\" payload1=\"",
+                                 static_cast<uint64_t>(node.payload.words[1]), "\" payload2=\"",
+                                 static_cast<uint64_t>(node.payload.words[2]), "\"/>")
+                             .asBytes());
+      ++index;
+    }
+    outputStream.write("</tree>"_zcb);
   }
 
   /// Writes buffer header for text format

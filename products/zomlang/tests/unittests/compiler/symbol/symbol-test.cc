@@ -2,8 +2,7 @@
 
 #include "zc/core/debug.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/type.h"
+#include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/type-symbol.h"
@@ -139,6 +138,27 @@ ZC_TEST("Symbol_TypeManagement") {
   ZC_EXPECT(symbol.getType() == zc::none);
   symbol.setType(typeSymbol);
   ZC_EXPECT(symbol.getType() != zc::none);
+}
+
+ZC_TEST("Symbol_DeclarationRefsUseStableNodeIds") {
+  Symbol symbol(SymbolId::create(140), "declSymbol"_zc, SymbolFlags::Public, source::SourceLoc());
+
+  const DeclarationRef first(source::BufferId(1), ast::NodeId(10));
+  const DeclarationRef second(source::BufferId(1), ast::NodeId(11));
+
+  symbol.addDeclarationRef(first);
+  symbol.addDeclarationRef(second);
+
+  zc::ArrayPtr<const DeclarationRef> declarations = symbol.getDeclarationRefs();
+  ZC_EXPECT(declarations.size() == 2);
+  ZC_EXPECT(declarations[0] == first);
+  ZC_EXPECT(declarations[1] == second);
+
+  symbol.removeDeclarationRef(first);
+
+  declarations = symbol.getDeclarationRefs();
+  ZC_EXPECT(declarations.size() == 1);
+  ZC_EXPECT(declarations[0] == second);
 }
 
 ZC_TEST("Symbol_VisibilityMethods") {

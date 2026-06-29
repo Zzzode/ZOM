@@ -14,9 +14,6 @@
 
 #include "zomlang/compiler/symbol/symbol.h"
 
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/statement.h"
-#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/type-symbol.h"
@@ -45,7 +42,7 @@ struct Symbol::Impl {
   zc::Maybe<const Scope&> scope;
   zc::Maybe<TypeSymbol&> type;
 
-  zc::Vector<zc::Maybe<const ast::Node&>> declarationNodes;
+  zc::Vector<DeclarationRef> declarationRefs;
 
   // 64-bit packed properties
   union Properties {
@@ -154,26 +151,21 @@ void Symbol::setScope(zc::Maybe<const Scope&> scope) { impl->scope = scope; }
 
 void Symbol::setType(zc::Maybe<TypeSymbol&> type) { impl->type = type; }
 
-zc::ArrayPtr<const zc::Maybe<const ast::Node&>> Symbol::getDeclarationNodes() const {
-  return impl->declarationNodes.asPtr();
+zc::ArrayPtr<const DeclarationRef> Symbol::getDeclarationRefs() const {
+  return impl->declarationRefs.asPtr();
 }
 
-void Symbol::addDeclarationNode(zc::Maybe<const ast::Node&> node) {
-  impl->declarationNodes.add(zc::mv(node));
-}
+void Symbol::addDeclarationRef(DeclarationRef ref) { impl->declarationRefs.add(zc::mv(ref)); }
 
-void Symbol::removeDeclarationNode(const ast::Node& node) {
-  for (size_t i = 0; i < impl->declarationNodes.size(); ++i) {
-    ZC_IF_SOME(existingNode, impl->declarationNodes[i]) {
-      if (&existingNode == &node) {
-        // Use truncate and re-build to remove the element
-        auto newNodes = zc::Vector<zc::Maybe<const ast::Node&>>();
-        for (size_t j = 0; j < impl->declarationNodes.size(); ++j) {
-          if (j != i) { newNodes.add(zc::mv(impl->declarationNodes[j])); }
-        }
-        impl->declarationNodes = zc::mv(newNodes);
-        return;
+void Symbol::removeDeclarationRef(const DeclarationRef& ref) {
+  for (size_t i = 0; i < impl->declarationRefs.size(); ++i) {
+    if (impl->declarationRefs[i] == ref) {
+      zc::Vector<DeclarationRef> newRefs;
+      for (size_t j = 0; j < impl->declarationRefs.size(); ++j) {
+        if (j != i) { newRefs.add(zc::mv(impl->declarationRefs[j])); }
       }
+      impl->declarationRefs = zc::mv(newRefs);
+      return;
     }
   }
 }

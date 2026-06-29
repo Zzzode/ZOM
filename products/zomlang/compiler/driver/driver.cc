@@ -17,17 +17,12 @@
 #include "zc/core/filesystem.h"
 #include "zc/core/map.h"
 #include "zc/core/mutex.h"
-#include "zomlang/compiler/ast/ast.h"
-#include "zomlang/compiler/ast/cast.h"
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/module.h"
-#include "zomlang/compiler/ast/type.h"
+#include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/thread-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/binder/binder.h"
 #include "zomlang/compiler/diagnostics/consoling-diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
@@ -77,8 +72,10 @@ struct CompilerDriver::Impl {
   zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;
   /// Symbol table to manage symbols and scopes.
   zc::Own<symbol::SymbolTable> symbolTable;
-  /// Mutex-guarded map from BufferId to parsed AST.
-  zc::MutexGuarded<zc::HashMap<source::BufferId, zc::Own<ast::Node>>> astMutex;
+  /// Mutex-guarded map from BufferId to parsed syntax tree.
+  zc::MutexGuarded<zc::HashMap<source::BufferId, ast::Tree>> astMutex;
+  /// Mutex-guarded map from BufferId to binder metadata side tables.
+  zc::MutexGuarded<zc::HashMap<source::BufferId, ast::BindingMetadata>> bindingMetadataMutex;
 };
 
 // ================================================================================
@@ -106,9 +103,15 @@ diagnostics::DiagnosticEngine& CompilerDriver::getDiagnosticEngine() {
   return *impl->diagnosticEngine;
 }
 
-const zc::HashMap<source::BufferId, zc::Own<ast::Node>>& CompilerDriver::getASTs() const {
+const zc::HashMap<source::BufferId, ast::Tree>& CompilerDriver::getASTs() const {
   auto lockedAsts = impl->astMutex.lockShared();
   return *lockedAsts;
+}
+
+const zc::HashMap<source::BufferId, ast::BindingMetadata>& CompilerDriver::getBindingMetadata()
+    const {
+  auto lockedMetadata = impl->bindingMetadataMutex.lockShared();
+  return *lockedMetadata;
 }
 
 bool CompilerDriver::parseSources() {
@@ -121,7 +124,7 @@ bool CompilerDriver::parseSources() {
     // Create a thread for each buffer ID
     threadPool.enqueue([this, bufferId]() -> void {
       // Perform lexing and parsing for the buffer.
-      zc::Maybe<zc::Own<ast::Node>> maybeAst =
+      zc::Maybe<ast::Tree> maybeAst =
           basic::performParse(*impl->sourceManager, *impl->diagnosticEngine, impl->langOpts,
                               *impl->stringPool, bufferId);
 
@@ -141,39 +144,12 @@ bool CompilerDriver::parseSources() {
 }
 
 bool CompilerDriver::bindSources() {
-  // Create a vector of buffer IDs and AST references for binding
-  zc::Vector<zc::Tuple<source::BufferId, zc::Maybe<ast::Node&>>> bindingTasks;
-
-  {
-    // Get the parsed ASTs in a scoped block
-    auto lockedAsts = impl->astMutex.lockShared();
-    for (const auto& entry : *lockedAsts) {
-      // Use zc::Maybe<ast::Node&> instead of raw pointer
-      // Cast away const for binding (binder needs mutable access)
-      ast::Node& astNode = const_cast<ast::Node&>(*entry.value);
-      bindingTasks.add(zc::tuple(entry.key, zc::Maybe<ast::Node&>(astNode)));
-    }
-    // Lock is automatically released when lockedAsts goes out of scope
-  }
-
-  basic::ThreadPool threadPool;
-
-  for (const auto& task : bindingTasks) {
-    const source::BufferId& bufferId = zc::get<0>(task);
-    const zc::Maybe<ast::Node&>& maybeAstNode = zc::get<1>(task);
-
-    // Create a thread for each AST binding
-    threadPool.enqueue([this, bufferId, &maybeAstNode]() -> void {
-      ZC_IF_SOME(astNode, maybeAstNode) {
-        // Cast to SourceFile for binding using type-safe cast
-        auto& sourceFile = ast::cast<ast::SourceFile>(astNode);
-        // Create a binder for this thread
-        binder::Binder binder(*impl->symbolTable, *impl->diagnosticEngine);
-        // Perform binding for the source file
-        binder.bindSourceFile(sourceFile);
-      }
-      // Errors during binding should be reported via the DiagnosticEngine
-    });
+  auto lockedAsts = impl->astMutex.lockShared();
+  auto lockedMetadata = impl->bindingMetadataMutex.lockExclusive();
+  for (const auto& entry : *lockedAsts) {
+    ast::BindingMetadata metadata;
+    basic::performBind(*impl->symbolTable, *impl->diagnosticEngine, entry.value, metadata);
+    lockedMetadata->upsert(entry.key, zc::mv(metadata));
   }
 
   // Return true if no errors were reported

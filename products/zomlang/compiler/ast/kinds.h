@@ -29,6 +29,11 @@ enum class SyntaxKind {
   // ================================================================================
 
   // Literals
+  Identifier,
+  StringLiteral,
+  IntegerLiteral,
+  FloatLiteral,
+  BooleanLiteral,
   CharacterLiteral,
   NoSubstitutionTemplateLiteral,  // `...`
   TemplateHead,                   // `...${
@@ -260,61 +265,12 @@ enum class SyntaxKind {
   NonTextFileMarker,
 
 // ================================================================================
-// AST NODES (Generated from ast-nodes.def)
+// AST NODES
 // ================================================================================
 
-// Generate SyntaxKind enum values for element nodes only
-#define AST_ELEMENT_NODE(Class, ...) Class,
-#define AST_INTERFACE_NODE(Class, Parent)  // Skip interface nodes
-#include "zomlang/compiler/ast/ast-nodes.def"
-#undef AST_ELEMENT_NODE
-#undef AST_INTERFACE_NODE
-
-  // Additional nodes not covered by ast-nodes.def
-  UpdateExpression,
-  CastExpression,
-  ExponentiationExpression,
-  MultiplicativeExpression,
-  AdditiveExpression,
-  ShiftExpression,
-  RelationalExpression,
-  EqualityExpression,
-  BitwiseAndExpression,
-  BitwiseXorExpression,
-  BitwiseOrExpression,
-  LogicalAndExpression,
-  LogicalOrExpression,
-  CoalesceExpression,
-  ShortCircuitExpression,
-
-  PostfixType,
-  TypeAnnotation,
-
-  GuardClause,
-  PropertyDefinition,
-  ElementList,
-  ArgumentList,
-  BindingPattern,
-  Initializer,
-  TypeArguments,
-  TypeArgumentList,
-  CallSignature,
-  ParameterList,
-  FunctionBody,
-  ClassElement,
-  InterfaceElement,
-  StructMember,
-  ErrorMember,
-  AccessibilityModifier,
-  MemberVariableDeclaration,
-  MemberFunctionDeclaration,
-  MemberAccessorDeclaration,
-  PropertyMemberDeclaration,
-  ClassHeritage,
-  InterfaceHeritage,
-  ErrorReturnClause,
-  RaisesClause,
-  ErrorTypeList,
+#define ZOM_AST_NODE(Name, Value) Name = Value,
+#include "zomlang/compiler/ast/generated/node-kind.inc"
+#undef ZOM_AST_NODE
 
   Count,
 
@@ -333,8 +289,8 @@ enum class SyntaxKind {
   LastPunctuation = RightBracket,
 
   // AST node ranges
-  FirstStatement = ModuleDeclaration,
-  LastStatement = DefaultClause,
+  FirstStatement = SuspendStatement,
+  LastStatement = ContinueStatement,
 };
 
 }  // namespace ast

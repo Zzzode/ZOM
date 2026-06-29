@@ -4,39 +4,4 @@ fun defaults(x: i32 = 0) {
 }
 
 
-// CHECK: {
-// CHECK-NEXT:   "node": "SourceFile",
-// CHECK-NEXT:   "fileName": "{{.*default-params.zom}}",
-// CHECK-NEXT:   "statements": [
-// CHECK-NEXT:     {
-// CHECK-NEXT:       "node": "FunctionDeclaration",
-// CHECK-NEXT:       "name": {
-// CHECK-NEXT:         "node": "Identifier",
-// CHECK-NEXT:         "name": "defaults"
-// CHECK-NEXT:       },
-// CHECK-NEXT:       "parameters": [
-// CHECK-NEXT:         {
-// CHECK-NEXT:           "node": "ParameterDeclaration",
-// CHECK-NEXT:           "name": {
-// CHECK-NEXT:             "node": "Identifier",
-// CHECK-NEXT:             "name": "x"
-// CHECK-NEXT:           },
-// CHECK-NEXT:           "type": {
-// CHECK-NEXT:             "node": "I32TypeNode",
-// CHECK-NEXT:             "name": "i32"
-// CHECK-NEXT:           },
-// CHECK-NEXT:           "initializer": {
-// CHECK-NEXT:             "node": "IntegerLiteral",
-// CHECK-NEXT:             "value": "0"
-// CHECK-NEXT:           }
-// CHECK-NEXT:         }
-// CHECK-NEXT:       ],
-// CHECK-NEXT:       "body": {
-// CHECK-NEXT:         "node": "BlockStatement",
-// CHECK-NEXT:         "children": [
-// CHECK-NEXT: 
-// CHECK-NEXT:         ]
-// CHECK-NEXT:       }
-// CHECK-NEXT:     }
-// CHECK-NEXT:   ]
-// CHECK-NEXT: }
+// CHECK: {"root":6,"nodes":[{"id":1,"kind":281,"payload":[2,0,0]},{"id":2,"kind":282,"payload":[1,0,1]},{"id":3,"kind":226,"payload":[1,0,0]},{"id":4,"kind":277,"payload":[1,2,0]},{"id":5,"kind":233,"payload":[4,0,0]},{"id":6,"kind":368,"payload":[1,0,1]}]}

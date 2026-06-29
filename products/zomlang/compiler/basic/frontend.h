@@ -15,6 +15,7 @@
 #pragma once
 
 #include "zc/core/memory.h"
+#include "zomlang/compiler/ast/tree.h"
 
 namespace zomlang {
 namespace compiler {
@@ -26,10 +27,6 @@ class BufferId;
 
 namespace diagnostics {
 class DiagnosticEngine;
-}
-
-namespace ast {
-class Node;
 }
 
 namespace symbol {
@@ -46,20 +43,20 @@ struct LangOptions;
 /// \param diagnosticEngine Diagnostic engine for error reporting
 /// \param langOpts Language options for parsing
 /// \param bufferId Buffer ID of the source to parse
-/// \return Parsed AST node or none if parsing failed
-zc::Maybe<zc::Own<ast::Node>> performParse(const source::SourceManager& sm,
-                                           diagnostics::DiagnosticEngine& diagnosticEngine,
-                                           const LangOptions& langOpts,
-                                           basic::StringPool& stringPool,
-                                           const source::BufferId& bufferId);
+/// \return Parsed syntax tree or none if parsing failed
+zc::Maybe<ast::Tree> performParse(const source::SourceManager& sm,
+                                  diagnostics::DiagnosticEngine& diagnosticEngine,
+                                  const LangOptions& langOpts, basic::StringPool& stringPool,
+                                  const source::BufferId& bufferId);
 
 /// \brief Perform binding on a parsed AST to create symbols
 /// \param symbolTable Symbol table for managing symbols and scopes
 /// \param diagnosticEngine Diagnostic engine for error reporting
-/// \param ast AST node to bind (must be a SourceFile)
+/// \param tree Syntax tree to bind
+/// \param metadata Binder metadata side tables keyed by NodeId
 /// \return True if binding succeeded, false if errors occurred
 bool performBind(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
-                 ast::Node& ast);
+                 const ast::Tree& tree, ast::BindingMetadata& metadata);
 
 }  // namespace basic
 }  // namespace compiler

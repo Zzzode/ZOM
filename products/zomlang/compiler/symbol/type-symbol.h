@@ -15,17 +15,13 @@
 #pragma once
 
 #include "zc/core/common.h"
+#include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/symbol/symbol-id.h"
 #include "zomlang/compiler/symbol/symbol.h"
 
 namespace zomlang {
 namespace compiler {
-
-// Forward declarations
-namespace ast {
-class TypeNode;
-}
 
 namespace symbol {
 
@@ -84,8 +80,8 @@ public:
   zc::Array<zc::Maybe<const TypeSymbol&>> getLowerBounds() const;
 
   // AST integration
-  zc::Maybe<const ast::TypeNode&> getAstType() const;
-  void setAstType(zc::Maybe<const ast::TypeNode&> type);
+  zc::Maybe<ast::NodeId> getAstType() const;
+  void setAstType(zc::Maybe<ast::NodeId> type);
 
   // Symbol classification
   bool isType() const { return true; }

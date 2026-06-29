@@ -7,35 +7,15 @@ interface I {
 }
 
 
-// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK: Error [ZOM2025]: Expected '('
 // CHECK:   --> {{.*interface-method-missing-parens.zom}}:4:11
 // CHECK:   |
 // CHECK: 4 |   fun foo -> i32;
-// CHECK:   |           ^~
-// CHECK: Error [ZOM2053]: Property or signature expected
-// CHECK:   --> {{.*interface-method-missing-parens.zom}}:4:11
-// CHECK:   |
-// CHECK: 4 |   fun foo -> i32;
-// CHECK:   |           ^~
-// CHECK: Error [ZOM2053]: Property or signature expected
-// CHECK:   --> {{.*interface-method-missing-parens.zom}}:4:14
-// CHECK:   |
-// CHECK: 4 |   fun foo -> i32;
-// CHECK:   |              ^~~
-// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   |           ^
+// CHECK: Error [ZOM2025]: Expected ':'
 // CHECK:   --> {{.*interface-method-missing-parens.zom}}:5:9
 // CHECK:   |
 // CHECK: 5 |   let i -> i32;
-// CHECK:   |         ^~
-// CHECK: Error [ZOM2053]: Property or signature expected
-// CHECK:   --> {{.*interface-method-missing-parens.zom}}:5:9
-// CHECK:   |
-// CHECK: 5 |   let i -> i32;
-// CHECK:   |         ^~
-// CHECK: Error [ZOM2053]: Property or signature expected
-// CHECK:   --> {{.*interface-method-missing-parens.zom}}:5:12
-// CHECK:   |
-// CHECK: 5 |   let i -> i32;
-// CHECK:   |            ^~~
+// CHECK:   |         ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

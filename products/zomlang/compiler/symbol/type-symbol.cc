@@ -17,8 +17,6 @@
 #include "zc/core/array.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/symbol/symbol.h"
 
 namespace zomlang {
@@ -27,7 +25,7 @@ namespace symbol {
 
 // TypeSymbol::Impl definition
 struct TypeSymbol::Impl {
-  zc::Maybe<const ast::TypeNode&> astType;
+  zc::Maybe<ast::NodeId> astType;
   zc::Vector<zc::Maybe<const TypeSymbol&>> superTypes;
   zc::Vector<zc::Maybe<const TypeSymbol&>> typeParameters;
   zc::Vector<zc::Maybe<const TypeSymbol&>> upperBounds;
@@ -46,9 +44,9 @@ TypeSymbol::TypeSymbol(TypeSymbol&& other) noexcept = default;
 TypeSymbol& TypeSymbol::operator=(TypeSymbol&& other) noexcept = default;
 TypeSymbol::~TypeSymbol() noexcept(false) = default;
 
-zc::Maybe<const ast::TypeNode&> TypeSymbol::getAstType() const { return impl->astType; }
+zc::Maybe<ast::NodeId> TypeSymbol::getAstType() const { return impl->astType; }
 
-void TypeSymbol::setAstType(zc::Maybe<const ast::TypeNode&> type) { impl->astType = type; }
+void TypeSymbol::setAstType(zc::Maybe<ast::NodeId> type) { impl->astType = type; }
 
 bool TypeSymbol::isClass() const { return hasFlag(SymbolFlags::Class); }
 
@@ -64,17 +62,9 @@ bool TypeSymbol::isFunction() const { return hasFlag(SymbolFlags::Function); }
 
 bool TypeSymbol::isEnumType() const { return hasFlag(SymbolFlags::Enum); }
 
-bool TypeSymbol::isUnionType() const {
-  ZC_IF_SOME(astType, impl->astType) { return astType.getKind() == ast::SyntaxKind::UnionTypeNode; }
-  return false;
-}
+bool TypeSymbol::isUnionType() const { return false; }
 
-bool TypeSymbol::isIntersectionType() const {
-  ZC_IF_SOME(astType, impl->astType) {
-    return astType.getKind() == ast::SyntaxKind::IntersectionTypeNode;
-  }
-  return false;
-}
+bool TypeSymbol::isIntersectionType() const { return false; }
 
 bool TypeSymbol::isSubtypeOf(const TypeSymbol& other) const {
   // Same type is always a subtype of itself

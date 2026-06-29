@@ -17,8 +17,6 @@
 #include "zc/core/filesystem.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/ast/expression.h"
-#include "zomlang/compiler/ast/type.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -59,6 +57,15 @@ ZC_TEST("DriverTest.GetASTsEmpty") {
 
   const auto& asts = driver->getASTs();
   ZC_EXPECT(asts.size() == 0);
+}
+
+ZC_TEST("DriverTest.GetBindingMetadataEmpty") {
+  auto langOpts = basic::LangOptions();
+  auto compilerOpts = basic::CompilerOptions();
+  auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
+
+  const auto& metadata = driver->getBindingMetadata();
+  ZC_EXPECT(metadata.size() == 0);
 }
 
 ZC_TEST("DriverTest.GetSourceManager") {
