@@ -1,2 +1,15 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/closure.zom | %FileCheck %s
-// CHECK: {"root":4,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":235,"payload":[1,0,0]},{"id":3,"kind":233,"payload":[2,0,0]},{"id":4,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #4 @2:1..5:1 file_name="closure.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @2:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #2 @2:1..4:2
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @2:5..2:12 name="closure"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init: null
+// CHECK-NEXT:       attrs: null

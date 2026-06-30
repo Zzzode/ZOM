@@ -1,0 +1,41 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/decl_in_block_edge_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #15 @1:1..6:1 file_name="decl_in_block_edge_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #14 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #13 @1:1..5:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #12 @1:9..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #5 @2:5..2:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #4 @2:5..2:15
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #2 @2:9..2:10 name="x"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IntLiteral #3 @2:13..2:14 base=10 value="1"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #8 @3:5..3:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #7 @3:5..3:15
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #6 @3:5..3:8 name="mut"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #11 @4:5..4:11
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #10 @4:5..4:11
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #9 @4:5..4:6 name="y"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

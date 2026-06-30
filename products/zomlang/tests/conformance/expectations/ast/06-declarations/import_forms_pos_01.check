@@ -1,0 +1,13 @@
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/import_forms_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #4 @1:1..2:1 file_name="import_forms_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:16
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:16
+// CHECK-NEXT:           path:
+// CHECK-NEXT:             ModulePath #1 @1:8..1:15 segments=["std", "io"]
+// CHECK-NEXT:           specifiers: []
+// CHECK-NEXT:       attrs: null

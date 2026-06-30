@@ -1,0 +1,62 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/for_forms_edge_02.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #24 @1:1..6:1 file_name="for_forms_edge_02.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #23 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #22 @1:1..5:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #21 @1:9..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #5 @2:5..2:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #4 @2:5..2:15
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #2 @2:9..2:10 name="a"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IntLiteral #3 @2:13..2:14 base=10 value="0"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #9 @3:5..3:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #8 @3:5..3:15
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #6 @3:9..3:10 name="b"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IntLiteral #7 @3:13..3:14 base=10 value="0"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #20 @4:5..4:45
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ForStmt #19 @4:5..4:45
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         ExpressionStatement #11 @4:10..4:23
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             IdentExpr #10 @4:10..4:11 name="a"
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         BinaryExpr #14 @4:24..4:30 op=Lt
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #12 @4:24..4:25 name="a"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #13 @4:28..4:30 base=10 value="10"
+// CHECK-NEXT:                       update:
+// CHECK-NEXT:                         BinaryExpr #17 @4:32..4:41 op=Add
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #15 @4:32..4:33 name="a"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #16 @4:40..4:41 base=10 value="1"
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #18 @4:43..4:45
+// CHECK-NEXT:                           stmts: []
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

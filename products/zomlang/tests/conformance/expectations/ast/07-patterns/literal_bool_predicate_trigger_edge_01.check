@@ -1,0 +1,13 @@
+// RUN: %zomc compile --dump-ast %corpus/07-patterns/literal_bool_predicate_trigger_edge_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #4 @1:1..5:1 file_name="literal_bool_predicate_trigger_edge_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         MatchStmt #2 @1:1..4:2
+// CHECK-NEXT:           scrutinee:
+// CHECK-NEXT:             IdentExpr #1 @1:8..1:9 name="b"
+// CHECK-NEXT:           arms: []
+// CHECK-NEXT:       attrs: null

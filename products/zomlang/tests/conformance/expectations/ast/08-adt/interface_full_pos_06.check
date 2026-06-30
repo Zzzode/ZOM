@@ -1,0 +1,10 @@
+// RUN: ! %zomc compile --dump-ast %corpus/08-adt/interface_full_pos_06.zom 2>&1 | %FileCheck %s
+
+
+// CHECK: Error [ZOM2025]: Expected '{'
+// CHECK:   --> {{.*interface_full_pos_06.zom}}:1:30
+// CHECK:   |
+// CHECK: 1 | public interface Iterator<T> : Iterable {
+// CHECK:   |                              ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

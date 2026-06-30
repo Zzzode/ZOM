@@ -1,0 +1,13 @@
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/alias_decl_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #4 @1:1..2:1 file_name="alias_decl_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:16
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #2 @1:1..1:16 name="Id"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             PredefinedTypeExpr #1 @1:12..1:15 kind=I64
+// CHECK-NEXT:       attrs: null

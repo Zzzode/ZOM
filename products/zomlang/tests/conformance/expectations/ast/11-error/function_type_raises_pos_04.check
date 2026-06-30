@@ -1,0 +1,22 @@
+// RUN: %zomc compile --dump-ast %corpus/11-error/function_type_raises_pos_04.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #8 @1:1..2:1 file_name="function_type_raises_pos_04.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:66
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #6 @1:1..1:66
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:7 name="cb"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             UnionTypeExpr #4 @1:9..1:55
+// CHECK-NEXT:               alts:
+// CHECK-NEXT:                 NamedTypeExpr #3 @1:45..1:55
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #2 @1:45..1:55 segments=["ParseError"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #5 @1:58..1:65 name="handler"
+// CHECK-NEXT:       attrs: null

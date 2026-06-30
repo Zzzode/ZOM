@@ -1,0 +1,50 @@
+// RUN: %zomc compile --dump-ast %corpus/08-adt/struct_full_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #20 @1:1..12:1 file_name="struct_full_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #5 @1:1..1:27
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #4 @1:1..1:27
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:7..1:17 name="Vec3_COUNT"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:19..1:22 kind=I32
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IntLiteral #3 @1:25..1:26 base=10 value="0"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #14 @2:1..2:68
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #13 @2:1..2:68
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #6 @2:7..2:16 name="Vec3_UNIT"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             NamedTypeExpr #9 @2:18..2:27
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #8 @2:18..2:22 segments=["Vec3"]
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 PredefinedTypeExpr #7 @2:23..2:26 kind=F32
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BinaryExpr #12 @2:30..2:67 op=Gt
+// CHECK-NEXT:               lhs:
+// CHECK-NEXT:                 BinaryExpr #11 @2:30..2:38 op=Lt
+// CHECK-NEXT:                   lhs:
+// CHECK-NEXT:                     IdentExpr #10 @2:30..2:34 name="Vec3"
+// CHECK-NEXT:                   rhs: null
+// CHECK-NEXT:               rhs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #19 @4:1..11:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #18 @4:1..11:2
+// CHECK-NEXT:           expression:
+// CHECK-NEXT:             BinaryExpr #17 @4:1..11:2 op=Gt
+// CHECK-NEXT:               lhs:
+// CHECK-NEXT:                 BinaryExpr #16 @4:1..4:30 op=Lt
+// CHECK-NEXT:                   lhs: null
+// CHECK-NEXT:                   rhs:
+// CHECK-NEXT:                     IdentExpr #15 @4:20..4:21 name="T"
+// CHECK-NEXT:               rhs: null
+// CHECK-NEXT:       attrs: null

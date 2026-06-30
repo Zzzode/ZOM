@@ -1,2 +1,125 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/type-forms.zom 2>&1 | %FileCheck %s
-// CHECK: {"root":48,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":130,"payload":[2,0,0]},{"id":3,"kind":235,"payload":[1,0,2]},{"id":4,"kind":233,"payload":[3,0,0]},{"id":5,"kind":69,"payload":[3,0,0]},{"id":6,"kind":198,"payload":[1,0,0]},{"id":7,"kind":130,"payload":[4,0,0]},{"id":8,"kind":235,"payload":[5,6,7]},{"id":9,"kind":233,"payload":[8,0,0]},{"id":10,"kind":69,"payload":[5,0,0]},{"id":11,"kind":198,"payload":[2,0,0]},{"id":12,"kind":196,"payload":[11,0,0]},{"id":13,"kind":101,"payload":[0,0,0]},{"id":14,"kind":235,"payload":[10,12,13]},{"id":15,"kind":233,"payload":[14,0,0]},{"id":16,"kind":69,"payload":[6,0,0]},{"id":17,"kind":130,"payload":[2,0,0]},{"id":18,"kind":235,"payload":[16,0,17]},{"id":19,"kind":233,"payload":[18,0,0]},{"id":20,"kind":69,"payload":[7,0,0]},{"id":21,"kind":369,"payload":[0,1,0]},{"id":22,"kind":197,"payload":[21,0,0]},{"id":23,"kind":369,"payload":[1,1,0]},{"id":24,"kind":197,"payload":[23,0,0]},{"id":25,"kind":201,"payload":[0,2,0]},{"id":26,"kind":130,"payload":[10,0,0]},{"id":27,"kind":235,"payload":[20,25,26]},{"id":28,"kind":233,"payload":[27,0,0]},{"id":29,"kind":69,"payload":[11,0,0]},{"id":30,"kind":198,"payload":[2,0,0]},{"id":31,"kind":198,"payload":[11,0,0]},{"id":32,"kind":200,"payload":[2,2,0]},{"id":33,"kind":130,"payload":[10,0,0]},{"id":34,"kind":235,"payload":[29,32,33]},{"id":35,"kind":233,"payload":[34,0,0]},{"id":36,"kind":69,"payload":[12,0,0]},{"id":37,"kind":130,"payload":[13,0,0]},{"id":38,"kind":235,"payload":[36,0,37]},{"id":39,"kind":233,"payload":[38,0,0]},{"id":40,"kind":69,"payload":[14,0,0]},{"id":41,"kind":130,"payload":[15,0,0]},{"id":42,"kind":235,"payload":[40,0,41]},{"id":43,"kind":233,"payload":[42,0,0]},{"id":44,"kind":69,"payload":[16,0,0]},{"id":45,"kind":130,"payload":[17,0,0]},{"id":46,"kind":235,"payload":[44,0,45]},{"id":47,"kind":233,"payload":[46,0,0]},{"id":48,"kind":368,"payload":[1,0,4]}]}
+
+
+// CHECK: SourceFile #54 @1:1..10:1 file_name="type-forms.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:19
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #5 @1:1..1:19
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="a"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             ArrayTypeExpr #3 @1:8..1:13
+// CHECK-NEXT:               elem:
+// CHECK-NEXT:                 PredefinedTypeExpr #2 @1:8..1:11 kind=I32
+// CHECK-NEXT:               len_expr: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #4 @1:16..1:18 name="xs"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #11 @2:1..2:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #10 @2:1..2:22
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #7 @2:5..2:8 name="a16"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             PredefinedTypeExpr #8 @2:10..2:13 kind=I16
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #9 @2:16..2:21 name="small"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #17 @3:1..3:20
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #16 @3:1..3:20
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #12 @3:5..3:6 name="b"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             OptionalTypeExpr #14 @3:8..3:12 double=false
+// CHECK-NEXT:               inner:
+// CHECK-NEXT:                 PredefinedTypeExpr #13 @3:8..3:11 kind=I32
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             NullLiteral #15 @3:15..3:19
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #25 @4:1..4:27
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #24 @4:1..4:27
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #18 @4:5..4:6 name="c"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             ArrayTypeExpr #22 @4:8..4:21
+// CHECK-NEXT:               elem:
+// CHECK-NEXT:                 UnionTypeExpr #21 @4:9..4:18
+// CHECK-NEXT:                   alts:
+// CHECK-NEXT:                     PredefinedTypeExpr #19 @4:9..4:12 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #20 @4:15..4:18 kind=Str
+// CHECK-NEXT:               len_expr: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #23 @4:24..4:26 name="xs"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #34 @5:1..5:18
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #33 @5:1..5:18
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #26 @5:5..5:6 name="d"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             IntersectionTypeExpr #31 @5:8..5:13
+// CHECK-NEXT:               alts:
+// CHECK-NEXT:                 NamedTypeExpr #28 @5:8..5:9
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #27 @5:8..5:9 segments=["A"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:                 NamedTypeExpr #30 @5:12..5:13
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #29 @5:12..5:13 segments=["B"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #32 @5:16..5:17 name="x"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #41 @6:1..6:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #40 @6:1..6:22
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #35 @6:5..6:6 name="e"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             UnionTypeExpr #38 @6:8..6:17
+// CHECK-NEXT:               alts:
+// CHECK-NEXT:                 PredefinedTypeExpr #36 @6:8..6:11 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #37 @6:14..6:17 kind=Str
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #39 @6:20..6:21 name="x"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #45 @7:1..7:31
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #44 @7:1..7:31
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #42 @7:5..7:6 name="g"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #43 @7:27..7:30 name="tup"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #49 @8:1..8:39
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #48 @8:1..8:39
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #46 @8:5..8:6 name="h"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #47 @8:36..8:38 name="fn"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #53 @9:1..9:27
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #52 @9:1..9:27
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #50 @9:5..9:6 name="i"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #51 @9:25..9:26 name="v"
+// CHECK-NEXT:       attrs: null

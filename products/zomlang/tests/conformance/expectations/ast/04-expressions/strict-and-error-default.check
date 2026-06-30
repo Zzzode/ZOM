@@ -1,2 +1,84 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/strict-and-error-default.zom | %FileCheck %s
-// CHECK: {"root":35,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":130,"payload":[2,0,0]},{"id":3,"kind":130,"payload":[3,0,0]},{"id":4,"kind":132,"payload":[16,2,3]},{"id":5,"kind":235,"payload":[1,0,4]},{"id":6,"kind":233,"payload":[5,0,0]},{"id":7,"kind":69,"payload":[4,0,0]},{"id":8,"kind":130,"payload":[2,0,0]},{"id":9,"kind":130,"payload":[3,0,0]},{"id":10,"kind":132,"payload":[17,8,9]},{"id":11,"kind":235,"payload":[7,0,10]},{"id":12,"kind":233,"payload":[11,0,0]},{"id":13,"kind":69,"payload":[5,0,0]},{"id":14,"kind":130,"payload":[6,0,0]},{"id":15,"kind":130,"payload":[7,0,0]},{"id":16,"kind":98,"payload":[14,15,0]},{"id":17,"kind":235,"payload":[13,0,16]},{"id":18,"kind":233,"payload":[17,0,0]},{"id":19,"kind":69,"payload":[8,0,0]},{"id":20,"kind":130,"payload":[6,0,0]},{"id":21,"kind":130,"payload":[7,0,0]},{"id":22,"kind":98,"payload":[20,21,0]},{"id":23,"kind":235,"payload":[19,0,22]},{"id":24,"kind":233,"payload":[23,0,0]},{"id":25,"kind":69,"payload":[9,0,0]},{"id":26,"kind":130,"payload":[10,0,0]},{"id":27,"kind":130,"payload":[11,0,0]},{"id":28,"kind":98,"payload":[26,27,0]},{"id":29,"kind":130,"payload":[12,0,0]},{"id":30,"kind":130,"payload":[13,0,0]},{"id":31,"kind":132,"payload":[13,29,30]},{"id":32,"kind":99,"payload":[28,31,0]},{"id":33,"kind":235,"payload":[25,0,32]},{"id":34,"kind":233,"payload":[33,0,0]},{"id":35,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #35 @1:1..6:1 file_name="strict-and-error-default.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:31
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #5 @1:1..1:31
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:16 name="strictEqual"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BinaryExpr #4 @1:19..1:30 op=StrictEq
+// CHECK-NEXT:               lhs:
+// CHECK-NEXT:                 IdentExpr #2 @1:19..1:22 name="lhs"
+// CHECK-NEXT:               rhs:
+// CHECK-NEXT:                 IdentExpr #3 @1:27..1:30 name="rhs"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #12 @2:1..2:34
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #11 @2:1..2:34
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #7 @2:5..2:19 name="strictNotEqual"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BinaryExpr #10 @2:22..2:33 op=StrictNe
+// CHECK-NEXT:               lhs:
+// CHECK-NEXT:                 IdentExpr #8 @2:22..2:25 name="lhs"
+// CHECK-NEXT:               rhs:
+// CHECK-NEXT:                 IdentExpr #9 @2:30..2:33 name="rhs"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #18 @3:1..3:38
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #17 @3:1..3:38
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #13 @3:5..3:13 name="fallback"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             ErrorDefaultExpr #16 @3:16..3:37
+// CHECK-NEXT:               primary:
+// CHECK-NEXT:                 IdentExpr #14 @3:16..3:21 name="value"
+// CHECK-NEXT:               fallback:
+// CHECK-NEXT:                 IdentExpr #15 @3:25..3:37 name="defaultValue"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #24 @4:1..4:35
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #23 @4:1..4:35
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #19 @4:5..4:12 name="compact"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             ErrorDefaultExpr #22 @4:15..4:34
+// CHECK-NEXT:               primary:
+// CHECK-NEXT:                 IdentExpr #20 @4:15..4:20 name="value"
+// CHECK-NEXT:               fallback:
+// CHECK-NEXT:                 IdentExpr #21 @4:22..4:34 name="defaultValue"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #34 @5:1..5:60
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #33 @5:1..5:60
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #25 @5:5..5:10 name="mixed"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             NullCoalesceExpr #32 @5:13..5:59
+// CHECK-NEXT:               primary:
+// CHECK-NEXT:                 ErrorDefaultExpr #28 @5:13..5:33
+// CHECK-NEXT:                   primary:
+// CHECK-NEXT:                     IdentExpr #26 @5:13..5:20 name="primary"
+// CHECK-NEXT:                   fallback:
+// CHECK-NEXT:                     IdentExpr #27 @5:24..5:33 name="secondary"
+// CHECK-NEXT:               fallback:
+// CHECK-NEXT:                 BinaryExpr #31 @5:37..5:59 op=LogOr
+// CHECK-NEXT:                   lhs:
+// CHECK-NEXT:                     IdentExpr #29 @5:37..5:45 name="tertiary"
+// CHECK-NEXT:                   rhs:
+// CHECK-NEXT:                     IdentExpr #30 @5:49..5:59 name="quaternary"
+// CHECK-NEXT:       attrs: null

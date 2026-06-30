@@ -1,0 +1,15 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/pow_above_unary_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #4 @1:1..2:1 file_name="pow_above_unary_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:17
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #2 @1:1..1:17
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="x"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init: null
+// CHECK-NEXT:       attrs: null

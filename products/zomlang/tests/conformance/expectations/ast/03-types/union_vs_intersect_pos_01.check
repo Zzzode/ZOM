@@ -1,0 +1,22 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/union_vs_intersect_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #8 @1:1..2:1 file_name="union_vs_intersect_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #6 @1:1..1:22 name="Choice"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             UnionTypeExpr #5 @1:16..1:21
+// CHECK-NEXT:               alts:
+// CHECK-NEXT:                 NamedTypeExpr #2 @1:16..1:17
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #1 @1:16..1:17 segments=["A"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:                 NamedTypeExpr #4 @1:20..1:21
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #3 @1:20..1:21 segments=["B"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:       attrs: null

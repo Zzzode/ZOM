@@ -21,6 +21,18 @@ set(AST_EXPECTATION_ROOT
   ${CMAKE_SOURCE_DIR}/products/zomlang/tests/conformance/expectations/ast
 )
 
+add_test(
+  NAME conformance-ast-coverage
+  COMMAND python3
+          ${CMAKE_SOURCE_DIR}/products/zomlang/tests/conformance/tools/check-ast-coverage.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(conformance-ast-coverage PROPERTIES
+  LABELS "conformance;conformance-ast;ast;coverage;specification"
+  TIMEOUT 10
+)
+
 file(GLOB_RECURSE AST_EXPECTATION_FILES "${AST_EXPECTATION_ROOT}/*.check")
 foreach(AST_EXPECTATION_FILE ${AST_EXPECTATION_FILES})
   file(RELATIVE_PATH REL_PATH "${AST_EXPECTATION_ROOT}" "${AST_EXPECTATION_FILE}")

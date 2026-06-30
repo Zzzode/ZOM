@@ -1,0 +1,10 @@
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/import_in_block_pos_16.zom 2>&1 | %FileCheck %s
+
+
+// CHECK: Error [ZOM2012]: Missing semicolon before 'io'
+// CHECK:   --> {{.*import_in_block_pos_16.zom}}:2:17
+// CHECK:   |
+// CHECK: 2 |     import std::io as i;
+// CHECK:   |                 ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

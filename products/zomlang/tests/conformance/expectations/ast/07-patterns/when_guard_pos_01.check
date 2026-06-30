@@ -1,0 +1,20 @@
+// RUN: ! %zomc compile --dump-ast %corpus/07-patterns/when_guard_pos_01.zom 2>&1 | %FileCheck %s
+
+
+// CHECK: Error [ZOM2011]: Identifier expected, found '0'
+// CHECK:   --> {{.*when_guard_pos_01.zom}}:2:14
+// CHECK:   |
+// CHECK: 2 |     x if x > 0 : { print("pos"); }
+// CHECK:   |              ^
+// CHECK: Error [ZOM2011]: Identifier expected, found '0'
+// CHECK:   --> {{.*when_guard_pos_01.zom}}:3:14
+// CHECK:   |
+// CHECK: 3 |     x if x < 0 : { print("neg"); }
+// CHECK:   |              ^
+// CHECK: Error [ZOM2011]: Identifier expected, found '0'
+// CHECK:   --> {{.*when_guard_pos_01.zom}}:4:5
+// CHECK:   |
+// CHECK: 4 |     0 : { print("zero"); }
+// CHECK:   |     ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

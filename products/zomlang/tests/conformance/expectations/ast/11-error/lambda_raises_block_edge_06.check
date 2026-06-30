@@ -1,0 +1,23 @@
+// RUN: %zomc compile --dump-ast %corpus/11-error/lambda_raises_block_edge_06.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #8 @1:1..2:1 file_name="lambda_raises_block_edge_06.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:66
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #6 @1:1..1:66
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="h"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BinaryExpr #5 @1:9..1:65 op=BitOr
+// CHECK-NEXT:               lhs:
+// CHECK-NEXT:                 BinaryExpr #3 @1:9..1:39 op=BitOr
+// CHECK-NEXT:                   lhs: null
+// CHECK-NEXT:                   rhs:
+// CHECK-NEXT:                     IdentExpr #2 @1:37..1:39 name="E2"
+// CHECK-NEXT:               rhs:
+// CHECK-NEXT:                 IdentExpr #4 @1:42..1:44 name="E3"
+// CHECK-NEXT:       attrs: null

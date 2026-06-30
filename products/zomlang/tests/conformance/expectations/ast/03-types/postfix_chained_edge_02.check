@@ -1,0 +1,12 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/postfix_chained_edge_02.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #3 @1:1..2:1 file_name="postfix_chained_edge_02.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #2 @1:1..1:23
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #1 @1:1..1:23 name="DoubOpt"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target: null
+// CHECK-NEXT:       attrs: null

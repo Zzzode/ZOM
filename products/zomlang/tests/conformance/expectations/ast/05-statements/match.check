@@ -1,2 +1,13 @@
 // RUN: %zomc compile --dump-ast %corpus/05-statements/match.zom | %FileCheck %s
-// CHECK: {"root":4,"nodes":[{"id":1,"kind":130,"payload":[1,0,0]},{"id":2,"kind":228,"payload":[1,0,0]},{"id":3,"kind":233,"payload":[2,0,0]},{"id":4,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #4 @1:1..12:1 file_name="match.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..11:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         MatchStmt #2 @1:1..11:2
+// CHECK-NEXT:           scrutinee:
+// CHECK-NEXT:             IdentExpr #1 @1:8..1:9 name="x"
+// CHECK-NEXT:           arms: []
+// CHECK-NEXT:       attrs: null

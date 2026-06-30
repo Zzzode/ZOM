@@ -1,2 +1,14 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/enums/enum-declarations.zom | %FileCheck %s
-// CHECK: {"root":4,"nodes":[{"id":1,"kind":60,"payload":[0,0,0]},{"id":2,"kind":51,"payload":[1,0,0]},{"id":3,"kind":233,"payload":[2,0,0]},{"id":4,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #4 @1:1..7:1 file_name="enum-declarations.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..6:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         EnumDeclaration #2 @1:1..6:2 name="E" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           variants_id:
+// CHECK-NEXT:             EnumVariantList #1 @1:1..6:2 nvars=0
+// CHECK-NEXT:               variants: []
+// CHECK-NEXT:       attrs: null

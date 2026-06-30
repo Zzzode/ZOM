@@ -1,0 +1,11 @@
+// RUN: %zomc compile --dump-ast %corpus/19-conditional/cfg_version_compare_pos_06.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #3 @1:1..9:1 file_name="cfg_version_compare_pos_06.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #2 @1:1..8:34
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #1 @1:1..8:34
+// CHECK-NEXT:           expression: null
+// CHECK-NEXT:       attrs: null

@@ -1,0 +1,6 @@
+// REGEN-SKIP: format-specific AST dump contract test
+// RUN: %zomc compile --dump-ast --ast-format=raw %corpus/04-expressions/binary-operators.zom | %FileCheck %s
+
+// CHECK: root:
+// CHECK: kind=BinaryExpr
+// CHECK-SAME: payload=[

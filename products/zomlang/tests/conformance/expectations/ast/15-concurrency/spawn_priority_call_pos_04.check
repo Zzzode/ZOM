@@ -1,0 +1,45 @@
+// RUN: %zomc compile --dump-ast %corpus/15-concurrency/spawn_priority_call_pos_04.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #15 @1:1..5:1 file_name="spawn_priority_call_pos_04.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #14 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #13 @1:1..4:2 name="main"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #12 @1:12..4:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #6 @2:5..2:45
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #5 @2:5..2:45
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #2 @2:9..2:11 name="hi"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         CallExpression #4 @2:14..2:44
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #3 @2:14..2:19 name="spawn"
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #11 @3:5..3:44
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #10 @3:5..3:44
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #7 @3:9..3:11 name="lo"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         CallExpression #9 @3:14..3:43
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #8 @3:14..3:19 name="spawn"
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

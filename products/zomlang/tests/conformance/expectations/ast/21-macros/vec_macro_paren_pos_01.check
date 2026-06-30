@@ -1,0 +1,44 @@
+// RUN: %zomc compile --dump-ast %corpus/21-macros/vec_macro_paren_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #19 @1:1..5:1 file_name="vec_macro_paren_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #18 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #17 @1:1..4:2 name="build_vec"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:14..1:16 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:20..1:24 kind=Unit
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #16 @1:25..4:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #12 @2:5..2:33
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #11 @2:5..2:33
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #3 @2:9..2:10 name="v"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         CallExpression #10 @2:13..2:32
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #9 @2:13..2:16 name="vec"
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             IntLiteral #4 @2:18..2:19 base=10 value="1"
+// CHECK-NEXT:                             IntLiteral #5 @2:21..2:22 base=10 value="2"
+// CHECK-NEXT:                             IntLiteral #6 @2:24..2:25 base=10 value="3"
+// CHECK-NEXT:                             IntLiteral #7 @2:27..2:28 base=10 value="4"
+// CHECK-NEXT:                             IntLiteral #8 @2:30..2:31 base=10 value="5"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #15 @3:5..3:14
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #14 @3:5..3:14
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #13 @3:12..3:13 name="v"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

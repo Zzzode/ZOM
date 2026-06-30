@@ -1,2 +1,13 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/errors/error-declarations.zom | %FileCheck %s
-// CHECK: {"root":4,"nodes":[{"id":1,"kind":284,"payload":[0,0,0]},{"id":2,"kind":286,"payload":[1,1,0]},{"id":3,"kind":233,"payload":[2,0,0]},{"id":4,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #4 @1:1..7:1 file_name="error-declarations.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..6:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ErrorDecl #2 @1:1..6:2 name="Err"
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #1 @1:1..6:2 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null

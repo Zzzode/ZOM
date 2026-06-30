@@ -1,0 +1,59 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/postfix_lr_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #21 @1:1..7:1 file_name="postfix_lr_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #20 @1:1..6:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #19 @1:1..6:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #18 @1:9..6:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #5 @2:3..2:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #4 @2:3..2:15
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #2 @2:7..2:8 name="a"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IdentExpr #3 @2:11..2:12 name="x"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #9 @3:3..3:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #8 @3:3..3:15
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #6 @3:7..3:8 name="b"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IdentExpr #7 @3:11..3:12 name="y"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #13 @4:3..4:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #12 @4:3..4:15
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #10 @4:7..4:8 name="c"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IdentExpr #11 @4:11..4:12 name="z"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #17 @5:3..5:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #16 @5:3..5:15
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #14 @5:7..5:8 name="d"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IdentExpr #15 @5:11..5:12 name="w"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

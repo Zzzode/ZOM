@@ -1,2 +1,22 @@
 // RUN: %zomc compile --dump-ast %corpus/09-interfaces/interface-inheritance.zom | %FileCheck %s
-// CHECK: {"root":7,"nodes":[{"id":1,"kind":284,"payload":[0,0,0]},{"id":2,"kind":285,"payload":[1,0,1]},{"id":3,"kind":233,"payload":[2,0,0]},{"id":4,"kind":284,"payload":[0,0,0]},{"id":5,"kind":285,"payload":[2,0,4]},{"id":6,"kind":233,"payload":[5,0,0]},{"id":7,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #7 @1:1..8:1 file_name="interface-inheritance.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..3:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #2 @1:1..3:2 name="Base"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #1 @1:1..3:2 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #6 @5:1..7:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #5 @5:1..7:2 name="Derived"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #4 @5:1..7:2 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null

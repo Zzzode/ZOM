@@ -1,2 +1,46 @@
 // RUN: %zomc compile --dump-ast %corpus/05-statements/break-continue.zom | %FileCheck %s
-// CHECK: {"root":18,"nodes":[{"id":1,"kind":282,"payload":[0,0,0]},{"id":2,"kind":102,"payload":[1,0,0]},{"id":3,"kind":231,"payload":[0,0,0]},{"id":4,"kind":233,"payload":[3,0,0]},{"id":5,"kind":243,"payload":[0,0,0]},{"id":6,"kind":233,"payload":[5,0,0]},{"id":7,"kind":231,"payload":[2,0,0]},{"id":8,"kind":233,"payload":[7,0,0]},{"id":9,"kind":243,"payload":[2,0,0]},{"id":10,"kind":233,"payload":[9,0,0]},{"id":11,"kind":226,"payload":[0,4,0]},{"id":12,"kind":229,"payload":[2,11,0]},{"id":13,"kind":239,"payload":[2,12,0]},{"id":14,"kind":233,"payload":[13,0,0]},{"id":15,"kind":226,"payload":[4,1,0]},{"id":16,"kind":277,"payload":[1,1,0]},{"id":17,"kind":233,"payload":[16,0,0]},{"id":18,"kind":368,"payload":[1,0,5]}]}
+
+
+// CHECK: SourceFile #18 @1:1..9:1 file_name="break-continue.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #17 @1:1..8:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #16 @1:1..8:2 name="testBreakContinue"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:22..1:24 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #15 @1:25..8:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #14 @2:3..7:4
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LabeledStatement #13 @2:3..7:4 label="loop1"
+// CHECK-NEXT:                       statement:
+// CHECK-NEXT:                         WhileStmt #12 @2:10..7:4
+// CHECK-NEXT:                           cond:
+// CHECK-NEXT:                             BoolLiteral #2 @2:17..2:21 value=true
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #11 @2:23..7:4
+// CHECK-NEXT:                               stmts:
+// CHECK-NEXT:                                 StatementListItem #4 @3:5..3:11
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     BreakStmt #3 @3:5..3:11 label=null
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                                 StatementListItem #6 @4:5..4:14
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     ContinueStatement #5 @4:5..4:14 label=null
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                                 StatementListItem #8 @5:5..5:17
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     BreakStmt #7 @5:5..5:17 label="loop1"
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                                 StatementListItem #10 @6:5..6:20
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     ContinueStatement #9 @6:5..6:20 label="loop1"
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

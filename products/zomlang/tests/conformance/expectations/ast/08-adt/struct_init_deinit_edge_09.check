@@ -1,0 +1,10 @@
+// RUN: ! %zomc compile --dump-ast %corpus/08-adt/struct_init_deinit_edge_09.zom 2>&1 | %FileCheck %s
+
+
+// CHECK: Error [ZOM2012]: Missing semicolon before 'Node'
+// CHECK:   --> {{.*struct_init_deinit_edge_09.zom}}:4:16
+// CHECK:   |
+// CHECK: 4 |     children: [Node] = [];
+// CHECK:   |                ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

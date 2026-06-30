@@ -1,2 +1,22 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/generic.zom | %FileCheck %s
-// CHECK: {"root":7,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":130,"payload":[2,0,0]},{"id":3,"kind":132,"payload":[18,0,2]},{"id":4,"kind":132,"payload":[20,3,0]},{"id":5,"kind":235,"payload":[1,0,4]},{"id":6,"kind":233,"payload":[5,0,0]},{"id":7,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #7 @2:1..5:1 file_name="generic.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @2:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #5 @2:1..4:2
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @2:5..2:19 name="genericClosure"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BinaryExpr #4 @2:22..4:2 op=Gt
+// CHECK-NEXT:               lhs:
+// CHECK-NEXT:                 BinaryExpr #3 @2:22..2:28 op=Lt
+// CHECK-NEXT:                   lhs: null
+// CHECK-NEXT:                   rhs:
+// CHECK-NEXT:                     IdentExpr #2 @2:27..2:28 name="T"
+// CHECK-NEXT:               rhs: null
+// CHECK-NEXT:       attrs: null

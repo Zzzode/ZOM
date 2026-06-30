@@ -1,2 +1,128 @@
 // RUN: %zomc compile --dump-ast %corpus/05-statements/control-flow.zom | %FileCheck %s
-// CHECK: {"root":55,"nodes":[{"id":1,"kind":282,"payload":[0,0,0]},{"id":2,"kind":69,"payload":[2,0,0]},{"id":3,"kind":103,"payload":[10,1,0]},{"id":4,"kind":235,"payload":[2,0,3]},{"id":5,"kind":233,"payload":[4,0,0]},{"id":6,"kind":130,"payload":[2,0,0]},{"id":7,"kind":103,"payload":[10,2,0]},{"id":8,"kind":132,"payload":[20,6,7]},{"id":9,"kind":130,"payload":[2,0,0]},{"id":10,"kind":103,"payload":[10,3,0]},{"id":11,"kind":132,"payload":[1,9,10]},{"id":12,"kind":237,"payload":[11,0,0]},{"id":13,"kind":233,"payload":[12,0,0]},{"id":14,"kind":226,"payload":[0,1,0]},{"id":15,"kind":130,"payload":[2,0,0]},{"id":16,"kind":103,"payload":[10,3,0]},{"id":17,"kind":132,"payload":[0,15,16]},{"id":18,"kind":237,"payload":[17,0,0]},{"id":19,"kind":233,"payload":[18,0,0]},{"id":20,"kind":226,"payload":[1,1,0]},{"id":21,"kind":227,"payload":[8,14,20]},{"id":22,"kind":233,"payload":[21,0,0]},{"id":23,"kind":130,"payload":[2,0,0]},{"id":24,"kind":103,"payload":[10,4,0]},{"id":25,"kind":132,"payload":[20,23,24]},{"id":26,"kind":130,"payload":[2,0,0]},{"id":27,"kind":103,"payload":[10,3,0]},{"id":28,"kind":132,"payload":[1,26,27]},{"id":29,"kind":237,"payload":[28,0,0]},{"id":30,"kind":233,"payload":[29,0,0]},{"id":31,"kind":226,"payload":[2,1,0]},{"id":32,"kind":229,"payload":[25,31,0]},{"id":33,"kind":233,"payload":[32,0,0]},{"id":34,"kind":69,"payload":[3,0,0]},{"id":35,"kind":103,"payload":[10,4,0]},{"id":36,"kind":235,"payload":[34,0,35]},{"id":37,"kind":130,"payload":[3,0,0]},{"id":38,"kind":103,"payload":[10,1,0]},{"id":39,"kind":132,"payload":[18,37,38]},{"id":40,"kind":130,"payload":[3,0,0]},{"id":41,"kind":130,"payload":[2,0,0]},{"id":42,"kind":130,"payload":[3,0,0]},{"id":43,"kind":132,"payload":[0,41,42]},{"id":44,"kind":237,"payload":[43,0,0]},{"id":45,"kind":233,"payload":[44,0,0]},{"id":46,"kind":226,"payload":[3,1,0]},{"id":47,"kind":230,"payload":[36,39,40]},{"id":48,"kind":233,"payload":[47,0,0]},{"id":49,"kind":130,"payload":[2,0,0]},{"id":50,"kind":228,"payload":[49,4,0]},{"id":51,"kind":233,"payload":[50,0,0]},{"id":52,"kind":226,"payload":[4,5,0]},{"id":53,"kind":277,"payload":[1,1,0]},{"id":54,"kind":233,"payload":[53,0,0]},{"id":55,"kind":368,"payload":[1,0,9]}]}
+
+
+// CHECK: SourceFile #55 @1:1..30:1 file_name="control-flow.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #54 @1:1..29:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #53 @1:1..29:2 name="testControlFlow"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:20..1:22 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #52 @1:23..29:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #5 @2:3..2:14
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #4 @2:3..2:14
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #2 @2:7..2:8 name="x"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IntLiteral #3 @2:11..2:13 base=10 value="10"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #22 @5:3..9:4
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     IfStmt #21 @5:3..9:4
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         BinaryExpr #8 @5:7..5:12 op=Gt
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #6 @5:7..5:8 name="x"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #7 @5:11..5:12 base=10 value="5"
+// CHECK-NEXT:                       then_stmt:
+// CHECK-NEXT:                         BlockStmt #14 @5:14..7:4
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #13 @6:5..6:15
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ExpressionStatement #12 @6:5..6:15
+// CHECK-NEXT:                                   expression:
+// CHECK-NEXT:                                     BinaryExpr #11 @6:5..6:14 op=Sub
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         IdentExpr #9 @6:5..6:6 name="x"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IntLiteral #10 @6:13..6:14 base=10 value="1"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                       else_stmt:
+// CHECK-NEXT:                         BlockStmt #20 @7:10..9:4
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #19 @8:5..8:15
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ExpressionStatement #18 @8:5..8:15
+// CHECK-NEXT:                                   expression:
+// CHECK-NEXT:                                     BinaryExpr #17 @8:5..8:14 op=Add
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         IdentExpr #15 @8:5..8:6 name="x"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IntLiteral #16 @8:13..8:14 base=10 value="1"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #33 @12:3..14:4
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     WhileStmt #32 @12:3..14:4
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         BinaryExpr #25 @12:10..12:15 op=Gt
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #23 @12:10..12:11 name="x"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #24 @12:14..12:15 base=10 value="0"
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #31 @12:17..14:4
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #30 @13:5..13:15
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ExpressionStatement #29 @13:5..13:15
+// CHECK-NEXT:                                   expression:
+// CHECK-NEXT:                                     BinaryExpr #28 @13:5..13:14 op=Sub
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         IdentExpr #26 @13:5..13:6 name="x"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IntLiteral #27 @13:13..13:14 base=10 value="1"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #48 @17:3..19:4
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ForStmt #47 @17:3..19:4
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         LetStmt #36 @17:8..17:18
+// CHECK-NEXT:                           pattern:
+// CHECK-NEXT:                             IdentifierPattern #34 @17:12..17:13 name="i"
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                           init:
+// CHECK-NEXT:                             IntLiteral #35 @17:16..17:17 base=10 value="0"
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         BinaryExpr #39 @17:19..17:25 op=Lt
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #37 @17:19..17:20 name="i"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #38 @17:23..17:25 base=10 value="10"
+// CHECK-NEXT:                       update:
+// CHECK-NEXT:                         IdentExpr #40 @17:27..17:28 name="i"
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #46 @17:32..19:4
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #45 @18:5..18:15
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ExpressionStatement #44 @18:5..18:15
+// CHECK-NEXT:                                   expression:
+// CHECK-NEXT:                                     BinaryExpr #43 @18:5..18:14 op=Add
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         IdentExpr #41 @18:5..18:6 name="x"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IdentExpr #42 @18:13..18:14 name="i"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #51 @22:3..28:4
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     MatchStmt #50 @22:3..28:4
+// CHECK-NEXT:                       scrutinee:
+// CHECK-NEXT:                         IdentExpr #49 @22:10..22:11 name="x"
+// CHECK-NEXT:                       arms: []
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

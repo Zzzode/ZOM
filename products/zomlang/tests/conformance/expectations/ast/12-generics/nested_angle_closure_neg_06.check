@@ -1,0 +1,16 @@
+// RUN: %zomc compile --dump-ast %corpus/12-generics/nested_angle_closure_neg_06.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #5 @1:1..2:1 file_name="nested_angle_closure_neg_06.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #4 @1:1..1:33
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #3 @1:1..1:33 name="TooDeep"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             NamedTypeExpr #2 @1:17..1:32
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #1 @1:17..1:18 segments=["A"]
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:       attrs: null

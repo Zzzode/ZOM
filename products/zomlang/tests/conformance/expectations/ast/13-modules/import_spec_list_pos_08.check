@@ -1,0 +1,13 @@
+// RUN: %zomc compile --dump-ast %corpus/13-modules/import_spec_list_pos_08.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #4 @1:1..2:1 file_name="import_spec_list_pos_08.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:38
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:38
+// CHECK-NEXT:           path:
+// CHECK-NEXT:             ModulePath #1 @1:8..1:37 segments=["pkg", "a", "b", "bb", "c", "d", "dd"]
+// CHECK-NEXT:           specifiers: []
+// CHECK-NEXT:       attrs: null

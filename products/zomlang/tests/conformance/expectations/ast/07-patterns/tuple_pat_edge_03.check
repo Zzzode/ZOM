@@ -1,0 +1,26 @@
+// RUN: %zomc compile --dump-ast %corpus/07-patterns/tuple_pat_edge_03.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #10 @1:1..5:1 file_name="tuple_pat_edge_03.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #5 @1:1..1:22
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             WildcardPattern #1 @1:5..1:12
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             TupleLiteral #4 @1:16..1:20
+// CHECK-NEXT:               elems:
+// CHECK-NEXT:                 IntLiteral #2 @1:16..1:17 base=10 value="1"
+// CHECK-NEXT:                 IntLiteral #3 @1:19..1:20 base=10 value="2"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #9 @2:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         MatchStmt #8 @2:1..4:2
+// CHECK-NEXT:           scrutinee:
+// CHECK-NEXT:             IdentExpr #7 @2:8..2:9 name="t"
+// CHECK-NEXT:           arms: []
+// CHECK-NEXT:       attrs: null

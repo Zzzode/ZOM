@@ -1,0 +1,11 @@
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/abstract_static_reject_neg_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #3 @1:1..2:1 file_name="abstract_static_reject_neg_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #2 @1:1..1:27
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #1 @1:1..1:27
+// CHECK-NEXT:           expression: null
+// CHECK-NEXT:       attrs: null

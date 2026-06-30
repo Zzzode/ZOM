@@ -1,0 +1,20 @@
+// RUN: %zomc compile --dump-ast %corpus/21-macros/macro_unbalanced_paren_neg_02.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #7 @1:1..2:1 file_name="macro_unbalanced_paren_neg_02.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:19
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #5 @1:1..1:19
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="_"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             CallExpression #4 @1:9..1:18
+// CHECK-NEXT:               callee:
+// CHECK-NEXT:                 IdentExpr #3 @1:9..1:10 name="m"
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 IdentExpr #2 @1:15..1:16 name="b"
+// CHECK-NEXT:       attrs: null

@@ -1,0 +1,20 @@
+// RUN: ! %zomc compile --dump-ast %corpus/02-lexical/decimal_forms_edge_01.zom 2>&1 | %FileCheck %s
+
+
+// CHECK: Error [ZOM2035]: Numeric separators are not allowed here
+// CHECK:   --> {{.*decimal_forms_edge_01.zom}}:3:10
+// CHECK:   |
+// CHECK: 3 | let c = 9_;
+// CHECK:   |          ^
+// CHECK: Error [ZOM2036]: Multiple consecutive numeric separators are not permitted
+// CHECK:   --> {{.*decimal_forms_edge_01.zom}}:4:11
+// CHECK:   |
+// CHECK: 4 | let d = 5__.0;
+// CHECK:   |           ^
+// CHECK: Error [ZOM2035]: Numeric separators are not allowed here
+// CHECK:   --> {{.*decimal_forms_edge_01.zom}}:4:11
+// CHECK:   |
+// CHECK: 4 | let d = 5__.0;
+// CHECK:   |           ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

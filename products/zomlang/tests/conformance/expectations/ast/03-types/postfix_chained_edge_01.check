@@ -1,0 +1,19 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/postfix_chained_edge_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #7 @1:1..2:1 file_name="postfix_chained_edge_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:24
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #5 @1:1..1:24 name="Cube"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             SliceArrayTypeExpr #4 @1:14..1:23
+// CHECK-NEXT:               elem:
+// CHECK-NEXT:                 SliceArrayTypeExpr #3 @1:15..1:22
+// CHECK-NEXT:                   elem:
+// CHECK-NEXT:                     SliceArrayTypeExpr #2 @1:16..1:21
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         PredefinedTypeExpr #1 @1:17..1:20 kind=I32
+// CHECK-NEXT:       attrs: null

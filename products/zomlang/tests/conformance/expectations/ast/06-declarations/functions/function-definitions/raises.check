@@ -1,2 +1,24 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/function-definitions/raises.zom | %FileCheck %s
-// CHECK: {"root":8,"nodes":[{"id":1,"kind":282,"payload":[0,0,0]},{"id":2,"kind":198,"payload":[14,0,0]},{"id":3,"kind":369,"payload":[0,1,0]},{"id":4,"kind":197,"payload":[3,0,0]},{"id":5,"kind":226,"payload":[0,0,0]},{"id":6,"kind":277,"payload":[1,1,0]},{"id":7,"kind":233,"payload":[6,0,0]},{"id":8,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #8 @1:1..3:1 file_name="raises.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..2:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #6 @1:1..2:2 name="fail"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:15..1:19 kind=Unit
+// CHECK-NEXT:           raises_ty:
+// CHECK-NEXT:             NamedTypeExpr #4 @1:27..1:32
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #3 @1:27..1:32 segments=["Error"]
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #5 @1:33..2:2
+// CHECK-NEXT:               stmts: []
+// CHECK-NEXT:       attrs: null

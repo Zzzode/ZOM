@@ -1,8 +1,10 @@
 // RUN: ! %zomc compile --dump-ast %corpus/03-types/union-trailing-bar.zom 2>&1 | %FileCheck %s
+
+
 // CHECK: Error [ZOM2069]: Type expected
-// CHECK:   --> {{.*union-trailing-bar.zom}}:3:19
+// CHECK:   --> {{.*union-trailing-bar.zom}}:1:19
 // CHECK:   |
-// CHECK: 3 | alias Broken = A |;
+// CHECK: 1 | alias Broken = A |;
 // CHECK:   |                   ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

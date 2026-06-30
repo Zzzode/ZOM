@@ -1,0 +1,24 @@
+// RUN: %zomc compile --dump-ast %corpus/11-error/fun_raises_single_pos_02.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #8 @1:1..2:1 file_name="fun_raises_single_pos_02.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:35
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #6 @1:1..1:35 name="bar"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:8..1:10 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:14..1:18 kind=Bool
+// CHECK-NEXT:           raises_ty:
+// CHECK-NEXT:             NamedTypeExpr #4 @1:26..1:34
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #3 @1:26..1:34 segments=["NotFound"]
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #5 @2:1..2:1
+// CHECK-NEXT:               stmts: []
+// CHECK-NEXT:       attrs: null

@@ -1,0 +1,30 @@
+// RUN: %zomc compile --dump-ast %corpus/11-error/fun_raises_pipe_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #11 @1:1..2:1 file_name="fun_raises_pipe_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #10 @1:1..1:33
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #9 @1:1..1:33 name="foo"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:8..1:10 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:14..1:17 kind=I32
+// CHECK-NEXT:           raises_ty:
+// CHECK-NEXT:             UnionTypeExpr #7 @1:25..1:32
+// CHECK-NEXT:               alts:
+// CHECK-NEXT:                 NamedTypeExpr #4 @1:25..1:27
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #3 @1:25..1:27 segments=["E1"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:                 NamedTypeExpr #6 @1:30..1:32
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #5 @1:30..1:32 segments=["E2"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #8 @2:1..2:1
+// CHECK-NEXT:               stmts: []
+// CHECK-NEXT:       attrs: null

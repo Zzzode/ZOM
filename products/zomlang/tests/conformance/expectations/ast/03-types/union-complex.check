@@ -1,2 +1,70 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/union-complex.zom | %FileCheck %s
-// CHECK: {"root":28,"nodes":[{"id":1,"kind":369,"payload":[0,1,0]},{"id":2,"kind":197,"payload":[1,0,0]},{"id":3,"kind":369,"payload":[1,1,0]},{"id":4,"kind":197,"payload":[3,0,0]},{"id":5,"kind":201,"payload":[0,2,0]},{"id":6,"kind":369,"payload":[2,1,0]},{"id":7,"kind":197,"payload":[6,2,0]},{"id":8,"kind":369,"payload":[3,1,0]},{"id":9,"kind":197,"payload":[8,2,0]},{"id":10,"kind":201,"payload":[2,2,0]},{"id":11,"kind":200,"payload":[4,2,0]},{"id":12,"kind":287,"payload":[1,0,11]},{"id":13,"kind":233,"payload":[12,0,0]},{"id":14,"kind":369,"payload":[4,1,0]},{"id":15,"kind":197,"payload":[14,6,0]},{"id":16,"kind":369,"payload":[5,1,0]},{"id":17,"kind":197,"payload":[16,6,0]},{"id":18,"kind":196,"payload":[17,0,0]},{"id":19,"kind":369,"payload":[6,1,0]},{"id":20,"kind":197,"payload":[19,6,0]},{"id":21,"kind":369,"payload":[7,1,0]},{"id":22,"kind":197,"payload":[21,6,0]},{"id":23,"kind":200,"payload":[6,2,0]},{"id":24,"kind":196,"payload":[23,0,0]},{"id":25,"kind":200,"payload":[8,3,0]},{"id":26,"kind":287,"payload":[6,0,25]},{"id":27,"kind":233,"payload":[26,0,0]},{"id":28,"kind":368,"payload":[1,0,11]}]}
+
+
+// CHECK: SourceFile #30 @1:1..3:1 file_name="union-complex.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #13 @1:1..1:29
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #12 @1:1..1:29 name="Mixed"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             UnionTypeExpr #11 @1:15..1:28
+// CHECK-NEXT:               alts:
+// CHECK-NEXT:                 IntersectionTypeExpr #5 @1:15..1:20
+// CHECK-NEXT:                   alts:
+// CHECK-NEXT:                     NamedTypeExpr #2 @1:15..1:16
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #1 @1:15..1:16 segments=["A"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                     NamedTypeExpr #4 @1:19..1:20
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #3 @1:19..1:20 segments=["B"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                 IntersectionTypeExpr #10 @1:23..1:28
+// CHECK-NEXT:                   alts:
+// CHECK-NEXT:                     NamedTypeExpr #7 @1:23..1:24
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #6 @1:23..1:24 segments=["C"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                     NamedTypeExpr #9 @1:27..1:28
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #8 @1:27..1:28 segments=["D"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #29 @2:1..2:38
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #28 @2:1..2:38 name="Nested"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             UnionTypeExpr #27 @2:16..2:37
+// CHECK-NEXT:               alts:
+// CHECK-NEXT:                 NamedTypeExpr #15 @2:16..2:17
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #14 @2:16..2:17 segments=["A"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:                 OptionalTypeExpr #19 @2:20..2:24 double=false
+// CHECK-NEXT:                   inner:
+// CHECK-NEXT:                     ArrayTypeExpr #18 @2:20..2:23
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         NamedTypeExpr #17 @2:20..2:21
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #16 @2:20..2:21 segments=["B"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                       len_expr: null
+// CHECK-NEXT:                 OptionalTypeExpr #26 @2:27..2:37 double=false
+// CHECK-NEXT:                   inner:
+// CHECK-NEXT:                     UnionTypeExpr #25 @2:28..2:35
+// CHECK-NEXT:                       alts:
+// CHECK-NEXT:                         NamedTypeExpr #21 @2:28..2:29
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #20 @2:28..2:29 segments=["C"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                         ArrayTypeExpr #24 @2:32..2:35
+// CHECK-NEXT:                           elem:
+// CHECK-NEXT:                             NamedTypeExpr #23 @2:32..2:33
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #22 @2:32..2:33 segments=["D"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           len_expr: null
+// CHECK-NEXT:       attrs: null

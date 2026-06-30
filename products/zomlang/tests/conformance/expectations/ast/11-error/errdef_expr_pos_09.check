@@ -1,0 +1,24 @@
+// RUN: %zomc compile --dump-ast %corpus/11-error/errdef_expr_pos_09.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #9 @1:1..2:1 file_name="errdef_expr_pos_09.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #8 @1:1..1:26
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #7 @1:1..1:26
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="x"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             ErrorDefaultExpr #6 @1:9..1:25
+// CHECK-NEXT:               primary:
+// CHECK-NEXT:                 CallExpression #4 @1:9..1:20
+// CHECK-NEXT:                   callee:
+// CHECK-NEXT:                     IdentExpr #3 @1:9..1:15 name="lookup"
+// CHECK-NEXT:                   args:
+// CHECK-NEXT:                     IdentExpr #2 @1:16..1:19 name="key"
+// CHECK-NEXT:               fallback:
+// CHECK-NEXT:                 IntLiteral #5 @1:24..1:25 base=10 value="0"
+// CHECK-NEXT:       attrs: null

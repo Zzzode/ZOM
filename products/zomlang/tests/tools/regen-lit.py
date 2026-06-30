@@ -21,6 +21,8 @@ from typing import List, Optional, Tuple
 class SnapshotRegenerator:
     """Tool to regenerate test snapshots for ZomLang AST tests."""
 
+    REGEN_SKIP_PREFIX = "// REGEN-SKIP:"
+
     def __init__(
         self, zomc_path: str, cmake_binary_dir: Optional[str], preset: Optional[str]
     ):
@@ -108,6 +110,21 @@ class SnapshotRegenerator:
                 line = indent + f'"{key}": "{{{{.*{filename}}}}}"' + comma
 
             # Use CHECK for the first line, CHECK-NEXT for subsequent lines
+            if i == 0:
+                lines.append(f"// CHECK: {line}")
+            else:
+                lines.append(f"// CHECK-NEXT: {line}")
+        return lines
+
+    def format_tree_for_check(self, tree_str: str) -> List[str]:
+        """Format tree dump output as CHECK comments."""
+        lines = []
+        tree_lines = [
+            self._normalize_diagnostic_line(line)
+            for line in tree_str.strip().split("\n")
+            if line.strip()
+        ]
+        for i, line in enumerate(tree_lines):
             if i == 0:
                 lines.append(f"// CHECK: {line}")
             else:
@@ -237,6 +254,15 @@ class SnapshotRegenerator:
         with open(path, "r", encoding="utf-8") as f:
             return f.readlines()
 
+    def should_skip_regeneration(self, path: Path) -> bool:
+        """Return true for hand-written FileCheck tests that must not be regenerated."""
+        if not path.exists():
+            return False
+        return any(
+            line.strip().startswith(self.REGEN_SKIP_PREFIX)
+            for line in self.read_lines(path)
+        )
+
     def write_lines(self, path: Path, lines: List[str]):
         """Write lines to a text file."""
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -259,13 +285,20 @@ class SnapshotRegenerator:
     def regenerate_snapshot(self, target: str, append_mode: bool = False):
         """Regenerate snapshot for a single test file."""
         source_file, expectation_file = self.resolve_source_and_expectation(target)
+        if self.should_skip_regeneration(expectation_file):
+            print(f"Skipping hand-written snapshot: {expectation_file}")
+            return
+
         print(f"Regenerating snapshot for: {source_file}")
 
         returncode, output = self.run_zomc(str(source_file))
         output = output.rstrip()
 
-        if returncode == 0 and self._is_json_output(output):
-            check_lines = self.format_json_for_check(output)
+        if returncode == 0:
+            if self._is_json_output(output):
+                check_lines = self.format_json_for_check(output)
+            else:
+                check_lines = self.format_tree_for_check(output)
         else:
             check_lines = self.format_diagnostics_for_check(output)
 

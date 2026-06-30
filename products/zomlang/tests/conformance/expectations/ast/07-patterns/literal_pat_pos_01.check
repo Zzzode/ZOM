@@ -1,0 +1,15 @@
+// RUN: ! %zomc compile --dump-ast %corpus/07-patterns/literal_pat_pos_01.zom 2>&1 | %FileCheck %s
+
+
+// CHECK: Error [ZOM2011]: Identifier expected, found '42'
+// CHECK:   --> {{.*literal_pat_pos_01.zom}}:2:5
+// CHECK:   |
+// CHECK: 2 |     42 : { print("yes"); }
+// CHECK:   |     ^
+// CHECK: Error [ZOM2011]: Identifier expected, found 'hello'
+// CHECK:   --> {{.*literal_pat_pos_01.zom}}:3:5
+// CHECK:   |
+// CHECK: 3 |     "hello" : { print("greet"); }
+// CHECK:   |     ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

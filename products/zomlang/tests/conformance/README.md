@@ -36,6 +36,12 @@ expectation file.
 Future layers must reuse `corpus/` and add only their own expectation schema and
 runner.
 
+The AST runner registers a coverage guard that requires every
+`corpus/**/*.zom` source to have a same-relative-path
+`expectations/ast/**/*.check` oracle. Format-contract checks that intentionally
+reuse an existing corpus source must be allowlisted in
+`tools/check-ast-coverage.py`.
+
 ## Chapter Directories
 
 The corpus is grouped by spec chapter:

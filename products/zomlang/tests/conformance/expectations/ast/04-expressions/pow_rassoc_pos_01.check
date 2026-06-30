@@ -1,0 +1,24 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/pow_rassoc_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #9 @1:1..2:1 file_name="pow_rassoc_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #8 @1:1..1:21
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #7 @1:1..1:21
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="x"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BinaryExpr #6 @1:9..1:20 op=Pow
+// CHECK-NEXT:               lhs:
+// CHECK-NEXT:                 BinaryExpr #4 @1:9..1:15 op=Pow
+// CHECK-NEXT:                   lhs:
+// CHECK-NEXT:                     IntLiteral #2 @1:9..1:10 base=10 value="2"
+// CHECK-NEXT:                   rhs:
+// CHECK-NEXT:                     IntLiteral #3 @1:14..1:15 base=10 value="3"
+// CHECK-NEXT:               rhs:
+// CHECK-NEXT:                 IntLiteral #5 @1:19..1:20 base=10 value="4"
+// CHECK-NEXT:       attrs: null

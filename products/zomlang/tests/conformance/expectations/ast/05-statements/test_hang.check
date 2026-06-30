@@ -1,2 +1,52 @@
 // RUN: %zomc compile --dump-ast %corpus/05-statements/test_hang.zom | %FileCheck %s
-// CHECK: {"root":20,"nodes":[{"id":1,"kind":282,"payload":[0,0,0]},{"id":2,"kind":69,"payload":[2,0,0]},{"id":3,"kind":103,"payload":[10,1,0]},{"id":4,"kind":235,"payload":[2,0,3]},{"id":5,"kind":130,"payload":[2,0,0]},{"id":6,"kind":103,"payload":[10,2,0]},{"id":7,"kind":132,"payload":[18,5,6]},{"id":8,"kind":130,"payload":[2,0,0]},{"id":9,"kind":130,"payload":[3,0,0]},{"id":10,"kind":130,"payload":[2,0,0]},{"id":11,"kind":132,"payload":[0,9,10]},{"id":12,"kind":237,"payload":[11,0,0]},{"id":13,"kind":233,"payload":[12,0,0]},{"id":14,"kind":226,"payload":[0,1,0]},{"id":15,"kind":230,"payload":[4,7,8]},{"id":16,"kind":233,"payload":[15,0,0]},{"id":17,"kind":226,"payload":[1,1,0]},{"id":18,"kind":277,"payload":[1,1,0]},{"id":19,"kind":233,"payload":[18,0,0]},{"id":20,"kind":368,"payload":[1,0,2]}]}
+
+
+// CHECK: SourceFile #20 @1:1..6:1 file_name="test_hang.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #19 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #18 @1:1..5:2 name="testFor"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:12..1:14 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #17 @1:15..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #16 @2:3..4:4
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ForStmt #15 @2:3..4:4
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         LetStmt #4 @2:8..2:18
+// CHECK-NEXT:                           pattern:
+// CHECK-NEXT:                             IdentifierPattern #2 @2:12..2:13 name="i"
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                           init:
+// CHECK-NEXT:                             IntLiteral #3 @2:16..2:17 base=10 value="0"
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         BinaryExpr #7 @2:19..2:25 op=Lt
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #5 @2:19..2:20 name="i"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #6 @2:23..2:25 base=10 value="10"
+// CHECK-NEXT:                       update:
+// CHECK-NEXT:                         IdentExpr #8 @2:27..2:28 name="i"
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #14 @2:32..4:4
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #13 @3:5..3:15
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ExpressionStatement #12 @3:5..3:15
+// CHECK-NEXT:                                   expression:
+// CHECK-NEXT:                                     BinaryExpr #11 @3:5..3:14 op=Add
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         IdentExpr #9 @3:5..3:6 name="x"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IdentExpr #10 @3:13..3:14 name="i"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

@@ -1,2 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/object-types.zom | %FileCheck %s
-// CHECK: {"root":3,"nodes":[{"id":1,"kind":287,"payload":[1,0,0]},{"id":2,"kind":233,"payload":[1,0,0]},{"id":3,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #3 @1:1..2:1 file_name="object-types.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #2 @1:1..1:33
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #1 @1:1..1:33 name="Obj"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target: null
+// CHECK-NEXT:       attrs: null

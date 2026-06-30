@@ -1,0 +1,18 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/predefined_types_pos_03.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #8 @1:1..2:1 file_name="predefined_types_pos_03.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:44
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #6 @1:1..1:44 name="Specials"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             UnionTypeExpr #5 @1:18..1:43
+// CHECK-NEXT:               alts:
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @1:18..1:22 kind=Null
+// CHECK-NEXT:                 PredefinedTypeExpr #2 @1:25..1:29 kind=Unit
+// CHECK-NEXT:                 PredefinedTypeExpr #3 @1:32..1:37 kind=Never
+// CHECK-NEXT:                 PredefinedTypeExpr #4 @1:40..1:43 kind=Any
+// CHECK-NEXT:       attrs: null

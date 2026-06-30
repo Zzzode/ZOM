@@ -1,0 +1,28 @@
+// RUN: %zomc compile --dump-ast %corpus/12-generics/nested_angle_closure_edge_06.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #11 @1:1..2:1 file_name="nested_angle_closure_edge_06.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #10 @1:1..1:27
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #9 @1:1..1:27 name="Deep"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             NamedTypeExpr #8 @1:14..1:26
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #7 @1:14..1:15 segments=["A"]
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 NamedTypeExpr #6 @1:16..1:24
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #5 @1:16..1:17 segments=["B"]
+// CHECK-NEXT:                   args:
+// CHECK-NEXT:                     NamedTypeExpr #4 @1:18..1:22
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #3 @1:18..1:19 segments=["C"]
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         NamedTypeExpr #2 @1:20..1:21
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #1 @1:20..1:21 segments=["T"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:       attrs: null

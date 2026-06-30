@@ -1,0 +1,45 @@
+// RUN: %zomc compile --dump-ast %corpus/15-concurrency/suspend_plain_pos_06.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #16 @1:1..6:1 file_name="suspend_plain_pos_06.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #15 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #14 @1:1..5:2 name="coop"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #13 @1:12..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #5 @2:5..2:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #4 @2:5..2:15
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #2 @2:9..2:10 name="a"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IntLiteral #3 @2:13..2:14 base=10 value="1"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #8 @3:5..3:13
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #7 @3:5..3:13
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #6 @3:5..3:12 name="suspend"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #12 @4:5..4:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #11 @4:5..4:15
+// CHECK-NEXT:                       pattern:
+// CHECK-NEXT:                         IdentifierPattern #9 @4:9..4:10 name="b"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         IntLiteral #10 @4:13..4:14 base=10 value="2"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

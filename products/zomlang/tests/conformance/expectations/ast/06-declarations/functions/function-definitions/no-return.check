@@ -1,2 +1,19 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/function-definitions/no-return.zom | %FileCheck %s
-// CHECK: {"root":5,"nodes":[{"id":1,"kind":282,"payload":[0,0,0]},{"id":2,"kind":226,"payload":[0,0,0]},{"id":3,"kind":277,"payload":[1,1,0]},{"id":4,"kind":233,"payload":[3,0,0]},{"id":5,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #5 @1:1..3:1 file_name="no-return.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #4 @1:1..2:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #3 @1:1..2:2 name="noReturn"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:13..1:15 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #2 @1:16..2:2
+// CHECK-NEXT:               stmts: []
+// CHECK-NEXT:       attrs: null

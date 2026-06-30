@@ -1,0 +1,19 @@
+// RUN: %zomc compile --dump-ast %corpus/12-generics/lambda_generic_reject_neg_04.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #7 @1:1..2:1 file_name="lambda_generic_reject_neg_04.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:24
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #5 @1:1..1:24
+// CHECK-NEXT:           expression:
+// CHECK-NEXT:             BinaryExpr #4 @1:1..1:23 op=Gt
+// CHECK-NEXT:               lhs:
+// CHECK-NEXT:                 BinaryExpr #3 @1:1..1:11 op=Lt
+// CHECK-NEXT:                   lhs:
+// CHECK-NEXT:                     IdentExpr #1 @1:1..1:4 name="val"
+// CHECK-NEXT:                   rhs:
+// CHECK-NEXT:                     IdentExpr #2 @1:10..1:11 name="T"
+// CHECK-NEXT:               rhs: null
+// CHECK-NEXT:       attrs: null

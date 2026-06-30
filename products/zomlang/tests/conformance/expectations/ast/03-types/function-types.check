@@ -1,2 +1,16 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/function-types.zom | %FileCheck %s
-// CHECK: {"root":5,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":130,"payload":[2,0,0]},{"id":3,"kind":235,"payload":[1,0,2]},{"id":4,"kind":233,"payload":[3,0,0]},{"id":5,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #5 @1:1..2:1 file_name="function-types.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #4 @1:1..1:39
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #3 @1:1..1:39
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="h"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #2 @1:36..1:38 name="fn"
+// CHECK-NEXT:       attrs: null

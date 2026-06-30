@@ -1,0 +1,8 @@
+// REGEN-SKIP: format-specific AST dump contract test
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/binary-operators.zom | %FileCheck %s
+
+// CHECK: SourceFile #
+// CHECK-SAME: file_name="binary-operators.zom"
+// CHECK: statements:
+// CHECK: BinaryExpr #
+// CHECK-SAME: op=Add

@@ -1,0 +1,113 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/compound_assign_pos_02.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #52 @1:1..18:1 file_name="compound_assign_pos_02.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #51 @1:1..17:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #50 @1:1..17:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #49 @1:9..17:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #4 @2:3..2:10
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #3 @2:3..2:10
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #2 @2:3..2:4 name="a"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #7 @3:3..3:10
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #6 @3:3..3:10
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #5 @3:3..3:4 name="b"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #10 @4:3..4:10
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #9 @4:3..4:10
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #8 @4:3..4:4 name="c"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #13 @5:3..5:10
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #12 @5:3..5:10
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #11 @5:3..5:4 name="d"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #16 @6:3..6:10
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #15 @6:3..6:10
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #14 @6:3..6:4 name="e"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #19 @7:3..7:11
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #18 @7:3..7:11
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #17 @7:3..7:4 name="f"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #22 @8:3..8:11
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #21 @8:3..8:11
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #20 @8:3..8:4 name="g"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #25 @9:3..9:11
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #24 @9:3..9:11
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #23 @9:3..9:4 name="h"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #30 @10:3..10:14
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #29 @10:3..10:14
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         BinaryExpr #28 @10:3..10:13 op=Ge
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #26 @10:3..10:4 name="i"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #27 @10:12..10:13 base=10 value="1"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #33 @11:3..11:13
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #32 @11:3..11:13
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #31 @11:3..11:4 name="j"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #36 @12:3..12:10
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #35 @12:3..12:10
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #34 @12:3..12:4 name="k"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #39 @13:3..13:10
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #38 @13:3..13:10
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #37 @13:3..13:4 name="l"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #42 @14:3..14:11
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #41 @14:3..14:11
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #40 @14:3..14:4 name="m"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #45 @15:3..15:11
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #44 @15:3..15:11
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #43 @15:3..15:4 name="o"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #48 @16:3..16:11
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #47 @16:3..16:11
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         IdentExpr #46 @16:3..16:4 name="q"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

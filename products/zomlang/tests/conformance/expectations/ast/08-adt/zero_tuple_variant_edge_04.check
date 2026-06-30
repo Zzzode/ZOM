@@ -1,0 +1,14 @@
+// RUN: %zomc compile --dump-ast %corpus/08-adt/zero_tuple_variant_edge_04.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #4 @1:1..6:1 file_name="zero_tuple_variant_edge_04.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         EnumDeclaration #2 @1:1..5:2 name="Event" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           variants_id:
+// CHECK-NEXT:             EnumVariantList #1 @1:1..5:2 nvars=0
+// CHECK-NEXT:               variants: []
+// CHECK-NEXT:       attrs: null

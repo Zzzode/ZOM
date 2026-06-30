@@ -1,0 +1,25 @@
+// RUN: %zomc compile --dump-ast %corpus/13-modules/export_alias_edge_09.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #9 @1:1..2:1 file_name="export_alias_edge_09.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #8 @1:1..1:44
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExportDeclaration #7 @1:1..1:44
+// CHECK-NEXT:           declaration:
+// CHECK-NEXT:             AliasDecl #6 @1:8..1:44 name="Result"
+// CHECK-NEXT:               type_params_id: null
+// CHECK-NEXT:               target:
+// CHECK-NEXT:                 UnionTypeExpr #5 @1:29..1:43
+// CHECK-NEXT:                   alts:
+// CHECK-NEXT:                     NamedTypeExpr #2 @1:29..1:34
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #1 @1:29..1:31 segments=["Ok"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                     NamedTypeExpr #4 @1:37..1:43
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #3 @1:37..1:40 segments=["Err"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:           specifiers: []
+// CHECK-NEXT:       attrs: null

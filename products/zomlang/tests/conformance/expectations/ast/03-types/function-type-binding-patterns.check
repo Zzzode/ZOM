@@ -1,2 +1,26 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/function-type-binding-patterns.zom | %FileCheck %s
-// CHECK: {"root":9,"nodes":[{"id":1,"kind":69,"payload":[1,0,0]},{"id":2,"kind":130,"payload":[2,0,0]},{"id":3,"kind":235,"payload":[1,0,2]},{"id":4,"kind":233,"payload":[3,0,0]},{"id":5,"kind":69,"payload":[3,0,0]},{"id":6,"kind":130,"payload":[2,0,0]},{"id":7,"kind":235,"payload":[5,0,6]},{"id":8,"kind":233,"payload":[7,0,0]},{"id":9,"kind":368,"payload":[1,0,0]}]}
+
+
+// CHECK: SourceFile #9 @1:1..3:1 file_name="function-type-binding-patterns.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #4 @1:1..1:36
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #3 @1:1..1:36
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="f"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #2 @1:33..1:35 name="fn"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #8 @2:1..2:45
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #7 @2:1..2:45
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #5 @2:5..2:6 name="g"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             IdentExpr #6 @2:42..2:44 name="fn"
+// CHECK-NEXT:       attrs: null

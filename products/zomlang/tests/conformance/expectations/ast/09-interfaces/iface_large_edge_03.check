@@ -1,0 +1,25 @@
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/iface_large_edge_03.zom 2>&1 | %FileCheck %s
+
+
+// CHECK: Error [ZOM2012]: Missing semicolon before 'Item'
+// CHECK:   --> {{.*iface_large_edge_03.zom}}:9:21
+// CHECK:   |
+// CHECK: 9 |     fun find(pred: (Item) -> bool) -> i64;
+// CHECK:   |                     ^
+// CHECK: Error [ZOM2012]: Missing semicolon before 'Item'
+// CHECK:   --> {{.*iface_large_edge_03.zom}}:10:20
+// CHECK:    |
+// CHECK: 10 |     fun map<U>(f: (Item) -> U) -> [U];
+// CHECK:    |                    ^
+// CHECK: Error [ZOM2012]: Missing semicolon before 'Item'
+// CHECK:   --> {{.*iface_large_edge_03.zom}}:11:23
+// CHECK:    |
+// CHECK: 11 |     fun filter(pred: (Item) -> bool) -> [Item];
+// CHECK:    |                       ^
+// CHECK: Error [ZOM2012]: Missing semicolon before 'A'
+// CHECK:   --> {{.*iface_large_edge_03.zom}}:12:31
+// CHECK:    |
+// CHECK: 12 |     fun reduce<A>(acc: A, f: (A, Item) -> A) -> A;
+// CHECK:    |                               ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.
