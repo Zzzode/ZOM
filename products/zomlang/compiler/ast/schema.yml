@@ -64,6 +64,22 @@ enums:
     type: uint8
     values: [ Integer, Float, BigInt, String, Char, Bool, Null ]
 
+  UnaryOperatorKind:
+    type: uint8
+    values: [ Plus, Minus, LogicalNot, BitNot, PreIncrement, PreDecrement ]
+
+  PostfixOperatorKind:
+    type: uint8
+    values: [ Increment, Decrement, ErrorPropagate, ErrorUnwrap ]
+
+  AssignmentOperatorKind:
+    type: uint8
+    values: [ Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign, PowAssign, ShlAssign, ShrAssign, UShrAssign, BitAndAssign, BitOrAssign, BitXorAssign, LogicalAndAssign, LogicalOrAssign, NullCoalesceAssign ]
+
+  CaptureMode:
+    type: uint8
+    values: [ ByValue, ByRef, This ]
+
 categories:
   Module:          { first: 0x170, last: 0x17F, desc: "source files and module paths" }
   Attribute:       { first: 0x00, last: 0x0F, desc: "§19 conditional / attribute" }
@@ -76,6 +92,7 @@ categories:
   Type:            { first: 0xC0, last: 0xDF, desc: "§3 type expressions" }
   Statement:       { first: 0xE0, last: 0x10F, desc: "§5 statements" }
   Declaration:     { first: 0x110, last: 0x16F, desc: "§6 declarations" }
+  TypeMember:      { first: 0x180, last: 0x18F, desc: "§3 structural type members" }
 
 # ── G2 sc4 / sc6 augmentation: Category-Abstract Unions ──────────────────
 # The names listed below are NOT concrete variant ids — they are UNION /
@@ -99,6 +116,7 @@ union_predicates:
   - PropertyDecl     # Struct property declaration variants
   - ClassElement     # MethodDecl / FieldDecl / AssociatedTypeDecl union
   - PositionalFieldDecl # Positional struct / positional newtype field variants
+  - ObjectLiteralElement # ObjectProperty / ObjectSpread union
 # ───────────────────────────────────────────────────────────
 variants:
 
@@ -615,11 +633,17 @@ variants:
 
   - id: 0x06C
     name: TupleLiteral
-    doc:  "(a, b, c) n-ary tuple (n>=2)"
+    doc:  "() / (a, b, c) n-ary tuple literal"
     fields:
       - {name: elems, type: NodeList, cast: Expression}
 
-# 0x80..0xBF Expressions (44)
+  - id: 0x06D
+    name: UnitLiteral
+    doc:  "unit literal expression"
+    fields:
+      []
+
+# 0x80..0xBF Expressions (46)
   - id: 0x080
     name: WherePred
     doc:  "Single where predicate (Subtype / Implements / SendableMarker)"
@@ -645,6 +669,7 @@ variants:
     doc:  "callee(a1, a2, ...) general call"
     fields:
       - {name: callee, type: NodeId, cast: Expression}
+      - {name: type_args, type: NodeList, cast: TypeExpr, optional: true}
       - {name: args, type: NodeList, cast: Expression}
 
   - id: 0x084
@@ -662,6 +687,129 @@ variants:
       - {name: cond, type: NodeId, cast: Expression}
       - {name: then_expr, type: NodeId, cast: Expression}
       - {name: else_expr, type: NodeId, cast: Expression}
+
+  - id: 0x086
+    name: AssignmentExpr
+    doc:  "lhs op= rhs assignment expression"
+    fields:
+      - {name: op, type: AssignmentOperatorKind}
+      - {name: lhs, type: NodeId, cast: Expression}
+      - {name: rhs, type: NodeId, cast: Expression}
+
+  - id: 0x087
+    name: CommaExpr
+    doc:  "a, b, c comma expression"
+    fields:
+      - {name: elems, type: NodeList, cast: Expression}
+
+  - id: 0x088
+    name: MemberExpression
+    doc:  "object.property member access"
+    fields:
+      - {name: object, type: NodeId, cast: Expression}
+      - {name: property, type: IdentId}
+
+  - id: 0x089
+    name: IndexExpression
+    doc:  "object[index] indexed member access"
+    fields:
+      - {name: object, type: NodeId, cast: Expression}
+      - {name: index, type: NodeId, cast: Expression}
+
+  - id: 0x08A
+    name: NewExpression
+    doc:  "new Constructor<T>(args...) allocation or construction expression"
+    fields:
+      - {name: callee, type: NodeId, cast: Expression}
+      - {name: type_args, type: NodeList, cast: TypeExpr, optional: true}
+      - {name: args, type: NodeList, cast: Expression, optional: true}
+
+  - id: 0x08B
+    name: FunctionExpression
+    doc:  "fun(params) use [captures] -> Ret raises E { body } expression"
+    fields:
+      - {name: params_id, type: NodeId, cast: FunctionParameterList}
+      - {name: captures, type: NodeList, cast: CaptureItem, optional: true}
+      - {name: ret_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: raises_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: body, type: NodeId, cast: BlockStmt}
+
+  - id: 0x08C
+    name: ImportCallExpression
+    doc:  "import(specifier) expression"
+    fields:
+      - {name: args, type: NodeList, cast: Expression}
+
+  - id: 0x08D
+    name: ObjectLiteralExpr
+    doc:  "{ key: value, shorthand, ...spread } object literal expression"
+    fields:
+      - {name: properties, type: NodeList, cast: ObjectLiteralElement}
+
+  - id: 0x08E
+    name: ObjectProperty
+    doc:  "Single object literal property"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: value, type: NodeId, cast: Expression, optional: true}
+      - {name: short_form, type: bool}
+
+  - id: 0x08F
+    name: ObjectSpread
+    doc:  "...expr object literal spread"
+    fields:
+      - {name: expr, type: NodeId, cast: Expression}
+
+  - id: 0x090
+    name: TemplateLiteralExpr
+    doc:  "Template literal with embedded expressions"
+    fields:
+      - {name: exprs, type: NodeList, cast: Expression}
+
+  - id: 0x091
+    name: TypeOfExpression
+    doc:  "typeof expression"
+    fields:
+      - {name: expr, type: NodeId, cast: Expression}
+
+  - id: 0x092
+    name: UnaryExpression
+    doc:  "Prefix unary expression"
+    fields:
+      - {name: op, type: UnaryOperatorKind}
+      - {name: operand, type: NodeId, cast: Expression}
+
+  - id: 0x093
+    name: PostfixExpression
+    doc:  "Postfix update or error propagation expression"
+    fields:
+      - {name: op, type: PostfixOperatorKind}
+      - {name: operand, type: NodeId, cast: Expression}
+
+  - id: 0x094
+    name: CastExpression
+    doc:  "expr as/as?/as! TypeExpr cast expression"
+    fields:
+      - {name: mode, type: uint8, enum: [As, AsQuestion, AsBang]}
+      - {name: expr, type: NodeId, cast: Expression}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+
+  - id: 0x095
+    name: LambdaExpression
+    doc:  "(params) -> Ret raises E => expr or block expression"
+    fields:
+      - {name: params_id, type: NodeId, cast: FunctionParameterList}
+      - {name: ret_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: raises_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: body, type: NodeId, cast: BlockStmt, optional: true}
+      - {name: expr_body, type: NodeId, cast: Expression, optional: true}
+
+  - id: 0x096
+    name: CaptureItem
+    doc:  "Single function-expression capture"
+    fields:
+      - {name: mode, type: CaptureMode}
+      - {name: name, type: IdentId}
 
 # 0xC0..0xDF Type Expressions (25)
   - id: 0x0C0
@@ -752,6 +900,33 @@ variants:
     fields:
       - {name: elem, type: NodeId, cast: TypeExpr}
       - {name: len_expr, type: NodeId, cast: Expression, optional: true}
+
+  - id: 0x0CD
+    name: TypeQueryExpr
+    doc:  "typeof path type query"
+    fields:
+      - {name: path, type: NodeId, cast: ModulePath}
+
+  - id: 0x0CE
+    name: ObjectTypeExpr
+    doc:  "{ member: Type; method(args): Ret } structural object type"
+    fields:
+      - {name: members, type: NodeList, cast: ObjectTypeMember, optional: true}
+
+  - id: 0x0CF
+    name: TupleTypeExpr
+    doc:  "(T1, T2) tuple type"
+    fields:
+      - {name: elems, type: NodeList, cast: TypeExpr}
+
+  - id: 0x180
+    name: ObjectTypeMember
+    doc:  "Single structural object type field"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: ty, type: NodeId, cast: TypeExpr}
+      - {name: is_mut, type: bool}
+      - {name: is_optional, type: bool}
 
 # 0xE0..0x10F Statements
   - id: 0x0E0
@@ -1079,17 +1254,17 @@ derived:
 
   - kind: RangeSyntax
     from: PositionalStructCtorExpr # 0x060
-    to:   TupleLiteral        # 0x06C
+    to:   UnitLiteral         # 0x06D
     name: FirstLiteralExprFamily / LastLiteralExprFamily
 
   - kind: RangeSyntax
     from: WherePred           # 0x080
-    to:   ConditionalExpr     # 0x085
+    to:   LambdaExpression    # 0x095
     name: FirstExprFamily / LastExprFamily
 
   - kind: RangeSyntax
     from: DynTypeExpr         # 0x0C0
-    to:   ArrayTypeExpr       # 0x0CA
+    to:   ObjectTypeExpr      # 0x0CE
     name: FirstTypeFamily / LastTypeFamily
 
   - kind: RangeSyntax
@@ -1106,13 +1281,29 @@ derived:
   - kind: Category
     name: isExpression
     includes:
-      # Expr range (0x080..0x085)
+      # Expr range (0x080..0x095)
       - WherePred
       - ThisExpr
       - IdentExpr
       - CallExpression
       - BinaryExpr
       - ConditionalExpr
+      - AssignmentExpr
+      - CommaExpr
+      - MemberExpression
+      - IndexExpression
+      - NewExpression
+      - FunctionExpression
+      - ImportCallExpression
+      - ObjectLiteralExpr
+      - ObjectProperty
+      - ObjectSpread
+      - TemplateLiteralExpr
+      - TypeOfExpression
+      - UnaryExpression
+      - PostfixExpression
+      - CastExpression
+      - LambdaExpression
       # LiteralExpr range (0x060..0x06C) counts as expressions
       - PositionalStructCtorExpr
       - TupleLiteral1
@@ -1127,6 +1318,7 @@ derived:
       - StrLiteral
       - ArrayLiteral
       - TupleLiteral
+      - UnitLiteral
       # FFI expression-ish
       - UnsafeBlockExpr
       # Macro invocation

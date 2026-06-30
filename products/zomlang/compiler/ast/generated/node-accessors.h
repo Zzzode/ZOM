@@ -107,6 +107,10 @@ constexpr bool isDeclarationKind(SyntaxKind kind) noexcept {
   return kindInRange(kind, 0x110, 0x16f);
 }
 
+constexpr bool isTypeMemberKind(SyntaxKind kind) noexcept {
+  return kindInRange(kind, 0x180, 0x18f);
+}
+
 constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
   switch (kind) {
     case SyntaxKind::AttributeList: return true;
@@ -174,12 +178,30 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::StrLiteral: return true;
     case SyntaxKind::ArrayLiteral: return true;
     case SyntaxKind::TupleLiteral: return true;
+    case SyntaxKind::UnitLiteral: return true;
     case SyntaxKind::WherePred: return true;
     case SyntaxKind::ThisExpr: return true;
     case SyntaxKind::IdentExpr: return true;
     case SyntaxKind::CallExpression: return true;
     case SyntaxKind::BinaryExpr: return true;
     case SyntaxKind::ConditionalExpr: return true;
+    case SyntaxKind::AssignmentExpr: return true;
+    case SyntaxKind::CommaExpr: return true;
+    case SyntaxKind::MemberExpression: return true;
+    case SyntaxKind::IndexExpression: return true;
+    case SyntaxKind::NewExpression: return true;
+    case SyntaxKind::FunctionExpression: return true;
+    case SyntaxKind::ImportCallExpression: return true;
+    case SyntaxKind::ObjectLiteralExpr: return true;
+    case SyntaxKind::ObjectProperty: return true;
+    case SyntaxKind::ObjectSpread: return true;
+    case SyntaxKind::TemplateLiteralExpr: return true;
+    case SyntaxKind::TypeOfExpression: return true;
+    case SyntaxKind::UnaryExpression: return true;
+    case SyntaxKind::PostfixExpression: return true;
+    case SyntaxKind::CastExpression: return true;
+    case SyntaxKind::LambdaExpression: return true;
+    case SyntaxKind::CaptureItem: return true;
     case SyntaxKind::DynTypeExpr: return true;
     case SyntaxKind::BottomTypeExpr: return true;
     case SyntaxKind::FixedArrayTypeExpr: return true;
@@ -193,6 +215,9 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::ArrayTypeExpr: return true;
     case SyntaxKind::DynTypeIfaceList: return true;
     case SyntaxKind::DynTypeMarkerList: return true;
+    case SyntaxKind::TypeQueryExpr: return true;
+    case SyntaxKind::ObjectTypeExpr: return true;
+    case SyntaxKind::TupleTypeExpr: return true;
     case SyntaxKind::SuspendStatement: return true;
     case SyntaxKind::UntilClause: return true;
     case SyntaxKind::BlockStmt: return true;
@@ -233,6 +258,7 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::ModulePath: return true;
     case SyntaxKind::ImportDeclaration: return true;
     case SyntaxKind::ExportDeclaration: return true;
+    case SyntaxKind::ObjectTypeMember: return true;
     default: return false;
   }
 }
@@ -304,12 +330,30 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::StrLiteral: return "StrLiteral";
     case SyntaxKind::ArrayLiteral: return "ArrayLiteral";
     case SyntaxKind::TupleLiteral: return "TupleLiteral";
+    case SyntaxKind::UnitLiteral: return "UnitLiteral";
     case SyntaxKind::WherePred: return "WherePred";
     case SyntaxKind::ThisExpr: return "ThisExpr";
     case SyntaxKind::IdentExpr: return "IdentExpr";
     case SyntaxKind::CallExpression: return "CallExpression";
     case SyntaxKind::BinaryExpr: return "BinaryExpr";
     case SyntaxKind::ConditionalExpr: return "ConditionalExpr";
+    case SyntaxKind::AssignmentExpr: return "AssignmentExpr";
+    case SyntaxKind::CommaExpr: return "CommaExpr";
+    case SyntaxKind::MemberExpression: return "MemberExpression";
+    case SyntaxKind::IndexExpression: return "IndexExpression";
+    case SyntaxKind::NewExpression: return "NewExpression";
+    case SyntaxKind::FunctionExpression: return "FunctionExpression";
+    case SyntaxKind::ImportCallExpression: return "ImportCallExpression";
+    case SyntaxKind::ObjectLiteralExpr: return "ObjectLiteralExpr";
+    case SyntaxKind::ObjectProperty: return "ObjectProperty";
+    case SyntaxKind::ObjectSpread: return "ObjectSpread";
+    case SyntaxKind::TemplateLiteralExpr: return "TemplateLiteralExpr";
+    case SyntaxKind::TypeOfExpression: return "TypeOfExpression";
+    case SyntaxKind::UnaryExpression: return "UnaryExpression";
+    case SyntaxKind::PostfixExpression: return "PostfixExpression";
+    case SyntaxKind::CastExpression: return "CastExpression";
+    case SyntaxKind::LambdaExpression: return "LambdaExpression";
+    case SyntaxKind::CaptureItem: return "CaptureItem";
     case SyntaxKind::DynTypeExpr: return "DynTypeExpr";
     case SyntaxKind::BottomTypeExpr: return "BottomTypeExpr";
     case SyntaxKind::FixedArrayTypeExpr: return "FixedArrayTypeExpr";
@@ -323,6 +367,9 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::ArrayTypeExpr: return "ArrayTypeExpr";
     case SyntaxKind::DynTypeIfaceList: return "DynTypeIfaceList";
     case SyntaxKind::DynTypeMarkerList: return "DynTypeMarkerList";
+    case SyntaxKind::TypeQueryExpr: return "TypeQueryExpr";
+    case SyntaxKind::ObjectTypeExpr: return "ObjectTypeExpr";
+    case SyntaxKind::TupleTypeExpr: return "TupleTypeExpr";
     case SyntaxKind::SuspendStatement: return "SuspendStatement";
     case SyntaxKind::UntilClause: return "UntilClause";
     case SyntaxKind::BlockStmt: return "BlockStmt";
@@ -363,6 +410,7 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::ModulePath: return "ModulePath";
     case SyntaxKind::ImportDeclaration: return "ImportDeclaration";
     case SyntaxKind::ExportDeclaration: return "ExportDeclaration";
+    case SyntaxKind::ObjectTypeMember: return "ObjectTypeMember";
     default: return "Unknown";
   }
 }

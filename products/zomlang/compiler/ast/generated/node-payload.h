@@ -74,6 +74,22 @@ enum class LiteralPatternKind : uint8_t {
   Integer, Float, BigInt, String, Char, Bool, None
 };
 
+enum class UnaryOperatorKind : uint8_t {
+  Plus, Minus, LogicalNot, BitNot, PreIncrement, PreDecrement
+};
+
+enum class PostfixOperatorKind : uint8_t {
+  Increment, Decrement, ErrorPropagate, ErrorUnwrap
+};
+
+enum class AssignmentOperatorKind : uint8_t {
+  Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign, PowAssign, ShlAssign, ShrAssign, UShrAssign, BitAndAssign, BitOrAssign, BitXorAssign, LogicalAndAssign, LogicalOrAssign, NullCoalesceAssign
+};
+
+enum class CaptureMode : uint8_t {
+  ByValue, ByRef, This
+};
+
 constexpr uint32_t kNodePayloadWordCount = 6;
 
 constexpr uint32_t kAttributeListPayloadWordCount = 2;
@@ -377,6 +393,8 @@ constexpr uint32_t kTupleLiteralPayloadWordCount = 2;
 constexpr uint32_t kTupleLiteralElemsFirstWord = 0;
 constexpr uint32_t kTupleLiteralElemsSizeWord = 1;
 
+constexpr uint32_t kUnitLiteralPayloadWordCount = 0;
+
 constexpr uint32_t kWherePredPayloadWordCount = 3;
 constexpr uint32_t kWherePredKindWord = 0;
 constexpr uint32_t kWherePredTyWord = 1;
@@ -387,10 +405,12 @@ constexpr uint32_t kThisExprPayloadWordCount = 0;
 constexpr uint32_t kIdentExprPayloadWordCount = 1;
 constexpr uint32_t kIdentExprNameWord = 0;
 
-constexpr uint32_t kCallExpressionPayloadWordCount = 3;
+constexpr uint32_t kCallExpressionPayloadWordCount = 5;
 constexpr uint32_t kCallExpressionCalleeWord = 0;
-constexpr uint32_t kCallExpressionArgsFirstWord = 1;
-constexpr uint32_t kCallExpressionArgsSizeWord = 2;
+constexpr uint32_t kCallExpressionTypeArgsFirstWord = 1;
+constexpr uint32_t kCallExpressionTypeArgsSizeWord = 2;
+constexpr uint32_t kCallExpressionArgsFirstWord = 3;
+constexpr uint32_t kCallExpressionArgsSizeWord = 4;
 
 constexpr uint32_t kBinaryExprPayloadWordCount = 3;
 constexpr uint32_t kBinaryExprOpWord = 0;
@@ -401,6 +421,85 @@ constexpr uint32_t kConditionalExprPayloadWordCount = 3;
 constexpr uint32_t kConditionalExprCondWord = 0;
 constexpr uint32_t kConditionalExprThenExprWord = 1;
 constexpr uint32_t kConditionalExprElseExprWord = 2;
+
+constexpr uint32_t kAssignmentExprPayloadWordCount = 3;
+constexpr uint32_t kAssignmentExprOpWord = 0;
+constexpr uint32_t kAssignmentExprLhsWord = 1;
+constexpr uint32_t kAssignmentExprRhsWord = 2;
+
+constexpr uint32_t kCommaExprPayloadWordCount = 2;
+constexpr uint32_t kCommaExprElemsFirstWord = 0;
+constexpr uint32_t kCommaExprElemsSizeWord = 1;
+
+constexpr uint32_t kMemberExpressionPayloadWordCount = 2;
+constexpr uint32_t kMemberExpressionObjectWord = 0;
+constexpr uint32_t kMemberExpressionPropertyWord = 1;
+
+constexpr uint32_t kIndexExpressionPayloadWordCount = 2;
+constexpr uint32_t kIndexExpressionObjectWord = 0;
+constexpr uint32_t kIndexExpressionIndexWord = 1;
+
+constexpr uint32_t kNewExpressionPayloadWordCount = 5;
+constexpr uint32_t kNewExpressionCalleeWord = 0;
+constexpr uint32_t kNewExpressionTypeArgsFirstWord = 1;
+constexpr uint32_t kNewExpressionTypeArgsSizeWord = 2;
+constexpr uint32_t kNewExpressionArgsFirstWord = 3;
+constexpr uint32_t kNewExpressionArgsSizeWord = 4;
+
+constexpr uint32_t kFunctionExpressionPayloadWordCount = 6;
+constexpr uint32_t kFunctionExpressionParamsIdWord = 0;
+constexpr uint32_t kFunctionExpressionCapturesFirstWord = 1;
+constexpr uint32_t kFunctionExpressionCapturesSizeWord = 2;
+constexpr uint32_t kFunctionExpressionRetTyWord = 3;
+constexpr uint32_t kFunctionExpressionRaisesTyWord = 4;
+constexpr uint32_t kFunctionExpressionBodyWord = 5;
+
+constexpr uint32_t kImportCallExpressionPayloadWordCount = 2;
+constexpr uint32_t kImportCallExpressionArgsFirstWord = 0;
+constexpr uint32_t kImportCallExpressionArgsSizeWord = 1;
+
+constexpr uint32_t kObjectLiteralExprPayloadWordCount = 2;
+constexpr uint32_t kObjectLiteralExprPropertiesFirstWord = 0;
+constexpr uint32_t kObjectLiteralExprPropertiesSizeWord = 1;
+
+constexpr uint32_t kObjectPropertyPayloadWordCount = 3;
+constexpr uint32_t kObjectPropertyNameWord = 0;
+constexpr uint32_t kObjectPropertyValueWord = 1;
+constexpr uint32_t kObjectPropertyShortFormWord = 2;
+
+constexpr uint32_t kObjectSpreadPayloadWordCount = 1;
+constexpr uint32_t kObjectSpreadExprWord = 0;
+
+constexpr uint32_t kTemplateLiteralExprPayloadWordCount = 2;
+constexpr uint32_t kTemplateLiteralExprExprsFirstWord = 0;
+constexpr uint32_t kTemplateLiteralExprExprsSizeWord = 1;
+
+constexpr uint32_t kTypeOfExpressionPayloadWordCount = 1;
+constexpr uint32_t kTypeOfExpressionExprWord = 0;
+
+constexpr uint32_t kUnaryExpressionPayloadWordCount = 2;
+constexpr uint32_t kUnaryExpressionOpWord = 0;
+constexpr uint32_t kUnaryExpressionOperandWord = 1;
+
+constexpr uint32_t kPostfixExpressionPayloadWordCount = 2;
+constexpr uint32_t kPostfixExpressionOpWord = 0;
+constexpr uint32_t kPostfixExpressionOperandWord = 1;
+
+constexpr uint32_t kCastExpressionPayloadWordCount = 3;
+constexpr uint32_t kCastExpressionModeWord = 0;
+constexpr uint32_t kCastExpressionExprWord = 1;
+constexpr uint32_t kCastExpressionTyWord = 2;
+
+constexpr uint32_t kLambdaExpressionPayloadWordCount = 5;
+constexpr uint32_t kLambdaExpressionParamsIdWord = 0;
+constexpr uint32_t kLambdaExpressionRetTyWord = 1;
+constexpr uint32_t kLambdaExpressionRaisesTyWord = 2;
+constexpr uint32_t kLambdaExpressionBodyWord = 3;
+constexpr uint32_t kLambdaExpressionExprBodyWord = 4;
+
+constexpr uint32_t kCaptureItemPayloadWordCount = 2;
+constexpr uint32_t kCaptureItemModeWord = 0;
+constexpr uint32_t kCaptureItemNameWord = 1;
 
 constexpr uint32_t kDynTypeExprPayloadWordCount = 4;
 constexpr uint32_t kDynTypeExprIfacesIdWord = 0;
@@ -456,6 +555,17 @@ constexpr uint32_t kDynTypeMarkerListPayloadWordCount = 3;
 constexpr uint32_t kDynTypeMarkerListNMarkersWord = 0;
 constexpr uint32_t kDynTypeMarkerListMarkersFirstWord = 1;
 constexpr uint32_t kDynTypeMarkerListMarkersSizeWord = 2;
+
+constexpr uint32_t kTypeQueryExprPayloadWordCount = 1;
+constexpr uint32_t kTypeQueryExprPathWord = 0;
+
+constexpr uint32_t kObjectTypeExprPayloadWordCount = 2;
+constexpr uint32_t kObjectTypeExprMembersFirstWord = 0;
+constexpr uint32_t kObjectTypeExprMembersSizeWord = 1;
+
+constexpr uint32_t kTupleTypeExprPayloadWordCount = 2;
+constexpr uint32_t kTupleTypeExprElemsFirstWord = 0;
+constexpr uint32_t kTupleTypeExprElemsSizeWord = 1;
 
 constexpr uint32_t kSuspendStatementPayloadWordCount = 3;
 constexpr uint32_t kSuspendStatementModeWord = 0;
@@ -651,6 +761,12 @@ constexpr uint32_t kExportDeclarationPayloadWordCount = 3;
 constexpr uint32_t kExportDeclarationDeclarationWord = 0;
 constexpr uint32_t kExportDeclarationSpecifiersFirstWord = 1;
 constexpr uint32_t kExportDeclarationSpecifiersSizeWord = 2;
+
+constexpr uint32_t kObjectTypeMemberPayloadWordCount = 4;
+constexpr uint32_t kObjectTypeMemberNameWord = 0;
+constexpr uint32_t kObjectTypeMemberTyWord = 1;
+constexpr uint32_t kObjectTypeMemberIsMutWord = 2;
+constexpr uint32_t kObjectTypeMemberIsOptionalWord = 3;
 
 }  // namespace ast
 }  // namespace compiler
