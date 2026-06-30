@@ -169,6 +169,8 @@ void writeDecodedText(zc::OutputStream& output, const Tree& tree, const NodeSche
 
   zc::StringPtr value;
   switch (field.storage) {
+    case NodeSchemaFieldStorage::IdentList:
+      ZC_UNREACHABLE;
     case NodeSchemaFieldStorage::StringId:
       value = normalizeStringField(field, tree.string(StringId(raw)));
       break;
@@ -195,9 +197,15 @@ void writeDecodedText(zc::OutputStream& output, const Tree& tree, const NodeSche
 
 void writeIdentListValue(zc::OutputStream& output, const Tree& tree,
                          const NodeSchemaFieldEntry& field, const Node& node) {
+  const IdentList list = readIdentList(node, field);
+  if (field.optional && list.size == 0) {
+    output.write("null"_zcb);
+    return;
+  }
+
   output.write("["_zcb);
   bool first = true;
-  for (IdentId id : tree.identList(readIdentList(node, field))) {
+  for (IdentId id : tree.identList(list)) {
     if (!first) { output.write(", "_zcb); }
     first = false;
     writeJsonString(output, tree.ident(id));
@@ -208,6 +216,11 @@ void writeIdentListValue(zc::OutputStream& output, const Tree& tree,
 void writeScalarValue(zc::OutputStream& output, const Tree& tree, const NodeSchemaFieldEntry& field,
                       const Node& node, bool json) {
   const uint32_t raw = readWord(node, field);
+  if (field.storage == NodeSchemaFieldStorage::IdentList) {
+    writeIdentListValue(output, tree, field, node);
+    return;
+  }
+
   if (field.optional && raw == 0 && field.storage != NodeSchemaFieldStorage::Bool) {
     output.write("null"_zcb);
     return;
@@ -215,8 +228,7 @@ void writeScalarValue(zc::OutputStream& output, const Tree& tree, const NodeSche
 
   switch (field.storage) {
     case NodeSchemaFieldStorage::IdentList:
-      writeIdentListValue(output, tree, field, node);
-      return;
+      ZC_UNREACHABLE;
     case NodeSchemaFieldStorage::StringId:
     case NodeSchemaFieldStorage::IdentId:
     case NodeSchemaFieldStorage::BigIntId:
