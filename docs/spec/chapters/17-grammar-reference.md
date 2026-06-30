@@ -280,7 +280,7 @@ TypeExpression ::= UnionType
 UnionType ::= IntersectionType ('|' IntersectionType)*
 IntersectionType ::= PostfixType ('&' PostfixType)*
 PostfixType ::= AtomType PostfixTypeSuffix*
-PostfixTypeSuffix ::= '[' ']' | '?'
+PostfixTypeSuffix ::= '[' ']' | '?' | '??'
 
 AtomType ::= ParenthesizedType
           | PredefinedType
@@ -311,6 +311,7 @@ NamedTupleElement ::= ElementName ':' TypeExpression
 ElementName ::= Identifier
 
 FunctionType ::= TypeParameters? ParameterClause '->' TypeExpression RaisesClause?
+               | 'fun' TypeParameters? ParameterClause '->' TypeExpression RaisesClause?
 ParameterClause ::= '(' ParameterList? ')'
 RaisesClause ::= 'raises' TypeExpression
     (* Multiple error types are written as a union type expression.
@@ -321,7 +322,8 @@ RaisesClause ::= 'raises' TypeExpression
 ObjectType ::= '{' TypeBody? '}'
 TypeBody ::= TypeMemberList (';' | ',')?
 TypeMemberList ::= TypeMember (';' TypeMember | ',' TypeMember)*
-TypeMember ::= PropertySignature | MethodSignature
+TypeMember ::= ObjectPropertySignature | MethodSignature
+ObjectPropertySignature ::= 'mut'? PropertyName '?'? TypeAnnotation
 
 TypeParameters ::= '<' TypeParameterList '>'
 TypeParameterList ::= TypeParameter (',' TypeParameter)*
@@ -460,6 +462,7 @@ BitwiseXORExpression ::= BitwiseANDExpression ('^' BitwiseANDExpression)*
 BitwiseANDExpression ::= EqualityExpression ('&' EqualityExpression)*
 EqualityExpression ::= RelationalExpression (('==' | '!=' | '===' | '!==') RelationalExpression)*
 RelationalExpression ::= ShiftExpression ((('<' | '>' | '<=' | '>=') ShiftExpression)
+                       | ('is' TypeExpression)
                        | ('as' ('?' | '!')? TypeExpression))*
 ShiftExpression ::= AdditiveExpression (('<<' | '>>' | '>>>') AdditiveExpression)*
 AdditiveExpression ::= MultiplicativeExpression (('+' | '-') MultiplicativeExpression)*
@@ -549,6 +552,8 @@ PropertyDefinition ::= Identifier
 PropertyName ::= Identifier
 
 FunctionExpression ::= 'fun' TypeParameters? ParameterClause CaptureClause? ReturnType? BlockStatement
+                     | LambdaExpression
+LambdaExpression ::= ParameterClause ReturnType? '=>' (AssignmentExpression | BlockStatement)
 CaptureClause ::= 'use' '[' CaptureList? ']'
 CaptureList ::= CaptureElement (',' CaptureElement)*
 CaptureElement ::= '&'? Identifier | 'this'

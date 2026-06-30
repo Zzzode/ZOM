@@ -1,3 +1,3 @@
-let a = x > > > 2;
+let a = x >>> 2;
 let b = y >> 1;
 let c = z << 3;

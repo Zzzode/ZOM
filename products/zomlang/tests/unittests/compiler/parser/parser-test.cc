@@ -55,6 +55,18 @@ static const ast::Node& topLevelStatement(const ast::Tree& tree, size_t index) {
   return tree.node(statementItem(tree, topLevelStatements(tree)[index]));
 }
 
+static const ast::Node& letInitializer(const ast::Tree& tree, size_t index) {
+  const ast::Node& letNode = topLevelStatement(tree, index);
+  ZC_EXPECT(letNode.kind == ast::SyntaxKind::LetStmt);
+  return tree.node(ast::NodeId(letNode.payload.words[ast::kLetStmtInitWord]));
+}
+
+static const ast::Node& expressionStatementExpression(const ast::Tree& tree, size_t index) {
+  const ast::Node& statement = topLevelStatement(tree, index);
+  ZC_EXPECT(statement.kind == ast::SyntaxKind::ExpressionStatement);
+  return tree.node(ast::NodeId(statement.payload.words[ast::kExpressionStatementExpressionWord]));
+}
+
 static bool hasModuleDeclaration(const ast::Tree& tree) {
   const ast::Node& rootNode = tree.node(tree.root());
   return rootNode.payload.words[ast::kSourceFileModuleWord] != 0;
@@ -285,8 +297,8 @@ ZC_TEST("ParserTest.InvalidSyntax") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  // Should handle syntax error gracefully
-  ZC_EXPECT(true, "Parser should handle invalid syntax");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for invalid syntax");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Parser should report invalid syntax");
 }
 
 ZC_TEST("ParserTest.UnterminatedString") {
@@ -300,7 +312,8 @@ ZC_TEST("ParserTest.UnterminatedString") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(true, "Parser should handle unterminated string");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unterminated strings");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Parser should report unterminated strings");
 }
 
 // ================================================================================
@@ -367,11 +380,11 @@ ZC_TEST("ParserTest.ObjectType") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("let x: { prop: i32; getProp(): i32 } = { prop: 42, "
-                                              "getProp: fun() -> i32 { return 42; } };")
-                                          .asBytes(),
-                                      "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("let x: { prop: i32; getProp: () -> i32 } = { prop: 42, "
+              "getProp: fun() -> i32 { return 42; } };")
+          .asBytes(),
+      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -870,21 +883,9 @@ ZC_TEST("ParserTest.ModuleDeclarationMustBeFirst") {
                                                   "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  ZC_IF_SOME(root, parser.parse()) {
-    const auto statements = topLevelStatements(root);
-
-    ZC_EXPECT(statements.size() == 3,
-              "Late module declaration should not be accepted as a source element");
-    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ImportDeclaration,
-              "First statement should remain the import");
-    ZC_EXPECT(topLevelStatementKind(root, 1) == ast::SyntaxKind::ModuleDeclaration,
-              "Second statement should be the module declaration");
-    ZC_EXPECT(topLevelStatementKind(root, 2) == ast::SyntaxKind::LetStmt,
-              "Third statement should be the variable declaration");
-    ZC_EXPECT(diagnosticEngine->hasErrors(),
-              "Late module declaration should produce a parse error");
-  }
-  else { ZC_EXPECT(false, "Parser should recover from a misplaced module declaration"); }
+  auto result = parser.parse();
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for misplaced module declarations");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Late module declarations should diagnose");
 }
 
 ZC_TEST("ParserTest.UnsupportedExportDefaultInBlockRecovers") {
@@ -901,14 +902,10 @@ ZC_TEST("ParserTest.UnsupportedExportDefaultInBlockRecovers") {
                                                   "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  ZC_IF_SOME(root, parser.parse()) {
-    const auto topLevel = topLevelStatements(root);
-    ZC_EXPECT(topLevel.size() == 1, "Should parse the outer function");
-    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::FunctionDecl);
-    ZC_EXPECT(diagnosticEngine->hasErrors(),
-              "Unsupported export default should produce parse errors");
-  }
-  else { ZC_EXPECT(false, "Parser should recover from unsupported export syntax"); }
+  auto result = parser.parse();
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported export syntax");
+  ZC_EXPECT(diagnosticEngine->hasErrors(),
+            "Unsupported export default should produce parse errors");
 }
 
 ZC_TEST("ParserTest.ParseClassDeclaration") {
@@ -932,7 +929,7 @@ ZC_TEST("ParserTest.ParseInterfaceDeclaration") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface Drawable { draw(): unit; }").asBytes(), "test.zom");
+      zc::str("interface Drawable { fun draw() -> unit; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -970,7 +967,7 @@ ZC_TEST("ParserTest.ParseClassMemberMissingSemicolon") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parse should succeed with recovery");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for malformed class members");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Should emit MissingSemicolon diagnostic");
 }
 
@@ -1235,7 +1232,7 @@ ZC_TEST("ParserTest.ParseHeritageClauseDoubleComma") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parse should succeed with recovery");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for malformed heritage lists");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Should emit error for malformed heritage list");
 }
 
@@ -1321,7 +1318,7 @@ ZC_TEST("ParserTest.ParseForStatement") {
 
     const ast::Node& update =
         root.node(ast::NodeId(forNode.payload.words[ast::kForStmtUpdateWord]));
-    ZC_EXPECT(update.kind == ast::SyntaxKind::BinaryExpr);
+    ZC_EXPECT(update.kind == ast::SyntaxKind::AssignmentExpr);
 
     const ast::Node& body = root.node(ast::NodeId(forNode.payload.words[ast::kForStmtBodyWord]));
     ZC_EXPECT(body.kind == ast::SyntaxKind::BlockStmt);
@@ -1396,7 +1393,7 @@ ZC_TEST("ParserTest.ParseOptionalChainingForms") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("obj?.prop; obj?.[0]; obj?.(1); obj?.prop?.[0]?.(1); obj!.prop;").asBytes(),
+      zc::str("obj?.prop; obj?.[0]; obj?.(1); obj?.prop?.[0]?.(1); obj!!.prop;").asBytes(),
       "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
@@ -1415,7 +1412,7 @@ ZC_TEST("ParserTest.ParseOptionalChainingRecovery") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parse should succeed with optional chaining recovery");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for invalid optional chaining");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Invalid optional chaining should diagnose");
 }
 
@@ -1443,7 +1440,7 @@ ZC_TEST("ParserTest.NewExpressionInvalidOptionalChain") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parse should succeed with recovery");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for invalid new optional chains");
   ZC_EXPECT(diagnosticEngine->hasErrors(),
             "Should diagnose invalid optional chain from new expression");
 }
@@ -1574,7 +1571,7 @@ ZC_TEST("ParserTest.PropertyAccessAllowsUnicodeEscapeSequenceAfterDot") {
 }
 
 // ================================================================================
-// Error Recovery Tests - Malformed Statements
+// Fail-closed error tests - malformed statements
 ZC_TEST("ParserTest.ParseMissingSemicolon") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -1586,7 +1583,7 @@ ZC_TEST("ParserTest.ParseMissingSemicolon") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parser should recover from missing semicolon");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for missing semicolons");
   ZC_EXPECT(diagnosticEngine->hasErrors(),
             "Parser should report diagnostics for missing semicolon");
 }
@@ -1602,7 +1599,7 @@ ZC_TEST("ParserTest.ParseMissingClosingBrace") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parser should recover from missing closing brace");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for missing closing braces");
   ZC_EXPECT(diagnosticEngine->hasErrors(),
             "Parser should report diagnostics for missing closing brace");
 }
@@ -1618,7 +1615,7 @@ ZC_TEST("ParserTest.ParseExtraTokensAfterStatement") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parser should recover from extra tokens");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for extra tokens");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Parser should report diagnostics for extra tokens");
 }
 
@@ -1632,7 +1629,7 @@ ZC_TEST("ParserTest.ParseUnterminatedString") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parser should recover from unterminated string");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unterminated strings");
   ZC_EXPECT(diagnosticEngine->hasErrors(),
             "Parser should report diagnostics for unterminated string");
 }
@@ -1647,7 +1644,7 @@ ZC_TEST("ParserTest.ParseInvalidTokenSequence") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parser should recover from invalid token sequence");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for invalid token sequences");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Parser should report diagnostics for invalid tokens");
 }
 
@@ -1751,7 +1748,7 @@ ZC_TEST("ParserTest.ParseForOfLoopReportsError") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parser should recover from unsupported for-of syntax");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported for-of syntax");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "for-of syntax should produce parse errors");
 }
 
@@ -1959,6 +1956,74 @@ ZC_TEST("ParserTest.ParseErrorDefaultExpressionOperator") {
   ZC_EXPECT(!diagnosticEngine->hasErrors(), "Error default should not produce parse errors");
 }
 
+ZC_TEST("ParserTest.ParsePrefixUnaryExpressionShape") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = -value;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse prefix unary expression");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& init = letInitializer(root, 0);
+    ZC_EXPECT(init.kind == ast::SyntaxKind::UnaryExpression);
+    ZC_EXPECT(init.payload.words[ast::kUnaryExpressionOpWord] ==
+              static_cast<uint8_t>(ast::UnaryOperatorKind::Minus));
+    const ast::Node& operand =
+        root.node(ast::NodeId(init.payload.words[ast::kUnaryExpressionOperandWord]));
+    ZC_EXPECT(operand.kind == ast::SyntaxKind::IdentExpr);
+  }
+}
+
+ZC_TEST("ParserTest.ParseErrorPropagatePostfixExpressionShape") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("let x = risky()?!;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse error propagation postfix expression");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& init = letInitializer(root, 0);
+    ZC_EXPECT(init.kind == ast::SyntaxKind::PostfixExpression);
+    ZC_EXPECT(init.payload.words[ast::kPostfixExpressionOpWord] ==
+              static_cast<uint8_t>(ast::PostfixOperatorKind::ErrorPropagate));
+    const ast::Node& operand =
+        root.node(ast::NodeId(init.payload.words[ast::kPostfixExpressionOperandWord]));
+    ZC_EXPECT(operand.kind == ast::SyntaxKind::CallExpression);
+  }
+}
+
+ZC_TEST("ParserTest.ParseForceUnwrapPostfixExpressionShape") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("let x = maybe.value!!;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse force unwrap postfix expression");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& init = letInitializer(root, 0);
+    ZC_EXPECT(init.kind == ast::SyntaxKind::PostfixExpression);
+    ZC_EXPECT(init.payload.words[ast::kPostfixExpressionOpWord] ==
+              static_cast<uint8_t>(ast::PostfixOperatorKind::ErrorUnwrap));
+    const ast::Node& operand =
+        root.node(ast::NodeId(init.payload.words[ast::kPostfixExpressionOperandWord]));
+    ZC_EXPECT(operand.kind == ast::SyntaxKind::MemberExpression);
+  }
+}
+
 ZC_TEST("ParserTest.ParseSpacedQuestionColonAsInvalidConditionalExpression") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -1970,7 +2035,7 @@ ZC_TEST("ParserTest.ParseSpacedQuestionColonAsInvalidConditionalExpression") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Parser should recover from spaced question-colon");
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for spaced question-colon");
   ZC_EXPECT(diagnosticEngine->hasErrors(),
             "Spaced question-colon should be an invalid conditional expression");
 }
@@ -2069,6 +2134,12 @@ ZC_TEST("ParserTest.ParsePrefixIncrementExpression") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse prefix increment expression");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& expression = expressionStatementExpression(root, 0);
+    ZC_EXPECT(expression.kind == ast::SyntaxKind::UnaryExpression);
+    ZC_EXPECT(expression.payload.words[ast::kUnaryExpressionOpWord] ==
+              static_cast<uint8_t>(ast::UnaryOperatorKind::PreIncrement));
+  }
 }
 
 ZC_TEST("ParserTest.ParsePrefixDecrementExpression") {
@@ -2082,6 +2153,12 @@ ZC_TEST("ParserTest.ParsePrefixDecrementExpression") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse prefix decrement expression");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& expression = expressionStatementExpression(root, 0);
+    ZC_EXPECT(expression.kind == ast::SyntaxKind::UnaryExpression);
+    ZC_EXPECT(expression.payload.words[ast::kUnaryExpressionOpWord] ==
+              static_cast<uint8_t>(ast::UnaryOperatorKind::PreDecrement));
+  }
 }
 
 ZC_TEST("ParserTest.ParsePostfixIncrementExpression") {
@@ -2095,6 +2172,12 @@ ZC_TEST("ParserTest.ParsePostfixIncrementExpression") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse postfix increment expression");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& expression = expressionStatementExpression(root, 0);
+    ZC_EXPECT(expression.kind == ast::SyntaxKind::PostfixExpression);
+    ZC_EXPECT(expression.payload.words[ast::kPostfixExpressionOpWord] ==
+              static_cast<uint8_t>(ast::PostfixOperatorKind::Increment));
+  }
 }
 
 ZC_TEST("ParserTest.ParsePostfixDecrementExpression") {
@@ -2108,6 +2191,12 @@ ZC_TEST("ParserTest.ParsePostfixDecrementExpression") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse postfix decrement expression");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& expression = expressionStatementExpression(root, 0);
+    ZC_EXPECT(expression.kind == ast::SyntaxKind::PostfixExpression);
+    ZC_EXPECT(expression.payload.words[ast::kPostfixExpressionOpWord] ==
+              static_cast<uint8_t>(ast::PostfixOperatorKind::Decrement));
+  }
 }
 
 // ================================================================================
@@ -2179,16 +2268,10 @@ ZC_TEST("ParserTest.ParseAsKeywordAfterLineBreakReportsErrorAndRecovers") {
       sourceManager->addMemBufferCopy(zc::str("let x = foo\nas(Bar);").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  ZC_IF_SOME(root, parser.parse()) {
-    const auto statements = topLevelStatements(root);
-    ZC_EXPECT(statements.size() == 1,
-              "Parser should recover without splitting the invalid cast into another statement");
-    ZC_EXPECT(diagnosticEngine->hasErrors(),
-              "Line-break-separated as-cast should produce a parse error");
-    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::LetStmt,
-              "Recovered cast should stay inside a variable statement");
-  }
-  else { ZC_EXPECT(false, "Parser should recover from line-break-separated as-cast"); }
+  auto result = parser.parse();
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for line-break-separated as-casts");
+  ZC_EXPECT(diagnosticEngine->hasErrors(),
+            "Line-break-separated as-cast should produce a parse error");
 }
 
 // ================================================================================
@@ -2355,7 +2438,10 @@ ZC_TEST("ParserTest.ParseNullishCoalescingAssignmentExpression") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("x ? ?= y;").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("x ?"
+                                                          "?= y;")
+                                                      .asBytes(),
+                                                  "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2370,8 +2456,7 @@ ZC_TEST("ParserTest.ParseNullishCoalescingExpression") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("let x = a ? ? b;").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = a ?? b;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2385,7 +2470,7 @@ ZC_TEST("ParserTest.ParseChainedNullishCoalescingExpression") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("let x = a ? ? b ? ? c;").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("let x = a ?? b ?? c;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2491,7 +2576,7 @@ ZC_TEST("ParserTest.ParseSuperWithoutDotOrParen") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for invalid super expressions");
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
@@ -2506,7 +2591,7 @@ ZC_TEST("ParserTest.ParseAwaitExpressionReportsError") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported await syntax");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Await syntax is not designed yet");
 }
 
@@ -3009,7 +3094,7 @@ ZC_TEST("ParserTest.ParseTaggedTemplateLiteralReportsError") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for tagged template literals");
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
@@ -3024,7 +3109,7 @@ ZC_TEST("ParserTest.ParseTemplateLiteralMissingCloseBrace") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for malformed template literals");
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
@@ -3061,7 +3146,7 @@ ZC_TEST("ParserTest.ParseNonNullExpression") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = foo!;").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = foo!!;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3121,7 +3206,7 @@ ZC_TEST("ParserTest.ParseThrowStatementReportsError") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported throw statements");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Throw statements are not supported");
 }
 
@@ -3136,7 +3221,7 @@ ZC_TEST("ParserTest.ParseTryCatchStatementReportsError") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported try-catch statements");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Try-catch statements are not supported");
 }
 
@@ -3151,7 +3236,7 @@ ZC_TEST("ParserTest.ParseTryFinallyStatementReportsError") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported try-finally statements");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Try-finally statements are not supported");
 }
 
@@ -3168,7 +3253,8 @@ ZC_TEST("ParserTest.ParseTryCatchFinallyStatementReportsError") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none,
+            "Parser must fail closed for unsupported try-catch-finally statements");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Try-catch-finally statements are not supported");
 }
 
@@ -3274,7 +3360,7 @@ ZC_TEST("ParserTest.ParseNamespaceDeclarationReportsError") {
       zc::str("namespace Utils { fun helper() -> i32 { return 42; } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported namespace declarations");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Namespace declarations are not supported");
 }
 
@@ -3289,7 +3375,7 @@ ZC_TEST("ParserTest.ParseDeclareStatementReportsError") {
       zc::str("declare fun externalFunc(x: i32) -> str;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported declare syntax");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Declare syntax is not supported");
 }
 
@@ -3568,7 +3654,7 @@ ZC_TEST("ParserTest.ParseInvalidPropertyNames") {
       zc::str("interface I { [key]: i32; \"name\": str; 1: i32; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for invalid property names");
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
@@ -3638,7 +3724,8 @@ ZC_TEST("ParserTest.ParseKeywordAfterBlock") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("{ const }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for misplaced const keywords");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 /// Covers parseErrorForMissingSemicolonAfter - type keyword
@@ -3651,7 +3738,8 @@ ZC_TEST("ParserTest.ParseTypeKeywordAfterBlock") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("{ type }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for misplaced type keywords");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 /// Covers parseErrorForMissingSemicolonAfter - module keyword
@@ -3664,7 +3752,8 @@ ZC_TEST("ParserTest.ParseModuleKeywordAfterBlock") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("{ module }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for misplaced module keywords");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 /// Covers parseErrorForMissingSemicolonAfter - interface keyword
@@ -3677,7 +3766,8 @@ ZC_TEST("ParserTest.ParseInterfaceKeywordAfterBlock") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("{ interface }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for misplaced interface keywords");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 /// Covers parseErrorForMissingSemicolonAfter - namespace keyword
@@ -3690,7 +3780,8 @@ ZC_TEST("ParserTest.ParseNamespaceKeywordAfterBlock") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("{ namespace }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for misplaced namespace keywords");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 /// Covers parsingContextErrors - bad tokens inside match clauses
@@ -3744,7 +3835,7 @@ ZC_TEST("ParserTest.ParseCatchPatternReportsError") {
       zc::str("fun foo() { try { bar(); } catch (e: Error) { print(e); } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported catch syntax");
   ZC_EXPECT(diagnosticEngine->hasErrors(), "Catch syntax is not supported");
 }
 

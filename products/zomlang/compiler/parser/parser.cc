@@ -20,11 +20,13 @@
 #include "zc/core/debug.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
+#include "zomlang/compiler/ast/schema-verifier.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/lexer/lexer.h"
+#include "zomlang/compiler/lexer/utils.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/trace/trace.h"
 
@@ -69,6 +71,14 @@ void writeIdentList(ast::NodePayload& payload, uint32_t firstWord, uint32_t size
 bool isIdentifierLike(ast::SyntaxKind kind) {
   return kind == ast::SyntaxKind::Identifier || kind == ast::SyntaxKind::ThisKeyword ||
          kind == ast::SyntaxKind::SuperKeyword;
+}
+
+bool isExpressionIdentifierLike(ast::SyntaxKind kind) {
+  return isIdentifierLike(kind) || kind == ast::SyntaxKind::OptionalKeyword;
+}
+
+bool isPropertyNameLike(ast::SyntaxKind kind) {
+  return kind == ast::SyntaxKind::Identifier || lexer::isKeyword(kind);
 }
 
 bool isPrimitiveTypeKeyword(ast::SyntaxKind kind) {
@@ -165,6 +175,7 @@ int32_t binaryPrecedence(ast::SyntaxKind kind) {
     case ast::SyntaxKind::LessThanEquals:
     case ast::SyntaxKind::GreaterThan:
     case ast::SyntaxKind::GreaterThanEquals:
+    case ast::SyntaxKind::IsKeyword:
       return 7;
     case ast::SyntaxKind::LessThanLessThan:
     case ast::SyntaxKind::GreaterThanGreaterThan:
@@ -232,6 +243,164 @@ uint16_t binaryOpCode(ast::SyntaxKind kind) {
       return 21;
     default:
       return 0;
+  }
+}
+
+bool isPrefixUnaryOperator(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::Plus:
+    case ast::SyntaxKind::Minus:
+    case ast::SyntaxKind::Exclamation:
+    case ast::SyntaxKind::Tilde:
+    case ast::SyntaxKind::PlusPlus:
+    case ast::SyntaxKind::MinusMinus:
+      return true;
+    default:
+      return false;
+  }
+}
+
+uint8_t unaryOpCode(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::Plus:
+      return static_cast<uint8_t>(ast::UnaryOperatorKind::Plus);
+    case ast::SyntaxKind::Minus:
+      return static_cast<uint8_t>(ast::UnaryOperatorKind::Minus);
+    case ast::SyntaxKind::Exclamation:
+      return static_cast<uint8_t>(ast::UnaryOperatorKind::LogicalNot);
+    case ast::SyntaxKind::Tilde:
+      return static_cast<uint8_t>(ast::UnaryOperatorKind::BitNot);
+    case ast::SyntaxKind::PlusPlus:
+      return static_cast<uint8_t>(ast::UnaryOperatorKind::PreIncrement);
+    case ast::SyntaxKind::MinusMinus:
+      return static_cast<uint8_t>(ast::UnaryOperatorKind::PreDecrement);
+    default:
+      return static_cast<uint8_t>(ast::UnaryOperatorKind::Plus);
+  }
+}
+
+bool isPostfixOperator(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::PlusPlus:
+    case ast::SyntaxKind::MinusMinus:
+    case ast::SyntaxKind::ErrorPropagate:
+    case ast::SyntaxKind::ErrorUnwrap:
+      return true;
+    default:
+      return false;
+  }
+}
+
+uint8_t postfixOpCode(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::PlusPlus:
+      return static_cast<uint8_t>(ast::PostfixOperatorKind::Increment);
+    case ast::SyntaxKind::MinusMinus:
+      return static_cast<uint8_t>(ast::PostfixOperatorKind::Decrement);
+    case ast::SyntaxKind::ErrorPropagate:
+      return static_cast<uint8_t>(ast::PostfixOperatorKind::ErrorPropagate);
+    case ast::SyntaxKind::ErrorUnwrap:
+      return static_cast<uint8_t>(ast::PostfixOperatorKind::ErrorUnwrap);
+    default:
+      return static_cast<uint8_t>(ast::PostfixOperatorKind::Increment);
+  }
+}
+
+bool isAssignmentOperator(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::Equals:
+    case ast::SyntaxKind::PlusEquals:
+    case ast::SyntaxKind::MinusEquals:
+    case ast::SyntaxKind::AsteriskEquals:
+    case ast::SyntaxKind::SlashEquals:
+    case ast::SyntaxKind::PercentEquals:
+    case ast::SyntaxKind::AsteriskAsteriskEquals:
+    case ast::SyntaxKind::LessThanLessThanEquals:
+    case ast::SyntaxKind::GreaterThanGreaterThanEquals:
+    case ast::SyntaxKind::GreaterThanGreaterThanGreaterThanEquals:
+    case ast::SyntaxKind::AmpersandEquals:
+    case ast::SyntaxKind::BarEquals:
+    case ast::SyntaxKind::CaretEquals:
+    case ast::SyntaxKind::AmpersandAmpersandEquals:
+    case ast::SyntaxKind::BarBarEquals:
+    case ast::SyntaxKind::QuestionQuestionEquals:
+      return true;
+    default:
+      return false;
+  }
+}
+
+uint8_t assignmentOpCode(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::Equals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::Assign);
+    case ast::SyntaxKind::PlusEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::AddAssign);
+    case ast::SyntaxKind::MinusEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::SubAssign);
+    case ast::SyntaxKind::AsteriskEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::MulAssign);
+    case ast::SyntaxKind::SlashEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::DivAssign);
+    case ast::SyntaxKind::PercentEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::ModAssign);
+    case ast::SyntaxKind::AsteriskAsteriskEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::PowAssign);
+    case ast::SyntaxKind::LessThanLessThanEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::ShlAssign);
+    case ast::SyntaxKind::GreaterThanGreaterThanEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::ShrAssign);
+    case ast::SyntaxKind::GreaterThanGreaterThanGreaterThanEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::UShrAssign);
+    case ast::SyntaxKind::AmpersandEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::BitAndAssign);
+    case ast::SyntaxKind::BarEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::BitOrAssign);
+    case ast::SyntaxKind::CaretEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::BitXorAssign);
+    case ast::SyntaxKind::AmpersandAmpersandEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::LogicalAndAssign);
+    case ast::SyntaxKind::BarBarEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::LogicalOrAssign);
+    case ast::SyntaxKind::QuestionQuestionEquals:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::NullCoalesceAssign);
+    default:
+      return static_cast<uint8_t>(ast::AssignmentOperatorKind::Assign);
+  }
+}
+
+uint8_t castModeCode(ast::SyntaxKind kind) {
+  if (kind == ast::SyntaxKind::Question) { return 1; }
+  if (kind == ast::SyntaxKind::Exclamation) { return 2; }
+  return 0;
+}
+
+bool canEndExpressionBeforeBinary(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::Identifier:
+    case ast::SyntaxKind::ThisKeyword:
+    case ast::SyntaxKind::SuperKeyword:
+    case ast::SyntaxKind::OptionalKeyword:
+    case ast::SyntaxKind::TrueKeyword:
+    case ast::SyntaxKind::FalseKeyword:
+    case ast::SyntaxKind::NullKeyword:
+    case ast::SyntaxKind::UnitKeyword:
+    case ast::SyntaxKind::IntegerLiteral:
+    case ast::SyntaxKind::BigIntLiteral:
+    case ast::SyntaxKind::FloatLiteral:
+    case ast::SyntaxKind::StringLiteral:
+    case ast::SyntaxKind::NoSubstitutionTemplateLiteral:
+    case ast::SyntaxKind::TemplateTail:
+    case ast::SyntaxKind::RightParen:
+    case ast::SyntaxKind::RightBracket:
+    case ast::SyntaxKind::RightBrace:
+    case ast::SyntaxKind::PlusPlus:
+    case ast::SyntaxKind::MinusMinus:
+    case ast::SyntaxKind::ErrorPropagate:
+    case ast::SyntaxKind::ErrorUnwrap:
+      return true;
+    default:
+      return false;
   }
 }
 
@@ -334,12 +503,74 @@ bool isInterfaceModifier(ast::SyntaxKind kind) {
   }
 }
 
+bool isDeclarationModifier(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::AbstractKeyword:
+    case ast::SyntaxKind::MutatingKeyword:
+    case ast::SyntaxKind::OverrideKeyword:
+    case ast::SyntaxKind::PrivateKeyword:
+    case ast::SyntaxKind::ProtectedKeyword:
+    case ast::SyntaxKind::PublicKeyword:
+    case ast::SyntaxKind::ReadonlyKeyword:
+    case ast::SyntaxKind::StaticKeyword:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool isDeclarationHead(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::LetKeyword:
+    case ast::SyntaxKind::ConstKeyword:
+    case ast::SyntaxKind::FunKeyword:
+    case ast::SyntaxKind::ClassKeyword:
+    case ast::SyntaxKind::StructKeyword:
+    case ast::SyntaxKind::InterfaceKeyword:
+    case ast::SyntaxKind::EnumKeyword:
+    case ast::SyntaxKind::ErrorKeyword:
+    case ast::SyntaxKind::TypeKeyword:
+    case ast::SyntaxKind::AliasKeyword:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool isInvalidObjectLiteralPropertyName(ast::SyntaxKind kind) {
   switch (kind) {
     case ast::SyntaxKind::StringLiteral:
     case ast::SyntaxKind::IntegerLiteral:
     case ast::SyntaxKind::FloatLiteral:
     case ast::SyntaxKind::CharacterLiteral:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool isAttributePathSegment(ast::SyntaxKind kind) {
+  return kind == ast::SyntaxKind::Identifier || lexer::isKeyword(kind);
+}
+
+bool isAttributeStart(ast::SyntaxKind first, ast::SyntaxKind second) {
+  return first == ast::SyntaxKind::Hash && second == ast::SyntaxKind::LeftBracket;
+}
+
+bool isTopLevelCfgAttributeTarget(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::ModuleDeclaration:
+    case ast::SyntaxKind::ImportDeclaration:
+    case ast::SyntaxKind::ExportDeclaration:
+    case ast::SyntaxKind::LetStmt:
+    case ast::SyntaxKind::FunctionDecl:
+    case ast::SyntaxKind::ClassDecl:
+    case ast::SyntaxKind::StructDecl:
+    case ast::SyntaxKind::InterfaceDecl:
+    case ast::SyntaxKind::EnumDeclaration:
+    case ast::SyntaxKind::ErrorDecl:
+    case ast::SyntaxKind::AliasDecl:
+    case ast::SyntaxKind::BlockStmt:
       return true;
     default:
       return false;
@@ -485,6 +716,47 @@ struct Parser::Impl {
     return limit;
   }
 
+  size_t findMatchingRightBracket(size_t openIndex, size_t limit) const {
+    if (openIndex >= limit || kindAt(openIndex) != ast::SyntaxKind::LeftBracket) { return limit; }
+
+    int32_t parenDepth = 0;
+    int32_t bracketDepth = 0;
+    int32_t braceDepth = 0;
+    for (size_t index = openIndex; index < limit; ++index) {
+      const ast::SyntaxKind kind = kindAt(index);
+      if (kind == ast::SyntaxKind::LeftParen) {
+        ++parenDepth;
+      } else if (kind == ast::SyntaxKind::RightParen) {
+        if (parenDepth > 0) { --parenDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBrace) {
+        ++braceDepth;
+      } else if (kind == ast::SyntaxKind::RightBrace) {
+        if (braceDepth > 0) { --braceDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBracket) {
+        ++bracketDepth;
+      } else if (kind == ast::SyntaxKind::RightBracket) {
+        if (bracketDepth > 0) { --bracketDepth; }
+        if (bracketDepth == 0 && parenDepth == 0 && braceDepth == 0) { return index; }
+      }
+    }
+    return limit;
+  }
+
+  bool isOuterAttributeStart(size_t index, size_t limit) const {
+    return index + 1 < limit && isAttributeStart(kindAt(index), kindAt(index + 1)) &&
+           tokenAt(index).getRange().getEnd() == tokenAt(index + 1).getRange().getStart();
+  }
+
+  size_t skipOuterAttributePrefix(size_t start, size_t end) const {
+    size_t cursor = start;
+    while (isOuterAttributeStart(cursor, end)) {
+      const size_t closeBracket = findMatchingRightBracket(cursor + 1, end);
+      if (closeBracket >= end) { break; }
+      cursor = closeBracket + 1;
+    }
+    return cursor;
+  }
+
   size_t findTopLevelToken(size_t start, size_t end, ast::SyntaxKind needle) const {
     int32_t parenDepth = 0;
     int32_t bracketDepth = 0;
@@ -562,7 +834,8 @@ struct Parser::Impl {
   ast::IdentList makeIdentList(ast::TreeBuilder& builder, size_t start, size_t end) const {
     zc::Vector<ast::IdentId> segments;
     for (size_t index = start; index < end; ++index) {
-      if (kindAt(index) == ast::SyntaxKind::Identifier) {
+      if (kindAt(index) == ast::SyntaxKind::Identifier ||
+          kindAt(index) == ast::SyntaxKind::ThisKeyword) {
         segments.add(internIdent(builder, index));
       }
     }
@@ -576,15 +849,258 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::ModulePath, rangeFor(start, end), payload);
   }
 
+  ast::NodeId makeAttributePath(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    zc::Vector<ast::IdentId> segments;
+    for (size_t index = start; index < end; ++index) {
+      if (isAttributePathSegment(kindAt(index))) { segments.add(internIdent(builder, index)); }
+    }
+
+    ast::NodePayload payload;
+    writeIdentList(payload, ast::kAttributePathSegmentsFirstWord,
+                   ast::kAttributePathSegmentsSizeWord, builder.makeIdentList(segments.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::AttributePath, rangeFor(start, end), payload);
+  }
+
+  size_t findAttributePathEnd(size_t start, size_t end) const {
+    size_t cursor = start;
+    bool expectSegment = true;
+    while (cursor < end) {
+      if (expectSegment) {
+        if (!isAttributePathSegment(kindAt(cursor))) { break; }
+        expectSegment = false;
+        ++cursor;
+        continue;
+      }
+
+      if (cursor + 1 < end && kindAt(cursor) == ast::SyntaxKind::Colon &&
+          kindAt(cursor + 1) == ast::SyntaxKind::Colon) {
+        cursor += 2;
+        expectSegment = true;
+        continue;
+      }
+      break;
+    }
+    return cursor;
+  }
+
+  uint32_t attributePathSegmentCount(size_t start, size_t end) const {
+    uint32_t count = 0;
+    for (size_t index = start; index < end; ++index) {
+      if (isAttributePathSegment(kindAt(index))) { ++count; }
+    }
+    return count;
+  }
+
+  bool isWhitelistedBareAttribute(size_t start, size_t end) const {
+    if (attributePathSegmentCount(start, end) != 1) { return false; }
+    zc::StringPtr text = tokenAt(start).getValue();
+    if (text.size() == 0) { text = tokenLabel(tokenAt(start)); }
+    return text == "inline"_zc || text == "deprecated"_zc || text == "cold"_zc;
+  }
+
+  bool isZomCfgAttributePath(size_t start, size_t end) const {
+    if (attributePathSegmentCount(start, end) != 2) { return false; }
+
+    bool sawZom = false;
+    for (size_t index = start; index < end; ++index) {
+      if (!isAttributePathSegment(kindAt(index))) { continue; }
+      zc::StringPtr text = tokenAt(index).getValue();
+      if (text.size() == 0) { text = tokenLabel(tokenAt(index)); }
+      if (!sawZom) {
+        if (text != "zom"_zc) { return false; }
+        sawZom = true;
+      } else {
+        return text == "cfg"_zc;
+      }
+    }
+    return false;
+  }
+
+  void diagnoseCfgAttributeArgs(size_t start, size_t end) const {
+    for (size_t index = start; index < end; ++index) {
+      const ast::SyntaxKind kind = kindAt(index);
+      if (kind == ast::SyntaxKind::Equals || kind == ast::SyntaxKind::ExclamationEquals ||
+          kind == ast::SyntaxKind::LessThan || kind == ast::SyntaxKind::LessThanEquals ||
+          kind == ast::SyntaxKind::GreaterThan || kind == ast::SyntaxKind::GreaterThanEquals) {
+        if (index + 1 >= end || kindAt(index + 1) != ast::SyntaxKind::StringLiteral) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(index + 1),
+                                                                        "string literal"_zc);
+          continue;
+        }
+        if (tokenAt(index + 1).getValue().size() == 0) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+              tokenAt(index + 1).getLocation(), "non-empty string literal"_zc);
+        }
+      }
+    }
+  }
+
+  ast::NodeId parseAttribute(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    size_t cursor = start;
+    while (cursor < end && kindAt(cursor) == ast::SyntaxKind::Comma) { ++cursor; }
+    if (cursor >= end) { return ast::NodeId(); }
+
+    const size_t pathEnd = findAttributePathEnd(cursor, end);
+    if (pathEnd == cursor) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor),
+                                                                    "attribute path"_zc);
+      return ast::NodeId();
+    }
+    if (pathEnd < end && kindAt(pathEnd) == ast::SyntaxKind::Period) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(pathEnd).getLocation());
+    }
+    if (attributePathSegmentCount(cursor, pathEnd) < 2 &&
+        !isWhitelistedBareAttribute(cursor, pathEnd)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(cursor).getLocation());
+    }
+
+    zc::Vector<ast::NodeId> args;
+    if (pathEnd < end && kindAt(pathEnd) == ast::SyntaxKind::LeftParen) {
+      const size_t closeParen = findMatchingRightParen(pathEnd, end);
+      const size_t argsEnd = closeParen < end ? closeParen : end;
+      if (isZomCfgAttributePath(cursor, pathEnd)) {
+        diagnoseCfgAttributeArgs(pathEnd + 1, argsEnd);
+      }
+      size_t argStart = pathEnd + 1;
+      while (argStart < argsEnd) {
+        const size_t comma = findTopLevelCommaOrEnd(argStart, argsEnd);
+        if (argStart < comma) {
+          addNodeIfPresent(args, parseExpressionRange(builder, argStart, comma));
+        }
+        argStart = comma < argsEnd ? comma + 1 : argsEnd;
+      }
+    } else if (pathEnd < end && kindAt(pathEnd) == ast::SyntaxKind::Equals && pathEnd + 1 < end) {
+      addNodeIfPresent(args, parseExpressionRange(builder, pathEnd + 1, end));
+    }
+
+    ast::NodePayload payload;
+    writeNode(payload, ast::kAttributePathWord, makeAttributePath(builder, cursor, pathEnd));
+    writeNodeList(payload, ast::kAttributeArgsFirstWord, ast::kAttributeArgsSizeWord,
+                  builder.makeList(args.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::Attribute, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseOuterAttributeList(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    zc::Vector<ast::NodeId> attrs;
+    size_t cursor = start;
+    while (isOuterAttributeStart(cursor, end)) {
+      const size_t closeBracket = findMatchingRightBracket(cursor + 1, end);
+      if (closeBracket >= end) { break; }
+
+      size_t itemStart = cursor + 2;
+      if (itemStart >= closeBracket) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(itemStart),
+                                                                      "attribute path"_zc);
+      }
+      while (itemStart < closeBracket) {
+        const size_t comma = findTopLevelCommaOrEnd(itemStart, closeBracket);
+        if (itemStart < comma) {
+          addNodeIfPresent(attrs, parseAttribute(builder, itemStart, comma));
+        }
+        itemStart = comma < closeBracket ? comma + 1 : closeBracket;
+      }
+      cursor = closeBracket + 1;
+    }
+
+    if (attrs.empty()) { return ast::NodeId(); }
+
+    ast::NodePayload payload;
+    writeNodeList(payload, ast::kAttributeListAttrsFirstWord, ast::kAttributeListAttrsSizeWord,
+                  builder.makeList(attrs.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::AttributeList, rangeFor(start, cursor), payload);
+  }
+
+  bool outerAttributePrefixContainsZomCfg(size_t start, size_t end) const {
+    size_t cursor = start;
+    while (isOuterAttributeStart(cursor, end)) {
+      const size_t closeBracket = findMatchingRightBracket(cursor + 1, end);
+      if (closeBracket >= end) { break; }
+
+      size_t itemStart = cursor + 2;
+      while (itemStart < closeBracket) {
+        const size_t comma = findTopLevelCommaOrEnd(itemStart, closeBracket);
+        const size_t pathEnd = findAttributePathEnd(itemStart, comma);
+        if (pathEnd > itemStart && isZomCfgAttributePath(itemStart, pathEnd)) { return true; }
+        itemStart = comma < closeBracket ? comma + 1 : closeBracket;
+      }
+      cursor = closeBracket + 1;
+    }
+    return false;
+  }
+
   ast::NodeId makeStatementListItem(ast::TreeBuilder& builder, ast::NodeId item,
-                                    source::SourceRange range) const {
+                                    source::SourceRange range,
+                                    ast::NodeId attrs = ast::NodeId()) const {
     ast::NodePayload payload;
     writeNode(payload, ast::kStatementListItemItemWord, item);
+    writeNode(payload, ast::kStatementListItemAttrsWord, attrs);
     return builder.makeNode(ast::SyntaxKind::StatementListItem, zc::mv(range), payload);
   }
 
-  void emitUnexpected(const lexer::Token& where) {
+  void emitUnexpected(const lexer::Token& where) const {
     diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(where.getLocation());
+  }
+
+  source::SourceLoc diagnosticLoc(size_t index) const {
+    if (index < tokens.size()) { return tokenAt(index).getLocation(); }
+    ZC_IREQUIRE(tokens.size() != 0, "parser diagnostics require a token stream");
+    return tokenAt(tokens.size() - 1).getLocation();
+  }
+
+  void diagnoseExpressionExpected(size_t index) const {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpressionExpected>(diagnosticLoc(index));
+  }
+
+  bool modifierGroupContains(size_t start, size_t end, ast::SyntaxKind needle,
+                             size_t& found) const {
+    for (size_t cursor = start; cursor < end; ++cursor) {
+      if (kindAt(cursor) == needle) {
+        found = cursor;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void diagnoseDeclarationModifierGroup(size_t start, size_t end) const {
+    for (size_t cursor = start; cursor < end; ++cursor) {
+      for (size_t previous = start; previous < cursor; ++previous) {
+        if (kindAt(previous) == kindAt(cursor)) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::DuplicateDeclarationModifier>(
+              tokenAt(cursor).getLocation(), tokenLabel(tokenAt(cursor)));
+          break;
+        }
+      }
+    }
+
+    size_t abstractIndex = end;
+    size_t staticIndex = end;
+    size_t mutatingIndex = end;
+    const bool hasAbstract =
+        modifierGroupContains(start, end, ast::SyntaxKind::AbstractKeyword, abstractIndex);
+    const bool hasStatic =
+        modifierGroupContains(start, end, ast::SyntaxKind::StaticKeyword, staticIndex);
+    const bool hasMutating =
+        modifierGroupContains(start, end, ast::SyntaxKind::MutatingKeyword, mutatingIndex);
+
+    if (hasAbstract && hasStatic) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::IncompatibleDeclarationModifiers>(
+          tokenAt(staticIndex).getLocation(), tokenLabel(tokenAt(abstractIndex)),
+          tokenLabel(tokenAt(staticIndex)));
+    }
+    if (hasStatic && hasMutating) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::IncompatibleDeclarationModifiers>(
+          tokenAt(mutatingIndex).getLocation(), tokenLabel(tokenAt(staticIndex)),
+          tokenLabel(tokenAt(mutatingIndex)));
+    }
+  }
+
+  ast::NodeId parseRequiredExpression(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    const ast::NodeId expr = parseExpressionRange(builder, start, end);
+    if (!expr) { diagnoseExpressionExpected(start); }
+    return expr;
   }
 
   bool isInterfaceElementHead(size_t index, int32_t interfaceBodyDepth) const {
@@ -617,11 +1133,21 @@ struct Parser::Impl {
     return false;
   }
 
+  bool looksLikeObjectLiteralExpression(size_t start, size_t end) const {
+    if (!rangeIsWrapped(start, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
+      return false;
+    }
+    return findTopLevelToken(start + 1, end - 1, ast::SyntaxKind::Colon) < end - 1 ||
+           findTopLevelToken(start + 1, end - 1, ast::SyntaxKind::DotDotDot) < end - 1;
+  }
+
   void diagnoseTokenPatterns() {
     int32_t braceDepth = 0;
     bool sawTopLevelBlock = false;
     bool waitingForInterfaceBody = false;
     int32_t interfaceBodyDepth = -1;
+    int32_t typeLiteralBraceDepth = -1;
+    int32_t bindingPatternBraceDepth = -1;
 
     const size_t count = tokenCountWithoutEof();
     for (size_t i = 0; i < count; ++i) {
@@ -631,6 +1157,14 @@ struct Parser::Impl {
       const bool insideInterfaceBody = interfaceBodyDepth >= 0 && braceDepth >= interfaceBodyDepth;
       const bool insideInterfaceTopLevel =
           interfaceBodyDepth >= 0 && braceDepth == interfaceBodyDepth;
+
+      if (isDeclarationModifier(kind) && (i == 0 || !isDeclarationModifier(kindAt(i - 1)))) {
+        size_t head = i + 1;
+        while (head < count && isDeclarationModifier(kindAt(head))) { ++head; }
+        if (head < count && isDeclarationHead(kindAt(head))) {
+          diagnoseDeclarationModifierGroup(i, head);
+        }
+      }
 
       if (isUnsupportedStatementKeyword(kind)) { emitUnexpected(current); }
 
@@ -715,6 +1249,11 @@ struct Parser::Impl {
             current.getLocation());
       }
 
+      if (braceDepth > 0 && kind == ast::SyntaxKind::ModuleKeyword) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ModuleDeclarationMustBeFirst>(
+            current.getLocation());
+      }
+
       if (insideInterfaceBody) {
         if (kind == ast::SyntaxKind::StringLiteral || kind == ast::SyntaxKind::IntegerLiteral ||
             kind == ast::SyntaxKind::FloatLiteral || kind == ast::SyntaxKind::CharacterLiteral) {
@@ -790,7 +1329,16 @@ struct Parser::Impl {
                                                                            tokenLabel(current));
       }
 
-      if (kind == ast::SyntaxKind::LeftBrace && braceDepth == 0) { sawTopLevelBlock = true; }
+      if (kind == ast::SyntaxKind::LeftBrace && braceDepth == 0) {
+        sawTopLevelBlock = true;
+        if (i > 0 && kindAt(i - 1) == ast::SyntaxKind::Colon) {
+          typeLiteralBraceDepth = braceDepth + 1;
+        }
+        if (i > 0 && (kindAt(i - 1) == ast::SyntaxKind::LetKeyword ||
+                      kindAt(i - 1) == ast::SyntaxKind::ConstKeyword)) {
+          bindingPatternBraceDepth = braceDepth + 1;
+        }
+      }
       if (kind == ast::SyntaxKind::LeftBrace) {
         ++braceDepth;
         if (waitingForInterfaceBody) {
@@ -803,9 +1351,14 @@ struct Parser::Impl {
           diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
               current.getLocation());
         } else {
+          const bool closesTypeLiteral = braceDepth == typeLiteralBraceDepth;
+          const bool closesBindingPattern = braceDepth == bindingPatternBraceDepth;
           if (braceDepth == interfaceBodyDepth) { interfaceBodyDepth = -1; }
+          if (closesTypeLiteral) { typeLiteralBraceDepth = -1; }
+          if (closesBindingPattern) { bindingPatternBraceDepth = -1; }
           --braceDepth;
-          if (sawTopLevelBlock && braceDepth == 0 && next == ast::SyntaxKind::Equals) {
+          if (sawTopLevelBlock && braceDepth == 0 && next == ast::SyntaxKind::Equals &&
+              !closesTypeLiteral && !closesBindingPattern) {
             diagnosticEngine
                 .diagnose<diagnostics::DiagID::DeclarationOrStatementExpectedAfterBlock>(
                     tokenAt(i + 1).getLocation());
@@ -833,7 +1386,8 @@ struct Parser::Impl {
   }
 
   ast::SyntaxKind classifyStatement(size_t start, size_t end) const {
-    const ast::SyntaxKind first = kindAt(start);
+    const size_t head = effectiveStatementStart(start, end);
+    const ast::SyntaxKind first = kindAt(head);
     switch (first) {
       case ast::SyntaxKind::ModuleKeyword:
         return ast::SyntaxKind::ModuleDeclaration;
@@ -868,7 +1422,7 @@ struct Parser::Impl {
       case ast::SyntaxKind::DoKeyword:
         return ast::SyntaxKind::DoWhileStatement;
       case ast::SyntaxKind::ForKeyword:
-        for (size_t i = start + 1; i < end; ++i) {
+        for (size_t i = head + 1; i < end; ++i) {
           if (kindAt(i) == ast::SyntaxKind::InKeyword) { return ast::SyntaxKind::ForInStatement; }
           if (kindAt(i) == ast::SyntaxKind::Semicolon) { break; }
         }
@@ -884,15 +1438,24 @@ struct Parser::Impl {
       case ast::SyntaxKind::Semicolon:
         return ast::SyntaxKind::EmptyStatement;
       case ast::SyntaxKind::LeftBrace:
+        if (looksLikeObjectLiteralExpression(head, end)) {
+          return ast::SyntaxKind::ExpressionStatement;
+        }
         return ast::SyntaxKind::BlockStmt;
       case ast::SyntaxKind::Identifier:
-        if (start + 1 < end && kindAt(start + 1) == ast::SyntaxKind::Colon) {
+        if (head + 1 < end && kindAt(head + 1) == ast::SyntaxKind::Colon) {
           return ast::SyntaxKind::LabeledStatement;
         }
         return ast::SyntaxKind::ExpressionStatement;
       default:
         return ast::SyntaxKind::ExpressionStatement;
     }
+  }
+
+  size_t effectiveStatementStart(size_t start, size_t end) const {
+    size_t head = skipOuterAttributePrefix(start, end);
+    while (head < end && isDeclarationModifier(kindAt(head))) { ++head; }
+    return head < end ? head : start;
   }
 
   ast::NodeId parseTypeList(ast::TreeBuilder& builder, size_t start, size_t end,
@@ -917,12 +1480,226 @@ struct Parser::Impl {
     return builder.makeNode(containerKind, rangeFor(start, end), payload);
   }
 
+  size_t findMatchingAngleClose(size_t openIndex, size_t limit) const {
+    if (openIndex >= limit || kindAt(openIndex) != ast::SyntaxKind::LessThan) { return limit; }
+
+    int32_t depth = 0;
+    for (size_t index = openIndex; index < limit; ++index) {
+      const ast::SyntaxKind kind = kindAt(index);
+      if (kind == ast::SyntaxKind::LessThan) { ++depth; }
+      if (kind == ast::SyntaxKind::GreaterThan) {
+        --depth;
+        if (depth == 0) { return index; }
+      }
+    }
+    return limit;
+  }
+
+  size_t findFunctionTypeParameterOpen(size_t start, size_t end) const {
+    if (start >= end) { return end; }
+    if (kindAt(start) == ast::SyntaxKind::LeftParen) { return start; }
+    if (kindAt(start) == ast::SyntaxKind::FunKeyword) {
+      size_t cursor = start + 1;
+      if (cursor < end && kindAt(cursor) == ast::SyntaxKind::LessThan) {
+        const size_t closeAngle = findMatchingAngleClose(cursor, end);
+        cursor = closeAngle < end ? closeAngle + 1 : end;
+      }
+      if (cursor < end && kindAt(cursor) == ast::SyntaxKind::LeftParen) { return cursor; }
+    }
+    if (kindAt(start) == ast::SyntaxKind::LessThan) {
+      const size_t closeAngle = findMatchingAngleClose(start, end);
+      if (closeAngle + 1 < end && kindAt(closeAngle + 1) == ast::SyntaxKind::LeftParen) {
+        return closeAngle + 1;
+      }
+    }
+    return end;
+  }
+
+  size_t findTopLevelTypeColonOrEnd(size_t start, size_t end) const {
+    const size_t colon = findTopLevelTypeToken(start, end, ast::SyntaxKind::Colon);
+    return colon < end ? colon : end;
+  }
+
+  ast::NodeList parseFunctionTypeParameters(ast::TreeBuilder& builder, size_t start,
+                                            size_t end) const {
+    zc::Vector<ast::NodeId> params;
+    size_t cursor = start;
+    while (cursor < end) {
+      const size_t comma = findTopLevelTypeCommaOrEnd(cursor, end);
+      if (cursor < comma) {
+        const size_t colon = findTopLevelTypeColonOrEnd(cursor, comma);
+        const size_t typeStart = colon < comma ? colon + 1 : cursor;
+        addNodeIfPresent(params, parseTypeRange(builder, typeStart, comma));
+      }
+      cursor = comma < end ? comma + 1 : end;
+    }
+    return builder.makeList(params.asPtr());
+  }
+
+  ast::NodeId parseTupleTypeRange(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    zc::Vector<ast::NodeId> elems;
+    bool hasTrailingComma = false;
+    size_t cursor = start + 1;
+    while (cursor + 1 < end) {
+      const size_t comma = findTopLevelTypeCommaOrEnd(cursor, end - 1);
+      if (cursor < comma) {
+        const size_t colon = findTopLevelTypeColonOrEnd(cursor, comma);
+        const size_t typeStart = colon < comma ? colon + 1 : cursor;
+        addNodeIfPresent(elems, parseTypeRange(builder, typeStart, comma));
+      }
+      if (comma < end - 1 && comma + 1 >= end - 1) { hasTrailingComma = true; }
+      cursor = comma < end - 1 ? comma + 1 : end - 1;
+    }
+
+    if (hasTrailingComma && elems.size() == 1) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(tokenAt(end - 2).getLocation());
+      return ast::NodeId();
+    }
+
+    ast::NodePayload payload;
+    writeNodeList(payload, ast::kTupleTypeExprElemsFirstWord, ast::kTupleTypeExprElemsSizeWord,
+                  builder.makeList(elems.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::TupleTypeExpr, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseFunctionTypeRange(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    const size_t openParen = findFunctionTypeParameterOpen(start, end);
+    if (openParen >= end) { return ast::NodeId(); }
+
+    const size_t closeParen = findMatchingRightParen(openParen, end);
+    if (closeParen + 1 >= end || kindAt(closeParen + 1) != ast::SyntaxKind::Arrow) {
+      return ast::NodeId();
+    }
+
+    const size_t retStart = closeParen + 2;
+    if (retStart >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(
+          tokenAt(closeParen + 1).getLocation());
+      return ast::NodeId();
+    }
+
+    const size_t raises = findTopLevelTypeToken(retStart, end, ast::SyntaxKind::RaisesKeyword);
+    const size_t retEnd = raises < end ? raises : end;
+    const ast::NodeId retTy = parseTypeRange(builder, retStart, retEnd);
+    if (!retTy) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(tokenAt(retStart).getLocation());
+      return ast::NodeId();
+    }
+
+    ast::NodeId raisesTy;
+    if (raises < end) {
+      raisesTy = parseTypeRange(builder, raises + 1, end);
+      if (!raisesTy) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(tokenAt(raises).getLocation());
+        return ast::NodeId();
+      }
+    }
+
+    ast::NodePayload payload;
+    writeNodeList(payload, ast::kFunctionTypeExprParamsFirstWord,
+                  ast::kFunctionTypeExprParamsSizeWord,
+                  parseFunctionTypeParameters(builder, openParen + 1, closeParen));
+    writeNode(payload, ast::kFunctionTypeExprRetTyWord, retTy);
+    if (raisesTy) { writeNode(payload, ast::kFunctionTypeExprRaisesWord, raisesTy); }
+    return builder.makeNode(ast::SyntaxKind::FunctionTypeExpr, rangeFor(start, end), payload);
+  }
+
+  size_t findTopLevelObjectTypeMemberEnd(size_t start, size_t end) const {
+    const size_t comma = findTopLevelTypeToken(start, end, ast::SyntaxKind::Comma);
+    const size_t semi = findTopLevelTypeToken(start, end, ast::SyntaxKind::Semicolon);
+    if (comma < end && semi < end) { return comma < semi ? comma : semi; }
+    if (comma < end) { return comma; }
+    if (semi < end) { return semi; }
+    return end;
+  }
+
+  ast::NodeId parseObjectTypeRange(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    zc::Vector<ast::NodeId> members;
+    size_t cursor = start + 1;
+    while (cursor + 1 < end) {
+      const size_t memberEnd = findTopLevelObjectTypeMemberEnd(cursor, end - 1);
+      if (cursor < memberEnd) {
+        bool isMut = false;
+        size_t nameIndex = cursor;
+        if (kindAt(nameIndex) == ast::SyntaxKind::Identifier &&
+            tokenAt(nameIndex).getValue() == "mut"_zc) {
+          isMut = true;
+          ++nameIndex;
+        }
+
+        if (nameIndex >= memberEnd || kindAt(nameIndex) != ast::SyntaxKind::Identifier) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
+              diagnosticLoc(nameIndex));
+          return ast::NodeId();
+        }
+
+        size_t typeStart = nameIndex + 1;
+        bool isOptional = false;
+        bool hasColon = false;
+        if (typeStart < memberEnd && kindAt(typeStart) == ast::SyntaxKind::ErrorDefault) {
+          isOptional = true;
+          hasColon = true;
+          ++typeStart;
+        } else if (typeStart < memberEnd && kindAt(typeStart) == ast::SyntaxKind::Question) {
+          isOptional = true;
+          ++typeStart;
+        }
+        if (typeStart < memberEnd && kindAt(typeStart) == ast::SyntaxKind::Colon) {
+          hasColon = true;
+          ++typeStart;
+        }
+        if (!hasColon) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(typeStart),
+                                                                        ":"_zc);
+          return ast::NodeId();
+        }
+
+        const ast::NodeId ty = parseTypeRange(builder, typeStart, memberEnd);
+        if (!ty) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(typeStart));
+          return ast::NodeId();
+        }
+
+        ast::NodePayload memberPayload;
+        writeIdent(memberPayload, ast::kObjectTypeMemberNameWord, internIdent(builder, nameIndex));
+        writeNode(memberPayload, ast::kObjectTypeMemberTyWord, ty);
+        memberPayload.words[ast::kObjectTypeMemberIsMutWord] = isMut ? 1 : 0;
+        memberPayload.words[ast::kObjectTypeMemberIsOptionalWord] = isOptional ? 1 : 0;
+        members.add(builder.makeNode(ast::SyntaxKind::ObjectTypeMember, rangeFor(cursor, memberEnd),
+                                     memberPayload));
+      }
+      cursor = memberEnd < end - 1 ? memberEnd + 1 : end - 1;
+    }
+
+    ast::NodePayload payload;
+    writeNodeList(payload, ast::kObjectTypeExprMembersFirstWord,
+                  ast::kObjectTypeExprMembersSizeWord, builder.makeList(members.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::ObjectTypeExpr, rangeFor(start, end), payload);
+  }
+
   ast::NodeId parseTypeRange(ast::TreeBuilder& builder, size_t start, size_t end) const {
     while (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { --end; }
     if (start >= end) { return ast::NodeId(); }
 
+    const ast::NodeId functionType = parseFunctionTypeRange(builder, start, end);
+    if (functionType) { return functionType; }
+
     if (rangeIsWrapped(start, end, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen)) {
+      if (start + 1 == end - 1 ||
+          findTopLevelTypeToken(start + 1, end - 1, ast::SyntaxKind::Comma) < end - 1) {
+        return parseTupleTypeRange(builder, start, end);
+      }
       return parseTypeRange(builder, start + 1, end - 1);
+    }
+
+    if (kindAt(start) == ast::SyntaxKind::TypeOfKeyword && start + 1 < end) {
+      ast::NodePayload payload;
+      writeNode(payload, ast::kTypeQueryExprPathWord, makeModulePath(builder, start + 1, end));
+      return builder.makeNode(ast::SyntaxKind::TypeQueryExpr, rangeFor(start, end), payload);
+    }
+
+    if (rangeIsWrapped(start, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
+      return parseObjectTypeRange(builder, start, end);
     }
 
     const size_t unionOp = findTopLevelTypeToken(start, end, ast::SyntaxKind::Bar);
@@ -964,8 +1741,30 @@ struct Parser::Impl {
     }
 
     if (kindAt(end - 1) == ast::SyntaxKind::Question && end > start + 1) {
+      const ast::NodeId inner = parseTypeRange(builder, start, end - 1);
+      if (!inner) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(
+            tokenAt(end - 1).getLocation());
+        return ast::NodeId();
+      }
+
       ast::NodePayload payload;
-      writeNode(payload, ast::kOptionalTypeExprInnerWord, parseTypeRange(builder, start, end - 1));
+      writeNode(payload, ast::kOptionalTypeExprInnerWord, inner);
+      payload.words[ast::kOptionalTypeExprDoubleWord] = 0;
+      return builder.makeNode(ast::SyntaxKind::OptionalTypeExpr, rangeFor(start, end), payload);
+    }
+
+    if (kindAt(end - 1) == ast::SyntaxKind::QuestionQuestion && end > start + 1) {
+      const ast::NodeId inner = parseTypeRange(builder, start, end - 1);
+      if (!inner) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(
+            tokenAt(end - 1).getLocation());
+        return ast::NodeId();
+      }
+
+      ast::NodePayload payload;
+      writeNode(payload, ast::kOptionalTypeExprInnerWord, inner);
+      payload.words[ast::kOptionalTypeExprDoubleWord] = 1;
       return builder.makeNode(ast::SyntaxKind::OptionalTypeExpr, rangeFor(start, end), payload);
     }
 
@@ -1073,13 +1872,82 @@ struct Parser::Impl {
 
       if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
         const int32_t precedence = binaryPrecedence(kind);
-        if (precedence > 0 && precedence < bestPrecedence) {
+        if (precedence > 0 &&
+            (index == start || !canEndExpressionBeforeBinary(kindAt(index - 1)))) {
+          continue;
+        }
+        if (precedence > 0 &&
+            (precedence < bestPrecedence ||
+             (precedence == bestPrecedence && kind == ast::SyntaxKind::AsteriskAsterisk))) {
           bestPrecedence = precedence;
           best = index;
         }
       }
     }
     return best;
+  }
+
+  size_t findTopLevelAssignmentOperator(size_t start, size_t end) const {
+    int32_t parenDepth = 0;
+    int32_t bracketDepth = 0;
+    int32_t braceDepth = 0;
+    for (size_t index = start; index < end; ++index) {
+      const ast::SyntaxKind kind = kindAt(index);
+      if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && isAssignmentOperator(kind)) {
+        return index;
+      }
+
+      if (kind == ast::SyntaxKind::LeftParen) {
+        ++parenDepth;
+      } else if (kind == ast::SyntaxKind::RightParen) {
+        if (parenDepth > 0) { --parenDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBracket) {
+        ++bracketDepth;
+      } else if (kind == ast::SyntaxKind::RightBracket) {
+        if (bracketDepth > 0) { --bracketDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBrace) {
+        ++braceDepth;
+      } else if (kind == ast::SyntaxKind::RightBrace) {
+        if (braceDepth > 0) { --braceDepth; }
+      }
+    }
+    return end;
+  }
+
+  size_t findTopLevelConditionalColon(size_t question, size_t end) const {
+    int32_t parenDepth = 0;
+    int32_t bracketDepth = 0;
+    int32_t braceDepth = 0;
+    int32_t nestedConditionalDepth = 0;
+    for (size_t index = question + 1; index < end; ++index) {
+      const ast::SyntaxKind kind = kindAt(index);
+      if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
+        if (kind == ast::SyntaxKind::Question) {
+          ++nestedConditionalDepth;
+          continue;
+        }
+        if (kind == ast::SyntaxKind::Colon) {
+          if (nestedConditionalDepth == 0) { return index; }
+          --nestedConditionalDepth;
+          continue;
+        }
+      }
+
+      if (kind == ast::SyntaxKind::LeftParen) {
+        ++parenDepth;
+      } else if (kind == ast::SyntaxKind::RightParen) {
+        if (parenDepth > 0) { --parenDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBracket) {
+        ++bracketDepth;
+      } else if (kind == ast::SyntaxKind::RightBracket) {
+        if (bracketDepth > 0) { --bracketDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBrace) {
+        ++braceDepth;
+      } else if (kind == ast::SyntaxKind::RightBrace) {
+        if (braceDepth > 0) { --braceDepth; }
+      }
+    }
+    return end;
   }
 
   ast::NodeId parseExpressionList(ast::TreeBuilder& builder, size_t start, size_t end,
@@ -1089,7 +1957,13 @@ struct Parser::Impl {
     while (cursor < end) {
       const size_t comma = findTopLevelCommaOrEnd(cursor, end);
       if (cursor < comma) {
-        addNodeIfPresent(expressions, parseExpressionRange(builder, cursor, comma));
+        const size_t rest = findTopLevelToken(cursor, comma, ast::SyntaxKind::DotDotDot);
+        if (rest < comma) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(rest).getLocation());
+        } else {
+          addNodeIfPresent(expressions, parseExpressionRange(builder, cursor, comma));
+        }
       }
       cursor = comma < end ? comma + 1 : end;
     }
@@ -1105,11 +1979,460 @@ struct Parser::Impl {
     return builder.makeNode(containerKind, rangeFor(start, end), payload);
   }
 
+  ast::NodeId parseCommaExpression(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    zc::Vector<ast::NodeId> expressions;
+    size_t cursor = start;
+    while (cursor < end) {
+      const size_t comma = findTopLevelCommaOrEnd(cursor, end);
+      if (cursor >= comma) { return ast::NodeId(); }
+      const ast::NodeId expr = parseExpressionRange(builder, cursor, comma);
+      if (!expr) { return ast::NodeId(); }
+      expressions.add(expr);
+      cursor = comma < end ? comma + 1 : end;
+    }
+    ast::NodePayload payload;
+    writeNodeList(payload, ast::kCommaExprElemsFirstWord, ast::kCommaExprElemsSizeWord,
+                  builder.makeList(expressions.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::CommaExpr, rangeFor(start, end), payload);
+  }
+
+  ast::NodeList parseExpressionArguments(ast::TreeBuilder& builder, size_t start,
+                                         size_t end) const {
+    zc::Vector<ast::NodeId> args;
+    size_t cursor = start;
+    while (cursor < end) {
+      const size_t comma = findTopLevelCommaOrEnd(cursor, end);
+      if (cursor < comma) { addNodeIfPresent(args, parseExpressionRange(builder, cursor, comma)); }
+      cursor = comma < end ? comma + 1 : end;
+    }
+    return builder.makeList(args.asPtr());
+  }
+
+  ast::NodeList parseTypeArguments(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    zc::Vector<ast::NodeId> args;
+    size_t cursor = start;
+    while (cursor < end) {
+      const size_t comma = findTopLevelTypeCommaOrEnd(cursor, end);
+      if (cursor < comma) { addNodeIfPresent(args, parseTypeRange(builder, cursor, comma)); }
+      cursor = comma < end ? comma + 1 : end;
+    }
+    return builder.makeList(args.asPtr());
+  }
+
+  size_t findTrailingCallOpen(size_t start, size_t end) const {
+    if (end <= start || kindAt(end - 1) != ast::SyntaxKind::RightParen) { return end; }
+    for (size_t index = end - 1; index > start;) {
+      --index;
+      if (kindAt(index) == ast::SyntaxKind::LeftParen &&
+          rangeIsWrapped(index, end, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen)) {
+        return index;
+      }
+    }
+    return end;
+  }
+
+  size_t findTrailingIndexOpen(size_t start, size_t end) const {
+    if (end <= start || kindAt(end - 1) != ast::SyntaxKind::RightBracket) { return end; }
+    for (size_t index = end - 1; index > start;) {
+      --index;
+      if (kindAt(index) == ast::SyntaxKind::LeftBracket &&
+          rangeIsWrapped(index, end, ast::SyntaxKind::LeftBracket, ast::SyntaxKind::RightBracket)) {
+        return index;
+      }
+    }
+    return end;
+  }
+
+  size_t findTrailingTypeArgumentOpen(size_t start, size_t end) const {
+    if (end <= start || kindAt(end - 1) != ast::SyntaxKind::GreaterThan) { return end; }
+
+    int32_t depth = 0;
+    for (size_t index = end; index > start;) {
+      --index;
+      const ast::SyntaxKind kind = kindAt(index);
+      if (kind == ast::SyntaxKind::GreaterThan) {
+        ++depth;
+      } else if (kind == ast::SyntaxKind::LessThan) {
+        --depth;
+        if (depth == 0) { return index; }
+      }
+    }
+    return end;
+  }
+
+  size_t findTrailingMemberOperator(size_t start, size_t end) const {
+    int32_t parenDepth = 0;
+    int32_t bracketDepth = 0;
+    int32_t braceDepth = 0;
+    int32_t angleDepth = 0;
+
+    for (size_t index = end; index > start;) {
+      --index;
+      const ast::SyntaxKind kind = kindAt(index);
+      if (kind == ast::SyntaxKind::RightParen) {
+        ++parenDepth;
+      } else if (kind == ast::SyntaxKind::LeftParen) {
+        if (parenDepth > 0) { --parenDepth; }
+      } else if (kind == ast::SyntaxKind::RightBracket) {
+        ++bracketDepth;
+      } else if (kind == ast::SyntaxKind::LeftBracket) {
+        if (bracketDepth > 0) { --bracketDepth; }
+      } else if (kind == ast::SyntaxKind::RightBrace) {
+        ++braceDepth;
+      } else if (kind == ast::SyntaxKind::LeftBrace) {
+        if (braceDepth > 0) { --braceDepth; }
+      } else if (kind == ast::SyntaxKind::GreaterThan) {
+        ++angleDepth;
+      } else if (kind == ast::SyntaxKind::LessThan) {
+        if (angleDepth > 0) { --angleDepth; }
+      }
+
+      if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && angleDepth == 0 &&
+          (kind == ast::SyntaxKind::Period || kind == ast::SyntaxKind::QuestionDot) &&
+          index + 1 < end && isPropertyNameLike(kindAt(index + 1))) {
+        return index;
+      }
+    }
+    return end;
+  }
+
+  bool canUseRangeAsCallCallee(size_t start, size_t end) const {
+    if (start >= end) { return false; }
+    if (findTopLevelToken(start, end, ast::SyntaxKind::Comma) < end) { return false; }
+    if (findTopLevelAssignmentOperator(start, end) < end) { return false; }
+    if (findTopLevelToken(start, end, ast::SyntaxKind::Question) < end) { return false; }
+    if (findTopLevelToken(start, end, ast::SyntaxKind::QuestionQuestion) < end) { return false; }
+    if (findTopLevelToken(start, end, ast::SyntaxKind::ErrorDefault) < end) { return false; }
+    return findTopLevelBinaryOperator(start, end) == end;
+  }
+
+  ast::NodeId parseCallExpression(ast::TreeBuilder& builder, size_t start, size_t openParen,
+                                  size_t end) const {
+    const size_t calleeEnd =
+        openParen > start && kindAt(openParen - 1) == ast::SyntaxKind::QuestionDot ? openParen - 1
+                                                                                   : openParen;
+    const size_t typeArgsOpen = findTrailingTypeArgumentOpen(start, calleeEnd);
+    const size_t parsedCalleeEnd = typeArgsOpen < calleeEnd ? typeArgsOpen : calleeEnd;
+    const ast::NodeId callee = parseExpressionRange(builder, start, parsedCalleeEnd);
+    if (!callee) { return ast::NodeId(); }
+
+    ast::NodePayload payload;
+    writeNode(payload, ast::kCallExpressionCalleeWord, callee);
+    if (typeArgsOpen < calleeEnd && typeArgsOpen + 1 < calleeEnd - 1) {
+      writeNodeList(payload, ast::kCallExpressionTypeArgsFirstWord,
+                    ast::kCallExpressionTypeArgsSizeWord,
+                    parseTypeArguments(builder, typeArgsOpen + 1, calleeEnd - 1));
+    }
+    writeNodeList(payload, ast::kCallExpressionArgsFirstWord, ast::kCallExpressionArgsSizeWord,
+                  parseExpressionArguments(builder, openParen + 1, end - 1));
+    return builder.makeNode(ast::SyntaxKind::CallExpression, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseNewExpression(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    const size_t openParen = findTrailingCallOpen(start + 1, end);
+    const size_t calleeEnd = openParen < end ? openParen : end;
+    const size_t typeArgsOpen = findTrailingTypeArgumentOpen(start + 1, calleeEnd);
+    const size_t parsedCalleeEnd = typeArgsOpen < calleeEnd ? typeArgsOpen : calleeEnd;
+    const ast::NodeId callee = parseExpressionRange(builder, start + 1, parsedCalleeEnd);
+    if (!callee) { return ast::NodeId(); }
+
+    ast::NodePayload payload;
+    writeNode(payload, ast::kNewExpressionCalleeWord, callee);
+    if (typeArgsOpen < calleeEnd && typeArgsOpen + 1 < calleeEnd - 1) {
+      writeNodeList(payload, ast::kNewExpressionTypeArgsFirstWord,
+                    ast::kNewExpressionTypeArgsSizeWord,
+                    parseTypeArguments(builder, typeArgsOpen + 1, calleeEnd - 1));
+    }
+    if (openParen < end) {
+      writeNodeList(payload, ast::kNewExpressionArgsFirstWord, ast::kNewExpressionArgsSizeWord,
+                    parseExpressionArguments(builder, openParen + 1, end - 1));
+    } else {
+      zc::Vector<ast::NodeId> args;
+      writeNodeList(payload, ast::kNewExpressionArgsFirstWord, ast::kNewExpressionArgsSizeWord,
+                    builder.makeList(args.asPtr()));
+    }
+    return builder.makeNode(ast::SyntaxKind::NewExpression, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseCastExpression(ast::TreeBuilder& builder, size_t start, size_t asIndex,
+                                  size_t end) const {
+    size_t typeStart = asIndex + 1;
+    uint8_t mode = castModeCode(ast::SyntaxKind::AsKeyword);
+    if (typeStart < end && (kindAt(typeStart) == ast::SyntaxKind::Question ||
+                            kindAt(typeStart) == ast::SyntaxKind::Exclamation)) {
+      mode = castModeCode(kindAt(typeStart));
+      ++typeStart;
+    }
+
+    const ast::NodeId expr = parseExpressionRange(builder, start, asIndex);
+    const ast::NodeId ty = parseTypeRange(builder, typeStart, end);
+    if (!expr || !ty) { return ast::NodeId(); }
+
+    ast::NodePayload payload;
+    payload.words[ast::kCastExpressionModeWord] = mode;
+    writeNode(payload, ast::kCastExpressionExprWord, expr);
+    writeNode(payload, ast::kCastExpressionTyWord, ty);
+    return builder.makeNode(ast::SyntaxKind::CastExpression, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseImportCallExpression(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    const size_t openParen = findTrailingCallOpen(start, end);
+    ast::NodePayload payload;
+    if (openParen < end) {
+      writeNodeList(payload, ast::kImportCallExpressionArgsFirstWord,
+                    ast::kImportCallExpressionArgsSizeWord,
+                    parseExpressionArguments(builder, openParen + 1, end - 1));
+    }
+    return builder.makeNode(ast::SyntaxKind::ImportCallExpression, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseCaptureItem(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (start >= end) { return ast::NodeId(); }
+
+    size_t nameIndex = start;
+    ast::CaptureMode mode = ast::CaptureMode::ByValue;
+    if (kindAt(nameIndex) == ast::SyntaxKind::Ampersand) {
+      mode = ast::CaptureMode::ByRef;
+      ++nameIndex;
+    }
+
+    if (nameIndex >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end),
+                                                                    "identifier"_zc);
+      return ast::NodeId();
+    }
+
+    if (kindAt(nameIndex) == ast::SyntaxKind::ThisKeyword && mode == ast::CaptureMode::ByValue) {
+      mode = ast::CaptureMode::This;
+    } else if (kindAt(nameIndex) != ast::SyntaxKind::Identifier) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(nameIndex),
+                                                                    "identifier"_zc);
+      return ast::NodeId();
+    }
+
+    ast::NodePayload payload;
+    payload.words[ast::kCaptureItemModeWord] = static_cast<uint32_t>(mode);
+    writeIdent(payload, ast::kCaptureItemNameWord, internIdent(builder, nameIndex));
+    return builder.makeNode(ast::SyntaxKind::CaptureItem, rangeFor(start, end), payload);
+  }
+
+  ast::NodeList parseCaptureList(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    zc::Vector<ast::NodeId> captures;
+    size_t cursor = start;
+    while (cursor < end) {
+      while (cursor < end && kindAt(cursor) == ast::SyntaxKind::Comma) { ++cursor; }
+      if (cursor >= end) { break; }
+
+      const size_t itemEnd = findTopLevelCommaOrEnd(cursor, end);
+      addNodeIfPresent(captures, parseCaptureItem(builder, cursor, itemEnd));
+      cursor = itemEnd < end ? itemEnd + 1 : itemEnd;
+    }
+    return builder.makeList(captures.asPtr());
+  }
+
+  ast::NodeId parseFunctionExpression(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    size_t openParen = end;
+    for (size_t index = start + 1; index < end; ++index) {
+      if (kindAt(index) == ast::SyntaxKind::LeftParen) {
+        openParen = index;
+        break;
+      }
+    }
+    const size_t closeParen = openParen < end ? findMatchingRightParen(openParen, end) : end;
+    const size_t bodyOpen = findTopLevelToken(closeParen + 1, end, ast::SyntaxKind::LeftBrace);
+    if (openParen >= end || closeParen >= end || bodyOpen >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), "{"_zc);
+      return ast::NodeId();
+    }
+
+    const size_t signatureEnd = bodyOpen < end ? bodyOpen : end;
+    const size_t arrow = findTopLevelToken(closeParen + 1, signatureEnd, ast::SyntaxKind::Arrow);
+    const size_t raises = arrow < signatureEnd ? findTopLevelToken(arrow + 1, signatureEnd,
+                                                                   ast::SyntaxKind::RaisesKeyword)
+                                               : end;
+
+    ast::NodePayload payload;
+    writeNode(payload, ast::kFunctionExpressionParamsIdWord,
+              parseFunctionParameterList(builder, openParen, closeParen));
+
+    size_t useIndex = end;
+    for (size_t index = closeParen + 1; index < (bodyOpen < end ? bodyOpen : end); ++index) {
+      zc::StringPtr text = tokenAt(index).getValue();
+      if (text.size() == 0) { text = tokenLabel(tokenAt(index)); }
+      if (kindAt(index) == ast::SyntaxKind::Identifier && text == "use"_zc) {
+        useIndex = index;
+        break;
+      }
+    }
+    if (useIndex < end) {
+      const size_t captureOpen = findTopLevelToken(useIndex + 1, bodyOpen < end ? bodyOpen : end,
+                                                   ast::SyntaxKind::LeftBracket);
+      if (captureOpen < end) {
+        const size_t captureClose =
+            findMatchingRightBracket(captureOpen, bodyOpen < end ? bodyOpen : end);
+        const size_t captureEnd = captureClose < end ? captureClose : bodyOpen;
+        writeNodeList(payload, ast::kFunctionExpressionCapturesFirstWord,
+                      ast::kFunctionExpressionCapturesSizeWord,
+                      parseCaptureList(builder, captureOpen + 1, captureEnd));
+      }
+    }
+
+    if (arrow < signatureEnd) {
+      const size_t retEnd = raises < signatureEnd ? raises : signatureEnd;
+      const ast::NodeId retTy = parseTypeRange(builder, arrow + 1, retEnd);
+      if (!retTy) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(arrow + 1));
+        return ast::NodeId();
+      }
+      writeNode(payload, ast::kFunctionExpressionRetTyWord, retTy);
+    }
+    if (raises < signatureEnd) {
+      const ast::NodeId raisesTy = parseTypeRange(builder, raises + 1, signatureEnd);
+      if (!raisesTy) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(raises + 1));
+        return ast::NodeId();
+      }
+      writeNode(payload, ast::kFunctionExpressionRaisesTyWord, raisesTy);
+    }
+
+    writeNode(payload, ast::kFunctionExpressionBodyWord, parseBlock(builder, bodyOpen, end));
+    return builder.makeNode(ast::SyntaxKind::FunctionExpression, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseLambdaExpression(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (kindAt(start) != ast::SyntaxKind::LeftParen) { return ast::NodeId(); }
+
+    const size_t fatArrow = findTopLevelToken(start, end, ast::SyntaxKind::EqualsGreaterThan);
+    if (fatArrow >= end) { return ast::NodeId(); }
+
+    const size_t closeParen = findMatchingRightParen(start, end);
+    if (closeParen >= fatArrow) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), ")"_zc);
+      return ast::NodeId();
+    }
+
+    ast::NodePayload payload;
+    writeNode(payload, ast::kLambdaExpressionParamsIdWord,
+              parseFunctionParameterList(builder, start, closeParen));
+
+    const size_t arrow = findTopLevelToken(closeParen + 1, fatArrow, ast::SyntaxKind::Arrow);
+    if (arrow < fatArrow) {
+      const size_t raises = findTopLevelToken(arrow + 1, fatArrow, ast::SyntaxKind::RaisesKeyword);
+      const size_t retEnd = raises < fatArrow ? raises : fatArrow;
+      const ast::NodeId retTy = parseTypeRange(builder, arrow + 1, retEnd);
+      if (!retTy) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(arrow + 1));
+        return ast::NodeId();
+      }
+      writeNode(payload, ast::kLambdaExpressionRetTyWord, retTy);
+
+      if (raises < fatArrow) {
+        const ast::NodeId raisesTy = parseTypeRange(builder, raises + 1, fatArrow);
+        if (!raisesTy) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(raises + 1));
+          return ast::NodeId();
+        }
+        writeNode(payload, ast::kLambdaExpressionRaisesTyWord, raisesTy);
+      }
+    }
+
+    const size_t bodyStart = fatArrow + 1;
+    if (bodyStart >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(bodyStart),
+                                                                    "lambda body"_zc);
+      return ast::NodeId();
+    }
+
+    if (rangeIsWrapped(bodyStart, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
+      writeNode(payload, ast::kLambdaExpressionBodyWord, parseBlock(builder, bodyStart, end));
+    } else {
+      const ast::NodeId exprBody = parseExpressionRange(builder, bodyStart, end);
+      if (!exprBody) { return ast::NodeId(); }
+      writeNode(payload, ast::kLambdaExpressionExprBodyWord, exprBody);
+    }
+
+    return builder.makeNode(ast::SyntaxKind::LambdaExpression, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseObjectLiteralExpression(ast::TreeBuilder& builder, size_t start,
+                                           size_t end) const {
+    zc::Vector<ast::NodeId> properties;
+    size_t cursor = start + 1;
+    while (cursor + 1 < end) {
+      const size_t comma = findTopLevelCommaOrEnd(cursor, end - 1);
+      if (cursor < comma) {
+        ast::NodePayload propertyPayload;
+        if (kindAt(cursor) == ast::SyntaxKind::DotDotDot) {
+          writeNode(propertyPayload, ast::kObjectSpreadExprWord,
+                    parseExpressionRange(builder, cursor + 1, comma));
+          properties.add(builder.makeNode(ast::SyntaxKind::ObjectSpread, rangeFor(cursor, comma),
+                                          propertyPayload));
+        } else {
+          const size_t colon = findTopLevelToken(cursor, comma, ast::SyntaxKind::Colon);
+          writeIdent(propertyPayload, ast::kObjectPropertyNameWord, internIdent(builder, cursor));
+          if (colon < comma) {
+            writeNode(propertyPayload, ast::kObjectPropertyValueWord,
+                      parseExpressionRange(builder, colon + 1, comma));
+          } else {
+            propertyPayload.words[ast::kObjectPropertyShortFormWord] = 1;
+          }
+          properties.add(builder.makeNode(ast::SyntaxKind::ObjectProperty, rangeFor(cursor, comma),
+                                          propertyPayload));
+        }
+      }
+      cursor = comma < end - 1 ? comma + 1 : end - 1;
+    }
+
+    ast::NodePayload payload;
+    writeNodeList(payload, ast::kObjectLiteralExprPropertiesFirstWord,
+                  ast::kObjectLiteralExprPropertiesSizeWord, builder.makeList(properties.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::ObjectLiteralExpr, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseTemplateLiteralExpression(ast::TreeBuilder& builder, size_t start,
+                                             size_t end) const {
+    zc::Vector<ast::NodeId> exprs;
+    size_t cursor = start + 1;
+    while (cursor < end) {
+      const ast::SyntaxKind kind = kindAt(cursor);
+      if (kind == ast::SyntaxKind::TemplateMiddle || kind == ast::SyntaxKind::TemplateTail) {
+        ++cursor;
+        continue;
+      }
+      const size_t segmentEnd = findTopLevelToken(cursor, end, ast::SyntaxKind::TemplateMiddle);
+      const size_t tail = findTopLevelToken(cursor, end, ast::SyntaxKind::TemplateTail);
+      const size_t exprEnd = segmentEnd < tail ? segmentEnd : tail;
+      if (cursor < exprEnd) {
+        addNodeIfPresent(exprs, parseExpressionRange(builder, cursor, exprEnd));
+      }
+      cursor = exprEnd < end ? exprEnd + 1 : end;
+    }
+
+    ast::NodePayload payload;
+    writeNodeList(payload, ast::kTemplateLiteralExprExprsFirstWord,
+                  ast::kTemplateLiteralExprExprsSizeWord, builder.makeList(exprs.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::TemplateLiteralExpr, rangeFor(start, end), payload);
+  }
+
   ast::NodeId parseExpressionRange(ast::TreeBuilder& builder, size_t start, size_t end) const {
     while (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { --end; }
     if (start >= end) { return ast::NodeId(); }
 
+    const ast::NodeId lambda = parseLambdaExpression(builder, start, end);
+    if (lambda) { return lambda; }
+
+    if (kindAt(start) == ast::SyntaxKind::FunKeyword) {
+      return parseFunctionExpression(builder, start, end);
+    }
+
     if (rangeIsWrapped(start, end, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen)) {
+      if (start + 1 == end - 1) {
+        zc::Vector<ast::NodeId> elems;
+        ast::NodePayload payload;
+        writeNodeList(payload, ast::kTupleLiteralElemsFirstWord, ast::kTupleLiteralElemsSizeWord,
+                      builder.makeList(elems.asPtr()));
+        return builder.makeNode(ast::SyntaxKind::TupleLiteral, rangeFor(start, end), payload);
+      }
       if (findTopLevelToken(start + 1, end - 1, ast::SyntaxKind::Comma) < end - 1) {
         return parseExpressionList(builder, start + 1, end - 1, ast::SyntaxKind::TupleLiteral);
       }
@@ -1120,69 +2443,184 @@ struct Parser::Impl {
       return parseExpressionList(builder, start + 1, end - 1, ast::SyntaxKind::ArrayLiteral);
     }
 
-    if (kindAt(end - 1) == ast::SyntaxKind::RightParen) {
-      for (size_t index = end - 1; index > start;) {
-        --index;
-        if (kindAt(index) == ast::SyntaxKind::LeftParen &&
-            rangeIsWrapped(index, end, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen)) {
-          if (index > start) {
-            zc::Vector<ast::NodeId> args;
-            size_t cursor = index + 1;
-            while (cursor + 1 < end) {
-              const size_t comma = findTopLevelCommaOrEnd(cursor, end - 1);
-              if (cursor < comma) {
-                addNodeIfPresent(args, parseExpressionRange(builder, cursor, comma));
-              }
-              cursor = comma < end - 1 ? comma + 1 : end - 1;
-            }
+    if (rangeIsWrapped(start, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
+      return parseObjectLiteralExpression(builder, start, end);
+    }
 
-            ast::NodePayload payload;
-            writeNode(payload, ast::kCallExpressionCalleeWord,
-                      parseExpressionRange(builder, start, index));
-            writeNodeList(payload, ast::kCallExpressionArgsFirstWord,
-                          ast::kCallExpressionArgsSizeWord, builder.makeList(args.asPtr()));
-            return builder.makeNode(ast::SyntaxKind::CallExpression, rangeFor(start, end), payload);
-          }
-          break;
-        }
+    if (kindAt(start) == ast::SyntaxKind::TemplateHead &&
+        kindAt(end - 1) == ast::SyntaxKind::TemplateTail) {
+      return parseTemplateLiteralExpression(builder, start, end);
+    }
+
+    const size_t assignmentOperator = findTopLevelAssignmentOperator(start, end);
+    if (assignmentOperator < end && assignmentOperator > start && assignmentOperator + 1 < end) {
+      const ast::NodeId lhs = parseExpressionRange(builder, start, assignmentOperator);
+      const ast::NodeId rhs = parseExpressionRange(builder, assignmentOperator + 1, end);
+      if (!lhs || !rhs) { return ast::NodeId(); }
+      ast::NodePayload payload;
+      payload.words[ast::kAssignmentExprOpWord] = assignmentOpCode(kindAt(assignmentOperator));
+      writeNode(payload, ast::kAssignmentExprLhsWord, lhs);
+      writeNode(payload, ast::kAssignmentExprRhsWord, rhs);
+      return builder.makeNode(ast::SyntaxKind::AssignmentExpr, rangeFor(start, end), payload);
+    }
+
+    const size_t conditionalQuestion = findTopLevelToken(start, end, ast::SyntaxKind::Question);
+    if (conditionalQuestion < end) {
+      const size_t conditionalColon = findTopLevelConditionalColon(conditionalQuestion, end);
+      if (conditionalColon < end && conditionalQuestion > start &&
+          conditionalQuestion + 1 < conditionalColon && conditionalColon + 1 < end) {
+        const ast::NodeId cond = parseExpressionRange(builder, start, conditionalQuestion);
+        const ast::NodeId thenExpr =
+            parseExpressionRange(builder, conditionalQuestion + 1, conditionalColon);
+        const ast::NodeId elseExpr = parseExpressionRange(builder, conditionalColon + 1, end);
+        if (!cond || !thenExpr || !elseExpr) { return ast::NodeId(); }
+        ast::NodePayload payload;
+        writeNode(payload, ast::kConditionalExprCondWord, cond);
+        writeNode(payload, ast::kConditionalExprThenExprWord, thenExpr);
+        writeNode(payload, ast::kConditionalExprElseExprWord, elseExpr);
+        return builder.makeNode(ast::SyntaxKind::ConditionalExpr, rangeFor(start, end), payload);
       }
     }
 
-    const size_t nullCoalesce = findTopLevelToken(start, end, ast::SyntaxKind::QuestionQuestion);
-    if (nullCoalesce < end) {
-      ast::NodePayload payload;
-      writeNode(payload, ast::kNullCoalesceExprPrimaryWord,
-                parseExpressionRange(builder, start, nullCoalesce));
-      writeNode(payload, ast::kNullCoalesceExprFallbackWord,
-                parseExpressionRange(builder, nullCoalesce + 1, end));
-      return builder.makeNode(ast::SyntaxKind::NullCoalesceExpr, rangeFor(start, end), payload);
+    const size_t completeCallOpen = findTrailingCallOpen(start, end);
+    if (kindAt(start) == ast::SyntaxKind::NewKeyword && completeCallOpen < end) {
+      return parseNewExpression(builder, start, end);
+    }
+
+    if (completeCallOpen < end && kindAt(start) != ast::SyntaxKind::TypeOfKeyword) {
+      const size_t typeArgsOpen = findTrailingTypeArgumentOpen(start, completeCallOpen);
+      if (typeArgsOpen < completeCallOpen || canUseRangeAsCallCallee(start, completeCallOpen)) {
+        return parseCallExpression(builder, start, completeCallOpen, end);
+      }
+    }
+
+    if (findTopLevelToken(start, end, ast::SyntaxKind::Comma) < end) {
+      return parseCommaExpression(builder, start, end);
     }
 
     const size_t errorDefault = findTopLevelToken(start, end, ast::SyntaxKind::ErrorDefault);
     if (errorDefault < end) {
+      const ast::NodeId primary = parseExpressionRange(builder, start, errorDefault);
+      const ast::NodeId fallback = parseExpressionRange(builder, errorDefault + 1, end);
+      if (!primary || !fallback) { return ast::NodeId(); }
       ast::NodePayload payload;
-      writeNode(payload, ast::kErrorDefaultExprPrimaryWord,
-                parseExpressionRange(builder, start, errorDefault));
-      writeNode(payload, ast::kErrorDefaultExprFallbackWord,
-                parseExpressionRange(builder, errorDefault + 1, end));
+      writeNode(payload, ast::kErrorDefaultExprPrimaryWord, primary);
+      writeNode(payload, ast::kErrorDefaultExprFallbackWord, fallback);
       return builder.makeNode(ast::SyntaxKind::ErrorDefaultExpr, rangeFor(start, end), payload);
+    }
+
+    const size_t nullCoalesce = findTopLevelToken(start, end, ast::SyntaxKind::QuestionQuestion);
+    if (nullCoalesce < end) {
+      const ast::NodeId primary = parseExpressionRange(builder, start, nullCoalesce);
+      const ast::NodeId fallback = parseExpressionRange(builder, nullCoalesce + 1, end);
+      if (!primary || !fallback) { return ast::NodeId(); }
+      ast::NodePayload payload;
+      writeNode(payload, ast::kNullCoalesceExprPrimaryWord, primary);
+      writeNode(payload, ast::kNullCoalesceExprFallbackWord, fallback);
+      return builder.makeNode(ast::SyntaxKind::NullCoalesceExpr, rangeFor(start, end), payload);
+    }
+
+    const size_t castOperator = findTopLevelToken(start, end, ast::SyntaxKind::AsKeyword);
+    if (castOperator < end && castOperator > start && castOperator + 1 < end) {
+      return parseCastExpression(builder, start, castOperator, end);
     }
 
     const size_t binaryOperator = findTopLevelBinaryOperator(start, end);
     if (binaryOperator < end && binaryOperator > start && binaryOperator + 1 < end) {
+      const ast::NodeId lhs = parseExpressionRange(builder, start, binaryOperator);
+      if (!lhs) { return ast::NodeId(); }
+      if (kindAt(binaryOperator) == ast::SyntaxKind::IsKeyword) {
+        const ast::NodeId ty = parseTypeRange(builder, binaryOperator + 1, end);
+        if (!ty) { return ast::NodeId(); }
+        ast::NodePayload payload;
+        writeNode(payload, ast::kIsExpressionExprWord, lhs);
+        writeNode(payload, ast::kIsExpressionTyWord, ty);
+        return builder.makeNode(ast::SyntaxKind::IsExpression, rangeFor(start, end), payload);
+      }
+      const ast::NodeId rhs = parseExpressionRange(builder, binaryOperator + 1, end);
+      if (!rhs) { return ast::NodeId(); }
       ast::NodePayload payload;
       payload.words[ast::kBinaryExprOpWord] = binaryOpCode(kindAt(binaryOperator));
-      writeNode(payload, ast::kBinaryExprLhsWord,
-                parseExpressionRange(builder, start, binaryOperator));
-      writeNode(payload, ast::kBinaryExprRhsWord,
-                parseExpressionRange(builder, binaryOperator + 1, end));
+      writeNode(payload, ast::kBinaryExprLhsWord, lhs);
+      writeNode(payload, ast::kBinaryExprRhsWord, rhs);
       return builder.makeNode(ast::SyntaxKind::BinaryExpr, rangeFor(start, end), payload);
+    }
+
+    if (kindAt(start) == ast::SyntaxKind::TypeOfKeyword && start + 1 < end) {
+      const ast::NodeId expr = parseExpressionRange(builder, start + 1, end);
+      if (!expr) { return ast::NodeId(); }
+      ast::NodePayload payload;
+      writeNode(payload, ast::kTypeOfExpressionExprWord, expr);
+      return builder.makeNode(ast::SyntaxKind::TypeOfExpression, rangeFor(start, end), payload);
+    }
+
+    if (isPrefixUnaryOperator(kindAt(start)) && start + 1 < end) {
+      const ast::NodeId operand = parseExpressionRange(builder, start + 1, end);
+      if (!operand) { return ast::NodeId(); }
+      ast::NodePayload payload;
+      payload.words[ast::kUnaryExpressionOpWord] = unaryOpCode(kindAt(start));
+      writeNode(payload, ast::kUnaryExpressionOperandWord, operand);
+      return builder.makeNode(ast::SyntaxKind::UnaryExpression, rangeFor(start, end), payload);
+    }
+
+    if (isPostfixOperator(kindAt(end - 1)) && start + 1 < end) {
+      const ast::NodeId operand = parseExpressionRange(builder, start, end - 1);
+      if (!operand) { return ast::NodeId(); }
+      ast::NodePayload payload;
+      payload.words[ast::kPostfixExpressionOpWord] = postfixOpCode(kindAt(end - 1));
+      writeNode(payload, ast::kPostfixExpressionOperandWord, operand);
+      return builder.makeNode(ast::SyntaxKind::PostfixExpression, rangeFor(start, end), payload);
+    }
+
+    const size_t indexOpen = findTrailingIndexOpen(start, end);
+    if (indexOpen < end && indexOpen > start) {
+      const size_t objectEnd =
+          kindAt(indexOpen - 1) == ast::SyntaxKind::QuestionDot ? indexOpen - 1 : indexOpen;
+      const ast::NodeId object = parseExpressionRange(builder, start, objectEnd);
+      const ast::NodeId index = parseExpressionRange(builder, indexOpen + 1, end - 1);
+      if (!object || !index) { return ast::NodeId(); }
+      ast::NodePayload payload;
+      writeNode(payload, ast::kIndexExpressionObjectWord, object);
+      writeNode(payload, ast::kIndexExpressionIndexWord, index);
+      return builder.makeNode(ast::SyntaxKind::IndexExpression, rangeFor(start, end), payload);
+    }
+
+    const size_t memberOperator = findTrailingMemberOperator(start, end);
+    if (memberOperator < end) {
+      const ast::NodeId object = parseExpressionRange(builder, start, memberOperator);
+      if (!object) { return ast::NodeId(); }
+      ast::NodePayload payload;
+      writeNode(payload, ast::kMemberExpressionObjectWord, object);
+      writeIdent(payload, ast::kMemberExpressionPropertyWord,
+                 internIdent(builder, memberOperator + 1));
+      return builder.makeNode(ast::SyntaxKind::MemberExpression, rangeFor(start, end), payload);
+    }
+
+    if (kindAt(start) == ast::SyntaxKind::NewKeyword) {
+      return parseNewExpression(builder, start, end);
+    }
+
+    if (kindAt(start) == ast::SyntaxKind::ImportKeyword) {
+      return parseImportCallExpression(builder, start, end);
+    }
+
+    if (kindAt(start) == ast::SyntaxKind::TemplateHead) {
+      return parseTemplateLiteralExpression(builder, start, end);
+    }
+
+    const size_t callOpen = findTrailingCallOpen(start, end);
+    if (callOpen < end) {
+      const size_t typeArgsOpen = findTrailingTypeArgumentOpen(start, callOpen);
+      if (typeArgsOpen < callOpen || canUseRangeAsCallCallee(start, callOpen)) {
+        return parseCallExpression(builder, start, callOpen, end);
+      }
     }
 
     if (end == start + 1) {
       ast::NodePayload payload;
       switch (kindAt(start)) {
         case ast::SyntaxKind::Identifier:
+          if (tokenAt(start).getValue() == "_"_zc) { return ast::NodeId(); }
           writeIdent(payload, ast::kIdentExprNameWord, internIdent(builder, start));
           return builder.makeNode(ast::SyntaxKind::IdentExpr, rangeFor(start, end), payload);
         case ast::SyntaxKind::ThisKeyword:
@@ -1194,11 +2632,17 @@ struct Parser::Impl {
           return builder.makeNode(ast::SyntaxKind::BoolLiteral, rangeFor(start, end), payload);
         case ast::SyntaxKind::NullKeyword:
           return builder.makeNode(ast::SyntaxKind::NullLiteral, rangeFor(start, end), payload);
+        case ast::SyntaxKind::UnitKeyword:
+          return builder.makeNode(ast::SyntaxKind::UnitLiteral, rangeFor(start, end), payload);
         case ast::SyntaxKind::IntegerLiteral:
           payload.words[ast::kIntLiteralBaseWord] = integerBase(tokenAt(start).getValue());
           writeBigInt(payload, ast::kIntLiteralValueWord,
                       builder.internBigInt(tokenAt(start).getValue()));
           return builder.makeNode(ast::SyntaxKind::IntLiteral, rangeFor(start, end), payload);
+        case ast::SyntaxKind::BigIntLiteral:
+          writeBigInt(payload, ast::kBigIntLiteralValueWord,
+                      builder.internBigInt(tokenAt(start).getValue()));
+          return builder.makeNode(ast::SyntaxKind::BigIntLiteral, rangeFor(start, end), payload);
         case ast::SyntaxKind::FloatLiteral:
           payload.words[ast::kFloatLiteralExprWidthWord] = 64;
           writeFloat(payload, ast::kFloatLiteralExprValueWord,
@@ -1213,7 +2657,7 @@ struct Parser::Impl {
       }
     }
 
-    if (isIdentifierLike(kindAt(start))) {
+    if (end == start + 1 && isExpressionIdentifierLike(kindAt(start))) {
       ast::NodePayload payload;
       writeIdent(payload, ast::kIdentExprNameWord, internIdent(builder, start));
       return builder.makeNode(ast::SyntaxKind::IdentExpr, rangeFor(start, start + 1), payload);
@@ -1225,6 +2669,52 @@ struct Parser::Impl {
     if (start >= end) { return ast::NodeId(); }
 
     ast::NodePayload payload;
+    const size_t at = findTopLevelToken(start, end, ast::SyntaxKind::At);
+    if (at < end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(at).getLocation());
+      return ast::NodeId();
+    }
+
+    if (rangeIsWrapped(start, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
+      zc::Vector<ast::NodeId> properties;
+      ast::NodeId rest;
+      size_t cursor = start + 1;
+      while (cursor + 1 < end) {
+        const size_t comma = findTopLevelCommaOrEnd(cursor, end - 1);
+        if (cursor < comma) {
+          if (kindAt(cursor) == ast::SyntaxKind::DotDotDot) {
+            ast::NodePayload restPayload;
+            if (cursor + 1 < comma && kindAt(cursor + 1) == ast::SyntaxKind::Identifier) {
+              writeIdent(restPayload, ast::kRestPatternBindingWord,
+                         internIdent(builder, cursor + 1));
+            }
+            rest = builder.makeNode(ast::SyntaxKind::RestPattern, rangeFor(cursor, comma),
+                                    restPayload);
+          } else {
+            const size_t colon = findTopLevelToken(cursor, comma, ast::SyntaxKind::Colon);
+            ast::NodePayload propertyPayload;
+            writeIdent(propertyPayload, ast::kPatternPropertyNameWord,
+                       internIdent(builder, cursor));
+            if (colon < comma) {
+              writeNode(propertyPayload, ast::kPatternPropertyPatWord,
+                        parsePatternRange(builder, colon + 1, comma));
+            } else {
+              propertyPayload.words[ast::kPatternPropertyShortFormWord] = 1;
+            }
+            properties.add(builder.makeNode(ast::SyntaxKind::PatternProperty,
+                                            rangeFor(cursor, comma), propertyPayload));
+          }
+        }
+        cursor = comma < end - 1 ? comma + 1 : end - 1;
+      }
+
+      writeNodeList(payload, ast::kStructPatternFieldsFirstWord, ast::kStructPatternFieldsSizeWord,
+                    builder.makeList(properties.asPtr()));
+      writeNode(payload, ast::kStructPatternRestWord, rest);
+      return builder.makeNode(ast::SyntaxKind::StructPattern, rangeFor(start, end), payload);
+    }
+
     if (end == start + 1 && kindAt(start) == ast::SyntaxKind::Identifier) {
       writeIdent(payload, ast::kIdentifierPatternNameWord, internIdent(builder, start));
       return builder.makeNode(ast::SyntaxKind::IdentifierPattern, rangeFor(start, end), payload);
@@ -1257,18 +2747,54 @@ struct Parser::Impl {
       while (cursor < closeParen) {
         const size_t comma = findTopLevelCommaOrEnd(cursor, closeParen);
         if (cursor < comma) {
-          const size_t colon = findTopLevelToken(cursor, comma, ast::SyntaxKind::Colon);
-          const ast::IdentId name = kindAt(cursor) == ast::SyntaxKind::Identifier
-                                        ? internIdent(builder, cursor)
+          size_t parameterStart = cursor;
+          if (isOuterAttributeStart(parameterStart, comma)) {
+            diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+                tokenAt(parameterStart).getLocation());
+            parameterStart = skipOuterAttributePrefix(parameterStart, comma);
+          }
+
+          if (parameterStart >= comma) {
+            cursor = comma < closeParen ? comma + 1 : closeParen;
+            continue;
+          }
+
+          const size_t colon = findTopLevelToken(parameterStart, comma, ast::SyntaxKind::Colon);
+          if (colon >= comma) {
+            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+                diagnosticLoc(parameterStart + 1), ":"_zc);
+            cursor = comma < closeParen ? comma + 1 : closeParen;
+            continue;
+          }
+
+          const ast::IdentId name = kindAt(parameterStart) == ast::SyntaxKind::Identifier
+                                        ? internIdent(builder, parameterStart)
                                         : ast::IdentId();
+          if (!name) {
+            diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
+                tokenAt(parameterStart).getLocation());
+            cursor = comma < closeParen ? comma + 1 : closeParen;
+            continue;
+          }
+
           ast::NodePayload parameterPayload;
           writeIdent(parameterPayload, ast::kFunctionParameterDeclNameWord, name);
-          if (colon < comma) {
-            writeNode(parameterPayload, ast::kFunctionParameterDeclTyWord,
-                      parseTypeRange(builder, colon + 1, comma));
+          const size_t defaultEquals = findTopLevelToken(colon + 1, comma, ast::SyntaxKind::Equals);
+          const size_t typeEnd = defaultEquals < comma ? defaultEquals : comma;
+          const ast::NodeId ty = parseTypeRange(builder, colon + 1, typeEnd);
+          if (!ty) {
+            diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(colon + 1));
+            cursor = comma < closeParen ? comma + 1 : closeParen;
+            continue;
+          }
+
+          writeNode(parameterPayload, ast::kFunctionParameterDeclTyWord, ty);
+          if (defaultEquals < comma) {
+            writeNode(parameterPayload, ast::kFunctionParameterDeclDefaultWord,
+                      parseRequiredExpression(builder, defaultEquals + 1, comma));
           }
           parameters.add(builder.makeNode(ast::SyntaxKind::FunctionParameterDecl,
-                                          rangeFor(cursor, comma), parameterPayload));
+                                          rangeFor(parameterStart, comma), parameterPayload));
         }
         cursor = comma < closeParen ? comma + 1 : closeParen;
       }
@@ -1284,7 +2810,7 @@ struct Parser::Impl {
                             rangeFor(openParen, closeParen + 1), payload);
   }
 
-  ast::NodeId parseBlock(ast::TreeBuilder& builder, size_t openBrace, size_t limit) {
+  ast::NodeId parseBlock(ast::TreeBuilder& builder, size_t openBrace, size_t limit) const {
     zc::Vector<ast::NodeId> items;
     if (openBrace >= limit || kindAt(openBrace) != ast::SyntaxKind::LeftBrace) {
       ast::NodePayload payload;
@@ -1298,8 +2824,18 @@ struct Parser::Impl {
     size_t cursor = openBrace + 1;
     while (cursor < bodyEnd) {
       const size_t statementEnd = findStatementEndBefore(cursor, bodyEnd);
+      const ast::SyntaxKind itemKind = classifyStatement(cursor, statementEnd);
+      if (outerAttributePrefixContainsZomCfg(cursor, statementEnd) &&
+          itemKind != ast::SyntaxKind::BlockStmt) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+            tokenAt(effectiveStatementStart(cursor, statementEnd)).getLocation(),
+            "cfg-gated block"_zc);
+      }
+      const ast::NodeId attrs = parseOuterAttributeList(builder, cursor, statementEnd);
       const ast::NodeId item = parseSourceElement(builder, cursor, statementEnd);
-      if (item) { items.add(makeStatementListItem(builder, item, rangeFor(cursor, statementEnd))); }
+      if (item) {
+        items.add(makeStatementListItem(builder, item, rangeFor(cursor, statementEnd), attrs));
+      }
       cursor = statementEnd > cursor ? statementEnd : cursor + 1;
     }
 
@@ -1309,7 +2845,7 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::BlockStmt, rangeFor(openBrace, bodyEnd + 1), payload);
   }
 
-  ast::NodeId parseStatementBody(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseStatementBody(ast::TreeBuilder& builder, size_t start, size_t end) const {
     if (start >= end) { return parseBlock(builder, end, end); }
     if (kindAt(start) == ast::SyntaxKind::LeftBrace) { return parseBlock(builder, start, end); }
     return parseSourceElement(builder, start, end);
@@ -1334,7 +2870,7 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::ImportDeclaration, rangeFor(start, end), payload);
   }
 
-  ast::NodeId parseExportDeclaration(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseExportDeclaration(ast::TreeBuilder& builder, size_t start, size_t end) const {
     zc::Vector<ast::NodeId> specifiers;
     ast::NodePayload payload;
     if (start + 1 < end && kindAt(start + 1) != ast::SyntaxKind::LeftBrace &&
@@ -1358,6 +2894,11 @@ struct Parser::Impl {
     const size_t colon =
         findTopLevelToken(patternStart, equals < end ? equals : end, ast::SyntaxKind::Colon);
     const size_t patternEnd = colon < end ? colon : (equals < end ? equals : end);
+    if (equals >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::VariableDeclarationExpected>(
+          diagnosticLoc(patternEnd));
+      return ast::NodeId();
+    }
 
     ast::NodePayload payload;
     writeNode(payload, ast::kLetStmtPatternWord,
@@ -1367,15 +2908,20 @@ struct Parser::Impl {
                 parseTypeRange(builder, colon + 1, equals < end ? equals : end));
     }
     if (equals < end) {
-      writeNode(payload, ast::kLetStmtInitWord, parseExpressionRange(builder, equals + 1, end));
+      writeNode(payload, ast::kLetStmtInitWord, parseRequiredExpression(builder, equals + 1, end));
     }
     return builder.makeNode(ast::SyntaxKind::LetStmt, rangeFor(start, end), payload);
   }
 
   ast::NodeId parseReturnStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     ast::NodePayload payload;
-    if (start + 1 < end) {
-      writeNode(payload, ast::kReturnStmtValueWord, parseExpressionRange(builder, start + 1, end));
+    size_t valueEnd = end;
+    while (start + 1 < valueEnd && kindAt(valueEnd - 1) == ast::SyntaxKind::Semicolon) {
+      --valueEnd;
+    }
+    if (start + 1 < valueEnd) {
+      writeNode(payload, ast::kReturnStmtValueWord,
+                parseRequiredExpression(builder, start + 1, valueEnd));
     }
     return builder.makeNode(ast::SyntaxKind::ReturnStmt, rangeFor(start, end), payload);
   }
@@ -1413,7 +2959,7 @@ struct Parser::Impl {
     bodyStart = brace < end ? brace : end;
   }
 
-  ast::NodeId parseIfStatement(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseIfStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     size_t condStart = start + 1;
     size_t condEnd = end;
     size_t thenStart = end;
@@ -1431,7 +2977,7 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::IfStmt, rangeFor(start, end), payload);
   }
 
-  ast::NodeId parseWhileStatement(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseWhileStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     size_t condStart = start + 1;
     size_t condEnd = end;
     size_t bodyStart = end;
@@ -1443,7 +2989,7 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::WhileStmt, rangeFor(start, end), payload);
   }
 
-  ast::NodeId parseDoWhileStatement(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseDoWhileStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     const size_t whileIndex = findTopLevelToken(start + 1, end, ast::SyntaxKind::WhileKeyword);
     ast::NodePayload payload;
     writeNode(payload, ast::kDoWhileStatementBodyWord,
@@ -1476,7 +3022,7 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::ContinueStatement, rangeFor(start, end), payload);
   }
 
-  ast::NodeId parseLabeledStatement(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseLabeledStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     ast::NodePayload payload;
     writeIdent(payload, ast::kLabeledStatementLabelWord, internIdent(builder, start));
     if (start + 2 < end) {
@@ -1486,7 +3032,7 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::LabeledStatement, rangeFor(start, end), payload);
   }
 
-  ast::NodeId parseForStatement(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseForStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     const size_t openParen =
         start + 1 < end && kindAt(start + 1) == ast::SyntaxKind::LeftParen ? start + 1 : end;
     const size_t closeParen = findMatchingRightParen(openParen, end);
@@ -1515,7 +3061,7 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::ForStmt, rangeFor(start, end), payload);
   }
 
-  ast::NodeId parseForInStatement(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseForInStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     const size_t openParen =
         start + 1 < end && kindAt(start + 1) == ast::SyntaxKind::LeftParen ? start + 1 : end;
     const size_t closeParen = findMatchingRightParen(openParen, end);
@@ -1546,7 +3092,7 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::ForInStatement, rangeFor(start, end), payload);
   }
 
-  ast::NodeId parseMatchStatement(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseMatchStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     const size_t bodyOpen = findTopLevelToken(start + 1, end, ast::SyntaxKind::LeftBrace);
     const size_t scrutineeStart =
         start + 1 < end && kindAt(start + 1) == ast::SyntaxKind::LeftParen ? start + 2 : start + 1;
@@ -1565,7 +3111,7 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::MatchStmt, rangeFor(start, end), payload);
   }
 
-  ast::NodeId parseFunctionDeclaration(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseFunctionDeclaration(ast::TreeBuilder& builder, size_t start, size_t end) const {
     size_t nameIndex = end;
     for (size_t index = start + 1; index < end; ++index) {
       if (kindAt(index) == ast::SyntaxKind::Identifier) {
@@ -1698,7 +3244,19 @@ struct Parser::Impl {
       writeIdent(payload, ast::kAliasDeclNameWord, internIdent(builder, nameIndex));
     }
     if (equals < end) {
-      writeNode(payload, ast::kAliasDeclTargetWord, parseTypeRange(builder, equals + 1, end));
+      const size_t errorCountBeforeTarget = diagnosticEngine.errorCount();
+      const ast::NodeId target = parseTypeRange(builder, equals + 1, end);
+      if (!target) {
+        if (diagnosticEngine.errorCount() == errorCountBeforeTarget) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(equals + 1));
+        }
+        return ast::NodeId();
+      }
+      writeNode(payload, ast::kAliasDeclTargetWord, target);
+    } else {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(nameIndex + 1),
+                                                                    "="_zc);
+      return ast::NodeId();
     }
     return builder.makeNode(ast::SyntaxKind::AliasDecl, rangeFor(start, end), payload);
   }
@@ -1706,64 +3264,68 @@ struct Parser::Impl {
   ast::NodeId parseExpressionStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     ast::NodePayload payload;
     writeNode(payload, ast::kExpressionStatementExpressionWord,
-              parseExpressionRange(builder, start, end));
+              parseRequiredExpression(builder, start, end));
     return builder.makeNode(ast::SyntaxKind::ExpressionStatement, rangeFor(start, end), payload);
   }
 
-  ast::NodeId parseSourceElement(ast::TreeBuilder& builder, size_t start, size_t end) {
+  ast::NodeId parseSourceElement(ast::TreeBuilder& builder, size_t start, size_t end) const {
     if (start >= end) { return ast::NodeId(); }
 
-    const ast::SyntaxKind kind = classifyStatement(start, end);
+    const size_t elementStart = skipOuterAttributePrefix(start, end);
+    if (elementStart >= end) { return ast::NodeId(); }
+
+    const ast::SyntaxKind kind = classifyStatement(elementStart, end);
     switch (kind) {
       case ast::SyntaxKind::ModuleDeclaration:
-        return parseModuleDeclaration(builder, start, end);
+        return parseModuleDeclaration(builder, elementStart, end);
       case ast::SyntaxKind::ImportDeclaration:
-        return parseImportDeclaration(builder, start, end);
+        return parseImportDeclaration(builder, elementStart, end);
       case ast::SyntaxKind::ExportDeclaration:
-        return parseExportDeclaration(builder, start, end);
+        return parseExportDeclaration(builder, elementStart, end);
       case ast::SyntaxKind::LetStmt:
-        return parseLetStatement(builder, start, end);
+        return parseLetStatement(builder, elementStart, end);
       case ast::SyntaxKind::FunctionDecl:
-        return parseFunctionDeclaration(builder, start, end);
+        return parseFunctionDeclaration(builder, elementStart, end);
       case ast::SyntaxKind::ClassDecl:
       case ast::SyntaxKind::StructDecl:
       case ast::SyntaxKind::InterfaceDecl:
       case ast::SyntaxKind::EnumDeclaration:
-        return parseNamedTypeDeclaration(builder, start, end, classifyStatement(start, end));
+        return parseNamedTypeDeclaration(builder, elementStart, end,
+                                         classifyStatement(elementStart, end));
       case ast::SyntaxKind::ErrorDecl:
-        return parseErrorDeclaration(builder, start, end);
+        return parseErrorDeclaration(builder, elementStart, end);
       case ast::SyntaxKind::AliasDecl:
-        return parseAliasDeclaration(builder, start, end);
+        return parseAliasDeclaration(builder, elementStart, end);
       case ast::SyntaxKind::ReturnStmt:
-        return parseReturnStatement(builder, start, end);
+        return parseReturnStatement(builder, elementStart, end);
       case ast::SyntaxKind::BlockStmt:
-        return parseBlock(builder, start, end);
+        return parseBlock(builder, elementStart, end);
       case ast::SyntaxKind::IfStmt:
-        return parseIfStatement(builder, start, end);
+        return parseIfStatement(builder, elementStart, end);
       case ast::SyntaxKind::MatchStmt:
-        return parseMatchStatement(builder, start, end);
+        return parseMatchStatement(builder, elementStart, end);
       case ast::SyntaxKind::WhileStmt:
-        return parseWhileStatement(builder, start, end);
+        return parseWhileStatement(builder, elementStart, end);
       case ast::SyntaxKind::ForStmt:
-        return parseForStatement(builder, start, end);
+        return parseForStatement(builder, elementStart, end);
       case ast::SyntaxKind::ForInStatement:
-        return parseForInStatement(builder, start, end);
+        return parseForInStatement(builder, elementStart, end);
       case ast::SyntaxKind::BreakStmt:
-        return parseBreakStatement(builder, start, end);
+        return parseBreakStatement(builder, elementStart, end);
       case ast::SyntaxKind::ContinueStatement:
-        return parseContinueStatement(builder, start, end);
+        return parseContinueStatement(builder, elementStart, end);
       case ast::SyntaxKind::LabeledStatement:
-        return parseLabeledStatement(builder, start, end);
+        return parseLabeledStatement(builder, elementStart, end);
       case ast::SyntaxKind::DoWhileStatement:
-        return parseDoWhileStatement(builder, start, end);
+        return parseDoWhileStatement(builder, elementStart, end);
       case ast::SyntaxKind::EmptyStatement:
-        return builder.makeNode(ast::SyntaxKind::EmptyStatement, rangeFor(start, end));
+        return builder.makeNode(ast::SyntaxKind::EmptyStatement, rangeFor(elementStart, end));
       case ast::SyntaxKind::DebuggerStatement:
-        return builder.makeNode(ast::SyntaxKind::DebuggerStatement, rangeFor(start, end));
+        return builder.makeNode(ast::SyntaxKind::DebuggerStatement, rangeFor(elementStart, end));
       case ast::SyntaxKind::ExpressionStatement:
-        return parseExpressionStatement(builder, start, end);
+        return parseExpressionStatement(builder, elementStart, end);
       default:
-        return parseExpressionStatement(builder, start, end);
+        return parseExpressionStatement(builder, elementStart, end);
     }
   }
 
@@ -1779,20 +3341,35 @@ struct Parser::Impl {
     return false;
   }
 
-  size_t findStatementEndBefore(size_t start, size_t count) {
+  bool canContinueLetInitializerBefore(size_t index) const {
+    if (index == 0) { return false; }
+
+    const ast::SyntaxKind kind = kindAt(index);
+    const ast::SyntaxKind previous = kindAt(index - 1);
+    if ((kind == ast::SyntaxKind::FunKeyword || kind == ast::SyntaxKind::ImportKeyword) &&
+        previous == ast::SyntaxKind::Equals) {
+      return true;
+    }
+    if (lexer::isKeyword(kind) &&
+        (previous == ast::SyntaxKind::Period || previous == ast::SyntaxKind::QuestionDot)) {
+      return true;
+    }
+    return false;
+  }
+
+  size_t findStatementEndBefore(size_t start, size_t count) const {
     int32_t parenDepth = 0;
     int32_t bracketDepth = 0;
     int32_t braceDepth = 0;
     bool sawBrace = false;
-    const ast::SyntaxKind first = kindAt(start);
+    const ast::SyntaxKind first = kindAt(effectiveStatementStart(start, count));
 
     for (size_t i = start; i < count; ++i) {
       const ast::SyntaxKind kind = kindAt(i);
 
       if (i > start && kind != ast::SyntaxKind::Semicolon && parenDepth == 0 && bracketDepth == 0 &&
           braceDepth == 0 && isTopLevelStart(kind) && first == ast::SyntaxKind::LetKeyword &&
-          !(kind == ast::SyntaxKind::FunKeyword && i > start &&
-            kindAt(i - 1) == ast::SyntaxKind::Equals)) {
+          !canContinueLetInitializerBefore(i)) {
         diagnosticEngine.diagnose<diagnostics::DiagID::MissingSemicolon>(tokenAt(i).getLocation(),
                                                                          tokenLabel(tokenAt(i)));
         return i;
@@ -1855,19 +3432,26 @@ struct Parser::Impl {
     size_t index = 0;
     const size_t count = tokenCountWithoutEof();
     while (index < count) {
-      const ast::SyntaxKind first = kindAt(index);
       const size_t end = findStatementEnd(index);
+      const size_t elementStart = effectiveStatementStart(index, end);
+      const ast::SyntaxKind first = kindAt(elementStart);
+      const ast::NodeId attrs = parseOuterAttributeList(builder, index, end);
       const ast::NodeId element = parseSourceElement(builder, index, end);
+      if (outerAttributePrefixContainsZomCfg(index, end) &&
+          !isTopLevelCfgAttributeTarget(classifyStatement(index, end))) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+            tokenAt(elementStart).getLocation(), "cfg-gated declaration or block"_zc);
+      }
 
-      if (first == ast::SyntaxKind::ModuleKeyword && firstSourceElement && !moduleNode) {
+      if (first == ast::SyntaxKind::ModuleKeyword && firstSourceElement && !moduleNode && !attrs) {
         moduleNode = element;
       } else {
         if (first == ast::SyntaxKind::ModuleKeyword) {
           diagnosticEngine.diagnose<diagnostics::DiagID::ModuleDeclarationMustBeFirst>(
-              tokenAt(index).getLocation());
+              tokenAt(elementStart).getLocation());
         }
         if (element) {
-          statements.add(makeStatementListItem(builder, element, rangeFor(index, end)));
+          statements.add(makeStatementListItem(builder, element, rangeFor(index, end), attrs));
         }
       }
 
@@ -1894,9 +3478,16 @@ Parser::~Parser() noexcept(false) = default;
 
 zc::Maybe<ast::Tree> Parser::parse() {
   trace::FunctionTracer functionTracer(trace::TraceCategory::kParser, __FUNCTION__);
+  const size_t initialErrorCount = impl->diagnosticEngine.errorCount();
   impl->lexAll();
   impl->diagnoseTokenPatterns();
   ast::Tree tree = impl->buildTree();
+  if (impl->diagnosticEngine.errorCount() != initialErrorCount) { return zc::none; }
+  ZC_IF_SOME(schemaFailure, ast::verifySchemaFailure(tree)) {
+    impl->diagnosticEngine.diagnose<diagnostics::DiagID::ParserInvariantViolation>(
+        impl->token.getLocation(), zc::mv(schemaFailure));
+  }
+  if (impl->diagnosticEngine.errorCount() != initialErrorCount) { return zc::none; }
   trace::traceEvent(trace::TraceCategory::kParser, "Parse completed");
   return zc::mv(tree);
 }

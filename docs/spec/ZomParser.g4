@@ -3055,12 +3055,12 @@ atomType
     | LBRACK typeExpr (SEMICOLON expression)? RBRACK                                         # typeArrayLiteralAtom
     ;
 
-// §3 §4.8 Single field inside object type: optional mut, id ':' type
+// §3 §4.8 Single field inside object type: optional mut, identifier, optional marker, type.
 structFieldType
-    : MUT? identifier COLON typeExpr
+    : MUT? identifier ( COLON | QUESTION COLON | ERROR_DEFAULT ) typeExpr
     ;
 
-// 8 种固定长度整型 + 浮点 + bool / str / char / null / unit / never / any
+// Eight fixed-width integer types plus float, bool, str, char, null, unit, never, and any.
 // §3.1 §4.8 21 predefined scalar types: i8..u64, f32/f64, bool, str, char, null, unit, never, any
 predefinedType
     : I8 | I16 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64
