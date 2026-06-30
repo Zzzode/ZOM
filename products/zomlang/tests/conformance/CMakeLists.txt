@@ -18,6 +18,17 @@
 add_subdirectory(runners/grammar)
 add_subdirectory(runners/ast)
 
+add_test(
+  NAME parser-coverage
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-parser-coverage.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(parser-coverage PROPERTIES
+  LABELS "conformance;parser;coverage;specification"
+  TIMEOUT 10
+)
+
 add_custom_target(check-conformance
   COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -L "conformance"
   COMMENT "Running all conformance tests"

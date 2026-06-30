@@ -32,14 +32,25 @@ expectation file.
 |---|---|---|---|
 | Grammar | `conformance-grammar` | `corpus/**/*.zom` | `expectations/grammar/**/*.yml` |
 | AST | `conformance-ast` | `corpus/**/*.zom` | `expectations/ast/**/*.check` |
+| Parser coverage | `parser;coverage;specification` | `docs/spec/chapters/17-grammar-reference.md` | `products/zomlang/compiler/parser/parser-coverage.yml` |
 
 Future layers must reuse `corpus/` and add only their own expectation schema and
 runner.
 
+The parser coverage guard maps every grammar production in
+`17-grammar-reference.md` to the parser function that owns it. The guard checks
+that no grammar production is unmapped, no stale production remains in
+`parser-coverage.yml`, mapped parser functions exist, lexical productions are
+marked lexical, and optional AST/test references point to real repository
+artifacts.
+
 The AST runner registers a coverage guard that requires every
 `corpus/**/*.zom` source to have a same-relative-path
-`expectations/ast/**/*.check` oracle. Format-contract checks that intentionally
-reuse an existing corpus source must be allowlisted in
+`expectations/ast/**/*.check` oracle. For sources that also have a grammar
+oracle, the same guard enforces the grammar verdict: `expected: ACCEPT` must
+map to a normal AST `RUN:` line, and `expected: REJECT` must map to `RUN: !`.
+AST-only legacy checks and format-contract checks that intentionally do not
+have a same-relative-path grammar oracle must be allowlisted in
 `tools/check-ast-coverage.py`.
 
 ## Chapter Directories
