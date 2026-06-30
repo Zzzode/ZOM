@@ -22,6 +22,11 @@ namespace diagnostics {
 
 DiagnosticState::DiagnosticState() {}
 
+void DiagnosticState::setHadAnyError() {
+  hadAnyError = true;
+  ++errorCount;
+}
+
 void DiagnosticState::ignoreDiagnostic(DiagID diagId) { ignoredDiagnostics.upsert(diagId, true); }
 
 bool DiagnosticState::isDiagnosticIgnored(DiagID diagId) const {

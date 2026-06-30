@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 #include "zc/core/common.h"
 #include "zc/core/map.h"
 #include "zomlang/compiler/source/location.h"
@@ -48,7 +50,8 @@ public:
   bool isDiagnosticIgnored(DiagID diag_id) const;
 
   bool getHadAnyError() const { return hadAnyError; }
-  void setHadAnyError() { hadAnyError = true; }
+  void setHadAnyError();
+  size_t getErrorCount() const { return errorCount; }
 
   static source::CharSourceRange toCharSourceRange(const source::SourceManager& sm,
                                                    source::SourceRange range);
@@ -58,6 +61,7 @@ private:
   bool showDiagnosticsAfterFatalError = false;
   bool suppressWarnings = false;
   bool hadAnyError = false;
+  size_t errorCount = 0;
   zc::HashMap<DiagID, bool> ignoredDiagnostics;
 };
 

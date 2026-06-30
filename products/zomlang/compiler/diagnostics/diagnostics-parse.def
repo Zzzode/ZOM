@@ -60,8 +60,7 @@ DIAG(
     "intended as an escape sequence, use the syntax '\\x{0}'",
     1)
 DIAG(EscapeSequenceNotAllowed, kError, "Escape sequence '{0}' is not allowed", 1)
-DIAG(UnicodeEscapeSequenceCannotAppearHere, kError, "Unicode escape sequence cannot appear here",
-     0)
+DIAG(UnicodeEscapeSequenceCannotAppearHere, kError, "Unicode escape sequence cannot appear here", 0)
 DIAG(HexadecimalDigitExpected, kError, "Hexadecimal digit expected", 0)
 DIAG(BinaryOrOctalDigitExpected, kError, "Binary or octal digit expected", 0)
 DIAG(OctalDigitExpected, kError, "Octal digit expected", 0)
@@ -134,3 +133,10 @@ DIAG(DeclarationOrStatementExpectedAfterBlock, kError,
      0)
 DIAG(AnInstantiationExpressionCannotBeFollowedByAPropertyAccess, kError,
      "An instantiation expression cannot be followed by a property access", 0)
+DIAG(ParserInvariantViolation, kFatal, "Internal parser invariant violated: {0}", 1)
+DIAG(DuplicateDeclarationModifier, kError, "Duplicate declaration modifier '{0}'", 1)
+DIAG(IncompatibleDeclarationModifiers, kError,
+     "Declaration modifiers '{0}' and '{1}' cannot be used together", 2)
+DIAG(MultiCharacterSingleQuotedLiteral, kError,
+     "Multi-character single-quoted literals are not allowed", 0)
+DIAG(NumericLiteralCannotStartWithUnderscore, kError, "Numeric literals cannot start with '_'", 0)

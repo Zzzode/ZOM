@@ -56,6 +56,8 @@ void DiagnosticEngine::emit(const Diagnostic& diagnostic) {
 
 bool DiagnosticEngine::hasErrors() const { return impl->state.getHadAnyError(); }
 
+size_t DiagnosticEngine::errorCount() const { return impl->state.getErrorCount(); }
+
 source::SourceManager& DiagnosticEngine::getSourceManager() const { return impl->sourceManager; }
 
 DiagnosticState& DiagnosticEngine::getState() { return impl->state; }

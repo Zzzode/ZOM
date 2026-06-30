@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 #include "zc/core/common.h"
 #include "zc/core/io.h"
 #include "zc/core/memory.h"
@@ -52,6 +54,7 @@ public:
   void emit(const Diagnostic& diagnostic);
 
   ZC_NODISCARD bool hasErrors() const;
+  ZC_NODISCARD size_t errorCount() const;
   ZC_NODISCARD source::SourceManager& getSourceManager() const;
   ZC_NODISCARD const DiagnosticState& getState() const;
 
