@@ -72,6 +72,36 @@ constexpr bool hasFlag(EscapeSequenceScanningFlags flags, EscapeSequenceScanning
   return (static_cast<uint8_t>(flags) & static_cast<uint8_t>(flag)) != 0;
 }
 
+size_t countUtf8Scalars(zc::StringPtr text) {
+  size_t count = 0;
+  const zc::byte* cursor = text.asBytes().begin();
+  const zc::byte* end = text.asBytes().end();
+  while (cursor < end) {
+    auto decoded = charWithSize(cursor, end);
+    if (decoded.second == 0) { break; }
+    ++count;
+    cursor += decoded.second;
+  }
+  return count;
+}
+
+bool isNumericLikeUnderscoreIdentifier(zc::StringPtr text) {
+  if (text.size() < 2 || text[0] != '_') { return false; }
+
+  bool sawDigit = false;
+  for (size_t index = 1; index < text.size(); ++index) {
+    const char current = text[index];
+    if (current >= '0' && current <= '9') {
+      sawDigit = true;
+      continue;
+    }
+    if (current == '_') { continue; }
+    if (current == 'n' && index + 1 == text.size()) { continue; }
+    return false;
+  }
+  return sawDigit;
+}
+
 struct Lexer::Impl {
   /// Reference members
   const source::SourceManager& sourceMgr;
@@ -301,6 +331,10 @@ void Lexer::Impl::processCommentDirective(const zc::byte* start, const zc::byte*
 }
 
 void Lexer::Impl::getIdentifierToken(zc::StringPtr text) {
+  if (isNumericLikeUnderscoreIdentifier(text)) {
+    errorAt<diagnostics::DiagID::NumericLiteralCannotStartWithUnderscore>(
+        state.tokenStartPtr, static_cast<uint32_t>(state.curPtr - state.tokenStartPtr));
+  }
   ast::SyntaxKind kind = getKeywordKind(text.asBytes());
   formToken(kind, text);
 }
@@ -1223,7 +1257,13 @@ zc::StringPtr Lexer::Impl::lexString() {
     }
     state.curPtr++;
   }
-  return stringPool.intern(result.releaseAsArray());
+  zc::StringPtr text = stringPool.intern(result.releaseAsArray());
+  if (quoteChar == '\'' && !hasFlag(state.tokenFlags, TokenFlags::Unterminated) &&
+      countUtf8Scalars(text) > 1) {
+    errorAt<diagnostics::DiagID::MultiCharacterSingleQuotedLiteral>(
+        state.tokenStartPtr, static_cast<uint32_t>(state.curPtr - state.tokenStartPtr));
+  }
+  return text;
 }
 
 zc::StringPtr Lexer::Impl::lexEscapeSequence(EscapeSequenceScanningFlags flags) {

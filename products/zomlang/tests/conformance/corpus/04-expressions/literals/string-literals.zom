@@ -1,4 +1,4 @@
 let a = "hello";
-let b = 'world';
+let b = "world";
 let c = "line1\nline2";
-let d = 'tab\tend';
+let d = "tab\tend";

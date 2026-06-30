@@ -235,13 +235,13 @@ let isFalse: bool = false;
 
 ### String Literals
 
-String literals can use either double quotes or single quotes:
+String literals use double quotes. Single quotes are reserved for character
+literals and the empty single-quoted literal.
 
 ```zom
 "Hello, World!"     // Double-quoted string
-'Single quoted'     // Single-quoted string
 "Mixed 'quotes'"    // Mixing quote types
-'Escaped \"quotes\"' // Escaped quotes
+"Escaped \"quotes\"" // Escaped quotes
 ```
 
 #### Escape Sequences

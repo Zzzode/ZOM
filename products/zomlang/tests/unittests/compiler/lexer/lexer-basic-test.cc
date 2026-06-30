@@ -193,6 +193,17 @@ ZC_TEST("LexerBasicTest.UnicodeIdentifiersDefaultCase") {
   }
 }
 
+ZC_TEST("LexerBasicTest.NumericLikeUnderscoreIdentifierReportsError") {
+  auto& sourceManager = getSourceManager();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+
+  auto tokens = tokenize("_123"_zc, *diagnosticEngine);
+
+  ZC_EXPECT(tokens.size() == 2);
+  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
+  ZC_EXPECT(diagnosticEngine->hasErrors());
+}
+
 ZC_TEST("LexerBasicTest.InvalidCharacter") {
   // Null byte \0 should be invalid
   char nullByte[] = {'\0', 0};

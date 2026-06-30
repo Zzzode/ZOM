@@ -48,12 +48,12 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     ZC_EXPECT(tokens[0].getValue() == "hello"_zc);
   }
 
-  // Case 4: Simple single-quoted string
+  // Case 4: Single-quoted character literal tokenized through the string payload path
   {
-    auto tokens = tokenize("'world'"_zc);
+    auto tokens = tokenize("'w'"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
-    ZC_EXPECT(tokens[0].getValue() == "world"_zc);
+    ZC_EXPECT(tokens[0].getValue() == "w"_zc);
   }
 
   // Case 5: Escaped quotes
@@ -98,6 +98,17 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
     ZC_EXPECT(tokens[0].getValue() == "A"_zc);
   }
+}
+
+ZC_TEST("LexerLiteralTest.MultiCharacterSingleQuotedLiteralReportsError") {
+  auto& sourceManager = getSourceManager();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+
+  auto tokens = tokenize("'world'"_zc, *diagnosticEngine);
+
+  ZC_EXPECT(tokens.size() == 2);
+  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 ZC_TEST("LexerLiteralTest.OctalEscapeSequence") {

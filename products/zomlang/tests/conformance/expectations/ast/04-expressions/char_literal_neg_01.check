@@ -1,16 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/char_literal_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/char_literal_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @1:1..2:1 file_name="char_literal_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:14
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #3 @1:1..1:14
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="c"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             StrLiteral #2 @1:9..1:13 value="ab" is_raw=false prefix=None
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2082]: Multi-character single-quoted literals are not allowed
+// CHECK:   --> {{.*char_literal_neg_01.zom}}:1:9
+// CHECK:   |
+// CHECK: 1 | let c = 'ab';
+// CHECK:   |         ^~~~
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.
