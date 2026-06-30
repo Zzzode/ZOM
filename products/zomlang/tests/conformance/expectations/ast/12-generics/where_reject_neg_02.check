@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/12-generics/where_reject_neg_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #13 @1:1..2:1 file_name="where_reject_neg_02.zom"
+// CHECK: SourceFile #14 @1:1..2:1 file_name="where_reject_neg_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #12 @1:1..1:70
+// CHECK-NEXT:     StatementListItem #13 @1:1..1:70
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #11 @1:1..1:70 name="f"
+// CHECK-NEXT:         FunctionDecl #12 @1:1..1:70 name="f"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #7 @1:12..1:24 nparams=2
 // CHECK-NEXT:               params:
@@ -30,11 +30,12 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #10 @1:54..1:70
+// CHECK-NEXT:             BlockStmt #11 @1:54..1:70
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #9 @1:56..1:68
+// CHECK-NEXT:                 StatementListItem #10 @1:56..1:68
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #8 @1:56..1:68
-// CHECK-NEXT:                       value: null
+// CHECK-NEXT:                     ReturnStmt #9 @1:56..1:68
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         UnitLiteral #8 @1:63..1:67
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

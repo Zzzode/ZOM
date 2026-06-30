@@ -1,12 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/20-ffi/extern_unknown_abi_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/20-ffi/extern_unknown_abi_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..4:1 file_name="extern_unknown_abi_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..3:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #2 @1:1..3:2
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             IdentExpr #1 @1:1..1:7 name="extern"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*extern_unknown_abi_neg_01.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | extern "Rust" {
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

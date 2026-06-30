@@ -1,19 +1,22 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/as_op_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #6 @1:1..2:1 file_name="as_op_edge_01.zom"
+// CHECK: SourceFile #8 @1:1..2:1 file_name="as_op_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #5 @1:1..1:27
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:27
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #4 @1:1..1:27
+// CHECK-NEXT:         LetStmt #6 @1:1..1:27
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="b"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             CallExpression #3 @1:9..1:26
-// CHECK-NEXT:               callee: null
-// CHECK-NEXT:               args:
-// CHECK-NEXT:                 IdentExpr #2 @1:17..1:18 name="x"
+// CHECK-NEXT:             TypeOfExpression #5 @1:9..1:26
+// CHECK-NEXT:               expr:
+// CHECK-NEXT:                 CastExpression #4 @1:17..1:25 mode=As
+// CHECK-NEXT:                   expr:
+// CHECK-NEXT:                     IdentExpr #2 @1:17..1:18 name="x"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:22..1:25 kind=I32
 // CHECK-NEXT:       attrs: null

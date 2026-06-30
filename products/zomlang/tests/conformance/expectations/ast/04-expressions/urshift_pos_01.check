@@ -4,19 +4,19 @@
 // CHECK: SourceFile #19 @1:1..4:1 file_name="urshift_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @1:1..1:19
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:17
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #5 @1:1..1:19
+// CHECK-NEXT:         LetStmt #5 @1:1..1:17
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="a"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             BinaryExpr #4 @1:9..1:18 op=Gt
+// CHECK-NEXT:             BinaryExpr #4 @1:9..1:16 op=UShr
 // CHECK-NEXT:               lhs:
 // CHECK-NEXT:                 IdentExpr #2 @1:9..1:10 name="x"
 // CHECK-NEXT:               rhs:
-// CHECK-NEXT:                 IntLiteral #3 @1:17..1:18 base=10 value="2"
+// CHECK-NEXT:                 IntLiteral #3 @1:15..1:16 base=10 value="2"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #12 @2:1..2:16
 // CHECK-NEXT:       item:

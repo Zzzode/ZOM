@@ -1,12 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/09-interfaces/iface_impl_keyword_neg_10.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/iface_impl_keyword_neg_10.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..2:1 file_name="iface_impl_keyword_neg_10.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:19
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #2 @1:1..1:19
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             IdentExpr #1 @1:1..1:5 name="impl"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*iface_impl_keyword_neg_10.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | impl Debug for Foo
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

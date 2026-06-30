@@ -1,14 +1,34 @@
 // RUN: %zomc compile --dump-ast %corpus/16-attributes/stacked_attrs_edge_03.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..3:1 file_name="stacked_attrs_edge_03.zom"
+// CHECK: SourceFile #13 @1:1..3:1 file_name="stacked_attrs_edge_03.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..2:15
+// CHECK-NEXT:     StatementListItem #12 @1:1..2:15
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #2 @1:1..2:15
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             CallExpression #1 @1:1..2:14
-// CHECK-NEXT:               callee: null
+// CHECK-NEXT:         FunctionDecl #11 @2:1..2:15 name="stacked"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #9 @2:12..2:14 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #10 @3:1..3:1
+// CHECK-NEXT:               stmts: []
+// CHECK-NEXT:       attrs:
+// CHECK-NEXT:         AttributeList #8 @1:1..1:27
+// CHECK-NEXT:           attrs:
+// CHECK-NEXT:             Attribute #2 @1:3..1:7
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 AttributePath #1 @1:3..1:7 segments=["a", "b"] leading=None
 // CHECK-NEXT:               args: []
-// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:             Attribute #4 @1:10..1:14
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 AttributePath #3 @1:10..1:14 segments=["c", "d"] leading=None
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:             Attribute #7 @1:17..1:26
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 AttributePath #6 @1:17..1:21 segments=["e", "f"] leading=None
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 IdentExpr #5 @1:22..1:23 name="g"

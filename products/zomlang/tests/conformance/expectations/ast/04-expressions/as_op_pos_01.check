@@ -1,16 +1,20 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/as_op_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @1:1..2:1 file_name="as_op_pos_01.zom"
+// CHECK: SourceFile #7 @1:1..2:1 file_name="as_op_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:18
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:18
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #3 @1:1..1:18
+// CHECK-NEXT:         LetStmt #5 @1:1..1:18
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="x"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             IdentExpr #2 @1:9..1:10 name="v"
+// CHECK-NEXT:             CastExpression #4 @1:9..1:17 mode=As
+// CHECK-NEXT:               expr:
+// CHECK-NEXT:                 IdentExpr #2 @1:9..1:10 name="v"
+// CHECK-NEXT:               ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #3 @1:14..1:17 kind=I32
 // CHECK-NEXT:       attrs: null

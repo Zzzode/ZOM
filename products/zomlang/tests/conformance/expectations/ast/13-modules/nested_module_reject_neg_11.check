@@ -1,9 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/13-modules/nested_module_reject_neg_11.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/nested_module_reject_neg_11.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #3 @1:1..4:1 file_name="nested_module_reject_neg_11.zom"
-// CHECK-NEXT:   module:
-// CHECK-NEXT:     ModuleDeclaration #2 @1:1..3:2
-// CHECK-NEXT:       path:
-// CHECK-NEXT:         ModulePath #1 @1:8..3:2 segments=["a", "b"]
-// CHECK-NEXT:   statements: []
+// CHECK: Error [ZOM2050]: A module declaration can only appear at the top of a file
+// CHECK:   --> {{.*nested_module_reject_neg_11.zom}}:2:5
+// CHECK:   |
+// CHECK: 2 |     module b {}
+// CHECK:   |     ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

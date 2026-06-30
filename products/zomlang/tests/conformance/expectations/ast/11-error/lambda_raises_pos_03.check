@@ -1,15 +1,29 @@
 // RUN: %zomc compile --dump-ast %corpus/11-error/lambda_raises_pos_03.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..2:1 file_name="lambda_raises_pos_03.zom"
+// CHECK: SourceFile #10 @1:1..2:1 file_name="lambda_raises_pos_03.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:40
+// CHECK-NEXT:     StatementListItem #9 @1:1..1:40
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #2 @1:1..1:40
+// CHECK-NEXT:         LetStmt #8 @1:1..1:40
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="f"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             LambdaExpression #7 @1:9..1:39
+// CHECK-NEXT:               params_id:
+// CHECK-NEXT:                 FunctionParameterList #2 @1:9..1:11 nparams=0
+// CHECK-NEXT:                   params: []
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #3 @1:15..1:18 kind=I32
+// CHECK-NEXT:               raises_ty:
+// CHECK-NEXT:                 NamedTypeExpr #5 @1:26..1:33
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #4 @1:26..1:33 segments=["IOError"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:               body: null
+// CHECK-NEXT:               expr_body:
+// CHECK-NEXT:                 IntLiteral #6 @1:37..1:39 base=10 value="42"
 // CHECK-NEXT:       attrs: null

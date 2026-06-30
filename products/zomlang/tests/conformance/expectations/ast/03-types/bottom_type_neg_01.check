@@ -1,12 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/03-types/bottom_type_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/03-types/bottom_type_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #3 @1:1..2:1 file_name="bottom_type_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #2 @1:1..1:15
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #1 @1:1..1:15 name="Bot"
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           target: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2069]: Type expected
+// CHECK:   --> {{.*bottom_type_neg_01.zom}}:1:13
+// CHECK:   |
+// CHECK: 1 | alias Bot = !;
+// CHECK:   |             ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

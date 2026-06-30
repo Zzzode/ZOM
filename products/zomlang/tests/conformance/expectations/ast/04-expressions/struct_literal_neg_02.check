@@ -1,28 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/struct_literal_neg_02.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/struct_literal_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #10 @1:1..3:1 file_name="struct_literal_neg_02.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:18
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         EnumDeclaration #2 @1:1..1:18 name="E" extensibility=Sealed nvars=0 base_repr=I32
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           variants_id:
-// CHECK-NEXT:             EnumVariantList #1 @1:1..1:18 nvars=0
-// CHECK-NEXT:               variants: []
-// CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #9 @2:1..2:17
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #8 @2:1..2:17
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #4 @2:5..2:6 name="e"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             CallExpression #7 @2:9..2:16
-// CHECK-NEXT:               callee:
-// CHECK-NEXT:                 IdentExpr #6 @2:9..2:10 name="E"
-// CHECK-NEXT:               args:
-// CHECK-NEXT:                 IntLiteral #5 @2:14..2:15 base=10 value="1"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*struct_literal_neg_02.zom}}:2:9
+// CHECK:   |
+// CHECK: 2 | let e = E::A(1);
+// CHECK:   |         ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

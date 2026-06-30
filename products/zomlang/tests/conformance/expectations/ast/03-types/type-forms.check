@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/type-forms.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #54 @1:1..10:1 file_name="type-forms.zom"
+// CHECK: SourceFile #66 @1:1..10:1 file_name="type-forms.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #6 @1:1..1:19
@@ -93,33 +93,56 @@
 // CHECK-NEXT:           init:
 // CHECK-NEXT:             IdentExpr #39 @6:20..6:21 name="x"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #45 @7:1..7:31
+// CHECK-NEXT:     StatementListItem #48 @7:1..7:31
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #44 @7:1..7:31
+// CHECK-NEXT:         LetStmt #47 @7:1..7:31
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #42 @7:5..7:6 name="g"
 // CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             TupleTypeExpr #45 @7:8..7:24
+// CHECK-NEXT:               elems:
+// CHECK-NEXT:                 PredefinedTypeExpr #43 @7:9..7:12 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #44 @7:20..7:23 kind=Str
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             IdentExpr #43 @7:27..7:30 name="tup"
+// CHECK-NEXT:             IdentExpr #46 @7:27..7:30 name="tup"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #49 @8:1..8:39
+// CHECK-NEXT:     StatementListItem #59 @8:1..8:39
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #48 @8:1..8:39
+// CHECK-NEXT:         LetStmt #58 @8:1..8:39
 // CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #46 @8:5..8:6 name="h"
+// CHECK-NEXT:             IdentifierPattern #49 @8:5..8:6 name="h"
 // CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             FunctionTypeExpr #56 @8:8..8:33
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 NamedTypeExpr #55 @8:15..8:16
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #54 @8:15..8:16 segments=["T"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 NamedTypeExpr #51 @8:21..8:22
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #50 @8:21..8:22 segments=["T"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:               raises:
+// CHECK-NEXT:                 NamedTypeExpr #53 @8:30..8:33
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #52 @8:30..8:33 segments=["Err"]
+// CHECK-NEXT:                   args: []
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             IdentExpr #47 @8:36..8:38 name="fn"
+// CHECK-NEXT:             IdentExpr #57 @8:36..8:38 name="fn"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #53 @9:1..9:27
+// CHECK-NEXT:     StatementListItem #65 @9:1..9:27
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #52 @9:1..9:27
+// CHECK-NEXT:         LetStmt #64 @9:1..9:27
 // CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #50 @9:5..9:6 name="i"
+// CHECK-NEXT:             IdentifierPattern #60 @9:5..9:6 name="i"
 // CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             TypeQueryExpr #62 @9:8..9:22
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #61 @9:15..9:22 segments=["foo", "bar"]
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             IdentExpr #51 @9:25..9:26 name="v"
+// CHECK-NEXT:             IdentExpr #63 @9:25..9:26 name="v"
 // CHECK-NEXT:       attrs: null

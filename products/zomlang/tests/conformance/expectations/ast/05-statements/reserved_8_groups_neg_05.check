@@ -1,24 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/05-statements/reserved_8_groups_neg_05.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/05-statements/reserved_8_groups_neg_05.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #7 @1:1..4:1 file_name="reserved_8_groups_neg_05.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @1:1..3:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #5 @1:1..3:2 name="f"
-// CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
-// CHECK-NEXT:               params: []
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           ret_ty: null
-// CHECK-NEXT:           raises_ty: null
-// CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #4 @1:9..3:2
-// CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #3 @2:5..2:13
-// CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ExpressionStatement #2 @2:5..2:13
-// CHECK-NEXT:                       expression: null
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*reserved_8_groups_neg_05.zom}}:2:5
+// CHECK:   |
+// CHECK: 2 |     yield 1;
+// CHECK:   |     ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,51 +1,56 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/literals/bigint-normalization.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #16 @2:1..11:1 file_name="bigint-normalization.zom"
+// CHECK: SourceFile #21 @2:1..11:1 file_name="bigint-normalization.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @2:1..2:13
+// CHECK-NEXT:     StatementListItem #4 @2:1..2:13
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #2 @2:1..2:13
+// CHECK-NEXT:         LetStmt #3 @2:1..2:13
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #1 @2:5..2:6 name="a"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BigIntLiteral #2 @2:9..2:12 value="10n"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #6 @4:1..4:15
+// CHECK-NEXT:     StatementListItem #8 @4:1..4:15
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #5 @4:1..4:15
+// CHECK-NEXT:         LetStmt #7 @4:1..4:15
 // CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #4 @4:5..4:6 name="b"
+// CHECK-NEXT:             IdentifierPattern #5 @4:5..4:6 name="b"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BigIntLiteral #6 @4:9..4:14 value="2n"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #9 @6:1..6:15
+// CHECK-NEXT:     StatementListItem #12 @6:1..6:15
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #8 @6:1..6:15
+// CHECK-NEXT:         LetStmt #11 @6:1..6:15
 // CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #7 @6:5..6:6 name="c"
+// CHECK-NEXT:             IdentifierPattern #9 @6:5..6:6 name="c"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BigIntLiteral #10 @6:9..6:14 value="8n"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #12 @8:1..8:22
+// CHECK-NEXT:     StatementListItem #16 @8:1..8:22
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #11 @8:1..8:22
+// CHECK-NEXT:         LetStmt #15 @8:1..8:22
 // CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #10 @8:5..8:6 name="d"
+// CHECK-NEXT:             IdentifierPattern #13 @8:5..8:6 name="d"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BigIntLiteral #14 @8:9..8:21 value="240n"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #15 @10:1..10:16
+// CHECK-NEXT:     StatementListItem #20 @10:1..10:16
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #14 @10:1..10:16
+// CHECK-NEXT:         LetStmt #19 @10:1..10:16
 // CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #13 @10:5..10:6 name="e"
+// CHECK-NEXT:             IdentifierPattern #17 @10:5..10:6 name="e"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             BigIntLiteral #18 @10:9..10:15 value="493n"
 // CHECK-NEXT:       attrs: null

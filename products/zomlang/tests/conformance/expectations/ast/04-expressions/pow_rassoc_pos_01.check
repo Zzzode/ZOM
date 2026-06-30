@@ -14,11 +14,11 @@
 // CHECK-NEXT:           init:
 // CHECK-NEXT:             BinaryExpr #6 @1:9..1:20 op=Pow
 // CHECK-NEXT:               lhs:
-// CHECK-NEXT:                 BinaryExpr #4 @1:9..1:15 op=Pow
-// CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IntLiteral #2 @1:9..1:10 base=10 value="2"
-// CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IntLiteral #3 @1:14..1:15 base=10 value="3"
+// CHECK-NEXT:                 IntLiteral #2 @1:9..1:10 base=10 value="2"
 // CHECK-NEXT:               rhs:
-// CHECK-NEXT:                 IntLiteral #5 @1:19..1:20 base=10 value="4"
+// CHECK-NEXT:                 BinaryExpr #5 @1:14..1:20 op=Pow
+// CHECK-NEXT:                   lhs:
+// CHECK-NEXT:                     IntLiteral #3 @1:14..1:15 base=10 value="3"
+// CHECK-NEXT:                   rhs:
+// CHECK-NEXT:                     IntLiteral #4 @1:19..1:20 base=10 value="4"
 // CHECK-NEXT:       attrs: null

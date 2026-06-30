@@ -1,12 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/06-declarations/rejected_modifiers_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/rejected_modifiers_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..2:1 file_name="rejected_modifiers_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:18
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #2 @1:1..1:18
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             IdentExpr #1 @1:1..1:7 name="sealed"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*rejected_modifiers_neg_01.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | sealed class C {}
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

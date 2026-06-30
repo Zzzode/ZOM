@@ -1,25 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/09-interfaces/implements_comma_reject_neg_06.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/implements_comma_reject_neg_06.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #9 @1:1..3:1 file_name="implements_comma_reject_neg_06.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:19
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #2 @1:1..1:19 name="BadClass" extensibility=Sealed
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..1:19 nmembers=0
-// CHECK-NEXT:               members: []
-// CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #8 @2:1..2:38
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #7 @2:1..2:38
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             BinaryExpr #6 @2:1..2:38 op=BitOr
-// CHECK-NEXT:               lhs:
-// CHECK-NEXT:                 IdentExpr #4 @2:1..2:5 name="impl"
-// CHECK-NEXT:               rhs:
-// CHECK-NEXT:                 IdentExpr #5 @2:15..2:21 name="Writer"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*implements_comma_reject_neg_06.zom}}:2:1
+// CHECK:   |
+// CHECK: 2 | impl Reader | Writer for BadClass { }
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

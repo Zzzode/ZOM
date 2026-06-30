@@ -1,19 +1,21 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/new_expr_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #6 @1:1..2:1 file_name="new_expr_pos_01.zom"
+// CHECK: SourceFile #7 @1:1..2:1 file_name="new_expr_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #5 @1:1..1:22
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:22
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #4 @1:1..1:22
+// CHECK-NEXT:         LetStmt #5 @1:1..1:22
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="o"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             CallExpression #3 @1:9..1:21
-// CHECK-NEXT:               callee: null
+// CHECK-NEXT:             NewExpression #4 @1:9..1:21
+// CHECK-NEXT:               callee:
+// CHECK-NEXT:                 IdentExpr #2 @1:13..1:16 name="Box"
+// CHECK-NEXT:               type_args: []
 // CHECK-NEXT:               args:
-// CHECK-NEXT:                 IntLiteral #2 @1:17..1:20 base=10 value="123"
+// CHECK-NEXT:                 IntLiteral #3 @1:17..1:20 base=10 value="123"
 // CHECK-NEXT:       attrs: null

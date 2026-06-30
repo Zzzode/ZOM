@@ -1,12 +1,17 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/never_type_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #3 @1:1..2:1 file_name="never_type_edge_01.zom"
+// CHECK: SourceFile #5 @1:1..2:1 file_name="never_type_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #2 @1:1..1:27
+// CHECK-NEXT:     StatementListItem #4 @1:1..1:27
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #1 @1:1..1:27 name="DivFn"
+// CHECK-NEXT:         AliasDecl #3 @1:1..1:27 name="DivFn"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           target: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             FunctionTypeExpr #2 @1:15..1:26
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @1:21..1:26 kind=Never
+// CHECK-NEXT:               raises: null
 // CHECK-NEXT:       attrs: null

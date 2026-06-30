@@ -1,11 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/19-conditional/cfg_on_if_statement_neg_03.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/19-conditional/cfg_on_if_statement_neg_03.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #3 @1:1..3:1 file_name="cfg_on_if_statement_neg_03.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #2 @1:1..2:57
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #1 @1:1..2:57
-// CHECK-NEXT:           expression: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2025]: Expected 'cfg-gated declaration or block'
+// CHECK:   --> {{.*cfg_on_if_statement_neg_03.zom}}:2:1
+// CHECK:   |
+// CHECK: 2 | if true { const A: i32 = 1; } else { const A: i32 = 2; }
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,12 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/03-types/object_type_neg_02.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/03-types/object_type_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #3 @1:1..2:1 file_name="object_type_neg_02.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #2 @1:1..1:23
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #1 @1:1..1:23 name="Bad2"
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           target: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2025]: Expected ':'
+// CHECK:   --> {{.*object_type_neg_02.zom}}:1:17
+// CHECK:   |
+// CHECK: 1 | alias Bad2 = { x, y };
+// CHECK:   |                 ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

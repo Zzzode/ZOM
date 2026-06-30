@@ -1,29 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/11-error/single_q_error_prop_reject_neg_07.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/11-error/single_q_error_prop_reject_neg_07.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #10 @1:1..2:1 file_name="single_q_error_prop_reject_neg_07.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #9 @1:1..1:36
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #8 @1:1..1:36 name="f"
-// CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
-// CHECK-NEXT:               params: []
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           ret_ty: null
-// CHECK-NEXT:           raises_ty:
-// CHECK-NEXT:             NamedTypeExpr #3 @1:16..1:17
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #2 @1:16..1:17 segments=["X"]
-// CHECK-NEXT:               args: []
-// CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #7 @1:18..1:36
-// CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #6 @1:20..1:34
-// CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #5 @1:20..1:34
-// CHECK-NEXT:                       value:
-// CHECK-NEXT:                         IdentExpr #4 @1:27..1:30 name="foo"
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*single_q_error_prop_reject_neg_07.zom}}:1:27
+// CHECK:   |
+// CHECK: 1 | fun f() raises X { return foo()?; }
+// CHECK:   |                           ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

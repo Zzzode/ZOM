@@ -1,11 +1,19 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/modifier_list_edge_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #3 @1:1..2:1 file_name="modifier_list_edge_02.zom"
+// CHECK: SourceFile #5 @1:1..2:1 file_name="modifier_list_edge_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #2 @1:1..1:44
+// CHECK-NEXT:     StatementListItem #4 @1:1..1:44
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #1 @1:1..1:44
-// CHECK-NEXT:           expression: null
+// CHECK-NEXT:         FunctionDecl #3 @1:1..1:44 name="adjust"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:39..1:41 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #2 @1:42..1:44
+// CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs: null

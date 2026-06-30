@@ -68,17 +68,17 @@
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             NullCoalesceExpr #32 @5:13..5:59
+// CHECK-NEXT:             ErrorDefaultExpr #32 @5:13..5:59
 // CHECK-NEXT:               primary:
-// CHECK-NEXT:                 ErrorDefaultExpr #28 @5:13..5:33
-// CHECK-NEXT:                   primary:
-// CHECK-NEXT:                     IdentExpr #26 @5:13..5:20 name="primary"
-// CHECK-NEXT:                   fallback:
-// CHECK-NEXT:                     IdentExpr #27 @5:24..5:33 name="secondary"
+// CHECK-NEXT:                 IdentExpr #26 @5:13..5:20 name="primary"
 // CHECK-NEXT:               fallback:
-// CHECK-NEXT:                 BinaryExpr #31 @5:37..5:59 op=LogOr
-// CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #29 @5:37..5:45 name="tertiary"
-// CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IdentExpr #30 @5:49..5:59 name="quaternary"
+// CHECK-NEXT:                 NullCoalesceExpr #31 @5:24..5:59
+// CHECK-NEXT:                   primary:
+// CHECK-NEXT:                     IdentExpr #27 @5:24..5:33 name="secondary"
+// CHECK-NEXT:                   fallback:
+// CHECK-NEXT:                     BinaryExpr #30 @5:37..5:59 op=LogOr
+// CHECK-NEXT:                       lhs:
+// CHECK-NEXT:                         IdentExpr #28 @5:37..5:45 name="tertiary"
+// CHECK-NEXT:                       rhs:
+// CHECK-NEXT:                         IdentExpr #29 @5:49..5:59 name="quaternary"
 // CHECK-NEXT:       attrs: null

@@ -1,14 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/16-attributes/hash_space_lbrack_reject_neg_04.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/16-attributes/hash_space_lbrack_reject_neg_04.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..3:1 file_name="hash_space_lbrack_reject_neg_04.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..2:19
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #2 @1:1..2:19
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             CallExpression #1 @1:1..2:18
-// CHECK-NEXT:               callee: null
-// CHECK-NEXT:               args: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*hash_space_lbrack_reject_neg_04.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | # [foo::bar]
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

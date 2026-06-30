@@ -1,36 +1,40 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/tuple-types.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #15 @1:1..3:1 file_name="tuple-types.zom"
+// CHECK: SourceFile #19 @1:1..3:1 file_name="tuple-types.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @1:1..1:34
+// CHECK-NEXT:     StatementListItem #9 @1:1..1:34
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #5 @1:1..1:34
+// CHECK-NEXT:         LetStmt #8 @1:1..1:34
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="t"
 // CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             TupleLiteral #4 @1:22..1:32
+// CHECK-NEXT:           ty:
+// CHECK-NEXT:             TupleTypeExpr #4 @1:8..1:18
 // CHECK-NEXT:               elems:
-// CHECK-NEXT:                 IntLiteral #2 @1:22..1:23 base=10 value="1"
-// CHECK-NEXT:                 StrLiteral #3 @1:25..1:32 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:                 PredefinedTypeExpr #2 @1:9..1:12 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #3 @1:14..1:17 kind=Str
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             TupleLiteral #7 @1:22..1:32
+// CHECK-NEXT:               elems:
+// CHECK-NEXT:                 IntLiteral #5 @1:22..1:23 base=10 value="1"
+// CHECK-NEXT:                 StrLiteral #6 @1:25..1:32 value="hello" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #14 @2:1..2:37
+// CHECK-NEXT:     StatementListItem #18 @2:1..2:37
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #13 @2:1..2:37
+// CHECK-NEXT:         LetStmt #17 @2:1..2:37
 // CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #7 @2:5..2:7 name="t2"
+// CHECK-NEXT:             IdentifierPattern #10 @2:5..2:7 name="t2"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty:
-// CHECK-NEXT:             NamedTypeExpr #9 @2:10..2:24
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #8 @2:10..2:11 segments=["x"]
-// CHECK-NEXT:               args: []
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             TupleLiteral #12 @2:29..2:35
+// CHECK-NEXT:             TupleTypeExpr #13 @2:9..2:25
 // CHECK-NEXT:               elems:
-// CHECK-NEXT:                 IntLiteral #10 @2:29..2:31 base=10 value="10"
-// CHECK-NEXT:                 IntLiteral #11 @2:33..2:35 base=10 value="20"
+// CHECK-NEXT:                 PredefinedTypeExpr #11 @2:13..2:16 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #12 @2:21..2:24 kind=I32
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             TupleLiteral #16 @2:29..2:35
+// CHECK-NEXT:               elems:
+// CHECK-NEXT:                 IntLiteral #14 @2:29..2:31 base=10 value="10"
+// CHECK-NEXT:                 IntLiteral #15 @2:33..2:35 base=10 value="20"
 // CHECK-NEXT:       attrs: null

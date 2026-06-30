@@ -1,22 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/21-macros/macro_missing_bang_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/21-macros/macro_missing_bang_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #9 @1:1..2:1 file_name="macro_missing_bang_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #8 @1:1..1:42
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #7 @1:1..1:42
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="_"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             CallExpression #6 @1:9..1:41
-// CHECK-NEXT:               callee:
-// CHECK-NEXT:                 IdentExpr #5 @1:9..1:12 name="vec"
-// CHECK-NEXT:               args:
-// CHECK-NEXT:                 IntLiteral #2 @1:33..1:34 base=10 value="1"
-// CHECK-NEXT:                 IntLiteral #3 @1:36..1:37 base=10 value="2"
-// CHECK-NEXT:                 IntLiteral #4 @1:39..1:40 base=10 value="3"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*macro_missing_bang_neg_01.zom}}:1:9
+// CHECK:   |
+// CHECK: 1 | let _ = vec marker_without_bang(1, 2, 3);
+// CHECK:   |         ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,16 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/07-patterns/underscore_bind_reject_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/07-patterns/underscore_bind_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @1:1..2:1 file_name="underscore_bind_reject_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:15
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #3 @1:1..1:15
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             WildcardPattern #1 @1:5..1:10
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             IntLiteral #2 @1:13..1:14 base=10 value="5"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK:   --> {{.*underscore_bind_reject_neg_01.zom}}:1:7
+// CHECK:   |
+// CHECK: 1 | let _ @ p = 5;
+// CHECK:   |       ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

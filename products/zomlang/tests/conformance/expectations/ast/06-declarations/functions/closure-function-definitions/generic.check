@@ -1,22 +1,43 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/generic.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #7 @2:1..5:1 file_name="generic.zom"
+// CHECK: SourceFile #15 @2:1..5:1 file_name="generic.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @2:1..4:2
+// CHECK-NEXT:     StatementListItem #14 @2:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #5 @2:1..4:2
+// CHECK-NEXT:         LetStmt #13 @2:1..4:2
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #1 @2:5..2:19 name="genericClosure"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             BinaryExpr #4 @2:22..4:2 op=Gt
-// CHECK-NEXT:               lhs:
-// CHECK-NEXT:                 BinaryExpr #3 @2:22..2:28 op=Lt
-// CHECK-NEXT:                   lhs: null
-// CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IdentExpr #2 @2:27..2:28 name="T"
-// CHECK-NEXT:               rhs: null
+// CHECK-NEXT:             FunctionExpression #12 @2:22..4:2
+// CHECK-NEXT:               params_id:
+// CHECK-NEXT:                 FunctionParameterList #5 @2:30..2:38 nparams=1
+// CHECK-NEXT:                   params:
+// CHECK-NEXT:                     FunctionParameterDecl #4 @2:31..2:37 name="val"
+// CHECK-NEXT:                       ty:
+// CHECK-NEXT:                         NamedTypeExpr #3 @2:36..2:37
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #2 @2:36..2:37 segments=["T"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                       default_: null
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:               captures: []
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 NamedTypeExpr #7 @2:42..2:43
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #6 @2:42..2:43 segments=["T"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #11 @2:44..4:2
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #10 @3:3..3:6
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #9 @3:3..3:6
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             IdentExpr #8 @3:3..3:6 name="val"
+// CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

@@ -1,14 +1,26 @@
 // RUN: %zomc compile --dump-ast %corpus/16-attributes/attr_with_comment_pos_07.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..3:1 file_name="attr_with_comment_pos_07.zom"
+// CHECK: SourceFile #9 @1:1..3:1 file_name="attr_with_comment_pos_07.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..2:20
+// CHECK-NEXT:     StatementListItem #8 @1:1..2:20
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #2 @1:1..2:20
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             CallExpression #1 @1:1..2:19
-// CHECK-NEXT:               callee: null
-// CHECK-NEXT:               args: []
-// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:         FunctionDecl #7 @2:1..2:20 name="with_comment"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #5 @2:17..2:19 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #6 @3:1..3:1
+// CHECK-NEXT:               stmts: []
+// CHECK-NEXT:       attrs:
+// CHECK-NEXT:         AttributeList #4 @1:1..1:52
+// CHECK-NEXT:           attrs:
+// CHECK-NEXT:             Attribute #3 @1:33..1:51
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 AttributePath #2 @1:33..1:43 segments=["doc", "alias"] leading=None
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 StrLiteral #1 @1:44..1:50 value="help" is_raw=false prefix=None

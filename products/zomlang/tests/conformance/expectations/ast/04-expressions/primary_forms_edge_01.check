@@ -1,10 +1,22 @@
-// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/primary_forms_edge_01.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/primary_forms_edge_01.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2012]: Missing semicolon before 'import'
-// CHECK:   --> {{.*primary_forms_edge_01.zom}}:1:11
-// CHECK:   |
-// CHECK: 1 | let mod = import("path");
-// CHECK:   |           ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #7 @1:1..2:1 file_name="primary_forms_edge_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:26
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #5 @1:1..1:26
+// CHECK-NEXT:           pattern:
+// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:8 name="mod"
+// CHECK-NEXT:               ty: null
+// CHECK-NEXT:           ty: null
+// CHECK-NEXT:           init:
+// CHECK-NEXT:             CallExpression #4 @1:11..1:25
+// CHECK-NEXT:               callee:
+// CHECK-NEXT:                 ImportCallExpression #2 @1:11..1:17
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:               type_args: []
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 StrLiteral #3 @1:18..1:24 value="path" is_raw=false prefix=None
+// CHECK-NEXT:       attrs: null

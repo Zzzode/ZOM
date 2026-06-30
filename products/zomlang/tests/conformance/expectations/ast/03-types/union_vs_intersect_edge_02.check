@@ -1,16 +1,35 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/union_vs_intersect_edge_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @1:1..2:1 file_name="union_vs_intersect_edge_02.zom"
+// CHECK: SourceFile #15 @1:1..2:1 file_name="union_vs_intersect_edge_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:47
+// CHECK-NEXT:     StatementListItem #14 @1:1..1:47
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #3 @1:1..1:47 name="Cmplx"
+// CHECK-NEXT:         AliasDecl #13 @1:1..1:47 name="Cmplx"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           target:
-// CHECK-NEXT:             UnionTypeExpr #2 @1:15..1:46
-// CHECK-NEXT:               alts:
-// CHECK-NEXT:                 OptionalTypeExpr #1 @1:34..1:46 double=false
-// CHECK-NEXT:                   inner: null
+// CHECK-NEXT:             FunctionTypeExpr #12 @1:15..1:46
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 PredefinedTypeExpr #11 @1:16..1:19 kind=I32
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 UnionTypeExpr #10 @1:24..1:46
+// CHECK-NEXT:                   alts:
+// CHECK-NEXT:                     IntersectionTypeExpr #5 @1:25..1:30
+// CHECK-NEXT:                       alts:
+// CHECK-NEXT:                         NamedTypeExpr #2 @1:25..1:26
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #1 @1:25..1:26 segments=["A"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                         NamedTypeExpr #4 @1:29..1:30
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #3 @1:29..1:30 segments=["B"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                     OptionalTypeExpr #9 @1:34..1:46 double=false
+// CHECK-NEXT:                       inner:
+// CHECK-NEXT:                         TupleTypeExpr #8 @1:34..1:45
+// CHECK-NEXT:                           elems:
+// CHECK-NEXT:                             PredefinedTypeExpr #6 @1:35..1:38 kind=Str
+// CHECK-NEXT:                             PredefinedTypeExpr #7 @1:40..1:44 kind=Bool
+// CHECK-NEXT:               raises: null
 // CHECK-NEXT:       attrs: null

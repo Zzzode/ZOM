@@ -1,12 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/08-adt/marker_impl_reject_neg_07.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/08-adt/marker_impl_reject_neg_07.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..2:1 file_name="marker_impl_reject_neg_07.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:28
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #2 @1:1..1:28
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             IdentExpr #1 @1:1..1:7 name="marker"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*marker_impl_reject_neg_07.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | marker impl Foo for Bar { }
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,19 +1,24 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/pow_above_unary_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #6 @1:1..2:1 file_name="pow_above_unary_edge_01.zom"
+// CHECK: SourceFile #9 @1:1..2:1 file_name="pow_above_unary_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #5 @1:1..1:18
+// CHECK-NEXT:     StatementListItem #8 @1:1..1:18
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #4 @1:1..1:18
+// CHECK-NEXT:         LetStmt #7 @1:1..1:18
 // CHECK-NEXT:           pattern:
 // CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="x"
 // CHECK-NEXT:               ty: null
 // CHECK-NEXT:           ty: null
 // CHECK-NEXT:           init:
-// CHECK-NEXT:             BinaryExpr #3 @1:9..1:17 op=Sub
-// CHECK-NEXT:               lhs: null
+// CHECK-NEXT:             BinaryExpr #6 @1:9..1:17 op=Pow
+// CHECK-NEXT:               lhs:
+// CHECK-NEXT:                 UnaryExpression #3 @1:9..1:11 op=Minus
+// CHECK-NEXT:                   operand:
+// CHECK-NEXT:                     IdentExpr #2 @1:10..1:11 name="a"
 // CHECK-NEXT:               rhs:
-// CHECK-NEXT:                 IdentExpr #2 @1:16..1:17 name="b"
+// CHECK-NEXT:                 UnaryExpression #5 @1:15..1:17 op=Minus
+// CHECK-NEXT:                   operand:
+// CHECK-NEXT:                     IdentExpr #4 @1:16..1:17 name="b"
 // CHECK-NEXT:       attrs: null

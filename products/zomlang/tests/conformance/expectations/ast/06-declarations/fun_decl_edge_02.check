@@ -1,14 +1,19 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/fun_decl_edge_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..2:1 file_name="fun_decl_edge_02.zom"
+// CHECK: SourceFile #5 @1:1..2:1 file_name="fun_decl_edge_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:24
+// CHECK-NEXT:     StatementListItem #4 @1:1..1:24
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #2 @1:1..1:24
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             CallExpression #1 @1:1..1:23
-// CHECK-NEXT:               callee: null
-// CHECK-NEXT:               args: []
+// CHECK-NEXT:         FunctionDecl #3 @1:1..1:24 name="process"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:21..1:23 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #2 @2:1..2:1
+// CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs: null
