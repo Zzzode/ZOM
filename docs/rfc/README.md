@@ -65,6 +65,12 @@ NNNN-short-topic.md
 by taking the next unused integer in this directory. Once assigned, a number is
 not reused.
 
+## RFC Index
+
+| RFC | Title | Status | Area | Type | Review Manager | Tracking | Implementation |
+|---|---|---|---|---|---|---|---|
+| [RFC 0001](0001-ast-dump-format.md) | AST Dump Format | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0001-ast-dump-format.md#acceptance-criteria) | [AST Dumper](../../products/zomlang/compiler/ast/dump.cc) |
+
 ## Status Values
 
 Every proposal RFC has a YAML frontmatter `status` field with exactly one of
@@ -112,6 +118,7 @@ type: compiler
 status: DRAFT
 author: ZOM Compiler Team
 review-manager: TBD
+required-owners: []
 approvers: []
 created: 2026-06-30
 updated: 2026-06-30
@@ -141,9 +148,15 @@ tracking-issue: TBD
 | `informational` | Durable background material that records context but does not itself approve implementation. |
 
 `review-manager` is the person or subagent responsible for driving review to a
-decision. `approvers` lists the owners who accepted the proposal. `discussion`,
-`decision`, `implementation`, and `tracking-issue` may be links or `TBD` while
-the RFC is in `DRAFT` or `REVIEW`.
+decision. `required-owners` lists every subagent owner from the Repository
+Impact table and must use ids from `.agents/subagents/manifest.yaml`.
+`approvers` lists the owners who accepted the proposal.
+
+`discussion` and `tracking-issue` may be `TBD` only while the RFC is in
+`DRAFT`. A proposal cannot move to `REVIEW` until both fields point to a
+discussion thread, issue, or local tracking document. `decision` may remain
+`TBD` until `ACCEPTED`. `implementation` may remain `TBD` until
+`IMPLEMENTING`.
 
 ## Required Sections
 
@@ -157,15 +170,29 @@ Every RFC must include these sections in this order:
 6. Guide-Level Explanation
 7. Reference-Level Design
 8. Repository Impact
-9. Drawbacks And Risks
-10. Alternatives Considered
-11. Compatibility And Rollout
-12. Implementation Plan
-13. Test Plan
-14. Open Questions
-15. Status History
+9. Security And Safety Impact
+10. Drawbacks And Risks
+11. Alternatives Considered
+12. Compatibility And Rollout
+13. Documentation And Teaching Plan
+14. Operational Readiness
+15. Acceptance Criteria
+16. Implementation Plan
+17. Test Plan
+18. Open Questions
+19. Status History
 
 ## Acceptance Gates
+
+An RFC may move to `REVIEW` only when these gates are satisfied:
+
+- The RFC uses the required template and frontmatter.
+- `discussion` and `tracking-issue` are no longer `TBD`.
+- `review-manager` is assigned.
+- `required-owners` exactly matches the owners listed in `Repository Impact`.
+- All required owners exist in `.agents/subagents/manifest.yaml`.
+- The RFC index in this file links the proposal and reflects its current
+  status.
 
 An RFC may move to `ACCEPTED` only when all applicable gates are satisfied:
 
@@ -176,17 +203,24 @@ An RFC may move to `ACCEPTED` only when all applicable gates are satisfied:
 - The reference-level design is detailed enough for an implementer to proceed
   without inventing major semantics.
 - The repository impact lists every owned path family and affected subagent.
+- Security, safety, documentation, teaching, and operational impacts are either
+  covered or explicitly marked `None`.
+- Acceptance criteria state the concrete evidence required to call the RFC
+  complete.
 - The implementation plan has ordered steps and names required verification.
 - The test plan names lit, unit, conformance, generated-file, or manual checks
   as appropriate.
 - The review manager is assigned.
-- Every affected owner has either approved the RFC or has a recorded
-  non-blocking objection.
+- `approvers` covers every owner listed in `required-owners`, or any remaining
+  objection is explicitly recorded as non-blocking in the RFC text.
 - `discussion`, `decision`, and `tracking-issue` are no longer `TBD`.
 - `Open Questions` is `None`, or every entry is explicitly marked
   non-blocking and assigned to a follow-up.
 - The RFC does not preserve unused code paths, placeholder behavior, or
   compatibility layers.
+
+An RFC may move to `IMPLEMENTING` only after `implementation` points to the
+implementation PR, branch, tracking issue, or local implementation plan.
 
 ## Review Rules
 
@@ -204,6 +238,17 @@ Reviewers must block on:
   is ready to accept.
 - Repository artifacts written in a language other than English.
 - New compatibility surfaces that keep two long-lived behaviors alive.
+
+## Automated Checks
+
+`python3 scripts/check-rfc.py` is the authoritative structural gate for RFC
+metadata. It checks proposal numbering, required frontmatter, section order,
+status-history transitions, REVIEW and ACCEPTED readiness, owner coverage,
+local link targets, RFC index synchronization, Mermaid-labelled diagrams, and
+obsolete RFC location references.
+
+CI runs this command on every pull request. A proposal that fails the command is
+not ready to merge, regardless of manual review.
 
 ## Relationship To Spec And Design Docs
 
@@ -227,7 +272,10 @@ After implementation:
 4. Write the guide-level explanation for readers who need the feature.
 5. Write the reference-level design for implementers.
 6. List repository impact, alternatives, implementation steps, and tests.
-7. Set status to `REVIEW` only when the document is ready for review.
-8. Route the RFC through the `rfc` subagent for structural review.
-9. Route affected technical areas to their owning subagents.
-10. Move to `ACCEPTED` only after all blockers are resolved.
+7. Add the RFC to `RFC Index`.
+8. Run `python3 scripts/check-rfc.py`.
+9. Set status to `REVIEW` only when the document is ready for review and has
+   discussion plus tracking links.
+10. Route the RFC through the `rfc` subagent for structural review.
+11. Route affected technical areas to their owning subagents.
+12. Move to `ACCEPTED` only after all blockers are resolved.

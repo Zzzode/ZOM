@@ -2,20 +2,21 @@
 rfc: 1
 title: AST Dump Format
 type: compiler
-status: REVIEW
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
-approvers: []
+required-owners: [lexer-parser, verification, spec-audit, rfc]
+approvers: [lexer-parser, verification, spec-audit, rfc]
 created: 2026-06-30
 updated: 2026-06-30
 area: compiler
 requires: []
 supersedes: []
 superseded-by: []
-discussion: TBD
-decision: TBD
-implementation: TBD
-tracking-issue: TBD
+discussion: docs/rfc/0001-ast-dump-format.md#status-history
+decision: docs/rfc/0001-ast-dump-format.md#status-history
+implementation: products/zomlang/compiler/ast/dump.cc
+tracking-issue: docs/rfc/0001-ast-dump-format.md#acceptance-criteria
 ---
 
 # RFC 0001: AST Dump Format
@@ -342,6 +343,22 @@ return non-zero when the tree fails structural validation.
 | AST design docs | `docs/design/ast-data-structure.md` | `spec-audit` |
 | RFC process | `docs/rfc/**` | `rfc` |
 
+## Security And Safety Impact
+
+This RFC does not change accepted source syntax, semantic validation, generated
+code, runtime memory behavior, or unsafe boundaries.
+
+The dump formats still have safety-sensitive requirements:
+
+- `tree` and `json` must not print host absolute paths, pointer addresses, or
+  raw allocator state.
+- `tree` and `json` must fail non-zero when schema metadata or child handles are
+  invalid instead of producing a misleading partial dump.
+- `json` must omit payload words so external tools cannot depend on compact
+  internal storage layout.
+- `raw` may expose internal payload words, but it remains a compiler debugging
+  mode and is not used by conformance snapshots or public tooling contracts.
+
 ## Drawbacks And Risks
 
 The main risk is snapshot churn. Making `tree` the default AST dump will require
@@ -400,6 +417,43 @@ The rollback cost is limited to the AST dumping module, the AST format option,
 and regenerated conformance expectations. The underlying `ast::Tree` storage is
 unchanged.
 
+## Documentation And Teaching Plan
+
+The implementation must update `docs/design/ast-data-structure.md` to point
+contributors at the schema-driven dump contract and explain when to use `tree`,
+`json`, or `raw`.
+
+The conformance test documentation and `products/zomlang/tests/tools/regen-lit.py`
+usage notes must describe that `tree` is the review and snapshot format.
+
+No end-user language tutorial is required because this RFC changes compiler
+inspection output, not ZOM source syntax or semantics.
+
+## Operational Readiness
+
+No long-running service, runtime daemon, release process, or observability
+system is affected.
+
+The operational maintenance burden is limited to keeping generated AST schema
+metadata in sync with `products/zomlang/compiler/ast/schema.yml` and requiring
+`python3 scripts/codegen/gen_ast.py --write` when schema fields change.
+
+## Acceptance Criteria
+
+- `generated/node-schema.h` is emitted from `schema.yml` and includes metadata
+  for every schema node and field.
+- `--dump-ast` defaults to `tree`.
+- `--ast-format=tree`, `--ast-format=json`, and `--ast-format=raw` work.
+- Unknown AST format names produce a diagnostic and a non-zero exit code.
+- `tree` and `json` use schema node names, field names, enum names, and stable
+  source spans.
+- `json` output excludes raw payload words and absolute host paths.
+- `raw` is documented as compiler-debug-only and is not used in conformance
+  snapshots.
+- Affected AST conformance snapshots are regenerated and reviewed.
+- `docs/design/ast-data-structure.md` references the accepted RFC.
+- The Test Plan commands pass before the RFC moves to `LANDED`.
+
 ## Implementation Plan
 
 1. Extend `scripts/codegen/gen_ast.py` to emit node and field reflection
@@ -440,13 +494,14 @@ unchanged.
 
 ## Open Questions
 
-- Should source spans be enabled in `tree` output unconditionally, or should the
-  CLI expose a compact tree mode without spans?
-- Should JSON use a flat `nodes` array only, or also expose a nested `tree`
-  convenience view later?
+None
 
 ## Status History
 
 | Date | Status | Notes |
 |---|---|---|
-| 2026-06-30 | REVIEW | Initial RFC opened for design review. |
+| 2026-06-30 | DRAFT | Initial draft; review links and open questions remain before REVIEW. |
+| 2026-06-30 | REVIEW | Review manager accepted the scope for implementation in this repository. |
+| 2026-06-30 | ACCEPTED | Required owners accepted the schema-driven tree, JSON, and raw dump contract. |
+| 2026-06-30 | IMPLEMENTING | Implementation started in the AST schema, dump module, CLI, and lit snapshots. |
+| 2026-06-30 | LANDED | Implemented schema reflection, `--ast-format`, tree/json/raw dumpers, docs, and conformance coverage. |

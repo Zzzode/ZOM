@@ -26,13 +26,1198 @@ namespace zomlang {
 namespace compiler {
 namespace ast {
 
-struct NodeSchemaEntry final {
-  SyntaxKind kind;
+enum class NodeSchemaFieldStorage : uint8_t {
+  NodeId,
+  NodeList,
+  IdentList,
+  StringId,
+  IdentId,
+  BigIntId,
+  FloatId,
+  Bool,
+  UInt8,
+  UInt16,
+  UInt32,
+  UInt64,
+  Enum,
+};
+
+struct NodeSchemaEnumValue final {
+  uint32_t value;
   const char* name;
 };
 
+struct NodeSchemaFieldEntry final {
+  const char* name;
+  NodeSchemaFieldStorage storage;
+  uint8_t firstWord;
+  uint8_t secondWord;
+  bool optional;
+  const char* castTarget;
+  const char* enumDomain;
+  const NodeSchemaEnumValue* enumValues;
+  uint32_t enumValueCount;
+};
+
+struct NodeSchemaEntry final {
+  SyntaxKind kind;
+  const char* name;
+  const NodeSchemaFieldEntry* fields;
+  uint32_t fieldCount;
+};
+
+constexpr uint8_t kNodeSchemaNoWord = 0xff;
+constexpr const char* kAstSchemaVersion = "2.0";
 constexpr const char* kAstSchemaFingerprint = "ab1d550bd82aa7653f886bf156e2057a2c15b1a67549935ecada558b32f36032";
 constexpr uint32_t kAstSchemaVariantCount = 124;
+
+constexpr NodeSchemaEnumValue kAttributePathLeadingEnumValues[] = {
+  {0, "None"},
+  {1, "Crate"},
+  {2, "Self"},
+  {3, "Super"},
+  {4, "Root"},
+};
+
+constexpr NodeSchemaEnumValue kCfgAtomVkEnumValues[] = {
+  {0, "None"},
+  {1, "String"},
+  {2, "Ident"},
+};
+
+constexpr NodeSchemaEnumValue kCfgOpOpEnumValues[] = {
+  {0, "Eq"},
+  {1, "NotEq"},
+  {2, "And"},
+  {3, "Or"},
+  {4, "In"},
+  {5, "Contains"},
+  {6, "StartsWith"},
+  {7, "EndsWith"},
+};
+
+constexpr NodeSchemaEnumValue kExternDeclAbiEnumValues[] = {
+  {0, "Cdecl"},
+  {1, "Stdcall"},
+  {2, "Fastcall"},
+  {3, "Swift"},
+  {4, "Rust"},
+  {5, "ZomNative"},
+  {6, "VarArgs"},
+};
+
+constexpr NodeSchemaEnumValue kExternBlockAbiEnumValues[] = {
+  {0, "Cdecl"},
+  {1, "Stdcall"},
+  {2, "Fastcall"},
+  {3, "Swift"},
+  {4, "Rust"},
+  {5, "ZomNative"},
+  {6, "VarArgs"},
+};
+
+constexpr NodeSchemaEnumValue kExternVarDeclAbiEnumValues[] = {
+  {0, "Cdecl"},
+  {1, "Stdcall"},
+  {2, "Fastcall"},
+  {3, "Swift"},
+  {4, "Rust"},
+  {5, "ZomNative"},
+  {6, "VarArgs"},
+};
+
+constexpr NodeSchemaEnumValue kExternStaticDeclAbiEnumValues[] = {
+  {0, "Cdecl"},
+  {1, "Stdcall"},
+  {2, "Fastcall"},
+  {3, "Swift"},
+  {4, "Rust"},
+  {5, "ZomNative"},
+  {6, "VarArgs"},
+};
+
+constexpr NodeSchemaEnumValue kFFIConstDeclAbiEnumValues[] = {
+  {0, "Cdecl"},
+  {1, "Stdcall"},
+  {2, "Fastcall"},
+  {3, "Swift"},
+  {4, "Rust"},
+  {5, "ZomNative"},
+  {6, "VarArgs"},
+};
+
+constexpr NodeSchemaEnumValue kMacroInvocationExprBraceEnumValues[] = {
+  {0, "Paren"},
+  {1, "Brack"},
+  {2, "Brace"},
+};
+
+constexpr NodeSchemaEnumValue kMacroFragmentFragKindEnumValues[] = {
+  {0, "Ident"},
+  {1, "Expr"},
+  {2, "Ty"},
+  {3, "Stmt"},
+  {4, "Pat"},
+  {5, "Path"},
+  {6, "Item"},
+  {7, "Block"},
+  {8, "Meta"},
+  {9, "Literal"},
+  {10, "Lifetime"},
+  {11, "Vis"},
+  {12, "Tt"},
+  {13, "Token"},
+};
+
+constexpr NodeSchemaEnumValue kMacroFragmentSepEnumValues[] = {
+  {0, "None"},
+  {1, "Comma"},
+  {2, "Semicolon"},
+  {3, "Colon"},
+};
+
+constexpr NodeSchemaEnumValue kMacroDelimitedGroupBraceEnumValues[] = {
+  {0, "Paren"},
+  {1, "Brack"},
+  {2, "Brace"},
+};
+
+constexpr NodeSchemaEnumValue kProcMacroDeclKindEnumValues[] = {
+  {0, "Bang"},
+  {1, "Attr"},
+  {2, "Derive"},
+};
+
+constexpr NodeSchemaEnumValue kEnumDeclarationExtensibilityEnumValues[] = {
+  {0, "Sealed"},
+  {1, "Final"},
+  {2, "Open"},
+};
+
+constexpr NodeSchemaEnumValue kEnumDeclarationBaseReprEnumValues[] = {
+  {0, "I32"},
+  {1, "I8"},
+  {2, "I16"},
+  {3, "I64"},
+  {4, "U8"},
+  {5, "U16"},
+  {6, "U32"},
+  {7, "U64"},
+};
+
+constexpr NodeSchemaEnumValue kEnumReprAttrReprKindEnumValues[] = {
+  {0, "I32"},
+  {1, "I8"},
+  {2, "I16"},
+  {3, "I64"},
+  {4, "U8"},
+  {5, "U16"},
+  {6, "U32"},
+  {7, "U64"},
+};
+
+constexpr NodeSchemaEnumValue kLiteralPatternKindEnumValues[] = {
+  {0, "Integer"},
+  {1, "Float"},
+  {2, "BigInt"},
+  {3, "String"},
+  {4, "Char"},
+  {5, "Bool"},
+  {6, "Null"},
+};
+
+constexpr NodeSchemaEnumValue kSpawnExpressionModEnumValues[] = {
+  {0, "None"},
+  {1, "Detached"},
+  {2, "Blocking"},
+  {3, "PriorityHigh"},
+  {4, "PriorityLow"},
+};
+
+constexpr NodeSchemaEnumValue kStrLiteralPrefixEnumValues[] = {
+  {0, "None"},
+  {1, "f"},
+  {2, "r"},
+  {3, "b"},
+  {4, "br"},
+};
+
+constexpr NodeSchemaEnumValue kWherePredKindEnumValues[] = {
+  {0, "Lt"},
+  {1, "Le"},
+  {2, "Eq"},
+  {3, "Ne"},
+  {4, "Ge"},
+  {5, "Gt"},
+  {6, "Subtype"},
+  {7, "Implements"},
+  {8, "SendableMarker"},
+};
+
+constexpr NodeSchemaEnumValue kBinaryExprOpEnumValues[] = {
+  {0, "Add"},
+  {1, "Sub"},
+  {2, "Mul"},
+  {3, "Div"},
+  {4, "Mod"},
+  {5, "Pow"},
+  {6, "Shl"},
+  {7, "Shr"},
+  {8, "UShr"},
+  {9, "BitAnd"},
+  {10, "BitOr"},
+  {11, "BitXor"},
+  {12, "LogAnd"},
+  {13, "LogOr"},
+  {14, "Eq"},
+  {15, "Ne"},
+  {16, "StrictEq"},
+  {17, "StrictNe"},
+  {18, "Lt"},
+  {19, "Le"},
+  {20, "Gt"},
+  {21, "Ge"},
+};
+
+constexpr NodeSchemaEnumValue kPredefinedTypeExprKindEnumValues[] = {
+  {0, "I8"},
+  {1, "I16"},
+  {2, "I32"},
+  {3, "I64"},
+  {4, "U8"},
+  {5, "U16"},
+  {6, "U32"},
+  {7, "U64"},
+  {8, "F32"},
+  {9, "F64"},
+  {10, "Bool"},
+  {11, "Str"},
+  {12, "Char"},
+  {13, "Null"},
+  {14, "Unit"},
+  {15, "Never"},
+  {16, "Any"},
+};
+
+constexpr NodeSchemaEnumValue kSuspendStatementModeEnumValues[] = {
+  {0, "Bare"},
+  {1, "Until"},
+  {2, "OnTimeout"},
+};
+
+constexpr NodeSchemaEnumValue kPositionalStructDeclExtensibilityEnumValues[] = {
+  {0, "Sealed"},
+  {1, "Final"},
+  {2, "Open"},
+};
+
+constexpr NodeSchemaEnumValue kClassDeclExtensibilityEnumValues[] = {
+  {0, "Sealed"},
+  {1, "Final"},
+  {2, "Open"},
+};
+
+constexpr NodeSchemaEnumValue kStructDeclExtensibilityEnumValues[] = {
+  {0, "Sealed"},
+  {1, "Final"},
+  {2, "Open"},
+};
+
+constexpr NodeSchemaFieldEntry kAttributeListFields[] = {
+  {"attrs", NodeSchemaFieldStorage::NodeList, 0, 1, false, "Attribute", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kAttributePathFields[] = {
+  {"segments", NodeSchemaFieldStorage::IdentList, 0, 1, false, nullptr, nullptr, nullptr, 0},
+  {"leading", NodeSchemaFieldStorage::Enum, 2, kNodeSchemaNoWord, false, nullptr, "AttributePath.leading", kAttributePathLeadingEnumValues, 5},
+};
+
+constexpr NodeSchemaFieldEntry kAttributeFields[] = {
+  {"path", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "AttributePath", nullptr, nullptr, 0},
+  {"args", NodeSchemaFieldStorage::NodeList, 1, 2, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kZomCfgAttributeFields[] = {
+  {"pred", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "CfgPredicate", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kCfgAtomFields[] = {
+  {"key", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "AttributePath", nullptr, nullptr, 0},
+  {"vk", NodeSchemaFieldStorage::Enum, 1, kNodeSchemaNoWord, false, nullptr, "CfgAtomValueKind", kCfgAtomVkEnumValues, 3},
+  {"value_or_id", NodeSchemaFieldStorage::UInt64, 2, 3, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kCfgAllFields[] = {
+  {"preds", NodeSchemaFieldStorage::NodeList, 0, 1, false, "CfgPredicate", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kCfgAnyFields[] = {
+  {"preds", NodeSchemaFieldStorage::NodeList, 0, 1, false, "CfgPredicate", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kCfgNotFields[] = {
+  {"inner", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "CfgPredicate", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kCfgOpFields[] = {
+  {"op", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "CfgOpKind", kCfgOpOpEnumValues, 8},
+  {"lhs", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"rhs", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kExternDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"abi", NodeSchemaFieldStorage::Enum, 1, kNodeSchemaNoWord, false, nullptr, "Abi", kExternDeclAbiEnumValues, 7},
+  {"params", NodeSchemaFieldStorage::NodeList, 2, 3, false, "ParameterDecl", nullptr, nullptr, 0},
+  {"ret_ty", NodeSchemaFieldStorage::NodeId, 4, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+  {"raises_ty", NodeSchemaFieldStorage::NodeId, 5, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kUnsafeBlockExprFields[] = {
+  {"body", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "BlockStmt", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kExternBlockFields[] = {
+  {"abi", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "Abi", kExternBlockAbiEnumValues, 7},
+  {"items", NodeSchemaFieldStorage::NodeList, 1, 2, false, "ExternDecl", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kFFIParameterDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"attrs", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "AttributeList", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kExternVarDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"abi", NodeSchemaFieldStorage::Enum, 2, kNodeSchemaNoWord, false, nullptr, "Abi", kExternVarDeclAbiEnumValues, 7},
+  {"is_mut", NodeSchemaFieldStorage::Bool, 3, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kExternStaticDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"abi", NodeSchemaFieldStorage::Enum, 2, kNodeSchemaNoWord, false, nullptr, "Abi", kExternStaticDeclAbiEnumValues, 7},
+  {"init", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kFFIConstDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"abi", NodeSchemaFieldStorage::Enum, 2, kNodeSchemaNoWord, false, nullptr, "Abi", kFFIConstDeclAbiEnumValues, 7},
+};
+
+constexpr NodeSchemaFieldEntry kFFILinkSpecFields[] = {
+  {"link_name", NodeSchemaFieldStorage::StringId, 0, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+  {"link_section", NodeSchemaFieldStorage::StringId, 1, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+  {"link_align", NodeSchemaFieldStorage::UInt32, 2, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMacroInvocationExprFields[] = {
+  {"name", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Identifier", nullptr, nullptr, 0},
+  {"brace", NodeSchemaFieldStorage::Enum, 1, kNodeSchemaNoWord, false, nullptr, "MacroBrace", kMacroInvocationExprBraceEnumValues, 3},
+  {"tt", NodeSchemaFieldStorage::NodeList, 2, 3, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMacroRulesDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"rules", NodeSchemaFieldStorage::NodeList, 1, 2, false, "MacroRule", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMacroRuleFields[] = {
+  {"pattern", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "MacroPattern", nullptr, nullptr, 0},
+  {"expand", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "MacroTokenTree", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMacroPatternFields[] = {
+  {"frags", NodeSchemaFieldStorage::NodeList, 0, 1, false, "MacroFragment", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMacroFragmentFields[] = {
+  {"binding_name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+  {"frag_kind", NodeSchemaFieldStorage::Enum, 1, kNodeSchemaNoWord, false, nullptr, "MacroFragmentKind", kMacroFragmentFragKindEnumValues, 14},
+  {"is_repetition", NodeSchemaFieldStorage::Bool, 2, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"sep", NodeSchemaFieldStorage::Enum, 3, kNodeSchemaNoWord, false, nullptr, "MacroFragment.sep", kMacroFragmentSepEnumValues, 4},
+};
+
+constexpr NodeSchemaFieldEntry kMacroTokenTreeFields[] = {
+  {"tokens", NodeSchemaFieldStorage::NodeList, 0, 1, false, "TokenNode", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kDeriveListFields[] = {
+  {"items", NodeSchemaFieldStorage::NodeList, 0, 1, false, "DeriveItem", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kDeriveItemFields[] = {
+  {"trait_path", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "AttributePath", nullptr, nullptr, 0},
+  {"args", NodeSchemaFieldStorage::NodeList, 1, 2, true, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMacroQuasiQuoteFields[] = {
+  {"depth", NodeSchemaFieldStorage::UInt8, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"body", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "MacroTokenTree", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMacroUnquoteFields[] = {
+  {"expr", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMacroDelimitedGroupFields[] = {
+  {"brace", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "MacroBrace", kMacroDelimitedGroupBraceEnumValues, 3},
+  {"tokens", NodeSchemaFieldStorage::NodeList, 1, 2, false, "TokenNode", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kProcMacroDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"kind", NodeSchemaFieldStorage::Enum, 1, kNodeSchemaNoWord, false, nullptr, "ProcMacroDecl.kind", kProcMacroDeclKindEnumValues, 3},
+  {"params", NodeSchemaFieldStorage::NodeList, 2, 3, false, "ParameterDecl", nullptr, nullptr, 0},
+  {"attributes", NodeSchemaFieldStorage::NodeId, 4, kNodeSchemaNoWord, true, "AttributeList", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kUnitVariantFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"has_disc", NodeSchemaFieldStorage::Bool, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"disc", NodeSchemaFieldStorage::BigIntId, 2, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kTupleVariantFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"nfields", NodeSchemaFieldStorage::UInt16, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"tys", NodeSchemaFieldStorage::NodeList, 2, 3, false, "TypeExpr", nullptr, nullptr, 0},
+  {"has_disc", NodeSchemaFieldStorage::Bool, 4, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"disc", NodeSchemaFieldStorage::BigIntId, 5, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kStructVariantFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"nfields", NodeSchemaFieldStorage::UInt16, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"fields", NodeSchemaFieldStorage::NodeList, 2, 3, false, "PropertyDecl", nullptr, nullptr, 0},
+  {"has_disc", NodeSchemaFieldStorage::Bool, 4, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"disc", NodeSchemaFieldStorage::BigIntId, 5, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kEnumDeclarationFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"extensibility", NodeSchemaFieldStorage::Enum, 1, kNodeSchemaNoWord, false, nullptr, "ClassExtensibility", kEnumDeclarationExtensibilityEnumValues, 3},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"nvars", NodeSchemaFieldStorage::UInt16, 3, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"variants_id", NodeSchemaFieldStorage::NodeId, 4, kNodeSchemaNoWord, false, "EnumVariantList", nullptr, nullptr, 0},
+  {"base_repr", NodeSchemaFieldStorage::Enum, 5, kNodeSchemaNoWord, false, nullptr, "EnumReprKind", kEnumDeclarationBaseReprEnumValues, 8},
+};
+
+constexpr NodeSchemaFieldEntry kAssociatedConstVariantFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"const_expr", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"has_disc", NodeSchemaFieldStorage::Bool, 2, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"disc", NodeSchemaFieldStorage::BigIntId, 3, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kEnumMemberAliasFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"target_path", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Identifier", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kEnumVariantAttrFields[] = {
+  {"attrs", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "AttributeList", nullptr, nullptr, 0},
+  {"variant", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kDiscriminantRefFields[] = {
+  {"owner_enum", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "EnumDeclaration", nullptr, nullptr, 0},
+  {"variant_index", NodeSchemaFieldStorage::UInt32, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kEnumExtendsClauseFields[] = {
+  {"base_ty", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"is_explicit", NodeSchemaFieldStorage::Bool, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kRawVariantFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kEnumReprAttrFields[] = {
+  {"repr_kind", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "EnumReprKind", kEnumReprAttrReprKindEnumValues, 8},
+  {"is_explicit", NodeSchemaFieldStorage::Bool, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kEnumVariantListFields[] = {
+  {"nvars", NodeSchemaFieldStorage::UInt16, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"variants", NodeSchemaFieldStorage::NodeList, 1, 2, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kRestPatternFields[] = {
+  {"binding", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kLiteralPatternFields[] = {
+  {"kind", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "LiteralPatternKind", kLiteralPatternKindEnumValues, 7},
+  {"value", NodeSchemaFieldStorage::UInt64, 1, 2, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kIsPatternFields[] = {
+  {"ty", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kWildcardPatternFields[] = {
+  {"ty", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kBindingPatternFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"is_mut", NodeSchemaFieldStorage::Bool, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"is_ref", NodeSchemaFieldStorage::Bool, 2, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"sub", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "Pattern", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kIdentifierPatternFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kTuplePatternFields[] = {
+  {"pats", NodeSchemaFieldStorage::NodeList, 0, 1, false, "Pattern", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kStructPatternFields[] = {
+  {"ty_path", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, true, "Identifier", nullptr, nullptr, 0},
+  {"fields", NodeSchemaFieldStorage::NodeList, 1, 2, false, "PatternProperty", nullptr, nullptr, 0},
+  {"rest", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "RestPattern", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kPatternPropertyFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"short_form", NodeSchemaFieldStorage::Bool, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"pat", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "Pattern", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kArrayPatternFields[] = {
+  {"pats", NodeSchemaFieldStorage::NodeList, 0, 1, false, "Pattern", nullptr, nullptr, 0},
+  {"rest", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "RestPattern", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kSpawnExpressionFields[] = {
+  {"mod_", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "SpawnModKind", kSpawnExpressionModEnumValues, 5},
+  {"body", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "BlockStmt", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kPositionalStructCtorExprFields[] = {
+  {"struct_path", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Identifier", nullptr, nullptr, 0},
+  {"nargs", NodeSchemaFieldStorage::UInt16, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"args", NodeSchemaFieldStorage::NodeList, 2, 3, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kTupleLiteral1Fields[] = {
+  {"elem", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kErrorDefaultExprFields[] = {
+  {"primary", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"fallback", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kNullCoalesceExprFields[] = {
+  {"primary", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"fallback", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kIsExpressionFields[] = {
+  {"expr", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kBoolLiteralFields[] = {
+  {"value", NodeSchemaFieldStorage::Bool, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kIntLiteralFields[] = {
+  {"base", NodeSchemaFieldStorage::UInt8, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"value", NodeSchemaFieldStorage::BigIntId, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kFloatLiteralExprFields[] = {
+  {"width", NodeSchemaFieldStorage::UInt8, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"value", NodeSchemaFieldStorage::FloatId, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kBigIntLiteralFields[] = {
+  {"value", NodeSchemaFieldStorage::BigIntId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kStrLiteralFields[] = {
+  {"value", NodeSchemaFieldStorage::StringId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"is_raw", NodeSchemaFieldStorage::Bool, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"prefix", NodeSchemaFieldStorage::Enum, 2, kNodeSchemaNoWord, false, nullptr, "StrLiteral.prefix", kStrLiteralPrefixEnumValues, 5},
+};
+
+constexpr NodeSchemaFieldEntry kArrayLiteralFields[] = {
+  {"elems", NodeSchemaFieldStorage::NodeList, 0, 1, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kTupleLiteralFields[] = {
+  {"elems", NodeSchemaFieldStorage::NodeList, 0, 1, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kWherePredFields[] = {
+  {"kind", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "WhereBoundKind", kWherePredKindEnumValues, 9},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"bound", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kIdentExprFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kCallExpressionFields[] = {
+  {"callee", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"args", NodeSchemaFieldStorage::NodeList, 1, 2, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kBinaryExprFields[] = {
+  {"op", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "BinaryExpr.op", kBinaryExprOpEnumValues, 22},
+  {"lhs", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"rhs", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kConditionalExprFields[] = {
+  {"cond", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"then_expr", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"else_expr", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kDynTypeExprFields[] = {
+  {"ifaces_id", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "DynTypeIfaceList", nullptr, nullptr, 0},
+  {"markers_id", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "DynTypeMarkerList", nullptr, nullptr, 0},
+  {"has_lifetime", NodeSchemaFieldStorage::Bool, 2, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"lifetime", NodeSchemaFieldStorage::IdentId, 3, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kFixedArrayTypeExprFields[] = {
+  {"elem", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"len_expr", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kSliceArrayTypeExprFields[] = {
+  {"elem", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kOptionalTypeExprFields[] = {
+  {"inner", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"double", NodeSchemaFieldStorage::Bool, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kNamedTypeExprFields[] = {
+  {"path", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Identifier", nullptr, nullptr, 0},
+  {"args", NodeSchemaFieldStorage::NodeList, 1, 2, true, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kPredefinedTypeExprFields[] = {
+  {"kind", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "PredefinedTypeExpr.kind", kPredefinedTypeExprKindEnumValues, 17},
+};
+
+constexpr NodeSchemaFieldEntry kFunctionTypeExprFields[] = {
+  {"params", NodeSchemaFieldStorage::NodeList, 0, 1, false, "TypeExpr", nullptr, nullptr, 0},
+  {"ret_ty", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"raises", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kUnionTypeExprFields[] = {
+  {"alts", NodeSchemaFieldStorage::NodeList, 0, 1, false, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kIntersectionTypeExprFields[] = {
+  {"alts", NodeSchemaFieldStorage::NodeList, 0, 1, false, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kArrayTypeExprFields[] = {
+  {"elem", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"len_expr", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kDynTypeIfaceListFields[] = {
+  {"n_ifaces", NodeSchemaFieldStorage::UInt8, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ifaces", NodeSchemaFieldStorage::NodeList, 1, 2, false, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kDynTypeMarkerListFields[] = {
+  {"n_markers", NodeSchemaFieldStorage::UInt8, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"markers", NodeSchemaFieldStorage::NodeList, 1, 2, false, "AttributePath", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kSuspendStatementFields[] = {
+  {"mode", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "SuspendMode", kSuspendStatementModeEnumValues, 3},
+  {"until_cond", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+  {"on_timeout_ms", NodeSchemaFieldStorage::UInt32, 2, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kUntilClauseFields[] = {
+  {"cond", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kBlockStmtFields[] = {
+  {"stmts", NodeSchemaFieldStorage::NodeList, 0, 1, false, "StatementListItem", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kIfStmtFields[] = {
+  {"cond", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"then_stmt", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Statement", nullptr, nullptr, 0},
+  {"else_stmt", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "Statement", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMatchStmtFields[] = {
+  {"scrutinee", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"arms", NodeSchemaFieldStorage::NodeList, 1, 2, false, "MatchArmStmt", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kWhileStmtFields[] = {
+  {"cond", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+  {"body", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Statement", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kForStmtFields[] = {
+  {"init", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, true, "Statement", nullptr, nullptr, 0},
+  {"cond", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+  {"update", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+  {"body", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, false, "Statement", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kBreakStmtFields[] = {
+  {"label", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kReturnStmtFields[] = {
+  {"value", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kStatementListItemFields[] = {
+  {"item", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"attrs", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "AttributeList", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMatchArmStmtFields[] = {
+  {"pattern", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Pattern", nullptr, nullptr, 0},
+  {"guard", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+  {"body", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "Statement", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kLetStmtFields[] = {
+  {"pattern", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Pattern", nullptr, nullptr, 0},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+  {"init", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kModuleDeclarationFields[] = {
+  {"path", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "ModulePath", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kExpressionStatementFields[] = {
+  {"expression", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kLabeledStatementFields[] = {
+  {"label", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"statement", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "Statement", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kForInStatementFields[] = {
+  {"binding", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, true, "Pattern", nullptr, nullptr, 0},
+  {"expression", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+  {"body", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "Statement", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kDoWhileStatementFields[] = {
+  {"body", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, true, "Statement", nullptr, nullptr, 0},
+  {"cond", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kContinueStatementFields[] = {
+  {"label", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kStandaloneImplDeclFields[] = {
+  {"is_unsafe", NodeSchemaFieldStorage::Bool, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ifaces_id", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "ImplIfaceList", nullptr, nullptr, 0},
+  {"for_ty", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"where_", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "WhereClause", nullptr, nullptr, 0},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 4, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"members_id", NodeSchemaFieldStorage::NodeId, 5, kNodeSchemaNoWord, true, "ClassMemberList", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMarkerImplFields[] = {
+  {"is_unsafe", NodeSchemaFieldStorage::Bool, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"is_negated", NodeSchemaFieldStorage::Bool, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"marker_path", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "AttributePath", nullptr, nullptr, 0},
+  {"for_ty", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"where_", NodeSchemaFieldStorage::NodeId, 4, kNodeSchemaNoWord, true, "WhereClause", nullptr, nullptr, 0},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 5, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kWhereClauseFields[] = {
+  {"preds", NodeSchemaFieldStorage::NodeList, 0, 1, false, "WherePred", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kMarkerDeclarationFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"is_auto", NodeSchemaFieldStorage::Bool, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"n_markers", NodeSchemaFieldStorage::UInt8, 3, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"markers", NodeSchemaFieldStorage::NodeList, 4, 5, false, "AttributePath", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kPositionalStructDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"extensibility", NodeSchemaFieldStorage::Enum, 1, kNodeSchemaNoWord, false, nullptr, "ClassExtensibility", kPositionalStructDeclExtensibilityEnumValues, 3},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"nfields", NodeSchemaFieldStorage::UInt16, 3, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"fields", NodeSchemaFieldStorage::NodeList, 4, 5, false, "PositionalFieldDecl", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kFunctionDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"params_id", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "FunctionParameterList", nullptr, nullptr, 0},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"ret_ty", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+  {"raises_ty", NodeSchemaFieldStorage::NodeId, 4, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+  {"body", NodeSchemaFieldStorage::NodeId, 5, kNodeSchemaNoWord, false, "BlockStmt", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kClassDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"extensibility", NodeSchemaFieldStorage::Enum, 1, kNodeSchemaNoWord, false, nullptr, "ClassExtensibility", kClassDeclExtensibilityEnumValues, 3},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"extends", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+  {"members_id", NodeSchemaFieldStorage::NodeId, 4, kNodeSchemaNoWord, true, "ClassMemberList", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kStructDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"extensibility", NodeSchemaFieldStorage::Enum, 1, kNodeSchemaNoWord, false, nullptr, "ClassExtensibility", kStructDeclExtensibilityEnumValues, 3},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"members_id", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "ClassMemberList", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kGenericParamsFields[] = {
+  {"nparams", NodeSchemaFieldStorage::UInt16, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"params", NodeSchemaFieldStorage::NodeList, 1, 2, false, "TypeParamDecl", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kFunctionParameterDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ty", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
+  {"default_", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "Expression", nullptr, nullptr, 0},
+  {"attrs", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "AttributeList", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kFunctionParameterListFields[] = {
+  {"nparams", NodeSchemaFieldStorage::UInt16, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"params", NodeSchemaFieldStorage::NodeList, 1, 2, false, "ParameterDecl", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kImplIfaceListFields[] = {
+  {"n_ifaces", NodeSchemaFieldStorage::UInt8, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"ifaces", NodeSchemaFieldStorage::NodeList, 1, 2, false, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kClassMemberListFields[] = {
+  {"nmembers", NodeSchemaFieldStorage::UInt16, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"members", NodeSchemaFieldStorage::NodeList, 1, 2, false, "ClassElement", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kInterfaceDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"members_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "ClassMemberList", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kErrorDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"members_id", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "ClassMemberList", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kAliasDeclFields[] = {
+  {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"target", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kSourceFileFields[] = {
+  {"file_name", NodeSchemaFieldStorage::StringId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"module", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "ModuleDeclaration", nullptr, nullptr, 0},
+  {"statements", NodeSchemaFieldStorage::NodeList, 2, 3, false, "StatementListItem", nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kModulePathFields[] = {
+  {"segments", NodeSchemaFieldStorage::IdentList, 0, 1, false, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kImportDeclarationFields[] = {
+  {"path", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "ModulePath", nullptr, nullptr, 0},
+  {"specifiers", NodeSchemaFieldStorage::NodeList, 1, 2, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaFieldEntry kExportDeclarationFields[] = {
+  {"declaration", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, true, nullptr, nullptr, nullptr, 0},
+  {"specifiers", NodeSchemaFieldStorage::NodeList, 1, 2, true, nullptr, nullptr, nullptr, 0},
+};
+
+constexpr NodeSchemaEntry kNodeSchemaEntries[] = {
+  {SyntaxKind::AttributeList, "AttributeList", kAttributeListFields, 1},
+  {SyntaxKind::AttributePath, "AttributePath", kAttributePathFields, 2},
+  {SyntaxKind::Attribute, "Attribute", kAttributeFields, 2},
+  {SyntaxKind::ZomCfgAttribute, "ZomCfgAttribute", kZomCfgAttributeFields, 1},
+  {SyntaxKind::CfgAtom, "CfgAtom", kCfgAtomFields, 3},
+  {SyntaxKind::CfgAll, "CfgAll", kCfgAllFields, 1},
+  {SyntaxKind::CfgAny, "CfgAny", kCfgAnyFields, 1},
+  {SyntaxKind::CfgNot, "CfgNot", kCfgNotFields, 1},
+  {SyntaxKind::CfgOp, "CfgOp", kCfgOpFields, 3},
+  {SyntaxKind::ExternDecl, "ExternDecl", kExternDeclFields, 5},
+  {SyntaxKind::UnsafeBlockExpr, "UnsafeBlockExpr", kUnsafeBlockExprFields, 1},
+  {SyntaxKind::ExternBlock, "ExternBlock", kExternBlockFields, 2},
+  {SyntaxKind::FFIParameterDecl, "FFIParameterDecl", kFFIParameterDeclFields, 3},
+  {SyntaxKind::ExternVarDecl, "ExternVarDecl", kExternVarDeclFields, 4},
+  {SyntaxKind::ExternStaticDecl, "ExternStaticDecl", kExternStaticDeclFields, 4},
+  {SyntaxKind::FFIConstDecl, "FFIConstDecl", kFFIConstDeclFields, 3},
+  {SyntaxKind::FFILinkSpec, "FFILinkSpec", kFFILinkSpecFields, 3},
+  {SyntaxKind::MacroInvocationExpr, "MacroInvocationExpr", kMacroInvocationExprFields, 3},
+  {SyntaxKind::MacroRulesDecl, "MacroRulesDecl", kMacroRulesDeclFields, 2},
+  {SyntaxKind::MacroRule, "MacroRule", kMacroRuleFields, 2},
+  {SyntaxKind::MacroPattern, "MacroPattern", kMacroPatternFields, 1},
+  {SyntaxKind::MacroFragment, "MacroFragment", kMacroFragmentFields, 4},
+  {SyntaxKind::MacroTokenTree, "MacroTokenTree", kMacroTokenTreeFields, 1},
+  {SyntaxKind::DeriveList, "DeriveList", kDeriveListFields, 1},
+  {SyntaxKind::DeriveItem, "DeriveItem", kDeriveItemFields, 2},
+  {SyntaxKind::MacroQuasiQuote, "MacroQuasiQuote", kMacroQuasiQuoteFields, 2},
+  {SyntaxKind::MacroUnquote, "MacroUnquote", kMacroUnquoteFields, 1},
+  {SyntaxKind::MacroDelimitedGroup, "MacroDelimitedGroup", kMacroDelimitedGroupFields, 2},
+  {SyntaxKind::ProcMacroDecl, "ProcMacroDecl", kProcMacroDeclFields, 4},
+  {SyntaxKind::UnitVariant, "UnitVariant", kUnitVariantFields, 3},
+  {SyntaxKind::TupleVariant, "TupleVariant", kTupleVariantFields, 5},
+  {SyntaxKind::StructVariant, "StructVariant", kStructVariantFields, 5},
+  {SyntaxKind::EnumDeclaration, "EnumDeclaration", kEnumDeclarationFields, 6},
+  {SyntaxKind::AssociatedConstVariant, "AssociatedConstVariant", kAssociatedConstVariantFields, 4},
+  {SyntaxKind::EnumMemberAlias, "EnumMemberAlias", kEnumMemberAliasFields, 2},
+  {SyntaxKind::EnumVariantAttr, "EnumVariantAttr", kEnumVariantAttrFields, 2},
+  {SyntaxKind::DiscriminantRef, "DiscriminantRef", kDiscriminantRefFields, 2},
+  {SyntaxKind::EnumExtendsClause, "EnumExtendsClause", kEnumExtendsClauseFields, 2},
+  {SyntaxKind::RawVariant, "RawVariant", kRawVariantFields, 2},
+  {SyntaxKind::EnumReprAttr, "EnumReprAttr", kEnumReprAttrFields, 2},
+  {SyntaxKind::EnumVariantList, "EnumVariantList", kEnumVariantListFields, 2},
+  {SyntaxKind::RestPattern, "RestPattern", kRestPatternFields, 1},
+  {SyntaxKind::LiteralPattern, "LiteralPattern", kLiteralPatternFields, 2},
+  {SyntaxKind::IsPattern, "IsPattern", kIsPatternFields, 1},
+  {SyntaxKind::WildcardPattern, "WildcardPattern", kWildcardPatternFields, 1},
+  {SyntaxKind::BindingPattern, "BindingPattern", kBindingPatternFields, 4},
+  {SyntaxKind::IdentifierPattern, "IdentifierPattern", kIdentifierPatternFields, 2},
+  {SyntaxKind::TuplePattern, "TuplePattern", kTuplePatternFields, 1},
+  {SyntaxKind::StructPattern, "StructPattern", kStructPatternFields, 3},
+  {SyntaxKind::PatternProperty, "PatternProperty", kPatternPropertyFields, 3},
+  {SyntaxKind::ArrayPattern, "ArrayPattern", kArrayPatternFields, 2},
+  {SyntaxKind::SpawnExpression, "SpawnExpression", kSpawnExpressionFields, 2},
+  {SyntaxKind::PositionalStructCtorExpr, "PositionalStructCtorExpr", kPositionalStructCtorExprFields, 3},
+  {SyntaxKind::TupleLiteral1, "TupleLiteral1", kTupleLiteral1Fields, 1},
+  {SyntaxKind::ErrorDefaultExpr, "ErrorDefaultExpr", kErrorDefaultExprFields, 2},
+  {SyntaxKind::NullCoalesceExpr, "NullCoalesceExpr", kNullCoalesceExprFields, 2},
+  {SyntaxKind::IsExpression, "IsExpression", kIsExpressionFields, 2},
+  {SyntaxKind::NullLiteral, "NullLiteral", nullptr, 0},
+  {SyntaxKind::BoolLiteral, "BoolLiteral", kBoolLiteralFields, 1},
+  {SyntaxKind::IntLiteral, "IntLiteral", kIntLiteralFields, 2},
+  {SyntaxKind::FloatLiteralExpr, "FloatLiteralExpr", kFloatLiteralExprFields, 2},
+  {SyntaxKind::BigIntLiteral, "BigIntLiteral", kBigIntLiteralFields, 1},
+  {SyntaxKind::StrLiteral, "StrLiteral", kStrLiteralFields, 3},
+  {SyntaxKind::ArrayLiteral, "ArrayLiteral", kArrayLiteralFields, 1},
+  {SyntaxKind::TupleLiteral, "TupleLiteral", kTupleLiteralFields, 1},
+  {SyntaxKind::WherePred, "WherePred", kWherePredFields, 3},
+  {SyntaxKind::ThisExpr, "ThisExpr", nullptr, 0},
+  {SyntaxKind::IdentExpr, "IdentExpr", kIdentExprFields, 1},
+  {SyntaxKind::CallExpression, "CallExpression", kCallExpressionFields, 2},
+  {SyntaxKind::BinaryExpr, "BinaryExpr", kBinaryExprFields, 3},
+  {SyntaxKind::ConditionalExpr, "ConditionalExpr", kConditionalExprFields, 3},
+  {SyntaxKind::DynTypeExpr, "DynTypeExpr", kDynTypeExprFields, 4},
+  {SyntaxKind::BottomTypeExpr, "BottomTypeExpr", nullptr, 0},
+  {SyntaxKind::FixedArrayTypeExpr, "FixedArrayTypeExpr", kFixedArrayTypeExprFields, 2},
+  {SyntaxKind::SliceArrayTypeExpr, "SliceArrayTypeExpr", kSliceArrayTypeExprFields, 1},
+  {SyntaxKind::OptionalTypeExpr, "OptionalTypeExpr", kOptionalTypeExprFields, 2},
+  {SyntaxKind::NamedTypeExpr, "NamedTypeExpr", kNamedTypeExprFields, 2},
+  {SyntaxKind::PredefinedTypeExpr, "PredefinedTypeExpr", kPredefinedTypeExprFields, 1},
+  {SyntaxKind::FunctionTypeExpr, "FunctionTypeExpr", kFunctionTypeExprFields, 3},
+  {SyntaxKind::UnionTypeExpr, "UnionTypeExpr", kUnionTypeExprFields, 1},
+  {SyntaxKind::IntersectionTypeExpr, "IntersectionTypeExpr", kIntersectionTypeExprFields, 1},
+  {SyntaxKind::ArrayTypeExpr, "ArrayTypeExpr", kArrayTypeExprFields, 2},
+  {SyntaxKind::DynTypeIfaceList, "DynTypeIfaceList", kDynTypeIfaceListFields, 2},
+  {SyntaxKind::DynTypeMarkerList, "DynTypeMarkerList", kDynTypeMarkerListFields, 2},
+  {SyntaxKind::SuspendStatement, "SuspendStatement", kSuspendStatementFields, 3},
+  {SyntaxKind::UntilClause, "UntilClause", kUntilClauseFields, 1},
+  {SyntaxKind::BlockStmt, "BlockStmt", kBlockStmtFields, 1},
+  {SyntaxKind::IfStmt, "IfStmt", kIfStmtFields, 3},
+  {SyntaxKind::MatchStmt, "MatchStmt", kMatchStmtFields, 2},
+  {SyntaxKind::WhileStmt, "WhileStmt", kWhileStmtFields, 2},
+  {SyntaxKind::ForStmt, "ForStmt", kForStmtFields, 4},
+  {SyntaxKind::BreakStmt, "BreakStmt", kBreakStmtFields, 1},
+  {SyntaxKind::ReturnStmt, "ReturnStmt", kReturnStmtFields, 1},
+  {SyntaxKind::StatementListItem, "StatementListItem", kStatementListItemFields, 2},
+  {SyntaxKind::MatchArmStmt, "MatchArmStmt", kMatchArmStmtFields, 3},
+  {SyntaxKind::LetStmt, "LetStmt", kLetStmtFields, 3},
+  {SyntaxKind::ModuleDeclaration, "ModuleDeclaration", kModuleDeclarationFields, 1},
+  {SyntaxKind::ExpressionStatement, "ExpressionStatement", kExpressionStatementFields, 1},
+  {SyntaxKind::EmptyStatement, "EmptyStatement", nullptr, 0},
+  {SyntaxKind::LabeledStatement, "LabeledStatement", kLabeledStatementFields, 2},
+  {SyntaxKind::ForInStatement, "ForInStatement", kForInStatementFields, 3},
+  {SyntaxKind::DoWhileStatement, "DoWhileStatement", kDoWhileStatementFields, 2},
+  {SyntaxKind::DebuggerStatement, "DebuggerStatement", nullptr, 0},
+  {SyntaxKind::ContinueStatement, "ContinueStatement", kContinueStatementFields, 1},
+  {SyntaxKind::StandaloneImplDecl, "StandaloneImplDecl", kStandaloneImplDeclFields, 6},
+  {SyntaxKind::MarkerImpl, "MarkerImpl", kMarkerImplFields, 6},
+  {SyntaxKind::WhereClause, "WhereClause", kWhereClauseFields, 1},
+  {SyntaxKind::MarkerDeclaration, "MarkerDeclaration", kMarkerDeclarationFields, 5},
+  {SyntaxKind::PositionalStructDecl, "PositionalStructDecl", kPositionalStructDeclFields, 5},
+  {SyntaxKind::FunctionDecl, "FunctionDecl", kFunctionDeclFields, 6},
+  {SyntaxKind::ClassDecl, "ClassDecl", kClassDeclFields, 5},
+  {SyntaxKind::StructDecl, "StructDecl", kStructDeclFields, 4},
+  {SyntaxKind::GenericParams, "GenericParams", kGenericParamsFields, 2},
+  {SyntaxKind::FunctionParameterDecl, "FunctionParameterDecl", kFunctionParameterDeclFields, 4},
+  {SyntaxKind::FunctionParameterList, "FunctionParameterList", kFunctionParameterListFields, 2},
+  {SyntaxKind::ImplIfaceList, "ImplIfaceList", kImplIfaceListFields, 2},
+  {SyntaxKind::ClassMemberList, "ClassMemberList", kClassMemberListFields, 2},
+  {SyntaxKind::InterfaceDecl, "InterfaceDecl", kInterfaceDeclFields, 3},
+  {SyntaxKind::ErrorDecl, "ErrorDecl", kErrorDeclFields, 2},
+  {SyntaxKind::AliasDecl, "AliasDecl", kAliasDeclFields, 3},
+  {SyntaxKind::SourceFile, "SourceFile", kSourceFileFields, 3},
+  {SyntaxKind::ModulePath, "ModulePath", kModulePathFields, 1},
+  {SyntaxKind::ImportDeclaration, "ImportDeclaration", kImportDeclarationFields, 2},
+  {SyntaxKind::ExportDeclaration, "ExportDeclaration", kExportDeclarationFields, 2},
+};
+
+constexpr const NodeSchemaEntry* lookupNodeSchema(SyntaxKind kind) noexcept {
+  switch (kind) {
+    case SyntaxKind::AttributeList: return &kNodeSchemaEntries[0];
+    case SyntaxKind::AttributePath: return &kNodeSchemaEntries[1];
+    case SyntaxKind::Attribute: return &kNodeSchemaEntries[2];
+    case SyntaxKind::ZomCfgAttribute: return &kNodeSchemaEntries[3];
+    case SyntaxKind::CfgAtom: return &kNodeSchemaEntries[4];
+    case SyntaxKind::CfgAll: return &kNodeSchemaEntries[5];
+    case SyntaxKind::CfgAny: return &kNodeSchemaEntries[6];
+    case SyntaxKind::CfgNot: return &kNodeSchemaEntries[7];
+    case SyntaxKind::CfgOp: return &kNodeSchemaEntries[8];
+    case SyntaxKind::ExternDecl: return &kNodeSchemaEntries[9];
+    case SyntaxKind::UnsafeBlockExpr: return &kNodeSchemaEntries[10];
+    case SyntaxKind::ExternBlock: return &kNodeSchemaEntries[11];
+    case SyntaxKind::FFIParameterDecl: return &kNodeSchemaEntries[12];
+    case SyntaxKind::ExternVarDecl: return &kNodeSchemaEntries[13];
+    case SyntaxKind::ExternStaticDecl: return &kNodeSchemaEntries[14];
+    case SyntaxKind::FFIConstDecl: return &kNodeSchemaEntries[15];
+    case SyntaxKind::FFILinkSpec: return &kNodeSchemaEntries[16];
+    case SyntaxKind::MacroInvocationExpr: return &kNodeSchemaEntries[17];
+    case SyntaxKind::MacroRulesDecl: return &kNodeSchemaEntries[18];
+    case SyntaxKind::MacroRule: return &kNodeSchemaEntries[19];
+    case SyntaxKind::MacroPattern: return &kNodeSchemaEntries[20];
+    case SyntaxKind::MacroFragment: return &kNodeSchemaEntries[21];
+    case SyntaxKind::MacroTokenTree: return &kNodeSchemaEntries[22];
+    case SyntaxKind::DeriveList: return &kNodeSchemaEntries[23];
+    case SyntaxKind::DeriveItem: return &kNodeSchemaEntries[24];
+    case SyntaxKind::MacroQuasiQuote: return &kNodeSchemaEntries[25];
+    case SyntaxKind::MacroUnquote: return &kNodeSchemaEntries[26];
+    case SyntaxKind::MacroDelimitedGroup: return &kNodeSchemaEntries[27];
+    case SyntaxKind::ProcMacroDecl: return &kNodeSchemaEntries[28];
+    case SyntaxKind::UnitVariant: return &kNodeSchemaEntries[29];
+    case SyntaxKind::TupleVariant: return &kNodeSchemaEntries[30];
+    case SyntaxKind::StructVariant: return &kNodeSchemaEntries[31];
+    case SyntaxKind::EnumDeclaration: return &kNodeSchemaEntries[32];
+    case SyntaxKind::AssociatedConstVariant: return &kNodeSchemaEntries[33];
+    case SyntaxKind::EnumMemberAlias: return &kNodeSchemaEntries[34];
+    case SyntaxKind::EnumVariantAttr: return &kNodeSchemaEntries[35];
+    case SyntaxKind::DiscriminantRef: return &kNodeSchemaEntries[36];
+    case SyntaxKind::EnumExtendsClause: return &kNodeSchemaEntries[37];
+    case SyntaxKind::RawVariant: return &kNodeSchemaEntries[38];
+    case SyntaxKind::EnumReprAttr: return &kNodeSchemaEntries[39];
+    case SyntaxKind::EnumVariantList: return &kNodeSchemaEntries[40];
+    case SyntaxKind::RestPattern: return &kNodeSchemaEntries[41];
+    case SyntaxKind::LiteralPattern: return &kNodeSchemaEntries[42];
+    case SyntaxKind::IsPattern: return &kNodeSchemaEntries[43];
+    case SyntaxKind::WildcardPattern: return &kNodeSchemaEntries[44];
+    case SyntaxKind::BindingPattern: return &kNodeSchemaEntries[45];
+    case SyntaxKind::IdentifierPattern: return &kNodeSchemaEntries[46];
+    case SyntaxKind::TuplePattern: return &kNodeSchemaEntries[47];
+    case SyntaxKind::StructPattern: return &kNodeSchemaEntries[48];
+    case SyntaxKind::PatternProperty: return &kNodeSchemaEntries[49];
+    case SyntaxKind::ArrayPattern: return &kNodeSchemaEntries[50];
+    case SyntaxKind::SpawnExpression: return &kNodeSchemaEntries[51];
+    case SyntaxKind::PositionalStructCtorExpr: return &kNodeSchemaEntries[52];
+    case SyntaxKind::TupleLiteral1: return &kNodeSchemaEntries[53];
+    case SyntaxKind::ErrorDefaultExpr: return &kNodeSchemaEntries[54];
+    case SyntaxKind::NullCoalesceExpr: return &kNodeSchemaEntries[55];
+    case SyntaxKind::IsExpression: return &kNodeSchemaEntries[56];
+    case SyntaxKind::NullLiteral: return &kNodeSchemaEntries[57];
+    case SyntaxKind::BoolLiteral: return &kNodeSchemaEntries[58];
+    case SyntaxKind::IntLiteral: return &kNodeSchemaEntries[59];
+    case SyntaxKind::FloatLiteralExpr: return &kNodeSchemaEntries[60];
+    case SyntaxKind::BigIntLiteral: return &kNodeSchemaEntries[61];
+    case SyntaxKind::StrLiteral: return &kNodeSchemaEntries[62];
+    case SyntaxKind::ArrayLiteral: return &kNodeSchemaEntries[63];
+    case SyntaxKind::TupleLiteral: return &kNodeSchemaEntries[64];
+    case SyntaxKind::WherePred: return &kNodeSchemaEntries[65];
+    case SyntaxKind::ThisExpr: return &kNodeSchemaEntries[66];
+    case SyntaxKind::IdentExpr: return &kNodeSchemaEntries[67];
+    case SyntaxKind::CallExpression: return &kNodeSchemaEntries[68];
+    case SyntaxKind::BinaryExpr: return &kNodeSchemaEntries[69];
+    case SyntaxKind::ConditionalExpr: return &kNodeSchemaEntries[70];
+    case SyntaxKind::DynTypeExpr: return &kNodeSchemaEntries[71];
+    case SyntaxKind::BottomTypeExpr: return &kNodeSchemaEntries[72];
+    case SyntaxKind::FixedArrayTypeExpr: return &kNodeSchemaEntries[73];
+    case SyntaxKind::SliceArrayTypeExpr: return &kNodeSchemaEntries[74];
+    case SyntaxKind::OptionalTypeExpr: return &kNodeSchemaEntries[75];
+    case SyntaxKind::NamedTypeExpr: return &kNodeSchemaEntries[76];
+    case SyntaxKind::PredefinedTypeExpr: return &kNodeSchemaEntries[77];
+    case SyntaxKind::FunctionTypeExpr: return &kNodeSchemaEntries[78];
+    case SyntaxKind::UnionTypeExpr: return &kNodeSchemaEntries[79];
+    case SyntaxKind::IntersectionTypeExpr: return &kNodeSchemaEntries[80];
+    case SyntaxKind::ArrayTypeExpr: return &kNodeSchemaEntries[81];
+    case SyntaxKind::DynTypeIfaceList: return &kNodeSchemaEntries[82];
+    case SyntaxKind::DynTypeMarkerList: return &kNodeSchemaEntries[83];
+    case SyntaxKind::SuspendStatement: return &kNodeSchemaEntries[84];
+    case SyntaxKind::UntilClause: return &kNodeSchemaEntries[85];
+    case SyntaxKind::BlockStmt: return &kNodeSchemaEntries[86];
+    case SyntaxKind::IfStmt: return &kNodeSchemaEntries[87];
+    case SyntaxKind::MatchStmt: return &kNodeSchemaEntries[88];
+    case SyntaxKind::WhileStmt: return &kNodeSchemaEntries[89];
+    case SyntaxKind::ForStmt: return &kNodeSchemaEntries[90];
+    case SyntaxKind::BreakStmt: return &kNodeSchemaEntries[91];
+    case SyntaxKind::ReturnStmt: return &kNodeSchemaEntries[92];
+    case SyntaxKind::StatementListItem: return &kNodeSchemaEntries[93];
+    case SyntaxKind::MatchArmStmt: return &kNodeSchemaEntries[94];
+    case SyntaxKind::LetStmt: return &kNodeSchemaEntries[95];
+    case SyntaxKind::ModuleDeclaration: return &kNodeSchemaEntries[96];
+    case SyntaxKind::ExpressionStatement: return &kNodeSchemaEntries[97];
+    case SyntaxKind::EmptyStatement: return &kNodeSchemaEntries[98];
+    case SyntaxKind::LabeledStatement: return &kNodeSchemaEntries[99];
+    case SyntaxKind::ForInStatement: return &kNodeSchemaEntries[100];
+    case SyntaxKind::DoWhileStatement: return &kNodeSchemaEntries[101];
+    case SyntaxKind::DebuggerStatement: return &kNodeSchemaEntries[102];
+    case SyntaxKind::ContinueStatement: return &kNodeSchemaEntries[103];
+    case SyntaxKind::StandaloneImplDecl: return &kNodeSchemaEntries[104];
+    case SyntaxKind::MarkerImpl: return &kNodeSchemaEntries[105];
+    case SyntaxKind::WhereClause: return &kNodeSchemaEntries[106];
+    case SyntaxKind::MarkerDeclaration: return &kNodeSchemaEntries[107];
+    case SyntaxKind::PositionalStructDecl: return &kNodeSchemaEntries[108];
+    case SyntaxKind::FunctionDecl: return &kNodeSchemaEntries[109];
+    case SyntaxKind::ClassDecl: return &kNodeSchemaEntries[110];
+    case SyntaxKind::StructDecl: return &kNodeSchemaEntries[111];
+    case SyntaxKind::GenericParams: return &kNodeSchemaEntries[112];
+    case SyntaxKind::FunctionParameterDecl: return &kNodeSchemaEntries[113];
+    case SyntaxKind::FunctionParameterList: return &kNodeSchemaEntries[114];
+    case SyntaxKind::ImplIfaceList: return &kNodeSchemaEntries[115];
+    case SyntaxKind::ClassMemberList: return &kNodeSchemaEntries[116];
+    case SyntaxKind::InterfaceDecl: return &kNodeSchemaEntries[117];
+    case SyntaxKind::ErrorDecl: return &kNodeSchemaEntries[118];
+    case SyntaxKind::AliasDecl: return &kNodeSchemaEntries[119];
+    case SyntaxKind::SourceFile: return &kNodeSchemaEntries[120];
+    case SyntaxKind::ModulePath: return &kNodeSchemaEntries[121];
+    case SyntaxKind::ImportDeclaration: return &kNodeSchemaEntries[122];
+    case SyntaxKind::ExportDeclaration: return &kNodeSchemaEntries[123];
+    default: return nullptr;
+  }
+}
 
 }  // namespace ast
 }  // namespace compiler

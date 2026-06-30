@@ -52,6 +52,18 @@ enums:
     type: uint8
     values: [ Parser, Binder, Lowering ]
 
+  MacroFragmentKind:
+    type: uint8
+    values: [ Ident, Expr, Ty, Stmt, Pat, Path, Item, Block, Meta, Literal, Lifetime, Vis, Tt, Token ]
+
+  EnumReprKind:
+    type: uint8
+    values: [ I32, I8, I16, I64, U8, U16, U32, U64 ]
+
+  LiteralPatternKind:
+    type: uint8
+    values: [ Integer, Float, BigInt, String, Char, Bool, Null ]
+
 categories:
   Module:          { first: 0x170, last: 0x17F, desc: "source files and module paths" }
   Attribute:       { first: 0x00, last: 0x0F, desc: "§19 conditional / attribute" }

@@ -19,6 +19,7 @@
 #include "zc/core/io.h"
 #include "zc/core/main.h"
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/dump.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/io-utils.h"
@@ -70,8 +71,8 @@ public:
                           "Specify the output directory or file path.")
         .addOptionWithArg({"emit"}, ZC_BIND_METHOD(*this, setEmitType), "<type>",
                           "Set output type: ast, ir, binary (default: binary)")
-        .addOptionWithArg({"format"}, ZC_BIND_METHOD(*this, setOutputFormat), "<format>",
-                          "Set output format: text, json, xml (default: text)")
+        .addOptionWithArg({"ast-format"}, ZC_BIND_METHOD(*this, setASTDumpFormat), "<format>",
+                          "Set AST dump format: tree, json, raw (default: tree)")
         .addOption({"dump-ast"}, ZC_BIND_METHOD(*this, enableASTDump),
                    "Dump AST to stdout (shorthand for --emit=ast)")
         .addOption({"syntax-only"}, ZC_BIND_METHOD(*this, enableSyntaxOnly),
@@ -109,7 +110,6 @@ public:
   zc::MainBuilder::Validity setEmitType(zc::StringPtr type) {
     if (type == "ast") {
       compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::AST;
-      compilerOpts.emission.dumpASTEnabled = true;
     } else if (type == "ir") {
       compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::IR;
     } else if (type == "binary") {
@@ -121,25 +121,24 @@ public:
     return true;
   }
 
-  zc::MainBuilder::Validity setOutputFormat(zc::StringPtr format) {
-    if (format == "text") {
-      compilerOpts.emission.serializerType =
-          basic::CompilerOptions::EmissionOptions::SerializerType::kTEXT;
+  zc::MainBuilder::Validity setASTDumpFormat(zc::StringPtr format) {
+    if (format == "tree") {
+      compilerOpts.emission.astDumpFormat =
+          basic::CompilerOptions::EmissionOptions::ASTDumpFormat::Tree;
     } else if (format == "json") {
-      compilerOpts.emission.serializerType =
-          basic::CompilerOptions::EmissionOptions::SerializerType::kJSON;
-    } else if (format == "xml") {
-      compilerOpts.emission.serializerType =
-          basic::CompilerOptions::EmissionOptions::SerializerType::kXML;
+      compilerOpts.emission.astDumpFormat =
+          basic::CompilerOptions::EmissionOptions::ASTDumpFormat::Json;
+    } else if (format == "raw") {
+      compilerOpts.emission.astDumpFormat =
+          basic::CompilerOptions::EmissionOptions::ASTDumpFormat::Raw;
     } else {
-      return zc::str("Invalid format: ", format, ". Valid formats are: text, json, xml");
+      return zc::str("Invalid AST format: ", format, ". Valid formats are: tree, json, raw");
     }
     return true;
   }
 
   zc::MainBuilder::Validity enableASTDump() {
     compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::AST;
-    compilerOpts.emission.dumpASTEnabled = true;
     return true;
   }
 
@@ -189,8 +188,7 @@ public:
     // 2. Early AST Emission (skips binding)
     // We handle AST emission here to allow inspecting the syntax tree without requiring a
     // successful binding phase.
-    if (options.emission.outputType == basic::CompilerOptions::EmissionOptions::OutputType::AST ||
-        options.emission.dumpASTEnabled) {
+    if (options.emission.outputType == basic::CompilerOptions::EmissionOptions::OutputType::AST) {
       return emitAST();
     }
 
@@ -223,27 +221,40 @@ public:
     const auto& options = driver->getCompilerOptions();
 
     zc::Maybe<zc::Own<zc::OutputStream>> outputStream =
-        createOutputStream(options.emission.outputPath, options.emission.serializerType);
+        createOutputStream(options.emission.outputPath, options.emission.astDumpFormat);
     ZC_IF_SOME(stream, outputStream) {
-      return dumpASTsToStream(*stream, asts, options.emission.serializerType);
+      return dumpASTsToStream(*stream, asts, options.emission.astDumpFormat);
     }
 
     return "Failed to create output stream.";
   }
 
 private:
+  using ASTDumpFormat = basic::CompilerOptions::EmissionOptions::ASTDumpFormat;
+
+  static ast::AstDumpFormat toAstDumpFormat(ASTDumpFormat format) {
+    switch (format) {
+      case ASTDumpFormat::Tree:
+        return ast::AstDumpFormat::Tree;
+      case ASTDumpFormat::Json:
+        return ast::AstDumpFormat::Json;
+      case ASTDumpFormat::Raw:
+        return ast::AstDumpFormat::Raw;
+    }
+    ZC_UNREACHABLE;
+  }
+
   /// Creates an appropriate output stream based on the given path and format
   zc::Maybe<zc::Own<zc::OutputStream>> createOutputStream(
-      const zc::Maybe<zc::StringPtr>& outputPath,
-      basic::CompilerOptions::EmissionOptions::SerializerType format) {
+      const zc::Maybe<zc::StringPtr>& outputPath, ASTDumpFormat format) {
     ZC_IF_SOME(path, outputPath) { return createFileOutputStream(path, format); }
     // Use stdout file descriptor to ensure shell redirection works properly
     return zc::heap<zc::FdOutputStream>(STDOUT_FILENO);
   }
 
   /// Creates a file output stream, handling directory paths appropriately
-  zc::Maybe<zc::Own<zc::OutputStream>> createFileOutputStream(
-      zc::StringPtr outputPath, basic::CompilerOptions::EmissionOptions::SerializerType format) {
+  zc::Maybe<zc::Own<zc::OutputStream>> createFileOutputStream(zc::StringPtr outputPath,
+                                                              ASTDumpFormat format) {
     auto filesystem = zc::newDiskFilesystem();
     bool isAbsolute = outputPath.size() > 0 && outputPath[0] == '/';
 
@@ -259,8 +270,7 @@ private:
   }
 
   /// Resolves the final output path, generating filename if path is a directory
-  zc::Path resolveOutputPath(zc::StringPtr outputPath,
-                             basic::CompilerOptions::EmissionOptions::SerializerType format,
+  zc::Path resolveOutputPath(zc::StringPtr outputPath, ASTDumpFormat format,
                              const zc::Directory& currentDir) {
     zc::Path path = zc::Path::parse(outputPath);
 
@@ -276,15 +286,14 @@ private:
   }
 
   /// Generates a default filename based on the first source file and format
-  zc::String generateDefaultFilename(
-      basic::CompilerOptions::EmissionOptions::SerializerType format) {
+  zc::String generateDefaultFilename(ASTDumpFormat format) {
     static constexpr char kDefaultBaseName[] = "ast_dump";
 
     auto maybeBaseName = extractSourceBaseName();
     zc::String baseName;
     ZC_IF_SOME(name, maybeBaseName) { baseName = zc::mv(name); }
     else { baseName = zc::str(kDefaultBaseName); }
-    zc::StringPtr extension = getFileExtensionForFormat(format);
+    zc::StringPtr extension = ast::astDumpFileExtension(toAstDumpFormat(format));
 
     return zc::str(baseName, extension);
   }
@@ -310,110 +319,18 @@ private:
                                      : zc::str(filename);
   }
 
-  /// Returns the appropriate file extension for the given dump format
-  static constexpr zc::StringPtr getFileExtensionForFormat(
-      basic::CompilerOptions::EmissionOptions::SerializerType format) {
-    switch (format) {
-      case basic::CompilerOptions::EmissionOptions::SerializerType::kJSON:
-        return ".json";
-      case basic::CompilerOptions::EmissionOptions::SerializerType::kXML:
-        return ".xml";
-      default:
-        return ".ast";
-    }
-  }
-
-  zc::MainBuilder::Validity dumpASTsToStream(
-      zc::OutputStream& outputStream, const auto& asts,
-      basic::CompilerOptions::EmissionOptions::SerializerType format) {
+  zc::MainBuilder::Validity dumpASTsToStream(zc::OutputStream& outputStream, const auto& asts,
+                                             ASTDumpFormat format) {
+    const auto& sourceManager = driver->getSourceManager();
     for (const auto& entry : asts) {
-      const source::BufferId& bufferId = entry.key;
       const ast::Tree& tree = entry.value;
 
-      writeBufferHeader(outputStream, bufferId, format);
-      dumpTree(outputStream, tree, format);
-      writeBufferFooter(outputStream, format);
+      ZC_IF_SOME(error, ast::dumpTree(outputStream, tree, sourceManager, toAstDumpFormat(format))) {
+        return zc::mv(error);
+      }
     }
 
     return true;
-  }
-
-  static void dumpTree(zc::OutputStream& outputStream, const ast::Tree& tree,
-                       basic::CompilerOptions::EmissionOptions::SerializerType format) {
-    switch (format) {
-      case basic::CompilerOptions::EmissionOptions::SerializerType::kJSON:
-        dumpTreeJson(outputStream, tree);
-        break;
-      case basic::CompilerOptions::EmissionOptions::SerializerType::kXML:
-        dumpTreeXml(outputStream, tree);
-        break;
-      case basic::CompilerOptions::EmissionOptions::SerializerType::kTEXT:
-      default:
-        dumpTreeText(outputStream, tree);
-        break;
-    }
-  }
-
-  static void dumpTreeText(zc::OutputStream& outputStream, const ast::Tree& tree) {
-    outputStream.write(zc::str("root: ", static_cast<uint64_t>(tree.root().value), "\n").asBytes());
-    uint64_t index = 1;
-    for (const auto& node : tree.nodes()) {
-      outputStream.write(zc::str("node ", index, ": kind=", static_cast<uint64_t>(node.kind),
-                                 " payload=[", static_cast<uint64_t>(node.payload.words[0]), ",",
-                                 static_cast<uint64_t>(node.payload.words[1]), ",",
-                                 static_cast<uint64_t>(node.payload.words[2]), "]\n")
-                             .asBytes());
-      ++index;
-    }
-  }
-
-  static void dumpTreeJson(zc::OutputStream& outputStream, const ast::Tree& tree) {
-    outputStream.write(
-        zc::str("{\"root\":", static_cast<uint64_t>(tree.root().value), ",\"nodes\":[").asBytes());
-    bool first = true;
-    uint64_t index = 1;
-    for (const auto& node : tree.nodes()) {
-      if (!first) { outputStream.write(","_zcb); }
-      first = false;
-      outputStream.write(zc::str("{\"id\":", index, ",\"kind\":", static_cast<uint64_t>(node.kind),
-                                 ",\"payload\":[", static_cast<uint64_t>(node.payload.words[0]),
-                                 ",", static_cast<uint64_t>(node.payload.words[1]), ",",
-                                 static_cast<uint64_t>(node.payload.words[2]), "]}")
-                             .asBytes());
-      ++index;
-    }
-    outputStream.write("]}"_zcb);
-  }
-
-  static void dumpTreeXml(zc::OutputStream& outputStream, const ast::Tree& tree) {
-    outputStream.write(
-        zc::str("<tree root=\"", static_cast<uint64_t>(tree.root().value), "\">").asBytes());
-    uint64_t index = 1;
-    for (const auto& node : tree.nodes()) {
-      outputStream.write(zc::str("<node id=\"", index, "\" kind=\"",
-                                 static_cast<uint64_t>(node.kind), "\" payload0=\"",
-                                 static_cast<uint64_t>(node.payload.words[0]), "\" payload1=\"",
-                                 static_cast<uint64_t>(node.payload.words[1]), "\" payload2=\"",
-                                 static_cast<uint64_t>(node.payload.words[2]), "\"/>")
-                             .asBytes());
-      ++index;
-    }
-    outputStream.write("</tree>"_zcb);
-  }
-
-  /// Writes buffer header for text format
-  static void writeBufferHeader(zc::OutputStream& outputStream, const source::BufferId& bufferId,
-                                basic::CompilerOptions::EmissionOptions::SerializerType format) {
-    if (format == basic::CompilerOptions::EmissionOptions::SerializerType::kTEXT) {
-      outputStream.write(
-          zc::str("\n=== AST for BufferId: ", static_cast<uint64_t>(bufferId), " ===\n").asBytes());
-    }
-  }
-
-  /// Writes buffer footer for text format
-  static void writeBufferFooter(zc::OutputStream& outputStream,
-                                basic::CompilerOptions::EmissionOptions::SerializerType format) {
-    outputStream.write("\n"_zcb);
   }
 
   zc::MainBuilder::Validity emitIR() {

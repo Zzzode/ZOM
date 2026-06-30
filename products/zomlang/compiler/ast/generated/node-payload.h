@@ -62,6 +62,18 @@ enum class ArenaScope : uint8_t {
   Parser, Binder, Lowering
 };
 
+enum class MacroFragmentKind : uint8_t {
+  Ident, Expr, Ty, Stmt, Pat, Path, Item, Block, Meta, Literal, Lifetime, Vis, Tt, Token
+};
+
+enum class EnumReprKind : uint8_t {
+  I32, I8, I16, I64, U8, U16, U32, U64
+};
+
+enum class LiteralPatternKind : uint8_t {
+  Integer, Float, BigInt, String, Char, Bool, None
+};
+
 constexpr uint32_t kNodePayloadWordCount = 6;
 
 constexpr uint32_t kAttributeListPayloadWordCount = 2;

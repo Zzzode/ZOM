@@ -183,6 +183,33 @@ headers into `products/zomlang/compiler/ast/generated/`.
 Generated files are compiled through the main `ast` target and stay in the
 `zomlang::compiler::ast` namespace.
 
+## AST Dump Contract
+
+`docs/rfc/0001-ast-dump-format.md` defines the schema-driven AST dump contract.
+The CLI surface is:
+
+```bash
+zomc compile --dump-ast path/to/file.zom
+zomc compile --dump-ast --ast-format=tree path/to/file.zom
+zomc compile --dump-ast --ast-format=json path/to/file.zom
+zomc compile --dump-ast --ast-format=raw path/to/file.zom
+```
+
+`tree` is the default review and lit snapshot format. It prints schema node
+names, `NodeId` handles, one-based source spans, decoded scalar fields, and
+expanded child lists.
+
+`json` is the tool-facing named format. It includes the schema version,
+fingerprint, source spans, node names, and schema field names. It does not
+expose payload words.
+
+`raw` is compiler-debug-only output for compact storage layout inspection. It is
+not a conformance snapshot format.
+
+`products/zomlang/tests/tools/regen-lit.py` regenerates AST expectations from
+the default `tree` output. Run it after parser, binder, AST schema, AST dump, or
+diagnostic changes that affect conformance snapshots.
+
 ## Parser Contract
 
 `Parser::parse()` produces `zc::Maybe<ast::Tree>`. Parser construction appends

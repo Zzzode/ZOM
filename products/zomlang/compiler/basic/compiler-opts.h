@@ -33,11 +33,9 @@ struct CompilerOptions {
       Binary,
     };
 
-    /// Whether to dump AST to stdout (deprecated, use outputType == OutputType::AST instead)
-    bool dumpASTEnabled = false;
-    /// Serializer type for AST dumping
-    enum class SerializerType { kTEXT, kJSON, kXML };
-    SerializerType serializerType = SerializerType::kJSON;
+    /// AST dump format selected by `--ast-format`.
+    enum class ASTDumpFormat { Tree, Json, Raw };
+    ASTDumpFormat astDumpFormat = ASTDumpFormat::Tree;
     /// Output file path
     zc::Maybe<zc::String> outputPath;
     /// Emission type

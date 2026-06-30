@@ -133,6 +133,74 @@ def payload_layout(item: dict[str, Any]) -> tuple[list[tuple[dict[str, Any], int
     return layout, word
 
 
+def cpp_string_literal(value: Any) -> str:
+    return json.dumps(str(value))
+
+
+def cpp_nullable_string(value: Any) -> str:
+    if value is None:
+        return "nullptr"
+    return cpp_string_literal(value)
+
+
+def enum_value_name(value: Any) -> str:
+    return "Null" if value is None else str(value)
+
+
+def enum_values_for_field(schema: dict[str, Any], item: dict[str, Any], field: dict[str, Any]) -> list[str]:
+    field_type = str(field["type"])
+    enum_metadata = field.get("enum")
+    raw_enums = schema.get("enums", {})
+
+    if isinstance(enum_metadata, list):
+        return [enum_value_name(value) for value in enum_metadata]
+    if isinstance(enum_metadata, str):
+        enum_def = raw_enums.get(enum_metadata) if isinstance(raw_enums, dict) else None
+        values = enum_def.get("values", []) if isinstance(enum_def, dict) else []
+        return [enum_value_name(value) for value in values]
+
+    enum_def = raw_enums.get(field_type) if isinstance(raw_enums, dict) else None
+    values = enum_def.get("values", []) if isinstance(enum_def, dict) else []
+    return [enum_value_name(value) for value in values]
+
+
+def enum_domain_for_field(schema: dict[str, Any], item: dict[str, Any], field: dict[str, Any]) -> str | None:
+    field_type = str(field["type"])
+    enum_metadata = field.get("enum")
+    raw_enums = schema.get("enums", {})
+
+    if isinstance(enum_metadata, list):
+        return f"{item['name']}.{field['name']}"
+    if isinstance(enum_metadata, str):
+        return enum_metadata
+    if isinstance(raw_enums, dict) and field_type in raw_enums:
+        return field_type
+    return None
+
+
+def field_storage(schema: dict[str, Any], field: dict[str, Any]) -> str:
+    field_type = str(field["type"])
+    if enum_domain_for_field(schema, {"name": ""}, field) is not None:
+        return "Enum"
+    mapping = {
+        "NodeId": "NodeId",
+        "NodeList": "NodeList",
+        "IdentList": "IdentList",
+        "StringId": "StringId",
+        "IdentId": "IdentId",
+        "BigIntId": "BigIntId",
+        "FloatId": "FloatId",
+        "bool": "Bool",
+        "uint8": "UInt8",
+        "uint16": "UInt16",
+        "uint32": "UInt32",
+        "uint64": "UInt64",
+    }
+    if field_type not in mapping:
+        raise SchemaError(f"cannot map schema field type {field_type} to reflection storage")
+    return mapping[field_type]
+
+
 def validate_payload_layouts(schema: dict[str, Any]) -> None:
     for item in variants(schema):
         _, word_count = payload_layout(item)
@@ -349,6 +417,7 @@ def generate_node_accessors_h(schema: dict[str, Any]) -> str:
 
 def generate_node_schema_h(schema: dict[str, Any]) -> str:
     fingerprint = schema_fingerprint(schema)
+    version = str(schema.get("version", "unknown"))
     lines = [
         HEADER,
         generated_notice(schema),
@@ -358,13 +427,122 @@ def generate_node_schema_h(schema: dict[str, Any]) -> str:
         "",
         NAMESPACE_OPEN,
         "",
-        "struct NodeSchemaEntry final {",
-        "  SyntaxKind kind;",
+        "enum class NodeSchemaFieldStorage : uint8_t {",
+        "  NodeId,",
+        "  NodeList,",
+        "  IdentList,",
+        "  StringId,",
+        "  IdentId,",
+        "  BigIntId,",
+        "  FloatId,",
+        "  Bool,",
+        "  UInt8,",
+        "  UInt16,",
+        "  UInt32,",
+        "  UInt64,",
+        "  Enum,",
+        "};",
+        "",
+        "struct NodeSchemaEnumValue final {",
+        "  uint32_t value;",
         "  const char* name;",
         "};",
         "",
+        "struct NodeSchemaFieldEntry final {",
+        "  const char* name;",
+        "  NodeSchemaFieldStorage storage;",
+        "  uint8_t firstWord;",
+        "  uint8_t secondWord;",
+        "  bool optional;",
+        "  const char* castTarget;",
+        "  const char* enumDomain;",
+        "  const NodeSchemaEnumValue* enumValues;",
+        "  uint32_t enumValueCount;",
+        "};",
+        "",
+        "struct NodeSchemaEntry final {",
+        "  SyntaxKind kind;",
+        "  const char* name;",
+        "  const NodeSchemaFieldEntry* fields;",
+        "  uint32_t fieldCount;",
+        "};",
+        "",
+        "constexpr uint8_t kNodeSchemaNoWord = 0xff;",
+        f'constexpr const char* kAstSchemaVersion = "{version}";',
         f'constexpr const char* kAstSchemaFingerprint = "{fingerprint}";',
         f"constexpr uint32_t kAstSchemaVariantCount = {len(variants(schema))};",
+        "",
+    ]
+
+    for item in variants(schema):
+        variant_name = str(item["name"])
+        for field, _, _ in payload_layout(item)[0]:
+            enum_values = enum_values_for_field(schema, item, field)
+            if not enum_values:
+                continue
+            field_fragment = field_name_fragment(str(field["name"]))
+            lines.append(f"constexpr NodeSchemaEnumValue k{variant_name}{field_fragment}EnumValues[] = {{")
+            for index, enum_name in enumerate(enum_values):
+                lines.append(f"  {{{index}, {cpp_string_literal(enum_name)}}},")
+            lines.append("};")
+            lines.append("")
+
+    for item in variants(schema):
+        fields = payload_layout(item)[0]
+        if not fields:
+            continue
+        variant_name = str(item["name"])
+        lines.append(f"constexpr NodeSchemaFieldEntry k{variant_name}Fields[] = {{")
+        for field, first_word, count in fields:
+            field_name = str(field["name"])
+            field_fragment = field_name_fragment(field_name)
+            enum_values = enum_values_for_field(schema, item, field)
+            enum_array = (
+                f"k{variant_name}{field_fragment}EnumValues" if enum_values else "nullptr"
+            )
+            enum_count = len(enum_values)
+            enum_domain = enum_domain_for_field(schema, item, field)
+            second_word = first_word + 1 if count == 2 else "kNodeSchemaNoWord"
+            cast_target = field.get("cast")
+            optional = "true" if field.get("optional", False) else "false"
+            storage = field_storage(schema, field)
+            lines.append(
+                "  {"
+                f"{cpp_string_literal(field_name)}, "
+                f"NodeSchemaFieldStorage::{storage}, "
+                f"{first_word}, {second_word}, {optional}, "
+                f"{cpp_nullable_string(cast_target)}, {cpp_nullable_string(enum_domain)}, "
+                f"{enum_array}, {enum_count}"
+                "},"
+            )
+        lines.append("};")
+        lines.append("")
+
+    lines.append("constexpr NodeSchemaEntry kNodeSchemaEntries[] = {")
+    for item in variants(schema):
+        variant_name = str(item["name"])
+        field_count = len(payload_layout(item)[0])
+        fields_ref = f"k{variant_name}Fields" if field_count > 0 else "nullptr"
+        lines.append(
+            f"  {{SyntaxKind::{variant_name}, {cpp_string_literal(variant_name)}, "
+            f"{fields_ref}, {field_count}}},"
+        )
+    lines.append("};")
+    lines.append("")
+
+    lines += [
+        "constexpr const NodeSchemaEntry* lookupNodeSchema(SyntaxKind kind) noexcept {",
+        "  switch (kind) {",
+    ]
+    for index, item in enumerate(variants(schema)):
+        variant_name = str(item["name"])
+        lines.append(
+            f"    case SyntaxKind::{variant_name}: return &kNodeSchemaEntries[{index}];"
+        )
+    lines += [
+        "    default: return nullptr;",
+        "  }",
+        "}",
         "",
         NAMESPACE_CLOSE,
     ]

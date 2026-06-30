@@ -517,6 +517,48 @@ struct Parser::Impl {
     return comma < end ? comma : end;
   }
 
+  size_t findTopLevelTypeToken(size_t start, size_t end, ast::SyntaxKind needle) const {
+    int32_t parenDepth = 0;
+    int32_t bracketDepth = 0;
+    int32_t braceDepth = 0;
+    int32_t angleDepth = 0;
+    for (size_t index = start; index < end; ++index) {
+      const ast::SyntaxKind kind = kindAt(index);
+      if (kind == needle && parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 &&
+          angleDepth == 0) {
+        return index;
+      }
+
+      if (kind == ast::SyntaxKind::LeftParen) {
+        ++parenDepth;
+      } else if (kind == ast::SyntaxKind::RightParen) {
+        if (parenDepth > 0) { --parenDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBracket) {
+        ++bracketDepth;
+      } else if (kind == ast::SyntaxKind::RightBracket) {
+        if (bracketDepth > 0) { --bracketDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBrace) {
+        ++braceDepth;
+      } else if (kind == ast::SyntaxKind::RightBrace) {
+        if (braceDepth > 0) { --braceDepth; }
+      } else if (kind == ast::SyntaxKind::LessThan) {
+        ++angleDepth;
+      } else if (kind == ast::SyntaxKind::GreaterThan) {
+        if (angleDepth > 0) { --angleDepth; }
+      }
+    }
+    return end;
+  }
+
+  size_t findTopLevelTypeCommaOrEnd(size_t start, size_t end) const {
+    const size_t comma = findTopLevelTypeToken(start, end, ast::SyntaxKind::Comma);
+    return comma < end ? comma : end;
+  }
+
+  void addNodeIfPresent(zc::Vector<ast::NodeId>& nodes, ast::NodeId node) const {
+    if (node) { nodes.add(node); }
+  }
+
   ast::IdentList makeIdentList(ast::TreeBuilder& builder, size_t start, size_t end) const {
     zc::Vector<ast::IdentId> segments;
     for (size_t index = start; index < end; ++index) {
@@ -858,8 +900,8 @@ struct Parser::Impl {
     zc::Vector<ast::NodeId> types;
     size_t cursor = start;
     while (cursor < end) {
-      const size_t comma = findTopLevelCommaOrEnd(cursor, end);
-      if (cursor < comma) { types.add(parseTypeRange(builder, cursor, comma)); }
+      const size_t comma = findTopLevelTypeCommaOrEnd(cursor, end);
+      if (cursor < comma) { addNodeIfPresent(types, parseTypeRange(builder, cursor, comma)); }
       cursor = comma < end ? comma + 1 : end;
     }
 
@@ -883,14 +925,16 @@ struct Parser::Impl {
       return parseTypeRange(builder, start + 1, end - 1);
     }
 
-    const size_t unionOp = findTopLevelToken(start, end, ast::SyntaxKind::Bar);
+    const size_t unionOp = findTopLevelTypeToken(start, end, ast::SyntaxKind::Bar);
     if (unionOp < end) {
       zc::Vector<ast::NodeId> alts;
       size_t cursor = start;
       while (cursor < end) {
-        const size_t split = findTopLevelToken(cursor, end, ast::SyntaxKind::Bar);
+        const size_t split = findTopLevelTypeToken(cursor, end, ast::SyntaxKind::Bar);
         const size_t segmentEnd = split < end ? split : end;
-        if (cursor < segmentEnd) { alts.add(parseTypeRange(builder, cursor, segmentEnd)); }
+        if (cursor < segmentEnd) {
+          addNodeIfPresent(alts, parseTypeRange(builder, cursor, segmentEnd));
+        }
         cursor = split < end ? split + 1 : end;
       }
       const ast::NodeList list = builder.makeList(alts.asPtr());
@@ -900,14 +944,16 @@ struct Parser::Impl {
       return builder.makeNode(ast::SyntaxKind::UnionTypeExpr, rangeFor(start, end), payload);
     }
 
-    const size_t intersectionOp = findTopLevelToken(start, end, ast::SyntaxKind::Ampersand);
+    const size_t intersectionOp = findTopLevelTypeToken(start, end, ast::SyntaxKind::Ampersand);
     if (intersectionOp < end) {
       zc::Vector<ast::NodeId> alts;
       size_t cursor = start;
       while (cursor < end) {
-        const size_t split = findTopLevelToken(cursor, end, ast::SyntaxKind::Ampersand);
+        const size_t split = findTopLevelTypeToken(cursor, end, ast::SyntaxKind::Ampersand);
         const size_t segmentEnd = split < end ? split : end;
-        if (cursor < segmentEnd) { alts.add(parseTypeRange(builder, cursor, segmentEnd)); }
+        if (cursor < segmentEnd) {
+          addNodeIfPresent(alts, parseTypeRange(builder, cursor, segmentEnd));
+        }
         cursor = split < end ? split + 1 : end;
       }
       const ast::NodeList list = builder.makeList(alts.asPtr());
@@ -921,6 +967,46 @@ struct Parser::Impl {
       ast::NodePayload payload;
       writeNode(payload, ast::kOptionalTypeExprInnerWord, parseTypeRange(builder, start, end - 1));
       return builder.makeNode(ast::SyntaxKind::OptionalTypeExpr, rangeFor(start, end), payload);
+    }
+
+    if (rangeIsWrapped(start, end, ast::SyntaxKind::LeftBracket, ast::SyntaxKind::RightBracket)) {
+      const size_t semi = findTopLevelTypeToken(start + 1, end - 1, ast::SyntaxKind::Semicolon);
+      ast::NodePayload payload;
+      if (semi < end - 1) {
+        const ast::NodeId elem = parseTypeRange(builder, start + 1, semi);
+        const ast::NodeId lenExpr = parseExpressionRange(builder, semi + 1, end - 1);
+        if (!elem || !lenExpr) { return ast::NodeId(); }
+        writeNode(payload, ast::kFixedArrayTypeExprElemWord, elem);
+        writeNode(payload, ast::kFixedArrayTypeExprLenExprWord, lenExpr);
+        return builder.makeNode(ast::SyntaxKind::FixedArrayTypeExpr, rangeFor(start, end), payload);
+      }
+
+      const ast::NodeId elem = parseTypeRange(builder, start + 1, end - 1);
+      if (!elem) { return ast::NodeId(); }
+      writeNode(payload, ast::kSliceArrayTypeExprElemWord, elem);
+      return builder.makeNode(ast::SyntaxKind::SliceArrayTypeExpr, rangeFor(start, end), payload);
+    }
+
+    if (kindAt(end - 1) == ast::SyntaxKind::RightBracket) {
+      for (size_t index = end - 1; index > start;) {
+        --index;
+        if (index == start) { break; }
+        if (kindAt(index) == ast::SyntaxKind::LeftBracket &&
+            rangeIsWrapped(index, end, ast::SyntaxKind::LeftBracket,
+                           ast::SyntaxKind::RightBracket)) {
+          const ast::NodeId elem = parseTypeRange(builder, start, index);
+          if (!elem) { return ast::NodeId(); }
+
+          ast::NodePayload payload;
+          writeNode(payload, ast::kArrayTypeExprElemWord, elem);
+          if (index + 1 < end - 1) {
+            const ast::NodeId lenExpr = parseExpressionRange(builder, index + 1, end - 1);
+            if (!lenExpr) { return ast::NodeId(); }
+            writeNode(payload, ast::kArrayTypeExprLenExprWord, lenExpr);
+          }
+          return builder.makeNode(ast::SyntaxKind::ArrayTypeExpr, rangeFor(start, end), payload);
+        }
+      }
     }
 
     if (end == start + 1 && isPrimitiveTypeKeyword(kindAt(start))) {
@@ -948,8 +1034,8 @@ struct Parser::Impl {
         kindAt(end - 1) == ast::SyntaxKind::GreaterThan) {
       size_t cursor = pathEnd + 1;
       while (cursor + 1 < end) {
-        const size_t comma = findTopLevelCommaOrEnd(cursor, end - 1);
-        if (cursor < comma) { args.add(parseTypeRange(builder, cursor, comma)); }
+        const size_t comma = findTopLevelTypeCommaOrEnd(cursor, end - 1);
+        if (cursor < comma) { addNodeIfPresent(args, parseTypeRange(builder, cursor, comma)); }
         cursor = comma < end - 1 ? comma + 1 : end - 1;
       }
     }
@@ -1002,7 +1088,9 @@ struct Parser::Impl {
     size_t cursor = start;
     while (cursor < end) {
       const size_t comma = findTopLevelCommaOrEnd(cursor, end);
-      if (cursor < comma) { expressions.add(parseExpressionRange(builder, cursor, comma)); }
+      if (cursor < comma) {
+        addNodeIfPresent(expressions, parseExpressionRange(builder, cursor, comma));
+      }
       cursor = comma < end ? comma + 1 : end;
     }
     const ast::NodeList list = builder.makeList(expressions.asPtr());
@@ -1042,7 +1130,9 @@ struct Parser::Impl {
             size_t cursor = index + 1;
             while (cursor + 1 < end) {
               const size_t comma = findTopLevelCommaOrEnd(cursor, end - 1);
-              if (cursor < comma) { args.add(parseExpressionRange(builder, cursor, comma)); }
+              if (cursor < comma) {
+                addNodeIfPresent(args, parseExpressionRange(builder, cursor, comma));
+              }
               cursor = comma < end - 1 ? comma + 1 : end - 1;
             }
 
