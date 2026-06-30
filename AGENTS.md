@@ -207,6 +207,7 @@ Invoke with `/skill <name>`.
 | `lit-testing` | `.agents/skills/lit-testing/SKILL.md` | LLVM lit FileCheck tests, `regen-lit.py`, RUN/XFAIL patterns |
 | `ultracode-audit` | `.agents/skills/ultracode-audit/SKILL.md` | Multi-expert adversarial audit (scout → 6-dim audit → confirm/refute → report) |
 | `spec-alignment` | `.agents/skills/spec-alignment/SKILL.md` | `spec ↔ lexer ↔ parser ↔ AST ↔ binder` 5-way consistency check |
+| `rfc` | `.agents/skills/rfc/SKILL.md` | RFC authoring, prior-art review, status transitions, and proposal governance |
 
 ---
 
@@ -219,6 +220,7 @@ the trigger matrix in `.agents/subagents/README.md`.
 | ID | Owns | Triggered when |
 |---|---|---|
 | `task-router-agent` | Gate selection + escalation | Default entry for all non-trivial changes |
+| `rfc-agent` | RFC process, templates, proposal review, prior-art gates | RFCs, proposals, accepted designs, governance changes |
 | `lexer-parser-agent` | Tokenization, grammar, AST, operator precedence | lexer/*.cc, parser/*.cc, ast/kinds.h, spec grammar |
 | `binder-checker-agent` | Scopes, symbols, traits, generics, type rules | binder/**, checker/**, symbol/**, traits, ADT |
 | `module-system-agent` | Import/export, packages, visibility, dependency topology | modules, `docs/spec/chapters/13-*`, symbol export flags |

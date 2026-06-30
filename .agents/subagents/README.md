@@ -1,6 +1,6 @@
 # ZOM Subagents
 
-This directory contains 9 specialized subagents used by ZOM's AI prompt system.
+This directory contains 10 specialized subagents used by ZOM's AI prompt system.
 They are registered in `manifest.yaml` and routed to by the `task-router`
 subagent based on keywords and path ownership.
 
@@ -12,6 +12,7 @@ subagent based on keywords and path ownership.
 flowchart TD
     U[User request] --> TR[task-router<br/>keyword + paths analysis]
 
+    TR --> RF[rfc<br/>docs/rfc process proposals prior art]
     TR --> LP[lexer-parser<br/>lexer/ parser/ ast/kinds.h spec ch.02/04/17]
     TR --> BC[binder-checker<br/>binder/ checker/ types/ generics/ traits]
     TR --> MS[module-system<br/>symbol/ driver/ modules visibility]
@@ -22,6 +23,7 @@ flowchart TD
     TR --> VR[verification<br/>tests coverage lit ztest fuzz]
 
     %% Escalation edges
+    RF --> SA
     LP --> SA
     BC --> VR
     MS --> SA
@@ -42,19 +44,20 @@ Use this table when routing manually, or when checking whether `task-router`
 made the right choice. A `✅` means the subagent *explicitly owns* this
 surface; `↗` means it escalates to another subagent after doing its part.
 
-| Topic \ Subagent | task-router | lexer-parser | binder-checker | module-system | error-system | concurrency | spec-audit | runtime-memory | verification |
-|---|---|---|---|---|---|---|---|---|---|
-| Grammar change | ✅ route → | ✅ | | | ↗ touches diagnostics | | ✅ audit drift | | ↗ regen tests |
-| Token not lexed | ✅ route → | ✅ | | | ↗ ZOMxxxx codes | | ✅ | | |
-| Type mismatch message | ✅ route → | | ✅ | | ↗ owns codes | | ✅ | | ↗ add test |
-| `import` resolution bug | ✅ route → | | ↗ binder | ✅ | | | ✅ | | ↗ add test |
-| `?!` operator missing | ✅ route → | ✅ lex+parse | | | ✅ error semantics | | ✅ | | ↗ lit test |
-| New trait (`Sendable`) | ✅ route → | | ✅ core owner | | | ↗ concurrency layer | ✅ | | ↗ add test |
-| Async task graph | ✅ route → | | | | ↗ task errors | ✅ | ✅ | ↗ memory layer | ↗ tests |
-| Raw pointer in zc | ✅ route → | | | | | | | ✅ | |
-| Spec drift found | ✅ route → | | | | | | ✅ | | |
-| Lit test XFAIL expired | ✅ route → | | | | | | | | ✅ |
-| Coverage regression | ✅ route → | | | | | | | | ✅ |
+| Topic \ Subagent | task-router | rfc | lexer-parser | binder-checker | module-system | error-system | concurrency | spec-audit | runtime-memory | verification |
+|---|---|---|---|---|---|---|---|---|---|---|
+| RFC or proposal | ✅ route → | ✅ | ↗ if syntax/AST | ↗ if semantics | ↗ if modules | ↗ if errors | ↗ if async | ↗ if spec | ↗ if runtime | ↗ test plan |
+| Grammar change | ✅ route → | ↗ if design needed | ✅ | | | ↗ touches diagnostics | | ✅ audit drift | | ↗ regen tests |
+| Token not lexed | ✅ route → | | ✅ | | | ↗ ZOMxxxx codes | | ✅ | | |
+| Type mismatch message | ✅ route → | ↗ if language rule changes | | ✅ | | ↗ owns codes | | ✅ | | ↗ add test |
+| `import` resolution bug | ✅ route → | ↗ if module contract changes | | ↗ binder | ✅ | | | ✅ | | ↗ add test |
+| `?!` operator missing | ✅ route → | ↗ if semantics change | ✅ lex+parse | | | ✅ error semantics | | ✅ | | ↗ lit test |
+| New trait (`Sendable`) | ✅ route → | ✅ design intake | | ✅ core owner | | | ↗ concurrency layer | ✅ | | ↗ add test |
+| Async task graph | ✅ route → | ✅ design intake | | | | ↗ task errors | ✅ | ✅ | ↗ memory layer | ↗ tests |
+| Raw pointer in zc | ✅ route → | ↗ if policy changes | | | | | | | ✅ | |
+| Spec drift found | ✅ route → | | | | | | | ✅ | | |
+| Lit test XFAIL expired | ✅ route → | | | | | | | | | ✅ |
+| Coverage regression | ✅ route → | | | | | | | | | ✅ |
 
 ---
 

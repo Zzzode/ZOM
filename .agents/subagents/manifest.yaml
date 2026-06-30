@@ -23,8 +23,18 @@ subagents:
   - id: task-router
     name: Task Router
     owns: []
-    triggers: [ "route", "assign", "split", "谁来做", "交给谁", "分任务", "workflow" ]
+    triggers: [ "route", "assign", "split", "owner", "delegate", "task split", "workflow" ]
     required-skills: [ build-ci ]
+    escalation-to: [ spec-audit ]
+
+  - id: rfc
+    name: RFC Governance
+    owns:
+      - "docs/rfc/**"
+      - ".agents/skills/rfc/**"
+      - ".agents/subagents/rfc.md"
+    triggers: [ "RFC", "rfc", "proposal", "design intake", "governance", "template", "status transition", "accepted design", "prior art" ]
+    required-skills: [ rfc ]
     escalation-to: [ spec-audit ]
 
   - id: lexer-parser
@@ -63,7 +73,7 @@ subagents:
       - "docs/spec/chapters/12-modules.md"
       - "docs/spec/chapters/13-visibility.md"
       - "docs/spec/chapters/14-package.md"
-    triggers: [ "module", "import", "export", "pub", "visibility", "package", "session", "CompilerSession", "跨模块" ]
+    triggers: [ "module", "import", "export", "pub", "visibility", "package", "session", "CompilerSession", "cross-module" ]
     required-skills: [ build-ci, lit-testing, spec-alignment ]
     escalation-to: [ spec-audit ]
 
@@ -87,7 +97,7 @@ subagents:
       - "products/zomlang/runtime/**/scheduler*"
       - "docs/spec/chapters/15-concurrency.md"
       - "docs/spec/chapters/16-memory-model.md"
-    triggers: [ "async", "await", "concurr", "actor", "sendable", "task", "future", "channel", "cancel", "并发", "异步" ]
+    triggers: [ "async", "await", "concurr", "actor", "sendable", "task", "future", "channel", "cancel", "parallel", "asynchronous" ]
     required-skills: [ build-ci, zc-library, lit-testing, ultracode-audit ]
     escalation-to: [ runtime-memory, verification ]
 
