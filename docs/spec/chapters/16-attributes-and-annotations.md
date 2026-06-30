@@ -2365,42 +2365,38 @@ References are grouped by kind (attribute-form / bound-form / impl-form / synthe
 
 ---
 
-## 16.17 Forward compatibility and governance
+## 16.17 Attribute RFC governance
 
 ### 16.17.1 RFC process for new attributes
 
-| Kind of change | RFC required? | Vote threshold | Since-version field required? |
+All durable changes to the Tier 0 or Tier 1 attribute contract require an
+accepted RFC under `docs/rfc/` before implementation. The RFC frontmatter
+`required-owners` must include every owning subagent affected by the change, and
+`python3 scripts/check-rfc.py` must pass before the proposal can be reviewed.
+
+| Kind of change | RFC requirement | Required owners | Acceptance gate |
 |---|---|---|---|
-| Add a Tier 0 `zom::*` attribute | Yes, in `rfcs/attributes/NNNN-*.md` | 2/3 super-majority of the Language Core Team (LCT) | Yes — `since = "M.m.p"` inside the attribute's definition. |
-| Add a Tier 1 `std::marker::*` marker | Yes, `rfcs/stdlib-markers/NNNN-*.md` **with a Kripke-semantics soundness proof in the Appendix** | 2/3 of the Stdlib Team + 1/2 of the LCT (cross-review) | Yes — visible in rustdoc. |
-| Add a Tier 1 non-marker attribute | Yes, lightweight `rfcs/stdlib/NNNN-*.md` | Simple majority of Stdlib Team | Yes. |
-| Change ArgsSchema of an existing Tier 0 or 1 attribute | Yes (may be merged under the original RFC as an amendment) | Same as for adding | Bump `since`; old schema still accepted with `W7601 DeprecatedAttrSchema`. |
-| Add a new LegacyBareWhitelist entry | **Impossible.** See 16.17.2. | — | — |
-| Change a cross-marker rule R0–R9 | Yes. Requires a revised soundness proof. | 2/3 LCT + 2/3 Stdlib Team | Yes; document as a lang-item compatibility note. |
-| Retention-tier upgrade (e.g. TYPECHECK_ONLY → RUNTIME_REIFIED) for an existing attribute | Yes. | 2/3 LCT | Yes. |
+| Add a Tier 0 `zom::*` attribute | Required under `docs/rfc/`. | `rfc`, `spec-audit`, and each compiler owner that consumes the attribute. | Reference-level semantics, diagnostics, retention phase, conformance cases, and rollback cost are specified. |
+| Add a Tier 1 `std::marker::*` marker | Required under `docs/rfc/` with a soundness appendix. | `rfc`, `spec-audit`, `binder-checker`, and `concurrency` or `runtime-memory` when applicable. | The marker lattice, coherence rule, negative rule, and cross-crate visibility behavior are specified. |
+| Add a Tier 1 non-marker attribute | Required under `docs/rfc/`. | `rfc`, `spec-audit`, and the compiler or runtime owner that consumes the attribute. | Parser, binder, checker, lowering, and tool behavior are either specified or explicitly out of scope. |
+| Change an existing attribute argument schema | Required under `docs/rfc/`. | All owners from the original attribute plus `verification`. | The landing change replaces the old schema and updates every parser, checker, diagnostic, and test caller in the same change. |
+| Add a new one-segment attribute spelling | Required under `docs/rfc/` as a language syntax change. | `rfc`, `lexer-parser`, `spec-audit`, and `verification`. | The RFC changes the parser, AST, spec, diagnostics, and conformance tests together. No staged compatibility mode is allowed. |
+| Change a cross-marker rule R0-R9 | Required under `docs/rfc/` with a revised soundness appendix. | `rfc`, `spec-audit`, `binder-checker`, `concurrency`, and `verification`. | The revised rule is executable as checker tests and cannot leave implementation-defined semantics. |
+| Retention-tier upgrade for an existing attribute | Required under `docs/rfc/`. | `rfc`, `spec-audit`, `runtime-memory`, and the affected compiler owner. | Metadata emission, erasure safety, ABI impact, and tests are specified. |
 
-### 16.17.2 Since-version requirement on semantic change
+### 16.17.2 Semantic change handling
 
-**Rule.** Any non-bugfix change to the semantics of an existing Tier 0 or Tier 1 attribute that could cause previously-accepting code to be *rejected* (a tightening) or could cause new lints/errors for unchanged callers **must** carry a `since` version in the attribute's schema metadata and:
-1. Be announced in the release notes under a dedicated "Attribute semantic changes" section.
-2. Be available under the feature-flag `zom::stability::future_compat` one release cycle before becoming the default, so authors can test ahead.
+ZOM is pre-1.0, so attribute semantic changes are direct repository rewrites,
+not staged compatibility promises. An accepted RFC changes the current
+contract, deletes the replaced behavior, updates every affected caller, and
+lands the matching spec, generated files, diagnostics, and tests in the same
+implementation series.
 
-Bug-fixes (a change that only makes code *more* accepted, or fixes a clear soundness bug with a CVE) are exempt from the `since` cycle but still require release-note documentation.
+### 16.17.3 Attribute syntax policy changes
 
-### 16.17.3 Official promise of never-allowing flat-name
-
-The LCT publishes the following **non-normative but governance-binding** promise:
-
-> The LegacyBareWhitelist `{ deprecated, inline, cold }` is and will remain the exhaustive set of flat identifiers accepted in `#[…]` attribute position. No RFC will be accepted that adds a new flat identifier to this whitelist. Any future language convenience syntax for attribute short-forms **must** retain the fully-qualified path in the AST (e.g. via the `parser_applied_sugar` mechanism used by `@`-sugar) and must require an explicit opt-in per crate.
-
-Concretely:
-- The parser hard-error `ZOM0617 BareAttribute` for length-1 identifier attribute paths is **permanent**.
-- Editors' LSP completion will continue to default to fully-qualified insertions.
-- The default formatter will continue to flag any reliance on LegacyBareWhitelist via `W7105`.
-
-### 16.17.4 Deprecation and removal roadmap for the whitelist
-
-The three legacy entries will NOT be removed before ZOM 2.0. The warnings `W7105` will stay at their default severity of *warn* in ZOM 1.x. ZOM 2.0 may upgrade `W7105` to default *deny*. No ETA is set; this paragraph exists solely to record the LCT's intent.
+Any proposal that changes accepted attribute spelling is a language RFC. The RFC
+must define the final syntax only; it must not preserve old spellings as
+normative examples, migration bridges, or compatibility modes.
 
 ---
 
@@ -2465,6 +2461,6 @@ Six milestones, intended to align with one ZOM release train (~6 weeks per miles
 | **M3** | Checker stages S1 + S2 | S1 well-formedness + orphan, S2 lattice (2 600 LOC checker). All Tier-0/1 ArgsSchema + R0–R9 edges validated; ZOM0612..ZOM0615, ZOM0701..ZOM0702 emitted. | M2 exit-gate met. | 1 000 WFF + lattice tests green; nightly random-DAG fuzz 0 failures. |
 | **M4** | S3 Coherence + S4 Usage gates | S3 closure, S4 gates G1–G6 (3 400 LOC checker). ZOM0710..ZOM0712, ZOM0741..ZOM0746, ZOM0750..ZOM0752. | M3 exit-gate met + soundness-review of G1–G6 by the concurrency WG. | 1 900 gate tests green; TSAN + SUSPEND-SAN nightly pass on the `examples/concurrency/` suite. |
 | **M5** | Tier-2 proc-macro + S5 Lowering + S6 LSP/rustdoc | Macro engine (2 000), lowering/codegen hooks (550), remaining LSP + rustdoc (380). Feature-gate `marker_macros` defaults to `unstable`. | M4 exit-gate met. | 1 700 macro + codegen + LSP + rustdoc tests green. Determinism 32-run hashes identical. |
-| **M6** | Stabilisation + docs + governance tooling | RFC machinery wire-up, `since` validation in CI, forward-compat feature-flags, spec/docs sync. Upgrade `marker_macros` to stable (if TSC approves based on M5 feedback). | M5 exit-gate met + 4-week soak period with nightly users on the `marker_macros` feature with zero soundness bugs filed. | Full spec chapter 16 cross-referenced against actual diagnostics; conformance suite (the 12 cases in §16.15 + the 5 examples in §16.14) runs as part of the release-blocking test suite. |
+| **M6** | Stabilisation + docs + governance tooling | RFC validation in CI, spec/docs sync, and final marker macro promotion decision. | M5 exit-gate met + accepted RFC for any remaining contract change. | `python3 scripts/check-rfc.py` passes; full spec chapter 16 is cross-referenced against actual diagnostics; conformance suite (the 12 cases in §16.15 + the 5 examples in §16.14) runs as part of the release-blocking test suite. |
 
 **Total elapsed time estimate:** ~36 weeks of calendar time for one senior compiler engineer + one senior LSP engineer, or ~24 weeks with two compiler engineers plus one LSP engineer. The phasing is deliberately "parser-first, semantics-middle, macros-last" so that editor support can ship in M2 (for syntax highlighting and basic completions) long before the concurrency gates are enforced, giving the community a migration path.

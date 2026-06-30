@@ -51,8 +51,11 @@ or drift repair when the intended contract is already written.
 8. List affected paths and owning subagents in `Repository Impact`.
 9. Include drawbacks, rollout impact, an ordered implementation plan, and a
    concrete test plan.
-10. Set `status: REVIEW` only when the document is ready for review.
-11. Move to `ACCEPTED` only after structural and technical blockers are
+10. Add or update the `docs/rfc/README.md` RFC Index row.
+11. Run `python3 scripts/check-rfc.py` and fix any structural failures.
+12. Set `status: REVIEW` only when the document is ready for review and has
+    discussion plus tracking links.
+13. Move to `ACCEPTED` only after structural and technical blockers are
     resolved.
 
 ## Review Checklist
@@ -60,14 +63,21 @@ or drift repair when the intended contract is already written.
 - [ ] Frontmatter matches `docs/rfc/README.md`.
 - [ ] `type`, `review-manager`, `discussion`, `decision`, `implementation`,
       and `tracking-issue` fields are present.
+- [ ] `required-owners` exactly matches owners listed in `Repository Impact`.
 - [ ] Status is one of the approved RFC status values.
 - [ ] The RFC has all required sections in the template order.
+- [ ] The RFC Index row matches the proposal frontmatter.
 - [ ] Goals and non-goals are concrete enough to control scope.
 - [ ] Prior art includes mature references or explains why fewer apply.
 - [ ] The reference-level design is implementable without major invention.
 - [ ] Repository impact lists all affected path families and owners.
+- [ ] Security and safety impact is covered or explicitly marked `None`.
 - [ ] Drawbacks, risks, compatibility, rollout, and rollback cost are covered.
 - [ ] Alternatives are technical and neutral.
+- [ ] Documentation, teaching, and operational readiness impacts are covered or
+      explicitly marked `None`.
+- [ ] Acceptance criteria list concrete evidence required to call the RFC
+      complete.
 - [ ] The implementation plan is ordered and testable.
 - [ ] The test plan names exact build, lit, unit, conformance, generated-file,
       or format checks as applicable.
@@ -88,6 +98,9 @@ Allowed transitions are defined in `docs/rfc/README.md`. Do not skip from
 Before moving to `ACCEPTED`, replace `TBD` values for `discussion`, `decision`,
 and `tracking-issue`, and add approvers for every affected owner.
 
+Run `python3 scripts/check-rfc.py` after every RFC edit and before reporting the
+work complete.
+
 ## Output Expectations
 
 When creating or editing an RFC, report:
@@ -96,4 +109,4 @@ When creating or editing an RFC, report:
 - Important design choices.
 - Any unresolved open questions.
 - Which subagents should review the technical surface.
-- Verification performed.
+- Verification performed, including `python3 scripts/check-rfc.py`.

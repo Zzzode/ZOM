@@ -62,7 +62,7 @@ A compiler engineer who modifies behavior along any labeled edge must update the
 
 ## 2. Diagnostic Code Authority
 
-The table below is the **authoritative copy** of the ZOM diagnostic-code range assignment. The three columns `Range`, `Subsystem`, and `Min-Severity` are a bit-identical mirror of `docs/design/architecture.md` §8; PRs changing any of the three values require simultaneous updates to both files. Additional ZIS-only columns document the owning C++ directory path and whether a subsystem owner may allocate unused sub-ranges without a full-RFC vote (`Extensible = No` means every new code requires an RFC entry in `docs/dev/rfcs/`).
+The table below is the **authoritative copy** of the ZOM diagnostic-code range assignment. The three columns `Range`, `Subsystem`, and `Min-Severity` are a bit-identical mirror of `docs/design/architecture.md` §8; PRs changing any of the three values require simultaneous updates to both files. Additional ZIS-only columns document the owning C++ directory path and whether a subsystem owner may allocate unused sub-ranges without an accepted RFC under `docs/rfc/` (`Extensible = No` means every new code requires an RFC before implementation).
 
 | Range (start–end) | Subsystem / Owner path | Owner (C++ dir path) | Min-Severity | Extensible | Example Code |
 |---|---|---|---|---|---|

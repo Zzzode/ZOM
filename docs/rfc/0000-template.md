@@ -5,6 +5,7 @@ type: process
 status: TEMPLATE
 author: ZOM Compiler Team
 review-manager: ZOM Compiler Team
+required-owners: []
 approvers: []
 created: 2026-06-30
 updated: 2026-06-30
@@ -71,6 +72,14 @@ List every affected path family and owning subagent.
 |---|---|---|
 | Example | `path/**` | `subagent-id` |
 
+## Security And Safety Impact
+
+Describe memory safety, concurrency safety, capability boundaries, sandboxing,
+unsafe behavior, diagnostics that prevent misuse, and data exposure risks.
+
+If there is no security or safety impact, write `None` and explain why the
+proposal cannot affect those boundaries.
+
 ## Drawbacks And Risks
 
 List the strongest reasons not to accept this RFC, the main implementation
@@ -91,6 +100,28 @@ rollout plan for the current repository.
 
 Include affected generated files, conformance snapshots, user-visible commands,
 and rollback cost.
+
+## Documentation And Teaching Plan
+
+List the spec chapters, design docs, examples, diagnostics, release notes, and
+developer-facing docs that must change. Explain how contributors or users should
+learn the new behavior.
+
+If no documentation or teaching work is needed, write `None`.
+
+## Operational Readiness
+
+List any runtime, CLI, CI, release, observability, performance, or maintenance
+concerns that must be ready before landing. Include ownership for recurring
+operational work.
+
+If the proposal has no operational surface, write `None`.
+
+## Acceptance Criteria
+
+List the concrete evidence required to call this RFC complete. Criteria should
+be observable through files, tests, generated artifacts, command output, review
+approval, or status links.
 
 ## Implementation Plan
 

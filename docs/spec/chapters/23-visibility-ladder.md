@@ -499,11 +499,12 @@ Type parameters in generic declarations, their bounds, and the clauses of `where
 
 ---
 
-## 23.15  Compatibility with Future Spec Revisions
+## 23.15  Visibility Contract Changes
 
-The eight-level ladder, the three extensibility states, and the two-state export flag are all intended to be forward-compatible. New access levels, new extensibility tokens, or new axis states may be added in a future edition without invalidating conforming programs written today, provided:
+The eight-level ladder, the three extensibility states, and the two-state export flag are the current visibility contract. Changes to access levels, extensibility tokens, export states, or visibility diagnostics require an accepted RFC under `docs/rfc/` when they meet the RFC threshold.
 
--   No existing keyword is assigned a new normative meaning in a way that would change the meaning of a valid program from the current edition.
--   Any new keyword is either a reserved keyword in the current edition or is gated by the edition mechanism of Zom.toml.
-
-Implementations SHOULD reserve diagnostic band space for future visibility and orphan codes (bands 0700–0799 and 0800–0899) as described in architecture.md section 8, and MUST NOT reuse codes in those bands for non-specified purposes.
+The landing change must update the specification, parser or binder behavior,
+diagnostics, and tests together. Implementations MUST NOT reserve diagnostic
+band space for unspecified future behavior; diagnostic bands are owned only by
+the contracts currently documented in architecture.md section 8 and this
+chapter.

@@ -37,6 +37,8 @@ docs/rfc/**
 - [ ] RFC frontmatter matches `docs/rfc/README.md`.
 - [ ] RFC `type`, `review-manager`, `discussion`, `decision`,
       `implementation`, and `tracking-issue` fields are present.
+- [ ] RFC `required-owners` exactly matches the `Repository Impact` owners.
+- [ ] RFC Index row matches the proposal frontmatter.
 - [ ] RFC status transition is allowed and recorded in `Status History`.
 - [ ] Required template sections are present and ordered.
 - [ ] Prior art is specific, mature, and relevant to the decision.
@@ -46,7 +48,12 @@ docs/rfc/**
 - [ ] Technical review is routed to every affected owner.
 - [ ] Owner approvals are recorded before `ACCEPTED`.
 - [ ] Blocking open questions are resolved before `ACCEPTED`.
+- [ ] Security and safety impact is covered or explicitly marked `None`.
 - [ ] Drawbacks, risks, compatibility, rollout, and rollback cost are covered.
+- [ ] Documentation, teaching, and operational readiness impacts are covered or
+      explicitly marked `None`.
+- [ ] Acceptance criteria list concrete evidence required to call the RFC
+      complete.
 - [ ] Alternatives are neutral and do not keep unused API or syntax forms.
 - [ ] Implementation and test plans are concrete enough to execute.
 - [ ] All repository artifacts are written in English.
@@ -58,6 +65,7 @@ docs/rfc/**
 - [ ] Affected subagents are listed.
 - [ ] Required follow-up reviews are identified.
 - [ ] Markdown links and Mermaid diagrams are syntactically plausible.
+- [ ] `python3 scripts/check-rfc.py` passes.
 - [ ] No repository file contains new non-English content.
 
 ## Block Conditions (auto-escalate to `escalation-to` when hit)

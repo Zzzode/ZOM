@@ -69,9 +69,14 @@ Edition is a year-based string declared per crate in `Zom.toml`:
 edition = "2026"
 ```
 
-An edition has per-crate scope: it never leaks across crate boundaries. A crate compiled under edition E1 may depend on crates compiled under E2, E3, etc.; each crate's grammar, lints, and deprecated-feature gates are determined solely by its own manifest.
+An edition has per-crate scope: it never leaks across crate boundaries. A crate
+compiled under edition E1 may depend on crates compiled under E2, E3, etc.; each
+crate's grammar and lint policy are determined solely by its own manifest.
 
-Lints are tied to editions: a lint that is `warn` in one edition may be promoted to a **hard error** in the next edition. This gives downstream consumers one full edition cycle to fix warnings before the compiler rejects them outright. Std library deprecations follow the same cadence; symbols marked `#[zom::deprecated]` in edition E are removed from the prelude in edition E+1.
+In this pre-1.0 repository, editions are not a staged compatibility mechanism.
+Any change that alters grammar, lints, or prelude membership changes the current
+contract directly, updates this specification and implementation together, and
+uses the RFC process under `docs/rfc/` when the change meets the RFC threshold.
 
 ## Import Forms
 
