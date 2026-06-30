@@ -131,6 +131,12 @@ public:
   /// \brief Return true when id belongs to this tree.
   bool contains(NodeId id) const;
 
+  /// \brief Return true when list belongs to this tree.
+  bool contains(NodeList list) const;
+
+  /// \brief Return true when identifier list belongs to this tree.
+  bool contains(IdentList list) const;
+
   /// \brief Look up a syntax node by id.
   const Node& node(NodeId id) const;
 

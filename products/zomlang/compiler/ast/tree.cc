@@ -79,6 +79,16 @@ bool Tree::contains(NodeId id) const {
   return id.value != 0 && static_cast<size_t>(id.value) <= impl->nodes.size();
 }
 
+bool Tree::contains(NodeList list) const {
+  return static_cast<size_t>(list.first) + static_cast<size_t>(list.size) <=
+         impl->listStorage.size();
+}
+
+bool Tree::contains(IdentList list) const {
+  return static_cast<size_t>(list.first) + static_cast<size_t>(list.size) <=
+         impl->identListStorage.size();
+}
+
 const Node& Tree::node(NodeId id) const {
   ZC_IREQUIRE(contains(id), "AST node id is outside this tree");
   return impl->nodes[indexOf(id)];
@@ -87,16 +97,12 @@ const Node& Tree::node(NodeId id) const {
 zc::ArrayPtr<const Node> Tree::nodes() const { return impl->nodes.asPtr(); }
 
 zc::ArrayPtr<const NodeId> Tree::list(NodeList list) const {
-  ZC_IREQUIRE(
-      static_cast<size_t>(list.first) + static_cast<size_t>(list.size) <= impl->listStorage.size(),
-      "AST node list is outside this tree");
+  ZC_IREQUIRE(contains(list), "AST node list is outside this tree");
   return impl->listStorage.slice(list.first, list.first + list.size);
 }
 
 zc::ArrayPtr<const IdentId> Tree::identList(IdentList list) const {
-  ZC_IREQUIRE(static_cast<size_t>(list.first) + static_cast<size_t>(list.size) <=
-                  impl->identListStorage.size(),
-              "AST identifier list is outside this tree");
+  ZC_IREQUIRE(contains(list), "AST identifier list is outside this tree");
   return impl->identListStorage.slice(list.first, list.first + list.size);
 }
 
