@@ -1,4 +1,4 @@
 enum Color { Red, Green, Blue }
 match (c) {
-    Color::Red : { print("red"); }
+    when Color::Red => { print("red"); }
 }

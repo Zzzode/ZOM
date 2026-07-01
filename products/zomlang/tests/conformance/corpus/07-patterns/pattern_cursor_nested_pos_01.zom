@@ -1,0 +1,5 @@
+struct S { left: i32, right: i32 }
+match (value) {
+    when Shape.Pair((a, b), [c, d, ...rest]) => { print(a); }
+    when S { left: e, right: h, ...tail } => { print(e); }
+}

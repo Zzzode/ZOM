@@ -23,7 +23,7 @@ fun main() {
     when 1 => {
       x = 100;
     }
-    when 2 => x = 200;
-    default => x = 0;
+    when 2 => { x = 200; }
+    default => { x = 0; }
   }
 }

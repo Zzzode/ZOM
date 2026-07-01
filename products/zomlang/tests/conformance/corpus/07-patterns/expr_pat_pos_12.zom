@@ -1,4 +1,4 @@
 match (v) {
-    (1 + 2) : { print("three"); }
-    (f(x)) : { print("call"); }
+    when (1 + 2) => { print("three"); }
+    when (f(x)) => { print("call"); }
 }

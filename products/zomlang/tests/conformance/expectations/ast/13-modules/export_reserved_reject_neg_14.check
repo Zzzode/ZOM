@@ -1,12 +1,15 @@
-// RUN: %zomc compile --dump-ast %corpus/13-modules/export_reserved_reject_neg_14.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/export_reserved_reject_neg_14.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #3 @1:1..2:1 file_name="export_reserved_reject_neg_14.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #2 @1:1..1:26
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ExportDeclaration #1 @1:1..1:26
-// CHECK-NEXT:           declaration: null
-// CHECK-NEXT:           specifiers: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2074]: Identifier expected
+// CHECK:   --> {{.*export_reserved_reject_neg_14.zom}}:1:10
+// CHECK:   |
+// CHECK: 1 | export { static, async };
+// CHECK:   |          ^
+// CHECK: Error [ZOM2074]: Identifier expected
+// CHECK:   --> {{.*export_reserved_reject_neg_14.zom}}:1:18
+// CHECK:   |
+// CHECK: 1 | export { static, async };
+// CHECK:   |                  ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

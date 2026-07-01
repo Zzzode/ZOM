@@ -1,11 +1,11 @@
 match (x) {
-  when _ => 0;
-  when v: i32 => v;
-  when (a: i32, b: str) if a > 0 => a;
-  when { x: i32, y: str } => 1;
-  when [a, b] => 2;
-  when is i32 => 3;
-  when x + 1 => 4;
-  when Result.Ok(v: i32) => v;
-  default => return 0;
+  when _ => { return 0; }
+  when value if value > 0 => { return value; }
+  when (a, b) if a > 0 => { return a; }
+  when { x, y } => { return 1; }
+  when [a, b] => { return 2; }
+  when is i32 => { return 3; }
+  when (x + 1) => { return 4; }
+  when Result.Ok(v) => { return v; }
+  default => { return 0; }
 }

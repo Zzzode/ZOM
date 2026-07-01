@@ -1,0 +1,2 @@
+let typed: Pair<Box<A, B>, fun(C, D) -> E> = make<Pair<A, B>>(a, b), callback = fun(x: i32) -> i32 { return x; };
+let compare = a < b, after = f<A, B>(a, b), lambda = (value: i32) => value;

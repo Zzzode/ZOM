@@ -1,24 +1,7 @@
-// RUN: %zomc compile --dump-ast %corpus/03-types/raises_comma_reject_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/03-types/raises_comma_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #8 @1:1..2:1 file_name="raises_comma_reject_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #7 @1:1..1:43
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #6 @1:1..1:43 name="f"
-// CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
-// CHECK-NEXT:               params: []
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #2 @1:12..1:15 kind=I32
-// CHECK-NEXT:           raises_ty:
-// CHECK-NEXT:             NamedTypeExpr #4 @1:23..1:42
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #3 @1:23..1:30 segments=["IoError"]
-// CHECK-NEXT:               args: []
-// CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #5 @2:1..2:1
-// CHECK-NEXT:               stmts: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK:   --> {{.*raises_comma_reject_neg_01.zom}}:1:30
+// CHECK: 1 | fun f() -> i32 raises IoError, ParseError;
+// CHECK:   |                             ^

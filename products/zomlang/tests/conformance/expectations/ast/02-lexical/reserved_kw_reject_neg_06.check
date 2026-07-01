@@ -6,5 +6,10 @@
 // CHECK:   |
 // CHECK: 1 | fun f() { throw 1; }
 // CHECK:   |           ^
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*reserved_kw_reject_neg_06.zom}}:1:11
+// CHECK:   |
+// CHECK: 1 | fun f() { throw 1; }
+// CHECK:   |           ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

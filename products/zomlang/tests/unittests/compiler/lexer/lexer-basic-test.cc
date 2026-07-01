@@ -251,6 +251,19 @@ ZC_TEST("LexerBasicTest.TokenTextFastPaths") {
     ZC_EXPECT(tokens[1].getValue() == "+"_zc);
   }
 
+  {
+    auto tokens = tokenize("mut spawn suspend char var actor channel generator"_zc);
+    ZC_EXPECT(tokens.size() == 9);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::MutKeyword));
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::SpawnKeyword));
+    ZC_EXPECT(tokens[2].is(ast::SyntaxKind::SuspendKeyword));
+    ZC_EXPECT(tokens[3].is(ast::SyntaxKind::CharKeyword));
+    ZC_EXPECT(tokens[4].is(ast::SyntaxKind::VarKeyword));
+    ZC_EXPECT(tokens[5].is(ast::SyntaxKind::ActorKeyword));
+    ZC_EXPECT(tokens[6].is(ast::SyntaxKind::ChannelKeyword));
+    ZC_EXPECT(tokens[7].is(ast::SyntaxKind::GeneratorKeyword));
+  }
+
   { ZC_EXPECT(Token::getStaticTextForTokenKind(ast::SyntaxKind::Identifier) == zc::none); }
 }
 

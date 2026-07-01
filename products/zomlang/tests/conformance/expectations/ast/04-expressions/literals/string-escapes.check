@@ -1,86 +1,118 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/literals/string-escapes.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #33 @1:1..9:1 file_name="string-escapes.zom"
+// CHECK: SourceFile #49 @1:1..9:1 file_name="string-escapes.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:20
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:20
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #3 @1:1..1:20
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:12 name="newline"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             StrLiteral #2 @1:15..1:19 value="\n" is_raw=false prefix=None
+// CHECK-NEXT:         LetStmt #5 @1:1..1:20 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #4 @1:5..1:19 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #3 @1:5..1:19
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:12 name="newline"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StrLiteral #2 @1:15..1:19 value="\n" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #8 @2:1..2:16
+// CHECK-NEXT:     StatementListItem #12 @2:1..2:16
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #7 @2:1..2:16
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #5 @2:5..2:8 name="tab"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             StrLiteral #6 @2:11..2:15 value="\t" is_raw=false prefix=None
+// CHECK-NEXT:         LetStmt #11 @2:1..2:16 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #10 @2:5..2:15 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #9 @2:5..2:15
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #7 @2:5..2:8 name="tab"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StrLiteral #8 @2:11..2:15 value="\t" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #12 @3:1..3:23
+// CHECK-NEXT:     StatementListItem #18 @3:1..3:23
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #11 @3:1..3:23
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #9 @3:5..3:15 name="returnChar"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             StrLiteral #10 @3:18..3:22 value="\r" is_raw=false prefix=None
+// CHECK-NEXT:         LetStmt #17 @3:1..3:23 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #16 @3:5..3:22 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #15 @3:5..3:22
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #13 @3:5..3:15 name="returnChar"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StrLiteral #14 @3:18..3:22 value="\r" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #16 @4:1..4:24
+// CHECK-NEXT:     StatementListItem #24 @4:1..4:24
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #15 @4:1..4:24
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #13 @4:5..4:16 name="doubleQuote"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             StrLiteral #14 @4:19..4:23 value="\"" is_raw=false prefix=None
+// CHECK-NEXT:         LetStmt #23 @4:1..4:24 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #22 @4:5..4:23 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #21 @4:5..4:23
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #19 @4:5..4:16 name="doubleQuote"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StrLiteral #20 @4:19..4:23 value="\"" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #20 @5:1..5:24
+// CHECK-NEXT:     StatementListItem #30 @5:1..5:24
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #19 @5:1..5:24
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #17 @5:5..5:16 name="singleQuote"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             StrLiteral #18 @5:19..5:23 value="'" is_raw=false prefix=None
+// CHECK-NEXT:         LetStmt #29 @5:1..5:24 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #28 @5:5..5:23 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #27 @5:5..5:23
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #25 @5:5..5:16 name="singleQuote"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StrLiteral #26 @5:19..5:23 value="'" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #24 @6:1..6:22
+// CHECK-NEXT:     StatementListItem #36 @6:1..6:22
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #23 @6:1..6:22
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #21 @6:5..6:14 name="backslash"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             StrLiteral #22 @6:17..6:21 value="\\" is_raw=false prefix=None
+// CHECK-NEXT:         LetStmt #35 @6:1..6:22 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #34 @6:5..6:21 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #33 @6:5..6:21
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #31 @6:5..6:14 name="backslash"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StrLiteral #32 @6:17..6:21 value="\\" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #28 @7:1..7:24
+// CHECK-NEXT:     StatementListItem #42 @7:1..7:24
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #27 @7:1..7:24
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #25 @7:5..7:14 name="hexEscape"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             StrLiteral #26 @7:17..7:23 value="A" is_raw=false prefix=None
+// CHECK-NEXT:         LetStmt #41 @7:1..7:24 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #40 @7:5..7:23 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #39 @7:5..7:23
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #37 @7:5..7:14 name="hexEscape"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StrLiteral #38 @7:17..7:23 value="A" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #32 @8:1..8:30
+// CHECK-NEXT:     StatementListItem #48 @8:1..8:30
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #31 @8:1..8:30
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #29 @8:5..8:18 name="unicodeEscape"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             StrLiteral #30 @8:21..8:29 value="A" is_raw=false prefix=None
+// CHECK-NEXT:         LetStmt #47 @8:1..8:30 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #46 @8:5..8:29 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #45 @8:5..8:29
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #43 @8:5..8:18 name="unicodeEscape"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StrLiteral #44 @8:21..8:29 value="A" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null

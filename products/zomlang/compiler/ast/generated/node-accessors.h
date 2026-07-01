@@ -164,7 +164,8 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::StructPattern: return true;
     case SyntaxKind::PatternProperty: return true;
     case SyntaxKind::ArrayPattern: return true;
-    case SyntaxKind::SpawnExpression: return true;
+    case SyntaxKind::ExpressionPattern: return true;
+    case SyntaxKind::EnumPattern: return true;
     case SyntaxKind::PositionalStructCtorExpr: return true;
     case SyntaxKind::TupleLiteral1: return true;
     case SyntaxKind::ErrorDefaultExpr: return true;
@@ -201,6 +202,8 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::PostfixExpression: return true;
     case SyntaxKind::CastExpression: return true;
     case SyntaxKind::LambdaExpression: return true;
+    case SyntaxKind::SpawnExpression: return true;
+    case SyntaxKind::StructLiteralExpr: return true;
     case SyntaxKind::CaptureItem: return true;
     case SyntaxKind::DynTypeExpr: return true;
     case SyntaxKind::BottomTypeExpr: return true;
@@ -238,6 +241,8 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::DoWhileStatement: return true;
     case SyntaxKind::DebuggerStatement: return true;
     case SyntaxKind::ContinueStatement: return true;
+    case SyntaxKind::VariableDeclaratorList: return true;
+    case SyntaxKind::VariableDeclarator: return true;
     case SyntaxKind::StandaloneImplDecl: return true;
     case SyntaxKind::MarkerImpl: return true;
     case SyntaxKind::WhereClause: return true;
@@ -258,6 +263,8 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::ModulePath: return true;
     case SyntaxKind::ImportDeclaration: return true;
     case SyntaxKind::ExportDeclaration: return true;
+    case SyntaxKind::ImportSpecifier: return true;
+    case SyntaxKind::ExportSpecifier: return true;
     case SyntaxKind::ObjectTypeMember: return true;
     default: return false;
   }
@@ -316,7 +323,8 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::StructPattern: return "StructPattern";
     case SyntaxKind::PatternProperty: return "PatternProperty";
     case SyntaxKind::ArrayPattern: return "ArrayPattern";
-    case SyntaxKind::SpawnExpression: return "SpawnExpression";
+    case SyntaxKind::ExpressionPattern: return "ExpressionPattern";
+    case SyntaxKind::EnumPattern: return "EnumPattern";
     case SyntaxKind::PositionalStructCtorExpr: return "PositionalStructCtorExpr";
     case SyntaxKind::TupleLiteral1: return "TupleLiteral1";
     case SyntaxKind::ErrorDefaultExpr: return "ErrorDefaultExpr";
@@ -353,6 +361,8 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::PostfixExpression: return "PostfixExpression";
     case SyntaxKind::CastExpression: return "CastExpression";
     case SyntaxKind::LambdaExpression: return "LambdaExpression";
+    case SyntaxKind::SpawnExpression: return "SpawnExpression";
+    case SyntaxKind::StructLiteralExpr: return "StructLiteralExpr";
     case SyntaxKind::CaptureItem: return "CaptureItem";
     case SyntaxKind::DynTypeExpr: return "DynTypeExpr";
     case SyntaxKind::BottomTypeExpr: return "BottomTypeExpr";
@@ -390,6 +400,8 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::DoWhileStatement: return "DoWhileStatement";
     case SyntaxKind::DebuggerStatement: return "DebuggerStatement";
     case SyntaxKind::ContinueStatement: return "ContinueStatement";
+    case SyntaxKind::VariableDeclaratorList: return "VariableDeclaratorList";
+    case SyntaxKind::VariableDeclarator: return "VariableDeclarator";
     case SyntaxKind::StandaloneImplDecl: return "StandaloneImplDecl";
     case SyntaxKind::MarkerImpl: return "MarkerImpl";
     case SyntaxKind::WhereClause: return "WhereClause";
@@ -410,6 +422,8 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::ModulePath: return "ModulePath";
     case SyntaxKind::ImportDeclaration: return "ImportDeclaration";
     case SyntaxKind::ExportDeclaration: return "ExportDeclaration";
+    case SyntaxKind::ImportSpecifier: return "ImportSpecifier";
+    case SyntaxKind::ExportSpecifier: return "ExportSpecifier";
     case SyntaxKind::ObjectTypeMember: return "ObjectTypeMember";
     default: return "Unknown";
   }

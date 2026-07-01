@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/05-statements/decl_in_block_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #17 @1:1..6:1 file_name="decl_in_block_pos_01.zom"
+// CHECK: SourceFile #21 @1:1..6:1 file_name="decl_in_block_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #16 @1:1..5:2
+// CHECK-NEXT:     StatementListItem #20 @1:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #15 @1:1..5:2 name="f"
+// CHECK-NEXT:         FunctionDecl #19 @1:1..5:2 name="f"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
 // CHECK-NEXT:               params: []
@@ -14,39 +14,47 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #14 @1:9..5:2
+// CHECK-NEXT:             BlockStmt #18 @1:9..5:2
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #5 @2:5..2:15
+// CHECK-NEXT:                 StatementListItem #7 @2:5..2:15
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #4 @2:5..2:15
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #2 @2:9..2:10 name="x"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         IntLiteral #3 @2:13..2:14 base=10 value="1"
+// CHECK-NEXT:                     LetStmt #6 @2:5..2:15 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #5 @2:9..2:14 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #4 @2:9..2:14
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #2 @2:9..2:10 name="x"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IntLiteral #3 @2:13..2:14 base=10 value="1"
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #9 @3:5..3:17
+// CHECK-NEXT:                 StatementListItem #13 @3:5..3:17
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #8 @3:5..3:17
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #6 @3:11..3:12 name="Y"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         IntLiteral #7 @3:15..3:16 base=10 value="2"
+// CHECK-NEXT:                     LetStmt #12 @3:5..3:17 kind=Const
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #11 @3:11..3:16 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #10 @3:11..3:16
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #8 @3:11..3:12 name="Y"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IntLiteral #9 @3:15..3:16 base=10 value="2"
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #13 @4:5..4:15
+// CHECK-NEXT:                 StatementListItem #17 @4:5..4:15
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     FunctionDecl #12 @4:5..4:15 name="g"
+// CHECK-NEXT:                     FunctionDecl #16 @4:5..4:15 name="g"
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #10 @4:10..4:12 nparams=0
+// CHECK-NEXT:                         FunctionParameterList #14 @4:10..4:12 nparams=0
 // CHECK-NEXT:                           params: []
 // CHECK-NEXT:                       type_params_id: null
 // CHECK-NEXT:                       ret_ty: null
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #11 @4:13..4:15
+// CHECK-NEXT:                         BlockStmt #15 @4:13..4:15
 // CHECK-NEXT:                           stmts: []
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

@@ -6,5 +6,10 @@
 // CHECK:   |
 // CHECK: 1 | let x = await p;
 // CHECK:   |         ^
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*reserved_await_neg_01.zom}}:1:9
+// CHECK:   |
+// CHECK: 1 | let x = await p;
+// CHECK:   |         ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

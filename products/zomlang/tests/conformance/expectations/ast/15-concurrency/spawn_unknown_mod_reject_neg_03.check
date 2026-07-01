@@ -2,9 +2,9 @@
 
 
 // CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*spawn_unknown_mod_reject_neg_03.zom}}:2:13
+// CHECK:   --> {{.*spawn_unknown_mod_reject_neg_03.zom}}:2:19
 // CHECK:   |
 // CHECK: 2 |     let t = spawn magical do_work();
-// CHECK:   |             ^
+// CHECK:   |                   ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

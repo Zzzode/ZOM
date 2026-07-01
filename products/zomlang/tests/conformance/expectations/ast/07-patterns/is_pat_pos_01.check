@@ -1,13 +1,53 @@
 // RUN: %zomc compile --dump-ast %corpus/07-patterns/is_pat_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..5:1 file_name="is_pat_pos_01.zom"
+// CHECK: SourceFile #22 @1:1..5:1 file_name="is_pat_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..4:2
+// CHECK-NEXT:     StatementListItem #21 @1:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         MatchStmt #2 @1:1..4:2
+// CHECK-NEXT:         MatchStmt #20 @1:1..4:2
 // CHECK-NEXT:           scrutinee:
-// CHECK-NEXT:             IdentExpr #1 @1:8..1:9 name="v"
-// CHECK-NEXT:           arms: []
+// CHECK-NEXT:             IdentExpr #19 @1:8..1:9 name="v"
+// CHECK-NEXT:           arms:
+// CHECK-NEXT:             MatchArmStmt #9 @2:5..2:37
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 IsPattern #2 @2:10..2:16
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:13..2:16 kind=I32
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #8 @2:20..2:37
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #7 @2:22..2:35
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #6 @2:22..2:35
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #5 @2:22..2:34
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #3 @2:22..2:27 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 StrLiteral #4 @2:28..2:33 value="int" is_raw=false prefix=None
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:             MatchArmStmt #18 @3:5..3:37
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 IsPattern #11 @3:10..3:16
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #10 @3:13..3:16 kind=Str
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #17 @3:20..3:37
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #16 @3:22..3:35
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #15 @3:22..3:35
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #14 @3:22..3:34
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #12 @3:22..3:27 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 StrLiteral #13 @3:28..3:33 value="str" is_raw=false prefix=None
+// CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

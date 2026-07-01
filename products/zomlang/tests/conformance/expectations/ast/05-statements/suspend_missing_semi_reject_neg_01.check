@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/05-statements/suspend_missing_semi_reject_neg_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #8 @1:1..4:1 file_name="suspend_missing_semi_reject_neg_01.zom"
+// CHECK: SourceFile #7 @1:1..4:1 file_name="suspend_missing_semi_reject_neg_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #7 @1:1..3:2
+// CHECK-NEXT:     StatementListItem #6 @1:1..3:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #6 @1:1..3:2 name="f"
+// CHECK-NEXT:         FunctionDecl #5 @1:1..3:2 name="f"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
 // CHECK-NEXT:               params: []
@@ -14,12 +14,11 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #5 @1:9..3:2
+// CHECK-NEXT:             BlockStmt #4 @1:9..3:2
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #4 @2:5..2:12
+// CHECK-NEXT:                 StatementListItem #3 @2:5..2:12
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ExpressionStatement #3 @2:5..2:12
-// CHECK-NEXT:                       expression:
-// CHECK-NEXT:                         IdentExpr #2 @2:5..2:12 name="suspend"
+// CHECK-NEXT:                     SuspendStatement #2 @2:5..2:12 mode=Bare on_timeout_ms=null
+// CHECK-NEXT:                       until_cond: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

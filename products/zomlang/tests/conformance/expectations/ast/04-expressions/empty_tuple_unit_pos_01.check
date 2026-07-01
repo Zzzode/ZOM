@@ -1,17 +1,21 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/empty_tuple_unit_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @1:1..2:1 file_name="empty_tuple_unit_pos_01.zom"
+// CHECK: SourceFile #7 @1:1..2:1 file_name="empty_tuple_unit_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:12
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:12
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #3 @1:1..1:12
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="u"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             TupleLiteral #2 @1:9..1:11
-// CHECK-NEXT:               elems: []
+// CHECK-NEXT:         LetStmt #5 @1:1..1:12 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #4 @1:5..1:11 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #3 @1:5..1:11
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="u"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     TupleLiteral #2 @1:9..1:11
+// CHECK-NEXT:                       elems: []
 // CHECK-NEXT:       attrs: null

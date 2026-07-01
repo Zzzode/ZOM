@@ -6,8 +6,8 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #3 @1:1..1:56
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:56
+// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:56 alias=null
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #1 @1:8..1:55 segments=["very", "deeply", "nested", "path", "name", "mod"]
+// CHECK-NEXT:             ModulePath #1 @1:8..1:28 segments=["very", "deeply", "nested"]
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null

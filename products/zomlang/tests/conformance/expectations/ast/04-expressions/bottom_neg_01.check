@@ -1,19 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/bottom_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/bottom_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #6 @1:1..2:1 file_name="bottom_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #5 @1:1..1:20
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #4 @1:1..1:20
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="x"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             CallExpression #3 @1:12..1:19
-// CHECK-NEXT:               callee:
-// CHECK-NEXT:                 IdentExpr #2 @1:12..1:17 name="panic"
-// CHECK-NEXT:               args: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2069]: Type expected
+// CHECK:   --> {{.*bottom_neg_01.zom}}:1:8
+// CHECK:   |
+// CHECK: 1 | let x: ! = panic();
+// CHECK:   |        ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

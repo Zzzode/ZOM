@@ -116,6 +116,19 @@ let base = { a: 1, b: 2 };
 let extended = { ...base, c: 3 }; // { a: 1, b: 2, c: 3 }
 ```
 
+### Struct Literals
+
+Nominal struct literals use a qualified type path followed by a field list.
+Field entries use either `name: expression` or shorthand `name`.
+
+```zom
+struct Point { x: i32, y: i32 }
+
+let x = 1;
+let p = Point { x, y: 2 };
+let origin = geometry.Point { x: 0, y: 0 };
+```
+
 ## Postfix Expressions
 
 ### Member Access
@@ -203,6 +216,13 @@ let isEmpty = !array.length;
 
 ```zom
 let inverted = ~0b1010; // Results in ...11110101
+```
+
+### Reference and Dereference Operators
+
+```zom
+let pointer = &value;
+let current = *pointer;
 ```
 
 ### Type Operators
@@ -376,7 +396,7 @@ Operators are evaluated in the following order (highest to lowest precedence):
 
 1. **Primary**: `()`, `[]`, `.`, `?.`
 2. **Postfix**: `++`, `--` (postfix), `?!` (try/propagate), `!!` (unwrap/panic)
-3. **Prefix**: `+`, `-`, `!`, `~`, `++`, `--` (prefix), `typeof`
+3. **Prefix**: `+`, `-`, `!`, `~`, `*`, `&`, `++`, `--` (prefix), `typeof`
 4. **Cast**: `as`, `as?`, `<Type>`
 5. **Exponentiation**: `**`
 6. **Multiplicative**: `*`, `/`, `%`

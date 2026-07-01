@@ -57,5 +57,6 @@
 // CHECK-NEXT:                             ArrayLiteral #15 @2:13..2:14
 // CHECK-NEXT:                               elems: []
 // CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:           path: null
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null

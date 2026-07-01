@@ -1,0 +1,10 @@
+struct Point { x: i32, y: i32, }
+struct CursorObject { first: i32, second: i32, third: i32, }
+let objectCursor = CursorObject {
+  first: call(a, b),
+  second: Point {
+    x: call(c, d),
+    y: make<A, B>(x, y),
+  },
+  third: make<C, D>(e, f),
+};

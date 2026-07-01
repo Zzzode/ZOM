@@ -267,6 +267,18 @@ ZC_TEST("TokenTest.OperatorStaticText") {
             "false"_zc);
   ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::NullKeyword)) ==
             "null"_zc);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::MutKeyword)) ==
+            "mut"_zc);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::SpawnKeyword)) ==
+            "spawn"_zc);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::SuspendKeyword)) ==
+            "suspend"_zc);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::ActorKeyword)) ==
+            "actor"_zc);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::ChannelKeyword)) ==
+            "channel"_zc);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(
+                ast::SyntaxKind::GeneratorKeyword)) == "generator"_zc);
 
   // Test types
   ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::I16Keyword)) ==
@@ -277,6 +289,8 @@ ZC_TEST("TokenTest.OperatorStaticText") {
             "f64"_zc);
   ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::StrKeyword)) ==
             "str"_zc);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::CharKeyword)) ==
+            "char"_zc);
   ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::BoolKeyword)) ==
             "bool"_zc);
   ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::UnitKeyword)) ==

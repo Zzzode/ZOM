@@ -198,10 +198,10 @@ ZC_TEST("LexerNumericTest.BigIntLiterals") {
   auto tokens = tokenize("123n 1_000n"_zc);
   ZC_EXPECT(tokens.size() == 3);
 
-  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::BigIntLiteral));
+  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::BigIntLiteralToken));
   ZC_EXPECT(tokens[0].getValue() == "123n"_zc);
 
-  ZC_EXPECT(tokens[1].is(ast::SyntaxKind::BigIntLiteral));
+  ZC_EXPECT(tokens[1].is(ast::SyntaxKind::BigIntLiteralToken));
   ZC_EXPECT(tokens[1].getValue() == "1000n"_zc);
 }
 

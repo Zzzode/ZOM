@@ -28,11 +28,6 @@ enums:
     type: uint8
     values: [ None, String, Ident ]
 
-  # §4 Expressions · Spawn modifier
-  SpawnModKind:
-    type: uint8
-    values: [ None, Detached, Blocking, PriorityHigh, PriorityLow ]
-
   # §12 Generics · Where clause bound
   WhereBoundKind:
     type: uint8
@@ -66,11 +61,15 @@ enums:
 
   UnaryOperatorKind:
     type: uint8
-    values: [ Plus, Minus, LogicalNot, BitNot, PreIncrement, PreDecrement ]
+    values: [ Plus, Minus, LogicalNot, BitNot, Deref, Ref, PreIncrement, PreDecrement ]
 
   PostfixOperatorKind:
     type: uint8
     values: [ Increment, Decrement, ErrorPropagate, ErrorUnwrap ]
+
+  BindingDeclarationKind:
+    type: uint8
+    values: [ Let, Mut, Const ]
 
   AssignmentOperatorKind:
     type: uint8
@@ -140,14 +139,30 @@ variants:
     doc: "import path[.{specifiers}] [as alias];"
     fields:
       - {name: path, type: NodeId, cast: ModulePath}
-      - {name: specifiers, type: NodeList, optional: true}
+      - {name: alias, type: IdentId, optional: true}
+      - {name: specifiers, type: NodeList, cast: ImportSpecifier, optional: true}
 
   - id: 0x173
     name: ExportDeclaration
     doc: "export declaration or export list"
     fields:
       - {name: declaration, type: NodeId, optional: true}
-      - {name: specifiers, type: NodeList, optional: true}
+      - {name: path, type: NodeId, cast: ModulePath, optional: true}
+      - {name: specifiers, type: NodeList, cast: ExportSpecifier, optional: true}
+
+  - id: 0x174
+    name: ImportSpecifier
+    doc: "named import specifier"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: alias, type: IdentId, optional: true}
+
+  - id: 0x175
+    name: ExportSpecifier
+    doc: "named export specifier"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: alias, type: IdentId, optional: true}
 
 # 0x00..0x0F Attribute / Conditional (9)
   - id: 0x000
@@ -481,8 +496,7 @@ variants:
     name: LiteralPattern
     doc:  "Literal pattern in match arm (numeric / char / string / bool / null)"
     fields:
-      - {name: kind, type: uint8, enum: LiteralPatternKind}
-      - {name: value, type: uint64}
+      - {name: literal, type: NodeId, cast: Expression}
 
   - id: 0x042
     name: IsPattern
@@ -542,12 +556,17 @@ variants:
       - {name: rest, type: NodeId, cast: RestPattern, optional: true}
 
   - id: 0x04A
-    name: SpawnExpression
-    bases: [Expression]
-    doc:  "spawn detached { ... } / spawn priority(high) { ... }"
+    name: ExpressionPattern
+    doc:  "Expression used as a pattern discriminator"
     fields:
-      - {name: mod_, type: SpawnModKind}
-      - {name: body, type: NodeId, cast: BlockStmt}
+      - {name: expr, type: NodeId, cast: Expression}
+
+  - id: 0x04B
+    name: EnumPattern
+    doc:  "Enum variant pattern such as Result.Ok(value)"
+    fields:
+      - {name: path, type: NodeId, cast: ModulePath}
+      - {name: args, type: NodeList, cast: Pattern}
 
 # 0x60..0x7F Literal / Leaf Expressions (25)
   - id: 0x060
@@ -805,6 +824,23 @@ variants:
       - {name: expr_body, type: NodeId, cast: Expression, optional: true}
 
   - id: 0x096
+    name: SpawnExpression
+    bases: [Expression]
+    doc:  "spawn detached { ... } / spawn priority(high) { ... }"
+    fields:
+      - {name: mod_flags, type: uint8}
+      - {name: priority, type: uint8, enum: [None, High, Low]}
+      - {name: body, type: NodeId, cast: Statement}
+
+  - id: 0x097
+    name: StructLiteralExpr
+    bases: [Expression]
+    doc:  "Nominal struct literal expression such as Point { x: 1 } or Vec3<f32> { x: 1.0 }"
+    fields:
+      - {name: ty, type: NodeId, cast: TypeExpr}
+      - {name: properties, type: NodeList, cast: ObjectLiteralElement}
+
+  - id: 0x098
     name: CaptureItem
     doc:  "Single function-expression capture"
     fields:
@@ -1010,11 +1046,10 @@ variants:
 
   - id: 0x0EB
     name: LetStmt
-    doc:  "let pattern[: type] = init (initialisation statement"
+    doc:  "let|mut|const declarator-list statement"
     fields:
-      - {name: pattern, type: NodeId, cast: Pattern}
-      - {name: ty, type: NodeId, cast: TypeExpr, optional: true}
-      - {name: init, type: NodeId, cast: Expression}
+      - {name: kind, type: BindingDeclarationKind}
+      - {name: declarations, type: NodeId, cast: VariableDeclaratorList}
 
   - id: 0x0EC
     name: ModuleDeclaration
@@ -1065,6 +1100,21 @@ variants:
     doc: "continue [label];"
     fields:
       - {name: label, type: IdentId, optional: true}
+
+  - id: 0x0F4
+    name: VariableDeclaratorList
+    doc: "VariableDeclarationList ::= VariableDeclaration (',' VariableDeclaration)*"
+    fields:
+      - {name: n_decls, type: uint16}
+      - {name: decls, type: NodeList, cast: VariableDeclarator}
+
+  - id: 0x0F5
+    name: VariableDeclarator
+    doc: "(BindingIdentifier | BindingPattern) TypeAnnotation? Initializer?"
+    fields:
+      - {name: pattern, type: NodeId, cast: Pattern}
+      - {name: ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: init, type: NodeId, cast: Expression, optional: true}
 
 # 0x110..0x16F Declarations
   - id: 0x110
@@ -1249,7 +1299,7 @@ derived:
 
   - kind: RangeSyntax
     from: RestPattern         # 0x040
-    to:   SpawnExpression     # 0x04A
+    to:   EnumPattern         # 0x04B
     name: FirstPatternFamily / LastPatternFamily
 
   - kind: RangeSyntax
@@ -1259,7 +1309,7 @@ derived:
 
   - kind: RangeSyntax
     from: WherePred           # 0x080
-    to:   LambdaExpression    # 0x095
+    to:   StructLiteralExpr   # 0x097
     name: FirstExprFamily / LastExprFamily
 
   - kind: RangeSyntax
@@ -1281,7 +1331,7 @@ derived:
   - kind: Category
     name: isExpression
     includes:
-      # Expr range (0x080..0x095)
+      # Expr range (0x080..0x096)
       - WherePred
       - ThisExpr
       - IdentExpr
@@ -1304,6 +1354,8 @@ derived:
       - PostfixExpression
       - CastExpression
       - LambdaExpression
+      - SpawnExpression
+      - StructLiteralExpr
       # LiteralExpr range (0x060..0x06C) counts as expressions
       - PositionalStructCtorExpr
       - TupleLiteral1
@@ -1323,8 +1375,6 @@ derived:
       - UnsafeBlockExpr
       # Macro invocation
       - MacroInvocationExpr
-      # Pattern expression-ish (SpawnExpression lives in Pattern range)
-      - SpawnExpression
 
   - kind: Category
     name: isStatement
@@ -1461,7 +1511,6 @@ field_type_mapping:
   Abi:            { cpp: "Abi",       size: 2, align: 2 }
   MacroBrace:     { cpp: "MacroBrace",size: 1, align: 1 }
   CfgAtomValueKind: { cpp: "CfgAtomValueKind", size: 1, align: 1 }
-  SpawnModKind:   { cpp: "SpawnModKind",   size: 1, align: 1 }
   WhereBoundKind: { cpp: "WhereBoundKind", size: 1, align: 1 }
   ClassExtensibility: { cpp: "ClassExtensibility", size: 1, align: 1 }
   SuspendMode:    { cpp: "SuspendMode", size: 1, align: 1 }

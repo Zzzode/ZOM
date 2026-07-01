@@ -11,5 +11,15 @@
 // CHECK:   |
 // CHECK: 2 | let s = S { x: 1;
 // CHECK:   |                 ^
+// CHECK: Error [ZOM2025]: Expected '}'
+// CHECK:   --> {{.*unbalanced_reject_neg_03.zom}}:2:11
+// CHECK:   |
+// CHECK: 2 | let s = S { x: 1;
+// CHECK:   |           ^
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*unbalanced_reject_neg_03.zom}}:2:9
+// CHECK:   |
+// CHECK: 2 | let s = S { x: 1;
+// CHECK:   |         ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,13 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/13-modules/import_wildcard_group_reject_neg_17.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/import_wildcard_group_reject_neg_17.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..2:1 file_name="import_wildcard_group_reject_neg_17.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:17
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:17
-// CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #1 @1:8..1:16 segments=["std"]
-// CHECK-NEXT:           specifiers: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2074]: Identifier expected
+// CHECK:   --> {{.*import_wildcard_group_reject_neg_17.zom}}:1:14
+// CHECK:   |
+// CHECK: 1 | import std::{*};
+// CHECK:   |              ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

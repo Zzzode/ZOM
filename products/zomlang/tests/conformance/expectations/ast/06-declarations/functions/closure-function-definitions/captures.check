@@ -1,34 +1,38 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/captures.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #13 @2:1..5:1 file_name="captures.zom"
+// CHECK: SourceFile #15 @2:1..5:1 file_name="captures.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #12 @2:1..4:2
+// CHECK-NEXT:     StatementListItem #14 @2:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #11 @2:1..4:2
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @2:5..2:19 name="captureClosure"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             FunctionExpression #10 @2:22..4:2
-// CHECK-NEXT:               params_id:
-// CHECK-NEXT:                 FunctionParameterList #2 @2:26..2:28 nparams=0
-// CHECK-NEXT:                   params: []
-// CHECK-NEXT:               captures:
-// CHECK-NEXT:                 CaptureItem #3 @2:34..2:35 mode=ByValue name="x"
-// CHECK-NEXT:                 CaptureItem #4 @2:37..2:39 mode=ByRef name="y"
-// CHECK-NEXT:                 CaptureItem #5 @2:41..2:45 mode=This name="this"
-// CHECK-NEXT:               ret_ty: null
-// CHECK-NEXT:               raises_ty: null
-// CHECK-NEXT:               body:
-// CHECK-NEXT:                 BlockStmt #9 @2:47..4:2
-// CHECK-NEXT:                   stmts:
-// CHECK-NEXT:                     StatementListItem #8 @3:3..3:4
-// CHECK-NEXT:                       item:
-// CHECK-NEXT:                         ExpressionStatement #7 @3:3..3:4
-// CHECK-NEXT:                           expression:
-// CHECK-NEXT:                             IdentExpr #6 @3:3..3:4 name="x"
-// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:         LetStmt #13 @2:1..4:2 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #12 @2:5..4:2 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #11 @2:5..4:2
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @2:5..2:19 name="captureClosure"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     FunctionExpression #10 @2:22..4:2
+// CHECK-NEXT:                       params_id:
+// CHECK-NEXT:                         FunctionParameterList #2 @2:26..2:28 nparams=0
+// CHECK-NEXT:                           params: []
+// CHECK-NEXT:                       captures:
+// CHECK-NEXT:                         CaptureItem #3 @2:34..2:35 mode=ByValue name="x"
+// CHECK-NEXT:                         CaptureItem #4 @2:37..2:39 mode=ByRef name="y"
+// CHECK-NEXT:                         CaptureItem #5 @2:41..2:45 mode=This name="this"
+// CHECK-NEXT:                       ret_ty: null
+// CHECK-NEXT:                       raises_ty: null
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #9 @2:47..4:2
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #8 @3:3..3:4
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ExpressionStatement #7 @3:3..3:4
+// CHECK-NEXT:                                   expression:
+// CHECK-NEXT:                                     IdentExpr #6 @3:3..3:4 name="x"
+// CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:       attrs: null

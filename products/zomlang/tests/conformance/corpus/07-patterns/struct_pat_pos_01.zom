@@ -1,4 +1,4 @@
 struct S { x: i32, y: i32 }
 match (s) {
-    S { x: a, y: b } : { print(a + b); }
+    when S { x: a, y: b } => { print(a + b); }
 }

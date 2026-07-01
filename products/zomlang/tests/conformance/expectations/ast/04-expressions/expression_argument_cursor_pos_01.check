@@ -1,0 +1,78 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/expression_argument_cursor_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #38 @1:1..7:1 file_name="expression_argument_cursor_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #37 @1:1..6:3
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #36 @1:1..6:3 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #35 @1:5..6:2 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #34 @1:5..6:2
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:15 name="nestedArgs"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     CallExpression #33 @1:18..6:2
+// CHECK-NEXT:                       callee:
+// CHECK-NEXT:                         IdentExpr #2 @1:18..1:22 name="sink"
+// CHECK-NEXT:                       type_args: []
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         CallExpression #6 @2:3..2:13
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #3 @2:3..2:7 name="call"
+// CHECK-NEXT:                           type_args: []
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             IdentExpr #4 @2:8..2:9 name="a"
+// CHECK-NEXT:                             IdentExpr #5 @2:11..2:12 name="b"
+// CHECK-NEXT:                         ArrayLiteral #14 @3:4..3:22
+// CHECK-NEXT:                           elems:
+// CHECK-NEXT:                             CallExpression #10 @3:4..3:14
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #7 @3:4..3:8 name="call"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #8 @3:9..3:10 name="c"
+// CHECK-NEXT:                                 IdentExpr #9 @3:12..3:13 name="d"
+// CHECK-NEXT:                             TupleLiteral #13 @3:17..3:21
+// CHECK-NEXT:                               elems:
+// CHECK-NEXT:                                 IdentExpr #11 @3:17..3:18 name="e"
+// CHECK-NEXT:                                 IdentExpr #12 @3:20..3:21 name="f"
+// CHECK-NEXT:                         ConditionalExpr #24 @4:3..4:33
+// CHECK-NEXT:                           cond:
+// CHECK-NEXT:                             IdentExpr #15 @4:3..4:7 name="cond"
+// CHECK-NEXT:                           then_expr:
+// CHECK-NEXT:                             CallExpression #19 @4:10..4:20
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #16 @4:10..4:14 name="call"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #17 @4:15..4:16 name="g"
+// CHECK-NEXT:                                 IdentExpr #18 @4:18..4:19 name="h"
+// CHECK-NEXT:                           else_expr:
+// CHECK-NEXT:                             CallExpression #23 @4:23..4:33
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #20 @4:23..4:27 name="call"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #21 @4:28..4:29 name="i"
+// CHECK-NEXT:                                 IdentExpr #22 @4:31..4:32 name="j"
+// CHECK-NEXT:                         CallExpression #32 @5:3..5:19
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #25 @5:3..5:7 name="make"
+// CHECK-NEXT:                           type_args:
+// CHECK-NEXT:                             NamedTypeExpr #27 @5:8..5:9
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #26 @5:8..5:9 segments=["A"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                             NamedTypeExpr #29 @5:11..5:12
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #28 @5:11..5:12 segments=["B"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             IdentExpr #30 @5:14..5:15 name="x"
+// CHECK-NEXT:                             IdentExpr #31 @5:17..5:18 name="y"
+// CHECK-NEXT:       attrs: null

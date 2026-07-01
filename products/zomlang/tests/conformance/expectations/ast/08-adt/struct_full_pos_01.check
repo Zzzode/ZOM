@@ -1,50 +1,64 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/struct_full_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #20 @1:1..12:1 file_name="struct_full_pos_01.zom"
+// CHECK: SourceFile #30 @1:1..12:1 file_name="struct_full_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #5 @1:1..1:27
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:27
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #4 @1:1..1:27
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:7..1:17 name="Vec3_COUNT"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty:
-// CHECK-NEXT:             PredefinedTypeExpr #2 @1:19..1:22 kind=I32
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             IntLiteral #3 @1:25..1:26 base=10 value="0"
+// CHECK-NEXT:         LetStmt #6 @1:1..1:27 kind=Const
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #5 @1:7..1:26 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #4 @1:7..1:26
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:7..1:17 name="Vec3_COUNT"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:19..1:22 kind=I32
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IntLiteral #3 @1:25..1:26 base=10 value="0"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #14 @2:1..2:68
+// CHECK-NEXT:     StatementListItem #26 @2:1..2:68
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #13 @2:1..2:68
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #6 @2:7..2:16 name="Vec3_UNIT"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty:
-// CHECK-NEXT:             NamedTypeExpr #9 @2:18..2:27
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #8 @2:18..2:22 segments=["Vec3"]
-// CHECK-NEXT:               args:
-// CHECK-NEXT:                 PredefinedTypeExpr #7 @2:23..2:26 kind=F32
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             BinaryExpr #12 @2:30..2:67 op=Gt
-// CHECK-NEXT:               lhs:
-// CHECK-NEXT:                 BinaryExpr #11 @2:30..2:38 op=Lt
-// CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #10 @2:30..2:34 name="Vec3"
-// CHECK-NEXT:                   rhs: null
-// CHECK-NEXT:               rhs: null
+// CHECK-NEXT:         LetStmt #25 @2:1..2:68 kind=Const
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #24 @2:7..2:67 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #23 @2:7..2:67
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #8 @2:7..2:16 name="Vec3_UNIT"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #11 @2:18..2:27
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #10 @2:18..2:22 segments=["Vec3"]
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         PredefinedTypeExpr #9 @2:23..2:26 kind=F32
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StructLiteralExpr #22 @2:30..2:67
+// CHECK-NEXT:                       ty:
+// CHECK-NEXT:                         NamedTypeExpr #15 @2:30..2:39
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #14 @2:30..2:34 segments=["Vec3"]
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             PredefinedTypeExpr #13 @2:35..2:38 kind=F32
+// CHECK-NEXT:                       properties:
+// CHECK-NEXT:                         ObjectProperty #17 @2:42..2:48 name="x" short_form=false
+// CHECK-NEXT:                           value:
+// CHECK-NEXT:                             FloatLiteralExpr #16 @2:45..2:48 width=64 value="1"
+// CHECK-NEXT:                         ObjectProperty #19 @2:50..2:56 name="y" short_form=false
+// CHECK-NEXT:                           value:
+// CHECK-NEXT:                             FloatLiteralExpr #18 @2:53..2:56 width=64 value="0"
+// CHECK-NEXT:                         ObjectProperty #21 @2:58..2:64 name="z" short_form=false
+// CHECK-NEXT:                           value:
+// CHECK-NEXT:                             FloatLiteralExpr #20 @2:61..2:64 width=64 value="0"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #19 @4:1..11:2
+// CHECK-NEXT:     StatementListItem #29 @4:1..11:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #18 @4:1..11:2
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             BinaryExpr #17 @4:1..11:2 op=Gt
-// CHECK-NEXT:               lhs:
-// CHECK-NEXT:                 BinaryExpr #16 @4:1..4:30 op=Lt
-// CHECK-NEXT:                   lhs: null
-// CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IdentExpr #15 @4:20..4:21 name="T"
-// CHECK-NEXT:               rhs: null
+// CHECK-NEXT:         StructDecl #28 @4:1..11:2 name="Vec3" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #27 @4:1..11:2 nmembers=0
+// CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null

@@ -1,0 +1,70 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/for_header_nested_in_cursor_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #28 @1:1..6:1 file_name="for_header_nested_in_cursor_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #27 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #26 @1:1..5:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #25 @1:9..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #24 @2:5..4:6
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ForStmt #23 @2:5..4:6
+// CHECK-NEXT:                       init:
+// CHECK-NEXT:                         LetStmt #8 @2:10..2:31 kind=Let
+// CHECK-NEXT:                           declarations:
+// CHECK-NEXT:                             VariableDeclaratorList #7 @2:14..2:30 n_decls=1
+// CHECK-NEXT:                               decls:
+// CHECK-NEXT:                                 VariableDeclarator #6 @2:14..2:30
+// CHECK-NEXT:                                   pattern:
+// CHECK-NEXT:                                     IdentifierPattern #2 @2:14..2:18 name="item"
+// CHECK-NEXT:                                       ty: null
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                                   init:
+// CHECK-NEXT:                                     ObjectLiteralExpr #5 @2:21..2:30
+// CHECK-NEXT:                                       properties:
+// CHECK-NEXT:                                         ObjectProperty #4 @2:23..2:28 name="in" short_form=false
+// CHECK-NEXT:                                           value:
+// CHECK-NEXT:                                             IntLiteral #3 @2:27..2:28 base=10 value="1"
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         BinaryExpr #11 @2:32..2:45 op=Ne
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #9 @2:32..2:36 name="item"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IdentExpr #10 @2:40..2:45 name="empty"
+// CHECK-NEXT:                       update:
+// CHECK-NEXT:                         AssignmentExpr #16 @2:47..2:64 op=Assign
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #12 @2:47..2:51 name="item"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             CallExpression #15 @2:54..2:64
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #13 @2:54..2:58 name="next"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #14 @2:59..2:63 name="item"
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #22 @2:66..4:6
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #21 @3:9..3:20
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ExpressionStatement #20 @3:9..3:20
+// CHECK-NEXT:                                   expression:
+// CHECK-NEXT:                                     CallExpression #19 @3:9..3:19
+// CHECK-NEXT:                                       callee:
+// CHECK-NEXT:                                         IdentExpr #17 @3:9..3:13 name="sink"
+// CHECK-NEXT:                                       type_args: []
+// CHECK-NEXT:                                       args:
+// CHECK-NEXT:                                         IdentExpr #18 @3:14..3:18 name="item"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

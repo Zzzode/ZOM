@@ -1,25 +1,52 @@
 // RUN: %zomc compile --dump-ast %corpus/07-patterns/tuple_pat_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #9 @1:1..5:1 file_name="tuple_pat_edge_01.zom"
+// CHECK: SourceFile #21 @1:1..5:1 file_name="tuple_pat_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #5 @1:1..1:17
+// CHECK-NEXT:     StatementListItem #8 @1:1..1:17
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #4 @1:1..1:17
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             WildcardPattern #1 @1:5..1:9
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             TupleLiteral #3 @1:13..1:15
-// CHECK-NEXT:               elems:
-// CHECK-NEXT:                 IntLiteral #2 @1:13..1:14 base=10 value="5"
+// CHECK-NEXT:         LetStmt #7 @1:1..1:17 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #6 @1:5..1:16 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #5 @1:5..1:16
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     TuplePattern #2 @1:5..1:9
+// CHECK-NEXT:                       pats:
+// CHECK-NEXT:                         IdentifierPattern #1 @1:6..1:7 name="x"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     TupleLiteral #4 @1:13..1:15
+// CHECK-NEXT:                       elems:
+// CHECK-NEXT:                         IntLiteral #3 @1:13..1:14 base=10 value="5"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #8 @2:1..4:2
+// CHECK-NEXT:     StatementListItem #20 @2:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         MatchStmt #7 @2:1..4:2
+// CHECK-NEXT:         MatchStmt #19 @2:1..4:2
 // CHECK-NEXT:           scrutinee:
-// CHECK-NEXT:             IdentExpr #6 @2:8..2:9 name="t"
-// CHECK-NEXT:           arms: []
+// CHECK-NEXT:             IdentExpr #18 @2:8..2:9 name="t"
+// CHECK-NEXT:           arms:
+// CHECK-NEXT:             MatchArmStmt #17 @3:5..3:31
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 TuplePattern #10 @3:10..3:14
+// CHECK-NEXT:                   pats:
+// CHECK-NEXT:                     IdentifierPattern #9 @3:11..3:12 name="a"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #16 @3:18..3:31
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #15 @3:20..3:29
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #14 @3:20..3:29
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #13 @3:20..3:28
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #11 @3:20..3:25 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #12 @3:26..3:27 name="a"
+// CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

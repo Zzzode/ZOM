@@ -1,39 +1,15 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/postfix_lr_edge_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/postfix_lr_edge_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #13 @1:1..5:1 file_name="postfix_lr_edge_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #12 @1:1..4:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #11 @1:1..4:2 name="f"
-// CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
-// CHECK-NEXT:               params: []
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           ret_ty: null
-// CHECK-NEXT:           raises_ty: null
-// CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #10 @1:9..4:2
-// CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #5 @2:3..2:13
-// CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #4 @2:3..2:13
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #2 @2:7..2:8 name="x"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         IntLiteral #3 @2:11..2:12 base=10 value="0"
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #9 @3:3..3:19
-// CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #8 @3:3..3:19
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #6 @3:7..3:8 name="y"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         IdentExpr #7 @3:11..3:12 name="x"
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK:   --> {{.*postfix_lr_edge_01.zom}}:3:16
+// CHECK:   |
+// CHECK: 3 |   let y = x++?!!?;
+// CHECK:   |                ^
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*postfix_lr_edge_01.zom}}:3:11
+// CHECK:   |
+// CHECK: 3 |   let y = x++?!!?;
+// CHECK:   |           ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

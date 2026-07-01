@@ -1,20 +1,24 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/tuple_paren_ambig_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #8 @1:1..2:1 file_name="tuple_paren_ambig_edge_01.zom"
+// CHECK: SourceFile #10 @1:1..2:1 file_name="tuple_paren_ambig_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #7 @1:1..1:20
+// CHECK-NEXT:     StatementListItem #9 @1:1..1:20
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #6 @1:1..1:20
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="t"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             TupleLiteral #5 @1:10..1:18
-// CHECK-NEXT:               elems:
-// CHECK-NEXT:                 IntLiteral #2 @1:10..1:11 base=10 value="1"
-// CHECK-NEXT:                 IntLiteral #3 @1:13..1:14 base=10 value="2"
-// CHECK-NEXT:                 IntLiteral #4 @1:16..1:17 base=10 value="3"
+// CHECK-NEXT:         LetStmt #8 @1:1..1:20 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #7 @1:5..1:19 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #6 @1:5..1:19
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="t"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     TupleLiteral #5 @1:10..1:18
+// CHECK-NEXT:                       elems:
+// CHECK-NEXT:                         IntLiteral #2 @1:10..1:11 base=10 value="1"
+// CHECK-NEXT:                         IntLiteral #3 @1:13..1:14 base=10 value="2"
+// CHECK-NEXT:                         IntLiteral #4 @1:16..1:17 base=10 value="3"
 // CHECK-NEXT:       attrs: null

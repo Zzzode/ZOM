@@ -6,5 +6,10 @@
 // CHECK:   |
 // CHECK: 1 | namespace foo {}
 // CHECK:   | ^
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*namespace_reject_neg_18.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | namespace foo {}
+// CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

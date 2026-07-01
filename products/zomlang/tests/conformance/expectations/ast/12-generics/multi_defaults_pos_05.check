@@ -43,6 +43,7 @@
 // CHECK-NEXT:                         CallExpression #11 @1:52..1:59
 // CHECK-NEXT:                           callee:
 // CHECK-NEXT:                             IdentExpr #10 @1:52..1:57 name="panic"
+// CHECK-NEXT:                           type_args: []
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

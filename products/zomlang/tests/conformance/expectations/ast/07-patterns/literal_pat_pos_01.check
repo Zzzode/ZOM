@@ -1,15 +1,93 @@
-// RUN: ! %zomc compile --dump-ast %corpus/07-patterns/literal_pat_pos_01.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/07-patterns/literal_pat_pos_01.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2011]: Identifier expected, found '42'
-// CHECK:   --> {{.*literal_pat_pos_01.zom}}:2:5
-// CHECK:   |
-// CHECK: 2 |     42 : { print("yes"); }
-// CHECK:   |     ^
-// CHECK: Error [ZOM2011]: Identifier expected, found 'hello'
-// CHECK:   --> {{.*literal_pat_pos_01.zom}}:3:5
-// CHECK:   |
-// CHECK: 3 |     "hello" : { print("greet"); }
-// CHECK:   |     ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #40 @1:1..7:1 file_name="literal_pat_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #39 @1:1..6:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         MatchStmt #38 @1:1..6:2
+// CHECK-NEXT:           scrutinee:
+// CHECK-NEXT:             IdentExpr #37 @1:8..1:9 name="v"
+// CHECK-NEXT:           arms:
+// CHECK-NEXT:             MatchArmStmt #9 @2:5..2:33
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 LiteralPattern #2 @2:10..2:12
+// CHECK-NEXT:                   literal:
+// CHECK-NEXT:                     IntLiteral #1 @2:10..2:12 base=10 value="42"
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #8 @2:16..2:33
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #7 @2:18..2:31
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #6 @2:18..2:31
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #5 @2:18..2:30
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #3 @2:18..2:23 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 StrLiteral #4 @2:24..2:29 value="yes" is_raw=false prefix=None
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:             MatchArmStmt #18 @3:5..3:40
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 LiteralPattern #11 @3:10..3:17
+// CHECK-NEXT:                   literal:
+// CHECK-NEXT:                     StrLiteral #10 @3:10..3:17 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #17 @3:21..3:40
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #16 @3:23..3:38
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #15 @3:23..3:38
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #14 @3:23..3:37
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #12 @3:23..3:28 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 StrLiteral #13 @3:29..3:36 value="greet" is_raw=false prefix=None
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:             MatchArmStmt #27 @4:5..4:33
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 LiteralPattern #20 @4:10..4:14
+// CHECK-NEXT:                   literal:
+// CHECK-NEXT:                     BoolLiteral #19 @4:10..4:14 value=true
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #26 @4:18..4:33
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #25 @4:20..4:31
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #24 @4:20..4:31
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #23 @4:20..4:30
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #21 @4:20..4:25 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 StrLiteral #22 @4:26..4:29 value="t" is_raw=false prefix=None
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:             MatchArmStmt #36 @5:5..5:33
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 LiteralPattern #29 @5:10..5:14
+// CHECK-NEXT:                   literal:
+// CHECK-NEXT:                     NullLiteral #28 @5:10..5:14
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #35 @5:18..5:33
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #34 @5:20..5:31
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #33 @5:20..5:31
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #32 @5:20..5:30
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #30 @5:20..5:25 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 StrLiteral #31 @5:26..5:29 value="n" is_raw=false prefix=None
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:       attrs: null

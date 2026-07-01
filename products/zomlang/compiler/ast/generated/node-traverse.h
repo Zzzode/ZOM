@@ -329,6 +329,12 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         for (NodeId child : tree.list(list)) { fn(child); }
       }
       return;
+    case SyntaxKind::LiteralPattern:
+      {
+        const NodeId child(node.payload.words[kLiteralPatternLiteralWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
     case SyntaxKind::IsPattern:
       {
         const NodeId child(node.payload.words[kIsPatternTyWord]);
@@ -395,10 +401,22 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         if (tree.contains(child)) { fn(child); }
       }
       return;
-    case SyntaxKind::SpawnExpression:
+    case SyntaxKind::ExpressionPattern:
       {
-        const NodeId child(node.payload.words[kSpawnExpressionBodyWord]);
+        const NodeId child(node.payload.words[kExpressionPatternExprWord]);
         if (tree.contains(child)) { fn(child); }
+      }
+      return;
+    case SyntaxKind::EnumPattern:
+      {
+        const NodeId child(node.payload.words[kEnumPatternPathWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        NodeList list;
+        list.first = node.payload.words[kEnumPatternArgsFirstWord];
+        list.size = node.payload.words[kEnumPatternArgsSizeWord];
+        for (NodeId child : tree.list(list)) { fn(child); }
       }
       return;
     case SyntaxKind::PositionalStructCtorExpr:
@@ -679,6 +697,24 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         if (tree.contains(child)) { fn(child); }
       }
       return;
+    case SyntaxKind::SpawnExpression:
+      {
+        const NodeId child(node.payload.words[kSpawnExpressionBodyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
+    case SyntaxKind::StructLiteralExpr:
+      {
+        const NodeId child(node.payload.words[kStructLiteralExprTyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        NodeList list;
+        list.first = node.payload.words[kStructLiteralExprPropertiesFirstWord];
+        list.size = node.payload.words[kStructLiteralExprPropertiesSizeWord];
+        for (NodeId child : tree.list(list)) { fn(child); }
+      }
+      return;
     case SyntaxKind::DynTypeExpr:
       {
         const NodeId child(node.payload.words[kDynTypeExprIfacesIdWord]);
@@ -909,15 +945,7 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
       return;
     case SyntaxKind::LetStmt:
       {
-        const NodeId child(node.payload.words[kLetStmtPatternWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kLetStmtTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kLetStmtInitWord]);
+        const NodeId child(node.payload.words[kLetStmtDeclarationsWord]);
         if (tree.contains(child)) { fn(child); }
       }
       return;
@@ -960,6 +988,28 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
       }
       {
         const NodeId child(node.payload.words[kDoWhileStatementCondWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
+    case SyntaxKind::VariableDeclaratorList:
+      {
+        NodeList list;
+        list.first = node.payload.words[kVariableDeclaratorListDeclsFirstWord];
+        list.size = node.payload.words[kVariableDeclaratorListDeclsSizeWord];
+        for (NodeId child : tree.list(list)) { fn(child); }
+      }
+      return;
+    case SyntaxKind::VariableDeclarator:
+      {
+        const NodeId child(node.payload.words[kVariableDeclaratorPatternWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kVariableDeclaratorTyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kVariableDeclaratorInitWord]);
         if (tree.contains(child)) { fn(child); }
       }
       return;
@@ -1180,6 +1230,10 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
     case SyntaxKind::ExportDeclaration:
       {
         const NodeId child(node.payload.words[kExportDeclarationDeclarationWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kExportDeclarationPathWord]);
         if (tree.contains(child)) { fn(child); }
       }
       {

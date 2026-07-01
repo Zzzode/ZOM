@@ -1,0 +1,2 @@
+import pkg::{a as, b as bb};
+export { x as, y as yy };

@@ -1,23 +1,52 @@
 // RUN: %zomc compile --dump-ast %corpus/07-patterns/mut_destructure_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #10 @1:1..3:1 file_name="mut_destructure_edge_01.zom"
+// CHECK: SourceFile #24 @1:1..3:1 file_name="mut_destructure_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @1:1..1:21
+// CHECK-NEXT:     StatementListItem #10 @1:1..1:21
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #5 @1:1..1:21
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             CallExpression #4 @1:1..1:20
-// CHECK-NEXT:               callee:
-// CHECK-NEXT:                 IdentExpr #3 @1:1..1:4 name="mut"
-// CHECK-NEXT:               args:
-// CHECK-NEXT:                 IntLiteral #1 @1:15..1:16 base=10 value="1"
-// CHECK-NEXT:                 IntLiteral #2 @1:18..1:19 base=10 value="2"
+// CHECK-NEXT:         LetStmt #9 @1:1..1:21 kind=Mut
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #8 @1:5..1:20 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #7 @1:5..1:20
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     TuplePattern #3 @1:5..1:11
+// CHECK-NEXT:                       pats:
+// CHECK-NEXT:                         IdentifierPattern #1 @1:6..1:7 name="a"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                         IdentifierPattern #2 @1:9..1:10 name="b"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     TupleLiteral #6 @1:15..1:19
+// CHECK-NEXT:                       elems:
+// CHECK-NEXT:                         IntLiteral #4 @1:15..1:16 base=10 value="1"
+// CHECK-NEXT:                         IntLiteral #5 @1:18..1:19 base=10 value="2"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #9 @2:1..2:36
+// CHECK-NEXT:     StatementListItem #23 @2:1..2:36
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #8 @2:1..2:36
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             IdentExpr #7 @2:1..2:4 name="mut"
+// CHECK-NEXT:         LetStmt #22 @2:1..2:36 kind=Mut
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #21 @2:5..2:35 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #20 @2:5..2:35
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     ArrayPattern #14 @2:5..2:20
+// CHECK-NEXT:                       pats:
+// CHECK-NEXT:                         IdentifierPattern #11 @2:6..2:7 name="x"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                         IdentifierPattern #12 @2:9..2:10 name="y"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       rest:
+// CHECK-NEXT:                         RestPattern #13 @2:12..2:19 binding="rest"
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     ArrayLiteral #19 @2:24..2:34
+// CHECK-NEXT:                       elems:
+// CHECK-NEXT:                         IntLiteral #15 @2:24..2:25 base=10 value="1"
+// CHECK-NEXT:                         IntLiteral #16 @2:27..2:28 base=10 value="2"
+// CHECK-NEXT:                         IntLiteral #17 @2:30..2:31 base=10 value="3"
+// CHECK-NEXT:                         IntLiteral #18 @2:33..2:34 base=10 value="4"
 // CHECK-NEXT:       attrs: null

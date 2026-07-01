@@ -1,28 +1,59 @@
 // RUN: %zomc compile --dump-ast %corpus/07-patterns/rest_pat_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #12 @1:1..5:1 file_name="rest_pat_pos_01.zom"
+// CHECK: SourceFile #26 @1:1..5:1 file_name="rest_pat_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #8 @1:1..1:33
+// CHECK-NEXT:     StatementListItem #12 @1:1..1:33
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #7 @1:1..1:33
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             WildcardPattern #1 @1:5..1:17
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             ArrayLiteral #6 @1:21..1:31
-// CHECK-NEXT:               elems:
-// CHECK-NEXT:                 IntLiteral #2 @1:21..1:22 base=10 value="1"
-// CHECK-NEXT:                 IntLiteral #3 @1:24..1:25 base=10 value="2"
-// CHECK-NEXT:                 IntLiteral #4 @1:27..1:28 base=10 value="3"
-// CHECK-NEXT:                 IntLiteral #5 @1:30..1:31 base=10 value="4"
+// CHECK-NEXT:         LetStmt #11 @1:1..1:33 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #10 @1:5..1:32 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #9 @1:5..1:32
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     ArrayPattern #3 @1:5..1:17
+// CHECK-NEXT:                       pats:
+// CHECK-NEXT:                         IdentifierPattern #1 @1:6..1:7 name="a"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       rest:
+// CHECK-NEXT:                         RestPattern #2 @1:9..1:16 binding="rest"
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     ArrayLiteral #8 @1:21..1:31
+// CHECK-NEXT:                       elems:
+// CHECK-NEXT:                         IntLiteral #4 @1:21..1:22 base=10 value="1"
+// CHECK-NEXT:                         IntLiteral #5 @1:24..1:25 base=10 value="2"
+// CHECK-NEXT:                         IntLiteral #6 @1:27..1:28 base=10 value="3"
+// CHECK-NEXT:                         IntLiteral #7 @1:30..1:31 base=10 value="4"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #11 @2:1..4:2
+// CHECK-NEXT:     StatementListItem #25 @2:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         MatchStmt #10 @2:1..4:2
+// CHECK-NEXT:         MatchStmt #24 @2:1..4:2
 // CHECK-NEXT:           scrutinee:
-// CHECK-NEXT:             IdentExpr #9 @2:8..2:11 name="arr"
-// CHECK-NEXT:           arms: []
+// CHECK-NEXT:             IdentExpr #23 @2:8..2:11 name="arr"
+// CHECK-NEXT:           arms:
+// CHECK-NEXT:             MatchArmStmt #22 @3:5..3:43
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 ArrayPattern #15 @3:10..3:22
+// CHECK-NEXT:                   pats:
+// CHECK-NEXT:                     IdentifierPattern #13 @3:11..3:16 name="first"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   rest:
+// CHECK-NEXT:                     RestPattern #14 @3:18..3:21 binding=null
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #21 @3:26..3:43
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #20 @3:28..3:41
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #19 @3:28..3:41
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #18 @3:28..3:40
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #16 @3:28..3:33 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #17 @3:34..3:39 name="first"
+// CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

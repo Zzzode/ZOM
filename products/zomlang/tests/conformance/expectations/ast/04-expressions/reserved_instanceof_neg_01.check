@@ -1,6 +1,11 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/reserved_instanceof_neg_01.zom 2>&1 | %FileCheck %s
 
 
+// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK:   --> {{.*reserved_instanceof_neg_01.zom}}:1:11
+// CHECK:   |
+// CHECK: 1 | let b = x instanceof Object;
+// CHECK:   |           ^
 // CHECK: Error [ZOM2057]: Expression expected
 // CHECK:   --> {{.*reserved_instanceof_neg_01.zom}}:1:9
 // CHECK:   |

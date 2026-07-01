@@ -208,6 +208,7 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "let"_zcb) return ast::SyntaxKind::LetKeyword;
   if (text == "match"_zcb) return ast::SyntaxKind::MatchKeyword;
   if (text == "module"_zcb) return ast::SyntaxKind::ModuleKeyword;
+  if (text == "mut"_zcb) return ast::SyntaxKind::MutKeyword;
   if (text == "mutating"_zcb) return ast::SyntaxKind::MutatingKeyword;
   if (text == "namespace"_zcb) return ast::SyntaxKind::NamespaceKeyword;
   if (text == "never"_zcb) return ast::SyntaxKind::NeverKeyword;
@@ -227,8 +228,10 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "return"_zcb) return ast::SyntaxKind::ReturnKeyword;
   if (text == "satisfies"_zcb) return ast::SyntaxKind::SatisfiesKeyword;
   if (text == "set"_zcb) return ast::SyntaxKind::SetKeyword;
+  if (text == "spawn"_zcb) return ast::SyntaxKind::SpawnKeyword;
   if (text == "static"_zcb) return ast::SyntaxKind::StaticKeyword;
   if (text == "super"_zcb) return ast::SyntaxKind::SuperKeyword;
+  if (text == "suspend"_zcb) return ast::SyntaxKind::SuspendKeyword;
   if (text == "symbol"_zcb) return ast::SyntaxKind::SymbolKeyword;
   if (text == "this"_zcb) return ast::SyntaxKind::ThisKeyword;
   if (text == "throw"_zcb) return ast::SyntaxKind::ThrowKeyword;
@@ -254,6 +257,7 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "f32"_zcb) return ast::SyntaxKind::F32Keyword;
   if (text == "f64"_zcb) return ast::SyntaxKind::F64Keyword;
   if (text == "str"_zcb) return ast::SyntaxKind::StrKeyword;
+  if (text == "char"_zcb) return ast::SyntaxKind::CharKeyword;
   if (text == "unit"_zcb) return ast::SyntaxKind::UnitKeyword;
   if (text == "null"_zcb) return ast::SyntaxKind::NullKeyword;
   if (text == "else"_zcb) return ast::SyntaxKind::ElseKeyword;
@@ -267,6 +271,10 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "deinit"_zcb) return ast::SyntaxKind::DeinitKeyword;
   if (text == "raises"_zcb) return ast::SyntaxKind::RaisesKeyword;
   if (text == "type"_zcb) return ast::SyntaxKind::TypeKeyword;
+  if (text == "var"_zcb) return ast::SyntaxKind::VarKeyword;
+  if (text == "actor"_zcb) return ast::SyntaxKind::ActorKeyword;
+  if (text == "channel"_zcb) return ast::SyntaxKind::ChannelKeyword;
+  if (text == "generator"_zcb) return ast::SyntaxKind::GeneratorKeyword;
 
   return ast::SyntaxKind::Identifier;
 }

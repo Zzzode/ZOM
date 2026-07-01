@@ -1,0 +1,5 @@
+fun f(x: bool, y: bool) {
+    do while (x) {
+        return;
+    } while (y);
+}

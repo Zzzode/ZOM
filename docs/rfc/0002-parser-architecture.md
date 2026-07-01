@@ -2,7 +2,7 @@
 rfc: 2
 title: Parser Architecture
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
@@ -13,10 +13,10 @@ area: compiler
 requires: [1]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/0002-parser-architecture.md#status-history
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/0002-parser-architecture.md#acceptance-criteria
 ---
 
 # RFC 0002: Parser Architecture
@@ -953,7 +953,7 @@ The rollout order is:
 2. Land this RFC as the accepted parser architecture.
 3. Reconcile `17-grammar-reference.md`, `ZomParser.g4`, lexer token metadata,
    AST schema, and grammar oracle fixtures.
-4. Add `parser-coverage.yml` and a CI guard that fails on unmapped grammar
+4. Harden `parser-coverage.yml` and the CI guard that fails on unmapped grammar
    productions.
 5. Introduce `TokenCursor`, `ParserContext`, recovery helpers, and AST schema
    verification.
@@ -1075,8 +1075,8 @@ bounded syntactic lookahead.
    details that must remain current after the RFC lands.
 4. Reconcile the normative grammar, `ZomParser.g4`, AST schema, token metadata,
    and conformance verdict metadata.
-5. Add `parser-coverage.yml` and a parser coverage script that maps syntactic
-   EBNF productions to parser functions or explicit inline mappings.
+5. Harden `parser-coverage.yml` and the parser coverage script that maps
+   syntactic EBNF productions to parser functions or explicit inline mappings.
 6. Add AST schema verification for required fields and child cast targets.
 7. Add `TokenCursor`, `ParserContext`, diagnostic deduplication, and recovery
    helpers.
@@ -1142,3 +1142,4 @@ None.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-06-30 | DRAFT | Initial draft. |
+| 2026-06-30 | REVIEW | Completed parser architecture draft and opened required owner review. |

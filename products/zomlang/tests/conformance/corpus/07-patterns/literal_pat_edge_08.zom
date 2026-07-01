@@ -1,4 +1,4 @@
 match (c) {
-    'a' : { print("a"); }
-    'z' : { print("z"); }
+    when 'a' => { print("a"); }
+    when 'z' => { print("z"); }
 }

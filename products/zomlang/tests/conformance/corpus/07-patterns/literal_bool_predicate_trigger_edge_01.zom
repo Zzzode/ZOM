@@ -1,4 +1,4 @@
 match (b) {
-    true : { print("T"); }
-    false : { print("F"); }
+    when true => { print("T"); }
+    when false => { print("F"); }
 }

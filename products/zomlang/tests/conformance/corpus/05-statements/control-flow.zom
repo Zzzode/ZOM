@@ -23,7 +23,7 @@ fun testControlFlow() {
     when 0 => {
       x = 100;
     }
-    when 1 => x = 200;
-    default => x = 0;
+    when 1 => { x = 200; }
+    default => { x = 0; }
   }
 }

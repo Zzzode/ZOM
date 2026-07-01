@@ -1,10 +1,10 @@
 // RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/implements_comma_reject_neg_06.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*implements_comma_reject_neg_06.zom}}:2:1
+// CHECK: Error [ZOM2025]: Expected '+'
+// CHECK:   --> {{.*implements_comma_reject_neg_06.zom}}:2:13
 // CHECK:   |
 // CHECK: 2 | impl Reader | Writer for BadClass { }
-// CHECK:   | ^
+// CHECK:   |             ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

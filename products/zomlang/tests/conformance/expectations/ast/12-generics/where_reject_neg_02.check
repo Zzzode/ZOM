@@ -1,41 +1,7 @@
-// RUN: %zomc compile --dump-ast %corpus/12-generics/where_reject_neg_02.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/12-generics/where_reject_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #14 @1:1..2:1 file_name="where_reject_neg_02.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #13 @1:1..1:70
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #12 @1:1..1:70 name="f"
-// CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #7 @1:12..1:24 nparams=2
-// CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #3 @1:13..1:17 name="a"
-// CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #2 @1:16..1:17
-// CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #1 @1:16..1:17 segments=["T"]
-// CHECK-NEXT:                       args: []
-// CHECK-NEXT:                   default_: null
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #6 @1:19..1:23 name="b"
-// CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #5 @1:22..1:23
-// CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #4 @1:22..1:23 segments=["U"]
-// CHECK-NEXT:                       args: []
-// CHECK-NEXT:                   default_: null
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           ret_ty: null
-// CHECK-NEXT:           raises_ty: null
-// CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #11 @1:54..1:70
-// CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #10 @1:56..1:68
-// CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #9 @1:56..1:68
-// CHECK-NEXT:                       value:
-// CHECK-NEXT:                         UnitLiteral #8 @1:63..1:67
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK:   --> {{.*where_reject_neg_02.zom}}:1:33
+// CHECK: 1 | fun f<T, U>(a: T, b: U) -> unit where T: Eq, U: Hash { return unit; }
+// CHECK:   |                                ^

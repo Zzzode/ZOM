@@ -1,5 +1,5 @@
 fun f(x: i32) {
     match (x) {
-        _: return;
+        when _ => { return; }
     }
 }

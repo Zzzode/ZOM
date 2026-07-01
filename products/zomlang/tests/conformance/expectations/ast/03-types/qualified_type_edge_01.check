@@ -1,16 +1,18 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/qualified_type_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @1:1..2:1 file_name="qualified_type_edge_01.zom"
+// CHECK: SourceFile #7 @1:1..2:1 file_name="qualified_type_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:48
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:48
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #3 @1:1..1:48 name="QG"
+// CHECK-NEXT:         AliasDecl #5 @1:1..1:48 name="QG"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           target:
-// CHECK-NEXT:             NamedTypeExpr #2 @1:12..1:47
+// CHECK-NEXT:             NamedTypeExpr #4 @1:12..1:47
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #1 @1:12..1:15 segments=["std"]
-// CHECK-NEXT:               args: []
+// CHECK-NEXT:                 ModulePath #3 @1:12..1:37 segments=["std", "collections", "HashMap"]
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @1:38..1:41 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #2 @1:43..1:46 kind=Str
 // CHECK-NEXT:       attrs: null

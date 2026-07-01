@@ -1,10 +1,10 @@
 // RUN: ! %zomc compile --dump-ast %corpus/15-concurrency/suspend_foo_reject_neg_04.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*suspend_foo_reject_neg_04.zom}}:2:5
+// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK:   --> {{.*suspend_foo_reject_neg_04.zom}}:2:13
 // CHECK:   |
 // CHECK: 2 |     suspend flag;
-// CHECK:   |     ^
+// CHECK:   |             ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

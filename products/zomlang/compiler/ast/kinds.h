@@ -32,6 +32,7 @@ enum class SyntaxKind {
   Identifier,
   StringLiteral,
   IntegerLiteral,
+  BigIntLiteralToken,
   FloatLiteral,
   BooleanLiteral,
   CharacterLiteral,
@@ -89,6 +90,7 @@ enum class SyntaxKind {
   LetKeyword,          // let
   MatchKeyword,        // match
   ModuleKeyword,       // module
+  MutKeyword,          // mut
   MutatingKeyword,     // mutating
   NamespaceKeyword,    // namespace
   NeverKeyword,        // never
@@ -107,8 +109,10 @@ enum class SyntaxKind {
   ReturnKeyword,       // return
   SatisfiesKeyword,    // satisfies
   SetKeyword,          // set
+  SpawnKeyword,        // spawn
   StaticKeyword,       // static
   SuperKeyword,        // super
+  SuspendKeyword,      // suspend
   SymbolKeyword,       // symbol
   ThisKeyword,         // this
   ThrowKeyword,        // throw
@@ -123,27 +127,32 @@ enum class SyntaxKind {
   YieldKeyword,        // yield
 
   // Type keywords
-  BoolKeyword,    // bool
-  I8Keyword,      // i8
-  I16Keyword,     // i16
-  I32Keyword,     // i32
-  I64Keyword,     // i64
-  U8Keyword,      // u8
-  U16Keyword,     // u16
-  U32Keyword,     // u32
-  U64Keyword,     // u64
-  F32Keyword,     // f32
-  F64Keyword,     // f64
-  StrKeyword,     // str
-  UnitKeyword,    // unit
-  StructKeyword,  // struct
-  EnumKeyword,    // enum
-  ErrorKeyword,   // error
-  AliasKeyword,   // alias
-  InitKeyword,    // init
-  DeinitKeyword,  // deinit
-  RaisesKeyword,  // raises
-  TypeKeyword,    // type
+  BoolKeyword,       // bool
+  I8Keyword,         // i8
+  I16Keyword,        // i16
+  I32Keyword,        // i32
+  I64Keyword,        // i64
+  U8Keyword,         // u8
+  U16Keyword,        // u16
+  U32Keyword,        // u32
+  U64Keyword,        // u64
+  F32Keyword,        // f32
+  F64Keyword,        // f64
+  StrKeyword,        // str
+  CharKeyword,       // char
+  UnitKeyword,       // unit
+  StructKeyword,     // struct
+  EnumKeyword,       // enum
+  ErrorKeyword,      // error
+  AliasKeyword,      // alias
+  InitKeyword,       // init
+  DeinitKeyword,     // deinit
+  RaisesKeyword,     // raises
+  TypeKeyword,       // type
+  VarKeyword,        // var
+  ActorKeyword,      // actor
+  ChannelKeyword,    // channel
+  GeneratorKeyword,  // generator
 
   // Boolean and null literals
   TrueKeyword,   // true

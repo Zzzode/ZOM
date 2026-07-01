@@ -1,34 +1,36 @@
 // RUN: %zomc compile --dump-ast %corpus/13-modules/multi_import_top_edge_11.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #13 @1:1..5:1 file_name="multi_import_top_edge_11.zom"
+// CHECK: SourceFile #15 @1:1..5:1 file_name="multi_import_top_edge_11.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #3 @1:1..1:13
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:13
+// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:13 alias=null
 // CHECK-NEXT:           path:
 // CHECK-NEXT:             ModulePath #1 @1:8..1:12 segments=["a", "b"]
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #6 @2:1..2:19
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #5 @2:1..2:19
+// CHECK-NEXT:         ImportDeclaration #5 @2:1..2:19 alias="d2"
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #4 @2:8..2:18 segments=["c", "d", "d2"]
+// CHECK-NEXT:             ModulePath #4 @2:8..2:12 segments=["c", "d"]
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #9 @3:1..3:27
+// CHECK-NEXT:     StatementListItem #11 @3:1..3:27
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #8 @3:1..3:27
+// CHECK-NEXT:         ImportDeclaration #10 @3:1..3:27 alias=null
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #7 @3:8..3:26 segments=["e", "f", "g", "h", "hh"]
-// CHECK-NEXT:           specifiers: []
+// CHECK-NEXT:             ModulePath #7 @3:8..3:12 segments=["e", "f"]
+// CHECK-NEXT:           specifiers:
+// CHECK-NEXT:             ImportSpecifier #8 @3:15..3:16 name="g" alias=null
+// CHECK-NEXT:             ImportSpecifier #9 @3:18..3:25 name="h" alias="hh"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #12 @4:1..4:16
+// CHECK-NEXT:     StatementListItem #14 @4:1..4:16
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #11 @4:1..4:16
+// CHECK-NEXT:         ImportDeclaration #13 @4:1..4:16 alias=null
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #10 @4:8..4:15 segments=["i", "j", "k"]
+// CHECK-NEXT:             ModulePath #12 @4:8..4:15 segments=["i", "j", "k"]
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null

@@ -207,6 +207,9 @@ productions:
   StatementListItem: {status: inlined, parser: parseBlock, parent: StatementList, ast: [StatementListItem]}
   StringLiteral: {status: lexical}
   StructDeclaration: {status: direct, parser: parseNamedTypeDeclaration, ast: [StructDecl]}
+  StructLiteral: {status: direct, parser: parseStructLiteralExpression, ast: [StructLiteralExpr]}
+  StructLiteralField: {status: inlined, parser: parseObjectLiteralProperties, parent: StructLiteral}
+  StructLiteralFields: {status: inlined, parser: parseObjectLiteralProperties, parent: StructLiteral}
   StructurePattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
   SuperCall: {status: inlined, parser: parseCallExpression, parent: CallExpression}
   SuperProperty: {status: inlined, parser: parseExpressionRange, parent: MemberExpression}

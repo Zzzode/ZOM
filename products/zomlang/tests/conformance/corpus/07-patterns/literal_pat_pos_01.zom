@@ -1,6 +1,6 @@
 match (v) {
-    42 : { print("yes"); }
-    "hello" : { print("greet"); }
-    true : { print("t"); }
-    null : { print("n"); }
+    when 42 => { print("yes"); }
+    when "hello" => { print("greet"); }
+    when true => { print("t"); }
+    when null => { print("n"); }
 }

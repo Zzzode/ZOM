@@ -11,5 +11,10 @@
 // CHECK:   |
 // CHECK: 4 |         "score": high_score
 // CHECK:   |         ^
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*macro_brace_pos_03.zom}}:2:15
+// CHECK:   |
+// CHECK: 2 |     let obj = json_map!{
+// CHECK:   |               ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

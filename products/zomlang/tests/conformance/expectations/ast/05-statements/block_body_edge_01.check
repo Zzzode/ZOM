@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/05-statements/block_body_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #20 @1:1..8:1 file_name="block_body_edge_01.zom"
+// CHECK: SourceFile #24 @1:1..8:1 file_name="block_body_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #19 @1:1..7:2
+// CHECK-NEXT:     StatementListItem #23 @1:1..7:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #18 @1:1..7:2 name="f"
+// CHECK-NEXT:         FunctionDecl #22 @1:1..7:2 name="f"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
 // CHECK-NEXT:               params: []
@@ -14,41 +14,49 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #17 @1:9..7:2
+// CHECK-NEXT:             BlockStmt #21 @1:9..7:2
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #5 @2:5..2:15
+// CHECK-NEXT:                 StatementListItem #7 @2:5..2:15
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #4 @2:5..2:15
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #2 @2:9..2:10 name="x"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         IntLiteral #3 @2:13..2:14 base=10 value="1"
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #16 @3:5..6:6
-// CHECK-NEXT:                   item:
-// CHECK-NEXT:                     BlockStmt #15 @3:5..6:6
-// CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #9 @4:9..4:19
-// CHECK-NEXT:                           item:
-// CHECK-NEXT:                             LetStmt #8 @4:9..4:19
+// CHECK-NEXT:                     LetStmt #6 @2:5..2:15 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #5 @2:9..2:14 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #4 @2:9..2:14
 // CHECK-NEXT:                               pattern:
-// CHECK-NEXT:                                 IdentifierPattern #6 @4:13..4:14 name="y"
+// CHECK-NEXT:                                 IdentifierPattern #2 @2:9..2:10 name="x"
 // CHECK-NEXT:                                   ty: null
 // CHECK-NEXT:                               ty: null
 // CHECK-NEXT:                               init:
-// CHECK-NEXT:                                 IntLiteral #7 @4:17..4:18 base=10 value="2"
-// CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                         StatementListItem #14 @5:9..5:22
+// CHECK-NEXT:                                 IntLiteral #3 @2:13..2:14 base=10 value="1"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #20 @3:5..6:6
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     BlockStmt #19 @3:5..6:6
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #13 @4:9..4:19
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ReturnStmt #13 @5:9..5:22
+// CHECK-NEXT:                             LetStmt #12 @4:9..4:19 kind=Let
+// CHECK-NEXT:                               declarations:
+// CHECK-NEXT:                                 VariableDeclaratorList #11 @4:13..4:18 n_decls=1
+// CHECK-NEXT:                                   decls:
+// CHECK-NEXT:                                     VariableDeclarator #10 @4:13..4:18
+// CHECK-NEXT:                                       pattern:
+// CHECK-NEXT:                                         IdentifierPattern #8 @4:13..4:14 name="y"
+// CHECK-NEXT:                                           ty: null
+// CHECK-NEXT:                                       ty: null
+// CHECK-NEXT:                                       init:
+// CHECK-NEXT:                                         IntLiteral #9 @4:17..4:18 base=10 value="2"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         StatementListItem #18 @5:9..5:22
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ReturnStmt #17 @5:9..5:22
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 BinaryExpr #12 @5:16..5:21 op=Add
+// CHECK-NEXT:                                 BinaryExpr #16 @5:16..5:21 op=Add
 // CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     IdentExpr #10 @5:16..5:17 name="x"
+// CHECK-NEXT:                                     IdentExpr #14 @5:16..5:17 name="x"
 // CHECK-NEXT:                                   rhs:
-// CHECK-NEXT:                                     IdentExpr #11 @5:20..5:21 name="y"
+// CHECK-NEXT:                                     IdentExpr #15 @5:20..5:21 name="y"
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

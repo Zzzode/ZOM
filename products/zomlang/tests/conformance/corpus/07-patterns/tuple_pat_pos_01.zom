@@ -1,4 +1,4 @@
 let (x, y) = (1, 2);
 match (p) {
-    (a, b, c) : { print(a + b + c); }
+    when (a, b, c) => { print(a + b + c); }
 }

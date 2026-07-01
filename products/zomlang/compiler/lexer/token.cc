@@ -118,6 +118,8 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "let"_zc;
     case ast::SyntaxKind::ConstKeyword:
       return "const"_zc;
+    case ast::SyntaxKind::MutKeyword:
+      return "mut"_zc;
     case ast::SyntaxKind::FunKeyword:
       return "fun"_zc;
     case ast::SyntaxKind::ClassKeyword:
@@ -184,6 +186,10 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "await"_zc;
     case ast::SyntaxKind::YieldKeyword:
       return "yield"_zc;
+    case ast::SyntaxKind::SpawnKeyword:
+      return "spawn"_zc;
+    case ast::SyntaxKind::SuspendKeyword:
+      return "suspend"_zc;
     case ast::SyntaxKind::StaticKeyword:
       return "static"_zc;
     case ast::SyntaxKind::PublicKeyword:
@@ -268,6 +274,16 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "str"_zc;
     case ast::SyntaxKind::UnitKeyword:
       return "unit"_zc;
+    case ast::SyntaxKind::CharKeyword:
+      return "char"_zc;
+    case ast::SyntaxKind::VarKeyword:
+      return "var"_zc;
+    case ast::SyntaxKind::ActorKeyword:
+      return "actor"_zc;
+    case ast::SyntaxKind::ChannelKeyword:
+      return "channel"_zc;
+    case ast::SyntaxKind::GeneratorKeyword:
+      return "generator"_zc;
 
     // Common operators
     case ast::SyntaxKind::Plus:

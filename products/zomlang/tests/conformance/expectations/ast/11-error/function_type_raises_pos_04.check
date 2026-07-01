@@ -1,22 +1,37 @@
 // RUN: %zomc compile --dump-ast %corpus/11-error/function_type_raises_pos_04.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #8 @1:1..2:1 file_name="function_type_raises_pos_04.zom"
+// CHECK: SourceFile #16 @1:1..2:1 file_name="function_type_raises_pos_04.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #7 @1:1..1:66
+// CHECK-NEXT:     StatementListItem #15 @1:1..1:66
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #6 @1:1..1:66
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:7 name="cb"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty:
-// CHECK-NEXT:             UnionTypeExpr #4 @1:9..1:55
-// CHECK-NEXT:               alts:
-// CHECK-NEXT:                 NamedTypeExpr #3 @1:45..1:55
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #2 @1:45..1:55 segments=["ParseError"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             IdentExpr #5 @1:58..1:65 name="handler"
+// CHECK-NEXT:         LetStmt #14 @1:1..1:66 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #13 @1:5..1:65 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #12 @1:5..1:65
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:7 name="cb"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     FunctionTypeExpr #10 @1:9..1:55
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         PredefinedTypeExpr #8 @1:10..1:13 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #9 @1:15..1:18 kind=Str
+// CHECK-NEXT:                       ret_ty:
+// CHECK-NEXT:                         PredefinedTypeExpr #2 @1:23..1:27 kind=Bool
+// CHECK-NEXT:                       raises:
+// CHECK-NEXT:                         UnionTypeExpr #7 @1:35..1:55
+// CHECK-NEXT:                           alts:
+// CHECK-NEXT:                             NamedTypeExpr #4 @1:35..1:42
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #3 @1:35..1:42 segments=["IOError"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                             NamedTypeExpr #6 @1:45..1:55
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #5 @1:45..1:55 segments=["ParseError"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IdentExpr #11 @1:58..1:65 name="handler"
 // CHECK-NEXT:       attrs: null

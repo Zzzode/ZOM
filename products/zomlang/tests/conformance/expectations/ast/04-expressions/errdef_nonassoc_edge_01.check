@@ -1,24 +1,28 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/errdef_nonassoc_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #9 @1:1..2:1 file_name="errdef_nonassoc_edge_01.zom"
+// CHECK: SourceFile #11 @1:1..2:1 file_name="errdef_nonassoc_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #8 @1:1..1:21
+// CHECK-NEXT:     StatementListItem #10 @1:1..1:21
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #7 @1:1..1:21
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="x"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             ErrorDefaultExpr #6 @1:9..1:20
-// CHECK-NEXT:               primary:
-// CHECK-NEXT:                 IdentExpr #2 @1:9..1:10 name="a"
-// CHECK-NEXT:               fallback:
-// CHECK-NEXT:                 ErrorDefaultExpr #5 @1:14..1:20
-// CHECK-NEXT:                   primary:
-// CHECK-NEXT:                     IdentExpr #3 @1:14..1:15 name="b"
-// CHECK-NEXT:                   fallback:
-// CHECK-NEXT:                     IdentExpr #4 @1:19..1:20 name="c"
+// CHECK-NEXT:         LetStmt #9 @1:1..1:21 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #8 @1:5..1:20 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #7 @1:5..1:20
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="x"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     ErrorDefaultExpr #6 @1:9..1:20
+// CHECK-NEXT:                       primary:
+// CHECK-NEXT:                         IdentExpr #2 @1:9..1:10 name="a"
+// CHECK-NEXT:                       fallback:
+// CHECK-NEXT:                         ErrorDefaultExpr #5 @1:14..1:20
+// CHECK-NEXT:                           primary:
+// CHECK-NEXT:                             IdentExpr #3 @1:14..1:15 name="b"
+// CHECK-NEXT:                           fallback:
+// CHECK-NEXT:                             IdentExpr #4 @1:19..1:20 name="c"
 // CHECK-NEXT:       attrs: null

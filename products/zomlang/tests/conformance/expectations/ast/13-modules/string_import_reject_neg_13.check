@@ -1,13 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/13-modules/string_import_reject_neg_13.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/string_import_reject_neg_13.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..2:1 file_name="string_import_reject_neg_13.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:25
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:25
-// CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #1 @1:8..1:24 segments=[]
-// CHECK-NEXT:           specifiers: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2074]: Identifier expected
+// CHECK:   --> {{.*string_import_reject_neg_13.zom}}:1:8
+// CHECK:   |
+// CHECK: 1 | import "./path/to/file";
+// CHECK:   |        ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

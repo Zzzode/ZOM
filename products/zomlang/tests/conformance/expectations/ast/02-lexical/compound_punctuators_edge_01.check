@@ -11,5 +11,15 @@
 // CHECK:   |
 // CHECK: 3 |     let x: std::io::Type = 0;
 // CHECK:   |                     ^
+// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK:   --> {{.*compound_punctuators_edge_01.zom}}:1:3
+// CHECK:   |
+// CHECK: 1 | #[attr]
+// CHECK:   |   ^
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*compound_punctuators_edge_01.zom}}:8:13
+// CHECK:   |
+// CHECK: 8 |     let w = !!a;
+// CHECK:   |             ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

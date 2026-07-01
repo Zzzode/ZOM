@@ -1,13 +1,53 @@
 // RUN: %zomc compile --dump-ast %corpus/07-patterns/literal_bool_predicate_trigger_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..5:1 file_name="literal_bool_predicate_trigger_edge_01.zom"
+// CHECK: SourceFile #22 @1:1..5:1 file_name="literal_bool_predicate_trigger_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..4:2
+// CHECK-NEXT:     StatementListItem #21 @1:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         MatchStmt #2 @1:1..4:2
+// CHECK-NEXT:         MatchStmt #20 @1:1..4:2
 // CHECK-NEXT:           scrutinee:
-// CHECK-NEXT:             IdentExpr #1 @1:8..1:9 name="b"
-// CHECK-NEXT:           arms: []
+// CHECK-NEXT:             IdentExpr #19 @1:8..1:9 name="b"
+// CHECK-NEXT:           arms:
+// CHECK-NEXT:             MatchArmStmt #9 @2:5..2:33
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 LiteralPattern #2 @2:10..2:14
+// CHECK-NEXT:                   literal:
+// CHECK-NEXT:                     BoolLiteral #1 @2:10..2:14 value=true
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #8 @2:18..2:33
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #7 @2:20..2:31
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #6 @2:20..2:31
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #5 @2:20..2:30
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #3 @2:20..2:25 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 StrLiteral #4 @2:26..2:29 value="T" is_raw=false prefix=None
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:             MatchArmStmt #18 @3:5..3:34
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 LiteralPattern #11 @3:10..3:15
+// CHECK-NEXT:                   literal:
+// CHECK-NEXT:                     BoolLiteral #10 @3:10..3:15 value=false
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #17 @3:19..3:34
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #16 @3:21..3:32
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #15 @3:21..3:32
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #14 @3:21..3:31
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #12 @3:21..3:26 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 StrLiteral #13 @3:27..3:30 value="F" is_raw=false prefix=None
+// CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

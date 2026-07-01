@@ -300,7 +300,7 @@ ParenthesizedType ::= '(' TypeExpression ')'
 PredefinedType ::= 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'
                 | 'f32' | 'f64' | 'str' | 'bool' | 'null' | 'unit'
 TypeReference ::= TypeName TypeArguments?
-TypeName ::= Identifier
+TypeName ::= QualifiedPath
 TypeQuery ::= 'typeof' TypeQueryExpression
 TypeQueryExpression ::= Identifier ('.' Identifier)*
 
@@ -471,7 +471,7 @@ ExponentiationExpression ::= UnaryExpression ('**' ExponentiationExpression)?
 
 UnaryExpression ::= PostfixExpression
                  | UpdateExpression
-                 | ('+' | '-' | '!' | '~' | 'typeof') UnaryExpression
+                 | ('+' | '-' | '!' | '~' | '*' | '&' | 'typeof') UnaryExpression
 
 PostfixExpression ::= LeftHandSideExpression PostfixSuffix*
 PostfixSuffix ::= '?!' | '!!' | '++' | '--'
@@ -516,6 +516,7 @@ PrimaryExpression ::= 'this'
                    | Literal
                    | ArrayLiteral
                    | ObjectLiteral
+                   | StructLiteral
                    | FunctionExpression
                    | '(' Expression ')'
 
@@ -550,6 +551,11 @@ PropertyDefinition ::= Identifier
                     | PropertyName ':' Expression
                     | '...' Expression
 PropertyName ::= Identifier
+
+StructLiteral ::= TypeReference '{' StructLiteralFields? '}'
+StructLiteralFields ::= StructLiteralField (',' StructLiteralField)* ','?
+StructLiteralField ::= Identifier ':' Expression
+                    | Identifier
 
 FunctionExpression ::= 'fun' TypeParameters? ParameterClause CaptureClause? ReturnType? BlockStatement
                      | LambdaExpression

@@ -11,5 +11,10 @@
 // CHECK:   |
 // CHECK: 2 |     try { bar(); } catch(e) { }
 // CHECK:   |                    ^
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*try_catch_reject_neg_03.zom}}:2:5
+// CHECK:   |
+// CHECK: 2 |     try { bar(); } catch(e) { }
+// CHECK:   |     ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

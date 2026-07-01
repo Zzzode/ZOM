@@ -1,0 +1,5 @@
+fun f(x: bool) {
+    match (make({ in: 1, nested: 2 })) {
+        when _ => if (x) { return 1; } else { return 2; }
+    }
+}

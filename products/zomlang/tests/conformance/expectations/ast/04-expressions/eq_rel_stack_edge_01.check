@@ -1,28 +1,32 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/eq_rel_stack_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #11 @1:1..2:1 file_name="eq_rel_stack_edge_01.zom"
+// CHECK: SourceFile #13 @1:1..2:1 file_name="eq_rel_stack_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #10 @1:1..1:29
+// CHECK-NEXT:     StatementListItem #12 @1:1..1:29
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #9 @1:1..1:29
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="r"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             BinaryExpr #8 @1:9..1:28 op=Eq
-// CHECK-NEXT:               lhs:
-// CHECK-NEXT:                 BinaryExpr #4 @1:10..1:16 op=Eq
-// CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #2 @1:10..1:11 name="x"
-// CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IdentExpr #3 @1:15..1:16 name="y"
-// CHECK-NEXT:               rhs:
-// CHECK-NEXT:                 BinaryExpr #7 @1:22..1:27 op=Lt
-// CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #5 @1:22..1:23 name="a"
-// CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IdentExpr #6 @1:26..1:27 name="b"
+// CHECK-NEXT:         LetStmt #11 @1:1..1:29 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #10 @1:5..1:28 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #9 @1:5..1:28
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="r"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     BinaryExpr #8 @1:9..1:28 op=Eq
+// CHECK-NEXT:                       lhs:
+// CHECK-NEXT:                         BinaryExpr #4 @1:10..1:16 op=Eq
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #2 @1:10..1:11 name="x"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IdentExpr #3 @1:15..1:16 name="y"
+// CHECK-NEXT:                       rhs:
+// CHECK-NEXT:                         BinaryExpr #7 @1:22..1:27 op=Lt
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #5 @1:22..1:23 name="a"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IdentExpr #6 @1:26..1:27 name="b"
 // CHECK-NEXT:       attrs: null

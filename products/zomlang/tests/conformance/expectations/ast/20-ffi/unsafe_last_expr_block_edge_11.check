@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/20-ffi/unsafe_last_expr_block_edge_11.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #13 @1:1..8:1 file_name="unsafe_last_expr_block_edge_11.zom"
+// CHECK: SourceFile #19 @1:1..8:1 file_name="unsafe_last_expr_block_edge_11.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #12 @1:1..7:2
+// CHECK-NEXT:     StatementListItem #18 @1:1..7:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #11 @1:1..7:2 name="compute"
+// CHECK-NEXT:         FunctionDecl #17 @1:1..7:2 name="compute"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #1 @1:12..1:14 nparams=0
 // CHECK-NEXT:               params: []
@@ -15,22 +15,34 @@
 // CHECK-NEXT:             PredefinedTypeExpr #2 @1:18..1:21 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #10 @1:22..7:2
+// CHECK-NEXT:             BlockStmt #16 @1:22..7:2
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #6 @2:5..5:7
+// CHECK-NEXT:                 StatementListItem #12 @2:5..5:7
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #5 @2:5..5:7
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #3 @2:9..2:10 name="v"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         IdentExpr #4 @2:13..2:19 name="unsafe"
+// CHECK-NEXT:                     LetStmt #11 @2:5..5:7 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #10 @2:9..5:6 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #9 @2:9..5:6
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #3 @2:9..2:10 name="v"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 StructLiteralExpr #8 @2:13..5:6
+// CHECK-NEXT:                                   ty:
+// CHECK-NEXT:                                     NamedTypeExpr #6 @2:13..2:19
+// CHECK-NEXT:                                       path:
+// CHECK-NEXT:                                         ModulePath #5 @2:13..2:19 segments=["unsafe"]
+// CHECK-NEXT:                                       args: []
+// CHECK-NEXT:                                   properties:
+// CHECK-NEXT:                                     ObjectProperty #7 @3:9..4:24 name="prepare_resources" short_form=true
+// CHECK-NEXT:                                       value: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #9 @6:5..6:14
+// CHECK-NEXT:                 StatementListItem #15 @6:5..6:14
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #8 @6:5..6:14
+// CHECK-NEXT:                     ReturnStmt #14 @6:5..6:14
 // CHECK-NEXT:                       value:
-// CHECK-NEXT:                         IdentExpr #7 @6:12..6:13 name="v"
+// CHECK-NEXT:                         IdentExpr #13 @6:12..6:13 name="v"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

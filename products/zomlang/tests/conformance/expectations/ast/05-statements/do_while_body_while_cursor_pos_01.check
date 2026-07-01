@@ -1,0 +1,47 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/do_while_body_while_cursor_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #17 @1:1..6:1 file_name="do_while_body_while_cursor_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #16 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #15 @1:1..5:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #5 @1:6..1:24 nparams=2
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:7..1:14 name="x"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:10..1:14 kind=Bool
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #4 @1:16..1:23 name="y"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:19..1:23 kind=Bool
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #14 @1:25..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #13 @2:5..4:17
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     DoWhileStatement #12 @2:5..4:17
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         WhileStmt #10 @2:8..4:6
+// CHECK-NEXT:                           cond:
+// CHECK-NEXT:                             IdentExpr #6 @2:15..2:16 name="x"
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #9 @2:18..4:6
+// CHECK-NEXT:                               stmts:
+// CHECK-NEXT:                                 StatementListItem #8 @3:9..3:16
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     ReturnStmt #7 @3:9..3:16
+// CHECK-NEXT:                                       value: null
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         IdentExpr #11 @4:14..4:15 name="y"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

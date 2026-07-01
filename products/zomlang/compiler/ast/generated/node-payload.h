@@ -42,10 +42,6 @@ enum class CfgAtomValueKind : uint8_t {
   None, String, Ident
 };
 
-enum class SpawnModKind : uint8_t {
-  None, Detached, Blocking, PriorityHigh, PriorityLow
-};
-
 enum class WhereBoundKind : uint8_t {
   Lt, Le, Eq, Ne, Ge, Gt, Subtype, Implements, SendableMarker
 };
@@ -75,11 +71,15 @@ enum class LiteralPatternKind : uint8_t {
 };
 
 enum class UnaryOperatorKind : uint8_t {
-  Plus, Minus, LogicalNot, BitNot, PreIncrement, PreDecrement
+  Plus, Minus, LogicalNot, BitNot, Deref, Ref, PreIncrement, PreDecrement
 };
 
 enum class PostfixOperatorKind : uint8_t {
   Increment, Decrement, ErrorPropagate, ErrorUnwrap
+};
+
+enum class BindingDeclarationKind : uint8_t {
+  Let, Mut, Const
 };
 
 enum class AssignmentOperatorKind : uint8_t {
@@ -298,10 +298,8 @@ constexpr uint32_t kEnumVariantListVariantsSizeWord = 2;
 constexpr uint32_t kRestPatternPayloadWordCount = 1;
 constexpr uint32_t kRestPatternBindingWord = 0;
 
-constexpr uint32_t kLiteralPatternPayloadWordCount = 3;
-constexpr uint32_t kLiteralPatternKindWord = 0;
-constexpr uint32_t kLiteralPatternValueLowWord = 1;
-constexpr uint32_t kLiteralPatternValueHighWord = 2;
+constexpr uint32_t kLiteralPatternPayloadWordCount = 1;
+constexpr uint32_t kLiteralPatternLiteralWord = 0;
 
 constexpr uint32_t kIsPatternPayloadWordCount = 1;
 constexpr uint32_t kIsPatternTyWord = 0;
@@ -339,9 +337,13 @@ constexpr uint32_t kArrayPatternPatsFirstWord = 0;
 constexpr uint32_t kArrayPatternPatsSizeWord = 1;
 constexpr uint32_t kArrayPatternRestWord = 2;
 
-constexpr uint32_t kSpawnExpressionPayloadWordCount = 2;
-constexpr uint32_t kSpawnExpressionModWord = 0;
-constexpr uint32_t kSpawnExpressionBodyWord = 1;
+constexpr uint32_t kExpressionPatternPayloadWordCount = 1;
+constexpr uint32_t kExpressionPatternExprWord = 0;
+
+constexpr uint32_t kEnumPatternPayloadWordCount = 3;
+constexpr uint32_t kEnumPatternPathWord = 0;
+constexpr uint32_t kEnumPatternArgsFirstWord = 1;
+constexpr uint32_t kEnumPatternArgsSizeWord = 2;
 
 constexpr uint32_t kPositionalStructCtorExprPayloadWordCount = 4;
 constexpr uint32_t kPositionalStructCtorExprStructPathWord = 0;
@@ -497,6 +499,16 @@ constexpr uint32_t kLambdaExpressionRaisesTyWord = 2;
 constexpr uint32_t kLambdaExpressionBodyWord = 3;
 constexpr uint32_t kLambdaExpressionExprBodyWord = 4;
 
+constexpr uint32_t kSpawnExpressionPayloadWordCount = 3;
+constexpr uint32_t kSpawnExpressionModFlagsWord = 0;
+constexpr uint32_t kSpawnExpressionPriorityWord = 1;
+constexpr uint32_t kSpawnExpressionBodyWord = 2;
+
+constexpr uint32_t kStructLiteralExprPayloadWordCount = 3;
+constexpr uint32_t kStructLiteralExprTyWord = 0;
+constexpr uint32_t kStructLiteralExprPropertiesFirstWord = 1;
+constexpr uint32_t kStructLiteralExprPropertiesSizeWord = 2;
+
 constexpr uint32_t kCaptureItemPayloadWordCount = 2;
 constexpr uint32_t kCaptureItemModeWord = 0;
 constexpr uint32_t kCaptureItemNameWord = 1;
@@ -614,10 +626,9 @@ constexpr uint32_t kMatchArmStmtPatternWord = 0;
 constexpr uint32_t kMatchArmStmtGuardWord = 1;
 constexpr uint32_t kMatchArmStmtBodyWord = 2;
 
-constexpr uint32_t kLetStmtPayloadWordCount = 3;
-constexpr uint32_t kLetStmtPatternWord = 0;
-constexpr uint32_t kLetStmtTyWord = 1;
-constexpr uint32_t kLetStmtInitWord = 2;
+constexpr uint32_t kLetStmtPayloadWordCount = 2;
+constexpr uint32_t kLetStmtKindWord = 0;
+constexpr uint32_t kLetStmtDeclarationsWord = 1;
 
 constexpr uint32_t kModuleDeclarationPayloadWordCount = 1;
 constexpr uint32_t kModuleDeclarationPathWord = 0;
@@ -644,6 +655,16 @@ constexpr uint32_t kDebuggerStatementPayloadWordCount = 0;
 
 constexpr uint32_t kContinueStatementPayloadWordCount = 1;
 constexpr uint32_t kContinueStatementLabelWord = 0;
+
+constexpr uint32_t kVariableDeclaratorListPayloadWordCount = 3;
+constexpr uint32_t kVariableDeclaratorListNDeclsWord = 0;
+constexpr uint32_t kVariableDeclaratorListDeclsFirstWord = 1;
+constexpr uint32_t kVariableDeclaratorListDeclsSizeWord = 2;
+
+constexpr uint32_t kVariableDeclaratorPayloadWordCount = 3;
+constexpr uint32_t kVariableDeclaratorPatternWord = 0;
+constexpr uint32_t kVariableDeclaratorTyWord = 1;
+constexpr uint32_t kVariableDeclaratorInitWord = 2;
 
 constexpr uint32_t kStandaloneImplDeclPayloadWordCount = 6;
 constexpr uint32_t kStandaloneImplDeclIsUnsafeWord = 0;
@@ -752,15 +773,25 @@ constexpr uint32_t kModulePathPayloadWordCount = 2;
 constexpr uint32_t kModulePathSegmentsFirstWord = 0;
 constexpr uint32_t kModulePathSegmentsSizeWord = 1;
 
-constexpr uint32_t kImportDeclarationPayloadWordCount = 3;
+constexpr uint32_t kImportDeclarationPayloadWordCount = 4;
 constexpr uint32_t kImportDeclarationPathWord = 0;
-constexpr uint32_t kImportDeclarationSpecifiersFirstWord = 1;
-constexpr uint32_t kImportDeclarationSpecifiersSizeWord = 2;
+constexpr uint32_t kImportDeclarationAliasWord = 1;
+constexpr uint32_t kImportDeclarationSpecifiersFirstWord = 2;
+constexpr uint32_t kImportDeclarationSpecifiersSizeWord = 3;
 
-constexpr uint32_t kExportDeclarationPayloadWordCount = 3;
+constexpr uint32_t kExportDeclarationPayloadWordCount = 4;
 constexpr uint32_t kExportDeclarationDeclarationWord = 0;
-constexpr uint32_t kExportDeclarationSpecifiersFirstWord = 1;
-constexpr uint32_t kExportDeclarationSpecifiersSizeWord = 2;
+constexpr uint32_t kExportDeclarationPathWord = 1;
+constexpr uint32_t kExportDeclarationSpecifiersFirstWord = 2;
+constexpr uint32_t kExportDeclarationSpecifiersSizeWord = 3;
+
+constexpr uint32_t kImportSpecifierPayloadWordCount = 2;
+constexpr uint32_t kImportSpecifierNameWord = 0;
+constexpr uint32_t kImportSpecifierAliasWord = 1;
+
+constexpr uint32_t kExportSpecifierPayloadWordCount = 2;
+constexpr uint32_t kExportSpecifierNameWord = 0;
+constexpr uint32_t kExportSpecifierAliasWord = 1;
 
 constexpr uint32_t kObjectTypeMemberPayloadWordCount = 4;
 constexpr uint32_t kObjectTypeMemberNameWord = 0;

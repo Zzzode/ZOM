@@ -14,5 +14,6 @@
 // CHECK-NEXT:               members_id:
 // CHECK-NEXT:                 ClassMemberList #1 @1:8..4:2 nmembers=0
 // CHECK-NEXT:                   members: []
+// CHECK-NEXT:           path: null
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null

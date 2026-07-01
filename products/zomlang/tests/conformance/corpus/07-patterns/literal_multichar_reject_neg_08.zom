@@ -1,3 +1,3 @@
 match (c) {
-    'ab' : { print("multi"); }
+    when 'ab' => { print("multi"); }
 }

@@ -11,5 +11,10 @@
 // CHECK:   |
 // CHECK: 2 | world';
 // CHECK:   |      ^
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*string_line_term_reject_neg_02.zom}}:1:9
+// CHECK:   |
+// CHECK: 1 | let x = 'hello
+// CHECK:   |         ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

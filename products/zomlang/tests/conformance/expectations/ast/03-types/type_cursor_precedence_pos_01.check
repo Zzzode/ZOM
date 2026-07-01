@@ -1,0 +1,132 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/type_cursor_precedence_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #60 @1:1..3:1 file_name="type_cursor_precedence_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #27 @1:1..1:80
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #26 @1:1..1:80 name="CursorType"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             NamedTypeExpr #25 @1:20..1:79
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #24 @1:20..1:23 segments=["Box"]
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 FunctionTypeExpr #23 @1:24..1:78
+// CHECK-NEXT:                   params:
+// CHECK-NEXT:                     UnionTypeExpr #19 @1:28..1:37
+// CHECK-NEXT:                       alts:
+// CHECK-NEXT:                         IntersectionTypeExpr #16 @1:28..1:33
+// CHECK-NEXT:                           alts:
+// CHECK-NEXT:                             NamedTypeExpr #13 @1:28..1:29
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #12 @1:28..1:29 segments=["A"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                             NamedTypeExpr #15 @1:32..1:33
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #14 @1:32..1:33 segments=["B"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                         NamedTypeExpr #18 @1:36..1:37
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #17 @1:36..1:37 segments=["C"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                     FixedArrayTypeExpr #22 @1:39..1:47
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         PredefinedTypeExpr #20 @1:40..1:43 kind=I32
+// CHECK-NEXT:                       len_expr:
+// CHECK-NEXT:                         IntLiteral #21 @1:45..1:46 base=10 value="4"
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     NamedTypeExpr #6 @1:52..1:65
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #5 @1:52..1:58 segments=["Result"]
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         ArrayTypeExpr #4 @1:59..1:64
+// CHECK-NEXT:                           elem:
+// CHECK-NEXT:                             OptionalTypeExpr #3 @1:59..1:62 double=true
+// CHECK-NEXT:                               inner:
+// CHECK-NEXT:                                 NamedTypeExpr #2 @1:59..1:60
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #1 @1:59..1:60 segments=["D"]
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                           len_expr: null
+// CHECK-NEXT:                   raises:
+// CHECK-NEXT:                     UnionTypeExpr #11 @1:73..1:78
+// CHECK-NEXT:                       alts:
+// CHECK-NEXT:                         NamedTypeExpr #8 @1:73..1:74
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #7 @1:73..1:74 segments=["E"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                         NamedTypeExpr #10 @1:77..1:78
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #9 @1:77..1:78 segments=["F"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #59 @2:1..2:98
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #58 @2:1..2:98 name="CursorMembers"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             NamedTypeExpr #57 @2:23..2:97
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #56 @2:23..2:28 segments=["Table"]
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 ObjectTypeExpr #46 @2:29..2:82
+// CHECK-NEXT:                   members:
+// CHECK-NEXT:                     ObjectTypeMember #37 @2:31..2:57 name="left" is_mut=true is_optional=true
+// CHECK-NEXT:                       ty:
+// CHECK-NEXT:                         NamedTypeExpr #36 @2:42..2:57
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #35 @2:42..2:46 segments=["Pair"]
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             TupleTypeExpr #32 @2:47..2:53
+// CHECK-NEXT:                               elems:
+// CHECK-NEXT:                                 NamedTypeExpr #29 @2:48..2:49
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #28 @2:48..2:49 segments=["A"]
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                                 NamedTypeExpr #31 @2:51..2:52
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #30 @2:51..2:52 segments=["B"]
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                             NamedTypeExpr #34 @2:55..2:56
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #33 @2:55..2:56 segments=["C"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                     ObjectTypeMember #45 @2:59..2:80 name="right" is_mut=false is_optional=false
+// CHECK-NEXT:                       ty:
+// CHECK-NEXT:                         FunctionTypeExpr #44 @2:66..2:80
+// CHECK-NEXT:                           params:
+// CHECK-NEXT:                             NamedTypeExpr #41 @2:70..2:71
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #40 @2:70..2:71 segments=["D"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                             NamedTypeExpr #43 @2:73..2:74
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #42 @2:73..2:74 segments=["E"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           ret_ty:
+// CHECK-NEXT:                             NamedTypeExpr #39 @2:79..2:80
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #38 @2:79..2:80 segments=["F"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           raises: null
+// CHECK-NEXT:                 TupleTypeExpr #55 @2:84..2:96
+// CHECK-NEXT:                   elems:
+// CHECK-NEXT:                     UnionTypeExpr #51 @2:85..2:90
+// CHECK-NEXT:                       alts:
+// CHECK-NEXT:                         NamedTypeExpr #48 @2:85..2:86
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #47 @2:85..2:86 segments=["G"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                         NamedTypeExpr #50 @2:89..2:90
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #49 @2:89..2:90 segments=["H"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                     SliceArrayTypeExpr #54 @2:92..2:95
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         NamedTypeExpr #53 @2:93..2:94
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #52 @2:93..2:94 segments=["I"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:       attrs: null

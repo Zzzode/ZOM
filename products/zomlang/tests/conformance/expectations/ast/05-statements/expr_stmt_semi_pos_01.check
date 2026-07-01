@@ -36,6 +36,7 @@
 // CHECK-NEXT:                         CallExpression #7 @3:5..3:8
 // CHECK-NEXT:                           callee:
 // CHECK-NEXT:                             IdentExpr #6 @3:5..3:6 name="g"
+// CHECK-NEXT:                           type_args: []
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

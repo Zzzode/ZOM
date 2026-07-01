@@ -1,4 +1,4 @@
 let [a, b, c] = [1, 2, 3];
 match (arr) {
-    [x, y] : { print(x + y); }
+    when [x, y] => { print(x + y); }
 }

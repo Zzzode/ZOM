@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/postfix_lr_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #25 @1:1..7:1 file_name="postfix_lr_pos_01.zom"
+// CHECK: SourceFile #33 @1:1..7:1 file_name="postfix_lr_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #24 @1:1..6:2
+// CHECK-NEXT:     StatementListItem #32 @1:1..6:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #23 @1:1..6:2 name="f"
+// CHECK-NEXT:         FunctionDecl #31 @1:1..6:2 name="f"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
 // CHECK-NEXT:               params: []
@@ -14,54 +14,70 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #22 @1:9..6:2
+// CHECK-NEXT:             BlockStmt #30 @1:9..6:2
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #6 @2:3..2:15
+// CHECK-NEXT:                 StatementListItem #8 @2:3..2:15
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #5 @2:3..2:15
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #2 @2:7..2:8 name="a"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         PostfixExpression #4 @2:11..2:14 op=Increment
-// CHECK-NEXT:                           operand:
-// CHECK-NEXT:                             IdentExpr #3 @2:11..2:12 name="x"
+// CHECK-NEXT:                     LetStmt #7 @2:3..2:15 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #6 @2:7..2:14 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #5 @2:7..2:14
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #2 @2:7..2:8 name="a"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 PostfixExpression #4 @2:11..2:14 op=Increment
+// CHECK-NEXT:                                   operand:
+// CHECK-NEXT:                                     IdentExpr #3 @2:11..2:12 name="x"
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #11 @3:3..3:15
+// CHECK-NEXT:                 StatementListItem #15 @3:3..3:15
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #10 @3:3..3:15
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #7 @3:7..3:8 name="b"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         PostfixExpression #9 @3:11..3:14 op=Decrement
-// CHECK-NEXT:                           operand:
-// CHECK-NEXT:                             IdentExpr #8 @3:11..3:12 name="y"
+// CHECK-NEXT:                     LetStmt #14 @3:3..3:15 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #13 @3:7..3:14 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #12 @3:7..3:14
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #9 @3:7..3:8 name="b"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 PostfixExpression #11 @3:11..3:14 op=Decrement
+// CHECK-NEXT:                                   operand:
+// CHECK-NEXT:                                     IdentExpr #10 @3:11..3:12 name="y"
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #16 @4:3..4:15
+// CHECK-NEXT:                 StatementListItem #22 @4:3..4:15
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #15 @4:3..4:15
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #12 @4:7..4:8 name="c"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         PostfixExpression #14 @4:11..4:14 op=ErrorPropagate
-// CHECK-NEXT:                           operand:
-// CHECK-NEXT:                             IdentExpr #13 @4:11..4:12 name="z"
+// CHECK-NEXT:                     LetStmt #21 @4:3..4:15 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #20 @4:7..4:14 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #19 @4:7..4:14
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #16 @4:7..4:8 name="c"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 PostfixExpression #18 @4:11..4:14 op=ErrorPropagate
+// CHECK-NEXT:                                   operand:
+// CHECK-NEXT:                                     IdentExpr #17 @4:11..4:12 name="z"
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #21 @5:3..5:15
+// CHECK-NEXT:                 StatementListItem #29 @5:3..5:15
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #20 @5:3..5:15
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #17 @5:7..5:8 name="d"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         PostfixExpression #19 @5:11..5:14 op=ErrorUnwrap
-// CHECK-NEXT:                           operand:
-// CHECK-NEXT:                             IdentExpr #18 @5:11..5:12 name="w"
+// CHECK-NEXT:                     LetStmt #28 @5:3..5:15 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #27 @5:7..5:14 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #26 @5:7..5:14
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #23 @5:7..5:8 name="d"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 PostfixExpression #25 @5:11..5:14 op=ErrorUnwrap
+// CHECK-NEXT:                                   operand:
+// CHECK-NEXT:                                     IdentExpr #24 @5:11..5:12 name="w"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

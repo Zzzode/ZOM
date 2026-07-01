@@ -1,6 +1,11 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/struct_literal_neg_02.zom 2>&1 | %FileCheck %s
 
 
+// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK:   --> {{.*struct_literal_neg_02.zom}}:2:10
+// CHECK:   |
+// CHECK: 2 | let e = E::A(1);
+// CHECK:   |          ^
 // CHECK: Error [ZOM2057]: Expression expected
 // CHECK:   --> {{.*struct_literal_neg_02.zom}}:2:9
 // CHECK:   |

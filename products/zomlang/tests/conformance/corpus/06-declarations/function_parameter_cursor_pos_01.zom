@@ -1,0 +1,7 @@
+fun parameterCursor(
+  first: Pair<Box<A, B>, fun(C, D) -> E> = make<Pair<A, B>>(a, b),
+  callback: fun(i32, i32) -> i32 = fun(x: i32, y: i32) -> i32 { return x + y; },
+  fallback: i32 = (a < b ? 1 : 2),
+) -> i32 {
+  return callback(fallback, fallback);
+}

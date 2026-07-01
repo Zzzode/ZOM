@@ -1,4 +1,4 @@
 let (x,) = (5,);
 match (t) {
-    (a,) : { print(a); }
+    when (a,) => { print(a); }
 }

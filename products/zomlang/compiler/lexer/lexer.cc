@@ -1028,7 +1028,7 @@ void Lexer::Impl::lexNumber() {
     zc::StringPtr id = lexIdentifierParts();
 
     // Check if it was a BigInt 'n' that we missed earlier
-    if (result != ast::SyntaxKind::BigIntLiteral && id.size() == 1 && id == "n"_zc) {
+    if (result != ast::SyntaxKind::BigIntLiteralToken && id.size() == 1 && id == "n"_zc) {
       if (hasFlag(state.tokenFlags, TokenFlags::Scientific)) {
         errorAt<diagnostics::DiagID::ABigIntLiteralCannotUseExponentialNotation>(
             start, state.curPtr - start);
@@ -1113,7 +1113,7 @@ ast::SyntaxKind Lexer::Impl::lexBigIntSuffix(zc::StringPtr& tokenValue) {
       tokenValue = stringPool.intern(base10Value, "n");
     }
     state.curPtr++;
-    return ast::SyntaxKind::BigIntLiteral;
+    return ast::SyntaxKind::BigIntLiteralToken;
   }
 
   // Parse integer value to normalize it (e.g. remove leading zeros)

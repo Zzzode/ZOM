@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/15-concurrency/multi_suspend_edge_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #27 @1:1..7:1 file_name="multi_suspend_edge_02.zom"
+// CHECK: SourceFile #23 @1:1..7:1 file_name="multi_suspend_edge_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #26 @1:1..6:2
+// CHECK-NEXT:     StatementListItem #22 @1:1..6:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #25 @1:1..6:2 name="step"
+// CHECK-NEXT:         FunctionDecl #21 @1:1..6:2 name="step"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #7 @1:9..1:35 nparams=2
 // CHECK-NEXT:               params:
@@ -30,38 +30,32 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #24 @1:36..6:2
+// CHECK-NEXT:             BlockStmt #20 @1:36..6:2
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #10 @2:5..2:13
+// CHECK-NEXT:                 StatementListItem #9 @2:5..2:13
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ExpressionStatement #9 @2:5..2:13
-// CHECK-NEXT:                       expression:
-// CHECK-NEXT:                         IdentExpr #8 @2:5..2:12 name="suspend"
+// CHECK-NEXT:                     SuspendStatement #8 @2:5..2:13 mode=Bare on_timeout_ms=null
+// CHECK-NEXT:                       until_cond: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #15 @3:5..3:26
+// CHECK-NEXT:                 StatementListItem #13 @3:5..3:26
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ExpressionStatement #14 @3:5..3:26
-// CHECK-NEXT:                       expression:
-// CHECK-NEXT:                         BinaryExpr #13 @3:5..3:25 op=Mul
-// CHECK-NEXT:                           lhs:
-// CHECK-NEXT:                             IdentExpr #11 @3:5..3:12 name="suspend"
-// CHECK-NEXT:                           rhs:
-// CHECK-NEXT:                             IdentExpr #12 @3:20..3:25 name="flag1"
+// CHECK-NEXT:                     SuspendStatement #12 @3:5..3:26 mode=Until on_timeout_ms=null
+// CHECK-NEXT:                       until_cond:
+// CHECK-NEXT:                         UnaryExpression #11 @3:19..3:25 op=Deref
+// CHECK-NEXT:                           operand:
+// CHECK-NEXT:                             IdentExpr #10 @3:20..3:25 name="flag1"
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #18 @4:5..4:13
+// CHECK-NEXT:                 StatementListItem #15 @4:5..4:13
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ExpressionStatement #17 @4:5..4:13
-// CHECK-NEXT:                       expression:
-// CHECK-NEXT:                         IdentExpr #16 @4:5..4:12 name="suspend"
+// CHECK-NEXT:                     SuspendStatement #14 @4:5..4:13 mode=Bare on_timeout_ms=null
+// CHECK-NEXT:                       until_cond: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #23 @5:5..5:26
+// CHECK-NEXT:                 StatementListItem #19 @5:5..5:26
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ExpressionStatement #22 @5:5..5:26
-// CHECK-NEXT:                       expression:
-// CHECK-NEXT:                         BinaryExpr #21 @5:5..5:25 op=Mul
-// CHECK-NEXT:                           lhs:
-// CHECK-NEXT:                             IdentExpr #19 @5:5..5:12 name="suspend"
-// CHECK-NEXT:                           rhs:
-// CHECK-NEXT:                             IdentExpr #20 @5:20..5:25 name="flag2"
+// CHECK-NEXT:                     SuspendStatement #18 @5:5..5:26 mode=Until on_timeout_ms=null
+// CHECK-NEXT:                       until_cond:
+// CHECK-NEXT:                         UnaryExpression #17 @5:19..5:25 op=Deref
+// CHECK-NEXT:                           operand:
+// CHECK-NEXT:                             IdentExpr #16 @5:20..5:25 name="flag2"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

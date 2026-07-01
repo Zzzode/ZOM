@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/13-modules/import-export.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #15 @1:1..6:1 file_name="import-export.zom"
+// CHECK: SourceFile #19 @1:1..6:1 file_name="import-export.zom"
 // CHECK-NEXT:   module:
 // CHECK-NEXT:     ModuleDeclaration #2 @1:1..1:17
 // CHECK-NEXT:       path:
@@ -9,30 +9,35 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #5 @2:1..2:29
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #4 @2:1..2:29
+// CHECK-NEXT:         ImportDeclaration #4 @2:1..2:29 alias="geo"
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #3 @2:8..2:28 segments=["math", "geometry", "geo"]
+// CHECK-NEXT:             ModulePath #3 @2:8..2:21 segments=["math", "geometry"]
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #8 @3:1..3:52
+// CHECK-NEXT:     StatementListItem #10 @3:1..3:52
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #7 @3:1..3:52
+// CHECK-NEXT:         ImportDeclaration #9 @3:1..3:52 alias=null
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #6 @3:8..3:51 segments=["math", "geometry", "Point", "GeoPoint", "distance"]
-// CHECK-NEXT:           specifiers: []
+// CHECK-NEXT:             ModulePath #6 @3:8..3:21 segments=["math", "geometry"]
+// CHECK-NEXT:           specifiers:
+// CHECK-NEXT:             ImportSpecifier #7 @3:23..3:40 name="Point" alias="GeoPoint"
+// CHECK-NEXT:             ImportSpecifier #8 @3:42..3:50 name="distance" alias=null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #10 @4:1..4:45
+// CHECK-NEXT:     StatementListItem #14 @4:1..4:45
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExportDeclaration #9 @4:1..4:45
+// CHECK-NEXT:         ExportDeclaration #13 @4:1..4:45
 // CHECK-NEXT:           declaration: null
-// CHECK-NEXT:           specifiers: []
+// CHECK-NEXT:           path: null
+// CHECK-NEXT:           specifiers:
+// CHECK-NEXT:             ExportSpecifier #11 @4:9..4:17 name="GeoPoint" alias=null
+// CHECK-NEXT:             ExportSpecifier #12 @4:19..4:43 name="distance" alias="calcDistance"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #14 @5:1..5:30
+// CHECK-NEXT:     StatementListItem #18 @5:1..5:30
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExportDeclaration #13 @5:1..5:30
-// CHECK-NEXT:           declaration:
-// CHECK-NEXT:             ExpressionStatement #12 @5:8..5:30
-// CHECK-NEXT:               expression:
-// CHECK-NEXT:                 IdentExpr #11 @5:8..5:12 name="math"
-// CHECK-NEXT:           specifiers: []
+// CHECK-NEXT:         ExportDeclaration #17 @5:1..5:30
+// CHECK-NEXT:           declaration: null
+// CHECK-NEXT:           path:
+// CHECK-NEXT:             ModulePath #15 @5:8..5:21 segments=["math", "geometry"]
+// CHECK-NEXT:           specifiers:
+// CHECK-NEXT:             ExportSpecifier #16 @5:23..5:28 name="Point" alias=null
 // CHECK-NEXT:       attrs: null

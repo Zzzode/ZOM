@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/15-concurrency/spawn_nested_detached_edge_06.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #8 @1:1..6:1 file_name="spawn_nested_detached_edge_06.zom"
+// CHECK: SourceFile #15 @1:1..6:1 file_name="spawn_nested_detached_edge_06.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #7 @1:1..5:2
+// CHECK-NEXT:     StatementListItem #14 @1:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #6 @1:1..5:2 name="spawn_chain"
+// CHECK-NEXT:         FunctionDecl #13 @1:1..5:2 name="spawn_chain"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #1 @1:16..1:18 nparams=0
 // CHECK-NEXT:               params: []
@@ -14,12 +14,29 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #5 @1:19..5:2
+// CHECK-NEXT:             BlockStmt #12 @1:19..5:2
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #4 @2:5..4:7
+// CHECK-NEXT:                 StatementListItem #11 @2:5..4:7
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ExpressionStatement #3 @2:5..4:7
+// CHECK-NEXT:                     ExpressionStatement #10 @2:5..4:7
 // CHECK-NEXT:                       expression:
-// CHECK-NEXT:                         IdentExpr #2 @2:5..2:10 name="spawn"
+// CHECK-NEXT:                         SpawnExpression #9 @2:5..4:6 mod_flags=1 priority=None
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #8 @2:20..4:6
+// CHECK-NEXT:                               stmts:
+// CHECK-NEXT:                                 StatementListItem #7 @3:9..3:38
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     ExpressionStatement #6 @3:9..3:38
+// CHECK-NEXT:                                       expression:
+// CHECK-NEXT:                                         SpawnExpression #5 @3:9..3:37 mod_flags=1 priority=None
+// CHECK-NEXT:                                           body:
+// CHECK-NEXT:                                             ExpressionStatement #4 @3:24..3:37
+// CHECK-NEXT:                                               expression:
+// CHECK-NEXT:                                                 CallExpression #3 @3:24..3:37
+// CHECK-NEXT:                                                   callee:
+// CHECK-NEXT:                                                     IdentExpr #2 @3:24..3:35 name="side_effect"
+// CHECK-NEXT:                                                   type_args: []
+// CHECK-NEXT:                                                   args: []
+// CHECK-NEXT:                                   attrs: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

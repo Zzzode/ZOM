@@ -1,15 +1,77 @@
-// RUN: ! %zomc compile --dump-ast %corpus/05-statements/match_when_pos_01.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/05-statements/match_when_pos_01.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2011]: Identifier expected, found '1'
-// CHECK:   --> {{.*match_when_pos_01.zom}}:3:18
-// CHECK:   |
-// CHECK: 3 |         1 if 2 > 1: return;
-// CHECK:   |                  ^
-// CHECK: Error [ZOM2011]: Identifier expected, found '2'
-// CHECK:   --> {{.*match_when_pos_01.zom}}:4:9
-// CHECK:   |
-// CHECK: 4 |         2: return;
-// CHECK:   |         ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #30 @1:1..8:1 file_name="match_when_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #29 @1:1..7:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #28 @1:1..7:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #3 @1:6..1:14 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:7..1:13 name="x"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:10..1:13 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #27 @1:15..7:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #26 @2:5..6:6
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     MatchStmt #25 @2:5..6:6
+// CHECK-NEXT:                       scrutinee:
+// CHECK-NEXT:                         IdentExpr #24 @2:12..2:13 name="x"
+// CHECK-NEXT:                       arms:
+// CHECK-NEXT:                         MatchArmStmt #12 @3:9..3:39
+// CHECK-NEXT:                           pattern:
+// CHECK-NEXT:                             LiteralPattern #5 @3:14..3:15
+// CHECK-NEXT:                               literal:
+// CHECK-NEXT:                                 IntLiteral #4 @3:14..3:15 base=10 value="1"
+// CHECK-NEXT:                           guard:
+// CHECK-NEXT:                             BinaryExpr #8 @3:19..3:24 op=Gt
+// CHECK-NEXT:                               lhs:
+// CHECK-NEXT:                                 IntLiteral #6 @3:19..3:20 base=10 value="2"
+// CHECK-NEXT:                               rhs:
+// CHECK-NEXT:                                 IntLiteral #7 @3:23..3:24 base=10 value="1"
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #11 @3:28..3:39
+// CHECK-NEXT:                               stmts:
+// CHECK-NEXT:                                 StatementListItem #10 @3:30..3:37
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     ReturnStmt #9 @3:30..3:37
+// CHECK-NEXT:                                       value: null
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                         MatchArmStmt #18 @4:9..4:30
+// CHECK-NEXT:                           pattern:
+// CHECK-NEXT:                             LiteralPattern #14 @4:14..4:15
+// CHECK-NEXT:                               literal:
+// CHECK-NEXT:                                 IntLiteral #13 @4:14..4:15 base=10 value="2"
+// CHECK-NEXT:                           guard: null
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #17 @4:19..4:30
+// CHECK-NEXT:                               stmts:
+// CHECK-NEXT:                                 StatementListItem #16 @4:21..4:28
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     ReturnStmt #15 @4:21..4:28
+// CHECK-NEXT:                                       value: null
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                         MatchArmStmt #23 @5:9..5:31
+// CHECK-NEXT:                           pattern:
+// CHECK-NEXT:                             WildcardPattern #19 @5:9..5:16
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                           guard: null
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #22 @5:20..5:31
+// CHECK-NEXT:                               stmts:
+// CHECK-NEXT:                                 StatementListItem #21 @5:22..5:29
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     ReturnStmt #20 @5:22..5:29
+// CHECK-NEXT:                                       value: null
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

@@ -1,6 +1,11 @@
 // RUN: ! %zomc compile --dump-ast %corpus/11-error/var_reject_neg_08.zom 2>&1 | %FileCheck %s
 
 
+// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK:   --> {{.*var_reject_neg_08.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | var x: i32 = 5;
+// CHECK:   | ^
 // CHECK: Error [ZOM2057]: Expression expected
 // CHECK:   --> {{.*var_reject_neg_08.zom}}:1:1
 // CHECK:   |

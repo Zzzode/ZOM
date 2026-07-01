@@ -1,10 +1,10 @@
 // RUN: ! %zomc compile --dump-ast %corpus/06-declarations/impl_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*impl_reject_neg_01.zom}}:1:1
+// CHECK: Error [ZOM2025]: Expected 'for'
+// CHECK:   --> {{.*impl_reject_neg_01.zom}}:1:6
 // CHECK:   |
 // CHECK: 1 | impl { x: i32 }
-// CHECK:   | ^
+// CHECK:   |      ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

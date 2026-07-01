@@ -1,4 +1,4 @@
 let [a, ...rest] = [1, 2, 3, 4];
 match (arr) {
-    [first, ...] : { print(first); }
+    when [first, ...] => { print(first); }
 }

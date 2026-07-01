@@ -1,1 +1,1 @@
-export alias Result<T, E> = Ok(T) | Err(E);
+export alias Result<T, E> = T | E;

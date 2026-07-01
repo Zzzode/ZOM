@@ -1,13 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/07-patterns/is_pat_missing_type_neg_07.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/07-patterns/is_pat_missing_type_neg_07.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..4:1 file_name="is_pat_missing_type_neg_07.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..3:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         MatchStmt #2 @1:1..3:2
-// CHECK-NEXT:           scrutinee:
-// CHECK-NEXT:             IdentExpr #1 @1:8..1:9 name="v"
-// CHECK-NEXT:           arms: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2069]: Type expected
+// CHECK:   --> {{.*is_pat_missing_type_neg_07.zom}}:2:13
+// CHECK:   |
+// CHECK: 2 |     when is => { print("nothing"); }
+// CHECK:   |             ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

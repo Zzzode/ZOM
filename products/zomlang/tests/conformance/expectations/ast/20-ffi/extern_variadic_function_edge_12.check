@@ -1,12 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/20-ffi/extern_variadic_function_edge_12.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/20-ffi/extern_variadic_function_edge_12.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..5:1 file_name="extern_variadic_function_edge_12.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..4:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ExpressionStatement #2 @1:1..4:2
-// CHECK-NEXT:           expression:
-// CHECK-NEXT:             IdentExpr #1 @1:1..1:7 name="extern"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2057]: Expression expected
+// CHECK:   --> {{.*extern_variadic_function_edge_12.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | extern "Cdecl" {
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,6 +1,11 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/unbalanced_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
+// CHECK: Error [ZOM2025]: Expected ')'
+// CHECK:   --> {{.*unbalanced_reject_neg_01.zom}}:1:9
+// CHECK:   |
+// CHECK: 1 | let x = (a + b;
+// CHECK:   |         ^
 // CHECK: Error [ZOM2057]: Expression expected
 // CHECK:   --> {{.*unbalanced_reject_neg_01.zom}}:1:9
 // CHECK:   |

@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/15-concurrency/spawn_block_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #9 @1:1..7:1 file_name="spawn_block_pos_01.zom"
+// CHECK: SourceFile #21 @1:1..7:1 file_name="spawn_block_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #8 @1:1..6:2
+// CHECK-NEXT:     StatementListItem #20 @1:1..6:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #7 @1:1..6:2 name="main"
+// CHECK-NEXT:         FunctionDecl #19 @1:1..6:2 name="main"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
 // CHECK-NEXT:               params: []
@@ -14,16 +14,43 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #6 @1:12..6:2
+// CHECK-NEXT:             BlockStmt #18 @1:12..6:2
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #5 @2:5..5:7
+// CHECK-NEXT:                 StatementListItem #17 @2:5..5:7
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #4 @2:5..5:7
-// CHECK-NEXT:                       pattern:
-// CHECK-NEXT:                         IdentifierPattern #2 @2:9..2:10 name="t"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                       init:
-// CHECK-NEXT:                         IdentExpr #3 @2:13..2:18 name="spawn"
+// CHECK-NEXT:                     LetStmt #16 @2:5..5:7 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #15 @2:9..5:6 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #14 @2:9..5:6
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #2 @2:9..2:10 name="t"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 SpawnExpression #13 @2:13..5:6 mod_flags=0 priority=None
+// CHECK-NEXT:                                   body:
+// CHECK-NEXT:                                     BlockStmt #12 @2:19..5:6
+// CHECK-NEXT:                                       stmts:
+// CHECK-NEXT:                                         StatementListItem #8 @3:9..3:19
+// CHECK-NEXT:                                           item:
+// CHECK-NEXT:                                             LetStmt #7 @3:9..3:19 kind=Let
+// CHECK-NEXT:                                               declarations:
+// CHECK-NEXT:                                                 VariableDeclaratorList #6 @3:13..3:18 n_decls=1
+// CHECK-NEXT:                                                   decls:
+// CHECK-NEXT:                                                     VariableDeclarator #5 @3:13..3:18
+// CHECK-NEXT:                                                       pattern:
+// CHECK-NEXT:                                                         IdentifierPattern #3 @3:13..3:14 name="x"
+// CHECK-NEXT:                                                           ty: null
+// CHECK-NEXT:                                                       ty: null
+// CHECK-NEXT:                                                       init:
+// CHECK-NEXT:                                                         IntLiteral #4 @3:17..3:18 base=10 value="1"
+// CHECK-NEXT:                                           attrs: null
+// CHECK-NEXT:                                         StatementListItem #11 @4:9..4:18
+// CHECK-NEXT:                                           item:
+// CHECK-NEXT:                                             ReturnStmt #10 @4:9..4:18
+// CHECK-NEXT:                                               value:
+// CHECK-NEXT:                                                 IdentExpr #9 @4:16..4:17 name="x"
+// CHECK-NEXT:                                           attrs: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

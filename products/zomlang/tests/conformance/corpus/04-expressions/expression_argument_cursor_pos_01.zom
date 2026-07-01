@@ -1,0 +1,6 @@
+let nestedArgs = sink(
+  call(a, b),
+  [call(c, d), (e, f)],
+  cond ? call(g, h) : call(i, j),
+  make<A, B>(x, y),
+);

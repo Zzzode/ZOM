@@ -55,10 +55,25 @@ static const ast::Node& topLevelStatement(const ast::Tree& tree, size_t index) {
   return tree.node(statementItem(tree, topLevelStatements(tree)[index]));
 }
 
+static const ast::Node& firstLetDeclarator(const ast::Tree& tree, const ast::Node& letNode) {
+  ZC_EXPECT(letNode.kind == ast::SyntaxKind::LetStmt);
+  const ast::Node& declarations =
+      tree.node(ast::NodeId(letNode.payload.words[ast::kLetStmtDeclarationsWord]));
+  ZC_EXPECT(declarations.kind == ast::SyntaxKind::VariableDeclaratorList);
+
+  ast::NodeList list;
+  list.first = declarations.payload.words[ast::kVariableDeclaratorListDeclsFirstWord];
+  list.size = declarations.payload.words[ast::kVariableDeclaratorListDeclsSizeWord];
+  const auto declarators = tree.list(list);
+  ZC_EXPECT(declarators.size() > 0);
+  return tree.node(declarators[0]);
+}
+
 static const ast::Node& letInitializer(const ast::Tree& tree, size_t index) {
   const ast::Node& letNode = topLevelStatement(tree, index);
   ZC_EXPECT(letNode.kind == ast::SyntaxKind::LetStmt);
-  return tree.node(ast::NodeId(letNode.payload.words[ast::kLetStmtInitWord]));
+  const ast::Node& declarator = firstLetDeclarator(tree, letNode);
+  return tree.node(ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorInitWord]));
 }
 
 static const ast::Node& expressionStatementExpression(const ast::Tree& tree, size_t index) {
@@ -129,13 +144,15 @@ ZC_TEST("ParserTest.VariableDeclarationList") {
     const ast::Node& letNode = root.node(statementItem(root, statements[0]));
     ZC_EXPECT(letNode.kind == ast::SyntaxKind::LetStmt);
 
+    const ast::Node& declarator = firstLetDeclarator(root, letNode);
     const ast::Node& pattern =
-        root.node(ast::NodeId(letNode.payload.words[ast::kLetStmtPatternWord]));
+        root.node(ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorPatternWord]));
     ZC_EXPECT(pattern.kind == ast::SyntaxKind::IdentifierPattern);
     ZC_EXPECT(root.ident(ast::IdentId(pattern.payload.words[ast::kIdentifierPatternNameWord])) ==
               "x");
 
-    const ast::Node& init = root.node(ast::NodeId(letNode.payload.words[ast::kLetStmtInitWord]));
+    const ast::Node& init =
+        root.node(ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorInitWord]));
     ZC_EXPECT(init.kind == ast::SyntaxKind::IntLiteral);
     ZC_EXPECT(init.payload.words[ast::kIntLiteralBaseWord] == 10);
     ZC_EXPECT(root.bigInt(ast::BigIntId(init.payload.words[ast::kIntLiteralValueWord])) == "42");
@@ -496,10 +513,10 @@ ZC_TEST("ParserTest.PatternMatching") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("match x {\n"
-                                                          "  _ => 0,\n"
-                                                          "  (a, b) => a + b,\n"
-                                                          "  { prop } => prop\n"
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("match (x) {\n"
+                                                          "  when _ => { return 0; }\n"
+                                                          "  when (a, b) => { return a + b; }\n"
+                                                          "  when { prop } => { return prop; }\n"
                                                           "}")
                                                       .asBytes(),
                                                   "test.zom");
@@ -515,13 +532,14 @@ ZC_TEST("ParserTest.MatchWithGuardClause") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("match x {\n"
-                                                          "  n if n > 0 => \"positive\",\n"
-                                                          "  0 => \"zero\",\n"
-                                                          "  _ => \"negative\"\n"
-                                                          "}")
-                                                      .asBytes(),
-                                                  "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("match (x) {\n"
+                                              "  when n if n > 0 => { return \"positive\"; }\n"
+                                              "  when 0 => { return \"zero\"; }\n"
+                                              "  when _ => { return \"negative\"; }\n"
+                                              "}")
+                                          .asBytes(),
+                                      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -534,12 +552,13 @@ ZC_TEST("ParserTest.EnumPattern") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("match result {\n"
-                                                          "  Ok(value) => value,\n"
-                                                          "  Err(e) => handleError(e)\n"
-                                                          "}")
-                                                      .asBytes(),
-                                                  "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("match (result) {\n"
+                                              "  when Ok(value) => { return value; }\n"
+                                              "  when Err(e) => { return handleError(e); }\n"
+                                              "}")
+                                          .asBytes(),
+                                      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1193,7 +1212,8 @@ ZC_TEST("ParserTest.ParseMatchStatement") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("match value { case 1 => \"one\"; case 2 => \"two\"; default => \"other\"; }")
+      zc::str("match (value) { when 1 => { return \"one\"; } "
+              "when 2 => { return \"two\"; } default => { return \"other\"; } }")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
@@ -1289,6 +1309,49 @@ ZC_TEST("ParserTest.ParseHeritageObjectLiteral") {
     ZC_EXPECT(statements.size() == 1, "Should contain a class declaration");
     ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ClassDecl,
               "Should parse a class declaration");
+  }
+  else { ZC_EXPECT(false, "Parse should succeed"); }
+}
+
+ZC_TEST("ParserTest.ParseHeritageObjectLiteralBeforeNextDeclaration") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("class C extends {} {}\nlet value = 1;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 2, "Should keep the following declaration separate");
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ClassDecl,
+              "Should parse the class declaration first");
+    ZC_EXPECT(topLevelStatementKind(root, 1) == ast::SyntaxKind::LetStmt,
+              "Should parse the following variable declaration second");
+  }
+  else { ZC_EXPECT(false, "Parse should succeed"); }
+}
+
+ZC_TEST("ParserTest.ParseFunctionReturnObjectTypeBeforeNextDeclaration") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("fun make() -> { value: i32 } { return {}; }\nlet done = true;").asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 2, "Should keep the following declaration separate");
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::FunctionDecl,
+              "Should parse the function declaration first");
+    ZC_EXPECT(topLevelStatementKind(root, 1) == ast::SyntaxKind::LetStmt,
+              "Should parse the following variable declaration second");
   }
   else { ZC_EXPECT(false, "Parse should succeed"); }
 }
@@ -2832,7 +2895,8 @@ ZC_TEST("ParserTest.ParseMatchStatement") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("match x { 1 => true, _ => false }").asBytes(), "test.zom");
+      zc::str("match (x) { when 1 => { return true; } when _ => { return false; } }").asBytes(),
+      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2846,7 +2910,9 @@ ZC_TEST("ParserTest.ParseMatchWithPatterns") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("match x { is i32 => true, _ => false }").asBytes(), "test.zom");
+      zc::str("match (x) { when is i32 => { return true; } when _ => { return false; } }")
+          .asBytes(),
+      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3593,7 +3659,10 @@ ZC_TEST("ParserTest.ParseMatchWithStructPattern") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("match x { Point(x: 1, y: 2) => true, _ => false }").asBytes(), "test.zom");
+      zc::str("match (x) { when Point { x: 1, y: 2 } => { return true; } "
+              "when _ => { return false; } }")
+          .asBytes(),
+      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
@@ -3606,8 +3675,11 @@ ZC_TEST("ParserTest.ParseMatchWithArrayPattern") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("match x { [1, 2] => true, _ => false }").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("match (x) { when [1, 2] => { return true; } "
+                                              "when _ => { return false; } }")
+                                          .asBytes(),
+                                      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
@@ -3620,8 +3692,9 @@ ZC_TEST("ParserTest.ParseMatchWithEnumPatternVariants") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("match (result) { when Ok(value) => value; when Result.Err => 0; "
-              "when _: i32 => 1; when value + 1 => 2; }")
+      zc::str("match (result) { when Ok(value) => { return value; } "
+              "when Result.Err() => { return 0; } when is i32 => { return 1; } "
+              "when (value + 1) => { return 2; } }")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
@@ -3792,7 +3865,7 @@ ZC_TEST("ParserTest.ParseMatchWithBadToken") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("match x { 1 => }").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("match (x) { when 1 => }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);

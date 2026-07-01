@@ -1,16 +1,22 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/alias_decl_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @1:1..2:1 file_name="alias_decl_edge_01.zom"
+// CHECK: SourceFile #8 @1:1..2:1 file_name="alias_decl_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:24
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:24
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #3 @1:1..1:24 name="Pair"
+// CHECK-NEXT:         AliasDecl #6 @1:1..1:24 name="Pair"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           target:
-// CHECK-NEXT:             NamedTypeExpr #2 @1:18..1:22
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #1 @1:18..1:19 segments=["T"]
-// CHECK-NEXT:               args: []
+// CHECK-NEXT:             TupleTypeExpr #5 @1:17..1:23
+// CHECK-NEXT:               elems:
+// CHECK-NEXT:                 NamedTypeExpr #2 @1:18..1:19
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #1 @1:18..1:19 segments=["T"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:                 NamedTypeExpr #4 @1:21..1:22
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #3 @1:21..1:22 segments=["T"]
+// CHECK-NEXT:                   args: []
 // CHECK-NEXT:       attrs: null

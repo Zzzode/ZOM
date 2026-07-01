@@ -23,8 +23,8 @@
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #6 @2:5..2:21
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ExpressionStatement #5 @2:5..2:21
-// CHECK-NEXT:                       expression:
-// CHECK-NEXT:                         IdentExpr #4 @2:5..2:12 name="suspend"
+// CHECK-NEXT:                     SuspendStatement #5 @2:5..2:21 mode=Until on_timeout_ms=null
+// CHECK-NEXT:                       until_cond:
+// CHECK-NEXT:                         IdentExpr #4 @2:19..2:20 name="x"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

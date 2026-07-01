@@ -1,28 +1,32 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/prec_smoke_1_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #11 @1:1..2:1 file_name="prec_smoke_1_pos_01.zom"
+// CHECK: SourceFile #13 @1:1..2:1 file_name="prec_smoke_1_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #10 @1:1..1:26
+// CHECK-NEXT:     StatementListItem #12 @1:1..1:26
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #9 @1:1..1:26
-// CHECK-NEXT:           pattern:
-// CHECK-NEXT:             IdentifierPattern #1 @1:5..1:6 name="x"
-// CHECK-NEXT:               ty: null
-// CHECK-NEXT:           ty: null
-// CHECK-NEXT:           init:
-// CHECK-NEXT:             NullCoalesceExpr #8 @1:9..1:25
-// CHECK-NEXT:               primary:
-// CHECK-NEXT:                 BinaryExpr #4 @1:9..1:15 op=LogOr
-// CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #2 @1:9..1:10 name="a"
-// CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IdentExpr #3 @1:14..1:15 name="b"
-// CHECK-NEXT:               fallback:
-// CHECK-NEXT:                 BinaryExpr #7 @1:19..1:25 op=LogAnd
-// CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #5 @1:19..1:20 name="c"
-// CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IdentExpr #6 @1:24..1:25 name="d"
+// CHECK-NEXT:         LetStmt #11 @1:1..1:26 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #10 @1:5..1:25 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #9 @1:5..1:25
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="x"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     NullCoalesceExpr #8 @1:9..1:25
+// CHECK-NEXT:                       primary:
+// CHECK-NEXT:                         BinaryExpr #4 @1:9..1:15 op=LogOr
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #2 @1:9..1:10 name="a"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IdentExpr #3 @1:14..1:15 name="b"
+// CHECK-NEXT:                       fallback:
+// CHECK-NEXT:                         BinaryExpr #7 @1:19..1:25 op=LogAnd
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #5 @1:19..1:20 name="c"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IdentExpr #6 @1:24..1:25 name="d"
 // CHECK-NEXT:       attrs: null

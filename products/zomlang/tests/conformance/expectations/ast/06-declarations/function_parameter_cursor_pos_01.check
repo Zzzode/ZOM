@@ -1,0 +1,145 @@
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/function_parameter_cursor_pos_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #64 @1:1..8:1 file_name="function_parameter_cursor_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #63 @1:1..7:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #62 @1:1..7:2 name="parameterCursor"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #53 @1:20..5:2 nparams=3
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #26 @2:3..2:66 name="first"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #15 @2:10..2:41
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #14 @2:10..2:14 segments=["Pair"]
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         NamedTypeExpr #6 @2:15..2:24
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #5 @2:15..2:18 segments=["Box"]
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             NamedTypeExpr #2 @2:19..2:20
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #1 @2:19..2:20 segments=["A"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                             NamedTypeExpr #4 @2:22..2:23
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #3 @2:22..2:23 segments=["B"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                         FunctionTypeExpr #13 @2:26..2:40
+// CHECK-NEXT:                           params:
+// CHECK-NEXT:                             NamedTypeExpr #10 @2:30..2:31
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #9 @2:30..2:31 segments=["C"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                             NamedTypeExpr #12 @2:33..2:34
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #11 @2:33..2:34 segments=["D"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           ret_ty:
+// CHECK-NEXT:                             NamedTypeExpr #8 @2:39..2:40
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #7 @2:39..2:40 segments=["E"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           raises: null
+// CHECK-NEXT:                   default_:
+// CHECK-NEXT:                     CallExpression #25 @2:44..2:66
+// CHECK-NEXT:                       callee:
+// CHECK-NEXT:                         IdentExpr #16 @2:44..2:48 name="make"
+// CHECK-NEXT:                       type_args:
+// CHECK-NEXT:                         NamedTypeExpr #22 @2:49..2:60
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #21 @2:49..2:53 segments=["Pair"]
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             NamedTypeExpr #18 @2:54..2:55
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #17 @2:54..2:55 segments=["A"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                             NamedTypeExpr #20 @2:57..2:58
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #19 @2:57..2:58 segments=["B"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         IdentExpr #23 @2:61..2:62 name="a"
+// CHECK-NEXT:                         IdentExpr #24 @2:64..2:65 name="b"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #44 @3:3..3:80 name="callback"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     FunctionTypeExpr #30 @3:13..3:33
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         PredefinedTypeExpr #28 @3:17..3:20 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #29 @3:22..3:25 kind=I32
+// CHECK-NEXT:                       ret_ty:
+// CHECK-NEXT:                         PredefinedTypeExpr #27 @3:30..3:33 kind=I32
+// CHECK-NEXT:                       raises: null
+// CHECK-NEXT:                   default_:
+// CHECK-NEXT:                     FunctionExpression #43 @3:36..3:80
+// CHECK-NEXT:                       params_id:
+// CHECK-NEXT:                         FunctionParameterList #35 @3:39..3:55 nparams=2
+// CHECK-NEXT:                           params:
+// CHECK-NEXT:                             FunctionParameterDecl #32 @3:40..3:46 name="x"
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #31 @3:43..3:46 kind=I32
+// CHECK-NEXT:                               default_: null
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                             FunctionParameterDecl #34 @3:48..3:54 name="y"
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #33 @3:51..3:54 kind=I32
+// CHECK-NEXT:                               default_: null
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                       captures: []
+// CHECK-NEXT:                       ret_ty:
+// CHECK-NEXT:                         PredefinedTypeExpr #36 @3:59..3:62 kind=I32
+// CHECK-NEXT:                       raises_ty: null
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #42 @3:63..3:80
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #41 @3:65..3:78
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ReturnStmt #40 @3:65..3:78
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     BinaryExpr #39 @3:72..3:77 op=Add
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         IdentExpr #37 @3:72..3:73 name="x"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IdentExpr #38 @3:76..3:77 name="y"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #52 @4:3..4:34 name="fallback"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #45 @4:13..4:16 kind=I32
+// CHECK-NEXT:                   default_:
+// CHECK-NEXT:                     ConditionalExpr #51 @4:20..4:33
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         BinaryExpr #48 @4:20..4:25 op=Lt
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #46 @4:20..4:21 name="a"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IdentExpr #47 @4:24..4:25 name="b"
+// CHECK-NEXT:                       then_expr:
+// CHECK-NEXT:                         IntLiteral #49 @4:28..4:29 base=10 value="1"
+// CHECK-NEXT:                       else_expr:
+// CHECK-NEXT:                         IntLiteral #50 @4:32..4:33 base=10 value="2"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #54 @5:6..5:9 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #61 @5:10..7:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #60 @6:3..6:39
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #59 @6:3..6:39
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         CallExpression #58 @6:10..6:38
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #55 @6:10..6:18 name="callback"
+// CHECK-NEXT:                           type_args: []
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             IdentExpr #56 @6:19..6:27 name="fallback"
+// CHECK-NEXT:                             IdentExpr #57 @6:29..6:37 name="fallback"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

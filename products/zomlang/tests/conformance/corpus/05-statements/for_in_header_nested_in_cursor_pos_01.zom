@@ -1,0 +1,5 @@
+fun f() {
+    for (let item in make({ in: 1, nested: { in: 2 } })) {
+        sink(item);
+    }
+}

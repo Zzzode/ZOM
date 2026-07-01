@@ -2,14 +2,9 @@
 
 
 // CHECK: Error [ZOM2012]: Missing semicolon before 'Red'
-// CHECK:   --> {{.*enum_coloncol_reject_neg_01.zom}}:3:12
+// CHECK:   --> {{.*enum_coloncol_reject_neg_01.zom}}:3:17
 // CHECK:   |
-// CHECK: 3 |     Color::Red : { print("red"); }
-// CHECK:   |            ^
-// CHECK: Error [ZOM2012]: Missing semicolon before 'print'
-// CHECK:   --> {{.*enum_coloncol_reject_neg_01.zom}}:3:20
-// CHECK:   |
-// CHECK: 3 |     Color::Red : { print("red"); }
-// CHECK:   |                    ^
+// CHECK: 3 |     when Color::Red => { print("red"); }
+// CHECK:   |                 ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.
