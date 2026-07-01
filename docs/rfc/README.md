@@ -70,7 +70,8 @@ not reused.
 | RFC | Title | Status | Area | Type | Review Manager | Tracking | Implementation |
 |---|---|---|---|---|---|---|---|
 | [RFC 0001](0001-ast-dump-format.md) | AST Dump Format | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0001-ast-dump-format.md#acceptance-criteria) | [AST Dumper](../../products/zomlang/compiler/ast/dump.cc) |
-| [RFC 0002](0002-parser-architecture.md) | Parser Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0002-parser-architecture.md#acceptance-criteria) | TBD |
+| [RFC 0002](0002-parser-architecture.md) | Parser Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0002-parser-architecture.md#acceptance-criteria) | [Parser](../../products/zomlang/compiler/parser/parser.cc) |
+| [RFC 0003](0003-lexer-architecture.md) | Lexer Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0003-lexer-architecture.md#acceptance-criteria) | [Lexer](../../products/zomlang/compiler/lexer/lexer.cc) |
 
 ## Status Values
 

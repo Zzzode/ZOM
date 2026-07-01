@@ -8,14 +8,14 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
 approvers: []
 created: 2026-06-30
-updated: 2026-06-30
+updated: 2026-07-01
 area: compiler
-requires: [1]
+requires: [1, 3]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/0002-parser-architecture.md#status-history
 decision: TBD
-implementation: TBD
+implementation: products/zomlang/compiler/parser/parser.cc
 tracking-issue: docs/rfc/0002-parser-architecture.md#acceptance-criteria
 ---
 
@@ -45,11 +45,11 @@ The repository evidence shows the scale of the problem:
 - At the start of this RFC work, direct execution of
   `zomc compile --dump-ast` disagreed with 180 grammar-oracle verdicts; 162 of
   those were reject cases accepted by the compiler.
-- After the first fail-closed, AST schema verification, lexer-literal, and
-  stale lit expectation repairs, the AST coverage guard still reports 84 real
-  verdict mismatches: 63 reject cases accepted by the compiler and 21 accept
-  cases rejected by the compiler.
-- The parser coverage map records 206 syntactic productions and 35 lexical
+- After the parser slice repairs, regenerated lit expectations, and
+  grammar-oracle reconciliation completed on 2026-07-01, the AST coverage guard
+  reports zero verdict mismatches against grammar expectations. All AST checks
+  now have grammar expectation metadata or an explicit allowlist.
+- The parser coverage map records 208 syntactic productions and 35 lexical
   productions that must stay aligned with the grammar reference and C++ parser.
 - Accepted AST dumps previously contained missing required structure, such as
   an alias target printed as `null`; the parser architecture must prevent those
@@ -949,7 +949,7 @@ place. There is no selectable parser mode.
 
 The rollout order is:
 
-1. Resolve all blocking open questions and move this RFC to `REVIEW`.
+1. Resolve all blocking open questions and return this RFC to `REVIEW`.
 2. Land this RFC as the accepted parser architecture.
 3. Reconcile `17-grammar-reference.md`, `ZomParser.g4`, lexer token metadata,
    AST schema, and grammar oracle fixtures.
@@ -1070,25 +1070,26 @@ bounded syntactic lookahead.
 ## Implementation Plan
 
 1. Resolve blocking open questions and assign required owner review.
-2. Accept this RFC as the parser architecture.
-3. Add parser architecture design notes under `docs/design/` for implementation
+2. Return this RFC to `REVIEW` with required owner review.
+3. Accept this RFC as the parser architecture.
+4. Add parser architecture design notes under `docs/design/` for implementation
    details that must remain current after the RFC lands.
-4. Reconcile the normative grammar, `ZomParser.g4`, AST schema, token metadata,
+5. Reconcile the normative grammar, `ZomParser.g4`, AST schema, token metadata,
    and conformance verdict metadata.
-5. Harden `parser-coverage.yml` and the parser coverage script that maps
+6. Harden `parser-coverage.yml` and the parser coverage script that maps
    syntactic EBNF productions to parser functions or explicit inline mappings.
-6. Add AST schema verification for required fields and child cast targets.
-7. Add `TokenCursor`, `ParserContext`, diagnostic deduplication, and recovery
+7. Add AST schema verification for required fields and child cast targets.
+8. Add `TokenCursor`, `ParserContext`, diagnostic deduplication, and recovery
    helpers.
-8. Implement expression parser and precedence tests.
-9. Implement type parser and type conformance tests.
-10. Implement pattern parser and match-pattern tests.
-11. Implement declaration and statement parsers.
-12. Implement imports, exports, module items, attributes, and modifiers.
-13. Replace the current range-scanning parser path.
-14. Regenerate AST lit expectations from the grammar oracle.
-15. Remove parser functions and helpers with no call sites.
-16. Run the full verification plan and move the RFC through implementation
+9. Implement expression parser and precedence tests.
+10. Implement type parser and type conformance tests.
+11. Implement pattern parser and match-pattern tests.
+12. Implement declaration and statement parsers.
+13. Implement imports, exports, module items, attributes, and modifiers.
+14. Replace the current range-scanning parser path.
+15. Regenerate AST lit expectations from the grammar oracle.
+16. Remove parser functions and helpers with no call sites.
+17. Run the full verification plan and move the RFC through implementation
     status when evidence is complete.
 
 The implementation must be delivered as gateable slices:
@@ -1135,7 +1136,8 @@ The implementation must be delivered as gateable slices:
 
 ## Open Questions
 
-None.
+None. The RFC is review-ready. Advancement beyond `REVIEW` is gated by the
+acceptance criteria and owner approval; no design question remains open.
 
 ## Status History
 
@@ -1143,3 +1145,6 @@ None.
 |---|---|---|
 | 2026-06-30 | DRAFT | Initial draft. |
 | 2026-06-30 | REVIEW | Completed parser architecture draft and opened required owner review. |
+| 2026-07-01 | RETURNED | Review found blocking lexer, token contract, recovery, and coverage-map gaps. |
+| 2026-07-01 | DRAFT | Revised the returned RFC after lexer contract, parser coverage, and conformance blockers were resolved. |
+| 2026-07-01 | REVIEW | RFC 0003 reached review-ready status, parser coverage passed, grammar conformance passed, and AST coverage reported zero verdict mismatches. |
