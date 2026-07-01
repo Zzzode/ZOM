@@ -73,7 +73,7 @@ def validate_file_mapping(all_kj_files, file_mapping):
     print("✓ File mapping validation passed")
 
 
-# 精确的文件映射表
+# Precise file mapping table.
 file_mapping = {
     # ==============================================================================
     # Source Files
@@ -234,13 +234,13 @@ def get_file_mapping(kj_source_path):
     """Map kj files to zc target directories with precise mapping"""
     mapping = {}
 
-    # 获取capnp中所有文件
+    # Collect all files from capnp.
     all_kj_files = get_all_kj_files(kj_source_path)
 
-    # 验证文件映射完整性
+    # Validate mapping completeness.
     validate_file_mapping(all_kj_files, file_mapping)
 
-    # 使用验证后的精确映射构建实际文件映射
+    # Build the actual file mapping from the validated precise mapping.
     for rel_path, target_rel_path in file_mapping.items():
         source_file = kj_source_path / rel_path
         target_path = ZC_ROOT / target_rel_path
