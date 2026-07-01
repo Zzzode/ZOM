@@ -27,15 +27,56 @@ TokenCursor::TokenCursor(zc::ArrayPtr<const lexer::Token> tokens) { reset(tokens
 void TokenCursor::reset(zc::ArrayPtr<const lexer::Token> newTokens) {
   tokens = newTokens;
   current = 0;
+  splitMode_ = false;
+  splitRemaining_ = 0;
+  splitOriginalKind_ = ast::SyntaxKind::Unknown;
 }
 
 size_t TokenCursor::size() const { return tokens.size(); }
 
 size_t TokenCursor::position() const { return current; }
 
-ast::SyntaxKind TokenCursor::peek(size_t offset) const { return token(offset).getKind(); }
+int TokenCursor::rightAngleCount(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::GreaterThan:
+      return 1;
+    case ast::SyntaxKind::GreaterThanGreaterThan:
+      return 2;
+    case ast::SyntaxKind::GreaterThanGreaterThanGreaterThan:
+      return 3;
+    default:
+      return 0;
+  }
+}
+
+void TokenCursor::primeSplitState() const {
+  if (!splitMode_ || splitRemaining_ > 0) { return; }
+
+  const lexer::Token& real = tokenAt(relativeIndex(0));
+  const int count = rightAngleCount(real.getKind());
+  if (count > 1) {
+    splitRemaining_ = count;
+    splitOriginalKind_ = real.getKind();
+    // Create a virtual > token using the original range for diagnostics.
+    // The value is ">" to reflect the virtual single character.
+    splitVirtualToken_ = lexer::Token(ast::SyntaxKind::GreaterThan, real.getRange(), ">"_zc,
+                                      real.getFlags());
+  }
+}
+
+ast::SyntaxKind TokenCursor::peek(size_t offset) const {
+  if (offset == 0) {
+    primeSplitState();
+    if (splitRemaining_ > 0) { return ast::SyntaxKind::GreaterThan; }
+  }
+  return token(offset).getKind();
+}
 
 const lexer::Token& TokenCursor::token(size_t offset) const {
+  if (offset == 0) {
+    primeSplitState();
+    if (splitRemaining_ > 0) { return splitVirtualToken_; }
+  }
   return tokenAt(relativeIndex(offset));
 }
 
@@ -54,13 +95,30 @@ bool TokenCursor::eat(ast::SyntaxKind kind) {
 }
 
 void TokenCursor::advance() {
-  if (!isAtEnd()) { ++current; }
+  if (isAtEnd()) { return; }
+
+  primeSplitState();
+  if (splitRemaining_ > 0) {
+    --splitRemaining_;
+    if (splitRemaining_ <= 0) {
+      // Exhausted the virtual tokens; move to next real token.
+      splitRemaining_ = 0;
+      splitOriginalKind_ = ast::SyntaxKind::Unknown;
+      ++current;
+    }
+    return;
+  }
+
+  ++current;
 }
 
 void TokenCursor::moveTo(size_t index) {
   ZC_IREQUIRE(tokens.size() != 0, "token cursor requires a token stream with EOF");
   ZC_IREQUIRE(index < tokens.size(), "token cursor target outside token stream");
   current = index;
+  // Moving to a new position aborts any in-progress split.
+  splitRemaining_ = 0;
+  splitOriginalKind_ = ast::SyntaxKind::Unknown;
 }
 
 bool TokenCursor::expect(ast::SyntaxKind kind, diagnostics::DiagnosticEngine& diagnosticEngine,
@@ -72,9 +130,30 @@ bool TokenCursor::expect(ast::SyntaxKind kind, diagnostics::DiagnosticEngine& di
 
 TokenCursor::Mark TokenCursor::mark() const { return current; }
 
-void TokenCursor::rewind(Mark mark) { moveTo(mark); }
+void TokenCursor::rewind(Mark mark) {
+  moveTo(mark);
+  // Rewind aborts any in-progress split; the caller re-primes as needed.
+}
 
 bool TokenCursor::isAtEnd() const { return peek() == ast::SyntaxKind::EndOfFile; }
+
+// ---- Split mode API ----
+
+void TokenCursor::enableSplitMode() {
+  splitMode_ = true;
+  // Prime immediately so the first peek()/token() call is consistent.
+  primeSplitState();
+}
+
+void TokenCursor::disableSplitMode() {
+  splitMode_ = false;
+  splitRemaining_ = 0;
+  splitOriginalKind_ = ast::SyntaxKind::Unknown;
+}
+
+bool TokenCursor::isSplitModeActive() const { return splitMode_; }
+
+// ---- Internals ----
 
 size_t TokenCursor::eofIndex() const {
   ZC_IREQUIRE(tokens.size() != 0, "token cursor requires a token stream with EOF");

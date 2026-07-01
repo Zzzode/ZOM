@@ -40,12 +40,22 @@ class SourceManager;
 
 namespace parser {
 
+/// \brief Parse mode controls whether syntax errors prevent AST publication.
+enum class ParseMode {
+  /// Fail-closed: any error diagnostic causes parse() to return zc::none.
+  /// This is the default for compiler invocation.
+  Strict,
+  /// Fail-open: returns a partial AST even when errors were emitted.
+  /// Useful for IDE/language-server scenarios where partial results are valuable.
+  Loose,
+};
+
 /// \brief Recursive-descent parser facade that emits the schema-backed AST tree.
 class Parser {
 public:
   Parser(const source::SourceManager& sm, diagnostics::DiagnosticEngine& diagnosticEngine,
          const basic::LangOptions& langOpts, basic::StringPool& stringPool,
-         const source::BufferId& bufferId);
+         const source::BufferId& bufferId, ParseMode mode = ParseMode::Strict);
   ~Parser() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Parser);

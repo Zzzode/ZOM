@@ -16,6 +16,7 @@
 
 #include "zc/core/arena.h"
 #include "zc/core/debug.h"
+#include "zc/core/map.h"
 #include "zomlang/compiler/symbol/symbol-id.h"
 
 namespace zomlang {
@@ -60,6 +61,10 @@ struct Tree::Impl {
   zc::Vector<zc::StringPtr> idents;
   zc::Vector<zc::StringPtr> bigInts;
   zc::Vector<zc::StringPtr> floats;
+  zc::HashMap<zc::StringPtr, uint32_t> stringIndex;
+  zc::HashMap<zc::StringPtr, uint32_t> identIndex;
+  zc::HashMap<zc::StringPtr, uint32_t> bigIntIndex;
+  zc::HashMap<zc::StringPtr, uint32_t> floatIndex;
   NodeId root;
 };
 
@@ -157,46 +162,46 @@ IdentList Tree::appendIdentList(zc::ArrayPtr<const IdentId> ids) {
 
 StringId Tree::appendString(zc::StringPtr value) {
   if (value.size() == 0) { return StringId(); }
-  for (size_t i = 0; i < impl->strings.size(); ++i) {
-    if (impl->strings[i] == value) { return StringId(static_cast<uint32_t>(i + 1)); }
-  }
+  ZC_IF_SOME(found, impl->stringIndex.find(value)) { return StringId(found); }
 
   zc::StringPtr copy = impl->stringArena.copyString(value);
   impl->strings.add(copy);
-  return StringId(static_cast<uint32_t>(impl->strings.size()));
+  uint32_t id = static_cast<uint32_t>(impl->strings.size());
+  impl->stringIndex.insert(copy, id);
+  return StringId(id);
 }
 
 IdentId Tree::appendIdent(zc::StringPtr value) {
   if (value.size() == 0) { return IdentId(); }
-  for (size_t i = 0; i < impl->idents.size(); ++i) {
-    if (impl->idents[i] == value) { return IdentId(static_cast<uint32_t>(i + 1)); }
-  }
+  ZC_IF_SOME(found, impl->identIndex.find(value)) { return IdentId(found); }
 
   zc::StringPtr copy = impl->stringArena.copyString(value);
   impl->idents.add(copy);
-  return IdentId(static_cast<uint32_t>(impl->idents.size()));
+  uint32_t id = static_cast<uint32_t>(impl->idents.size());
+  impl->identIndex.insert(copy, id);
+  return IdentId(id);
 }
 
 BigIntId Tree::appendBigInt(zc::StringPtr value) {
   if (value.size() == 0) { return BigIntId(); }
-  for (size_t i = 0; i < impl->bigInts.size(); ++i) {
-    if (impl->bigInts[i] == value) { return BigIntId(static_cast<uint32_t>(i + 1)); }
-  }
+  ZC_IF_SOME(found, impl->bigIntIndex.find(value)) { return BigIntId(found); }
 
   zc::StringPtr copy = impl->stringArena.copyString(value);
   impl->bigInts.add(copy);
-  return BigIntId(static_cast<uint32_t>(impl->bigInts.size()));
+  uint32_t id = static_cast<uint32_t>(impl->bigInts.size());
+  impl->bigIntIndex.insert(copy, id);
+  return BigIntId(id);
 }
 
 FloatId Tree::appendFloat(zc::StringPtr value) {
   if (value.size() == 0) { return FloatId(); }
-  for (size_t i = 0; i < impl->floats.size(); ++i) {
-    if (impl->floats[i] == value) { return FloatId(static_cast<uint32_t>(i + 1)); }
-  }
+  ZC_IF_SOME(found, impl->floatIndex.find(value)) { return FloatId(found); }
 
   zc::StringPtr copy = impl->stringArena.copyString(value);
   impl->floats.add(copy);
-  return FloatId(static_cast<uint32_t>(impl->floats.size()));
+  uint32_t id = static_cast<uint32_t>(impl->floats.size());
+  impl->floatIndex.insert(copy, id);
+  return FloatId(id);
 }
 
 void Tree::setRoot(NodeId id) {

@@ -29,6 +29,12 @@ if(ZOM_ENABLE_PERFORMANCE_TESTS)
   # add_subdirectory(performance)
 endif()
 
+# Benchmarks - Frontend micro-benchmarks
+add_subdirectory(benchmarks)
+
+# Fuzzing - LibFuzzer targets for lexer and parser
+add_subdirectory(fuzzing)
+
 # Regression Tests - Tests for previously fixed bugs
 add_subdirectory(regression)
 

@@ -1,0 +1,3 @@
+class Foo { let x: i32 fun bar(): unit { return } }
+interface Baz { fun qux(): unit }
+enum Color { Red, Green, Blue }

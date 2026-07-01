@@ -139,3 +139,7 @@ DIAG(IncompatibleDeclarationModifiers, kError,
 DIAG(MultiCharacterSingleQuotedLiteral, kError,
      "Multi-character single-quoted literals are not allowed", 0)
 DIAG(NumericLiteralCannotStartWithUnderscore, kError, "Numeric literals cannot start with '_'", 0)
+
+// --- Warning-level diagnostics ---
+DIAG(LineBreakBeforeAsCast, kWarning,
+     "A line break before an 'as' cast expression may be confusing", 0)

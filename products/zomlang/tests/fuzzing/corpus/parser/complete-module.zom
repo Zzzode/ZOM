@@ -1,0 +1,19 @@
+module sample
+import std.io.println
+
+class Greeter {
+  let name: str
+
+  init(name: str) {
+    this.name = name
+  }
+
+  fun greet(): str {
+    return "Hello, " + name + "!"
+  }
+}
+
+fun main() {
+  let g = Greeter.new("World")
+  println(g.greet())
+}

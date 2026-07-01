@@ -81,12 +81,45 @@ public:
   /// \brief Return true when the cursor is positioned at EOF.
   ZC_NODISCARD bool isAtEnd() const;
 
+  /// \name Split mode
+  /// When active, maximal right-shift tokens (>>, >>>) are exposed as individual
+  /// GreaterThan tokens. This is used in type-argument contexts where closing
+  /// angle brackets must be matched one-for-one.
+  ///@{
+
+  /// \brief Enable right-angle split mode.
+  void enableSplitMode();
+
+  /// \brief Disable right-angle split mode and clear any in-progress split.
+  void disableSplitMode();
+
+  /// \brief Query whether split mode is currently enabled.
+  ZC_NODISCARD bool isSplitModeActive() const;
+
+  ///@}
+
 private:
   zc::ArrayPtr<const lexer::Token> tokens;
   size_t current = 0;
 
+  // Split mode state (mutable because primeSplitState() is called from const methods)
+  bool splitMode_{false};
+  /// Number of virtual > tokens remaining to be consumed from the current
+  /// maximal right-shift token. 0 means we are not mid-split.
+  mutable int splitRemaining_{0};
+  /// The original maximal token kind that is currently being split.
+  mutable ast::SyntaxKind splitOriginalKind_{ast::SyntaxKind::Unknown};
+  /// Cached virtual > token returned by token() while mid-split.
+  mutable lexer::Token splitVirtualToken_;
+
   ZC_NODISCARD size_t eofIndex() const;
   ZC_NODISCARD size_t relativeIndex(size_t offset) const;
+
+  /// Initialize split state for the current token if it is a maximal right-shift.
+  void primeSplitState() const;
+
+  /// Return the number of > characters represented by the given kind.
+  static int rightAngleCount(ast::SyntaxKind kind);
 };
 
 }  // namespace parser
