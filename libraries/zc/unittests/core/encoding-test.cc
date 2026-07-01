@@ -84,7 +84,7 @@ void expectRes(EncodingResult<T> result, byte (&expected)[s], bool errors = fals
 ZC_TEST("encode UTF-8 to UTF-16") {
   expectRes(encodeUtf16(u8"foo"), u"foo");
   expectRes(encodeUtf16(u8"Здравствуйте"), u"Здравствуйте");
-  expectRes(encodeUtf16(u8"中国网络"), u"中国网络");
+  expectRes(encodeUtf16(u8"κόσμος"), u"κόσμος");
   expectRes(encodeUtf16(u8"😺☁☄🐵"), u"😺☁☄🐵");
 }
 
@@ -148,7 +148,7 @@ ZC_TEST("invalid UTF-8 to UTF-16") {
 ZC_TEST("encode UTF-8 to UTF-32") {
   expectRes(encodeUtf32(u8"foo"), U"foo");
   expectRes(encodeUtf32(u8"Здравствуйте"), U"Здравствуйте");
-  expectRes(encodeUtf32(u8"中国网络"), U"中国网络");
+  expectRes(encodeUtf32(u8"κόσμος"), U"κόσμος");
   expectRes(encodeUtf32(u8"😺☁☄🐵"), U"😺☁☄🐵");
 }
 
@@ -193,7 +193,7 @@ ZC_TEST("invalid UTF-8 to UTF-32") {
 ZC_TEST("decode UTF-16 to UTF-8") {
   expectRes(decodeUtf16(u"foo"), u8"foo");
   expectRes(decodeUtf16(u"Здравствуйте"), u8"Здравствуйте");
-  expectRes(decodeUtf16(u"中国网络"), u8"中国网络");
+  expectRes(decodeUtf16(u"κόσμος"), u8"κόσμος");
   expectRes(decodeUtf16(u"😺☁☄🐵"), u8"😺☁☄🐵");
 }
 
@@ -211,7 +211,7 @@ ZC_TEST("invalid UTF-16 to UTF-8") {
 ZC_TEST("decode UTF-32 to UTF-8") {
   expectRes(decodeUtf32(U"foo"), u8"foo");
   expectRes(decodeUtf32(U"Здравствуйте"), u8"Здравствуйте");
-  expectRes(decodeUtf32(U"中国网络"), u8"中国网络");
+  expectRes(decodeUtf32(U"κόσμος"), u8"κόσμος");
   expectRes(decodeUtf32(U"😺☁☄🐵"), u8"😺☁☄🐵");
 }
 
@@ -258,14 +258,14 @@ ZC_TEST("EncodingResult as a Maybe") {
 ZC_TEST("encode to wchar_t") {
   expectRes(encodeWideString(u8"foo"), L"foo");
   expectRes(encodeWideString(u8"Здравствуйте"), L"Здравствуйте");
-  expectRes(encodeWideString(u8"中国网络"), L"中国网络");
+  expectRes(encodeWideString(u8"κόσμος"), L"κόσμος");
   expectRes(encodeWideString(u8"😺☁☄🐵"), L"😺☁☄🐵");
 }
 
 ZC_TEST("decode from wchar_t") {
   expectRes(decodeWideString(L"foo"), u8"foo");
   expectRes(decodeWideString(L"Здравствуйте"), u8"Здравствуйте");
-  expectRes(decodeWideString(L"中国网络"), u8"中国网络");
+  expectRes(decodeWideString(L"κόσμος"), u8"κόσμος");
   expectRes(decodeWideString(L"😺☁☄🐵"), u8"😺☁☄🐵");
 }
 

@@ -164,10 +164,11 @@ enum class SyntaxKind {
   // ================================================================================
 
   // Basic operators
-  Arrow,      // ->
-  Colon,      // :
-  Period,     // .
-  DotDotDot,  // ...
+  Arrow,       // ->
+  Colon,       // :
+  ColonColon,  // ::
+  Period,      // .
+  DotDotDot,   // ...
 
   // Comparison operators
   LessThan,                 // <
@@ -269,9 +270,6 @@ enum class SyntaxKind {
   // Detect and provide better error recovery when we encounter a git merge marker.  This
   // allows us to edit files with git-conflict markers in them in a much more pleasant manner.
   ConflictMarker,
-  // If a file is actually binary, with any luck, we'll get U+FFFD REPLACEMENT CHARACTER
-  // in position zero and can just skip what is surely a doomed parse.
-  NonTextFileMarker,
 
 // ================================================================================
 // AST NODES

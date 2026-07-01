@@ -2,7 +2,7 @@
 
 **Version:** 1.0.0-rc2
 **Status:** Normative
-**Canonical Name (专业全称):** *Attribute-Gated, AST-Level Conditional Compilation with Compile-Time-Decidable Three-Valued Boolean Predicate System and Filesystem-Convention Gate Combinators*
+**Canonical Name:** *Attribute-Gated, AST-Level Conditional Compilation with Compile-Time-Decidable Three-Valued Boolean Predicate System and Filesystem-Convention Gate Combinators*
 **Short Name:** *ZOM Cfg-Gated AST Stripping System* (`cfg-stripping` for tooling)
 **Cross-references:**
   - Chapter 16 (Attributes — Tier-0 `zom::cfg` schema)
@@ -175,7 +175,7 @@ CfgValue            ::=  DOUBLE_STRING_LITERAL
 > rule matches:
 > ```
 > attribute
->   : HASH_LBRACK path=attributePath LPAREN cfgPredicate RPAREN RBRACK
+>   : HASH LBRACK path=attributePath LPAREN cfgPredicate RPAREN RBRACK
 >     { $path.getText().equals("zom::cfg") }?   // semantic predicate
 >   ;
 > ```
@@ -723,7 +723,7 @@ Two semantic predicates are **required** to implement this chapter
 correctly:
 
 1. **P1: `#[zom::cfg(...)]` dispatch.** In the outer `attribute` rule, when
-   the `HASH_LBRACK path LPAREN arg RPAREN RBRACK` form is matched, a
+   the adjacent `HASH LBRACK path LPAREN arg RPAREN RBRACK` form is matched, a
    semantic predicate asserts that
    `$path.getText().equals("zom::cfg")` before delegating the arg-list
    parse to `cfgPredicate` rather than the generic `attrArgList` sub-grammar.
@@ -790,9 +790,9 @@ populated `$ctx` with correct `start` / `stop` / line / column).
 
 ```mermaid
 graph LR
-    Start -->|"DFA prediction (simulator 可见)"| P1[Decision]
+    Start -->|"DFA prediction (simulator visible)"| P1[Decision]
     P1 -->|"T1 T2 ... Tn (terminals)"| Last[Last terminal]
-    Last -->|"ε (simulator 不可见)"| Tail["{ throw PCE } (Tail Action)"]
+    Last -->|"epsilon (simulator hidden)"| Tail["{ throw PCE } (Tail Action)"]
     style Tail fill:#9f9,stroke:#080
 ```
 

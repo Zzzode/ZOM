@@ -478,6 +478,13 @@ ZC_TEST("LexerOperatorTest.ColonOperator") {
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Colon));
     ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
   }
+
+  // Case 3: Qualified path separator '::'
+  {
+    auto tokens = tokenize("::"_zc);
+    ZC_EXPECT(tokens.size() == 2);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::ColonColon));
+  }
 }
 
 ZC_TEST("LexerOperatorTest.SemicolonOperator") {

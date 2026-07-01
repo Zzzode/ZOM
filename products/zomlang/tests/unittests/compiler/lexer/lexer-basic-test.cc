@@ -141,14 +141,14 @@ ZC_TEST("LexerBasicTest.UnicodeEscapeIdentifier") {
 }
 
 ZC_TEST("LexerBasicTest.HashAndShebang") {
-  // Case 1: #! at start of file (Shebang) -> ignored as comment
+  // Case 1: #! at start of file is rejected by the current grammar contract.
   {
-    // "#!/usr/bin/env zom\nlet a"
-    // Should tokenize as: let, a, EOF
-    auto tokens = tokenize("#!/usr/bin/env zom\nlet a"_zc);
+    auto tokens = tokenize("#!"_zc);
     ZC_EXPECT(tokens.size() == 3);
-    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
-    ZC_EXPECT(tokens[1].getValue() == "a");
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Unknown));
+    ZC_EXPECT(tokens[0].getValue() == "#"_zc);
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Exclamation));
+    ZC_EXPECT(tokens[1].getValue() == "!"_zc);
   }
 
   // Case 2: #! not at start of file -> Error + Unknown token
@@ -172,24 +172,55 @@ ZC_TEST("LexerBasicTest.HashAndShebang") {
   }
 }
 
-ZC_TEST("LexerBasicTest.BinaryFileDetection") {
-  // Invalid UTF-8 sequence: 0xFF
-  // Should trigger FileAppearsToBeBinary error and return NonTextFileMarker
-  char invalidBytes[] = {'\xFF', 0};
-  auto tokens = tokenize(zc::StringPtr(invalidBytes, 1));
+ZC_TEST("LexerBasicTest.OffsetSnapshotRestore") {
+  auto& sourceManager = getSourceManager();
+  auto langOpts = basic::LangOptions();
+  auto bufferId = sourceManager.addMemBufferCopy("alpha beta"_zc.asBytes(), "snapshot.zom");
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  basic::StringPool stringPool;
+  Lexer lexer(sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  ZC_EXPECT(tokens.size() == 2);
-  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::NonTextFileMarker));
-  ZC_EXPECT(tokens[1].is(ast::SyntaxKind::EndOfFile));
+  Token first;
+  lexer.lex(first);
+  ZC_EXPECT(first.is(ast::SyntaxKind::Identifier));
+  ZC_EXPECT(first.getValue() == "alpha"_zc);
+
+  LexerState afterFirst = lexer.getCurrentState();
+  ZC_EXPECT(afterFirst.curOffset == 5);
+  ZC_EXPECT(afterFirst.tokenStartOffset == 0);
+
+  Token second;
+  lexer.lex(second);
+  ZC_EXPECT(second.is(ast::SyntaxKind::Identifier));
+  ZC_EXPECT(second.getValue() == "beta"_zc);
+
+  lexer.restoreState(afterFirst);
+
+  Token replayed;
+  lexer.lex(replayed);
+  ZC_EXPECT(replayed.is(ast::SyntaxKind::Identifier));
+  ZC_EXPECT(replayed.getValue() == "beta"_zc);
+  ZC_EXPECT(lexer.getCurrentState().curOffset == 10);
+}
+
+ZC_TEST("LexerBasicTest.InvalidUtf8RecoversLocally") {
+  char invalidBytes[] = {'\xFF', ' ', 'a', 0};
+  auto tokens = tokenize(zc::StringPtr(invalidBytes, 3));
+
+  ZC_EXPECT(tokens.size() == 3);
+  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Unknown));
+  ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
+  ZC_EXPECT(tokens[1].getValue() == "a"_zc);
+  ZC_EXPECT(tokens[2].is(ast::SyntaxKind::EndOfFile));
 }
 
 ZC_TEST("LexerBasicTest.UnicodeIdentifiersDefaultCase") {
-  // "你好" - valid unicode identifier
+  // Latin letters with diacritics are valid Unicode identifiers.
   {
-    auto tokens = tokenize("你好"_zc);
+    auto tokens = tokenize("éclair"_zc);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
-    ZC_EXPECT(tokens[0].getValue() == "你好");
+    ZC_EXPECT(tokens[0].getValue() == "éclair");
   }
 }
 

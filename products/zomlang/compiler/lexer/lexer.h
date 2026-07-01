@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <cstddef>
+
 #include "zc/core/vector.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/lexer/token.h"
@@ -51,22 +53,20 @@ struct CommentDirective {
   CommentDirectiveKind kind;
 };
 
+/// \brief Restorable lexer snapshot expressed as source-buffer byte offsets.
 struct LexerState {
-  // Core position pointers
-  const zc::byte* curPtr;         // Current position (end position of text of current token)
-  const zc::byte* fullStartPtr;   // Start position of whitespace before current token
-  const zc::byte* tokenStartPtr;  // Start position of text of current token
+  size_t curOffset;
+  size_t fullStartOffset;
+  size_t tokenStartOffset;
 
   TokenFlags tokenFlags;
-  // Token state
-  Token token;  // Current token
+  Token token;
 
-  explicit LexerState(const zc::byte* curPtr = nullptr, const zc::byte* fullStartPtr = nullptr,
-                      const zc::byte* tokenStartPtr = nullptr, const Token& token = Token(),
-                      TokenFlags tokenFlags = TokenFlags::None)
-      : curPtr(curPtr),
-        fullStartPtr(fullStartPtr),
-        tokenStartPtr(tokenStartPtr),
+  explicit LexerState(size_t curOffset = 0, size_t fullStartOffset = 0, size_t tokenStartOffset = 0,
+                      const Token& token = Token(), TokenFlags tokenFlags = TokenFlags::None)
+      : curOffset(curOffset),
+        fullStartOffset(fullStartOffset),
+        tokenStartOffset(tokenStartOffset),
         tokenFlags(tokenFlags),
         token(token) {}
 };
@@ -90,10 +90,9 @@ public:
   ZC_NODISCARD ast::SyntaxKind reScanGreaterToken();
   ZC_NODISCARD ast::SyntaxKind reScanTemplateToken();
 
-  /// \brief Restore the lexer state.
+  /// \brief Restore an offset-based lexer state.
   /// \param s The state to restore.
-  /// \param enableDiagnostics Whether to enable diagnostics.
-  void restoreState(LexerState s, bool enableDiagnostics = false);
+  void restoreState(LexerState s);
 
   /// \brief Get the current lexer state.
   /// \return The current lexer state.

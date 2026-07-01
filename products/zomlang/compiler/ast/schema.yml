@@ -248,7 +248,7 @@ variants:
     doc:  "extern 'ABI' { extern fun ... ; extern var ... }"
     fields:
       - {name: abi, type: Abi, default: Cdecl}
-      - {name: items, type: NodeList, cast: ExternDecl}
+      - {name: items, type: NodeList}
 
   - id: 0x013
     name: FFIParameterDecl
@@ -807,9 +807,9 @@ variants:
 
   - id: 0x094
     name: CastExpression
-    doc:  "expr as/as?/as! TypeExpr cast expression"
+    doc:  "expr as/as? TypeExpr cast expression"
     fields:
-      - {name: mode, type: uint8, enum: [As, AsQuestion, AsBang]}
+      - {name: mode, type: uint8, enum: [As, AsQuestion]}
       - {name: expr, type: NodeId, cast: Expression}
       - {name: ty, type: NodeId, cast: TypeExpr}
 

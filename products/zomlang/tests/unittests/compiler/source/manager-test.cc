@@ -198,9 +198,7 @@ ZC_TEST("SourceManager: Special Characters") {
   SourceManager manager;
 
   // Includes more special characters: Unicode, Tab, Newline, Space, Null character, CRLF
-  zc::StringPtr content =
-      "Unicode: 你好世界\tTab\nSpace  \0Null\r\n"_zc;  // Keeping Chinese characters as test data
-                                                       // test data
+  zc::StringPtr content = "Unicode: κόσμος\tTab\nSpace  \0Null\r\n"_zc;
   auto bufferId = manager.addMemBufferCopy(content.asBytes(), "special.txt");
 
   auto text = manager.getEntireTextForBuffer(bufferId);

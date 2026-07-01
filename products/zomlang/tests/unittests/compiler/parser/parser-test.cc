@@ -212,7 +212,7 @@ ZC_TEST("ParserTest.BinaryExpression") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("1 + 2 * 3").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("1 + 2 * 3;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -282,7 +282,7 @@ ZC_TEST("ParserTest.ArrayLiteral") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("[1, 2, 3]").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("[1, 2, 3];").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -295,7 +295,8 @@ ZC_TEST("ParserTest.ObjectLiteral") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("{x: 1, y: 2}").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("let obj = {x: 1, y: 2};").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -342,7 +343,7 @@ ZC_TEST("ParserTest.NestedBinaryExpression") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("(1 + 2) * (3 - 4) / 5").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("(1 + 2) * (3 - 4) / 5;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -355,7 +356,7 @@ ZC_TEST("ParserTest.ConditionalExpression") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("x > 0").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("x > 0;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -368,7 +369,7 @@ ZC_TEST("ParserTest.FunctionCall") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("foo(1, 2, 3)").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("foo(1, 2, 3);").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -444,7 +445,8 @@ ZC_TEST("ParserTest.StringLiteral") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("\"hello world\"").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("\"hello world\";").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -459,7 +461,7 @@ ZC_TEST("ParserTest.NumberLiteral") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("42").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("42;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -472,7 +474,7 @@ ZC_TEST("ParserTest.BooleanLiteral") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("true").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("true;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -487,7 +489,7 @@ ZC_TEST("ParserTest.Identifier") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("myVariable").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("myVariable;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -500,7 +502,7 @@ ZC_TEST("ParserTest.ParenthesizedExpression") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("(42)").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("(42);").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -671,7 +673,7 @@ ZC_TEST("ParserTest.LookAheadBeyondEOF") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("x").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("x;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   // Test normal parsing beyond EOF
@@ -839,10 +841,10 @@ ZC_TEST("ParserTest.ParseModuleSyntax") {
 
   auto bufferId = sourceManager->addMemBufferCopy(
       zc::str("module graphics;\n"
-              "import math.geometry as geo;\n"
-              "import math.geometry.{Point as GeoPoint, distance};\n"
+              "import math::geometry as geo;\n"
+              "import math::geometry::{Point as GeoPoint, distance};\n"
               "export {GeoPoint, distance as calcDistance};\n"
-              "export math.geometry.{Point};\n")
+              "export math::geometry::{Point};\n")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
@@ -867,7 +869,7 @@ ZC_TEST("ParserTest.ParseModuleSyntax") {
     ZC_EXPECT(topLevelStatementKind(root, 2) == ast::SyntaxKind::ExportDeclaration);
     ZC_EXPECT(topLevelStatementKind(root, 3) == ast::SyntaxKind::ExportDeclaration);
   }
-  else { ZC_EXPECT(false, "Should parse v1 module syntax"); }
+  else { ZC_EXPECT(false, "Should parse module syntax"); }
 }
 
 ZC_TEST("ParserTest.ParseDeclarationSiteExport") {
@@ -895,7 +897,7 @@ ZC_TEST("ParserTest.ModuleDeclarationMustBeFirst") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("import math.geometry;\n"
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("import math::geometry;\n"
                                                           "module graphics;\n"
                                                           "let x = 1;\n")
                                                       .asBytes(),
@@ -1039,7 +1041,7 @@ ZC_TEST("ParserTest.ParseAliasDeclaration") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("type UserId = i64;").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("alias UserId = i64;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1067,8 +1069,8 @@ ZC_TEST("ParserTest.ParseTypeQueryInTypeAlias") {
   basic::StringPool stringPool;
 
   // Test simple identifier in type query within type alias
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("type MyType = typeof myVar;").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("alias MyType = typeof myVar;").asBytes(),
+                                                  "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1083,7 +1085,7 @@ ZC_TEST("ParserTest.ParseTypeQueryWithPropertyAccessInTypeAlias") {
 
   // Test property access in type query within type alias
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("type MyType = typeof MyClass.property;").asBytes(), "test.zom");
+      zc::str("alias MyType = typeof MyClass.property;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1098,7 +1100,7 @@ ZC_TEST("ParserTest.ParseTypeQueryWithChainedPropertyAccess") {
 
   // Test chained property access in type query
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("type MyType = typeof MyClass.nested.property;").asBytes(), "test.zom");
+      zc::str("alias MyType = typeof MyClass.nested.property;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1852,7 +1854,7 @@ ZC_TEST("ParserTest.ParseNamedImportsWithAliases") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("import math.geometry.{Point as GeoPoint, distance};").asBytes(), "test.zom");
+      zc::str("import math::geometry::{Point as GeoPoint, distance};").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2302,23 +2304,19 @@ ZC_TEST("ParserTest.ParseOptionalCastExpression") {
   else { ZC_EXPECT(false, "Should parse optional cast expression"); }
 }
 
-ZC_TEST("ParserTest.ParseForceCastExpression") {
+ZC_TEST("ParserTest.ParseForceCastExpressionReportsError") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("let x = value as! f64;").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("let x = value as! i32;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  ZC_IF_SOME(root, parser.parse()) {
-    const auto statements = topLevelStatements(root);
-    ZC_EXPECT(statements.size() == 1, "Should contain one statement");
-    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::LetStmt,
-              "Forced cast expression should stay inside a variable statement");
-  }
-  else { ZC_EXPECT(false, "Should parse force cast expression"); }
+  auto result = parser.parse();
+  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported force cast syntax");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Force cast syntax is not supported");
 }
 
 ZC_TEST("ParserTest.ParseAsKeywordAfterLineBreakReportsErrorAndRecovers") {
@@ -2707,7 +2705,7 @@ ZC_TEST("ParserTest.ParseTypeParameterWithConstraint") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo<T extends i32>(x: T) -> T { return x; }").asBytes(), "test.zom");
+      zc::str("fun foo<T: i32>(x: T) -> T { return x; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2822,7 +2820,7 @@ ZC_TEST("ParserTest.ParseFunctionType") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("type Fn = (i32) -> str;").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("alias Fn = (i32) -> str;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3409,7 +3407,7 @@ ZC_TEST("ParserTest.ParseTypeAliasDeclaration") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("type Callback = (i32) -> str;").asBytes(), "test.zom");
+      zc::str("alias Callback = (i32) -> str;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);

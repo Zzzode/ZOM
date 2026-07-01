@@ -236,7 +236,7 @@ let isFalse: bool = false;
 ### String Literals
 
 String literals use double quotes. Single quotes are reserved for character
-literals and the empty single-quoted literal.
+literals. Empty or multi-scalar single-quoted forms are lexical errors.
 
 ```zom
 "Hello, World!"     // Double-quoted string
@@ -300,6 +300,7 @@ Character literals represent single Unicode characters:
 ,           Comma (separator)
 ;           Semicolon (statement terminator)
 :           Colon (type annotation, label)
+::          Qualified path separator
 ?           Question mark (optional, conditional)
 ...         Ellipsis (spread, rest)
 ```
@@ -378,7 +379,7 @@ Character literals represent single Unicode characters:
 ??          Null coalescing
 ?!          Error propagation
 !!          Force unwrap
-?:          Error default (parsed as '?' followed by ':')
+?:          Error default (single token)
 ->          Arrow (function return type)
 =>          Rocket (match arms)
 ```

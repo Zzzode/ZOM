@@ -1,44 +1,35 @@
 /*
- * ZomLexer.g4 — ZOM 编程语言词法规范（可执行的 EBNF）
+ * ZomLexer.g4 - executable lexer oracle for ZOM.
  *
- * ⚠️ 真理来源（严格对齐，不要臆测）：
- *   1. docs/design/syntax-ebnf.md   (最高优先级，§3 Lexical Conventions)
+ * Source of truth:
+ *   1. docs/spec/chapters/02-lexical-structure.md
  *   2. docs/spec/chapters/17-grammar-reference.md
- *   3. docs/spec/chapters/02-lexical-structure.md
+ *   3. RFC 0003 while the lexer architecture is under review
  *
- * 🔗 与本项目实现的关系：
- *   本文件是"官方的、可运行的语法参考表达"；products/zomlang/compiler/lexer/
- *   下的手写 C++ lexer 需要与其对齐。出现冲突以本文件 + 上述 spec 为准。
+ * This grammar is derived from the lexical chapter and the compiler token
+ * inventory. The hand-written C++ lexer is the compiler lexer; this file is an
+ * oracle for conformance checks and must not define unsupported tokens.
  *
- * 🚀 使用：
+ * Usage:
  *   antlr4 ZomLexer.g4 ZomParser.g4 -visitor
  *   javac -cp $(antlr4 -cp) Zom*.java
  *   echo 'fun id() -> i32 { return 42; }' | grun Zom tokens
  *
- * ANTLR 版本要求：4.13+（支持 \p{ID_Start} / \p{ID_Continue} Unicode 属性转义）
+ * ANTLR 4.13+ is required for Unicode property escapes.
  */
 lexer grammar ZomLexer;
 
-// ANTLR 建议：lexer 规则按最长匹配优先，关键字必须在 Identifier 之前声明
+// Longest-match rules come before shorter rules. Keywords precede IDENTIFIER.
 channels {
     WHITESPACE,
     COMMENTS
 }
 
-// CHAR_LITERAL 是虚拟 token。真正的词法匹配在下面的 SINGLE_STRING_LITERAL
-// 规则 action 中通过 setType(CHAR_LITERAL) 动态分派（内容恰好 1 个 Unicode
-// scalar 时）。通过 tokens {} 块向 ANTLR 注册该 token 名，避免写占位 lexer
-// 规则产生 token 重叠 warning。
-tokens {
-    CHAR_LITERAL
-}
-
 options {
-    // 保持默认 SLL(*)，不主动降 ALL，除非产生 SLL 决策冲突
+    // Keep the default lexer prediction behavior.
 }
 
 // Java helper for CHAR_LITERAL semantic predicate.
-// （ANTLR4 的 lexer action 可以访问 token 文本；我们内联一个计数函数）
 @lexer::members {
     /**
      * Count Unicode scalar values in a string. Escapes like '\n' count as 1;
@@ -105,12 +96,12 @@ options {
 
 
 // ============================================================================
-// §3.2  Format-control Characters（格式控制字符）
-//      仅 ZWNJ/ZWJ 允许出现在标识符内部；ZWNBSP 在除文件开头外被视为空白
-//      （见 §3.3 Whitespace）
+// §3.2 Format-control characters.
+// ZWNJ and ZWJ are allowed only inside identifiers. ZWNBSP is whitespace except
+// at byte offset zero, where the compiler lexer treats it as a BOM.
 // ============================================================================
-// 作为独立 token 产生，以便在 IdentifierPart 分支中使用；非标识符位置出现
-// 会被 parser 拒绝——不是词法错误而是语法错误。
+// These tokens exist so IdentifierPart can refer to them. Outside identifier
+// position, the parser rejects them as syntax errors.
 ZWNJ   : '\u200C';
 ZWJ    : '\u200D';
 
@@ -122,12 +113,12 @@ ZWJ    : '\u200D';
 //   LineTerminator: LF | CR | LS | PS
 //   LineTerminatorSeq = LF | CRLF | CR | LS | PS
 //
-//   统一合并进 WS 通道（独立 WHITESPACE channel，不进默认 token stream）
+//   Whitespace is emitted on the WHITESPACE channel.
 // ============================================================================
 WS
     : (
           [\u0009\u000B\u000C\u0020\u00A0\u1680\u202F\u205F\u3000\uFEFF]
-        // Unicode general category Zs 中 2000..200A
+        // Unicode general category Zs, U+2000 through U+200A.
         | ' '..' '
         // LineTerminator
         | [\r\n\u2028\u2029]
@@ -143,8 +134,8 @@ WS
 //
 //   MultiLineCommentChar = ~( '*' | '/' ) | '*' ~'/' | '/' ~'*'
 //
-//   注：MultiLineComment 不嵌套（原文长注释明确标注 NOT nestable）。
-//   非递归实现：使用非贪婪 '/*' .*? '*/'（在非嵌套情形下等价）。
+//   Multi-line comments are not nestable.
+//   Non-recursive implementation: non-greedy '/*' .*? '*/'.
 // ============================================================================
 SINGLE_LINE_COMMENT
     : '//' ~['\r\n\u2028\u2029]*
@@ -157,8 +148,7 @@ MULTI_LINE_COMMENT
     ;
 
 // ============================================================================
-// §3.6.2  Internal fragments（数字 / 十六进制 / 转义的内部组成）
-//        全部加 fragment 前缀，避免 leak 到默认 token stream。
+// §3.6.2 Internal fragments for digits, hex digits, and escapes.
 // ============================================================================
 fragment NUM_SEP            : '_';
 fragment DECIMAL_DIGIT      : [0-9];
@@ -169,11 +159,12 @@ fragment HEX_DIGIT          : [0-9a-fA-F];
 fragment EXPONENT_INDICATOR : [eE];
 fragment SIGN               : '+' | '-';
 
-fragment DECIMAL_DIGITS         : DECIMAL_DIGIT (NUM_SEP* DECIMAL_DIGIT)* NUM_SEP*;
-fragment NON_ZERO_DECIMAL_DIGITS: NON_ZERO_DIGIT (NUM_SEP* DECIMAL_DIGIT)* NUM_SEP*;
-fragment BINARY_DIGITS          : BINARY_DIGIT (NUM_SEP* BINARY_DIGIT)* NUM_SEP*;
-fragment OCTAL_DIGITS           : OCTAL_DIGIT  (NUM_SEP* OCTAL_DIGIT)* NUM_SEP*;
-fragment HEX_DIGITS             : HEX_DIGIT    (NUM_SEP* HEX_DIGIT)* NUM_SEP*;
+fragment DECIMAL_DIGITS         : DECIMAL_DIGIT (NUM_SEP? DECIMAL_DIGIT)*;
+fragment NON_ZERO_DECIMAL_DIGITS: NON_ZERO_DIGIT (NUM_SEP? DECIMAL_DIGIT)*;
+fragment BINARY_DIGITS          : BINARY_DIGIT (NUM_SEP? BINARY_DIGIT)*;
+fragment OCTAL_DIGITS           : OCTAL_DIGIT  (NUM_SEP? OCTAL_DIGIT)*;
+fragment HEX_DIGITS             : HEX_DIGIT+;
+fragment HEX_LITERAL_DIGITS     : HEX_DIGIT (NUM_SEP? HEX_DIGIT)*;
 
 fragment HEX_4_DIGITS       : HEX_DIGIT HEX_DIGIT HEX_DIGIT HEX_DIGIT;
 fragment HEX_ESCAPE         : 'x' HEX_DIGIT HEX_DIGIT;
@@ -183,24 +174,22 @@ fragment UNICODE_ESCAPE
     ;
 
 // ----------------------------------------------------------------------------
-// §3.6.2  Numeric Literals（lexer 层完整产出一个 token，parser 不再拼装）
+// §3.6.2 Numeric literals. The lexer emits one complete token.
 // ----------------------------------------------------------------------------
 BIGINT_LITERAL
-    : // §3.6.2 BigIntLiteral  ::= DecimalDigits 'n'
-      // 数字分隔符不能出现在最前或最后（lexer 由 DecimalDigits 保证末尾是数字，
-      // 再加上最后的 'n'——分隔符永远不会在末尾）。
+    : // §3.6.2 BigIntLiteral ::= DecimalDigits 'n'
+      // Separators cannot be first or last.
       ( '0' | NON_ZERO_DECIMAL_DIGITS ) 'n'
     ;
 
 DECIMAL_LITERAL
-    : // §3.6.2 DecimalLiteral（3 种互斥形式）
-      // 形式 A:  . DecimalDigits ExponentPart?
-      // 形式 B:  DecimalIntegerLiteral '.' DecimalDigits? ExponentPart?
-      // 形式 C:  DecimalIntegerLiteral ExponentPart?
+    : // §3.6.2 DecimalLiteral, with three mutually exclusive forms.
+      // A: . DecimalDigits ExponentPart?
+      // B: DecimalIntegerLiteral '.' DecimalDigits? ExponentPart?
+      // C: DecimalIntegerLiteral ExponentPart?
       //
       // DecimalIntegerLiteral = '0' | NON_ZERO_DECIMAL_DIGITS
-      // （注意 0 是独立情形，不能出现"前导非 0 数字之后紧跟 0 开头的无分隔分支"——
-      //  ANTLR 会按最长匹配处理，本规则的顺序表达了 C/B/A 的尝试顺序）
+      // ANTLR longest-match behavior handles the mutually exclusive order.
       (   '0'
             ( '.' DECIMAL_DIGITS? (EXPONENT_INDICATOR SIGN? DECIMAL_DIGITS)? )?
             ( EXPONENT_INDICATOR SIGN? DECIMAL_DIGITS )?
@@ -211,7 +200,7 @@ DECIMAL_LITERAL
       )
       {
         // §3.6.2 NUM_SEP MUST NOT appear first or last
-        // （本规则在结构上已避免 _ 在前，但显式防御非法输入）
+        // Structural guard plus explicit defensive check.
         String t = getText();
         if (t.startsWith("_")) {
             throw new org.antlr.v4.runtime.misc.ParseCancellationException(
@@ -229,13 +218,13 @@ OCTAL_LITERAL
     ;
 
 HEX_LITERAL
-    : '0' [xX] HEX_DIGITS
+    : '0' [xX] HEX_LITERAL_DIGITS
     ;
 
 // ----------------------------------------------------------------------------
-// §3.6.3 / §3.6.4  String and Character Literals（lexer 层完整 token 化）
+// §3.6.3 / §3.6.4 String and character literals.
 //
-//   §3.6.3  StringLiteral  双引号 / 单引号 — 内容允许 LineTerminator（多行字符串）
+//   §3.6.3 StringLiteral: double-quoted string.
 //   §3.6.4  CharacterLiteral   MUST contain exactly one Unicode scalar value
 // ----------------------------------------------------------------------------
 fragment CHARACTER_ESCAPE
@@ -259,7 +248,7 @@ DOUBLE_STRING_LITERAL
       '"'
       {
           validateUnicodeEscapes(getText());
-          // A3-REJECT: 字符串字面量禁止未转义行终止符（裸 \n \r LS PS）
+          // A3-REJECT: string literals cannot contain unescaped line terminators.
           String t = getText();
           for (int i = 0; i < t.length(); i++) {
               char c = t.charAt(i);
@@ -271,17 +260,11 @@ DOUBLE_STRING_LITERAL
       }
     ;
 
-// §3.6.3 / §3.6.4  Single-quoted literals (char or short string)
+// §3.6.4 Single-quoted character literals.
 //
-//   合并为一条 lexer 规则，用 action 按 Unicode scalar 数动态分派 token 类型：
-//     scalars == 0 → SINGLE_STRING_LITERAL（空串 ''）
-//     scalars == 1 → CHAR_LITERAL
-//     scalars >= 2 → SINGLE_STRING_LITERAL
-//
-//   这样避免了原来 CHAR_LITERAL 在 SINGLE_STRING_LITERAL 之后声明，
-//   导致 'ab' 之类多字符文本被误匹配为合法字符串、永远到不了 CHAR 的
-//   "exactly 1 scalar" 谓词的歧义（ANTLR 选第一条能匹配的规则）。
-SINGLE_STRING_LITERAL
+//   A valid single-quoted literal contains exactly one Unicode scalar after
+//   escape processing. Empty and multi-scalar forms are lexer errors.
+CHAR_LITERAL
     : '\''
       (
           ~['\\\r\n  ]
@@ -291,7 +274,7 @@ SINGLE_STRING_LITERAL
       {
           validateUnicodeEscapes(getText());
           String raw = getText();
-          // A3-REJECT: 禁止未转义行终止（对称双引号）
+          // A3-REJECT: line terminators must be escaped.
           for (int i = 0; i < raw.length(); i++) {
               char c = raw.charAt(i);
               if (c == '\r' || c == '\n' || c == '\u2028' || c == '\u2029') {
@@ -301,24 +284,14 @@ SINGLE_STRING_LITERAL
           }
           String content = raw.substring(1, raw.length() - 1);
           int scalars = countUnicodeScalars(content);
-          if (scalars == 1) {
-              setType(CHAR_LITERAL);
-          } else if (scalars == 0) {
-              setType(SINGLE_STRING_LITERAL);
-          } else {
-              // A1-REJECT: 单引号字面量必须恰好 1 个 Unicode scalar
+          if (scalars != 1) {
+              // A1-REJECT: exactly one Unicode scalar is required.
               throw new org.antlr.v4.runtime.misc.ParseCancellationException(
                   "single-quoted literal must contain exactly one Unicode scalar value, got "
                   + scalars + ": " + raw);
           }
       }
     ;
-
-// 占位 token 类型声明（见顶部 tokens { CHAR_LITERAL } 块）:
-// CHAR_LITERAL 永远不会被 lexer 直接匹配。上面的 SINGLE_STRING_LITERAL 规则
-// 在检测到内容正好 1 个 Unicode scalar 时会 setType(CHAR_LITERAL)，
-// 从而产出此 token。parser 层的 literal 规则可以直接引用 CHAR_LITERAL。
-
 
 // ============================================================================
 // §3.6.5  Template Literals
@@ -331,7 +304,7 @@ SINGLE_STRING_LITERAL
 //   TemplateChar    = ~ [`\$]
 //   TemplateEscape  =  \ SourceCharacter
 // ============================================================================
-TEMPLATE_ESCAPE : '\\' . ;  // 辅助 fragment
+TEMPLATE_ESCAPE : '\\' . ;
 
 NO_SUBSTITUTION_TEMPLATE_LITERAL
     : '`' ( ~[`\\$] | '\\' . | '$' ~[{] )* '`'
@@ -350,19 +323,9 @@ TEMPLATE_TAIL
     ;
 
 // ============================================================================
-// §3.7  Operators / Punctuators（严格按 Punctuator EBNF 顺序——最长匹配优先）
+// §3.7 Operators and punctuators. Longest spellings precede shorter ones.
 // ============================================================================
-// -- 复合 attribute 操作符 ---------------------------------------------------
-//    §3.7 长注释： #[ 是 compound token with no intervening whitespace
-HASH_LBRACK : '#[';
-
-// -- 多字符运算符（按长度从长到短，保证最长匹配） ----------------------------
 ELLIPSIS       : '...';
-DOTDOTLT       : '..<' { /* §3.7 未出现，语法-ebnf 未定义，作保留词法，
-                           出现时 parser 报 ReservedSyntax。若有更短规则
-                           冲突则撤回。ANTLR 先试最长的 ELLIPSIS (..? 的 . 冲突)。*/ };
-DOTDOT         : '..'  { /* 同上 */ };
-COLONCOLON     : '::';
 
 LSHIFT_ASSIGN  : '<<=';
 RSHIFT_ASSIGN  : '>>=';
@@ -395,10 +358,10 @@ POW            : '**';
 AND            : '&&';
 OR             : '||';
 NULL_COALESCE  : '??';
-ERROR_DEFAULT  : '?:';   // §3.7 注：lexer 层面 ? 和 : 紧邻产生单个 ?: token
+ERROR_DEFAULT  : '?:';
 OPTIONAL_CHAIN : '?.';
-ERROR_PROPAGATE: '?!';   // §4.6 PostfixExpr，precedence 3
-FORCE_UNWRAP   : '!!';   // §4.6 PostfixExpr，precedence 3
+ERROR_PROPAGATE: '?!';
+FORCE_UNWRAP   : '!!';
 BIT_AND        : '&';
 BIT_OR         : '|';
 BIT_XOR        : '^';
@@ -413,10 +376,12 @@ LT             : '<';
 GT             : '>';
 ASSIGN         : '=';
 QUESTION       : '?';
+COLONCOLON     : '::';
 COLON          : ':';
 SEMICOLON      : ';';
 COMMA          : ',';
 PERIOD         : '.';
+HASH           : '#';
 LPAREN         : '(';
 RPAREN         : ')';
 LBRACK         : '[';
@@ -425,13 +390,12 @@ LBRACE         : '{';
 RBRACE         : '}';
 ROCKET         : '=>';
 ARROW          : '->';
-AT             : '@';   // §3.7 表中列作 Punctuator
+AT             : '@';
 
 // ============================================================================
-// §6.1  Implemented Keywords（按 groups 分类，完整列表）
+// §6.1 Implemented keywords, grouped by language area.
 //
-// 规则：放在 Identifier 之前，ANTLR 最长匹配会自动在标识符候选中
-//       先命中这些 keyword。
+// Keywords precede IDENTIFIER so they win over identifier matching.
 // ============================================================================
 // -- Declaration -------------------------------------------------------------
 CLASS    : 'class';
@@ -478,7 +442,7 @@ F32  : 'f32';
 F64  : 'f64';
 BOOL : 'bool';
 STR  : 'str';
-CHAR : 'char';   // §6.1 Type + §3.6.4 char literal 对应宿主类型
+CHAR : 'char';   // Host type for character literals.
 NULL : 'null';
 UNIT : 'unit';
 NEVER: 'never';
@@ -508,25 +472,20 @@ RAISES   : 'raises';
 MODULE : 'module';
 IMPORT : 'import';
 EXPORT : 'export';
-// AS (已在 Operator 组声明)
+// AS is declared in the operator keyword group.
 
 // -- Concurrency -------------------------------------------------------------
 SUSPEND : 'suspend';
 SPAWN   : 'spawn';
 
-// -- Marker Type Names（§6.3 Marker 软关键字，首字母大写）----------------------
-//   注：虽然语法层面 Identifier 形态，但在 lexer 层作硬关键字可以：
-//   a. 避免 parser 层频繁用谓词判断文本
-//   b. 用户自定义同名类型会 shadow（lint ZOM6001）——语义层做最终检查
-//   为避免与用户普通标识符冲突（首字母大写也合法），以下四项**不作为**硬 keyword，
-//   保持为普通 Identifier；parser 层用字符串匹配处理。
-//   （因此此处不声明它们）
+// -- Marker Type Names --------------------------------------------------------
+// Marker names remain ordinary identifiers. The parser and semantic phases
+// recognize marker positions without reserving capitalized user identifiers.
 
 // ============================================================================
-// §6.2  Reserved Keywords（当前 reject，带各自的 ZOM 诊断码）
+// §6.2 Reserved keywords rejected by targeted diagnostics.
 //
-// 语法层产生真实 token（便于 parser 匹配到准确位置报出 ZOM500x）；
-// 若 parser 中匹配到则抛出语义谓词。
+// Dedicated tokens let the parser report precise ZOM500x diagnostics.
 // ============================================================================
 THROW      : 'throw';       // ZOM5001
 TRY        : 'try';         // ZOM5001
@@ -541,16 +500,15 @@ YIELD      : 'yield';       // ZOM5005
 GENERATOR  : 'generator';   // ZOM5005
 NAMESPACE  : 'namespace';   // ZOM5006
 PACKAGE    : 'package';     // ZOM5006
-TYPE       : 'type';        // ZOM5007（ObjectType 内 associated type 合法）
+TYPE       : 'type';        // ZOM5007, except where object/interface syntax admits it.
 DELETE     : 'delete';      // ZOM5008
 INSTANCEOF : 'instanceof';  // ZOM5008
 OF         : 'of';          // ZOM5008
 WITH       : 'with';        // ZOM5008
 
 // ============================================================================
-// Literal-like hard keywords（在 IDENTIFIER 前声明，避免被标识符吞掉）
-//   TRUE / FALSE 是布尔字面量硬关键字
-//   UNDERSCORE 是 _ 字面量，用作 wildcard pattern 与某些标识符起始位的区分
+// Literal-like hard keywords.
+// TRUE and FALSE are boolean literals. UNDERSCORE is the wildcard token.
 //   NOTE: 'implements' is NOT a keyword (per Ch.06 / 17-gr truth). Interface
 //   implementations use standalone 'impl Interface for Type { }' form.
 //   'implements' remains a plain IDENTIFIER so users get ordinary parser
@@ -562,15 +520,14 @@ UNDERSCORE : '_';
 IMPLEMENTS : 'implements';
 
 // ============================================================================
-// §3.5 + §3.8  Identifier（放在最后；keyword 规则先匹配）
+// §3.5 + §3.8 Identifier. This rule comes after keywords.
 //
 //   IdentifierName   ::= IdentifierStart IdentifierPart*
 //   IdentifierStart  ::= \p{ID_Start} | '$' | '_' | '\' UnicodeEscapeSeq
 //   IdentifierPart   ::= \p{ID_Continue} | '$' | ZWNJ | ZWJ | '\' UnicodeEscapeSeq
-//   Identifier       ::= IdentifierName （语义层进一步拒绝 ReservedWord）
+//   Identifier       ::= IdentifierName
 //
-//   Identifier 作为一条 lexer 规则；parser 会在需要时再对其做 "not Reserved"
-//   的语义谓词检查。
+//   Reserved-word rejection is handled by parser predicates where needed.
 // ============================================================================
 IDENTIFIER
     : (
@@ -586,11 +543,9 @@ IDENTIFIER
       )*
       {
           validateUnicodeEscapes(getText());
-          // A2-REJECT: `_` + \u81F3\u5C11 1 \u4F4D\u6570\u5B57 + \u5176\u5B83\u6570\u5B57/\u4E0B\u5212\u7EBF/n \u7ED3\u5C3E\uFF08\u5982 _123\u3001_0\u3001_9n\u3001
-          // _1_000\uFF09\u2014\u2014 \u8FD9\u662F"\u975E\u6CD5\u6570\u5B57\u5B57\u9762\u91CF\u4F2A\u88C5\u6210\u6807\u8BC6\u7B26"\uFF0CDECIMAL_LITERAL \u6839\u672C
-          // \u5339\u914D\u4E0D\u5230 _ \u5F00\u5934\uFF0C\u5FC5\u987B\u515C\u5E95\u62D2\u7EDD\u3002
-          // \u5141\u8BB8\u7EAF\u4E0B\u5212\u7EBF `_` / `__` / `___...`\uFF08\u533F\u540D\u7ED1\u5B9A\u3001\u5FFD\u7565\u6807\u8BB0\uFF09\uFF0C\u4E5F\u5141\u8BB8 `_foo`
-          // \uFF08\u666E\u901A\u6807\u8BC6\u7B26\uFF09\u3002\u53EA\u62D2\u7EDD\u300C\u9996\u5B57\u7B26\u540E\u51FA\u73B0\u8FC7\u6570\u5B57\uFF0C\u4E14\u5168\u7A0B\u6570\u5B57/_/\u672B\u5C3E n\u300D\u3002
+          // A2-REJECT: reject identifiers that are numeric literals with a
+          // leading separator, such as _123, _0, _9n, and _1_000. Pure
+          // underscore identifiers and normal identifiers like _foo remain valid.
           String t = getText();
           if (t.length() >= 2 && t.charAt(0) == '_') {
               boolean seenDigit = false;
@@ -617,8 +572,8 @@ IDENTIFIER
     ;
 
 // ============================================================================
-// §6.3  Contextual / Soft Keywords（不声明为独立 token；parser 层在
-//      对应位置通过 identifier.getText().equals("xxx") 语义谓词识别）：
+// §6.3 Contextual / soft keywords. These remain IDENTIFIER tokens and are
+// recognized by parser predicates in the relevant grammar positions.
 //
 //   use           CaptureClause    `use [...]`
 //   detached      SpawnModifier
@@ -627,5 +582,5 @@ IDENTIFIER
 //   high / low    SpawnModifier   priority arg
 //   until         SuspendEventSelector  `suspend until <expr>`
 //
-//  它们保持普通 IDENTIFIER 形态，避免影响用户标识符命名空间。
+// Keeping them as identifiers avoids reserving user namespaces unnecessarily.
 // ============================================================================

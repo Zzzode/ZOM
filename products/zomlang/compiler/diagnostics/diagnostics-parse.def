@@ -86,7 +86,6 @@ DIAG(AnIdentifierOrKeywordCannotImmediatelyFollowANumericLiteral, kError,
      "An identifier or keyword cannot immediately follow a numeric literal", 0)
 DIAG(XCanOnlyUsedAtStartOfFile, kError,
      "Hashbang comment can only be used at the start of the file", 0)
-DIAG(FileAppearsToBeBinary, kError, "File appears to be binary", 0)
 
 // Diagnostics for list parsing error recovery
 DIAG(DeclarationExpected, kError, "Declaration expected", 0)

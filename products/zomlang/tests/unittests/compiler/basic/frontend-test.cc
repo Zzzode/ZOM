@@ -48,7 +48,7 @@ ZC_TEST("FrontendTest: PerformParseSimpleExpression") {
   LangOptions langOpts;
   StringPool stringPool;
 
-  zc::String code = zc::str("42");
+  zc::String code = zc::str("42;");
   auto bufferId = sourceMgr.addMemBufferCopy(code.asBytes(), "test.zom");
 
   auto result = performParse(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId);

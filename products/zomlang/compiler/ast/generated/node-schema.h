@@ -68,7 +68,7 @@ struct NodeSchemaEntry final {
 
 constexpr uint8_t kNodeSchemaNoWord = 0xff;
 constexpr const char* kAstSchemaVersion = "2.0";
-constexpr const char* kAstSchemaFingerprint = "77f93efe7ac7c2b3c1f1f924d39ee59af1073af9862ba9cc218bbbcddfdee161";
+constexpr const char* kAstSchemaFingerprint = "ade5499f0b6107100657b0848e57051813f924bb842be069e5b7611e684caa60";
 constexpr uint32_t kAstSchemaVariantCount = 153;
 
 constexpr NodeSchemaEnumValue kAttributePathLeadingEnumValues[] = {
@@ -301,7 +301,6 @@ constexpr NodeSchemaEnumValue kPostfixExpressionOpEnumValues[] = {
 constexpr NodeSchemaEnumValue kCastExpressionModeEnumValues[] = {
   {0, "As"},
   {1, "AsQuestion"},
-  {2, "AsBang"},
 };
 
 constexpr NodeSchemaEnumValue kSpawnExpressionPriorityEnumValues[] = {
@@ -422,7 +421,7 @@ constexpr NodeSchemaFieldEntry kUnsafeBlockExprFields[] = {
 
 constexpr NodeSchemaFieldEntry kExternBlockFields[] = {
   {"abi", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "Abi", kExternBlockAbiEnumValues, 7},
-  {"items", NodeSchemaFieldStorage::NodeList, 1, 2, false, "ExternDecl", nullptr, nullptr, 0},
+  {"items", NodeSchemaFieldStorage::NodeList, 1, 2, false, nullptr, nullptr, nullptr, 0},
 };
 
 constexpr NodeSchemaFieldEntry kFFIParameterDeclFields[] = {
@@ -805,7 +804,7 @@ constexpr NodeSchemaFieldEntry kPostfixExpressionFields[] = {
 };
 
 constexpr NodeSchemaFieldEntry kCastExpressionFields[] = {
-  {"mode", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "CastExpression.mode", kCastExpressionModeEnumValues, 3},
+  {"mode", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "CastExpression.mode", kCastExpressionModeEnumValues, 2},
   {"expr", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
   {"ty", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "TypeExpr", nullptr, nullptr, 0},
 };

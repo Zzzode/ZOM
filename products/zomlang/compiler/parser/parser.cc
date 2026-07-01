@@ -316,6 +316,50 @@ uint8_t postfixOpCode(ast::SyntaxKind kind) {
   }
 }
 
+bool isMacroGroupOpen(ast::SyntaxKind kind) {
+  return kind == ast::SyntaxKind::LeftParen || kind == ast::SyntaxKind::LeftBracket ||
+         kind == ast::SyntaxKind::LeftBrace;
+}
+
+ast::SyntaxKind macroGroupClose(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::LeftParen:
+      return ast::SyntaxKind::RightParen;
+    case ast::SyntaxKind::LeftBracket:
+      return ast::SyntaxKind::RightBracket;
+    case ast::SyntaxKind::LeftBrace:
+      return ast::SyntaxKind::RightBrace;
+    default:
+      return ast::SyntaxKind::Unknown;
+  }
+}
+
+zc::StringPtr macroGroupCloseLabel(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::LeftParen:
+      return ")"_zc;
+    case ast::SyntaxKind::LeftBracket:
+      return "]"_zc;
+    case ast::SyntaxKind::LeftBrace:
+      return "}"_zc;
+    default:
+      return "delimiter"_zc;
+  }
+}
+
+uint32_t macroBraceCode(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::LeftParen:
+      return static_cast<uint32_t>(ast::MacroBrace::Paren);
+    case ast::SyntaxKind::LeftBracket:
+      return static_cast<uint32_t>(ast::MacroBrace::Brack);
+    case ast::SyntaxKind::LeftBrace:
+      return static_cast<uint32_t>(ast::MacroBrace::Brace);
+    default:
+      return static_cast<uint32_t>(ast::MacroBrace::Paren);
+  }
+}
+
 uint8_t bindingDeclarationKindCode(ast::SyntaxKind kind) {
   switch (kind) {
     case ast::SyntaxKind::LetKeyword:
@@ -412,6 +456,7 @@ bool canEndExpressionBeforeBinary(ast::SyntaxKind kind) {
     case ast::SyntaxKind::BigIntLiteralToken:
     case ast::SyntaxKind::FloatLiteral:
     case ast::SyntaxKind::StringLiteral:
+    case ast::SyntaxKind::CharacterLiteral:
     case ast::SyntaxKind::NoSubstitutionTemplateLiteral:
     case ast::SyntaxKind::TemplateTail:
     case ast::SyntaxKind::RightParen:
@@ -549,6 +594,19 @@ bool isDeclarationHead(ast::SyntaxKind kind) {
   }
 }
 
+bool isNamedTypeDeclarationHead(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::ClassKeyword:
+    case ast::SyntaxKind::StructKeyword:
+    case ast::SyntaxKind::InterfaceKeyword:
+    case ast::SyntaxKind::EnumKeyword:
+    case ast::SyntaxKind::ErrorKeyword:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool isInvalidObjectLiteralPropertyName(ast::SyntaxKind kind) {
   switch (kind) {
     case ast::SyntaxKind::StringLiteral:
@@ -571,6 +629,7 @@ bool isLiteralPatternToken(ast::SyntaxKind kind) {
     case ast::SyntaxKind::FloatLiteral:
     case ast::SyntaxKind::StringLiteral:
     case ast::SyntaxKind::NoSubstitutionTemplateLiteral:
+    case ast::SyntaxKind::CharacterLiteral:
       return true;
     default:
       return false;
@@ -629,6 +688,7 @@ bool isTopLevelCfgAttributeTarget(ast::SyntaxKind kind) {
     case ast::SyntaxKind::EnumDeclaration:
     case ast::SyntaxKind::ErrorDecl:
     case ast::SyntaxKind::AliasDecl:
+    case ast::SyntaxKind::ExternBlock:
     case ast::SyntaxKind::BlockStmt:
       return true;
     default:
@@ -752,6 +812,48 @@ struct Parser::Impl {
            tokenTextEquals(index, expected);
   }
 
+  bool isExternDeclarationStart(size_t index, size_t limit) const {
+    if (index >= limit) { return false; }
+    if (isSoftKeyword(index, "extern"_zc)) { return true; }
+    return isSoftKeyword(index, "unsafe"_zc) && index + 1 < limit &&
+           isSoftKeyword(index + 1, "extern"_zc);
+  }
+
+  bool isSoftDeclarationHead(size_t index, size_t limit) const {
+    if (index >= limit) { return false; }
+    if (isSoftKeyword(index, "macro"_zc) || isExternDeclarationStart(index, limit) ||
+        isSoftKeyword(index, "impl"_zc)) {
+      return true;
+    }
+    return isSoftKeyword(index, "unsafe"_zc) && index + 1 < limit &&
+           isSoftKeyword(index + 1, "impl"_zc);
+  }
+
+  bool parseExternAbi(size_t index, uint32_t& abi) const {
+    abi = static_cast<uint32_t>(ast::Abi::Cdecl);
+    if (index >= tokenCountWithoutEof() || kindAt(index) != ast::SyntaxKind::StringLiteral) {
+      return true;
+    }
+
+    const zc::StringPtr text = tokenAt(index).getValue();
+    if (text == "C"_zc || text == "Cdecl"_zc) {
+      abi = static_cast<uint32_t>(ast::Abi::Cdecl);
+      return true;
+    }
+    if (text == "system"_zc) {
+      abi = static_cast<uint32_t>(ast::Abi::Stdcall);
+      return true;
+    }
+    if (text == "zom-cdecl"_zc) {
+      abi = static_cast<uint32_t>(ast::Abi::ZomNative);
+      return true;
+    }
+
+    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        tokenAt(index).getLocation());
+    return false;
+  }
+
   bool rangeIsWrapped(size_t start, size_t end, ast::SyntaxKind open, ast::SyntaxKind close) const {
     if (end <= start + 1 || kindAt(start) != open || kindAt(end - 1) != close) { return false; }
 
@@ -808,6 +910,35 @@ struct Parser::Impl {
     return limit;
   }
 
+  size_t findMatchingMacroGroup(size_t openIndex, size_t limit) const {
+    if (openIndex >= limit || !isMacroGroupOpen(kindAt(openIndex))) { return limit; }
+
+    const ast::SyntaxKind open = kindAt(openIndex);
+    const ast::SyntaxKind close = macroGroupClose(open);
+    int32_t depth = 0;
+    for (size_t index = openIndex; index < limit; ++index) {
+      const ast::SyntaxKind kind = kindAt(index);
+      if (kind == open) { ++depth; }
+      if (kind == close) {
+        --depth;
+        if (depth == 0) { return index; }
+      }
+    }
+    return limit;
+  }
+
+  bool isMacroInvocationStart(size_t start, size_t limit) const {
+    return start + 2 < limit && kindAt(start) == ast::SyntaxKind::Identifier &&
+           kindAt(start + 1) == ast::SyntaxKind::Exclamation && isMacroGroupOpen(kindAt(start + 2));
+  }
+
+  size_t findMacroInvocationEnd(size_t start, size_t limit) const {
+    if (!isMacroInvocationStart(start, limit)) { return start; }
+
+    const size_t close = findMatchingMacroGroup(start + 2, limit);
+    return close < limit ? close + 1 : limit;
+  }
+
   bool isOuterAttributeStart(size_t index, size_t limit) const {
     return index + 1 < limit && isAttributeStart(kindAt(index), kindAt(index + 1)) &&
            tokenAt(index).getRange().getEnd() == tokenAt(index + 1).getRange().getStart();
@@ -848,6 +979,43 @@ struct Parser::Impl {
       }
     }
     return end;
+  }
+
+  size_t findTopLevelIdentifierText(size_t start, size_t end, zc::StringPtr text) const {
+    int32_t parenDepth = 0;
+    int32_t bracketDepth = 0;
+    int32_t braceDepth = 0;
+    for (size_t index = start; index < end; ++index) {
+      const ast::SyntaxKind kind = kindAt(index);
+      if (kind == ast::SyntaxKind::Identifier && parenDepth == 0 && bracketDepth == 0 &&
+          braceDepth == 0 && tokenAt(index).getValue() == text) {
+        return index;
+      }
+
+      if (kind == ast::SyntaxKind::LeftParen) {
+        ++parenDepth;
+      } else if (kind == ast::SyntaxKind::RightParen) {
+        if (parenDepth > 0) { --parenDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBracket) {
+        ++bracketDepth;
+      } else if (kind == ast::SyntaxKind::RightBracket) {
+        if (bracketDepth > 0) { --bracketDepth; }
+      } else if (kind == ast::SyntaxKind::LeftBrace) {
+        ++braceDepth;
+      } else if (kind == ast::SyntaxKind::RightBrace) {
+        if (braceDepth > 0) { --braceDepth; }
+      }
+    }
+    return end;
+  }
+
+  bool isIdentifierText(size_t index, zc::StringPtr text) const {
+    return index < tokenCountWithoutEof() && kindAt(index) == ast::SyntaxKind::Identifier &&
+           tokenAt(index).getValue() == text;
+  }
+
+  bool isStandaloneDynTypeRange(size_t start, size_t end) const {
+    return start + 1 == end && isIdentifierText(start, "dyn"_zc);
   }
 
   size_t findTopLevelTypeToken(size_t start, size_t end, ast::SyntaxKind needle) const {
@@ -893,8 +1061,7 @@ struct Parser::Impl {
   ast::IdentList makeIdentList(ast::TreeBuilder& builder, size_t start, size_t end) const {
     zc::Vector<ast::IdentId> segments;
     for (size_t index = start; index < end; ++index) {
-      if (kindAt(index) == ast::SyntaxKind::Identifier ||
-          kindAt(index) == ast::SyntaxKind::ThisKeyword) {
+      if (isAttributePathSegment(kindAt(index)) || kindAt(index) == ast::SyntaxKind::ThisKeyword) {
         segments.add(internIdent(builder, index));
       }
     }
@@ -911,16 +1078,12 @@ struct Parser::Impl {
   bool isModulePathSeparatorAt(size_t index, size_t end) const {
     if (index >= end) { return false; }
     if (kindAt(index) == ast::SyntaxKind::Period) { return true; }
-    return index + 1 < end && kindAt(index) == ast::SyntaxKind::Colon &&
-           kindAt(index + 1) == ast::SyntaxKind::Colon;
+    return kindAt(index) == ast::SyntaxKind::ColonColon;
   }
 
   size_t modulePathSeparatorWidth(size_t index, size_t end) const {
     if (index < end && kindAt(index) == ast::SyntaxKind::Period) { return 1; }
-    if (index + 1 < end && kindAt(index) == ast::SyntaxKind::Colon &&
-        kindAt(index + 1) == ast::SyntaxKind::Colon) {
-      return 2;
-    }
+    if (index < end && kindAt(index) == ast::SyntaxKind::ColonColon) { return 1; }
     return 0;
   }
 
@@ -936,7 +1099,7 @@ struct Parser::Impl {
 
     while (cursor < end) {
       if (expectSegment) {
-        if (kindAt(cursor) != ast::SyntaxKind::Identifier) { break; }
+        if (!isAttributePathSegment(kindAt(cursor))) { break; }
         lastSegmentEnd = cursor + 1;
         ++cursor;
         expectSegment = false;
@@ -960,10 +1123,9 @@ struct Parser::Impl {
         kindAt(pathEnd + 1) == ast::SyntaxKind::LeftBrace) {
       return pathEnd + 1;
     }
-    if (pathEnd + 2 < end && kindAt(pathEnd) == ast::SyntaxKind::Colon &&
-        kindAt(pathEnd + 1) == ast::SyntaxKind::Colon &&
-        kindAt(pathEnd + 2) == ast::SyntaxKind::LeftBrace) {
-      return pathEnd + 2;
+    if (pathEnd + 1 < end && kindAt(pathEnd) == ast::SyntaxKind::ColonColon &&
+        kindAt(pathEnd + 1) == ast::SyntaxKind::LeftBrace) {
+      return pathEnd + 1;
     }
     return end;
   }
@@ -1125,9 +1287,8 @@ struct Parser::Impl {
         continue;
       }
 
-      if (cursor + 1 < end && kindAt(cursor) == ast::SyntaxKind::Colon &&
-          kindAt(cursor + 1) == ast::SyntaxKind::Colon) {
-        cursor += 2;
+      if (kindAt(cursor) == ast::SyntaxKind::ColonColon) {
+        ++cursor;
         expectSegment = true;
         continue;
       }
@@ -1148,7 +1309,36 @@ struct Parser::Impl {
     if (attributePathSegmentCount(start, end) != 1) { return false; }
     zc::StringPtr text = tokenAt(start).getValue();
     if (text.size() == 0) { text = tokenLabel(tokenAt(start)); }
-    return text == "inline"_zc || text == "deprecated"_zc || text == "cold"_zc;
+    return text == "inline"_zc || text == "deprecated"_zc || text == "cold"_zc || text == "repr"_zc;
+  }
+
+  void diagnoseImportPathSyntax(size_t clauseStart, size_t clauseEnd, size_t pathEnd,
+                                size_t groupOpen) const {
+    const size_t period = findTopLevelToken(clauseStart, clauseEnd, ast::SyntaxKind::Period);
+    if (period < clauseEnd) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(period).getLocation());
+      return;
+    }
+
+    const size_t range = findTopLevelToken(clauseStart, clauseEnd, ast::SyntaxKind::DotDotDot);
+    if (range < clauseEnd) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(range).getLocation());
+      return;
+    }
+
+    if (pathEnd < clauseEnd && kindAt(pathEnd) != ast::SyntaxKind::AsKeyword &&
+        !(groupOpen < clauseEnd && pathEnd + 1 == groupOpen)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(pathEnd).getLocation());
+      return;
+    }
+
+    if (groupOpen >= clauseEnd && attributePathSegmentCount(clauseStart, pathEnd) < 2) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(clauseStart).getLocation());
+    }
   }
 
   bool isZomCfgAttributePath(size_t start, size_t end) const {
@@ -1366,10 +1556,147 @@ struct Parser::Impl {
     }
   }
 
+  bool diagnoseUnsupportedVarianceInTypeParameters(size_t openAngle, size_t closeAngle) const {
+    if (openAngle >= closeAngle || closeAngle >= tokenCountWithoutEof()) { return false; }
+
+    bool found = false;
+    int32_t angleDepth = 0;
+    bool atParameterStart = true;
+    for (size_t cursor = openAngle + 1; cursor < closeAngle; ++cursor) {
+      const ast::SyntaxKind kind = kindAt(cursor);
+
+      if (kind == ast::SyntaxKind::LessThan) {
+        ++angleDepth;
+        atParameterStart = false;
+        continue;
+      }
+
+      if (kind == ast::SyntaxKind::GreaterThan) {
+        if (angleDepth > 0) { --angleDepth; }
+        atParameterStart = false;
+        continue;
+      }
+
+      if (angleDepth == 0) {
+        if (kind == ast::SyntaxKind::Comma) {
+          atParameterStart = true;
+          continue;
+        }
+
+        if (atParameterStart &&
+            (kind == ast::SyntaxKind::InKeyword || kind == ast::SyntaxKind::OutKeyword)) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(cursor).getLocation());
+          found = true;
+        }
+      }
+
+      atParameterStart = false;
+    }
+
+    return found;
+  }
+
+  bool diagnoseTypeParameterListSyntax(size_t openAngle, size_t closeAngle) const {
+    if (openAngle >= tokenCountWithoutEof() || kindAt(openAngle) != ast::SyntaxKind::LessThan) {
+      return false;
+    }
+
+    bool found = false;
+    if (closeAngle >= tokenCountWithoutEof()) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+          tokenAt(openAngle).getLocation(), ">"_zc);
+      return true;
+    }
+
+    const int32_t closeCount = typeAngleCloseCount(kindAt(closeAngle));
+    if (closeCount != 1) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(closeAngle).getLocation());
+      found = true;
+    }
+
+    if (openAngle + 1 == closeAngle) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeParameterDeclarationExpected>(
+          diagnosticLoc(openAngle + 1));
+      found = true;
+    }
+
+    int32_t angleDepth = 0;
+    for (size_t cursor = openAngle + 1; cursor < closeAngle; ++cursor) {
+      const ast::SyntaxKind kind = kindAt(cursor);
+      if (kind == ast::SyntaxKind::LessThan) {
+        ++angleDepth;
+        continue;
+      }
+      const int32_t nestedCloseCount = typeAngleCloseCount(kind);
+      if (nestedCloseCount > 0) {
+        angleDepth = nestedCloseCount >= angleDepth ? 0 : angleDepth - nestedCloseCount;
+        continue;
+      }
+      if (angleDepth == 0 && kind == ast::SyntaxKind::ExtendsKeyword) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+            tokenAt(cursor).getLocation());
+        found = true;
+      }
+    }
+
+    return found;
+  }
+
+  void diagnoseDeclarationTypeParameterSyntax(size_t afterName, size_t limit) const {
+    if (afterName >= limit || kindAt(afterName) != ast::SyntaxKind::LessThan) { return; }
+    const size_t closeAngle = findMatchingAngleClose(afterName, limit);
+    if (diagnoseTypeParameterListSyntax(afterName, closeAngle)) { return; }
+    diagnoseUnsupportedVarianceInTypeParameters(afterName, closeAngle);
+  }
+
+  bool diagnoseTypeArgumentListSyntax(size_t openAngle, size_t closeAngle, size_t limit) const {
+    if (openAngle >= limit || kindAt(openAngle) != ast::SyntaxKind::LessThan) { return false; }
+
+    bool found = false;
+    if (closeAngle >= limit) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+          tokenAt(openAngle).getLocation(), ">"_zc);
+      return true;
+    }
+
+    if (openAngle + 1 == closeAngle) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeArgumentExpected>(
+          diagnosticLoc(openAngle + 1));
+      found = true;
+    }
+
+    int32_t depth = 1;
+    for (size_t cursor = openAngle + 1; cursor < closeAngle; ++cursor) {
+      const ast::SyntaxKind kind = kindAt(cursor);
+      if (kind == ast::SyntaxKind::LessThan) {
+        ++depth;
+        if (depth > 3) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(cursor).getLocation());
+          found = true;
+        }
+        continue;
+      }
+
+      const int32_t closeCount = typeAngleCloseCount(kind);
+      if (closeCount > 0 && depth > 1) { depth = closeCount >= depth ? 1 : depth - closeCount; }
+    }
+
+    return found;
+  }
+
   ast::NodeId parseRequiredExpression(ast::TreeBuilder& builder, size_t start, size_t end) const {
     const ast::NodeId expr = parseExpressionRange(builder, start, end);
     if (!expr) { diagnoseExpressionExpected(start); }
     return expr;
+  }
+
+  bool requireTrailingSemicolon(size_t start, size_t end) const {
+    if (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { return true; }
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ";"_zc);
+    return false;
   }
 
   bool isInterfaceElementHead(size_t index, int32_t interfaceBodyDepth) const {
@@ -1402,6 +1729,203 @@ struct Parser::Impl {
     return false;
   }
 
+  bool followsFieldTypeColonWithoutSemicolon(size_t index) const {
+    const ast::SyntaxKind kind = kindAt(index);
+    return kind == ast::SyntaxKind::LeftParen || kind == ast::SyntaxKind::LeftBracket ||
+           kind == ast::SyntaxKind::LeftBrace || isPrimitiveTypeKeyword(kind);
+  }
+
+  size_t consumeMemberBoundary(size_t start, size_t limit) const {
+    const ast::SyntaxKind head = kindAt(start);
+    const bool bodyBearingHead =
+        head == ast::SyntaxKind::FunKeyword || head == ast::SyntaxKind::GetKeyword ||
+        head == ast::SyntaxKind::SetKeyword || head == ast::SyntaxKind::InitKeyword ||
+        head == ast::SyntaxKind::DeinitKeyword;
+    int32_t angleDepth = 0;
+    bool sawFieldColon = false;
+    bool sawEquals = false;
+    for (size_t cursor = start; cursor < limit;) {
+      const ast::SyntaxKind kind = kindAt(cursor);
+      if (angleDepth == 0) {
+        if (kind == ast::SyntaxKind::Semicolon || kind == ast::SyntaxKind::Comma) {
+          return cursor + 1;
+        }
+        if (kind == ast::SyntaxKind::Colon) { sawFieldColon = true; }
+        if (kind == ast::SyntaxKind::Equals) { sawEquals = true; }
+        if (kind == ast::SyntaxKind::LeftParen) {
+          const size_t closeParen = findMatchingRightParen(cursor, limit);
+          cursor = closeParen < limit ? closeParen + 1 : limit;
+          continue;
+        }
+        if (kind == ast::SyntaxKind::LeftBracket) {
+          const size_t closeBracket = findMatchingRightBracket(cursor, limit);
+          cursor = closeBracket < limit ? closeBracket + 1 : limit;
+          continue;
+        }
+        if (kind == ast::SyntaxKind::LeftBrace) {
+          const size_t bodyEnd = consumeBracedBodyEnd(cursor, limit);
+          const bool fieldAccessorBody = head == ast::SyntaxKind::Identifier && sawFieldColon &&
+                                         !sawEquals && cursor > start &&
+                                         kindAt(cursor - 1) != ast::SyntaxKind::Colon;
+          if (bodyBearingHead || fieldAccessorBody) { return bodyEnd; }
+          cursor = bodyEnd;
+          continue;
+        }
+      }
+
+      if (kind == ast::SyntaxKind::LessThan) {
+        ++angleDepth;
+      } else {
+        const int32_t closeCount = typeAngleCloseCount(kind);
+        if (closeCount > 0 && angleDepth > 0) {
+          angleDepth = closeCount >= angleDepth ? 0 : angleDepth - closeCount;
+        }
+      }
+      ++cursor;
+    }
+    return limit;
+  }
+
+  void diagnoseMissingFieldMemberSemicolon(size_t start, size_t end) const {
+    if (start >= end || kindAt(start) != ast::SyntaxKind::Identifier) { return; }
+
+    const size_t colon = findTopLevelToken(start + 1, end, ast::SyntaxKind::Colon);
+    if (colon >= end) { return; }
+
+    int32_t parenDepth = 0;
+    int32_t bracketDepth = 0;
+    int32_t braceDepth = 0;
+    int32_t angleDepth = 0;
+    for (size_t index = colon + 1; index + 1 < end; ++index) {
+      const ast::SyntaxKind kind = kindAt(index);
+
+      if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && angleDepth == 0 &&
+          kind == ast::SyntaxKind::Identifier && kindAt(index + 1) == ast::SyntaxKind::Colon) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::MissingSemicolon>(
+            tokenAt(index).getLocation(), tokenLabel(tokenAt(index)));
+        return;
+      }
+
+      switch (kind) {
+        case ast::SyntaxKind::LeftParen:
+          ++parenDepth;
+          break;
+        case ast::SyntaxKind::RightParen:
+          if (parenDepth > 0) { --parenDepth; }
+          break;
+        case ast::SyntaxKind::LeftBracket:
+          ++bracketDepth;
+          break;
+        case ast::SyntaxKind::RightBracket:
+          if (bracketDepth > 0) { --bracketDepth; }
+          break;
+        case ast::SyntaxKind::LeftBrace:
+          ++braceDepth;
+          break;
+        case ast::SyntaxKind::RightBrace:
+          if (braceDepth > 0) { --braceDepth; }
+          break;
+        case ast::SyntaxKind::LessThan:
+          ++angleDepth;
+          break;
+        default: {
+          const int32_t closeCount = typeAngleCloseCount(kind);
+          if (closeCount > 0 && angleDepth > 0) {
+            angleDepth = closeCount >= angleDepth ? 0 : angleDepth - closeCount;
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  void diagnoseNamedTypeBody(size_t bodyOpen, size_t bodyClose, ast::SyntaxKind kind) const {
+    bool previousClassMemberWasGetter = false;
+    size_t cursor = bodyOpen + 1;
+    while (cursor < bodyClose) {
+      const size_t memberStart = cursor;
+      cursor = skipOuterAttributePrefix(cursor, bodyClose);
+
+      const size_t modifiersStart = cursor;
+      while (cursor < bodyClose && isDeclarationModifier(kindAt(cursor))) { ++cursor; }
+      const size_t modifiersEnd = cursor;
+      if (cursor >= bodyClose) { break; }
+
+      const ast::SyntaxKind head = kindAt(cursor);
+      const size_t memberEnd = consumeMemberBoundary(cursor, bodyClose);
+      const size_t semi = findTopLevelToken(cursor, memberEnd, ast::SyntaxKind::Semicolon);
+      const size_t body = findTopLevelToken(cursor, memberEnd, ast::SyntaxKind::LeftBrace);
+
+      if (modifiersStart < modifiersEnd) {
+        diagnoseDeclarationModifierGroup(modifiersStart, modifiersEnd);
+      }
+
+      if (isNamedTypeDeclarationHead(head)) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+            tokenAt(cursor).getLocation());
+      }
+
+      if ((kind == ast::SyntaxKind::ClassDecl || kind == ast::SyntaxKind::StructDecl) &&
+          head == ast::SyntaxKind::Identifier) {
+        diagnoseMissingFieldMemberSemicolon(cursor, memberEnd);
+      }
+
+      if ((kind == ast::SyntaxKind::ClassDecl || kind == ast::SyntaxKind::StructDecl) &&
+          head == ast::SyntaxKind::FunKeyword) {
+        size_t abstractIndex = modifiersEnd;
+        if (modifierGroupContains(modifiersStart, modifiersEnd, ast::SyntaxKind::AbstractKeyword,
+                                  abstractIndex) &&
+            body < memberEnd && (semi >= memberEnd || body < semi)) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(body).getLocation());
+        }
+      }
+
+      if (kind == ast::SyntaxKind::ClassDecl) {
+        if (head == ast::SyntaxKind::SetKeyword && !previousClassMemberWasGetter) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(cursor).getLocation());
+        }
+        previousClassMemberWasGetter = head == ast::SyntaxKind::GetKeyword;
+      }
+
+      if (kind == ast::SyntaxKind::InterfaceDecl) {
+        if (head == ast::SyntaxKind::InitKeyword || head == ast::SyntaxKind::DeinitKeyword) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(cursor).getLocation());
+        }
+
+        if ((head == ast::SyntaxKind::FunKeyword || head == ast::SyntaxKind::GetKeyword ||
+             head == ast::SyntaxKind::SetKeyword) &&
+            body < memberEnd && (semi >= memberEnd || body < semi)) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(body).getLocation(),
+                                                                        ";"_zc);
+        }
+
+        if (head == ast::SyntaxKind::TypeKeyword && semi >= memberEnd) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(memberEnd),
+                                                                        ";"_zc);
+        }
+      }
+
+      if (kind == ast::SyntaxKind::EnumDeclaration) {
+        if (body < memberEnd) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(body).getLocation());
+        }
+        const size_t equals = findTopLevelToken(cursor, memberEnd, ast::SyntaxKind::Equals);
+        if (equals < memberEnd &&
+            (equals + 1 >= memberEnd || kindAt(equals + 1) == ast::SyntaxKind::Comma ||
+             kindAt(equals + 1) == ast::SyntaxKind::RightBrace)) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::ExpressionExpected>(
+              diagnosticLoc(equals + 1));
+        }
+      }
+
+      cursor = memberEnd > memberStart ? memberEnd : memberStart + 1;
+    }
+  }
+
   bool looksLikeObjectLiteralExpression(size_t start, size_t end) const {
     if (!rangeIsWrapped(start, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
       return false;
@@ -1428,10 +1952,7 @@ struct Parser::Impl {
   size_t findTypePathEnd(size_t start, size_t end) const {
     bool expectSegment = true;
     size_t cursor = start;
-    if (cursor + 1 < end && kindAt(cursor) == ast::SyntaxKind::Colon &&
-        kindAt(cursor + 1) == ast::SyntaxKind::Colon) {
-      cursor += 2;
-    }
+    if (cursor < end && kindAt(cursor) == ast::SyntaxKind::ColonColon) { ++cursor; }
 
     for (; cursor < end; ++cursor) {
       const ast::SyntaxKind kind = kindAt(cursor);
@@ -1445,10 +1966,8 @@ struct Parser::Impl {
         expectSegment = true;
         continue;
       }
-      if (kind == ast::SyntaxKind::Colon && cursor + 1 < end &&
-          kindAt(cursor + 1) == ast::SyntaxKind::Colon) {
+      if (kind == ast::SyntaxKind::ColonColon) {
         expectSegment = true;
-        ++cursor;
         continue;
       }
       return cursor;
@@ -1481,12 +2000,19 @@ struct Parser::Impl {
     int32_t interfaceBodyDepth = -1;
     int32_t typeLiteralBraceDepth = -1;
     int32_t bindingPatternBraceDepth = -1;
+    int32_t matchArmPatternBraceDepth = -1;
+    size_t macroTokenTreeEnd = 0;
 
     const size_t count = tokenCountWithoutEof();
     for (size_t i = 0; i < count; ++i) {
       const lexer::Token& current = tokenAt(i);
       const ast::SyntaxKind kind = current.getKind();
       const ast::SyntaxKind next = i + 1 < count ? kindAt(i + 1) : ast::SyntaxKind::EndOfFile;
+      if (i >= macroTokenTreeEnd) { macroTokenTreeEnd = 0; }
+      if (macroTokenTreeEnd == 0 && isMacroInvocationStart(i, count)) {
+        macroTokenTreeEnd = findMacroInvocationEnd(i, count);
+      }
+      const bool insideMacroTokenTree = macroTokenTreeEnd > i;
       const bool insideInterfaceBody = interfaceBodyDepth >= 0 && braceDepth >= interfaceBodyDepth;
       const bool insideInterfaceTopLevel =
           interfaceBodyDepth >= 0 && braceDepth == interfaceBodyDepth;
@@ -1502,14 +2028,6 @@ struct Parser::Impl {
       if (isUnsupportedStatementKeyword(kind)) { emitUnexpected(current); }
 
       if (kind == ast::SyntaxKind::InterfaceKeyword) { waitingForInterfaceBody = true; }
-      if (waitingForInterfaceBody && braceDepth == 0 && kind != ast::SyntaxKind::InterfaceKeyword &&
-          kind != ast::SyntaxKind::Identifier && kind != ast::SyntaxKind::ExtendsKeyword &&
-          kind != ast::SyntaxKind::Comma && kind != ast::SyntaxKind::LessThan &&
-          kind != ast::SyntaxKind::GreaterThan && kind != ast::SyntaxKind::LeftBrace) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(current.getLocation(),
-                                                                      "{"_zc);
-        waitingForInterfaceBody = false;
-      }
 
       if (kind == ast::SyntaxKind::ExportKeyword && next == ast::SyntaxKind::DefaultKeyword) {
         diagnosticEngine.diagnose<diagnostics::DiagID::DeclarationExpected>(current.getLocation());
@@ -1548,6 +2066,16 @@ struct Parser::Impl {
       if (isTemplateLiteralToken(kind) && i > 0 && canPrecedeTaggedTemplate(kindAt(i - 1))) {
         diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
             current.getLocation());
+      }
+
+      if (kind == ast::SyntaxKind::WhenKeyword &&
+          findTopLevelToken(i + 1, count, ast::SyntaxKind::EqualsGreaterThan) < count) {
+        matchArmPatternBraceDepth = braceDepth;
+      }
+      const bool insideMatchArmPattern = matchArmPatternBraceDepth >= 0;
+      if (kind == ast::SyntaxKind::EqualsGreaterThan && matchArmPatternBraceDepth >= 0 &&
+          braceDepth == matchArmPatternBraceDepth) {
+        matchArmPatternBraceDepth = -1;
       }
 
       if (kind == ast::SyntaxKind::QuestionDot) {
@@ -1656,7 +2184,7 @@ struct Parser::Impl {
         }
       }
 
-      if (braceDepth > 0 && isInvalidObjectLiteralPropertyName(kind) &&
+      if (!insideMacroTokenTree && braceDepth > 0 && isInvalidObjectLiteralPropertyName(kind) &&
           next == ast::SyntaxKind::Colon) {
         diagnosticEngine.diagnose<diagnostics::DiagID::ExceptedIdentifier>(current.getLocation(),
                                                                            tokenLabel(current));
@@ -1699,9 +2227,11 @@ struct Parser::Impl {
         }
       }
 
-      if (braceDepth > 0 && kind == ast::SyntaxKind::Identifier && i + 3 < count &&
+      if (!insideMacroTokenTree && !insideMatchArmPattern && braceDepth > 0 &&
+          kind == ast::SyntaxKind::Identifier && i + 3 < count &&
           kindAt(i + 1) == ast::SyntaxKind::Colon && kindAt(i + 2) != ast::SyntaxKind::Semicolon &&
           kindAt(i + 2) != ast::SyntaxKind::RightBrace &&
+          !followsFieldTypeColonWithoutSemicolon(i + 2) &&
           kindAt(i + 3) == ast::SyntaxKind::Identifier) {
         diagnosticEngine.diagnose<diagnostics::DiagID::MissingSemicolon>(
             tokenAt(i + 3).getLocation(), tokenLabel(tokenAt(i + 3)));
@@ -2253,6 +2783,8 @@ struct Parser::Impl {
     if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::LessThan) {
       const size_t openAngle = cursor.position();
       const size_t closeAngle = findMatchingAngleClose(openAngle, limit);
+      const bool invalidArgs = diagnoseTypeArgumentListSyntax(openAngle, closeAngle, limit);
+      if (invalidArgs) { return TypeParseResult(); }
       if (closeAngle < limit) {
         args = parseTypeArgumentListRange(builder, openAngle + 1, closeAngle);
         cursor.moveTo(closeAngle + 1);
@@ -2669,6 +3201,65 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::NewExpression, rangeFor(start, end), payload);
   }
 
+  ast::NodeId makeEmptyMacroPattern(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    zc::Vector<ast::NodeId> frags;
+    ast::NodePayload payload;
+    writeNodeList(payload, ast::kMacroPatternFragsFirstWord, ast::kMacroPatternFragsSizeWord,
+                  builder.makeList(frags.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::MacroPattern, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId makeEmptyMacroTokenTree(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    zc::Vector<ast::NodeId> tokens;
+    ast::NodePayload payload;
+    writeNodeList(payload, ast::kMacroTokenTreeTokensFirstWord, ast::kMacroTokenTreeTokensSizeWord,
+                  builder.makeList(tokens.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::MacroTokenTree, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseMacroInvocationExpression(ast::TreeBuilder& builder, size_t start,
+                                             size_t end) const {
+    if (!isMacroInvocationStart(start, end)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(diagnosticLoc(start));
+      return ast::NodeId();
+    }
+
+    const size_t groupOpen = start + 2;
+    const size_t groupClose = findMatchingMacroGroup(groupOpen, end);
+    if (groupClose >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+          diagnosticLoc(groupOpen), macroGroupCloseLabel(kindAt(groupOpen)));
+      return ast::NodeId();
+    }
+
+    ast::NodePayload namePayload;
+    writeIdent(namePayload, ast::kIdentExprNameWord, internIdent(builder, start));
+    const ast::NodeId name =
+        builder.makeNode(ast::SyntaxKind::IdentExpr, rangeFor(start, start + 1), namePayload);
+
+    zc::Vector<ast::NodeId> tt;
+    ast::NodePayload payload;
+    writeNode(payload, ast::kMacroInvocationExprNameWord, name);
+    payload.words[ast::kMacroInvocationExprBraceWord] = macroBraceCode(kindAt(groupOpen));
+    writeNodeList(payload, ast::kMacroInvocationExprTtFirstWord,
+                  ast::kMacroInvocationExprTtSizeWord, builder.makeList(tt.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::MacroInvocationExpr, rangeFor(start, groupClose + 1),
+                            payload);
+  }
+
+  ast::NodeId parseUnsafeBlockExpression(ast::TreeBuilder& builder, size_t start,
+                                         size_t end) const {
+    if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftBrace) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
+                                                                    "{"_zc);
+      return ast::NodeId();
+    }
+
+    ast::NodePayload payload;
+    writeNode(payload, ast::kUnsafeBlockExprBodyWord, parseBlock(builder, start + 1, end, true));
+    return builder.makeNode(ast::SyntaxKind::UnsafeBlockExpr, rangeFor(start, end), payload);
+  }
+
   ast::NodeId parseSpawnExpression(ast::TreeBuilder& builder, size_t start, size_t end) const {
     uint8_t modFlags = 0;
     uint8_t priority = 0;
@@ -2723,9 +3314,18 @@ struct Parser::Impl {
       return ast::NodeId();
     }
 
-    const ast::NodeId body = kindAt(cursor) == ast::SyntaxKind::LeftBrace
-                                 ? parseBlock(builder, cursor, end)
-                                 : parseExpressionStatement(builder, cursor, end);
+    ast::NodeId body;
+    if (kindAt(cursor) == ast::SyntaxKind::LeftBrace) {
+      body = parseBlock(builder, cursor, end, true);
+    } else {
+      const ast::NodeId expr = parseRequiredExpression(builder, cursor, end);
+      if (!expr) { return ast::NodeId(); }
+
+      ast::NodePayload statementPayload;
+      writeNode(statementPayload, ast::kExpressionStatementExpressionWord, expr);
+      body = builder.makeNode(ast::SyntaxKind::ExpressionStatement, rangeFor(cursor, end),
+                              statementPayload);
+    }
     if (!body) { return ast::NodeId(); }
 
     ast::NodePayload payload;
@@ -2739,13 +3339,22 @@ struct Parser::Impl {
                                   size_t end) const {
     size_t typeStart = asIndex + 1;
     uint8_t mode = castModeCode(ast::SyntaxKind::AsKeyword);
-    if (typeStart < end && (kindAt(typeStart) == ast::SyntaxKind::Question ||
-                            kindAt(typeStart) == ast::SyntaxKind::Exclamation)) {
+    if (typeStart < end && kindAt(typeStart) == ast::SyntaxKind::Exclamation) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(typeStart).getLocation());
+      return ast::NodeId();
+    }
+    if (typeStart < end && kindAt(typeStart) == ast::SyntaxKind::Question) {
       mode = castModeCode(kindAt(typeStart));
       ++typeStart;
     }
 
     const ast::NodeId expr = parseExpressionRange(builder, start, asIndex);
+    if (isStandaloneDynTypeRange(typeStart, end)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(typeStart).getLocation());
+      return ast::NodeId();
+    }
     const ast::NodeId ty = parseTypeRange(builder, typeStart, end);
     if (!expr || !ty) { return ast::NodeId(); }
 
@@ -3171,8 +3780,12 @@ struct Parser::Impl {
       if (kind == ast::SyntaxKind::AsKeyword) {
         size_t typeStart = cursor + 1;
         uint8_t mode = castModeCode(ast::SyntaxKind::AsKeyword);
-        if (typeStart < limit && (kindAt(typeStart) == ast::SyntaxKind::Question ||
-                                  kindAt(typeStart) == ast::SyntaxKind::Exclamation)) {
+        if (typeStart < limit && kindAt(typeStart) == ast::SyntaxKind::Exclamation) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(typeStart).getLocation());
+          return ExpressionParseResult();
+        }
+        if (typeStart < limit && kindAt(typeStart) == ast::SyntaxKind::Question) {
           mode = castModeCode(kindAt(typeStart));
           ++typeStart;
         }
@@ -3180,6 +3793,11 @@ struct Parser::Impl {
         TypeParseResult ty = parseTypeExpressionAt(builder, typeStart, limit);
         if (!ty.node) {
           diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(typeStart));
+          return ExpressionParseResult();
+        }
+        if (isStandaloneDynTypeRange(typeStart, ty.next)) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(typeStart).getLocation());
           return ExpressionParseResult();
         }
 
@@ -3285,6 +3903,19 @@ struct Parser::Impl {
         current = {builder.makeNode(ast::SyntaxKind::PostfixExpression, rangeFor(start, cursor + 1),
                                     payload),
                    cursor + 1};
+        cursor = current.next;
+        continue;
+      }
+
+      if (kind == ast::SyntaxKind::RaisesKeyword && cursor + 1 < limit &&
+          kindAt(cursor + 1) == ast::SyntaxKind::Question) {
+        ast::NodePayload payload;
+        payload.words[ast::kPostfixExpressionOpWord] =
+            static_cast<uint8_t>(ast::PostfixOperatorKind::ErrorPropagate);
+        writeNode(payload, ast::kPostfixExpressionOperandWord, current.node);
+        current = {builder.makeNode(ast::SyntaxKind::PostfixExpression, rangeFor(start, cursor + 2),
+                                    payload),
+                   cursor + 2};
         cursor = current.next;
         continue;
       }
@@ -3487,8 +4118,29 @@ struct Parser::Impl {
       return {parseSpawnExpression(builder, start, limit), limit};
     }
 
+    if (isSoftKeyword(start, "unsafe"_zc) && start + 1 < limit &&
+        kindAt(start + 1) == ast::SyntaxKind::LeftBrace) {
+      const size_t closeBrace = findMatchingRightBrace(start + 1, limit);
+      if (closeBrace >= limit) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
+                                                                      "}"_zc);
+        return ExpressionParseResult();
+      }
+      return {parseUnsafeBlockExpression(builder, start, closeBrace + 1), closeBrace + 1};
+    }
+
     if (kindAt(start) == ast::SyntaxKind::FunKeyword) {
       return {parseFunctionExpression(builder, start, limit), limit};
+    }
+
+    if (isMacroInvocationStart(start, limit)) {
+      const size_t macroEnd = findMacroInvocationEnd(start, limit);
+      if (macroEnd >= limit && findMatchingMacroGroup(start + 2, limit) >= limit) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+            diagnosticLoc(start + 2), macroGroupCloseLabel(kindAt(start + 2)));
+        return ExpressionParseResult();
+      }
+      return {parseMacroInvocationExpression(builder, start, macroEnd), macroEnd};
     }
 
     if (kindAt(start) == ast::SyntaxKind::NewKeyword) {
@@ -3565,6 +4217,7 @@ struct Parser::Impl {
                                    payload),
                   start + 1};
         case ast::SyntaxKind::StringLiteral:
+        case ast::SyntaxKind::CharacterLiteral:
         case ast::SyntaxKind::NoSubstitutionTemplateLiteral:
           writeString(payload, ast::kStrLiteralValueWord, internString(builder, start));
           return {
@@ -3588,6 +4241,11 @@ struct Parser::Impl {
     while (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { --end; }
     if (start >= end) { return ast::NodeId(); }
 
+    if (isMacroInvocationStart(start, end)) {
+      const size_t macroEnd = findMacroInvocationEnd(start, end);
+      if (macroEnd == end) { return parseMacroInvocationExpression(builder, start, end); }
+    }
+
     ExpressionParseResult parsed = parseExpressionAt(builder, start, end);
     if (!parsed.node) { return ast::NodeId(); }
     if (parsed.next != end) {
@@ -3610,7 +4268,7 @@ struct Parser::Impl {
             tokenAt(at).getLocation());
         return ast::NodeId();
       }
-      if (kindAt(start) != ast::SyntaxKind::Identifier) {
+      if (kindAt(start) != ast::SyntaxKind::Identifier || tokenAt(start).getValue() == "_"_zc) {
         diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
             tokenAt(start).getLocation());
         return ast::NodeId();
@@ -3914,8 +4572,8 @@ struct Parser::Impl {
                             rangeFor(parameterStart, cursor.position()), parameterPayload);
   }
 
-  ast::NodeId parseFunctionParameterList(ast::TreeBuilder& builder, size_t openParen,
-                                         size_t closeParen) const {
+  ast::NodeList parseFunctionParameterNodeList(ast::TreeBuilder& builder, size_t openParen,
+                                               size_t closeParen) const {
     zc::Vector<ast::NodeId> parameters;
     if (openParen < closeParen && closeParen <= tokenCountWithoutEof()) {
       TokenCursor cursor = tokenCursorAt(openParen + 1);
@@ -3940,11 +4598,15 @@ struct Parser::Impl {
         recoverFunctionParameter(cursor, closeParen);
       }
     }
+    return builder.makeList(parameters.asPtr());
+  }
 
-    const ast::NodeList parameterList = builder.makeList(parameters.asPtr());
+  ast::NodeId parseFunctionParameterList(ast::TreeBuilder& builder, size_t openParen,
+                                         size_t closeParen) const {
+    const ast::NodeList parameterList =
+        parseFunctionParameterNodeList(builder, openParen, closeParen);
     ast::NodePayload payload;
-    payload.words[ast::kFunctionParameterListNparamsWord] =
-        static_cast<uint32_t>(parameters.size());
+    payload.words[ast::kFunctionParameterListNparamsWord] = parameterList.size;
     writeNodeList(payload, ast::kFunctionParameterListParamsFirstWord,
                   ast::kFunctionParameterListParamsSizeWord, parameterList);
     return builder.makeNode(ast::SyntaxKind::FunctionParameterList,
@@ -3998,6 +4660,46 @@ struct Parser::Impl {
           tokenAt(limit - 1).getLocation(), "}"_zc);
     }
     return limit;
+  }
+
+  size_t consumeSpawnStatementEnd(size_t start, size_t limit) const {
+    size_t cursor = start + 1;
+    while (cursor < limit && kindAt(cursor) == ast::SyntaxKind::Identifier) {
+      const zc::StringPtr modifier = tokenAt(cursor).getValue();
+      if (modifier == "detached"_zc || modifier == "blocking"_zc) {
+        ++cursor;
+        continue;
+      }
+      if (modifier == "priority"_zc && cursor + 1 < limit &&
+          kindAt(cursor + 1) == ast::SyntaxKind::LeftParen) {
+        const size_t closeParen = findMatchingRightParen(cursor + 1, limit);
+        if (closeParen >= limit) { return consumeSimpleStatementEnd(start, limit); }
+        cursor = closeParen + 1;
+        continue;
+      }
+      break;
+    }
+
+    if (cursor < limit && kindAt(cursor) == ast::SyntaxKind::LeftBrace) {
+      const size_t bodyEnd = consumeBracedBodyEnd(cursor, limit);
+      if (bodyEnd < limit && kindAt(bodyEnd) == ast::SyntaxKind::Semicolon) { return bodyEnd + 1; }
+      return bodyEnd;
+    }
+
+    return consumeSimpleStatementEnd(start, limit);
+  }
+
+  size_t consumeExternDeclarationEnd(size_t start, size_t limit) const {
+    size_t cursor = start;
+    if (isSoftKeyword(cursor, "unsafe"_zc)) { ++cursor; }
+    if (cursor < limit && isSoftKeyword(cursor, "extern"_zc)) { ++cursor; }
+    if (cursor < limit && kindAt(cursor) == ast::SyntaxKind::StringLiteral) { ++cursor; }
+
+    if (cursor < limit && kindAt(cursor) == ast::SyntaxKind::LeftBrace) {
+      return consumeBracedBodyEnd(cursor, limit);
+    }
+
+    return consumeSimpleStatementEnd(start, limit);
   }
 
   size_t findBindingDeclarationRecoveryStart(size_t start, size_t limit) const {
@@ -4379,7 +5081,8 @@ struct Parser::Impl {
     while (declarationHead < limit && isDeclarationModifier(kindAt(declarationHead))) {
       ++declarationHead;
     }
-    if (declarationHead < limit && isDeclarationHead(kindAt(declarationHead))) {
+    if (declarationHead < limit && (isDeclarationHead(kindAt(declarationHead)) ||
+                                    isSoftDeclarationHead(declarationHead, limit))) {
       TokenCursor cursor = tokenCursorAt(declarationHead);
       return consumeSourceElement(cursor, limit).end;
     }
@@ -4646,20 +5349,31 @@ struct Parser::Impl {
         boundary.kind = ast::SyntaxKind::SuspendStatement;
         boundary.end = consumeSimpleStatementEnd(head, limit);
         break;
+      case ast::SyntaxKind::SpawnKeyword:
+        boundary.kind = ast::SyntaxKind::ExpressionStatement;
+        boundary.end = consumeSpawnStatementEnd(head, limit);
+        break;
       case ast::SyntaxKind::Semicolon:
         boundary.kind = ast::SyntaxKind::EmptyStatement;
         boundary.end = head + 1;
         break;
       case ast::SyntaxKind::LeftBrace:
         boundary.end = consumeBracedBodyEnd(head, limit);
-        boundary.kind = looksLikeObjectLiteralExpression(head, boundary.end)
+        boundary.kind = !outerAttributePrefixContainsZomCfg(start, boundary.end) &&
+                                looksLikeObjectLiteralExpression(head, boundary.end)
                             ? ast::SyntaxKind::ExpressionStatement
                             : ast::SyntaxKind::BlockStmt;
         break;
       case ast::SyntaxKind::Identifier:
-        if (isSoftKeyword(head, "impl"_zc) ||
-            (isSoftKeyword(head, "unsafe"_zc) && head + 1 < limit &&
-             isSoftKeyword(head + 1, "impl"_zc))) {
+        if (isSoftKeyword(head, "macro"_zc)) {
+          boundary.kind = ast::SyntaxKind::MacroRulesDecl;
+          boundary.end = consumeBracedDeclarationEnd(head, limit);
+        } else if (isExternDeclarationStart(head, limit)) {
+          boundary.kind = ast::SyntaxKind::ExternBlock;
+          boundary.end = consumeExternDeclarationEnd(head, limit);
+        } else if (isSoftKeyword(head, "impl"_zc) ||
+                   (isSoftKeyword(head, "unsafe"_zc) && head + 1 < limit &&
+                    isSoftKeyword(head + 1, "impl"_zc))) {
           boundary.kind = ast::SyntaxKind::StandaloneImplDecl;
           boundary.end = consumeBracedDeclarationEnd(head, limit);
         } else if (head + 1 < limit && kindAt(head + 1) == ast::SyntaxKind::Colon) {
@@ -4697,7 +5411,8 @@ struct Parser::Impl {
     return result;
   }
 
-  ast::NodeId parseBlock(ast::TreeBuilder& builder, size_t openBrace, size_t limit) const {
+  ast::NodeId parseBlock(ast::TreeBuilder& builder, size_t openBrace, size_t limit,
+                         bool allowFinalExpression = false) const {
     zc::Vector<ast::NodeId> items;
     if (openBrace >= limit || kindAt(openBrace) != ast::SyntaxKind::LeftBrace) {
       ast::NodePayload payload;
@@ -4711,7 +5426,28 @@ struct Parser::Impl {
     TokenCursor cursor = tokenCursorAt(openBrace + 1);
     while (cursor.position() < bodyEnd) {
       const size_t statementStart = cursor.position();
-      const SourceElementParseResult itemResult = parseSourceElement(builder, cursor, bodyEnd);
+      SourceElementParseResult itemResult;
+      itemResult.boundary = consumeSourceElement(cursor, bodyEnd);
+      if (itemResult.boundary.start >= bodyEnd || itemResult.boundary.nodeStart >= bodyEnd ||
+          itemResult.boundary.head >= bodyEnd ||
+          itemResult.boundary.end <= itemResult.boundary.start) {
+        itemResult.boundary.end = bodyEnd;
+      } else {
+        itemResult.attrs =
+            parseOuterAttributeList(builder, itemResult.boundary.start, itemResult.boundary.end);
+        const bool finalExpression =
+            allowFinalExpression &&
+            itemResult.boundary.kind == ast::SyntaxKind::ExpressionStatement &&
+            itemResult.boundary.end >= bodyEnd &&
+            (itemResult.boundary.end == 0 ||
+             kindAt(itemResult.boundary.end - 1) != ast::SyntaxKind::Semicolon);
+        itemResult.node =
+            finalExpression
+                ? parseExpressionStatementWithoutSemicolon(builder, itemResult.boundary.nodeStart,
+                                                           itemResult.boundary.end)
+                : parseSourceElementOfKind(builder, itemResult.boundary.nodeStart,
+                                           itemResult.boundary.end, itemResult.boundary.kind);
+      }
       const size_t statementEnd = itemResult.boundary.end;
       if (outerAttributePrefixContainsZomCfg(statementStart, statementEnd) &&
           itemResult.boundary.kind != ast::SyntaxKind::BlockStmt) {
@@ -4748,10 +5484,27 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseModuleDeclaration(ast::TreeBuilder& builder, size_t start, size_t end) const {
-    const size_t pathEnd = findTopLevelToken(start + 1, end, ast::SyntaxKind::Semicolon);
+    size_t pathEnd = end;
+    const size_t semicolon = findTopLevelToken(start + 1, end, ast::SyntaxKind::Semicolon);
+    const size_t equals = findTopLevelToken(start + 1, end, ast::SyntaxKind::Equals);
+    const size_t bodyOpen = findTopLevelToken(start + 1, end, ast::SyntaxKind::LeftBrace);
+    if (semicolon < pathEnd) { pathEnd = semicolon; }
+    if (equals < pathEnd) { pathEnd = equals; }
+    if (bodyOpen < pathEnd) { pathEnd = bodyOpen; }
+
+    const bool simpleModuleName = semicolon < end && equals >= semicolon && bodyOpen >= end;
+    if (simpleModuleName) {
+      const size_t colonColon = findTopLevelToken(start + 1, pathEnd, ast::SyntaxKind::ColonColon);
+      if (colonColon < pathEnd) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+            tokenAt(colonColon).getLocation());
+        return ast::NodeId();
+      }
+    }
+
     ast::NodePayload payload;
     writeNode(payload, ast::kModuleDeclarationPathWord,
-              makeModulePath(builder, start + 1, pathEnd < end ? pathEnd : end));
+              makeModulePath(builder, start + 1, pathEnd));
     return builder.makeNode(ast::SyntaxKind::ModuleDeclaration, rangeFor(start, end), payload);
   }
 
@@ -4767,6 +5520,7 @@ struct Parser::Impl {
       diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
           diagnosticLoc(clauseStart));
     }
+    diagnoseImportPathSyntax(clauseStart, clauseEnd, pathEnd, groupOpen);
     writeNode(payload, ast::kImportDeclarationPathWord,
               makeModulePath(builder, clauseStart, pathEnd));
     if (groupOpen < clauseEnd) {
@@ -4797,7 +5551,8 @@ struct Parser::Impl {
     while (declarationHead < clauseEnd && isDeclarationModifier(kindAt(declarationHead))) {
       ++declarationHead;
     }
-    if (declarationHead < clauseEnd && isDeclarationHead(kindAt(declarationHead))) {
+    if (declarationHead < clauseEnd && (isDeclarationHead(kindAt(declarationHead)) ||
+                                        isSoftDeclarationHead(declarationHead, clauseEnd))) {
       TokenCursor cursor = tokenCursorAt(clauseStart);
       const SourceElementParseResult declaration = parseSourceElement(builder, cursor, end);
       writeNode(payload, ast::kExportDeclarationDeclarationWord, declaration.node);
@@ -4922,8 +5677,15 @@ struct Parser::Impl {
       return VariableDeclaratorParseResult();
     }
 
+    const size_t errorCountBeforePattern = diagnosticEngine.errorCount();
     const ast::NodeId pattern = parsePatternRange(builder, start, patternEnd);
-    if (!pattern) { return VariableDeclaratorParseResult(); }
+    if (!pattern) {
+      if (diagnosticEngine.errorCount() == errorCountBeforePattern) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::VariableDeclarationExpected>(
+            diagnosticLoc(start));
+      }
+      return VariableDeclaratorParseResult();
+    }
 
     ast::NodePayload payload;
     writeNode(payload, ast::kVariableDeclaratorPatternWord, pattern);
@@ -5006,6 +5768,8 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseLetStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
+
     size_t declarationsEnd = end;
     while (start + 1 < declarationsEnd &&
            kindAt(declarationsEnd - 1) == ast::SyntaxKind::Semicolon) {
@@ -5023,6 +5787,8 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseReturnStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
+
     ast::NodePayload payload;
     size_t valueEnd = end;
     while (start + 1 < valueEnd && kindAt(valueEnd - 1) == ast::SyntaxKind::Semicolon) {
@@ -5036,6 +5802,8 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseSuspendStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
+
     ast::NodePayload payload;
     payload.words[ast::kSuspendStatementModeWord] = static_cast<uint32_t>(ast::SuspendMode::Bare);
 
@@ -5095,6 +5863,12 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseIfStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
+                                                                    "("_zc);
+      return ast::NodeId();
+    }
+
     const IfStatementParts parts = parseIfStatementParts(start, end);
 
     ast::NodePayload payload;
@@ -5110,6 +5884,12 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseWhileStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
+                                                                    "("_zc);
+      return ast::NodeId();
+    }
+
     const WhileStatementParts parts = parseWhileStatementParts(start, end);
 
     ast::NodePayload payload;
@@ -5134,6 +5914,8 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseBreakStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
+
     ast::NodePayload payload;
     if (start + 1 < end && kindAt(start + 1) == ast::SyntaxKind::Identifier) {
       writeIdent(payload, ast::kBreakStmtLabelWord, internIdent(builder, start + 1));
@@ -5142,6 +5924,8 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseContinueStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
+
     ast::NodePayload payload;
     if (start + 1 < end && kindAt(start + 1) == ast::SyntaxKind::Identifier) {
       writeIdent(payload, ast::kContinueStatementLabelWord, internIdent(builder, start + 1));
@@ -5150,6 +5934,12 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseLabeledStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (isOuterAttributeStart(start + 2, end)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(start + 2).getLocation());
+      return ast::NodeId();
+    }
+
     ast::NodePayload payload;
     writeIdent(payload, ast::kLabeledStatementLabelWord, internIdent(builder, start));
     if (start + 2 < end) {
@@ -5160,7 +5950,18 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseForStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
+                                                                    "("_zc);
+      return ast::NodeId();
+    }
+
     const ForStatementParts parts = parseForStatementParts(start, end);
+    if (parts.firstSemi >= parts.headerEnd || parts.secondSemi >= parts.headerEnd) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(parts.headerEnd),
+                                                                    ";"_zc);
+      return ast::NodeId();
+    }
 
     ast::NodePayload payload;
     if (parts.headerStart < parts.firstSemi) {
@@ -5281,8 +6082,266 @@ struct Parser::Impl {
     return builder.makeNode(ast::SyntaxKind::MatchStmt, rangeFor(start, end), payload);
   }
 
+  ast::NodeId parseExternFunctionDecl(ast::TreeBuilder& builder, size_t start, size_t end,
+                                      uint32_t abi) const {
+    if (end <= start || kindAt(end - 1) != ast::SyntaxKind::Semicolon) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ";"_zc);
+      return ast::NodeId();
+    }
+
+    const FunctionDeclarationParts parts = parseFunctionDeclarationParts(start, end);
+    if (parts.nameIndex >= end || parts.openParen >= end || parts.closeParen >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(diagnosticLoc(start + 1));
+      return ast::NodeId();
+    }
+
+    ast::NodePayload payload;
+    writeIdent(payload, ast::kExternDeclNameWord, internIdent(builder, parts.nameIndex));
+    payload.words[ast::kExternDeclAbiWord] = abi;
+    writeNodeList(payload, ast::kExternDeclParamsFirstWord, ast::kExternDeclParamsSizeWord,
+                  parseFunctionParameterNodeList(builder, parts.openParen, parts.closeParen));
+    if (parts.arrow < parts.headerEnd) {
+      const size_t retEnd = parts.raises < parts.headerEnd ? parts.raises : parts.headerEnd;
+      writeNode(payload, ast::kExternDeclRetTyWord,
+                parseTypeRange(builder, parts.arrow + 1, retEnd));
+    }
+    if (parts.raises < parts.headerEnd) {
+      writeNode(payload, ast::kExternDeclRaisesTyWord,
+                parseTypeRange(builder, parts.raises + 1, parts.headerEnd));
+    }
+    return builder.makeNode(ast::SyntaxKind::ExternDecl, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseExternVarDecl(ast::TreeBuilder& builder, size_t start, size_t end,
+                                 uint32_t abi) const {
+    const size_t nameIndex = start + 1;
+    const size_t colon = findTopLevelToken(nameIndex + 1, end, ast::SyntaxKind::Colon);
+    if (nameIndex >= end || kindAt(nameIndex) != ast::SyntaxKind::Identifier) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(diagnosticLoc(nameIndex));
+      return ast::NodeId();
+    }
+    if (colon >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(nameIndex + 1),
+                                                                    ":"_zc);
+      return ast::NodeId();
+    }
+
+    size_t typeEnd = end;
+    if (typeEnd > colon && kindAt(typeEnd - 1) == ast::SyntaxKind::Semicolon) { --typeEnd; }
+    ast::NodePayload payload;
+    writeIdent(payload, ast::kExternVarDeclNameWord, internIdent(builder, nameIndex));
+    writeNode(payload, ast::kExternVarDeclTyWord, parseTypeRange(builder, colon + 1, typeEnd));
+    payload.words[ast::kExternVarDeclAbiWord] = abi;
+    payload.words[ast::kExternVarDeclIsMutWord] = 1;
+    return builder.makeNode(ast::SyntaxKind::ExternVarDecl, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseExternTypeAliasDecl(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    const size_t nameIndex = start + 1;
+    const size_t equals = findTopLevelToken(nameIndex + 1, end, ast::SyntaxKind::Equals);
+    if (nameIndex >= end || kindAt(nameIndex) != ast::SyntaxKind::Identifier) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(diagnosticLoc(nameIndex));
+      return ast::NodeId();
+    }
+    if (equals >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(nameIndex + 1),
+                                                                    "="_zc);
+      return ast::NodeId();
+    }
+
+    size_t targetStart = equals + 1;
+    if (targetStart < end && isSoftKeyword(targetStart, "opaque"_zc)) { ++targetStart; }
+    size_t targetEnd = end;
+    if (targetEnd > targetStart && kindAt(targetEnd - 1) == ast::SyntaxKind::Semicolon) {
+      --targetEnd;
+    }
+
+    ast::NodePayload payload;
+    writeIdent(payload, ast::kAliasDeclNameWord, internIdent(builder, nameIndex));
+    writeNode(payload, ast::kAliasDeclTargetWord, parseTypeRange(builder, targetStart, targetEnd));
+    return builder.makeNode(ast::SyntaxKind::AliasDecl, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseExternBlockDeclaration(ast::TreeBuilder& builder, size_t start,
+                                          size_t end) const {
+    size_t cursor = start;
+    if (isSoftKeyword(cursor, "unsafe"_zc)) { ++cursor; }
+    if (cursor >= end || !isSoftKeyword(cursor, "extern"_zc)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          diagnosticLoc(cursor));
+      return ast::NodeId();
+    }
+    ++cursor;
+
+    uint32_t abi = static_cast<uint32_t>(ast::Abi::Cdecl);
+    if (cursor < end && kindAt(cursor) == ast::SyntaxKind::StringLiteral) {
+      if (!parseExternAbi(cursor, abi)) { return ast::NodeId(); }
+      ++cursor;
+    }
+
+    if (cursor >= end || kindAt(cursor) != ast::SyntaxKind::LeftBrace) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor), "{"_zc);
+      return ast::NodeId();
+    }
+
+    const size_t bodyOpen = cursor;
+    const size_t bodyClose = findMatchingRightBrace(bodyOpen, end);
+    const size_t bodyEnd = bodyClose < end ? bodyClose : end;
+    zc::Vector<ast::NodeId> items;
+    cursor = bodyOpen + 1;
+    while (cursor < bodyEnd) {
+      if (kindAt(cursor) == ast::SyntaxKind::Semicolon) {
+        ++cursor;
+        continue;
+      }
+
+      const size_t itemStart = cursor;
+      if (kindAt(itemStart) == ast::SyntaxKind::FunKeyword) {
+        const size_t itemEnd = consumeFunctionDeclarationEnd(itemStart, bodyEnd);
+        addNodeIfPresent(items, parseExternFunctionDecl(builder, itemStart, itemEnd, abi));
+        cursor = itemEnd > itemStart ? itemEnd : itemStart + 1;
+        continue;
+      }
+      if (isSoftKeyword(itemStart, "variable"_zc)) {
+        const size_t itemEnd = consumeSimpleStatementEnd(itemStart, bodyEnd);
+        addNodeIfPresent(items, parseExternVarDecl(builder, itemStart, itemEnd, abi));
+        cursor = itemEnd > itemStart ? itemEnd : itemStart + 1;
+        continue;
+      }
+      if (kindAt(itemStart) == ast::SyntaxKind::TypeKeyword) {
+        const size_t itemEnd = consumeSimpleStatementEnd(itemStart, bodyEnd);
+        addNodeIfPresent(items, parseExternTypeAliasDecl(builder, itemStart, itemEnd));
+        cursor = itemEnd > itemStart ? itemEnd : itemStart + 1;
+        continue;
+      }
+
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(itemStart).getLocation());
+      ++cursor;
+    }
+
+    ast::NodePayload payload;
+    payload.words[ast::kExternBlockAbiWord] = abi;
+    writeNodeList(payload, ast::kExternBlockItemsFirstWord, ast::kExternBlockItemsSizeWord,
+                  builder.makeList(items.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::ExternBlock, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseMacroRulesDeclaration(ast::TreeBuilder& builder, size_t start,
+                                         size_t end) const {
+    if (!isSoftKeyword(start, "macro"_zc)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(diagnosticLoc(start));
+      return ast::NodeId();
+    }
+
+    const size_t nameIndex = start + 1;
+    const size_t bangIndex = nameIndex + 1;
+    if (nameIndex >= end || kindAt(nameIndex) != ast::SyntaxKind::Identifier) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(diagnosticLoc(nameIndex));
+      return ast::NodeId();
+    }
+    if (bangIndex >= end || kindAt(bangIndex) != ast::SyntaxKind::Exclamation) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(bangIndex),
+                                                                    "!"_zc);
+      return ast::NodeId();
+    }
+
+    const size_t bodyOpen = bangIndex + 1;
+    if (bodyOpen >= end || kindAt(bodyOpen) != ast::SyntaxKind::LeftBrace) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(bodyOpen),
+                                                                    "{"_zc);
+      return ast::NodeId();
+    }
+
+    const size_t bodyClose = findMatchingRightBrace(bodyOpen, end);
+    if (bodyClose >= end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(bodyOpen),
+                                                                    "}"_zc);
+      return ast::NodeId();
+    }
+
+    zc::Vector<ast::NodeId> rules;
+    size_t cursor = bodyOpen + 1;
+    while (cursor < bodyClose) {
+      if (kindAt(cursor) == ast::SyntaxKind::Semicolon) {
+        ++cursor;
+        continue;
+      }
+      if (!isMacroGroupOpen(kindAt(cursor))) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+            diagnosticLoc(cursor));
+        ++cursor;
+        continue;
+      }
+
+      const size_t patternStart = cursor;
+      const size_t patternClose = findMatchingMacroGroup(patternStart, bodyClose);
+      if (patternClose >= bodyClose) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+            diagnosticLoc(patternStart), macroGroupCloseLabel(kindAt(patternStart)));
+        return ast::NodeId();
+      }
+
+      const size_t arrow =
+          findTopLevelToken(patternClose + 1, bodyClose, ast::SyntaxKind::EqualsGreaterThan);
+      if (arrow >= bodyClose) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+            diagnosticLoc(patternClose + 1), "=>"_zc);
+        return ast::NodeId();
+      }
+
+      size_t expansionStart = arrow + 1;
+      while (expansionStart < bodyClose && kindAt(expansionStart) == ast::SyntaxKind::Semicolon) {
+        ++expansionStart;
+      }
+
+      size_t expansionEnd = bodyClose;
+      if (expansionStart < bodyClose && isMacroGroupOpen(kindAt(expansionStart))) {
+        const size_t expansionClose = findMatchingMacroGroup(expansionStart, bodyClose);
+        if (expansionClose >= bodyClose) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+              diagnosticLoc(expansionStart), macroGroupCloseLabel(kindAt(expansionStart)));
+          return ast::NodeId();
+        }
+        expansionEnd = expansionClose + 1;
+      } else {
+        const size_t semicolon =
+            findTopLevelToken(expansionStart, bodyClose, ast::SyntaxKind::Semicolon);
+        expansionEnd = semicolon < bodyClose ? semicolon : bodyClose;
+      }
+
+      ast::NodePayload rulePayload;
+      writeNode(rulePayload, ast::kMacroRulePatternWord,
+                makeEmptyMacroPattern(builder, patternStart, patternClose + 1));
+      writeNode(rulePayload, ast::kMacroRuleExpandWord,
+                makeEmptyMacroTokenTree(builder, expansionStart, expansionEnd));
+      rules.add(builder.makeNode(ast::SyntaxKind::MacroRule, rangeFor(patternStart, expansionEnd),
+                                 rulePayload));
+
+      cursor = expansionEnd;
+      if (cursor < bodyClose && kindAt(cursor) == ast::SyntaxKind::Semicolon) { ++cursor; }
+    }
+
+    ast::NodePayload payload;
+    writeIdent(payload, ast::kMacroRulesDeclNameWord, internIdent(builder, nameIndex));
+    writeNodeList(payload, ast::kMacroRulesDeclRulesFirstWord, ast::kMacroRulesDeclRulesSizeWord,
+                  builder.makeList(rules.asPtr()));
+    return builder.makeNode(ast::SyntaxKind::MacroRulesDecl, rangeFor(start, end), payload);
+  }
+
   ast::NodeId parseFunctionDeclaration(ast::TreeBuilder& builder, size_t start, size_t end) const {
     const FunctionDeclarationParts parts = parseFunctionDeclarationParts(start, end);
+
+    if (parts.nameIndex < end) { diagnoseDeclarationTypeParameterSyntax(parts.nameIndex + 1, end); }
+
+    const size_t whereSearchStart =
+        parts.closeParen < parts.headerEnd ? parts.closeParen + 1 : parts.headerEnd;
+    const size_t where = findTopLevelIdentifierText(whereSearchStart, parts.headerEnd, "where"_zc);
+    if (where < parts.headerEnd) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(where).getLocation());
+      return ast::NodeId();
+    }
 
     ast::NodePayload payload;
     if (parts.nameIndex < end) {
@@ -5295,7 +6354,13 @@ struct Parser::Impl {
       writeNode(payload, ast::kFunctionDeclRetTyWord,
                 parseTypeRange(builder, parts.arrow + 1, retEnd));
     }
-    if (parts.raises < end) {
+    if (parts.raises < parts.headerEnd) {
+      if (parts.raises + 1 >= parts.headerEnd ||
+          kindAt(parts.raises + 1) == ast::SyntaxKind::Arrow) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(
+            diagnosticLoc(parts.raises + 1));
+        return ast::NodeId();
+      }
       writeNode(payload, ast::kFunctionDeclRaisesTyWord,
                 parseTypeRange(builder, parts.raises + 1, parts.headerEnd));
     }
@@ -5311,6 +6376,34 @@ struct Parser::Impl {
         nameIndex = index;
         break;
       }
+    }
+
+    if (nameIndex < end) { diagnoseDeclarationTypeParameterSyntax(nameIndex + 1, end); }
+
+    size_t headerCursor = nameIndex < end ? nameIndex + 1 : end;
+    if (headerCursor < end && kindAt(headerCursor) == ast::SyntaxKind::LessThan) {
+      const size_t closeAngle = findMatchingAngleClose(headerCursor, end);
+      headerCursor = closeAngle < end ? closeAngle + 1 : end;
+    }
+    if (kind == ast::SyntaxKind::StructDecl && headerCursor < end &&
+        kindAt(headerCursor) == ast::SyntaxKind::LeftParen) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(headerCursor).getLocation());
+      return ast::NodeId();
+    }
+
+    const size_t bodyOpen = findTopLevelToken(headerCursor, end, ast::SyntaxKind::LeftBrace);
+    const size_t headerEnd = bodyOpen < end ? bodyOpen : end;
+    const size_t where = findTopLevelIdentifierText(headerCursor, headerEnd, "where"_zc);
+    if (where < headerEnd) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(where).getLocation());
+      return ast::NodeId();
+    }
+
+    if (bodyOpen < end) {
+      const size_t bodyClose = findMatchingRightBrace(bodyOpen, end);
+      if (bodyClose < end) { diagnoseNamedTypeBody(bodyOpen, bodyClose, kind); }
     }
 
     ast::NodePayload payload;
@@ -5367,6 +6460,12 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseAliasDeclaration(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (kindAt(start) == ast::SyntaxKind::TypeKeyword) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          tokenAt(start).getLocation());
+      return ast::NodeId();
+    }
+
     size_t nameIndex = end;
     for (size_t index = start + 1; index < end; ++index) {
       if (kindAt(index) == ast::SyntaxKind::Identifier) {
@@ -5375,10 +6474,16 @@ struct Parser::Impl {
       }
     }
 
+    if (nameIndex < end) { diagnoseDeclarationTypeParameterSyntax(nameIndex + 1, end); }
+
     const size_t equals = findTopLevelToken(start + 1, end, ast::SyntaxKind::Equals);
     ast::NodePayload payload;
     if (nameIndex < end) {
       writeIdent(payload, ast::kAliasDeclNameWord, internIdent(builder, nameIndex));
+    }
+    if (end == 0 || kindAt(end - 1) != ast::SyntaxKind::Semicolon) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ";"_zc);
+      return ast::NodeId();
     }
     if (equals < end) {
       const size_t errorCountBeforeTarget = diagnosticEngine.errorCount();
@@ -5531,9 +6636,33 @@ struct Parser::Impl {
   }
 
   ast::NodeId parseExpressionStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
+
     ast::NodePayload payload;
     writeNode(payload, ast::kExpressionStatementExpressionWord,
               parseRequiredExpression(builder, start, end));
+    return builder.makeNode(ast::SyntaxKind::ExpressionStatement, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseExpressionStatementWithoutSemicolon(ast::TreeBuilder& builder, size_t start,
+                                                       size_t end) const {
+    const ast::NodeId expr = parseRequiredExpression(builder, start, end);
+    if (!expr) { return ast::NodeId(); }
+
+    ast::NodePayload payload;
+    writeNode(payload, ast::kExpressionStatementExpressionWord, expr);
+    return builder.makeNode(ast::SyntaxKind::ExpressionStatement, rangeFor(start, end), payload);
+  }
+
+  ast::NodeId parseSpawnStatement(ast::TreeBuilder& builder, size_t start, size_t end) const {
+    size_t exprEnd = end;
+    if (start < exprEnd && kindAt(exprEnd - 1) == ast::SyntaxKind::Semicolon) { --exprEnd; }
+
+    const ast::NodeId expr = parseRequiredExpression(builder, start, exprEnd);
+    if (!expr) { return ast::NodeId(); }
+
+    ast::NodePayload payload;
+    writeNode(payload, ast::kExpressionStatementExpressionWord, expr);
     return builder.makeNode(ast::SyntaxKind::ExpressionStatement, rangeFor(start, end), payload);
   }
 
@@ -5561,6 +6690,10 @@ struct Parser::Impl {
         return parseErrorDeclaration(builder, start, end);
       case ast::SyntaxKind::AliasDecl:
         return parseAliasDeclaration(builder, start, end);
+      case ast::SyntaxKind::MacroRulesDecl:
+        return parseMacroRulesDeclaration(builder, start, end);
+      case ast::SyntaxKind::ExternBlock:
+        return parseExternBlockDeclaration(builder, start, end);
       case ast::SyntaxKind::StandaloneImplDecl:
         return parseStandaloneImplDeclaration(builder, start, end);
       case ast::SyntaxKind::ReturnStmt:
@@ -5590,8 +6723,12 @@ struct Parser::Impl {
       case ast::SyntaxKind::EmptyStatement:
         return builder.makeNode(ast::SyntaxKind::EmptyStatement, rangeFor(start, end));
       case ast::SyntaxKind::DebuggerStatement:
+        if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
         return builder.makeNode(ast::SyntaxKind::DebuggerStatement, rangeFor(start, end));
       case ast::SyntaxKind::ExpressionStatement:
+        if (kindAt(start) == ast::SyntaxKind::SpawnKeyword) {
+          return parseSpawnStatement(builder, start, end);
+        }
         return parseExpressionStatement(builder, start, end);
       default:
         return parseExpressionStatement(builder, start, end);
@@ -5643,8 +6780,7 @@ struct Parser::Impl {
             tokenAt(elementStart).getLocation(), "cfg-gated declaration or block"_zc);
       }
 
-      if (first == ast::SyntaxKind::ModuleKeyword && firstSourceElement && !moduleNode &&
-          !elementResult.attrs) {
+      if (first == ast::SyntaxKind::ModuleKeyword && firstSourceElement && !moduleNode) {
         moduleNode = elementResult.node;
       } else {
         if (first == ast::SyntaxKind::ModuleKeyword) {

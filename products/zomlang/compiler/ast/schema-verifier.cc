@@ -46,6 +46,10 @@ bool isExpressionSchemaKind(SyntaxKind kind) {
          kind == SyntaxKind::MacroInvocationExpr;
 }
 
+bool isStatementSchemaKind(SyntaxKind kind) {
+  return isStatementKind(kind) || kind == SyntaxKind::ExternBlock;
+}
+
 bool isIdentifierSchemaKind(SyntaxKind kind) {
   return kind == SyntaxKind::IdentExpr || kind == SyntaxKind::ModulePath ||
          kind == SyntaxKind::AttributePath || kind == SyntaxKind::Identifier;
@@ -63,7 +67,7 @@ bool matchesCastTarget(SyntaxKind kind, const char* target) {
   if (target == nullptr) { return true; }
   if (equals(target, "Expression")) { return isExpressionSchemaKind(kind); }
   if (equals(target, "TypeExpr")) { return isTypeKind(kind); }
-  if (equals(target, "Statement")) { return isStatementKind(kind); }
+  if (equals(target, "Statement")) { return isStatementSchemaKind(kind); }
   if (equals(target, "Declaration")) { return isDeclarationKind(kind); }
   if (equals(target, "Pattern")) { return isPatternKind(kind); }
   if (equals(target, "CfgPredicate")) { return isCfgPredicateKind(kind); }

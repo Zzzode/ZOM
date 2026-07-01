@@ -103,6 +103,14 @@ bool isNumericLikeUnderscoreIdentifier(zc::StringPtr text) {
 }
 
 struct Lexer::Impl {
+  struct State {
+    const zc::byte* curPtr = nullptr;
+    const zc::byte* fullStartPtr = nullptr;
+    const zc::byte* tokenStartPtr = nullptr;
+    TokenFlags tokenFlags = TokenFlags::None;
+    Token token;
+  };
+
   /// Reference members
   const source::SourceManager& sourceMgr;
   /// Diagnostic engine for reporting errors
@@ -118,7 +126,7 @@ struct Lexer::Impl {
   /// End of text
   const zc::byte* bufferEnd;
   /// Embedded lexer state
-  LexerState state;
+  State state;
 
   /// Collected comment directives
   zc::Vector<CommentDirective> commentDirectives;
@@ -455,10 +463,17 @@ void Lexer::Impl::lex() {
         }
         state.curPtr++;
         return formToken(ast::SyntaxKind::Exclamation);
-      case '"':
-      case '\'': {
+      case '"': {
         zc::StringPtr str = lexString();
         return formToken(ast::SyntaxKind::StringLiteral, str);
+      }
+      case '\'': {
+        zc::StringPtr str = lexString();
+        const bool isValidCharacterLiteral =
+            !hasFlag(state.tokenFlags, TokenFlags::Unterminated) && countUtf8Scalars(str) == 1;
+        return formToken(isValidCharacterLiteral ? ast::SyntaxKind::CharacterLiteral
+                                                 : ast::SyntaxKind::StringLiteral,
+                         str);
       }
       case '`': {
         zc::StringPtr str;
@@ -638,6 +653,10 @@ void Lexer::Impl::lex() {
       case '1' ... '9':
         return lexNumber();
       case ':':
+        if (charAt(1) == ':') {
+          state.curPtr += 2;
+          return formToken(ast::SyntaxKind::ColonColon);
+        }
         state.curPtr++;
         return formToken(ast::SyntaxKind::Colon);
       case ';':
@@ -772,16 +791,7 @@ void Lexer::Impl::lex() {
       }
       case '#':
         if (charAt(1) == '!') {
-          if (state.curPtr == bufferStart) {
-            state.curPtr += 2;
-            while (true) {
-              auto [code, size] = charWithSize();
-              if (size == 0 || isLineBreak(code)) { break; }
-              state.curPtr += size;
-            }
-            continue;
-          }
-          errorAt<diagnostics::DiagID::XCanOnlyUsedAtStartOfFile>(state.curPtr, 2);
+          errorAt<diagnostics::DiagID::InvalidCharacter>(state.curPtr, 2);
           state.curPtr++;
           return formToken(ast::SyntaxKind::Unknown, "#"_zc);
         }
@@ -791,11 +801,6 @@ void Lexer::Impl::lex() {
         if (c < 0) { return formToken(ast::SyntaxKind::EndOfFile); }
         ZC_IF_SOME(tokenValue, lexIdentifier(0)) { return getIdentifierToken(tokenValue); }
         auto [code, size] = charWithSize();
-        if (code == kInvalidCodePoint && size == 1) {
-          errorAt<diagnostics::DiagID::FileAppearsToBeBinary>(bufferStart, 0);
-          state.curPtr = bufferEnd;
-          return formToken(ast::SyntaxKind::NonTextFileMarker);
-        }
         if (isWhiteSpaceSingleLine(code)) {
           state.curPtr += size;
           continue;
@@ -1259,7 +1264,7 @@ zc::StringPtr Lexer::Impl::lexString() {
   }
   zc::StringPtr text = stringPool.intern(result.releaseAsArray());
   if (quoteChar == '\'' && !hasFlag(state.tokenFlags, TokenFlags::Unterminated) &&
-      countUtf8Scalars(text) > 1) {
+      countUtf8Scalars(text) != 1) {
     errorAt<diagnostics::DiagID::MultiCharacterSingleQuotedLiteral>(
         state.tokenStartPtr, static_cast<uint32_t>(state.curPtr - state.tokenStartPtr));
   }
@@ -1468,15 +1473,26 @@ ast::SyntaxKind Lexer::reScanGreaterToken() { return impl->reScanGreaterToken();
 
 ast::SyntaxKind Lexer::reScanTemplateToken() { return impl->reScanTemplateToken(); }
 
-void Lexer::restoreState(LexerState s, bool enableDiagnostics) {
-  impl->state.curPtr = s.curPtr;
-  impl->state.fullStartPtr = s.fullStartPtr;
-  impl->state.tokenStartPtr = s.tokenStartPtr;
+void Lexer::restoreState(LexerState s) {
+  ZC_IREQUIRE(s.curOffset <= static_cast<size_t>(impl->bufferEnd - impl->bufferStart),
+              "lexer restore cursor outside source buffer");
+  ZC_IREQUIRE(s.fullStartOffset <= static_cast<size_t>(impl->bufferEnd - impl->bufferStart),
+              "lexer restore full start outside source buffer");
+  ZC_IREQUIRE(s.tokenStartOffset <= static_cast<size_t>(impl->bufferEnd - impl->bufferStart),
+              "lexer restore token start outside source buffer");
+  impl->state.curPtr = impl->bufferStart + s.curOffset;
+  impl->state.fullStartPtr = impl->bufferStart + s.fullStartOffset;
+  impl->state.tokenStartPtr = impl->bufferStart + s.tokenStartOffset;
   impl->state.token = s.token;
   impl->state.tokenFlags = s.tokenFlags;
 }
 
-const LexerState Lexer::getCurrentState() const { return impl->state; }
+const LexerState Lexer::getCurrentState() const {
+  return LexerState(static_cast<size_t>(impl->state.curPtr - impl->bufferStart),
+                    static_cast<size_t>(impl->state.fullStartPtr - impl->bufferStart),
+                    static_cast<size_t>(impl->state.tokenStartPtr - impl->bufferStart),
+                    impl->state.token, impl->state.tokenFlags);
+}
 
 const source::SourceLoc Lexer::getFullStartLoc() const {
   return source::SourceLoc(impl->state.fullStartPtr);

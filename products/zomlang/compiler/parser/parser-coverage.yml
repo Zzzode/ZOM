@@ -88,7 +88,7 @@ productions:
   FunDeclaration: {status: direct, parser: parseFunctionDeclaration, ast: [FunctionDecl]}
   FunctionDeclaration: {status: direct, parser: parseFunctionDeclaration, ast: [FunctionDecl]}
   FunctionExpression: {status: direct, parser: parseFunctionExpression, ast: [FunctionExpression]}
-  FunctionType: {status: direct, parser: parseFunctionTypeRange, ast: [FunctionTypeExpr]}
+  FunctionType: {status: direct, parser: parseFunctionType, ast: [FunctionTypeExpr]}
   GenericArgs: {status: inlined, parser: parseTypeArguments, parent: TypeArguments}
   GuardClause: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
   HeritageClause: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassDeclaration}
@@ -199,7 +199,7 @@ productions:
   ShiftExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   SignedInteger: {status: lexical}
   SingleLineComment: {status: lexical}
-  SingleStringCharacter: {status: lexical}
+  CharacterLiteralCharacter: {status: lexical}
   SourceFile: {status: direct, parser: buildTree, ast: [SourceFile]}
   StandaloneImplDeclaration: {status: inlined, parser: parseSourceElement, parent: Declaration}
   Statement: {status: direct, parser: parseSourceElement}
@@ -224,13 +224,12 @@ productions:
   TypeArguments: {status: direct, parser: parseTypeArguments}
   TypeBody: {status: inlined, parser: parseObjectTypeRange, parent: ObjectType}
   TypeExpression: {status: direct, parser: parseTypeRange}
-  TypeList: {status: direct, parser: parseTypeList}
   TypeMember: {status: inlined, parser: parseObjectTypeRange, parent: ObjectType}
   TypeMemberList: {status: inlined, parser: parseObjectTypeRange, parent: ObjectType}
   TypeName: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
-  TypeParameter: {status: inlined, parser: parseFunctionTypeRange, parent: TypeParameterList}
-  TypeParameterList: {status: inlined, parser: parseFunctionTypeRange, parent: TypeParameters}
-  TypeParameters: {status: inlined, parser: parseFunctionTypeRange, parent: FunctionType}
+  TypeParameter: {status: inlined, parser: parseFunctionType, parent: TypeParameterList}
+  TypeParameterList: {status: inlined, parser: parseFunctionType, parent: TypeParameters}
+  TypeParameters: {status: inlined, parser: parseFunctionType, parent: FunctionType}
   TypeQuery: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   TypeQueryExpression: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   TypeReference: {status: inlined, parser: parseTypeRange, parent: TypeExpression}

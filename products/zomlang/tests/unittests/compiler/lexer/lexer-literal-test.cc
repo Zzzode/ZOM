@@ -32,12 +32,16 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     ZC_EXPECT(tokens[0].getValue() == ""_zc);
   }
 
-  // Case 2: Empty single-quoted string
+  // Case 2: Empty single-quoted literal is recoverable but invalid
   {
-    auto tokens = tokenize("''"_zc);
+    auto& sourceManager = getSourceManager();
+    auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+
+    auto tokens = tokenize("''"_zc, *diagnosticEngine);
     ZC_EXPECT(tokens.size() == 2);
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
     ZC_EXPECT(tokens[0].getValue() == ""_zc);
+    ZC_EXPECT(diagnosticEngine->hasErrors());
   }
 
   // Case 3: Simple double-quoted string
@@ -48,11 +52,11 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     ZC_EXPECT(tokens[0].getValue() == "hello"_zc);
   }
 
-  // Case 4: Single-quoted character literal tokenized through the string payload path
+  // Case 4: Single-quoted character literal uses the CharacterLiteral token
   {
     auto tokens = tokenize("'w'"_zc);
     ZC_EXPECT(tokens.size() == 2);
-    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::CharacterLiteral));
     ZC_EXPECT(tokens[0].getValue() == "w"_zc);
   }
 
@@ -65,7 +69,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
 
     auto tokens2 = tokenize("'\\''"_zc);  // '\''
     ZC_EXPECT(tokens2.size() == 2);
-    ZC_EXPECT(tokens2[0].is(ast::SyntaxKind::StringLiteral));
+    ZC_EXPECT(tokens2[0].is(ast::SyntaxKind::CharacterLiteral));
     ZC_EXPECT(tokens2[0].getValue() == "'"_zc);
   }
 
@@ -78,7 +82,7 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
 
     auto tokens2 = tokenize("'\"'"_zc);  // '"'
     ZC_EXPECT(tokens2.size() == 2);
-    ZC_EXPECT(tokens2[0].is(ast::SyntaxKind::StringLiteral));
+    ZC_EXPECT(tokens2[0].is(ast::SyntaxKind::CharacterLiteral));
     ZC_EXPECT(tokens2[0].getValue() == "\""_zc);
   }
 

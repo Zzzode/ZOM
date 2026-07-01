@@ -47,9 +47,8 @@ BigIntLiteral ::= DecimalDigits 'n'
 NumericLiteralSeparator ::= '_'
 
 (* String Literals *)
-StringLiteral ::= '"' DoubleStringCharacter* '"' | "'" SingleStringCharacter* "'"
+StringLiteral ::= '"' DoubleStringCharacter* '"'
 DoubleStringCharacter ::= ~["\\\r\n\u2028\u2029] | LineTerminator | '\\' EscapeSequence | LineContinuation
-SingleStringCharacter ::= ~['\\\r\n\u2028\u2029] | LineTerminator | '\\' EscapeSequence | LineContinuation
 
 TemplateLiteral ::= NoSubstitutionTemplateLiteral | TemplateHead TemplateSpan+
 TemplateSpan ::= Expression (TemplateMiddle | TemplateTail)
@@ -61,14 +60,13 @@ UnicodeEscapeSequence ::= 'u' HEX_DIGIT HEX_DIGIT HEX_DIGIT HEX_DIGIT | 'u{' HEX
 LineContinuation ::= '\\' LineTerminatorSequence
 
 (* Character Literals *)
-CharacterLiteral ::= "'" SingleStringCharacter "'"
+CharacterLiteral ::= "'" CharacterLiteralCharacter "'"
+CharacterLiteralCharacter ::= ~['\\\r\n\u2028\u2029] | '\\' EscapeSequence | LineContinuation
 
 (* Punctuators *)
-Punctuator ::= '::'                    (namespace separator, new SyntaxKind
-                                          ColonColon — Ch.16 §16.3.1; NO
-                                          whitespace between the two colons;
-                                          ': :' with space → ZOM0620)
-            | '{' | '}' | '(' | ')' | '[' | ']' | '.' | '...' | ';' | ',' | ':' | '?'
+Punctuator ::= '{' | '}' | '(' | ')' | '[' | ']' | '.' | '...' | '#' | '@'
+            | ';' | ',' | ':' | '?'
+            | '::'
             | '+' | '-' | '*' | '/' | '%' | '**'
             | '++' | '--'
             | '<<' | '>>' | '>>>'
@@ -342,7 +340,6 @@ TypeArgumentList ::= TypeExpression (',' TypeExpression)*
 TypeAnnotation ::= ':' TypeExpression
 CallSignature ::= TypeParameters? ParameterClause ReturnType?
 InterfaceTypeList ::= TypeReference (',' TypeReference)*
-TypeList ::= TypeExpression (',' TypeExpression)*
 BindingIdentifier ::= Identifier
 BindingPattern ::= ArrayBindingPattern | ObjectBindingPattern
 ArrayBindingPattern ::= '[' BindingElementList? ']'
