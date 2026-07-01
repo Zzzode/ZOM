@@ -2,9 +2,9 @@
 
 
 // CHECK: Error [ZOM2025]: Expected '{'
-// CHECK:   --> {{.*interface-missing-body-open-brace.zom}}:2:1
+// CHECK:   --> {{.*interface-missing-body-open-brace.zom}}:2:15
 // CHECK:   |
 // CHECK: 2 | let x: i32 = 1;
-// CHECK:   | ^
+// CHECK:   |               ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,10 +1,30 @@
-// RUN: ! %zomc compile --dump-ast %corpus/20-ffi/extern_c_basic_pos_01.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/20-ffi/extern_c_basic_pos_01.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*extern_c_basic_pos_01.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | extern "C" {
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #10 @1:1..5:1 file_name="extern_c_basic_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #9 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExternBlock #8 @1:1..4:2 abi=Cdecl
+// CHECK-NEXT:           items:
+// CHECK-NEXT:             ExternDecl #4 @2:5..2:33 name="printf" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @2:16..2:24 name="fmt"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:21..2:24 kind=Str
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #3 @2:29..2:32 kind=I32
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternDecl #7 @3:5..3:22 name="free" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #6 @3:14..3:20 name="p"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @3:17..3:20 kind=U64
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty: null
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:       attrs: null

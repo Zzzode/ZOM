@@ -11,7 +11,7 @@
 // CHECK:   |
 // CHECK: 2 | let obj = { a, b = 1, "sb": 2, 3: 4, ...rest };
 // CHECK:   |                                ^
-// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
 // CHECK:   --> {{.*arrays-and-objects.zom}}:1:18
 // CHECK:   |
 // CHECK: 1 | let arr = [1, 2, ...xs, 3];

@@ -1,10 +1,10 @@
 // RUN: ! %zomc compile --dump-ast %corpus/06-declarations/rejected_modifiers_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*rejected_modifiers_neg_02.zom}}:1:1
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*rejected_modifiers_neg_02.zom}}:2:1
 // CHECK:   |
-// CHECK: 1 | unsafe fun danger() {}
+// CHECK: 2 |
 // CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

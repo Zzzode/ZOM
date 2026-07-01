@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/bind_pat_double_at_neg_09.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
 // CHECK:   --> {{.*bind_pat_double_at_neg_09.zom}}:2:12
 // CHECK:   |
 // CHECK: 2 |     when a @ b @ p => { print(a); }

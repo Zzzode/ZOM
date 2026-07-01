@@ -11,12 +11,12 @@
 // CHECK:   |
 // CHECK: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK:   |                                    ^
-// CHECK: Error [ZOM2074]: Identifier expected
+// CHECK: Error [ZOM2073]: Identifier expected
 // CHECK:   --> {{.*type-forms-error.zom}}:2:27
 // CHECK:   |
 // CHECK: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK:   |                           ^
-// CHECK: Error [ZOM2069]: Type expected
+// CHECK: Error [ZOM2068]: Type expected
 // CHECK:   --> {{.*type-forms-error.zom}}:2:8
 // CHECK:   |
 // CHECK: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;

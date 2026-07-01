@@ -1,10 +1,10 @@
 // RUN: ! %zomc compile --dump-ast %corpus/08-adt/marker_impl_reject_neg_07.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*marker_impl_reject_neg_07.zom}}:1:1
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*marker_impl_reject_neg_07.zom}}:2:1
 // CHECK:   |
-// CHECK: 1 | marker impl Foo for Bar { }
+// CHECK: 2 |
 // CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

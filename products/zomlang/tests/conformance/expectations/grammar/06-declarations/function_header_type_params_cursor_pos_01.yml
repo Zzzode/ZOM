@@ -1,0 +1,5 @@
+section: "§4.4 Function header cursor"
+covers_rule: "functionDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,7 +1,12 @@
 // RUN: ! %zomc compile --dump-ast %corpus/12-generics/lambda_generic_reject_neg_04.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*lambda_generic_reject_neg_04.zom}}:1:5
+// CHECK:   |
+// CHECK: 1 | val f = <T>(x: T) => x;
+// CHECK:   |     ^
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*lambda_generic_reject_neg_04.zom}}:1:1
 // CHECK:   |
 // CHECK: 1 | val f = <T>(x: T) => x;

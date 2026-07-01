@@ -1,15 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/08-adt/nested_class_reject_neg_04.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/08-adt/nested_class_reject_neg_04.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..5:1 file_name="nested_class_reject_neg_04.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..4:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #2 @1:1..4:2 name="Outer" extensibility=Sealed
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..4:2 nmembers=0
-// CHECK-NEXT:               members: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*nested_class_reject_neg_04.zom}}:2:5
+// CHECK:   |
+// CHECK: 2 |     class Inner {
+// CHECK:   |     ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

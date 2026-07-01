@@ -1,5 +1,5 @@
-section: "§16 Compound Hash-Bracket Token (Space REJECT)"
-covers_rule: "HASH_LBRACK compound token"
+section: "§16 Hash-Bracket Attribute Start (Space REJECT)"
+covers_rule: "HASH LBRACK adjacency check"
 expected: "REJECT"
 expected_diagnostic: ""
 notes: []

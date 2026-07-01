@@ -1,13 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/13-modules/import_dot_reject_neg_02.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/import_dot_reject_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..2:1 file_name="import_dot_reject_neg_02.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:15
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:15 alias=null
-// CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #1 @1:8..1:14 segments=["std", "io"]
-// CHECK-NEXT:           specifiers: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*import_dot_reject_neg_02.zom}}:1:11
+// CHECK:   |
+// CHECK: 1 | import std.io;
+// CHECK:   |           ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

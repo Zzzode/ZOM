@@ -1,15 +1,15 @@
 // RUN: ! %zomc compile --dump-ast %corpus/13-modules/namespace_reject_neg_18.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
 // CHECK:   --> {{.*namespace_reject_neg_18.zom}}:1:1
 // CHECK:   |
 // CHECK: 1 | namespace foo {}
 // CHECK:   | ^
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*namespace_reject_neg_18.zom}}:1:1
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*namespace_reject_neg_18.zom}}:2:1
 // CHECK:   |
-// CHECK: 1 | namespace foo {}
+// CHECK: 2 |
 // CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,20 +1,15 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/shebang_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/shebang_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #7 @2:1..3:1 file_name="shebang_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @2:1..2:11
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #5 @2:1..2:11 kind=Let
-// CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #4 @2:5..2:10 n_decls=1
-// CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #3 @2:5..2:10
-// CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #1 @2:5..2:6 name="x"
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                   ty: null
-// CHECK-NEXT:                   init:
-// CHECK-NEXT:                     IntLiteral #2 @2:9..2:10 base=10 value="1"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2002]: Invalid character
+// CHECK:   --> {{.*shebang_neg_01.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | #!/usr/bin/env zom
+// CHECK:   | ^~
+// CHECK: Error [ZOM2056]: Expression expected
+// CHECK:   --> {{.*shebang_neg_01.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | #!/usr/bin/env zom
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

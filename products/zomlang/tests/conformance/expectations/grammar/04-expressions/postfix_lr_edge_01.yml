@@ -1,5 +1,6 @@
 section: "§4.6 Chained postfix left-right"
 covers_rule: "postfixExpr"
-expected: "ACCEPT"
+expected: "REJECT"
 expected_diagnostic: ""
-notes: []
+notes:
+  - "Only ?!, !!, ++, and -- are postfix operators; a standalone postfix ? is invalid."

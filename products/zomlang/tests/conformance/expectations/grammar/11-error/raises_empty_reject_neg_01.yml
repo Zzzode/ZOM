@@ -1,5 +1,5 @@
 section: "§4.8 FunctionType, Raises clause"
-covers_rule: "raisesClause, typeList"
+covers_rule: "raisesClause"
 expected: "REJECT"
 expected_diagnostic: ""
 notes: []

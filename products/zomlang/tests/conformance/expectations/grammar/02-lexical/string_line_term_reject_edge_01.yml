@@ -1,5 +1,5 @@
-section: "§3.6.2 StringLiteral"
-covers_rule: "DOUBLE_STRING_LITERAL, SINGLE_STRING_LITERAL"
+section: "§3.6 StringLiteral and CharacterLiteral"
+covers_rule: "DOUBLE_STRING_LITERAL, CHAR_LITERAL"
 expected: "ACCEPT"
 expected_diagnostic: ""
 notes: []

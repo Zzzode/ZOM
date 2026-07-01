@@ -1,10 +1,112 @@
-// RUN: ! %zomc compile --dump-ast %corpus/20-ffi/nested_unsafe_block_pos_08.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/20-ffi/nested_unsafe_block_pos_08.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*nested_unsafe_block_pos_08.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | unsafe extern "Cdecl" {
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #43 @1:1..9:1 file_name="nested_unsafe_block_pos_08.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #42 @1:1..8:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExternBlock #41 @1:1..8:2 abi=Cdecl
+// CHECK-NEXT:           items:
+// CHECK-NEXT:             ExternDecl #8 @2:5..2:55 name="open" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @2:14..2:23 name="path"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:20..2:23 kind=Str
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #4 @2:25..2:35 name="flags"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @2:32..2:35 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #6 @2:37..2:46 name="mode"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:43..2:46 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #7 @2:51..2:54 kind=I32
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternDecl #14 @3:5..3:41 name="fstat" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #10 @3:15..3:22 name="fd"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #9 @3:19..3:22 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #12 @3:24..3:32 name="buf"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #11 @3:29..3:32 kind=U64
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #13 @3:37..3:40 kind=I32
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternDecl #29 @4:5..5:40 name="mmap" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #16 @4:14..4:23 name="addr"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #15 @4:20..4:23 kind=U64
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #19 @4:25..4:35 name="len"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #18 @4:30..4:35
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #17 @4:30..4:35 segments=["usize"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #21 @4:37..4:46 name="prot"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #20 @4:43..4:46 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #23 @4:48..4:58 name="flags"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #22 @4:55..4:58 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #25 @5:14..5:21 name="fd"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #24 @5:18..5:21 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #27 @5:23..5:31 name="off"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #26 @5:28..5:31 kind=U64
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #28 @5:36..5:39 kind=U64
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternDecl #36 @6:5..6:46 name="munmap" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #31 @6:16..6:25 name="addr"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #30 @6:22..6:25 kind=U64
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #34 @6:27..6:37 name="len"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #33 @6:32..6:37
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #32 @6:32..6:37 segments=["usize"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #35 @6:42..6:45 kind=I32
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternDecl #40 @7:5..7:31 name="close" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #38 @7:15..7:22 name="fd"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #37 @7:19..7:22 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #39 @7:27..7:30 kind=I32
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:       attrs: null

@@ -1,33 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/struct_literal_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/struct_literal_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #12 @1:1..3:1 file_name="struct_literal_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:17
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #2 @1:1..1:17 name="Box" extensibility=Sealed
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..1:17 nmembers=0
-// CHECK-NEXT:               members: []
-// CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #11 @2:1..2:18
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #10 @2:1..2:18 kind=Let
-// CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #9 @2:5..2:17 n_decls=1
-// CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #8 @2:5..2:17
-// CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #4 @2:5..2:6 name="b"
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                   ty: null
-// CHECK-NEXT:                   init:
-// CHECK-NEXT:                     CallExpression #7 @2:9..2:17
-// CHECK-NEXT:                       callee:
-// CHECK-NEXT:                         IdentExpr #5 @2:9..2:12 name="Box"
-// CHECK-NEXT:                       type_args: []
-// CHECK-NEXT:                       args:
-// CHECK-NEXT:                         IntLiteral #6 @2:13..2:16 base=10 value="123"
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*struct_literal_neg_01.zom}}:1:11
+// CHECK:   |
+// CHECK: 1 | struct Box(i32);
+// CHECK:   |           ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

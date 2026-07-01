@@ -1,32 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/05-statements/loop_forms_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/05-statements/loop_forms_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #11 @1:1..4:1 file_name="loop_forms_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #10 @1:1..3:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #9 @1:1..3:2 name="f"
-// CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
-// CHECK-NEXT:               params: []
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           ret_ty: null
-// CHECK-NEXT:           raises_ty: null
-// CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #8 @1:9..3:2
-// CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #7 @2:5..2:26
-// CHECK-NEXT:                   item:
-// CHECK-NEXT:                     WhileStmt #6 @2:5..2:26
-// CHECK-NEXT:                       cond:
-// CHECK-NEXT:                         BoolLiteral #2 @2:11..2:15 value=true
-// CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #5 @2:16..2:26
-// CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #4 @2:18..2:24
-// CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 BreakStmt #3 @2:18..2:24 label=null
-// CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2025]: Expected '('
+// CHECK:   --> {{.*loop_forms_neg_01.zom}}:2:11
+// CHECK:   |
+// CHECK: 2 |     while true { break; }
+// CHECK:   |           ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

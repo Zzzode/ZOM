@@ -1,12 +1,12 @@
 // RUN: ! %zomc compile --dump-ast %corpus/13-modules/module_specifier_cursor_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2074]: Identifier expected
+// CHECK: Error [ZOM2073]: Identifier expected
 // CHECK:   --> {{.*module_specifier_cursor_neg_01.zom}}:1:18
 // CHECK:   |
 // CHECK: 1 | import pkg::{a as, b as bb};
 // CHECK:   |                  ^
-// CHECK: Error [ZOM2074]: Identifier expected
+// CHECK: Error [ZOM2073]: Identifier expected
 // CHECK:   --> {{.*module_specifier_cursor_neg_01.zom}}:2:14
 // CHECK:   |
 // CHECK: 2 | export { x as, y as yy };

@@ -1,5 +1,5 @@
 module graphics;
-import math.geometry as geo;
-import math.geometry.{Point as GeoPoint, distance};
+import math::geometry as geo;
+import math::geometry::{Point as GeoPoint, distance};
 export {GeoPoint, distance as calcDistance};
-export math.geometry.{Point};
+export math::geometry::{Point};

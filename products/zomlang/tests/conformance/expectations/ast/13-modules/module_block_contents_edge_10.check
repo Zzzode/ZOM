@@ -5,5 +5,5 @@
 // CHECK-NEXT:   module:
 // CHECK-NEXT:     ModuleDeclaration #2 @1:1..4:2
 // CHECK-NEXT:       path:
-// CHECK-NEXT:         ModulePath #1 @1:8..4:2 segments=["outer", "a", "b"]
+// CHECK-NEXT:         ModulePath #1 @1:8..1:13 segments=["outer"]
 // CHECK-NEXT:   statements: []

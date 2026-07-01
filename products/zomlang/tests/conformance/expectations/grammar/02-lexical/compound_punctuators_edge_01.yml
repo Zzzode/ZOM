@@ -1,5 +1,6 @@
 section: "§3.7 Punctuators all compound"
-covers_rule: "HASH_LBRACK, COLON_COLON, QUESTION_COLON etc"
-expected: "ACCEPT"
+covers_rule: "HASH LBRACK adjacency, COLONCOLON spelling, QUESTION_COLON etc"
+expected: "REJECT"
 expected_diagnostic: ""
-notes: []
+notes:
+  - "`!!` is postfix-only; `#[attr]` is not in the bare attribute whitelist."

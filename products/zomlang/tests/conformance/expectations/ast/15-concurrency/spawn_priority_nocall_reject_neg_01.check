@@ -6,7 +6,7 @@
 // CHECK:   |
 // CHECK: 2 |     let t = spawn priority do_work();
 // CHECK:   |                            ^
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*spawn_priority_nocall_reject_neg_01.zom}}:2:13
 // CHECK:   |
 // CHECK: 2 |     let t = spawn priority do_work();

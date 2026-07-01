@@ -1,15 +1,77 @@
-// RUN: ! %zomc compile --dump-ast %corpus/07-patterns/nested_pat_pos_01.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/07-patterns/nested_pat_pos_01.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2012]: Missing semicolon before 'x'
-// CHECK:   --> {{.*nested_pat_pos_01.zom}}:3:18
-// CHECK:   |
-// CHECK: 3 |     when S { a: [x, y, ...rest], b: (c, d), e: _ } => { print(x + y + c + d); }
-// CHECK:   |                  ^
-// CHECK: Error [ZOM2012]: Missing semicolon before 'c'
-// CHECK:   --> {{.*nested_pat_pos_01.zom}}:3:38
-// CHECK:   |
-// CHECK: 3 |     when S { a: [x, y, ...rest], b: (c, d), e: _ } => { print(x + y + c + d); }
-// CHECK:   |                                      ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #33 @1:1..5:1 file_name="nested_pat_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:45
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #2 @1:1..1:45 name="S" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #1 @1:1..1:45 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #32 @2:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         MatchStmt #31 @2:1..4:2
+// CHECK-NEXT:           scrutinee:
+// CHECK-NEXT:             IdentExpr #30 @2:8..2:9 name="s"
+// CHECK-NEXT:           arms:
+// CHECK-NEXT:             MatchArmStmt #29 @3:5..3:80
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 StructPattern #16 @3:10..3:51
+// CHECK-NEXT:                   ty_path:
+// CHECK-NEXT:                     ModulePath #4 @3:10..3:11 segments=["S"]
+// CHECK-NEXT:                   fields:
+// CHECK-NEXT:                     PatternProperty #9 @3:14..3:32 name="a" short_form=false
+// CHECK-NEXT:                       pat:
+// CHECK-NEXT:                         ArrayPattern #8 @3:17..3:32
+// CHECK-NEXT:                           pats:
+// CHECK-NEXT:                             IdentifierPattern #5 @3:18..3:19 name="x"
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                             IdentifierPattern #6 @3:21..3:22 name="y"
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                           rest:
+// CHECK-NEXT:                             RestPattern #7 @3:24..3:31 binding="rest"
+// CHECK-NEXT:                     PatternProperty #13 @3:34..3:43 name="b" short_form=false
+// CHECK-NEXT:                       pat:
+// CHECK-NEXT:                         TuplePattern #12 @3:37..3:43
+// CHECK-NEXT:                           pats:
+// CHECK-NEXT:                             IdentifierPattern #10 @3:38..3:39 name="c"
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                             IdentifierPattern #11 @3:41..3:42 name="d"
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                     PatternProperty #15 @3:45..3:49 name="e" short_form=false
+// CHECK-NEXT:                       pat:
+// CHECK-NEXT:                         IdentifierPattern #14 @3:48..3:49 name="_"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                   rest: null
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #28 @3:55..3:80
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #27 @3:57..3:78
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #26 @3:57..3:78
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #25 @3:57..3:77
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #17 @3:57..3:62 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 BinaryExpr #24 @3:63..3:76 op=Add
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     BinaryExpr #22 @3:63..3:72 op=Add
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         BinaryExpr #20 @3:63..3:68 op=Add
+// CHECK-NEXT:                                           lhs:
+// CHECK-NEXT:                                             IdentExpr #18 @3:63..3:64 name="x"
+// CHECK-NEXT:                                           rhs:
+// CHECK-NEXT:                                             IdentExpr #19 @3:67..3:68 name="y"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IdentExpr #21 @3:71..3:72 name="c"
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IdentExpr #23 @3:75..3:76 name="d"
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:       attrs: null

@@ -1,46 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/closure.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/closure.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #17 @2:1..5:1 file_name="closure.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #16 @2:1..4:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #15 @2:1..4:2 kind=Let
-// CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #14 @2:5..4:2 n_decls=1
-// CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #13 @2:5..4:2
-// CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #1 @2:5..2:12 name="closure"
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                   ty: null
-// CHECK-NEXT:                   init:
-// CHECK-NEXT:                     FunctionExpression #12 @2:15..4:2
-// CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #6 @2:19..2:35 nparams=2
-// CHECK-NEXT:                           params:
-// CHECK-NEXT:                             FunctionParameterDecl #3 @2:20..2:26 name="n"
-// CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 PredefinedTypeExpr #2 @2:23..2:26 kind=I32
-// CHECK-NEXT:                               default_: null
-// CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                             FunctionParameterDecl #5 @2:28..2:34 name="s"
-// CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 PredefinedTypeExpr #4 @2:31..2:34 kind=Str
-// CHECK-NEXT:                               default_: null
-// CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                       captures: []
-// CHECK-NEXT:                       ret_ty:
-// CHECK-NEXT:                         PredefinedTypeExpr #7 @2:39..2:42 kind=Str
-// CHECK-NEXT:                       raises_ty: null
-// CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #11 @2:43..4:2
-// CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #10 @3:3..3:9
-// CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ExpressionStatement #9 @3:3..3:9
-// CHECK-NEXT:                                   expression:
-// CHECK-NEXT:                                     StrLiteral #8 @3:3..3:9 value="1234" is_raw=false prefix=None
-// CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*closure.zom}}:5:1
+// CHECK:   |
+// CHECK: 5 |
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

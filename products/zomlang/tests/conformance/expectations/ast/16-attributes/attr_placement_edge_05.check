@@ -1,10 +1,15 @@
-// RUN: ! %zomc compile --dump-ast %corpus/16-attributes/attr_placement_edge_05.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/16-attributes/attr_placement_edge_05.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2012]: Missing semicolon before 'auto'
-// CHECK:   --> {{.*attr_placement_edge_05.zom}}:2:13
-// CHECK:   |
-// CHECK: 2 |   #[getter::auto]
-// CHECK:   |             ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #4 @1:1..5:1 file_name="attr_placement_edge_05.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #2 @1:1..4:2 name="C" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #1 @1:1..4:2 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null

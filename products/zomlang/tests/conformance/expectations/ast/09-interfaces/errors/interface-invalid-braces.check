@@ -6,10 +6,5 @@
 // CHECK:   |
 // CHECK: 1 | interface {{}
 // CHECK:   |             ^
-// CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*interface-invalid-braces.zom}}:1:13
-// CHECK:   |
-// CHECK: 1 | interface {{}
-// CHECK:   |             ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

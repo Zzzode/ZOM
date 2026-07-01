@@ -1,10 +1,20 @@
 // RUN: ! %zomc compile --dump-ast %corpus/15-concurrency/spawn_unknown_mod_reject_neg_03.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*spawn_unknown_mod_reject_neg_03.zom}}:2:27
+// CHECK:   |
+// CHECK: 2 |     let t = spawn magical do_work();
+// CHECK:   |                           ^
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*spawn_unknown_mod_reject_neg_03.zom}}:2:19
 // CHECK:   |
 // CHECK: 2 |     let t = spawn magical do_work();
 // CHECK:   |                   ^
+// CHECK: Error [ZOM2056]: Expression expected
+// CHECK:   --> {{.*spawn_unknown_mod_reject_neg_03.zom}}:2:13
+// CHECK:   |
+// CHECK: 2 |     let t = spawn magical do_work();
+// CHECK:   |             ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

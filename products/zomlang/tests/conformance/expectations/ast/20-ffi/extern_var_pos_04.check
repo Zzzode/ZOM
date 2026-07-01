@@ -1,10 +1,17 @@
-// RUN: ! %zomc compile --dump-ast %corpus/20-ffi/extern_var_pos_04.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/20-ffi/extern_var_pos_04.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*extern_var_pos_04.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | extern "C" {
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #7 @1:1..5:1 file_name="extern_var_pos_04.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExternBlock #5 @1:1..4:2 abi=Cdecl
+// CHECK-NEXT:           items:
+// CHECK-NEXT:             ExternVarDecl #2 @2:5..2:25 name="errno" abi=Cdecl is_mut=true
+// CHECK-NEXT:               ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @2:21..2:24 kind=I32
+// CHECK-NEXT:             ExternVarDecl #4 @3:5..3:28 name="sys_nerr" abi=Cdecl is_mut=true
+// CHECK-NEXT:               ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #3 @3:24..3:27 kind=U32
+// CHECK-NEXT:       attrs: null

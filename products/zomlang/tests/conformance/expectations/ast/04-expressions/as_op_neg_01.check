@@ -1,24 +1,15 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/as_op_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/as_op_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #9 @1:1..2:1 file_name="as_op_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #8 @1:1..1:19
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #7 @1:1..1:19 kind=Let
-// CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #6 @1:5..1:18 n_decls=1
-// CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #5 @1:5..1:18
-// CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="x"
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                   ty: null
-// CHECK-NEXT:                   init:
-// CHECK-NEXT:                     CastExpression #4 @1:9..1:18 mode=AsBang
-// CHECK-NEXT:                       expr:
-// CHECK-NEXT:                         IdentExpr #2 @1:9..1:10 name="v"
-// CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         PredefinedTypeExpr #3 @1:15..1:18 kind=I32
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*as_op_neg_01.zom}}:1:13
+// CHECK:   |
+// CHECK: 1 | let x = v as! i32;
+// CHECK:   |             ^
+// CHECK: Error [ZOM2056]: Expression expected
+// CHECK:   --> {{.*as_op_neg_01.zom}}:1:9
+// CHECK:   |
+// CHECK: 1 | let x = v as! i32;
+// CHECK:   |         ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

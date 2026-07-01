@@ -6,7 +6,7 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #6 @1:1..2:34
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #5 @2:1..2:34
+// CHECK-NEXT:         ImportDeclaration #5 @2:1..2:34 alias=null
 // CHECK-NEXT:           path:
 // CHECK-NEXT:             ModulePath #4 @2:8..2:33 segments=["std", "collections", "HashMap"]
 // CHECK-NEXT:           specifiers: []

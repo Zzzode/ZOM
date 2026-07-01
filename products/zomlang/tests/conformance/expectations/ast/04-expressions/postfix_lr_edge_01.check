@@ -1,12 +1,12 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/postfix_lr_edge_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
 // CHECK:   --> {{.*postfix_lr_edge_01.zom}}:3:16
 // CHECK:   |
 // CHECK: 3 |   let y = x++?!!?;
 // CHECK:   |                ^
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*postfix_lr_edge_01.zom}}:3:11
 // CHECK:   |
 // CHECK: 3 |   let y = x++?!!?;

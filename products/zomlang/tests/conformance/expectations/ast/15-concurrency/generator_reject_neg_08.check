@@ -1,15 +1,15 @@
 // RUN: ! %zomc compile --dump-ast %corpus/15-concurrency/generator_reject_neg_08.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
 // CHECK:   --> {{.*generator_reject_neg_08.zom}}:1:1
 // CHECK:   |
 // CHECK: 1 | generator gen() {
 // CHECK:   | ^
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*generator_reject_neg_08.zom}}:1:1
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*generator_reject_neg_08.zom}}:4:1
 // CHECK:   |
-// CHECK: 1 | generator gen() {
+// CHECK: 4 |
 // CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

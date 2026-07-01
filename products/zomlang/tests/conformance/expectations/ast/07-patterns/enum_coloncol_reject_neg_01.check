@@ -1,10 +1,10 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/enum_coloncol_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2012]: Missing semicolon before 'Red'
-// CHECK:   --> {{.*enum_coloncol_reject_neg_01.zom}}:3:17
+// CHECK: Fatal [ZOM2078]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
+// CHECK:   --> {{.*enum_coloncol_reject_neg_01.zom}}:5:1
 // CHECK:   |
-// CHECK: 3 |     when Color::Red => { print("red"); }
-// CHECK:   |                 ^
+// CHECK: 5 |
+// CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/struct_pat_missing_brace_neg_05.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Fatal [ZOM2079]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
+// CHECK: Fatal [ZOM2078]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
 // CHECK:   --> {{.*struct_pat_missing_brace_neg_05.zom}}:5:1
 // CHECK:   |
 // CHECK: 5 |

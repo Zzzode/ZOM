@@ -1,10 +1,72 @@
-// RUN: ! %zomc compile --dump-ast %corpus/20-ffi/extern_abi_system_edge_10.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/20-ffi/extern_abi_system_edge_10.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*extern_abi_system_edge_10.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | extern "system" {
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #26 @1:1..7:1 file_name="extern_abi_system_edge_10.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #25 @1:1..6:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExternBlock #24 @1:1..6:2 abi=Stdcall
+// CHECK-NEXT:           items:
+// CHECK-NEXT:             ExternDecl #5 @2:5..2:34 name="malloc" abi=Stdcall
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #3 @2:16..2:25 name="sz"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #2 @2:20..2:25
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #1 @2:20..2:25 segments=["usize"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #4 @2:30..2:33 kind=U64
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternDecl #13 @3:5..3:44 name="calloc" abi=Stdcall
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #8 @3:16..3:24 name="n"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #7 @3:19..3:24
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #6 @3:19..3:24 segments=["usize"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #11 @3:26..3:35 name="sz"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #10 @3:30..3:35
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #9 @3:30..3:35 segments=["usize"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #12 @3:40..3:43 kind=U64
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternDecl #20 @4:5..4:43 name="realloc" abi=Stdcall
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #15 @4:17..4:23 name="p"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #14 @4:20..4:23 kind=U64
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #18 @4:25..4:34 name="sz"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #17 @4:29..4:34
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #16 @4:29..4:34 segments=["usize"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #19 @4:39..4:42 kind=U64
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternDecl #23 @5:5..5:24 name="c_free" abi=Stdcall
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #22 @5:16..5:22 name="p"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #21 @5:19..5:22 kind=U64
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty: null
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:       attrs: null

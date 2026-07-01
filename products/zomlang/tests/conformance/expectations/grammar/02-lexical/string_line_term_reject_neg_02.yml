@@ -1,5 +1,5 @@
-section: "§3.6.2 StringLiteral"
-covers_rule: "SINGLE_STRING_LITERAL"
+section: "§3.6 CharacterLiteral"
+covers_rule: "CHAR_LITERAL"
 expected: "REJECT"
 expected_diagnostic: ""
 notes: []

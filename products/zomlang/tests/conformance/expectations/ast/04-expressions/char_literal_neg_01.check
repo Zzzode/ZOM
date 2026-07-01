@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/char_literal_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2082]: Multi-character single-quoted literals are not allowed
+// CHECK: Error [ZOM2081]: Multi-character single-quoted literals are not allowed
 // CHECK:   --> {{.*char_literal_neg_01.zom}}:1:9
 // CHECK:   |
 // CHECK: 1 | let c = 'ab';

@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/rest_front_reject_neg_10.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
 // CHECK:   --> {{.*rest_front_reject_neg_10.zom}}:2:11
 // CHECK:   |
 // CHECK: 2 |     when (...rest, z) => { print(z); }

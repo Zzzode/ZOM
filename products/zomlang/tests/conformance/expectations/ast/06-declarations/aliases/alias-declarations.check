@@ -1,65 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/06-declarations/aliases/alias-declarations.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/aliases/alias-declarations.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #27 @1:1..6:1 file_name="alias-declarations.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:21
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #3 @1:1..1:21 name="OptStr"
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           target:
-// CHECK-NEXT:             OptionalTypeExpr #2 @1:16..1:20 double=false
-// CHECK-NEXT:               inner:
-// CHECK-NEXT:                 PredefinedTypeExpr #1 @1:16..1:19 kind=Str
-// CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #9 @2:1..2:21
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #8 @2:1..2:21 name="U"
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           target:
-// CHECK-NEXT:             UnionTypeExpr #7 @2:11..2:20
-// CHECK-NEXT:               alts:
-// CHECK-NEXT:                 PredefinedTypeExpr #5 @2:11..2:14 kind=I32
-// CHECK-NEXT:                 PredefinedTypeExpr #6 @2:17..2:20 kind=Str
-// CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #16 @3:1..3:17
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #15 @3:1..3:17 name="I"
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           target:
-// CHECK-NEXT:             IntersectionTypeExpr #14 @3:11..3:16
-// CHECK-NEXT:               alts:
-// CHECK-NEXT:                 NamedTypeExpr #11 @3:11..3:12
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #10 @3:11..3:12 segments=["A"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #13 @3:15..3:16
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #12 @3:15..3:16 segments=["B"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #22 @4:1..4:29
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #21 @4:1..4:29 name="Box"
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           target:
-// CHECK-NEXT:             ObjectTypeExpr #20 @4:16..4:28
-// CHECK-NEXT:               members:
-// CHECK-NEXT:                 ObjectTypeMember #19 @4:18..4:26 name="value" is_mut=false is_optional=false
-// CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #18 @4:25..4:26
-// CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #17 @4:25..4:26 segments=["T"]
-// CHECK-NEXT:                       args: []
-// CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #26 @5:1..5:36
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #25 @5:1..5:36 name="Constrained"
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           target:
-// CHECK-NEXT:             NamedTypeExpr #24 @5:34..5:35
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #23 @5:34..5:35 segments=["T"]
-// CHECK-NEXT:               args: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*alias-declarations.zom}}:5:21
+// CHECK:   |
+// CHECK: 5 | alias Constrained<T extends U> = T;
+// CHECK:   |                     ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

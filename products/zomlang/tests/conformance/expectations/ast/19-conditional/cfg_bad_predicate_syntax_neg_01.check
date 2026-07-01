@@ -1,10 +1,10 @@
 // RUN: ! %zomc compile --dump-ast %corpus/19-conditional/cfg_bad_predicate_syntax_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*cfg_bad_predicate_syntax_neg_01.zom}}:1:1
+// CHECK: Error [ZOM2025]: Expected ';'
+// CHECK:   --> {{.*cfg_bad_predicate_syntax_neg_01.zom}}:3:1
 // CHECK:   |
-// CHECK: 1 | #[zom::cfg(all(unix, target_os = "linux")]
+// CHECK: 3 |
 // CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

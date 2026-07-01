@@ -6,7 +6,7 @@
 // CHECK:   |
 // CHECK: 2 |     spawn priority {};
 // CHECK:   |                    ^
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*spawn_priority_name_reject_neg_01.zom}}:2:5
 // CHECK:   |
 // CHECK: 2 |     spawn priority {};

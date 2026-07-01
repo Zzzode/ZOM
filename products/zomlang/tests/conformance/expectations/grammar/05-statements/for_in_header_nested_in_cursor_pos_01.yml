@@ -1,0 +1,5 @@
+section: "§4.5 ForInStatement header cursor"
+covers_rule: "forStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

@@ -1,9 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/13-modules/module_name_coloncol_reject_neg_16.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/module_name_coloncol_reject_neg_16.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #3 @1:1..2:1 file_name="module_name_coloncol_reject_neg_16.zom"
-// CHECK-NEXT:   module:
-// CHECK-NEXT:     ModuleDeclaration #2 @1:1..1:13
-// CHECK-NEXT:       path:
-// CHECK-NEXT:         ModulePath #1 @1:8..1:12 segments=["a", "b"]
-// CHECK-NEXT:   statements: []
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*module_name_coloncol_reject_neg_16.zom}}:1:9
+// CHECK:   |
+// CHECK: 1 | module a::b;
+// CHECK:   |         ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

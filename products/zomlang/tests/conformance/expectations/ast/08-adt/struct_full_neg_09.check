@@ -1,14 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/08-adt/struct_full_neg_09.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/08-adt/struct_full_neg_09.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..4:1 file_name="struct_full_neg_09.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..3:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #2 @1:1..3:2 name="S" extensibility=Sealed
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..3:2 nmembers=0
-// CHECK-NEXT:               members: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2079]: Duplicate declaration modifier 'public'
+// CHECK:   --> {{.*struct_full_neg_09.zom}}:2:12
+// CHECK:   |
+// CHECK: 2 |     public public x: i32;
+// CHECK:   |            ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

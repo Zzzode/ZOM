@@ -1,12 +1,12 @@
 // RUN: %zomc compile --dump-ast %corpus/20-ffi/extern_unsafe_block_pos_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #19 @1:1..9:1 file_name="extern_unsafe_block_pos_02.zom"
+// CHECK: SourceFile #27 @1:1..9:1 file_name="extern_unsafe_block_pos_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #18 @1:1..8:2
+// CHECK-NEXT:     StatementListItem #26 @1:1..8:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #17 @1:1..8:2 name="demo"
+// CHECK-NEXT:         FunctionDecl #25 @1:1..8:2 name="demo"
 // CHECK-NEXT:           params_id:
 // CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
 // CHECK-NEXT:               params: []
@@ -15,34 +15,55 @@
 // CHECK-NEXT:             PredefinedTypeExpr #2 @1:15..1:18 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #16 @1:19..8:2
+// CHECK-NEXT:             BlockStmt #24 @1:19..8:2
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #12 @2:5..6:7
+// CHECK-NEXT:                 StatementListItem #20 @2:5..6:7
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #11 @2:5..6:7 kind=Let
+// CHECK-NEXT:                     LetStmt #19 @2:5..6:7 kind=Let
 // CHECK-NEXT:                       declarations:
-// CHECK-NEXT:                         VariableDeclaratorList #10 @2:9..6:6 n_decls=1
+// CHECK-NEXT:                         VariableDeclaratorList #18 @2:9..6:6 n_decls=1
 // CHECK-NEXT:                           decls:
-// CHECK-NEXT:                             VariableDeclarator #9 @2:9..6:6
+// CHECK-NEXT:                             VariableDeclarator #17 @2:9..6:6
 // CHECK-NEXT:                               pattern:
 // CHECK-NEXT:                                 IdentifierPattern #3 @2:9..2:15 name="result"
 // CHECK-NEXT:                                   ty: null
 // CHECK-NEXT:                               ty: null
 // CHECK-NEXT:                               init:
-// CHECK-NEXT:                                 StructLiteralExpr #8 @2:18..6:6
-// CHECK-NEXT:                                   ty:
-// CHECK-NEXT:                                     NamedTypeExpr #6 @2:18..2:24
-// CHECK-NEXT:                                       path:
-// CHECK-NEXT:                                         ModulePath #5 @2:18..2:24 segments=["unsafe"]
-// CHECK-NEXT:                                       args: []
-// CHECK-NEXT:                                   properties:
-// CHECK-NEXT:                                     ObjectProperty #7 @3:9..5:10 name="ffi_dangerous_op" short_form=true
-// CHECK-NEXT:                                       value: null
+// CHECK-NEXT:                                 UnsafeBlockExpr #16 @2:18..6:6
+// CHECK-NEXT:                                   body:
+// CHECK-NEXT:                                     BlockStmt #15 @2:25..6:6
+// CHECK-NEXT:                                       stmts:
+// CHECK-NEXT:                                         StatementListItem #7 @3:9..3:28
+// CHECK-NEXT:                                           item:
+// CHECK-NEXT:                                             ExpressionStatement #6 @3:9..3:28
+// CHECK-NEXT:                                               expression:
+// CHECK-NEXT:                                                 CallExpression #5 @3:9..3:27
+// CHECK-NEXT:                                                   callee:
+// CHECK-NEXT:                                                     IdentExpr #4 @3:9..3:25 name="ffi_dangerous_op"
+// CHECK-NEXT:                                                   type_args: []
+// CHECK-NEXT:                                                   args: []
+// CHECK-NEXT:                                           attrs: null
+// CHECK-NEXT:                                         StatementListItem #11 @4:9..4:28
+// CHECK-NEXT:                                           item:
+// CHECK-NEXT:                                             ExpressionStatement #10 @4:9..4:28
+// CHECK-NEXT:                                               expression:
+// CHECK-NEXT:                                                 CallExpression #9 @4:9..4:27
+// CHECK-NEXT:                                                   callee:
+// CHECK-NEXT:                                                     IdentExpr #8 @4:9..4:25 name="touch_raw_memory"
+// CHECK-NEXT:                                                   type_args: []
+// CHECK-NEXT:                                                   args: []
+// CHECK-NEXT:                                           attrs: null
+// CHECK-NEXT:                                         StatementListItem #14 @5:9..5:10
+// CHECK-NEXT:                                           item:
+// CHECK-NEXT:                                             ExpressionStatement #13 @5:9..5:10
+// CHECK-NEXT:                                               expression:
+// CHECK-NEXT:                                                 IntLiteral #12 @5:9..5:10 base=10 value="0"
+// CHECK-NEXT:                                           attrs: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #15 @7:5..7:19
+// CHECK-NEXT:                 StatementListItem #23 @7:5..7:19
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #14 @7:5..7:19
+// CHECK-NEXT:                     ReturnStmt #22 @7:5..7:19
 // CHECK-NEXT:                       value:
-// CHECK-NEXT:                         IdentExpr #13 @7:12..7:18 name="result"
+// CHECK-NEXT:                         IdentExpr #21 @7:12..7:18 name="result"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

@@ -1,16 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/12-generics/empty_generic_reject_neg_05.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/12-generics/empty_generic_reject_neg_05.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @1:1..2:1 file_name="empty_generic_reject_neg_05.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:17
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #3 @1:1..1:17 name="E"
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           target:
-// CHECK-NEXT:             NamedTypeExpr #2 @1:11..1:16
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #1 @1:11..1:14 segments=["Foo"]
-// CHECK-NEXT:               args: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2067]: Type argument expected
+// CHECK:   --> {{.*empty_generic_reject_neg_05.zom}}:1:15
+// CHECK:   |
+// CHECK: 1 | alias E = Foo<>;
+// CHECK:   |               ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

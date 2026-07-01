@@ -1,7 +1,12 @@
 // RUN: ! %zomc compile --dump-ast %corpus/20-ffi/unsafe_on_non_function_neg_03.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*unsafe_on_non_function_neg_03.zom}}:1:16
+// CHECK:   |
+// CHECK: 1 | let x = unsafe 42;
+// CHECK:   |                ^
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*unsafe_on_non_function_neg_03.zom}}:1:9
 // CHECK:   |
 // CHECK: 1 | let x = unsafe 42;

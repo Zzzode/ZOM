@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/16-attributes/attr_on_param_reject_neg_03.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2073]: Unexpected token expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
 // CHECK:   --> {{.*attr_on_param_reject_neg_03.zom}}:1:9
 // CHECK:   |
 // CHECK: 1 | fun foo(#[deprecated::arg] x: i32);

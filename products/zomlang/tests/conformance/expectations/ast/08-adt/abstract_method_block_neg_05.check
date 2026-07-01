@@ -1,15 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/08-adt/abstract_method_block_neg_05.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/08-adt/abstract_method_block_neg_05.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..4:1 file_name="abstract_method_block_neg_05.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..3:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #2 @1:1..3:2 name="Base" extensibility=Sealed
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..3:2 nmembers=0
-// CHECK-NEXT:               members: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*abstract_method_block_neg_05.zom}}:2:31
+// CHECK:   |
+// CHECK: 2 |     abstract fun foo() -> i32 { return 0; }
+// CHECK:   |                               ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

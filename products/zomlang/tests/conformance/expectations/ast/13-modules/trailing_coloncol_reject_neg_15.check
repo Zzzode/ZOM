@@ -1,13 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/13-modules/trailing_coloncol_reject_neg_15.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/trailing_coloncol_reject_neg_15.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..2:1 file_name="trailing_coloncol_reject_neg_15.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:18
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:18 alias=null
-// CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #1 @1:8..1:15 segments=["std", "io"]
-// CHECK-NEXT:           specifiers: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*trailing_coloncol_reject_neg_15.zom}}:1:15
+// CHECK:   |
+// CHECK: 1 | import std::io::;
+// CHECK:   |               ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

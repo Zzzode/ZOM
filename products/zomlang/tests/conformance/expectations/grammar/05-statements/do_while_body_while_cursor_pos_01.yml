@@ -1,0 +1,5 @@
+section: "§4.5 DoWhileStatement body cursor"
+covers_rule: "doWhileStatement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

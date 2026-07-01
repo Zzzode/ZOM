@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/05-statements/reserved_8_groups_neg_05.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*reserved_8_groups_neg_05.zom}}:2:5
 // CHECK:   |
 // CHECK: 2 |     yield 1;

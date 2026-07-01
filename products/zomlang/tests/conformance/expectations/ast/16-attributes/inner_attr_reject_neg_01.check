@@ -1,19 +1,15 @@
-// RUN: %zomc compile --dump-ast %corpus/16-attributes/inner_attr_reject_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/16-attributes/inner_attr_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @2:1..3:1 file_name="inner_attr_reject_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @2:1..2:12
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #3 @2:1..2:12 name="nope"
-// CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @2:9..2:11 nparams=0
-// CHECK-NEXT:               params: []
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           ret_ty: null
-// CHECK-NEXT:           raises_ty: null
-// CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #2 @3:1..3:1
-// CHECK-NEXT:               stmts: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2002]: Invalid character
+// CHECK:   --> {{.*inner_attr_reject_neg_01.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | #![allow::dead_code]
+// CHECK:   | ^~
+// CHECK: Error [ZOM2056]: Expression expected
+// CHECK:   --> {{.*inner_attr_reject_neg_01.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | #![allow::dead_code]
+// CHECK:   | ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

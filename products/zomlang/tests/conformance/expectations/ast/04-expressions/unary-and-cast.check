@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/unary-and-cast.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #52 @1:1..8:1 file_name="unary-and-cast.zom"
+// CHECK: SourceFile #44 @1:1..7:1 file_name="unary-and-cast.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #6 @1:1..1:11
@@ -101,22 +101,4 @@
 // CHECK-NEXT:                         IdentExpr #37 @6:9..6:10 name="a"
 // CHECK-NEXT:                       ty:
 // CHECK-NEXT:                         PredefinedTypeExpr #38 @6:15..6:18 kind=I32
-// CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #51 @7:1..7:19
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #50 @7:1..7:19 kind=Let
-// CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #49 @7:5..7:18 n_decls=1
-// CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #48 @7:5..7:18
-// CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #44 @7:5..7:6 name="h"
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                   ty: null
-// CHECK-NEXT:                   init:
-// CHECK-NEXT:                     CastExpression #47 @7:9..7:18 mode=AsBang
-// CHECK-NEXT:                       expr:
-// CHECK-NEXT:                         IdentExpr #45 @7:9..7:10 name="a"
-// CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         PredefinedTypeExpr #46 @7:15..7:18 kind=I32
 // CHECK-NEXT:       attrs: null

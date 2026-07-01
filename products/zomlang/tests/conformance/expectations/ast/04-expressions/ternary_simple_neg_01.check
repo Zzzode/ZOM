@@ -6,7 +6,7 @@
 // CHECK:   |
 // CHECK: 1 | let x = a ? b;
 // CHECK:   |              ^
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*ternary_simple_neg_01.zom}}:1:9
 // CHECK:   |
 // CHECK: 1 | let x = a ? b;

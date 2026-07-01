@@ -1,10 +1,14 @@
-// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/extends_generic_interface_edge_02.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/09-interfaces/extends_generic_interface_edge_02.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2025]: Expected '{'
-// CHECK:   --> {{.*extends_generic_interface_edge_02.zom}}:1:22
-// CHECK:   |
-// CHECK: 1 | interface Numeric<T> : Comparable<T> + Hash<T> {
-// CHECK:   |                      ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #4 @1:1..4:1 file_name="extends_generic_interface_edge_02.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..3:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #2 @1:1..3:2 name="Numeric"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #1 @1:1..3:2 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null

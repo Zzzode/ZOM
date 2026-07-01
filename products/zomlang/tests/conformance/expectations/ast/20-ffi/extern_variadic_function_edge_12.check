@@ -1,10 +1,36 @@
-// RUN: ! %zomc compile --dump-ast %corpus/20-ffi/extern_variadic_function_edge_12.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/20-ffi/extern_variadic_function_edge_12.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*extern_variadic_function_edge_12.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | extern "Cdecl" {
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #13 @1:1..5:1 file_name="extern_variadic_function_edge_12.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #12 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExternBlock #11 @1:1..4:2 abi=Cdecl
+// CHECK-NEXT:           items:
+// CHECK-NEXT:             ExternDecl #4 @2:5..2:33 name="printf" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @2:16..2:24 name="fmt"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:21..2:24 kind=Str
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #3 @2:29..2:32 kind=I32
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternDecl #10 @3:5..3:47 name="fprintf" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #6 @3:17..3:28 name="stream"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @3:25..3:28 kind=U64
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #8 @3:30..3:38 name="fmt"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:35..3:38 kind=Str
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #9 @3:43..3:46 kind=I32
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:       attrs: null

@@ -16,7 +16,7 @@
 // CHECK:   |
 // CHECK: 2 | let s = S { x: 1;
 // CHECK:   |           ^
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*unbalanced_reject_neg_03.zom}}:2:9
 // CHECK:   |
 // CHECK: 2 | let s = S { x: 1;

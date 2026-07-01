@@ -1,0 +1,5 @@
+section: "§4.4 Variable declarator cursor"
+covers_rule: "variableDeclaration"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

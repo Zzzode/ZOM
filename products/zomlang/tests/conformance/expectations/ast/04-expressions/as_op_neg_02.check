@@ -1,27 +1,15 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/as_op_neg_02.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/as_op_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #10 @1:1..2:1 file_name="as_op_neg_02.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #9 @1:1..1:18
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #8 @1:1..1:18 kind=Let
-// CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #7 @1:5..1:17 n_decls=1
-// CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #6 @1:5..1:17
-// CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="x"
-// CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                   ty: null
-// CHECK-NEXT:                   init:
-// CHECK-NEXT:                     CastExpression #5 @1:9..1:17 mode=As
-// CHECK-NEXT:                       expr:
-// CHECK-NEXT:                         IdentExpr #2 @1:9..1:10 name="v"
-// CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         NamedTypeExpr #4 @1:14..1:17
-// CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #3 @1:14..1:17 segments=["dyn"]
-// CHECK-NEXT:                           args: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*as_op_neg_02.zom}}:1:14
+// CHECK:   |
+// CHECK: 1 | let x = v as dyn;
+// CHECK:   |              ^
+// CHECK: Error [ZOM2056]: Expression expected
+// CHECK:   --> {{.*as_op_neg_02.zom}}:1:9
+// CHECK:   |
+// CHECK: 1 | let x = v as dyn;
+// CHECK:   |         ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

@@ -1,19 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/11-error/raises_empty_reject_neg_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/11-error/raises_empty_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #5 @1:1..2:1 file_name="raises_empty_reject_neg_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #4 @1:1..1:25
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #3 @1:1..1:25 name="bad"
-// CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:8..1:10 nparams=0
-// CHECK-NEXT:               params: []
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           ret_ty: null
-// CHECK-NEXT:           raises_ty: null
-// CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #2 @2:1..2:1
-// CHECK-NEXT:               stmts: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2068]: Type expected
+// CHECK:   --> {{.*raises_empty_reject_neg_01.zom}}:1:18
+// CHECK:   |
+// CHECK: 1 | fun bad() raises -> i32;
+// CHECK:   |                  ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

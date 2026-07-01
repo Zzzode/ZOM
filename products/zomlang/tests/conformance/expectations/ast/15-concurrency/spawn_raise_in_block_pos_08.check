@@ -1,10 +1,52 @@
-// RUN: ! %zomc compile --dump-ast %corpus/15-concurrency/spawn_raise_in_block_pos_08.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/15-concurrency/spawn_raise_in_block_pos_08.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
-// CHECK:   --> {{.*spawn_raise_in_block_pos_08.zom}}:3:9
-// CHECK:   |
-// CHECK: 3 |         maybe_fail() raises?;
-// CHECK:   |         ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #19 @1:1..6:1 file_name="spawn_raise_in_block_pos_08.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #18 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #17 @1:1..5:2 name="fallible"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:13..1:15 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty:
+// CHECK-NEXT:             NamedTypeExpr #3 @1:23..1:30
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #2 @1:23..1:30 segments=["IoError"]
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #16 @1:31..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #15 @2:5..4:7
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #14 @2:5..4:7 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #13 @2:9..4:6 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #12 @2:9..4:6
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #4 @2:9..2:10 name="t"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 SpawnExpression #11 @2:13..4:6 mod_flags=0 priority=None
+// CHECK-NEXT:                                   body:
+// CHECK-NEXT:                                     BlockStmt #10 @2:19..4:6
+// CHECK-NEXT:                                       stmts:
+// CHECK-NEXT:                                         StatementListItem #9 @3:9..3:30
+// CHECK-NEXT:                                           item:
+// CHECK-NEXT:                                             ExpressionStatement #8 @3:9..3:30
+// CHECK-NEXT:                                               expression:
+// CHECK-NEXT:                                                 PostfixExpression #7 @3:9..3:29 op=ErrorPropagate
+// CHECK-NEXT:                                                   operand:
+// CHECK-NEXT:                                                     CallExpression #6 @3:9..3:21
+// CHECK-NEXT:                                                       callee:
+// CHECK-NEXT:                                                         IdentExpr #5 @3:9..3:19 name="maybe_fail"
+// CHECK-NEXT:                                                       type_args: []
+// CHECK-NEXT:                                                       args: []
+// CHECK-NEXT:                                           attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

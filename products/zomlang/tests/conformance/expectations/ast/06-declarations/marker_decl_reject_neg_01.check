@@ -1,7 +1,12 @@
 // RUN: ! %zomc compile --dump-ast %corpus/06-declarations/marker_decl_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: Expression expected
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*marker_decl_reject_neg_01.zom}}:1:8
+// CHECK:   |
+// CHECK: 1 | marker Send;
+// CHECK:   |        ^
+// CHECK: Error [ZOM2056]: Expression expected
 // CHECK:   --> {{.*marker_decl_reject_neg_01.zom}}:1:1
 // CHECK:   |
 // CHECK: 1 | marker Send;

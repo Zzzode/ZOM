@@ -1,0 +1,5 @@
+section: "§4.7 Pattern cursor"
+covers_rule: "pattern"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

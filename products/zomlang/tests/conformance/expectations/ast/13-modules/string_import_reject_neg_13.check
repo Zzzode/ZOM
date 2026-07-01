@@ -1,7 +1,12 @@
 // RUN: ! %zomc compile --dump-ast %corpus/13-modules/string_import_reject_neg_13.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2074]: Identifier expected
+// CHECK: Error [ZOM2073]: Identifier expected
+// CHECK:   --> {{.*string_import_reject_neg_13.zom}}:1:8
+// CHECK:   |
+// CHECK: 1 | import "./path/to/file";
+// CHECK:   |        ^
+// CHECK: Error [ZOM2072]: Unexpected token expected
 // CHECK:   --> {{.*string_import_reject_neg_13.zom}}:1:8
 // CHECK:   |
 // CHECK: 1 | import "./path/to/file";
