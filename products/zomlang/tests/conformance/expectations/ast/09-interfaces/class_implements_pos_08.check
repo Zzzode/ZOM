@@ -1,44 +1,66 @@
 // RUN: %zomc compile --dump-ast %corpus/09-interfaces/class_implements_pos_08.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #16 @1:1..5:1 file_name="class_implements_pos_08.zom"
+// CHECK: SourceFile #26 @1:1..5:1 file_name="class_implements_pos_08.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..3:2
+// CHECK-NEXT:     StatementListItem #13 @1:1..3:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #2 @1:1..3:2 name="FileStream" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #12 @1:1..3:2 name="FileStream" extensibility=Sealed
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           extends: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..3:2 nmembers=0
-// CHECK-NEXT:               members: []
+// CHECK-NEXT:             ClassMemberList #11 @1:18..3:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #10 @2:5..2:45 name="read" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #4 @2:13..2:24 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:14..2:23 name="buf"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             SliceArrayTypeExpr #2 @2:19..2:23
+// CHECK-NEXT:                               elem:
+// CHECK-NEXT:                                 PredefinedTypeExpr #1 @2:20..2:22 kind=U8
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:28..2:31 kind=I32
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #9 @2:32..2:45
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #8 @2:34..2:43
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ReturnStmt #7 @2:34..2:43
+// CHECK-NEXT:                               value:
+// CHECK-NEXT:                                 IntLiteral #6 @2:41..2:42 base=10 value="0"
+// CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #15 @4:1..4:51
+// CHECK-NEXT:     StatementListItem #25 @4:1..4:51
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StandaloneImplDecl #14 @4:1..4:51 is_unsafe=false
+// CHECK-NEXT:         StandaloneImplDecl #24 @4:1..4:51 is_unsafe=false
 // CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #10 @4:6..4:32 n_ifaces=3
+// CHECK-NEXT:             ImplIfaceList #20 @4:6..4:32 n_ifaces=3
 // CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #5 @4:6..4:12
+// CHECK-NEXT:                 NamedTypeExpr #15 @4:6..4:12
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #4 @4:6..4:12 segments=["Reader"]
+// CHECK-NEXT:                     ModulePath #14 @4:6..4:12 segments=["Reader"]
 // CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #7 @4:15..4:21
+// CHECK-NEXT:                 NamedTypeExpr #17 @4:15..4:21
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #6 @4:15..4:21 segments=["Writer"]
+// CHECK-NEXT:                     ModulePath #16 @4:15..4:21 segments=["Writer"]
 // CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #9 @4:24..4:32
+// CHECK-NEXT:                 NamedTypeExpr #19 @4:24..4:32
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #8 @4:24..4:32 segments=["Seekable"]
+// CHECK-NEXT:                     ModulePath #18 @4:24..4:32 segments=["Seekable"]
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           for_ty:
-// CHECK-NEXT:             NamedTypeExpr #12 @4:37..4:47
+// CHECK-NEXT:             NamedTypeExpr #22 @4:37..4:47
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #11 @4:37..4:47 segments=["FileStream"]
+// CHECK-NEXT:                 ModulePath #21 @4:37..4:47 segments=["FileStream"]
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           where_: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #13 @4:48..4:51 nmembers=0
+// CHECK-NEXT:             ClassMemberList #23 @4:48..4:51 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null

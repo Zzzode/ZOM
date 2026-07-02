@@ -6,10 +6,5 @@
 // CHECK:   |
 // CHECK: 2 |     abstract static fun bad() -> unit;
 // CHECK:   |              ^
-// CHECK: Error [ZOM2080]: Declaration modifiers 'abstract' and 'static' cannot be used together
-// CHECK:   --> {{.*iface_mod_abstract_static_neg_07.zom}}:2:14
-// CHECK:   |
-// CHECK: 2 |     abstract static fun bad() -> unit;
-// CHECK:   |              ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

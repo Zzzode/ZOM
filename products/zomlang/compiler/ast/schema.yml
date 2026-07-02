@@ -847,6 +847,12 @@ variants:
       - {name: mode, type: CaptureMode}
       - {name: name, type: IdentId}
 
+  - id: 0x099
+    name: SuperExpr
+    doc:  "super receiver in class methods (base-class dispatch)"
+    fields:
+      []
+
 # 0xC0..0xDF Type Expressions (25)
   - id: 0x0C0
     name: DynTypeExpr
@@ -1264,6 +1270,48 @@ variants:
       - {name: name, type: IdentId}
       - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
       - {name: target, type: NodeId, cast: TypeExpr, optional: true}
+
+  - id: 0x120
+    name: MethodDecl
+    bases: [DeclarationStatement]
+    doc:  "Class/struct/interface method: [modifiers] fun name(params) -> Ret { body }"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: params_id, type: NodeId, cast: FunctionParameterList}
+      - {name: ret_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: body, type: NodeId, cast: BlockStmt, optional: true}
+      - {name: is_static, type: bool}
+      - {name: visibility, type: uint8, enum: [Default, Public, Private, Protected]}
+
+  - id: 0x121
+    name: FieldDecl
+    bases: [DeclarationStatement]
+    doc:  "Class/struct field declaration: [modifiers] [mut] name: Ty [= init]"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: init, type: NodeId, cast: Expression, optional: true}
+      - {name: is_mut, type: bool}
+      - {name: is_static, type: bool}
+      - {name: visibility, type: uint8, enum: [Default, Public, Private, Protected]}
+
+  - id: 0x122
+    name: AssociatedTypeDecl
+    bases: [DeclarationStatement]
+    doc:  "Interface associated type: type Name [: Bound] [= DefaultTy];"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: bound, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: default_ty, type: NodeId, cast: TypeExpr, optional: true}
+
+  - id: 0x123
+    name: GenericTypeParam
+    doc:  "Generic type parameter: [variance] Name [: Bound] [= DefaultTy]"
+    fields:
+      - {name: name, type: IdentId}
+      - {name: bound, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: default_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: variance, type: uint8, enum: [Invariant, Covariant, Contravariant]}
 
 # 3. Derived Information (does not affect storage, pure codegen aid)
 # ───────────────────────────────────────────────────────────

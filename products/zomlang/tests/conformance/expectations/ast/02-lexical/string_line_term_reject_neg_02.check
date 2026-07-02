@@ -11,6 +11,11 @@
 // CHECK:   |
 // CHECK: 2 | world';
 // CHECK:   |      ^
+// CHECK: Error [ZOM2012]: Missing semicolon before '<token>'
+// CHECK:   --> {{.*string_line_term_reject_neg_02.zom}}:3:1
+// CHECK:   |
+// CHECK: 3 |
+// CHECK:   | ^
 // CHECK: Error [ZOM2025]: Expected ';'
 // CHECK:   --> {{.*string_line_term_reject_neg_02.zom}}:3:1
 // CHECK:   |

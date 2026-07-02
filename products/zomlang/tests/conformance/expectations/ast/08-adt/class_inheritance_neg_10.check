@@ -6,10 +6,5 @@
 // CHECK:   |
 // CHECK: 2 |     abstract static fun f() -> i32;
 // CHECK:   |              ^
-// CHECK: Error [ZOM2080]: Declaration modifiers 'abstract' and 'static' cannot be used together
-// CHECK:   --> {{.*class_inheritance_neg_10.zom}}:2:14
-// CHECK:   |
-// CHECK: 2 |     abstract static fun f() -> i32;
-// CHECK:   |              ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

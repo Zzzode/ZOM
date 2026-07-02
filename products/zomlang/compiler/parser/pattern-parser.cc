@@ -291,13 +291,17 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
     TokenCursor duplicateBindingCursor = tokenCursorAt(at + 1);
     if (at == start || at + 1 >= end ||
         consumeBalancedUntil(duplicateBindingCursor, end, ast::SyntaxKind::At) < end) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-          tokenAt(at).getLocation());
+      if (!shouldSuppressDiagnostic(at)) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+            tokenAt(at).getLocation());
+      }
       return ast::NodeId();
     }
     if (kindAt(start) != ast::SyntaxKind::Identifier || tokenAt(start).getValue() == "_"_zc) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-          tokenAt(start).getLocation());
+      if (!shouldSuppressDiagnostic(start)) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+            tokenAt(start).getLocation());
+      }
       return ast::NodeId();
     }
     return builder.makeBindingPattern(rangeFor(start, end), internIdent(builder, start), false,
@@ -306,12 +310,17 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
 
   if (kindAt(start) == ast::SyntaxKind::IsKeyword) {
     if (start + 1 >= end) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(end));
+      if (!shouldSuppressDiagnostic(end)) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(end));
+      }
       return ast::NodeId();
     }
     const ast::NodeId ty = parseTypeRange(builder, start + 1, end);
     if (!ty) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start + 1));
+      if (!shouldSuppressDiagnostic(start + 1)) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(
+            diagnosticLoc(start + 1));
+      }
       return ast::NodeId();
     }
     return builder.makeIsPattern(rangeFor(start, end), ty);
@@ -336,8 +345,10 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
       if (itemStart < itemEnd) {
         if (kindAt(itemStart) == ast::SyntaxKind::DotDotDot) {
           if (cursor.position() < listEnd) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-                tokenAt(itemStart).getLocation());
+            if (!shouldSuppressDiagnostic(itemStart)) {
+              diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+                  tokenAt(itemStart).getLocation());
+            }
             return ast::NodeId();
           }
           ast::IdentId binding;
@@ -367,8 +378,10 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
       if (itemStart < itemEnd) {
         if (kindAt(itemStart) == ast::SyntaxKind::DotDotDot) {
           if (cursor.position() < listEnd) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-                tokenAt(itemStart).getLocation());
+            if (!shouldSuppressDiagnostic(itemStart)) {
+              diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+                  tokenAt(itemStart).getLocation());
+            }
             return ast::NodeId();
           }
           ast::IdentId binding;
@@ -430,8 +443,10 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
       if (itemStart < itemEnd) {
         if (kindAt(itemStart) == ast::SyntaxKind::DotDotDot) {
           if (cursor.position() < listEnd) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-                tokenAt(itemStart).getLocation());
+            if (!shouldSuppressDiagnostic(itemStart)) {
+              diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+                  tokenAt(itemStart).getLocation());
+            }
             return ast::NodeId();
           }
           ast::IdentId binding;
@@ -443,8 +458,10 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
           TokenCursor colonCursor = tokenCursorAt(itemStart);
           const size_t colon = consumeBalancedUntil(colonCursor, itemEnd, ast::SyntaxKind::Colon);
           if (kindAt(itemStart) != ast::SyntaxKind::Identifier) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
-                diagnosticLoc(itemStart));
+            if (!shouldSuppressDiagnostic(itemStart)) {
+              diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
+                  diagnosticLoc(itemStart));
+            }
             return ast::NodeId();
           }
           ast::NodeId pat;

@@ -1,65 +1,106 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/extends_plus_implements_pos_14.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #23 @1:1..9:1 file_name="extends_plus_implements_pos_14.zom"
+// CHECK: SourceFile #41 @1:1..9:1 file_name="extends_plus_implements_pos_14.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:41
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:41
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #2 @1:1..1:41 name="Flyable"
+// CHECK-NEXT:         InterfaceDecl #5 @1:1..1:41 name="Flyable"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..1:41 nmembers=0
-// CHECK-NEXT:               members: []
+// CHECK-NEXT:             ClassMemberList #4 @1:19..1:41 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #3 @1:21..1:39 name="fly" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #1 @1:28..1:30 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:34..1:38 kind=Unit
+// CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #6 @2:1..2:44
+// CHECK-NEXT:     StatementListItem #12 @2:1..2:44
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #5 @2:1..2:44 name="Swimmable"
+// CHECK-NEXT:         InterfaceDecl #11 @2:1..2:44 name="Swimmable"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #4 @2:1..2:44 nmembers=0
-// CHECK-NEXT:               members: []
+// CHECK-NEXT:             ClassMemberList #10 @2:21..2:44 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #9 @2:23..2:42 name="swim" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #7 @2:31..2:33 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #8 @2:37..2:41 kind=Unit
+// CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #9 @3:1..3:43
+// CHECK-NEXT:     StatementListItem #19 @3:1..3:43
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #8 @3:1..3:43 name="Animal" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #18 @3:1..3:43 name="Animal" extensibility=Sealed
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           extends: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #7 @3:1..3:43 nmembers=0
-// CHECK-NEXT:               members: []
+// CHECK-NEXT:             ClassMemberList #17 @3:14..3:43 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #16 @3:16..3:41 name="breathe" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #13 @3:27..3:29 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #14 @3:33..3:37 kind=Unit
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #15 @3:38..3:41
+// CHECK-NEXT:                       stmts: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #12 @4:1..7:2
+// CHECK-NEXT:     StatementListItem #30 @4:1..7:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #11 @4:1..7:2 name="Duck" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #29 @4:1..7:2 name="Duck" extensibility=Sealed
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           extends: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #10 @4:1..7:2 nmembers=0
-// CHECK-NEXT:               members: []
+// CHECK-NEXT:             ClassMemberList #28 @4:21..7:2 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #23 @5:5..5:35 name="fly" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #20 @5:21..5:23 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #21 @5:27..5:31 kind=Unit
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #22 @5:32..5:35
+// CHECK-NEXT:                       stmts: []
+// CHECK-NEXT:                 MethodDecl #27 @6:5..6:27 name="swim" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #24 @6:13..6:15 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #25 @6:19..6:23 kind=Unit
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #26 @6:24..6:27
+// CHECK-NEXT:                       stmts: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #22 @8:1..8:38
+// CHECK-NEXT:     StatementListItem #40 @8:1..8:38
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StandaloneImplDecl #21 @8:1..8:38 is_unsafe=false
+// CHECK-NEXT:         StandaloneImplDecl #39 @8:1..8:38 is_unsafe=false
 // CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #17 @8:6..8:25 n_ifaces=2
+// CHECK-NEXT:             ImplIfaceList #35 @8:6..8:25 n_ifaces=2
 // CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #14 @8:6..8:13
+// CHECK-NEXT:                 NamedTypeExpr #32 @8:6..8:13
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #13 @8:6..8:13 segments=["Flyable"]
+// CHECK-NEXT:                     ModulePath #31 @8:6..8:13 segments=["Flyable"]
 // CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #16 @8:16..8:25
+// CHECK-NEXT:                 NamedTypeExpr #34 @8:16..8:25
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #15 @8:16..8:25 segments=["Swimmable"]
+// CHECK-NEXT:                     ModulePath #33 @8:16..8:25 segments=["Swimmable"]
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           for_ty:
-// CHECK-NEXT:             NamedTypeExpr #19 @8:30..8:34
+// CHECK-NEXT:             NamedTypeExpr #37 @8:30..8:34
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #18 @8:30..8:34 segments=["Duck"]
+// CHECK-NEXT:                 ModulePath #36 @8:30..8:34 segments=["Duck"]
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           where_: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #20 @8:35..8:38 nmembers=0
+// CHECK-NEXT:             ClassMemberList #38 @8:35..8:38 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null

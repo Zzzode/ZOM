@@ -111,6 +111,13 @@ struct Lexer::Impl {
     Token token;
   };
 
+  /// Explicit lexer mode for managing template scanning states.
+  enum class LexerMode : uint8_t {
+    Default,
+    Template,              ///< Scanning template string content (between ` and ${ or })
+    TemplateSubstitution,  ///< Scanning expression inside ${...}
+  };
+
   /// Reference members
   const source::SourceManager& sourceMgr;
   /// Diagnostic engine for reporting errors
@@ -127,6 +134,9 @@ struct Lexer::Impl {
   const zc::byte* bufferEnd;
   /// Embedded lexer state
   State state;
+
+  /// Stack of active lexer modes. Empty stack implies Default mode.
+  zc::Vector<LexerMode> modeStack;
 
   /// Brace depths for active template substitutions.
   zc::Vector<int32_t> templateSubstitutionBraceDepths;
@@ -241,6 +251,17 @@ struct Lexer::Impl {
   void beginTemplateSubstitution();
   void finishTemplateSpan(ast::SyntaxKind kind);
 
+  /// \brief Push a mode onto the mode stack.
+  /// \param mode The mode to push.
+  void pushMode(LexerMode mode);
+
+  /// \brief Pop the top mode from the mode stack.
+  void popMode();
+
+  /// \brief Get the current lexer mode.
+  /// \return The current mode, or Default if the stack is empty.
+  LexerMode currentMode() const;
+
   /// \brief Report an error at the specified position.
   /// \tparam ID The diagnostic ID to report.
   /// \tparam ...Args The types of the arguments to format the diagnostic message.
@@ -294,10 +315,13 @@ std::pair<uint32_t, uint32_t> Lexer::Impl::charWithSize() const {
 }
 
 bool Lexer::Impl::inTemplateSubstitution() const {
-  return templateSubstitutionBraceDepths.size() != 0;
+  return !modeStack.empty() && modeStack.back() == LexerMode::TemplateSubstitution;
 }
 
-void Lexer::Impl::beginTemplateSubstitution() { templateSubstitutionBraceDepths.add(0); }
+void Lexer::Impl::beginTemplateSubstitution() {
+  pushMode(LexerMode::TemplateSubstitution);
+  templateSubstitutionBraceDepths.add(0);
+}
 
 void Lexer::Impl::finishTemplateSpan(ast::SyntaxKind kind) {
   ZC_IREQUIRE(inTemplateSubstitution(), "template span requires an active substitution");
@@ -305,7 +329,22 @@ void Lexer::Impl::finishTemplateSpan(ast::SyntaxKind kind) {
     templateSubstitutionBraceDepths.back() = 0;
     return;
   }
-  if (kind == ast::SyntaxKind::TemplateTail) { templateSubstitutionBraceDepths.removeLast(); }
+  if (kind == ast::SyntaxKind::TemplateTail) {
+    templateSubstitutionBraceDepths.removeLast();
+    popMode();
+  }
+}
+
+void Lexer::Impl::pushMode(LexerMode mode) { modeStack.add(mode); }
+
+void Lexer::Impl::popMode() {
+  ZC_IREQUIRE(!modeStack.empty(), "cannot pop from empty mode stack");
+  modeStack.removeLast();
+}
+
+Lexer::Impl::LexerMode Lexer::Impl::currentMode() const {
+  if (modeStack.empty()) { return LexerMode::Default; }
+  return modeStack.back();
 }
 
 void Lexer::Impl::formToken(ast::SyntaxKind kind, zc::Maybe<zc::StringPtr> value) {
@@ -837,6 +876,7 @@ void Lexer::Impl::lex() {
             diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
                 source::SourceLoc(state.curPtr), "}"_zc);
             templateSubstitutionBraceDepths.clear();
+            modeStack.clear();
           }
           return formToken(ast::SyntaxKind::EndOfFile);
         }
@@ -1137,6 +1177,8 @@ ast::SyntaxKind Lexer::Impl::lexBigIntSuffix(zc::StringPtr& tokenValue) {
 
 ast::SyntaxKind Lexer::Impl::lexTemplateAndRetTokenValue(bool shouldEmitInvalidEscapeError,
                                                          zc::StringPtr& outValue) {
+  pushMode(LexerMode::Template);
+
   const bool startedWithBacktick = ch() == '`';
 
   state.curPtr++;
@@ -1196,6 +1238,7 @@ ast::SyntaxKind Lexer::Impl::lexTemplateAndRetTokenValue(bool shouldEmitInvalidE
 
   ZC_DASSERT(tokenKind != ast::SyntaxKind::Unknown);
 
+  popMode();
   outValue = stringPool.intern(result.releaseAsArray());
   return tokenKind;
 }

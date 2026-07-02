@@ -9,6 +9,6 @@
 // CHECK-NEXT:         InterfaceDecl #2 @1:1..1:28 name="Marker"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..1:28 nmembers=0
+// CHECK-NEXT:             ClassMemberList #1 @1:25..1:28 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null

@@ -2,10 +2,10 @@
 
 
 // CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*interface-missing-body-close-brace.zom}}:2:13
+// CHECK:   --> {{.*interface-missing-body-close-brace.zom}}:3:1
 // CHECK:   |
-// CHECK: 2 |   let x: i32;
-// CHECK:   |             ^
+// CHECK: 3 |
+// CHECK:   | ^
 // CHECK: Error [ZOM2025]: Expected '}'
 // CHECK:   --> {{.*interface-missing-body-close-brace.zom}}:2:13
 // CHECK:   |

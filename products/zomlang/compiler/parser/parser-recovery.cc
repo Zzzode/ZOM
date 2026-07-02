@@ -153,6 +153,19 @@ void Parser::Impl::markRecoveryConsumed(size_t position) const {
   }
 }
 
+bool Parser::Impl::shouldSuppressDiagnostic(size_t tokenIndex) const {
+  // Check all active consumed frames for a suppressedUntil that covers this token.
+  // Per RFC 0002, we examine all frames on the stack and take the maximum
+  // suppressedUntil.  Only frames that have actually been consumed (i.e.,
+  // their finish() was called with a position beyond the anchor) participate
+  // in suppression.
+  for (size_t i = 0; i < recoveryFrames.size(); ++i) {
+    const RecoveryFrame& frame = recoveryFrames[i];
+    if (frame.consumed && tokenIndex < frame.suppressedUntil) { return true; }
+  }
+  return false;
+}
+
 bool Parser::Impl::rangeIsWrapped(size_t start, size_t end, ast::SyntaxKind open,
                                   ast::SyntaxKind close) const {
   if (end <= start + 1 || kindAt(start) != open || kindAt(end - 1) != close) { return false; }
@@ -355,8 +368,10 @@ size_t Parser::Impl::consumeBracedBodyEnd(size_t bodyOpen, size_t limit) const {
     recoveryEnd = recoveryCursor.position();
   }
   const size_t diagnosticIndex = unboundedLimit || recoveryEnd == 0 ? recoveryEnd : recoveryEnd - 1;
-  diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-      tokenAt(diagnosticIndex).getLocation(), "}"_zc);
+  if (!shouldSuppressDiagnostic(diagnosticIndex)) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+        tokenAt(diagnosticIndex).getLocation(), "}"_zc);
+  }
   return recoveryFrame.finish(recoveryEnd);
 }
 

@@ -1,18 +1,26 @@
 // RUN: %zomc compile --dump-ast %corpus/13-modules/export_combo_edge_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #8 @1:1..7:1 file_name="export_combo_edge_02.zom"
+// CHECK: SourceFile #13 @1:1..7:1 file_name="export_combo_edge_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #7 @1:1..6:2
+// CHECK-NEXT:     StatementListItem #12 @1:1..6:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ExportDeclaration #6 @2:1..6:2
+// CHECK-NEXT:         ExportDeclaration #11 @2:1..6:2
 // CHECK-NEXT:           declaration:
-// CHECK-NEXT:             EnumDeclaration #5 @2:8..6:2 name="Color" extensibility=Sealed nvars=0 base_repr=I32
-// CHECK-NEXT:               type_params_id: null
+// CHECK-NEXT:             EnumDeclaration #10 @2:8..6:2 name="Color" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:               type_params_id:
+// CHECK-NEXT:                 GenericParams #5 @2:18..2:21 nparams=1
+// CHECK-NEXT:                   params:
+// CHECK-NEXT:                     GenericTypeParam #4 @2:19..2:20 name="T" variance=Invariant
+// CHECK-NEXT:                       bound: null
+// CHECK-NEXT:                       default_ty: null
 // CHECK-NEXT:               variants_id:
-// CHECK-NEXT:                 EnumVariantList #4 @2:8..6:2 nvars=0
-// CHECK-NEXT:                   variants: []
+// CHECK-NEXT:                 EnumVariantList #9 @2:22..6:2 nvars=3
+// CHECK-NEXT:                   variants:
+// CHECK-NEXT:                     UnitVariant #6 @3:5..3:9 name="Red" has_disc=false disc=null
+// CHECK-NEXT:                     UnitVariant #7 @4:5..4:11 name="Green" has_disc=false disc=null
+// CHECK-NEXT:                     UnitVariant #8 @5:5..5:10 name="Blue" has_disc=false disc=null
 // CHECK-NEXT:           path: null
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs:

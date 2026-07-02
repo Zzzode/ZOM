@@ -426,7 +426,16 @@ Parser::Impl::TypeParseResult Parser::Impl::parseTypeExpression(AstFactory& buil
 Parser::Impl::TypeParseResult Parser::Impl::parseTypeExpressionAt(AstFactory& builder, size_t start,
                                                                   size_t limit) const {
   TokenCursor cursor = tokenCursorAt(start);
-  return parseTypeExpression(builder, cursor, limit);
+  TokenCursor::ScopedSplitMode splitMode(cursor);
+  TypeParseResult result = parseTypeExpression(builder, cursor, limit);
+  // Consume any remaining virtual ">" tokens from a split ">>" or ">>>".
+  // This ensures the returned next position reflects the full consumption
+  // of multi-character right-angle tokens.
+  while (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::GreaterThan) {
+    cursor.advance();
+  }
+  result.next = cursor.position();
+  return result;
 }
 
 Parser::Impl::TypeParseResult Parser::Impl::parseUnionType(AstFactory& builder, TokenCursor& cursor,
@@ -784,8 +793,10 @@ ast::NodeId Parser::Impl::parseTypeRange(AstFactory& builder, size_t start, size
   TypeParseResult parsed = parseTypeExpressionAt(builder, start, end);
   if (!parsed.node) { return ast::NodeId(); }
   if (parsed.next != end) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-        diagnosticLoc(parsed.next));
+    if (!shouldSuppressDiagnostic(parsed.next)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          diagnosticLoc(parsed.next));
+    }
     return ast::NodeId();
   }
   recoveryFrame.finish(end);
@@ -926,6 +937,138 @@ ast::NodeId Parser::Impl::parseExternTypeAliasDecl(AstFactory& builder, size_t s
 
   return builder.makeAliasDecl(rangeFor(start, end), internIdent(builder, nameIndex), ast::NodeId(),
                                parseTypeRange(builder, targetStart, targetEnd));
+}
+
+ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
+                                              size_t limit) const {
+  if (start >= limit || kindAt(start) != ast::SyntaxKind::LessThan) { return ast::NodeId(); }
+
+  // Run existing diagnostics on the type parameter list.
+  diagnoseDeclarationTypeParameterSyntax(start, limit);
+
+  const size_t closeAngle = findMatchingAngleClose(start, limit);
+  if (closeAngle >= limit) { return ast::NodeId(); }
+  if (start + 1 >= closeAngle) { return ast::NodeId(); }  // Empty <> — already diagnosed.
+
+  zc::Vector<ast::NodeId> params;
+  size_t cursor = start + 1;
+
+  while (cursor < closeAngle) {
+    // Skip leading whitespace / commas between params.
+    while (cursor < closeAngle && kindAt(cursor) == ast::SyntaxKind::Comma) { ++cursor; }
+    if (cursor >= closeAngle) { break; }
+
+    // Detect variance annotation.
+    uint8_t variance = 0;  // Invariant
+    if (kindAt(cursor) == ast::SyntaxKind::InKeyword) {
+      variance = 2;  // Contravariant
+      ++cursor;
+    } else if (kindAt(cursor) == ast::SyntaxKind::OutKeyword) {
+      variance = 1;  // Covariant
+      ++cursor;
+    }
+
+    // Skip attribute prefix.
+    cursor = skipOuterAttributePrefix(cursor, closeAngle);
+    if (cursor >= closeAngle) { break; }
+
+    // Parse parameter name.
+    if (kindAt(cursor) != ast::SyntaxKind::Identifier) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(diagnosticLoc(cursor));
+      break;
+    }
+    const size_t nameIndex = cursor;
+    ++cursor;
+
+    // Find the end of this parameter (next comma at depth 0, or closeAngle).
+    size_t paramEnd = closeAngle;
+    int32_t angleDepth = 0;
+    for (size_t i = cursor; i < closeAngle; ++i) {
+      const ast::SyntaxKind k = kindAt(i);
+      if (k == ast::SyntaxKind::LessThan) {
+        ++angleDepth;
+      } else if (k == ast::SyntaxKind::GreaterThan) {
+        if (angleDepth > 0) --angleDepth;
+      } else if (k == ast::SyntaxKind::GreaterThanGreaterThan) {
+        if (angleDepth > 0) --angleDepth;
+        if (angleDepth > 0) --angleDepth;
+      } else if (k == ast::SyntaxKind::GreaterThanGreaterThanGreaterThan) {
+        if (angleDepth > 0) --angleDepth;
+        if (angleDepth > 0) --angleDepth;
+        if (angleDepth > 0) --angleDepth;
+      } else if (angleDepth == 0 && k == ast::SyntaxKind::Comma) {
+        paramEnd = i;
+        break;
+      }
+    }
+
+    // Parse optional bound (`: Type`) and optional default (`= Type`).
+    ast::NodeId bound;
+    ast::NodeId defaultTy;
+
+    // Search for colon and equals at depth 0 within this param.
+    size_t colonPos = paramEnd;
+    size_t equalsPos = paramEnd;
+    int32_t aDepth = 0;
+    for (size_t i = cursor; i < paramEnd; ++i) {
+      const ast::SyntaxKind k = kindAt(i);
+      if (k == ast::SyntaxKind::LessThan) {
+        ++aDepth;
+      } else if (k == ast::SyntaxKind::GreaterThan) {
+        if (aDepth > 0) --aDepth;
+      } else if (k == ast::SyntaxKind::GreaterThanGreaterThan) {
+        if (aDepth > 0) --aDepth;
+        if (aDepth > 0) --aDepth;
+      } else if (k == ast::SyntaxKind::GreaterThanGreaterThanGreaterThan) {
+        if (aDepth > 0) --aDepth;
+        if (aDepth > 0) --aDepth;
+        if (aDepth > 0) --aDepth;
+      } else if (aDepth == 0 && k == ast::SyntaxKind::Colon && colonPos == paramEnd) {
+        colonPos = i;
+      } else if (aDepth == 0 && k == ast::SyntaxKind::Equals) {
+        equalsPos = i;
+        break;
+      }
+    }
+
+    if (colonPos < paramEnd) {
+      const size_t boundEnd = equalsPos < paramEnd ? equalsPos : paramEnd;
+      // Extend to include multi-char closing angle tokens (e.g. ">>") so
+      // split mode can properly close nested generics like `Foo<Bar>`.
+      // Single ">" is already excluded by the exclusive-end convention.
+      size_t typeLimit = boundEnd;
+      if (boundEnd == closeAngle && closeAngle < limit) {
+        const ast::SyntaxKind closeKind = kindAt(closeAngle);
+        if (closeKind == ast::SyntaxKind::GreaterThanGreaterThan ||
+            closeKind == ast::SyntaxKind::GreaterThanGreaterThanGreaterThan) {
+          typeLimit = closeAngle + 1;
+        }
+      }
+      bound = parseTypeRange(builder, colonPos + 1, typeLimit);
+    }
+    if (equalsPos < paramEnd) {
+      size_t typeLimit = paramEnd;
+      if (paramEnd == closeAngle && closeAngle < limit) {
+        const ast::SyntaxKind closeKind = kindAt(closeAngle);
+        if (closeKind == ast::SyntaxKind::GreaterThanGreaterThan ||
+            closeKind == ast::SyntaxKind::GreaterThanGreaterThanGreaterThan) {
+          typeLimit = closeAngle + 1;
+        }
+      }
+      defaultTy = parseTypeRange(builder, equalsPos + 1, typeLimit);
+    }
+
+    params.add(builder.makeGenericTypeParam(
+        rangeFor(nameIndex, paramEnd), internIdent(builder, nameIndex), bound, defaultTy,
+        variance));
+
+    cursor = paramEnd;
+    if (cursor < closeAngle && kindAt(cursor) == ast::SyntaxKind::Comma) { ++cursor; }
+  }
+
+  return builder.makeGenericParams(rangeFor(start, closeAngle + 1),
+                                   static_cast<uint16_t>(params.size()),
+                                   builder.makeList(params.asPtr()));
 }
 
 }  // namespace parser

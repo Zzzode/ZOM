@@ -6,15 +6,15 @@
 // CHECK:   |
 // CHECK: 1 | let \u{110000} = "bad";
 // CHECK:   |     ^
-// CHECK: Error [ZOM2076]: Declaration or statement expected. This follows a block of statements, so if you intended to write a destructuring assignment, you might need to wrap the whole assignment in parentheses
-// CHECK:   --> {{.*ident_unicode_escape_neg_01.zom}}:1:16
-// CHECK:   |
-// CHECK: 1 | let \u{110000} = "bad";
-// CHECK:   |                ^
 // CHECK: Error [ZOM2058]: Variable declaration expected
 // CHECK:   --> {{.*ident_unicode_escape_neg_01.zom}}:1:5
 // CHECK:   |
 // CHECK: 1 | let \u{110000} = "bad";
 // CHECK:   |     ^
+// CHECK: Error [ZOM2076]: Declaration or statement expected. This follows a block of statements, so if you intended to write a destructuring assignment, you might need to wrap the whole assignment in parentheses
+// CHECK:   --> {{.*ident_unicode_escape_neg_01.zom}}:1:16
+// CHECK:   |
+// CHECK: 1 | let \u{110000} = "bad";
+// CHECK:   |                ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

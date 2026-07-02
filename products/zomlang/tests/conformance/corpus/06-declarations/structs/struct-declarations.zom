@@ -2,7 +2,7 @@ struct Point {
   public let x: i32;
   private const y: i32 = 1
   fun hello() -> unit {
-    print("hello")
+    print("hello");
   }
 }
 

@@ -6,10 +6,5 @@
 // CHECK:   |
 // CHECK: 1 | alias Broken = A |;
 // CHECK:   |                   ^
-// CHECK: Error [ZOM2068]: Type expected
-// CHECK:   --> {{.*union-trailing-bar.zom}}:1:19
-// CHECK:   |
-// CHECK: 1 | alias Broken = A |;
-// CHECK:   |                   ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

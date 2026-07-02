@@ -1,14 +1,17 @@
 // RUN: %zomc compile --dump-ast %corpus/06-declarations/enum_decl_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..6:1 file_name="enum_decl_pos_01.zom"
+// CHECK: SourceFile #7 @1:1..6:1 file_name="enum_decl_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..5:2
+// CHECK-NEXT:     StatementListItem #6 @1:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         EnumDeclaration #2 @1:1..5:2 name="Color" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:         EnumDeclaration #5 @1:1..5:2 name="Color" extensibility=Sealed nvars=0 base_repr=I32
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           variants_id:
-// CHECK-NEXT:             EnumVariantList #1 @1:1..5:2 nvars=0
-// CHECK-NEXT:               variants: []
+// CHECK-NEXT:             EnumVariantList #4 @1:12..5:2 nvars=3
+// CHECK-NEXT:               variants:
+// CHECK-NEXT:                 UnitVariant #1 @2:5..2:9 name="Red" has_disc=false disc=null
+// CHECK-NEXT:                 UnitVariant #2 @3:5..3:11 name="Green" has_disc=false disc=null
+// CHECK-NEXT:                 UnitVariant #3 @4:5..4:10 name="Blue" has_disc=false disc=null
 // CHECK-NEXT:       attrs: null

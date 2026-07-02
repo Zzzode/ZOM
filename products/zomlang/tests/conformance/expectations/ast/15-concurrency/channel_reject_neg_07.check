@@ -1,15 +1,15 @@
 // RUN: ! %zomc compile --dump-ast %corpus/15-concurrency/channel_reject_neg_07.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*channel_reject_neg_07.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | channel C<i32>
-// CHECK:   | ^
 // CHECK: Error [ZOM2025]: Expected ';'
 // CHECK:   --> {{.*channel_reject_neg_07.zom}}:2:1
 // CHECK:   |
 // CHECK: 2 |
+// CHECK:   | ^
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*channel_reject_neg_07.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | channel C<i32>
 // CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

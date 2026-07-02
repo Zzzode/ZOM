@@ -1203,6 +1203,50 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         if (tree.contains(child)) { fn(child); }
       }
       return;
+    case SyntaxKind::MethodDecl:
+      {
+        const NodeId child(node.payload.words[kMethodDeclParamsIdWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kMethodDeclRetTyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kMethodDeclBodyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
+    case SyntaxKind::FieldDecl:
+      {
+        const NodeId child(node.payload.words[kFieldDeclTyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kFieldDeclInitWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
+    case SyntaxKind::AssociatedTypeDecl:
+      {
+        const NodeId child(node.payload.words[kAssociatedTypeDeclBoundWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kAssociatedTypeDeclDefaultTyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
+    case SyntaxKind::GenericTypeParam:
+      {
+        const NodeId child(node.payload.words[kGenericTypeParamBoundWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kGenericTypeParamDefaultTyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
     case SyntaxKind::SourceFile:
       {
         const NodeId child(node.payload.words[kSourceFileModuleWord]);

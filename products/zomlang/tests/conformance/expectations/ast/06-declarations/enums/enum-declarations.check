@@ -1,14 +1,15 @@
-// RUN: %zomc compile --dump-ast %corpus/06-declarations/enums/enum-declarations.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/enums/enum-declarations.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..7:1 file_name="enum-declarations.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..6:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         EnumDeclaration #2 @1:1..6:2 name="E" extensibility=Sealed nvars=0 base_repr=I32
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           variants_id:
-// CHECK-NEXT:             EnumVariantList #1 @1:1..6:2 nvars=0
-// CHECK-NEXT:               variants: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*enum-declarations.zom}}:5:9
+// CHECK:   |
+// CHECK: 5 |   D(name: str, age: i32)
+// CHECK:   |         ^
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*enum-declarations.zom}}:5:19
+// CHECK:   |
+// CHECK: 5 |   D(name: str, age: i32)
+// CHECK:   |                   ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

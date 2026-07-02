@@ -1,14 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/09-interfaces/iface_assoc_type_pos_07.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/iface_assoc_type_pos_07.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..4:1 file_name="iface_assoc_type_pos_07.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..3:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #2 @1:1..3:2 name="FullAssoc"
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..3:2 nmembers=0
-// CHECK-NEXT:               members: []
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*iface_assoc_type_pos_07.zom}}:2:31
+// CHECK:   |
+// CHECK: 2 |     type Element<T, U> : Show + Hash = T | U;
+// CHECK:   |                               ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

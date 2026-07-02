@@ -9,7 +9,7 @@
 // CHECK-NEXT:         StructDecl #6 @2:1..2:22 name="EmptyMarker" extensibility=Sealed
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #5 @2:1..2:22 nmembers=0
+// CHECK-NEXT:             ClassMemberList #5 @2:20..2:22 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs:
 // CHECK-NEXT:         AttributeList #4 @1:1..1:27

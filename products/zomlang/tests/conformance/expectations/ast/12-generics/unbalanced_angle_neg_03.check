@@ -1,10 +1,50 @@
-// RUN: ! %zomc compile --dump-ast %corpus/12-generics/unbalanced_angle_neg_03.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/12-generics/unbalanced_angle_neg_03.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*unbalanced_angle_neg_03.zom}}:1:11
-// CHECK:   |
-// CHECK: 1 | fun f<T, U>>(a: T, b: U) -> unit { return unit; }
-// CHECK:   |           ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #18 @1:1..2:1 file_name="unbalanced_angle_neg_03.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #17 @1:1..1:50
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #16 @1:1..1:50 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #10 @1:13..1:25 nparams=2
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #6 @1:14..1:18 name="a"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #5 @1:17..1:18
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #4 @1:17..1:18 segments=["T"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 FunctionParameterDecl #9 @1:20..1:24 name="b"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #8 @1:23..1:24
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #7 @1:23..1:24 segments=["U"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #3 @1:6..1:13 nparams=2
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #1 @1:7..1:8 name="T" variance=Invariant
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:                 GenericTypeParam #2 @1:10..1:11 name="U" variance=Invariant
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #11 @1:29..1:33 kind=Unit
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #15 @1:34..1:50
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #14 @1:36..1:48
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #13 @1:36..1:48
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         UnitLiteral #12 @1:43..1:47
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

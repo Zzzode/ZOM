@@ -2,9 +2,9 @@
 
 
 // CHECK: Fatal [ZOM2078]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
-// CHECK:   --> {{.*enum_coloncol_reject_neg_01.zom}}:5:1
+// CHECK:   --> {{.*enum_coloncol_reject_neg_01.zom}}:1:1
 // CHECK:   |
-// CHECK: 5 |
+// CHECK: 1 | enum Color { Red, Green, Blue }
 // CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

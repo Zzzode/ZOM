@@ -6,5 +6,10 @@
 // CHECK:   |
 // CHECK: 2 |     when a @ b @ p => { print(a); }
 // CHECK:   |            ^
+// CHECK: Fatal [ZOM2078]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
+// CHECK:   --> {{.*bind_pat_double_at_neg_09.zom}}:1:1
+// CHECK:   |
+// CHECK: 1 | match (v) {
+// CHECK:   | ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

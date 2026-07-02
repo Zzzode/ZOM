@@ -97,7 +97,7 @@ size_t Parser::Impl::consumeSimpleStatementEnd(size_t start, size_t limit) const
   for (size_t index = start; index < limit; ++index) {
     const ast::SyntaxKind kind = kindAt(index);
     if (kind == ast::SyntaxKind::EndOfFile) {
-      if (sawBrace && braceDepth > 0) {
+      if (sawBrace && braceDepth > 0 && !shouldSuppressDiagnostic(index)) {
         diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(index).getLocation(),
                                                                       "}"_zc);
       }
@@ -139,7 +139,7 @@ size_t Parser::Impl::consumeSimpleStatementEnd(size_t start, size_t limit) const
     }
   }
 
-  if (sawBrace && braceDepth > 0) {
+  if (sawBrace && braceDepth > 0 && !shouldSuppressDiagnostic(limit - 1)) {
     diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(limit - 1).getLocation(),
                                                                   "}"_zc);
   }
@@ -489,7 +489,10 @@ size_t Parser::Impl::findMatchingRightParen(size_t openParen, size_t limit) cons
 
 ast::NodeId Parser::Impl::parseIfStatement(AstFactory& builder, size_t start, size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "("_zc);
+    if (!shouldSuppressDiagnostic(start + 1)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
+                                                                    "("_zc);
+    }
     return ast::NodeId();
   }
 
@@ -504,7 +507,10 @@ ast::NodeId Parser::Impl::parseIfStatement(AstFactory& builder, size_t start, si
 
 ast::NodeId Parser::Impl::parseWhileStatement(AstFactory& builder, size_t start, size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "("_zc);
+    if (!shouldSuppressDiagnostic(start + 1)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
+                                                                    "("_zc);
+    }
     return ast::NodeId();
   }
 
@@ -562,14 +568,19 @@ ast::NodeId Parser::Impl::parseLabeledStatement(AstFactory& builder, size_t star
 
 ast::NodeId Parser::Impl::parseForStatement(AstFactory& builder, size_t start, size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftParen) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1), "("_zc);
+    if (!shouldSuppressDiagnostic(start + 1)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start + 1),
+                                                                    "("_zc);
+    }
     return ast::NodeId();
   }
 
   const ForStatementParts parts = parseForStatementParts(start, end);
   if (parts.firstSemi >= parts.headerEnd || parts.secondSemi >= parts.headerEnd) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(parts.headerEnd),
-                                                                  ";"_zc);
+    if (!shouldSuppressDiagnostic(parts.headerEnd)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+          diagnosticLoc(parts.headerEnd), ";"_zc);
+    }
     return ast::NodeId();
   }
 
@@ -626,8 +637,10 @@ ast::NodeId Parser::Impl::parseMatchStatement(AstFactory& builder, size_t start,
         const size_t arrow =
             consumeBalancedUntil(armCursor, bodyEnd, ast::SyntaxKind::EqualsGreaterThan);
         if (arrow >= bodyEnd) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
-                                                                        "=>"_zc);
+          if (!shouldSuppressDiagnostic(cursor + 1)) {
+            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+                diagnosticLoc(cursor + 1), "=>"_zc);
+          }
           return ast::NodeId();
         }
 
@@ -651,8 +664,10 @@ ast::NodeId Parser::Impl::parseMatchStatement(AstFactory& builder, size_t start,
         const size_t arrow =
             consumeBalancedUntil(armCursor, bodyEnd, ast::SyntaxKind::EqualsGreaterThan);
         if (arrow >= bodyEnd) {
-          diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
-                                                                        "=>"_zc);
+          if (!shouldSuppressDiagnostic(cursor + 1)) {
+            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+                diagnosticLoc(cursor + 1), "=>"_zc);
+          }
           return ast::NodeId();
         }
 
@@ -667,8 +682,10 @@ ast::NodeId Parser::Impl::parseMatchStatement(AstFactory& builder, size_t start,
         continue;
       }
 
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(cursor).getLocation(),
-                                                                    "when"_zc);
+      if (!shouldSuppressDiagnostic(cursor)) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(tokenAt(cursor).getLocation(),
+                                                                      "when"_zc);
+      }
       return ast::NodeId();
     }
   }
@@ -683,7 +700,10 @@ ast::NodeId Parser::Impl::parseExternBlockDeclaration(AstFactory& builder, size_
   size_t cursor = start;
   if (isSoftKeyword(cursor, "unsafe"_zc)) { ++cursor; }
   if (cursor >= end || !isSoftKeyword(cursor, "extern"_zc)) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(diagnosticLoc(cursor));
+    if (!shouldSuppressDiagnostic(cursor)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          diagnosticLoc(cursor));
+    }
     return ast::NodeId();
   }
   ++cursor;
@@ -695,7 +715,10 @@ ast::NodeId Parser::Impl::parseExternBlockDeclaration(AstFactory& builder, size_
   }
 
   if (cursor >= end || kindAt(cursor) != ast::SyntaxKind::LeftBrace) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor), "{"_zc);
+    if (!shouldSuppressDiagnostic(cursor)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor),
+                                                                    "{"_zc);
+    }
     return ast::NodeId();
   }
 

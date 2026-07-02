@@ -32,6 +32,7 @@ bool Parser::Impl::containsUnmodeledRangeOperator(size_t start, size_t end) cons
 }
 
 void Parser::Impl::diagnoseExpressionExpected(size_t index) const {
+  if (shouldSuppressDiagnostic(index)) { return; }
   diagnosticEngine.diagnose<diagnostics::DiagID::ExpressionExpected>(diagnosticLoc(index));
 }
 
@@ -44,7 +45,9 @@ ast::NodeId Parser::Impl::parseRequiredExpression(AstFactory& builder, size_t st
 
 bool Parser::Impl::requireTrailingSemicolon(size_t start, size_t end) const {
   if (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { return true; }
-  diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ";"_zc);
+  if (!shouldSuppressDiagnostic(end)) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(end), ";"_zc);
+  }
   return false;
 }
 
@@ -1271,6 +1274,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
                 start + 1};
       case ast::SyntaxKind::ThisKeyword:
         return {builder.makeThisExpr(rangeFor(start, start + 1)), start + 1};
+      case ast::SyntaxKind::SuperKeyword:
+        return {builder.makeSuperExpr(rangeFor(start, start + 1)), start + 1};
       case ast::SyntaxKind::TrueKeyword:
       case ast::SyntaxKind::FalseKeyword:
         return {builder.makeBoolLiteral(rangeFor(start, start + 1),
@@ -1326,8 +1331,10 @@ ast::NodeId Parser::Impl::parseExpressionRange(AstFactory& builder, size_t start
   ExpressionParseResult parsed = parseExpressionAt(builder, start, end);
   if (!parsed.node) { return ast::NodeId(); }
   if (parsed.next != end) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-        diagnosticLoc(parsed.next));
+    if (!shouldSuppressDiagnostic(parsed.next)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          diagnosticLoc(parsed.next));
+    }
     return ast::NodeId();
   }
   recoveryFrame.finish(end);

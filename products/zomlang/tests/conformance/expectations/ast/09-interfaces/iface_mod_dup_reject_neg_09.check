@@ -6,10 +6,5 @@
 // CHECK:   |
 // CHECK: 2 |     public public fun dup() -> unit;
 // CHECK:   |            ^
-// CHECK: Error [ZOM2079]: Duplicate declaration modifier 'public'
-// CHECK:   --> {{.*iface_mod_dup_reject_neg_09.zom}}:2:12
-// CHECK:   |
-// CHECK: 2 |     public public fun dup() -> unit;
-// CHECK:   |            ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

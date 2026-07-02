@@ -205,6 +205,7 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::SpawnExpression: return true;
     case SyntaxKind::StructLiteralExpr: return true;
     case SyntaxKind::CaptureItem: return true;
+    case SyntaxKind::SuperExpr: return true;
     case SyntaxKind::DynTypeExpr: return true;
     case SyntaxKind::BottomTypeExpr: return true;
     case SyntaxKind::FixedArrayTypeExpr: return true;
@@ -259,6 +260,10 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::InterfaceDecl: return true;
     case SyntaxKind::ErrorDecl: return true;
     case SyntaxKind::AliasDecl: return true;
+    case SyntaxKind::MethodDecl: return true;
+    case SyntaxKind::FieldDecl: return true;
+    case SyntaxKind::AssociatedTypeDecl: return true;
+    case SyntaxKind::GenericTypeParam: return true;
     case SyntaxKind::SourceFile: return true;
     case SyntaxKind::ModulePath: return true;
     case SyntaxKind::ImportDeclaration: return true;
@@ -364,6 +369,7 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::SpawnExpression: return "SpawnExpression";
     case SyntaxKind::StructLiteralExpr: return "StructLiteralExpr";
     case SyntaxKind::CaptureItem: return "CaptureItem";
+    case SyntaxKind::SuperExpr: return "SuperExpr";
     case SyntaxKind::DynTypeExpr: return "DynTypeExpr";
     case SyntaxKind::BottomTypeExpr: return "BottomTypeExpr";
     case SyntaxKind::FixedArrayTypeExpr: return "FixedArrayTypeExpr";
@@ -418,6 +424,10 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::InterfaceDecl: return "InterfaceDecl";
     case SyntaxKind::ErrorDecl: return "ErrorDecl";
     case SyntaxKind::AliasDecl: return "AliasDecl";
+    case SyntaxKind::MethodDecl: return "MethodDecl";
+    case SyntaxKind::FieldDecl: return "FieldDecl";
+    case SyntaxKind::AssociatedTypeDecl: return "AssociatedTypeDecl";
+    case SyntaxKind::GenericTypeParam: return "GenericTypeParam";
     case SyntaxKind::SourceFile: return "SourceFile";
     case SyntaxKind::ModulePath: return "ModulePath";
     case SyntaxKind::ImportDeclaration: return "ImportDeclaration";

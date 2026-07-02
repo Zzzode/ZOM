@@ -63,6 +63,15 @@ bool isObjectLiteralElementKind(SyntaxKind kind) {
   return kind == SyntaxKind::ObjectProperty || kind == SyntaxKind::ObjectSpread;
 }
 
+bool isClassElementKind(SyntaxKind kind) {
+  return kind == SyntaxKind::MethodDecl || kind == SyntaxKind::FieldDecl ||
+         kind == SyntaxKind::AssociatedTypeDecl;
+}
+
+bool isTypeParamDeclKind(SyntaxKind kind) {
+  return kind == SyntaxKind::GenericTypeParam;
+}
+
 bool matchesCastTarget(SyntaxKind kind, const char* target) {
   if (target == nullptr) { return true; }
   if (equals(target, "Expression")) { return isExpressionSchemaKind(kind); }
@@ -75,6 +84,8 @@ bool matchesCastTarget(SyntaxKind kind, const char* target) {
   if (equals(target, "BlockStmt")) { return kind == SyntaxKind::BlockStmt; }
   if (equals(target, "ParameterDecl")) { return isParameterDeclKind(kind); }
   if (equals(target, "ObjectLiteralElement")) { return isObjectLiteralElementKind(kind); }
+  if (equals(target, "ClassElement")) { return isClassElementKind(kind); }
+  if (equals(target, "TypeParamDecl")) { return isTypeParamDeclKind(kind); }
   return equals(nodeKindName(kind), target);
 }
 

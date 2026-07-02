@@ -1,14 +1,29 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/enum_mixed_variants_pos_03.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..7:1 file_name="enum_mixed_variants_pos_03.zom"
+// CHECK: SourceFile #15 @1:1..7:1 file_name="enum_mixed_variants_pos_03.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..6:2
+// CHECK-NEXT:     StatementListItem #14 @1:1..6:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         EnumDeclaration #2 @1:1..6:2 name="Message" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:         EnumDeclaration #13 @1:1..6:2 name="Message" extensibility=Sealed nvars=0 base_repr=I32
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           variants_id:
-// CHECK-NEXT:             EnumVariantList #1 @1:1..6:2 nvars=0
-// CHECK-NEXT:               variants: []
+// CHECK-NEXT:             EnumVariantList #12 @1:14..6:2 nvars=4
+// CHECK-NEXT:               variants:
+// CHECK-NEXT:                 UnitVariant #1 @2:5..2:14 name="Quit" has_disc=true disc="1"
+// CHECK-NEXT:                 TupleVariant #3 @3:5..3:15 name="Move" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                   tys:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @3:10..3:13 kind=I32
+// CHECK-NEXT:                 TupleVariant #7 @4:5..4:22 name="Write" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                   tys:
+// CHECK-NEXT:                     UnionTypeExpr #6 @4:11..4:20
+// CHECK-NEXT:                       alts:
+// CHECK-NEXT:                         PredefinedTypeExpr #4 @4:11..4:14 kind=Str
+// CHECK-NEXT:                         PredefinedTypeExpr #5 @4:17..4:20 kind=I32
+// CHECK-NEXT:                 TupleVariant #11 @5:5..5:34 name="ChangeColor" nfields=3 has_disc=true disc="10"
+// CHECK-NEXT:                   tys:
+// CHECK-NEXT:                     PredefinedTypeExpr #8 @5:17..5:19 kind=U8
+// CHECK-NEXT:                     PredefinedTypeExpr #9 @5:21..5:23 kind=U8
+// CHECK-NEXT:                     PredefinedTypeExpr #10 @5:25..5:27 kind=U8
 // CHECK-NEXT:       attrs: null

@@ -1,5 +1,15 @@
 # Grammar Reference
 
+> **注意：权威语法参考已迁移**
+>
+> 本文档作为历史参考和快速概览保留。`docs/design/syntax-ebnf.md` 是 ZOM 语言语法层的**唯一权威来源**（single authoritative source of truth）。
+> 所有词法分析器、解析器、AST 定义、诊断系统、LSP 实现和文档生成器必须与该文档保持一致。
+> 如果本文档与 `docs/design/syntax-ebnf.md` 之间存在任何冲突或不一致，**一律以 syntax-ebnf.md 为准**。
+>
+> 如需查阅最新、最权威的语法规范，请参阅 [`docs/design/syntax-ebnf.md`](../design/syntax-ebnf.md)。
+
+---
+
 This section provides the complete formal grammar for the Zom language in EBNF notation.
 
 ### Lexical Grammar

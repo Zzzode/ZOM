@@ -6,10 +6,5 @@
 // CHECK:   |
 // CHECK: 2 |     static mutating fun bad() -> unit;
 // CHECK:   |            ^
-// CHECK: Error [ZOM2080]: Declaration modifiers 'static' and 'mutating' cannot be used together
-// CHECK:   --> {{.*iface_mod_static_mutating_neg_08.zom}}:2:12
-// CHECK:   |
-// CHECK: 2 |     static mutating fun bad() -> unit;
-// CHECK:   |            ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

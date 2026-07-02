@@ -1,67 +1,79 @@
 // RUN: %zomc compile --dump-ast %corpus/12-generics/default_in_middle_edge_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #27 @1:1..2:1 file_name="default_in_middle_edge_02.zom"
+// CHECK: SourceFile #32 @1:1..2:1 file_name="default_in_middle_edge_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #26 @1:1..1:74
+// CHECK-NEXT:     StatementListItem #31 @1:1..1:74
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #25 @1:1..1:74 name="f"
+// CHECK-NEXT:         FunctionDecl #30 @1:1..1:74 name="f"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #10 @1:21..1:39 nparams=3
+// CHECK-NEXT:             FunctionParameterList #15 @1:21..1:39 nparams=3
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #3 @1:22..1:26 name="a"
+// CHECK-NEXT:                 FunctionParameterDecl #8 @1:22..1:26 name="a"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #2 @1:25..1:26
+// CHECK-NEXT:                     NamedTypeExpr #7 @1:25..1:26
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #1 @1:25..1:26 segments=["T"]
+// CHECK-NEXT:                         ModulePath #6 @1:25..1:26 segments=["T"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #6 @1:28..1:32 name="b"
+// CHECK-NEXT:                 FunctionParameterDecl #11 @1:28..1:32 name="b"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #5 @1:31..1:32
+// CHECK-NEXT:                     NamedTypeExpr #10 @1:31..1:32
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #4 @1:31..1:32 segments=["U"]
+// CHECK-NEXT:                         ModulePath #9 @1:31..1:32 segments=["U"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #9 @1:34..1:38 name="c"
+// CHECK-NEXT:                 FunctionParameterDecl #14 @1:34..1:38 name="c"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #8 @1:37..1:38
+// CHECK-NEXT:                     NamedTypeExpr #13 @1:37..1:38
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #7 @1:37..1:38 segments=["V"]
+// CHECK-NEXT:                         ModulePath #12 @1:37..1:38 segments=["V"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #5 @1:6..1:21 nparams=3
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #1 @1:7..1:8 name="T" variance=Invariant
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:                 GenericTypeParam #3 @1:10..1:17 name="U" variance=Invariant
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:14..1:17 kind=I32
+// CHECK-NEXT:                 GenericTypeParam #4 @1:19..1:20 name="V" variance=Invariant
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             TupleTypeExpr #17 @1:43..1:52
+// CHECK-NEXT:             TupleTypeExpr #22 @1:43..1:52
 // CHECK-NEXT:               elems:
-// CHECK-NEXT:                 NamedTypeExpr #12 @1:44..1:45
+// CHECK-NEXT:                 NamedTypeExpr #17 @1:44..1:45
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #11 @1:44..1:45 segments=["T"]
+// CHECK-NEXT:                     ModulePath #16 @1:44..1:45 segments=["T"]
 // CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #14 @1:47..1:48
+// CHECK-NEXT:                 NamedTypeExpr #19 @1:47..1:48
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #13 @1:47..1:48 segments=["U"]
+// CHECK-NEXT:                     ModulePath #18 @1:47..1:48 segments=["U"]
 // CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #16 @1:50..1:51
+// CHECK-NEXT:                 NamedTypeExpr #21 @1:50..1:51
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #15 @1:50..1:51 segments=["V"]
+// CHECK-NEXT:                     ModulePath #20 @1:50..1:51 segments=["V"]
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #24 @1:53..1:74
+// CHECK-NEXT:             BlockStmt #29 @1:53..1:74
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #23 @1:55..1:72
+// CHECK-NEXT:                 StatementListItem #28 @1:55..1:72
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #22 @1:55..1:72
+// CHECK-NEXT:                     ReturnStmt #27 @1:55..1:72
 // CHECK-NEXT:                       value:
-// CHECK-NEXT:                         TupleLiteral #21 @1:63..1:70
+// CHECK-NEXT:                         TupleLiteral #26 @1:63..1:70
 // CHECK-NEXT:                           elems:
-// CHECK-NEXT:                             IdentExpr #18 @1:63..1:64 name="a"
-// CHECK-NEXT:                             IdentExpr #19 @1:66..1:67 name="b"
-// CHECK-NEXT:                             IdentExpr #20 @1:69..1:70 name="c"
+// CHECK-NEXT:                             IdentExpr #23 @1:63..1:64 name="a"
+// CHECK-NEXT:                             IdentExpr #24 @1:66..1:67 name="b"
+// CHECK-NEXT:                             IdentExpr #25 @1:69..1:70 name="c"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

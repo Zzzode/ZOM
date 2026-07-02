@@ -1,16 +1,11 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/unbalanced_reject_neg_03.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*unbalanced_reject_neg_03.zom}}:2:17
+// CHECK: Error [ZOM2012]: Missing semicolon before '<token>'
+// CHECK:   --> {{.*unbalanced_reject_neg_03.zom}}:3:1
 // CHECK:   |
-// CHECK: 2 | let s = S { x: 1;
-// CHECK:   |                 ^
-// CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*unbalanced_reject_neg_03.zom}}:2:17
-// CHECK:   |
-// CHECK: 2 | let s = S { x: 1;
-// CHECK:   |                 ^
+// CHECK: 3 |
+// CHECK:   | ^
 // CHECK: Error [ZOM2025]: Expected '}'
 // CHECK:   --> {{.*unbalanced_reject_neg_03.zom}}:2:11
 // CHECK:   |
@@ -21,5 +16,10 @@
 // CHECK:   |
 // CHECK: 2 | let s = S { x: 1;
 // CHECK:   |         ^
+// CHECK: Error [ZOM2025]: Expected '}'
+// CHECK:   --> {{.*unbalanced_reject_neg_03.zom}}:2:17
+// CHECK:   |
+// CHECK: 2 | let s = S { x: 1;
+// CHECK:   |                 ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

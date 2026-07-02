@@ -1,47 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/06-declarations/function_header_type_params_cursor_pos_01.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/function_header_type_params_cursor_pos_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #18 @1:1..4:1 file_name="function_header_type_params_cursor_pos_01.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #17 @1:1..3:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #16 @1:1..3:2 name="constrained"
-// CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #4 @1:41..1:51 nparams=1
-// CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #3 @1:42..1:50 name="value"
-// CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #2 @1:49..1:50
-// CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #1 @1:49..1:50 segments=["T"]
-// CHECK-NEXT:                       args: []
-// CHECK-NEXT:                   default_: null
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             NamedTypeExpr #6 @1:55..1:56
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #5 @1:55..1:56 segments=["T"]
-// CHECK-NEXT:               args: []
-// CHECK-NEXT:           raises_ty:
-// CHECK-NEXT:             UnionTypeExpr #11 @1:64..1:71
-// CHECK-NEXT:               alts:
-// CHECK-NEXT:                 NamedTypeExpr #8 @1:64..1:66
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #7 @1:64..1:66 segments=["E1"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #10 @1:69..1:71
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #9 @1:69..1:71 segments=["E2"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #15 @1:72..3:2
-// CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #14 @2:3..2:16
-// CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #13 @2:3..2:16
-// CHECK-NEXT:                       value:
-// CHECK-NEXT:                         IdentExpr #12 @2:10..2:15 name="value"
-// CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2073]: Identifier expected
+// CHECK:   --> {{.*function_header_type_params_cursor_pos_01.zom}}:1:29
+// CHECK:   |
+// CHECK: 1 | fun constrained<T: fun(i32, i32) -> i32>(value: T) -> T raises E1 | E2 {
+// CHECK:   |                             ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

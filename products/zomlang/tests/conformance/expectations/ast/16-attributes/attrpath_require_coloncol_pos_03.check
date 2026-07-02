@@ -1,20 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/16-attributes/attrpath_require_coloncol_pos_03.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/16-attributes/attrpath_require_coloncol_pos_03.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #7 @1:1..3:1 file_name="attrpath_require_coloncol_pos_03.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @1:1..2:27
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #5 @2:1..2:27 name="S" extensibility=Sealed
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #4 @2:1..2:27 nmembers=0
-// CHECK-NEXT:               members: []
-// CHECK-NEXT:       attrs:
-// CHECK-NEXT:         AttributeList #3 @1:1..1:17
-// CHECK-NEXT:           attrs:
-// CHECK-NEXT:             Attribute #2 @1:3..1:16
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 AttributePath #1 @1:3..1:16 segments=["serde", "rename"] leading=None
-// CHECK-NEXT:               args: []
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*attrpath_require_coloncol_pos_03.zom}}:2:24
+// CHECK:   |
+// CHECK: 2 | struct S { name: String, }
+// CHECK:   |                        ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

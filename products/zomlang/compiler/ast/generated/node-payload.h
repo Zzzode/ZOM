@@ -513,6 +513,8 @@ constexpr uint32_t kCaptureItemPayloadWordCount = 2;
 constexpr uint32_t kCaptureItemModeWord = 0;
 constexpr uint32_t kCaptureItemNameWord = 1;
 
+constexpr uint32_t kSuperExprPayloadWordCount = 0;
+
 constexpr uint32_t kDynTypeExprPayloadWordCount = 4;
 constexpr uint32_t kDynTypeExprIfacesIdWord = 0;
 constexpr uint32_t kDynTypeExprMarkersIdWord = 1;
@@ -762,6 +764,33 @@ constexpr uint32_t kAliasDeclPayloadWordCount = 3;
 constexpr uint32_t kAliasDeclNameWord = 0;
 constexpr uint32_t kAliasDeclTypeParamsIdWord = 1;
 constexpr uint32_t kAliasDeclTargetWord = 2;
+
+constexpr uint32_t kMethodDeclPayloadWordCount = 6;
+constexpr uint32_t kMethodDeclNameWord = 0;
+constexpr uint32_t kMethodDeclParamsIdWord = 1;
+constexpr uint32_t kMethodDeclRetTyWord = 2;
+constexpr uint32_t kMethodDeclBodyWord = 3;
+constexpr uint32_t kMethodDeclIsStaticWord = 4;
+constexpr uint32_t kMethodDeclVisibilityWord = 5;
+
+constexpr uint32_t kFieldDeclPayloadWordCount = 6;
+constexpr uint32_t kFieldDeclNameWord = 0;
+constexpr uint32_t kFieldDeclTyWord = 1;
+constexpr uint32_t kFieldDeclInitWord = 2;
+constexpr uint32_t kFieldDeclIsMutWord = 3;
+constexpr uint32_t kFieldDeclIsStaticWord = 4;
+constexpr uint32_t kFieldDeclVisibilityWord = 5;
+
+constexpr uint32_t kAssociatedTypeDeclPayloadWordCount = 3;
+constexpr uint32_t kAssociatedTypeDeclNameWord = 0;
+constexpr uint32_t kAssociatedTypeDeclBoundWord = 1;
+constexpr uint32_t kAssociatedTypeDeclDefaultTyWord = 2;
+
+constexpr uint32_t kGenericTypeParamPayloadWordCount = 4;
+constexpr uint32_t kGenericTypeParamNameWord = 0;
+constexpr uint32_t kGenericTypeParamBoundWord = 1;
+constexpr uint32_t kGenericTypeParamDefaultTyWord = 2;
+constexpr uint32_t kGenericTypeParamVarianceWord = 3;
 
 constexpr uint32_t kSourceFilePayloadWordCount = 4;
 constexpr uint32_t kSourceFileFileNameWord = 0;

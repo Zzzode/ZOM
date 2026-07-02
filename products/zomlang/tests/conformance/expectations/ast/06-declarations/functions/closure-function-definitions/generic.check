@@ -1,6 +1,11 @@
 // RUN: ! %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/generic.zom 2>&1 | %FileCheck %s
 
 
+// CHECK: Error [ZOM2012]: Missing semicolon before '<token>'
+// CHECK:   --> {{.*generic.zom}}:5:1
+// CHECK:   |
+// CHECK: 5 |
+// CHECK:   | ^
 // CHECK: Error [ZOM2025]: Expected ';'
 // CHECK:   --> {{.*generic.zom}}:5:1
 // CHECK:   |

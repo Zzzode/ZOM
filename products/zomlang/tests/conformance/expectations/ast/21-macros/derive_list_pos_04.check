@@ -1,23 +1,15 @@
-// RUN: %zomc compile --dump-ast %corpus/21-macros/derive_list_pos_04.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/21-macros/derive_list_pos_04.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #10 @1:1..6:1 file_name="derive_list_pos_04.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #9 @1:1..5:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #8 @2:1..5:2 name="Point" extensibility=Sealed
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #7 @2:1..5:2 nmembers=0
-// CHECK-NEXT:               members: []
-// CHECK-NEXT:       attrs:
-// CHECK-NEXT:         AttributeList #6 @1:1..1:35
-// CHECK-NEXT:           attrs:
-// CHECK-NEXT:             Attribute #5 @1:3..1:34
-// CHECK-NEXT:               path:
-// CHECK-NEXT:                 AttributePath #4 @1:3..1:14 segments=["zom", "derive"] leading=None
-// CHECK-NEXT:               args:
-// CHECK-NEXT:                 IdentExpr #1 @1:15..1:20 name="Debug"
-// CHECK-NEXT:                 IdentExpr #2 @1:22..1:27 name="Clone"
-// CHECK-NEXT:                 IdentExpr #3 @1:29..1:33 name="Copy"
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*derive_list_pos_04.zom}}:3:11
+// CHECK:   |
+// CHECK: 3 |     x: i32,
+// CHECK:   |           ^
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*derive_list_pos_04.zom}}:4:11
+// CHECK:   |
+// CHECK: 4 |     y: i32,
+// CHECK:   |           ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

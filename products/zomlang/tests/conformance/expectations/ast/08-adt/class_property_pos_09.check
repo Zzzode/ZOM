@@ -1,15 +1,62 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/class_property_pos_09.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..6:1 file_name="class_property_pos_09.zom"
+// CHECK: SourceFile #26 @1:1..6:1 file_name="class_property_pos_09.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..5:2
+// CHECK-NEXT:     StatementListItem #25 @1:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #2 @1:1..5:2 name="Person" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #24 @1:1..5:2 name="Person" extensibility=Sealed
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           extends: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..5:2 nmembers=0
-// CHECK-NEXT:               members: []
+// CHECK-NEXT:             ClassMemberList #23 @1:14..5:2 nmembers=3
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @2:5..2:28 name="_name" is_mut=true is_static=false visibility=Private
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:24..2:27 kind=Str
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 MethodDecl #10 @3:5..3:52 name="name" is_static=false visibility=Public
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #3 @3:20..3:22 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #4 @3:26..3:29 kind=Str
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #9 @3:30..3:52
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #8 @3:32..3:50
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ReturnStmt #7 @3:32..3:50
+// CHECK-NEXT:                               value:
+// CHECK-NEXT:                                 MemberExpression #6 @3:39..3:49 property="_name"
+// CHECK-NEXT:                                   object:
+// CHECK-NEXT:                                     IdentExpr #5 @3:39..3:43 name="self"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                 MethodDecl #22 @4:5..4:56 name="name" is_static=false visibility=Public
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #13 @4:20..4:28 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #12 @4:21..4:27 name="v"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #11 @4:24..4:27 kind=Str
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #14 @4:32..4:36 kind=Unit
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #21 @4:37..4:56
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #20 @4:39..4:54
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ExpressionStatement #19 @4:39..4:54
+// CHECK-NEXT:                               expression:
+// CHECK-NEXT:                                 AssignmentExpr #18 @4:39..4:53 op=Assign
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     MemberExpression #16 @4:39..4:49 property="_name"
+// CHECK-NEXT:                                       object:
+// CHECK-NEXT:                                         IdentExpr #15 @4:39..4:43 name="self"
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IdentExpr #17 @4:52..4:53 name="v"
+// CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null

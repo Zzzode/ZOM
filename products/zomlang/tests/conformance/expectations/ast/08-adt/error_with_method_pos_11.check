@@ -1,13 +1,101 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/error_with_method_pos_11.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #4 @1:1..10:1 file_name="error_with_method_pos_11.zom"
+// CHECK: SourceFile #45 @1:1..10:1 file_name="error_with_method_pos_11.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..9:2
+// CHECK-NEXT:     StatementListItem #44 @1:1..9:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ErrorDecl #2 @1:1..9:2 name="ParseError"
+// CHECK-NEXT:         ErrorDecl #43 @1:1..9:2 name="ParseError"
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..9:2 nmembers=0
-// CHECK-NEXT:               members: []
+// CHECK-NEXT:             ClassMemberList #42 @1:18..9:2 nmembers=5
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @2:5..2:15 name="line" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:11..2:14 kind=U32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #4 @3:5..3:17 name="column" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @3:13..3:16 kind=U32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #6 @4:5..4:18 name="message" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @4:14..4:17 kind=Str
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 MethodDecl #33 @5:5..7:6 name="init" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #13 @5:9..5:47 nparams=3
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #8 @5:10..5:19 name="line"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #7 @5:16..5:19 kind=U32
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         FunctionParameterDecl #10 @5:21..5:32 name="column"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #9 @5:29..5:32 kind=U32
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         FunctionParameterDecl #12 @5:34..5:46 name="message"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #11 @5:43..5:46 kind=Str
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   ret_ty: null
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #32 @5:48..7:6
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #19 @6:9..6:26
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ExpressionStatement #18 @6:9..6:26
+// CHECK-NEXT:                               expression:
+// CHECK-NEXT:                                 AssignmentExpr #17 @6:9..6:25 op=Assign
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     MemberExpression #15 @6:9..6:18 property="line"
+// CHECK-NEXT:                                       object:
+// CHECK-NEXT:                                         IdentExpr #14 @6:9..6:13 name="self"
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IdentExpr #16 @6:21..6:25 name="line"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         StatementListItem #25 @6:27..6:48
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ExpressionStatement #24 @6:27..6:48
+// CHECK-NEXT:                               expression:
+// CHECK-NEXT:                                 AssignmentExpr #23 @6:27..6:47 op=Assign
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     MemberExpression #21 @6:27..6:38 property="column"
+// CHECK-NEXT:                                       object:
+// CHECK-NEXT:                                         IdentExpr #20 @6:27..6:31 name="self"
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IdentExpr #22 @6:41..6:47 name="column"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         StatementListItem #31 @6:49..6:72
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ExpressionStatement #30 @6:49..6:72
+// CHECK-NEXT:                               expression:
+// CHECK-NEXT:                                 AssignmentExpr #29 @6:49..6:71 op=Assign
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     MemberExpression #27 @6:49..6:61 property="message"
+// CHECK-NEXT:                                       object:
+// CHECK-NEXT:                                         IdentExpr #26 @6:49..6:53 name="self"
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IdentExpr #28 @6:64..6:71 name="message"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                 MethodDecl #41 @8:5..8:51 name="describe" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #34 @8:17..8:19 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #35 @8:23..8:26 kind=Str
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #40 @8:27..8:51
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #39 @8:29..8:49
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ReturnStmt #38 @8:29..8:49
+// CHECK-NEXT:                               value:
+// CHECK-NEXT:                                 MemberExpression #37 @8:36..8:48 property="message"
+// CHECK-NEXT:                                   object:
+// CHECK-NEXT:                                     IdentExpr #36 @8:36..8:40 name="self"
+// CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null

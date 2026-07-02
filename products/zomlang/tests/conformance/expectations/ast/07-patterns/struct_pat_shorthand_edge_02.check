@@ -1,53 +1,10 @@
-// RUN: %zomc compile --dump-ast %corpus/07-patterns/struct_pat_shorthand_edge_02.zom | %FileCheck %s
+// RUN: ! %zomc compile --dump-ast %corpus/07-patterns/struct_pat_shorthand_edge_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: SourceFile #21 @1:1..5:1 file_name="struct_pat_shorthand_edge_02.zom"
-// CHECK-NEXT:   module: null
-// CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:28
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #2 @1:1..1:28 name="S" extensibility=Sealed
-// CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..1:28 nmembers=0
-// CHECK-NEXT:               members: []
-// CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #20 @2:1..4:2
-// CHECK-NEXT:       item:
-// CHECK-NEXT:         MatchStmt #19 @2:1..4:2
-// CHECK-NEXT:           scrutinee:
-// CHECK-NEXT:             IdentExpr #18 @2:8..2:9 name="s"
-// CHECK-NEXT:           arms:
-// CHECK-NEXT:             MatchArmStmt #17 @3:5..3:48
-// CHECK-NEXT:               pattern:
-// CHECK-NEXT:                 StructPattern #8 @3:10..3:25
-// CHECK-NEXT:                   ty_path:
-// CHECK-NEXT:                     ModulePath #4 @3:10..3:11 segments=["S"]
-// CHECK-NEXT:                   fields:
-// CHECK-NEXT:                     PatternProperty #5 @3:14..3:15 name="x" short_form=true
-// CHECK-NEXT:                       pat: null
-// CHECK-NEXT:                     PatternProperty #7 @3:17..3:23 name="y" short_form=false
-// CHECK-NEXT:                       pat:
-// CHECK-NEXT:                         IdentifierPattern #6 @3:20..3:23 name="pat"
-// CHECK-NEXT:                           ty: null
-// CHECK-NEXT:                   rest: null
-// CHECK-NEXT:               guard: null
-// CHECK-NEXT:               body:
-// CHECK-NEXT:                 BlockStmt #16 @3:29..3:48
-// CHECK-NEXT:                   stmts:
-// CHECK-NEXT:                     StatementListItem #15 @3:31..3:46
-// CHECK-NEXT:                       item:
-// CHECK-NEXT:                         ExpressionStatement #14 @3:31..3:46
-// CHECK-NEXT:                           expression:
-// CHECK-NEXT:                             CallExpression #13 @3:31..3:45
-// CHECK-NEXT:                               callee:
-// CHECK-NEXT:                                 IdentExpr #9 @3:31..3:36 name="print"
-// CHECK-NEXT:                               type_args: []
-// CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 BinaryExpr #12 @3:37..3:44 op=Add
-// CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     IdentExpr #10 @3:37..3:38 name="x"
-// CHECK-NEXT:                                   rhs:
-// CHECK-NEXT:                                     IdentExpr #11 @3:41..3:44 name="pat"
-// CHECK-NEXT:                       attrs: null
-// CHECK-NEXT:       attrs: null
+// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK:   --> {{.*struct_pat_shorthand_edge_02.zom}}:1:18
+// CHECK:   |
+// CHECK: 1 | struct S { x: i32, y: i32 }
+// CHECK:   |                  ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.

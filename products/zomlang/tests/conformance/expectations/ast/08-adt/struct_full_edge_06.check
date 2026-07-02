@@ -9,6 +9,6 @@
 // CHECK-NEXT:         StructDecl #2 @1:1..2:2 name="Empty" extensibility=Sealed
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #1 @1:1..2:2 nmembers=0
+// CHECK-NEXT:             ClassMemberList #1 @1:14..2:2 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null
