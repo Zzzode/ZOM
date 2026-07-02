@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
 approvers: []
 created: 2026-06-30
-updated: 2026-07-01
+updated: 2026-07-02
 area: compiler
 requires: [1, 3]
 supersedes: []
@@ -73,6 +73,14 @@ specification.
   argument, and bound parsing.
 - Implement declaration, statement, pattern, attribute, modifier, import,
   export, and module-item parsing as first-class grammar productions.
+- Make `TokenCursor` the only syntactic token-consumption API over the lazy
+  token stream, including bounded lookahead, right-angle splitting, and
+  rewindable speculative parsing.
+- Remove range-scanning parser fallbacks that choose grammar productions by
+  searching token intervals instead of consuming tokens through recursive
+  descent entry points.
+- Replace raw parser-side AST payload writes with a typed `AstFactory` helper
+  for every parser-created syntax node.
 - Define the authoritative grammar source and require every executable grammar,
   parser coverage map, and corpus oracle to be checked against it.
 - Enforce AST schema invariants during parser construction.
@@ -197,6 +205,9 @@ The contract changes as follows:
 
 - If lexing or parsing emits an error diagnostic, `parse()` returns
   `zc::none`.
+- The public parser facade exposes no `ParseMode`, `Loose` mode,
+  `lookAhead()`, `canLookAhead()`, `isLookAhead()`, or callback-based
+  speculative parsing API.
 - If parsing succeeds, the returned `ast::Tree` has a valid root and passes the
   AST schema verifier.
 - Parser recovery may build temporary nodes only if they are not returned after
@@ -221,6 +232,11 @@ remains `zc::Maybe<ast::Tree>`:
 Callers must not infer syntax success from a non-empty partially built
 `TreeBuilder`. The only publication gate is the final parser result after
 diagnostic checks and AST schema verification.
+
+There is no public fail-open parser mode in this architecture. Fuzzers may
+still feed invalid input through `parse()` to exercise recovery, but any
+recovered tree remains internal and is discarded before returning to the
+caller.
 
 ### Authoritative Grammar Source
 
@@ -266,7 +282,8 @@ syntax domain:
 | Module | Responsibility |
 |---|---|
 | `token-cursor.*` | Indexed token access, save/restore marks, token labels, EOF handling. |
-| `parser-context.*` | Shared parser state, diagnostics, recovery, `TreeBuilder`, source ranges. |
+| `parser-context.*` | Shared parser state, diagnostics, recovery, source ranges. |
+| `AstFactory` | Private AST construction boundary over `ast::TreeBuilder` and payload writes. |
 | `declaration-parser.*` | Module items, declarations, imports, exports, attributes, modifiers. |
 | `statement-parser.*` | Blocks, statement lists, control flow, labels, match statements. |
 | `expression-parser.*` | Pratt or precedence-climbing expression parser. |
@@ -276,13 +293,21 @@ syntax domain:
 | `parser.cc` | Public `Parser` facade and top-level orchestration. |
 
 The file split is required for maintainability. It is not a public API.
+`parser-impl.h` may declare the private `Parser::Impl` type, shared private
+result structs, and small helper declarations, but it must not contain domain
+parser method bodies. Each domain source file must contain the implementation
+for its grammar family; include-only or intentionally empty `*-parser.cc`
+shells are forbidden. `scripts/check-parser-coverage.py` must scan the full
+parser source set and fail if any required domain implementation file stops
+defining parser methods.
 
 Module dependencies are one-directional:
 
 ```mermaid
 flowchart TD
   Facade["parser.cc facade"] --> Context["ParserContext"]
-  Context --> Cursor["TokenCursor"]
+  Context --> Stream["Lazy TokenStream"]
+  Stream --> Cursor["TokenCursor"]
   Context --> Recovery["parser-recovery"]
   Context --> Factory["AstFactory"]
   Decls["declaration-parser"] --> Context
@@ -306,6 +331,36 @@ that require a type. Lower-level modules must not call declaration parsing.
 This prevents accidental statement-end or source-file scanning from re-entering
 inside expression and type parsing.
 
+### Mandatory Parser Refactor Surface
+
+The parser implementation is not complete until these refactors are finished
+and the old paths are deleted:
+
+- `TokenCursor` is the only API used by grammar functions to decide what
+  production matches next. `ParserContext::tokenAt()` and `kindAt()` may remain
+  available for source ranges, diagnostics, and already-consumed boundaries,
+  but they must not be the primary production-selection API.
+- Parser grammar functions do not call `lexer::Lexer`, `LexerState`,
+  `restoreState()`, `getCurrentState()`, `reScanGreaterToken()`, or
+  `reScanTemplateToken()`. Lexer access is isolated behind the lazy token stream
+  that feeds `TokenCursor`.
+- `findTopLevel*` helpers do not choose expressions, types, declarations,
+  statements, patterns, or attributes. Grammar ownership is encoded by parser
+  entry points and cursor movement, not by scanning arbitrary token ranges.
+- Right-angle splitting for type contexts is implemented by `TokenCursor` and
+  is included in cursor marks. No type parser path compensates for `>>` or
+  `>>>` by reinterpreting token kinds outside the cursor overlay.
+- Raw `ast::NodePayload` construction, `payload.words[...]` writes, and direct
+  `TreeBuilder::makeNode()` calls are deleted from grammar functions. Parser
+  grammar code calls typed `AstFactory` helpers only.
+- Recovery state is represented by explicit recovery frames with context,
+  anchor, synchronization set, consumed-progress state, and cascade
+  suppression. Ad hoc skip loops are deleted unless they are inside a named
+  recovery helper covered by tests.
+- The parser coverage checker fails when a required parser domain file becomes
+  an empty shell, when a parser-owned node lacks a typed factory helper, or
+  when a mapped syntactic production has no cursor-driven implementation.
+
 ### Syntax Tree And Trivia Boundary
 
 The schema-backed `ast::Tree` is the compiler syntax tree. It is not a lossless
@@ -327,8 +382,19 @@ leaving a clean future path for tooling.
 
 ### Token Cursor
 
-`TokenCursor` owns no source text. It references the lexed token vector and
-provides these operations:
+`TokenCursor` owns no source text and does not lex directly. It references a
+lazy `TokenStream` that pulls tokens from the lexer only when lookahead,
+`tokenAt(index)`, or range construction requires that index. The stream retains
+already produced tokens so absolute token indices, source ranges, diagnostics,
+and cursor marks remain stable, but it must not lex the whole file before
+parsing starts.
+
+`TokenStream` must not expose parser-facing `tokenCount()` or
+`tokenCountWithoutEof()` APIs, because those force the lazy stream to EOF and
+recreate eager tokenization under a different name. Post-parse diagnostics may
+inspect the already buffered token limit, but that query must not lex new tokens.
+
+`TokenCursor` provides these operations:
 
 - `peek(offset)` returns a token kind without consuming.
 - `token(offset)` returns the token for diagnostics and source ranges.
@@ -339,8 +405,32 @@ provides these operations:
 - `position()` returns the current token index.
 - `isAtEnd()` recognizes EOF.
 
+`TokenCursor` intentionally has no whole-stream `size()` operation. LL(k)
+decisions use `peek(offset)` and `mark()` / `rewind(mark)`, not a precomputed
+token count.
+
 Every parse loop must prove progress. Recovery helpers must consume at least
 one token before retrying.
+
+The parser facade must not call the byte lexer for lookahead or ask the lexer to
+rescan source bytes. All syntactic lookahead goes through `TokenCursor` marks and
+rewinds so speculative parsing is bounded, rewindable, and independent from
+lexer source-buffer state. A mark rewinds the cursor position and cursor overlay
+state, not the lexer byte offset; already-buffered tokens remain in the stream.
+
+`TokenCursor::Mark` records the full cursor observation state, not just the
+real token index. If a context overlay is active, such as right-angle splitting
+for type arguments, the mark stores overlay mode, remaining virtual tokens, and
+the original maximal token kind. Rewinding restores that state exactly.
+`peek()` and `token()` are observational operations: repeated calls without
+`advance()`, `eat()`, `moveTo()`, or `rewind()` must not change the next token
+that parser code observes.
+
+Right-angle splitting is the only cursor overlay in this RFC. The lexer keeps
+`>>` and `>>>` as maximal tokens. Type parsing enables a scoped split guard
+while consuming type arguments or type-parameter bounds, and disables it when
+the grammar context exits. The split guard must be RAII-style so early returns
+cannot leak type-context token interpretation into expression parsing.
 
 ### Parse Results
 
@@ -352,16 +442,19 @@ Internal parse functions return explicit results:
 - List grammar functions return an AST list node or a `NodeList` wrapper,
   depending on the schema field being populated.
 
-Node construction helpers must validate required children before calling
-`TreeBuilder::makeNode`. A missing required child after an error returns
-`zc::none` from the current required production.
+Node construction helpers must validate required children before calling the
+`AstFactory` node construction boundary. A missing required child after an error
+returns `zc::none` from the current required production.
 
 ### AST Construction Boundary
 
 `ast::TreeBuilder` is a low-level storage builder. Parser code must not scatter
 raw payload word writes through every grammar function after this RFC is
 implemented. The parser owns an `AstFactory` layer with one construction helper
-per published syntax node that the parser can create.
+per published syntax node that the parser can create. The typed helper surface
+is generated from `products/zomlang/compiler/ast/schema.yml`; parser-specific
+factory code may validate children and source ranges, but it must not invent a
+second payload schema by hand.
 
 Each factory helper must:
 
@@ -381,7 +474,24 @@ encoded.
 
 The generated AST schema remains the source of field layout. The factory layer
 is not a second schema and must not duplicate field offsets beyond generated
-constant names.
+factory signatures and generated constant names.
+
+The factory surface is typed by syntax node. Examples of required helpers are
+`makeSourceFile`, `makeFunctionDecl`, `makeNamedTypeExpr`,
+`makeCallExpression`, `makeIfStmt`, and `makeIdentifierPattern`. Generic
+`makeNode(kind, payload)` and raw payload writer helpers are allowed only inside
+`AstFactory` implementation code and generated AST support. A parser reviewer
+must be able to audit all required-child checks by reading the helper for the
+node kind, without scanning every grammar function for payload word offsets.
+
+The parser coverage guard must include a raw-construction ban:
+
+- no `ast::NodePayload` declarations in parser domain `.cc` files
+- no `payload.words[...]` writes outside `AstFactory` or generated AST support
+- no `builder.write*` payload helper calls outside `AstFactory`
+- no direct `ast::TreeBuilder` reference outside `AstFactory`
+- no generic parser call that constructs a parser-owned node without the typed
+  helper for that node kind
 
 ### Grammar-Shaped Entry Points
 
@@ -405,6 +515,30 @@ Lexical-only EBNF productions do not need parser functions, but every
 syntactic EBNF production must either have a direct parser function or be
 documented in a local parser coverage map as being inlined into a named parent
 production.
+
+### No Range-Scanning Fallbacks
+
+The final parser is hand-written recursive descent with Pratt or
+precedence-climbing expression parsing. A helper may inspect already-delimited
+tokens for diagnostics, source-range calculation, or a local ambiguity that is
+documented in this RFC, but it must not replace the owning grammar function.
+
+These patterns are rejected in the final implementation:
+
+- searching a half-open token interval for the top-level assignment,
+  conditional colon, binary operator, declaration body, or type separator and
+  then recursively reparsing subranges as the normal parse path
+- accepting a statement or declaration because a delimiter was found without
+  first matching the grammar production's FIRST set
+- treating expression parsing as a sequence of top-level scans rather than a
+  Pratt or precedence-climbing loop
+- parsing type arguments by counting `>` spellings outside the cursor split
+  overlay
+- leaving a range-scanning helper as a fallback behind a cursor-driven parser
+
+When a grammar decision needs lookahead longer than one token, the parser uses
+`TokenCursor::mark()` and `rewind()` or a named cursor helper with an explicit
+lookahead limit.
 
 ### Parser Coverage Map
 
@@ -903,6 +1037,12 @@ spans from the current source manager without exposing unrelated buffers.
   reconciled before parser implementation can proceed.
 - Binder and checker work may need short-term updates because more accurate AST
   nodes will expose assumptions hidden by missing parser coverage.
+- Replacing range-scanning helpers with cursor-driven productions will touch
+  many parser call sites in one sequence. This churn is intentional because a
+  hybrid parser would keep the current correctness risk.
+- Moving AST construction behind typed factory helpers will initially increase
+  factory code size, but it removes duplicated schema-layout knowledge from
+  grammar functions.
 - Error recovery quality is easy to overfit to current fixtures; recovery must
   be validated with negative corpus breadth and fuzzing.
 - Keeping a human-readable grammar as the normative source still requires the
@@ -955,15 +1095,26 @@ The rollout order is:
    AST schema, and grammar oracle fixtures.
 4. Harden `parser-coverage.yml` and the CI guard that fails on unmapped grammar
    productions.
-5. Introduce `TokenCursor`, `ParserContext`, recovery helpers, and AST schema
-   verification.
-6. Implement expression and type parsers first because they are shared by most
-   declarations and statements.
-7. Implement declarations, statements, patterns, attributes, modifiers, import,
-   export, and module items.
-8. Replace the current range-scanning parser entry path.
-9. Regenerate AST lit checks from the grammar oracle.
-10. Remove parser code that no longer has call sites.
+5. Remove public parser lookahead and fail-open parse modes.
+6. Move parser handoff to the lazy token stream supplied by RFC 0003.
+7. Make `TokenCursor` marks restore full overlay state and make right-angle
+   splitting the only type-context closing-angle mechanism.
+8. Introduce typed `AstFactory` helpers for parser-owned node kinds and fail CI
+   on parser-side raw payload writes.
+9. Replace expression parsing with a Pratt or precedence-climbing core.
+10. Replace type parsing with cursor-driven recursive descent, including type
+    parameters, type arguments, function types, tuple/object types, and postfix
+    type suffixes.
+11. Replace declaration, statement, pattern, attribute, import, export, module,
+    and macro parsing paths with grammar-shaped cursor consumption.
+12. Replace ad hoc skip loops with named recovery frames and synchronization
+    helpers.
+13. Delete range-scanning fallback helpers and any parser code with no call
+    sites.
+14. Regenerate AST lit checks from the grammar oracle after the owning grammar
+    slice is complete.
+15. Run the full RFC, spec-alignment, parser, lexer, conformance, format, and
+    sanitizer gates.
 
 Rollback cost is high after step 8 because AST snapshots and binder assumptions
 will align with the new grammar-shaped tree. Before step 8, rollback is a
@@ -1032,6 +1183,30 @@ bounded syntactic lookahead.
 
 - `parser::Parser::parse()` returns `zc::none` whenever parser diagnostics emit
   an error.
+- The public parser API contains only construction and `parse()`; no
+  fail-open parse mode or public lookahead API exists.
+- `parser-impl.h` contains declarations only for `Parser::Impl` methods; domain
+  method bodies live in the corresponding parser `.cc` files.
+- `TokenCursor::Mark` restores token index, split mode, virtual right-angle
+  state, and original maximal token kind.
+- `TokenCursor::peek()` and `TokenCursor::token()` are observationally stable
+  without consuming input.
+- Every type-argument and type-parameter parser path uses the `TokenCursor`
+  right-angle split overlay; no parser path uses `typeAngleCloseCount()`-style
+  compensation outside the cursor.
+- No parser grammar function calls `lexer::Lexer`, `LexerState`,
+  `restoreState()`, `getCurrentState()`, `reScanGreaterToken()`, or
+  `reScanTemplateToken()`. `Parser::Impl::lexAll()` is absent.
+- Parser grammar functions do not call parser-facing `tokenCount()` or
+  `tokenCountWithoutEof()` helpers. The cursor has no whole-stream `size()`
+  operation.
+- Grammar functions do not use `findTopLevel*` helpers to select expressions,
+  types, declarations, statements, patterns, attributes, or module items.
+- Raw `ast::NodePayload` declarations, `payload.words[...]` writes,
+  `builder.write*` payload calls, and direct `TreeBuilder::makeNode()` calls
+  are absent from parser domain `.cc` files.
+- Every parser-created AST node kind has a typed `AstFactory` construction
+  helper that validates required children before construction.
 - No public AST dump contains a required AST field printed as `null`.
 - `products/zomlang/compiler/parser/parser-coverage.yml` exists and every
   syntactic production is mapped with a checked status.
@@ -1078,18 +1253,34 @@ bounded syntactic lookahead.
    and conformance verdict metadata.
 6. Harden `parser-coverage.yml` and the parser coverage script that maps
    syntactic EBNF productions to parser functions or explicit inline mappings.
-7. Add AST schema verification for required fields and child cast targets.
-8. Add `TokenCursor`, `ParserContext`, diagnostic deduplication, and recovery
-   helpers.
-9. Implement expression parser and precedence tests.
-10. Implement type parser and type conformance tests.
-11. Implement pattern parser and match-pattern tests.
-12. Implement declaration and statement parsers.
-13. Implement imports, exports, module items, attributes, and modifiers.
-14. Replace the current range-scanning parser path.
-15. Regenerate AST lit expectations from the grammar oracle.
-16. Remove parser functions and helpers with no call sites.
-17. Run the full verification plan and move the RFC through implementation
+7. Delete public parser lookahead and fail-open parse modes before parser
+   slices depend on the lazy stream contract.
+8. Land the RFC 0003 stream handoff: parser code consumes tokens through
+   `TokenCursor` and never calls lexer state or rescan APIs for syntax
+   decisions.
+9. Rewrite `TokenCursor` marks to include split overlay state and add an
+   RAII-style split guard for type contexts.
+10. Replace right-angle type handling with the cursor split guard and delete
+    parser-local close-count compensation.
+11. Add typed `AstFactory` helpers for every parser-owned AST node kind.
+12. Move all parser-side payload writes into `AstFactory` or generated AST
+    support and make the coverage checker reject new raw writes.
+13. Add AST schema verification for required fields and child cast targets.
+14. Add diagnostic deduplication, recovery frames, synchronization helpers, and
+    progress assertions.
+15. Replace expression parsing with a Pratt or precedence-climbing core and
+    precedence tests.
+16. Replace type parsing with cursor-driven recursive descent and type
+    conformance tests.
+17. Replace pattern parsing and match-pattern tests.
+18. Replace declaration and statement parsing.
+19. Replace imports, exports, module items, attributes, modifiers, and macro
+    parsing.
+20. Delete range-scanning fallback helpers, old parser functions, and helpers
+    with no call sites.
+21. Regenerate AST lit expectations from the grammar oracle for completed
+    slices only.
+22. Run the full verification plan and move the RFC through implementation
     status when evidence is complete.
 
 The implementation must be delivered as gateable slices:
@@ -1097,11 +1288,14 @@ The implementation must be delivered as gateable slices:
 | Slice | Scope | Exit evidence |
 |---|---|---|
 | 1. Publication contract | Diagnostic error-count snapshots, fail-closed `Parser::parse()`, AST schema verifier, internal invariant diagnostic. | Parser unit tests pass, `gen_ast.py --check` passes, and malformed focused fixtures no longer publish ASTs. |
-| 2. Expression core | Pratt or precedence-climbing parser, prefix, postfix, calls, member access, indexing, object literals, function expressions, `new`, `super`, `import(...)`, casts, conditional, and error operators. | All `04-expressions` and expression-dependent `11-error` fixtures either pass or have documented grammar verdict drift. |
-| 3. Type core | Union, intersection, tuple, object, function, postfix, type query, dyn, generic arguments, type parameters, defaults, and bounds. | All `03-types` and type-dependent `12-generics` fixtures pass without `ParserInvariantViolation`. |
-| 4. Declarations and statements | Module items, declarations, members, blocks, control flow, labels, loops, match statements, and variable statements. | `05-statements`, `06-declarations`, `08-adt`, `09-interfaces`, and declaration-heavy generics fixtures pass. |
-| 5. Patterns, attributes, modules, concurrency, macros | Binding and match patterns, attributes, import/export/module forms, accepted concurrency syntax, and macro syntax retained by the grammar. | `07-patterns`, `13-modules`, `15-concurrency`, `16-attributes`, and `21-macros` fixtures pass or are removed from accepted grammar coverage. |
-| 6. Alignment and cleanup | `parser-coverage.yml`, drift checkers, expectation regeneration, unused parser helper removal, and design-doc update. | Full default preset passes, RFC checks pass, coverage guard reports zero verdict mismatches, and no parser implementation path relies on range-scanning fallbacks. |
+| 2. Cursor and handoff | Lazy token stream handoff, full-state `TokenCursor::Mark`, RAII split guard, parser-side lexer state removal. | Token-cursor unit tests cover mark/rewind inside split mode; parser source contains no lexer state or rescan calls after handoff and `Parser::Impl::lexAll()` is absent. |
+| 3. AST factory boundary | Schema-generated typed helpers for parser-owned node kinds, required-child checks, checker ban on raw parser payload writes. | Raw payload grep is clean outside `AstFactory`; schema verifier tests prove missing required children fail closed. |
+| 4. Expression core | Pratt or precedence-climbing parser, prefix, postfix, calls, member access, indexing, object literals, function expressions, `new`, `super`, `import(...)`, casts, conditional, and error operators. | All `04-expressions` and expression-dependent `11-error` fixtures pass without range-scanning fallbacks. |
+| 5. Type core | Union, intersection, tuple, object, function, postfix, type query, dyn, generic arguments, type parameters, defaults, bounds, and cursor right-angle splitting. | All `03-types` and type-dependent `12-generics` fixtures pass; nested `>>` and `>>>` type-argument closures are covered. |
+| 6. Declarations and statements | Module items, declarations, members, blocks, control flow, labels, loops, match statements, and variable statements. | `05-statements`, `06-declarations`, `08-adt`, `09-interfaces`, and declaration-heavy generics fixtures pass. |
+| 7. Patterns, attributes, modules, concurrency, macros | Binding and match patterns, attributes, import/export/module forms, accepted concurrency syntax, and macro syntax retained by the grammar. | `07-patterns`, `13-modules`, `15-concurrency`, `16-attributes`, and `21-macros` fixtures pass or are removed from accepted grammar coverage. |
+| 8. Recovery | Explicit recovery frames, sync sets, deduplication, bounded diagnostics, and progress invariants. | Negative corpus and fuzz tests terminate, deduplicate diagnostics, and never publish invalid required AST fields. |
+| 9. Alignment and cleanup | `parser-coverage.yml`, drift checkers, expectation regeneration, unused parser helper removal, and design-doc update. | Full default preset passes, RFC checks pass, coverage guard reports zero verdict mismatches, and no parser implementation path relies on range-scanning fallbacks. |
 
 ## Test Plan
 
@@ -1148,3 +1342,8 @@ acceptance criteria and owner approval; no design question remains open.
 | 2026-07-01 | RETURNED | Review found blocking lexer, token contract, recovery, and coverage-map gaps. |
 | 2026-07-01 | DRAFT | Revised the returned RFC after lexer contract, parser coverage, and conformance blockers were resolved. |
 | 2026-07-01 | REVIEW | RFC 0003 reached review-ready status, parser coverage passed, grammar conformance passed, and AST coverage reported zero verdict mismatches. |
+| 2026-07-02 | REVIEW | Hardened parser module-boundary rules to forbid inline domain implementation, empty parser domain shells, public lookahead APIs, and fail-open parse modes. |
+| 2026-07-02 | REVIEW | Expanded the required refactor contract for cursor-only parsing, right-angle split marks, typed AST construction, range-scanning removal, and structured recovery. |
+| 2026-07-02 | REVIEW | Implemented the cursor-only parser gate: parser-side `lexAll()`, lexer state/rescan lookahead, raw parser payload writes, and `findTopLevel*` range-scanning helpers are absent; recovery frames now carry context, anchor, sync set, consumed state, and cascade suppression state. |
+| 2026-07-02 | REVIEW | Removed the stale loose parsing design and aligned `docs/design/architecture.md` plus `docs/design/compiler-contracts.md` with the fail-closed lazy token stream and `TokenCursor` parser contract. |
+| 2026-07-02 | REVIEW | Removed parser-facing force-EOF token counting: `TokenStream` no longer exposes `tokenCount()` or `tokenCountWithoutEof()`, `TokenCursor` no longer exposes whole-stream `size()`, and post-parse token diagnostics use only the already buffered token limit. |

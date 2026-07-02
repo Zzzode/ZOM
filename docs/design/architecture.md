@@ -67,8 +67,8 @@ shared) vocabulary uniformly.
 
 | Module (filesystem path) | Public Surface (3 key classes) | Purpose (1 line) | Data-In | Data-Out | Ownership Transfer |
 |---|---|---|---|---|---|
-| `products/zomlang/compiler/lexer` | `Lexer`, `TokenStream`, `Token` | Convert source bytes into a bounded token sequence with source-location anchors | `zc::StringRef` source buffer + `FileID` | `zc::Own<TokenStream>` with 32-bit `SourceLoc` per token | Lexer consumes `StringRef` view; caller owns produced `TokenStream` |
-| `products/zomlang/compiler/parser` | `Parser`, `TreeBuilder`, `ast::Tree` | Build the immutable schema-backed AST for one source buffer | Token stream view | `ast::Tree` | Parser owns construction and returns the finished move-only tree |
+| `products/zomlang/compiler/lexer` | `Lexer`, `Token`, `TokenFlags` | Convert source bytes into one deterministic token per `lex(Token&)` call | `SourceManager` buffer + `BufferId` | `Token` values with source ranges, canonical values, and flags | Lexer owns scanner state; caller owns each produced token value |
+| `products/zomlang/compiler/parser` | `Parser`, `TokenStream`, `TokenCursor` | Build the immutable schema-backed AST for one source buffer | Lazy token stream backed by `Lexer::lex(Token&)` | `ast::Tree` or `zc::none` on syntax diagnostics | Parser owns the retained token buffer and returns the finished move-only tree only on success |
 | `products/zomlang/compiler/ast` | `Tree`, `Node`, `NodeId` | Own syntax nodes, source ranges, payload words, and child-list storage | Parser construction calls | Immutable tree API | Tree owns nodes and lists; consumers borrow by const reference |
 | `products/zomlang/compiler/ast` | `NodePayload`, `NodeList`, generated accessors | Provide schema-defined payload layout and reflection metadata | `schema.yml` code generation | Generated headers | Header-only generated API in the main `ast` target |
 | `products/zomlang/compiler/binder` | `Binder`, `BindingMetadata`, `NameResolution` | Walk unbound AST, introduce lexical scopes, and resolve identifiers to symbols | `Borrow<const ast::Tree>` + `Borrow<SymbolTable>` | `BindingMetadata` + symbol updates | Binder writes semantic side tables keyed by `NodeId` |
@@ -93,9 +93,9 @@ Each compilation unit (CU) flows through the stages below exactly once. Stages b
 ```mermaid
 flowchart TD
     A[Source bytes<br/>FileID + StringRef] -->|raw chars + location map| B[Lexer]
-    B -->|Token[] with SourceLoc| C[TokenStream]
-    C -->|sequential token view| D[Parser]
-    D -->|schema-backed ast::Tree| E[AST Tree]
+    B -->|Lexer::lex(Token&)| C[Lazy TokenStream]
+    C -->|TokenCursor peek / advance / mark / rewind| D[Parser]
+    D -->|schema-backed ast::Tree on success| E[AST Tree]
     E -->|node walk + name insertions| F[Binder]
     F -->|ident -> SymbolId bindings| G[ScopeTree + Symbols]
     G -->|typed lookup context| H[TypeChecker]
@@ -113,9 +113,9 @@ flowchart TD
 Every stage above publishes explicit invariants that downstream code may unconditionally assume. Violations are internal compiler errors (ICE) with a dedicated diagnostic range per §8.
 
 1. Source buffers registered through `CompilerSession::addSource` are never freed or moved for the lifetime of the session; every `SourceLoc` returned by any stage dereferences into a stable byte address.
-2. The lexer produces at most one `ERROR` token per malformed byte run; error recovery resynchronizes at the next whitespace, newline, or top-level keyword boundary.
-3. `TokenStream` is a random-access `Span<Token>` whose length and contents are immutable on return from the lexer; no parser or plugin may shrink, reorder, or mutate contained tokens.
-4. The parser either returns a well-formed `ast::Tree` whose root kind is `SourceFile`, or aborts with at least one syntax diagnostic; partial trees are never propagated downstream.
+2. The lexer is a streaming scanner. Each `Lexer::lex(Token&)` call emits one token, advances source position or emits EOF, and records any local lexical diagnostic before returning.
+3. `TokenStream` is a parser-owned lazy retained buffer. It calls `Lexer::lex(Token&)` only when lookahead requires a token that has not been buffered yet; `TokenCursor` is the only parser-facing consumption API.
+4. The parser either returns a well-formed `ast::Tree` whose root kind is `SourceFile`, or returns `zc::none` after at least one lexing or parsing diagnostic; partial trees are never propagated downstream.
 5. AST storage is immutable after the parse phase; no consumer may mutate `Node`, `NodeList`, or payload storage after `Parser::parse()` returns.
 
 > #### AST Data Structure Design
@@ -273,15 +273,12 @@ sequenceDiagram
     end
     DRV->>DRV: buildCompilationUnits() -> CU[]
     Note over DRV: --- per-CU parallel fan-out begins ---
-    par per-CU lex
+    par per-CU parse
         loop for each CU
-            DRV->>LEX: lex(CU.source, CU.fileId)
-            LEX-->>DRV: Own<TokenStream> + CU-local diags
-        end
-    and per-CU parse (after lex CU completes)
-        loop for each CU
-            DRV->>PAR: parse(CU.tokens)
-            PAR-->>DRV: ast::Tree + CU-local diags
+            DRV->>PAR: parse(CU.source)
+            PAR->>LEX: request next token through TokenStream
+            LEX-->>PAR: Token
+            PAR-->>DRV: ast::Tree or zc::none + CU-local diags
         end
     and per-CU bind (after parse CU completes)
         loop for each CU
@@ -654,7 +651,7 @@ The thread-safety strategy rests on two properties. First, post-parse AST storag
 | Data Structure | Thread Safety Strategy | Lock Granularity |
 |---|---|---|
 | `ast::Tree` / `ast::Node` | Immutable post-parse — zero synchronization | Not applicable (no writes after parse) |
-| `TokenStream` | Immutable post-lex — zero synchronization | Not applicable (no writes after lex) |
+| `TokenStream` | Parser-owned per-CU buffer; mutable only during parsing, then no downstream owner | One parser worker; no cross-thread sharing during parse |
 | `SymbolTable` | Per-bucket `zc::RwLock` + COW snapshot during fan-out | 4096 buckets; each bucket lock guards 64-symbol slab |
 | `ScopeTree` | Per-`Scope*` append-only `Mutex` during bind; immutable post-finalize | One `Mutex` per scope node |
 | `TypeEnv` (active solve) | Copy-on-write per-CU; only the owning CU worker writes | Per-CU instance — no cross-thread lock |

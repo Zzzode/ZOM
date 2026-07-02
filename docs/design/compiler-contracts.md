@@ -352,44 +352,49 @@ Concretely, the merge rules along each edge are:
 
 ## 4. Lexer to Parser Contract
 
-The lexer (`products/zomlang/compiler/lexer/lexer.cc`, `products/zomlang/compiler/lexer/token.h`) produces a strictly ordered, deterministic, deterministic `TokenStream` consumed by the recursive-descent parser. The eight invariants below are checked in debug builds via assertions; violating them produces ZOM9110-series ICE payloads rather than user diagnostics. Every token in the stream is a value of the `Token` struct whose skeleton is given at the end of this section.
+The lexer (`products/zomlang/compiler/lexer/lexer.cc`, `products/zomlang/compiler/lexer/token.h`) is a streaming UTF-8 scanner. The parser owns a lazy retained `TokenStream` that calls `Lexer::lex(Token&)` only when lookahead requests an unbuffered token. Parser grammar functions consume tokens only through `TokenCursor`; they never call lexer snapshot, restore, or rescan APIs.
 
-**L2P-01 Shebang Consumption.** A `#!` prefix at byte offset 0 of the root source file is consumed exactly once before the first token and is never emitted into the `TokenStream`. Any `#!` appearing at a nonzero offset, including in included modules, is lexed as two separate tokens (`#` and `!`) and processed by the parser like any other operator. The consumed shebang range is recorded in the `SourceManager` as a virtual `ShebangLine` node so that column-number arithmetic yields 1-based column 1 for the first real token.
+```mermaid
+flowchart LR
+  Source["SourceManager buffer"] --> Lexer["Lexer::lex(Token&)"]
+  Lexer --> Stream["Parser-owned lazy TokenStream"]
+  Stream --> Cursor["TokenCursor"]
+  Cursor --> RD["Recursive descent parser"]
+```
 
-**L2P-02 Byte-Deterministic Tokenization.** Two lexer invocations over the same byte array with identical file-id produce bit-identical `TokenStream` output. Lexer state does not depend on parser backtracking, prior parsed constructs, or `TokenStream` consumers that peek ahead. Specifically, the lexer does not expose a "put token back" API; the parser's `Parser::BacktrackFrame` mechanism operates purely on saved indices into the token stream, never on lexer internals.
+**L2P-01 Source Ownership.** The source buffer belongs to `SourceManager` for the lifetime of the parser. Tokens carry `source::SourceRange` values into that buffer; raw token spelling is recovered from source ranges when needed.
 
-**L2P-03 Spans Are Half-Open.** Every `Token.span` is `[startByte, endByte)` relative to the originating source-file id. Token spans never overlap; concatenating the spans of all non-trivia tokens yields the byte range of the file minus trivia bytes. Insertion of virtual tokens (for recovery or desugaring) sets `span.start == span.end` at the nearest valid source boundary; zero-length tokens are never mixed with real content inside a lookahead window.
+**L2P-02 Lazy Determinism.** For a fixed source buffer and language options, repeated lexer runs emit the same token sequence. `TokenStream` may buffer already emitted tokens to support absolute indices and cursor rewinds, but it does not force EOF before parsing begins. Parser-facing stream APIs do not expose `tokenCount()` or `tokenCountWithoutEof()` helpers; post-parse diagnostics may inspect only the already buffered non-EOF token limit.
 
-**L2P-04 Trivia Attachment.** Whitespace, line comments, and block comments are never emitted as standalone tokens. Trivia bytes are accounted for in the **preceding** token's `triviaTrailing` count (for trailing whitespace on the same line) and in the **following** token's `triviaLeading` count (for newlines, blank lines, and comment blocks that precede the token). A token at file start has `triviaLeading == 0`; a token at file end has `triviaTrailing == 0`. This attachment rule is the sole source of truth for comment-preserving pretty-printers and IDE token-navigation requests.
+**L2P-03 Cursor-Only Lookahead.** `TokenCursor::peek()`, `token()`, `advance()`, `mark()`, and `rewind()` are the parser lookahead contract. The cursor does not expose whole-stream `size()`. Parser code must not depend on `LexerState`, `restoreState()`, `getCurrentState()`, `reScanGreaterToken()`, or `reScanTemplateToken()`.
 
-**L2P-05 ErrorPropagate Token Shape.** When the lexer encounters an uncodable byte sequence, an unmatched closing delimiter, or an unrecoverable multi-byte encoding error, it emits exactly one `ErrorPropagate` token whose `span.length() == 2` bytes minimum. The `ErrorPropagate` token always carries the literal text `\0\0` in its `text` field so that downstream consumers do not try to render raw bytes; the original bytes are attached as a `ByteBlob` side-entry in the `SourceManager` and referenced by the token's `span`. The parser treats `ErrorPropagate` as a generic sentinel that closes every open construct; it never matches any grammar production.
+**L2P-04 Token Shape.** Every token stores a `SyntaxKind`, a half-open source range, a canonical value for identifiers and literals, and `TokenFlags`. Newline trivia is represented by `TokenFlags::PrecedingLineBreak`; ordinary whitespace and comments are not emitted as tokens.
 
-**L2P-06 Newline Is Part Of Trivia, Never A Token.** The newline character (`\n`, `\r\n`, or `\r`) is always counted inside either `triviaTrailing` of the prior token or `triviaLeading` of the next token. There is no `Newline` token kind. Grammar rules that require statement boundaries use `Semicolon` tokens, explicit braces, or the parser's built-in newline-aware follow-set; they never look at token fields.
+**L2P-05 Lexical Error Recovery.** Malformed UTF-8, unsupported punctuation, invalid escapes, invalid numeric separators, unterminated comments, and unterminated literals emit source-ranged diagnostics. The lexer still makes local progress, usually by emitting `Unknown` or a flagged literal token. Any lexer error contributes to the parser error count, so `Parser::parse()` returns `zc::none`.
 
-**L2P-07 String Literal Normalization.** Every string or character literal token carries its **normalized** payload in `text`: escape sequences are decoded into raw bytes, raw-delimited strings lose their delimiter markers, and CRLF inside the literal body is replaced with LF. The original (unescaped) range is reconstructible only by walking `span` and re-reading the source. This means the parser never sees raw escape characters; downstream stages that must preserve the escape (for `fmt!` macros or proc-macro inputs) read the source via the `SourceManager`.
+**L2P-06 Template Modes.** Template literal state is owned by the lexer. The lexer tracks substitution brace depth and emits `NoSubstitutionTemplateLiteral`, `TemplateHead`, `TemplateMiddle`, and `TemplateTail` without parser-driven raw source rescanning.
 
-**L2P-08 Bracket Position Table.** Every open-bracket token (`[`, `(`, `{`) records an entry in the lexer-global `BracketPairTable` keyed by the token's start byte offset. The corresponding closing bracket's start offset is stored as the value. The parser calls `Parser::matchClose(openTok)` which performs an O(1) lookup; it never scans the token stream for matching brackets. This invariant enables accurate brace-matching in IDEs, fast skip-over of inactive `cfg`-gated blocks, and deterministic error recovery when a bracket is missing.
+**L2P-07 Right-Angle Splitting.** The lexer emits maximal `>`, `>>`, and `>>>` tokens. Type contexts use `TokenCursor` split mode to expose virtual single `>` tokens over retained stream tokens. `TokenCursor::Mark` restores the split state exactly.
+
+**L2P-08 EOF And Progress.** Every `lex(Token&)` call either advances source position or emits the single final `EndOfFile` token. Recovery loops that scan with a cursor must treat EOF as a hard boundary and must prove progress before continuing.
 
 ```cpp
 // products/zomlang/compiler/lexer/token.h
-namespace zc::lexer {
+namespace zomlang::compiler::lexer {
 
-enum class Kind : uint32_t { /* ... 300+ entries generated from TokenKinds.td ... */ };
+class Token {
+public:
+  Token(ast::SyntaxKind kind, source::SourceRange range,
+        zc::StringPtr value = ""_zc, TokenFlags flags = TokenFlags::None) noexcept;
 
-/// A single emitted token. All fields are plain value types; tokens may be
-/// memcpy'd and compared bitwise. Trivia counts encode *byte length* of the
-/// attached trivia, not the number of trivia "pieces", because a comment can
-/// be arbitrarily long and we do not index individual trivia.
-struct Token {
-    Kind          kind;           ///< Enumerated token kind.
-    SourceRange   span;           ///< Half-open [start,end) byte range in owning file.
-    StringRef     text;           ///< Normalized literal payload, or raw identifier bytes.
-    uint32_t      triviaLeading;  ///< Bytes of whitespace/comments BEFORE this token.
-    uint32_t      triviaTrailing; ///< Bytes of whitespace AFTER this token on same line.
+  ZC_NODISCARD ast::SyntaxKind getKind() const;
+  ZC_NODISCARD source::SourceRange getRange() const;
+  ZC_NODISCARD zc::StringPtr getValue() const;
+  ZC_NODISCARD TokenFlags getFlags() const;
+  ZC_NODISCARD bool hasPrecedingLineBreak() const;
 };
-static_assert(sizeof(Token) == 32, "Token size must not regress; perf-sensitive path.");
 
-} // namespace zc::lexer
+}  // namespace zomlang::compiler::lexer
 ```
 
 ---

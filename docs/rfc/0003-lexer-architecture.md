@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, spec-audit, verification]
 approvers: []
 created: 2026-07-01
-updated: 2026-07-01
+updated: 2026-07-02
 area: compiler
 requires: [1]
 supersedes: []
@@ -44,9 +44,9 @@ The current repository has concrete drift:
   0002's grammar source model.
 - Character literals are specified and have a token kind, but the C++ lexer
   currently returns single-quoted literals as `StringLiteral`.
-- `LexerState` exposes raw buffer pointers and `restoreState()` accepts an
-  unused diagnostics-control parameter, so speculative lexing does not have a
-  clean no-side-effect contract.
+- Historical parser-visible lexer state made speculative parsing depend on byte
+  scanner rewinds. The accepted architecture removes that public compiler lexer
+  surface instead of repairing it for parser use.
 - `ZomLexer.g4` must reject unsupported compound attribute-start and range
   tokens instead of declaring token kinds without C++ lexer equivalents.
 
@@ -65,13 +65,17 @@ depend on stable token semantics instead of inheriting ad hoc scanner behavior.
   raw spelling recovery, trivia boundaries, and line-break flags.
 - Define lexical modes for default source text, template literals, template
   substitution expressions, and future string-like modes.
+- Define the stream-to-cursor handoff used by the compiler parser: the lexer
+  streams source bytes into a retained lazy token buffer, and the parser
+  consumes only `TokenCursor`.
 - Define Unicode identifier policy, Unicode data ownership, invalid UTF-8
   diagnostics, and source normalization rules.
 - Define tokenization for ambiguous or drift-prone spelling families:
   attributes, `::`, `?:`, character literals, templates, and right-angle
   splitting in type contexts.
-- Define a side-effect-free state snapshot contract for lookahead and
-  speculative lexing.
+- Delete public lexer rescanning APIs and parser-visible lexer state after the
+  lazy stream contract is implemented.
+- Reject parser-visible lexer snapshots for lookahead and speculative parsing.
 - Define lexer error recovery and parser handoff so lexing errors prevent AST
   publication while still allowing parser diagnostics to continue.
 - Define required validation: lexer unit tests, grammar oracle checks,
@@ -132,18 +136,20 @@ chooses the single-token form. The lexical chapter, `ZomLexer.g4`, `kinds.h`,
 `token.cc`, the C++ lexer, expression precedence tests, and conformance verdicts
 must all agree.
 
-The compiler lexer produces an immutable token tape:
+The compiler lexer produces a stream of tokens. The parser observes that stream
+through a lazy retained token buffer owned by `TokenStream`:
 
 ```mermaid
 flowchart TD
   Source["UTF-8 source buffer"] --> Decode["Strict UTF-8 decoder"]
   Decode --> Scanner["Maximal-munch scanner"]
   Scanner --> Modes["Mode stack"]
-  Modes --> TokenTape["Token tape"]
-  TokenTape --> Cursor["TokenCursor"]
+  Modes --> Lex["Lexer::lex(Token&)"]
+  Lex --> Stream["Lazy TokenStream buffer"]
+  Stream --> Cursor["TokenCursor"]
   Cursor --> Parser["Grammar-shaped parser"]
   Scanner --> Diags["DiagnosticEngine"]
-  TokenTape --> Oracle["Lexer and grammar oracle checks"]
+  Lex --> Oracle["Lexer and grammar oracle checks"]
 ```
 
 Whitespace and comments are not parser tokens. Their source ranges remain
@@ -194,8 +200,25 @@ above and must not name obsolete design files.
 
 ### Public Lexer Contract
 
-The compiler lexer consumes one UTF-8 source buffer and produces a token tape
-ending in exactly one `EndOfFile` token.
+The compiler lexer consumes one UTF-8 source buffer and produces a deterministic
+token stream ending in exactly one `EndOfFile` token.
+
+The compiler parser sees a lazy token stream facade, not the byte scanner. The
+handoff is:
+
+```mermaid
+flowchart TD
+  Source["Source buffer"] --> LexerStream["Lexer::lex stream"]
+  LexerStream --> TokenStream["Lazy retained TokenStream"]
+  TokenStream --> Cursor["TokenCursor"]
+  Cursor --> Parser["Recursive descent parser"]
+```
+
+The lexer exposes a streaming `lex(Token&)` operation for the parser token stream
+and focused lexer tests. Parser grammar functions must not request byte-level
+rescans or own lexer snapshots. `TokenStream` may retain already produced tokens
+to provide stable absolute indices, source ranges, diagnostics, and
+mark/rewind, but it must lex on demand rather than pre-lexing the whole file.
 
 Each token stores:
 
@@ -308,10 +331,15 @@ drift-prone cases:
 | `..` and `..<` | Not tokens unless accepted by the grammar. Remove executable grammar tokens for them while they are unsupported. |
 | `>>` and `>>>` | Maximal tokens in the lexer. Type-argument closing-angle splitting is a token-cursor overlay, not a lexer rescan. |
 
-Right-angle splitting must not mutate the lexer. The token tape stores the
+Right-angle splitting must not mutate the lexer. The token stream stores the
 maximal token. In type contexts, `TokenCursor` may expose virtual `>` tokens
-through a bounded split overlay that preserves the original source range and
-can be rewound with the parser mark.
+through a bounded split overlay that preserves the original source range and can
+be rewound with the parser mark.
+
+The split overlay is parser-side syntax interpretation, not lexing. The lexer
+does not expose `reScanGreaterToken()` or any equivalent API after this RFC is
+implemented. `TokenCursor::Mark` must restore split state exactly so tentative
+type parsing can rewind without observing a different token sequence.
 
 ### Literals
 
@@ -346,27 +374,32 @@ The lexer tracks template brace depth inside substitutions and emits
 `TemplateHead`, `TemplateMiddle`, and `TemplateTail` without parser-driven
 rescanning of raw source bytes.
 
-### State Snapshots And Lookahead
+Template lexing is a mandatory lexer refactor. The parser must not maintain
+template substitution state, template brace depth, or template tail detection.
+The lexer owns a mode stack and emits the next template token by continuing
+from its own scanner state. There is no parser call equivalent to
+`reScanTemplateToken()` in the final public API.
 
-Public lexer snapshots are offset-based and mode-based, not raw-pointer-based.
-The snapshot stores:
+### Lookahead Contract
 
-- current byte offset
-- full-start byte offset
-- token-start byte offset
-- current mode stack
-- token flags
-- current token metadata needed for restart
+Parser lookahead is token lookahead, not lexer snapshot restore. `TokenCursor`
+marks store cursor position and cursor overlay state. Rewinding a parser mark
+does not rewind the lexer byte offset; it only repositions the cursor inside the
+retained token buffer.
 
-Restoring a snapshot must also restore diagnostic suppression state for
-speculative lexing. Speculative lookahead must not emit user diagnostics,
-comment directives, or mutable global side effects. The `enableDiagnostics`
-parameter on the current `restoreState()` API must be removed or implemented
-as part of this contract.
+The compiler frontend exposes no parser-visible raw lexer state API:
 
-After RFC 0002 is implemented, the parser consumes an immutable token tape and
-does not call the byte lexer for lookahead. Token lookahead belongs to
-`TokenCursor`.
+- `LexerState` is not used by parser code.
+- `restoreState()` is absent from the public compiler lexer interface.
+- `getCurrentState()` is absent from the public compiler lexer interface.
+- `reScanGreaterToken()` and `reScanTemplateToken()` are absent from the public
+  compiler lexer interface.
+- Parser-facing token stream APIs do not expose `tokenCount()` or
+  `tokenCountWithoutEof()` helpers that force the stream to EOF.
+- `TokenCursor` does not expose whole-stream `size()`; LL(k) lookahead is
+  expressed through bounded `peek(offset)` and `mark()` / `rewind()` operations.
+- Any future lexer-internal snapshot API must be private to lexer tests or source
+  ingestion tools and must not become a parser dependency.
 
 ### Lexer Errors And Recovery
 
@@ -444,6 +477,11 @@ future semantic lint so the lexer remains deterministic and syntax-focused.
   lit expectations.
 - Moving right-angle splitting from lexer rescanning to token-cursor overlay
   requires careful source-range tests.
+- Removing public rescan and raw snapshot APIs will force parser and tests to
+  move to the lazy stream contract in one refactor instead of carrying a
+  compatibility path.
+- Moving template substitution state entirely into the lexer requires nested
+  template and malformed-template fuzz coverage.
 - Using generated Unicode data requires a repeatable generation workflow and
   an explicit upgrade process.
 - Keeping `ZomLexer.g4` as an oracle means the project must maintain two lexer
@@ -457,7 +495,7 @@ patches cannot define Unicode policy, state snapshots, or token splitting.
 
 Use ANTLR-generated lexer output as the compiler lexer. This is rejected
 because the compiler needs direct `zc` ownership, source ranges, diagnostic
-IDs, and parser-token tape integration. ANTLR remains useful as an executable
+IDs, and parser token-stream integration. ANTLR remains useful as an executable
 oracle.
 
 Emit a lossless token stream with all comments and whitespace as parser tokens.
@@ -475,6 +513,11 @@ be checked from source offsets while keeping `Hash` and `LeftBracket` ordinary
 tokens. A compound token would create unnecessary drift with parser recovery
 around malformed attributes.
 
+Keep public lexer rescan APIs for parser convenience. This is rejected because
+it keeps two tokenization authorities alive: the retained token stream and the
+mutable byte scanner. Parser context must be expressed through `TokenCursor`
+overlays, not by asking the lexer to reinterpret already emitted source bytes.
+
 ## Compatibility And Rollout
 
 ZOM is pre-stability, so lexical drift is fixed in place. There is no
@@ -489,11 +532,20 @@ Rollout order:
 4. Add missing token enum values and metadata for accepted compound tokens.
 5. Rewrite the C++ lexer around the token contract where current behavior
    differs.
-6. Replace raw-pointer public lexer snapshots with offset and mode snapshots.
-7. Move parser lookahead to immutable token tape and `TokenCursor`.
-8. Add lexer unit tests and conformance fixtures.
-9. Regenerate only grammar oracle artifacts that are intended to be checked in.
-10. Run the full RFC, spec-alignment, lexer, parser, conformance, format, and
+6. Introduce a lazy `TokenStream` that consumes the lexer stream on demand and
+   retains produced tokens for cursor indices, diagnostics, and source ranges.
+7. Move template literal state, substitution brace depth, and template tail
+   emission fully into lexer modes.
+8. Delete parser use of `LexerState`, `restoreState()`, `getCurrentState()`,
+   `reScanGreaterToken()`, and `reScanTemplateToken()`.
+9. Replace raw-pointer public lexer snapshots with offset and mode snapshots
+   only where current non-parser tests or tools still need snapshots.
+10. Move right-angle splitting to `TokenCursor` and verify mark/rewind restores
+    split state.
+11. Add lexer unit tests, lazy token-stream tests, token-cursor split tests,
+    conformance fixtures, and malformed-template fuzz cases.
+12. Regenerate only grammar oracle artifacts that are intended to be checked in.
+13. Run the full RFC, spec-alignment, lexer, parser, conformance, format, and
     sanitizer gates.
 
 Rollback cost is moderate before step 5 and high after token enum and fixture
@@ -545,14 +597,23 @@ require parser callbacks or repeated raw-source lexing for lookahead.
   Unicode scalar; invalid forms emit lexer diagnostics.
 - Invalid UTF-8 diagnostics are source-ranged and recover through local
   `Unknown` tokens rather than collapsing the whole file.
-- Public lexer snapshots are offset and mode snapshots, not raw buffer pointer
-  state.
-- Speculative lexing does not emit user diagnostics or comment directive side
-  effects.
+- Public compiler lexer snapshots are absent; parser speculation uses
+  `TokenCursor::mark()` and `rewind()`.
+- The parser consumes a lazy token stream backed by `Lexer::lex(Token&)`; it does
+  not pre-lex the file and does not call lexer rescan or state restore APIs.
 - Template literals are lexed through explicit modes without parser-driven raw
   source rescanning.
+- Template substitution brace depth is tracked by the lexer, not by
+  `Parser::Impl::lexAll()` or any parser helper.
 - Right-angle splitting for type contexts is implemented in `TokenCursor` over
-  an immutable token tape.
+  retained stream tokens.
+- `TokenCursor` mark/rewind restores active right-angle split state exactly.
+- The parser facade and parser implementation do not call `LexerState` or
+  `restoreState()` for syntactic lookahead.
+- `reScanGreaterToken()` and `reScanTemplateToken()` are absent from the public
+  compiler lexer interface.
+- No parser source file contains calls to lexer rescan, lexer state restore, or
+  current lexer state inspection.
 - Lexer unit tests cover every multi-character punctuator, keyword, Unicode
   identifier class, invalid UTF-8 case, and literal class named in this RFC.
 - Grammar and AST conformance verdicts have no lexer-driven mismatches.
@@ -566,18 +627,33 @@ require parser callbacks or repeated raw-source lexing for lookahead.
 
 1. Keep this RFC in `REVIEW` while owners validate the token contracts and
    Unicode policy.
-2. Keep the lexical chapter, `ZomLexer.g4`, token metadata, lexer behavior,
-   token-tape snapshots, `TokenCursor`, and grammar oracle artifacts aligned
-   with this RFC.
-3. Use the acceptance criteria above and the test plan below as the gate for
-   advancing beyond `REVIEW`.
-4. Advance RFC 0002 only while this lexer contract remains review-ready.
+2. Reconcile the lexical chapter, `ZomLexer.g4`, token metadata, C++ lexer, and
+   conformance metadata for every accepted token spelling.
+3. Add the lazy token stream and make parser construction consume `TokenCursor`
+   instead of pre-lexing the full file.
+4. Implement lexer-owned template modes and delete parser template rescan
+   state.
+5. Delete public lexer rescanning APIs and remove parser-visible raw lexer
+   state from syntax parsing.
+6. Replace or remove lexer snapshots so any remaining snapshot API is
+   offset-based, mode-aware, diagnostic-suppressed, and unused by parser code.
+7. Implement `TokenCursor` right-angle split mark/rewind tests with `>>` and
+   `>>>` in nested type-argument contexts.
+8. Generate Unicode identifier data from a named UCD release and check the
+   generator/provenance into the repository.
+9. Add focused lexer, lazy token-stream, parser handoff, conformance, and fuzz
+   tests.
+10. Use the acceptance criteria above and the test plan below as the gate for
+    advancing beyond `REVIEW`.
+11. Advance RFC 0002 only while this lexer contract remains review-ready.
 
 ## Test Plan
 
 - Build: `cmake --preset sanitizer` and `cmake --build --preset sanitizer`.
 - Unit tests: focused lexer tests and token-cursor split tests through
   `ctest --preset default -R unittest --output-on-failure`.
+- Parser handoff: focused parser tests prove parser construction consumes the
+  lazy token stream and contains no lexer state or rescan calls.
 - Lit tests: AST lit tests that depend on tokenization through
   `ctest --preset default -R conformance-ast --output-on-failure`.
 - Conformance: grammar and AST coverage through
@@ -594,16 +670,8 @@ require parser callbacks or repeated raw-source lexing for lookahead.
 
 ## Open Questions
 
-None. The review-ready decisions are:
-
-- Unicode identifier tables must be generated from a named Unicode Character
-  Database release before this RFC can advance beyond `REVIEW`; the current
-  checked-in table is treated as implementation data, not normative prose.
-- Single-quoted literals are character-only. Empty and multi-scalar
-  single-quoted forms are lexical errors.
-- `docs/spec/ZomLexer.g4` is the checked-in executable lexer oracle. Generated
-  ANTLR outputs under `docs/spec/.antlr*` are build artifacts and are not
-  tracked source files.
+None. The RFC is review-ready. Advancement beyond `REVIEW` is gated by the
+acceptance criteria and owner approval; no design question remains open.
 
 ## Status History
 
@@ -611,3 +679,9 @@ None. The review-ready decisions are:
 |---|---|---|
 | 2026-07-01 | DRAFT | Initial lexer architecture draft. |
 | 2026-07-01 | REVIEW | Filled review metadata and resolved lexer architecture open questions for Unicode data ownership, character literals, and generated ANTLR artifacts. |
+| 2026-07-02 | REVIEW | Added parser handoff gate that forbids parser-side lexer state lookahead. |
+| 2026-07-02 | REVIEW | Expanded the required lexer refactor contract for lazy stream handoff, template modes, rescan API removal, snapshot removal, and cursor-owned right-angle splitting. |
+| 2026-07-02 | REVIEW | Implemented the lazy stream parser handoff: parser code consumes `Lexer::lex(Token&)` through `TokenStream` and `TokenCursor`; parser-side eager tokenization, public lexer state restore, and parser-visible rescan APIs are absent. |
+| 2026-07-02 | REVIEW | Generated Unicode identifier tables from UCD 15.1.0 and added lexer architecture gates for generator provenance, lazy stream design docs, public lexer API shape, and template-mode state ownership. |
+| 2026-07-02 | REVIEW | Added the five-way token inventory gate across the lexical specification, `ZomLexer.g4`, `SyntaxKind`, keyword classification, and static token text; removed unlexable token kinds and aligned `_` as the wildcard token instead of an identifier. |
+| 2026-07-02 | REVIEW | Removed parser-facing force-EOF token counting from the lazy stream handoff: parser code no longer calls `tokenCount()` or `tokenCountWithoutEof()`, and `TokenCursor` exposes no whole-stream `size()`. |
