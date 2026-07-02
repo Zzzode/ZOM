@@ -10,67 +10,67 @@
 // CHECK-NEXT:           items:
 // CHECK-NEXT:             ExternDecl #6 @2:5..2:44 name="open" abi=ZomNative
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @2:14..2:23 name="path"
+// CHECK-NEXT:                 FunctionParameterDecl #3 @2:14..2:23 name="path"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:20..2:23 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:20..2:23 kind=Str
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #4 @2:25..2:35 name="flags"
+// CHECK-NEXT:                 FunctionParameterDecl #5 @2:25..2:35 name="flags"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #3 @2:32..2:35 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #4 @2:32..2:35 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty:
-// CHECK-NEXT:                 PredefinedTypeExpr #5 @2:40..2:43 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @2:40..2:43 kind=I32
 // CHECK-NEXT:               raises_ty: null
 // CHECK-NEXT:             ExternDecl #14 @3:5..3:50 name="read" abi=ZomNative
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #8 @3:14..3:21 name="fd"
+// CHECK-NEXT:                 FunctionParameterDecl #9 @3:14..3:21 name="fd"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:18..3:21 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #8 @3:18..3:21 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #10 @3:23..3:31 name="buf"
+// CHECK-NEXT:                 FunctionParameterDecl #11 @3:23..3:31 name="buf"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #9 @3:28..3:31 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #10 @3:28..3:31 kind=Str
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #12 @3:33..3:41 name="len"
+// CHECK-NEXT:                 FunctionParameterDecl #13 @3:33..3:41 name="len"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #11 @3:38..3:41 kind=U64
+// CHECK-NEXT:                     PredefinedTypeExpr #12 @3:38..3:41 kind=U64
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty:
-// CHECK-NEXT:                 PredefinedTypeExpr #13 @3:46..3:49 kind=I64
+// CHECK-NEXT:                 PredefinedTypeExpr #7 @3:46..3:49 kind=I64
 // CHECK-NEXT:               raises_ty: null
 // CHECK-NEXT:             ExternDecl #22 @4:5..4:51 name="write" abi=ZomNative
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #16 @4:15..4:22 name="fd"
+// CHECK-NEXT:                 FunctionParameterDecl #17 @4:15..4:22 name="fd"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #15 @4:19..4:22 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #16 @4:19..4:22 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #18 @4:24..4:32 name="buf"
+// CHECK-NEXT:                 FunctionParameterDecl #19 @4:24..4:32 name="buf"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #17 @4:29..4:32 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #18 @4:29..4:32 kind=Str
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #20 @4:34..4:42 name="len"
+// CHECK-NEXT:                 FunctionParameterDecl #21 @4:34..4:42 name="len"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #19 @4:39..4:42 kind=U64
+// CHECK-NEXT:                     PredefinedTypeExpr #20 @4:39..4:42 kind=U64
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty:
-// CHECK-NEXT:                 PredefinedTypeExpr #21 @4:47..4:50 kind=I64
+// CHECK-NEXT:                 PredefinedTypeExpr #15 @4:47..4:50 kind=I64
 // CHECK-NEXT:               raises_ty: null
 // CHECK-NEXT:             ExternDecl #26 @5:5..5:31 name="close" abi=ZomNative
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #24 @5:15..5:22 name="fd"
+// CHECK-NEXT:                 FunctionParameterDecl #25 @5:15..5:22 name="fd"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #23 @5:19..5:22 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #24 @5:19..5:22 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty:
-// CHECK-NEXT:                 PredefinedTypeExpr #25 @5:27..5:30 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #23 @5:27..5:30 kind=I32
 // CHECK-NEXT:               raises_ty: null
 // CHECK-NEXT:       attrs: null

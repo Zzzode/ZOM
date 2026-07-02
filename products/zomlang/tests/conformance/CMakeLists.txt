@@ -29,6 +29,17 @@ set_tests_properties(parser-coverage PROPERTIES
   TIMEOUT 10
 )
 
+add_test(
+  NAME lexer-architecture
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-lexer-architecture.py
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(lexer-architecture PROPERTIES
+  LABELS "conformance;lexer;specification"
+  TIMEOUT 10
+)
+
 add_custom_target(check-conformance
   COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -L "conformance"
   COMMENT "Running all conformance tests"

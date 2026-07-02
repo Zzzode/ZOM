@@ -10,12 +10,12 @@
 // CHECK-NEXT:           items:
 // CHECK-NEXT:             ExternDecl #4 @2:5..2:39 name="simple_bridge" abi=Cdecl
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @2:23..2:29 name="x"
+// CHECK-NEXT:                 FunctionParameterDecl #3 @2:23..2:29 name="x"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:26..2:29 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:26..2:29 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty:
-// CHECK-NEXT:                 PredefinedTypeExpr #3 @2:34..2:38 kind=Bool
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @2:34..2:38 kind=Bool
 // CHECK-NEXT:               raises_ty: null
 // CHECK-NEXT:       attrs: null

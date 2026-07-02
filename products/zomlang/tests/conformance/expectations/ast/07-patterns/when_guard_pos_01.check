@@ -12,14 +12,14 @@
 // CHECK-NEXT:           arms:
 // CHECK-NEXT:             MatchArmStmt #11 @2:5..2:41
 // CHECK-NEXT:               pattern:
-// CHECK-NEXT:                 IdentifierPattern #1 @2:10..2:11 name="x"
+// CHECK-NEXT:                 IdentifierPattern #4 @2:10..2:11 name="x"
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:               guard:
-// CHECK-NEXT:                 BinaryExpr #4 @2:15..2:20 op=Gt
+// CHECK-NEXT:                 BinaryExpr #3 @2:15..2:20 op=Gt
 // CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #2 @2:15..2:16 name="x"
+// CHECK-NEXT:                     IdentExpr #1 @2:15..2:16 name="x"
 // CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IntLiteral #3 @2:19..2:20 base=10 value="0"
+// CHECK-NEXT:                     IntLiteral #2 @2:19..2:20 base=10 value="0"
 // CHECK-NEXT:               body:
 // CHECK-NEXT:                 BlockStmt #10 @2:24..2:41
 // CHECK-NEXT:                   stmts:
@@ -36,14 +36,14 @@
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #22 @3:5..3:41
 // CHECK-NEXT:               pattern:
-// CHECK-NEXT:                 IdentifierPattern #12 @3:10..3:11 name="x"
+// CHECK-NEXT:                 IdentifierPattern #15 @3:10..3:11 name="x"
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:               guard:
-// CHECK-NEXT:                 BinaryExpr #15 @3:15..3:20 op=Lt
+// CHECK-NEXT:                 BinaryExpr #14 @3:15..3:20 op=Lt
 // CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #13 @3:15..3:16 name="x"
+// CHECK-NEXT:                     IdentExpr #12 @3:15..3:16 name="x"
 // CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IntLiteral #14 @3:19..3:20 base=10 value="0"
+// CHECK-NEXT:                     IntLiteral #13 @3:19..3:20 base=10 value="0"
 // CHECK-NEXT:               body:
 // CHECK-NEXT:                 BlockStmt #21 @3:24..3:41
 // CHECK-NEXT:                   stmts:

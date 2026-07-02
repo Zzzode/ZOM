@@ -25,41 +25,41 @@
 // CHECK-NEXT:                   item:
 // CHECK-NEXT:                     IfStmt #20 @2:5..2:72
 // CHECK-NEXT:                       cond:
-// CHECK-NEXT:                         BinaryExpr #6 @2:9..2:14 op=Gt
+// CHECK-NEXT:                         BinaryExpr #16 @2:9..2:14 op=Gt
 // CHECK-NEXT:                           lhs:
-// CHECK-NEXT:                             IdentExpr #4 @2:9..2:10 name="i"
+// CHECK-NEXT:                             IdentExpr #14 @2:9..2:10 name="i"
 // CHECK-NEXT:                           rhs:
-// CHECK-NEXT:                             IntLiteral #5 @2:13..2:14 base=10 value="0"
+// CHECK-NEXT:                             IntLiteral #15 @2:13..2:14 base=10 value="0"
 // CHECK-NEXT:                       then_stmt:
-// CHECK-NEXT:                         BlockStmt #9 @2:16..2:27
+// CHECK-NEXT:                         BlockStmt #19 @2:16..2:27
 // CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #8 @2:18..2:25
+// CHECK-NEXT:                             StatementListItem #18 @2:18..2:25
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ReturnStmt #7 @2:18..2:25
+// CHECK-NEXT:                                 ReturnStmt #17 @2:18..2:25
 // CHECK-NEXT:                                   value: null
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                       else_stmt:
-// CHECK-NEXT:                         IfStmt #19 @2:33..2:72
+// CHECK-NEXT:                         IfStmt #13 @2:33..2:72
 // CHECK-NEXT:                           cond:
-// CHECK-NEXT:                             BinaryExpr #12 @2:37..2:42 op=Lt
+// CHECK-NEXT:                             BinaryExpr #9 @2:37..2:42 op=Lt
 // CHECK-NEXT:                               lhs:
-// CHECK-NEXT:                                 IdentExpr #10 @2:37..2:38 name="i"
+// CHECK-NEXT:                                 IdentExpr #7 @2:37..2:38 name="i"
 // CHECK-NEXT:                               rhs:
-// CHECK-NEXT:                                 IntLiteral #11 @2:41..2:42 base=10 value="0"
+// CHECK-NEXT:                                 IntLiteral #8 @2:41..2:42 base=10 value="0"
 // CHECK-NEXT:                           then_stmt:
-// CHECK-NEXT:                             BlockStmt #15 @2:44..2:55
+// CHECK-NEXT:                             BlockStmt #12 @2:44..2:55
 // CHECK-NEXT:                               stmts:
-// CHECK-NEXT:                                 StatementListItem #14 @2:46..2:53
+// CHECK-NEXT:                                 StatementListItem #11 @2:46..2:53
 // CHECK-NEXT:                                   item:
-// CHECK-NEXT:                                     ReturnStmt #13 @2:46..2:53
+// CHECK-NEXT:                                     ReturnStmt #10 @2:46..2:53
 // CHECK-NEXT:                                       value: null
 // CHECK-NEXT:                                   attrs: null
 // CHECK-NEXT:                           else_stmt:
-// CHECK-NEXT:                             BlockStmt #18 @2:61..2:72
+// CHECK-NEXT:                             BlockStmt #6 @2:61..2:72
 // CHECK-NEXT:                               stmts:
-// CHECK-NEXT:                                 StatementListItem #17 @2:63..2:70
+// CHECK-NEXT:                                 StatementListItem #5 @2:63..2:70
 // CHECK-NEXT:                                   item:
-// CHECK-NEXT:                                     ReturnStmt #16 @2:63..2:70
+// CHECK-NEXT:                                     ReturnStmt #4 @2:63..2:70
 // CHECK-NEXT:                                       value: null
 // CHECK-NEXT:                                   attrs: null
 // CHECK-NEXT:                   attrs: null

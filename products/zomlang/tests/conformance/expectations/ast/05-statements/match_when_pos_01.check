@@ -29,15 +29,15 @@
 // CHECK-NEXT:                       arms:
 // CHECK-NEXT:                         MatchArmStmt #12 @3:9..3:39
 // CHECK-NEXT:                           pattern:
-// CHECK-NEXT:                             LiteralPattern #5 @3:14..3:15
+// CHECK-NEXT:                             LiteralPattern #8 @3:14..3:15
 // CHECK-NEXT:                               literal:
-// CHECK-NEXT:                                 IntLiteral #4 @3:14..3:15 base=10 value="1"
+// CHECK-NEXT:                                 IntLiteral #7 @3:14..3:15 base=10 value="1"
 // CHECK-NEXT:                           guard:
-// CHECK-NEXT:                             BinaryExpr #8 @3:19..3:24 op=Gt
+// CHECK-NEXT:                             BinaryExpr #6 @3:19..3:24 op=Gt
 // CHECK-NEXT:                               lhs:
-// CHECK-NEXT:                                 IntLiteral #6 @3:19..3:20 base=10 value="2"
+// CHECK-NEXT:                                 IntLiteral #4 @3:19..3:20 base=10 value="2"
 // CHECK-NEXT:                               rhs:
-// CHECK-NEXT:                                 IntLiteral #7 @3:23..3:24 base=10 value="1"
+// CHECK-NEXT:                                 IntLiteral #5 @3:23..3:24 base=10 value="1"
 // CHECK-NEXT:                           body:
 // CHECK-NEXT:                             BlockStmt #11 @3:28..3:39
 // CHECK-NEXT:                               stmts:

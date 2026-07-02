@@ -25,7 +25,7 @@
 // CHECK-NEXT:                           decls:
 // CHECK-NEXT:                             VariableDeclarator #6 @2:9..2:35
 // CHECK-NEXT:                               pattern:
-// CHECK-NEXT:                                 IdentifierPattern #3 @2:9..2:10 name="_"
+// CHECK-NEXT:                                 WildcardPattern #3 @2:9..2:10
 // CHECK-NEXT:                                   ty: null
 // CHECK-NEXT:                               ty: null
 // CHECK-NEXT:                               init:

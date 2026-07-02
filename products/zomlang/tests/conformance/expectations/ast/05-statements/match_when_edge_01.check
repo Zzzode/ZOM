@@ -29,7 +29,7 @@
 // CHECK-NEXT:                       arms:
 // CHECK-NEXT:                         MatchArmStmt #8 @3:9..3:30
 // CHECK-NEXT:                           pattern:
-// CHECK-NEXT:                             IdentifierPattern #4 @3:14..3:15 name="_"
+// CHECK-NEXT:                             WildcardPattern #4 @3:14..3:15
 // CHECK-NEXT:                               ty: null
 // CHECK-NEXT:                           guard: null
 // CHECK-NEXT:                           body:

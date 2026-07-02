@@ -30,18 +30,18 @@
 // CHECK-NEXT:                   item:
 // CHECK-NEXT:                     DoWhileStatement #12 @2:5..4:17
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         WhileStmt #10 @2:8..4:6
+// CHECK-NEXT:                         WhileStmt #11 @2:8..4:6
 // CHECK-NEXT:                           cond:
-// CHECK-NEXT:                             IdentExpr #6 @2:15..2:16 name="x"
+// CHECK-NEXT:                             IdentExpr #7 @2:15..2:16 name="x"
 // CHECK-NEXT:                           body:
-// CHECK-NEXT:                             BlockStmt #9 @2:18..4:6
+// CHECK-NEXT:                             BlockStmt #10 @2:18..4:6
 // CHECK-NEXT:                               stmts:
-// CHECK-NEXT:                                 StatementListItem #8 @3:9..3:16
+// CHECK-NEXT:                                 StatementListItem #9 @3:9..3:16
 // CHECK-NEXT:                                   item:
-// CHECK-NEXT:                                     ReturnStmt #7 @3:9..3:16
+// CHECK-NEXT:                                     ReturnStmt #8 @3:9..3:16
 // CHECK-NEXT:                                       value: null
 // CHECK-NEXT:                                   attrs: null
 // CHECK-NEXT:                       cond:
-// CHECK-NEXT:                         IdentExpr #11 @4:14..4:15 name="y"
+// CHECK-NEXT:                         IdentExpr #6 @4:14..4:15 name="y"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

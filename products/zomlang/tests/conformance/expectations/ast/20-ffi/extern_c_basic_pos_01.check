@@ -10,13 +10,13 @@
 // CHECK-NEXT:           items:
 // CHECK-NEXT:             ExternDecl #4 @2:5..2:33 name="printf" abi=Cdecl
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @2:16..2:24 name="fmt"
+// CHECK-NEXT:                 FunctionParameterDecl #3 @2:16..2:24 name="fmt"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:21..2:24 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:21..2:24 kind=Str
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty:
-// CHECK-NEXT:                 PredefinedTypeExpr #3 @2:29..2:32 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @2:29..2:32 kind=I32
 // CHECK-NEXT:               raises_ty: null
 // CHECK-NEXT:             ExternDecl #7 @3:5..3:22 name="free" abi=Cdecl
 // CHECK-NEXT:               params:

@@ -20,13 +20,13 @@
 // CHECK-NEXT:                   item:
 // CHECK-NEXT:                     DoWhileStatement #6 @2:5..2:32
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #4 @2:8..2:18
+// CHECK-NEXT:                         BlockStmt #5 @2:8..2:18
 // CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #3 @2:10..2:16
+// CHECK-NEXT:                             StatementListItem #4 @2:10..2:16
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 BreakStmt #2 @2:10..2:16 label=null
+// CHECK-NEXT:                                 BreakStmt #3 @2:10..2:16 label=null
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                       cond:
-// CHECK-NEXT:                         BoolLiteral #5 @2:26..2:30 value=true
+// CHECK-NEXT:                         BoolLiteral #2 @2:26..2:30 value=true
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

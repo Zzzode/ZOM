@@ -60,24 +60,24 @@
 // CHECK-NEXT:                       body:
 // CHECK-NEXT:                         IfStmt #28 @2:39..2:78
 // CHECK-NEXT:                           cond:
-// CHECK-NEXT:                             IdentExpr #19 @2:43..2:44 name="x"
+// CHECK-NEXT:                             IdentExpr #23 @2:43..2:44 name="x"
 // CHECK-NEXT:                           then_stmt:
-// CHECK-NEXT:                             BlockStmt #23 @2:46..2:59
+// CHECK-NEXT:                             BlockStmt #27 @2:46..2:59
 // CHECK-NEXT:                               stmts:
-// CHECK-NEXT:                                 StatementListItem #22 @2:48..2:57
+// CHECK-NEXT:                                 StatementListItem #26 @2:48..2:57
 // CHECK-NEXT:                                   item:
-// CHECK-NEXT:                                     ReturnStmt #21 @2:48..2:57
+// CHECK-NEXT:                                     ReturnStmt #25 @2:48..2:57
 // CHECK-NEXT:                                       value:
-// CHECK-NEXT:                                         IntLiteral #20 @2:55..2:56 base=10 value="1"
+// CHECK-NEXT:                                         IntLiteral #24 @2:55..2:56 base=10 value="1"
 // CHECK-NEXT:                                   attrs: null
 // CHECK-NEXT:                           else_stmt:
-// CHECK-NEXT:                             BlockStmt #27 @2:65..2:78
+// CHECK-NEXT:                             BlockStmt #22 @2:65..2:78
 // CHECK-NEXT:                               stmts:
-// CHECK-NEXT:                                 StatementListItem #26 @2:67..2:76
+// CHECK-NEXT:                                 StatementListItem #21 @2:67..2:76
 // CHECK-NEXT:                                   item:
-// CHECK-NEXT:                                     ReturnStmt #25 @2:67..2:76
+// CHECK-NEXT:                                     ReturnStmt #20 @2:67..2:76
 // CHECK-NEXT:                                       value:
-// CHECK-NEXT:                                         IntLiteral #24 @2:74..2:75 base=10 value="2"
+// CHECK-NEXT:                                         IntLiteral #19 @2:74..2:75 base=10 value="2"
 // CHECK-NEXT:                                   attrs: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

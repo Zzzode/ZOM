@@ -12,7 +12,7 @@
 // CHECK-NEXT:           arms:
 // CHECK-NEXT:             MatchArmStmt #6 @2:5..2:28
 // CHECK-NEXT:               pattern:
-// CHECK-NEXT:                 IdentifierPattern #1 @2:10..2:11 name="_"
+// CHECK-NEXT:                 WildcardPattern #1 @2:10..2:11
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:               guard: null
 // CHECK-NEXT:               body:

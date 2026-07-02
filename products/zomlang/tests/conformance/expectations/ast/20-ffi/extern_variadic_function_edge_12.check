@@ -10,27 +10,27 @@
 // CHECK-NEXT:           items:
 // CHECK-NEXT:             ExternDecl #4 @2:5..2:33 name="printf" abi=Cdecl
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @2:16..2:24 name="fmt"
+// CHECK-NEXT:                 FunctionParameterDecl #3 @2:16..2:24 name="fmt"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:21..2:24 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:21..2:24 kind=Str
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty:
-// CHECK-NEXT:                 PredefinedTypeExpr #3 @2:29..2:32 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @2:29..2:32 kind=I32
 // CHECK-NEXT:               raises_ty: null
 // CHECK-NEXT:             ExternDecl #10 @3:5..3:47 name="fprintf" abi=Cdecl
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #6 @3:17..3:28 name="stream"
+// CHECK-NEXT:                 FunctionParameterDecl #7 @3:17..3:28 name="stream"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #5 @3:25..3:28 kind=U64
+// CHECK-NEXT:                     PredefinedTypeExpr #6 @3:25..3:28 kind=U64
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #8 @3:30..3:38 name="fmt"
+// CHECK-NEXT:                 FunctionParameterDecl #9 @3:30..3:38 name="fmt"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:35..3:38 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #8 @3:35..3:38 kind=Str
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty:
-// CHECK-NEXT:                 PredefinedTypeExpr #9 @3:43..3:46 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #5 @3:43..3:46 kind=I32
 // CHECK-NEXT:               raises_ty: null
 // CHECK-NEXT:       attrs: null

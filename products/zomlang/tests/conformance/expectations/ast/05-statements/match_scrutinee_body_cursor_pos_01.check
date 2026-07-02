@@ -41,30 +41,30 @@
 // CHECK-NEXT:                       arms:
 // CHECK-NEXT:                         MatchArmStmt #15 @3:9..3:58
 // CHECK-NEXT:                           pattern:
-// CHECK-NEXT:                             IdentifierPattern #4 @3:14..3:15 name="_"
+// CHECK-NEXT:                             WildcardPattern #4 @3:14..3:15
 // CHECK-NEXT:                               ty: null
 // CHECK-NEXT:                           guard: null
 // CHECK-NEXT:                           body:
 // CHECK-NEXT:                             IfStmt #14 @3:19..3:58
 // CHECK-NEXT:                               cond:
-// CHECK-NEXT:                                 IdentExpr #5 @3:23..3:24 name="x"
+// CHECK-NEXT:                                 IdentExpr #9 @3:23..3:24 name="x"
 // CHECK-NEXT:                               then_stmt:
-// CHECK-NEXT:                                 BlockStmt #9 @3:26..3:39
+// CHECK-NEXT:                                 BlockStmt #13 @3:26..3:39
 // CHECK-NEXT:                                   stmts:
-// CHECK-NEXT:                                     StatementListItem #8 @3:28..3:37
+// CHECK-NEXT:                                     StatementListItem #12 @3:28..3:37
 // CHECK-NEXT:                                       item:
-// CHECK-NEXT:                                         ReturnStmt #7 @3:28..3:37
+// CHECK-NEXT:                                         ReturnStmt #11 @3:28..3:37
 // CHECK-NEXT:                                           value:
-// CHECK-NEXT:                                             IntLiteral #6 @3:35..3:36 base=10 value="1"
+// CHECK-NEXT:                                             IntLiteral #10 @3:35..3:36 base=10 value="1"
 // CHECK-NEXT:                                       attrs: null
 // CHECK-NEXT:                               else_stmt:
-// CHECK-NEXT:                                 BlockStmt #13 @3:45..3:58
+// CHECK-NEXT:                                 BlockStmt #8 @3:45..3:58
 // CHECK-NEXT:                                   stmts:
-// CHECK-NEXT:                                     StatementListItem #12 @3:47..3:56
+// CHECK-NEXT:                                     StatementListItem #7 @3:47..3:56
 // CHECK-NEXT:                                       item:
-// CHECK-NEXT:                                         ReturnStmt #11 @3:47..3:56
+// CHECK-NEXT:                                         ReturnStmt #6 @3:47..3:56
 // CHECK-NEXT:                                           value:
-// CHECK-NEXT:                                             IntLiteral #10 @3:54..3:55 base=10 value="2"
+// CHECK-NEXT:                                             IntLiteral #5 @3:54..3:55 base=10 value="2"
 // CHECK-NEXT:                                       attrs: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

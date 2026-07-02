@@ -44,7 +44,7 @@
 // CHECK-NEXT:                               ty: null
 // CHECK-NEXT:                     PatternProperty #15 @3:45..3:49 name="e" short_form=false
 // CHECK-NEXT:                       pat:
-// CHECK-NEXT:                         IdentifierPattern #14 @3:48..3:49 name="_"
+// CHECK-NEXT:                         WildcardPattern #14 @3:48..3:49
 // CHECK-NEXT:                           ty: null
 // CHECK-NEXT:                   rest: null
 // CHECK-NEXT:               guard: null

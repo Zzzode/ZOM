@@ -12,7 +12,7 @@
 // CHECK-NEXT:           arms:
 // CHECK-NEXT:             MatchArmStmt #6 @2:3..2:26
 // CHECK-NEXT:               pattern:
-// CHECK-NEXT:                 IdentifierPattern #1 @2:8..2:9 name="_"
+// CHECK-NEXT:                 WildcardPattern #1 @2:8..2:9
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:               guard: null
 // CHECK-NEXT:               body:
@@ -26,14 +26,14 @@
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #15 @3:3..3:47
 // CHECK-NEXT:               pattern:
-// CHECK-NEXT:                 IdentifierPattern #7 @3:8..3:13 name="value"
+// CHECK-NEXT:                 IdentifierPattern #10 @3:8..3:13 name="value"
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:               guard:
-// CHECK-NEXT:                 BinaryExpr #10 @3:17..3:26 op=Gt
+// CHECK-NEXT:                 BinaryExpr #9 @3:17..3:26 op=Gt
 // CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #8 @3:17..3:22 name="value"
+// CHECK-NEXT:                     IdentExpr #7 @3:17..3:22 name="value"
 // CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IntLiteral #9 @3:25..3:26 base=10 value="0"
+// CHECK-NEXT:                     IntLiteral #8 @3:25..3:26 base=10 value="0"
 // CHECK-NEXT:               body:
 // CHECK-NEXT:                 BlockStmt #14 @3:30..3:47
 // CHECK-NEXT:                   stmts:
@@ -45,18 +45,18 @@
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #26 @4:3..4:40
 // CHECK-NEXT:               pattern:
-// CHECK-NEXT:                 TuplePattern #18 @4:8..4:14
+// CHECK-NEXT:                 TuplePattern #21 @4:8..4:14
 // CHECK-NEXT:                   pats:
-// CHECK-NEXT:                     IdentifierPattern #16 @4:9..4:10 name="a"
+// CHECK-NEXT:                     IdentifierPattern #19 @4:9..4:10 name="a"
 // CHECK-NEXT:                       ty: null
-// CHECK-NEXT:                     IdentifierPattern #17 @4:12..4:13 name="b"
+// CHECK-NEXT:                     IdentifierPattern #20 @4:12..4:13 name="b"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:               guard:
-// CHECK-NEXT:                 BinaryExpr #21 @4:18..4:23 op=Gt
+// CHECK-NEXT:                 BinaryExpr #18 @4:18..4:23 op=Gt
 // CHECK-NEXT:                   lhs:
-// CHECK-NEXT:                     IdentExpr #19 @4:18..4:19 name="a"
+// CHECK-NEXT:                     IdentExpr #16 @4:18..4:19 name="a"
 // CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     IntLiteral #20 @4:22..4:23 base=10 value="0"
+// CHECK-NEXT:                     IntLiteral #17 @4:22..4:23 base=10 value="0"
 // CHECK-NEXT:               body:
 // CHECK-NEXT:                 BlockStmt #25 @4:27..4:40
 // CHECK-NEXT:                   stmts:
