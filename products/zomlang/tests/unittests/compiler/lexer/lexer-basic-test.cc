@@ -14,6 +14,7 @@
 
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/lexer/lexer.h"
+#include "zomlang/compiler/lexer/unicode-data.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/lexer/utils.h"
 
@@ -172,37 +173,6 @@ ZC_TEST("LexerBasicTest.HashAndShebang") {
   }
 }
 
-ZC_TEST("LexerBasicTest.OffsetSnapshotRestore") {
-  auto& sourceManager = getSourceManager();
-  auto langOpts = basic::LangOptions();
-  auto bufferId = sourceManager.addMemBufferCopy("alpha beta"_zc.asBytes(), "snapshot.zom");
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
-  basic::StringPool stringPool;
-  Lexer lexer(sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
-
-  Token first;
-  lexer.lex(first);
-  ZC_EXPECT(first.is(ast::SyntaxKind::Identifier));
-  ZC_EXPECT(first.getValue() == "alpha"_zc);
-
-  LexerState afterFirst = lexer.getCurrentState();
-  ZC_EXPECT(afterFirst.curOffset == 5);
-  ZC_EXPECT(afterFirst.tokenStartOffset == 0);
-
-  Token second;
-  lexer.lex(second);
-  ZC_EXPECT(second.is(ast::SyntaxKind::Identifier));
-  ZC_EXPECT(second.getValue() == "beta"_zc);
-
-  lexer.restoreState(afterFirst);
-
-  Token replayed;
-  lexer.lex(replayed);
-  ZC_EXPECT(replayed.is(ast::SyntaxKind::Identifier));
-  ZC_EXPECT(replayed.getValue() == "beta"_zc);
-  ZC_EXPECT(lexer.getCurrentState().curOffset == 10);
-}
-
 ZC_TEST("LexerBasicTest.InvalidUtf8RecoversLocally") {
   char invalidBytes[] = {'\xFF', ' ', 'a', 0};
   auto tokens = tokenize(zc::StringPtr(invalidBytes, 3));
@@ -222,6 +192,18 @@ ZC_TEST("LexerBasicTest.UnicodeIdentifiersDefaultCase") {
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
     ZC_EXPECT(tokens[0].getValue() == "éclair");
   }
+}
+
+ZC_TEST("LexerBasicTest.UnicodeIdentifierDataProvenance") {
+  ZC_EXPECT(zc::StringPtr(kUnicodeIdentifierDataVersion) == "15.1.0"_zc);
+  ZC_EXPECT(zc::StringPtr(kUnicodeIdentifierDataSource)
+                .startsWith("https://www.unicode.org/Public/15.1.0/ucd/"_zc));
+  ZC_EXPECT(ID_START_RANGES.size() == kUnicodeIdentifierStartRangeCount);
+  ZC_EXPECT(ID_PART_RANGES.size() == kUnicodeIdentifierPartRangeCount);
+
+  ZC_EXPECT(isIdStart(0x03C0));  // Greek small letter pi.
+  ZC_EXPECT(!isIdStart(0x0300));
+  ZC_EXPECT(isIdPart(0x0300));  // Combining grave accent.
 }
 
 ZC_TEST("LexerBasicTest.NumericLikeUnderscoreIdentifierReportsError") {
@@ -295,7 +277,20 @@ ZC_TEST("LexerBasicTest.TokenTextFastPaths") {
     ZC_EXPECT(tokens[7].is(ast::SyntaxKind::GeneratorKeyword));
   }
 
+  {
+    auto tokens = tokenize("_ optional"_zc);
+    ZC_EXPECT(tokens.size() == 3);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Underscore));
+    ZC_EXPECT(tokens[0].getValue() == "_"_zc);
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[1].getValue() == "optional"_zc);
+  }
+
   { ZC_EXPECT(Token::getStaticTextForTokenKind(ast::SyntaxKind::Identifier) == zc::none); }
+  {
+    ZC_EXPECT(ZC_ASSERT_NONNULL(Token::getStaticTextForTokenKind(ast::SyntaxKind::Underscore)) ==
+              "_"_zc);
+  }
 }
 
 }  // namespace lexer

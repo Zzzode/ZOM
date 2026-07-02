@@ -20,8 +20,8 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/lexer/lexer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
@@ -181,13 +181,11 @@ int main(int argc, char* argv[]) {
   printf("Source: %zu lines, %zu chars\n\n", lines, strlen(kSampleProgram));
 
   auto lexResult = runLexerBenchmark(sourceMgr, diagEngine, stringPool, bufferId, opts);
-  printf("[Lexer]  %.2f ms  (%zu tokens, %.0f tokens/ms)\n",
-         lexResult.ms, lexResult.tokens,
+  printf("[Lexer]  %.2f ms  (%zu tokens, %.0f tokens/ms)\n", lexResult.ms, lexResult.tokens,
          lexResult.ms > 0 ? lexResult.tokens / lexResult.ms : 0);
 
   auto parseResult = runParserBenchmark(sourceMgr, diagEngine, stringPool, bufferId, opts);
-  printf("[Parser] %.2f ms  (%.0f%% success rate)\n",
-         parseResult.ms,
+  printf("[Parser] %.2f ms  (%.0f%% success rate)\n", parseResult.ms,
          parseResult.lines > 0 ? parseResult.lines * 2.0 : 0);
 
   printf("\nDone.\n");

@@ -20,50 +20,153 @@ namespace zomlang {
 namespace compiler {
 namespace parser {
 
+Parser::Impl::Impl(const source::SourceManager& sourceMgr,
+                   diagnostics::DiagnosticEngine& diagnosticEngine,
+                   const basic::LangOptions& langOpts, basic::StringPool& stringPool,
+                   const source::BufferId& bufferId)
+    : sourceMgr(sourceMgr),
+      diagnosticEngine(diagnosticEngine),
+      bufferId(bufferId),
+      context(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId) {}
+
+const lexer::Token& Parser::Impl::tokenAt(size_t index) const { return context.tokenAt(index); }
+
+ast::SyntaxKind Parser::Impl::kindAt(size_t index) const { return context.kindAt(index); }
+
+bool Parser::Impl::isAtEnd(size_t index) const {
+  return kindAt(index) == ast::SyntaxKind::EndOfFile;
+}
+
+TokenCursor Parser::Impl::tokenCursorAt(size_t index) const { return context.cursorAt(index); }
+
+source::SourceRange Parser::Impl::rangeFor(size_t start, size_t end) const {
+  return context.rangeFor(start, end);
+}
+
+ast::IdentId Parser::Impl::internIdent(AstFactory& builder, size_t index) const {
+  const lexer::Token& token = tokenAt(index);
+  if (token.is(ast::SyntaxKind::EndOfFile)) { return ast::IdentId(); }
+  zc::StringPtr text = token.getValue();
+  if (text.size() == 0) { text = tokenLabel(token); }
+  return builder.internIdent(text);
+}
+
+ast::StringId Parser::Impl::internString(AstFactory& builder, size_t index) const {
+  const lexer::Token& token = tokenAt(index);
+  if (token.is(ast::SyntaxKind::EndOfFile)) { return ast::StringId(); }
+  zc::StringPtr text = token.getValue();
+  if (text.size() == 0) { text = tokenLabel(token); }
+  return builder.internString(text);
+}
+
+bool Parser::Impl::tokenTextEquals(size_t index, zc::StringPtr expected) const {
+  const lexer::Token& token = tokenAt(index);
+  if (token.is(ast::SyntaxKind::EndOfFile)) { return false; }
+  zc::StringPtr text = token.getValue();
+  if (text.size() == 0) { text = tokenLabel(token); }
+  return text == expected;
+}
+
+bool Parser::Impl::isSoftKeyword(size_t index, zc::StringPtr expected) const {
+  return kindAt(index) == ast::SyntaxKind::Identifier && tokenTextEquals(index, expected);
+}
+
+void Parser::Impl::addNodeIfPresent(zc::Vector<ast::NodeId>& nodes, ast::NodeId node) const {
+  if (node) { nodes.add(node); }
+}
+
+ast::IdentList Parser::Impl::makeIdentList(AstFactory& builder, size_t start, size_t end) const {
+  zc::Vector<ast::IdentId> segments;
+  for (size_t index = start; index < end; ++index) {
+    if (isAttributePathSegment(kindAt(index)) || kindAt(index) == ast::SyntaxKind::ThisKeyword) {
+      segments.add(internIdent(builder, index));
+    }
+  }
+  return builder.makeIdentList(segments.asPtr());
+}
+
+ast::NodeId Parser::Impl::makeStatementListItem(AstFactory& builder, ast::NodeId item,
+                                                source::SourceRange range,
+                                                ast::NodeId attrs) const {
+  return builder.makeStatementListItem(zc::mv(range), item, attrs);
+}
+
+void Parser::Impl::emitUnexpected(const lexer::Token& where) const {
+  diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(where.getLocation());
+}
+
+source::SourceLoc Parser::Impl::diagnosticLoc(size_t index) const {
+  return context.diagnosticLoc(index);
+}
+
+ast::Tree Parser::Impl::buildTree() {
+  AstFactory builder;
+  ast::NodeId moduleNode;
+  zc::Vector<ast::NodeId> statements;
+  bool firstSourceElement = true;
+
+  TokenCursor cursor = tokenCursorAt(0);
+  while (!cursor.isAtEnd()) {
+    const size_t index = cursor.position();
+    const SourceElementParseResult elementResult =
+        parseSourceElement(builder, cursor, static_cast<size_t>(-1));
+    const size_t end = elementResult.boundary.end;
+    const size_t elementStart = elementResult.boundary.head;
+    const ast::SyntaxKind first = kindAt(elementStart);
+    if (outerAttributePrefixContainsZomCfg(index, end) &&
+        !isTopLevelCfgAttributeTarget(elementResult.boundary.kind)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+          tokenAt(elementStart).getLocation(), "cfg-gated declaration or block"_zc);
+    }
+
+    if (first == ast::SyntaxKind::ModuleKeyword && firstSourceElement && !moduleNode) {
+      moduleNode = elementResult.node;
+    } else {
+      if (first == ast::SyntaxKind::ModuleKeyword) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::ModuleDeclarationMustBeFirst>(
+            tokenAt(elementStart).getLocation());
+      }
+      if (elementResult.node) {
+        statements.add(makeStatementListItem(builder, elementResult.node, rangeFor(index, end),
+                                             elementResult.attrs));
+      }
+    }
+
+    firstSourceElement = false;
+    if (cursor.position() <= index) { cursor.moveTo(index + 1); }
+  }
+
+  const ast::NodeList statementList = builder.makeList(statements.asPtr());
+  const ast::NodeId root = builder.makeSourceFile(rangeFor(0, cursor.position() + 1),
+                                                  builder.internString(context.fileIdentifier()),
+                                                  moduleNode, statementList);
+  builder.setRoot(root);
+  return builder.finish();
+}
+
 Parser::Parser(const source::SourceManager& sourceMgr,
                diagnostics::DiagnosticEngine& diagnosticEngine, const basic::LangOptions& langOpts,
-               basic::StringPool& stringPool, const source::BufferId& bufferId, ParseMode mode)
-    : impl(zc::heap<Impl>(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId, mode)) {}
+               basic::StringPool& stringPool, const source::BufferId& bufferId)
+    : impl(zc::heap<Impl>(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId)) {}
 
 Parser::~Parser() noexcept(false) = default;
 
 zc::Maybe<ast::Tree> Parser::parse() {
   trace::FunctionTracer functionTracer(trace::TraceCategory::kParser, __FUNCTION__);
   const size_t initialErrorCount = impl->context.errorCount();
-  impl->lexAll();
-  impl->diagnoseTokenPatterns();
   ast::Tree tree = impl->buildTree();
-  const bool hadErrors = impl->context.errorCount() != initialErrorCount;
+  impl->diagnoseTokenPatterns();
   ZC_IF_SOME(schemaFailure, ast::verifySchemaFailure(tree)) {
     impl->diagnosticEngine.diagnose<diagnostics::DiagID::ParserInvariantViolation>(
-        impl->token.getLocation(), zc::mv(schemaFailure));
+        impl->diagnosticLoc(0), zc::mv(schemaFailure));
   }
-  const bool hasErrors = impl->context.errorCount() != initialErrorCount;
-  if (hasErrors && impl->parseMode == ParseMode::Strict) {
-    trace::traceEvent(trace::TraceCategory::kParser, "Parse failed (strict mode)");
+  if (impl->context.errorCount() != initialErrorCount) {
+    trace::traceEvent(trace::TraceCategory::kParser, "Parse failed");
     return zc::none;
   }
-  if (hadErrors) {
-    trace::traceEvent(trace::TraceCategory::kParser, "Parse completed with errors (loose mode)");
-  } else {
-    trace::traceEvent(trace::TraceCategory::kParser, "Parse completed successfully");
-  }
+  trace::traceEvent(trace::TraceCategory::kParser, "Parse completed successfully");
   return zc::mv(tree);
 }
-
-lexer::Token Parser::lookAhead(unsigned n) {
-  lexer::LexerState state = impl->lexer.getCurrentState();
-  lexer::Token saved = impl->token;
-  lexer::Token result;
-  for (unsigned i = 0; i < n; ++i) { impl->lexer.lex(result); }
-  impl->lexer.restoreState(state);
-  impl->token = zc::mv(saved);
-  return result;
-}
-
-bool Parser::canLookAhead(unsigned n) { return !lookAhead(n).is(ast::SyntaxKind::EndOfFile); }
-
-bool Parser::isLookAhead(unsigned n, ast::SyntaxKind kind) { return lookAhead(n).is(kind); }
 
 }  // namespace parser
 }  // namespace compiler

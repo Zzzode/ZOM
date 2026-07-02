@@ -192,8 +192,10 @@ ClassDeclaration ::= ClassExtensibility? ModifierList 'class' BindingIdentifier
 StructDeclaration ::= ModifierList 'struct' BindingIdentifier TypeParameters?
                       HeritageClauses? '{' ClassElement* '}'
 HeritageClauses ::= HeritageClause+
-HeritageClause ::= 'extends' ExpressionWithTypeArguments
+HeritageClause ::= ExtendsClause | ImplementsClause
+ExtendsClause ::= 'extends' ExpressionWithTypeArguments
                   (',' ExpressionWithTypeArguments)*
+ImplementsClause ::= 'implements' InterfaceTypeList
 
 InterfaceDeclaration ::= ClassExtensibility? ModifierList 'interface' BindingIdentifier
                          TypeParameters? InterfaceHeritage? '{' InterfaceBody '}'
@@ -296,7 +298,8 @@ GenericArgs ::= TypeArgumentList
 
 ParenthesizedType ::= '(' TypeExpression ')'
 PredefinedType ::= 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'
-                | 'f32' | 'f64' | 'str' | 'bool' | 'null' | 'unit'
+                | 'f32' | 'f64' | 'str' | 'char' | 'bool' | 'never' | 'any'
+                | 'null' | 'unit'
 TypeReference ::= TypeName TypeArguments?
 TypeName ::= QualifiedPath
 TypeQuery ::= 'typeof' TypeQueryExpression
@@ -329,10 +332,9 @@ TypeParameter  ::= Identifier ( ':' BoundItem ( '+' BoundItem )* )? ','?
 BoundItem      ::= '!'? ( TypeExpression | MarkerPath )
     (* Example: <T: std::marker::Sendable + !std::marker::Shared,
                  U: 'static + Linear>
-       Marker negation (!) is allowed — aligned with Ch.16 A-023.
-       The 'extends' keyword is retained for backward compatibility
-       (equivalent to ':'), but marker bindings MUST use ':' with
-       '+' separators and '!' for negation. *)
+       Marker negation (!) is allowed and follows Ch.16 A-023.
+       Type parameter bounds are introduced only with ':'; conjunctive bounds
+       use '+' separators, and marker negation uses '!'. *)
 
 TypeArguments ::= '<' TypeArgumentList '>'
 TypeArgumentList ::= TypeExpression (',' TypeExpression)*

@@ -17,22 +17,88 @@
 #include "zc/core/debug.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/lexer/lexer.h"
 
 namespace zomlang {
 namespace compiler {
 namespace parser {
 
-TokenCursor::TokenCursor(zc::ArrayPtr<const lexer::Token> tokens) { reset(tokens); }
+TokenStream::TokenStream() = default;
 
-void TokenCursor::reset(zc::ArrayPtr<const lexer::Token> newTokens) {
-  tokens = newTokens;
+TokenStream::TokenStream(const source::SourceManager& sourceMgr,
+                         diagnostics::DiagnosticEngine& diagnosticEngine,
+                         const basic::LangOptions& langOpts, basic::StringPool& stringPool,
+                         const source::BufferId& bufferId)
+    : lexer(zc::heap<lexer::Lexer>(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId)) {}
+
+TokenStream::~TokenStream() noexcept(false) = default;
+
+void TokenStream::reset(zc::ArrayPtr<const lexer::Token> newTokens) {
+  lexer = nullptr;
+  tokens.clear();
+  tokens.addAll(newTokens);
+  reachedEof = tokens.size() != 0 && tokens.back().is(ast::SyntaxKind::EndOfFile);
+}
+
+size_t TokenStream::bufferedSize() const { return tokens.size(); }
+
+size_t TokenStream::bufferedTokenLimit() const {
+  if (reachedEof && tokens.size() != 0) { return tokens.size() - 1; }
+  return tokens.size();
+}
+
+bool TokenStream::hasBufferedEof() const { return reachedEof; }
+
+const lexer::Token& TokenStream::tokenAt(size_t index) const {
+  ensure(index);
+  ZC_IREQUIRE(tokens.size() != 0, "token stream requires at least EOF");
+  if (index >= tokens.size()) { return tokens[eofIndex()]; }
+  return tokens[index];
+}
+
+ast::SyntaxKind TokenStream::kindAt(size_t index) const { return tokenAt(index).getKind(); }
+
+size_t TokenStream::clampIndex(size_t index) const {
+  ensure(index);
+  if (reachedEof && index >= tokens.size()) { return eofIndex(); }
+  return index;
+}
+
+void TokenStream::ensure(size_t index) const {
+  while (!reachedEof && index >= tokens.size()) { lexNext(); }
+}
+
+void TokenStream::lexNext() const {
+  ZC_IREQUIRE(lexer.get() != nullptr, "token stream cannot extend a fixed token buffer");
+  lexer::Token token;
+  lexer->lex(token);
+  reachedEof = token.is(ast::SyntaxKind::EndOfFile);
+  tokens.add(token);
+}
+
+size_t TokenStream::eofIndex() const {
+  ZC_IREQUIRE(tokens.size() != 0, "token stream requires at least EOF");
+  return tokens.size() - 1;
+}
+
+TokenCursor::TokenCursor(TokenStream& stream) { reset(stream); }
+
+TokenCursor::ScopedSplitMode::ScopedSplitMode(TokenCursor& cursor)
+    : cursor(cursor), previousSplitMode(cursor.splitMode_) {
+  cursor.enableSplitMode();
+}
+
+TokenCursor::ScopedSplitMode::~ScopedSplitMode() {
+  cursor.restoreScopedSplitMode(previousSplitMode);
+}
+
+void TokenCursor::reset(TokenStream& newStream) {
+  stream = &newStream;
   current = 0;
   splitMode_ = false;
   splitRemaining_ = 0;
   splitOriginalKind_ = ast::SyntaxKind::Unknown;
 }
-
-size_t TokenCursor::size() const { return tokens.size(); }
 
 size_t TokenCursor::position() const { return current; }
 
@@ -59,31 +125,32 @@ void TokenCursor::primeSplitState() const {
     splitOriginalKind_ = real.getKind();
     // Create a virtual > token using the original range for diagnostics.
     // The value is ">" to reflect the virtual single character.
-    splitVirtualToken_ = lexer::Token(ast::SyntaxKind::GreaterThan, real.getRange(), ">"_zc,
-                                      real.getFlags());
+    splitVirtualToken_ =
+        lexer::Token(ast::SyntaxKind::GreaterThan, real.getRange(), ">"_zc, real.getFlags());
   }
 }
 
 ast::SyntaxKind TokenCursor::peek(size_t offset) const {
-  if (offset == 0) {
-    primeSplitState();
-    if (splitRemaining_ > 0) { return ast::SyntaxKind::GreaterThan; }
+  primeSplitState();
+  if (splitRemaining_ > 0) {
+    if (offset < static_cast<size_t>(splitRemaining_)) { return ast::SyntaxKind::GreaterThan; }
+    return tokenAt(relativeIndex(offset - static_cast<size_t>(splitRemaining_) + 1)).getKind();
   }
   return token(offset).getKind();
 }
 
 const lexer::Token& TokenCursor::token(size_t offset) const {
-  if (offset == 0) {
-    primeSplitState();
-    if (splitRemaining_ > 0) { return splitVirtualToken_; }
+  primeSplitState();
+  if (splitRemaining_ > 0) {
+    if (offset < static_cast<size_t>(splitRemaining_)) { return splitVirtualToken_; }
+    return tokenAt(relativeIndex(offset - static_cast<size_t>(splitRemaining_) + 1));
   }
   return tokenAt(relativeIndex(offset));
 }
 
 const lexer::Token& TokenCursor::tokenAt(size_t index) const {
-  ZC_IREQUIRE(tokens.size() != 0, "token cursor requires a token stream with EOF");
-  if (index >= tokens.size()) { index = eofIndex(); }
-  return tokens[index];
+  ZC_IREQUIRE(stream != nullptr, "token cursor requires a token stream");
+  return stream->tokenAt(index);
 }
 
 bool TokenCursor::at(ast::SyntaxKind kind) const { return peek() == kind; }
@@ -113,9 +180,8 @@ void TokenCursor::advance() {
 }
 
 void TokenCursor::moveTo(size_t index) {
-  ZC_IREQUIRE(tokens.size() != 0, "token cursor requires a token stream with EOF");
-  ZC_IREQUIRE(index < tokens.size(), "token cursor target outside token stream");
-  current = index;
+  ZC_IREQUIRE(stream != nullptr, "token cursor requires a token stream");
+  current = stream->clampIndex(index);
   // Moving to a new position aborts any in-progress split.
   splitRemaining_ = 0;
   splitOriginalKind_ = ast::SyntaxKind::Unknown;
@@ -128,11 +194,17 @@ bool TokenCursor::expect(ast::SyntaxKind kind, diagnostics::DiagnosticEngine& di
   return false;
 }
 
-TokenCursor::Mark TokenCursor::mark() const { return current; }
+TokenCursor::Mark TokenCursor::mark() const {
+  return Mark{current, splitMode_, splitRemaining_, splitOriginalKind_, splitVirtualToken_};
+}
 
 void TokenCursor::rewind(Mark mark) {
-  moveTo(mark);
-  // Rewind aborts any in-progress split; the caller re-primes as needed.
+  ZC_IREQUIRE(stream != nullptr, "token cursor requires a token stream");
+  current = mark.current;
+  splitMode_ = mark.splitMode;
+  splitRemaining_ = mark.splitRemaining;
+  splitOriginalKind_ = mark.splitOriginalKind;
+  splitVirtualToken_ = mark.splitVirtualToken;
 }
 
 bool TokenCursor::isAtEnd() const { return peek() == ast::SyntaxKind::EndOfFile; }
@@ -145,6 +217,8 @@ void TokenCursor::enableSplitMode() {
   primeSplitState();
 }
 
+TokenCursor::ScopedSplitMode TokenCursor::scopedSplitMode() { return ScopedSplitMode(*this); }
+
 void TokenCursor::disableSplitMode() {
   splitMode_ = false;
   splitRemaining_ = 0;
@@ -153,18 +227,22 @@ void TokenCursor::disableSplitMode() {
 
 bool TokenCursor::isSplitModeActive() const { return splitMode_; }
 
-// ---- Internals ----
-
-size_t TokenCursor::eofIndex() const {
-  ZC_IREQUIRE(tokens.size() != 0, "token cursor requires a token stream with EOF");
-  return tokens.size() - 1;
+void TokenCursor::restoreScopedSplitMode(bool wasActive) {
+  splitMode_ = wasActive;
+  if (!splitMode_) {
+    splitRemaining_ = 0;
+    splitOriginalKind_ = ast::SyntaxKind::Unknown;
+  }
 }
 
+// ---- Internals ----
+
 size_t TokenCursor::relativeIndex(size_t offset) const {
-  const size_t eof = eofIndex();
-  if (current >= eof) { return eof; }
-  if (offset > eof - current) { return eof; }
-  return current + offset;
+  ZC_IREQUIRE(stream != nullptr, "token cursor requires a token stream");
+  if (offset > static_cast<size_t>(-1) - current) {
+    return stream->clampIndex(static_cast<size_t>(-1));
+  }
+  return stream->clampIndex(current + offset);
 }
 
 }  // namespace parser

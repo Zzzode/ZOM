@@ -97,7 +97,6 @@ enum class SyntaxKind {
   NewKeyword,          // new
   ObjectKeyword,       // object
   OfKeyword,           // of
-  OptionalKeyword,     // optional
   OutKeyword,          // out
   OverrideKeyword,     // override
   PackageKeyword,      // package
@@ -193,7 +192,6 @@ enum class SyntaxKind {
 
   // Shift operators
   LessThanLessThan,                   // <<
-  LessThanSlash,                      // </
   GreaterThanGreaterThan,             // >>
   GreaterThanGreaterThanGreaterThan,  // >>>
 
@@ -239,7 +237,6 @@ enum class SyntaxKind {
   // Special operators
   At,          // @
   Hash,        // #
-  Backtick,    // `
   Underscore,  // _
 
   // ================================================================================

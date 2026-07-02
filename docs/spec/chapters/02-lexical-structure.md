@@ -132,8 +132,15 @@ debugger
 ```
 i8          i16         i32         i64         u8
 u16         u32         u64         f32         f64
-bool        str         null        unit        any
+bool        str         char        null        unit
+any
 never       object      symbol      bigint      undefined
+```
+
+### Literal Keywords
+
+```
+true        false
 ```
 
 ### Modifier Keywords
@@ -150,7 +157,7 @@ immediate   intrinsic   global      unique      out
 as          is          in          of          typeof
 keyof       infer       satisfies   asserts     assert
 instanceof  new         delete      this        super
-raises                  extends
+raises      extends     implements
 ```
 
 ### Advanced Keywords
@@ -158,6 +165,12 @@ raises                  extends
 ```
 import      export      from        using       require
 with        yield
+```
+
+### Concurrency Keywords
+
+```
+spawn       suspend     actor       channel     generator
 ```
 
 Some reserved words are reserved for future language design. If a reserved word has no grammar rule
@@ -303,6 +316,9 @@ Character literals represent single Unicode characters:
 ::          Qualified path separator
 ?           Question mark (optional, conditional)
 ...         Ellipsis (spread, rest)
+#           Attribute introducer
+@           Binding-pattern operator
+_           Wildcard token
 ```
 
 ### Arithmetic Operators

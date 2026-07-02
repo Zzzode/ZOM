@@ -407,11 +407,14 @@ FUN      : 'fun';
 MUT      : 'mut';
 LET      : 'let';
 CONST    : 'const';
+CONSTRUCTOR : 'constructor';
 ALIAS    : 'alias';
 INIT     : 'init';
 DEINIT   : 'deinit';
 GET      : 'get';
 SET      : 'set';
+ACCESSOR : 'accessor';
+DECLARE  : 'declare';
 
 // -- Control Flow ------------------------------------------------------------
 IF       : 'if';
@@ -419,6 +422,7 @@ ELSE     : 'else';
 MATCH    : 'match';
 WHEN     : 'when';
 DEFAULT  : 'default';
+CASE     : 'case';
 FOR      : 'for';
 WHILE    : 'while';
 DO       : 'do';
@@ -447,6 +451,10 @@ NULL : 'null';
 UNIT : 'unit';
 NEVER: 'never';
 ANY  : 'any';
+OBJECT: 'object';
+SYMBOL: 'symbol';
+BIGINT: 'bigint';
+UNDEFINED: 'undefined';
 
 // -- Modifier ----------------------------------------------------------------
 PUBLIC    : 'public';
@@ -457,21 +465,34 @@ READONLY  : 'readonly';
 MUTATING  : 'mutating';
 OVERRIDE  : 'override';
 ABSTRACT  : 'abstract';
+GLOBAL    : 'global';
+IMMEDIATE : 'immediate';
+INTRINSIC : 'intrinsic';
+UNIQUE    : 'unique';
 
 // -- Operator / operation ----------------------------------------------------
 AS       : 'as';
 IS       : 'is';
 TYPEOF   : 'typeof';
+KEYOF    : 'keyof';
+INFER    : 'infer';
+SATISFIES: 'satisfies';
+ASSERTS  : 'asserts';
+ASSERT   : 'assert';
 NEW      : 'new';
 THIS     : 'this';
 SUPER    : 'super';
 EXTENDS  : 'extends';
+IMPLEMENTS : 'implements';
 RAISES   : 'raises';
 
 // -- Module ------------------------------------------------------------------
 MODULE : 'module';
 IMPORT : 'import';
 EXPORT : 'export';
+FROM   : 'from';
+USING  : 'using';
+REQUIRE: 'require';
 // AS is declared in the operator keyword group.
 
 // -- Concurrency -------------------------------------------------------------
@@ -509,15 +530,11 @@ WITH       : 'with';        // ZOM5008
 // ============================================================================
 // Literal-like hard keywords.
 // TRUE and FALSE are boolean literals. UNDERSCORE is the wildcard token.
-//   NOTE: 'implements' is NOT a keyword (per Ch.06 / 17-gr truth). Interface
-//   implementations use standalone 'impl Interface for Type { }' form.
-//   'implements' remains a plain IDENTIFIER so users get ordinary parser
-//   'mismatched input' diagnostics instead of cryptic tokenizer errors.
-//   MUT is declared in Declaration keywords section (Ch.06).
+// `implements` is a hard keyword for class/interface heritage. The standalone
+// `impl Interface for Type { }` form keeps `impl` as a parser soft keyword.
 TRUE       : 'true';
 FALSE      : 'false';
 UNDERSCORE : '_';
-IMPLEMENTS : 'implements';
 
 // ============================================================================
 // §3.5 + §3.8 Identifier. This rule comes after keywords.

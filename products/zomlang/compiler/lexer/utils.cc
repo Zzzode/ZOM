@@ -164,6 +164,7 @@ bool isValidIdentifier(zc::StringPtr s) {
 }
 
 ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
+  if (text == "_"_zcb) return ast::SyntaxKind::Underscore;
   if (text == "abstract"_zcb) return ast::SyntaxKind::AbstractKeyword;
   if (text == "accessor"_zcb) return ast::SyntaxKind::AccessorKeyword;
   if (text == "any"_zcb) return ast::SyntaxKind::AnyKeyword;
@@ -216,7 +217,6 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "null"_zcb) return ast::SyntaxKind::NullKeyword;
   if (text == "object"_zcb) return ast::SyntaxKind::ObjectKeyword;
   if (text == "of"_zcb) return ast::SyntaxKind::OfKeyword;
-  if (text == "optional"_zcb) return ast::SyntaxKind::OptionalKeyword;
   if (text == "out"_zcb) return ast::SyntaxKind::OutKeyword;
   if (text == "override"_zcb) return ast::SyntaxKind::OverrideKeyword;
   if (text == "package"_zcb) return ast::SyntaxKind::PackageKeyword;

@@ -2179,20 +2179,21 @@ pathSegment
     : identifier
 
     | CLASS | STRUCT | INTERFACE | ENUM | ERROR | ALIAS | FUN | MUT | LET | CONST
-    | INIT | DEINIT | GET | SET
+    | CONSTRUCTOR | INIT | DEINIT | GET | SET | ACCESSOR | DECLARE
     // -- Control Flow --
-    | IF | ELSE | MATCH | WHEN | DEFAULT | FOR | WHILE | DO | BREAK | CONTINUE
+    | IF | ELSE | MATCH | WHEN | DEFAULT | CASE | FOR | WHILE | DO | BREAK | CONTINUE
     | RETURN | DEBUGGER | IN | OUT
     // -- Type --
     | I8 | I16 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64
-    | BOOL | STR | CHAR | NULL | UNIT | NEVER | ANY
+    | BOOL | STR | CHAR | NULL | UNIT | NEVER | ANY | OBJECT | SYMBOL | BIGINT | UNDEFINED
     // -- Modifier --
     | PUBLIC | PRIVATE | PROTECTED | STATIC | READONLY
-    | MUTATING | OVERRIDE | ABSTRACT
+    | MUTATING | OVERRIDE | ABSTRACT | GLOBAL | IMMEDIATE | INTRINSIC | UNIQUE
     // -- Operator --
-    | AS | IS | TYPEOF | NEW | THIS | SUPER | EXTENDS | RAISES
+    | AS | IS | TYPEOF | KEYOF | INFER | SATISFIES | ASSERTS | ASSERT
+    | NEW | THIS | SUPER | EXTENDS | IMPLEMENTS | RAISES
     // -- Module --
-    | MODULE | IMPORT | EXPORT
+    | MODULE | IMPORT | EXPORT | FROM | USING | REQUIRE
     // -- Concurrency --
     | SUSPEND | SPAWN
     // -- Reserved (ZOM500x) --
@@ -2200,7 +2201,7 @@ pathSegment
     | ACTOR | CHANNEL | YIELD | GENERATOR | NAMESPACE | PACKAGE | TYPE
     | DELETE | INSTANCEOF | OF | WITH
     // -- Literal-like --
-    | TRUE | FALSE | UNDERSCORE | IMPLEMENTS
+    | TRUE | FALSE | UNDERSCORE
     ;
 
 
@@ -3100,15 +3101,18 @@ macroToken
 
 
     | ( CLASS | STRUCT | INTERFACE | ENUM | ERROR | FUN | MUT | LET | CONST
-      | ALIAS | INIT | DEINIT | GET | SET | IF | ELSE | MATCH | WHEN | DEFAULT
+      | CONSTRUCTOR | ALIAS | INIT | DEINIT | GET | SET | ACCESSOR | DECLARE
+      | IF | ELSE | MATCH | WHEN | DEFAULT | CASE
       | FOR | WHILE | DO | BREAK | CONTINUE | RETURN | DEBUGGER | IN | OUT
-      | BOOL | STR | CHAR | NULL | UNIT | NEVER | ANY
+      | BOOL | STR | CHAR | NULL | UNIT | NEVER | ANY | OBJECT | SYMBOL | BIGINT | UNDEFINED
       | PUBLIC | PRIVATE | PROTECTED | STATIC | READONLY | MUTATING | OVERRIDE
-      | ABSTRACT | AS | IS | TYPEOF | NEW | THIS | SUPER | EXTENDS | RAISES
-      | MODULE | IMPORT | EXPORT | SUSPEND | SPAWN
+      | ABSTRACT | GLOBAL | IMMEDIATE | INTRINSIC | UNIQUE
+      | AS | IS | TYPEOF | KEYOF | INFER | SATISFIES | ASSERTS | ASSERT
+      | NEW | THIS | SUPER | EXTENDS | IMPLEMENTS | RAISES
+      | MODULE | IMPORT | EXPORT | FROM | USING | REQUIRE | SUSPEND | SPAWN
       | THROW | TRY | CATCH | FINALLY | ASYNC | AWAIT | VAR | ACTOR | CHANNEL
       | YIELD | GENERATOR | NAMESPACE | PACKAGE | TYPE | DELETE | INSTANCEOF
-      | OF | WITH | TRUE | FALSE | UNDERSCORE | IMPLEMENTS
+      | OF | WITH | TRUE | FALSE | UNDERSCORE
       | I8 | I16 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64 )              # macroKeywordTok
     | LPAREN macroTokenTree RPAREN                                           # macroParenGroup
     | LBRACK macroTokenTree RBRACK                                           # macroBrackGroup

@@ -54,8 +54,7 @@ ZC_TEST("ParserContextTest.TokenAccessAndFileIdentifier") {
   auto tokens = makeTokenStream(sourceManager->getLocForBufferStart(bufferId));
   context.resetTokens(tokens.asPtr());
 
-  ZC_EXPECT(context.tokenCount() == 6);
-  ZC_EXPECT(context.tokenCountWithoutEof() == 5);
+  ZC_EXPECT(context.bufferedTokenLimit() == 5);
   ZC_EXPECT(context.kindAt(1) == ast::SyntaxKind::Identifier);
   ZC_EXPECT(context.tokenAt(1).getValue() == "value");
   ZC_EXPECT(context.fileIdentifier() == "test.zom");

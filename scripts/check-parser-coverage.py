@@ -9,9 +9,49 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 GRAMMAR = ROOT / "docs" / "spec" / "chapters" / "17-grammar-reference.md"
-PARSER = ROOT / "products" / "zomlang" / "compiler" / "parser" / "parser.cc"
+PARSER_DIR = ROOT / "products" / "zomlang" / "compiler" / "parser"
+PARSER_IMPL = PARSER_DIR / "parser-impl.h"
+TOKEN_CURSOR = PARSER_DIR / "token-cursor.h"
+PARSER_SOURCES = sorted(PARSER_DIR.glob("*.cc"))
+DOMAIN_PARSER_SOURCES = [
+    PARSER_DIR / "declaration-parser.cc",
+    PARSER_DIR / "expression-parser.cc",
+    PARSER_DIR / "parser-recovery.cc",
+    PARSER_DIR / "pattern-parser.cc",
+    PARSER_DIR / "statement-parser.cc",
+    PARSER_DIR / "type-parser.cc",
+]
+CURSOR_BOUNDARY_SOURCES = set(PARSER_SOURCES)
 COVERAGE = ROOT / "products" / "zomlang" / "compiler" / "parser" / "parser-coverage.yml"
 SCHEMA = ROOT / "products" / "zomlang" / "compiler" / "ast" / "schema.yml"
+NODE_FACTORY = ROOT / "products" / "zomlang" / "compiler" / "ast" / "generated" / "node-factory.h"
+DIAGNOSTIC_ENGINE = ROOT / "products" / "zomlang" / "compiler" / "diagnostics" / "diagnostic-engine.cc"
+DESIGN_DIR = ROOT / "docs" / "design"
+DESIGN_DOC_MARKERS = {
+    DESIGN_DIR / "architecture.md": [
+        "Lexer::lex(Token&)",
+        "Lazy TokenStream",
+        "TokenCursor",
+        "zc::none",
+    ],
+    DESIGN_DIR / "compiler-contracts.md": [
+        "Lexer::lex(Token&)",
+        "lazy retained `TokenStream`",
+        "TokenCursor",
+        "Parser::parse()` returns `zc::none`",
+    ],
+}
+DESIGN_DOC_BANNED_TERMS = [
+    "Loose Parsing Mode",
+    "ParseMode",
+    "fail-open",
+    "best-effort AST",
+    "Own<TokenStream>",
+    "Token[] with SourceLoc",
+    "Immutable post-lex",
+    "pre-lexing the whole file",
+    "lexAll",
+]
 
 ALLOWED_STATUS = {"direct", "inlined", "lexical", "rejected"}
 
@@ -79,8 +119,122 @@ def load_coverage() -> dict[str, object]:
     return productions
 
 
+def parser_source_text() -> str:
+    return "\n".join(path.read_text(encoding="utf-8") for path in PARSER_SOURCES)
+
+
+def validate_parser_architecture() -> None:
+    impl_text = PARSER_IMPL.read_text(encoding="utf-8")
+    cursor_text = TOKEN_CURSOR.read_text(encoding="utf-8")
+    if "with all inline methods" in impl_text:
+        fail(f"{rel(PARSER_IMPL)} still describes Parser::Impl methods as inline")
+    if "class AstFactory final" not in impl_text:
+        fail(f"{rel(PARSER_IMPL)} does not define the parser AstFactory boundary")
+    if re.search(r"\n\s+ast::NodeId\s+makeNode\s*\(", impl_text):
+        fail(f"{rel(PARSER_IMPL)} exposes a generic AstFactory::makeNode escape hatch")
+    if re.search(r"\n\s+void\s+write(Node|String|Ident|BigInt|Float|NodeList|IdentList)\s*\(", impl_text):
+        fail(f"{rel(PARSER_IMPL)} exposes raw AST payload writer helpers")
+    if "findTopLevel" in impl_text:
+        fail(f"{rel(PARSER_IMPL)} exposes index-based top-level range scanning helpers")
+    if "tokenCountWithoutEof" in cursor_text or re.search(r"\btokenCount\s*\(", cursor_text):
+        fail(f"{rel(TOKEN_CURSOR)} exposes parser-facing force-EOF token counting")
+    if re.search(r"\bsize\s*\(\s*\)\s+const", cursor_text):
+        fail(f"{rel(TOKEN_CURSOR)} exposes whole-stream cursor sizing")
+    for required in [
+        "enum class RecoveryContext",
+        "struct RecoveryFrame",
+        "class RecoveryFrameScope",
+        "mutable zc::Vector<RecoveryFrame> recoveryFrames",
+    ]:
+        if required not in impl_text:
+            fail(f"{rel(PARSER_IMPL)} is missing parser recovery frame contract: {required}")
+    if impl_text.count("builder.makeNode(") != 1:
+        fail(f"{rel(PARSER_IMPL)} must route AST node creation only through makeTypedNode()")
+    if not NODE_FACTORY.exists():
+        fail(f"{rel(NODE_FACTORY)} does not exist")
+    else:
+        factory_text = NODE_FACTORY.read_text(encoding="utf-8")
+        if "class TypedNodeFactory" not in factory_text:
+            fail(f"{rel(NODE_FACTORY)} does not define the schema-generated typed factory")
+        for kind in sorted(ast_kinds()):
+            if f"make{kind}(" not in factory_text:
+                fail(f"{rel(NODE_FACTORY)} does not define make{kind}()")
+
+    for path in DOMAIN_PARSER_SOURCES:
+        text = path.read_text(encoding="utf-8")
+        if "Intentionally empty" in text:
+            fail(f"{rel(path)} is still an empty parser domain shell")
+        if "Parser::Impl::" not in text:
+            fail(f"{rel(path)} does not define parser implementation methods")
+
+    for path in PARSER_SOURCES:
+        text = path.read_text(encoding="utf-8")
+        if "ast::TreeBuilder" in text:
+            fail(f"{rel(path)} directly depends on ast::TreeBuilder instead of AstFactory")
+        if "ast::NodePayload" in text or "payload.words" in text:
+            fail(f"{rel(path)} writes raw AST payload layout instead of typed factory methods")
+        if re.search(r"(?<!\.)\bwrite(Node|String|Ident|BigInt|Float|NodeList|IdentList)\s*\(", text):
+            fail(f"{rel(path)} calls a raw AST payload writer outside AstFactory")
+        if "builder.makeNode(" in text:
+            fail(f"{rel(path)} constructs AST nodes through the generic TreeBuilder API")
+        if "lexAll" in text:
+            fail(f"{rel(path)} reintroduces eager parser-side tokenization")
+        if "tokenCountWithoutEof" in text or re.search(r"\btokenCount\s*\(", text):
+            fail(f"{rel(path)} reintroduces parser-side force-EOF token counting")
+        if "TokenCursor::size" in text:
+            fail(f"{rel(path)} reintroduces whole-stream cursor sizing")
+        if (
+            "LexerState" in text
+            or "restoreState" in text
+            or "getCurrentState" in text
+            or "reScanGreaterToken" in text
+            or "reScanTemplateToken" in text
+        ):
+            fail(f"{rel(path)} performs parser-side lexer snapshot or rescan lookahead")
+        if path in CURSOR_BOUNDARY_SOURCES and "findTopLevel" in text:
+            fail(f"{rel(path)} reintroduces top-level range scanning instead of cursor boundaries")
+
+    recovery_text = (PARSER_DIR / "parser-recovery.cc").read_text(encoding="utf-8")
+    for required in ["syncSet", "consumed", "suppressedUntil", "pushRecoveryFrame", "popRecoveryFrame"]:
+        if required not in recovery_text:
+            fail(f"{rel(PARSER_DIR / 'parser-recovery.cc')} is missing recovery frame state: {required}")
+    for path in [
+        PARSER_DIR / "declaration-parser.cc",
+        PARSER_DIR / "expression-parser.cc",
+        PARSER_DIR / "pattern-parser.cc",
+        PARSER_DIR / "statement-parser.cc",
+        PARSER_DIR / "type-parser.cc",
+    ]:
+        if "RecoveryFrameScope" not in path.read_text(encoding="utf-8"):
+            fail(f"{rel(path)} does not install an explicit parser recovery frame")
+
+    diagnostic_text = DIAGNOSTIC_ENGINE.read_text(encoding="utf-8")
+    for required in ["errorBudget = 100", "hasEmitted", "EmittedDiagnosticKey"]:
+        if required not in diagnostic_text:
+            fail(f"{rel(DIAGNOSTIC_ENGINE)} is missing bounded diagnostic recovery gate: {required}")
+
+
+def validate_parser_design_docs() -> None:
+    loose_parsing_doc = DESIGN_DIR / "loose-parsing-mode.md"
+    if loose_parsing_doc.exists():
+        fail(f"{rel(loose_parsing_doc)} reintroduces a public loose parsing design")
+
+    for path, markers in DESIGN_DOC_MARKERS.items():
+        if not path.exists():
+            fail(f"{rel(path)} does not exist")
+            continue
+
+        text = path.read_text(encoding="utf-8")
+        for marker in markers:
+            if marker not in text:
+                fail(f"{rel(path)} is missing parser stream contract marker: {marker}")
+        for term in DESIGN_DOC_BANNED_TERMS:
+            if term in text:
+                fail(f"{rel(path)} contains obsolete parser design term: {term}")
+
+
 def parser_functions() -> set[str]:
-    text = PARSER.read_text(encoding="utf-8")
+    text = parser_source_text()
     functions = set(re.findall(r"\b(parse[A-Za-z0-9_]*)\s*\(", text))
     if "Parser::parse(" in text:
         functions.add("parse")
@@ -101,8 +255,10 @@ def ast_kinds() -> set[str]:
 
 
 def parser_constructed_kinds() -> set[str]:
-    text = PARSER.read_text(encoding="utf-8")
-    return set(re.findall(r"SyntaxKind::([A-Za-z][A-Za-z0-9_]*)", text))
+    text = parser_source_text()
+    constructed = set(re.findall(r"SyntaxKind::([A-Za-z][A-Za-z0-9_]*)", text))
+    constructed.update(re.findall(r"\bmake([A-Z][A-Za-z0-9_]*)\s*\(", text))
+    return constructed
 
 
 def as_string_list(value: object, field: str, production: str) -> list[str]:
@@ -144,7 +300,7 @@ def validate_entry(
         if not isinstance(parser, str) or not parser:
             fail(f"{name}: {status} coverage entry must name a parser function")
         elif parser not in functions:
-            fail(f"{name}: parser function '{parser}' is not present in {rel(PARSER)}")
+            fail(f"{name}: parser function '{parser}' is not present in parser sources")
 
     parent = entry.get("parent")
     if status == "inlined":
@@ -165,7 +321,7 @@ def validate_entry(
         if kind not in schema_kinds:
             fail(f"{name}: mapped AST kind does not exist in {rel(SCHEMA)}: {kind}")
         elif kind not in constructed_kinds:
-            fail(f"{name}: mapped AST kind is not constructed by parser.cc: {kind}")
+            fail(f"{name}: mapped AST kind is not constructed by parser sources: {kind}")
 
 
 errors: list[str] = []
@@ -176,6 +332,8 @@ def fail(message: str) -> None:
 
 
 def main() -> int:
+    validate_parser_architecture()
+    validate_parser_design_docs()
     grammar = extract_productions()
     coverage = load_coverage()
     functions = parser_functions()

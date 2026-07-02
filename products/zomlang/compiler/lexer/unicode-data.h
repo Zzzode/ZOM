@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "zc/core/common.h"
@@ -27,6 +28,16 @@ struct UnicodeRange {
   uint32_t start;
   uint32_t end;
 };
+
+/// \brief Unicode Character Database release used for identifier tables.
+inline constexpr char kUnicodeIdentifierDataVersion[] = "15.1.0";
+
+/// \brief UCD property file used by scripts/codegen/gen_unicode_data.py.
+inline constexpr char kUnicodeIdentifierDataSource[] =
+    "https://www.unicode.org/Public/15.1.0/ucd/DerivedCoreProperties.txt";
+
+inline constexpr size_t kUnicodeIdentifierStartRangeCount = 660;
+inline constexpr size_t kUnicodeIdentifierPartRangeCount = 769;
 
 /// \brief Corresponds to the ID_Start and Other_ID_Start property
 extern const zc::ArrayPtr<const UnicodeRange> ID_START_RANGES;

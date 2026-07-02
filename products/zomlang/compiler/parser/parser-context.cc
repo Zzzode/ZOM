@@ -26,36 +26,41 @@ ParserContext::ParserContext(const source::SourceManager& sourceMgr,
                              const source::BufferId& bufferId)
     : sourceMgr(sourceMgr), diagnosticEngine(diagnosticEngine), bufferId(bufferId) {}
 
-void ParserContext::resetTokens(zc::ArrayPtr<const lexer::Token> tokens) { cursor.reset(tokens); }
+ParserContext::ParserContext(const source::SourceManager& sourceMgr,
+                             diagnostics::DiagnosticEngine& diagnosticEngine,
+                             const basic::LangOptions& langOpts, basic::StringPool& stringPool,
+                             const source::BufferId& bufferId)
+    : sourceMgr(sourceMgr),
+      diagnosticEngine(diagnosticEngine),
+      bufferId(bufferId),
+      stream(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId) {}
 
-size_t ParserContext::tokenCount() const { return cursor.size(); }
+void ParserContext::resetTokens(zc::ArrayPtr<const lexer::Token> tokens) { stream.reset(tokens); }
 
-size_t ParserContext::tokenCountWithoutEof() const {
-  if (cursor.size() == 0) { return 0; }
-  return cursor.size() - 1;
+TokenCursor ParserContext::cursorAt(size_t index) const {
+  TokenCursor cursor(stream);
+  cursor.moveTo(index);
+  return cursor;
 }
 
-const lexer::Token& ParserContext::tokenAt(size_t index) const {
-  ZC_IREQUIRE(index < cursor.size(), "parser token index outside token stream");
-  return cursor.tokenAt(index);
-}
+size_t ParserContext::bufferedTokenLimit() const { return stream.bufferedTokenLimit(); }
+
+const lexer::Token& ParserContext::tokenAt(size_t index) const { return stream.tokenAt(index); }
 
 ast::SyntaxKind ParserContext::kindAt(size_t index) const { return tokenAt(index).getKind(); }
 
 source::SourceLoc ParserContext::diagnosticLoc(size_t index) const {
-  if (index < cursor.size()) { return tokenAt(index).getLocation(); }
-  ZC_IREQUIRE(cursor.size() != 0, "parser diagnostics require a token stream");
-  return cursor.tokenAt(cursor.size() - 1).getLocation();
+  return tokenAt(index).getLocation();
 }
 
 source::SourceRange ParserContext::rangeFor(size_t start, size_t end) const {
-  if (cursor.size() == 0) {
+  if (stream.bufferedSize() == 0 && start == 0 && end == 0) {
     const source::SourceLoc loc = sourceMgr.getLocForBufferStart(bufferId);
     return source::SourceRange(loc, loc);
   }
 
-  const size_t safeStart = start < cursor.size() ? start : cursor.size() - 1;
-  const size_t safeEnd = end > start && end <= cursor.size() ? end - 1 : safeStart;
+  const size_t safeStart = stream.clampIndex(start);
+  const size_t safeEnd = end > start ? stream.clampIndex(end - 1) : safeStart;
   return source::SourceRange(tokenAt(safeStart).getRange().getStart(),
                              tokenAt(safeEnd).getRange().getEnd());
 }

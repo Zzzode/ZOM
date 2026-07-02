@@ -29,6 +29,11 @@ namespace diagnostics {
 class DiagnosticEngine;
 }
 
+namespace basic {
+struct LangOptions;
+class StringPool;
+}  // namespace basic
+
 namespace parser {
 
 /// \brief Shared parser state for source, diagnostics, and token access.
@@ -36,17 +41,20 @@ class ParserContext {
 public:
   ParserContext(const source::SourceManager& sourceMgr,
                 diagnostics::DiagnosticEngine& diagnosticEngine, const source::BufferId& bufferId);
+  ParserContext(const source::SourceManager& sourceMgr,
+                diagnostics::DiagnosticEngine& diagnosticEngine, const basic::LangOptions& langOpts,
+                basic::StringPool& stringPool, const source::BufferId& bufferId);
 
   ZC_DISALLOW_COPY_AND_MOVE(ParserContext);
 
   /// \brief Reset token access to a freshly lexed stream.
   void resetTokens(zc::ArrayPtr<const lexer::Token> tokens);
 
-  /// \brief Return the number of tokens in the current stream.
-  ZC_NODISCARD size_t tokenCount() const;
+  /// \brief Return a cursor positioned at the given absolute token index.
+  ZC_NODISCARD TokenCursor cursorAt(size_t index) const;
 
-  /// \brief Return the number of tokens excluding EOF.
-  ZC_NODISCARD size_t tokenCountWithoutEof() const;
+  /// \brief Return the currently buffered non-EOF token count without forcing EOF.
+  ZC_NODISCARD size_t bufferedTokenLimit() const;
 
   /// \brief Return the token at an absolute token index.
   ZC_NODISCARD const lexer::Token& tokenAt(size_t index) const;
@@ -79,7 +87,7 @@ private:
   const source::SourceManager& sourceMgr;
   diagnostics::DiagnosticEngine& diagnosticEngine;
   source::BufferId bufferId;
-  TokenCursor cursor;
+  mutable TokenStream stream;
 };
 
 }  // namespace parser

@@ -185,6 +185,34 @@ ZC_TEST("LexerLiteralTest.TemplateLiterals") {
     ZC_EXPECT(tokens[0].getValue() == "hello "_zc);
   }
 
+  // TemplateExpression
+  {
+    auto tokens = tokenize("`hello ${name}`"_zc);
+    ZC_EXPECT(tokens.size() == 4);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::TemplateHead));
+    ZC_EXPECT(tokens[0].getValue() == "hello "_zc);
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[1].getValue() == "name"_zc);
+    ZC_EXPECT(tokens[2].is(ast::SyntaxKind::TemplateTail));
+    ZC_EXPECT(tokens[2].getValue() == ""_zc);
+  }
+
+  // NestedTemplateExpression
+  {
+    auto tokens = tokenize("`outer ${`inner ${value}`}`"_zc);
+    ZC_EXPECT(tokens.size() == 6);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::TemplateHead));
+    ZC_EXPECT(tokens[0].getValue() == "outer "_zc);
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::TemplateHead));
+    ZC_EXPECT(tokens[1].getValue() == "inner "_zc);
+    ZC_EXPECT(tokens[2].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[2].getValue() == "value"_zc);
+    ZC_EXPECT(tokens[3].is(ast::SyntaxKind::TemplateTail));
+    ZC_EXPECT(tokens[3].getValue() == ""_zc);
+    ZC_EXPECT(tokens[4].is(ast::SyntaxKind::TemplateTail));
+    ZC_EXPECT(tokens[4].getValue() == ""_zc);
+  }
+
   // EmptyTemplateLiteral
   {
     auto tokens = tokenize("``"_zc);

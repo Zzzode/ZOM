@@ -79,6 +79,7 @@ productions:
   ExpressionPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
   ExpressionStatement: {status: direct, parser: parseExpressionStatement, ast: [ExpressionStatement]}
   ExpressionWithTypeArguments: {status: inlined, parser: parseNamedTypeDeclaration, parent: HeritageClause}
+  ExtendsClause: {status: inlined, parser: parseNamedTypeDeclaration, parent: HeritageClause}
   ForBinding: {status: inlined, parser: parseForStatement, parent: ForStatement}
   ForDeclaration: {status: inlined, parser: parseForStatement, parent: ForStatement}
   ForInStatement: {status: direct, parser: parseForInStatement, ast: [ForInStatement]}
@@ -119,6 +120,7 @@ productions:
   InterfaceName: {status: inlined, parser: parseTypeRange, parent: InterfaceBoundList}
   InterfaceType: {status: inlined, parser: parseTypeRange, parent: InterfaceTypeList}
   InterfaceTypeList: {status: inlined, parser: parseTypeRange, parent: InterfaceHeritage}
+  ImplementsClause: {status: inlined, parser: parseNamedTypeDeclaration, parent: HeritageClause}
   IntersectionType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   IsPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
   LabeledStatement: {status: direct, parser: parseLabeledStatement, ast: [LabeledStatement]}

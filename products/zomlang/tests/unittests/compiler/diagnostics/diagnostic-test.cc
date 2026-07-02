@@ -16,12 +16,26 @@
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/diagnostics/consoling-diagnostic-consumer.h"
+#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
 namespace compiler {
 namespace diagnostics {
+
+namespace {
+
+class CountingDiagnosticConsumer final : public DiagnosticConsumer {
+public:
+  size_t diagnosticCount = 0;
+
+  void handleDiagnostic(const source::SourceManager&, const Diagnostic&) override {
+    ++diagnosticCount;
+  }
+};
+
+}  // namespace
 
 ZC_TEST("DiagnosticTest.BasicDiagnosticReporting") {
   auto sourceManager = zc::heap<source::SourceManager>();
@@ -49,6 +63,46 @@ ZC_TEST("DiagnosticTest.MultipleDiagnostics") {
   diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   diagnosticEngine->diagnose<DiagID::UnterminatedString>(loc);
   ZC_EXPECT(diagnosticEngine->hasErrors());
+}
+
+ZC_TEST("DiagnosticTest.DeduplicatesSameIdAtSameLocation") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  auto consumer = zc::heap<CountingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  diagnosticEngine->addConsumer(zc::mv(consumer));
+
+  sourceManager->addMemBufferCopy(zc::StringPtr("x").asBytes(), "test.zom");
+  auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
+
+  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
+  diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
+
+  ZC_EXPECT(consumerPtr->diagnosticCount == 1);
+  ZC_EXPECT(diagnosticEngine->errorCount() == 1);
+}
+
+ZC_TEST("DiagnosticTest.DefaultErrorBudgetStopsAfterOneHundredErrors") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  auto consumer = zc::heap<CountingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  diagnosticEngine->addConsumer(zc::mv(consumer));
+
+  sourceManager->addMemBufferCopy(
+      zc::StringPtr("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    "xxxxxxxxxxxxxxxxxxxxxxxxxx")
+          .asBytes(),
+      "test.zom");
+  auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
+
+  for (size_t i = 0; i < 105; ++i) {
+    diagnosticEngine->diagnose<DiagID::InvalidCharacter>(
+        loc.getAdvancedLoc(static_cast<unsigned>(i)));
+  }
+
+  ZC_EXPECT(consumerPtr->diagnosticCount == 100);
+  ZC_EXPECT(diagnosticEngine->errorCount() == 100);
 }
 
 ZC_TEST("DiagnosticTest.DiagnosticConsumer") {

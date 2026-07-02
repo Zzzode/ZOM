@@ -45,8 +45,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   zc::String source(reinterpret_cast<const char*>(data), size);
   auto bufferId = sourceMgr.addMemBuffer(zc::Str("fuzz.zom"), source.asStringPtr());
 
-  // Use Loose mode so the parser exercises error-recovery paths on broken input.
-  Parser parser(sourceMgr, diagEngine, opts, stringPool, bufferId, ParseMode::Loose);
+  Parser parser(sourceMgr, diagEngine, opts, stringPool, bufferId);
   ZC_IF_SOME(tree, parser.parse()) {
     // Exercise tree verification to catch schema violations from fuzz input.
     (void)ast::verifySchemaFailure(*tree);

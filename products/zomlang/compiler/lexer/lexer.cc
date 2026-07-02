@@ -128,6 +128,9 @@ struct Lexer::Impl {
   /// Embedded lexer state
   State state;
 
+  /// Brace depths for active template substitutions.
+  zc::Vector<int32_t> templateSubstitutionBraceDepths;
+
   /// Collected comment directives
   zc::Vector<CommentDirective> commentDirectives;
 
@@ -178,9 +181,6 @@ struct Lexer::Impl {
   zc::StringPtr lexBinaryOrOctalDigits(int32_t base);
 
   void lex();
-
-  ast::SyntaxKind reScanGreaterToken();
-  ast::SyntaxKind reScanTemplateToken();
 
   /// \brief Lex an identifier.
   /// \param prefixLength The length of the prefix (e.g., '$' for a global identifier).
@@ -237,6 +237,10 @@ struct Lexer::Impl {
   /// \brief Lex an invalid character.
   void lexInvalidCharacter();
 
+  bool inTemplateSubstitution() const;
+  void beginTemplateSubstitution();
+  void finishTemplateSpan(ast::SyntaxKind kind);
+
   /// \brief Report an error at the specified position.
   /// \tparam ID The diagnostic ID to report.
   /// \tparam ...Args The types of the arguments to format the diagnostic message.
@@ -287,6 +291,21 @@ int32_t Lexer::Impl::charAt(int32_t offset) const {
 
 std::pair<uint32_t, uint32_t> Lexer::Impl::charWithSize() const {
   return lexer::charWithSize(state.curPtr, bufferEnd);
+}
+
+bool Lexer::Impl::inTemplateSubstitution() const {
+  return templateSubstitutionBraceDepths.size() != 0;
+}
+
+void Lexer::Impl::beginTemplateSubstitution() { templateSubstitutionBraceDepths.add(0); }
+
+void Lexer::Impl::finishTemplateSpan(ast::SyntaxKind kind) {
+  ZC_IREQUIRE(inTemplateSubstitution(), "template span requires an active substitution");
+  if (kind == ast::SyntaxKind::TemplateMiddle) {
+    templateSubstitutionBraceDepths.back() = 0;
+    return;
+  }
+  if (kind == ast::SyntaxKind::TemplateTail) { templateSubstitutionBraceDepths.removeLast(); }
 }
 
 void Lexer::Impl::formToken(ast::SyntaxKind kind, zc::Maybe<zc::StringPtr> value) {
@@ -479,6 +498,7 @@ void Lexer::Impl::lex() {
         zc::StringPtr str;
         ast::SyntaxKind kind = lexTemplateAndRetTokenValue(false, str);
         formToken(kind, str);
+        if (kind == ast::SyntaxKind::TemplateHead) { beginTemplateSubstitution(); }
         return;
       }
       case '%':
@@ -752,6 +772,7 @@ void Lexer::Impl::lex() {
         state.curPtr++;
         return formToken(ast::SyntaxKind::Caret);
       case '{':
+        if (inTemplateSubstitution()) { ++templateSubstitutionBraceDepths.back(); }
         state.curPtr++;
         return formToken(ast::SyntaxKind::LeftBrace);
       case '|':
@@ -770,6 +791,19 @@ void Lexer::Impl::lex() {
         state.curPtr++;
         return formToken(ast::SyntaxKind::Bar);
       case '}':
+        if (inTemplateSubstitution()) {
+          if (templateSubstitutionBraceDepths.back() > 0) {
+            --templateSubstitutionBraceDepths.back();
+            state.curPtr++;
+            return formToken(ast::SyntaxKind::RightBrace);
+          }
+
+          zc::StringPtr str;
+          const ast::SyntaxKind kind = lexTemplateAndRetTokenValue(false, str);
+          formToken(kind, str);
+          finishTemplateSpan(kind);
+          return;
+        }
         state.curPtr++;
         return formToken(ast::SyntaxKind::RightBrace);
       case '~':
@@ -798,7 +832,14 @@ void Lexer::Impl::lex() {
         state.curPtr++;
         return formToken(ast::SyntaxKind::Hash);
       default:
-        if (c < 0) { return formToken(ast::SyntaxKind::EndOfFile); }
+        if (c < 0) {
+          if (inTemplateSubstitution()) {
+            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
+                source::SourceLoc(state.curPtr), "}"_zc);
+            templateSubstitutionBraceDepths.clear();
+          }
+          return formToken(ast::SyntaxKind::EndOfFile);
+        }
         ZC_IF_SOME(tokenValue, lexIdentifier(0)) { return getIdentifierToken(tokenValue); }
         auto [code, size] = charWithSize();
         if (isWhiteSpaceSingleLine(code)) {
@@ -813,47 +854,6 @@ void Lexer::Impl::lex() {
         return lexInvalidCharacter();
     }
   }
-}
-
-ast::SyntaxKind Lexer::Impl::reScanGreaterToken() {
-  if (!state.token.is(ast::SyntaxKind::GreaterThan)) { return state.token.getKind(); }
-
-  state.curPtr = state.tokenStartPtr + 1;
-
-  if (ch() == '>') {
-    if (charAt(1) == '>') {
-      if (charAt(2) == '=') {
-        state.curPtr += 3;
-        formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThanEquals);
-      } else {
-        state.curPtr += 2;
-        formToken(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan);
-      }
-    } else if (charAt(1) == '=') {
-      state.curPtr += 2;
-      formToken(ast::SyntaxKind::GreaterThanGreaterThanEquals);
-    } else {
-      state.curPtr++;
-      formToken(ast::SyntaxKind::GreaterThanGreaterThan);
-    }
-  } else if (ch() == '=') {
-    state.curPtr++;
-    formToken(ast::SyntaxKind::GreaterThanEquals);
-  }
-
-  return state.token.getKind();
-}
-
-ast::SyntaxKind Lexer::Impl::reScanTemplateToken() {
-  if (!state.token.is(ast::SyntaxKind::RightBrace)) { return state.token.getKind(); }
-
-  state.curPtr = state.tokenStartPtr;
-  state.tokenFlags = TokenFlags::None;
-
-  zc::StringPtr value;
-  const ast::SyntaxKind kind = lexTemplateAndRetTokenValue(false, value);
-  formToken(kind, value);
-  return state.token.getKind();
 }
 
 zc::Maybe<zc::StringPtr> Lexer::Impl::lexIdentifier(int32_t prefixLength) {
@@ -928,7 +928,7 @@ void Lexer::Impl::lexNumber() {
         state.tokenFlags |= TokenFlags::ContainsLeadingZero;
         fixedPart = digits;
       } else {
-        // Octal literal (legacy)
+        // Leading-zero octal spelling is rejected with a 0o-prefixed fix-it.
         state.tokenFlags |= TokenFlags::Octal;
 
         zc::StringPtr octalDigits = digits;
@@ -1467,31 +1467,6 @@ Lexer::~Lexer() = default;
 void Lexer::lex(Token& outToken) {
   impl->lex();
   outToken = impl->state.token;
-}
-
-ast::SyntaxKind Lexer::reScanGreaterToken() { return impl->reScanGreaterToken(); }
-
-ast::SyntaxKind Lexer::reScanTemplateToken() { return impl->reScanTemplateToken(); }
-
-void Lexer::restoreState(LexerState s) {
-  ZC_IREQUIRE(s.curOffset <= static_cast<size_t>(impl->bufferEnd - impl->bufferStart),
-              "lexer restore cursor outside source buffer");
-  ZC_IREQUIRE(s.fullStartOffset <= static_cast<size_t>(impl->bufferEnd - impl->bufferStart),
-              "lexer restore full start outside source buffer");
-  ZC_IREQUIRE(s.tokenStartOffset <= static_cast<size_t>(impl->bufferEnd - impl->bufferStart),
-              "lexer restore token start outside source buffer");
-  impl->state.curPtr = impl->bufferStart + s.curOffset;
-  impl->state.fullStartPtr = impl->bufferStart + s.fullStartOffset;
-  impl->state.tokenStartPtr = impl->bufferStart + s.tokenStartOffset;
-  impl->state.token = s.token;
-  impl->state.tokenFlags = s.tokenFlags;
-}
-
-const LexerState Lexer::getCurrentState() const {
-  return LexerState(static_cast<size_t>(impl->state.curPtr - impl->bufferStart),
-                    static_cast<size_t>(impl->state.fullStartPtr - impl->bufferStart),
-                    static_cast<size_t>(impl->state.tokenStartPtr - impl->bufferStart),
-                    impl->state.token, impl->state.tokenFlags);
 }
 
 const source::SourceLoc Lexer::getFullStartLoc() const {

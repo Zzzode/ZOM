@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from typing import Any
 
@@ -44,6 +45,101 @@ HEADER = """// Copyright (c) 2024-2025 Zode.Z. All rights reserved
 // clang-format off
 #pragma once
 """
+
+CPP_KEYWORDS = {
+    "alignas",
+    "alignof",
+    "and",
+    "and_eq",
+    "asm",
+    "auto",
+    "bitand",
+    "bitor",
+    "bool",
+    "break",
+    "case",
+    "catch",
+    "char",
+    "char8_t",
+    "char16_t",
+    "char32_t",
+    "class",
+    "compl",
+    "concept",
+    "const",
+    "consteval",
+    "constexpr",
+    "constinit",
+    "const_cast",
+    "continue",
+    "co_await",
+    "co_return",
+    "co_yield",
+    "decltype",
+    "default",
+    "delete",
+    "do",
+    "double",
+    "dynamic_cast",
+    "else",
+    "enum",
+    "explicit",
+    "export",
+    "extern",
+    "false",
+    "float",
+    "for",
+    "friend",
+    "goto",
+    "if",
+    "inline",
+    "int",
+    "long",
+    "mutable",
+    "namespace",
+    "new",
+    "noexcept",
+    "not",
+    "not_eq",
+    "nullptr",
+    "operator",
+    "or",
+    "or_eq",
+    "private",
+    "protected",
+    "public",
+    "register",
+    "reinterpret_cast",
+    "requires",
+    "return",
+    "short",
+    "signed",
+    "sizeof",
+    "static",
+    "static_assert",
+    "static_cast",
+    "struct",
+    "switch",
+    "template",
+    "this",
+    "thread_local",
+    "throw",
+    "true",
+    "try",
+    "typedef",
+    "typeid",
+    "typename",
+    "union",
+    "unsigned",
+    "using",
+    "virtual",
+    "void",
+    "volatile",
+    "wchar_t",
+    "while",
+    "xor",
+    "xor_eq",
+}
 
 
 class SchemaError(RuntimeError):
@@ -415,6 +511,116 @@ def generate_node_accessors_h(schema: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def cpp_field_type(schema: dict[str, Any], field: dict[str, Any]) -> str:
+    field_type = str(field["type"])
+    raw_enums = schema.get("enums", {})
+    if isinstance(raw_enums, dict) and field_type in raw_enums:
+        return field_type
+    mapping = {
+        "NodeId": "NodeId",
+        "NodeList": "NodeList",
+        "IdentList": "IdentList",
+        "StringId": "StringId",
+        "IdentId": "IdentId",
+        "BigIntId": "BigIntId",
+        "FloatId": "FloatId",
+        "bool": "bool",
+        "uint8": "uint8_t",
+        "uint16": "uint16_t",
+        "uint32": "uint32_t",
+        "uint64": "uint64_t",
+    }
+    if field_type not in mapping:
+        raise SchemaError(f"cannot map schema field type {field_type} to a factory parameter")
+    return mapping[field_type]
+
+
+def cpp_field_param_name(field: dict[str, Any]) -> str:
+    name = str(field["name"])
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
+        raise SchemaError(f"cannot use schema field name as C++ parameter: {name!r}")
+    if name in CPP_KEYWORDS:
+        return f"{name}_"
+    return name
+
+
+def payload_write_lines(schema: dict[str, Any], variant_name: str, field: dict[str, Any]) -> list[str]:
+    field_name = field_name_fragment(str(field["name"]))
+    field_type = str(field["type"])
+    name = cpp_field_param_name(field)
+    raw_enums = schema.get("enums", {})
+    is_enum = isinstance(raw_enums, dict) and field_type in raw_enums
+
+    if field_type == "NodeList":
+        return [
+            f"    payload.words[k{variant_name}{field_name}FirstWord] = {name}.first;",
+            f"    payload.words[k{variant_name}{field_name}SizeWord] = {name}.size;",
+        ]
+    if field_type == "IdentList":
+        return [
+            f"    payload.words[k{variant_name}{field_name}FirstWord] = {name}.first;",
+            f"    payload.words[k{variant_name}{field_name}SizeWord] = {name}.size;",
+        ]
+    if field_type == "uint64":
+        return [
+            f"    payload.words[k{variant_name}{field_name}LowWord] = "
+            f"static_cast<uint32_t>({name} & 0xffffffffull);",
+            f"    payload.words[k{variant_name}{field_name}HighWord] = "
+            f"static_cast<uint32_t>({name} >> 32);",
+        ]
+    if field_type in {"NodeId", "StringId", "IdentId", "BigIntId", "FloatId"}:
+        return [f"    payload.words[k{variant_name}{field_name}Word] = {name}.value;"]
+    if field_type == "bool":
+        return [f"    payload.words[k{variant_name}{field_name}Word] = {name} ? 1u : 0u;"]
+    if field_type in {"uint8", "uint16", "uint32"} or is_enum:
+        return [
+            f"    payload.words[k{variant_name}{field_name}Word] = static_cast<uint32_t>({name});"
+        ]
+    raise SchemaError(f"cannot generate factory payload write for {variant_name}.{name}")
+
+
+def generate_node_factory_h(schema: dict[str, Any]) -> str:
+    lines = [
+        HEADER,
+        generated_notice(schema),
+        '#include <cstdint>',
+        "",
+        '#include "zc/core/common.h"',
+        '#include "zomlang/compiler/ast/generated/node-payload.h"',
+        "",
+        NAMESPACE_OPEN,
+        "",
+        "template <typename Derived>",
+        "class TypedNodeFactory {",
+        "public:",
+    ]
+
+    for item in variants(schema):
+        variant_name = str(item["name"])
+        params = [
+            f"{cpp_field_type(schema, field)} {cpp_field_param_name(field)}"
+            for field in variant_fields(item)
+        ]
+        signature_params = ["source::SourceRange range"] + params
+        lines.append(f"  NodeId make{variant_name}({', '.join(signature_params)}) {{")
+        lines.append("    NodePayload payload;")
+        for field in variant_fields(item):
+            lines.extend(payload_write_lines(schema, variant_name, field))
+        lines.append(
+            f"    return static_cast<Derived*>(this)->makeTypedNode("
+            f"SyntaxKind::{variant_name}, zc::mv(range), payload);"
+        )
+        lines.append("  }")
+        lines.append("")
+
+    lines += [
+        "};",
+        "",
+        NAMESPACE_CLOSE,
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def generate_node_schema_h(schema: dict[str, Any]) -> str:
     fingerprint = schema_fingerprint(schema)
     version = str(schema.get("version", "unknown"))
@@ -616,6 +822,7 @@ GENERATORS = {
     "node-kind.inc": generate_node_kind_inc,
     "node-payload.h": generate_node_payload_h,
     "node-accessors.h": generate_node_accessors_h,
+    "node-factory.h": generate_node_factory_h,
     "node-schema.h": generate_node_schema_h,
     "node-traverse.h": generate_node_traverse_h,
 }

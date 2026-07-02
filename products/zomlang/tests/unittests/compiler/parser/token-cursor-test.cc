@@ -17,6 +17,8 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/basic/string-pool.h"
+#include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -39,13 +41,23 @@ zc::Vector<lexer::Token> makeTokenStream() {
   return tokens;
 }
 
+zc::Vector<lexer::Token> makeRightShiftTokenStream(ast::SyntaxKind shiftKind, zc::StringPtr text) {
+  zc::Vector<lexer::Token> tokens;
+  tokens.add(makeToken(shiftKind, text));
+  tokens.add(makeToken(ast::SyntaxKind::Identifier, "after"_zc));
+  tokens.add(makeToken(ast::SyntaxKind::EndOfFile));
+  return tokens;
+}
+
 }  // namespace
 
 ZC_TEST("TokenCursorTest.PeekAndTokenClampToEof") {
   auto tokens = makeTokenStream();
-  TokenCursor cursor(tokens.asPtr());
+  TokenStream stream;
+  stream.reset(tokens.asPtr());
+  TokenCursor cursor(stream);
 
-  ZC_EXPECT(cursor.size() == 4);
+  ZC_EXPECT(stream.bufferedTokenLimit() == 3);
   ZC_EXPECT(cursor.position() == 0);
   ZC_EXPECT(cursor.peek() == ast::SyntaxKind::LetKeyword);
   ZC_EXPECT(cursor.peek(1) == ast::SyntaxKind::Identifier);
@@ -53,9 +65,36 @@ ZC_TEST("TokenCursorTest.PeekAndTokenClampToEof") {
   ZC_EXPECT(cursor.tokenAt(99).is(ast::SyntaxKind::EndOfFile));
 }
 
+ZC_TEST("TokenStreamTest.LexesOnDemand") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto bufferId = sourceManager->addMemBufferCopy("let value = 1;"_zc.asBytes(), "lazy-stream.zom");
+  diagnostics::DiagnosticEngine diagnosticEngine(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+  TokenStream stream(*sourceManager, diagnosticEngine, langOpts, stringPool, bufferId);
+  TokenCursor cursor(stream);
+
+  ZC_EXPECT(stream.bufferedSize() == 0);
+  ZC_EXPECT(!stream.hasBufferedEof());
+
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::LetKeyword);
+  ZC_EXPECT(stream.bufferedSize() == 1);
+  ZC_EXPECT(!stream.hasBufferedEof());
+
+  ZC_EXPECT(cursor.peek(2) == ast::SyntaxKind::Equals);
+  ZC_EXPECT(stream.bufferedSize() == 3);
+  ZC_EXPECT(!stream.hasBufferedEof());
+
+  cursor.moveTo(99);
+  ZC_EXPECT(cursor.isAtEnd());
+  ZC_EXPECT(stream.hasBufferedEof());
+}
+
 ZC_TEST("TokenCursorTest.EatMarkAndRewind") {
   auto tokens = makeTokenStream();
-  TokenCursor cursor(tokens.asPtr());
+  TokenStream stream;
+  stream.reset(tokens.asPtr());
+  TokenCursor cursor(stream);
 
   const TokenCursor::Mark start = cursor.mark();
   ZC_EXPECT(cursor.at(ast::SyntaxKind::LetKeyword));
@@ -72,7 +111,9 @@ ZC_TEST("TokenCursorTest.EatMarkAndRewind") {
 
 ZC_TEST("TokenCursorTest.AdvanceAndMoveTo") {
   auto tokens = makeTokenStream();
-  TokenCursor cursor(tokens.asPtr());
+  TokenStream stream;
+  stream.reset(tokens.asPtr());
+  TokenCursor cursor(stream);
 
   cursor.advance();
   ZC_EXPECT(cursor.position() == 1);
@@ -90,7 +131,9 @@ ZC_TEST("TokenCursorTest.AdvanceAndMoveTo") {
 
 ZC_TEST("TokenCursorTest.ExpectConsumesOrDiagnoses") {
   auto tokens = makeTokenStream();
-  TokenCursor cursor(tokens.asPtr());
+  TokenStream stream;
+  stream.reset(tokens.asPtr());
+  TokenCursor cursor(stream);
   auto sourceManager = zc::heap<source::SourceManager>();
   diagnostics::DiagnosticEngine diagnosticEngine(*sourceManager);
 
@@ -105,7 +148,9 @@ ZC_TEST("TokenCursorTest.ExpectConsumesOrDiagnoses") {
 
 ZC_TEST("TokenCursorTest.EofDoesNotAdvancePastEnd") {
   auto tokens = makeTokenStream();
-  TokenCursor cursor(tokens.asPtr());
+  TokenStream stream;
+  stream.reset(tokens.asPtr());
+  TokenCursor cursor(stream);
 
   ZC_EXPECT(cursor.eat(ast::SyntaxKind::LetKeyword));
   ZC_EXPECT(cursor.eat(ast::SyntaxKind::Identifier));
@@ -115,6 +160,101 @@ ZC_TEST("TokenCursorTest.EofDoesNotAdvancePastEnd") {
   ZC_EXPECT(cursor.eat(ast::SyntaxKind::EndOfFile));
   ZC_EXPECT(cursor.position() == 3);
   ZC_EXPECT(cursor.isAtEnd());
+}
+
+ZC_TEST("TokenCursorTest.SplitModeExposesVirtualLookahead") {
+  auto tokens =
+      makeRightShiftTokenStream(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan, ">>>"_zc);
+  TokenStream stream;
+  stream.reset(tokens.asPtr());
+  TokenCursor cursor(stream);
+  cursor.enableSplitMode();
+
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(1) == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(2) == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(3) == ast::SyntaxKind::Identifier);
+
+  cursor.advance();
+  ZC_EXPECT(cursor.position() == 0);
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(1) == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(2) == ast::SyntaxKind::Identifier);
+
+  cursor.advance();
+  ZC_EXPECT(cursor.position() == 0);
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(1) == ast::SyntaxKind::Identifier);
+
+  cursor.advance();
+  ZC_EXPECT(cursor.position() == 1);
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::Identifier);
+}
+
+ZC_TEST("TokenCursorTest.MarkAndRewindRestoreSplitState") {
+  auto tokens =
+      makeRightShiftTokenStream(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan, ">>>"_zc);
+  TokenStream stream;
+  stream.reset(tokens.asPtr());
+  TokenCursor cursor(stream);
+  cursor.enableSplitMode();
+
+  cursor.advance();
+  const TokenCursor::Mark afterFirstVirtualGreater = cursor.mark();
+
+  cursor.advance();
+  ZC_EXPECT(cursor.position() == 0);
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(1) == ast::SyntaxKind::Identifier);
+
+  cursor.rewind(afterFirstVirtualGreater);
+  ZC_EXPECT(cursor.position() == 0);
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(1) == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(2) == ast::SyntaxKind::Identifier);
+
+  cursor.advance();
+  cursor.advance();
+  ZC_EXPECT(cursor.position() == 1);
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::Identifier);
+}
+
+ZC_TEST("TokenCursorTest.ScopedSplitModeRestoresPreviousMode") {
+  auto tokens = makeRightShiftTokenStream(ast::SyntaxKind::GreaterThanGreaterThan, ">>"_zc);
+  TokenStream stream;
+  stream.reset(tokens.asPtr());
+  TokenCursor cursor(stream);
+
+  {
+    TokenCursor::ScopedSplitMode splitMode(cursor);
+    ZC_EXPECT(cursor.isSplitModeActive());
+    ZC_EXPECT(cursor.peek() == ast::SyntaxKind::GreaterThan);
+    ZC_EXPECT(cursor.peek(1) == ast::SyntaxKind::GreaterThan);
+  }
+
+  ZC_EXPECT(!cursor.isSplitModeActive());
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::GreaterThanGreaterThan);
+  ZC_EXPECT(cursor.peek(1) == ast::SyntaxKind::Identifier);
+}
+
+ZC_TEST("TokenCursorTest.NestedScopedSplitModeKeepsConsumedVirtualClosers") {
+  auto tokens =
+      makeRightShiftTokenStream(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan, ">>>"_zc);
+  TokenStream stream;
+  stream.reset(tokens.asPtr());
+  TokenCursor cursor(stream);
+  cursor.enableSplitMode();
+
+  {
+    TokenCursor::ScopedSplitMode nested(cursor);
+    cursor.advance();
+  }
+
+  ZC_EXPECT(cursor.isSplitModeActive());
+  ZC_EXPECT(cursor.position() == 0);
+  ZC_EXPECT(cursor.peek() == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(1) == ast::SyntaxKind::GreaterThan);
+  ZC_EXPECT(cursor.peek(2) == ast::SyntaxKind::Identifier);
 }
 
 }  // namespace parser

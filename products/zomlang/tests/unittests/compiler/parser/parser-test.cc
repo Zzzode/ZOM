@@ -392,6 +392,42 @@ ZC_TEST("ParserTest.TypeReferenceWithArguments") {
   ZC_EXPECT(result != zc::none, "Should parse type reference with arguments");
 }
 
+ZC_TEST("ParserTest.NestedTypeArgumentsSplitRightShiftToken") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("alias Nested = Vec<Vec<i32>>;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse nested type arguments with a >> token");
+  ZC_IF_SOME(tree, result) {
+    const ast::Node& alias = topLevelStatement(tree, 0);
+    ZC_EXPECT(alias.kind == ast::SyntaxKind::AliasDecl);
+
+    const ast::Node& target =
+        tree.node(ast::NodeId(alias.payload.words[ast::kAliasDeclTargetWord]));
+    ZC_EXPECT(target.kind == ast::SyntaxKind::NamedTypeExpr);
+
+    ast::NodeList outerArgs;
+    outerArgs.first = target.payload.words[ast::kNamedTypeExprArgsFirstWord];
+    outerArgs.size = target.payload.words[ast::kNamedTypeExprArgsSizeWord];
+    const auto outerArgNodes = tree.list(outerArgs);
+    ZC_EXPECT(outerArgNodes.size() == 1);
+
+    const ast::Node& inner = tree.node(outerArgNodes[0]);
+    ZC_EXPECT(inner.kind == ast::SyntaxKind::NamedTypeExpr);
+
+    ast::NodeList innerArgs;
+    innerArgs.first = inner.payload.words[ast::kNamedTypeExprArgsFirstWord];
+    innerArgs.size = inner.payload.words[ast::kNamedTypeExprArgsSizeWord];
+    ZC_EXPECT(tree.list(innerArgs).size() == 1);
+  }
+}
+
 ZC_TEST("ParserTest.ObjectType") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -624,8 +660,8 @@ ZC_TEST("ParserTest.ChainedErrorDefaultExpression") {
 }
 
 // ================================================================================
-// LookAhead Tests - Modified to use normal parsing without lookAhead
-ZC_TEST("ParserTest.LookAheadBasic") {
+// Parser facade smoke tests.
+ZC_TEST("ParserTest.ParseBasicLetStatement") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -634,12 +670,11 @@ ZC_TEST("ParserTest.LookAheadBasic") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = 42;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  // Test normal parsing without lookAhead
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse successfully without lookAhead");
+  ZC_EXPECT(result != zc::none, "Should parse let statement");
 }
 
-ZC_TEST("ParserTest.CanLookAhead") {
+ZC_TEST("ParserTest.ParseBasicLetStatementWithInitializer") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -648,12 +683,11 @@ ZC_TEST("ParserTest.CanLookAhead") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = 42;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  // Test normal parsing without canLookAhead
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse successfully without canLookAhead");
+  ZC_EXPECT(result != zc::none, "Should parse initialized let statement");
 }
 
-ZC_TEST("ParserTest.IsLookAhead") {
+ZC_TEST("ParserTest.ParseBasicLetStatementWithSemicolon") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -662,12 +696,11 @@ ZC_TEST("ParserTest.IsLookAhead") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = 42;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  // Test normal parsing without isLookAhead
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse successfully without isLookAhead");
+  ZC_EXPECT(result != zc::none, "Should parse terminated let statement");
 }
 
-ZC_TEST("ParserTest.LookAheadBeyondEOF") {
+ZC_TEST("ParserTest.ParseShortExpressionStatement") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -676,12 +709,11 @@ ZC_TEST("ParserTest.LookAheadBeyondEOF") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("x;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  // Test normal parsing beyond EOF
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse successfully even with short input");
 }
 
-ZC_TEST("ParserTest.LookAheadEmptySource") {
+ZC_TEST("ParserTest.ParseEmptySource") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -690,12 +722,11 @@ ZC_TEST("ParserTest.LookAheadEmptySource") {
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  // Test normal parsing on empty source
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse successfully even on empty source");
 }
 
-ZC_TEST("ParserTest.LookAheadComplexExpression") {
+ZC_TEST("ParserTest.ParseComplexFunction") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -705,9 +736,8 @@ ZC_TEST("ParserTest.LookAheadComplexExpression") {
       zc::str("fun add(a: i32, b: i32) -> i32 { return a + b; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  // Test normal parsing of complex expression without lookAhead
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse complex function without lookAhead");
+  ZC_EXPECT(result != zc::none, "Should parse complex function");
 }
 
 ZC_TEST("ParserTest.ParseTypeQuery") {
@@ -1205,6 +1235,38 @@ ZC_TEST("ParserTest.ParseTypeArgumentsInExpression") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse function call with type arguments");
+}
+
+ZC_TEST("ParserTest.ParseNestedTypeArgumentsInGenericCall") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("func<Vec<i32>>(arg);").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse nested type arguments in a generic call");
+  ZC_IF_SOME(tree, result) {
+    const ast::Node& call = expressionStatementExpression(tree, 0);
+    ZC_EXPECT(call.kind == ast::SyntaxKind::CallExpression);
+
+    ast::NodeList typeArgs;
+    typeArgs.first = call.payload.words[ast::kCallExpressionTypeArgsFirstWord];
+    typeArgs.size = call.payload.words[ast::kCallExpressionTypeArgsSizeWord];
+    const auto typeArgNodes = tree.list(typeArgs);
+    ZC_EXPECT(typeArgNodes.size() == 1);
+
+    const ast::Node& vectorType = tree.node(typeArgNodes[0]);
+    ZC_EXPECT(vectorType.kind == ast::SyntaxKind::NamedTypeExpr);
+
+    ast::NodeList vectorArgs;
+    vectorArgs.first = vectorType.payload.words[ast::kNamedTypeExprArgsFirstWord];
+    vectorArgs.size = vectorType.payload.words[ast::kNamedTypeExprArgsSizeWord];
+    ZC_EXPECT(tree.list(vectorArgs).size() == 1);
+  }
 }
 
 ZC_TEST("ParserTest.ParseMatchStatement") {
@@ -2712,6 +2774,20 @@ ZC_TEST("ParserTest.ParseTypeParameterWithConstraint") {
   ZC_EXPECT(result != zc::none);
 }
 
+ZC_TEST("ParserTest.ParseTypeParameterDefaultWithNestedGenericClose") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("fun foo<T = Vec<i32>>(x: T) -> T { return x; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+}
+
 ZC_TEST("ParserTest.ParseImportCallExpression") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -2821,6 +2897,20 @@ ZC_TEST("ParserTest.ParseFunctionType") {
 
   auto bufferId =
       sourceManager->addMemBufferCopy(zc::str("alias Fn = (i32) -> str;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+}
+
+ZC_TEST("ParserTest.ParseFunctionTypeWithNestedGenericParameter") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("alias Fn = (Vec<Vec<i32>>, str) -> bool;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3769,6 +3859,37 @@ ZC_TEST("ParserTest.ParseNewWithTypeArgs") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+}
+
+ZC_TEST("ParserTest.ParseNewWithNestedTypeArgs") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("let x = new Box<Vec<i32>>();").asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+  ZC_IF_SOME(tree, result) {
+    const ast::Node& newExpr = letInitializer(tree, 0);
+    ZC_EXPECT(newExpr.kind == ast::SyntaxKind::NewExpression);
+
+    ast::NodeList typeArgs;
+    typeArgs.first = newExpr.payload.words[ast::kNewExpressionTypeArgsFirstWord];
+    typeArgs.size = newExpr.payload.words[ast::kNewExpressionTypeArgsSizeWord];
+    const auto typeArgNodes = tree.list(typeArgs);
+    ZC_EXPECT(typeArgNodes.size() == 1);
+
+    const ast::Node& vectorType = tree.node(typeArgNodes[0]);
+    ZC_EXPECT(vectorType.kind == ast::SyntaxKind::NamedTypeExpr);
+
+    ast::NodeList vectorArgs;
+    vectorArgs.first = vectorType.payload.words[ast::kNamedTypeExprArgsFirstWord];
+    vectorArgs.size = vectorType.payload.words[ast::kNamedTypeExprArgsSizeWord];
+    ZC_EXPECT(tree.list(vectorArgs).size() == 1);
+  }
 }
 
 /// Covers parseCallExpressionRest with generic calls

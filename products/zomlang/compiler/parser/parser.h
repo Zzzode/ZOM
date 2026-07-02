@@ -15,11 +15,8 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zc/core/function.h"
 #include "zc/core/memory.h"
-#include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/tree.h"
-#include "zomlang/compiler/lexer/token.h"
 
 namespace zomlang {
 namespace compiler {
@@ -40,42 +37,18 @@ class SourceManager;
 
 namespace parser {
 
-/// \brief Parse mode controls whether syntax errors prevent AST publication.
-enum class ParseMode {
-  /// Fail-closed: any error diagnostic causes parse() to return zc::none.
-  /// This is the default for compiler invocation.
-  Strict,
-  /// Fail-open: returns a partial AST even when errors were emitted.
-  /// Useful for IDE/language-server scenarios where partial results are valuable.
-  Loose,
-};
-
 /// \brief Recursive-descent parser facade that emits the schema-backed AST tree.
 class Parser {
 public:
   Parser(const source::SourceManager& sm, diagnostics::DiagnosticEngine& diagnosticEngine,
          const basic::LangOptions& langOpts, basic::StringPool& stringPool,
-         const source::BufferId& bufferId, ParseMode mode = ParseMode::Strict);
+         const source::BufferId& bufferId);
   ~Parser() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Parser);
 
   /// \brief Parse the source file and return the syntax tree.
   zc::Maybe<ast::Tree> parse();
-
-  /// \brief Look ahead n tokens without consuming parser state.
-  lexer::Token lookAhead(unsigned n);
-
-  /// \brief Return true if n lookahead tokens can be read before EOF.
-  bool canLookAhead(unsigned n);
-
-  /// \brief Check whether the nth lookahead token has the requested kind.
-  bool isLookAhead(unsigned n, ast::SyntaxKind kind);
-
-  template <typename T>
-  T lookAhead(zc::Function<T()> callback) {
-    return callback();
-  }
 
 private:
   struct Impl;

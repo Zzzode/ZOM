@@ -114,10 +114,24 @@ namespace {
 constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
   switch (kind) {
     // Keywords
+    case ast::SyntaxKind::AccessorKeyword:
+      return "accessor"_zc;
+    case ast::SyntaxKind::AnyKeyword:
+      return "any"_zc;
+    case ast::SyntaxKind::AssertsKeyword:
+      return "asserts"_zc;
+    case ast::SyntaxKind::AssertKeyword:
+      return "assert"_zc;
+    case ast::SyntaxKind::BigIntKeyword:
+      return "bigint"_zc;
     case ast::SyntaxKind::LetKeyword:
       return "let"_zc;
     case ast::SyntaxKind::ConstKeyword:
       return "const"_zc;
+    case ast::SyntaxKind::ConstructorKeyword:
+      return "constructor"_zc;
+    case ast::SyntaxKind::DeclareKeyword:
+      return "declare"_zc;
     case ast::SyntaxKind::MutKeyword:
       return "mut"_zc;
     case ast::SyntaxKind::FunKeyword:
@@ -164,12 +178,16 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "delete"_zc;
     case ast::SyntaxKind::InKeyword:
       return "in"_zc;
+    case ast::SyntaxKind::InferKeyword:
+      return "infer"_zc;
     case ast::SyntaxKind::OfKeyword:
       return "of"_zc;
     case ast::SyntaxKind::InstanceOfKeyword:
       return "instanceof"_zc;
     case ast::SyntaxKind::AsKeyword:
       return "as"_zc;
+    case ast::SyntaxKind::SatisfiesKeyword:
+      return "satisfies"_zc;
     case ast::SyntaxKind::IsKeyword:
       return "is"_zc;
     case ast::SyntaxKind::ImportKeyword:
@@ -178,6 +196,8 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "export"_zc;
     case ast::SyntaxKind::FromKeyword:
       return "from"_zc;
+    case ast::SyntaxKind::RequireKeyword:
+      return "require"_zc;
     case ast::SyntaxKind::DefaultKeyword:
       return "default"_zc;
     case ast::SyntaxKind::AsyncKeyword:
@@ -192,6 +212,10 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "suspend"_zc;
     case ast::SyntaxKind::StaticKeyword:
       return "static"_zc;
+    case ast::SyntaxKind::GlobalKeyword:
+      return "global"_zc;
+    case ast::SyntaxKind::ImmediateKeyword:
+      return "immediate"_zc;
     case ast::SyntaxKind::PublicKeyword:
       return "public"_zc;
     case ast::SyntaxKind::PrivateKeyword:
@@ -202,10 +226,16 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "abstract"_zc;
     case ast::SyntaxKind::OverrideKeyword:
       return "override"_zc;
+    case ast::SyntaxKind::MutatingKeyword:
+      return "mutating"_zc;
+    case ast::SyntaxKind::IntrinsicKeyword:
+      return "intrinsic"_zc;
     case ast::SyntaxKind::InterfaceKeyword:
       return "interface"_zc;
     case ast::SyntaxKind::ImplementsKeyword:
       return "implements"_zc;
+    case ast::SyntaxKind::KeyOfKeyword:
+      return "keyof"_zc;
     case ast::SyntaxKind::ExtendsKeyword:
       return "extends"_zc;
     case ast::SyntaxKind::StructKeyword:
@@ -228,6 +258,8 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "using"_zc;
     case ast::SyntaxKind::WithKeyword:
       return "with"_zc;
+    case ast::SyntaxKind::UniqueKeyword:
+      return "unique"_zc;
     case ast::SyntaxKind::WhenKeyword:
       return "when"_zc;
     case ast::SyntaxKind::CaseKeyword:
@@ -242,10 +274,18 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "init"_zc;
     case ast::SyntaxKind::DeinitKeyword:
       return "deinit"_zc;
+    case ast::SyntaxKind::GetKeyword:
+      return "get"_zc;
+    case ast::SyntaxKind::SetKeyword:
+      return "set"_zc;
     case ast::SyntaxKind::RaisesKeyword:
       return "raises"_zc;
     case ast::SyntaxKind::ReadonlyKeyword:
       return "readonly"_zc;
+    case ast::SyntaxKind::SymbolKeyword:
+      return "symbol"_zc;
+    case ast::SyntaxKind::UndefinedKeyword:
+      return "undefined"_zc;
 
     // Type keywords
     case ast::SyntaxKind::BoolKeyword:
@@ -272,6 +312,12 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "f64"_zc;
     case ast::SyntaxKind::StrKeyword:
       return "str"_zc;
+    case ast::SyntaxKind::NeverKeyword:
+      return "never"_zc;
+    case ast::SyntaxKind::ObjectKeyword:
+      return "object"_zc;
+    case ast::SyntaxKind::OutKeyword:
+      return "out"_zc;
     case ast::SyntaxKind::UnitKeyword:
       return "unit"_zc;
     case ast::SyntaxKind::CharKeyword:
@@ -366,8 +412,6 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "~"_zc;
     case ast::SyntaxKind::LessThanLessThan:
       return "<<"_zc;
-    case ast::SyntaxKind::LessThanSlash:
-      return "</"_zc;
     case ast::SyntaxKind::GreaterThanGreaterThan:
       return ">>"_zc;
     case ast::SyntaxKind::GreaterThanGreaterThanGreaterThan:
@@ -420,8 +464,8 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "@"_zc;
     case ast::SyntaxKind::Hash:
       return "#"_zc;
-    case ast::SyntaxKind::Backtick:
-      return "`"_zc;
+    case ast::SyntaxKind::Underscore:
+      return "_"_zc;
 
     default:
       return ""_zc;

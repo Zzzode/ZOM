@@ -53,24 +53,6 @@ struct CommentDirective {
   CommentDirectiveKind kind;
 };
 
-/// \brief Restorable lexer snapshot expressed as source-buffer byte offsets.
-struct LexerState {
-  size_t curOffset;
-  size_t fullStartOffset;
-  size_t tokenStartOffset;
-
-  TokenFlags tokenFlags;
-  Token token;
-
-  explicit LexerState(size_t curOffset = 0, size_t fullStartOffset = 0, size_t tokenStartOffset = 0,
-                      const Token& token = Token(), TokenFlags tokenFlags = TokenFlags::None)
-      : curOffset(curOffset),
-        fullStartOffset(fullStartOffset),
-        tokenStartOffset(tokenStartOffset),
-        tokenFlags(tokenFlags),
-        token(token) {}
-};
-
 class Lexer {
 public:
   Lexer(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
@@ -83,20 +65,9 @@ public:
   // =======================================================================================
   // Lexing Utilities
 
-  /// \brief Lex and output token by reference (for tests/back-compat)
+  /// \brief Lex one token into the output token.
   /// \param outToken The token to output.
   void lex(Token& outToken);
-
-  ZC_NODISCARD ast::SyntaxKind reScanGreaterToken();
-  ZC_NODISCARD ast::SyntaxKind reScanTemplateToken();
-
-  /// \brief Restore an offset-based lexer state.
-  /// \param s The state to restore.
-  void restoreState(LexerState s);
-
-  /// \brief Get the current lexer state.
-  /// \return The current lexer state.
-  ZC_NODISCARD const LexerState getCurrentState() const;
 
   /// \brief Start position of whitespace before current token
   /// \return The source location of the full start.

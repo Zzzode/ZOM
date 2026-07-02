@@ -200,7 +200,7 @@ def lexer_summary(valobj, internal_dict):
   if not state.IsValid():
     return ""
 
-  # LexerState contains current token
+  # Embedded lexer state contains the current token.
   token_value = state.GetChildMemberWithName("token")
   if not token_value.IsValid():
     return ""
