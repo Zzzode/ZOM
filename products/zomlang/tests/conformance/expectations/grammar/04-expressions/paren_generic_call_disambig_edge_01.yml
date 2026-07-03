@@ -1,0 +1,4 @@
+section: "§4 Parenthesized generic call disambiguation"
+covers_rule: "parenExpression, callExpression, typeArgList"
+expected: "ACCEPT"
+notes: []

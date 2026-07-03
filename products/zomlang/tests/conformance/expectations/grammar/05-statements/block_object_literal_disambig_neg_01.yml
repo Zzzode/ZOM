@@ -1,0 +1,4 @@
+section: "§5 Statement-head object literal disambiguation"
+covers_rule: "statement, blockStatement"
+expected: "REJECT"
+notes: []

@@ -1,0 +1,4 @@
+section: "§4 Generic call and relational disambiguation"
+covers_rule: "relationalExpr, callExpression, typeArgList"
+expected: "ACCEPT"
+notes: []

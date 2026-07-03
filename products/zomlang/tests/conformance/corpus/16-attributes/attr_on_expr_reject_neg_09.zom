@@ -1,0 +1,4 @@
+fun f() {
+  #[deprecated::note("not on expressions")]
+  foo;
+}

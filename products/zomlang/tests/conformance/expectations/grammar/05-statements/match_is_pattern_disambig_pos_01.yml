@@ -1,0 +1,4 @@
+section: "§5 Match is-pattern disambiguation"
+covers_rule: "matchStatement, patIs"
+expected: "ACCEPT"
+notes: []

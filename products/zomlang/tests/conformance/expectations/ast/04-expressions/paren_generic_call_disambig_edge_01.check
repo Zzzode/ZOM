@@ -1,0 +1,28 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/paren_generic_call_disambig_edge_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #12 @1:1..2:1 file_name="paren_generic_call_disambig_edge_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #11 @1:1..1:33
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #10 @1:1..1:33 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #9 @1:5..1:32 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #8 @1:5..1:32
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="x"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     CallExpression #7 @1:10..1:31
+// CHECK-NEXT:                       callee:
+// CHECK-NEXT:                         IdentExpr #2 @1:10..1:13 name="foo"
+// CHECK-NEXT:                       type_args:
+// CHECK-NEXT:                         PredefinedTypeExpr #3 @1:14..1:17 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #4 @1:19..1:22 kind=Str
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         IntLiteral #5 @1:24..1:25 base=10 value="1"
+// CHECK-NEXT:                         StrLiteral #6 @1:27..1:30 value="s" is_raw=false prefix=None
+// CHECK-NEXT:       attrs: null

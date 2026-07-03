@@ -1,0 +1,4 @@
+section: "§16 Attribute attachment rejects expression statements"
+covers_rule: "statementListItem, outerAttributeList"
+expected: "REJECT"
+notes: ["Outer attributes are rejected before expression statements."]
