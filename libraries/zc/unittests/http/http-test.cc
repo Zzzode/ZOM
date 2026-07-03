@@ -5870,9 +5870,8 @@ ZC_TEST("HttpClient connection management") {
   // If the server times out the connection, we figure it out on the client.
   doRequest().wait(waitScope);
 
-  // TODO(someday): Figure out why the following poll is necessary for the test to pass on Windows
-  //   and Mac.  Without it, it seems that the request's connection never starts, so the
-  //   subsequent advanceTo() does not actually time out the connection.
+  // Drive the server and client through separate event-loop turns. OS-backed pipes can deliver the
+  // timeout close and the client-side EOF notification in separate turns.
   waitScope.poll();
 
   ZC_EXPECT(count == 1);
@@ -5880,6 +5879,7 @@ ZC_TEST("HttpClient connection management") {
   serverTimer.advanceTo(serverTimer.now() + serverSettings.pipelineTimeout * 2);
   waitScope.poll();
   clientTimer.advanceTo(clientTimer.now() + 100 * zc::MILLISECONDS);
+  waitScope.poll();
   waitScope.poll();
   ZC_EXPECT(count == 0);
   ZC_EXPECT(cumulative == 8);
