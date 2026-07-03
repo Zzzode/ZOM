@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression"
+covers_rule: "functionExpression"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

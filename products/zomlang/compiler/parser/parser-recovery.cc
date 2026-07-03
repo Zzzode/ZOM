@@ -425,6 +425,7 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
 
   while (cursor.position() < limit && cursor.peek() != ast::SyntaxKind::EndOfFile &&
          isDeclarationModifier(cursor.peek())) {
+    if (cursor.position() == nodeStart && cursor.peek() == ast::SyntaxKind::MutKeyword) { break; }
     cursor.advance();
   }
   const size_t head = cursor.position();

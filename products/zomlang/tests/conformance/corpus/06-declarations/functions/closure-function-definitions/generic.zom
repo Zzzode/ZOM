@@ -1,4 +1,4 @@
 // Test generic closure
 let genericClosure = fun <T> (val: T) -> T {
-  val
-}
+  return val;
+};

@@ -578,8 +578,8 @@ ast::NodeId Parser::Impl::parseForStatement(AstFactory& builder, size_t start, s
   const ForStatementParts parts = parseForStatementParts(start, end);
   if (parts.firstSemi >= parts.headerEnd || parts.secondSemi >= parts.headerEnd) {
     if (!shouldSuppressDiagnostic(parts.headerEnd)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-          diagnosticLoc(parts.headerEnd), ";"_zc);
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(parts.headerEnd),
+                                                                    ";"_zc);
     }
     return ast::NodeId();
   }
@@ -638,8 +638,8 @@ ast::NodeId Parser::Impl::parseMatchStatement(AstFactory& builder, size_t start,
             consumeBalancedUntil(armCursor, bodyEnd, ast::SyntaxKind::EqualsGreaterThan);
         if (arrow >= bodyEnd) {
           if (!shouldSuppressDiagnostic(cursor + 1)) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-                diagnosticLoc(cursor + 1), "=>"_zc);
+            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
+                                                                          "=>"_zc);
           }
           return ast::NodeId();
         }
@@ -665,8 +665,8 @@ ast::NodeId Parser::Impl::parseMatchStatement(AstFactory& builder, size_t start,
             consumeBalancedUntil(armCursor, bodyEnd, ast::SyntaxKind::EqualsGreaterThan);
         if (arrow >= bodyEnd) {
           if (!shouldSuppressDiagnostic(cursor + 1)) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-                diagnosticLoc(cursor + 1), "=>"_zc);
+            diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
+                                                                          "=>"_zc);
           }
           return ast::NodeId();
         }
@@ -716,8 +716,7 @@ ast::NodeId Parser::Impl::parseExternBlockDeclaration(AstFactory& builder, size_
 
   if (cursor >= end || kindAt(cursor) != ast::SyntaxKind::LeftBrace) {
     if (!shouldSuppressDiagnostic(cursor)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor),
-                                                                    "{"_zc);
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor), "{"_zc);
     }
     return ast::NodeId();
   }

@@ -1,30 +1,123 @@
-// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/object_property_cursor_pos_01.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/object_property_cursor_pos_01.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*object_property_cursor_pos_01.zom}}:1:22
-// CHECK:   |
-// CHECK: 1 | struct Point { x: i32, y: i32, }
-// CHECK:   |                      ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*object_property_cursor_pos_01.zom}}:1:30
-// CHECK:   |
-// CHECK: 1 | struct Point { x: i32, y: i32, }
-// CHECK:   |                              ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*object_property_cursor_pos_01.zom}}:2:33
-// CHECK:   |
-// CHECK: 2 | struct CursorObject { first: i32, second: i32, third: i32, }
-// CHECK:   |                                 ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*object_property_cursor_pos_01.zom}}:2:46
-// CHECK:   |
-// CHECK: 2 | struct CursorObject { first: i32, second: i32, third: i32, }
-// CHECK:   |                                              ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*object_property_cursor_pos_01.zom}}:2:58
-// CHECK:   |
-// CHECK: 2 | struct CursorObject { first: i32, second: i32, third: i32, }
-// CHECK:   |                                                          ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #59 @1:1..11:1 file_name="object_property_cursor_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:33
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #6 @1:1..1:33 name="Point" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #5 @1:14..1:33 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @1:16..1:23 name="x" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:19..1:22 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #4 @1:24..1:31 name="y" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:27..1:30 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #16 @2:1..2:61
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #15 @2:1..2:61 name="CursorObject" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #14 @2:21..2:61 nmembers=3
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #9 @2:23..2:34 name="first" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #8 @2:30..2:33 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #11 @2:35..2:47 name="second" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #10 @2:43..2:46 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #13 @2:48..2:59 name="third" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #12 @2:55..2:58 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #58 @3:1..10:3
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #57 @3:1..10:3 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #56 @3:5..10:2 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #55 @3:5..10:2
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #17 @3:5..3:17 name="objectCursor"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     StructLiteralExpr #54 @3:20..10:2
+// CHECK-NEXT:                       ty:
+// CHECK-NEXT:                         NamedTypeExpr #20 @3:20..3:32
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #19 @3:20..3:32 segments=["CursorObject"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                       properties:
+// CHECK-NEXT:                         ObjectProperty #25 @4:3..4:20 name="first" short_form=false
+// CHECK-NEXT:                           value:
+// CHECK-NEXT:                             CallExpression #24 @4:10..4:20
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #21 @4:10..4:14 name="call"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #22 @4:15..4:16 name="a"
+// CHECK-NEXT:                                 IdentExpr #23 @4:18..4:19 name="b"
+// CHECK-NEXT:                         ObjectProperty #44 @5:3..8:4 name="second" short_form=false
+// CHECK-NEXT:                           value:
+// CHECK-NEXT:                             StructLiteralExpr #43 @5:11..8:4
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 NamedTypeExpr #28 @5:11..5:16
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #27 @5:11..5:16 segments=["Point"]
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                               properties:
+// CHECK-NEXT:                                 ObjectProperty #33 @6:5..6:18 name="x" short_form=false
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     CallExpression #32 @6:8..6:18
+// CHECK-NEXT:                                       callee:
+// CHECK-NEXT:                                         IdentExpr #29 @6:8..6:12 name="call"
+// CHECK-NEXT:                                       type_args: []
+// CHECK-NEXT:                                       args:
+// CHECK-NEXT:                                         IdentExpr #30 @6:13..6:14 name="c"
+// CHECK-NEXT:                                         IdentExpr #31 @6:16..6:17 name="d"
+// CHECK-NEXT:                                 ObjectProperty #42 @7:5..7:24 name="y" short_form=false
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     CallExpression #41 @7:8..7:24
+// CHECK-NEXT:                                       callee:
+// CHECK-NEXT:                                         IdentExpr #34 @7:8..7:12 name="make"
+// CHECK-NEXT:                                       type_args:
+// CHECK-NEXT:                                         NamedTypeExpr #36 @7:13..7:14
+// CHECK-NEXT:                                           path:
+// CHECK-NEXT:                                             ModulePath #35 @7:13..7:14 segments=["A"]
+// CHECK-NEXT:                                           args: []
+// CHECK-NEXT:                                         NamedTypeExpr #38 @7:16..7:17
+// CHECK-NEXT:                                           path:
+// CHECK-NEXT:                                             ModulePath #37 @7:16..7:17 segments=["B"]
+// CHECK-NEXT:                                           args: []
+// CHECK-NEXT:                                       args:
+// CHECK-NEXT:                                         IdentExpr #39 @7:19..7:20 name="x"
+// CHECK-NEXT:                                         IdentExpr #40 @7:22..7:23 name="y"
+// CHECK-NEXT:                         ObjectProperty #53 @9:3..9:26 name="third" short_form=false
+// CHECK-NEXT:                           value:
+// CHECK-NEXT:                             CallExpression #52 @9:10..9:26
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #45 @9:10..9:14 name="make"
+// CHECK-NEXT:                               type_args:
+// CHECK-NEXT:                                 NamedTypeExpr #47 @9:15..9:16
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #46 @9:15..9:16 segments=["C"]
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                                 NamedTypeExpr #49 @9:18..9:19
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #48 @9:18..9:19 segments=["D"]
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #50 @9:21..9:22 name="e"
+// CHECK-NEXT:                                 IdentExpr #51 @9:24..9:25 name="f"
+// CHECK-NEXT:       attrs: null

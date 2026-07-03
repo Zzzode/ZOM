@@ -708,6 +708,11 @@ concurrency pass in the type checker. The pass computes the full set of
 capture sites inside `body`, classifies each as move-capture or
 reference-capture, and then enforces:
 
+For function expressions with an explicit capture clause, the capture sites are
+the entries in that clause. For function expressions without an explicit capture
+clause, the capture sites are inferred from references to enclosing lexical
+bindings, using the function-expression rules in Chapter 4.
+
 1. **Move-captured value of type T.** Requires `T: Sendable` (marker,
    Ch.16). The marker engine (compiler-contracts §9, Phases A/B/C)
    must return a

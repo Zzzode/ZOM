@@ -987,6 +987,44 @@ ZC_TEST("ParserTest.ParseInterfaceDeclaration") {
   ZC_EXPECT(result != zc::none, "Should parse interface declaration");
 }
 
+ZC_TEST("ParserTest.ParseGetSetKeywordMethodNames") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("interface Mappable<K, V> { fun get(k: K) -> V; fun set(k: K, v: V) -> unit; }")
+          .asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse get/set method declarations");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& interfaceNode = topLevelStatement(root, 0);
+    ZC_EXPECT(interfaceNode.kind == ast::SyntaxKind::InterfaceDecl);
+
+    const ast::Node& members =
+        root.node(ast::NodeId(interfaceNode.payload.words[ast::kInterfaceDeclMembersIdWord]));
+    ZC_EXPECT(members.kind == ast::SyntaxKind::ClassMemberList);
+
+    ast::NodeList memberList;
+    memberList.first = members.payload.words[ast::kClassMemberListMembersFirstWord];
+    memberList.size = members.payload.words[ast::kClassMemberListMembersSizeWord];
+    const auto memberIds = root.list(memberList);
+    ZC_EXPECT(memberIds.size() == 2);
+
+    const ast::Node& getMethod = root.node(memberIds[0]);
+    ZC_EXPECT(getMethod.kind == ast::SyntaxKind::MethodDecl);
+    ZC_EXPECT(root.ident(ast::IdentId(getMethod.payload.words[ast::kMethodDeclNameWord])) == "get");
+
+    const ast::Node& setMethod = root.node(memberIds[1]);
+    ZC_EXPECT(setMethod.kind == ast::SyntaxKind::MethodDecl);
+    ZC_EXPECT(root.ident(ast::IdentId(setMethod.payload.words[ast::kMethodDeclNameWord])) == "set");
+  }
+}
+
 ZC_TEST("ParserTest.ParseInterfacePropertySignature") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -1266,6 +1304,41 @@ ZC_TEST("ParserTest.ParseNestedTypeArgumentsInGenericCall") {
     vectorArgs.first = vectorType.payload.words[ast::kNamedTypeExprArgsFirstWord];
     vectorArgs.size = vectorType.payload.words[ast::kNamedTypeExprArgsSizeWord];
     ZC_EXPECT(tree.list(vectorArgs).size() == 1);
+  }
+}
+
+ZC_TEST("ParserTest.ParseGenericCallInObjectLiteralProperty") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("let value = CursorObject { first: make<A, B>(x, y), };").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse generic calls inside object literal properties");
+  ZC_IF_SOME(tree, result) {
+    const ast::Node& init = letInitializer(tree, 0);
+    ZC_EXPECT(init.kind == ast::SyntaxKind::StructLiteralExpr);
+
+    ast::NodeList properties;
+    properties.first = init.payload.words[ast::kStructLiteralExprPropertiesFirstWord];
+    properties.size = init.payload.words[ast::kStructLiteralExprPropertiesSizeWord];
+    const auto propertyNodes = tree.list(properties);
+    ZC_EXPECT(propertyNodes.size() == 1);
+
+    const ast::Node& property = tree.node(propertyNodes[0]);
+    ZC_EXPECT(property.kind == ast::SyntaxKind::ObjectProperty);
+    const ast::Node& value =
+        tree.node(ast::NodeId(property.payload.words[ast::kObjectPropertyValueWord]));
+    ZC_EXPECT(value.kind == ast::SyntaxKind::CallExpression);
+
+    ast::NodeList typeArgs;
+    typeArgs.first = value.payload.words[ast::kCallExpressionTypeArgsFirstWord];
+    typeArgs.size = value.payload.words[ast::kCallExpressionTypeArgsSizeWord];
+    ZC_EXPECT(tree.list(typeArgs).size() == 2);
   }
 }
 
@@ -2788,6 +2861,92 @@ ZC_TEST("ParserTest.ParseTypeParameterDefaultWithNestedGenericClose") {
   ZC_EXPECT(result != zc::none);
 }
 
+ZC_TEST("ParserTest.ParseFunctionTypeBoundWithCommaParameters") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("fun constrained<T: fun(i32, i32) -> i32>(value: T) -> T { return value; }")
+          .asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should keep comma-separated function type parameters in a bound");
+  ZC_IF_SOME(tree, result) {
+    const ast::Node& function = topLevelStatement(tree, 0);
+    ZC_EXPECT(function.kind == ast::SyntaxKind::FunctionDecl);
+    const ast::Node& typeParams =
+        tree.node(ast::NodeId(function.payload.words[ast::kFunctionDeclTypeParamsIdWord]));
+    ZC_EXPECT(typeParams.kind == ast::SyntaxKind::GenericParams);
+
+    ast::NodeList params;
+    params.first = typeParams.payload.words[ast::kGenericParamsParamsFirstWord];
+    params.size = typeParams.payload.words[ast::kGenericParamsParamsSizeWord];
+    const auto paramNodes = tree.list(params);
+    ZC_EXPECT(paramNodes.size() == 1);
+
+    const ast::Node& param = tree.node(paramNodes[0]);
+    ZC_EXPECT(param.kind == ast::SyntaxKind::GenericTypeParam);
+    const ast::Node& bound =
+        tree.node(ast::NodeId(param.payload.words[ast::kGenericTypeParamBoundWord]));
+    ZC_EXPECT(bound.kind == ast::SyntaxKind::FunctionTypeExpr);
+    ZC_EXPECT(bound.payload.words[ast::kFunctionTypeExprParamsSizeWord] == 2);
+  }
+}
+
+ZC_TEST("ParserTest.RejectExtraRightAngleAfterTypeParameters") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("fun f<T, U>>(a: T, b: U) -> unit { return unit; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result == zc::none, "Should reject an extra right angle after type parameters");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
+}
+
+ZC_TEST("ParserTest.ParseMutBindingDeclaration") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("mut (a, b) = (1, 2);").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should keep statement-leading mut as a binding declaration head");
+  ZC_IF_SOME(tree, result) {
+    const ast::Node& statement = topLevelStatement(tree, 0);
+    ZC_EXPECT(statement.kind == ast::SyntaxKind::LetStmt);
+    ZC_EXPECT(statement.payload.words[ast::kLetStmtKindWord] ==
+              static_cast<uint32_t>(ast::BindingDeclarationKind::Mut));
+  }
+}
+
+ZC_TEST("ParserTest.ParsePlusSeparatedInterfaceTypeBound") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("interface FullAssoc { type Element : Show + Hash = T | U; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse plus-separated associated type bounds");
+  ZC_EXPECT(!diagnosticEngine->hasErrors());
+}
+
 ZC_TEST("ParserTest.ParseImportCallExpression") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -3754,6 +3913,23 @@ ZC_TEST("ParserTest.ParseMatchWithStructPattern") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
+}
+
+ZC_TEST("ParserTest.ParseMatchWithNestedStructPattern") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("match (s) { when S { a: [x, y, ...rest], b: (c, d), e: _ } => "
+              "{ print(x + y + c + d); } }")
+          .asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(!diagnosticEngine->hasErrors());
 }
 
 /// Covers parseMatchStatement with tuple pattern

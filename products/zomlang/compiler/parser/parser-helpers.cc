@@ -31,9 +31,7 @@ bool isIdentifierLike(ast::SyntaxKind kind) {
          kind == ast::SyntaxKind::SuperKeyword;
 }
 
-bool isExpressionIdentifierLike(ast::SyntaxKind kind) {
-  return isIdentifierLike(kind);
-}
+bool isExpressionIdentifierLike(ast::SyntaxKind kind) { return isIdentifierLike(kind); }
 
 bool isPropertyNameLike(ast::SyntaxKind kind) {
   return kind == ast::SyntaxKind::Identifier || lexer::isKeyword(kind);

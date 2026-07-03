@@ -1,10 +1,44 @@
-// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/iface_modifier_combos2_edge_08.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/09-interfaces/iface_modifier_combos2_edge_08.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*iface_modifier_combos2_edge_08.zom}}:3:37
-// CHECK:   |
-// CHECK: 3 |     public abstract type Key : Hash + Eq;
-// CHECK:   |                                     ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #17 @1:1..6:1 file_name="iface_modifier_combos2_edge_08.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #16 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #15 @1:1..5:2 name="AbstractStuff"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #14 @1:25..5:2 nmembers=3
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:33 name="pure" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #1 @2:22..2:24 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:28..2:32 kind=Unit
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:                 AssociatedTypeDecl #9 @3:5..3:42 name="Key"
+// CHECK-NEXT:                   bound:
+// CHECK-NEXT:                     IntersectionTypeExpr #8 @3:32..3:41
+// CHECK-NEXT:                       alts:
+// CHECK-NEXT:                         NamedTypeExpr #5 @3:32..3:36
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #4 @3:32..3:36 segments=["Hash"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                         NamedTypeExpr #7 @3:39..3:41
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #6 @3:39..3:41 segments=["Eq"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:                 MethodDecl #13 @4:5..4:33 name="create" is_static=true visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #10 @4:22..4:24 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     NamedTypeExpr #12 @4:28..4:32
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #11 @4:28..4:32 segments=["Self"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:       attrs: null

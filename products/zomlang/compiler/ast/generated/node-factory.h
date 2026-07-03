@@ -620,11 +620,11 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::NewExpression, zc::mv(range), payload);
   }
 
-  NodeId makeFunctionExpression(source::SourceRange range, NodeId params_id, NodeList captures, NodeId ret_ty, NodeId raises_ty, NodeId body) {
+  NodeId makeFunctionExpression(source::SourceRange range, NodeId params_id, NodeId type_params_id, NodeId captures_id, NodeId ret_ty, NodeId raises_ty, NodeId body) {
     NodePayload payload;
     payload.words[kFunctionExpressionParamsIdWord] = params_id.value;
-    payload.words[kFunctionExpressionCapturesFirstWord] = captures.first;
-    payload.words[kFunctionExpressionCapturesSizeWord] = captures.size;
+    payload.words[kFunctionExpressionTypeParamsIdWord] = type_params_id.value;
+    payload.words[kFunctionExpressionCapturesIdWord] = captures_id.value;
     payload.words[kFunctionExpressionRetTyWord] = ret_ty.value;
     payload.words[kFunctionExpressionRaisesTyWord] = raises_ty.value;
     payload.words[kFunctionExpressionBodyWord] = body.value;
@@ -730,6 +730,14 @@ public:
   NodeId makeSuperExpr(source::SourceRange range) {
     NodePayload payload;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::SuperExpr, zc::mv(range), payload);
+  }
+
+  NodeId makeCaptureList(source::SourceRange range, uint16_t n_captures, NodeList captures) {
+    NodePayload payload;
+    payload.words[kCaptureListNCapturesWord] = static_cast<uint32_t>(n_captures);
+    payload.words[kCaptureListCapturesFirstWord] = captures.first;
+    payload.words[kCaptureListCapturesSizeWord] = captures.size;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CaptureList, zc::mv(range), payload);
   }
 
   NodeId makeDynTypeExpr(source::SourceRange range, NodeId ifaces_id, NodeId markers_id, bool has_lifetime, IdentId lifetime) {

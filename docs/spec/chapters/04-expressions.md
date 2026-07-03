@@ -367,7 +367,48 @@ result ??= fallbackValue; // Null coalescing assignment
 
 ## Function Expressions
 
-Function expressions create anonymous functions:
+Function expressions create anonymous functions. A function expression has the
+same parameter, generic parameter, return-type, and `raises` syntax as a
+function declaration, but it has no binding identifier.
+
+```text
+FunctionExpression ::= 'fun' TypeParameters? ParameterClause CaptureClause?
+                       ReturnType? BlockStatement
+CaptureClause ::= 'use' '[' CaptureList? ']'
+CaptureList ::= CaptureElement (',' CaptureElement)* ','?
+CaptureElement ::= Identifier | '&' Identifier | 'this'
+```
+
+The `use` token is contextual. It starts a capture clause only in the position
+immediately after the parameter clause and before the optional return type. In
+all other expression positions, `use` remains an ordinary identifier.
+
+The capture clause is an explicit capture set:
+
+- `name` captures the enclosing lexical binding by value.
+- `&name` captures the enclosing lexical binding by reference.
+- `this` captures the current instance receiver.
+
+The `this` form is valid only when a receiver is in scope. `&this` is not valid;
+receiver capture is always written as `this`. Capture entries name bindings in
+an enclosing lexical scope. Parameters and declarations inside the function
+expression body are not captures. Module-scope declarations and imported names
+do not need capture entries.
+
+When a capture clause is present, it is exhaustive. The function expression body
+may refer to its parameters, declarations inside its body, module-scope names,
+imports, and the listed captures. `use []` is therefore an explicit no-capture
+function expression. When the capture clause is omitted, the semantic analyzer
+infers the capture set from references to enclosing lexical bindings.
+
+Capture lists preserve source order. A trailing comma is permitted. Empty
+elements are not permitted.
+
+Capture legality is checked after parsing. By-reference captures must not
+outlive the referenced storage. Function expressions used as `spawn` bodies are
+also checked by the spawn-boundary rules in Chapter 15; by-value captures must
+satisfy `Sendable`, and by-reference captures require `Shared` plus a valid
+lifetime.
 
 ```zom
 // Basic function expression
@@ -387,7 +428,12 @@ let filtered = numbers.filter(fun (x: i32) -> bool { return x > 2; });
 
 // Function expression capturing variables
 let multiplier = 3;
-let multiply = fun (x: i32) -> i32 { return x * multiplier; };
+let multiply = fun (x: i32) use [multiplier] -> i32 {
+    return x * multiplier;
+};
+
+// Explicitly no captures
+let identity = fun (x: i32) use [] -> i32 { return x; };
 ```
 
 ## Operator Precedence

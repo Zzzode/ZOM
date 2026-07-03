@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
 approvers: []
 created: 2026-06-30
-updated: 2026-07-02
+updated: 2026-07-03
 area: compiler
 requires: [1, 3]
 supersedes: []
@@ -1347,3 +1347,4 @@ acceptance criteria and owner approval; no design question remains open.
 | 2026-07-02 | REVIEW | Implemented the cursor-only parser gate: parser-side `lexAll()`, lexer state/rescan lookahead, raw parser payload writes, and `findTopLevel*` range-scanning helpers are absent; recovery frames now carry context, anchor, sync set, consumed state, and cascade suppression state. |
 | 2026-07-02 | REVIEW | Removed the stale loose parsing design and aligned `docs/design/architecture.md` plus `docs/design/compiler-contracts.md` with the fail-closed lazy token stream and `TokenCursor` parser contract. |
 | 2026-07-02 | REVIEW | Removed parser-facing force-EOF token counting: `TokenStream` no longer exposes `tokenCount()` or `tokenCountWithoutEof()`, `TokenCursor` no longer exposes whole-stream `size()`, and post-parse token diagnostics use only the already buffered token limit. |
+| 2026-07-03 | REVIEW | Closed the AST verdict mismatch gate: parser fixes, grammar oracle alignment, and regenerated AST expectations make `check-ast-coverage.py`, parser coverage, focused parser and lexer CTests, full grammar conformance, format, and sanitizer build pass locally. Advancement beyond `REVIEW` still requires owner approval and a recorded decision. |

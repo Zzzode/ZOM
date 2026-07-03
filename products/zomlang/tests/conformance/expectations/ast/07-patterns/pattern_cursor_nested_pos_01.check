@@ -1,10 +1,95 @@
-// RUN: ! %zomc compile --dump-ast %corpus/07-patterns/pattern_cursor_nested_pos_01.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/07-patterns/pattern_cursor_nested_pos_01.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*pattern_cursor_nested_pos_01.zom}}:1:21
-// CHECK:   |
-// CHECK: 1 | struct S { left: i32, right: i32 }
-// CHECK:   |                     ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #41 @1:1..6:1 file_name="pattern_cursor_nested_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:35
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #6 @1:1..1:35 name="S" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #5 @1:10..1:35 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @1:12..1:22 name="left" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:18..1:21 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #4 @1:23..1:33 name="right" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:30..1:33 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #40 @2:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         MatchStmt #39 @2:1..5:2
+// CHECK-NEXT:           scrutinee:
+// CHECK-NEXT:             IdentExpr #38 @2:8..2:13 name="value"
+// CHECK-NEXT:           arms:
+// CHECK-NEXT:             MatchArmStmt #23 @3:5..3:62
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 EnumPattern #16 @3:10..3:45
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #15 @3:10..3:20 segments=["Shape", "Pair"]
+// CHECK-NEXT:                   args:
+// CHECK-NEXT:                     TuplePattern #10 @3:21..3:27
+// CHECK-NEXT:                       pats:
+// CHECK-NEXT:                         IdentifierPattern #8 @3:22..3:23 name="a"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                         IdentifierPattern #9 @3:25..3:26 name="b"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                     ArrayPattern #14 @3:29..3:44
+// CHECK-NEXT:                       pats:
+// CHECK-NEXT:                         IdentifierPattern #11 @3:30..3:31 name="c"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                         IdentifierPattern #12 @3:33..3:34 name="d"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                       rest:
+// CHECK-NEXT:                         RestPattern #13 @3:36..3:43 binding="rest"
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #22 @3:49..3:62
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #21 @3:51..3:60
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #20 @3:51..3:60
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #19 @3:51..3:59
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #17 @3:51..3:56 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #18 @3:57..3:58 name="a"
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:             MatchArmStmt #37 @4:5..4:59
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 StructPattern #30 @4:10..4:42
+// CHECK-NEXT:                   ty_path:
+// CHECK-NEXT:                     ModulePath #24 @4:10..4:11 segments=["S"]
+// CHECK-NEXT:                   fields:
+// CHECK-NEXT:                     PatternProperty #26 @4:14..4:21 name="left" short_form=false
+// CHECK-NEXT:                       pat:
+// CHECK-NEXT:                         IdentifierPattern #25 @4:20..4:21 name="e"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                     PatternProperty #28 @4:23..4:31 name="right" short_form=false
+// CHECK-NEXT:                       pat:
+// CHECK-NEXT:                         IdentifierPattern #27 @4:30..4:31 name="h"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                   rest:
+// CHECK-NEXT:                     RestPattern #29 @4:33..4:40 binding="tail"
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #36 @4:46..4:59
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #35 @4:48..4:57
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #34 @4:48..4:57
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #33 @4:48..4:56
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #31 @4:48..4:53 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentExpr #32 @4:54..4:55 name="e"
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:       attrs: null

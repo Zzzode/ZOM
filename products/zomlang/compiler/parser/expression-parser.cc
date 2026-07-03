@@ -183,17 +183,20 @@ size_t Parser::Impl::findExpressionConditionalColon(size_t question, size_t end)
 }
 
 size_t Parser::Impl::consumeCommaDelimitedItem(TokenCursor& cursor, size_t end) const {
+  TokenCursor::ScopedSplitMode splitMode(cursor);
   int32_t parenDepth = 0;
   int32_t bracketDepth = 0;
   int32_t braceDepth = 0;
+  int32_t angleDepth = 0;
 
   while (cursor.position() < end) {
     const ast::SyntaxKind kind = cursor.peek();
-    if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && kind == ast::SyntaxKind::Comma) {
+    if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && angleDepth == 0 &&
+        kind == ast::SyntaxKind::Comma) {
       return cursor.position();
     }
 
-    if (kind == ast::SyntaxKind::LessThan) {
+    if (angleDepth == 0 && kind == ast::SyntaxKind::LessThan) {
       const size_t closeAngle = findMatchingAngleClose(cursor.position(), end);
       if (closeAngle + 1 < end && kindAt(closeAngle + 1) == ast::SyntaxKind::LeftParen) {
         cursor.moveTo(closeAngle + 1);
@@ -213,6 +216,10 @@ size_t Parser::Impl::consumeCommaDelimitedItem(TokenCursor& cursor, size_t end) 
       ++braceDepth;
     } else if (kind == ast::SyntaxKind::RightBrace) {
       if (braceDepth > 0) { --braceDepth; }
+    } else if (kind == ast::SyntaxKind::LessThan) {
+      ++angleDepth;
+    } else if (kind == ast::SyntaxKind::GreaterThan) {
+      if (angleDepth > 0) { --angleDepth; }
     }
     cursor.advance();
   }
@@ -555,7 +562,7 @@ ast::NodeId Parser::Impl::parseCaptureItem(AstFactory& builder, size_t start, si
   return builder.makeCaptureItem(rangeFor(start, end), mode, internIdent(builder, nameIndex));
 }
 
-ast::NodeList Parser::Impl::parseCaptureList(AstFactory& builder, size_t start, size_t end) const {
+ast::NodeId Parser::Impl::parseCaptureList(AstFactory& builder, size_t start, size_t end) const {
   zc::Vector<ast::NodeId> captures;
   TokenCursor cursor = tokenCursorAt(start);
   while (cursor.position() < end) {
@@ -567,13 +574,22 @@ ast::NodeList Parser::Impl::parseCaptureList(AstFactory& builder, size_t start, 
     addNodeIfPresent(captures, parseCaptureItem(builder, itemStart, itemEnd));
     if (cursor.position() < end && cursor.peek() == ast::SyntaxKind::Comma) { cursor.advance(); }
   }
-  return builder.makeList(captures.asPtr());
+  return builder.makeCaptureList(rangeFor(start, end), static_cast<uint16_t>(captures.size()),
+                                 builder.makeList(captures.asPtr()));
 }
 
 ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t start,
                                                   size_t end) const {
+  size_t signatureCursor = start + 1;
+  ast::NodeId typeParams;
+  if (signatureCursor < end && kindAt(signatureCursor) == ast::SyntaxKind::LessThan) {
+    typeParams = parseTypeParameters(builder, signatureCursor, end);
+    TokenCursor angleCursor = tokenCursorAt(signatureCursor);
+    signatureCursor = consumeBalancedAngleList(angleCursor, end) ? angleCursor.position() : end;
+  }
+
   size_t openParen = end;
-  for (size_t index = start + 1; index < end; ++index) {
+  for (size_t index = signatureCursor; index < end; ++index) {
     if (kindAt(index) == ast::SyntaxKind::LeftParen) {
       openParen = index;
       break;
@@ -598,7 +614,7 @@ ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t st
 
   const ast::NodeId params = parseFunctionParameterList(builder, openParen, closeParen);
 
-  ast::NodeList captures;
+  ast::NodeId captures;
   size_t useIndex = end;
   for (size_t index = closeParen + 1; index < (bodyOpen < end ? bodyOpen : end); ++index) {
     zc::StringPtr text = tokenAt(index).getValue();
@@ -638,8 +654,8 @@ ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t st
     }
   }
 
-  return builder.makeFunctionExpression(rangeFor(start, end), params, captures, retTy, raisesTy,
-                                        parseBlock(builder, bodyOpen, end));
+  return builder.makeFunctionExpression(rangeFor(start, end), params, typeParams, captures, retTy,
+                                        raisesTy, parseBlock(builder, bodyOpen, end));
 }
 
 ast::NodeId Parser::Impl::parseLambdaExpression(AstFactory& builder, size_t start,

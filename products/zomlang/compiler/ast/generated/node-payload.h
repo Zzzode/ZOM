@@ -450,8 +450,8 @@ constexpr uint32_t kNewExpressionArgsSizeWord = 4;
 
 constexpr uint32_t kFunctionExpressionPayloadWordCount = 6;
 constexpr uint32_t kFunctionExpressionParamsIdWord = 0;
-constexpr uint32_t kFunctionExpressionCapturesFirstWord = 1;
-constexpr uint32_t kFunctionExpressionCapturesSizeWord = 2;
+constexpr uint32_t kFunctionExpressionTypeParamsIdWord = 1;
+constexpr uint32_t kFunctionExpressionCapturesIdWord = 2;
 constexpr uint32_t kFunctionExpressionRetTyWord = 3;
 constexpr uint32_t kFunctionExpressionRaisesTyWord = 4;
 constexpr uint32_t kFunctionExpressionBodyWord = 5;
@@ -514,6 +514,11 @@ constexpr uint32_t kCaptureItemModeWord = 0;
 constexpr uint32_t kCaptureItemNameWord = 1;
 
 constexpr uint32_t kSuperExprPayloadWordCount = 0;
+
+constexpr uint32_t kCaptureListPayloadWordCount = 3;
+constexpr uint32_t kCaptureListNCapturesWord = 0;
+constexpr uint32_t kCaptureListCapturesFirstWord = 1;
+constexpr uint32_t kCaptureListCapturesSizeWord = 2;
 
 constexpr uint32_t kDynTypeExprPayloadWordCount = 4;
 constexpr uint32_t kDynTypeExprIfacesIdWord = 0;

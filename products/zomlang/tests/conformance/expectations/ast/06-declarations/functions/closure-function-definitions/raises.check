@@ -1,15 +1,40 @@
-// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/raises.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/raises.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2012]: Missing semicolon before '<token>'
-// CHECK:   --> {{.*raises.zom}}:4:1
-// CHECK:   |
-// CHECK: 4 |
-// CHECK:   | ^
-// CHECK: Error [ZOM2025]: Expected ';'
-// CHECK:   --> {{.*raises.zom}}:4:1
-// CHECK:   |
-// CHECK: 4 |
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #14 @2:1..5:1 file_name="raises.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #13 @2:1..4:3
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #12 @2:1..4:3 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #11 @2:5..4:2 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #10 @2:5..4:2
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @2:5..2:18 name="raisesClosure"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     FunctionExpression #9 @2:21..4:2
+// CHECK-NEXT:                       params_id:
+// CHECK-NEXT:                         FunctionParameterList #2 @2:25..2:27 nparams=0
+// CHECK-NEXT:                           params: []
+// CHECK-NEXT:                       type_params_id: null
+// CHECK-NEXT:                       captures_id: null
+// CHECK-NEXT:                       ret_ty:
+// CHECK-NEXT:                         PredefinedTypeExpr #3 @2:31..2:35 kind=Unit
+// CHECK-NEXT:                       raises_ty:
+// CHECK-NEXT:                         NamedTypeExpr #5 @2:43..2:48
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #4 @2:43..2:48 segments=["Error"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #8 @2:49..4:2
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #7 @3:3..3:10
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ReturnStmt #6 @3:3..3:10
+// CHECK-NEXT:                                   value: null
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:       attrs: null

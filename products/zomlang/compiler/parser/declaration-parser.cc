@@ -20,14 +20,29 @@ namespace zomlang {
 namespace compiler {
 namespace parser {
 
+namespace {
+
+bool isFunctionNameToken(ast::SyntaxKind kind) {
+  return kind == ast::SyntaxKind::Identifier || kind == ast::SyntaxKind::GetKeyword ||
+         kind == ast::SyntaxKind::SetKeyword;
+}
+
+bool isMemberStartToken(ast::SyntaxKind kind) {
+  return kind == ast::SyntaxKind::FunKeyword || kind == ast::SyntaxKind::LetKeyword ||
+         kind == ast::SyntaxKind::ConstKeyword || kind == ast::SyntaxKind::GetKeyword ||
+         kind == ast::SyntaxKind::SetKeyword || kind == ast::SyntaxKind::InitKeyword ||
+         kind == ast::SyntaxKind::DeinitKeyword || kind == ast::SyntaxKind::TypeKeyword;
+}
+
+}  // namespace
+
 bool Parser::Impl::isSoftKeywordModifier(size_t index) const {
   return isSoftKeyword(index, "pub"_zc) || isSoftKeyword(index, "priv"_zc) ||
          isSoftKeyword(index, "internal"_zc) || isSoftKeyword(index, "package"_zc);
 }
 
 bool Parser::Impl::modifierGroupContainsSoftKeyword(size_t start, size_t end,
-                                                     zc::StringPtr expected,
-                                                     size_t& found) const {
+                                                    zc::StringPtr expected, size_t& found) const {
   for (size_t cursor = start; cursor < end; ++cursor) {
     if (kindAt(cursor) == ast::SyntaxKind::EndOfFile) { return false; }
     if (isSoftKeyword(cursor, expected)) {
@@ -572,12 +587,9 @@ size_t Parser::Impl::consumeMemberBoundary(size_t start, size_t limit) const {
         return index + 1;
       }
       // Stop at member-starting keywords when we've advanced past the head token.
-      if (index > start &&
-          (kind == ast::SyntaxKind::FunKeyword || kind == ast::SyntaxKind::LetKeyword ||
-           kind == ast::SyntaxKind::ConstKeyword || kind == ast::SyntaxKind::GetKeyword ||
-           kind == ast::SyntaxKind::SetKeyword || kind == ast::SyntaxKind::InitKeyword ||
-           kind == ast::SyntaxKind::DeinitKeyword || kind == ast::SyntaxKind::TypeKeyword ||
-           isSoftKeywordModifier(index))) {
+      if (index > start && (isMemberStartToken(kind) || isSoftKeywordModifier(index)) &&
+          !(head == ast::SyntaxKind::FunKeyword && index == start + 1 &&
+            isFunctionNameToken(kind))) {
         return index;
       }
       if (kind == ast::SyntaxKind::Colon) { sawFieldColon = true; }
@@ -784,8 +796,7 @@ ast::NodeId Parser::Impl::makeEmptyEnumVariantList(AstFactory& builder,
 }
 
 ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyOpen,
-                                                size_t bodyClose,
-                                                ast::SyntaxKind parentKind) const {
+                                               size_t bodyClose, ast::SyntaxKind parentKind) const {
   zc::Vector<ast::NodeId> members;
   bool previousWasGetter = false;
   size_t cursor = bodyOpen + 1;
@@ -814,17 +825,16 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
     if (modifierGroupContains(modifiersStart, modifiersEnd, ast::SyntaxKind::PublicKeyword,
                               foundIdx)) {
       visibility = 1;  // Public
-    } else if (modifierGroupContainsSoftKeyword(modifiersStart, modifiersEnd, "pub"_zc,
-                                                foundIdx)) {
+    } else if (modifierGroupContainsSoftKeyword(modifiersStart, modifiersEnd, "pub"_zc, foundIdx)) {
       visibility = 1;  // Public (soft keyword)
-    } else if (modifierGroupContains(modifiersStart, modifiersEnd,
-                                      ast::SyntaxKind::PrivateKeyword, foundIdx)) {
+    } else if (modifierGroupContains(modifiersStart, modifiersEnd, ast::SyntaxKind::PrivateKeyword,
+                                     foundIdx)) {
       visibility = 2;  // Private
     } else if (modifierGroupContainsSoftKeyword(modifiersStart, modifiersEnd, "priv"_zc,
                                                 foundIdx)) {
       visibility = 2;  // Private (soft keyword)
     } else if (modifierGroupContains(modifiersStart, modifiersEnd,
-                                      ast::SyntaxKind::ProtectedKeyword, foundIdx)) {
+                                     ast::SyntaxKind::ProtectedKeyword, foundIdx)) {
       visibility = 3;  // Protected
     } else if (modifierGroupContainsSoftKeyword(modifiersStart, modifiersEnd, "internal"_zc,
                                                 foundIdx)) {
@@ -837,16 +847,20 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
 
     const ast::SyntaxKind head = kindAt(cursor);
     const size_t memberEnd = consumeMemberBoundary(cursor, bodyClose);
+    size_t memberContentEnd = memberEnd;
+    if (memberContentEnd > cursor && (kindAt(memberContentEnd - 1) == ast::SyntaxKind::Comma ||
+                                      kindAt(memberContentEnd - 1) == ast::SyntaxKind::Semicolon)) {
+      --memberContentEnd;
+    }
 
     // Find body brace within member range.
     TokenCursor bodyCursor = tokenCursorAt(cursor);
     const size_t bodyBrace =
-        consumeBalancedUntil(bodyCursor, memberEnd, ast::SyntaxKind::LeftBrace);
+        consumeBalancedUntil(bodyCursor, memberContentEnd, ast::SyntaxKind::LeftBrace);
 
     // Find semicolon within member range.
     TokenCursor semiCursor = tokenCursorAt(cursor);
-    const size_t semi =
-        consumeBalancedUntil(semiCursor, memberEnd, ast::SyntaxKind::Semicolon);
+    const size_t semi = consumeBalancedUntil(semiCursor, memberEnd, ast::SyntaxKind::Semicolon);
 
     // Run existing diagnostics for this member.
     if (isNamedTypeDeclarationHead(head)) {
@@ -854,8 +868,7 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
           tokenAt(cursor).getLocation());
     }
 
-    if ((parentKind == ast::SyntaxKind::ClassDecl ||
-         parentKind == ast::SyntaxKind::StructDecl) &&
+    if ((parentKind == ast::SyntaxKind::ClassDecl || parentKind == ast::SyntaxKind::StructDecl) &&
         head == ast::SyntaxKind::Identifier) {
       diagnoseMissingFieldMemberSemicolon(cursor, memberEnd);
     }
@@ -873,11 +886,10 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
       diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
           tokenAt(cursor).getLocation());
     }
-    const bool isInitOrDeinit = head == ast::SyntaxKind::InitKeyword ||
-                                head == ast::SyntaxKind::DeinitKeyword ||
-                                (head == ast::SyntaxKind::Identifier &&
-                                 (isSoftKeyword(cursor, "init"_zc) ||
-                                  isSoftKeyword(cursor, "deinit"_zc)));
+    const bool isInitOrDeinit =
+        head == ast::SyntaxKind::InitKeyword || head == ast::SyntaxKind::DeinitKeyword ||
+        (head == ast::SyntaxKind::Identifier &&
+         (isSoftKeyword(cursor, "init"_zc) || isSoftKeyword(cursor, "deinit"_zc)));
     if (head == ast::SyntaxKind::FunKeyword || head == ast::SyntaxKind::GetKeyword ||
         head == ast::SyntaxKind::SetKeyword || isInitOrDeinit) {
       // Method / getter / setter.
@@ -885,8 +897,9 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
       if (isInitOrDeinit) {
         nameIndex = cursor;  // init/deinit is the name itself.
       } else {
-        for (size_t i = cursor + 1; i < memberEnd; ++i) {
-          if (kindAt(i) == ast::SyntaxKind::Identifier) {
+        for (size_t i = cursor + 1; i < memberContentEnd; ++i) {
+          if (kindAt(i) == ast::SyntaxKind::LeftParen) { break; }
+          if (isFunctionNameToken(kindAt(i))) {
             nameIndex = i;
             break;
           }
@@ -895,7 +908,15 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
 
       // Find parameter list.
       size_t openParen = memberEnd;
-      for (size_t i = isInitOrDeinit ? cursor : cursor + 1; i < memberEnd; ++i) {
+      size_t openParenSearch = isInitOrDeinit ? cursor + 1 : nameIndex + 1;
+      if (openParenSearch < memberContentEnd &&
+          kindAt(openParenSearch) == ast::SyntaxKind::LessThan) {
+        TokenCursor angleCursor = tokenCursorAt(openParenSearch);
+        openParenSearch = consumeBalancedAngleList(angleCursor, memberContentEnd)
+                              ? angleCursor.position()
+                              : memberContentEnd;
+      }
+      for (size_t i = openParenSearch; i < memberContentEnd; ++i) {
         if (kindAt(i) == ast::SyntaxKind::LeftParen) {
           openParen = i;
           break;
@@ -903,45 +924,49 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
       }
 
       ast::NodeId paramsId;
-      if (openParen < memberEnd) {
-        const size_t closeParen = findMatchingRightParen(openParen, memberEnd);
+      if (openParen < memberContentEnd) {
+        const size_t closeParen = findMatchingRightParen(openParen, memberContentEnd);
         paramsId = parseFunctionParameterList(builder, openParen, closeParen);
       } else {
         // No parameter list (e.g. `deinit { }` or `init { }` without parens).
         // Build an empty parameter list at the name position.
         zc::Vector<ast::NodeId> emptyParams;
-        paramsId = builder.makeFunctionParameterList(
-            rangeFor(nameIndex, nameIndex), 0, builder.makeList(emptyParams.asPtr()));
+        paramsId = builder.makeFunctionParameterList(rangeFor(nameIndex, nameIndex), 0,
+                                                     builder.makeList(emptyParams.asPtr()));
       }
 
       // Find return type after arrow.
       ast::NodeId retTy;
-      if (openParen < memberEnd) {
-        const size_t closeParen = findMatchingRightParen(openParen, memberEnd);
+      if (openParen < memberContentEnd) {
+        const size_t closeParen = findMatchingRightParen(openParen, memberContentEnd);
         TokenCursor arrowCursor = tokenCursorAt(closeParen + 1);
         const size_t arrow =
-            consumeBalancedTypeUntil(arrowCursor, memberEnd, ast::SyntaxKind::Arrow);
-        if (arrow < memberEnd) {
-          const size_t retEnd = bodyBrace < memberEnd ? bodyBrace : memberEnd;
+            consumeBalancedTypeUntil(arrowCursor, memberContentEnd, ast::SyntaxKind::Arrow);
+        TokenCursor raisesCursor = tokenCursorAt(closeParen + 1);
+        const size_t raises = consumeBalancedTypeUntil(raisesCursor, memberContentEnd,
+                                                       ast::SyntaxKind::RaisesKeyword);
+        if (arrow < memberContentEnd) {
+          size_t retEnd = raises < memberContentEnd ? raises : memberContentEnd;
+          if (bodyBrace < memberContentEnd && bodyBrace < retEnd) { retEnd = bodyBrace; }
           retTy = parseTypeRange(builder, arrow + 1, retEnd);
         }
       }
 
       // Parse body block if present.
       ast::NodeId body;
-      if (bodyBrace < memberEnd && (semi >= memberEnd || bodyBrace < semi)) {
-        body = parseBlock(builder, bodyBrace, memberEnd);
+      if (bodyBrace < memberContentEnd && (semi >= memberEnd || bodyBrace < semi)) {
+        body = parseBlock(builder, bodyBrace, memberContentEnd);
       }
 
       if (nameIndex < memberEnd) {
-        members.add(builder.makeMethodDecl(
-            rangeFor(memberStart, memberEnd), internIdent(builder, nameIndex), paramsId, retTy,
-            body, isStatic, visibility));
+        members.add(builder.makeMethodDecl(rangeFor(memberStart, memberEnd),
+                                           internIdent(builder, nameIndex), paramsId, retTy, body,
+                                           isStatic, visibility));
       }
     } else if (head == ast::SyntaxKind::TypeKeyword) {
       // Associated type declaration.
       size_t nameIndex = memberEnd;
-      for (size_t i = cursor + 1; i < memberEnd; ++i) {
+      for (size_t i = cursor + 1; i < memberContentEnd; ++i) {
         if (kindAt(i) == ast::SyntaxKind::Identifier) {
           nameIndex = i;
           break;
@@ -953,20 +978,23 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
 
       if (nameIndex < memberEnd) {
         // Find colon and equals within the rest of the member.
-        size_t colonPos = memberEnd;
-        size_t equalsPos = memberEnd;
-        for (size_t i = nameIndex + 1; i < memberEnd; ++i) {
+        size_t colonPos = memberContentEnd;
+        size_t equalsPos = memberContentEnd;
+        for (size_t i = nameIndex + 1; i < memberContentEnd; ++i) {
           const ast::SyntaxKind k = kindAt(i);
-          if (k == ast::SyntaxKind::Colon && colonPos == memberEnd) { colonPos = i; }
-          if (k == ast::SyntaxKind::Equals) { equalsPos = i; break; }
+          if (k == ast::SyntaxKind::Colon && colonPos == memberContentEnd) { colonPos = i; }
+          if (k == ast::SyntaxKind::Equals) {
+            equalsPos = i;
+            break;
+          }
         }
 
-        if (colonPos < memberEnd) {
-          const size_t boundEnd = equalsPos < memberEnd ? equalsPos : memberEnd;
+        if (colonPos < memberContentEnd) {
+          const size_t boundEnd = equalsPos < memberContentEnd ? equalsPos : memberContentEnd;
           bound = parseTypeRange(builder, colonPos + 1, boundEnd);
         }
-        if (equalsPos < memberEnd) {
-          size_t defaultEnd = memberEnd;
+        if (equalsPos < memberContentEnd) {
+          size_t defaultEnd = memberContentEnd;
           if (defaultEnd > equalsPos + 1 && kindAt(defaultEnd - 1) == ast::SyntaxKind::Semicolon) {
             --defaultEnd;
           }
@@ -990,35 +1018,41 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
               : cursor;
 
       // Find colon after name.
-      size_t colonPos = memberEnd;
-      for (size_t i = nameIndex + 1; i < memberEnd; ++i) {
+      size_t colonPos = memberContentEnd;
+      for (size_t i = nameIndex + 1; i < memberContentEnd; ++i) {
         const ast::SyntaxKind k = kindAt(i);
-        if (k == ast::SyntaxKind::Colon) { colonPos = i; break; }
+        if (k == ast::SyntaxKind::Colon) {
+          colonPos = i;
+          break;
+        }
         if (k == ast::SyntaxKind::Equals || k == ast::SyntaxKind::Semicolon) { break; }
       }
 
       ast::NodeId ty;
       ast::NodeId init;
 
-      if (colonPos < memberEnd) {
+      if (colonPos < memberContentEnd) {
         // Find equals for default value. Only search up to body brace
         // to avoid matching "=" inside accessor bodies.
-        size_t equalsPos = memberEnd;
+        size_t equalsPos = memberContentEnd;
         const size_t equalsSearchLimit =
-            bodyBrace < memberEnd && bodyBrace > colonPos ? bodyBrace : memberEnd;
+            bodyBrace < memberContentEnd && bodyBrace > colonPos ? bodyBrace : memberContentEnd;
         for (size_t i = colonPos + 1; i < equalsSearchLimit; ++i) {
-          if (kindAt(i) == ast::SyntaxKind::Equals) { equalsPos = i; break; }
+          if (kindAt(i) == ast::SyntaxKind::Equals) {
+            equalsPos = i;
+            break;
+          }
         }
 
         // Type range ends at equals, body brace, or member end.
-        size_t tyEnd = equalsPos < memberEnd ? equalsPos : memberEnd;
-        if (bodyBrace < memberEnd && bodyBrace > colonPos && bodyBrace < tyEnd) {
+        size_t tyEnd = equalsPos < memberContentEnd ? equalsPos : memberContentEnd;
+        if (bodyBrace < memberContentEnd && bodyBrace > colonPos && bodyBrace < tyEnd) {
           tyEnd = bodyBrace;
         }
         ty = parseTypeRange(builder, colonPos + 1, tyEnd);
 
-        if (equalsPos < memberEnd) {
-          size_t initEnd = memberEnd;
+        if (equalsPos < memberContentEnd) {
+          size_t initEnd = memberContentEnd;
           if (initEnd > equalsPos + 1 && kindAt(initEnd - 1) == ast::SyntaxKind::Semicolon) {
             --initEnd;
           }
@@ -1032,13 +1066,13 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
                                 foundIdx)) {
         isMut = true;
       } else if (modifierGroupContains(modifiersStart, modifiersEnd,
-                                        ast::SyntaxKind::ReadonlyKeyword, foundIdx)) {
+                                       ast::SyntaxKind::ReadonlyKeyword, foundIdx)) {
         isMut = false;
       }
 
       members.add(builder.makeFieldDecl(rangeFor(memberStart, memberEnd),
-                                               internIdent(builder, nameIndex), ty, init, isMut,
-                                               isStatic, visibility));
+                                        internIdent(builder, nameIndex), ty, init, isMut, isStatic,
+                                        visibility));
     }
 
     cursor = memberEnd > memberStart ? memberEnd : memberStart + 1;
@@ -1050,7 +1084,7 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
 }
 
 ast::NodeId Parser::Impl::parseEnumVariantList(AstFactory& builder, size_t bodyOpen,
-                                                size_t bodyClose) const {
+                                               size_t bodyClose) const {
   zc::Vector<ast::NodeId> variants;
   size_t cursor = bodyOpen + 1;
 
@@ -1082,17 +1116,15 @@ ast::NodeId Parser::Impl::parseEnumVariantList(AstFactory& builder, size_t bodyO
 
       // Check for discriminant: `= value`.
       TokenCursor equalsCursor = tokenCursorAt(cursor);
-      const size_t equals =
-          consumeBalancedUntil(equalsCursor, memberEnd, ast::SyntaxKind::Equals);
+      const size_t equals = consumeBalancedUntil(equalsCursor, memberEnd, ast::SyntaxKind::Equals);
       bool hasDisc = false;
       ast::BigIntId disc;
 
       if (equals < memberEnd) {
         const size_t discStart = equals + 1;
         size_t discEnd = memberEnd;
-        if (discEnd > discStart &&
-            (kindAt(discEnd - 1) == ast::SyntaxKind::Comma ||
-             kindAt(discEnd - 1) == ast::SyntaxKind::Semicolon)) {
+        if (discEnd > discStart && (kindAt(discEnd - 1) == ast::SyntaxKind::Comma ||
+                                    kindAt(discEnd - 1) == ast::SyntaxKind::Semicolon)) {
           --discEnd;
         }
         if (discStart < discEnd && kindAt(discStart) == ast::SyntaxKind::IntegerLiteral) {
@@ -1139,8 +1171,9 @@ ast::NodeId Parser::Impl::parseEnumVariantList(AstFactory& builder, size_t bodyO
             int32_t angleDepth = 0;
             for (size_t i = tyCursor; i < closeParen; ++i) {
               const ast::SyntaxKind k = kindAt(i);
-              if (k == ast::SyntaxKind::LessThan) { ++angleDepth; }
-              else if (k == ast::SyntaxKind::GreaterThan) {
+              if (k == ast::SyntaxKind::LessThan) {
+                ++angleDepth;
+              } else if (k == ast::SyntaxKind::GreaterThan) {
                 if (angleDepth > 0) --angleDepth;
               } else if (angleDepth == 0 && k == ast::SyntaxKind::Comma) {
                 tyEnd = i;
@@ -1163,13 +1196,11 @@ ast::NodeId Parser::Impl::parseEnumVariantList(AstFactory& builder, size_t bodyO
         zc::Vector<ast::NodeId> fields;
         variants.add(builder.makeStructVariant(
             rangeFor(memberStart, memberEnd), internIdent(builder, nameIndex),
-            static_cast<uint16_t>(fields.size()), builder.makeList(fields.asPtr()), hasDisc,
-            disc));
+            static_cast<uint16_t>(fields.size()), builder.makeList(fields.asPtr()), hasDisc, disc));
       } else {
         // Unit variant: Name [= disc]
         variants.add(builder.makeUnitVariant(rangeFor(memberStart, memberEnd),
-                                                    internIdent(builder, nameIndex), hasDisc,
-                                                    disc));
+                                             internIdent(builder, nameIndex), hasDisc, disc));
       }
     }
 
@@ -1389,7 +1420,7 @@ Parser::Impl::FunctionDeclarationParts Parser::Impl::parseFunctionDeclarationPar
   parts.raises = limit;
 
   for (size_t index = start + 1; index < limit; ++index) {
-    if (kindAt(index) == ast::SyntaxKind::Identifier) {
+    if (isFunctionNameToken(kindAt(index))) {
       parts.nameIndex = index;
       break;
     }
@@ -1926,8 +1957,8 @@ ast::NodeId Parser::Impl::parseFunctionDeclaration(AstFactory& builder, size_t s
     }
     raisesTy = parseTypeRange(builder, parts.raises + 1, parts.headerEnd);
   }
-  return builder.makeFunctionDecl(rangeFor(start, end), name, params, typeParams, retTy,
-                                  raisesTy, parseBlock(builder, parts.bodyOpen, end));
+  return builder.makeFunctionDecl(rangeFor(start, end), name, params, typeParams, retTy, raisesTy,
+                                  parseBlock(builder, parts.bodyOpen, end));
 }
 
 ast::NodeId Parser::Impl::parseNamedTypeDeclaration(AstFactory& builder, size_t start, size_t end,
@@ -1990,31 +2021,27 @@ ast::NodeId Parser::Impl::parseNamedTypeDeclaration(AstFactory& builder, size_t 
   if (kind == ast::SyntaxKind::ClassDecl) {
     ast::IdentId name;
     if (nameIndex < end) { name = internIdent(builder, nameIndex); }
-    return builder.makeClassDecl(rangeFor(start, end), name, ast::ClassExtensibility::Sealed,
-                                 typeParams, ast::NodeId(),
-                                 members ? members : makeEmptyClassMemberList(builder,
-                                                                              rangeFor(start, end)));
+    return builder.makeClassDecl(
+        rangeFor(start, end), name, ast::ClassExtensibility::Sealed, typeParams, ast::NodeId(),
+        members ? members : makeEmptyClassMemberList(builder, rangeFor(start, end)));
   } else if (kind == ast::SyntaxKind::StructDecl) {
     ast::IdentId name;
     if (nameIndex < end) { name = internIdent(builder, nameIndex); }
-    return builder.makeStructDecl(rangeFor(start, end), name, ast::ClassExtensibility::Sealed,
-                                  typeParams,
-                                  members ? members : makeEmptyClassMemberList(builder,
-                                                                               rangeFor(start, end)));
+    return builder.makeStructDecl(
+        rangeFor(start, end), name, ast::ClassExtensibility::Sealed, typeParams,
+        members ? members : makeEmptyClassMemberList(builder, rangeFor(start, end)));
   } else if (kind == ast::SyntaxKind::InterfaceDecl) {
     ast::IdentId name;
     if (nameIndex < end) { name = internIdent(builder, nameIndex); }
-    return builder.makeInterfaceDecl(rangeFor(start, end), name, typeParams,
-                                     members ? members : makeEmptyClassMemberList(builder,
-                                                                                  rangeFor(start, end)));
+    return builder.makeInterfaceDecl(
+        rangeFor(start, end), name, typeParams,
+        members ? members : makeEmptyClassMemberList(builder, rangeFor(start, end)));
   } else if (kind == ast::SyntaxKind::EnumDeclaration) {
     ast::IdentId name;
     if (nameIndex < end) { name = internIdent(builder, nameIndex); }
-    return builder.makeEnumDeclaration(rangeFor(start, end), name, ast::ClassExtensibility::Sealed,
-                                       typeParams, 0,
-                                       members ? members : makeEmptyEnumVariantList(builder,
-                                                                                    rangeFor(start, end)),
-                                       0);
+    return builder.makeEnumDeclaration(
+        rangeFor(start, end), name, ast::ClassExtensibility::Sealed, typeParams, 0,
+        members ? members : makeEmptyEnumVariantList(builder, rangeFor(start, end)), 0);
   }
   return ast::NodeId();
 }
@@ -2042,9 +2069,9 @@ ast::NodeId Parser::Impl::parseErrorDeclaration(AstFactory& builder, size_t star
 
   ast::IdentId name;
   if (nameIndex < end) { name = internIdent(builder, nameIndex); }
-  return builder.makeErrorDecl(rangeFor(start, end), name,
-                               members ? members : makeEmptyClassMemberList(builder,
-                                                                            rangeFor(start, end)));
+  return builder.makeErrorDecl(
+      rangeFor(start, end), name,
+      members ? members : makeEmptyClassMemberList(builder, rangeFor(start, end)));
 }
 
 ast::NodeId Parser::Impl::parseAliasDeclaration(AstFactory& builder, size_t start,
@@ -2193,8 +2220,8 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
   if (bodyOpen < end) {
     const size_t bodyClose = findMatchingRightBrace(bodyOpen, end);
     if (bodyClose < end) {
-      members = parseClassMemberList(builder, bodyOpen, bodyClose,
-                                      ast::SyntaxKind::StandaloneImplDecl);
+      members =
+          parseClassMemberList(builder, bodyOpen, bodyClose, ast::SyntaxKind::StandaloneImplDecl);
     }
     if (!members) { members = makeEmptyClassMemberList(builder, rangeFor(bodyOpen, end)); }
   }

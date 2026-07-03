@@ -8,12 +8,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 LEXER_DIR = ROOT / "products" / "zomlang" / "compiler" / "lexer"
 PARSER_DIR = ROOT / "products" / "zomlang" / "compiler" / "parser"
+LEXER_TEST_DIR = ROOT / "products" / "zomlang" / "tests" / "unittests" / "compiler" / "lexer"
+CONFORMANCE_CORPUS = ROOT / "products" / "zomlang" / "tests" / "conformance" / "corpus"
+CONFORMANCE_GRAMMAR = (
+    ROOT / "products" / "zomlang" / "tests" / "conformance" / "expectations" / "grammar"
+)
+CONFORMANCE_AST = (
+    ROOT / "products" / "zomlang" / "tests" / "conformance" / "expectations" / "ast"
+)
 DESIGN_DIR = ROOT / "docs" / "design"
 LEXICAL_SPEC = ROOT / "docs" / "spec" / "chapters" / "02-lexical-structure.md"
 ZOM_LEXER_G4 = ROOT / "docs" / "spec" / "ZomLexer.g4"
 KINDS_H = ROOT / "products" / "zomlang" / "compiler" / "ast" / "kinds.h"
 TOKEN_CC = LEXER_DIR / "token.cc"
 UTILS_CC = LEXER_DIR / "utils.cc"
+LEXER_INVENTORY_TEST = LEXER_TEST_DIR / "lexer-inventory-test.cc"
 UNICODE_H = LEXER_DIR / "unicode-data.h"
 UNICODE_CC = LEXER_DIR / "unicode-data.cc"
 GENERATOR = ROOT / "scripts" / "codegen" / "gen_unicode_data.py"
@@ -29,6 +38,29 @@ BANNED_LEXER_APIS = [
     "getCurrentState",
     "reScanGreaterToken",
     "reScanTemplateToken",
+]
+PUBLIC_LEXER_API_BANNED_TERMS = BANNED_LEXER_APIS + [
+    "LexerMode",
+    "Snapshot",
+    "snapshot",
+]
+PARSER_RAW_SOURCE_ACCESS_TERMS = [
+    "bufferStart",
+    "bufferEnd",
+    "curPtr",
+    "fullStartPtr",
+    "getEntireTextForBuffer",
+    "tokenStartPtr",
+]
+TEMPLATE_MODE_IMPLEMENTATION_MARKERS = [
+    "templateSubstitutionBraceDepths",
+    "beginTemplateSubstitution",
+    "finishTemplateSpan",
+    "inTemplateSubstitution",
+]
+TEMPLATE_MODE_TEST_MARKERS = [
+    "LexerLiteralTest.TemplateLiterals",
+    "TemplateSubstitutionBraceDepth",
 ]
 DESIGN_DOC_MARKERS = {
     DESIGN_DIR / "architecture.md": [
@@ -51,6 +83,37 @@ DESIGN_DOC_BANNED_TERMS = [
     "pre-lexing the whole file",
     "lexAll",
 ]
+EXPECTED_DYNAMIC_G4_RULES = {
+    "IDENTIFIER",
+    "BIGINT_LITERAL",
+    "DECIMAL_LITERAL",
+    "BINARY_LITERAL",
+    "OCTAL_LITERAL",
+    "HEX_LITERAL",
+    "DOUBLE_STRING_LITERAL",
+    "CHAR_LITERAL",
+    "NO_SUBSTITUTION_TEMPLATE_LITERAL",
+    "TEMPLATE_HEAD",
+    "TEMPLATE_MIDDLE",
+    "TEMPLATE_TAIL",
+}
+EXPECTED_DYNAMIC_LEXER_KIND_MARKERS = {
+    "Identifier": ["return ast::SyntaxKind::Identifier;"],
+    "StringLiteral": ["formToken(ast::SyntaxKind::StringLiteral"],
+    "IntegerLiteral": ["ast::SyntaxKind::IntegerLiteral"],
+    "BigIntLiteralToken": ["ast::SyntaxKind::BigIntLiteralToken"],
+    "FloatLiteral": ["ast::SyntaxKind::FloatLiteral"],
+    "CharacterLiteral": ["ast::SyntaxKind::CharacterLiteral"],
+    "NoSubstitutionTemplateLiteral": ["ast::SyntaxKind::NoSubstitutionTemplateLiteral"],
+    "TemplateHead": ["ast::SyntaxKind::TemplateHead"],
+    "TemplateMiddle": ["ast::SyntaxKind::TemplateMiddle"],
+    "TemplateTail": ["ast::SyntaxKind::TemplateTail"],
+    "Unknown": ["formToken(ast::SyntaxKind::Unknown"],
+    "EndOfFile": ["formToken(ast::SyntaxKind::EndOfFile"],
+}
+LEXICAL_GRAMMAR_EXCEPTIONS = {
+    Path("identifiers/reserved-words"),
+}
 
 
 errors: list[str] = []
@@ -124,6 +187,21 @@ def static_token_spellings(text: str) -> dict[str, str]:
     return spellings
 
 
+def inventory_test_token_kinds(text: str) -> set[str]:
+    return {
+        match.group(1)
+        for match in re.finditer(r"\bast::SyntaxKind::([A-Za-z][A-Za-z0-9_]*)\b", text)
+    }
+
+
+def path_stems(root: Path, suffix: str) -> set[Path]:
+    return {path.relative_to(root).with_suffix("") for path in root.rglob(f"*{suffix}")}
+
+
+def parser_source_paths() -> list[Path]:
+    return sorted(path for glob in ("*.cc", "*.h") for path in PARSER_DIR.glob(glob))
+
+
 def lexical_spec_keywords(text: str) -> set[str]:
     section = text[text.index("## Keywords") : text.index("## Literals")]
     keywords: set[str] = set()
@@ -161,6 +239,7 @@ def check_token_inventory_alignment() -> None:
     token_cc = TOKEN_CC.read_text(encoding="utf-8")
     utils_cc = UTILS_CC.read_text(encoding="utf-8")
     lexer_cc = (LEXER_DIR / "lexer.cc").read_text(encoding="utf-8")
+    inventory_test = LEXER_INVENTORY_TEST.read_text(encoding="utf-8")
 
     spec_keywords = lexical_spec_keywords(lexical_spec)
     spec_symbols = lexical_spec_symbols(lexical_spec)
@@ -212,6 +291,14 @@ def check_token_inventory_alignment() -> None:
     check_equal_set("symbol tokens", spec_symbols, g4_symbols, ZOM_LEXER_G4)
     check_equal_set("symbol tokens", spec_symbols, static_symbols, TOKEN_CC)
 
+    round_trip_kinds = inventory_test_token_kinds(inventory_test)
+    check_equal_set(
+        "static-token round-trip test kinds",
+        set(static_spellings),
+        round_trip_kinds,
+        LEXER_INVENTORY_TEST,
+    )
+
     form_token_kinds = set(
         re.findall(r"formToken\(ast::SyntaxKind::([A-Za-z][A-Za-z0-9_]*)", lexer_cc)
     )
@@ -227,6 +314,50 @@ def check_token_inventory_alignment() -> None:
         fail(
             f"{rel(TOKEN_CC)} defines static text for token kinds the lexer cannot emit: "
             f"{', '.join(non_produced)}"
+        )
+
+    g4_rules = set(re.findall(r"^([A-Z][A-Z0-9_]*)\s*:", lexer_g4, re.M))
+    missing_dynamic_rules = sorted(EXPECTED_DYNAMIC_G4_RULES - g4_rules)
+    if missing_dynamic_rules:
+        fail(
+            f"{rel(ZOM_LEXER_G4)} is missing dynamic token rules: "
+            f"{', '.join(missing_dynamic_rules)}"
+        )
+
+    dynamic_sources = "\n".join([lexer_cc, utils_cc])
+    for kind, markers in EXPECTED_DYNAMIC_LEXER_KIND_MARKERS.items():
+        if not any(marker in dynamic_sources for marker in markers):
+            fail(f"{rel(LEXER_DIR / 'lexer.cc')} cannot emit dynamic token kind: {kind}")
+
+
+def check_lexical_conformance_metadata() -> None:
+    lexical_corpus = CONFORMANCE_CORPUS / "02-lexical"
+    lexical_grammar = CONFORMANCE_GRAMMAR / "02-lexical"
+    lexical_ast = CONFORMANCE_AST / "02-lexical"
+
+    corpus = path_stems(lexical_corpus, ".zom")
+    grammar = path_stems(lexical_grammar, ".yml")
+    ast = path_stems(lexical_ast, ".check")
+
+    missing_ast = sorted(corpus - ast)
+    if missing_ast:
+        fail(
+            f"{rel(lexical_ast)} is missing AST expectations for lexical corpus files: "
+            f"{', '.join(str(path) for path in missing_ast)}"
+        )
+
+    missing_grammar = sorted((corpus - LEXICAL_GRAMMAR_EXCEPTIONS) - grammar)
+    if missing_grammar:
+        fail(
+            f"{rel(lexical_grammar)} is missing grammar expectations for lexical corpus files: "
+            f"{', '.join(str(path) for path in missing_grammar)}"
+        )
+
+    orphan_grammar = sorted(grammar - corpus)
+    if orphan_grammar:
+        fail(
+            f"{rel(lexical_grammar)} contains orphan grammar expectations: "
+            f"{', '.join(str(path) for path in orphan_grammar)}"
         )
 
 
@@ -253,25 +384,28 @@ def check_unicode_data() -> None:
 
 def check_public_lexer_contract() -> None:
     public_header = (LEXER_DIR / "lexer.h").read_text(encoding="utf-8")
-    for banned in BANNED_LEXER_APIS:
+    for banned in PUBLIC_LEXER_API_BANNED_TERMS:
         if banned in public_header:
             fail(f"{rel(LEXER_DIR / 'lexer.h')} exposes banned lexer API: {banned}")
 
-    parser_text = "\n".join(path.read_text(encoding="utf-8") for path in PARSER_DIR.glob("*.cc"))
-    for banned in BANNED_LEXER_APIS:
-        if banned in parser_text:
-            fail(f"parser sources depend on banned lexer API: {banned}")
+    for path in parser_source_paths():
+        text = path.read_text(encoding="utf-8")
+        for banned in PUBLIC_LEXER_API_BANNED_TERMS:
+            if banned in text:
+                fail(f"{rel(path)} depends on banned lexer API: {banned}")
+        for term in PARSER_RAW_SOURCE_ACCESS_TERMS:
+            if term in text:
+                fail(f"{rel(path)} directly accesses lexer/source buffer state: {term}")
 
 
 def check_template_mode_contract() -> None:
     implementation = (LEXER_DIR / "lexer.cc").read_text(encoding="utf-8")
-    for marker in [
-        "templateSubstitutionBraceDepths",
-        "beginTemplateSubstitution",
-        "finishTemplateSpan",
-        "inTemplateSubstitution",
-    ]:
+    literal_tests = (LEXER_TEST_DIR / "lexer-literal-test.cc").read_text(encoding="utf-8")
+
+    for marker in TEMPLATE_MODE_IMPLEMENTATION_MARKERS:
         require_contains(LEXER_DIR / "lexer.cc", implementation, marker)
+    for marker in TEMPLATE_MODE_TEST_MARKERS:
+        require_contains(LEXER_TEST_DIR / "lexer-literal-test.cc", literal_tests, marker)
 
 
 def check_design_stream_contract() -> None:
@@ -290,6 +424,7 @@ def check_design_stream_contract() -> None:
 
 def main() -> int:
     check_token_inventory_alignment()
+    check_lexical_conformance_metadata()
     check_unicode_data()
     check_public_lexer_contract()
     check_template_mode_contract()

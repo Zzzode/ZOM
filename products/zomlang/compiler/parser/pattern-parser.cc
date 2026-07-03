@@ -101,7 +101,22 @@ void Parser::Impl::diagnoseTokenPatterns() {
         matchArmPatternBraceDepth = braceDepth;
       }
     }
-    const bool insideMatchArmPattern = matchArmPatternBraceDepth >= 0;
+    bool insideMatchArmPattern = matchArmPatternBraceDepth >= 0;
+    if (!insideMatchArmPattern && braceDepth > 0) {
+      for (size_t j = i; j > 0;) {
+        --j;
+        if (kindAt(j) == ast::SyntaxKind::EqualsGreaterThan ||
+            kindAt(j) == ast::SyntaxKind::Semicolon) {
+          break;
+        }
+        if (kindAt(j) == ast::SyntaxKind::WhenKeyword) {
+          TokenCursor matchArmCursor = tokenCursorAt(j + 1);
+          insideMatchArmPattern = consumeBalancedUntil(matchArmCursor, count,
+                                                       ast::SyntaxKind::EqualsGreaterThan) < count;
+          break;
+        }
+      }
+    }
     if (kind == ast::SyntaxKind::EqualsGreaterThan && matchArmPatternBraceDepth >= 0 &&
         braceDepth == matchArmPatternBraceDepth) {
       matchArmPatternBraceDepth = -1;
@@ -318,8 +333,7 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
     const ast::NodeId ty = parseTypeRange(builder, start + 1, end);
     if (!ty) {
       if (!shouldSuppressDiagnostic(start + 1)) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(
-            diagnosticLoc(start + 1));
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start + 1));
       }
       return ast::NodeId();
     }

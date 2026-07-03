@@ -24,7 +24,7 @@
 // CHECK-NEXT:                         ModulePath #3 @2:24..2:25 segments=["T"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 MethodDecl #14 @3:5..3:42 name="T" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #14 @3:5..3:42 name="get" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #6 @3:12..3:14 nparams=0
 // CHECK-NEXT:                       params: []

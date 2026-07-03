@@ -593,10 +593,12 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         if (tree.contains(child)) { fn(child); }
       }
       {
-        NodeList list;
-        list.first = node.payload.words[kFunctionExpressionCapturesFirstWord];
-        list.size = node.payload.words[kFunctionExpressionCapturesSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
+        const NodeId child(node.payload.words[kFunctionExpressionTypeParamsIdWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kFunctionExpressionCapturesIdWord]);
+        if (tree.contains(child)) { fn(child); }
       }
       {
         const NodeId child(node.payload.words[kFunctionExpressionRetTyWord]);
@@ -712,6 +714,14 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         NodeList list;
         list.first = node.payload.words[kStructLiteralExprPropertiesFirstWord];
         list.size = node.payload.words[kStructLiteralExprPropertiesSizeWord];
+        for (NodeId child : tree.list(list)) { fn(child); }
+      }
+      return;
+    case SyntaxKind::CaptureList:
+      {
+        NodeList list;
+        list.first = node.payload.words[kCaptureListCapturesFirstWord];
+        list.size = node.payload.words[kCaptureListCapturesSizeWord];
         for (NodeId child : tree.list(list)) { fn(child); }
       }
       return;

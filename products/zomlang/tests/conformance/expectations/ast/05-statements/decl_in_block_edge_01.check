@@ -1,10 +1,57 @@
-// RUN: ! %zomc compile --dump-ast %corpus/05-statements/decl_in_block_edge_01.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/05-statements/decl_in_block_edge_01.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*decl_in_block_edge_01.zom}}:3:5
-// CHECK:   |
-// CHECK: 3 |     mut y = 2;
-// CHECK:   |     ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #22 @1:1..6:1 file_name="decl_in_block_edge_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #21 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #20 @1:1..5:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #19 @1:9..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #7 @2:5..2:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #6 @2:5..2:15 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #5 @2:9..2:14 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #4 @2:9..2:14
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #2 @2:9..2:10 name="x"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IntLiteral #3 @2:13..2:14 base=10 value="1"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #13 @3:5..3:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #12 @3:5..3:15 kind=Mut
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #11 @3:9..3:14 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #10 @3:9..3:14
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #8 @3:9..3:10 name="y"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IntLiteral #9 @3:13..3:14 base=10 value="2"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #18 @4:5..4:11
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #17 @4:5..4:11
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         AssignmentExpr #16 @4:5..4:10 op=Assign
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #14 @4:5..4:6 name="y"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IdentExpr #15 @4:9..4:10 name="x"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

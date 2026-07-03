@@ -1,4 +1,4 @@
 // Test closure function definition with typed parameters
 let closure = fun (n: i32, s: str) -> str {
-  "1234"
-}
+  return "1234";
+};

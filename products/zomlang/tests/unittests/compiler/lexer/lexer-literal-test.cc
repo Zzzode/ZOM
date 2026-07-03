@@ -213,6 +213,27 @@ ZC_TEST("LexerLiteralTest.TemplateLiterals") {
     ZC_EXPECT(tokens[4].getValue() == ""_zc);
   }
 
+  // TemplateSubstitutionBraceDepth
+  {
+    auto tokens = tokenize("`value ${call({ nested: value })} tail`"_zc);
+    ZC_EXPECT(tokens.size() == 11);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::TemplateHead));
+    ZC_EXPECT(tokens[0].getValue() == "value "_zc);
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[1].getValue() == "call"_zc);
+    ZC_EXPECT(tokens[2].is(ast::SyntaxKind::LeftParen));
+    ZC_EXPECT(tokens[3].is(ast::SyntaxKind::LeftBrace));
+    ZC_EXPECT(tokens[4].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[4].getValue() == "nested"_zc);
+    ZC_EXPECT(tokens[5].is(ast::SyntaxKind::Colon));
+    ZC_EXPECT(tokens[6].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[6].getValue() == "value"_zc);
+    ZC_EXPECT(tokens[7].is(ast::SyntaxKind::RightBrace));
+    ZC_EXPECT(tokens[8].is(ast::SyntaxKind::RightParen));
+    ZC_EXPECT(tokens[9].is(ast::SyntaxKind::TemplateTail));
+    ZC_EXPECT(tokens[9].getValue() == " tail"_zc);
+  }
+
   // EmptyTemplateLiteral
   {
     auto tokens = tokenize("``"_zc);

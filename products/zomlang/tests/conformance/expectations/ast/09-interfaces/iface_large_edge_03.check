@@ -31,7 +31,7 @@
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #7 @5:19..5:22 kind=U64
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #14 @6:5..6:29 name="i" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #14 @6:5..6:29 name="get" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #11 @6:12..6:20 nparams=1
 // CHECK-NEXT:                       params:
@@ -46,7 +46,7 @@
 // CHECK-NEXT:                         ModulePath #12 @6:24..6:28 segments=["Item"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #22 @7:5..7:38 name="i" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #22 @7:5..7:38 name="set" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #20 @7:12..7:29 nparams=2
 // CHECK-NEXT:                       params:

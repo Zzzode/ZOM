@@ -1,15 +1,72 @@
-// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/iface_method_sig_pos_04.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/09-interfaces/iface_method_sig_pos_04.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*iface_method_sig_pos_04.zom}}:3:36
-// CHECK:   |
-// CHECK: 3 |     fun mul(x: f64, y: f64) -> f64 raises MathError;
-// CHECK:   |                                    ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*iface_method_sig_pos_04.zom}}:4:33
-// CHECK:   |
-// CHECK: 4 |     fun greet(name: str) -> str raises IOError | EncodingError;
-// CHECK:   |                                 ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #28 @1:1..7:1 file_name="iface_method_sig_pos_04.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #27 @1:1..6:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #26 @1:1..6:2 name="Compute"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #25 @1:19..6:2 nmembers=4
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #7 @2:5..2:43 name="add" is_static=false visibility=Public
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #5 @2:19..2:35 nparams=2
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #2 @2:20..2:26 name="a"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #1 @2:23..2:26 kind=I32
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         FunctionParameterDecl #4 @2:28..2:34 name="b"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #3 @2:31..2:34 kind=I32
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #6 @2:39..2:42 kind=I32
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:                 MethodDecl #14 @3:5..3:53 name="mul" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #12 @3:12..3:28 nparams=2
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #9 @3:13..3:19 name="x"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #8 @3:16..3:19 kind=F64
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         FunctionParameterDecl #11 @3:21..3:27 name="y"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #10 @3:24..3:27 kind=F64
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #13 @3:32..3:35 kind=F64
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:                 MethodDecl #19 @4:5..4:64 name="greet" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #17 @4:14..4:25 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #16 @4:15..4:24 name="name"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #15 @4:21..4:24 kind=Str
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #18 @4:29..4:32 kind=Str
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:                 MethodDecl #24 @5:5..5:41 name="exec" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #22 @5:22..5:32 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #21 @5:23..5:31 name="cmd"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #20 @5:28..5:31 kind=Str
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #23 @5:36..5:40 kind=Unit
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:       attrs: null

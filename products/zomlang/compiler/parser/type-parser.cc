@@ -182,7 +182,10 @@ size_t Parser::Impl::findMatchingAngleClose(size_t openIndex, size_t limit) cons
       if (depth == 0) { return limit; }
       --depth;
       cursor.advance();
-      if (depth == 0) { return closeIndex; }
+      if (depth == 0) {
+        if (cursor.position() == closeIndex) { return limit; }
+        return closeIndex;
+      }
       continue;
     }
     cursor.advance();
@@ -207,10 +210,14 @@ bool Parser::Impl::consumeBalancedAngleList(TokenCursor& cursor, size_t limit) c
       continue;
     }
     if (kind == ast::SyntaxKind::GreaterThan) {
+      const size_t closeIndex = cursor.position();
       if (depth == 0) { break; }
       --depth;
       cursor.advance();
-      if (depth == 0) { return true; }
+      if (depth == 0) {
+        if (cursor.position() == closeIndex) { break; }
+        return true;
+      }
       continue;
     }
     cursor.advance();
@@ -473,12 +480,13 @@ Parser::Impl::TypeParseResult Parser::Impl::parseIntersectionType(AstFactory& bu
   if (!first.node) { return first; }
   alts.add(first.node);
 
-  while (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::Ampersand) {
-    const size_t ampersand = cursor.position();
+  while (cursor.position() < limit &&
+         (cursor.peek() == ast::SyntaxKind::Ampersand || cursor.peek() == ast::SyntaxKind::Plus)) {
+    const size_t op = cursor.position();
     cursor.advance();
     TypeParseResult next = parsePostfixType(builder, cursor, limit);
     if (!next.node) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(ampersand + 1));
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(op + 1));
       return TypeParseResult();
     }
     alts.add(next.node);
@@ -982,21 +990,37 @@ ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
 
     // Find the end of this parameter (next comma at depth 0, or closeAngle).
     size_t paramEnd = closeAngle;
+    int32_t parenDepth = 0;
+    int32_t bracketDepth = 0;
+    int32_t braceDepth = 0;
     int32_t angleDepth = 0;
     for (size_t i = cursor; i < closeAngle; ++i) {
       const ast::SyntaxKind k = kindAt(i);
-      if (k == ast::SyntaxKind::LessThan) {
+      if (k == ast::SyntaxKind::LeftParen) {
+        ++parenDepth;
+      } else if (k == ast::SyntaxKind::RightParen) {
+        if (parenDepth > 0) { --parenDepth; }
+      } else if (k == ast::SyntaxKind::LeftBracket) {
+        ++bracketDepth;
+      } else if (k == ast::SyntaxKind::RightBracket) {
+        if (bracketDepth > 0) { --bracketDepth; }
+      } else if (k == ast::SyntaxKind::LeftBrace) {
+        ++braceDepth;
+      } else if (k == ast::SyntaxKind::RightBrace) {
+        if (braceDepth > 0) { --braceDepth; }
+      } else if (k == ast::SyntaxKind::LessThan) {
         ++angleDepth;
       } else if (k == ast::SyntaxKind::GreaterThan) {
-        if (angleDepth > 0) --angleDepth;
+        if (angleDepth > 0) { --angleDepth; }
       } else if (k == ast::SyntaxKind::GreaterThanGreaterThan) {
-        if (angleDepth > 0) --angleDepth;
-        if (angleDepth > 0) --angleDepth;
+        if (angleDepth > 0) { --angleDepth; }
+        if (angleDepth > 0) { --angleDepth; }
       } else if (k == ast::SyntaxKind::GreaterThanGreaterThanGreaterThan) {
-        if (angleDepth > 0) --angleDepth;
-        if (angleDepth > 0) --angleDepth;
-        if (angleDepth > 0) --angleDepth;
-      } else if (angleDepth == 0 && k == ast::SyntaxKind::Comma) {
+        if (angleDepth > 0) { --angleDepth; }
+        if (angleDepth > 0) { --angleDepth; }
+        if (angleDepth > 0) { --angleDepth; }
+      } else if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && angleDepth == 0 &&
+                 k == ast::SyntaxKind::Comma) {
         paramEnd = i;
         break;
       }
@@ -1009,23 +1033,40 @@ ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
     // Search for colon and equals at depth 0 within this param.
     size_t colonPos = paramEnd;
     size_t equalsPos = paramEnd;
+    int32_t pDepth = 0;
+    int32_t bDepth = 0;
+    int32_t brDepth = 0;
     int32_t aDepth = 0;
     for (size_t i = cursor; i < paramEnd; ++i) {
       const ast::SyntaxKind k = kindAt(i);
-      if (k == ast::SyntaxKind::LessThan) {
+      if (k == ast::SyntaxKind::LeftParen) {
+        ++pDepth;
+      } else if (k == ast::SyntaxKind::RightParen) {
+        if (pDepth > 0) { --pDepth; }
+      } else if (k == ast::SyntaxKind::LeftBracket) {
+        ++bDepth;
+      } else if (k == ast::SyntaxKind::RightBracket) {
+        if (bDepth > 0) { --bDepth; }
+      } else if (k == ast::SyntaxKind::LeftBrace) {
+        ++brDepth;
+      } else if (k == ast::SyntaxKind::RightBrace) {
+        if (brDepth > 0) { --brDepth; }
+      } else if (k == ast::SyntaxKind::LessThan) {
         ++aDepth;
       } else if (k == ast::SyntaxKind::GreaterThan) {
-        if (aDepth > 0) --aDepth;
+        if (aDepth > 0) { --aDepth; }
       } else if (k == ast::SyntaxKind::GreaterThanGreaterThan) {
-        if (aDepth > 0) --aDepth;
-        if (aDepth > 0) --aDepth;
+        if (aDepth > 0) { --aDepth; }
+        if (aDepth > 0) { --aDepth; }
       } else if (k == ast::SyntaxKind::GreaterThanGreaterThanGreaterThan) {
-        if (aDepth > 0) --aDepth;
-        if (aDepth > 0) --aDepth;
-        if (aDepth > 0) --aDepth;
-      } else if (aDepth == 0 && k == ast::SyntaxKind::Colon && colonPos == paramEnd) {
+        if (aDepth > 0) { --aDepth; }
+        if (aDepth > 0) { --aDepth; }
+        if (aDepth > 0) { --aDepth; }
+      } else if (pDepth == 0 && bDepth == 0 && brDepth == 0 && aDepth == 0 &&
+                 k == ast::SyntaxKind::Colon && colonPos == paramEnd) {
         colonPos = i;
-      } else if (aDepth == 0 && k == ast::SyntaxKind::Equals) {
+      } else if (pDepth == 0 && bDepth == 0 && brDepth == 0 && aDepth == 0 &&
+                 k == ast::SyntaxKind::Equals) {
         equalsPos = i;
         break;
       }
@@ -1058,9 +1099,9 @@ ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
       defaultTy = parseTypeRange(builder, equalsPos + 1, typeLimit);
     }
 
-    params.add(builder.makeGenericTypeParam(
-        rangeFor(nameIndex, paramEnd), internIdent(builder, nameIndex), bound, defaultTy,
-        variance));
+    params.add(builder.makeGenericTypeParam(rangeFor(nameIndex, paramEnd),
+                                            internIdent(builder, nameIndex), bound, defaultTy,
+                                            variance));
 
     cursor = paramEnd;
     if (cursor < closeAngle && kindAt(cursor) == ast::SyntaxKind::Comma) { ++cursor; }

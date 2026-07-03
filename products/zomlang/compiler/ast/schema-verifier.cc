@@ -68,9 +68,7 @@ bool isClassElementKind(SyntaxKind kind) {
          kind == SyntaxKind::AssociatedTypeDecl;
 }
 
-bool isTypeParamDeclKind(SyntaxKind kind) {
-  return kind == SyntaxKind::GenericTypeParam;
-}
+bool isTypeParamDeclKind(SyntaxKind kind) { return kind == SyntaxKind::GenericTypeParam; }
 
 bool matchesCastTarget(SyntaxKind kind, const char* target) {
   if (target == nullptr) { return true; }

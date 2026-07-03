@@ -136,6 +136,12 @@ options {
         return true;
     }
 
+    /** Function-expression capture clause soft-keyword check. */
+    static boolean la1IsCaptureClause(Object parser) {
+        Token t = ((ZomParser)parser)._input.LT(1);
+        return t != null && t.getType() == ZomParser.IDENTIFIER && t.getText().equals("use");
+    }
+
     /* Single-segment attribute names (built-in compiler attributes, sec 16).
      // * Accept these short attribute names; other single-identifier attributes
      // * are rejected at parser level. This enforces G11 "attribute path requires
@@ -572,46 +578,6 @@ static void preSplitAllCompactCloses(Object parser) {
         // we fall back to "spaced > only" behavior. Tests that require compact-close
         // will fail with the usual ANTLR syntax error; no PCE or NPE escapes.
     }
-}
-
- // * nested_angle_closure_neg_06 explicitly rejects 4+ depth like A<B<C<D<T>>>>.
- // * Implementation notes (critical for correctness with ALL(*)):
- // *   • Depth increment/decrement are placed in *plain semantic actions*
- // *     (no trailing `?`), which ANTLR guarantees to run exactly once when the
- // *     grammar symbol has been *actually matched (consumed)* in the real parse.
- // *     Actions are NEVER invoked during adaptive lookahead simulation, so we
- // *     don't get spurious double-counting from ALL(*).
- // *   • The depth *check* is a *gated semantic predicate* (`{...}?`) after the
- // *     depth-increment action and before the consuming rule body. Predicates
- // *     CAN be re-evaluated during lookahead, so they MUST be side-effect-free.
- // *     withinGenericDepthLimit() just reads a ThreadLocal<Integer> — pure check.
- // *   • ThreadLocal is used so that per-fixture parse invocations (concurrent or
- // *     sequential inside run_tests.sh) don't pollute each other's depth counter.
- // */
-static final int MAX_GENERIC_NEST = 3;
-static final ThreadLocal<Integer> GENERIC_DEPTH = ThreadLocal.withInitial(() -> 0);
-/* Called at sourceFile @init — resets the depth for a fresh parse. */
-static void resetGenericDepth(Object p) { GENERIC_DEPTH.set(0); }
-/* Plain semantic action (NOT a predicate) — runs only after an LT has actually
- // * been consumed at the start of a generic instantiation. */
-static void incGenericDepth(Object p) {
-    Integer d = GENERIC_DEPTH.get();
-    GENERIC_DEPTH.set((d == null ? 0 : d) + 1);
-}
-/* Plain semantic action — runs only after a genericClose terminal has actually
- // * been consumed. Pops the nesting level by one. */
-static void decGenericDepth(Object p) {
-    Integer d = GENERIC_DEPTH.get();
-    int nd = (d == null ? 0 : d) - 1;
-    GENERIC_DEPTH.set(nd < 0 ? 0 : nd);
-}
-/* Pure gated predicate — reads the current depth and returns true iff depth ≤
- // * MAX_GENERIC_NEST. Always safe to re-evaluate. Must be placed AFTER the
- // * incGenericDepth plain semantic action so that the just-opened bracket is
- // * counted when deciding legality. */
-static boolean withinGenericDepthLimit(Object p) {
-    Integer d = GENERIC_DEPTH.get();
-    return d != null && d <= MAX_GENERIC_NEST;
 }
 
 /* A12 compact-close: GATED PREDICATE that runs BEFORE the genericClose rule's GT
@@ -1594,7 +1560,6 @@ sourceFile
     // everything.
     @init {
         preSplitAllCompactCloses(this);
-        resetGenericDepth(this);
     }
     : (outerAttributeList moduleDeclaration)? moduleItem* EOF
     ;
@@ -1752,7 +1717,7 @@ qualifiedPathOrIdent
     : pathSegment ( colonColon pathSegment )*
     ;
 interfaceBound
-    : qualifiedPathOrIdent ( LT { incGenericDepth(this); } { withinGenericDepthLimit(this) }? typeArgList genericClose { decGenericDepth(this); } )?
+    : qualifiedPathOrIdent ( LT typeArgList genericClose )?
     ;
 interfaceBoundList
     : interfaceBound ( PLUS interfaceBound )*
@@ -2804,7 +2769,7 @@ lambdaExpr
 structLiteral
 
 
-    : identifier ( LT { incGenericDepth(this); } { withinGenericDepthLimit(this) }? typeArgList genericClose { decGenericDepth(this); } )?
+    : identifier ( LT typeArgList genericClose )?
       LBRACE structFieldInit ( COMMA structFieldInit )* COMMA? RBRACE
     ;
 
@@ -2906,7 +2871,22 @@ functionType
     ;
 
 functionExpression
-    : FUN typeParameters? parameterList ( ARROW typeExpr ( RAISES typeExpr )? )? blockBody
+    : FUN typeParameters? parameterList captureClause?
+      ( ARROW typeExpr ( RAISES typeExpr )? )? blockBody
+    ;
+
+captureClause
+    : { la1IsCaptureClause(this) }? IDENTIFIER LBRACK captureList? RBRACK
+    ;
+
+captureList
+    : captureElement ( COMMA captureElement )* COMMA?
+    ;
+
+captureElement
+    : BIT_AND identifier
+    | identifier
+    | THIS
     ;
 
 
@@ -2950,8 +2930,8 @@ postfixType
 
 atomType
     : predefinedType                                                                      # typePredefined
-    | attributePath ( LT { incGenericDepth(this); } { withinGenericDepthLimit(this) }? typeArgList genericClose { decGenericDepth(this); } )?                                                # typeQualified
-    | identifier ( LT { incGenericDepth(this); } { withinGenericDepthLimit(this) }? typeArgList genericClose { decGenericDepth(this); } )?                                                   # typeNamed
+    | attributePath ( LT typeArgList genericClose )?                                     # typeQualified
+    | identifier ( LT typeArgList genericClose )?                                        # typeNamed
     | LPAREN typeExpr ( COMMA typeExpr )* COMMA? RPAREN
       { checkTupleTypeNot1Tuple(_localctx, this) }?                                   # typeTuple
     | LBRACE structFieldType ( COMMA structFieldType )* COMMA? RBRACE                     # typeObject

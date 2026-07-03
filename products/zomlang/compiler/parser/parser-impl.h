@@ -481,7 +481,7 @@ struct Parser::Impl {
 
   ast::NodeId parseCaptureItem(AstFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeList parseCaptureList(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseCaptureList(AstFactory& builder, size_t start, size_t end) const;
 
   ast::NodeId parseFunctionExpression(AstFactory& builder, size_t start, size_t end) const;
 
@@ -539,7 +539,7 @@ struct Parser::Impl {
   ast::NodeId makeEmptyEnumVariantList(AstFactory& builder, source::SourceRange range) const;
 
   ast::NodeId parseClassMemberList(AstFactory& builder, size_t bodyOpen, size_t bodyClose,
-                                    ast::SyntaxKind parentKind) const;
+                                   ast::SyntaxKind parentKind) const;
 
   ast::NodeId parseEnumVariantList(AstFactory& builder, size_t bodyOpen, size_t bodyClose) const;
 

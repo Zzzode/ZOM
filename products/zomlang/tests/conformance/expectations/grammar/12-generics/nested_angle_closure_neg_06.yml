@@ -1,5 +1,5 @@
-section: "§12.4 FourLevelNestedClosureUnsupported"
+section: "§12.4 NestedGenericClosure"
 covers_rule: "genericClose"
-expected: "REJECT"
+expected: "ACCEPT"
 expected_diagnostic: ""
 notes: []

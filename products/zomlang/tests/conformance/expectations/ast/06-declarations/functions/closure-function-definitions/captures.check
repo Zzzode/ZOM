@@ -1,15 +1,41 @@
-// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/captures.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/captures.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2012]: Missing semicolon before '<token>'
-// CHECK:   --> {{.*captures.zom}}:5:1
-// CHECK:   |
-// CHECK: 5 |
-// CHECK:   | ^
-// CHECK: Error [ZOM2025]: Expected ';'
-// CHECK:   --> {{.*captures.zom}}:5:1
-// CHECK:   |
-// CHECK: 5 |
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #16 @2:1..5:1 file_name="captures.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #15 @2:1..4:3
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #14 @2:1..4:3 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #13 @2:5..4:2 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #12 @2:5..4:2
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @2:5..2:19 name="captureClosure"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     FunctionExpression #11 @2:22..4:2
+// CHECK-NEXT:                       params_id:
+// CHECK-NEXT:                         FunctionParameterList #2 @2:26..2:28 nparams=0
+// CHECK-NEXT:                           params: []
+// CHECK-NEXT:                       type_params_id: null
+// CHECK-NEXT:                       captures_id:
+// CHECK-NEXT:                         CaptureList #6 @2:34..2:45 n_captures=3
+// CHECK-NEXT:                           captures:
+// CHECK-NEXT:                             CaptureItem #3 @2:34..2:35 mode=ByValue name="x"
+// CHECK-NEXT:                             CaptureItem #4 @2:37..2:39 mode=ByRef name="y"
+// CHECK-NEXT:                             CaptureItem #5 @2:41..2:45 mode=This name="this"
+// CHECK-NEXT:                       ret_ty: null
+// CHECK-NEXT:                       raises_ty: null
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #10 @2:47..4:2
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #9 @3:3..3:12
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ReturnStmt #8 @3:3..3:12
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     IdentExpr #7 @3:10..3:11 name="x"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:       attrs: null

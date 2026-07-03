@@ -1,15 +1,38 @@
-// RUN: ! %zomc compile --dump-ast %corpus/16-attributes/attr_trailing_comma_edge_02.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/16-attributes/attr_trailing_comma_edge_02.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*attr_trailing_comma_edge_02.zom}}:2:23
-// CHECK:   |
-// CHECK: 2 | struct Packed { a: i32, b: i64, }
-// CHECK:   |                       ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*attr_trailing_comma_edge_02.zom}}:2:31
-// CHECK:   |
-// CHECK: 2 | struct Packed { a: i32, b: i64, }
-// CHECK:   |                               ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #17 @1:1..3:1 file_name="attr_trailing_comma_edge_02.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #16 @1:1..2:34
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #15 @2:1..2:34 name="Packed" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #14 @2:15..2:34 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #11 @2:17..2:24 name="a" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #10 @2:20..2:23 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #13 @2:25..2:32 name="b" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #12 @2:28..2:31 kind=I64
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs:
+// CHECK-NEXT:         AttributeList #9 @1:1..1:44
+// CHECK-NEXT:           attrs:
+// CHECK-NEXT:             Attribute #8 @1:3..1:43
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 AttributePath #7 @1:3..1:15 segments=["repr", "packed"] leading=None
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 AssignmentExpr #3 @1:16..1:25 op=Assign
+// CHECK-NEXT:                   lhs:
+// CHECK-NEXT:                     IdentExpr #1 @1:16..1:21 name="align"
+// CHECK-NEXT:                   rhs:
+// CHECK-NEXT:                     IntLiteral #2 @1:24..1:25 base=10 value="8"
+// CHECK-NEXT:                 AssignmentExpr #6 @1:27..1:41 op=Assign
+// CHECK-NEXT:                   lhs:
+// CHECK-NEXT:                     IdentExpr #4 @1:27..1:33 name="endian"
+// CHECK-NEXT:                   rhs:
+// CHECK-NEXT:                     StrLiteral #5 @1:36..1:41 value="big" is_raw=false prefix=None

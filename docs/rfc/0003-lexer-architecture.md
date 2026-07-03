@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, spec-audit, verification]
 approvers: []
 created: 2026-07-01
-updated: 2026-07-02
+updated: 2026-07-03
 area: compiler
 requires: [1]
 supersedes: []
@@ -685,3 +685,7 @@ acceptance criteria and owner approval; no design question remains open.
 | 2026-07-02 | REVIEW | Generated Unicode identifier tables from UCD 15.1.0 and added lexer architecture gates for generator provenance, lazy stream design docs, public lexer API shape, and template-mode state ownership. |
 | 2026-07-02 | REVIEW | Added the five-way token inventory gate across the lexical specification, `ZomLexer.g4`, `SyntaxKind`, keyword classification, and static token text; removed unlexable token kinds and aligned `_` as the wildcard token instead of an identifier. |
 | 2026-07-02 | REVIEW | Removed parser-facing force-EOF token counting from the lazy stream handoff: parser code no longer calls `tokenCount()` or `tokenCountWithoutEof()`, and `TokenCursor` exposes no whole-stream `size()`. |
+| 2026-07-03 | REVIEW | Revalidated the lexer-parser handoff gates after parser verdict reconciliation: right-angle splitting remains cursor-owned, lexer architecture checks pass, lexer/token focused tests pass, and full grammar conformance passes locally. Advancement beyond `REVIEW` still requires owner approval and a recorded decision. |
+| 2026-07-03 | REVIEW | Strengthened the token inventory gate with a data-driven lexer round-trip unit test for every static token spelling, dynamic literal token marker checks, and `02-lexical` conformance metadata pairing inside `scripts/check-lexer-architecture.py`. |
+| 2026-07-03 | REVIEW | Added a focused template-substitution brace-depth lexer test and strengthened the architecture gate so parser sources cannot depend on raw lexer buffer state, parser-visible snapshots, or template rescan APIs. |
+| 2026-07-03 | REVIEW | Verified the lexer architecture slice with `python3 scripts/check-rfc.py`, `python3 scripts/check-format.py`, `python3 scripts/check-lexer-architecture.py`, `cmake --build --preset sanitizer`, and `ctest --preset default --output-on-failure` passing locally. |

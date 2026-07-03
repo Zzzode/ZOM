@@ -1,10 +1,63 @@
-// RUN: ! %zomc compile --dump-ast %corpus/07-patterns/struct_pat_pos_01.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/07-patterns/struct_pat_pos_01.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
-// CHECK:   --> {{.*struct_pat_pos_01.zom}}:1:18
-// CHECK:   |
-// CHECK: 1 | struct S { x: i32, y: i32 }
-// CHECK:   |                  ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #26 @1:1..5:1 file_name="struct_pat_pos_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:28
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #6 @1:1..1:28 name="S" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #5 @1:10..1:28 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @1:12..1:19 name="x" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:15..1:18 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #4 @1:20..1:26 name="y" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:23..1:26 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #25 @2:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         MatchStmt #24 @2:1..4:2
+// CHECK-NEXT:           scrutinee:
+// CHECK-NEXT:             IdentExpr #23 @2:8..2:9 name="s"
+// CHECK-NEXT:           arms:
+// CHECK-NEXT:             MatchArmStmt #22 @3:5..3:47
+// CHECK-NEXT:               pattern:
+// CHECK-NEXT:                 StructPattern #13 @3:10..3:26
+// CHECK-NEXT:                   ty_path:
+// CHECK-NEXT:                     ModulePath #8 @3:10..3:11 segments=["S"]
+// CHECK-NEXT:                   fields:
+// CHECK-NEXT:                     PatternProperty #10 @3:14..3:18 name="x" short_form=false
+// CHECK-NEXT:                       pat:
+// CHECK-NEXT:                         IdentifierPattern #9 @3:17..3:18 name="a"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                     PatternProperty #12 @3:20..3:24 name="y" short_form=false
+// CHECK-NEXT:                       pat:
+// CHECK-NEXT:                         IdentifierPattern #11 @3:23..3:24 name="b"
+// CHECK-NEXT:                           ty: null
+// CHECK-NEXT:                   rest: null
+// CHECK-NEXT:               guard: null
+// CHECK-NEXT:               body:
+// CHECK-NEXT:                 BlockStmt #21 @3:30..3:47
+// CHECK-NEXT:                   stmts:
+// CHECK-NEXT:                     StatementListItem #20 @3:32..3:45
+// CHECK-NEXT:                       item:
+// CHECK-NEXT:                         ExpressionStatement #19 @3:32..3:45
+// CHECK-NEXT:                           expression:
+// CHECK-NEXT:                             CallExpression #18 @3:32..3:44
+// CHECK-NEXT:                               callee:
+// CHECK-NEXT:                                 IdentExpr #14 @3:32..3:37 name="print"
+// CHECK-NEXT:                               type_args: []
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 BinaryExpr #17 @3:38..3:43 op=Add
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     IdentExpr #15 @3:38..3:39 name="a"
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IdentExpr #16 @3:42..3:43 name="b"
+// CHECK-NEXT:                       attrs: null
+// CHECK-NEXT:       attrs: null

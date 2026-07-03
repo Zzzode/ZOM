@@ -570,7 +570,7 @@ FunctionExpression ::= 'fun' TypeParameters? ParameterClause CaptureClause? Retu
                      | LambdaExpression
 LambdaExpression ::= ParameterClause ReturnType? '=>' (AssignmentExpression | BlockStatement)
 CaptureClause ::= 'use' '[' CaptureList? ']'
-CaptureList ::= CaptureElement (',' CaptureElement)*
+CaptureList ::= CaptureElement (',' CaptureElement)* ','?
 CaptureElement ::= '&'? Identifier | 'this'
 
 (* Patterns *)

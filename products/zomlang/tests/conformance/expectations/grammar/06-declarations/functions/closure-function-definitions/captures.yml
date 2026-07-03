@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression capture clause"
+covers_rule: "functionExpression, captureClause, captureList, captureElement"
+expected: "ACCEPT"
+expected_diagnostic: ""
+notes: []

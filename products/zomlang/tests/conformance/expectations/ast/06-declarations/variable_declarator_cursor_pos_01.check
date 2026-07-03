@@ -82,7 +82,8 @@
 // CHECK-NEXT:                                 PredefinedTypeExpr #29 @1:88..1:91 kind=I32
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                       captures: []
+// CHECK-NEXT:                       type_params_id: null
+// CHECK-NEXT:                       captures_id: null
 // CHECK-NEXT:                       ret_ty:
 // CHECK-NEXT:                         PredefinedTypeExpr #32 @1:96..1:99 kind=I32
 // CHECK-NEXT:                       raises_ty: null

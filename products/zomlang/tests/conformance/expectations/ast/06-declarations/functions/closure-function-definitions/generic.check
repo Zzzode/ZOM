@@ -1,15 +1,53 @@
-// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/generic.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/functions/closure-function-definitions/generic.zom | %FileCheck %s
 
 
-// CHECK: Error [ZOM2012]: Missing semicolon before '<token>'
-// CHECK:   --> {{.*generic.zom}}:5:1
-// CHECK:   |
-// CHECK: 5 |
-// CHECK:   | ^
-// CHECK: Error [ZOM2025]: Expected ';'
-// CHECK:   --> {{.*generic.zom}}:5:1
-// CHECK:   |
-// CHECK: 5 |
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK: SourceFile #19 @2:1..5:1 file_name="generic.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #18 @2:1..4:3
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #17 @2:1..4:3 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #16 @2:5..4:2 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #15 @2:5..4:2
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @2:5..2:19 name="genericClosure"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     FunctionExpression #14 @2:22..4:2
+// CHECK-NEXT:                       params_id:
+// CHECK-NEXT:                         FunctionParameterList #7 @2:30..2:38 nparams=1
+// CHECK-NEXT:                           params:
+// CHECK-NEXT:                             FunctionParameterDecl #6 @2:31..2:37 name="val"
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 NamedTypeExpr #5 @2:36..2:37
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #4 @2:36..2:37 segments=["T"]
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                               default_: null
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                       type_params_id:
+// CHECK-NEXT:                         GenericParams #3 @2:26..2:29 nparams=1
+// CHECK-NEXT:                           params:
+// CHECK-NEXT:                             GenericTypeParam #2 @2:27..2:28 name="T" variance=Invariant
+// CHECK-NEXT:                               bound: null
+// CHECK-NEXT:                               default_ty: null
+// CHECK-NEXT:                       captures_id: null
+// CHECK-NEXT:                       ret_ty:
+// CHECK-NEXT:                         NamedTypeExpr #9 @2:42..2:43
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #8 @2:42..2:43 segments=["T"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                       raises_ty: null
+// CHECK-NEXT:                       body:
+// CHECK-NEXT:                         BlockStmt #13 @2:44..4:2
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #12 @3:3..3:14
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ReturnStmt #11 @3:3..3:14
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     IdentExpr #10 @3:10..3:13 name="val"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:       attrs: null

@@ -4,7 +4,10 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
+try:
+    import yaml
+except ModuleNotFoundError:
+    yaml = None
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +63,101 @@ def rel(path: Path) -> str:
     return str(path.relative_to(ROOT))
 
 
+def split_inline_yaml_items(value: str) -> list[str]:
+    items: list[str] = []
+    start = 0
+    bracket_depth = 0
+    for index, char in enumerate(value):
+        if char == "[":
+            bracket_depth += 1
+        elif char == "]" and bracket_depth > 0:
+            bracket_depth -= 1
+        elif char == "," and bracket_depth == 0:
+            items.append(value[start:index].strip())
+            start = index + 1
+    tail = value[start:].strip()
+    if tail:
+        items.append(tail)
+    return items
+
+
+def parse_yaml_scalar(value: str) -> object:
+    value = value.strip()
+    if value.startswith("[") and value.endswith("]"):
+        inner = value[1:-1].strip()
+        if not inner:
+            return []
+        return [str(parse_yaml_scalar(item)) for item in split_inline_yaml_items(inner)]
+    if (value.startswith('"') and value.endswith('"')) or (
+        value.startswith("'") and value.endswith("'")
+    ):
+        return value[1:-1]
+    return value
+
+
+def parse_inline_yaml_mapping(value: str) -> dict[str, object]:
+    value = value.strip()
+    if not value.startswith("{") or not value.endswith("}"):
+        return {}
+    result: dict[str, object] = {}
+    for item in split_inline_yaml_items(value[1:-1]):
+        key, separator, raw_value = item.partition(":")
+        if not separator:
+            continue
+        result[key.strip()] = parse_yaml_scalar(raw_value)
+    return result
+
+
+def load_yaml_document(path: Path) -> dict[str, object]:
+    if yaml is not None:
+        with path.open("r", encoding="utf-8") as handle:
+            data = yaml.safe_load(handle)
+        return data if isinstance(data, dict) else {}
+
+    if path == COVERAGE:
+        productions: dict[str, object] = {}
+        in_productions = False
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped == "productions:":
+                in_productions = True
+                continue
+            if not in_productions:
+                continue
+            match = re.match(r"^([A-Za-z][A-Za-z0-9_]*):\s*(\{.*\})$", stripped)
+            if match:
+                productions[match.group(1)] = parse_inline_yaml_mapping(match.group(2))
+        return {"productions": productions}
+
+    if path == SCHEMA:
+        variants: list[dict[str, object]] = []
+        in_variants = False
+        current: dict[str, object] | None = None
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped == "variants:":
+                in_variants = True
+                continue
+            if in_variants and stripped.endswith(":") and not line.startswith(" "):
+                break
+            if not in_variants or not stripped or stripped.startswith("#"):
+                continue
+            if line.startswith("  - id:"):
+                if current is not None:
+                    variants.append(current)
+                current = {}
+            if current is not None and line.startswith("    name:"):
+                current["name"] = parse_yaml_scalar(line.split(":", 1)[1])
+        if current is not None:
+            variants.append(current)
+        return {"variants": variants}
+
+    fail(f"{rel(path)} requires PyYAML and has no built-in fallback parser")
+    return {}
+
+
 def extract_productions() -> dict[str, str]:
     productions: dict[str, str] = {}
     section = ""
@@ -106,8 +204,7 @@ def load_coverage() -> dict[str, object]:
         fail(f"{rel(COVERAGE)} does not exist")
         return {}
 
-    with COVERAGE.open("r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
+    data = load_yaml_document(COVERAGE)
     if not isinstance(data, dict):
         fail(f"{rel(COVERAGE)} must contain a YAML mapping")
         return {}
@@ -244,8 +341,7 @@ def parser_functions() -> set[str]:
 
 
 def ast_kinds() -> set[str]:
-    with SCHEMA.open("r", encoding="utf-8") as handle:
-        schema = yaml.safe_load(handle)
+    schema = load_yaml_document(SCHEMA)
     variants = schema.get("variants", []) if isinstance(schema, dict) else []
     return {
         str(variant.get("name"))

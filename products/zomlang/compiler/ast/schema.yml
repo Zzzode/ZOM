@@ -745,10 +745,11 @@ variants:
 
   - id: 0x08B
     name: FunctionExpression
-    doc:  "fun(params) use [captures] -> Ret raises E { body } expression"
+    doc:  "fun<T>(params) use [captures] -> Ret raises E { body } expression"
     fields:
       - {name: params_id, type: NodeId, cast: FunctionParameterList}
-      - {name: captures, type: NodeList, cast: CaptureItem, optional: true}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: captures_id, type: NodeId, cast: CaptureList, optional: true}
       - {name: ret_ty, type: NodeId, cast: TypeExpr, optional: true}
       - {name: raises_ty, type: NodeId, cast: TypeExpr, optional: true}
       - {name: body, type: NodeId, cast: BlockStmt}
@@ -852,6 +853,13 @@ variants:
     doc:  "super receiver in class methods (base-class dispatch)"
     fields:
       []
+
+  - id: 0x09A
+    name: CaptureList
+    doc:  "Function-expression capture list wrapper"
+    fields:
+      - {name: n_captures, type: uint16}
+      - {name: captures, type: NodeList, cast: CaptureItem}
 
 # 0xC0..0xDF Type Expressions (25)
   - id: 0x0C0
