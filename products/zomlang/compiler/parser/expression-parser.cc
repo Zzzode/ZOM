@@ -51,135 +51,12 @@ bool Parser::Impl::requireTrailingSemicolon(size_t start, size_t end) const {
   return false;
 }
 
-bool Parser::Impl::looksLikeObjectLiteralExpression(size_t start, size_t end) const {
-  if (!rangeIsWrapped(start, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
-    return false;
-  }
-  TokenCursor colonCursor = tokenCursorAt(start + 1);
-  TokenCursor spreadCursor = tokenCursorAt(start + 1);
-  return consumeBalancedUntil(colonCursor, end - 1, ast::SyntaxKind::Colon) < end - 1 ||
-         consumeBalancedUntil(spreadCursor, end - 1, ast::SyntaxKind::DotDotDot) < end - 1;
-}
-
-size_t Parser::Impl::findStructLiteralBrace(size_t start, size_t end) const {
-  TokenCursor braceCursor = tokenCursorAt(start);
-  const size_t brace = consumeBalancedUntil(braceCursor, end, ast::SyntaxKind::LeftBrace);
-  if (brace <= start || brace >= end) { return end; }
-  if (!rangeIsWrapped(brace, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
-    return end;
-  }
-  return isStructLiteralTypeReference(start, brace) ? brace : end;
-}
-
 bool Parser::Impl::isDefinitelyNonLValueOperand(size_t start, size_t end) const {
   while (rangeIsWrapped(start, end, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen)) {
     ++start;
     --end;
   }
   return start < end && isLiteralExpressionToken(kindAt(start));
-}
-
-size_t Parser::Impl::findExpressionBinaryOperator(size_t start, size_t end) const {
-  int32_t parenDepth = 0;
-  int32_t bracketDepth = 0;
-  int32_t braceDepth = 0;
-  int32_t bestPrecedence = 100;
-  size_t best = end;
-
-  for (size_t index = end; index > start;) {
-    --index;
-    const ast::SyntaxKind kind = kindAt(index);
-    if (kind == ast::SyntaxKind::RightParen) {
-      ++parenDepth;
-    } else if (kind == ast::SyntaxKind::LeftParen) {
-      if (parenDepth > 0) { --parenDepth; }
-    } else if (kind == ast::SyntaxKind::RightBracket) {
-      ++bracketDepth;
-    } else if (kind == ast::SyntaxKind::LeftBracket) {
-      if (bracketDepth > 0) { --bracketDepth; }
-    } else if (kind == ast::SyntaxKind::RightBrace) {
-      ++braceDepth;
-    } else if (kind == ast::SyntaxKind::LeftBrace) {
-      if (braceDepth > 0) { --braceDepth; }
-    }
-
-    if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
-      const int32_t precedence = binaryPrecedence(kind);
-      if (precedence > 0 && (index == start || !canEndExpressionBeforeBinary(kindAt(index - 1)))) {
-        continue;
-      }
-      if (precedence > 0 &&
-          (precedence < bestPrecedence ||
-           (precedence == bestPrecedence && kind == ast::SyntaxKind::AsteriskAsterisk))) {
-        bestPrecedence = precedence;
-        best = index;
-      }
-    }
-  }
-  return best;
-}
-
-size_t Parser::Impl::findExpressionAssignmentOperator(size_t start, size_t end) const {
-  int32_t parenDepth = 0;
-  int32_t bracketDepth = 0;
-  int32_t braceDepth = 0;
-  for (size_t index = start; index < end; ++index) {
-    const ast::SyntaxKind kind = kindAt(index);
-    if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && isAssignmentOperator(kind)) {
-      return index;
-    }
-
-    if (kind == ast::SyntaxKind::LeftParen) {
-      ++parenDepth;
-    } else if (kind == ast::SyntaxKind::RightParen) {
-      if (parenDepth > 0) { --parenDepth; }
-    } else if (kind == ast::SyntaxKind::LeftBracket) {
-      ++bracketDepth;
-    } else if (kind == ast::SyntaxKind::RightBracket) {
-      if (bracketDepth > 0) { --bracketDepth; }
-    } else if (kind == ast::SyntaxKind::LeftBrace) {
-      ++braceDepth;
-    } else if (kind == ast::SyntaxKind::RightBrace) {
-      if (braceDepth > 0) { --braceDepth; }
-    }
-  }
-  return end;
-}
-
-size_t Parser::Impl::findExpressionConditionalColon(size_t question, size_t end) const {
-  int32_t parenDepth = 0;
-  int32_t bracketDepth = 0;
-  int32_t braceDepth = 0;
-  int32_t nestedConditionalDepth = 0;
-  for (size_t index = question + 1; index < end; ++index) {
-    const ast::SyntaxKind kind = kindAt(index);
-    if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0) {
-      if (kind == ast::SyntaxKind::Question) {
-        ++nestedConditionalDepth;
-        continue;
-      }
-      if (kind == ast::SyntaxKind::Colon) {
-        if (nestedConditionalDepth == 0) { return index; }
-        --nestedConditionalDepth;
-        continue;
-      }
-    }
-
-    if (kind == ast::SyntaxKind::LeftParen) {
-      ++parenDepth;
-    } else if (kind == ast::SyntaxKind::RightParen) {
-      if (parenDepth > 0) { --parenDepth; }
-    } else if (kind == ast::SyntaxKind::LeftBracket) {
-      ++bracketDepth;
-    } else if (kind == ast::SyntaxKind::RightBracket) {
-      if (bracketDepth > 0) { --bracketDepth; }
-    } else if (kind == ast::SyntaxKind::LeftBrace) {
-      ++braceDepth;
-    } else if (kind == ast::SyntaxKind::RightBrace) {
-      if (braceDepth > 0) { --braceDepth; }
-    }
-  }
-  return end;
 }
 
 size_t Parser::Impl::consumeCommaDelimitedItem(TokenCursor& cursor, size_t end) const {
@@ -284,116 +161,17 @@ ast::NodeList Parser::Impl::parseExpressionArguments(AstFactory& builder, size_t
   return builder.makeList(args.asPtr());
 }
 
-size_t Parser::Impl::findTrailingCallOpen(size_t start, size_t end) const {
-  if (end <= start || kindAt(end - 1) != ast::SyntaxKind::RightParen) { return end; }
-  for (size_t index = end - 1; index > start;) {
-    --index;
-    if (kindAt(index) == ast::SyntaxKind::LeftParen &&
-        rangeIsWrapped(index, end, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen)) {
-      return index;
-    }
-  }
-  return end;
-}
-
-size_t Parser::Impl::findTrailingIndexOpen(size_t start, size_t end) const {
-  if (end <= start || kindAt(end - 1) != ast::SyntaxKind::RightBracket) { return end; }
-  for (size_t index = end - 1; index > start;) {
-    --index;
-    if (kindAt(index) == ast::SyntaxKind::LeftBracket &&
-        rangeIsWrapped(index, end, ast::SyntaxKind::LeftBracket, ast::SyntaxKind::RightBracket)) {
-      return index;
-    }
-  }
-  return end;
-}
-
-size_t Parser::Impl::findTrailingMemberOperator(size_t start, size_t end) const {
-  int32_t parenDepth = 0;
-  int32_t bracketDepth = 0;
-  int32_t braceDepth = 0;
-  int32_t angleDepth = 0;
-
-  for (size_t index = end; index > start;) {
-    --index;
-    const ast::SyntaxKind kind = kindAt(index);
-    if (kind == ast::SyntaxKind::RightParen) {
-      ++parenDepth;
-    } else if (kind == ast::SyntaxKind::LeftParen) {
-      if (parenDepth > 0) { --parenDepth; }
-    } else if (kind == ast::SyntaxKind::RightBracket) {
-      ++bracketDepth;
-    } else if (kind == ast::SyntaxKind::LeftBracket) {
-      if (bracketDepth > 0) { --bracketDepth; }
-    } else if (kind == ast::SyntaxKind::RightBrace) {
-      ++braceDepth;
-    } else if (kind == ast::SyntaxKind::LeftBrace) {
-      if (braceDepth > 0) { --braceDepth; }
-    } else if (kind == ast::SyntaxKind::GreaterThan) {
-      ++angleDepth;
-    } else if (kind == ast::SyntaxKind::LessThan) {
-      if (angleDepth > 0) { --angleDepth; }
-    }
-
-    if (parenDepth == 0 && bracketDepth == 0 && braceDepth == 0 && angleDepth == 0 &&
-        (kind == ast::SyntaxKind::Period || kind == ast::SyntaxKind::QuestionDot) &&
-        index + 1 < end && isPropertyNameLike(kindAt(index + 1))) {
-      return index;
-    }
-  }
-  return end;
-}
-
-bool Parser::Impl::canUseRangeAsCallCallee(size_t start, size_t end) const {
-  if (start >= end) { return false; }
-  TokenCursor commaCursor = tokenCursorAt(start);
-  if (consumeBalancedUntil(commaCursor, end, ast::SyntaxKind::Comma) < end) { return false; }
-  if (findExpressionAssignmentOperator(start, end) < end) { return false; }
-  TokenCursor questionCursor = tokenCursorAt(start);
-  if (consumeBalancedUntil(questionCursor, end, ast::SyntaxKind::Question) < end) { return false; }
-  TokenCursor coalesceCursor = tokenCursorAt(start);
-  if (consumeBalancedUntil(coalesceCursor, end, ast::SyntaxKind::QuestionQuestion) < end) {
-    return false;
-  }
-  TokenCursor errorDefaultCursor = tokenCursorAt(start);
-  if (consumeBalancedUntil(errorDefaultCursor, end, ast::SyntaxKind::ErrorDefault) < end) {
-    return false;
-  }
-  return findExpressionBinaryOperator(start, end) == end;
-}
-
-ast::NodeId Parser::Impl::parseCallExpression(AstFactory& builder, size_t start, size_t openParen,
-                                              size_t end) const {
-  const size_t calleeEnd =
-      openParen > start && kindAt(openParen - 1) == ast::SyntaxKind::QuestionDot ? openParen - 1
-                                                                                 : openParen;
-  const size_t typeArgsOpen = findTrailingTypeArgumentOpen(start, calleeEnd);
-  const size_t parsedCalleeEnd = typeArgsOpen < calleeEnd ? typeArgsOpen : calleeEnd;
-  const ast::NodeId callee = parseExpressionRange(builder, start, parsedCalleeEnd);
+ast::NodeId Parser::Impl::parseNewExpression(AstFactory& builder, size_t start, size_t calleeEnd,
+                                             size_t typeArgsEnd, size_t end) const {
+  const ast::NodeId callee = parseExpressionRange(builder, start + 1, calleeEnd);
   if (!callee) { return ast::NodeId(); }
 
   ast::NodeList typeArgs;
-  if (typeArgsOpen < calleeEnd && typeArgsOpen + 1 < calleeEnd - 1) {
-    typeArgs = parseTypeArguments(builder, typeArgsOpen + 1, calleeEnd - 1);
-  }
-  return builder.makeCallExpression(rangeFor(start, end), callee, typeArgs,
-                                    parseExpressionArguments(builder, openParen + 1, end - 1));
-}
-
-ast::NodeId Parser::Impl::parseNewExpression(AstFactory& builder, size_t start, size_t end) const {
-  const size_t openParen = findTrailingCallOpen(start + 1, end);
-  const size_t calleeEnd = openParen < end ? openParen : end;
-  const size_t typeArgsOpen = findTrailingTypeArgumentOpen(start + 1, calleeEnd);
-  const size_t parsedCalleeEnd = typeArgsOpen < calleeEnd ? typeArgsOpen : calleeEnd;
-  const ast::NodeId callee = parseExpressionRange(builder, start + 1, parsedCalleeEnd);
-  if (!callee) { return ast::NodeId(); }
-
-  ast::NodeList typeArgs;
-  if (typeArgsOpen < calleeEnd && typeArgsOpen + 1 < calleeEnd - 1) {
-    typeArgs = parseTypeArguments(builder, typeArgsOpen + 1, calleeEnd - 1);
+  if (typeArgsEnd > calleeEnd && calleeEnd + 1 < typeArgsEnd - 1) {
+    typeArgs = parseTypeArguments(builder, calleeEnd + 1, typeArgsEnd - 1);
   }
   ast::NodeList args;
-  if (openParen < end) { args = parseExpressionArguments(builder, openParen + 1, end - 1); }
+  if (end > typeArgsEnd) { args = parseExpressionArguments(builder, typeArgsEnd + 1, end - 1); }
   return builder.makeNewExpression(rangeFor(start, end), callee, typeArgs, args);
 }
 
@@ -528,8 +306,7 @@ ast::NodeId Parser::Impl::parseCastExpression(AstFactory& builder, size_t start,
 }
 
 ast::NodeId Parser::Impl::parseImportCallExpression(AstFactory& builder, size_t start,
-                                                    size_t end) const {
-  const size_t openParen = findTrailingCallOpen(start, end);
+                                                    size_t openParen, size_t end) const {
   ast::NodeList args;
   if (openParen < end) { args = parseExpressionArguments(builder, openParen + 1, end - 1); }
   return builder.makeImportCallExpression(rangeFor(start, end), args);
@@ -588,14 +365,13 @@ ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t st
     signatureCursor = consumeBalancedAngleList(angleCursor, end) ? angleCursor.position() : end;
   }
 
-  size_t openParen = end;
-  for (size_t index = signatureCursor; index < end; ++index) {
-    if (kindAt(index) == ast::SyntaxKind::LeftParen) {
-      openParen = index;
-      break;
-    }
-  }
-  const size_t closeParen = openParen < end ? findMatchingRightParen(openParen, end) : end;
+  TokenCursor openParenCursor = tokenCursorAt(signatureCursor);
+  const size_t openParen = consumeBalancedUntil(openParenCursor, end, ast::SyntaxKind::LeftParen);
+  TokenCursor closeParenCursor = tokenCursorAt(openParen);
+  const size_t closeParen =
+      openParen < end ? consumeBalancedGroupEnd(closeParenCursor, end, ast::SyntaxKind::LeftParen,
+                                                ast::SyntaxKind::RightParen)
+                      : end;
   TokenCursor bodyCursor = tokenCursorAt(closeParen + 1);
   const size_t bodyOpen = consumeBalancedUntil(bodyCursor, end, ast::SyntaxKind::LeftBrace);
   if (openParen >= end || closeParen >= end || bodyOpen >= end) {
@@ -615,22 +391,15 @@ ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t st
   const ast::NodeId params = parseFunctionParameterList(builder, openParen, closeParen);
 
   ast::NodeId captures;
-  size_t useIndex = end;
-  for (size_t index = closeParen + 1; index < (bodyOpen < end ? bodyOpen : end); ++index) {
-    zc::StringPtr text = tokenAt(index).getValue();
-    if (text.size() == 0) { text = tokenLabel(tokenAt(index)); }
-    if (kindAt(index) == ast::SyntaxKind::Identifier && text == "use"_zc) {
-      useIndex = index;
-      break;
-    }
-  }
-  if (useIndex < end) {
+  TokenCursor useCursor = tokenCursorAt(closeParen + 1);
+  const size_t bodyLimit = bodyOpen < end ? bodyOpen : end;
+  const size_t useIndex = consumeBalancedIdentifierUntil(useCursor, bodyLimit, "use"_zc);
+  if (useIndex < bodyLimit) {
     TokenCursor captureCursor = tokenCursorAt(useIndex + 1);
-    const size_t captureOpen = consumeBalancedUntil(captureCursor, bodyOpen < end ? bodyOpen : end,
-                                                    ast::SyntaxKind::LeftBracket);
-    if (captureOpen < end) {
-      const size_t captureClose =
-          findMatchingRightBracket(captureOpen, bodyOpen < end ? bodyOpen : end);
+    const size_t captureOpen =
+        consumeBalancedUntil(captureCursor, bodyLimit, ast::SyntaxKind::LeftBracket);
+    if (captureOpen < bodyLimit) {
+      const size_t captureClose = findMatchingRightBracket(captureOpen, bodyLimit);
       const size_t captureEnd = captureClose < end ? captureClose : bodyOpen;
       captures = parseCaptureList(builder, captureOpen + 1, captureEnd);
     }
@@ -667,7 +436,9 @@ ast::NodeId Parser::Impl::parseLambdaExpression(AstFactory& builder, size_t star
       consumeBalancedUntil(fatArrowCursor, end, ast::SyntaxKind::EqualsGreaterThan);
   if (fatArrow >= end) { return ast::NodeId(); }
 
-  const size_t closeParen = findMatchingRightParen(start, end);
+  TokenCursor closeParenCursor = tokenCursorAt(start);
+  const size_t closeParen = consumeBalancedGroupEnd(
+      closeParenCursor, fatArrow, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen);
   if (closeParen >= fatArrow) {
     diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), ")"_zc);
     return ast::NodeId();
@@ -708,7 +479,10 @@ ast::NodeId Parser::Impl::parseLambdaExpression(AstFactory& builder, size_t star
 
   ast::NodeId body;
   ast::NodeId exprBody;
-  if (rangeIsWrapped(bodyStart, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
+  TokenCursor bodyCursor = tokenCursorAt(bodyStart);
+  const size_t closeBody = consumeBalancedGroupEnd(bodyCursor, end, ast::SyntaxKind::LeftBrace,
+                                                   ast::SyntaxKind::RightBrace);
+  if (closeBody + 1 == end) {
     body = parseBlock(builder, bodyStart, end);
   } else {
     exprBody = parseExpressionRange(builder, bodyStart, end);
@@ -790,10 +564,20 @@ ast::NodeId Parser::Impl::parseTemplateLiteralExpression(AstFactory& builder, si
   return builder.makeTemplateLiteralExpr(rangeFor(start, end), builder.makeList(exprs.asPtr()));
 }
 
+Parser::Impl::ExpressionParseResult Parser::Impl::parseExpression(AstFactory& builder,
+                                                                  TokenCursor& cursor,
+                                                                  size_t limit) const {
+  const size_t start = cursor.position();
+  ExpressionParseResult result = parseCommaExpressionAt(builder, start, limit);
+  if (result.node) { cursor.moveTo(result.next); }
+  return result;
+}
+
 Parser::Impl::ExpressionParseResult Parser::Impl::parseExpressionAt(AstFactory& builder,
                                                                     size_t start,
                                                                     size_t limit) const {
-  return parseCommaExpressionAt(builder, start, limit);
+  TokenCursor cursor = tokenCursorAt(start);
+  return parseExpression(builder, cursor, limit);
 }
 
 Parser::Impl::ExpressionParseResult Parser::Impl::parseCommaExpressionAt(AstFactory& builder,
@@ -1171,7 +955,9 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
     const ast::NodeId lambda = parseLambdaExpression(builder, start, limit);
     if (lambda) { return {lambda, limit}; }
 
-    const size_t closeParen = findMatchingRightParen(start, limit);
+    TokenCursor closeParenCursor = tokenCursorAt(start);
+    const size_t closeParen = consumeBalancedGroupEnd(
+        closeParenCursor, limit, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen);
     if (closeParen >= limit) {
       diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), ")"_zc);
       return ExpressionParseResult();
@@ -1185,7 +971,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
     }
 
     TokenCursor commaCursor = tokenCursorAt(start + 1);
-    if (consumeBalancedUntil(commaCursor, closeParen, ast::SyntaxKind::Comma) < closeParen) {
+    if (consumeCommaDelimitedItem(commaCursor, closeParen) < closeParen) {
       return {parseExpressionList(builder, start + 1, closeParen, ast::SyntaxKind::TupleLiteral),
               closeParen + 1};
     }
@@ -1256,30 +1042,35 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
   }
 
   if (kindAt(start) == ast::SyntaxKind::NewKeyword) {
+    size_t calleeEnd = start + 1;
+    size_t typeArgsEnd = start + 1;
     size_t end = start + 1;
     if (end < limit) {
-      end = findTypePathEnd(end, limit);
-      if (end == start + 1) { end = start + 2; }
-      if (end < limit && kindAt(end) == ast::SyntaxKind::LessThan) {
-        const size_t closeAngle = findMatchingAngleClose(end, limit);
-        if (closeAngle < limit) { end = closeAngle + 1; }
+      calleeEnd = findTypePathEnd(end, limit);
+      if (calleeEnd == start + 1) { calleeEnd = start + 2; }
+      typeArgsEnd = calleeEnd;
+      if (calleeEnd < limit && kindAt(calleeEnd) == ast::SyntaxKind::LessThan) {
+        const size_t closeAngle = findMatchingAngleClose(calleeEnd, limit);
+        if (closeAngle < limit) { typeArgsEnd = closeAngle + 1; }
       }
-      if (end < limit && kindAt(end) == ast::SyntaxKind::LeftParen) {
-        const size_t closeParen = findMatchingRightParen(end, limit);
+      end = typeArgsEnd;
+      if (typeArgsEnd < limit && kindAt(typeArgsEnd) == ast::SyntaxKind::LeftParen) {
+        const size_t closeParen = findMatchingRightParen(typeArgsEnd, limit);
         if (closeParen < limit) { end = closeParen + 1; }
       }
     }
-    return {parseNewExpression(builder, start, end), end};
+    return {parseNewExpression(builder, start, calleeEnd, typeArgsEnd, end), end};
   }
 
   if (kindAt(start) == ast::SyntaxKind::ImportKeyword) {
     if (start + 1 < limit && kindAt(start + 1) == ast::SyntaxKind::LeftParen) {
       const size_t closeParen = findMatchingRightParen(start + 1, limit);
       if (closeParen < limit) {
-        return {parseImportCallExpression(builder, start, closeParen + 1), closeParen + 1};
+        return {parseImportCallExpression(builder, start, start + 1, closeParen + 1),
+                closeParen + 1};
       }
     }
-    return {parseImportCallExpression(builder, start, start + 1), start + 1};
+    return {parseImportCallExpression(builder, start, start + 1, start + 1), start + 1};
   }
 
   if (start + 1 <= limit) {
@@ -1344,7 +1135,8 @@ ast::NodeId Parser::Impl::parseExpressionRange(AstFactory& builder, size_t start
     if (macroEnd == end) { return parseMacroInvocationExpression(builder, start, end); }
   }
 
-  ExpressionParseResult parsed = parseExpressionAt(builder, start, end);
+  TokenCursor cursor = tokenCursorAt(start);
+  ExpressionParseResult parsed = parseExpression(builder, cursor, end);
   if (!parsed.node) { return ast::NodeId(); }
   if (parsed.next != end) {
     if (!shouldSuppressDiagnostic(parsed.next)) {

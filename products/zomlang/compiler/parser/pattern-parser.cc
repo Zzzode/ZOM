@@ -414,24 +414,28 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
     return builder.makeArrayPattern(rangeFor(start, end), builder.makeList(pats.asPtr()), rest);
   }
 
-  const size_t enumArgsOpen = findTrailingCallOpen(start, end);
-  if (enumArgsOpen < end && kindAt(start) == ast::SyntaxKind::Identifier) {
-    zc::Vector<ast::NodeId> args;
-    const size_t listEnd = end - 1;
-    TokenCursor cursor = tokenCursorAt(enumArgsOpen + 1);
-    while (cursor.position() < listEnd) {
-      const size_t itemStart = cursor.position();
-      const size_t itemEnd = consumeCommaDelimitedItem(cursor, listEnd);
-      if (itemStart < itemEnd) {
-        addNodeIfPresent(args, parsePatternRange(builder, itemStart, itemEnd));
+  // Detect enum patterns (e.g., `Some(x)`, `Module.Ok(val)`) by forward-scanning
+  // to find the identifier path end, then checking for a trailing `(...)`.
+  if (kindAt(start) == ast::SyntaxKind::Identifier) {
+    const size_t pathEnd = findTypePathEnd(start, end);
+    if (pathEnd > start && pathEnd < end && kindAt(pathEnd) == ast::SyntaxKind::LeftParen &&
+        rangeIsWrapped(pathEnd, end, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen)) {
+      zc::Vector<ast::NodeId> args;
+      const size_t listEnd = end - 1;
+      TokenCursor cursor = tokenCursorAt(pathEnd + 1);
+      while (cursor.position() < listEnd) {
+        const size_t itemStart = cursor.position();
+        const size_t itemEnd = consumeCommaDelimitedItem(cursor, listEnd);
+        if (itemStart < itemEnd) {
+          addNodeIfPresent(args, parsePatternRange(builder, itemStart, itemEnd));
+        }
+        if (cursor.position() < listEnd && cursor.peek() == ast::SyntaxKind::Comma) {
+          cursor.advance();
+        }
       }
-      if (cursor.position() < listEnd && cursor.peek() == ast::SyntaxKind::Comma) {
-        cursor.advance();
-      }
+      return builder.makeEnumPattern(rangeFor(start, end), makeModulePath(builder, start, pathEnd),
+                                     builder.makeList(args.asPtr()));
     }
-    return builder.makeEnumPattern(rangeFor(start, end),
-                                   makeModulePath(builder, start, enumArgsOpen),
-                                   builder.makeList(args.asPtr()));
   }
 
   size_t structStart = start;

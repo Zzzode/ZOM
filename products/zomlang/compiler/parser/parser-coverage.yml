@@ -29,7 +29,7 @@ productions:
   BooleanLiteral: {status: lexical}
   BoundItem: {status: inlined, parser: parseTypeRange, parent: TypeParameter}
   BreakStatement: {status: direct, parser: parseBreakStatement, ast: [BreakStmt]}
-  CallExpression: {status: direct, parser: parseCallExpression, ast: [CallExpression]}
+  CallExpression: {status: inlined, parser: parsePostfixExpressionAt, ast: [CallExpression], parent: Expression}
   CallSignature: {status: inlined, parser: parseFunctionParameterList, parent: MethodSignature}
   CaptureClause: {status: inlined, parser: parseFunctionExpression, parent: FunctionExpression}
   CaptureElement: {status: direct, parser: parseCaptureItem, ast: [CaptureItem]}
@@ -203,6 +203,11 @@ productions:
   SingleLineComment: {status: lexical}
   CharacterLiteralCharacter: {status: lexical}
   SourceFile: {status: direct, parser: buildTree, ast: [SourceFile]}
+  SpawnBlockStatement: {status: inlined, parser: parseBlock, parent: SpawnExpression}
+  SpawnExpression: {status: direct, parser: parseSpawnExpression, ast: [SpawnExpression]}
+  SpawnModifier: {status: inlined, parser: parseSpawnExpression, parent: SpawnExpression}
+  SpawnModifierList: {status: inlined, parser: parseSpawnExpression, parent: SpawnExpression}
+  SpawnStatement: {status: direct, parser: parseSpawnStatement, ast: [ExpressionStatement]}
   StandaloneImplDeclaration: {status: inlined, parser: parseSourceElement, parent: Declaration}
   Statement: {status: direct, parser: parseSourceElement}
   StatementList: {status: inlined, parser: parseBlock, parent: BlockStatement}
@@ -213,7 +218,7 @@ productions:
   StructLiteralField: {status: inlined, parser: parseObjectLiteralProperties, parent: StructLiteral}
   StructLiteralFields: {status: inlined, parser: parseObjectLiteralProperties, parent: StructLiteral}
   StructurePattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
-  SuperCall: {status: inlined, parser: parseCallExpression, parent: CallExpression}
+  SuperCall: {status: inlined, parser: parsePostfixExpressionAt, parent: CallExpression}
   SuperProperty: {status: inlined, parser: parseExpressionRange, parent: MemberExpression}
   TemplateLiteral: {status: lexical}
   TemplateSpan: {status: lexical}

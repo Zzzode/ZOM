@@ -106,7 +106,7 @@ options {
      // * instead of a post-consumption "failed predicate" syntax error.
      // * Valid (true): detached / blocking.
      // * Anything else -> false -> spawnModifier alternative is dropped during
-     // * prediction; parser falls through to (blockBody | expression).
+     // * prediction; parser falls through to (spawnBlockBody | expression).
      // */
     static boolean la1IsSpawnModifierName(Object parser) {
         Token t = ((ZomParser)parser)._input.LT(1);
@@ -2190,8 +2190,17 @@ attrInput
     ;
 attrInputItem
 
-    : { la2Is(this, ASSIGN) }? pathSegment ASSIGN expression                              # attrInputKVItem
-    | expression                                                                          # attrInputExprItem
+    : { la2Is(this, ASSIGN) }? pathSegment ASSIGN attrInputValue                          # attrInputKVItem
+    | attrInputValue                                                                      # attrInputExprItem
+    ;
+
+attrInputValue
+    : nestedAttrInputBlock
+    | expression
+    ;
+
+nestedAttrInputBlock
+    : LBRACE attrInput? RBRACE
     ;
 
 attributePath
@@ -2445,7 +2454,7 @@ debuggerStatement : DEBUGGER SEMICOLON ;
 
 
 spawnStatement
-    : SPAWN spawnModifierList? ( blockBody | expression ) SEMICOLON?
+    : SPAWN spawnModifierList? ( spawnBlockBody | expression ) SEMICOLON?
     ;
 
 
@@ -2498,9 +2507,9 @@ reservedSyntax
 
 // ---- Block ---------------------------------------------------------------------------
 
-// NOTE: A trailing expression (without a terminating SEMICOLON) is allowed inside
-//       block bodies as a "block tail expression" (spawn / lambda / if-expr patterns).
-blockBody : LBRACE statementList expression? RBRACE ;
+blockBody : LBRACE statementList RBRACE ;
+
+spawnBlockBody : LBRACE statementList expression? RBRACE ;
 
 statementList : statement* ;
 
@@ -2714,7 +2723,7 @@ primaryExpr
     | SET                                                                                 # exprSetAsIdent
     | NEW typeExpr LPAREN expressionList? RPAREN                                          # exprNew
     | IMPORT LPAREN expression RPAREN                                                     # exprImportCall
-    | SPAWN spawnModifierList? ( blockBody | assignmentExpr )                             # exprSpawn
+    | SPAWN spawnModifierList? ( spawnBlockBody | assignmentExpr )                        # exprSpawn
     | functionExpression                                                                  # exprFunction
     | lambdaExpr                                                                          # exprLambda
     | objectLiteral                                                                       # exprObjectLiteral
@@ -2725,8 +2734,6 @@ primaryExpr
 
 
 
-
-    | blockBody                                                                           # exprBlock
 
     | unsafeBlockExpr                                                                     # exprUnsafeBlock
 

@@ -34,7 +34,6 @@ enum class SyntaxKind {
   IntegerLiteral,
   BigIntLiteralToken,
   FloatLiteral,
-  BooleanLiteral,
   CharacterLiteral,
   NoSubstitutionTemplateLiteral,  // `...`
   TemplateHead,                   // `...${

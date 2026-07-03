@@ -1,12 +1,16 @@
 # Grammar Reference
 
-> **注意：权威语法参考已迁移**
+> **Authoritative grammar reference moved**
 >
-> 本文档作为历史参考和快速概览保留。`docs/design/syntax-ebnf.md` 是 ZOM 语言语法层的**唯一权威来源**（single authoritative source of truth）。
-> 所有词法分析器、解析器、AST 定义、诊断系统、LSP 实现和文档生成器必须与该文档保持一致。
-> 如果本文档与 `docs/design/syntax-ebnf.md` 之间存在任何冲突或不一致，**一律以 syntax-ebnf.md 为准**。
+> This document remains as historical reference and a quick overview.
+> `docs/design/syntax-ebnf.md` is the single authoritative source of truth for
+> the ZOM grammar layer. All lexer, parser, AST, diagnostic, LSP, and
+> documentation-generator behavior must align with that document.
+> If this document conflicts with `docs/design/syntax-ebnf.md`, the syntax EBNF
+> document wins.
 >
-> 如需查阅最新、最权威的语法规范，请参阅 [`docs/design/syntax-ebnf.md`](../design/syntax-ebnf.md)。
+> For the current grammar specification, see
+> [`docs/design/syntax-ebnf.md`](../design/syntax-ebnf.md).
 
 ---
 
@@ -373,6 +377,7 @@ Statement ::= BlockStatement
            | DoWhileStatement
            | ForStatement
            | ForInStatement
+           | SpawnStatement
            | ContinueStatement
            | BreakStatement
            | ReturnStatement
@@ -415,6 +420,12 @@ ForDeclaration ::= ('mut' | 'let') ForBinding
 ForBinding ::= BindingIdentifier | BindingPattern
 ForInit ::= ('mut' | 'let') VariableDeclarationList | Expression
 ForUpdate ::= Expression
+
+SpawnStatement ::= 'spawn' SpawnModifierList? (SpawnBlockStatement | Expression) ';'?
+SpawnExpression ::= 'spawn' SpawnModifierList? (SpawnBlockStatement | AssignmentExpression)
+SpawnBlockStatement ::= '{' StatementList? Expression? '}'
+SpawnModifierList ::= SpawnModifier (','? SpawnModifier)*
+SpawnModifier ::= Identifier | Identifier '(' Identifier ')'
 
 ContinueStatement ::= 'continue' Identifier? ';'
 BreakStatement ::= 'break' Identifier? ';'
@@ -527,6 +538,7 @@ PrimaryExpression ::= 'this'
                    | ObjectLiteral
                    | StructLiteral
                    | FunctionExpression
+                   | SpawnExpression
                    | '(' Expression ')'
 
 (* ── Control-flow exclusions from PrimaryExpression ─────────────────────

@@ -376,18 +376,28 @@ ast::NodeId Parser::Impl::parseBlock(AstFactory& builder, size_t openBrace, size
     } else {
       itemResult.attrs =
           parseOuterAttributeList(builder, itemResult.boundary.start, itemResult.boundary.end);
+      const bool invalidAttributedExpression =
+          itemResult.boundary.start < itemResult.boundary.nodeStart &&
+          itemResult.boundary.kind == ast::SyntaxKind::ExpressionStatement;
+      if (invalidAttributedExpression) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+            tokenAt(itemResult.boundary.start).getLocation());
+      }
+
       const bool finalExpression =
-          allowFinalExpression &&
+          allowFinalExpression && !invalidAttributedExpression &&
           itemResult.boundary.kind == ast::SyntaxKind::ExpressionStatement &&
           itemResult.boundary.end >= bodyEnd &&
           (itemResult.boundary.end == 0 ||
            kindAt(itemResult.boundary.end - 1) != ast::SyntaxKind::Semicolon);
-      itemResult.node =
-          finalExpression
-              ? parseExpressionStatementWithoutSemicolon(builder, itemResult.boundary.nodeStart,
-                                                         itemResult.boundary.end)
-              : parseSourceElementOfKind(builder, itemResult.boundary.nodeStart,
-                                         itemResult.boundary.end, itemResult.boundary.kind);
+      if (!invalidAttributedExpression) {
+        itemResult.node =
+            finalExpression
+                ? parseExpressionStatementWithoutSemicolon(builder, itemResult.boundary.nodeStart,
+                                                           itemResult.boundary.end)
+                : parseSourceElementOfKind(builder, itemResult.boundary.nodeStart,
+                                           itemResult.boundary.end, itemResult.boundary.kind);
+      }
     }
     const size_t statementEnd = itemResult.boundary.end;
     if (outerAttributePrefixContainsZomCfg(statementStart, statementEnd) &&

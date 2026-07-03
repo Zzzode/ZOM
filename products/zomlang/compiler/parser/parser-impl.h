@@ -264,6 +264,9 @@ struct Parser::Impl {
 
   bool isStandaloneDynTypeRange(size_t start, size_t end) const;
 
+  size_t consumeBalancedGroupEnd(TokenCursor& cursor, size_t limit, ast::SyntaxKind open,
+                                 ast::SyntaxKind close) const;
+
   size_t consumeBalancedUntil(TokenCursor& cursor, size_t limit, ast::SyntaxKind needle) const;
 
   size_t consumeBalancedTypeUntil(TokenCursor& cursor, size_t limit, ast::SyntaxKind needle) const;
@@ -372,13 +375,11 @@ struct Parser::Impl {
 
   void diagnoseNamedTypeBody(size_t bodyOpen, size_t bodyClose, ast::SyntaxKind kind) const;
 
-  bool looksLikeObjectLiteralExpression(size_t start, size_t end) const;
-
   bool isStructLiteralTypeReference(size_t start, size_t end) const;
 
-  size_t findTypePathEnd(size_t start, size_t end) const;
+  bool consumeTypePath(TokenCursor& cursor, size_t limit) const;
 
-  size_t findStructLiteralBrace(size_t start, size_t end) const;
+  size_t findTypePathEnd(size_t start, size_t end) const;
 
   bool isDefinitelyNonLValueOperand(size_t start, size_t end) const;
 
@@ -394,6 +395,9 @@ struct Parser::Impl {
   size_t findMatchingAngleClose(size_t openIndex, size_t limit) const;
 
   bool consumeBalancedAngleList(TokenCursor& cursor, size_t limit) const;
+
+  bool consumeFunctionTypeHead(TokenCursor& cursor, size_t limit, size_t& openParen,
+                               size_t& closeParen) const;
 
   size_t functionTypeParameterTypeStart(TokenCursor& cursor, size_t limit) const;
 
@@ -432,12 +436,6 @@ struct Parser::Impl {
 
   ast::NodeId parseTypeRange(AstFactory& builder, size_t start, size_t end) const;
 
-  size_t findExpressionBinaryOperator(size_t start, size_t end) const;
-
-  size_t findExpressionAssignmentOperator(size_t start, size_t end) const;
-
-  size_t findExpressionConditionalColon(size_t question, size_t end) const;
-
   size_t consumeCommaDelimitedItem(TokenCursor& cursor, size_t end) const;
 
   ast::NodeId parseExpressionList(AstFactory& builder, size_t start, size_t end,
@@ -449,20 +447,8 @@ struct Parser::Impl {
 
   ast::NodeList parseTypeArguments(AstFactory& builder, size_t start, size_t end) const;
 
-  size_t findTrailingCallOpen(size_t start, size_t end) const;
-
-  size_t findTrailingIndexOpen(size_t start, size_t end) const;
-
-  size_t findTrailingTypeArgumentOpen(size_t start, size_t end) const;
-
-  size_t findTrailingMemberOperator(size_t start, size_t end) const;
-
-  bool canUseRangeAsCallCallee(size_t start, size_t end) const;
-
-  ast::NodeId parseCallExpression(AstFactory& builder, size_t start, size_t openParen,
-                                  size_t end) const;
-
-  ast::NodeId parseNewExpression(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseNewExpression(AstFactory& builder, size_t start, size_t calleeEnd,
+                                 size_t typeArgsEnd, size_t end) const;
 
   ast::NodeId makeEmptyMacroPattern(AstFactory& builder, size_t start, size_t end) const;
 
@@ -477,7 +463,8 @@ struct Parser::Impl {
   ast::NodeId parseCastExpression(AstFactory& builder, size_t start, size_t asIndex,
                                   size_t end) const;
 
-  ast::NodeId parseImportCallExpression(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseImportCallExpression(AstFactory& builder, size_t start, size_t openParen,
+                                        size_t end) const;
 
   ast::NodeId parseCaptureItem(AstFactory& builder, size_t start, size_t end) const;
 
@@ -500,6 +487,9 @@ struct Parser::Impl {
     ast::NodeId node;
     size_t next = 0;
   };
+
+  ExpressionParseResult parseExpression(AstFactory& builder, TokenCursor& cursor,
+                                        size_t limit) const;
 
   ExpressionParseResult parseExpressionAt(AstFactory& builder, size_t start, size_t limit) const;
 

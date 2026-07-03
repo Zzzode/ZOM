@@ -124,43 +124,53 @@ bool Parser::Impl::followsFieldTypeColonWithoutSemicolon(size_t index) const {
 bool Parser::Impl::isStructLiteralTypeReference(size_t start, size_t end) const {
   if (start >= end) { return false; }
 
-  size_t cursor = findTypePathEnd(start, end);
-  if (cursor == start) { return false; }
-  if (cursor == end) { return true; }
+  TokenCursor cursor = tokenCursorAt(start);
+  if (!consumeTypePath(cursor, end)) { return false; }
+  if (cursor.position() == end) { return true; }
 
-  if (kindAt(cursor) == ast::SyntaxKind::LessThan) {
-    const size_t closeAngle = findMatchingAngleClose(cursor, end);
-    return closeAngle + 1 == end;
+  return cursor.peek() == ast::SyntaxKind::LessThan && consumeBalancedAngleList(cursor, end) &&
+         cursor.position() == end;
+}
+
+bool Parser::Impl::consumeTypePath(TokenCursor& cursor, size_t limit) const {
+  const size_t start = cursor.position();
+  bool expectSegment = true;
+  bool consumedSegment = false;
+  if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::ColonColon) {
+    cursor.advance();
   }
 
-  return false;
+  while (cursor.position() < limit) {
+    const ast::SyntaxKind kind = cursor.peek();
+    if (expectSegment) {
+      if (kind != ast::SyntaxKind::Identifier) {
+        cursor.moveTo(start);
+        return false;
+      }
+      consumedSegment = true;
+      expectSegment = false;
+      cursor.advance();
+      continue;
+    }
+
+    if (kind == ast::SyntaxKind::Period || kind == ast::SyntaxKind::ColonColon) {
+      expectSegment = true;
+      cursor.advance();
+      continue;
+    }
+    break;
+  }
+
+  if (!consumedSegment || expectSegment) {
+    cursor.moveTo(start);
+    return false;
+  }
+  return true;
 }
 
 size_t Parser::Impl::findTypePathEnd(size_t start, size_t end) const {
-  bool expectSegment = true;
-  size_t cursor = start;
-  if (cursor < end && kindAt(cursor) == ast::SyntaxKind::ColonColon) { ++cursor; }
-
-  for (; cursor < end; ++cursor) {
-    const ast::SyntaxKind kind = kindAt(cursor);
-    if (expectSegment) {
-      if (kind != ast::SyntaxKind::Identifier) { return start; }
-      expectSegment = false;
-      continue;
-    }
-
-    if (kind == ast::SyntaxKind::Period) {
-      expectSegment = true;
-      continue;
-    }
-    if (kind == ast::SyntaxKind::ColonColon) {
-      expectSegment = true;
-      continue;
-    }
-    return cursor;
-  }
-
-  return expectSegment ? start : cursor;
+  TokenCursor cursor = tokenCursorAt(start);
+  return consumeTypePath(cursor, end) ? cursor.position() : start;
 }
 
 size_t Parser::Impl::findMatchingAngleClose(size_t openIndex, size_t limit) const {
@@ -225,6 +235,39 @@ bool Parser::Impl::consumeBalancedAngleList(TokenCursor& cursor, size_t limit) c
 
   cursor.moveTo(limit);
   return false;
+}
+
+bool Parser::Impl::consumeFunctionTypeHead(TokenCursor& cursor, size_t limit, size_t& openParen,
+                                           size_t& closeParen) const {
+  const TokenCursor::Mark mark = cursor.mark();
+  openParen = limit;
+  closeParen = limit;
+
+  if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::FunKeyword) {
+    cursor.advance();
+  }
+
+  if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::LessThan &&
+      !consumeBalancedAngleList(cursor, limit)) {
+    cursor.rewind(mark);
+    return false;
+  }
+
+  if (cursor.position() >= limit || cursor.peek() != ast::SyntaxKind::LeftParen) {
+    cursor.rewind(mark);
+    return false;
+  }
+
+  openParen = cursor.position();
+  closeParen = consumeBalancedGroupEnd(cursor, limit, ast::SyntaxKind::LeftParen,
+                                       ast::SyntaxKind::RightParen);
+  if (closeParen >= limit || cursor.position() >= limit ||
+      cursor.peek() != ast::SyntaxKind::Arrow) {
+    cursor.rewind(mark);
+    return false;
+  }
+
+  return true;
 }
 
 size_t Parser::Impl::functionTypeParameterTypeStart(TokenCursor& cursor, size_t limit) const {
@@ -549,35 +592,12 @@ Parser::Impl::TypeParseResult Parser::Impl::parseFunctionType(AstFactory& builde
                                                               TokenCursor& cursor,
                                                               size_t limit) const {
   const size_t start = cursor.position();
-  const TokenCursor::Mark mark = cursor.mark();
-  if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::FunKeyword) {
-    cursor.advance();
-  }
+  size_t openParen = limit;
+  size_t closeParen = limit;
+  if (!consumeFunctionTypeHead(cursor, limit, openParen, closeParen)) { return TypeParseResult(); }
 
-  if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::LessThan) {
-    const size_t closeAngle = findMatchingAngleClose(cursor.position(), limit);
-    if (closeAngle >= limit) {
-      cursor.rewind(mark);
-      return TypeParseResult();
-    }
-    cursor.moveTo(closeAngle + 1);
-  }
-
-  if (cursor.position() >= limit || cursor.peek() != ast::SyntaxKind::LeftParen) {
-    cursor.rewind(mark);
-    return TypeParseResult();
-  }
-
-  const size_t openParen = cursor.position();
-  const size_t closeParen = findMatchingRightParen(openParen, limit);
-  if (closeParen >= limit || closeParen + 1 >= limit ||
-      kindAt(closeParen + 1) != ast::SyntaxKind::Arrow) {
-    cursor.rewind(mark);
-    return TypeParseResult();
-  }
-
-  const size_t retStart = closeParen + 2;
-  cursor.moveTo(retStart);
+  cursor.advance();
+  const size_t retStart = cursor.position();
   TypeParseResult ret = parseTypeExpression(builder, cursor, limit);
   if (!ret.node) {
     diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(retStart));
@@ -639,30 +659,41 @@ Parser::Impl::TypeParseResult Parser::Impl::parseBracketedType(AstFactory& build
                                                                TokenCursor& cursor,
                                                                size_t limit) const {
   const size_t start = cursor.position();
-  const size_t closeBracket = findMatchingRightBracket(start, limit);
-  if (closeBracket >= limit) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), "]"_zc);
+  if (start >= limit || cursor.peek() != ast::SyntaxKind::LeftBracket) { return TypeParseResult(); }
+  cursor.advance();  // consume '['
+
+  // Parse the element type cursor-driven. The parser stops at ';' or ']'
+  // whichever comes first, respecting angle/paren/bracket nesting.
+  TypeParseResult elemResult = parseTypeExpression(builder, cursor, limit);
+  if (!elemResult.node) { return TypeParseResult(); }
+
+  if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::Semicolon) {
+    // Fixed array type: [T; N]
+    cursor.advance();  // consume ';'
+    const size_t lenStart = cursor.position();
+    const size_t closeBracket = findMatchingRightBracket(start, limit);
+    if (closeBracket >= limit) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), "]"_zc);
+      return TypeParseResult();
+    }
+    const ast::NodeId lenExpr = parseExpressionRange(builder, lenStart, closeBracket);
+    if (!lenExpr) { return TypeParseResult(); }
+    cursor.moveTo(closeBracket + 1);
+    return TypeParseResult{builder.makeFixedArrayTypeExpr(rangeFor(start, cursor.position()),
+                                                          elemResult.node, lenExpr),
+                           cursor.position()};
+  }
+
+  // Slice type: [T]
+  if (cursor.position() >= limit || cursor.peek() != ast::SyntaxKind::RightBracket) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor.position()),
+                                                                  "]"_zc);
     return TypeParseResult();
   }
-
-  TokenCursor semiCursor = tokenCursorAt(start + 1);
-  const size_t semi =
-      consumeBalancedTypeUntil(semiCursor, closeBracket, ast::SyntaxKind::Semicolon);
-  if (semi < closeBracket) {
-    const ast::NodeId elem = parseTypeRange(builder, start + 1, semi);
-    const ast::NodeId lenExpr = parseExpressionRange(builder, semi + 1, closeBracket);
-    if (!elem || !lenExpr) { return TypeParseResult(); }
-    cursor.moveTo(closeBracket + 1);
-    return TypeParseResult{
-        builder.makeFixedArrayTypeExpr(rangeFor(start, closeBracket + 1), elem, lenExpr),
-        cursor.position()};
-  }
-
-  const ast::NodeId elem = parseTypeRange(builder, start + 1, closeBracket);
-  if (!elem) { return TypeParseResult(); }
-  cursor.moveTo(closeBracket + 1);
-  return TypeParseResult{builder.makeSliceArrayTypeExpr(rangeFor(start, closeBracket + 1), elem),
-                         cursor.position()};
+  cursor.advance();  // consume ']'
+  return TypeParseResult{
+      builder.makeSliceArrayTypeExpr(rangeFor(start, cursor.position()), elemResult.node),
+      cursor.position()};
 }
 
 Parser::Impl::TypeParseResult Parser::Impl::parseTypeQuery(AstFactory& builder, TokenCursor& cursor,
@@ -758,11 +789,15 @@ Parser::Impl::TypeParseResult Parser::Impl::parseAtomType(AstFactory& builder, T
   const size_t start = cursor.position();
   if (start >= limit) { return TypeParseResult(); }
 
-  TypeParseResult functionType = parseFunctionType(builder, cursor, limit);
-  if (functionType.node) { return functionType; }
-  cursor.moveTo(start);
+  const ast::SyntaxKind atomStart = cursor.peek();
+  if (atomStart == ast::SyntaxKind::FunKeyword || atomStart == ast::SyntaxKind::LessThan ||
+      atomStart == ast::SyntaxKind::LeftParen) {
+    TypeParseResult functionType = parseFunctionType(builder, cursor, limit);
+    if (functionType.node) { return functionType; }
+    cursor.moveTo(start);
+  }
 
-  switch (cursor.peek()) {
+  switch (atomStart) {
     case ast::SyntaxKind::LeftParen:
       return parseParenthesizedOrTupleType(builder, cursor, limit);
     case ast::SyntaxKind::TypeOfKeyword:
@@ -798,7 +833,13 @@ ast::NodeId Parser::Impl::parseTypeRange(AstFactory& builder, size_t start, size
   while (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { --end; }
   if (start >= end) { return ast::NodeId(); }
 
-  TypeParseResult parsed = parseTypeExpressionAt(builder, start, end);
+  TokenCursor cursor = tokenCursorAt(start);
+  TokenCursor::ScopedSplitMode splitMode(cursor);
+  TypeParseResult parsed = parseTypeExpression(builder, cursor, end);
+  while (cursor.position() < end && cursor.peek() == ast::SyntaxKind::GreaterThan) {
+    cursor.advance();
+  }
+  parsed.next = cursor.position();
   if (!parsed.node) { return ast::NodeId(); }
   if (parsed.next != end) {
     if (!shouldSuppressDiagnostic(parsed.next)) {
@@ -821,41 +862,6 @@ ast::NodeList Parser::Impl::parseTypeArguments(AstFactory& builder, size_t start
   TokenCursor cursor = tokenCursorAt(start - 1);
   size_t physicalEnd = start - 1;
   return parseTypeArgumentList(builder, cursor, end + 1, physicalEnd);
-}
-
-size_t Parser::Impl::findTrailingTypeArgumentOpen(size_t start, size_t end) const {
-  if (end <= start) { return end; }
-
-  for (size_t candidate = start; candidate < end; ++candidate) {
-    if (kindAt(candidate) != ast::SyntaxKind::LessThan) { continue; }
-
-    TokenCursor cursor = tokenCursorAt(candidate);
-    TokenCursor::ScopedSplitMode splitMode(cursor);
-    int32_t depth = 0;
-    while (cursor.position() < end) {
-      const ast::SyntaxKind kind = cursor.peek();
-      if (kind == ast::SyntaxKind::LessThan) {
-        ++depth;
-        cursor.advance();
-        continue;
-      }
-
-      if (kind == ast::SyntaxKind::GreaterThan) {
-        if (depth == 0) { break; }
-        --depth;
-        cursor.advance();
-        if (depth == 0) {
-          if (cursor.position() == end) { return candidate; }
-          break;
-        }
-        continue;
-      }
-
-      cursor.advance();
-    }
-  }
-
-  return end;
 }
 
 size_t Parser::Impl::consumeTypeLike(size_t start, size_t limit) const {

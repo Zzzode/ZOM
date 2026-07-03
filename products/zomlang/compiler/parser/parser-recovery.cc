@@ -182,6 +182,32 @@ bool Parser::Impl::rangeIsWrapped(size_t start, size_t end, ast::SyntaxKind open
   return depth == 0;
 }
 
+size_t Parser::Impl::consumeBalancedGroupEnd(TokenCursor& cursor, size_t limit,
+                                             ast::SyntaxKind open, ast::SyntaxKind close) const {
+  if (cursor.position() >= limit || cursor.peek() != open) { return limit; }
+
+  int32_t depth = 0;
+  while (cursor.position() < limit) {
+    const ast::SyntaxKind kind = cursor.peek();
+    if (kind == ast::SyntaxKind::EndOfFile) { return limit; }
+
+    if (kind == open) {
+      ++depth;
+    } else if (kind == close) {
+      --depth;
+      if (depth == 0) {
+        const size_t closeIndex = cursor.position();
+        cursor.advance();
+        return closeIndex;
+      }
+    }
+
+    cursor.advance();
+  }
+
+  return limit;
+}
+
 size_t Parser::Impl::consumeBalancedUntil(TokenCursor& cursor, size_t limit,
                                           ast::SyntaxKind needle) const {
   int32_t parenDepth = 0;
@@ -537,10 +563,12 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
       break;
     case ast::SyntaxKind::LeftBrace:
       boundary.end = consumeBracedBodyEnd(head, limit);
-      boundary.kind = !outerAttributePrefixContainsZomCfg(start, boundary.end) &&
-                              looksLikeObjectLiteralExpression(head, boundary.end)
-                          ? ast::SyntaxKind::ExpressionStatement
-                          : ast::SyntaxKind::BlockStmt;
+      // In statement position, '{' always starts a block statement.
+      // Object literals as statements must be parenthesized: ({...}).
+      // This removes the looksLikeObjectLiteralExpression range-scanning
+      // heuristic that chose between BlockStmt and ExpressionStatement by
+      // scanning the token interior (RFC 0002, AC-09).
+      boundary.kind = ast::SyntaxKind::BlockStmt;
       break;
     case ast::SyntaxKind::Identifier:
       if (isSoftKeyword(head, "macro"_zc)) {
@@ -586,6 +614,12 @@ Parser::Impl::SourceElementParseResult Parser::Impl::parseSourceElement(AstFacto
   }
 
   result.attrs = parseOuterAttributeList(builder, result.boundary.start, result.boundary.end);
+  if (result.boundary.start < result.boundary.nodeStart &&
+      result.boundary.kind == ast::SyntaxKind::ExpressionStatement) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        tokenAt(result.boundary.start).getLocation());
+    return result;
+  }
   result.node = parseSourceElementOfKind(builder, result.boundary.nodeStart, result.boundary.end,
                                          result.boundary.kind);
   return result;
