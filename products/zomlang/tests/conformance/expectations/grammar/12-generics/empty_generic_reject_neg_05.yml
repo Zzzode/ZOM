@@ -1,5 +1,4 @@
 section: "§12.4 EmptyGenericArgsRejected"
 covers_rule: "typeArgList"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§21.1 Function-like macro invocation with parenthesized token tree"
 covers_rule: "macroInvocationExpr (LPAREN alt), macroTokenTree (literal + punct)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

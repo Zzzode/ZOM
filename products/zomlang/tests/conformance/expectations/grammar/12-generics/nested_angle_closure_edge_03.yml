@@ -1,5 +1,4 @@
 section: "§12.4 NestedAngleClosureDouble"
 covers_rule: "genericClose, typeArgList"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§12.2 MultipleExtendsRejected"
 covers_rule: "typeParameter"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

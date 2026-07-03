@@ -1,5 +1,4 @@
 section: "§4.6 3-tuple with trailing comma"
 covers_rule: "tupleLiteral"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

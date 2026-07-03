@@ -1,5 +1,4 @@
 section: "§4.2 ImportDeclaration"
 covers_rule: "importGroup"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

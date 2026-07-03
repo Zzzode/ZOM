@@ -1,5 +1,4 @@
 section: "§4.2 ExportDeclaration"
 covers_rule: "exportSpec"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

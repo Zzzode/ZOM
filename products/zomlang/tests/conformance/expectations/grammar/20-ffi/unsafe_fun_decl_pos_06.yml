@@ -1,5 +1,4 @@
 section: "§20.2 / §20.5 `unsafe extern \"system\"` block: caller guarantees FFI safety"
 covers_rule: "externDecl (externBlockDecl with optional unsafeTok prefix)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

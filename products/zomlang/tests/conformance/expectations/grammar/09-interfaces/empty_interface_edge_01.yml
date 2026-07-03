@@ -1,5 +1,4 @@
 section: "§4.2 Interfaces"
 covers_rule: "interfaceBody (empty)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

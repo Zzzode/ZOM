@@ -1,5 +1,4 @@
 section: "§21.4 Multi-trait derive: #[zom::derive(Debug, Clone, Copy)] before struct"
 covers_rule: "outerAttribute, attr (genericMultiSeg + attrInput comma list)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

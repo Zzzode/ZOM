@@ -1,5 +1,4 @@
 section: "§4.6 typeof typeof (double)"
 covers_rule: "unaryExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

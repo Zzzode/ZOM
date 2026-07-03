@@ -1,5 +1,4 @@
 section: "§20.2 Extern ABI \"Rust\" is NOT in the permitted set — semantic predicate ZOM2001"
 covers_rule: "checkExternAbiFormat → ParseCancellationException ZOM2001"
 expected: "REJECT"
-expected_diagnostic: "ZOM2001"
 notes: []

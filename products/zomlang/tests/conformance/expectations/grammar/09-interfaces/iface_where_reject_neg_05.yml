@@ -1,5 +1,4 @@
 section: "§4.2 Interfaces"
 covers_rule: "interfaceDeclaration (no where clause — syntax does not support it)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

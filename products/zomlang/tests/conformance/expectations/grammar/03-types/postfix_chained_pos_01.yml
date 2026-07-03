@@ -1,5 +1,4 @@
 section: "§4.8 PostfixType (Optional)"
 covers_rule: "postfixType (typeOptional)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

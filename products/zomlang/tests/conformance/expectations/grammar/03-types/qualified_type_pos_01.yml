@@ -1,5 +1,4 @@
 section: "§4.8 QualifiedType"
 covers_rule: "atomType (typeQualified via attributePath)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

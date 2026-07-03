@@ -1,5 +1,4 @@
 section: "§12.4 NestedGenericClosure"
 covers_rule: "genericClose"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

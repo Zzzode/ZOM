@@ -1,5 +1,4 @@
 section: "§4.7 Expressions, Force Unwrap"
 covers_rule: "postfix, FORCE_UNWRAP token !!"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

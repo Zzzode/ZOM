@@ -1,5 +1,4 @@
 section: "§6.7 ErrorDeclaration"
 covers_rule: "errorDecl"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

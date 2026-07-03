@@ -1,5 +1,4 @@
 section: "§4.6 Declarations, Reserved syntax"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§8.2 SET property without preceding GET (REJECT: classProperty requires GET first)"
 covers_rule: "classProperty"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

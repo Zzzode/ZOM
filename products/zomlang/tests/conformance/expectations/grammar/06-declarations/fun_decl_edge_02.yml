@@ -1,5 +1,4 @@
 section: "§6.7 FunDecl"
 covers_rule: "funDecl, SEMICOLON form (abstract/external)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

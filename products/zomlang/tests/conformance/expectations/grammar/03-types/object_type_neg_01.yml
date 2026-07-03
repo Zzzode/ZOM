@@ -1,5 +1,4 @@
 section: "§4.8 ObjectType: missing COLON in struct field type"
 covers_rule: "structFieldType (requires COLON typeExpr)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

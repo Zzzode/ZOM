@@ -1,5 +1,4 @@
 section: "§4.7 RestPattern"
 covers_rule: "patRest"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

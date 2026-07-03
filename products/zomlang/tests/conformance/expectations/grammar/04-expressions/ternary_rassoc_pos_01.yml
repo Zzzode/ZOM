@@ -1,5 +1,4 @@
 section: "§4.6 TernaryRightAssoc"
 covers_rule: "conditionalExpr (exprTernary)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

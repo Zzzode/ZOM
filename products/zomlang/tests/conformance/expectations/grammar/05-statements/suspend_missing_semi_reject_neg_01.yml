@@ -1,5 +1,4 @@
 section: "§4.5 Suspend without semicolon (required terminator)"
 covers_rule: "suspendStatement"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

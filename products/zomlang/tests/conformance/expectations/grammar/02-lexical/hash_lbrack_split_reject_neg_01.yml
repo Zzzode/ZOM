@@ -1,5 +1,4 @@
 section: "§3.7 Punctuators"
 covers_rule: "HASH LBRACK adjacency check rejects split spelling"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

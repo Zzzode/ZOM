@@ -1,5 +1,4 @@
 section: "§8.3 EnumDeclaration"
 covers_rule: "enumVariant"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

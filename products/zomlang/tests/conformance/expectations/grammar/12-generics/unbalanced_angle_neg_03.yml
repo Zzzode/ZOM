@@ -1,5 +1,4 @@
 section: "§12.1 UnbalancedClosingAngle"
 covers_rule: "typeParameters, genericClose"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

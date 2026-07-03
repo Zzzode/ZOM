@@ -1,5 +1,4 @@
 section: "§20.2 extern block with \"C\" ABI wrapping a single foreign fun decl"
 covers_rule: "externDecl (externBlockDecl alt), externBlock, externItem"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

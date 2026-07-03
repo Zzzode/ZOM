@@ -1,5 +1,4 @@
 section: "§4.5 Match missing parens around scrutinee"
 covers_rule: "matchStatement"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

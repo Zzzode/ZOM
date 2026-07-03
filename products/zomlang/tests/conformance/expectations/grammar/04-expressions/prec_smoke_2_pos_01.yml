@@ -1,5 +1,4 @@
 section: "§4.6 Precedence smoke 2"
 covers_rule: "conditionalExpr / nullCoalesceExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

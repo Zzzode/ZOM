@@ -1,5 +1,4 @@
 section: "§4.6 Coalesce right-assoc"
 covers_rule: "nullCoalesceExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

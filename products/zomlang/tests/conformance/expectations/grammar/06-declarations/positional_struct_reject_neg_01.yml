@@ -1,5 +1,4 @@
 section: "§6.3 StructDecl"
 covers_rule: "structDecl"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

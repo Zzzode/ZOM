@@ -125,9 +125,12 @@ same relative path and a `.yml` suffix:
 section: "Section and short description"
 covers_rule: "ruleName"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []
 ```
+
+Grammar expectations only assert the ANTLR oracle's ACCEPT/REJECT verdict.
+Public `ZOMxxxx` diagnostics are compiler behavior and belong in AST/FileCheck
+expectations.
 
 Run grammar conformance directly:
 

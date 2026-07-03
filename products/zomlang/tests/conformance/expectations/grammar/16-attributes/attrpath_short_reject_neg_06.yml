@@ -1,5 +1,4 @@
 section: "§16.1 AttributePath Single Component REJECT"
 covers_rule: "attributePath, requires >=1 COLONCOLON"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

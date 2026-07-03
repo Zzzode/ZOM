@@ -1,5 +1,4 @@
 section: "§4.7 StructPatternMissingBraceReject"
 covers_rule: "patStruct"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

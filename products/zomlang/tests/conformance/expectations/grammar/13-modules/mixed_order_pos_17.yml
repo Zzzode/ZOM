@@ -1,5 +1,4 @@
 section: "§4.2 ModuleItem"
 covers_rule: "moduleItem"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

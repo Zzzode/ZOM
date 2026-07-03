@@ -1,6 +1,5 @@
 section: "§3.5.1 DecimalLiteral"
 covers_rule: "DECIMAL_LITERAL"
 expected: "REJECT"
-expected_diagnostic: ""
 notes:
   - "Trailing and consecutive numeric separators are lexical errors."

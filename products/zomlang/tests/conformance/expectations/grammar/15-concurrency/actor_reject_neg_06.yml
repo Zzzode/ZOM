@@ -1,5 +1,4 @@
 section: "§3.7 ReservedKeywords"
 covers_rule: "actor_reject"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

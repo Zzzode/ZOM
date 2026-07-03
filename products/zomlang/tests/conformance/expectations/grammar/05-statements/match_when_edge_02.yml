@@ -1,5 +1,4 @@
 section: "§4.5 Empty match (no clauses, no default)"
 covers_rule: "matchStatement"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

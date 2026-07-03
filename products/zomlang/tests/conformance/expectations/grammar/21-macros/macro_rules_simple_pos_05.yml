@@ -1,5 +1,4 @@
 section: "§21.3 Declarative macro 2.0: simple `add!` with single (expr, expr) => { ... }"
 covers_rule: "macroRulesDecl, macroRule (paren alt), macroCapture ($a:expr / $b:expr)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

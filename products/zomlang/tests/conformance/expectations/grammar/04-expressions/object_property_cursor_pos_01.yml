@@ -1,5 +1,4 @@
 section: "§4.6 Object property cursor"
 covers_rule: "objectLiteral"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

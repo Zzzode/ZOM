@@ -1,5 +1,4 @@
 section: "§8.3 Enum missing discriminant expression after ASSIGN"
 covers_rule: "enumVariant"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

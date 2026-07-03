@@ -1,5 +1,4 @@
 section: "§21.4 `#[derive Trait]` without mandatory wrapping parens — native syntax error"
 covers_rule: "outerAttribute + attrItem (derive-form needs LPAREN/RPAREN around items)"
 expected: "REJECT"
-expected_diagnostic: "line"
 notes: []

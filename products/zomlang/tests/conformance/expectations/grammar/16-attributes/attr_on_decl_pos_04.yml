@@ -1,5 +1,4 @@
 section: "§16 Attribute Placement"
 covers_rule: "moduleItem, outerAttributeList"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

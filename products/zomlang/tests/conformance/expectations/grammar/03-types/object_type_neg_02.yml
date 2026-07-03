@@ -1,5 +1,4 @@
 section: "§4.8 ObjectType: all-mut empty is still valid, but field without type is not"
 covers_rule: "structFieldType (COLON typeExpr required after identifier)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.5 Match with wildcard pattern"
 covers_rule: "matchStatement, matchClause"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

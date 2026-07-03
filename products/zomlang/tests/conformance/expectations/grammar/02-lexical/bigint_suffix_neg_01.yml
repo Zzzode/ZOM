@@ -1,6 +1,5 @@
 section: "Section 3.5.2 BigIntLiteral"
 covers_rule: "BIGINT_LITERAL"
 expected: "REJECT"
-expected_diagnostic: ""
 notes:
   - "Predicate 2 trigger: BigInt suffix n has zero preceding digits after separators."

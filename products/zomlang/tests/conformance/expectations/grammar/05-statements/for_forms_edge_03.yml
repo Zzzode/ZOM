@@ -1,5 +1,4 @@
 section: "§4.5 For-in with mut binding"
 covers_rule: "forInStatement (MUT pattern)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

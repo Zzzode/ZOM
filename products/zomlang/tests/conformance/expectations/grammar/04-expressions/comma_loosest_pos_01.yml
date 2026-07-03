@@ -1,5 +1,4 @@
 section: "§4.6 CommaExpression"
 covers_rule: "expression (exprComma)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

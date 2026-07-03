@@ -1,5 +1,4 @@
 section: "§6.1 ModifierList"
 covers_rule: "modifierList, checkModifierList"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

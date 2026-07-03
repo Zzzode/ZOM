@@ -1,5 +1,4 @@
 section: "§4.6 Unbalanced paren (missing RPAREN)"
 covers_rule: "parenExpression"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

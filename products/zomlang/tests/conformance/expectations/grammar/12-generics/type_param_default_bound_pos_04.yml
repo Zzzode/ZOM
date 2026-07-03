@@ -1,5 +1,4 @@
 section: "§12.2 TypeParameterBoundWithDefault"
 covers_rule: "typeParameter"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

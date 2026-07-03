@@ -1,5 +1,4 @@
 section: "§12.4 LambdaGenericsRejected"
 covers_rule: "lambdaExpr"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

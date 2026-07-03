@@ -1,5 +1,4 @@
 section: "§3.6.1 CharLiteral"
 covers_rule: "CHAR_LITERAL"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

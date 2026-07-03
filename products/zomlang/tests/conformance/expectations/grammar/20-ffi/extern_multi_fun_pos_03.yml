@@ -1,5 +1,4 @@
 section: "§20.2 extern block with multiple foreign function declarations inside"
 covers_rule: "externBlock (externItem* closure, 3+ items)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

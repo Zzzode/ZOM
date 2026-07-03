@@ -1,5 +1,4 @@
 section: "§4.5 Block with nested declarations and multiple statements"
 covers_rule: "blockBody, statementList"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

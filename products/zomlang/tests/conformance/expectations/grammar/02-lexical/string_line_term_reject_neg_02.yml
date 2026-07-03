@@ -1,5 +1,4 @@
 section: "§3.6 CharacterLiteral"
 covers_rule: "CHAR_LITERAL"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§21.2 Empty token tree in macro invocation: `todo!()` (macroToken* zero iterations)"
 covers_rule: "macroTokenTree (epsilon alt — macroToken* == 0 tokens)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§21.1 Function-like macro invocation with bracket delimiter `name![tt]`"
 covers_rule: "macroInvocationExpr (LBRACK alt)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

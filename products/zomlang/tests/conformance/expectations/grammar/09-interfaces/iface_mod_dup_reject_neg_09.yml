@@ -1,5 +1,4 @@
 section: "§4.2 Interfaces"
 covers_rule: "checkModifierList (duplicate modifier predicate)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

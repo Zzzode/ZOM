@@ -1,6 +1,5 @@
 section: "§3.5.3/4/5 Binary/Octal/Hex edge zero"
 covers_rule: "BINARY_LITERAL, OCTAL_LITERAL, HEX_LITERAL"
 expected: "REJECT"
-expected_diagnostic: ""
 notes:
   - "Trailing numeric separators are lexical errors."

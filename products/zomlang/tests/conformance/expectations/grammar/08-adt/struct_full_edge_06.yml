@@ -1,5 +1,4 @@
 section: "§8.1 Empty struct"
 covers_rule: "structBody"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

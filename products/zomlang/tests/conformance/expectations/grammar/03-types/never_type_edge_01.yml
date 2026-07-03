@@ -1,5 +1,4 @@
 section: "§4.8 FunctionType returning never (divergent function)"
 covers_rule: "functionType (returnType = never)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

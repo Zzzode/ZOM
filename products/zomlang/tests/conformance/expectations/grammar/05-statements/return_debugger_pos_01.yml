@@ -1,5 +1,4 @@
 section: "§4.5 ReturnStatement and DebuggerStatement"
 covers_rule: "returnStatement, debuggerStatement"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

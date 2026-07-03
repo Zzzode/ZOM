@@ -1,5 +1,4 @@
 section: "§16 Attribute Path Format (multi-segment)"
 covers_rule: "attributePath, three segments"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

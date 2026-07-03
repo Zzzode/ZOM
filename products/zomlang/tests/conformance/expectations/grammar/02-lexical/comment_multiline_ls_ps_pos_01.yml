@@ -1,5 +1,4 @@
 section: "§3.4 Comments"
 covers_rule: "BLOCK_COMMENT"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

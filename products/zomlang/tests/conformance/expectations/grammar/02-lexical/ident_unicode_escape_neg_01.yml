@@ -1,6 +1,5 @@
 section: "Section 3.3 Identifiers"
 covers_rule: "IDENTIFIER with a leading Unicode escape."
 expected: "REJECT"
-expected_diagnostic: ""
 notes:
   - "Predicate 3 trigger: a leading \\u{...} code point above U+10FFFF must be rejected."

@@ -1,5 +1,4 @@
 section: "§4.2 Declaration"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

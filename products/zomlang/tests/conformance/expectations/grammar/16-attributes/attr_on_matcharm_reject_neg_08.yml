@@ -1,5 +1,4 @@
 section: "§16 Attribute on Match Arm REJECT"
 covers_rule: "matchArm, no outerAttributeList prefix"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

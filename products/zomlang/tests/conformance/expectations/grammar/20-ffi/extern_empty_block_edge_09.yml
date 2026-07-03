@@ -1,5 +1,4 @@
 section: "§20.3 Empty extern \"C\" {} block (edge: no items, FFI scope declared but unused)"
 covers_rule: "externBlock (empty alt, externItem* = 0 iterations)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

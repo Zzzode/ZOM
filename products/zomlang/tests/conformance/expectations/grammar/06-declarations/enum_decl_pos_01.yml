@@ -1,5 +1,4 @@
 section: "§6.5 EnumDecl"
 covers_rule: "enumDecl"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

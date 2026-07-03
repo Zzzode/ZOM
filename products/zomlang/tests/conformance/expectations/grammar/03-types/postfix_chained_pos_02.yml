@@ -1,5 +1,4 @@
 section: "§4.8 PostfixType (Array)"
 covers_rule: "postfixType (typeArray)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

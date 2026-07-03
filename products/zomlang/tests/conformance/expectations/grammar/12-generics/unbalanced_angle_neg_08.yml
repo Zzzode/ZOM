@@ -1,5 +1,4 @@
 section: "§12.1 LoneLtWithMissingClose"
 covers_rule: "typeParameters"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

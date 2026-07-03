@@ -1,5 +1,4 @@
 section: "§4.2 Interfaces"
 covers_rule: "interfaceDeclaration"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

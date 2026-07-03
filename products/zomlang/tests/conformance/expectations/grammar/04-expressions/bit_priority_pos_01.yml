@@ -1,5 +1,4 @@
 section: "§4.6 Bitwise priority stack"
 covers_rule: "bitwiseAndExpr / bitwiseXorExpr / bitwiseOrExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

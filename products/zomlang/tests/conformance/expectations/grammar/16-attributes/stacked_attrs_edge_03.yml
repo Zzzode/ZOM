@@ -1,5 +1,4 @@
 section: "§16 Stacked Attributes"
 covers_rule: "outerAttributeList, multiple on single item stacked"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

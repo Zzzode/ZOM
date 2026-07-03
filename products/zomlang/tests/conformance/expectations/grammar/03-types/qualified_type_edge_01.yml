@@ -1,5 +1,4 @@
 section: "§4.8 Qualified generic type: std::collections::HashMap<K, V>"
 covers_rule: "atomType (typeQualified + typeArgList)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

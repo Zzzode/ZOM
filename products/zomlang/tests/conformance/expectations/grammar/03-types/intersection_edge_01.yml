@@ -1,5 +1,4 @@
 section: "§4.8 Intersection 3-way: A & B & C (left-associative)"
 covers_rule: "intersectionType"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

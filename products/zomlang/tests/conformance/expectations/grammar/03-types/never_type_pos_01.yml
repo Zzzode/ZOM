@@ -1,5 +1,4 @@
 section: "§4.8 NeverType standalone"
 covers_rule: "predefinedType (NEVER)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

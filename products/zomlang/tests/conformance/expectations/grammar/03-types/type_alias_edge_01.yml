@@ -1,5 +1,4 @@
 section: "§4.2 TypeAlias with many type params + trailing comma"
 covers_rule: "typeAliasDeclaration, typeParameters"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

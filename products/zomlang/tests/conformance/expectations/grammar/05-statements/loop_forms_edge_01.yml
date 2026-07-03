@@ -1,5 +1,4 @@
 section: "§4.5 While with single non-block statement body"
 covers_rule: "whileStatement"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

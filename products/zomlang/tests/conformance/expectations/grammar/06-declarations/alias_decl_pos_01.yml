@@ -1,5 +1,4 @@
 section: "§6.8 TypeAlias"
 covers_rule: "typeAlias"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

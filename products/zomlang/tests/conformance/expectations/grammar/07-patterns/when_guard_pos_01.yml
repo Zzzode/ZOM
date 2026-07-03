@@ -1,5 +1,4 @@
 section: "§4.7 WhenGuard"
 covers_rule: "matchClause"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§16 Nested Attribute Input"
 covers_rule: "attrInput, nestedBlockInside"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

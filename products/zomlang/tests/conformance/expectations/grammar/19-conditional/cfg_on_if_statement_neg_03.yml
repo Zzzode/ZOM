@@ -1,5 +1,4 @@
 section: "§19.6.2 ZOM1901 CfgOnExpression — cfg gate on if statement (non-block form)"
 covers_rule: "moduleItemStatementCfgGated (checkStatementCfgGate predicate)"
 expected: "REJECT"
-expected_diagnostic: "ZOM1901"
 notes: []

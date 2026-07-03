@@ -1,5 +1,4 @@
 section: "§6.1 ModifierList"
 covers_rule: "checkModifierList (ABSTRACT + STATIC)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

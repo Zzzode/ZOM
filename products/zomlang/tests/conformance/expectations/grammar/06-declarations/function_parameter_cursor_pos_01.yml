@@ -1,5 +1,4 @@
 section: "§4.4 Function parameter cursor"
 covers_rule: "parameterList"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

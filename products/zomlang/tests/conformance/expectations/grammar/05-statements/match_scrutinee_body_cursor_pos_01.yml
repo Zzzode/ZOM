@@ -1,5 +1,4 @@
 section: "§4.5 MatchStatement cursor"
 covers_rule: "matchStatement"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.6 Shift Add Mul priority"
 covers_rule: "shiftExpr / additiveExpr / multiplicativeExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

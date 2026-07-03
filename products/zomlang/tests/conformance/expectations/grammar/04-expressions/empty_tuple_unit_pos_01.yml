@@ -1,5 +1,4 @@
 section: "§4.6 Empty tuple (unit)"
 covers_rule: "literal (UNIT) / tupleLiteral"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

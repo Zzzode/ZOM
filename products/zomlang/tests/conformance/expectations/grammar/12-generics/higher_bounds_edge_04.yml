@@ -1,5 +1,4 @@
 section: "§12.2 HigherOrderBounds"
 covers_rule: "typeParameter (EXTENDS parameterised bound)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.8 FunctionType: zero-parameter function returning unit"
 covers_rule: "functionType"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

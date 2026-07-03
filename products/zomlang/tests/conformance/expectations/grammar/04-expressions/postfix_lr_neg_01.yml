@@ -1,5 +1,4 @@
 section: "§4.6 Postfix on literal missing actual postfix"
 covers_rule: "postfixExpr"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

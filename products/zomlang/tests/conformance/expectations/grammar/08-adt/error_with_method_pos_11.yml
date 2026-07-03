@@ -1,5 +1,4 @@
 section: "§10.1 ErrorWithMethod"
 covers_rule: "errorDeclaration (structMember methods inside)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

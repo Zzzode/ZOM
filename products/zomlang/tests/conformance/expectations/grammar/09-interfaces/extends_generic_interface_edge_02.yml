@@ -1,5 +1,4 @@
 section: "§4.2 Interfaces"
 covers_rule: "interfaceDeclaration (extends generic interface with wildcard)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

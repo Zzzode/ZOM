@@ -1,5 +1,4 @@
 section: "§4.8 EmptyObjectType {} valid"
 covers_rule: "atomType (typeObject with empty structFieldType list)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

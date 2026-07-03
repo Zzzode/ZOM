@@ -1,5 +1,4 @@
 section: "§4.5 Return missing semicolon"
 covers_rule: "returnStatement"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

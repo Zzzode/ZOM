@@ -1,5 +1,4 @@
 section: "§4.8 GenericType with simple params"
 covers_rule: "atomType (typeNamed + typeArgList)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

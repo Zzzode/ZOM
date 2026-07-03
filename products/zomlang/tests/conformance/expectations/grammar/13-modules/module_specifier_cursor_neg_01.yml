@@ -1,5 +1,4 @@
 section: "§13 Module specifier cursor"
 covers_rule: "importDeclaration, exportDeclaration"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

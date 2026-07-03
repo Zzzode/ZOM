@@ -1,5 +1,4 @@
 section: "§8.4 InterfaceAssociatedType without bound nor default"
 covers_rule: "interfaceAssocType"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

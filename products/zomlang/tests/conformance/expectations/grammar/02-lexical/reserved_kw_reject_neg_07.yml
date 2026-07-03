@@ -1,5 +1,4 @@
 section: "§3.8 Keywords reserved try catch"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§3.5.4 OctalLiteral"
 covers_rule: "OCTAL_LITERAL"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

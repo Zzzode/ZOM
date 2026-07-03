@@ -1,6 +1,5 @@
 section: "§4.6 Multiple unary operators"
 covers_rule: "unaryExpr"
 expected: "REJECT"
-expected_diagnostic: ""
 notes:
   - "`!!` is a postfix unwrap token, not two prefix logical-not tokens."

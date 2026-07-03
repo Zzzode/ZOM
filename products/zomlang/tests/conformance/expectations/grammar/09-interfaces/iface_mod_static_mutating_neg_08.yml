@@ -1,5 +1,4 @@
 section: "§4.2 Interfaces"
 covers_rule: "checkModifierList (STATIC + MUTATING cannot coexist predicate)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

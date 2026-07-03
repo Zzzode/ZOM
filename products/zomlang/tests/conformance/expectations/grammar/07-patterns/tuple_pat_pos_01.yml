@@ -1,5 +1,4 @@
 section: "§4.7 TuplePattern"
 covers_rule: "patTuple"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.2 Interfaces"
 covers_rule: "interfaceDeclaration (ABSTRACT modifier with PUBLIC STATIC-like combos — ABSTRACT alone on assoc type)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

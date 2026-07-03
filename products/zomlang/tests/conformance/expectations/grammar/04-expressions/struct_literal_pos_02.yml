@@ -1,5 +1,4 @@
 section: "§4.6 StructLiteral value shorthand"
 covers_rule: "structFieldInit"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

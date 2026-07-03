@@ -1,5 +1,4 @@
 section: "Section 4.8 raises clause uses one TypeExpression, not a comma list"
 covers_rule: "raisesClause (comma-list rejected)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

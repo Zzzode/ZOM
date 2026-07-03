@@ -1,5 +1,4 @@
 section: "§8.2 Abstract method declaration (semicolon-only form)"
 covers_rule: "classMethod (ABSTRACT modifier + SEMICOLON)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.6 LambdaExpr"
 covers_rule: "lambdaExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

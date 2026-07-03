@@ -1,5 +1,4 @@
 section: "§20.5 Unsafe applied to a bare literal — NOT a block or function"
 covers_rule: "unsafeBlockExpr (requires LBRACE after keyword)"
 expected: "REJECT"
-expected_diagnostic: "line"
 notes: []

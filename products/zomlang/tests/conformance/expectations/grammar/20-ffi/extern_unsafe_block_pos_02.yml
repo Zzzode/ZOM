@@ -1,5 +1,4 @@
 section: "§20.1 Unsafe block expression wrapping a dangerous FFI call"
 covers_rule: "unsafeBlockExpr, primaryExpr (exprUnsafeBlock alt)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

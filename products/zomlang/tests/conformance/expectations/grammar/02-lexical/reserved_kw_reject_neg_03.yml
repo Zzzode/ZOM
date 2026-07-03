@@ -1,6 +1,5 @@
 section: "§3.8 Keywords reserved impl"
 covers_rule: "declaration (reject incomplete standalone impl)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes:
   - "Broken: standalone impl requires '{}' block (no terminator here)."

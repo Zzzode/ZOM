@@ -1,5 +1,4 @@
 section: "§7.3 ConcurrentFeatures"
 covers_rule: "suspend_until_complex"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

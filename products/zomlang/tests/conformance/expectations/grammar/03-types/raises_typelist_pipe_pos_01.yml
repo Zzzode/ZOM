@@ -1,5 +1,4 @@
 section: "Section 4.8 FunctionType with raises union type expression"
 covers_rule: "functionType, raisesClause, unionType"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.6 CompoundAssign"
 covers_rule: "assignmentOp"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

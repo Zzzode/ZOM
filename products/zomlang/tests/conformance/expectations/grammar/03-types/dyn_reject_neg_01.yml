@@ -1,5 +1,4 @@
 section: "§4.8 Dyn existential type (rejected per 24-truth)"
 covers_rule: "atomType (dyn NOT a predefinedType / keyword)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

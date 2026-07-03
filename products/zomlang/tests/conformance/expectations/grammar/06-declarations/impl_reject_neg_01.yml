@@ -1,6 +1,5 @@
 section: "§6 Declarations"
 covers_rule: "declaration (reject malformed impl)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes:
   - "Broken: missing 'for Type' clause; braces look like struct literal, not body."

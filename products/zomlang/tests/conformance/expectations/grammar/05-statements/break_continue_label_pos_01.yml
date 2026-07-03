@@ -1,5 +1,4 @@
 section: "§4.5 Break / Continue"
 covers_rule: "breakStatement, continueStatement"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

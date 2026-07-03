@@ -1,5 +1,4 @@
 section: "§20.2 Unsafe extern block wrapping POSIX mmap-family functions (unsafe + extern)"
 covers_rule: "externDecl (externBlockDecl — UNSAFE prefix + extern + multi items)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.3 Imports"
 covers_rule: "importDecl, importGroup"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

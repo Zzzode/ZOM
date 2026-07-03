@@ -1,5 +1,4 @@
 section: "§8.3 EnumDiscriminantExpression"
 covers_rule: "enumVariant (ASSIGN expression with const arithmetic)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

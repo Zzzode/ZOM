@@ -1,5 +1,4 @@
 section: "§4.6 namespace keyword reserved (ZOM5006) at module level"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

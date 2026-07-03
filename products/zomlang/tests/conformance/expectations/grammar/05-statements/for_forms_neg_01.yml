@@ -1,5 +1,4 @@
 section: "§4.5 For-in missing IN keyword"
 covers_rule: "forInStatement"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

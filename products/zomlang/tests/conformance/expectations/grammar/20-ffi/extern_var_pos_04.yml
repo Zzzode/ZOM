@@ -1,5 +1,4 @@
 section: "§20.4 extern block \"variable\" soft-keyword declares a thread-local C errno"
 covers_rule: "externItem (externVarDecl alt)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

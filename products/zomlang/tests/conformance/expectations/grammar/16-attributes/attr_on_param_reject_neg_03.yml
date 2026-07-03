@@ -1,5 +1,4 @@
 section: "§16 Attribute on Parameter REJECT"
 covers_rule: "parameter, no outerAttributeList prefix"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.6 Expression argument cursor"
 covers_rule: "argumentList"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

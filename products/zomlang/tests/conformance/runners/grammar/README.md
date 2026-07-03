@@ -7,7 +7,7 @@ The ZOM Grammar Test Suite validates the ZomLexer.g4 / ZomParser.g4 ANTLR4 gramm
 ## Purpose
 
 1. **Validate the g4 grammar** -- every parser rule, lexer mode, and semantic predicate has positive, edge, and negative coverage.
-2. **Cross-reference the spec** -- every grammar expectation records the spec chapter/section, the grammar rule under test, the expected verdict, and the expected diagnostic for REJECT cases.
+2. **Cross-reference the spec** -- every grammar expectation records the spec chapter/section, the grammar rule under test, and the expected verdict.
 3. **Serve as a regression harness** -- any change to the grammar that breaks an ACCEPT case or silently accepts a REJECT case fails the suite.
 
 ## File Format
@@ -20,14 +20,17 @@ with the same relative path and a `.yml` suffix:
 section: "Section and short description"
 covers_rule: "ruleName"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []
 ```
 
 - **ACCEPT** -- parser must exit with no syntax errors and no semantic-predicate failures.
-- **REJECT** -- parser must report at least one error. If `expected_diagnostic`
-  is non-empty, the combined output must contain that substring.
+- **REJECT** -- parser must report at least one error.
 - Files whose name contains `_pos_` are always ACCEPT; `_neg_` are always REJECT; `_edge_` are usually ACCEPT (boundary-valid constructs) but may be REJECT when named accordingly. The expectation file is authoritative; the filename is a mnemonic aid.
+
+The grammar runner is an ANTLR grammar oracle, not the compiler diagnostic
+contract. Do not assert public `ZOMxxxx` diagnostics in grammar expectations;
+those belong in compiler AST/FileCheck expectations under
+`conformance/expectations/ast/`.
 
 ## Directory Inventory
 

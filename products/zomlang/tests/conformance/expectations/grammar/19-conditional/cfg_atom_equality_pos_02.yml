@@ -1,5 +1,4 @@
 section: "§19.3.1 CfgAtom valued equality (ASSIGN single-equals char)"
 covers_rule: "cfgAtom, attrCfg, cfgPredicate"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

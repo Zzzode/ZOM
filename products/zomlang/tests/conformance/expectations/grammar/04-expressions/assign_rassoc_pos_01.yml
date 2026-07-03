@@ -1,5 +1,4 @@
 section: "§4.6 Assignment chain (right-assoc)"
 covers_rule: "assignmentExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

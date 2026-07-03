@@ -1,5 +1,4 @@
 section: "§4.7 EnumPatternColonColonRejection"
 covers_rule: "patEnum"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

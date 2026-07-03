@@ -1,5 +1,4 @@
 section: "§4.2 ImportDeclaration"
 covers_rule: "importSpec"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

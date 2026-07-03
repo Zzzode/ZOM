@@ -1,5 +1,4 @@
 section: "§4.8 FunctionType, Raises clause pipe-only"
 covers_rule: "raisesClause (comma-list rejected)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

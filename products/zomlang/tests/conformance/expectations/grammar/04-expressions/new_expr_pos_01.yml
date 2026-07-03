@@ -1,5 +1,4 @@
 section: "§4.6 new expression"
 covers_rule: "primaryExpr (exprNew)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.5 WhileStatement"
 covers_rule: "whileStatement"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

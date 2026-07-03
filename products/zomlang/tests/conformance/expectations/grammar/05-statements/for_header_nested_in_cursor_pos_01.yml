@@ -1,5 +1,4 @@
 section: "§4.5 ForStatement header cursor"
 covers_rule: "forStatement"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

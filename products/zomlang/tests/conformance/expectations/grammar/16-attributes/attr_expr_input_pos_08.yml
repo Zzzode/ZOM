@@ -1,5 +1,4 @@
 section: "§16 Attribute Expression Input"
 covers_rule: "attrInput, expression form"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

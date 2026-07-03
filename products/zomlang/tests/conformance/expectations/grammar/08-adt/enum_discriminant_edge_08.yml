@@ -1,5 +1,4 @@
 section: "§8.3 Enum with unit variants only + explicit discriminant on some"
 covers_rule: "enumVariant"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

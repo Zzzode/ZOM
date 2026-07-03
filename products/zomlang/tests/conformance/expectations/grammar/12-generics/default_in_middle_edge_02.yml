@@ -1,5 +1,4 @@
 section: "§12.2 DefaultInMiddleOfParams"
 covers_rule: "typeParameters, typeParameter"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

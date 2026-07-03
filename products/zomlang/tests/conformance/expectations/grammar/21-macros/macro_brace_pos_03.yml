@@ -1,5 +1,4 @@
 section: "§21.1 Function-like macro invocation with brace delimiter `name!{tt}`"
 covers_rule: "macroInvocationExpr (LBRACE alt — comma-separated KV literal style)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

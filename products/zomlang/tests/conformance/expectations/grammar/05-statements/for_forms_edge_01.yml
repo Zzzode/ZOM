@@ -1,5 +1,4 @@
 section: "§4.5 C-style for with empty parts"
 covers_rule: "forStatement (all optional)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

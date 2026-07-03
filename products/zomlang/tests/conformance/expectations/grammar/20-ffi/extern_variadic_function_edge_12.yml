@@ -1,5 +1,4 @@
 section: "§20.4 extern block containing a variadic-parameter style foreign fun (Cdecl ABI)"
 covers_rule: "externDecl (externBlockDecl + \"Cdecl\" ABI checkExternAbiFormat)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

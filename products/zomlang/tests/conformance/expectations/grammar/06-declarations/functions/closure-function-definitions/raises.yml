@@ -1,5 +1,4 @@
 section: "§4 FunctionExpression raises clause"
 covers_rule: "functionExpression"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

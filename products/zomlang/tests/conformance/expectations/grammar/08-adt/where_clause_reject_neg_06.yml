@@ -1,5 +1,4 @@
 section: "§8.1 Struct with WHERE clause (REJECT per 24-truth: where clause not in structDeclaration)"
 covers_rule: "structDeclaration"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

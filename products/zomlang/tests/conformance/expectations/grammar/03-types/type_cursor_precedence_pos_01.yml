@@ -1,5 +1,4 @@
 section: "§4.8 Type cursor precedence"
 covers_rule: "typeExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

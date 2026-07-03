@@ -1,5 +1,4 @@
 section: "§12.3 GenericMethodInClass"
 covers_rule: "funDeclaration (in class body)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

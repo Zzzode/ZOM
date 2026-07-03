@@ -1,5 +1,4 @@
 section: "§4.8 PredefinedTypes"
 covers_rule: "predefinedType"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

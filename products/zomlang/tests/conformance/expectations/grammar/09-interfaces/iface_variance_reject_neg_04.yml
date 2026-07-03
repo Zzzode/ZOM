@@ -1,5 +1,4 @@
 section: "§4.2 Interfaces"
 covers_rule: "typeParameter (no variance allowed; 'in' is IDENTIFIER, cannot begin a typeParam. 'out' keyword"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

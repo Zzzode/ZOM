@@ -1,5 +1,4 @@
 section: "§4.6 spawn with modifiers"
 covers_rule: "exprSpawn / spawnModifierList"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

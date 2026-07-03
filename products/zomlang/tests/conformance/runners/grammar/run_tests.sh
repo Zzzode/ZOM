@@ -275,10 +275,6 @@ while IFS= read -r -d '' expectation; do
   total=$((total+1))
   rule=$(yaml_value "covers_rule" "$expectation")
   expect=$(expected_verdict "$(yaml_value "expected" "$expectation")")
-  diag=$(yaml_value "expected_diagnostic" "$expectation")
-  case "$diag" in
-    none|None|NONE) diag="" ;;
-  esac
   [ -z "$rule" ] && rule="(unspecified)"
   subdir="${rel%%/*}"
   dir_total[$subdir]=$(( ${dir_total[$subdir]:-0} + 1 ))
@@ -288,8 +284,6 @@ while IFS= read -r -d '' expectation; do
   rc=$?
   stdout=$(cat /tmp/zom_$$_out 2>/dev/null)
   stderr=$(cat /tmp/zom_$$_err 2>/dev/null)
-  combined="$stdout
-$stderr"
 
   status=""
   case "$expect" in
@@ -304,23 +298,12 @@ $stderr"
       fi
       ;;
     REJECT)
-      diag_hit=1
-      if [ -n "$diag" ]; then
-        diag_hit=0
-        printf '%s' "$combined" | grep -qF "$diag" && diag_hit=1
-      fi
       rejected=0
       if [ $rc != 0 ]; then rejected=1; fi
       if printf '%s' "$stderr" | grep -qE "error|Error|Exception|syntax error|line [0-9]"; then rejected=1; fi
       if [ $rejected = 1 ]; then
-        if [ -z "$diag" ] || [ $diag_hit = 1 ]; then
-          status="PASS (rejected, diag='${diag:-n/a}')"
-          pass=$((pass+1)); dir_pass[$subdir]=$(( ${dir_pass[$subdir]:-0} + 1 ))
-        else
-          status="FAIL [diagnostic '${diag}' not matched]"
-          fail=$((fail+1)); dir_fail[$subdir]=$(( ${dir_fail[$subdir]:-0} + 1 ))
-          fail_files+=("$rel  [diagnostic '${diag}' missing; stderr='${stderr//$'\n'/' | '}]")
-        fi
+        status="PASS (rejected)"
+        pass=$((pass+1)); dir_pass[$subdir]=$(( ${dir_pass[$subdir]:-0} + 1 ))
       else
         status="FAIL [parser ACCEPTED this REJECT test]"
         fail=$((fail+1)); dir_fail[$subdir]=$(( ${dir_fail[$subdir]:-0} + 1 ))

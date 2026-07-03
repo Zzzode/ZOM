@@ -1,5 +1,4 @@
 section: "§4.6 decimal leading separator REJECT"
 covers_rule: "DECIMAL_LITERAL scanner predicate"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

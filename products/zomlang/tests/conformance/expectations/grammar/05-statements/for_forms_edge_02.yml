@@ -1,5 +1,4 @@
 section: "§4.5 For with expression-list init (comma)"
 covers_rule: "forInit, expressionList"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

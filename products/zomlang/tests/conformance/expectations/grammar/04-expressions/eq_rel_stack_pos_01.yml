@@ -1,5 +1,4 @@
 section: "§4.6 Equality above Relational"
 covers_rule: "equalityExpr / relationalExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

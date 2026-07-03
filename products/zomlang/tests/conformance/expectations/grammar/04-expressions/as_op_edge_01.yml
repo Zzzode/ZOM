@@ -1,5 +1,4 @@
 section: "§4.6 as + typeof chain"
 covers_rule: "relationalExpr / unaryExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

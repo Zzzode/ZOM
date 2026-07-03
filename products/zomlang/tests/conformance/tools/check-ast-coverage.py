@@ -11,6 +11,7 @@ AST_EXPECTATION_ROOT = CONFORMANCE_ROOT / "expectations" / "ast"
 GRAMMAR_EXPECTATION_ROOT = CONFORMANCE_ROOT / "expectations" / "grammar"
 
 EXPECTED_RE = re.compile(r'^expected:\s*"?([A-Z]+)"?', re.MULTILINE)
+EXPECTED_DIAGNOSTIC_RE = re.compile(r"^expected_diagnostic:", re.MULTILINE)
 
 ALLOWED_EXTRA_AST_CHECKS = {
     Path("00-dump-format/default-tree.check"),
@@ -128,6 +129,12 @@ def load_grammar_expectations() -> tuple[dict[Path, str], list[str]]:
     for path in sorted(GRAMMAR_EXPECTATION_ROOT.rglob("*.yml")):
         rel = path.relative_to(GRAMMAR_EXPECTATION_ROOT).with_suffix(".check")
         text = path.read_text(encoding="utf-8")
+        if EXPECTED_DIAGNOSTIC_RE.search(text):
+            invalid.append(
+                f"{rel.as_posix()}: expected_diagnostic is not a grammar expectation field"
+            )
+            continue
+
         match = EXPECTED_RE.search(text)
         if not match:
             invalid.append(f"{rel.as_posix()}: missing expected field")

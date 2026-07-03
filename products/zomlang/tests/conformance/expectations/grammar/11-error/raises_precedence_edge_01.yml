@@ -1,5 +1,4 @@
 section: "§4.8 FunctionType, Precedence"
 covers_rule: "raisesClause, unionType, intersectionType"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

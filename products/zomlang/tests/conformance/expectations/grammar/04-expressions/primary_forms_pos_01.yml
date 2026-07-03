@@ -1,5 +1,4 @@
 section: "§4.6 Primary Literals"
 covers_rule: "primaryExpr (exprLiteral / exprThis / exprSuper / exprIdentifier)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

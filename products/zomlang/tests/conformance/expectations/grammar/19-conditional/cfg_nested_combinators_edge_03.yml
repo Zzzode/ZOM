@@ -1,5 +1,4 @@
 section: "§19.3 CfgPredicate 3-level nesting: all(any(all(...)), not(...))"
 covers_rule: "cfgAll, cfgAny, cfgNot, cfgAtom (full grammar tree)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

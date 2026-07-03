@@ -1,5 +1,4 @@
 section: "§4 FunctionExpression generic parameters"
 covers_rule: "functionExpression, typeParameters"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

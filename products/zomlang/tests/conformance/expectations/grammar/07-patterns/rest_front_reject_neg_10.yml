@@ -1,5 +1,4 @@
 section: "§4.7 RestAtFrontTupleReject"
 covers_rule: "patTuple"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§3.6.2 StringLiteral escapes - \\uXXXX with non-hex"
 covers_rule: "UNICODE_ESCAPE (validate)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.8 TupleType"
 covers_rule: "atomType (typeTuple)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

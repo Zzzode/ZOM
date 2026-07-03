@@ -1,5 +1,4 @@
 section: "§4.6 Postfix L-R"
 covers_rule: "postfixExpr (exprPostfixOp)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

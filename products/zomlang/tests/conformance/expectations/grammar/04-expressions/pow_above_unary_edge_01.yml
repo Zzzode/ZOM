@@ -1,5 +1,4 @@
 section: "§4.6 Power + unary combo"
 covers_rule: "powerExpr / unaryExpr"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.7 WildcardPattern"
 covers_rule: "wildcardPat"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.7 EnumPatternPeriodForm"
 covers_rule: "patEnum"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

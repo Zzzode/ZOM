@@ -1,7 +1,6 @@
 section: "§4.2 Interfaces"
 covers_rule: "declaration (interface bound disjunction — | is union, not conjunction)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes:
   - "Industry convention: PLUS (+) for conjunction, PIPE (|) for UnionType."
   - "impl head uses conjunction; using PIPE here is syntactically rejected."

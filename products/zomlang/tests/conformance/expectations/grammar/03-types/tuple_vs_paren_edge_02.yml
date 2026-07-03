@@ -1,5 +1,4 @@
 section: "§4.8 G10: 1-element paren = parenthesised type (NOT tuple)"
 covers_rule: "atomType (typeTuple single element reduces to parens + typeExpr)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

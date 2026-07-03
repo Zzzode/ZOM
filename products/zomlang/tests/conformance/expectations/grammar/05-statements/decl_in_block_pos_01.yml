@@ -1,5 +1,4 @@
 section: "§4.5 Declarations inside block (let/const/fun)"
 covers_rule: "declaration (as statement)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

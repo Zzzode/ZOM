@@ -1,5 +1,4 @@
 section: "§3.5.3 BinaryLiteral"
 covers_rule: "BINARY_LITERAL"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

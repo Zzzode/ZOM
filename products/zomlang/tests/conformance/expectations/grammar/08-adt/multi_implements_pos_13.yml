@@ -1,5 +1,4 @@
 section: "§8.2 MultiInterface Impl"
 covers_rule: "standaloneImplDeclaration (multi-bound PLUS conjunction)"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.7 RestOnlyInTuple"
 covers_rule: "patRest, patTuple"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

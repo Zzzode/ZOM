@@ -1,5 +1,4 @@
 section: "§6.4 ClassDeclaration, Constructor"
 covers_rule: "classCtor, raisesClause"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

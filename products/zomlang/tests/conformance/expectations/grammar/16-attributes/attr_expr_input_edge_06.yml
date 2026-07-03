@@ -1,5 +1,4 @@
 section: "§16 Attribute with Complex Expression (Call + String + Number)"
 covers_rule: "attrInput, expression form with complex content"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

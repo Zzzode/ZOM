@@ -1,7 +1,6 @@
 section: "§8.x Marker impl (REJECT — marker impl requires qualified path)"
 covers_rule: "declaration (markerImpl G11 disambiguation)"
 expected: "REJECT"
-expected_diagnostic: ""
 notes:
   - "Marker impl must use qualified path like `marker impl core::marker::Send for T;`"
   - "Here `Foo` is a 1-segment path — parser commits at `marker` but fails"

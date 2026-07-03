@@ -1,5 +1,4 @@
 section: "§4.6 structLiteral with brace enum variant form (in expression)"
 covers_rule: "structLiteral"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

@@ -1,5 +1,4 @@
 section: "§4.5 Single-statement if body (non-block)"
 covers_rule: "ifStatement"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

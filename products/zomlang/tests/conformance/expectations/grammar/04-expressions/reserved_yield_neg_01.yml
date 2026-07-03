@@ -1,5 +1,4 @@
 section: "§4.6 yield reserved (ZOM5005) in expression"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []

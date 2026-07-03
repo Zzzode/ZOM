@@ -1,5 +1,4 @@
 section: "§4.7 StructPatternShorthand"
 covers_rule: "structPatternField"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

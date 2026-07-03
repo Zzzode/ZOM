@@ -1,5 +1,4 @@
 section: "§4.1 ModuleDeclaration"
 covers_rule: "blockBody"
 expected: "ACCEPT"
-expected_diagnostic: ""
 notes: []

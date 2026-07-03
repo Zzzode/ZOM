@@ -1,5 +1,4 @@
 section: "§4.6 Unbalanced bracket (missing RBRACK)"
 covers_rule: "arrayLiteral"
 expected: "REJECT"
-expected_diagnostic: ""
 notes: []
