@@ -102,6 +102,51 @@ ZC_TEST("LexerLiteralTest.StringLiterals") {
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
     ZC_EXPECT(tokens[0].getValue() == "A"_zc);
   }
+
+  // Case 9: Unicode content in string literal
+  {
+    auto tokens = tokenize("\"hello \xC3\xA9 world\""_zc);  // "hello e with acute"
+    ZC_EXPECT(tokens.size() == 2);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
+    ZC_EXPECT(tokens[0].getValue() == "hello \xC3\xA9 world"_zc);
+  }
+
+  // Case 10: Unicode character literal (single multi-byte scalar)
+  {
+    auto tokens = tokenize("'\xC3\xA9'"_zc);  // e with acute
+    ZC_EXPECT(tokens.size() == 2);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::CharacterLiteral));
+    ZC_EXPECT(tokens[0].getValue() == "\xC3\xA9"_zc);
+  }
+
+  // Case 11: CJK character literal
+  {
+    auto tokens = tokenize("'\xE4\xB8\xAD'"_zc);  // CJK ideograph
+    ZC_EXPECT(tokens.size() == 2);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::CharacterLiteral));
+    ZC_EXPECT(tokens[0].getValue() == "\xE4\xB8\xAD"_zc);
+  }
+
+  // Case 12: Empty single-quoted literal (invalid - empty)
+  {
+    auto& sm = getSourceManager();
+    auto diags = zc::heap<diagnostics::DiagnosticEngine>(sm);
+    auto tokens = tokenize("''"_zc, *diags);
+    ZC_EXPECT(tokens.size() == 2);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
+    ZC_EXPECT(tokens[0].getValue() == ""_zc);
+    ZC_EXPECT(diags->hasErrors());
+  }
+
+  // Case 13: Multi-scalar single-quoted literal (invalid - multiple code points)
+  {
+    auto& sm = getSourceManager();
+    auto diags = zc::heap<diagnostics::DiagnosticEngine>(sm);
+    auto tokens = tokenize("'ab'"_zc, *diags);
+    ZC_EXPECT(tokens.size() == 2);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
+    ZC_EXPECT(diags->hasErrors());
+  }
 }
 
 ZC_TEST("LexerLiteralTest.MultiCharacterSingleQuotedLiteralReportsError") {
@@ -261,6 +306,50 @@ ZC_TEST("LexerLiteralTest.TemplateLiterals") {
     ZC_EXPECT(tokens[0].hasFlag(TokenFlags::Unterminated));
     ZC_EXPECT(tokens[0].getValue() == "hello"_zc);
     ZC_EXPECT(diags->hasErrors());
+  }
+
+  // MultipleSubstitutions: `${a} + ${b} = ${c}`
+  {
+    auto tokens = tokenize("`${a} + ${b} = ${c}`"_zc);
+    // Expected: TemplateHead(""), Identifier(a), TemplateMiddle(" + "),
+    //           Identifier(b), TemplateMiddle(" = "), Identifier(c), TemplateTail(""), EOF
+    ZC_EXPECT(tokens.size() == 8);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::TemplateHead));
+    ZC_EXPECT(tokens[0].getValue() == ""_zc);
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[1].getValue() == "a"_zc);
+    ZC_EXPECT(tokens[2].is(ast::SyntaxKind::TemplateMiddle));
+    ZC_EXPECT(tokens[2].getValue() == " + "_zc);
+    ZC_EXPECT(tokens[3].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[3].getValue() == "b"_zc);
+    ZC_EXPECT(tokens[4].is(ast::SyntaxKind::TemplateMiddle));
+    ZC_EXPECT(tokens[4].getValue() == " = "_zc);
+    ZC_EXPECT(tokens[5].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[5].getValue() == "c"_zc);
+    ZC_EXPECT(tokens[6].is(ast::SyntaxKind::TemplateTail));
+    ZC_EXPECT(tokens[6].getValue() == ""_zc);
+    ZC_EXPECT(tokens[7].is(ast::SyntaxKind::EndOfFile));
+  }
+
+  // ObjectLiteralInSubstitution: `${{x: 1}}`
+  {
+    auto tokens = tokenize("`${{x: 1}}`"_zc);
+    // The outer braces are template delimiters, inner braces are object literal.
+    // Expected: TemplateHead(""), LeftBrace, Identifier(x), Colon,
+    //           IntegerLiteral(1), RightBrace, TemplateTail(""), EOF
+    ZC_EXPECT(tokens.size() == 8);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::TemplateHead));
+    ZC_EXPECT(tokens[0].getValue() == ""_zc);
+    ZC_EXPECT(tokens[1].is(ast::SyntaxKind::LeftBrace));
+    ZC_EXPECT(tokens[2].is(ast::SyntaxKind::Identifier));
+    ZC_EXPECT(tokens[2].getValue() == "x"_zc);
+    ZC_EXPECT(tokens[3].is(ast::SyntaxKind::Colon));
+    ZC_EXPECT(tokens[4].is(ast::SyntaxKind::IntegerLiteral));
+    ZC_EXPECT(tokens[4].getValue() == "1"_zc);
+    ZC_EXPECT(tokens[5].is(ast::SyntaxKind::RightBrace));
+    ZC_EXPECT(tokens[6].is(ast::SyntaxKind::TemplateTail));
+    ZC_EXPECT(tokens[6].getValue() == ""_zc);
+    ZC_EXPECT(tokens[7].is(ast::SyntaxKind::EndOfFile));
   }
 }
 

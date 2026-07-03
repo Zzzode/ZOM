@@ -632,6 +632,13 @@ ZC_TEST("LexerOperatorTest.GreaterThanOperators") {
     ZC_EXPECT(tokens[0].is(ast::SyntaxKind::GreaterThanGreaterThanGreaterThan));
   }
 
+  // Case 5b: Unsigned right shift assignment '>>>='
+  {
+    auto tokens = tokenize(">>>="_zc);
+    ZC_EXPECT(tokens.size() == 2);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::GreaterThanGreaterThanGreaterThanEquals));
+  }
+
   // Case 6: Complex sequence '> >=' -> '>' then '>='
   {
     auto tokens = tokenize("> >="_zc);

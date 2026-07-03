@@ -415,9 +415,7 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
     case ast::SyntaxKind::GreaterThanGreaterThan:
       return ">>"_zc;
     case ast::SyntaxKind::GreaterThanGreaterThanGreaterThan:
-      return ">"
-             ">"
-             ">"_zc;
+      return ">>>"_zc;
     case ast::SyntaxKind::AmpersandEquals:
       return "&="_zc;
     case ast::SyntaxKind::BarEquals:
