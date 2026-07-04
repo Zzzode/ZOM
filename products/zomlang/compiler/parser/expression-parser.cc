@@ -573,7 +573,8 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
           // Identifier key: find the end of the identifier path (handles dotted access
           // like foo.bar) and check whether a colon sits right at the boundary.
           const size_t pathEnd = findTypePathEnd(itemStart, itemEnd);
-          if (pathEnd > itemStart && pathEnd < itemEnd && kindAt(pathEnd) == ast::SyntaxKind::Colon) {
+          if (pathEnd > itemStart && pathEnd < itemEnd &&
+              kindAt(pathEnd) == ast::SyntaxKind::Colon) {
             colon = pathEnd;
           }
         }
@@ -1202,8 +1203,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
       case ast::SyntaxKind::Hash:
         if (!shouldSuppressDiagnostic(start)) {
           diagnosticEngine.diagnose<diagnostics::DiagID::DanglingHash>(diagnosticLoc(start))
-              .addChild(zc::heap<diagnostics::Diagnostic>(
-                  diagnostics::DiagID::DanglingHashHelp, diagnosticLoc(start)));
+              .addChild(zc::heap<diagnostics::Diagnostic>(diagnostics::DiagID::DanglingHashHelp,
+                                                          diagnosticLoc(start)));
         }
         return ExpressionParseResult();
       default:

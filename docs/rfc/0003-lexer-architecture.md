@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, spec-audit, verification]
 approvers: []
 created: 2026-07-01
-updated: 2026-07-03
+updated: 2026-07-04
 area: compiler
 requires: [1]
 supersedes: []

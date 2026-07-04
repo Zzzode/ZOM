@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
 approvers: []
 created: 2026-06-30
-updated: 2026-07-03
+updated: 2026-07-04
 area: compiler
 requires: [1, 3]
 supersedes: []
@@ -1383,3 +1383,4 @@ accepted decision record.
 | 2026-07-03 | REVIEW | Added `docs/reports/rfc-0002-parser-validation-2026-07-03.md` as the external validation record for RFC 0002. Parser-focused sanitizer gates remain green, but `ctest --preset default --output-on-failure` is blocked by stable unrelated `libraries/zc` failure `http-http-socketpair-test` (`HttpClient connection management`, `count == 0` observed as `1 == 0`). RFC status remains `REVIEW` until owner approval, accepted decision metadata, and the default-preset blocker policy are resolved. |
 | 2026-07-03 | REVIEW | Resolved the stable default-preset blocker by driving the zc HTTP socketpair timeout close and client-side EOF notification through separate event-loop turns in `HttpClient connection management`. Verified `http-http-socketpair-test` and `http-http-test` in both debug/default and sanitizer builds, then verified `ctest --preset default --output-on-failure` at 728/728 passing tests. RFC status remains `REVIEW`; advancement to `ACCEPTED` still requires owner approval and accepted decision metadata. |
 | 2026-07-04 | REVIEW | Confirmed `#[` two-token attribute start detection: `isOuterAttributeStart` checks token types (`Hash` + `LeftBracket`) and source-range adjacency (`tokenAt(i).getRange().getEnd() == tokenAt(i+1).getRange().getStart()`). This rejects `# [foo]` with whitespace while accepting `#[foo]`, matching Rust's proven design pattern. Verified with 24 attribute conformance tests. |
+| 2026-07-04 | REVIEW | Clarified object literal invalid syntax diagnostics: renamed `ObjectLiteralComputedKeyNotSupported` → `ObjectLiteralPropertyNameExpected` (ZOM2059) and `ObjectLiteralMethodNotSupported` → `ObjectLiteralMethodSyntax` (ZOM2060) to reflect that computed keys and method shorthand are not "not supported" but simply invalid grammar per ZOM's pure-record design (`PropertyName ::= Identifier`). Fixed spec `04-expressions.md` to use function-valued properties instead of method shorthand examples. All 110 expression AST tests pass. |
