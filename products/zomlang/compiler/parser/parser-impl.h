@@ -363,10 +363,6 @@ struct Parser::Impl {
 
   bool requireTrailingSemicolon(size_t start, size_t end) const;
 
-  bool isInterfaceElementHead(size_t index, int32_t interfaceBodyDepth) const;
-
-  bool isInterfaceMethodInitializer(size_t index, int32_t interfaceBodyDepth) const;
-
   bool followsFieldTypeColonWithoutSemicolon(size_t index) const;
 
   size_t consumeMemberBoundary(size_t start, size_t limit) const;

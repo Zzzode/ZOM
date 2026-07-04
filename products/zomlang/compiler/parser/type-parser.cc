@@ -168,11 +168,15 @@ bool Parser::Impl::consumeTypePath(TokenCursor& cursor, size_t limit) const {
   return true;
 }
 
+// RFC 0002: Boundary detection only — caller has already committed to parsing a type path.
+// Returns the index one past the end of the type path starting at 'start'.
 size_t Parser::Impl::findTypePathEnd(size_t start, size_t end) const {
   TokenCursor cursor = tokenCursorAt(start);
   return consumeTypePath(cursor, end) ? cursor.position() : start;
 }
 
+// RFC 0002: findMatchingRight* pattern — allowed. Caller has already seen the opening '<'
+// and committed to parsing angle-delimited content. Returns the matching '>' index.
 size_t Parser::Impl::findMatchingAngleClose(size_t openIndex, size_t limit) const {
   if (openIndex >= limit || kindAt(openIndex) != ast::SyntaxKind::LessThan) { return limit; }
 
@@ -634,15 +638,68 @@ Parser::Impl::TypeParseResult Parser::Impl::parseParenthesizedOrTupleType(AstFac
     return TypeParseResult();
   }
 
-  TokenCursor commaCursor = tokenCursorAt(start + 1);
-  if (start + 1 == closeParen ||
-      consumeBalancedTypeUntil(commaCursor, closeParen, ast::SyntaxKind::Comma) < closeParen) {
+  // RFC 0002: Cursor-driven disambiguation between tuple and parenthesized type.
+  // Instead of pre-scanning for a comma with consumeBalancedTypeUntil, we use
+  // boundary detection to find the first element's end, then inspect the following
+  // token to decide the production.
+  if (start + 1 == closeParen) {
+    // Empty tuple: ()
     const ast::NodeId tuple = parseTupleTypeRange(builder, start, closeParen + 1);
     if (tuple) { cursor.moveTo(closeParen + 1); }
     return TypeParseResult{tuple, tuple ? cursor.position() : start};
   }
 
-  cursor.moveTo(start + 1);
+  const size_t innerStart = start + 1;
+
+  // Named tuple element detection: if the first token is an identifier followed by ':',
+  // this is a named tuple element — the entire construct is a tuple type.
+  if (kindAt(innerStart) == ast::SyntaxKind::Identifier && innerStart + 1 < closeParen &&
+      kindAt(innerStart + 1) == ast::SyntaxKind::Colon) {
+    const ast::NodeId tuple = parseTupleTypeRange(builder, start, closeParen + 1);
+    if (tuple) { cursor.moveTo(closeParen + 1); }
+    return TypeParseResult{tuple, tuple ? cursor.position() : start};
+  }
+
+  // Find the boundary of the first type-like construct (boundary detection per RFC 0002).
+  // consumeTypeLike does not create AST nodes — it only locates the boundary.
+  const size_t firstElemEnd = consumeTypeLike(innerStart, closeParen);
+
+  if (firstElemEnd > innerStart && firstElemEnd < closeParen) {
+    const ast::SyntaxKind afterFirst = kindAt(firstElemEnd);
+    if (afterFirst == ast::SyntaxKind::Comma || afterFirst == ast::SyntaxKind::DotDotDot) {
+      // Simple first element followed by comma or '...' — tuple type.
+      const ast::NodeId tuple = parseTupleTypeRange(builder, start, closeParen + 1);
+      if (tuple) { cursor.moveTo(closeParen + 1); }
+      return TypeParseResult{tuple, tuple ? cursor.position() : start};
+    }
+    if (afterFirst == ast::SyntaxKind::Bar || afterFirst == ast::SyntaxKind::Ampersand ||
+        afterFirst == ast::SyntaxKind::Arrow) {
+      // First element is a compound type (union, intersection, function).
+      // Fall back to parseTypeExpression to find the true element boundary.
+      cursor.moveTo(innerStart);
+      TypeParseResult firstElem = parseTypeExpression(builder, cursor, closeParen);
+      if (!firstElem.node) { return TypeParseResult(); }
+      if (cursor.position() < closeParen &&
+          (cursor.peek() == ast::SyntaxKind::Comma ||
+           cursor.peek() == ast::SyntaxKind::DotDotDot)) {
+        const ast::NodeId tuple = parseTupleTypeRange(builder, start, closeParen + 1);
+        if (tuple) { cursor.moveTo(closeParen + 1); }
+        return TypeParseResult{tuple, tuple ? cursor.position() : start};
+      }
+      // Single compound element — parenthesized type.
+      if (cursor.position() != closeParen) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+            diagnosticLoc(cursor.position()));
+        return TypeParseResult();
+      }
+      cursor.moveTo(closeParen + 1);
+      firstElem.next = cursor.position();
+      return firstElem;
+    }
+  }
+
+  // Single simple element consumed to the closing paren — parenthesized type.
+  cursor.moveTo(innerStart);
   TypeParseResult inner = parseTypeExpression(builder, cursor, closeParen);
   if (!inner.node) { return inner; }
   if (cursor.position() != closeParen) {
@@ -864,6 +921,9 @@ ast::NodeList Parser::Impl::parseTypeArguments(AstFactory& builder, size_t start
   return parseTypeArgumentList(builder, cursor, end + 1, physicalEnd);
 }
 
+// RFC 0002: Boundary detection only — caller has already identified the start token as
+// type-like (identifier, '{', '(', '[', or primitive keyword). Scans forward to find
+// where the type-like construct ends, using findMatchingRight* for delimited groups.
 size_t Parser::Impl::consumeTypeLike(size_t start, size_t limit) const {
   if (start >= limit) { return start; }
 
@@ -919,6 +979,10 @@ size_t Parser::Impl::consumeTypeLike(size_t start, size_t limit) const {
   return cursor;
 }
 
+// RFC 0002: Boundary detection only — uses findMatchingAngleClose to locate the closing '>'
+// of a generic argument list, then inspects the following token to distinguish initializer
+// syntax (Foo<T>(...) or Foo<T>{...}) from other uses. Caller has already committed to
+// parsing a generic type.
 bool Parser::Impl::isInitializerGenericAngle(size_t openAngle, size_t limit) const {
   const size_t closeAngle = findMatchingAngleClose(openAngle, limit);
   if (closeAngle >= limit || closeAngle + 1 >= limit) { return false; }
@@ -930,6 +994,9 @@ bool Parser::Impl::isInitializerGenericAngle(size_t openAngle, size_t limit) con
 ast::NodeId Parser::Impl::parseExternTypeAliasDecl(AstFactory& builder, size_t start,
                                                    size_t end) const {
   const size_t nameIndex = start + 1;
+  // RFC 0002: Boundary detection within a known production. The caller already identified
+  // this as an extern type alias (via 'type' keyword), so consumeBalancedUntil is used only
+  // to find the '=' separator between name and target type, not to select between productions.
   TokenCursor equalsCursor = tokenCursorAt(nameIndex + 1);
   const size_t equals = consumeBalancedUntil(equalsCursor, end, ast::SyntaxKind::Equals);
   if (nameIndex >= end || kindAt(nameIndex) != ast::SyntaxKind::Identifier) {

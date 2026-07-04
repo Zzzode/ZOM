@@ -1,0 +1,4 @@
+section: "§16 Dangling Hash REJECT"
+covers_rule: "HASH without following LBRACK"
+expected: "REJECT"
+notes: []

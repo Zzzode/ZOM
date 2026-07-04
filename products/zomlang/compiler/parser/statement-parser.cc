@@ -20,6 +20,8 @@ namespace zomlang {
 namespace compiler {
 namespace parser {
 
+// RFC 0002: findMatchingRight* pattern — explicitly allowed. Caller has already seen the
+// opening '{' and committed to parsing a braced block. Returns the matching '}' index.
 size_t Parser::Impl::findMatchingRightBrace(size_t openIndex, size_t limit) const {
   if (openIndex >= limit || kindAt(openIndex) != ast::SyntaxKind::LeftBrace) { return limit; }
 
@@ -36,6 +38,9 @@ size_t Parser::Impl::findMatchingRightBrace(size_t openIndex, size_t limit) cons
   return limit;
 }
 
+// RFC 0002: findMatchingRight* pattern — explicitly allowed. Caller has already seen the
+// opening '[' and committed to parsing a bracketed construct. Returns the matching ']' index,
+// requiring all bracket/paren/brace depth to return to zero.
 size_t Parser::Impl::findMatchingRightBracket(size_t openIndex, size_t limit) const {
   if (openIndex >= limit || kindAt(openIndex) != ast::SyntaxKind::LeftBracket) { return limit; }
 
@@ -63,6 +68,9 @@ size_t Parser::Impl::findMatchingRightBracket(size_t openIndex, size_t limit) co
   return limit;
 }
 
+// RFC 0002: findMatchingRight* pattern — explicitly allowed. Caller has already seen a
+// macro group opening delimiter ('(', '[', or '{') and committed to parsing the group.
+// Returns the matching closing delimiter index.
 size_t Parser::Impl::findMatchingMacroGroup(size_t openIndex, size_t limit) const {
   if (openIndex >= limit || !isMacroGroupOpen(kindAt(openIndex))) { return limit; }
 
@@ -87,6 +95,9 @@ size_t Parser::Impl::effectiveStatementStart(size_t start, size_t end) const {
   return head < end ? head : start;
 }
 
+// RFC 0002: Boundary detection only — forward-scans to find the end of a simple statement
+// (semicolon or closing brace at depth 0). Used for error recovery after the parser has
+// already committed to parsing a statement at the given start position.
 size_t Parser::Impl::consumeSimpleStatementEnd(size_t start, size_t limit) const {
   RecoveryFrameScope recoveryFrame(*this, RecoveryContext::Statement, start);
   int32_t parenDepth = 0;
@@ -481,6 +492,8 @@ ast::NodeId Parser::Impl::parseSuspendStatement(AstFactory& builder, size_t star
   return ast::NodeId();
 }
 
+// RFC 0002: findMatchingRight* pattern — explicitly allowed. Caller has already seen the
+// opening '(' and committed to parsing a parenthesized construct. Returns the matching ')' index.
 size_t Parser::Impl::findMatchingRightParen(size_t openParen, size_t limit) const {
   if (openParen >= limit || kindAt(openParen) != ast::SyntaxKind::LeftParen) { return limit; }
 

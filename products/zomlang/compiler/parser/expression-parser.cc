@@ -59,6 +59,9 @@ bool Parser::Impl::isDefinitelyNonLValueOperand(size_t start, size_t end) const 
   return start < end && isLiteralExpressionToken(kindAt(start));
 }
 
+// RFC 0002: Boundary detection only — forward-scans to find the end of a comma-delimited
+// item (e.g. function argument, array element) by tracking paren/bracket/brace/angle depth.
+// Called only after the caller has committed to parsing a comma-delimited list.
 size_t Parser::Impl::consumeCommaDelimitedItem(TokenCursor& cursor, size_t end) const {
   TokenCursor::ScopedSplitMode splitMode(cursor);
   int32_t parenDepth = 0;
@@ -161,6 +164,9 @@ ast::NodeList Parser::Impl::parseExpressionArguments(AstFactory& builder, size_t
   return builder.makeList(args.asPtr());
 }
 
+// RFC 0002: All range scans within this function are boundary detection only.
+// The production is already identified by the 'new' keyword; findTypePathEnd,
+// findMatchingAngleClose, and findMatchingRightParen locate boundaries within it.
 ast::NodeId Parser::Impl::parseNewExpression(AstFactory& builder, size_t start, size_t calleeEnd,
                                              size_t typeArgsEnd, size_t end) const {
   const ast::NodeId callee = parseExpressionRange(builder, start + 1, calleeEnd);
@@ -355,6 +361,9 @@ ast::NodeId Parser::Impl::parseCaptureList(AstFactory& builder, size_t start, si
                                  builder.makeList(captures.asPtr()));
 }
 
+// RFC 0002: All consumeBalanced* calls within this function are boundary detection only.
+// The production is already identified by the 'fun' keyword; scans locate '(', ')', '{',
+// '->', 'raises', and 'use' boundaries within the function expression.
 ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t start,
                                                   size_t end) const {
   size_t signatureCursor = start + 1;
@@ -427,6 +436,9 @@ ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t st
                                         raisesTy, parseBlock(builder, bodyOpen, end));
 }
 
+// RFC 0002: All consumeBalanced* calls within this function are boundary detection only.
+// The production is already identified (lambda/arrow function); scans find parameter list,
+// return type, and body boundaries.
 ast::NodeId Parser::Impl::parseLambdaExpression(AstFactory& builder, size_t start,
                                                 size_t end) const {
   if (kindAt(start) != ast::SyntaxKind::LeftParen) { return ast::NodeId(); }
@@ -796,6 +808,9 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseUnaryExpressionAt(AstFact
   return parsePostfixExpressionAt(builder, start, limit);
 }
 
+// RFC 0002: All findMatchingRight* and consumeBalanced* calls within this function are
+// boundary detection only. The production (postfix expression) is already identified by the
+// start token; scans locate closing delimiters for committed groups.
 Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(AstFactory& builder,
                                                                            size_t start,
                                                                            size_t limit) const {
@@ -946,6 +961,9 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(AstFa
   return current;
 }
 
+// RFC 0002: All findMatchingRight* calls within this function are boundary detection only.
+// The production (primary expression) is already identified by the start token; scans locate
+// closing delimiters for parenthesized, bracketed, and braced groups.
 Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFactory& builder,
                                                                            size_t start,
                                                                            size_t limit) const {
@@ -1111,6 +1129,13 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
         return {builder.makeStrLiteral(rangeFor(start, start + 1), internString(builder, start),
                                        false, 0),
                 start + 1};
+      case ast::SyntaxKind::Hash:
+        if (!shouldSuppressDiagnostic(start)) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::DanglingHash>(diagnosticLoc(start))
+              .addChild(zc::heap<diagnostics::Diagnostic>(
+                  diagnostics::DiagID::DanglingHashHelp, diagnosticLoc(start)));
+        }
+        return ExpressionParseResult();
       default:
         break;
     }

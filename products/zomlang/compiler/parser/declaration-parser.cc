@@ -535,36 +535,6 @@ void Parser::Impl::diagnoseDeclarationModifierGroup(size_t start, size_t end) co
   }
 }
 
-bool Parser::Impl::isInterfaceElementHead(size_t index, int32_t interfaceBodyDepth) const {
-  if (interfaceBodyDepth < 0 || index == 0) { return false; }
-
-  for (size_t cursor = index; cursor > 0;) {
-    --cursor;
-    const ast::SyntaxKind kind = kindAt(cursor);
-    if (kind == ast::SyntaxKind::LeftBrace || kind == ast::SyntaxKind::Semicolon) { return true; }
-    if (isInterfaceModifier(kind)) { continue; }
-    return false;
-  }
-
-  return false;
-}
-
-bool Parser::Impl::isInterfaceMethodInitializer(size_t index, int32_t interfaceBodyDepth) const {
-  if (interfaceBodyDepth < 0 || kindAt(index) != ast::SyntaxKind::Equals) { return false; }
-
-  for (size_t cursor = index; cursor > 0;) {
-    --cursor;
-    const ast::SyntaxKind kind = kindAt(cursor);
-    if (kind == ast::SyntaxKind::FunKeyword) { return true; }
-    if (kind == ast::SyntaxKind::LeftBrace || kind == ast::SyntaxKind::Semicolon ||
-        kind == ast::SyntaxKind::RightBrace) {
-      return false;
-    }
-  }
-
-  return false;
-}
-
 size_t Parser::Impl::consumeMemberBoundary(size_t start, size_t limit) const {
   const ast::SyntaxKind head = kindAt(start);
   const bool bodyBearingHead =

@@ -28,7 +28,17 @@ void Parser::Impl::diagnoseTokenPatterns() {
   int32_t typeLiteralBraceDepth = -1;
   int32_t bindingPatternBraceDepth = -1;
   int32_t matchArmPatternBraceDepth = -1;
+  // RFC 0002: Forward state tracking for match arm pattern detection.
+  // whenPatternDepth tracks nesting depth from the 'when' keyword (parens,
+  // brackets, braces, angles). When it returns to 0 and we see '=>', we
+  // know we've reached the match arm arrow. Replaces consumeBalancedUntil.
+  int32_t whenPatternDepth = -1;
   size_t macroTokenTreeEnd = 0;
+
+  // RFC 0002: Forward state tracking replaces backward scans for interface
+  // element head and method initializer detection.
+  bool lastNonModifierWasBoundary = false;
+  bool sawFunSinceLastInterfaceBoundary = false;
 
   const size_t count = context.bufferedTokenLimit();
   for (size_t i = 0; i < count; ++i) {
@@ -43,6 +53,33 @@ void Parser::Impl::diagnoseTokenPatterns() {
     const bool insideInterfaceBody = interfaceBodyDepth >= 0 && braceDepth >= interfaceBodyDepth;
     const bool insideInterfaceTopLevel =
         interfaceBodyDepth >= 0 && braceDepth == interfaceBodyDepth;
+
+    // RFC 0002: Forward state tracking for interface element head detection.
+    // atInterfaceElementHead is true when the current token follows a '{' or ';'
+    // with only interface modifiers in between — computed without backward scanning.
+    const bool atInterfaceElementHead = insideInterfaceTopLevel && lastNonModifierWasBoundary &&
+        !isInterfaceModifier(kind) && kind != ast::SyntaxKind::LeftBrace &&
+        kind != ast::SyntaxKind::Semicolon;
+
+    // Update element-head boundary state for the next iteration.
+    if (isInterfaceModifier(kind)) {
+      // Interface modifiers are transparent to element-head boundaries.
+    } else if (kind == ast::SyntaxKind::LeftBrace || kind == ast::SyntaxKind::Semicolon) {
+      lastNonModifierWasBoundary = true;
+    } else {
+      lastNonModifierWasBoundary = false;
+    }
+
+    // RFC 0002: Forward state tracking for interface method initializer detection.
+    // sawFunSinceLastInterfaceBoundary is true when 'fun' appeared since the last
+    // '{', ';', or '}' — replaces backward scan in isInterfaceMethodInitializer.
+    if (kind == ast::SyntaxKind::LeftBrace || kind == ast::SyntaxKind::Semicolon ||
+        kind == ast::SyntaxKind::RightBrace) {
+      sawFunSinceLastInterfaceBoundary = false;
+    }
+    if (insideInterfaceTopLevel && kind == ast::SyntaxKind::FunKeyword) {
+      sawFunSinceLastInterfaceBoundary = true;
+    }
 
     if (isDeclarationModifier(kind) && (i == 0 || !isDeclarationModifier(kindAt(i - 1)))) {
       size_t head = i + 1;
@@ -96,30 +133,28 @@ void Parser::Impl::diagnoseTokenPatterns() {
     }
 
     if (kind == ast::SyntaxKind::WhenKeyword && matchArmPatternBraceDepth < 0) {
-      TokenCursor matchArmCursor = tokenCursorAt(i + 1);
-      if (consumeBalancedUntil(matchArmCursor, count, ast::SyntaxKind::EqualsGreaterThan) < count) {
-        matchArmPatternBraceDepth = braceDepth;
+      // RFC 0002: Assume 'when' starts a match arm pattern (confirmed by '=>'
+      // at whenPatternDepth == 0 below). This replaces the consumeBalancedUntil
+      // forward scan that previously searched for '=>' at depth 0.
+      matchArmPatternBraceDepth = braceDepth;
+      whenPatternDepth = 0;
+    }
+    // Update when-pattern nesting depth (tracks parens/brackets/braces/angles
+    // from the 'when' keyword to distinguish match-arm '=>' from nested '=>').
+    if (whenPatternDepth >= 0) {
+      if (kind == ast::SyntaxKind::LeftParen || kind == ast::SyntaxKind::LeftBracket ||
+          kind == ast::SyntaxKind::LeftBrace || kind == ast::SyntaxKind::LessThan) {
+        whenPatternDepth++;
+      } else if (kind == ast::SyntaxKind::RightParen || kind == ast::SyntaxKind::RightBracket ||
+                 kind == ast::SyntaxKind::RightBrace || kind == ast::SyntaxKind::GreaterThan) {
+        whenPatternDepth--;
       }
     }
     bool insideMatchArmPattern = matchArmPatternBraceDepth >= 0;
-    if (!insideMatchArmPattern && braceDepth > 0) {
-      for (size_t j = i; j > 0;) {
-        --j;
-        if (kindAt(j) == ast::SyntaxKind::EqualsGreaterThan ||
-            kindAt(j) == ast::SyntaxKind::Semicolon) {
-          break;
-        }
-        if (kindAt(j) == ast::SyntaxKind::WhenKeyword) {
-          TokenCursor matchArmCursor = tokenCursorAt(j + 1);
-          insideMatchArmPattern = consumeBalancedUntil(matchArmCursor, count,
-                                                       ast::SyntaxKind::EqualsGreaterThan) < count;
-          break;
-        }
-      }
-    }
     if (kind == ast::SyntaxKind::EqualsGreaterThan && matchArmPatternBraceDepth >= 0 &&
-        braceDepth == matchArmPatternBraceDepth) {
+        whenPatternDepth == 0) {
       matchArmPatternBraceDepth = -1;
+      whenPatternDepth = -1;
     }
 
     if (kind == ast::SyntaxKind::QuestionDot) {
@@ -181,13 +216,13 @@ void Parser::Impl::diagnoseTokenPatterns() {
         }
       }
 
-      if (insideInterfaceTopLevel && isInterfaceElementHead(i, interfaceBodyDepth) &&
+      if (atInterfaceElementHead &&
           kind == ast::SyntaxKind::Identifier && next == ast::SyntaxKind::LeftParen) {
         diagnosticEngine.diagnose<diagnostics::DiagID::PropertyOrSignatureExpected>(
             current.getLocation());
       }
 
-      if (insideInterfaceTopLevel && isInterfaceElementHead(i, interfaceBodyDepth) &&
+      if (atInterfaceElementHead &&
           kind == ast::SyntaxKind::ClassKeyword) {
         diagnosticEngine.diagnose<diagnostics::DiagID::PropertyOrSignatureExpected>(
             current.getLocation());
@@ -220,7 +255,8 @@ void Parser::Impl::diagnoseTokenPatterns() {
                                                                       ":"_zc);
       }
 
-      if (insideInterfaceTopLevel && isInterfaceMethodInitializer(i, interfaceBodyDepth)) {
+      if (insideInterfaceTopLevel && kind == ast::SyntaxKind::Equals &&
+          sawFunSinceLastInterfaceBoundary) {
         diagnosticEngine
             .diagnose<diagnostics::DiagID::InterfaceMethodSignatureInitializerNotAllowed>(
                 current.getLocation());
@@ -300,27 +336,37 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
   RecoveryFrameScope recoveryFrame(*this, RecoveryContext::Pattern, start);
   if (start >= end) { return ast::NodeId(); }
 
-  TokenCursor bindingCursor = tokenCursorAt(start);
-  const size_t at = consumeBalancedUntil(bindingCursor, end, ast::SyntaxKind::At);
-  if (at < end) {
-    TokenCursor duplicateBindingCursor = tokenCursorAt(at + 1);
-    if (at == start || at + 1 >= end ||
-        consumeBalancedUntil(duplicateBindingCursor, end, ast::SyntaxKind::At) < end) {
-      if (!shouldSuppressDiagnostic(at)) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-            tokenAt(at).getLocation());
+  // RFC 0002: Cursor-driven binding pattern detection.
+  // Instead of scanning the entire range for '@' with consumeBalancedUntil,
+  // find the identifier path end (boundary detection) and check if '@' follows.
+  if (kindAt(start) == ast::SyntaxKind::Identifier) {
+    const size_t pathEnd = findTypePathEnd(start, end);
+    if (pathEnd > start && pathEnd < end && kindAt(pathEnd) == ast::SyntaxKind::At) {
+      const size_t at = pathEnd;
+      // Check for duplicate '@' in the sub-pattern range.
+      bool hasDuplicateAt = false;
+      if (at + 1 < end && kindAt(at + 1) == ast::SyntaxKind::Identifier) {
+        const size_t subPathEnd = findTypePathEnd(at + 1, end);
+        hasDuplicateAt = subPathEnd > at + 1 && subPathEnd < end &&
+                         kindAt(subPathEnd) == ast::SyntaxKind::At;
       }
-      return ast::NodeId();
-    }
-    if (kindAt(start) != ast::SyntaxKind::Identifier || tokenAt(start).getValue() == "_"_zc) {
-      if (!shouldSuppressDiagnostic(start)) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-            tokenAt(start).getLocation());
+      if (at == start || hasDuplicateAt) {
+        if (!shouldSuppressDiagnostic(at)) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(at).getLocation());
+        }
+        return ast::NodeId();
       }
-      return ast::NodeId();
+      if (tokenAt(start).getValue() == "_"_zc) {
+        if (!shouldSuppressDiagnostic(start)) {
+          diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+              tokenAt(start).getLocation());
+        }
+        return ast::NodeId();
+      }
+      return builder.makeBindingPattern(rangeFor(start, end), internIdent(builder, start), false,
+                                        false, parsePatternRange(builder, at + 1, end));
     }
-    return builder.makeBindingPattern(rangeFor(start, end), internIdent(builder, start), false,
-                                      false, parsePatternRange(builder, at + 1, end));
   }
 
   if (kindAt(start) == ast::SyntaxKind::IsKeyword) {
@@ -341,9 +387,14 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
   }
 
   if (rangeIsWrapped(start, end, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen)) {
+    // RFC 0002: Cursor-driven tuple vs expression pattern disambiguation.
+    // Use consumeCommaDelimitedItem (boundary detection) to find the first
+    // element end, then check if a comma follows at depth 0.
     TokenCursor commaCursor = tokenCursorAt(start + 1);
+    const size_t firstItemEnd = consumeCommaDelimitedItem(commaCursor, end - 1);
+    (void)firstItemEnd;
     const bool hasComma =
-        consumeBalancedUntil(commaCursor, end - 1, ast::SyntaxKind::Comma) < end - 1;
+        commaCursor.position() < end - 1 && commaCursor.peek() == ast::SyntaxKind::Comma;
     if (start + 1 < end - 1 && !hasComma && kindAt(start + 1) != ast::SyntaxKind::DotDotDot) {
       const ast::NodeId expr = parseExpressionRange(builder, start + 1, end - 1);
       if (expr) { return builder.makeExpressionPattern(rangeFor(start, end), expr); }
@@ -441,12 +492,14 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
   size_t structStart = start;
   ast::NodeId structTyPath;
   if (kindAt(start) == ast::SyntaxKind::Identifier) {
-    TokenCursor braceCursor = tokenCursorAt(start + 1);
-    const size_t brace = consumeBalancedUntil(braceCursor, end, ast::SyntaxKind::LeftBrace);
-    if (brace < end &&
-        rangeIsWrapped(brace, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
-      structTyPath = makeModulePath(builder, start, brace);
-      structStart = brace;
+    // RFC 0002: Cursor-driven struct pattern detection.
+    // Use findTypePathEnd (boundary detection) to find the identifier path
+    // end, then check if '{' follows (analogous to enum pattern detection).
+    const size_t pathEnd = findTypePathEnd(start, end);
+    if (pathEnd > start && pathEnd < end && kindAt(pathEnd) == ast::SyntaxKind::LeftBrace &&
+        rangeIsWrapped(pathEnd, end, ast::SyntaxKind::LeftBrace, ast::SyntaxKind::RightBrace)) {
+      structTyPath = makeModulePath(builder, start, pathEnd);
+      structStart = pathEnd;
     }
   }
 
@@ -473,8 +526,16 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
           }
           rest = builder.makeRestPattern(rangeFor(itemStart, itemEnd), binding);
         } else {
-          TokenCursor colonCursor = tokenCursorAt(itemStart);
-          const size_t colon = consumeBalancedUntil(colonCursor, itemEnd, ast::SyntaxKind::Colon);
+          // RFC 0002: Cursor-driven struct pattern property ':' detection.
+          // Use findTypePathEnd (boundary detection) to find the identifier
+          // end, then check if ':' follows.
+          const size_t nameEnd =
+              kindAt(itemStart) == ast::SyntaxKind::Identifier ? findTypePathEnd(itemStart, itemEnd)
+                                                                : itemStart;
+          const size_t colon =
+              (nameEnd > itemStart && nameEnd < itemEnd && kindAt(nameEnd) == ast::SyntaxKind::Colon)
+                  ? nameEnd
+                  : itemEnd;
           if (kindAt(itemStart) != ast::SyntaxKind::Identifier) {
             if (!shouldSuppressDiagnostic(itemStart)) {
               diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(

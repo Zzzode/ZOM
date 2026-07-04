@@ -1,0 +1,4 @@
+section: "§16 Dangling Hash at EOF REJECT"
+covers_rule: "HASH at end of file without following LBRACK"
+expected: "REJECT"
+notes: []

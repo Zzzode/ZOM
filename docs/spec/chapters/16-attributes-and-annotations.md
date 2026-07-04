@@ -370,6 +370,41 @@ with whitespace between) as ColonColon — each colon forms a separate
 Colon token, and the parser emits ZOM0620 MalformedNamespaceSep with
 a suggestion to write '::'.
 
+> **Two-token design: `#[` is `Hash` + `LeftBracket`, not a compound token**
+>
+> The attribute opening `#[` is intentionally **two separate tokens**:
+> `SyntaxKind::Hash` (`#`) followed by `SyntaxKind::LeftBracket` (`[`).
+> No compound `#[` or `#!` token is ever emitted by the lexer.
+>
+> **How attribute detection works at the parser level:**
+>
+> 1. The parser encounters a `Hash` token and consults the bounded-lookahead
+>    table in 16.3.5.
+> 2. If `peek(1)` is `LeftBracket`, the parser additionally verifies that the
+>    two tokens are **source-range adjacent** — i.e., there is no whitespace
+>    or comment between `#` and `[`. This is checked by comparing the end
+>    offset of the `Hash` token against the start offset of the `LeftBracket`
+>    token; they must be consecutive byte positions.
+> 3. If they are **not** adjacent (e.g., `# [foo]` with a space), the parser
+>    emits `ZOM0604 DanglingHash` — the `#` is treated as orphaned
+>    punctuation, not as the start of an attribute.
+>
+> **Why this design was chosen:**
+>
+> - **Lexer simplicity.** The lexer remains re-entrant, incremental-friendly,
+>   and free of attribute-specific hacks. No special-cased multi-character
+>   punctuation is needed beyond `::`.
+> - **Proven pattern.** This mirrors Rust's design, where `#[` is also two
+>   tokens (`Pound` + `OpenBracket`) and adjacency is enforced in the parser.
+>   Decades of production use have validated this approach.
+> - **`Hash` is reserved.** Outside attribute contexts, the `#` character
+>   has no other syntactic meaning in ZOM. It is exclusively reserved for
+>   attribute initiation, so there is no ambiguity cost to decomposing it.
+> - **Whitespace rejection is intentional.** Requiring `#` and `[` to be
+>   adjacent (`#[foo]`) prevents the misleading visual of `# [foo]` which
+>   could be misread as a comment or preprocessor directive. The diagnostic
+>   `ZOM0604 DanglingHash` provides a clear correction path.
+
 ### 16.3.2 Shebang disambiguation
 
 ```

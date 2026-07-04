@@ -1,0 +1,4 @@
+section: "§16 Double Hash REJECT"
+covers_rule: "Multiple consecutive HASH tokens"
+expected: "REJECT"
+notes: []

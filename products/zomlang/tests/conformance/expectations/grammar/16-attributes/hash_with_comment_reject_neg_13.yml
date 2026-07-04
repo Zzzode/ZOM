@@ -1,0 +1,4 @@
+section: "§16 Hash with Comment REJECT"
+covers_rule: "HASH followed by comment instead of LBRACK"
+expected: "REJECT"
+notes: []

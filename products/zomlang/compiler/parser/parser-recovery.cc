@@ -182,6 +182,9 @@ bool Parser::Impl::rangeIsWrapped(size_t start, size_t end, ast::SyntaxKind open
   return depth == 0;
 }
 
+// RFC 0002: Boundary detection only — forward-scans to find the closing delimiter of a
+// balanced group (paren, bracket, or brace) after the caller has already committed to the
+// opening delimiter. Advances the cursor past the closing delimiter.
 size_t Parser::Impl::consumeBalancedGroupEnd(TokenCursor& cursor, size_t limit,
                                              ast::SyntaxKind open, ast::SyntaxKind close) const {
   if (cursor.position() >= limit || cursor.peek() != open) { return limit; }
@@ -208,6 +211,9 @@ size_t Parser::Impl::consumeBalancedGroupEnd(TokenCursor& cursor, size_t limit,
   return limit;
 }
 
+// RFC 0002: Boundary detection only — forward-scans for a needle token at nesting depth 0.
+// Used by callers that have already committed to a production and need to find a specific
+// boundary token (e.g. '=' in an extern type alias, '=>' in a match arm pattern).
 size_t Parser::Impl::consumeBalancedUntil(TokenCursor& cursor, size_t limit,
                                           ast::SyntaxKind needle) const {
   int32_t parenDepth = 0;
@@ -238,6 +244,9 @@ size_t Parser::Impl::consumeBalancedUntil(TokenCursor& cursor, size_t limit,
   return limit;
 }
 
+// RFC 0002: Boundary detection only — like consumeBalancedUntil but also tracks angle bracket
+// depth (with >> splitting enabled) for type contexts. Used only after the caller has committed
+// to a type production.
 size_t Parser::Impl::consumeBalancedTypeUntil(TokenCursor& cursor, size_t limit,
                                               ast::SyntaxKind needle) const {
   TokenCursor::ScopedSplitMode splitMode(cursor);
@@ -275,6 +284,9 @@ size_t Parser::Impl::consumeBalancedTypeUntil(TokenCursor& cursor, size_t limit,
   return limit;
 }
 
+// RFC 0002: Boundary detection only — forward-scans for an identifier with specific text at
+// nesting depth 0. Used for recovery and boundary finding in contexts where the production is
+// already identified.
 size_t Parser::Impl::consumeBalancedIdentifierUntil(TokenCursor& cursor, size_t limit,
                                                     zc::StringPtr text) const {
   int32_t parenDepth = 0;
@@ -441,6 +453,27 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
   const size_t nodeStart = skipOuterAttributePrefix(start, limit);
   boundary.nodeStart = nodeStart;
   cursor.moveTo(nodeStart);
+
+  // Detect dangling '#' that is not followed by '[' for an attribute.
+  // Emit the specific diagnostic and skip the '#' so it is not also
+  // reported as a generic "Expression expected".
+  if (kindAt(start) == ast::SyntaxKind::Hash && start == nodeStart) {
+    if (!shouldSuppressDiagnostic(start)) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::DanglingHash>(diagnosticLoc(start))
+          .addChild(zc::heap<diagnostics::Diagnostic>(
+              diagnostics::DiagID::DanglingHashHelp, diagnosticLoc(start)));
+    }
+    const size_t afterHash = start + 1;
+    boundary.nodeStart = afterHash;
+    cursor.moveTo(afterHash);
+    if (afterHash >= limit) {
+      boundary.head = afterHash;
+      boundary.end = limit;
+      recoveryFrame.finish(limit);
+      return boundary;
+    }
+  }
+
   if (nodeStart >= limit) {
     boundary.head = nodeStart;
     boundary.end = limit;
