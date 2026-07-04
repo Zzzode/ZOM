@@ -523,13 +523,14 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
         // targeted boundary detection to find where the key ends and whether a colon follows.
         //
         // Key forms and detection strategy:
-        //   1. Computed:   [expr]: value   — find matching ']' via findMatchingRightBracket,
-        //                                   check if next token is ':'
+        //   1. Computed:   [expr]: value   — NOT SUPPORTED in ZOM (PropertyName ::= Identifier).
+        //                                   Emits ObjectLiteralComputedKeyNotSupported diagnostic.
         //   2. String:     "foo": value    — single token, check if next is ':'
-        //   3. Method:     fun foo() {}    — fun/get/set keyword; if next token is NOT ':' it
-        //                    get foo() {}    is a method shorthand (no colon). If next token IS
-        //                    set foo(v) {}   ':' the keyword is used as a property name.
-        //   4. Identifier: foo: value / foo — find type path end via findTypePathEnd, check
+        //   3. Method:     fun foo() {}    — NOT SUPPORTED in ZOM object literals.
+        //                    get foo() {}    Emits ObjectLiteralMethodNotSupported diagnostic.
+        //                    set foo(v) {}
+        //   4. Keyword:    fun: value      — keyword used as property name (next token is ':')
+        //   5. Identifier: foo: value / foo — find type path end via findTypePathEnd, check
         //                                   if token at pathEnd is ':'
         //
         // This avoids false positives from nested colons (e.g. ternary inside computed keys,
@@ -538,15 +539,16 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
         // depth-0 colon.
         size_t colon = itemEnd;  // sentinel: no colon found
         const ast::SyntaxKind firstKind = kindAt(itemStart);
+        bool skipProperty = false;
 
         if (firstKind == ast::SyntaxKind::LeftBracket) {
-          // Computed key: find matching ']' and check if ':' follows.
-          // findMatchingRightBracket tracks bracket/paren/brace depth, so a ternary ':'
-          // inside the key expression (e.g. [a ? b : c]) is correctly ignored.
-          const size_t closeBracket = findMatchingRightBracket(itemStart, itemEnd);
-          if (closeBracket + 1 < itemEnd && kindAt(closeBracket + 1) == ast::SyntaxKind::Colon) {
-            colon = closeBracket + 1;
+          // Computed key: not supported in ZOM object literals.
+          // PropertyName ::= Identifier per the grammar reference.
+          if (!shouldSuppressDiagnostic(itemStart)) {
+            diagnosticEngine.diagnose<diagnostics::DiagID::ObjectLiteralComputedKeyNotSupported>(
+                diagnosticLoc(itemStart));
           }
+          skipProperty = true;
         } else if (firstKind == ast::SyntaxKind::StringLiteral) {
           // String literal key: single token boundary. Check if ':' follows immediately.
           if (itemStart + 1 < itemEnd && kindAt(itemStart + 1) == ast::SyntaxKind::Colon) {
@@ -555,10 +557,18 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
         } else if (firstKind == ast::SyntaxKind::FunKeyword ||
                    firstKind == ast::SyntaxKind::GetKeyword ||
                    firstKind == ast::SyntaxKind::SetKeyword) {
-          // Method/getter/setter keyword. If the next token is ':' the keyword is being
-          // used as a property name; otherwise it's a method shorthand with no colon.
+          // Method/getter/setter keyword.
           if (itemStart + 1 < itemEnd && kindAt(itemStart + 1) == ast::SyntaxKind::Colon) {
+            // Keyword used as property name (e.g. {fun: value}).
             colon = itemStart + 1;
+          } else {
+            // Method syntax: not supported in ZOM object literals.
+            if (!shouldSuppressDiagnostic(itemStart)) {
+              diagnosticEngine
+                  .diagnose<diagnostics::DiagID::ObjectLiteralMethodNotSupported>(
+                      diagnosticLoc(itemStart));
+            }
+            skipProperty = true;
           }
         } else if (firstKind == ast::SyntaxKind::Identifier) {
           // Identifier key: find the end of the identifier path (handles dotted access
@@ -569,6 +579,16 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
           }
         }
         // else: unrecognized key form — treat as shorthand (colon stays at itemEnd)
+
+        if (skipProperty) {
+          // Don't add a malformed property node. The cursor is already past this item
+          // thanks to consumeCommaDelimitedItem, so the next iteration will pick up the
+          // following comma-delimited item correctly.
+          if (cursor.position() < end && cursor.peek() == ast::SyntaxKind::Comma) {
+            cursor.advance();
+          }
+          continue;
+        }
 
         ast::NodeId value;
         bool shortForm = false;

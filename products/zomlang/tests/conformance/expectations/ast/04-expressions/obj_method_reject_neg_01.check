@@ -1,0 +1,10 @@
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/obj_method_reject_neg_01.zom 2>&1 | %FileCheck %s
+
+
+// CHECK: Error [ZOM2060]: Method syntax is not supported in object literals. Use a property with a function value instead
+// CHECK:   --> {{.*obj_method_reject_neg_01.zom}}:1:12
+// CHECK:   |
+// CHECK: 1 | let obj = {fun foo() { return 42; }};
+// CHECK:   |            ^
+// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
+// CHECK: Try '{{.*zomc}} compile --help' for more information.
