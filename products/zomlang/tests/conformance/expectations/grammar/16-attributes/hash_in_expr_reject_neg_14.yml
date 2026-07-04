@@ -1,0 +1,4 @@
+section: "§16 Hash in Expression REJECT"
+covers_rule: "HASH in expression position without LBRACK"
+expected: "REJECT"
+notes: ["Stray '#' rejected in expression initializer position."]

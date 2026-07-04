@@ -1,0 +1,27 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/obj_shorthand_pos.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #10 @1:1..2:1 file_name="obj_shorthand_pos.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #9 @1:1..1:21
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #8 @1:1..1:21 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #7 @1:5..1:20 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #6 @1:5..1:20
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:8 name="obj"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     ObjectLiteralExpr #5 @1:11..1:20
+// CHECK-NEXT:                       properties:
+// CHECK-NEXT:                         ObjectProperty #2 @1:12..1:13 name="x" short_form=true
+// CHECK-NEXT:                           value: null
+// CHECK-NEXT:                         ObjectProperty #3 @1:15..1:16 name="y" short_form=true
+// CHECK-NEXT:                           value: null
+// CHECK-NEXT:                         ObjectProperty #4 @1:18..1:19 name="z" short_form=true
+// CHECK-NEXT:                           value: null
+// CHECK-NEXT:       attrs: null

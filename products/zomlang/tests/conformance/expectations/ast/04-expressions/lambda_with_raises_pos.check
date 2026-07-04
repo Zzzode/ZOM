@@ -1,0 +1,42 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/lambda_with_raises_pos.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #16 @1:1..2:1 file_name="lambda_with_raises_pos.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #15 @1:1..1:47
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #14 @1:1..1:47 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #13 @1:5..1:46 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #12 @1:5..1:46
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="f"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     LambdaExpression #11 @1:9..1:46
+// CHECK-NEXT:                       params_id:
+// CHECK-NEXT:                         FunctionParameterList #4 @1:9..1:17 nparams=1
+// CHECK-NEXT:                           params:
+// CHECK-NEXT:                             FunctionParameterDecl #3 @1:10..1:16 name="x"
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #2 @1:13..1:16 kind=I32
+// CHECK-NEXT:                               default_: null
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                       ret_ty:
+// CHECK-NEXT:                         PredefinedTypeExpr #5 @1:21..1:24 kind=I32
+// CHECK-NEXT:                       raises_ty:
+// CHECK-NEXT:                         NamedTypeExpr #7 @1:32..1:37
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #6 @1:32..1:37 segments=["Error"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                       body: null
+// CHECK-NEXT:                       expr_body:
+// CHECK-NEXT:                         BinaryExpr #10 @1:41..1:46 op=Add
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #8 @1:41..1:42 name="x"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #9 @1:45..1:46 base=10 value="1"
+// CHECK-NEXT:       attrs: null

@@ -1,0 +1,37 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/lambda_simple_pos.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #13 @1:1..2:1 file_name="lambda_simple_pos.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #12 @1:1..1:27
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #11 @1:1..1:27 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #10 @1:5..1:26 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #9 @1:5..1:26
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="f"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     LambdaExpression #8 @1:9..1:26
+// CHECK-NEXT:                       params_id:
+// CHECK-NEXT:                         FunctionParameterList #4 @1:9..1:17 nparams=1
+// CHECK-NEXT:                           params:
+// CHECK-NEXT:                             FunctionParameterDecl #3 @1:10..1:16 name="x"
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #2 @1:13..1:16 kind=I32
+// CHECK-NEXT:                               default_: null
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                       ret_ty: null
+// CHECK-NEXT:                       raises_ty: null
+// CHECK-NEXT:                       body: null
+// CHECK-NEXT:                       expr_body:
+// CHECK-NEXT:                         BinaryExpr #7 @1:21..1:26 op=Add
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #5 @1:21..1:22 name="x"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #6 @1:25..1:26 base=10 value="1"
+// CHECK-NEXT:       attrs: null

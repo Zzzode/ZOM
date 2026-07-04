@@ -1,0 +1,4 @@
+section: "§5.6 Simple lambda expression with single typed parameter"
+covers_rule: "lambdaExpr"
+expected: "ACCEPT"
+notes: []

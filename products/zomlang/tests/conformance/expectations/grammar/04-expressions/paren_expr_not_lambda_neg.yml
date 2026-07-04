@@ -1,0 +1,4 @@
+section: "§5.1 Parenthesized expression must not be misparsed as lambda"
+covers_rule: "lambdaExpr"
+expected: "ACCEPT"
+notes: ["Parenthesized expression (x + 1) is valid syntax but should NOT be parsed as a lambda expression. The _neg_ suffix indicates this is a negative test for lambda detection, not a grammar reject test."]

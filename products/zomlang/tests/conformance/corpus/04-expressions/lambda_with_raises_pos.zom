@@ -1,0 +1,1 @@
+let f = (x: i32) -> i32 raises Error => x + 1;

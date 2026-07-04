@@ -1,0 +1,27 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/obj_key_value_pos.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #11 @1:1..2:1 file_name="obj_key_value_pos.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #10 @1:1..1:24
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #9 @1:1..1:24 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #8 @1:5..1:23 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #7 @1:5..1:23
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:8 name="obj"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     ObjectLiteralExpr #6 @1:11..1:23
+// CHECK-NEXT:                       properties:
+// CHECK-NEXT:                         ObjectProperty #3 @1:12..1:16 name="a" short_form=false
+// CHECK-NEXT:                           value:
+// CHECK-NEXT:                             IntLiteral #2 @1:15..1:16 base=10 value="1"
+// CHECK-NEXT:                         ObjectProperty #5 @1:18..1:22 name="b" short_form=false
+// CHECK-NEXT:                           value:
+// CHECK-NEXT:                             IntLiteral #4 @1:21..1:22 base=10 value="2"
+// CHECK-NEXT:       attrs: null

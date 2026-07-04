@@ -1,0 +1,4 @@
+section: "§5.1 Object literal with shorthand property names"
+covers_rule: "objectLiteral"
+expected: "ACCEPT"
+notes: []

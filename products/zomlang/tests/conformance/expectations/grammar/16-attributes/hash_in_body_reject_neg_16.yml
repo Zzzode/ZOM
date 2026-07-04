@@ -1,0 +1,4 @@
+section: "§16 Hash in Function Body REJECT"
+covers_rule: "HASH in statement position without LBRACK"
+expected: "REJECT"
+notes: ["Stray '#' rejected as standalone statement in function body."]

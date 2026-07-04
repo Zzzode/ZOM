@@ -121,6 +121,13 @@ bool Parser::Impl::followsFieldTypeColonWithoutSemicolon(size_t index) const {
          kind == ast::SyntaxKind::LeftBrace || isPrimitiveTypeKeyword(kind);
 }
 
+// RFC 0002: Validation helper, NOT a production-selection range scan.  Callers in
+// parsePostfixExpressionAt (expression-parser.cc) have already identified a potential struct
+// literal — either by finding '<'…'>' followed by '{' (line 853), or by seeing '{' directly
+// (line 944).  This function merely validates that the tokens preceding '{' form a valid
+// type path (with optional generic arguments).  Forward-only scanning via consumeTypePath
+// and consumeBalancedAngleList is used to confirm the type-path shape, not to choose
+// between competing productions.
 bool Parser::Impl::isStructLiteralTypeReference(size_t start, size_t end) const {
   if (start >= end) { return false; }
 
@@ -128,6 +135,9 @@ bool Parser::Impl::isStructLiteralTypeReference(size_t start, size_t end) const 
   if (!consumeTypePath(cursor, end)) { return false; }
   if (cursor.position() == end) { return true; }
 
+  // consumeBalancedAngleList validates that the <…> generic argument list is balanced;
+  // this is boundary-detection within an already-identified type path, not production
+  // selection.
   return cursor.peek() == ast::SyntaxKind::LessThan && consumeBalancedAngleList(cursor, end) &&
          cursor.position() == end;
 }
@@ -207,6 +217,11 @@ size_t Parser::Impl::findMatchingAngleClose(size_t openIndex, size_t limit) cons
   return limit;
 }
 
+// RFC 0002: Boundary detection / content validation for a <…> generic argument list.
+// Callers (isStructLiteralTypeReference, consumeFunctionTypeHead) have already committed to
+// parsing a specific production; this function only advances the cursor through the balanced
+// angle brackets and reports whether the content is well-formed.  Not used for production
+// selection.
 bool Parser::Impl::consumeBalancedAngleList(TokenCursor& cursor, size_t limit) const {
   if (cursor.position() >= limit || cursor.peek() != ast::SyntaxKind::LessThan) { return false; }
 
@@ -994,11 +1009,15 @@ bool Parser::Impl::isInitializerGenericAngle(size_t openAngle, size_t limit) con
 ast::NodeId Parser::Impl::parseExternTypeAliasDecl(AstFactory& builder, size_t start,
                                                    size_t end) const {
   const size_t nameIndex = start + 1;
-  // RFC 0002: Boundary detection within a known production. The caller already identified
-  // this as an extern type alias (via 'type' keyword), so consumeBalancedUntil is used only
-  // to find the '=' separator between name and target type, not to select between productions.
-  TokenCursor equalsCursor = tokenCursorAt(nameIndex + 1);
-  const size_t equals = consumeBalancedUntil(equalsCursor, end, ast::SyntaxKind::Equals);
+  // RFC 0002: Boundary detection — find the end of the type path name (e.g. "Foo",
+  // "Foo.Bar", "Foo::Bar"), then check whether the following token is '='.  This replaces
+  // the old consumeBalancedUntil scan: the name is always a type path, so findTypePathEnd
+  // gives us the exact boundary and we test the next token directly.
+  const size_t nameEnd = findTypePathEnd(nameIndex, end);
+  const size_t equals =
+      (nameEnd > nameIndex && nameEnd < end && kindAt(nameEnd) == ast::SyntaxKind::Equals)
+          ? nameEnd
+          : end;
   if (nameIndex >= end || kindAt(nameIndex) != ast::SyntaxKind::Identifier) {
     diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(diagnosticLoc(nameIndex));
     return ast::NodeId();

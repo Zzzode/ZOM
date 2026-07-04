@@ -1,0 +1,4 @@
+section: "§16 Hash in Type REJECT"
+covers_rule: "HASH in type position without LBRACK"
+expected: "REJECT"
+notes: ["Stray '#' rejected in type annotation position."]

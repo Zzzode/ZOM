@@ -1,0 +1,4 @@
+section: "§20.4 extern block simple type alias: Foo bound to Bar"
+covers_rule: "externItem (externTypeAlias alt)"
+expected: "ACCEPT"
+notes: []

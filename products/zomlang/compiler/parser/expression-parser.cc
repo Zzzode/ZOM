@@ -436,25 +436,25 @@ ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t st
                                         raisesTy, parseBlock(builder, bodyOpen, end));
 }
 
-// RFC 0002: All consumeBalanced* calls within this function are boundary detection only.
-// The production is already identified (lambda/arrow function); scans find parameter list,
-// return type, and body boundaries.
+// RFC 0002: Two-stage boundary detection.
+// Stage 1: findMatchingRightParen(start, end) — caller has already seen '(' and committed to
+// a parenthesized construct; this locates the matching ')' as the parameter-list boundary.
+// Stage 2: consumeBalancedUntil from closeParen+1 — within the remaining signature
+// (')' … '=>'), scan for '=>' at depth 0. Between ')' and '=>' there may be optional
+// '-> RetType' and 'raises ExType' clauses.
 ast::NodeId Parser::Impl::parseLambdaExpression(AstFactory& builder, size_t start,
                                                 size_t end) const {
   if (kindAt(start) != ast::SyntaxKind::LeftParen) { return ast::NodeId(); }
 
-  TokenCursor fatArrowCursor = tokenCursorAt(start);
+  // Stage 1: boundary detection — find the matching ')' that closes the parameter list.
+  const size_t closeParen = findMatchingRightParen(start, end);
+  if (closeParen >= end) { return ast::NodeId(); }
+
+  // Stage 2: boundary detection — scan from ')' onward for '=>' within the remaining signature.
+  TokenCursor fatArrowCursor = tokenCursorAt(closeParen + 1);
   const size_t fatArrow =
       consumeBalancedUntil(fatArrowCursor, end, ast::SyntaxKind::EqualsGreaterThan);
   if (fatArrow >= end) { return ast::NodeId(); }
-
-  TokenCursor closeParenCursor = tokenCursorAt(start);
-  const size_t closeParen = consumeBalancedGroupEnd(
-      closeParenCursor, fatArrow, ast::SyntaxKind::LeftParen, ast::SyntaxKind::RightParen);
-  if (closeParen >= fatArrow) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), ")"_zc);
-    return ast::NodeId();
-  }
 
   const ast::NodeId params = parseFunctionParameterList(builder, start, closeParen);
 
@@ -517,8 +517,59 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
         properties.add(builder.makeObjectSpread(
             rangeFor(itemStart, itemEnd), parseExpressionRange(builder, itemStart + 1, itemEnd)));
       } else {
-        TokenCursor colonCursor = tokenCursorAt(itemStart);
-        const size_t colon = consumeBalancedUntil(colonCursor, itemEnd, ast::SyntaxKind::Colon);
+        // RFC 0002: Cursor-driven boundary detection for object property key/value separation.
+        // Instead of range-scanning the entire item for a colon at depth 0
+        // (consumeBalancedUntil), we identify the key type from the first token and use
+        // targeted boundary detection to find where the key ends and whether a colon follows.
+        //
+        // Key forms and detection strategy:
+        //   1. Computed:   [expr]: value   — find matching ']' via findMatchingRightBracket,
+        //                                   check if next token is ':'
+        //   2. String:     "foo": value    — single token, check if next is ':'
+        //   3. Method:     fun foo() {}    — fun/get/set keyword; if next token is NOT ':' it
+        //                    get foo() {}    is a method shorthand (no colon). If next token IS
+        //                    set foo(v) {}   ':' the keyword is used as a property name.
+        //   4. Identifier: foo: value / foo — find type path end via findTypePathEnd, check
+        //                                   if token at pathEnd is ':'
+        //
+        // This avoids false positives from nested colons (e.g. ternary inside computed keys,
+        // or colons inside nested object literal values) because each key type has a known
+        // structural boundary that we detect directly, rather than scanning for the first
+        // depth-0 colon.
+        size_t colon = itemEnd;  // sentinel: no colon found
+        const ast::SyntaxKind firstKind = kindAt(itemStart);
+
+        if (firstKind == ast::SyntaxKind::LeftBracket) {
+          // Computed key: find matching ']' and check if ':' follows.
+          // findMatchingRightBracket tracks bracket/paren/brace depth, so a ternary ':'
+          // inside the key expression (e.g. [a ? b : c]) is correctly ignored.
+          const size_t closeBracket = findMatchingRightBracket(itemStart, itemEnd);
+          if (closeBracket + 1 < itemEnd && kindAt(closeBracket + 1) == ast::SyntaxKind::Colon) {
+            colon = closeBracket + 1;
+          }
+        } else if (firstKind == ast::SyntaxKind::StringLiteral) {
+          // String literal key: single token boundary. Check if ':' follows immediately.
+          if (itemStart + 1 < itemEnd && kindAt(itemStart + 1) == ast::SyntaxKind::Colon) {
+            colon = itemStart + 1;
+          }
+        } else if (firstKind == ast::SyntaxKind::FunKeyword ||
+                   firstKind == ast::SyntaxKind::GetKeyword ||
+                   firstKind == ast::SyntaxKind::SetKeyword) {
+          // Method/getter/setter keyword. If the next token is ':' the keyword is being
+          // used as a property name; otherwise it's a method shorthand with no colon.
+          if (itemStart + 1 < itemEnd && kindAt(itemStart + 1) == ast::SyntaxKind::Colon) {
+            colon = itemStart + 1;
+          }
+        } else if (firstKind == ast::SyntaxKind::Identifier) {
+          // Identifier key: find the end of the identifier path (handles dotted access
+          // like foo.bar) and check whether a colon sits right at the boundary.
+          const size_t pathEnd = findTypePathEnd(itemStart, itemEnd);
+          if (pathEnd > itemStart && pathEnd < itemEnd && kindAt(pathEnd) == ast::SyntaxKind::Colon) {
+            colon = pathEnd;
+          }
+        }
+        // else: unrecognized key form — treat as shorthand (colon stays at itemEnd)
+
         ast::NodeId value;
         bool shortForm = false;
         if (colon < itemEnd) {

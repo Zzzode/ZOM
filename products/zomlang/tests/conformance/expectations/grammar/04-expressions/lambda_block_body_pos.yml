@@ -1,0 +1,4 @@
+section: "§5.6 Lambda expression with block body containing return statement"
+covers_rule: "lambdaExpr"
+expected: "ACCEPT"
+notes: []

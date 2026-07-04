@@ -1,0 +1,4 @@
+section: "§5.6 Lambda expression with return type and raises clause"
+covers_rule: "lambdaExpr"
+expected: "ACCEPT"
+notes: []

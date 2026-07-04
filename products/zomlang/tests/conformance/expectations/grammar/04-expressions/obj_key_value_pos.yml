@@ -1,0 +1,4 @@
+section: "§5.1 Object literal with explicit key-value pairs"
+covers_rule: "objectLiteral"
+expected: "ACCEPT"
+notes: []

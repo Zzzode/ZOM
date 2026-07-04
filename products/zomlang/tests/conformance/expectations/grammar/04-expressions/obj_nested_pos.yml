@@ -1,0 +1,4 @@
+section: "§5.1 Nested object literal expression"
+covers_rule: "objectLiteral"
+expected: "ACCEPT"
+notes: []
