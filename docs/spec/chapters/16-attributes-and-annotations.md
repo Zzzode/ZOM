@@ -877,7 +877,7 @@ T0-24 zom::panic(strategy)
 T0-25 zom::oom(strategy)
       // Crate-level out-of-memory policy selector.
       // Grammar  : zom::oom = '(' ( "error" | "panic" ) ')'
-      // Scope    : crate root only. Default = "error" (TBD-5 cross-ref).
+      // Scope    : crate root only. Default = "error" (§11.8 cross-ref).
       // Semantics: "error" — every built-in allocation function returns a
       //   union `T | AllocError` rather than panicking, forcing the
       //   caller to handle OOM explicitly via `?!` or match. "panic" —
@@ -898,7 +898,7 @@ T0-26 zom::error(trace)
       //   is propagated via `?!`), the runtime captures a stack
       //   backtrace and stores it in the Error's hidden side-table slot,
       //   or in an explicit `Backtrace` field if one is annotated with
-      //   `#[backtrace]` (see T0-28). Cross-reference TBD-10 for the
+      //   `#[backtrace]` (see T0-28). Cross-reference §11.11 for the
       //   runtime side-table design.
 
 T0-27 zom::error_boundary

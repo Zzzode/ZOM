@@ -2,7 +2,7 @@
 rfc: 2
 title: Parser Architecture
 type: compiler
-status: ACCEPTED
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
@@ -1385,3 +1385,5 @@ decision record in the status history below.
 | 2026-07-04 | REVIEW | Clarified object literal invalid syntax diagnostics: renamed `ObjectLiteralComputedKeyNotSupported` → `ObjectLiteralPropertyNameExpected` (ZOM2059) and `ObjectLiteralMethodNotSupported` → `ObjectLiteralMethodSyntax` (ZOM2060) to reflect that computed keys and method shorthand are not "not supported" but simply invalid grammar per ZOM's pure-record design (`PropertyName ::= Identifier`). Fixed spec `04-expressions.md` to use function-valued properties instead of method shorthand examples. All 110 expression AST tests pass. |
 | 2026-07-04 | REVIEW | Fixed keyword-as-property-name parsing in object literals: `{in: 1, is: true, let: 42}` now correctly produce `short_form=false` with proper values. Added `lexer::isKeyword()` catch-all branch in `parseObjectLiteralProperties` to handle keywords followed by `:` as property names. This fixed 3 pre-existing AST test failures. All 663 tests now pass. |
 | 2026-07-05 | ACCEPTED | All acceptance criteria verified: fail-closed `parse()`, no public lookahead API, `TokenCursor`-only token consumption, no range-scanning production selection, typed `AstFactory` helpers, AST schema verifier, `parser-coverage.yml` (215 syntactic + 35 lexical productions), zero AST verdict mismatches (667 corpus inputs), 37 unit tests (recovery + schema-verifier + token-cursor + parser), 742/742 ctest passing, `check-rfc.py` passing, `check-format.py` passing, `check-parser-coverage.py` passing, `check-ast-coverage.py` passing, `check-lexer-architecture.py` passing. Trivia boundary documented in `docs/design/trivia-boundary.md`. |
+| 2026-07-05 | IMPLEMENTING | Parser implementation complete and verified across all gates. |
+| 2026-07-05 | LANDED | Implementation, tests, and documentation complete. Parser architecture fully landed with 742/742 ctest passing, all verification gates green. |

@@ -325,7 +325,7 @@ and, if captured by reference, only values whose type carries `Shared`.
 Violations raise **ZOM1050 NotSendable** and **ZOM1051 NotShared** respectively,
 with a secondary note pointing at the capture site.
 
-### 15.2.3 Cancellation Semantics (Ch.11 TBD-6 Alignment)
+### 15.2.3 Cancellation Semantics (Ch.11 §11.12 Alignment)
 
 `cancel_all(scope)` performs exactly two atomic operations:
 
@@ -761,7 +761,7 @@ a supervised permanent task is not a terminal condition — it is a recovered
 fault.
 
 **`abort`.** A panic immediately invokes `std::process::abort()`, bypassing
-all destructors below the panic frame. Per Ch.11 TBD-1, abort is recommended
+all destructors below the panic frame. Per Ch.11 §11.6, abort is recommended
 for binary-size-sensitive deployments where unwinder tables are prohibitive.
 
 Scope boundary is an architectural property. If the same crate contains

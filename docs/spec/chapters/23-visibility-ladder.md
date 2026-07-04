@@ -109,7 +109,7 @@ Three mutually exclusive tokens control extensibility: `final`, `sealed`, and `o
 
 ### 23.2.3  Enums
 
-An enum is final by nature: its variant set is closed at the declaration site. The extensibility keywords `final`, `sealed`, and `open` are accepted on enum declarations for syntactic uniformity but carry no additional semantics. Enum variants inherit the visibility of the enum declaration per §MOD-TBD-7; per-variant visibility modifiers are not permitted in v1 (see §23.3 row "Inside `enum` variant field").
+An enum is final by nature: its variant set is closed at the declaration site. The extensibility keywords `final`, `sealed`, and `open` are accepted on enum declarations for syntactic uniformity but carry no additional semantics. Enum variants inherit the visibility of the enum declaration (see §23.3 row "Inside `enum` variant field"); per-variant visibility modifiers are not permitted in v1.
 
 ### 23.2.4  Marker Declarations
 
@@ -127,7 +127,7 @@ The following table is the single source of truth for default visibility. It res
 | **Inside `export class`** | **private** (Level 1). Class-internal only. The most restrictive default. | public (Level 8). Visible to all consumers of the crate; subclasses also see it of course. | private (Level 1). Explicit. | protected (Level 7). Subclass-access hook. |
 | **Inside non-exported `class`** | private (Level 1). Same rule as exported class; the default does not depend on container export status. | Crate-public (reach equivalent to Level 5). Because the container itself is not exported, the member cannot cross the crate boundary. This matches the user intent "all modules in this crate see this method." | private (Level 1). Explicit. | protected (Level 7). Subclass hook. |
 | **Inside `interface`** (method declaration or default method body) | **public** (Level 8 default). This is the *one* exception to the private-default rule. Interfaces are contracts and contract methods are public by default, matching user intuition from Java, C#, and TypeScript. | public. No-op explicit. | **Level 1, but only for default-method bodies with bodies.** A `private fun helper() { ... }` declared with a body inside an interface default body is a non-dispatch, non-vtable helper callable only from other default methods of the same interface. An abstract (body-less) interface method marked `private` is an error in the 0830–0839 band. | protected. Abstract method must be implemented by subclasses. Default body: same access as if declared in a class. |
-| **Inside `enum` variant field** | private (Level 1). Defaults match the class rule. The enum variant itself inherits enum container visibility per §MOD-TBD-7; per-variant modifiers are disallowed in v1. | public. Fields are readable and writable by all callers. | private. Explicit. | protected. Rare on enums but supported for OOP-adjacent patterns. |
+| **Inside `enum` variant field** | private (Level 1). Defaults match the class rule. The enum variant itself inherits enum container visibility; per-variant modifiers are disallowed in v1. | public. Fields are readable and writable by all callers. | private. Explicit. | protected. Rare on enums but supported for OOP-adjacent patterns. |
 | **Inside `struct`** | private (Level 1). Match the class rule. | public. | private. Explicit. | protected. |
 
 ### 23.3.1  Visibility Flags Encoding
@@ -422,7 +422,7 @@ export enum NodeKind {
     Leaf(u64),
     Branch(export open class ... )  // Not available.
 }
-// ^^^ enum is export. All variants inherit export visibility (per §MOD-TBD-7).
+// ^^^ enum is export. All variants inherit export visibility (per §23.2.3).
 //     No per-variant modifier.
 ```
 

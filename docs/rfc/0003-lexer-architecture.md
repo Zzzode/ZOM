@@ -2,7 +2,7 @@
 rfc: 3
 title: Lexer Architecture
 type: compiler
-status: ACCEPTED
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, spec-audit, verification]
@@ -693,3 +693,5 @@ None
 | 2026-07-03 | REVIEW | Removed `BooleanLiteral` from `kinds.h` LEXICAL TOKENS section — it was never produced by the lexer (`true`/`false` are `TrueKeyword`/`FalseKeyword`, consistent with `NullKeyword`). Token inventory now clean: no phantom lexical tokens. |
 | 2026-07-04 | REVIEW | Confirmed `#[` two-token design: `Hash` + `LeftBracket` are lexed independently and detected as attribute start via source-range adjacency check in the parser. This matches Rust's proven design pattern, provides better error recovery (can report partial matches), and preserves `#` for future syntax extensions. Verified with 24 attribute conformance tests including `# [foo]` whitespace rejection. |
 | 2026-07-05 | ACCEPTED | All acceptance criteria verified: five-way token inventory agreement (`02-lexical-structure.md`, `ZomLexer.g4`, `kinds.h`, `token.cc`, `lexer.cc`), single `ErrorDefault` token for `?:`, `?!`/`!!` postfix operators, `#[` two-token design with adjacency check, `::` single `ColonColon` token, character literal single-scalar rule, UTF-8 source-ranged diagnostics with `Unknown` recovery, no public lexer snapshots, lazy `TokenStream` backed by `Lexer::lex(Token&)`, template literal lexer-owned modes, template substitution brace depth tracked by lexer, right-angle splitting in `TokenCursor`, no parser calls to lexer state/rescans, `reScanGreaterToken()` absent, `reScanTemplateToken()` absent, 109 lexer unit tests across 9 files, zero lexer-driven conformance mismatches, `check-rfc.py` passing, `check-format.py` passing, `check-lexer-architecture.py` passing (UCD 15.1.0, 660 ID start ranges, 769 ID part ranges), 742/742 ctest passing. |
+| 2026-07-05 | IMPLEMENTING | Lexer implementation complete and verified across all gates. |
+| 2026-07-05 | LANDED | Implementation, tests, and documentation complete. Lexer architecture fully landed with 742/742 ctest passing, all verification gates green. |

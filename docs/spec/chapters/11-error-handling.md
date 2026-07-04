@@ -38,7 +38,7 @@ ZOM permanently rejects the `try`/`catch`/`throw` family of language
 mechanisms. These patterns are fundamentally incompatible with: (a)
 deterministic linear resource cleanup — destructors must run in lock-step
 with lexical scope exit, not as a side-effect of an unwinder whose behavior
-depends on caller context (see TBD-6 and Chapter 15); (b) the explicit
+depends on caller context (see §11.12 and Chapter 15); (b) the explicit
 marker system, which requires per-call-site annotation of propagation so
 reviewers can trace every failure path; and (c) the zero-cost abstraction
 goal, since exception-table generation and personality-routine dispatch
@@ -76,7 +76,7 @@ graph LR
   distinct types even if name, parameters, and success type coincide.
 - **Chapter 15 Concurrency**: `scope.cancel` semantics, cooperative
   cancellation, `CancelError` in `raises` sets, and the destructor
-  non-interruption guarantee (TBD-6).
+  non-interruption guarantee (§11.12).
 - **Chapter 16 Attributes**: `#[zom::derive(Error)]`, `#[zom::panic(...)]`,
   `#[zom::oom(...)]`, `#[zom::error(trace)]`, and the derive schema system.
 - **Chapter 17 Grammar**: Formal EBNF for the `raises` clause, the `?!` and
@@ -350,7 +350,7 @@ via `#![zom::deny(unwrap_in_production)]` or `--deny ZOM0955`.
 
 ---
 
-## 11.6 Panic Strategy (TBD-1)
+## 11.6 Panic Strategy
 
 A panic is an unrecoverable programmer-fault condition. It is NOT the
 mechanism for expected failures — those belong in `raises`. Panic sources:
@@ -393,7 +393,7 @@ flushes, checkpoint writes) does not execute.
 
 ---
 
-## 11.7 `zom::panic::catch_unwind` (TBD-7)
+## 11.7 `zom::panic::catch_unwind`
 
 `catch_unwind` captures an unwinding panic and converts it to a typed
 result. Its primary and strongly recommended use is as an FFI safety
@@ -443,7 +443,7 @@ request-scoped handlers that legitimately convert panics to 500s.
 
 ---
 
-## 11.8 OOM Strategy (TBD-5)
+## 11.8 OOM Strategy
 
 Out-of-memory is a finite-resource exhaustion, not a bug. In ZOM,
 allocation failure is a typed error by default — not a panic.
@@ -499,7 +499,7 @@ fixed-size heaps where OOM triggers a power-cycle, or rapid prototyping.
 
 ---
 
-## 11.9 The `Error` Interface and `#[zom::derive(Error)]` (TBD-8)
+## 11.9 The `Error` Interface and `#[zom::derive(Error)]`
 
 The `Error` interface is the standard hook for user-defined error types
 to participate in automatic printing, chain formatting, backtrace
@@ -566,7 +566,7 @@ When enabled, the compiler either:
 
 ---
 
-## 11.10 `main()` and Top-Level Execution (TBD-9)
+## 11.10 `main()` and Top-Level Execution
 
 ZOM's `main` supports `raises` natively and is implicitly async — no
 separate `async fun main` syntax. Zero Function Color design (Chapter 15).
@@ -622,7 +622,7 @@ Custom entry points via `#[zom::start]` are specified in Chapter 16.
 
 ---
 
-## 11.11 Backtrace Capture Strategy (TBD-10)
+## 11.11 Backtrace Capture Strategy
 
 ZOM separates backtrace capture into two independent channels: panic
 backtraces and error backtraces, each with its own defaults and opt-in
@@ -676,7 +676,7 @@ native and constrained builds without conditional compilation.
 
 ---
 
-## 11.12 Cooperative Cancellation and Destructors (TBD-6)
+## 11.12 Cooperative Cancellation and Destructors
 
 Detailed cancellation semantics live in Chapter 15. The error-handling
 contract is specified here because it interacts with `raises`, destructor
@@ -880,17 +880,19 @@ and helper attributes `#[source]`, `#[backtrace]`,
 
 ---
 
-## 11.16 TBD Conformance Map
+## 11.16 Design Decision Registry
 
-| TBD | Frozen Design | Specified In |
-|---|---|---|
-| TBD-1 | Debug: unwind / Release: abort; `#![zom::panic(...)]` override | §11.6 Panic Strategy |
-| TBD-2 | `Result<T,E>` = structural `T \| E`; `raises E` sugar; `?!` = match+return; all compile to tagged union IR | §11.1, §11.2, §11.3 |
-| TBD-3 | `T!!E` type = double error union; `expr!!` = unwrap-or-panic | §11.5 `!!` Dual-Axis Operator |
-| TBD-4 | Open `interface Try` with associated types; user-extensible; NOT object-safe | §11.4 The Open `Try` Interface |
-| TBD-5 | Value-error default for OOM (`Alloc.Error`); `#![zom::oom(panic)]` opt-out | §11.8 OOM Strategy |
-| TBD-6 | Cancellation = cooperative flag + awaken; never force-interrupt destructors; no CancelSafe in v1 | §11.12 Cooperative Cancellation |
-| TBD-7 | `catch_unwind` provided; lint restricts to FFI / error boundary | §11.7 `catch_unwind` |
-| TBD-8 | `Error` interface; `#[zom::derive(Error)]` auto-generation rules | §11.9 `Error` Interface and Derive |
-| TBD-9 | `fun main() -> unit raises E` supported; implicitly async; runtime exit contract | §11.10 `main()` and Top-Level Execution |
-| TBD-10 | Panic backtrace always-on; error backtrace opt-in; Debug ON / Release OFF; `ZOM_BACKTRACE` env | §11.11 Backtrace Capture Strategy |
+The following design decisions were previously marked TBD and have now been frozen:
+
+| ID | Decision | Specified In | Status |
+|---|---|---|---|
+| D-1 | Debug: unwind / Release: abort; `#![zom::panic(...)]` override | §11.6 Panic Strategy | Resolved |
+| D-2 | `Result<T,E>` = structural `T \| E`; `raises E` sugar; `?!` = match+return; all compile to tagged union IR | §11.1, §11.2, §11.3 | Resolved |
+| D-3 | `T!!E` type = double error union; `expr!!` = unwrap-or-panic | §11.5 `!!` Dual-Axis Operator | Resolved |
+| D-4 | Open `interface Try` with associated types; user-extensible; NOT object-safe | §11.4 The Open `Try` Interface | Resolved |
+| D-5 | Value-error default for OOM (`Alloc.Error`); `#![zom::oom(panic)]` opt-out | §11.8 OOM Strategy | Resolved |
+| D-6 | Cancellation = cooperative flag + awaken; never force-interrupt destructors; no CancelSafe in v1 | §11.12 Cooperative Cancellation | Resolved |
+| D-7 | `catch_unwind` provided; lint restricts to FFI / error boundary | §11.7 `catch_unwind` | Resolved |
+| D-8 | `Error` interface; `#[zom::derive(Error)]` auto-generation rules | §11.9 `Error` Interface and Derive | Resolved |
+| D-9 | `fun main() -> unit raises E` supported; implicitly async; runtime exit contract | §11.10 `main()` and Top-Level Execution | Resolved |
+| D-10 | Panic backtrace always-on; error backtrace opt-in; Debug ON / Release OFF; `ZOM_BACKTRACE` env | §11.11 Backtrace Capture Strategy | Resolved |

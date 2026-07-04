@@ -540,8 +540,7 @@ major version. All features requested by all consumers of that
 for building the same crate twice with different feature sets in the same
 link unit.
 
-Features enable conditional compilation in two forms (see MOD-TBD-9; the
-attribute grammar is in Ch.16; only the manifest portion is here):
+Features enable conditional compilation in two forms (the attribute grammar is in Ch.16; only the manifest portion is here):
 
 - `#[zom::cfg(feature = "name")]` — item or block is present only when
   feature `name` is enabled.
@@ -644,7 +643,7 @@ fields:
   pattern (even if matched by `members`) is skipped.
 - `resolver`: `"2"` (default). `"1"` is accepted by the parser but
   semantically treated as a legacy alias for `"2"`; there is no
-  behavioral difference in v1.0 (see MOD-TBDs: no legacy behavior).
+  behavioral difference in v1.0 (no legacy resolver behavior).
 - `package`: Inheritable package metadata. See §21.4.2.
 - `dependencies`: Inheritable dependency versions. See §21.4.2.
 
