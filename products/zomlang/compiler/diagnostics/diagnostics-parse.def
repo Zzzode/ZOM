@@ -105,11 +105,10 @@ DIAG(DanglingHash, kError,
      "Stray '#' with no attribute following; expected '[' after '#' to start an attribute.", 0)
 DIAG(DanglingHashHelp, kNote,
      "To start an attribute, write #[path::to::attribute].", 0)
-DIAG(ObjectLiteralComputedKeyNotSupported, kError,
-     "Computed property keys are not supported in object literals. Use an identifier as the property name",
-     0)
-DIAG(ObjectLiteralMethodNotSupported, kError,
-     "Method syntax is not supported in object literals. Use a property with a function value instead",
+DIAG(ObjectLiteralPropertyNameExpected, kError,
+     "Expected an identifier as object property name", 0)
+DIAG(ObjectLiteralMethodSyntax, kError,
+     "Method syntax is not allowed in object literals. Use a property with a function value instead",
      0)
 DIAG(VariableDeclarationNameNotAllowed, kError,
      "'{0}' is not allowed as a variable declaration name", 1)

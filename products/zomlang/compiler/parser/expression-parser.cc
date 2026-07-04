@@ -523,11 +523,11 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
         // targeted boundary detection to find where the key ends and whether a colon follows.
         //
         // Key forms and detection strategy:
-        //   1. Computed:   [expr]: value   — NOT SUPPORTED in ZOM (PropertyName ::= Identifier).
-        //                                   Emits ObjectLiteralComputedKeyNotSupported diagnostic.
+        //   1. Computed:   [expr]: value   — invalid syntax (PropertyName ::= Identifier).
+        //                                   Emits ObjectLiteralPropertyNameExpected diagnostic.
         //   2. String:     "foo": value    — single token, check if next is ':'
-        //   3. Method:     fun foo() {}    — NOT SUPPORTED in ZOM object literals.
-        //                    get foo() {}    Emits ObjectLiteralMethodNotSupported diagnostic.
+        //   3. Method:     fun foo() {}    — invalid syntax in object literals.
+        //                    get foo() {}    Emits ObjectLiteralMethodSyntax diagnostic.
         //                    set foo(v) {}
         //   4. Keyword:    fun: value      — keyword used as property name (next token is ':')
         //   5. Identifier: foo: value / foo — find type path end via findTypePathEnd, check
@@ -542,10 +542,10 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
         bool skipProperty = false;
 
         if (firstKind == ast::SyntaxKind::LeftBracket) {
-          // Computed key: not supported in ZOM object literals.
+          // Computed key: invalid syntax in ZOM object literals.
           // PropertyName ::= Identifier per the grammar reference.
           if (!shouldSuppressDiagnostic(itemStart)) {
-            diagnosticEngine.diagnose<diagnostics::DiagID::ObjectLiteralComputedKeyNotSupported>(
+            diagnosticEngine.diagnose<diagnostics::DiagID::ObjectLiteralPropertyNameExpected>(
                 diagnosticLoc(itemStart));
           }
           skipProperty = true;
@@ -562,11 +562,10 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
             // Keyword used as property name (e.g. {fun: value}).
             colon = itemStart + 1;
           } else {
-            // Method syntax: not supported in ZOM object literals.
+            // Method syntax: invalid in object literals per ZOM grammar.
             if (!shouldSuppressDiagnostic(itemStart)) {
-              diagnosticEngine
-                  .diagnose<diagnostics::DiagID::ObjectLiteralMethodNotSupported>(
-                      diagnosticLoc(itemStart));
+              diagnosticEngine.diagnose<diagnostics::DiagID::ObjectLiteralMethodSyntax>(
+                  diagnosticLoc(itemStart));
             }
             skipProperty = true;
           }

@@ -78,6 +78,8 @@ let extended = [0, ...base, 4, 5]; // [0, 1, 2, 3, 4, 5]
 
 ### Object Literals
 
+Object literals create anonymous record values. Property names must be identifiers; computed keys and method shorthand syntax are not valid.
+
 ```zom
 // Empty object
 let empty = {};
@@ -89,32 +91,24 @@ let person = {
     isActive: true
 };
 
-// Object literal property names must be identifiers.
-let obj = {
-    dynamicKey: "value",
-    computedKey: 42
-};
-
 // Property shorthand
 let name = "Bob";
 let age = 25;
 let shorthand = { name, age }; // Same as { name: name, age: age }
 
-// Object with methods
+// Object with function-valued properties (not method syntax)
 let calculator = {
     value: 0,
-    add(x: i32) {
-        this.value += x;
-    },
-    get result() {
-        return this.value;
-    }
+    add: fun(x: i32) { this.value += x; },
+    result: fun() -> i32 { return this.value; }
 };
 
 // Spread properties
 let base = { a: 1, b: 2 };
 let extended = { ...base, c: 3 }; // { a: 1, b: 2, c: 3 }
 ```
+
+> **Note:** Object literals in ZOM are pure records. Method shorthand (`{ m() {} }`) and computed keys (`{ [expr]: v }`) are not valid syntax. To attach behavior to an object, use function-valued properties as shown above, or define methods in a class body or `impl` block.
 
 ### Struct Literals
 

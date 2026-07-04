@@ -1,4 +1,4 @@
 section: "§5.1 Object literal with computed key REJECT"
 covers_rule: "objectLiteral (PropertyName ::= Identifier)"
 expected: "REJECT"
-notes: ["Computed property keys are not supported; PropertyName must be an identifier."]
+notes: ["Computed keys are invalid syntax; PropertyName must be an identifier."]

@@ -1,4 +1,4 @@
 section: "§5.1 Object literal with method syntax REJECT"
-covers_rule: "objectLiteral (PropertyName ::= Identifier)"
+covers_rule: "objectLiteral (PropertyDefinition ::= Identifier | PropertyName ':' Expression)"
 expected: "REJECT"
-notes: ["Method syntax (fun/get/set) is not supported in object literals."]
+notes: ["Method shorthand syntax is not valid in object literals; use function-valued properties instead."]
