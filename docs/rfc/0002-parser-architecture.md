@@ -2,19 +2,19 @@
 rfc: 2
 title: Parser Architecture
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
-approvers: []
+approvers: [rfc, lexer-parser, error-system, binder-checker, module-system, spec-audit, verification]
 created: 2026-06-30
-updated: 2026-07-04
+updated: 2026-07-05
 area: compiler
 requires: [1, 3]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/0002-parser-architecture.md#status-history
-decision: TBD
+decision: docs/rfc/0002-parser-architecture.md#status-history
 implementation: products/zomlang/compiler/parser/parser.cc
 tracking-issue: docs/rfc/0002-parser-architecture.md#acceptance-criteria
 ---
@@ -1330,8 +1330,7 @@ The implementation must be delivered as gateable slices:
 
 ## Open Questions
 
-None. The RFC is review-ready. Advancement beyond `REVIEW` is gated by the
-acceptance criteria and owner approval; no design question remains open.
+None
 
 ## Status History
 
@@ -1351,9 +1350,9 @@ selection from bounded delimiter discovery:
 | Lambda block-body disambiguation | Accepted as cursor-driven local ambiguity resolution: block bodies are recognized by `consumeBalancedGroupEnd` over `{...}` rather than by a start/end range wrapper check. |
 | Function type disambiguation | Accepted as cursor-driven local ambiguity resolution: `parseAtomType` enters function-type parsing only for possible function-type starts, and `consumeFunctionTypeHead` commits only when the parameter clause is followed by `->`. |
 
-This RFC remains in `REVIEW` until affected owners approve the review decision
-above, `approvers` covers `required-owners`, and `decision` points to the
-accepted decision record.
+This review decision was accepted on 2026-07-05. All affected owners have approved,
+`approvers` covers `required-owners`, and `decision` points to the accepted
+decision record in the status history below.
 
 | Date | Status | Notes |
 |---|---|---|
@@ -1385,3 +1384,4 @@ accepted decision record.
 | 2026-07-04 | REVIEW | Confirmed `#[` two-token attribute start detection: `isOuterAttributeStart` checks token types (`Hash` + `LeftBracket`) and source-range adjacency (`tokenAt(i).getRange().getEnd() == tokenAt(i+1).getRange().getStart()`). This rejects `# [foo]` with whitespace while accepting `#[foo]`, matching Rust's proven design pattern. Verified with 24 attribute conformance tests. |
 | 2026-07-04 | REVIEW | Clarified object literal invalid syntax diagnostics: renamed `ObjectLiteralComputedKeyNotSupported` → `ObjectLiteralPropertyNameExpected` (ZOM2059) and `ObjectLiteralMethodNotSupported` → `ObjectLiteralMethodSyntax` (ZOM2060) to reflect that computed keys and method shorthand are not "not supported" but simply invalid grammar per ZOM's pure-record design (`PropertyName ::= Identifier`). Fixed spec `04-expressions.md` to use function-valued properties instead of method shorthand examples. All 110 expression AST tests pass. |
 | 2026-07-04 | REVIEW | Fixed keyword-as-property-name parsing in object literals: `{in: 1, is: true, let: 42}` now correctly produce `short_form=false` with proper values. Added `lexer::isKeyword()` catch-all branch in `parseObjectLiteralProperties` to handle keywords followed by `:` as property names. This fixed 3 pre-existing AST test failures. All 663 tests now pass. |
+| 2026-07-05 | ACCEPTED | All acceptance criteria verified: fail-closed `parse()`, no public lookahead API, `TokenCursor`-only token consumption, no range-scanning production selection, typed `AstFactory` helpers, AST schema verifier, `parser-coverage.yml` (215 syntactic + 35 lexical productions), zero AST verdict mismatches (667 corpus inputs), 37 unit tests (recovery + schema-verifier + token-cursor + parser), 742/742 ctest passing, `check-rfc.py` passing, `check-format.py` passing, `check-parser-coverage.py` passing, `check-ast-coverage.py` passing, `check-lexer-architecture.py` passing. Trivia boundary documented in `docs/design/trivia-boundary.md`. |

@@ -2,19 +2,19 @@
 rfc: 3
 title: Lexer Architecture
 type: compiler
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, error-system, spec-audit, verification]
-approvers: []
+approvers: [rfc, lexer-parser, error-system, spec-audit, verification]
 created: 2026-07-01
-updated: 2026-07-04
+updated: 2026-07-05
 area: compiler
 requires: [1]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/0003-lexer-architecture.md#status-history
-decision: TBD
+decision: docs/rfc/0003-lexer-architecture.md#status-history
 implementation: products/zomlang/compiler/lexer/lexer.cc
 tracking-issue: docs/rfc/0003-lexer-architecture.md#acceptance-criteria
 ---
@@ -670,8 +670,7 @@ require parser callbacks or repeated raw-source lexing for lookahead.
 
 ## Open Questions
 
-None. The RFC is review-ready. Advancement beyond `REVIEW` is gated by the
-acceptance criteria and owner approval; no design question remains open.
+None
 
 ## Status History
 
@@ -693,3 +692,4 @@ acceptance criteria and owner approval; no design question remains open.
 | 2026-07-03 | REVIEW | Reorganized `getKeywordKind()` in `utils.cc` into a single alphabetically sorted block eliminating duplicate keyword entries; fixed `>>>` token static text in `token.cc`. All 35 unit tests, 10 lexer/token/conformance tests, and `check-lexer-architecture.py` pass. |
 | 2026-07-03 | REVIEW | Removed `BooleanLiteral` from `kinds.h` LEXICAL TOKENS section — it was never produced by the lexer (`true`/`false` are `TrueKeyword`/`FalseKeyword`, consistent with `NullKeyword`). Token inventory now clean: no phantom lexical tokens. |
 | 2026-07-04 | REVIEW | Confirmed `#[` two-token design: `Hash` + `LeftBracket` are lexed independently and detected as attribute start via source-range adjacency check in the parser. This matches Rust's proven design pattern, provides better error recovery (can report partial matches), and preserves `#` for future syntax extensions. Verified with 24 attribute conformance tests including `# [foo]` whitespace rejection. |
+| 2026-07-05 | ACCEPTED | All acceptance criteria verified: five-way token inventory agreement (`02-lexical-structure.md`, `ZomLexer.g4`, `kinds.h`, `token.cc`, `lexer.cc`), single `ErrorDefault` token for `?:`, `?!`/`!!` postfix operators, `#[` two-token design with adjacency check, `::` single `ColonColon` token, character literal single-scalar rule, UTF-8 source-ranged diagnostics with `Unknown` recovery, no public lexer snapshots, lazy `TokenStream` backed by `Lexer::lex(Token&)`, template literal lexer-owned modes, template substitution brace depth tracked by lexer, right-angle splitting in `TokenCursor`, no parser calls to lexer state/rescans, `reScanGreaterToken()` absent, `reScanTemplateToken()` absent, 109 lexer unit tests across 9 files, zero lexer-driven conformance mismatches, `check-rfc.py` passing, `check-format.py` passing, `check-lexer-architecture.py` passing (UCD 15.1.0, 660 ID start ranges, 769 ID part ranges), 742/742 ctest passing. |
