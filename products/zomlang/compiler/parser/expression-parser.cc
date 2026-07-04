@@ -530,6 +530,8 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
         //                    get foo() {}    Emits ObjectLiteralMethodSyntax diagnostic.
         //                    set foo(v) {}
         //   4. Keyword:    fun: value      — keyword used as property name (next token is ':')
+        //                    in: value       (all keywords except fun/get/set are handled
+        //                    is: value       in a single catch-all branch)
         //   5. Identifier: foo: value / foo — find type path end via findTypePathEnd, check
         //                                   if token at pathEnd is ':'
         //
@@ -576,6 +578,12 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(AstFactory& builder, si
           if (pathEnd > itemStart && pathEnd < itemEnd &&
               kindAt(pathEnd) == ast::SyntaxKind::Colon) {
             colon = pathEnd;
+          }
+        } else if (lexer::isKeyword(firstKind)) {
+          // Keyword used as property name (e.g. {in: 1}, {is: value}).
+          // Keywords are single-token property names; check if the next token is ':'.
+          if (itemStart + 1 < itemEnd && kindAt(itemStart + 1) == ast::SyntaxKind::Colon) {
+            colon = itemStart + 1;
           }
         }
         // else: unrecognized key form — treat as shorthand (colon stays at itemEnd)
