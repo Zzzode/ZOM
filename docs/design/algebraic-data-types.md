@@ -290,13 +290,16 @@ Every decision is deterministic per §3.3 (tag width table) and §3.4 (niche tab
 
 ## 4. Pattern Matching
 
-ZOM provides **exhaustive pattern matching** as the sole operator for observing the inhabitant of a sum type. A `match` expression evaluates scrutinee once, then dispatches to the first arm whose pattern is satisfied, evaluating that arm's body as the expression's value.
+ZOM provides **exhaustive pattern matching** as the sole operator for observing
+the inhabitant of a sum type. A `match` statement evaluates its scrutinee once,
+then dispatches to the first arm whose pattern is satisfied and executes that
+arm's statement body.
 
 ### 4.1 Four forms of match dispatch
 
 | Form | Construct | Refutable | Typical use |
 |---|---|---|---|
-| `match EXPR { ARMS }` | Top-level match | Arms mix refutable/irrefutable | General dispatch |
+| `match (EXPR) { ARMS }` | Top-level match | Arms mix refutable/irrefutable | General dispatch |
 | `if let PAT = EXPR { … } else { … }` | Single-arm conditional | Yes (PAT refutable) | Single variant of interest, fallback |
 | `let PAT = EXPR else { … }` | Top-level binding + alt | Yes | Non-local-exit on mismatch |
 | `for PAT in ITER { … }` | Loop destructuring | No (PAT must be irrefutable) | Iterate over tuples/variants-known-uniform |
@@ -337,13 +340,11 @@ PrimaryPattern          ::= IdentifierPattern
                           | LiteralPattern
                           | ExpressionPattern ;
 
-MatchStatement          ::= 'match' Expression '{' MatchBody? '}' ;
-MatchBody               ::= MatchClause ( ',' MatchClause )* ','?
-                            ( ',' DefaultClause )? ','? ;
-MatchClause             ::= Pattern '=>' Expression
-                          | Pattern BlockStatement ;
-DefaultClause           ::= '_' '=>' Expression
-                          | '_' BlockStatement ;
+MatchStatement          ::= 'match' '(' Expression ')' '{' MatchBody? '}' ;
+MatchBody               ::= MatchClause* DefaultClause? ;
+MatchClause             ::= 'when' Pattern GuardClause? '=>' Statement ;
+DefaultClause           ::= 'default' '=>' StatementList ;
+GuardClause             ::= 'if' Expression ;
 ```
 
 ### 4.6 Worked examples
@@ -352,11 +353,11 @@ DefaultClause           ::= '_' '=>' Expression
 ```zom
 enum Coin { Heads, Tails, Edge(f64) }
 fun classify(c: Coin) -> str {
-    match c {
-        Coin::Heads => "heads",
-        Coin::Tails => "tails",
-        Coin::Edge(p) if p > 0.99 => "lucky",
-        Coin::Edge(_) => "edge",
+    match (c) {
+        when Coin.Heads => { return "heads"; }
+        when Coin.Tails => { return "tails"; }
+        when Coin.Edge(p) if p > 0.99 => { return "lucky"; }
+        when Coin.Edge(_) => { return "edge"; }
     }
 }
 ```
@@ -390,11 +391,11 @@ The tuple pattern `(k, v)` is irrefutable for `(K, V)`.
 enum Color { Red, Green, Blue }
 
 fun c256(c: Color) -> u8 {
-    match c {
-        Color::Red => 196,
-        Color::Green => 46,
-        Color::Blue => 21,
-        _ => 0,   // required by #[non_exhaustive]
+    match (c) {
+        when Color.Red => { return 196; }
+        when Color.Green => { return 46; }
+        when Color.Blue => { return 21; }
+        default => { return 0; }   // required by #[non_exhaustive]
     }
 }
 ```
@@ -849,8 +850,8 @@ Fifteen release-blocking test cases. Each has a (name, ZOM source sketch, expect
 | RB-03 | Niche does not apply when no niche exists | `static_assert(size_of::<Option<u32>>() == 8); // tag+payload, not 4` | Compile OK. |
 | RB-04 | Recursive auto-boxing inserts Own | `enum L { Nil, Cons(u32, L) } let c = Cons(1, Cons(2, Nil));` | Compile OK; sema note ZOM6050 emitted for the recursive field; layout size = 24. |
 | RB-05 | repr(unboxed) on infinite recursion errors | `struct Inf(#[zom::repr(unboxed)] Inf);` | Compile ERROR ZOM6051 "recursive layout would be infinite". |
-| RB-06 | Exhaustiveness: missing variant | `match Some(1) { Some(v) => v }` | Compile ERROR ZOM3010 with fix-it suggesting `None => …`. |
-| RB-07 | Exhaustiveness: wildcard covers all | `match c { Color::Red => 0, _ => 1 }` on a 3-variant color enum | Compile OK; no diagnostic. |
+| RB-06 | Exhaustiveness: missing variant | `match (Some(1)) { when Some(v) => { return v; } }` | Compile ERROR ZOM3010 with fix-it suggesting `None => ...`. |
+| RB-07 | Exhaustiveness: wildcard covers all | `match (c) { when Color.Red => { return 0; } default => { return 1; } }` on a 3-variant color enum | Compile OK; no diagnostic. |
 | RB-08 | Non-exhaustive enum without wildcard | Omit `_` arm on `#[zom::non_exhaustive]` enum | Compile ERROR ZOM3013. |
 | RB-09 | Exhaustiveness false-positive rejection | Construct match covering every variant with guards + a final per-variant catch-all `V(_)` arm | Compile OK; no spurious exhaustiveness error. |
 | RB-10 | Negative impl coherence — orphan rejected | Downstream crate writes `impl !Shared for std::vec::Vector<T>` | Compile ERROR ZOM0702. |

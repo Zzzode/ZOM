@@ -14,26 +14,56 @@
 
 #pragma once
 
-#include "zomlang/compiler/ast/ast.h"
-#include "zomlang/compiler/symbol/symbol-table.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
+#include "zomlang/compiler/ast/tree.h"
+#include "zomlang/compiler/type/type-env.h"
 
 namespace zomlang {
 namespace compiler {
+
+namespace diagnostics {
+class DiagnosticEngine;
+}
+
+namespace symbol {
+class SymbolTable;
+}
+
 namespace checker {
 
-// class TypeChecker : public CompilerStage<zc::Own<ast::AST>,
-// zc::String> {
-//  protected:
-//   void process(const zc::Own<ast::AST>& input,
-//                zc::Vector<zc::String>& outputs) override;
-//
-//  private:
-//   SymbolTable symbol_table_;
-//
-//  public:
-//   TypeChecker() = default;
-//   ~TypeChecker() noexcept override = default;
-// };
+/// \brief Checker - Performs type checking and semantic validation on a bound AST.
+///
+/// The Checker runs after the Binder has completed name resolution. It performs
+/// a two-phase type checking process as specified in RFC 0005:
+///
+///   Phase A: Signature Computation (DeclSignatureComputer)
+///            - Computes type signatures for all declarations
+///   Phase B: Body Checking (BodyChecker)
+///            - Checks function bodies, expressions, statements
+///            - Infers types for all expressions
+///
+/// After body checking, the TraitResolver validates interface coherence.
+class Checker final {
+public:
+  Checker(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
+          const ast::Tree& tree, const ast::BindingMetadata& metadata,
+          type::TypeEnv& typeEnv) noexcept;
+  ~Checker() noexcept(false);
+
+  ZC_DISALLOW_COPY_AND_MOVE(Checker);
+
+  /// \brief Run the full type checking pipeline.
+  /// \return true if no fatal errors were produced.
+  bool check();
+
+  /// \brief Get the type environment populated during checking.
+  type::TypeEnv& getTypeEnv();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
 
 }  // namespace checker
 }  // namespace compiler

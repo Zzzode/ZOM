@@ -38,9 +38,18 @@ struct DiagnosticTraits;
     static constexpr zc::StringPtr message = Message##_zcc;          \
     static constexpr size_t argCount = Args;                         \
   };
+#define CHECKER_DIAG(Code, Name, Severity, Message, Args)            \
+  template <>                                                        \
+  struct DiagnosticTraits<DiagID::Name> {                            \
+    static constexpr DiagSeverity severity = DiagSeverity::Severity; \
+    static constexpr zc::StringPtr message = Message##_zcc;          \
+    static constexpr size_t argCount = Args;                         \
+  };
+#include "zomlang/compiler/diagnostics/diagnostics-checker.def"
 #include "zomlang/compiler/diagnostics/diagnostics-common.def"
 #include "zomlang/compiler/diagnostics/diagnostics-parse.def"
 #include "zomlang/compiler/diagnostics/diagnostics-sema.def"
+#undef CHECKER_DIAG
 #undef DIAG
 
 namespace detail {
@@ -64,6 +73,11 @@ constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
     return detail::getDiagnosticInfoImpl<DiagID::Name>();
 #include "zomlang/compiler/diagnostics/diagnostics-common.def"
 #include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+#define CHECKER_DIAG(Code, Name, ...) \
+  case DiagID::Name:                  \
+    return detail::getDiagnosticInfoImpl<DiagID::Name>();
+#include "zomlang/compiler/diagnostics/diagnostics-checker.def"
+#undef CHECKER_DIAG
 #include "zomlang/compiler/diagnostics/diagnostics-sema.def"
 
 #undef DIAG

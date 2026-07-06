@@ -113,6 +113,7 @@ productions:
   InnerAttribute: {status: inlined, parser: parseAttribute, parent: InnerAttributeList}
   InnerAttributeList: {status: inlined, parser: parseOuterAttributeList, parent: SourceFile}
   InterfaceBody: {status: inlined, parser: parseNamedTypeDeclaration, parent: InterfaceDeclaration}
+  InterfaceBound: {status: inlined, parser: parseTypeRange, parent: InterfaceBoundList}
   InterfaceBoundList: {status: inlined, parser: parseTypeRange, parent: DynType}
   InterfaceDeclaration: {status: direct, parser: parseNamedTypeDeclaration, ast: [InterfaceDecl]}
   InterfaceElement: {status: inlined, parser: parseNamedTypeDeclaration, parent: InterfaceBody}
@@ -195,6 +196,8 @@ productions:
   QualifiedPath: {status: inlined, parser: parseSourceElement, parent: Declaration}
   RaisesClause: {status: inlined, parser: parseTypeRange, parent: FunctionType}
   ReexportClause: {status: inlined, parser: parseExportDeclaration, parent: ExportDeclaration}
+  RawPointerType: {status: inlined, parser: parseTypeRange, parent: AtomType}
+  ReferenceType: {status: inlined, parser: parseTypeRange, parent: AtomType}
   RelationalExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   ReturnStatement: {status: direct, parser: parseReturnStatement, ast: [ReturnStmt]}
   ReturnType: {status: inlined, parser: parseTypeRange, parent: FunctionDeclaration}
@@ -241,6 +244,7 @@ productions:
   TypeQueryExpression: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   TypeReference: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   UnaryExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
+  UnsafeBlockStatement: {status: direct, parser: parseUnsafeBlockExpression, ast: [UnsafeBlockExpr]}
   UnicodeEscapeSequence: {status: lexical}
   UnionType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   UpdateExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}

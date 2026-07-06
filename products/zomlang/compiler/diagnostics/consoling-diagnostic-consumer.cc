@@ -14,6 +14,8 @@
 
 #include "zomlang/compiler/diagnostics/consoling-diagnostic-consumer.h"
 
+#include <cstdio>
+
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/core/io.h"
@@ -51,6 +53,12 @@ constexpr zc::StringPtr getColorForSeverity(DiagSeverity severity) {
 
 constexpr zc::StringPtr RESET_COLOR = "\033[0m"_zc;
 constexpr zc::StringPtr GRAY_COLOR = "\033[90m"_zc;
+
+zc::String formatDiagnosticCode(DiagID id) {
+  char buffer[16];
+  std::snprintf(buffer, sizeof(buffer), "ZOM%04u", static_cast<unsigned>(id));
+  return zc::str(buffer);
+}
 
 }  // namespace
 
@@ -195,7 +203,7 @@ void ConsolingDiagnosticConsumer::handleDiagnostic(const source::SourceManager& 
 
   // Output error code
   if (impl->useColors) { output.write(GRAY_COLOR.asBytes()); }
-  output.write(zc::str(" [ZOM", static_cast<int>(diagnostic.getId()), "]").asBytes());
+  output.write(zc::str(" [", formatDiagnosticCode(diagnostic.getId()), "]").asBytes());
   if (impl->useColors) { output.write(RESET_COLOR.asBytes()); }
   output.write(": "_zcb);
 

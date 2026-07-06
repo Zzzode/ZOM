@@ -94,6 +94,8 @@ public:
   /// \brief Get symbol kind
   SymbolKind getKind() const override;
 
+  bool isVariableSymbol() const override { return true; }
+
   /// \brief Check if this variable is a parameter
   bool isParameter() const;
 
@@ -198,6 +200,8 @@ public:
 
   /// \brief Get symbol kind
   SymbolKind getKind() const override;
+
+  bool isFunctionSymbol() const override { return true; }
 
   /// \brief Get the function parameters
   zc::ArrayPtr<const ParameterSymbol> getParameters() const;

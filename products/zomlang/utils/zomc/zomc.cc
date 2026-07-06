@@ -197,13 +197,18 @@ public:
       return zc::str("Compilation failed due to binding errors.");
     }
 
-    // 4. Syntax Only Check
+    // 4. Type checking
+    if (!driver->checkSources() || driver->getDiagnosticEngine().hasErrors()) {
+      return zc::str("Compilation failed due to type checking errors.");
+    }
+
+    // 5. Syntax Only Check
     if (options.emission.syntaxOnly) {
       context.warning("Syntax check completed successfully.");
       return true;
     }
 
-    // 5. Final Emission
+    // 6. Final Emission
     switch (options.emission.outputType) {
       case basic::CompilerOptions::EmissionOptions::OutputType::IR:
         return emitIR();

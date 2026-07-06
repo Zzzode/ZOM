@@ -1,16 +1,17 @@
 # Types
 
-Zom features a rich, static type system that provides safety guarantees while maintaining expressiveness and performance.
+ZOM features a rich, static type system that provides safety guarantees while maintaining expressiveness and predictable runtime cost. Every expression and declaration has a type determined at compile time; the type checker assigns a type to every node in the AST and verifies that all operations are type-safe.
 
 ## Type System Overview
 
-The Zom type system is:
+The ZOM type system is:
 
-- **Static**: All types are known at compile time
-- **Strong**: No implicit conversions between incompatible types
-- **Inferred**: Types can often be inferred from context
-- **Nominal**: Types are distinguished by name, not just structure
-- **Generic**: Supports parametric polymorphism
+- **Static**: All types are known at compile time. No runtime type tagging for values unless explicitly requested via `dyn` existential types.
+- **Strong**: No implicit conversions between incompatible types. Only explicitly sanctioned coercions are permitted (see [Subtyping](#subtyping) and [Type Casting and Conversion](#type-casting-and-conversion)).
+- **Nominal**: Named types (classes, structs, enums, interfaces) are distinguished by their declaration identity, not by structure alone. Two structurally identical types declared at different source sites are incompatible.
+- **Generic**: Supports parametric polymorphism via type parameters with declared bounds. Generic functions are type-checked parametrically (once, against declared bounds); concrete instantiations are monomorphized at code-generation time.
+- **Inferred**: Intra-expression and intra-function types are inferred via a constraint-based engine. Equality constraints use first-order unification; directional subtype constraints are solved only at explicit coercion sites. Top-level declarations require explicit type annotations (no global inference).
+- **Fail-closed**: Any expression that cannot be typed receives the `Error` type and a diagnostic is emitted. The checker never silently guesses a type.
 
 ## Predefined Types
 
@@ -19,12 +20,15 @@ The Zom type system is:
 | Type | Size | Range | Description |
 |------|------|-------|-------------|
 | `i8` | 8 bits | -128 to 127 | Signed 8-bit integer |
-| `i32` | 32 bits | -2³¹ to 2³¹-1 | Signed 32-bit integer |
-| `i64` | 64 bits | -2⁶³ to 2⁶³-1 | Signed 64-bit integer |
+| `i16` | 16 bits | -2^15 to 2^15-1 | Signed 16-bit integer |
+| `i32` | 32 bits | -2^31 to 2^31-1 | Signed 32-bit integer (default integer literal type) |
+| `i64` | 64 bits | -2^63 to 2^63-1 | Signed 64-bit integer |
 | `u8` | 8 bits | 0 to 255 | Unsigned 8-bit integer |
 | `u16` | 16 bits | 0 to 65,535 | Unsigned 16-bit integer |
-| `u32` | 32 bits | 0 to 2³²-1 | Unsigned 32-bit integer |
-| `u64` | 64 bits | 0 to 2⁶⁴-1 | Unsigned 64-bit integer |
+| `u32` | 32 bits | 0 to 2^32-1 | Unsigned 32-bit integer |
+| `u64` | 64 bits | 0 to 2^64-1 | Unsigned 64-bit integer |
+| `isize` | pointer width | platform-dependent | Signed integer matching pointer size |
+| `usize` | pointer width | platform-dependent | Unsigned integer matching pointer size |
 
 ```zom
 let byte: u8 = 255;
@@ -32,12 +36,14 @@ let count: i32 = -42;
 let bigNumber: u64 = 18_446_744_073_709_551_615;
 ```
 
+An unadorned integer literal defaults to `i32`. If the literal value exceeds `i32` range, the type checker attempts `i64`, then `u64`, before reporting an overflow error. When an expected type is available from context (e.g., passing to a function expecting `u64`), the literal is unified with that type instead.
+
 ### Floating-Point Types
 
 | Type | Size | Precision | Description |
 |------|------|-----------|-------------|
-| `f32` | 32 bits | ~7 decimal digits | Single-precision float |
-| `f64` | 64 bits | ~15 decimal digits | Double-precision float |
+| `f32` | 32 bits | ~7 decimal digits | Single-precision float (IEEE 754 binary32) |
+| `f64` | 64 bits | ~15 decimal digits | Double-precision float (IEEE 754 binary64, default float literal type) |
 
 ```zom
 let pi: f32 = 3.14159;
@@ -45,54 +51,271 @@ let precise: f64 = 3.141592653589793;
 let scientific: f64 = 6.022e23;
 ```
 
+An unadorned float literal defaults to `f64`. When an expected type is available from context, the literal is unified with that type.
+
 ### Boolean Type
+
+The `bool` type has exactly two values: `true` and `false`.
 
 ```zom
 let isValid: bool = true;
 let isComplete: bool = false;
 ```
 
-### String Type
+### Character Type
+
+The `char` type represents a single Unicode scalar value (a 32-bit code point).
 
 ```zom
-let message: str = "Hello, Zom!";
+let letter: char = 'A';
+let emoji: char = '\u{1F600}';
+```
+
+### String Type
+
+The `str` type represents an immutable, UTF-8 encoded string view.
+
+```zom
+let message: str = "Hello, ZOM!";
 let empty: str = "";
 let multiline: str = "Line 1\nLine 2";
 ```
 
-### Special Types
+### Unit Type
 
-- **`null`**: The type of the `null` value, representing absence
-- **`unit`**: The type used for functions that don't return a value; its only value is `()`
-- **`never`**: The bottom type, for functions that never return
-- **`any`**: The top type, can hold any value (use sparingly)
+The `unit` type has exactly one value, written `()` or an empty block `{}`. It is used for functions that do not produce a meaningful return value.
 
 ```zom
-let nothing: null = null;
 let empty: unit = ();
-fun loopForever() -> never {
-    while (true) {}
+
+fun doSomething() -> unit {
+    print("side effect");
 }
 ```
 
-## Type Expressions
+### Never Type (`!`)
 
-### Parenthesized Types
+The **never type** (written `!`, pronounced "never" or "bottom") is the type with no values at all. A function whose declared return type is `!` is guaranteed to never return normally.
 
-Types can be parenthesized for clarity:
+**Formation.** The never type is written as a standalone `!` token in any type position. It has no parameters, no qualifiers, and no user-extensible surface.
+
+**Subtyping.** `!` is a **subtype of every other type** (the unique bottom element of the ZOM type lattice). Whenever a value of type `T` is expected, a value of type `!` is accepted as `T` without further conversion.
+
+**Expressions that produce `!`:**
+
+- `panic!(...)` macro invocation and equivalent builtins.
+- `return expr;` when evaluated in expression position.
+- `break` and `continue` (loop-exit constructs).
+- `exit(code)`, `abort()`, `unreachable!()`, `todo!()` builtins.
+- An infinite `loop { }` with no reachable exit.
+- A match arm whose body is non-returning, such as `return` or `panic!`,
+  imposes no fallthrough obligations on later arms.
 
 ```zom
-let x: (i32) = 42;
-let complex: ((i32, str) -> bool) = someFunction;
+fun diverge() -> ! { loop { } }
+
+fun value_or_panic(opt: Option<i32>) -> i32 {
+    match (opt) {
+        when Some(v) => return v;
+        when None => panic!("empty");
+    }
+}
 ```
+
+**Algebraic simplification.** For any type `T`:
+
+- `T | !` normalizes to `T`.
+- `T & !` normalizes to `!`.
+
+These rules are applied by the canonicalizer before subtype or bound checks.
+
+**Generic bound satisfaction.** `!` satisfies all bounds trivially and vacuously. Since there can never be a value of type `!`, any property claimed about such a value is classically true.
+
+### Top Type (`any`)
+
+The `any` type is the **top type** (supertype of every other type). A value of type `any` can hold any value. Downcasting from `any` to a concrete type requires a runtime check via `as?` or `as!`.
+
+```zom
+let anything: any = 42;
+anything = "hello";
+```
+
+### Null Type
+
+The `null` type has exactly one value: `null`. It represents absence only when a target type explicitly admits absence through a nullable union such as `T | null` or its `T?` sugar.
+
+**Critical restriction:** `null` is equal only to itself. It does not unify with `&T`, `&mut T`, class types, existential types, or value types. A `null` expression may coerce only into an explicit union that contains `null`.
+
+```zom
+let nothing: null = null;
+
+// Valid: the target type explicitly includes null
+let maybeRef: &i32? = null;
+
+// Valid: class absence is explicit
+let maybeObj: MyClass? = null;
+
+// INVALID: references are non-null by default
+// let ref: &i32 = null;  // ERROR
+
+// INVALID: class values are non-null by default
+// let obj: MyClass = null;  // ERROR
+
+// INVALID: null does not unify with value types
+// let x: i32 = null;  // ERROR
+
+// INVALID: let without annotation cannot infer from null alone
+// let y = null;       // ERROR: cannot infer type from null alone
+```
+
+## Type Forms
+
+ZOM provides the following type forms. Each is a distinct constructor in the type representation.
+
+### Primitive Types
+
+The primitive types are the predefined scalar types listed above: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`, `f32`, `f64`, `bool`, `char`, `str`, `unit`, `never` (`!`), `any`, and `null`.
+
+### Function Types
+
+Function types describe the signature of callable values.
+
+```ebnf
+FunctionType ::= '(' ParameterTypeList? ')' '->' TypeExpr ( 'raises' TypeExpr )?
+```
+
+```zom
+// Basic function type
+type BinaryOp = (i32, i32) -> i32;
+
+// Function with no parameters
+type Supplier<T> = () -> T;
+
+// Function with no return value
+type Consumer<T> = (T) -> unit;
+
+// Higher-order function
+type Mapper<T, U> = (T -> U, T[]) -> U[];
+
+// Function with error handling (raises clause)
+type SafeParser = (str) -> i32 raises ParseError;
+```
+
+A function type `(P1, P2, ..., Pn) -> R raises E` describes a callable that takes parameters of types `P1` through `Pn` and returns a value of type `R`. The `raises E` clause indicates the function may also produce an error of type `E`; it is syntactic sugar for returning `R | E`. See [Chapter 11](11-error-handling.md) for the full error handling model.
+
+### Tuple Types
+
+Tuple types represent fixed-size, ordered collections with potentially different element types.
+
+```zom
+// Anonymous tuple
+let point: (f64, f64) = (3.0, 4.0);
+let person: (str, i32, bool) = ("Alice", 30, true);
+
+// Named tuple elements
+let namedPoint: (x: f64, y: f64) = (x: 3.0, y: 4.0);
+let coordinate = namedPoint.x; // Access by name
+
+// Destructuring
+let (name, age, isActive) = person;
+let (x, y) = point;
+```
+
+Two tuple types are equal when they have the same number of elements and corresponding element types are equal (order matters). Named tuple elements do not affect type identity — `(x: f64, y: f64)` and `(a: f64, b: f64)` are the same type as `(f64, f64)`.
+
+### Object Types
+
+Object types define anonymous structural records with named fields.
+
+```zom
+// Anonymous object type
+let point: { x: f64, y: f64 } = { x: 3.0, y: 4.0 };
+
+// Object type with methods
+type Calculator = {
+    value: f64,
+    add: (f64) -> unit,
+    multiply: (f64) -> unit,
+    result: () -> f64
+};
+
+// Optional properties
+type Config = {
+    host: str,
+    port: i32,
+    ssl?: bool,
+    timeout?: i32
+};
+```
+
+Two object types are structurally equal when they have the same field names with the same field types (field order does not matter). Object types are structural, not nominal.
+
+### Array Types
+
+Array types represent ordered, homogeneous collections.
+
+```ebnf
+ArrayType ::= '[' TypeExpr ']'
+```
+
+```zom
+let numbers: i32[] = [1, 2, 3, 4, 5];
+let strings: str[] = ["hello", "world"];
+let matrix: i32[][] = [[1, 2], [3, 4]];
+
+// Array operations
+let first = numbers[0];
+let length = numbers.length;
+numbers.push(6);
+```
+
+The element type of an array is its type parameter. `[T]` denotes a dynamically-sized array; `[T; N]` denotes a fixed-size array of N elements (where N is a compile-time constant).
+
+### Named Types
+
+Named types are types declared via `class`, `struct`, `enum`, or `interface` declarations. They are identified by their declaration symbol.
+
+```zom
+struct Point { x: f64, y: f64 }
+class Circle { radius: f64 }
+enum Color { Red, Green, Blue }
+
+let p: Point = Point { x: 1.0, y: 2.0 };
+let c: Circle = Circle { radius: 5.0 };
+let col: Color = Color::Red;
+```
+
+Named types with type arguments form generic instantiations:
+
+```zom
+let v: Vec<u8> = Vec::new();
+let m: Map<str, i32> = Map::new();
+```
+
+Two named types are equal when they refer to the same declaration symbol and have equal type arguments.
+
+### Type Variables
+
+Type variables represent unknown types during type inference. They are written as uppercase identifiers in generic parameter lists or as fresh unknowns introduced by the inference engine.
+
+```zom
+fun identity<T>(x: T) -> T {
+    return x;
+}
+```
+
+In the body of `identity`, `T` is a type variable. At each call site, the type checker infers the concrete type argument from the argument type. Type variables are not directly writable by the user outside of generic parameter declarations.
 
 ### Union Types
 
-Union types represent values that can be one of several types:
+Union types represent values that can be one of several types.
+
+```ebnf
+UnionType ::= TypeExpr '|' TypeExpr
+```
 
 ```zom
 type StringOrNumber = str | i32;
-type Result = Success | Error;
 
 mut value: StringOrNumber = "hello";
 value = 42; // Also valid
@@ -106,9 +329,13 @@ fun process(input: str | i32 | bool) {
 }
 ```
 
+Union types are **commutative** and **associative** up to type identity. The canonical form of a union is sorted, deduplicated, and with `never` removed. `T | !` normalizes to `T`.
+
+The union type `T | E` is the foundation of ZOM's error handling model: a function returning `T raises E` is equivalent to returning `T | E`. See [Chapter 11](11-error-handling.md).
+
 ### Intersection Types
 
-Intersection types represent values that satisfy multiple type constraints:
+Intersection types represent values that satisfy multiple type constraints simultaneously.
 
 ```zom
 interface Named {
@@ -127,12 +354,14 @@ let person: Person = {
 };
 ```
 
+`T & !` normalizes to `!`. Intersection types are most commonly used with interface bounds to express "a type that implements both I and J".
+
 ### Optional Types
 
-Optional types represent values that may or may not exist:
+Optional types represent values that may be absent. The syntax `T?` is syntactic sugar for `T | null`.
 
 ```zom
-let maybeNumber: i32? = 42;
+let maybeNumber: i32? = 42;     // i32? = i32 | null
 let nothing: str? = null;
 
 // Optional chaining
@@ -142,277 +371,428 @@ let length = maybeString?.length;
 let defaultValue = maybeNumber ?? 0;
 ```
 
-### Array Types
+The `T?` form is valid for any `T`; it is exactly the union `T | null`. For value-heavy APIs that need explicit variant names or payload-rich absence states, use `Option<T>` from the standard library instead.
 
-Array types represent ordered collections of elements:
+### Reference Types
+
+Reference types provide safe, aliased access to values without taking ownership.
+
+```ebnf
+ReferenceType ::= '&' ('mut')? TypeExpr
+```
+
+Valid forms:
+- `&T` — shared (immutable) reference
+- `&mut T` — exclusive (mutable) reference
+
+| Property | `&T` | `&mut T` |
+|----------|-------|-----------|
+| Size | `ptr_size` | `ptr_size` |
+| Copy | yes (implicit) | no (move-only) |
+| `Shared` impl | yes when `T: Shared` | no |
+| `Sendable` impl | yes when `T: Shared` | yes when `T: Sendable` |
+
+**Subtyping.** `&mut T` is a subtype of `&T` (reborrow coercion). A mutable reference may be used wherever an immutable reference is expected, with zero runtime cost:
 
 ```zom
-let numbers: i32[] = [1, 2, 3, 4, 5];
-let strings: str[] = ["hello", "world"];
-let matrix: i32[][] = [[1, 2], [3, 4]];
+fun read_only(x: &i32) -> i32 { *x }
 
-// Array operations
-let first = numbers[0];
-let length = numbers.length;
-numbers.push(6);
+mut value = 42;
+let mref: &mut i32 = &mut value;
+read_only(mref);  // OK: &mut i32 coerces to &i32
 ```
 
-### Tuple Types
+The reverse (`&T` to `&mut T`) is **never** permitted.
 
-Tuple types represent fixed-size, ordered collections with potentially different element types:
+**Borrowing rules (v1):**
+
+1. At most one `&mut T` to the same place may be live at any point.
+2. `&T` and `&mut T` to the same place may not coexist.
+3. Multiple `&T` to the same place are permitted.
+4. A reference must not outlive its referent.
+
+Violations produce diagnostics in the `ZOM09xx` range. Full non-lexical lifetime (NLL) checking is planned for a future edition; v1 performs scope-based lifetime checking. See [Chapter 14](14-memory-management.md).
+
+### Raw Pointer Types
+
+Raw pointers provide unchecked memory access for FFI interop and low-level data structure implementation.
+
+```ebnf
+RawPointerType ::= '*' ('const' | 'mut')? TypeExpr
+```
+
+Valid forms:
+- `*const T` — raw const pointer (default when `const`/`mut` omitted)
+- `*mut T` — raw mutable pointer
+
+| Property | `*const T` | `*mut T` |
+|----------|-------------|-----------|
+| Size | `ptr_size` | `ptr_size` |
+| Copy | yes (implicit) | yes (implicit) |
+| `Shared` auto-impl | no | no |
+| `Sendable` auto-impl | no | no |
+| `FfiSafe` impl | yes | yes |
+| Dereference requires `unsafe` | yes | yes |
+
+**Subtyping.** `*mut T` is a subtype of `*const T`.
+
+**Implicit conversions from safe references:**
 
 ```zom
-// Anonymous tuple
-let point: (f64, f64) = (3.0, 4.0);
-let person: (str, i32, bool) = ("Alice", 30, true);
+let value = 42;
+let r: &i32 = &value;
+let p: *const i32 = r;   // OK: &T -> *const T
 
-// Named tuple elements
-let namedPoint: (x: f64, y: f64) = (x: 3.0, y: 4.0);
-let coordinate = namedPoint.x; // Access by name
-
-// Destructuring
-let (name, age, isActive) = person;
-let (x, y) = point;
+mut mvalue = 100;
+let mr: &mut i32 = &mut mvalue;
+let mp: *mut i32 = mr;   // OK: &mut T -> *mut T
+let cp: *const i32 = mp; // OK: *mut T -> *const T
 ```
 
-### Function Types
+The reverse direction (`*const T` to `&T`, `*mut T` to `&mut T`) is **not** implicit and requires an `unsafe { }` block with an explicit cast.
 
-Function types describe the signature of functions:
+Dereferencing a raw pointer requires `unsafe { }`:
 
 ```zom
-// Basic function type
-type BinaryOp = (i32, i32) -> i32;
-
-// Function with no parameters
-type Supplier<T> = () -> T;
-
-// Function with no return value
-type Consumer<T> = (T) -> unit;
-
-// Higher-order function
-type Mapper<T, U> = (T -> U, T[]) -> U[];
-
-// Function with error handling
-type SafeParser = (str) -> i32 raises ParseError;
-
-// Examples
-let add: BinaryOp = fun (a: i32, b: i32) -> i32 { return a + b; };
-let getString: Supplier<str> = fun () -> str { return "hello"; };
-let print: Consumer<str> = fun (s: str) -> unit { console.log(s); };
+let ptr: *const i32 = get_raw_pointer();
+let val = unsafe { *ptr }; // OK
 ```
 
-### Never / Bottom Type (`!`)
+### Existential Types (`dyn`)
 
-The **never type** (written `!`, pronounced "never" or "bottom") is the type with no values at all. A function whose declared return type is `!` is guaranteed to never return normally — every execution path either diverges infinitely, exits the process, or transfers control out of the enclosing scope via a non-local jump (panic, return, break, continue).
+Existential types provide first-class runtime-dispatched values whose concrete type is erased. They enable heterogeneous collections sharing a common behavior, callbacks with unnameable closure types, and dependency-injected service objects.
 
-**Formation.** The never type is written as a standalone `!` token in any type position. It has no parameters, no qualifiers, and no user-extensible surface.
+ZOM follows an **explicit existential erasure model** (Swift 6 `any` semantics). An `interface I { ... }` declaration introduces only a *bound* — a predicate on type variables. It does **not** by itself introduce a type that can appear in value position. To treat "any value whose type implements I" as a first-class type, the programmer writes `dyn I`.
 
-**Subtyping.** `!` is a **subtype of every other type**. It is the unique bottom element of the ZOM type lattice. No other type carries this property. This means that whenever a value of type `T` is expected, a value of type `!` can be supplied and the type checker accepts it as `T` without further conversion.
-
-**Expressions that produce `!`:**
-
-- `panic!(...)` macro invocation and any equivalent builtin.
-- `return expr;` when evaluated in expression position: the synthetic type of a `return` statement as an expression is `!`, because control never reaches whatever follows it.
-- `break` and `continue` (loop-exit control-flow constructs).
-- `exit(code)`, `abort()`, `unreachable!()`, `todo!()` builtins.
-- An infinite `loop { }` whose body contains no reachable exit path.
-- A match arm whose body evaluates to `!` allows the whole match expression to coerce to the broader type of the remaining arms, even if the arms would otherwise be incompatible.
-
-**Example — diverging function:**
-```zom
-fun diverge() -> ! { loop { } }
-```
-
-**Example — match arm coercion:**
-```zom
-let x = match opt {
-    Some(v) -> v,
-    None -> return Err("empty"),   // arm body type = !, coerces to typeof(v)
-};
-```
-
-**Algebraic simplification during type normalization.** For any type `T`:
-
-- `T | !` normalizes to `T`. Since `!` has no inhabitants, adding it to a union is the identity operation.
-- `T & !` normalizes to `!`. Intersecting any type with the empty set yields the empty set.
-
-These two rules apply unconditionally at every union- and intersection-formation site. They are part of the canonicalizer's rewrite system before subtype or bound checks are performed.
-
-**Generic bound satisfaction.** The never type satisfies **all** bounds trivially and vacuously. If a function requires `T: Drawable + Linear + Sendable + ...`, then `!` satisfies the conjunction without needing any concrete impl. The justification is proof-irrelevant: since there can never be a value of type `!`, any property claimed about such a value is classically true.
-
-**Diagnostic reference.** ZOM0330 `NeverTypeCoerceFail` should never occur in practice. It is emitted only if the compiler encounters a degenerate case where `!` cannot be coerced into an expected type, which indicates an internal consistency bug in the type-normalization pipeline. The user-visible message carries an ICE-report link because the condition is not user-fixable.
-
-### Existential Types (dyn)
-
-#### Purpose
-
-Existential types provide first-class, compile-time-unknown concrete types whose concrete identity is erased and whose behavior is dispatched at runtime through a vtable. They are ZOM's mechanism for heterogeneous collections sharing a common behavior, callbacks whose concrete closure types cannot be named, and dependency-injected service objects whose implementations vary at runtime.
-
-ZOM follows an **explicit existential erasure model (Swift 6 `any` semantics)**, a normative locked decision. An `interface I { ... }` declaration introduces ONLY a *bound*: a predicate placed on type variables inside generics. It does **not** by itself introduce a type that can appear in a value position. To treat "any value whose type implements I" as a first-class runtime-manifest type, the programmer MUST write `dyn I`. This spelling makes the cost of boxing (when required) and vtable indirection VISIBLE at every use site.
-
-The C#/Java implicit conversion pattern is explicitly REJECTED. There is NO automatic coercion of a class implementing I to "type I". A variable declaration `let x: Drawable = Circle()` is a static error — the programmer must write `let x: dyn Drawable = Circle();`.
-
-Coercion occurs ONLY when the target type is explicitly declared as `dyn I` (in a function parameter, variable type annotation, struct field, or return type position). The coercion itself is FREE: it performs no clone, no move-copy of the payload, and allocates only when the concrete value cannot be stored inline-sized (determined per target ABI). The cost is purely fat-pointer construction: two words written into the destination slot.
-
-Existential types interact cleanly with ZOM's marker system (Ch.16 §16.12.3 R11) and its object-safety rules (Ch.09 §9 OS-4). Only object-safe interfaces may appear after `dyn`; this is enforced by the type checker. An interface with an unbound associated type used in a `dyn` context raises diagnostic ZOM0334 DynUnassociatedType.
-
-#### Grammar
-
-The canonical grammar for existential types is reproduced below. See Ch.17 DynType and InterfaceBoundList productions for the authoritative version.
-
-```
+```ebnf
 ExistentialType      ::= 'dyn' InterfaceBoundList
 InterfaceBoundList   ::= InterfaceName ( '<' GenericArgs '>' )? ( '+' MarkerPath )*
 ```
 
-Valid forms:
-
 ```zom
-let a: dyn Drawable = ...;
-let b: dyn Iterator<Item = T> = ...;
-let c: dyn Read + Sendable + Shared = ...;
+let a: dyn Drawable = Circle(radius: 5.0);
+let b: dyn Iterator<Item = T> = vec.iter();
+let c: dyn Read + Sendable + Shared = open_file();
 ```
 
-Invalid forms and their diagnostics:
+**Three normative rules:**
+
+1. **First-class type.** `dyn I` is a standalone, sized, first-class language type. The interface declaration alone does not introduce a usable type.
+2. **No implicit interface-to-type coercion.** There is no automatic conversion from `Circle implements Drawable` to "type `Drawable`". Any spelling that treats an interface name as a type in value position (without `dyn`) is a static error.
+3. **Explicit-annotation coercion sites only.** Coercion from concrete `T implements I` to `dyn I` fires exclusively at sites where the target type is textually declared as `dyn I`. The type inference engine never produces an existential type as its solution.
+
+**Invalid forms and diagnostics:**
 
 | Form | Diagnostic |
 |------|------------|
-| `let x: dyn = value;` (bare `dyn` with no following interface) | ZOM0340 DynEmpty |
-| `let x: dyn (i32 \| str) = value;` (non-interface after `dyn`) | ZOM0341 DynNonInterface |
-| `let x: dyn Error + dyn Sendable = value;` (repeated `dyn` prefix) | ZOM0342 DynRepeatedPrefix |
-| `let x: dyn Iterator = value;` (associated type `Item` not bound) | ZOM0334 DynUnassociatedType |
+| `let x: dyn = value;` (bare `dyn` with no interface) | ZOM0340 `DynEmpty` |
+| `let x: dyn (i32 \| str) = value;` (non-interface after `dyn`) | ZOM0341 `DynNonInterface` |
+| `let x: dyn Error + dyn Sendable = value;` (repeated `dyn` prefix) | ZOM0342 `DynRepeatedPrefix` |
+| `let x: dyn Iterator = value;` (associated type `Item` not bound) | ZOM0334 `DynUnassociatedType` |
 
-#### Semantics — Three Normative Rules
-
-1. **First-class type.** `dyn I` IS a standalone, sized, first-class language type. The interface declaration alone does NOT introduce a usable type.
-2. **No implicit interface-to-type coercion.** There is no automatic conversion from `Circle implements Drawable` to a value of "type `Drawable`". Any spelling that treats an interface name as a type in value position (without the `dyn` prefix) is a static error. No opt-in, no compatibility flag, no legacy mode.
-3. **Explicit-annotation coercion sites only.** Coercion from a concrete `T implements I` to `dyn I` fires exclusively at sites where the target type is textually declared as `dyn I` (or a generic type argument resolved to `dyn I`). The type inference engine NEVER produces an existential type as its solution — coercion is never inferred from context alone.
-
-#### Runtime Layout (2-word fat pointer)
-
-The default memory representation on all targets is **two machine words**, referred to as a *fat pointer*. The `dyn Drawable` value layout on a 64-bit target is shown below.
+**Runtime layout (2-word fat pointer):**
 
 ```mermaid
 graph LR
-    subgraph DYN ["dyn Drawable value — 2 words (16 bytes on 64-bit)"]
-        D_PTR["<b>data_ptr</b>: *mut ()<br/>offset 0x00, 8 bytes"]
-        V_PTR["<b>vtable_ptr</b>: *const VTable<br/>offset 0x08, 8 bytes"]
+    subgraph DYN ["dyn Drawable — 2 words (16 bytes on 64-bit)"]
+        D_PTR["<b>data_ptr</b>: *mut ()<br/>offset 0x00"]
+        V_PTR["<b>vtable_ptr</b>: *const VTable<br/>offset 0x08"]
     end
-    D_PTR --> PAYLOAD["Concrete Circle payload<br/>(stack, heap, or inline storage)"]
-    V_PTR --> VTBL["VTable for (Circle, Drawable) — static immutable"]
-    VTBL --> SLOT0["vtable[0] = Drawable::draw"]
-    VTBL --> SLOT1["vtable[1] = Drawable::bounds"]
-    VTBL --> SLOTN["vtable[N-1] = Drop::drop_in_place<br/>(LAST slot — always present)"]
+    D_PTR --> PAYLOAD["Concrete Circle payload"]
+    V_PTR --> VTBL["VTable for (Circle, Drawable)"]
+    VTBL --> SLOT0["vtable[0] = draw"]
+    VTBL --> SLOTN["vtable[N-1] = drop_in_place"]
 ```
 
-Formal layout invariants:
+- `size_of::<dyn I>() = 2 * ptr_size`.
+- `align_of::<dyn I>() = ptr_align`.
+- Word 0 (`data_ptr`): pointer to the erased concrete object. Never null for a well-formed value.
+- Word 1 (`vtable_ptr`): pointer to a static, immutable, per-(concrete-type, interface) virtual dispatch table.
+- The final vtable slot is always `drop_in_place(*mut ())`.
+- Three prefix words precede the first method slot at negative offsets: `size: usize`, `align: usize`, `marker_bitmap: u64`.
 
-- **Size:** `size_of::<dyn I>() = 2 * ptr_size`. 16 bytes on 64-bit, 8 bytes on 32-bit.
-- **Alignment:** `align_of::<dyn I>() = ptr_align`.
-- **Word 0 (data_ptr):** A pointer to the erased concrete object, with opaque pointee type `*mut ()`. Never null for a well-formed `dyn I` value.
-- **Word 1 (vtable_ptr):** A pointer to a static, immutable, per-(concrete-type, interface) virtual dispatch table. Each distinct pair `(T, I)` where `T implements I` produces exactly one vtable at code-generation time.
-- **VTable ordering:** Methods are arranged in post-order traversal of the interface inheritance chain, left-to-right MRO, with method names in declaration order within each interface.
-- **Last slot rule:** The FINAL slot of every vtable is ALWAYS `drop_in_place(*mut ())` — the drop-glue function pointer for the erased concrete type. This slot is never repurposed and is part of the cross-crate ABI stability guarantee.
-- **Implicit prefix words:** Immediately before the first method slot (at negative offsets from `vtable_ptr`), implementations store three additional words: `size: usize`, `align: usize`, `marker_bitmap: u64`. These are accessed via negative-offset loads by the runtime support for size queries and marker propagation.
-
-The `marker_bitmap` prefix word is consulted by Ch.16 §16.12.3 R11 G6's runtime double-check at spawn-accept time. Bit layout is LSB-first in declaration order of the standard marker prelude: bit 0 = `Sendable`, bit 1 = `Shared`, bit 2 = `Linear`, bit 3 = `SuspendSafe`, bit 4 = `NoSuspendHazard`, bit 5 = `TaskBound`. User-defined markers occupy bits starting at bit 32.
-
-#### Variance
-
-The default variance of every type parameter referenced inside an interface is **invariant** when that interface is instantiated as a `dyn` type. This matches ZOM's global, safety-first variance default: all generics are invariant, and programmers opt into co- or contravariance explicitly via `#[zom::variance(...)]` applied to the interface declaration. (Cross-reference: Ch.12 Generics, variance attributes.)
-
-A `dyn Producer<Cat>` is NOT a subtype of `dyn Producer<Animal>` unless `Producer` is declared with a covariant out-parameter:
+**Upcasting.** If `interface I extends J`, then `dyn I + M` coerces to `dyn J + M` with **zero runtime cost**. The upcast operates exclusively on the vtable pointer (a compile-time-constant byte offset adjustment). No heap allocation or copy of the underlying object is performed.
 
 ```zom
-#[zom::variance(cov)]
-interface Producer<out T> {
-    fun produce(): T;
+let circle: dyn Drawable + Sendable = Circle(radius: 5.0);
+let shape: dyn Shape + Sendable = circle;  // zero-cost upcast if Drawable extends Shape
+```
+
+**Downcasting.** `dyn I.is<T>()` and `dyn I.downcast::<T>()` are **not** part of ZOM v1. Users who need runtime type recovery on a specific interface hierarchy should declare an explicit `as_any() -> any` method on that interface. See [Chapter 9](09-interfaces.md) for object safety rules.
+
+**Variance.** Type parameters inside an interface are **invariant** by default when instantiated as a `dyn` type. Covariance or contravariance requires explicit `#[zom::variance(...)]` on the interface declaration. See [Chapter 12](12-generics.md).
+
+### Associated Types
+
+Associated types are type members of interfaces that are determined by the implementing type.
+
+```zom
+interface Iterator {
+    type Item;
+    fun next(self: &mut Self) -> Option<Self::Item>;
 }
-// dyn Producer<Cat> coerces to dyn Producer<Animal>
-```
 
-Covariance is only sound when the interface PRODUCES values of type T and never CONSUMES them. Attempting to declare `#[zom::variance(cov)]` on an interface that uses T in a contravariant (parameter) position raises diagnostic ZOM0453 VarianceConflict. Variance attributes are inherited through `extends`; combining an inherited `cov` parameter with a local `contra` use raises ZOM0454 InheritedVarianceConflict.
-
-#### Marker Propagation
-
-For a type `dyn I + M1 + M2`:
-
-- **DECLARED marker bits** = {M1, M2} ∪ (transitive closure over marker markers implied by I's own declared default marker-impls through the `extends` chain).
-- **ACTUAL marker bits** (embedded at coercion site into the vtable `marker_bitmap` prefix word) = DECLARED ∩ (marker set of the concrete type T being coerced).
-- A `dyn` object NEVER carries more marker privileges than its DECLARED bound-list permits, even if the underlying concrete T happens to satisfy additional markers. This is a soundness rule: a function signature promising only `dyn I + Shared` must not allow downstream callers to assume `Sendable` merely because a particular runtime value is `Sendable`.
-- To re-declare additional markers on an existential, the user writes a re-coercion with the extended bound-list: `x as dyn I + Sendable + Shared`. This succeeds only if the concrete T's marker set contains the new markers; otherwise the coercion site raises ZOM16xx MarkerCoerceFail.
-- The Ch.16 R11 G6 runtime double-check consults the 3-phase negative closure of the ACTUAL marker bits at spawn-accept time.
-
-Example:
-
-```zom
-let circle = Circle(radius: 5.0);
-let x: dyn Drawable + Sendable = circle;    // coerce Circle → dyn Drawable + Sendable
-```
-
-At this coercion site the compiler: (1) verifies `Circle implements Drawable` and `Circle: Sendable`; (2) emits a reference to the static `(Circle, Drawable)` vtable; (3) records marker bits equal to DECLARED ∩ `Circle.marker_set()` into the vtable's `marker_bitmap` prefix word.
-
-#### Dispatch
-
-A method call on an existential value is compiled as an indirect jump through the vtable:
-
-```
-dyn_I.method(args)   ⟹   (*vtable_ptr)[method_index](data_ptr, args...)
-```
-
-The `method_index` is calculated **statically** at each call site from the interface's post-order flattened declaration order. The per-call runtime cost is exactly one indirect jump plus the standard calling-convention register/memory traffic for the arguments; there is zero additional per-call bookkeeping beyond the indirect-branch predictor miss penalty.
-
-#### Upcasting
-
-Rule: If `interface I extends J`, and a value has type `dyn I + M1 + ... + Mn`, then that value coerces to `dyn J + M1 + ... + Mn` with **ZERO runtime cost**.
-
-Upcast operates exclusively on the vtable pointer. The post-order flattening rule guarantees that J's method slots form a strict leading sub-slice of I's vtable. Therefore, the upcast is either a pointer reinterpretation (when J is exactly I's first superinterface) or a compile-time-constant byte offset applied to `vtable_ptr` (when J is deeper in the flattened prefix). The `data_ptr` is never modified. No heap allocation and no copy of the underlying concrete object are performed.
-
-The explicit upcast syntax `x as dyn J` is optional but allowed. It is recommended in review-hostile code paths where the implicit coercion could be mistaken for a new allocation by reviewers unfamiliar with the upcast-is-free guarantee.
-
-#### Downcasting Policy — No Language-Level Support
-
-`dyn I.is<T>()` and `dyn I.downcast::<T>()` are deliberately NOT part of ZOM v1.0. Supporting per-vtable RTTI for every `dyn`-instantiated interface would require emitting type-id hashes and equality comparisons for every `(T, I)` pair used across a compiled program, substantially bloating binary size, static relocation tables, and link time for large codebases, while also introducing a permanent ABI surface that constrains future vtable layout changes.
-
-Users who genuinely need runtime type recovery on a specific interface hierarchy are expected to declare an explicit `as_any() -> any` method on that interface:
-
-```zom
-interface Drawable {
-    fun draw(this: &Self);
-    fun as_any(this: &Self) -> any;   // user-written reflection hook
+impl Iterator for VecIter<T> {
+    type Item = T;
+    fun next(self: &mut Self) -> Option<T> { ... }
 }
 ```
 
-and then invoke library-level `Any.downcast_ref::<T>()` helpers on the resulting `any` value. The built-in `any` type supports this path as a first-class facility in the standard library. This is an explicit, documented non-goal for ZOM v1, not an omission.
+The syntax `T::Item` refers to the associated type `Item` of the interface implemented by `T`. Associated types are resolved during trait/interface bound discharge. See [Chapter 9](09-interfaces.md) and [Chapter 12](12-generics.md).
 
-### Object Types
+### Parenthesized Types
 
-Object types define the structure of objects:
+Types can be parenthesized for clarity:
 
 ```zom
-// Anonymous object type
-let point: { x: f64, y: f64 } = { x: 3.0, y: 4.0 };
-
-// Object type with methods
-type Calculator = {
-    value: f64,
-    add: (f64) -> unit,
-    multiply: (f64) -> unit,
-    result: () -> f64
-};
-
-// Optional properties
-type Config = {
-    host: str,
-    port: i32,
-    ssl?: bool,  // Optional property
-    timeout?: i32
-};
+let x: (i32) = 42;
+let complex: ((i32, str) -> bool) = someFunction;
 ```
+
+Parentheses do not affect type identity.
+
+## Type Identity and Equality
+
+Two types are **structurally equal** when:
+
+- Both are the same primitive kind.
+- Both are function types with the same parameter count, same parameter types (order matters), same return type, and same raises set.
+- Both are tuple types with the same element types in the same order.
+- Both are object types with the same field names and same field types (order does not matter).
+- Both are named types referring to the same declaration symbol with equal type arguments.
+- Both are type variables with the same identity.
+- Both are union types with the same set of member types (after canonicalization: sorted, deduplicated, `never` removed).
+- Both are intersection types with the same member types.
+- Both are reference types with the same pointee type and same mutability.
+- Both are raw pointer types with the same pointee type and same mutability.
+- Both are existential types with the same interface symbol and same marker set (order-independent).
+- Both are associated types with the same base type and same associated type name (after resolution).
+- `Error` type equals only itself.
+
+**Nominal vs. structural distinction.** Named types (`class`, `struct`, `enum`, `interface`) use **nominal** equality: two named types are equal only if they refer to the same declaration, regardless of structural similarity. Object types, tuple types, function types, union types, and intersection types use **structural** equality.
+
+## Subtyping
+
+ZOM provides a limited set of proven-sound subtyping coercions. Subtyping is directional and is not equality unification. The type checker represents `source <: target` as a coercion constraint and solves it only at explicit coercion sites.
+
+| Rule | Meaning | Notes |
+|------|---------|-------|
+| `never <: T` | Bottom type is subtype of every type | For any `T` |
+| `T <: any` | Every type is subtype of top type | For any `T` |
+| `&mut T <: &T` | Mutable reference coerces to shared reference | Reborrow, zero-cost |
+| `*mut T <: *const T` | Mutable raw pointer coerces to const raw pointer | Zero-cost |
+| `Ti <: T1 \| ... \| Ti \| ... \| Tn` | Value coerces into union | At coercion sites |
+| `null <: T \| null` | Null coerces into an explicit nullable union | Never into bare `T` |
+| `dyn I + M <: dyn J + M` | Existential upcast | When `I extends J`, zero-cost |
+
+**No numeric widening** without an explicit `as` cast. `i32` does not implicitly coerce to `i64`.
+
+**No implicit interface-to-type coercion.** A concrete type `T` implementing `I` does not implicitly coerce to "type `I`" — the target must be explicitly `dyn I`.
+
+**No nullable reference/class/existential values by default.** `&T`, class `C`, and `dyn I` are non-null value types. Absence must be spelled with `T?` or `T | null`.
+
+### Coercion Sites
+
+The checker may apply subtype coercions only at these sites:
+
+| Site | Direction |
+|---|---|
+| Annotated local or field initializer | initializer type -> annotated target |
+| Function or method argument | argument type -> parameter type |
+| Return expression | expression type -> declared return type |
+| Struct/class literal field | field expression type -> declared field type |
+| Assignment RHS | RHS type -> LHS storage type |
+| Conditional expression arm join | arm expression type -> selected join type |
+| Explicit `dyn` annotation | concrete value type -> annotated `dyn` target |
+
+The checker records inserted coercions for lowering. Union injection and existential erasure may require representation changes; reborrow and raw mut-to-const coercions are zero-cost.
+
+### Variance
+
+Variance controls whether a subtype relation may pass through a type constructor. ZOM v1 uses a conservative variance table:
+
+| Constructor | Variance |
+|---|---|
+| `&T` | Covariant in `T` |
+| `&mut T` | Invariant in `T` |
+| `*const T`, `*mut T` | Invariant in `T` |
+| Function parameters | Contravariant |
+| Function return and raises members | Covariant |
+| Tuple and immutable object fields | Covariant |
+| Mutable object fields | Invariant |
+| Array/vector-like mutable containers | Invariant |
+| User-defined generic named types | Invariant in all parameters in v1 |
+| `dyn I<Args>` | Invariant in all interface arguments in v1 |
+
+Because user-defined generic types are invariant in v1, `Vec<&mut i32>` does not coerce to `Vec<&i32>`. Any future variance annotation requires a separate RFC and a variance checker before the parser accepts it.
+
+## Type Inference
+
+ZOM uses **annotation-directed local inference**: type information flows from declared types (parameters, return types, explicit annotations) inward to expressions, and from sub-expressions outward to their parent. The inference engine collects equality constraints and directional coercion constraints. Equality constraints are solved via first-order unification; coercion constraints are solved by the subtyping rules above.
+
+### Local Variable Inference
+
+For `let x = expr` (no type annotation):
+
+1. A fresh type variable `?X` is created.
+2. The expression `expr` is inferred to have type `T_expr`.
+3. `?X` is unified with `T_expr`.
+4. After all uses of `x` are processed:
+   - If `?X` resolved to a concrete type, `x` has that type.
+   - If `?X` is still unbound and is a numeric type variable, it defaults to `i32` (integer) or `f64` (float).
+   - If `?X` is still unbound and non-numeric, the checker reports `ZOM0420: cannot infer type for 'x'`.
+
+For `let x: T = expr` (with annotation):
+
+1. The expression `expr` is inferred to have type `T_expr`.
+2. A directional coercion constraint `T_expr <: T` is emitted at the local-initializer coercion site.
+3. `x` has type `T`.
+
+This means constraints flow both ways:
+
+```zom
+fun takes_u64(x: u64) -> unit { ... }
+
+let x = 5;          // x gets a fresh type variable ?X
+takes_u64(x);       // unifies ?X with u64
+// x is now known to be u64
+```
+
+### Expression Type Rules
+
+| Expression | Type Rule |
+|---|---|
+| Integer literal | Default `i32`, or unified with expected type. If literal exceeds `i32`, try `i64` then `u64` before error. |
+| Float literal | Default `f64`, or unified with expected type. |
+| String literal | `str` |
+| Character literal | `char` |
+| Boolean literal | `bool` |
+| `null` | `null` type. Equal only to itself. It can coerce only into an explicit union containing `null`, such as `T \| null` or `T?`. `let x = null` without annotation is an error. |
+| `unit` expression (`{}` or `()`) | `unit` |
+| Identifier | Look up the symbol's type. If the symbol is a generic parameter, return the corresponding type variable. |
+| Binary `op` | Infer both operand types, unify them (for arithmetic/comparison), check `op` validity. Arithmetic result = operand type. Comparison result = `bool`. |
+| Unary `op` | Infer operand type, check `op` validity. `-` result = operand type. `!` result = `bool`. `*` result = dereferenced type. `&` result = reference type. |
+| Call `callee(args)` | Infer callee type (must be function type). If generic, infer type args from arg types. Emit a directional coercion constraint from each argument type to the parameter type. Result = function return type. |
+| Member `obj.member` | Infer `obj` type. Look up `member` in the type's fields/methods. Result = field/method type. |
+| Index `arr[idx]` | Infer `arr` type (must be `[T]` or `[T; N]`). Infer `idx` type (must be `usize` or `isize`). Result = `T`. |
+| Conditional `cond ? then : else` | `cond` must unify with `bool`. Infer `then` and `else` types, choose a join type, and emit directional coercions from each arm to the join. Result = join type. |
+| Block `{ stmts; last }` | Type of last expression (or `unit` if empty). |
+| `return value` statement | Emit a directional coercion constraint from `value` to the enclosing function's return type. Control does not fall through. |
+| `match (scrut) { arms }` statement | Infer scrutinee type. Check each arm pattern against scrutinee type. Check each guard as `bool`. Check each arm body as a statement in the arm scope. Check exhaustiveness. |
+| Lambda `(params) -> body` | Infer parameter types from annotations (or fresh type vars if untyped). Infer body type. Result = function type. |
+| Struct literal `Type { fields }` | Resolve `Type`. For each field, emit a directional coercion constraint from value type to declared field type. Result = `Type`. |
+| Array literal `[elems]` | Infer all element types, unify them. Result = `[ElemType]`. |
+| `expr as Target` | Check that `expr` type can be cast to `Target` per [cast validity](#cast-validity). Result = `Target`. |
+| `expr?!` (error propagate) | `expr` type must be `T \| E`. Enclosing function must have `raises E` in its signature. Result = `T`. |
+| `expr!!` (error unwrap) | `expr` type must be `T \| E`. Result = `T`. Panics at runtime if value is `E`. |
+
+### Operator Desugaring
+
+Binary and unary operators desugar to interface method calls. The compiler provides built-in impls for all numeric types.
+
+| Operator | Interface | Method | Notes |
+|---|---|---|---|
+| `a + b` | `Add<Rhs>` | `add(a, b)` | |
+| `a - b` | `Sub<Rhs>` | `sub(a, b)` | |
+| `a * b` | `Mul<Rhs>` | `mul(a, b)` | |
+| `a / b` | `Div<Rhs>` | `div(a, b)` | |
+| `a % b` | `Rem<Rhs>` | `rem(a, b)` | |
+| `a == b` | `Eq` | `eq(a, b)` | Returns `bool` |
+| `a != b` | `Eq` | `ne(a, b)` | Default: `!eq(a, b)` |
+| `a < b` | `Ord` | `lt(a, b)` | Returns `bool` |
+| `a <= b` | `Ord` | `le(a, b)` | |
+| `a > b` | `Ord` | `gt(a, b)` | |
+| `a >= b` | `Ord` | `ge(a, b)` | |
+| `-a` | `Neg` | `neg(a)` | Unary |
+| `!a` | `Not` | `not(a)` | Unary |
+| `a[b]` | `Index<Idx>` | `index(a, b)` | |
+| `a[b] = c` | `IndexMut<Idx>` | `index_mut(a, b, c)` | |
+| `a in b` | `Contains` | `contains(b, a)` | Note argument order reversal |
+
+For user-defined types, the type checker looks up the interface impl. For built-in numeric types, the compiler provides built-in impls.
+
+## Type Casting and Conversion
+
+ZOM provides three cast operators with distinct safety guarantees.
+
+```ebnf
+CastExpression ::= Expression 'as' ('?' | '!')? TypeExpr
+```
+
+| Operator | Name | Semantics | Failure behavior |
+|----------|------|-----------|-----------------|
+| `x as T` | Guaranteed cast | Compile-time-proven safe conversion | Always succeeds |
+| `x as? T` | Optional cast | Runtime-checked conversion | Returns `T?`, `null` on failure |
+| `x as! T` | Forced cast | Runtime-checked conversion | Panics on failure |
+
+### `as` — Compile-Time Guaranteed
+
+These conversions are always valid and carry zero runtime cost:
+
+| Source | Target | Condition | Description |
+|--------|--------|-----------|-------------|
+| narrower integer | wider integer | always | Zero- or sign-extend (e.g., `i8` to `i32`) |
+| `f32` | `f64` | always | Widen float |
+| `&T` | `*const T` | always | Reference to raw pointer |
+| `&mut T` | `*mut T` | always | Mutable ref to mut raw ptr |
+| `&mut T` | `&T` | always | Mut-to-immut reference coercion (reborrow) |
+| `*mut T` | `*const T` | always | Mut-to-const raw pointer coercion |
+| `T` | `dyn I` | `T implements I`, target explicitly annotated | Existential coercion (fat pointer construction) |
+| `dyn I` | `dyn J` | `I extends J` | Upcast (vtable_ptr adjustment, zero-cost) |
+| `T` | `T \| E` | always | Inject into success branch |
+| `null` | `T \| null` | target explicitly contains `null` | Nullable union injection |
+
+### `as?` — Optional Runtime Check
+
+These conversions require a runtime check and return `null` on failure:
+
+| Source | Target | Description |
+|--------|--------|-------------|
+| wider integer | narrower integer | Returns `null` on overflow (e.g., `i64` to `i32`) |
+| `f64` | `f32` | Returns `null` if value is outside `f32` range |
+| `any` | `T` | Runtime type check. Returns `null` if the erased type is not `T`. |
+| `T \| E` | `T` | Returns `null` if the value is in the error branch. |
+| `*const T` | `&T` | Requires `unsafe { }`. Returns `null` if null or misaligned. |
+| `*mut T` | `&mut T` | Requires `unsafe { }`. Returns `null` if null or misaligned. |
+
+```zom
+let big: i64 = 1000;
+let small: i8? = big as? i8;
+
+let any_val: any = get_any();
+let str_val: str? = any_val as? str;
+```
+
+### `as!` — Forced Runtime Check
+
+Same conversions as `as?`, but panics with a descriptive message instead of returning `null`:
+
+```zom
+let big: i64 = 1000;
+let small: i8 = big as! i8;  // panics if overflow
+
+let any_val: any = get_any();
+let str_val: str = any_val as! str;  // panics if not actually a str
+```
+
+### Cast Validity Summary
+
+Pointer casts between unrelated pointer types (`*mut T` to `*mut U`) require an `unsafe { }` block because they can produce misaligned or invalid pointers.
+
+**Forbidden conversions** (always compile-time error):
+
+| Source | Target | Reason |
+|--------|--------|--------|
+| `dyn I` | concrete `T` | v1 does not support downcast. Use `as_any() -> any` pattern. |
+| `&T` | `&mut T` | Violates exclusive-mutability guarantee. |
+| `*const T` | `*mut T` | Violates const-correctness contract. |
+| `i32` | `bool` | No implicit boolean interpretation of integers. |
+| `bool` | `i32` | No implicit numeric interpretation of booleans. |
+| unrelated types | each other | Use `transmute` in `unsafe { }` if truly needed. |
 
 ## Type Queries
 
-Type queries extract type information from values:
+Type queries extract type information from values at compile time.
 
 ```zom
 let value = 42;
@@ -425,9 +805,11 @@ type ObjectType = typeof obj; // { name: str, age: i32 }
 type PersonKeys = keyof { name: str, age: i32 }; // "name" | "age"
 ```
 
+The `typeof` operator returns the static type of its operand expression. The `keyof` operator returns the union of string literal types corresponding to the field names of an object type.
+
 ## Type Annotations
 
-Type annotations explicitly specify types:
+Type annotations explicitly specify types.
 
 ```zom
 // Variable annotations
@@ -447,127 +829,40 @@ let data: { id: i32, values: f64[] } = {
 };
 ```
 
-## Atomic<T> Family
+Top-level declarations (functions, classes, structs, enums, interfaces, `let` at module level) require explicit type annotations. Local `let` bindings may omit annotations and rely on inference.
 
-### Atomic Types
+## Error Type Propagation
 
-Primitive atomic types map 1:1 to C++20 `std::atomic<T>` and provide the
-industry-standard SC-DRF memory model documented in Ch.15 SS 15.0.
-`Atomic<T>` is **not** generic over arbitrary `T`. The normative set of
-valid instantiations is closed and listed below. Any attempt to form
-`Atomic<SomeStruct>` or `Atomic<SomeEnum>` where the element is not in the
-table below raises **ZOM1053 AtomicAlignmentInvalid** at compile time.
+The type checker follows the **"one source error, one diagnostic"** principle:
 
-| Canonical alias | Shorthand for | Guaranteed lock-free | Size (bytes) |
-|-----------------|---------------|---------------------:|-------------:|
-| `AtomicBool`    | `Atomic<bool>` | yes | 1 |
-| `AtomicI8`      | `Atomic<i8>`  | yes | 1 |
-| `AtomicI16`     | `Atomic<i16>` | yes | 2 |
-| `AtomicI32`     | `Atomic<i32>` | yes | 4 |
-| `AtomicI64`     | `Atomic<i64>` | yes | 8 |
-| `AtomicIsize`   | `Atomic<isize>` | yes | pointer width |
-| `AtomicU8`      | `Atomic<u8>`  | yes | 1 |
-| `AtomicU16`     | `Atomic<u16>` | yes | 2 |
-| `AtomicU32`     | `Atomic<u32>` | yes | 4 |
-| `AtomicU64`     | `Atomic<u64>` | yes | 8 |
-| `AtomicUsize`   | `Atomic<usize>` | yes | pointer width |
-| `AtomicPtr<T>`  | `Atomic<*mut T>` | yes | pointer width |
+1. When a sub-expression fails type checking, it receives type `Error`.
+2. Parent expressions containing an `Error` child receive type `Error` without emitting an additional diagnostic.
+3. This prevents cascading nonsense errors from a single root cause.
 
-### Layout
+**Exception:** Pattern exhaustiveness errors are always reported even if the scrutinee has type `Error` — an inexhaustive match on an error type is still a bug in the user's code structure.
 
-Every `Atomic<T>` in the table above has memory layout:
+## Marker Types and Auto-Derivation
 
-```
-repr(C, align(align_of::<T>()))
-struct Atomic<T> { value: T }  // private field, opaque size
-```
+Marker types (interfaces with no methods, such as `Sendable`, `Shared`, `Linear`, `SuspendSafe`) are auto-derived for user-defined types based on their fields:
 
-Formally: `size_of::<Atomic<T>>() == size_of::<T>()`,
-`align_of::<Atomic<T>>() == align_of::<T>()`, and no padding is introduced
-between the outer `Atomic` and the inner `T`. The inner `T` is not directly
-accessible; it is only read or written through the atomic accessors below.
-An `Atomic<T>` value is never implicitly copied or cloned. `Atomic<T>`
-carries the `Linear` marker (Ch.16) and **never** the `Copy` marker. It
-does carry the `Shared` marker so references to a single `Atomic<T>` may
-be safely shared across any number of scopes or threads.
+- **Product types** (struct/class): marker `M` holds iff every field satisfies `M`.
+- **Sum types** (enum): marker `M` holds iff every variant's payload satisfies `M`.
+- **Primitive types** (`i32`, `f64`, `bool`, `char`, `str`, `unit`): all are `Sendable` and `Shared`.
+- **Function types**: are `Sendable` but not `Shared`.
+- **Reference types** `&T`: are `Sendable` and `Shared` iff `T` is `Shared`.
 
-### Ordering Enum
+`Linear` and `TaskBound` are **never** auto-derived; they require explicit opt-in.
 
-```zom
-enum Ordering {
-    Relaxed,
-    Consume,
-    Acquire,
-    Release,
-    AcqRel,
-    SeqCst,
-}
-```
+Users may override auto-derivation:
+- `impl !Sendable for MyType { }` — negative impl, pins marker to "does not hold".
+- `unsafe impl Sendable for MyType { }` — explicit assertion, overrides auto-derivation.
 
-Semantics. Each variant imposes a progressively stronger set of ordering
-guarantees over surrounding non-atomic and atomic accesses. The lattice
-below shows the "strictly stronger than" relation: a program valid at a
-weaker ordering remains valid at any stronger one, but not vice versa.
+See [Chapter 16](16-attributes-and-annotations.md) for the full marker system and [Chapter 15](15-concurrency.md) for concurrency-related markers.
 
-```mermaid
-flowchart BT
-    Relaxed -->|"no RF, no SR, only atomicity"| Consume
-    Consume -->|"data-dep RF only"| Acquire
-    Release -->|"all prior SR after"| AcqRel
-    Acquire -->|"all later RF before"| AcqRel
-    AcqRel -->|"Acquire + Release together"| SeqCst
-    SeqCst -->|"single total order S over all SeqCst ops"| SC_["SC guarantee"]
-```
+## Atomic Types
 
-Ordering-vs-operation compatibility matrix. Calling a method with an
-ordering outside its allowed set raises
-**ZOM1052 IncomparableMemoryOrder** at compile time.
+For the `Atomic<T>` family of types, see [Chapter 15](15-concurrency.md) (Concurrency). Atomic types map to C++20 `std::atomic<T>` and provide the industry-standard SC-DRF memory model.
 
-| Operation        | Allowed orderings                                             |
-|------------------|----------------------------------------------------------------|
-| `load()`         | `Relaxed`, `Consume`, `Acquire`, `SeqCst`                      |
-| `store()`        | `Relaxed`, `Release`, `SeqCst`                                 |
-| `swap()` / RMW   | all six: `Relaxed`, `Consume`, `Acquire`, `Release`, `AcqRel`, `SeqCst` |
-| `compare_exchange_*` success | `Relaxed`, `Acquire`, `Release`, `AcqRel`, `SeqCst` — **not** `Consume` |
-| `compare_exchange_*` failure | `Relaxed`, `Consume`, `Acquire`, `SeqCst` — **not** `Release`, `AcqRel` |
+## Unsafe Safety Model
 
-### API Summary
-
-Every valid `Atomic<T>` above provides the common methods below. Integer and
-pointer atomics additionally provide the arithmetic fetch-* family.
-
-| Method | Signature (on `Atomic<T>`) | Returns |
-|--------|-----------------------------|---------|
-| `new` | `fun new(value: T) -> Self` | constructed atomic |
-| `load` | `fun load(this: &Self, order: Ordering) -> T` | current value |
-| `store` | `fun store(this: &Self, value: T, order: Ordering) -> unit` | unit |
-| `swap` | `fun swap(this: &Self, value: T, order: Ordering) -> T` | previous value |
-| `compare_exchange_strong` | `fun compare_exchange_strong(this: &Self, expected: &mut T, desired: T, succ: Ordering, fail: Ordering) -> (T, bool)` | prior value + success flag |
-| `compare_exchange_weak` | `fun compare_exchange_weak(this: &Self, expected: &mut T, desired: T, succ: Ordering, fail: Ordering) -> (T, bool)` | prior value + success flag; may spuriously return false |
-| `fetch_add` | `fun fetch_add(this: &Self, delta: T, order: Ordering) -> T` | previous value (integers + ptr atomics) |
-| `fetch_sub` | `fun fetch_sub(this: &Self, delta: T, order: Ordering) -> T` | previous value (integers + ptr atomics) |
-| `fetch_and` | `fun fetch_and(this: &Self, val: T, order: Ordering) -> T` | previous value (integer atomics) |
-| `fetch_or` | `fun fetch_or(this: &Self, val: T, order: Ordering) -> T` | previous value (integer atomics) |
-| `fetch_xor` | `fun fetch_xor(this: &Self, val: T, order: Ordering) -> T` | previous value (integer atomics) |
-
-Semantics of `compare_exchange_strong` vs `_weak`. Both perform an atomic
-CAS on the location: iff the current value bit-equality-compares with
-`*expected`, the location is updated to `desired` using `succ` ordering;
-otherwise `*expected` is overwritten with the observed value using `fail`
-ordering. `strong` never returns `false` spuriously; `weak` is permitted
-to return `false` even when the value matched, enabling a single-CAS
-implementation on platforms that lack a native strong CAS. Loops using
-`compare_exchange_weak` are canonical and generate fewer instructions on
-LL/SC architectures; loops using `compare_exchange_strong` avoid an extra
-branch handling the spurious-failure case.
-
-`AtomicPtr<T>` arithmetic. `fetch_add(delta)` and `fetch_sub(delta)` on
-`AtomicPtr<T>` scale `delta` by `size_of::<T>()` bytes, matching C++
-pointer arithmetic. Byte-level pointer arithmetic must cast to
-`AtomicU8*` or use `AtomicUsize` and cast back after.
-
-Cross-reference. The interaction of `Ordering::Release` and
-`Ordering::Acquire` with the happens-before relation is specified in
-Ch.15 SS 15.0. The `Shared` marker satisfaction for `Atomic<T>` is used
-by the concurrency pass in Ch.15 SS 15.9 to permit `&Atomic<T>`
-reference captures across spawn boundaries without a diagnostic.
+For the `unsafe` keyword and its interaction with the type system, see [Chapter 14](14-memory-management.md). The type system and borrow checker provide strong safety guarantees by default; `unsafe` marks explicit escape hatches for operations the compiler cannot prove safe.

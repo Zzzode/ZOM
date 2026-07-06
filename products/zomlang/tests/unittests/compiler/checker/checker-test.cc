@@ -12,77 +12,231 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/core/common.h"
-#include "zc/core/string.h"
+#include "zomlang/compiler/checker/checker.h"
+
+#include "zc/core/vector.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/basic/string-pool.h"
-#include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/binder/binder.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/parser/parser.h"
-#include "zomlang/compiler/source/manager.h"
+#include "zomlang/compiler/type/function-type.h"
+#include "zomlang/compiler/type/primitive-type.h"
+#include "zomlang/compiler/type/type-env.h"
+#include "zomlang/compiler/type/type.h"
+#include "zomlang/tests/unittests/compiler/test-ast-builder.h"
 
 namespace zomlang {
 namespace compiler {
 namespace checker {
 
-ZC_TEST("CheckerTest_BasicParsingWorks") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  basic::LangOptions langOpts;
-  basic::StringPool stringPool;
+using tests::TestFixture;
 
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("let x: i32 = 42;").asBytes(), "test.zom");
-  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
-  auto ast = parser.parse();
+namespace {
 
-  ZC_EXPECT(ast != zc::none, "Parser should successfully parse valid code");
-  // TODO: Add type checking once Checker implementation is available
+struct CheckerRunResult {
+  bool bindSuccess;
+  bool checkSuccess;
+  type::TypeEnv typeEnv;
+};
+
+bool sameNode(const ast::Node& lhs, const ast::Node& rhs) {
+  if (lhs.kind != rhs.kind) return false;
+  if (lhs.range.getStart() != rhs.range.getStart()) return false;
+  if (lhs.range.getEnd() != rhs.range.getEnd()) return false;
+  for (size_t i = 0; i < ast::kNodePayloadWordCount; ++i) {
+    if (lhs.payload.words[i] != rhs.payload.words[i]) return false;
+  }
+  return true;
 }
 
-ZC_TEST("CheckerTest_TypeMismatchError") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  basic::LangOptions langOpts;
-  basic::StringPool stringPool;
+struct MetadataSnapshotEntry {
+  ast::NodeId parent;
+  uint32_t scope = 0;
+  symbol::SymbolId symbol;
+  bool unresolved = false;
+  bool deferredMember = false;
+  ast::NodeId shadowOf;
+  bool reexport = false;
+  ast::NodeList captures;
+  ast::NodeId labelTarget;
+};
 
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("let x: i32 = \"string\";").asBytes(), "test.zom");
-  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
-  auto ast = parser.parse();
-
-  ZC_EXPECT(ast != zc::none, "Parser should parse syntactically valid code");
-  // TODO: Add type checking once Checker implementation is available
+MetadataSnapshotEntry snapshotMetadata(const ast::BindingMetadata& metadata, ast::NodeId node) {
+  return MetadataSnapshotEntry{metadata.parent(node),           metadata.scope(node),
+                               metadata.symbol(node),           metadata.isUnresolved(node),
+                               metadata.isDeferredMember(node), metadata.shadowOf(node),
+                               metadata.isReexport(node),       metadata.captures(node),
+                               metadata.labelTarget(node)};
 }
 
-ZC_TEST("CheckerTest_UndefinedVariableError") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  basic::LangOptions langOpts;
-  basic::StringPool stringPool;
-
-  auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("let x: i32 = y + 1;").asBytes(), "test.zom");
-  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
-  auto ast = parser.parse();
-
-  ZC_EXPECT(ast != zc::none);
-  // TODO: Add type checking once Checker implementation is available
+bool sameMetadata(const MetadataSnapshotEntry& lhs, const MetadataSnapshotEntry& rhs) {
+  return lhs.parent == rhs.parent && lhs.scope == rhs.scope && lhs.symbol == rhs.symbol &&
+         lhs.unresolved == rhs.unresolved && lhs.deferredMember == rhs.deferredMember &&
+         lhs.shadowOf == rhs.shadowOf && lhs.reexport == rhs.reexport &&
+         lhs.captures.first == rhs.captures.first && lhs.captures.size == rhs.captures.size &&
+         lhs.labelTarget == rhs.labelTarget;
 }
 
-ZC_TEST("CheckerTest_FunctionParameterTypeChecking") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  basic::LangOptions langOpts;
-  basic::StringPool stringPool;
+CheckerRunResult runChecker(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
+  auto tree = fix.buildSourceFile("test"_zc, decls);
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun add(a: i32, b: str) -> i32 { return a + b; }\n").asBytes(), "test.zom");
-  parser::Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
-  auto ast = parser.parse();
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  bool bindSuccess = binder.bind();
 
-  ZC_EXPECT(ast != zc::none);
-  // TODO: Add type checking once Checker implementation is available
+  type::TypeEnv typeEnv;
+  bool checkSuccess = false;
+  if (bindSuccess) {
+    Checker checker(fix.symbols(), fix.diagnostics(), tree, fix.metadata(), typeEnv);
+    checkSuccess = checker.check();
+  }
+
+  return {bindSuccess, checkSuccess, zc::mv(typeEnv)};
+}
+
+}  // namespace
+
+ZC_TEST("Checker.ChecksValidAnnotatedLocal") {
+  TestFixture fix;
+  auto pat = fix.makeBindingPattern("x"_zc);
+  auto ty = fix.makeNamedTypeExpr("i32"_zc);
+  auto init = fix.makeIntLiteral(42);
+  auto decl = fix.makeVariableDeclarator(pat, ty, init);
+  zc::Vector<ast::NodeId> decls;
+  decls.add(decl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(let);
+  auto result = runChecker(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.bindSuccess);
+  ZC_EXPECT(result.checkSuccess);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(decl));
+  ZC_EXPECT(result.typeEnv.getType(decl).isPrimitive());
+}
+
+ZC_TEST("Checker.RejectsAnnotatedLocalTypeMismatch") {
+  TestFixture fix;
+  auto pat = fix.makeBindingPattern("x"_zc);
+  auto ty = fix.makeNamedTypeExpr("i32"_zc);
+  auto init = fix.makeStrLiteral("string"_zc);
+  auto decl = fix.makeVariableDeclarator(pat, ty, init);
+  zc::Vector<ast::NodeId> decls;
+  decls.add(decl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(let);
+  auto result = runChecker(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.bindSuccess);
+  ZC_EXPECT(!result.checkSuccess);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(decl));
+  ZC_EXPECT(result.typeEnv.getType(decl).isError());
+}
+
+ZC_TEST("Checker.RejectsUndefinedIdentifier") {
+  TestFixture fix;
+  auto expr = fix.makeIdentExpr("missing"_zc);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(expr);
+  auto result = runChecker(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.bindSuccess);
+  ZC_EXPECT(!result.checkSuccess);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+}
+
+ZC_TEST("Checker.RejectsFunctionArgumentTypeMismatch") {
+  TestFixture fix;
+  auto param = fix.makeFunctionParamDecl("value"_zc, fix.makeNamedTypeExpr("i32"_zc));
+  zc::Vector<ast::NodeId> paramNodes;
+  paramNodes.add(param);
+  auto params = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
+  auto body = fix.makeBlockStmt(ast::NodeList());
+  auto fn = fix.makeFunctionDecl("takes_i32"_zc, body, params, fix.makeNamedTypeExpr("unit"_zc));
+
+  zc::Vector<ast::NodeId> args;
+  args.add(fix.makeStrLiteral("bad"_zc));
+  auto call = fix.makeCallExpr(fix.makeIdentExpr("takes_i32"_zc), fix.makeNodeList(args.asPtr()));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(fn);
+  topDecls.add(call);
+  auto result = runChecker(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.bindSuccess);
+  ZC_EXPECT(!result.checkSuccess);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(call));
+  ZC_EXPECT(result.typeEnv.getType(call).isError());
+}
+
+ZC_TEST("Checker.DoesNotMutateAstNodes") {
+  TestFixture fix;
+  auto pat = fix.makeBindingPattern("x"_zc);
+  auto ty = fix.makeNamedTypeExpr("i32"_zc);
+  auto init = fix.makeIntLiteral(42);
+  auto decl = fix.makeVariableDeclarator(pat, ty, init);
+  zc::Vector<ast::NodeId> decls;
+  decls.add(decl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(let);
+
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+  zc::Vector<ast::Node> before;
+  for (const auto& node : tree.nodes()) { before.add(node); }
+
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  ZC_EXPECT(binder.bind());
+
+  type::TypeEnv typeEnv;
+  Checker checker(fix.symbols(), fix.diagnostics(), tree, fix.metadata(), typeEnv);
+  ZC_EXPECT(checker.check());
+
+  auto after = tree.nodes();
+  ZC_EXPECT(after.size() == before.size());
+  for (size_t i = 0; i < after.size(); ++i) { ZC_EXPECT(sameNode(before[i], after[i])); }
+}
+
+ZC_TEST("Checker.DoesNotMutateBindingMetadata") {
+  TestFixture fix;
+  auto pat = fix.makeBindingPattern("x"_zc);
+  auto ty = fix.makeNamedTypeExpr("i32"_zc);
+  auto init = fix.makeIntLiteral(42);
+  auto decl = fix.makeVariableDeclarator(pat, ty, init);
+  auto ref = fix.makeIdentExpr("x"_zc);
+  zc::Vector<ast::NodeId> decls;
+  decls.add(decl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(let);
+  topDecls.add(ref);
+
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  ZC_EXPECT(binder.bind());
+
+  zc::Vector<MetadataSnapshotEntry> before;
+  auto beforeNodes = tree.nodes();
+  for (size_t i = 0; i < beforeNodes.size(); ++i) {
+    auto id = ast::NodeId(static_cast<uint32_t>(i + 1));
+    before.add(snapshotMetadata(fix.metadata(), id));
+  }
+
+  type::TypeEnv typeEnv;
+  Checker checker(fix.symbols(), fix.diagnostics(), tree, fix.metadata(), typeEnv);
+  ZC_EXPECT(checker.check());
+
+  auto nodes = tree.nodes();
+  ZC_EXPECT(nodes.size() == before.size());
+  for (size_t i = 0; i < nodes.size(); ++i) {
+    auto id = ast::NodeId(static_cast<uint32_t>(i + 1));
+    ZC_EXPECT(sameMetadata(before[i], snapshotMetadata(fix.metadata(), id)));
+  }
 }
 
 }  // namespace checker

@@ -214,10 +214,29 @@ let inverted = ~0b1010; // Results in ...11110101
 
 ### Reference and Dereference Operators
 
+The `&` operator creates a reference to a value, and the `*` operator dereferences a pointer or reference.
+
 ```zom
-let pointer = &value;
-let current = *pointer;
+let value = 42;
+let ref: &i32 = &value;      // Create immutable reference
+let deref: i32 = *ref;       // Dereference reference (always safe)
+
+mut mvalue = 100;
+let mref: &mut i32 = &mut mvalue;  // Create mutable reference
+*mref = 200;                       // Write through mutable reference (always safe)
+
+// Raw pointers require unsafe to dereference
+let ptr: *const i32 = &value;      // Create raw pointer (safe)
+// let val = *ptr;                   // ❌ ZOM0901 RawPointerDerefOutsideUnsafe
+let val = unsafe { *ptr };          // Dereference raw pointer (requires unsafe)
 ```
+
+| Operation | Syntax | Requires `unsafe`? |
+|-----------|--------|-------------------|
+| Create reference | `&value` / `&mut value` | ❌ No |
+| Create raw pointer | `&value as *const T` | ❌ No |
+| Dereference `&T` / `&mut T` | `*ref` | ❌ No |
+| Dereference `*const T` / `*mut T` | `*raw_ptr` | ✅ Yes |
 
 ### Type Operators
 
@@ -225,11 +244,14 @@ let current = *pointer;
 // typeof operator
 let typeString = typeof myVariable;
 
-// Type casting
-let casted = <i32>someValue;
-let safeCast = someValue as i32;
-let optionalCast = someValue as? i32; // Returns null if cast fails
+// Type casting with as operators
+let intVal: i64 = 42;
+let wide: i64 = intVal as i64;        // Guaranteed widening cast
+let narrow: i8? = intVal as? i8;      // Optional narrowing cast
+let forced: i8 = intVal as! i8;       // Forced narrowing cast (panics on overflow)
 ```
+
+See Ch.03 §Type Casting and Conversion for the complete semantics of `as`, `as?`, and `as!`.
 
 ## Binary Expressions
 
@@ -273,10 +295,10 @@ Zom's error handling uses explicit control flow (no `try/catch`). Use these oper
 let result = riskyOperation()?!;  // Propagate error
 let value = optionalValue!!;      // Force unwrap (panics if null)
 let fallback = riskyOperation()?: defaultValue;  // Use default on error
-let handled = match (riskyOperation()) {
-    when Ok(v) => v,
-    when Err(e) => handleError(e)
-};
+match (riskyOperation()) {
+    when Ok(v) => { handleSuccess(v); }
+    when Err(e) => { handleError(e); }
+}
 ```
 
 ### Bitwise Operators

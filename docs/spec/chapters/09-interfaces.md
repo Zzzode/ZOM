@@ -1,82 +1,53 @@
 # Interfaces
 
-Interfaces define contracts that types can implement, enabling polymorphism and code reuse.
+Interfaces define contracts that types can implement, enabling polymorphism and code reuse without coupling behavior to a specific class hierarchy. An interface declares a set of method signatures, property signatures, and associated type requirements; any type that satisfies those requirements — via an `impl I for T` block or an in-class heritage clause — is said to *implement* the interface.
 
-### Basic Interface
+## 9.1 Basic Interface Declaration
+
+An interface declaration introduces a new nominal interface type. The declaration header consists of an optional modifier list, the `interface` keyword, a binding identifier, optional type parameters, and an optional heritage clause. The body enumerates the interface's required members.
 
 ```zom
 interface Drawable {
     fun draw();
-    fun getBounds() -> Rectangle;
+    get bounds() -> Rectangle;
 }
 
 interface Movable {
     fun move(deltaX: f64, deltaY: f64);
-    fun getPosition() -> Point;
+    get position() -> Point;
 }
 ```
 
-### Interface Implementation
+A minimal empty interface is valid and useful as a marker:
 
 ```zom
-class Button {
-    private let position: Point;
-    private let size: Size;
-    private let text: str;
-
-    public init(position: Point, size: Size, text: str) {
-        this.position = position;
-        this.size = size;
-        this.text = text;
-    }
-}
-
-impl Drawable for Button {
-    public fun draw() {
-        // Draw button implementation
-        print("Drawing button: " + this.text);
-    }
-
-    public fun getBounds() -> Rectangle {
-        return Rectangle(this.position, this.size);
-    }
-}
-
-impl Movable for Button {
-    public fun move(deltaX: f64, deltaY: f64) {
-        this.position.x += deltaX;
-        this.position.y += deltaY;
-    }
-
-    public fun getPosition() -> Point {
-        return this.position;
-    }
-}
+interface Marker {}
 ```
 
-### Generic Interfaces
+### 9.1.1 Visibility and Modifiers
+
+Interface declarations accept a `ModifierList` prefix. The `public` modifier makes the interface visible across module boundaries; `private` restricts it to the enclosing module.
 
 ```zom
-interface Container<T> {
-    fun add(item: T);
-    fun remove(item: T) -> bool;
-    fun contains(item: T) -> bool;
+public interface Container<T> : Iterable {
     fun size() -> i32;
-    fun isEmpty() -> bool;
-    fun clear();
-}
-
-interface Iterator<T> {
-    fun hasNext() -> bool;
-    fun next() -> T?;
-}
-
-interface Iterable<T> {
-    fun iterator() -> Iterator<T>;
 }
 ```
 
-### Interface Inheritance
+Individual interface members may also carry visibility modifiers (`private`, `protected`) and behavioral modifiers (`mutating`, `override`, `readonly`).
+
+```zom
+interface MixedAccess {
+    protected fun helper();
+    protected get context() -> Context;
+    fun publicOp();
+    get id() -> u64;
+}
+```
+
+## 9.2 Interface Inheritance
+
+An interface may inherit from one or more super-interfaces using the colon (`:`) syntax with `+` as the conjunction separator. This is the canonical form; the parser also accepts the legacy `extends` keyword for single inheritance, but the `:` + `+` form is preferred.
 
 ```zom
 interface ReadableStream {
@@ -90,193 +61,148 @@ interface WritableStream {
     fun close();
 }
 
-interface ReadWriteStream extends ReadableStream, WritableStream {
+interface ReadWriteStream : ReadableStream + WritableStream {
     fun seek(position: i64);
-    fun getPosition() -> i64;
+    get position() -> i64;
 }
 ```
 
-### Associated Types
+Multiple super-interfaces are joined by `+`, which denotes logical conjunction (AND). The pipe `|` is reserved for union types and is rejected in interface heritage position.
+
+### 9.2.1 Generic Interface Inheritance
+
+Generic interfaces may inherit from other generic interfaces with type arguments:
 
 ```zom
-interface Collection<T> {
-    type Iterator: Iterator<T>;
-
-    fun iterator() -> Iterator;
-    fun size() -> i32;
-}
-
-class ArrayList<T> {
-    private let items: T[];
-}
-
-impl Collection<T> for ArrayList<T> {
-    type Iterator = ArrayListIterator<T>;
-
-    public fun iterator() -> ArrayListIterator<T> {
-        return ArrayListIterator(this.items);
-    }
-
-    public fun size() -> i32 {
-        return this.items.length;
-    }
+interface Numeric<T> : Comparable<T> + Hash<T> {
+    fun add(other: T) -> T;
 }
 ```
 
-### Default Interface Methods (DIM)
+## 9.3 Interface Members
 
-An interface method may carry a body, which provides a default implementation that downstream classes inherit unless overridden. Default methods let an interface grow over time without requiring every existing implementation to be updated. A default method operates solely through the interface's own method surface; it has no direct access to any class-specific fields or internal state.
+The interface body contains three kinds of elements: method signatures, property signatures, and associated type declarations. All three are *required* — a type implementing the interface must provide a definition for each declared member.
 
-The following interface declares one abstract method (`serialize`) and one default method (`toJsonString`) that builds on top of it:
+### 9.3.1 Method Signatures
+
+A method signature declares the name, parameter list, and optional return type of a method that implementors must provide. The signature ends with a semicolon (`;`). A method body (block statement) is **not permitted** inside an interface; the compiler emits a parse error if a `{ ... }` block follows the signature.
 
 ```zom
-interface JsonSerializable {
-    fun serialize() -> JsonValue;
+interface Writer {
+    fun write_bytes(data: u8[]) -> i32;
+    fun flush();
+}
+```
 
-    fun toJsonString() -> str {
-        return this.serialize().to_pretty_str();
+Methods may carry the `mutating` modifier to indicate that the call mutates the receiver:
+
+```zom
+interface Counter {
+    mutating fun inc();
+    mutating fun reset();
+    get value() -> i64;
+}
+```
+
+The `override` modifier is permitted on a method signature when the interface re-declares a method inherited from a super-interface, for example to tighten the return type:
+
+```zom
+interface OverrideReadonly {
+    override fun toString() -> str;
+    readonly get tag() -> str;
+}
+```
+
+### 9.3.2 Property Signatures
+
+Property signatures declare getter and setter requirements using the `get` and `set` keywords. A getter signature specifies the return type; a setter signature specifies the value parameter type.
+
+```zom
+interface UserRecord {
+    get id() -> u64;
+    get name() -> str;
+    set name(v: str);
+    set email(v: str);
+}
+```
+
+The `readonly` modifier on a `get` signature indicates that the property is read-only (no setter obligation):
+
+```zom
+interface Named {
+    readonly get name() -> str;
+    readonly get id() -> u64;
+}
+```
+
+### 9.3.3 Associated Types
+
+An interface may declare associated types — type-level placeholders that each implementation must assign to a concrete type. Associated types are declared with the `type` keyword inside the interface body.
+
+Four forms are supported:
+
+```zom
+interface Collection {
+    type Item;                                    // (1) unconstrained
+    type Error : Error;                           // (2) bounded
+    type State = Closed | Open;                   // (3) with default
+    type Iter<T>;                                 // (4) generic associated type (GAT)
+}
+```
+
+The full form combines type parameters, bounds, and a default:
+
+```zom
+interface FullAssoc {
+    type Element<T, U> : Show + Hash = T | U;
+}
+```
+
+When an associated type carries both a bound and a default, the default must satisfy the bound.
+
+Implementations assign associated types using the `type Name = ConcreteType;` syntax inside the `impl` block. See [§9.4 Standalone `impl I for T`](#94-standalone-impl-i-for-t-independent-implementation-blocks).
+
+Associated type projections are resolved only when the source interface is
+unique. If a type parameter has multiple bounds that declare the same
+associated type name, the unqualified projection `T::Item` is ambiguous. Use
+the fully qualified projection `<T as Interface>::Item` to select the source
+interface explicitly.
+
+## 9.4 Standalone `impl I for T` (Independent Implementation Blocks)
+
+Not all behavior contracts can live inside the `class` body that declares the type. Two common cases motivate standalone implementation blocks: (a) the interface author owns the interface but does **not** own the target type (FFI types, standard-library types such as `u64`), and (b) the type author owns the type but wants to group impls into separate files for modularity (serialization, rendering, persistence in different compilation units).
+
+### 9.4.1 Syntax
+
+A standalone impl declaration uses the keyword `impl` followed by an interface bound list, the keyword `for`, and the target type. An optional `where`-clause constrains generic parameters.
+
+```zom
+impl Drawable for Button {
+    fun draw() {
+        print("Drawing " + this.text);
+    }
+
+    get bounds() -> Rectangle {
+        return Rectangle(this.position, this.size);
     }
 }
 ```
 
-Any class implementing `JsonSerializable` automatically receives `toJsonString` for free. If a class wishes to override the default (for example, to produce compact JSON instead of pretty-printed JSON), it may declare its own `toJsonString` with the same signature.
-
-A second example demonstrates layering several convenience levels on top of a single primitive hook. The `Logger` interface exposes three default methods that each dispatch through one abstract primitive:
+Multiple interfaces and markers may be combined with `+`:
 
 ```zom
-interface Logger {
-    fun log(level: LogLevel, message: str);
+impl Reader + Writer + Seekable for FileStream { }
+```
 
-    fun info(message: str) {
-        this.log(LogLevel.INFO, message);
-    }
+An `impl` block may assign associated types:
 
-    fun warn(message: str) {
-        this.log(LogLevel.WARN, message);
-    }
-
-    fun error(message: str) {
-        this.log(LogLevel.ERROR, message);
-    }
+```zom
+class ByteReader {
+    let buf: u8[];
+    mut pos: i32;
 }
-```
 
-A concrete logger class only needs to provide `log`; `info`, `warn`, and `error` come for free and remain consistent across every implementation.
-
-#### Permitted default-method behavior
-
-DIM-1: Default methods may ONLY call other methods of the same interface (or its super-interfaces); they may NOT access any member fields or class-specific state. Violating the body restriction is a semantic error emitted as `ZOM0480 DefaultMethodAccessesNonInterfaceState`. This restriction preserves interface-safety: a default body must remain valid for every possible future implementor of the interface.
-
-DIM-2 (nearest-wins, diamond-safe priority): A class or struct's own method (written in the class body or in any `impl I for T` block) ALWAYS wins over ANY default method, regardless of inheritance depth. The user-provided impl method takes precedence over any default provided by the interface or by any of that interface's ancestors.
-
-DIM-3: Between competing default methods, the most-derived (nearest) interface in the method-resolution order wins over the least-derived (far) interface. See §8 for the full MRO definition.
-
-DIM-4: If two equally near interfaces provide conflicting defaults for the same signature, a tie exists. The concrete class MUST provide an explicit override; if it does not, the compiler emits `ZOM0480 DiamondConflict`.
-
-A complete example demonstrating the pure/default split and the "only call interface methods" rule:
-
-```zom
-interface Drawable {
-    fun draw(this);                                               // pure
-    fun drawBoundingBox(this) {                                   // default
-        let b = this.bounds();                                    // calls another method
-        println!("box({},{},{},{})", b.x, b.y, b.w, b.h);
-    }
-    fun bounds(this) -> Rect;                                     // pure
-}
-```
-
-The default `drawBoundingBox` dispatches through `bounds()` (a peer pure method) and never touches fields, satisfying DIM-1.
-
-#### Grammar extension
-
-The `InterfaceElement` production is extended to permit a block statement as the body of a method declaration, enabling default methods.
-
-```ebnf
-InterfaceElement
-  = MethodDeclaration
-  | AssociatedTypeDecl
-  ;
-
-MethodDeclaration
-  = Attribute* Visibility? "fun" Identifier GenericParams?
-      "(" FunctionParameters? ")" ReturnType? BlockStatement?
-  ;
-```
-
-When `BlockStatement` is absent the method is abstract; when present the method carries a default implementation.
-
-### Standalone `impl I for T` (Independent Implementation Blocks)
-
-Not all behavior contracts can live inside the `class` body that declares the struct. Two common cases motivate standalone implementation blocks: (a) the interface author owns the interface but does NOT own the target type (the newtype pattern, FFI types, or standard-library types such as `u64`), and (b) the type author owns the type but wants to group impls into separate files for modularity, for example organizing serialization, rendering, and persistence contracts in different compilation units.
-
-Standalone impl declarations use the keyword `impl` followed by the interface name, the keyword `for`, and the target type. An optional marker-trait list (`+ MarkerPath`) may be attached, and an optional `where`-clause may constrain generic parameters.
-
-```ebnf
-StandaloneImplDeclaration
-  = "impl" GenericParams? InterfaceName ("+" MarkerPath)*
-      "for" Type WhereClause? "{"
-        (MethodDeclaration | AssociatedTypeAssignment | ConstantDeclaration)*
-      "}"
-  ;
-
-AssociatedTypeAssignment
-  = "type" Identifier "=" Type ";"
-  ;
-```
-
-(Full normative grammar is reproduced in Ch.17 §StandaloneImplDeclaration.)
-
-An interface implementation is written as a standalone `impl I (+ M*)* for T { ... }` block placed anywhere in the same crate as either `I` or `T`. This is the explicit form; the `class X implements I1, I2` heritage clause is SEMANTICALLY EQUIVALENT and serves purely as syntactic sugar — the compiler lowers it into the identical `impl I for X` internal representation.
-
-If two distinct `impl I for T` blocks exist for the same nominal `(I, T)` pair within the same crate, the compiler emits `ZOM0505 DuplicateImpl`, since the vtable layout would be ambiguous. The same diagnostic is emitted when BOTH `class X implements I` and an explicit `impl I for X {}` exist in the same crate for the exact same binding (the two forms may not coexist).
-
-#### Orphan rule
-
-An `impl I for T` block is legal if EITHER: (1) `I` is declared in the current crate, OR (2) `T` is declared in the current crate. If both the interface and the target type are foreign to the current crate the compiler emits `ZOM0710 OrphanImpl`. This rule preserves coherence across crate boundaries: downstream crates cannot inject conflicting implementations for types and interfaces they do not own. The full orphan-rule matrix — including the cross-crate overlap case `ZOM0714 AmbigImplOverlap` — is specified in Ch.22 §22.4.
-
-Common legitimate use cases:
-- **External type + internal interface:** e.g. `impl Json for std::Vec<u8>` where `Vec<u8>` is imported from the standard crate but `Json` is local.
-- **Internal type + external interface:** e.g. `impl serde::Serialize for MyType` where `MyType` is local but `Serialize` comes from a dependency crate.
-
-Per-crate coherence allows at most ONE `impl I for T` per `(I, T)` pair; cross-crate overlap is rejected by `ZOM0714 AmbigImplOverlap` (Ch.22 §22.4).
-
-#### Marker forwarding
-
-If the impl list includes markers (`+ Sendable`, `+ Shared`, etc.), the combined form is equivalent to writing independent `impl Sendable for T` declarations. The combined syntax is purely sugar — each marker in the list becomes a separate coherence entry.
-
-#### Examples
-
-The crate that owns `JsonSerializable` may extend it to the built-in `u64` type, even though the crate does not own the definition of `u64`:
-
-```zom
-impl JsonSerializable for u64 {
-    fun serialize() -> JsonValue {
-        return JsonValue.Number(this as f64);
-    }
-}
-```
-
-A crate that owns a local `MyUuid` struct may implement a foreign `Display` interface imported from the standard library. This is permitted because `MyUuid` is local:
-
-```zom
-import std::fmt::Display;
-
-struct MyUuid(private let bytes: u8[16]);
-
-impl Display for MyUuid {
-    fun fmt(f: &mut Formatter) {
-        f.write_str(this.bytes.to_hex_string());
-    }
-}
-```
-
-Standalone impl blocks may also assign associated types, consistent with the in-class form shown in §5:
-
-```zom
-class ByteReader(private let buf: u8[], private let pos: i32);
-
-impl Iterator<u8> for ByteReader {
+impl Iterator for ByteReader {
     type Item = u8;
 
     fun hasNext() -> bool {
@@ -284,7 +210,7 @@ impl Iterator<u8> for ByteReader {
     }
 
     fun next() -> u8? {
-        if !this.hasNext() { return nil; }
+        if !this.hasNext() { return null; }
         let byte = this.buf[this.pos];
         this.pos = this.pos + 1;
         return byte;
@@ -292,9 +218,9 @@ impl Iterator<u8> for ByteReader {
 }
 ```
 
-#### Where-clause support
+### 9.4.2 Generic Impls and Where-Clauses
 
-Generic standalone impls may use a `where`-clause to constrain type parameters. The following impl propagates the `Debug` requirement to the element type:
+Generic standalone impls may use a `where`-clause to constrain type parameters:
 
 ```zom
 impl<T> Debug for Vec<T> where T: Debug {
@@ -309,39 +235,56 @@ impl<T> Debug for Vec<T> where T: Debug {
 }
 ```
 
-### Interface Inheritance & Diamond Resolution
+Note: `where`-clauses on `interface` declarations themselves are **not** supported; constraints on interface type parameters are expressed in the type parameter list directly.
 
-An interface may `extends A, B, ...`, inheriting from multiple superinterfaces listed in declaration order. Multiple inheritance is permitted for interfaces (but not for classes). Multiple inheritance means that a method name may be reachable through more than one path, so the language specifies a deterministic four-rule resolution order.
+### 9.4.3 Orphan Rule
 
-#### Inheritance-conflict resolution rules (IR-1 .. IR-4)
+An `impl I for T` block is legal if **either**: (1) `I` is declared in the current crate, OR (2) `T` is declared in the current crate. If both the interface and the target type are foreign to the current crate the compiler emits `ZOM0710 OrphanImpl`. This rule preserves coherence across crate boundaries: downstream crates cannot inject conflicting implementations for types and interfaces they do not own.
 
-IR-1: **Identical signatures (name + params + return type) are redundant.** Redundant redeclaration of a method already inherited from a superinterface is allowed but produces the `ZOM0478 RedundantInheritedMethod` WARNING (not an error).
+Common legitimate use cases:
 
-IR-2: **Same name, different parameter list = independent overload.** No conflict is reported; each signature is tracked separately and dispatch selects the matching overload by argument shape.
+- **External type + internal interface:** e.g. `impl JsonSerializable for u64` where `u64` is from the standard crate but `JsonSerializable` is local.
+- **Internal type + external interface:** e.g. `impl Display for MyUuid` where `MyUuid` is local but `Display` comes from the standard library.
 
-IR-3: **Same name, same params, different return type = incompatible.** The compiler emits `ZOM0482 IncompatibleReturnType` ERROR. The user MUST resolve by explicitly re-declaring the method in the child interface with the single correct return type: `fun name(args) -> CorrectType;`.
+Per-crate coherence allows at most **one** `impl I for T` per `(I, T)` pair; if two distinct `impl I for T` blocks exist for the same nominal pair within the same crate, the compiler emits `ZOM0505 DuplicateImpl`. The cross-crate overlap case is rejected by `ZOM0714 AmbigImplOverlap` (Ch.22 §22.4).
 
-IR-4: **Conflicting default implementations from two superinterfaces** fall under §6 DIM-4. If two equally-near interfaces supply default bodies for the same signature, the concrete class MUST override; if the user wishes to resolve the ambiguity at the interface level rather than in the class, the child interface may re-declare the method as pure or supply its own default body — either act ends the ambiguity for downstream implementors.
+### 9.4.4 Marker Forwarding
 
-#### Diamond inheritance structure
+If the impl list includes markers (`+ Sendable`, `+ Shared`, etc.), the combined form is equivalent to writing separate `impl Sendable for T` declarations. The combined syntax is purely syntactic sugar — each marker in the list becomes a separate coherence entry.
 
-The following class diagram illustrates a canonical diamond where `D` extends both `B` and `C`, each of which extends the common root `A`:
+## 9.5 Interface Inheritance & Diamond Resolution
+
+When an interface inherits from multiple super-interfaces, a method name may be reachable through more than one path. The language specifies a deterministic set of resolution rules.
+
+### 9.5.1 Inheritance-Conflict Resolution Rules (IR-1 .. IR-4)
+
+**IR-1: Identical signatures are redundant.** Redundant redeclaration of a method already inherited from a superinterface is allowed but produces the `ZOM0478 RedundantInheritedMethod` warning (not an error).
+
+**IR-2: Same name, different parameter list = independent overload.** No conflict is reported; each signature is tracked separately and dispatch selects the matching overload by argument shape.
+
+**IR-3: Same name, same params, different return type = incompatible.** The compiler emits `ZOM0482 IncompatibleReturnType` error. The user must resolve by explicitly re-declaring the method in the child interface with the single correct return type.
+
+**IR-4: Conflicting pure-method obligations.** If two super-interfaces declare the same method signature as abstract (no body), there is no ambiguity — the concrete type simply implements it once. The obligation is the same regardless of which path it is reached through.
+
+### 9.5.2 Diamond Inheritance Structure
+
+The following class diagram illustrates a canonical diamond where `D` inherits from both `B` and `C`, each of which extends the common root `A`:
 
 ```mermaid
 classDiagram
     direction TB
     class A {
         <<interface>>
-        +foo(this) pure
-        +bar(this) default A.bar
+        +foo() pure
+        +bar() pure
     }
     class B {
         <<interface>>
-        +bar(this) override B.bar
+        +bar() pure
     }
     class C {
         <<interface>>
-        +bar(this) pure
+        +bar() pure
     }
     class D {
         <<interface>>
@@ -352,86 +295,49 @@ classDiagram
     C <|-- D : extends
 ```
 
-Under the nearest-wins rule (§6 DIM-3 + §8 IR-4), `D` inherits `B.bar` because `B` is more derived than the shared ancestor `A`, while `C.bar` (pure) does not conflict — the concrete class simply has a non-default obligation to supply `bar` if it does not already inherit a body. The full concrete example below demonstrates this:
+Under IR-1, `D` inherits `foo()` from `A` without conflict. For `bar()`, both `B` and `C` redeclare the same signature; IR-1 treats this as redundant and emits a warning. The concrete class implementing `D` provides a single `bar()` that satisfies all inherited obligations.
 
-```zom
-interface A { fun foo(this); fun bar(this) { println("A.bar"); } }
-interface B extends A { override fun bar(this) { println("B.bar"); } }
-interface C extends A { fun bar(this); }
-interface D extends B, C {
-    // inherits B.bar() and pure C.bar(); B wins (nearest rule)
-    // inherits A.foo() pure; no conflict
-}
-```
+### 9.5.3 Explicit Qualification Syntax
 
-#### Diamond-resolution flowchart
-
-The flowchart below traces the dispatch of a call `c.foo()` on an instance `c` of a class `C` for which both `impl IA for C` and `impl IB for C` exist, where both interfaces extend a common `IBase` and each may define its own default for `foo`. The flow mirrors §6 DIM-2 (concrete-wins) and DIM-3/4 (nearest-wins with tie):
-
-```mermaid
-flowchart TD
-    A[Class C + impl IA for C + impl IB for C] --> B{Does C override foo?}
-    B -->|Yes - §6 DIM-2| C[Dispatch to C::foo]
-    B -->|No| D[Compute MRO post-order left-to-right]
-    D --> E[IBase -> IA -> IB]
-    E --> F{Is foo provided by IA?}
-    F -->|Yes| G{Is foo also provided by IB?}
-    G -->|No| H[Dispatch to IA::foo default]
-    G -->|Yes| I{Same depth in MRO?}
-    I -->|No IA deeper §6 DIM-3| H
-    I -->|No IB deeper §6 DIM-3| J[Dispatch to IB::foo default]
-    I -->|Yes equal depth §6 DIM-4| K[ZOM0480 DiamondConflict]
-    K --> L[User writes explicit C override]
-    K --> M[User qualifies: return IA::foo this]
-    L --> C
-    M --> H
-```
-
-#### Explicit qualification syntax
-
-When §6 DIM-4 fires, the user may disambiguate inside the class body by invoking a specific interface default using the `InterfaceName::method` qualified-call form:
+When a type implements multiple interfaces that share a method name, the user may disambiguate inside the implementing class body by invoking a specific interface's method using the `InterfaceName::method` qualified-call form:
 
 ```zom
 interface IBase { fun foo() -> str; }
-interface IA extends IBase { fun foo() -> str { return "A"; } }
-interface IB extends IBase { fun foo() -> str { return "B"; } }
+interface IA : IBase { fun bar() -> str; }
+interface IB : IBase { fun baz() -> str; }
 
-class C { ... }
+class C {
+    let data: str;
+}
 
 impl IA for C {
-    fun foo(self) -> str {
-        /* C's resolution */
-        return IA::foo(this);
-    }
+    fun foo() -> str { return "IA: " + this.data; }
+    fun bar() -> str { return this.foo(); }
 }
 
 impl IB for C {
-    /* C already provided foo in impl IA for C above;
-       this one never runs for unqualified c.foo()
-       per rule DR-1 (most specific user-provided
-       concrete impl wins over interface defaults
-       and competing-interface siblings).
-       If the caller wants IB's foo they write IB::foo(this). */
+    fun foo() -> str { return "IB: " + this.data; }
+    fun baz() -> str { return IB::foo(this); }
 }
 ```
 
-The qualified form passes the receiver as its first argument, mirroring how default methods see `this`. The resolution is static, so `IA::foo(this)` always dispatches to the default body provided by `IA`, independent of any further subclasses of `C`.
+The qualified form `IB::foo(this)` passes the receiver as its first argument. The resolution is static: it always dispatches to the method as defined in the named interface's impl, independent of any further subclasses of `C`.
 
-### Object-Safe Interfaces (dyn prerequisite)
+## 9.6 Object-Safe Interfaces (dyn Prerequisite)
 
-An interface `I` is object-safe iff values of type `T: I` can be coerced to `dyn I`, the existential type form defined in Ch.03 §Existential Types. An object-unsafe interface is rejected at the point of an attempted coercion with the specific diagnostic matching the first rule that failed. All seven rules OS-1 through OS-7 must pass, and the inheritance chain must be closed under object-safety (OS-0).
+An interface `I` is *object-safe* iff values of type `T: I` can be coerced to `dyn I`, the existential type form defined in [Ch.03 §Existential Types](03-types.md). An object-unsafe interface is rejected at the point of an attempted coercion with the specific diagnostic matching the first rule that failed.
 
 Object-safety is a vtable-layout property: every method on the interface must be representable as a fixed-size function pointer slot whose calling convention is identical for every implementor `T`.
 
-#### Object-safety decision flowchart
+### 9.6.1 Object-Safety Decision Flowchart
 
 ```mermaid
 flowchart TD
-    Start([Input: interface I]) --> OS0{"OS-0: If I extends J, is J object-safe?"}
+    Start([Input: interface I]) --> OS0{"OS-0: If I extends J,<br/>is J object-safe?"}
     OS0 -->|No| E0[ZOM0338 DynSuperNotObjectSafe]
     OS0 -->|Yes| OS1{"OS-1: Any generic method<br/>(method-level type params)?"}
     OS1 -->|Yes| E1[ZOM0331 DynGenericMethod]
-    OS1 -->|No| OS2{"OS-2: Any method returning bare Self?"}
+    OS1 -->|No| OS2{"OS-2: Any method returning<br/>bare Self?"}
     OS2 -->|Yes| E2[ZOM0332 DynSelfReturn]
     OS2 -->|No| OS3{"OS-3: Any method with move self<br/>#[zom::param::move]?"}
     OS3 -->|Yes| E3[ZOM0333 DynMoveSelf]
@@ -441,83 +347,71 @@ flowchart TD
     OS5 -->|Yes| E5[ZOM0335 DynStaticMethod]
     OS5 -->|No| OS6{"OS-6: Any GAT<br/>(lifetime-parametric assoc type)?"}
     OS6 -->|Yes| E6[ZOM0336 DynGatNotAllowed]
-    OS6 -->|No| OS7{"OS-7: All param/return types impl Sized?"}
+    OS6 -->|No| OS7{"OS-7: All param/return types<br/>impl Sized?"}
     OS7 -->|No| E7[ZOM0337 DynUnsizedParameter]
     OS7 -->|Yes| OK([dyn I allowed])
 ```
 
-#### OS-0 (inheritance closure)
+### 9.6.2 OS-0 (Inheritance Closure)
 
-If `I extends J` and I is object-safe, every superinterface J must also be object-safe. Otherwise the compiler emits `ZOM0338 DynSuperNotObjectSafe` (a companion of `ZOM0330 NeverTypeCoerceFail` used for broader existential-coercion failures — see Ch.03).
+If `I : J` (I extends J) and `I` is object-safe, every superinterface `J` must also be object-safe. Otherwise the compiler emits `ZOM0338 DynSuperNotObjectSafe`.
 
-#### OS-1 No generic methods
+### 9.6.3 OS-1 No Generic Methods
 
 Methods may not introduce their own type parameters. Each distinct instantiation would otherwise require a fresh vtable slot and the set of instantiations is unbounded.
 
-Counter-example:
 ```zom
-interface X { fun map<T>(this, f: fun(Self)->T) -> T; }   // ZOM0331 DynGenericMethod
+interface X { fun map<T>(f: fun(Self)->T) -> T; }   // ZOM0331 DynGenericMethod
 ```
-Diagnostic: `ZOM0331 DynGenericMethod`.
 
-#### OS-2 No methods returning bare Self
+### 9.6.4 OS-2 No Methods Returning Bare Self
 
-`Self` (the concrete implementing type) cannot be returned by value because its size is not statically known behind `dyn`. Note that `Self?` is allowed: the option is always pointer-sized (one word), and the runtime materializes the cloned value on the heap so that callers receive a uniform representation.
+`Self` (the concrete implementing type) cannot be returned by value because its size is not statically known behind `dyn`. `Self?` is allowed only because the `dyn` calling convention lowers it as an explicit nullable union whose success payload is materialized behind the erased data pointer. The source type remains `Self | null`; the pointer-sized representation is a dyn ABI lowering detail, not the general layout of every nullable union.
 
-Counter-example:
 ```zom
-interface Cloneable { fun clone(this) -> Self; }           // ZOM0332 DynSelfReturn
+interface Cloneable { fun clone() -> Self; }           // ZOM0332 DynSelfReturn
 ```
-Diagnostic: `ZOM0332 DynSelfReturn`.
 
-#### OS-3 No move-consume self
+### 9.6.5 OS-3 No Move-Consume Self
 
 A receiver with the linear move attribute, `fun consume(#[zom::param::move] this)`, is forbidden. Linear move of a `dyn I` receiver requires compile-time known size, which is not available. Allowed receivers are `borrow this`, `&mut this`, and `self` passed by non-move reference.
 
-Counter-example:
 ```zom
 interface Consumable { fun consume(#[zom::param::move] this); }   // ZOM0333 DynMoveSelf
 ```
-Diagnostic: `ZOM0333 DynMoveSelf`.
 
-#### OS-4 All associated types bound in the dyn head
+### 9.6.6 OS-4 All Associated Types Bound in the dyn Head
 
 If an interface declares associated types, every one must be assigned in the `dyn` head. Writing bare `dyn Iterator` leaves `Item` unknown and therefore breaks the calling convention of `next() -> Item?`; the coerced type must be `dyn Iterator<Item = T>`.
 
-Counter-example:
 ```zom
 let it: dyn Iterator = make_iter();                       // ZOM0334 DynUnassociatedType
 let it_ok: dyn Iterator<Item = u8> = make_iter();         // OK
 ```
-Diagnostic: `ZOM0334 DynUnassociatedType`.
 
-#### OS-5 No static methods
+### 9.6.7 OS-5 No Static Methods
 
 A method lacking any form of `this` receiver has no dispatch target in the vtable. Such methods remain callable through the qualified path `I::static_method()`; they are simply excluded from the dyn vtable.
 
-Counter-example:
 ```zom
 interface Factory { static fun new() -> Self; }           // ZOM0335 DynStaticMethod
 ```
-Diagnostic: `ZOM0335 DynStaticMethod`.
 
-#### OS-6 No Generic Associated Types (GAT)
+### 9.6.8 OS-6 No Generic Associated Types (GAT)
 
 An associated type that introduces its own lifetime or type parameters (e.g. `type Iter<'a>;`) is a GAT. GAT vtable representation is deferred to post-v1.
 
-Counter-example:
 ```zom
 interface Iterable { type Iter<'a>: Iterator; }           // ZOM0336 DynGatNotAllowed
 ```
-Diagnostic: `ZOM0336 DynGatNotAllowed`.
 
-#### OS-7 All parameters and returns are Sized
+### 9.6.9 OS-7 All Parameters and Returns Are Sized
 
 Every method parameter type and return type, modulo the explicit exceptions above, must impl the `Sized` marker at coercion time. DSTs such as `[T]` or unsized structs cannot flow across a vtable boundary because their layout is not static.
 
 Diagnostic: `ZOM0337 DynUnsizedParameter`.
 
-#### Examples of dyn-compatible interfaces
+### 9.6.10 Examples of dyn-Compatible Interfaces
 
 A minimal object-safe interface:
 
@@ -551,9 +445,52 @@ fun dispatch<T>(h: &(dyn RpcHandler + Sendable + Shared), req: Request)
 }
 ```
 
-### Interfaces as Generic Bounds
+## 9.7 Unsafe Interfaces and Unsafe Impl
 
-Interface names and marker names both participate in the same `BoundList` syntax, shared with Ch.12 §Generics. The full `BoundList` grammar (normative in Ch.12) is:
+Some interfaces carry semantic contracts that the compiler cannot statically verify — for example, "this allocator is safe to call concurrently from multiple threads" or "this iterator yields valid UTF-8." Such interfaces are *semantically unsafe*: implementing them correctly requires the programmer to attest to invariants that the type system cannot prove.
+
+### 9.7.1 `unsafe impl` Syntax
+
+The `unsafe` keyword prefixes the `impl` block to signal that the implementor is attesting to the interface's semantic contract:
+
+```zom
+/// # Safety
+/// Implementors must guarantee that all methods are safe to call concurrently
+/// from multiple threads without external synchronization.
+interface GlobalAllocator {
+    fun allocate(size: usize, align: usize) -> *mut u8;
+    fun deallocate(ptr: *mut u8, size: usize, align: usize);
+}
+
+unsafe impl GlobalAllocator for MyArena {
+    fun allocate(size: usize, align: usize) -> *mut u8 { /* ... */ }
+    fun deallocate(ptr: *mut u8, size: usize, align: usize) { /* ... */ }
+}
+```
+
+Omitting `unsafe` produces `ZOM0907 UnsafeInterfaceImplMustBeUnsafe` when the target interface is marked as requiring unsafe implementation.
+
+### 9.7.2 Calling Methods of Semantically Unsafe Interfaces
+
+When an interface is documented as requiring `unsafe impl`, calling its methods through a `dyn` reference may require the caller to be in an `unsafe { }` context, depending on the specific interface's documented contract. The compiler does not automatically gate all calls; the safety obligation is documented in the interface's `# Safety` doc section.
+
+### 9.7.3 Documentation Required
+
+Every semantically unsafe interface SHOULD include a `# Safety` section in its doc comment describing the invariants that implementors must uphold. Lint `ZOM0921 MissingUnsafeInterfaceSafetyDoc` warns when absent.
+
+### 9.7.4 When to Use
+
+Mark an interface as semantically unsafe when correct behavior depends on invariants that are:
+
+- **Semantic rather than structural.** E.g., "this allocator is thread-safe" — the compiler cannot prove this from types alone.
+- **Global rather than local.** E.g., "this global state has exactly one writer."
+- **Protocol-based.** E.g., "methods must be called in order A then B then C."
+
+If the invariant can be expressed in the type system (e.g., via marker bounds or associated types), prefer that approach over relying on `unsafe impl`.
+
+## 9.8 Interfaces as Generic Bounds
+
+Interface names and marker names both participate in the same `BoundList` syntax, shared with [Ch.12 §Generics](12-generics.md). The full `BoundList` grammar (normative in Ch.12) is:
 
 ```ebnf
 BoundList = BoundItem ( "+" BoundItem )* ;
@@ -565,15 +502,16 @@ BoundItem = ( "!" )? MarkerPath
 
 A type parameter's bound list therefore has the general form `<T: Interface1<Arg> + Interface2 + Marker1 + !Marker2>`.
 
-#### Negation prefix (`!`) — interface bounds are POSITIVE ONLY
+### 9.8.1 Negation Prefix (`!`) — Interface Bounds Are Positive Only
 
 The `!` prefix is ONLY legal on marker bounds. Writing `!Drawable` as a bound is a semantic error emitted as `ZOM0422 NegativeInterfaceBoundNotAllowed`. Interfaces are behavioral contracts, not structural properties; the predicate "explicitly does NOT have interface I" is not meaningful in ZOM's type system because negative interface impls are deliberately not supported, and the orphan rule has no mechanism for coherently propagating negations across crate boundaries.
 
 Marker bounds MAY use `!` to express a negative bound. For example `!Shared` means "definitely not shared" and is a valid structural predicate.
 
-#### Examples
+### 9.8.2 Examples
 
 A single interface bound on a generic function (Ch.12 generic form):
+
 ```zom
 fun sort<T: Comparable<T>>(arr: T[]) -> T[] {
     // standard in-place quicksort using Comparable::compareTo
@@ -582,12 +520,13 @@ fun sort<T: Comparable<T>>(arr: T[]) -> T[] {
 ```
 
 Combining an interface bound with two positive marker bounds for thread-safety:
+
 ```zom
-// Correct
 fun draw_all<T: Drawable + Sendable>(items: [T]) { for x in items x.draw(); }
 ```
 
 Combining an interface bound, a positive marker bound, and a NEGATED marker bound to express "runnable on the local thread only, must be linear so the executor owns the task uniquely":
+
 ```zom
 fun clone_into<T: Cloneable + Linear + !Shared>(x: T, target: &mut Vec<T>);
 ```
@@ -599,15 +538,51 @@ Attempting to negate an interface bound is an error. The following declaration i
 fun bad<T: !Drawable>(x: T);
 ```
 
-#### Intersection types vs. bound lists
+### 9.8.3 Intersection Types vs. Bound Lists
 
 The intersection operator `&` used in type expressions such as `Drawable & Rounded` (Ch.03) is structural and produces a type. The `+` separator used in bound lists such as `T: Drawable + Rounded` is predicate-level conjunction and produces a proof obligation. A type satisfies `T: I1 + I2` precisely when it satisfies both bounds simultaneously; the type expression `I1 & I2` as a standalone type is sugar for `dyn (I1 & I2)`, the existential form combining multiple object-safe interfaces.
 
-### Summary
+## 9.9 Grammar Reference (Informative)
 
-- Interfaces declare method and associated-type contracts that classes and standalone `impl` blocks satisfy.
-- Default interface methods layer convenience behavior on top of abstract primitives, subject to the four DIM rules (state-restriction, concrete-wins, nearest-wins, tie-break / `ZOM0480 DiamondConflict`).
-- Standalone `impl I for T` blocks extend interface coverage to foreign types and allow modular grouping of impls, governed by Ch.22's orphan rule (`ZOM0710 OrphanImpl`, cross-crate `ZOM0714 AmbigImplOverlap`) and the duplicate-impl coherence check (`ZOM0505 DuplicateImpl`). Full grammar in Ch.17 §StandaloneImplDeclaration.
-- Multiple interface inheritance uses post-order left-to-right MRO with four explicit conflict-resolution rules (IR-1..IR-4); signature-compatible redeclarations warn (`ZOM0478 RedundantInheritedMethod`), same-params/different-return errors (`ZOM0482 IncompatibleReturnType`), and equal-depth collisions require a class override or qualified dispatch.
+The following productions are reproduced from [Ch.17 Grammar Reference](17-grammar-reference.md) and the authoritative [`docs/design/syntax-ebnf.md`](../design/syntax-ebnf.md) for convenience.
+
+```ebnf
+InterfaceDecl  ::= ModifierList 'interface' BindingIdent TypeParameters?
+                   InterfaceHeritage?
+                   '{' InterfaceBody '}'
+
+InterfaceHeritage ::= ':' InterfaceBoundList
+InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*
+InterfaceBound     ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
+
+InterfaceBody   ::= InterfaceElement*
+InterfaceElement ::= ';'
+                  | OuterAttributeList ModifierList 'fun' MethodSignature ';'
+                  | OuterAttributeList ModifierList ('get' | 'set') PropertySignature ';'
+                  | OuterAttributeList ModifierList 'type' Identifier TypeParameters?
+                    ( ':' InterfaceBoundList )? ( '=' TypeExpr )? ';'
+
+MethodSignature   ::= PropertyName CallSignature
+CallSignature     ::= TypeParameters? ParameterClause FunctionSignature?
+PropertySignature ::= PropertyName ParameterClause FunctionSignature?
+
+StandaloneImplDecl ::= 'impl' TypeParameters? InterfaceBoundList 'for' TypeExpr
+                       WhereClause?
+                       '{' ImplMember* '}'
+
+ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters? ParameterClause
+                    FunctionSignature? ( ';' | BlockStatement )
+                 | 'type' Identifier TypeParameters? '=' TypeExpr ';'
+```
+
+## 9.10 Summary
+
+- Interfaces declare method signatures, property signatures, and associated type requirements that types satisfy via `impl I for T` blocks.
+- Interface inheritance uses the colon (`:`) syntax with `+` for multiple super-interfaces (conjunction). The legacy `extends` keyword is accepted for single inheritance but `:` + `+` is preferred. Pipe `|` is rejected in heritage position.
+- Interface method and property signatures end with a semicolon; method bodies are not permitted inside interface declarations.
+- Associated types support four forms: unconstrained, bounded, defaulted, and generic (GAT). Full form combines type parameters, bounds, and defaults.
+- Standalone `impl I for T` blocks extend interface coverage to foreign types and allow modular grouping of impls, governed by Ch.22's orphan rule (`ZOM0710 OrphanImpl`, cross-crate `ZOM0714 AmbigImplOverlap`) and the duplicate-impl coherence check (`ZOM0505 DuplicateImpl`).
+- Multiple interface inheritance uses four conflict-resolution rules (IR-1..IR-4): redundant signatures warn (`ZOM0478`), independent overloads coexist, incompatible return types error (`ZOM0482`), and shared pure-method obligations converge.
 - Eight object-safety rules (OS-0..OS-7) govern whether an interface can be coerced to `dyn I` (Ch.03 §Existential Types), each with a dedicated `ZOM033x` diagnostic.
+- Semantically unsafe interfaces require `unsafe impl` to implement. The `unsafe` keyword appears on the `impl` block, not on the `interface` declaration. Lint `ZOM0921` warns when a `# Safety` doc section is missing.
 - Interface names participate in Ch.12's generic bound lists alongside marker bounds; only marker bounds may be negated, and a negated interface bound is `ZOM0422 NegativeInterfaceBoundNotAllowed`.

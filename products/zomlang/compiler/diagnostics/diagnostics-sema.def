@@ -12,6 +12,10 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
+// ============================================================================
+// Basic semantic errors
+// ============================================================================
+
 DIAG(TypeMismatch, kError, "Type mismatch: expected {0}, got {1}", 2)
 DIAG(UndefinedIdentifier, kError, "Undefined identifier: '{0}'", 1)
 DIAG(DuplicateIdentifier, kError, "Duplicate identifier: '{0}'", 1)
@@ -35,3 +39,149 @@ DIAG(ReservedInModule, kError,
      "Identifier expected. '{0}' is a reserved word at the top level of a module", 1)
 
 DIAG(SemanticError, kError, "{0}", 1)
+
+// ============================================================================
+// Type mismatch diagnostics
+// ============================================================================
+
+DIAG(ReturnTypeMismatch, kError, "Return type mismatch: expected {0}, got {1}", 2)
+DIAG(ArgumentTypeMismatch, kError,
+     "Argument type mismatch in call to '{0}': expected {1}, got {2}", 3)
+DIAG(AssignmentTypeMismatch, kError,
+     "Cannot assign value of type '{0}' to variable of type '{1}'", 2)
+DIAG(InitializerTypeMismatch, kError,
+     "Initializer type '{0}' does not match declared type '{1}'", 2)
+DIAG(ConditionNotBool, kError, "Condition must be of type 'bool', got '{0}'", 1)
+DIAG(OperandTypeMismatch, kError,
+     "Operator '{0}' cannot be applied to types '{1}' and '{2}'", 3)
+DIAG(UnaryOperandTypeMismatch, kError,
+     "Unary operator '{0}' cannot be applied to type '{1}'", 2)
+DIAG(InvalidCast, kError, "Cannot cast from type '{0}' to type '{1}'", 2)
+DIAG(NotCallable, kError, "Type '{0}' is not callable", 1)
+DIAG(NotIndexable, kError, "Type '{0}' is not indexable", 1)
+DIAG(ArrayIndexNotInt, kError, "Array index must be of integer type, got '{0}'", 1)
+DIAG(InvalidNewTarget, kError, "Cannot use 'new' on type '{0}': not a class type", 1)
+
+// ============================================================================
+// Undefined symbol diagnostics
+// ============================================================================
+
+DIAG(UndefinedType, kError, "Undefined type: '{0}'", 1)
+DIAG(UndefinedMember, kError, "Type '{0}' has no member named '{1}'", 2)
+DIAG(UndefinedMethod, kError, "Type '{0}' has no method named '{1}'", 2)
+DIAG(UndefinedEnumVariant, kError, "Enum '{0}' has no variant named '{1}'", 2)
+DIAG(UndefinedInterface, kError, "Undefined interface: '{0}'", 1)
+DIAG(NotAType, kError, "'{0}' does not refer to a type", 1)
+DIAG(NotAValue, kError, "'{0}' does not refer to a value", 1)
+DIAG(AmbiguousReference, kError, "Ambiguous reference to '{0}'", 1)
+DIAG(UseBeforeDecl, kError, "Use of '{0}' before its declaration", 1)
+
+// ============================================================================
+// Exhaustiveness diagnostics
+// ============================================================================
+
+DIAG(NonExhaustiveMatch, kError,
+     "Match expression is not exhaustive. Missing patterns: {0}", 1)
+DIAG(UnreachableMatchArm, kWarning, "Match arm is unreachable", 0)
+DIAG(IrrefutablePattern, kWarning,
+     "Pattern always matches; subsequent arms are unreachable", 0)
+
+// ============================================================================
+// Trait and interface diagnostics
+// ============================================================================
+
+DIAG(TraitNotImplemented, kError,
+     "Type '{0}' does not implement trait '{1}'", 2)
+DIAG(OrphanImpl, kError,
+     "Orphan impl: cannot implement trait '{0}' for type '{1}' (neither is local)", 2)
+DIAG(DuplicateImpl, kError,
+     "Duplicate implementation of trait '{0}' for type '{1}'", 2)
+DIAG(ImplMissingMethod, kError,
+     "Impl of trait '{0}' for type '{1}' is missing required method '{2}'", 3)
+DIAG(ImplMethodSignatureMismatch, kError,
+     "Method '{0}' in impl of trait '{1}' has wrong signature: expected {2}, got {3}", 4)
+DIAG(ImplExtraMethod, kWarning,
+     "Method '{0}' is not a member of trait '{1}'", 2)
+DIAG(MarkerImplNonLocal, kError,
+     "Marker impl of '{0}' must be in the same module as the type or trait", 1)
+DIAG(SealedImplOutside, kError,
+     "Cannot implement sealed trait '{0}' outside its defining module", 1)
+DIAG(AmbiguousAssociatedType, kError,
+     "Ambiguous associated type '{0}' for type '{1}'; use '<{1} as Interface>::{0}'", 2)
+
+// ============================================================================
+// Subtype diagnostics
+// ============================================================================
+
+DIAG(NotSubtype, kError, "Type '{0}' is not a subtype of '{1}'", 2)
+DIAG(WidthSubtypeViolation, kError,
+     "Object type '{0}' is missing required field '{1}' of type '{2}'", 3)
+DIAG(DepthSubtypeViolation, kError,
+     "Field '{0}' has type '{1}' which is not a subtype of expected '{2}'", 3)
+DIAG(VarianceMismatch, kError,
+     "Type parameter variance mismatch: expected {0}, got {1}", 2)
+DIAG(MutableReferenceSubtype, kError,
+     "Cannot convert mutable reference to immutable reference of a different type", 0)
+DIAG(ReferenceLifetimeMismatch, kError, "Reference lifetime mismatch", 0)
+
+// ============================================================================
+// Function and call diagnostics
+// ============================================================================
+
+DIAG(TooManyArguments, kError,
+     "Too many arguments: expected {0}, got {1}", 2)
+DIAG(TooFewArguments, kError,
+     "Too few arguments: expected {0}, got {1}", 2)
+DIAG(ArgumentCountMismatch, kError,
+     "Function '{0}' expects {1} arguments, but {2} were provided", 3)
+DIAG(NoMatchingOverload, kError, "No matching overload for call to '{0}'", 1)
+DIAG(ReturnFromVoid, kError,
+     "Returning value from function with 'void' return type", 0)
+DIAG(MissingReturn, kError,
+     "Function '{0}' declared to return '{1}' but no return statement found", 2)
+DIAG(NamedArgNotFound, kError, "No parameter named '{0}' found in function '{1}'", 2)
+DIAG(DuplicateNamedArg, kError, "Duplicate named argument: '{0}'", 1)
+
+// ============================================================================
+// Class and inheritance diagnostics
+// ============================================================================
+
+DIAG(OverrideMismatch, kError,
+     "Method '{0}' overrides base method with incompatible signature: expected {1}, got {2}", 3)
+DIAG(OverrideNonVirtual, kError,
+     "Method '{0}' marked 'override' but base class has no virtual method with that name", 1)
+DIAG(FinalOverride, kError,
+     "Cannot override final method '{0}' from base class", 1)
+DIAG(SealedExtend, kError, "Cannot extend sealed class '{0}' outside its module", 1)
+DIAG(AbstractInstantiation, kError,
+     "Cannot instantiate abstract class '{0}': missing implementations for {1}", 2)
+DIAG(FieldAccessDenied, kError, "Cannot access private field '{0}'", 1)
+DIAG(MethodAccessDenied, kError, "Cannot access private method '{0}'", 1)
+DIAG(ThisOutsideClass, kError, "'this' used outside of class method", 0)
+DIAG(SuperOutsideClass, kError, "'super' used outside of class method", 0)
+DIAG(SuperNoBase, kError, "'super' used but class has no base class", 0)
+
+// ============================================================================
+// Generic and type parameter diagnostics
+// ============================================================================
+
+DIAG(TypeArgCountMismatch, kError,
+     "Type '{0}' expects {1} type arguments, but {2} were provided", 3)
+DIAG(TypeParamBoundViolation, kError,
+     "Type argument '{0}' does not satisfy bound '{1}'", 2)
+DIAG(InconsistentTypeVar, kError,
+     "Inconsistent type variable usage: '{0}' inferred to both '{1}' and '{2}'", 3)
+DIAG(OccursCheck, kError, "Infinite type detected: '{0}' occurs in '{1}'", 2)
+DIAG(UnresolvedTypeVar, kWarning, "Could not infer type for '{0}'; using 'any'", 1)
+
+// ============================================================================
+// Miscellaneous diagnostics
+// ============================================================================
+
+DIAG(UnusedVariable, kWarning, "Unused variable: '{0}'", 1)
+DIAG(UnusedImport, kWarning, "Unused import: '{0}'", 1)
+DIAG(ShadowedVariable, kRemark, "Variable '{0}' shadows an outer declaration", 1)
+DIAG(ImplicitAny, kWarning, "Parameter '{0}' implicitly has 'any' type", 1)
+DIAG(DiscardedValue, kWarning, "Value of type '{0}' is discarded", 1)
+DIAG(IntegerOverflow, kWarning, "Integer literal overflows type '{0}'", 1)
+DIAG(DivideByZero, kWarning, "Potential division by zero", 0)

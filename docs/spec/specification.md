@@ -47,7 +47,7 @@ For the complete specification, please refer to the individual chapter files in 
 - [Orphan Rule & Cross-Crate Coherence](chapters/22-orphan-rule-and-coherence.md) - Impl locality, negative-impl 3-phase closure, coherence matrix and cross-crate metadata rules
 - [Visibility Ladder](chapters/23-visibility-ladder.md) — 8-level private→export ladder, sealed/final/open extensibility (default FINAL), 6×4 truth table for isPublic() single source of truth
 - [Module Resolution Algorithm](chapters/24-module-resolution-algorithm.md) — dual filesystem convention (`foo.zom` ⊕ `foo/mod.zom` → ZOM0881), resolveModule() pseudocode, sibling-directory fallback
-- [Standard Prelude](chapters/25-standard-prelude.md) — normative 11 types + 6 markers + 16 functions/macros symbol list, 4-level injection ordering, no_std/core swap contract, edition-gated symbols
+- [Standard Prelude](chapters/25-standard-prelude.md) — normative prelude symbol list (Maybe, OneOf, Own, Ptr, Array, ArrayPtr, Vector, String, StringPtr, ConstString, Rc, Arc, MutexGuarded), 6 marker traits, function/macro set aligned with zc library, 4-level injection ordering, no_std/core swap contract, edition-gated symbols, full std library module map (memory, refcount, option, variant, array, string, collections, exception, debug, io, fs, sync, time, hash, encoding, net, process, functional, source_location, arena, glob, units, ownership)
 - [Registry & PubGrub Resolver (Roadmap v2)](chapters/26-registry-and-resolver.md) — HTTP REST API, index.git NDJSON layout, PubGrub algorithm lock, min-version-first policy, `Zom.lock` TOML schema, cache layout, provenance & supply chain contracts
 
 ## About This Organization

@@ -198,13 +198,15 @@ implementors. It eliminates boilerplate matching at every call site.
 
 ### Desugaring
 
-Given `expr : T | E`, the form `expr?!` desugars exactly to:
+Given `expr : T | E`, the form `expr?!` lowers to the following equivalent
+internal control flow:
 
-```zom
-match expr {
-    Ok(v)  -> v,
-    Err(e) -> return Err(e),
-}
+```text
+tmp = evaluate expr
+if tmp has success tag:
+    yield success payload
+else:
+    return Err(error payload)
 ```
 
 where `Ok(v)` matches tag `0` and `Err(e)` matches any tag in `1..n`. The
@@ -325,13 +327,14 @@ This is a pure type-level expansion with no runtime cost.
 
 ### Expression Position: Unwrap-or-Panic `expr!!`
 
-Postfix `!!` on an expression desugars to:
+Postfix `!!` on an expression lowers to:
 
-```zom
-match expr {
-    Ok(v) -> v,
-    Err(e) -> panic!("Called !! on error value: {e:?}"),
-}
+```text
+tmp = evaluate expr
+if tmp has success tag:
+    yield success payload
+else:
+    panic("Called !! on error value", error payload, operator span)
 ```
 
 The panic message includes source location, `Debug` formatting of the
@@ -422,9 +425,9 @@ fun catch_unwind<T>(f: fn() -> T) -> T | PanicInfo;
 ```zom
 #[export]
 fun zom_plugin_entry(input: *const u8, len: usize) -> i32 {
-    match zom::panic::catch_unwind(|| real_entry(input, len)) {
-        Ok(code) -> code,
-        Err(p) -> {
+    match (zom::panic::catch_unwind(|| real_entry(input, len))) {
+        when Ok(code) => { return code; }
+        when Err(p) => {
             eprintln!("zom plugin panicked: {}", p.message);
             eprintln!("{}", p.backtrace.map_or_else(|| "<no bt>", |bt| bt.fmt()));
             return -1;
@@ -773,11 +776,13 @@ fun load_config() -> Config raises ConfigError {
 
 // ---- db.zom ----
 fun connect(url: &str) -> DbPool raises DbError {
-    match DbPool::open(url) {
-        Ok(pool) -> pool,
-        Err(e) -> return Err(DbError::ConnectionError(
-            format!("failed to connect to {url}: {e}")
-        )),
+    match (DbPool::open(url)) {
+        when Ok(pool) => { return pool; }
+        when Err(e) => {
+            return Err(DbError::ConnectionError(
+                format!("failed to connect to {url}: {e}")
+            ));
+        }
     }
 }
 
@@ -792,23 +797,24 @@ use db::connect;
 use http::{self, Request, Response};
 
 fun handle(req: Request) -> Response raises AppError {
-    match req.path() {
-        "/users" -> {
+    match (req.path()) {
+        when "/users" => {
             let cfg = load_config()?!;
             let db = connect(&cfg.db_url).map_err(AppError::Database)?!;
             let rows = db::query(&db, "SELECT * FROM users")
                 .map_err(AppError::Database)?!;
-            Response::json(rows)
-        },
-        _ -> Response::not_found(),
+            return Response::json(rows);
+        }
+        default => { return Response::not_found(); }
     }
 }
 
 fun main() -> unit raises AppError {
-    let cfg = match load_config() {
-        Ok(c) -> c,
-        Err(e) -> return Err(AppError::Config(e)),
-    };
+    let cfg: Config;
+    match (load_config()) {
+        when Ok(c) => { cfg = c; }
+        when Err(e) => { return Err(AppError::Config(e)); }
+    }
 
     let db = connect(&cfg.db_url).map_err(AppError::Database)?!;
 

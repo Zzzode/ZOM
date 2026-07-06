@@ -247,6 +247,12 @@ struct BindingMetadata::Impl {
   zc::Vector<NodeId> parents;
   zc::Vector<uint32_t> scopes;
   zc::Vector<symbol::SymbolId> symbols;
+  zc::Vector<bool> unresolved;
+  zc::Vector<bool> deferredMembers;
+  zc::Vector<NodeId> shadowOfs;
+  zc::Vector<bool> reexports;
+  zc::Vector<NodeList> captureLists;
+  zc::Vector<NodeId> labelTargets;
 };
 
 BindingMetadata::BindingMetadata() noexcept : impl(zc::heap<Impl>()) {}
@@ -261,6 +267,12 @@ void BindingMetadata::resizeFor(const Tree& tree) {
   impl->parents.resize(tree.nodeCount());
   impl->scopes.resize(tree.nodeCount());
   impl->symbols.resize(tree.nodeCount());
+  impl->unresolved.resize(tree.nodeCount());
+  impl->deferredMembers.resize(tree.nodeCount());
+  impl->shadowOfs.resize(tree.nodeCount());
+  impl->reexports.resize(tree.nodeCount());
+  impl->captureLists.resize(tree.nodeCount());
+  impl->labelTargets.resize(tree.nodeCount());
 }
 
 void BindingMetadata::setParent(NodeId node, NodeId parent) {
@@ -291,6 +303,70 @@ void BindingMetadata::setSymbol(NodeId node, symbol::SymbolId symbolId) {
 symbol::SymbolId BindingMetadata::symbol(NodeId node) const {
   ZC_IREQUIRE(indexOf(node) < impl->symbols.size(), "metadata symbol read is outside tree");
   return impl->symbols[indexOf(node)];
+}
+
+void BindingMetadata::setIsUnresolved(NodeId node, bool value) {
+  ZC_IREQUIRE(indexOf(node) < impl->unresolved.size(), "metadata unresolved write is outside tree");
+  impl->unresolved[indexOf(node)] = value;
+}
+
+bool BindingMetadata::isUnresolved(NodeId node) const {
+  ZC_IREQUIRE(indexOf(node) < impl->unresolved.size(), "metadata unresolved read is outside tree");
+  return impl->unresolved[indexOf(node)];
+}
+
+void BindingMetadata::setIsDeferredMember(NodeId node, bool value) {
+  ZC_IREQUIRE(indexOf(node) < impl->deferredMembers.size(),
+              "metadata deferred member write is outside tree");
+  impl->deferredMembers[indexOf(node)] = value;
+}
+
+bool BindingMetadata::isDeferredMember(NodeId node) const {
+  ZC_IREQUIRE(indexOf(node) < impl->deferredMembers.size(),
+              "metadata deferred member read is outside tree");
+  return impl->deferredMembers[indexOf(node)];
+}
+
+void BindingMetadata::setShadowOf(NodeId node, NodeId shadowed) {
+  ZC_IREQUIRE(indexOf(node) < impl->shadowOfs.size(), "metadata shadow-of write is outside tree");
+  impl->shadowOfs[indexOf(node)] = shadowed;
+}
+
+NodeId BindingMetadata::shadowOf(NodeId node) const {
+  ZC_IREQUIRE(indexOf(node) < impl->shadowOfs.size(), "metadata shadow-of read is outside tree");
+  return impl->shadowOfs[indexOf(node)];
+}
+
+void BindingMetadata::setIsReexport(NodeId node, bool value) {
+  ZC_IREQUIRE(indexOf(node) < impl->reexports.size(), "metadata reexport write is outside tree");
+  impl->reexports[indexOf(node)] = value;
+}
+
+bool BindingMetadata::isReexport(NodeId node) const {
+  ZC_IREQUIRE(indexOf(node) < impl->reexports.size(), "metadata reexport read is outside tree");
+  return impl->reexports[indexOf(node)];
+}
+
+void BindingMetadata::setCaptures(NodeId node, NodeList captures) {
+  ZC_IREQUIRE(indexOf(node) < impl->captureLists.size(), "metadata captures write is outside tree");
+  impl->captureLists[indexOf(node)] = captures;
+}
+
+NodeList BindingMetadata::captures(NodeId node) const {
+  ZC_IREQUIRE(indexOf(node) < impl->captureLists.size(), "metadata captures read is outside tree");
+  return impl->captureLists[indexOf(node)];
+}
+
+void BindingMetadata::setLabelTarget(NodeId node, NodeId target) {
+  ZC_IREQUIRE(indexOf(node) < impl->labelTargets.size(),
+              "metadata label target write is outside tree");
+  impl->labelTargets[indexOf(node)] = target;
+}
+
+NodeId BindingMetadata::labelTarget(NodeId node) const {
+  ZC_IREQUIRE(indexOf(node) < impl->labelTargets.size(),
+              "metadata label target read is outside tree");
+  return impl->labelTargets[indexOf(node)];
 }
 
 }  // namespace ast

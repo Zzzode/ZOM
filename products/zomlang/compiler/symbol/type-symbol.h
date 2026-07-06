@@ -137,6 +137,7 @@ public:
   virtual ~InterfaceSymbol() noexcept(false);
 
   bool isInterface() const { return true; }
+  bool isInterfaceSymbol() const override { return true; }
   SymbolKind getKind() const override { return SymbolKind::Interface; }
 
 private:
@@ -176,7 +177,10 @@ public:
 
   /// \brief Type checking
   bool isInterface() const { return false; }
-  SymbolKind getKind() const override { return SymbolKind::Class; }
+  bool isClassSymbol() const override {
+    return !hasFlag(SymbolFlags::TypeAlias) && !hasFlag(SymbolFlags::Enum);
+  }
+  SymbolKind getKind() const override;
   bool isAbstract() const;
   bool isFinal() const;
 

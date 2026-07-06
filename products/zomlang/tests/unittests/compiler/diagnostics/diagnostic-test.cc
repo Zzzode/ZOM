@@ -50,6 +50,22 @@ ZC_TEST("DiagnosticTest.BasicDiagnosticReporting") {
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
+ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticRangeStartsAtZom0410") {
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::TypeCheckerTypeMismatch) == 410);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotUnifyTypes) == 411);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::InfiniteType) == 412);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotInferTypeParameter) == 420);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ConflictingImpl) == 430);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::AmbiguousAssociatedTypeProjection) == 434);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::NoAssociatedTypeProjection) == 433);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerNonExhaustiveMatch) == 440);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerUnreachableMatchArm) == 442);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotMutateImmutableVariable) == 450);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ErrorPropagateOutsideRaises) == 460);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ErrorUnwrapNonUnion) == 461);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::TypeMismatch) >= 3000);
+}
+
 ZC_TEST("DiagnosticTest.MultipleDiagnostics") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);

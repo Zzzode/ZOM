@@ -28,6 +28,10 @@ enum class DiagID : uint32_t {
 #include "zomlang/compiler/diagnostics/diagnostics-common.def"
   Parse = 2000,
 #include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+  TypeChecker = 400,
+#define CHECKER_DIAG(Code, Name, ...) Name = Code,
+#include "zomlang/compiler/diagnostics/diagnostics-checker.def"
+#undef CHECKER_DIAG
   Semantic = 3000,
 #include "zomlang/compiler/diagnostics/diagnostics-sema.def"
   CodeGen = 4000,

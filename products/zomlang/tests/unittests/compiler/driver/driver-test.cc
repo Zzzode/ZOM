@@ -14,15 +14,41 @@
 
 #include "zomlang/compiler/driver/driver.h"
 
+#include <errno.h>
+#include <unistd.h>
+
+#include "zc/core/common.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
+#include "zomlang/compiler/type/type-env.h"
 
 namespace zomlang {
 namespace compiler {
 namespace driver {
+
+namespace {
+
+zc::String writeTempZomFile(zc::StringPtr source) {
+  zc::String path = zc::str("/tmp/zom-driver-test.XXXXXX.zom");
+  int fd = mkstemps(path.begin(), 4);
+  ZC_IREQUIRE(fd >= 0, "mkstemps failed for driver test");
+  const char* data = source.cStr();
+  size_t remaining = source.size();
+  while (remaining > 0) {
+    ssize_t written = write(fd, data, remaining);
+    ZC_IREQUIRE(written >= 0, "write failed for driver test source");
+    remaining -= static_cast<size_t>(written);
+    data += written;
+  }
+  close(fd);
+  return path;
+}
+
+}  // namespace
 
 ZC_TEST("DriverTest.BasicInitialization") {
   auto langOpts = basic::LangOptions();
@@ -93,6 +119,46 @@ ZC_TEST("DriverTest.AddSourceFileEmpty") {
 
   auto result = driver->addSourceFile(zc::str(""));
   ZC_EXPECT(result == zc::none);
+}
+
+ZC_TEST("DriverTest.CheckSourcesStoresTypeEnv") {
+  auto source = writeTempZomFile("let x: i32 = 42;"_zc);
+  ZC_DEFER(unlink(source.cStr()));
+
+  auto langOpts = basic::LangOptions();
+  auto compilerOpts = basic::CompilerOptions();
+  auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
+
+  auto bufferId = driver->addSourceFile(source);
+  ZC_EXPECT(bufferId != zc::none);
+  ZC_EXPECT(driver->parseSources());
+  ZC_EXPECT(driver->bindSources());
+  ZC_EXPECT(driver->checkSources());
+  ZC_EXPECT(!driver->getDiagnosticEngine().hasErrors());
+
+  const auto& typeEnvs = driver->getTypeEnvs();
+  ZC_EXPECT(typeEnvs.size() == 1);
+  ZC_IF_SOME(id, bufferId) {
+    auto env = typeEnvs.find(id);
+    ZC_EXPECT(env != zc::none);
+    ZC_IF_SOME(typeEnv, env) { ZC_EXPECT(typeEnv.nodeTypeCount() > 0); }
+  }
+}
+
+ZC_TEST("DriverTest.CheckSourcesRejectsTypeError") {
+  auto source = writeTempZomFile("let x: i32 = \"bad\";"_zc);
+  ZC_DEFER(unlink(source.cStr()));
+
+  auto langOpts = basic::LangOptions();
+  auto compilerOpts = basic::CompilerOptions();
+  auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
+
+  auto bufferId = driver->addSourceFile(source);
+  ZC_EXPECT(bufferId != zc::none);
+  ZC_EXPECT(driver->parseSources());
+  ZC_EXPECT(driver->bindSources());
+  ZC_EXPECT(!driver->checkSources());
+  ZC_EXPECT(driver->getDiagnosticEngine().hasErrors());
 }
 
 }  // namespace driver

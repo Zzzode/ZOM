@@ -16,6 +16,9 @@
 
 #include "zc/core/debug.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
+#include "zomlang/compiler/binder/decl-collector.h"
+#include "zomlang/compiler/binder/import-resolver.h"
+#include "zomlang/compiler/binder/name-resolver.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
 
@@ -35,13 +38,6 @@ struct Binder::Impl {
   diagnostics::DiagnosticEngine& diagnosticEngine;
   const ast::Tree& tree;
   ast::BindingMetadata& metadata;
-
-  void bindNode(ast::NodeId node, ast::NodeId parent) {
-    metadata.setParent(node, parent);
-
-    const ast::Node& treeNode = tree.node(node);
-    ast::visitChildNodeIds(tree, treeNode, [&](ast::NodeId child) { bindNode(child, node); });
-  }
 };
 
 Binder::Binder(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
@@ -51,10 +47,34 @@ Binder::Binder(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& 
 Binder::~Binder() noexcept(false) = default;
 
 bool Binder::bind() {
-  static_cast<void>(impl->symbolTable);
   impl->metadata.resizeFor(impl->tree);
+
   ZC_IREQUIRE(impl->tree.contains(impl->tree.root()), "cannot bind a tree without a valid root");
-  impl->bindNode(impl->tree.root(), ast::NodeId());
+
+  // Write parent metadata for all nodes before running collectors.
+  // This enables efficient parent traversal during name resolution and checking.
+  ast::visitTreePreOrder(
+      impl->tree, impl->tree.root(), [this](ast::NodeId nodeId, const ast::Node&) {
+        ast::visitChildNodeIds(
+            impl->tree, impl->tree.node(nodeId),
+            [this, nodeId](ast::NodeId childId) { impl->metadata.setParent(childId, nodeId); });
+      });
+
+  // Phase 1: Collect declarations
+  DeclCollector collector(impl->symbolTable, impl->symbolTable.getScopeManager(), impl->tree,
+                          impl->metadata, impl->diagnosticEngine);
+  if (!collector.collect()) return false;
+
+  // Phase 1.5: Resolve imports
+  ImportResolver importResolver(impl->symbolTable, impl->symbolTable.getScopeManager(), impl->tree,
+                                impl->metadata, impl->diagnosticEngine);
+  if (!importResolver.resolveImports()) return false;
+
+  // Phase 2: Resolve names
+  NameResolver resolver(impl->symbolTable, impl->symbolTable.getScopeManager(), impl->tree,
+                        impl->metadata, impl->diagnosticEngine);
+  if (!resolver.resolve()) return false;
+
   return !impl->diagnosticEngine.hasErrors();
 }
 

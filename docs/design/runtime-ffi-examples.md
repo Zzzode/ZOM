@@ -264,14 +264,14 @@ fun producer(tx: Sender<u32>) -> Result<u64, SystemError> {
 fun worker(rx: Receiver<u32>, tx: Sender<u32>) -> Result<u64, SystemError> {
     mut local_sum: u64 = 0;
     loop {
-        match rx.recv() {           // suspend when empty; all senders closed -> None
-            Some(v) => {
+        match (rx.recv()) {           // suspend when empty; all senders closed -> None
+            when Some(v) => {
                 mut n = v; mut s = 0u32;
                 while n > 0 { s += n % 10; n /= 10; }
                 tx.send(s)?;
                 local_sum += s as u64;
             }
-            None => break,
+            when None => { break; }
         }
     }
     Ok(local_sum)
@@ -280,7 +280,10 @@ fun worker(rx: Receiver<u32>, tx: Sender<u32>) -> Result<u64, SystemError> {
 fun sink(rx: Receiver<u32>) -> Result<u64, SystemError> {
     mut total: u64 = 0;
     loop {
-        match rx.recv() { Some(v) => total += v as u64, None => break, }
+        match (rx.recv()) {
+            when Some(v) => { total += v as u64; }
+            when None => { break; }
+        }
     }
     Ok(total)
 }
@@ -353,21 +356,21 @@ fun main() -> Result<(), SystemError> {
             Ok(join_all(handles.as_slice()))
         }
     );
-    match result {
-        Ok(vec) => {
+    match (result) {
+        when Ok(vec) => {
             for ((i, r) in vec.iter().enumerate()) {
-                match r {
-                    Ok(v)  => print("worker[" + i.to_str() + "] sum = " + v.to_str()),
-                    Err(e) => print("worker[" + i.to_str() + "] FAILED: " + e.to_str()),
+                match (r) {
+                    when Ok(v)  => { print("worker[" + i.to_str() + "] sum = " + v.to_str()); }
+                    when Err(e) => { print("worker[" + i.to_str() + "] FAILED: " + e.to_str()); }
                 }
             }
             Ok(())
         }
-        Err(SystemError::ScopeAbandoned(errors)) => {
+        when Err(SystemError::ScopeAbandoned(errors)) => {
             eprint("supervisor abandoned, sub-failures: " + errors.len().to_str());
-            Err(SystemError::ScopeAbandoned(errors))
+            return Err(SystemError::ScopeAbandoned(errors));
         }
-        Err(other) => Err(other),
+        when Err(other) => { return Err(other); }
     }
 }
 ```

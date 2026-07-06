@@ -143,6 +143,9 @@ bool Symbol::isVariableSymbol() const { return false; }
 /// \brief Check if this is a class symbol
 bool Symbol::isClassSymbol() const { return false; }
 
+/// \brief Check if this is an interface symbol
+bool Symbol::isInterfaceSymbol() const { return false; }
+
 zc::Maybe<const Scope&> Symbol::getScope() const { return impl->scope; }
 
 zc::Maybe<const TypeSymbol&> Symbol::getType() const { return impl->type; }

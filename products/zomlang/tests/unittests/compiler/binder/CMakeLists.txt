@@ -1,1 +1,4 @@
 add_ztest_unit_test("binder-test" "binder-test.cc" LIBRARIES binder diagnostics symbol lexer ast source basic)
+add_ztest_unit_test("decl-collector-test" "decl-collector-test.cc" LIBRARIES binder diagnostics symbol lexer ast source basic)
+add_ztest_unit_test("name-resolver-test" "name-resolver-test.cc" LIBRARIES binder diagnostics symbol lexer ast source basic)
+add_ztest_unit_test("import-resolver-test" "import-resolver-test.cc" LIBRARIES binder diagnostics symbol lexer ast source basic)

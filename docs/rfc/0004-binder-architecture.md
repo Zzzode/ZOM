@@ -31,10 +31,13 @@ and semantics: it establishes *which* declaration each name refers to, without
 yet determining *what type* that declaration has (that is the type checker's
 job, RFC 0005).
 
-The design follows a two-phase contract: **Phase 1 (Collection)** discovers
-every declaration and inserts it into the appropriate scope, enabling forward
-references; **Phase 2 (Resolution)** walks the AST again to resolve every
-identifier use against the collected symbols. Both phases are deterministic,
+The design follows a two-phase contract with an intermediate import
+resolution step: **Phase 1 (Collection)** discovers every declaration and
+inserts it into the appropriate scope, enabling forward references;
+**Phase 1.5 (Import Resolution)** resolves all `use`/`import` paths and
+re-exports symbols so that chained imports (`use a::B; use B::C;`) work
+correctly; **Phase 2 (Resolution)** walks the AST again to resolve every
+identifier use against the collected symbols. All phases are deterministic,
 single-pass over the AST, and produce no observable side effects beyond
 `BindingMetadata` and `SymbolTable` mutation.
 
@@ -246,6 +249,7 @@ flowchart TD
 
     subgraph "Binder"
         P1["Phase 1: Collection<br/>(DeclCollector)"]
+        P15["Phase 1.5: Import Resolution<br/>(ImportResolver)"]
         P2["Phase 2: Resolution<br/>(NameResolver)"]
     end
 
@@ -256,9 +260,11 @@ flowchart TD
 
     AST --> P1
     ST --> P1
-    P1 -->|scopes populated| P2
+    P1 -->|scopes populated| P15
+    P15 -->|imports re-exported| P2
     AST --> P2
     P1 -->|scope tree| BM
+    P15 -->|import resolutions| BM
     P2 -->|resolutions| BM
     P1 -->|new symbols| ST2
     P2 --> DE
@@ -284,8 +290,10 @@ regardless of source order.**
 | `BlockExpr` / `BlockStmt` | `Block` | Enclosing | Anonymous (`<block>`) |
 | `ForStmt` | `For` | Enclosing | Anonymous (`<for>`) |
 | `WhileStmt` | `While` | Enclosing | Anonymous (`<while>`) |
-| `IfExpr` | `If` | Enclosing | Anonymous (`<if>`) |
+| `IfStmt` | `If` | Enclosing | Anonymous (`<if>`) |
 | `MatchArm` | `Block` (pattern) | Enclosing | Anonymous (`<arm>`) |
+| `IfLetExpr` | `IfLet` | Enclosing | Anonymous (`<iflet>`) |
+| `WhileLetExpr` | `WhileLet` | Enclosing | Anonymous (`<whilelet>`) |
 | `LambdaExpr` | `Lambda` | Enclosing | Anonymous (`<lambda>`) |
 | `CatchClause` | `Catch` | Enclosing | Anonymous (`<catch>`) |
 | `NamespaceDecl` | `Namespace` | Enclosing | Namespace name |
@@ -307,7 +315,17 @@ regardless of source order.**
 | `self` (method) | `Variable` | Method scope | `"self"` |
 | `this` (constructor) | `Variable` | Constructor scope | `"this"` |
 
+**Nested function visibility rule:** `self` and `this` are only visible in the
+direct method/constructor body. Nested functions
+(`fun helper() { self.bar() }`) cannot access `self` — emit ZOM0320. Use
+closures to capture outer variables.
+
 #### Collection Algorithm (Pseudocode)
+
+**Scope management convention:** `scope_stack` is an explicit stack used for
+RAII-style scope management. The `scope` parameter is always `scope_stack.top()`
+(the current innermost scope). `scope_stack.push(s)` makes `s` the current
+scope; `scope_stack.pop()` restores the parent.
 
 ```
 function collect(node: NodeId, scope: Scope):
@@ -349,9 +367,7 @@ function collect(node: NodeId, scope: Scope):
       ...
 
     case LetDecl, ConstDecl:
-      name = node.pattern.name  // for simple IdentifierPattern
-      sym = symbol_table.create_variable(name, scope)
-      scope.add_symbol(sym)
+      collect_pattern_bindings(node.pattern, scope)
       // If initializer references other names, those are resolved in Phase 2
 
     case BlockExpr, BlockStmt:
@@ -364,12 +380,36 @@ function collect(node: NodeId, scope: Scope):
     case ForStmt:
       for_scope = create_scope(For, "<for>", scope)
       scope_stack.push(for_scope)
-      collect(node.pattern, for_scope)  // loop variable
+      collect_pattern_bindings(node.pattern, for_scope)
       collect(node.body, for_scope)
       scope_stack.pop()
 
+    case MatchStmt:
+      for arm in node.arms:
+        arm_scope = create_scope(Block, "<arm>", scope)
+        scope_stack.push(arm_scope)
+        collect_pattern_bindings(arm.pattern, arm_scope)
+        collect(arm.body, arm_scope)
+        scope_stack.pop()
+
+    case IfLetExpr:
+      iflet_scope = create_scope(IfLet, "<iflet>", scope)
+      scope_stack.push(iflet_scope)
+      collect_pattern_bindings(node.pattern, iflet_scope)
+      collect(node.then_body, iflet_scope)
+      scope_stack.pop()
+      if node.else_body:
+        collect(node.else_body, scope)
+
+    case WhileLetExpr:
+      whilelet_scope = create_scope(WhileLet, "<whilelet>", scope)
+      scope_stack.push(whilelet_scope)
+      collect_pattern_bindings(node.pattern, whilelet_scope)
+      collect(node.body, whilelet_scope)
+      scope_stack.pop()
+
     case ImportDecl:
-      // Phase 1: record the import, resolve in Phase 2 after all
+      // Phase 1: record the import, resolve in Phase 1.5 after all
       // declarations are collected (imports may reference forward-declared
       // modules within the same crate).
       pending_imports.append(node)
@@ -377,6 +417,31 @@ function collect(node: NodeId, scope: Scope):
     default:
       for child in node.children:
         collect(child, scope)
+
+function collect_pattern_bindings(pattern: NodeId, scope: Scope):
+  switch pattern.kind:
+    case IdentifierPattern:
+      name = pattern.token.text
+      sym = symbol_table.create_variable(name, scope)
+      scope.add_symbol(sym)
+      metadata.set_symbol(pattern.id, sym.id)
+    case WildcardPattern:
+      pass  // no binding
+    case EnumPattern:
+      for sub_pat in pattern.sub_patterns:
+        collect_pattern_bindings(sub_pat, scope)
+    case StructPattern:
+      for field_pat in pattern.field_patterns:
+        collect_pattern_bindings(field_pat.pattern, scope)
+    case TuplePattern:
+      for elem_pat in pattern.element_patterns:
+        collect_pattern_bindings(elem_pat, scope)
+    case OrPattern:
+      // Both sides must bind same names; bind in enclosing scope
+      for branch in pattern.branches:
+        collect_pattern_bindings(branch, scope)
+    case RangePattern, LiteralPattern:
+      pass  // no binding
 ```
 
 **Key property:** Phase 1 never fails due to an unresolved reference. It only
@@ -387,6 +452,26 @@ in Phase 1:
 |---|---|
 | Two symbols with same name in same scope (non-method) | `ZOM0303: redeclaration of 'x'` |
 | Method with same name as non-method in same scope | `ZOM0304: 'x' conflicts with prior declaration` |
+
+### Phase 1.5: Import Resolution
+
+After all declarations are collected (Phase 1 complete), resolve imports
+**before** name resolution (Phase 2). This ensures that `use a::B; use B::C;`
+works because `a::B` is resolved and re-exported before `B::C` is looked up.
+
+```
+function resolve_imports(scope: Scope):
+  for import in pending_imports:
+    resolved = resolve_import_path(import.path, scope)
+    if resolved is NotFound:
+      emit(ZOM0315, import.range, "unresolved import '{path}'")
+      metadata.set_unresolved(import.id)
+    else:
+      metadata.set_symbol(import.id, resolved.symbol.id)
+      // Re-export into current scope
+      scope.add_reexport(import.alias_name || resolved.symbol.name, resolved.symbol)
+      metadata.set_is_reexport(import.id, true)
+```
 
 ### Phase 2: Name Resolution
 
@@ -407,6 +492,26 @@ scope chain from innermost to outermost.
 | `ImportDecl.path` | Module/symbol path | Module resolution algorithm (§below) |
 | `Pattern::Identifier` | New binding (Phase 1) or existing ref (match) | Depends on context |
 | `GenericArg` | Type symbol | Same as `IdentifierType` |
+
+#### Binding Position vs. Expression Position
+
+An identifier in a pattern is in **binding position** (creates new symbol)
+when it appears in:
+
+- `let PAT = EXPR` pattern
+- `fun NAME(params)` parameter list
+- `match (EXPR) { when PAT => ... }` arm pattern
+- `for PAT in EXPR` loop pattern
+- `catch PAT` clause
+- `if let PAT = EXPR` pattern
+- `while let PAT = EXPR` pattern
+
+An identifier is in **expression position** (resolves existing symbol) when
+it appears in:
+
+- Expression bodies (right side of `let`, function bodies)
+- `match` scrutinee expression
+- Pattern guards (`if cond` after pattern)
 
 #### Lookup Algorithm
 
@@ -501,21 +606,10 @@ function resolve(node: NodeId, scope: Scope):
       // Resolve body
       resolve(node.body, fn_scope)
 
-    case ImportDecl:
-      resolved = resolve_import_path(node.path, scope)
-      if resolved is NotFound:
-        emit(ZOM0315, node.range,
-             "unresolved import '{path_text}'")
-      else:
-        metadata.set_symbol(node.id, resolved.symbol.id)
-        // Insert re-export into current scope (already done in Phase 1
-        // for simple imports; for aliased imports, apply alias here)
-
-    case MatchExpr:
+    case MatchStmt:
       resolve(node.scrutinee, scope)
       for arm in node.arms:
-        arm_scope = create_scope(Block, "<arm>", scope)
-        // Pattern variables are new bindings (Phase 1 already inserted)
+        arm_scope = scope_for(arm.id)
         resolve(arm.pattern, arm_scope)
         resolve(arm.body, arm_scope)
 
@@ -571,6 +665,14 @@ current module scope:
 Re-exports do not create new symbols; they create name-to-symbol mappings
 in the importing scope. The symbol's canonical identity is preserved.
 
+**Glob import conflict rules:**
+
+- If a glob import (`use foo::*`) would import a name that conflicts with a
+  local declaration in the same scope, the local declaration wins and no
+  diagnostic is emitted (local takes precedence, like Rust).
+- If two glob imports both provide the same name, and no local declaration
+  resolves it, emit ZOM0317 for ambiguity.
+
 ### BindingMetadata Contract
 
 `BindingMetadata` is the binder's output, indexed by `NodeId`:
@@ -584,9 +686,47 @@ in the importing scope. The symbol's canonical identity is preserved.
 | `deferred_member(node)` | `Maybe<TokenRef>` | Member name whose resolution is deferred to checker |
 | `shadow_of(node)` | `Maybe<SymbolId>` | The outer symbol that this binding shadows |
 | `is_reexport(node)` | `bool` | True for import nodes that re-export |
+| `captures(node)` | `Maybe<CaptureSet>` | Set of outer symbols captured by lambda/closure |
+| `label_target(node)` | `Maybe<NodeId>` | Label target node for `break 'label` / `continue 'label` |
 
 All lookups are O(1): `BindingMetadata` stores parallel arrays indexed by
 `NodeId` value.
+
+#### Closure Capture Semantics
+
+When a lambda (`LambdaExpr`) references a symbol from an outer scope, that
+symbol is added to the lambda's capture set. The `captures()` metadata is
+used by the type checker for Send/Sync derivation and by the borrow checker
+(future).
+
+- Default capture mode is by-reference (like Rust non-move closures).
+- `captures(lambda_node)` returns the set of `SymbolId`s from enclosing
+  scopes that are referenced inside the lambda body.
+- The capture set is computed during Phase 2 resolution: whenever
+  `resolve_name` finds a symbol in a parent scope (not the current
+  lambda's scope or any scope nested within it), that symbol is recorded
+  in the lambda's capture set.
+
+#### Label Resolution
+
+```zom
+'outer: loop {
+  'inner: loop {
+    break 'outer;  // resolves to 'outer label
+  }
+}
+```
+
+Labels live in a **label namespace** separate from value/type namespaces.
+
+- Each labeled loop (`'label: while/for/loop`) inserts a label into the
+  enclosing scope during Phase 1 collection.
+- `break 'label` and `continue 'label` resolve the label target during
+  Phase 2.
+- `label_target(node) -> Maybe<NodeId>` in `BindingMetadata` records the
+  resolved label target node.
+- If a label is not found in any enclosing scope, emit ZOM0301 adapted
+  for labels: `unresolved label 'label_name'`.
 
 ### Diagnostic Catalog (0300–0399)
 
@@ -620,6 +760,8 @@ All lookups are O(1): `BindingMetadata` stores parallel arrays indexed by
 | BIND-06 | Import resolution is deterministic: same source → same result. | No hash-map iteration order dependency in path walking. |
 | BIND-07 | Forward references within a module resolve correctly. | Phase 1 collects all declarations before Phase 2 resolves any. |
 | BIND-08 | Member expression names are never resolved by the binder. | `MemberExpr.member` always gets `deferred_member` status. |
+| BIND-09 | After Phase 1.5, every import node has either a resolved `SymbolId` or `is_unresolved=true`. | Import resolution walks all pending imports exactly once. |
+| BIND-10 | Match arm pattern variables are in scope during Phase 2 resolution. | Match arm scopes are created and pattern bindings collected in Phase 1. |
 
 ### Fail-Closed Contract
 
@@ -725,10 +867,11 @@ This is a new implementation filling an existing empty stage. There is no
 existing user-visible behavior to preserve. Rollout steps:
 
 1. Implement `DeclCollector` (Phase 1) with unit tests.
-2. Implement `NameResolver` (Phase 2) with unit tests.
-3. Wire into `CompilerSession` / driver after parsing.
-4. Add conformance tests for name resolution.
-5. Enable the binder in the default pipeline.
+2. Implement `ImportResolver` (Phase 1.5) with unit tests.
+3. Implement `NameResolver` (Phase 2) with unit tests.
+4. Wire into `CompilerSession` / driver after parsing.
+5. Add conformance tests for name resolution.
+6. Enable the binder in the default pipeline.
 
 Rollback: remove the binder call from the driver; the tree still parses
 correctly, but identifier resolution is unavailable (type checker would
@@ -751,7 +894,7 @@ already defined in `ast/tree.h`.
 
 - **CI:** Binder unit tests run as part of `ctest --preset default`.
 - **Fuzzing:** The binder is a natural fuzz target — feed arbitrary valid
-  ASTs and assert BIND-01 through BIND-08. Add to the existing fuzz
+  ASTs and assert BIND-01 through BIND-10. Add to the existing fuzz
   harness under `products/zomlang/tests/fuzzing/`.
 - **Performance:** Binder time should be < 5% of total compile time for
   typical files. Add a `--timings` flag to the driver that reports per-stage
@@ -795,26 +938,48 @@ already defined in `ast/tree.h`.
 15. **Scope tree shape:** The scope tree mirrors AST lexical nesting
     exactly. Verified by dumping scope tree and comparing to expected
     structure.
-16. **`check-rfc.py` passes.**
-17. **`check-format.py` passes.**
-18. **All existing 742+ tests still pass.**
+16. **Match arm pattern scope:** Pattern variables in match arms are
+    visible during Phase 2 resolution of the arm body. Conformance test:
+    `match (x) { when Some(y) => { return y; } }` resolves `y` correctly.
+17. **Chained import resolution:** `use a::B; use B::C;` works because
+    Phase 1.5 resolves and re-exports `a::B` before `B::C` is looked up.
+    Unit test with mock module setup.
+18. **`if let` / `while let` scoping:** Pattern bindings in `if let` and
+    `while let` are scoped correctly (visible in then-body, not in
+    else-body). Unit test.
+19. **Label resolution:** `break 'outer` from a nested loop resolves to
+    the `'outer` labeled loop. Unresolved label emits diagnostic.
+20. **Closure captures:** Lambda referencing outer variable has that
+    symbol in `captures()` metadata. Unit test.
+21. **Glob import precedence:** Local declaration takes precedence over
+    glob-imported name of same name (no diagnostic). Two globs providing
+    same name emit ZOM0317.
+22. **Nested function `self` access:** `fun helper() { self.bar() }`
+    inside a method emits ZOM0320.
+23. **`check-rfc.py` passes.**
+24. **`check-format.py` passes.**
+25. **All existing 742+ tests still pass.**
 
 ## Implementation Plan
 
 1. **Expand `BindingMetadata`** — Add `symbol()`, `is_unresolved()`,
-   `deferred_member()`, `shadow_of()`, `is_reexport()` accessors backed
-   by parallel arrays in `ast/tree.h`.
+   `deferred_member()`, `shadow_of()`, `is_reexport()`, `captures()`,
+   `label_target()` accessors backed by parallel arrays in `ast/tree.h`.
 2. **Implement `DeclCollector`** — A class that owns the scope stack and
    walks the AST in pre-order, creating scopes and inserting symbols.
+   Includes `collect_pattern_bindings()` for pattern binding positions.
    File: `binder/decl-collector.cc` + `.h`.
-3. **Implement `NameResolver`** — A class that walks the AST in mixed
+3. **Implement `ImportResolver`** — Phase 1.5 path-walking logic for `use`
+   statements, run after collection but before name resolution.
+   File: `binder/import-resolver.cc` + `.h`.
+4. **Implement `NameResolver`** — A class that walks the AST in mixed
    pre/post-order, resolving identifiers against the scope chain.
+   Computes closure capture sets and label targets.
    File: `binder/name-resolver.cc` + `.h`.
-4. **Implement `ImportResolver`** — Path-walking logic for `use`
-   statements. File: `binder/import-resolver.cc` + `.h`.
 5. **Add binder diagnostics** — Create `diagnostics-binder.def` with
    codes ZOM0301–ZOM0380.
-6. **Wire into `Binder::bind()`** — Call collect then resolve.
+6. **Wire into `Binder::bind()`** — Call collect, then resolve_imports,
+   then resolve.
 7. **Driver integration** — Call `binder.bind()` after successful parse.
 8. **Update `compiler-contracts.md`** — Document P2B invariants.
 
@@ -843,3 +1008,4 @@ None.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-07-05 | DRAFT | Initial draft of complete binder architecture. Covers two-phase collection/resolution, scope tree, import resolution, BindingMetadata contract, and 18 acceptance criteria. |
+| 2026-07-05 | DRAFT | Applied fixes: moved match arm scope creation to Phase 1; added binding position vs. expression position rules; added `collect_pattern_bindings()` helper; added Phase 1.5 import resolution; added closure capture tracking; added `if let`/`while let` scope rules; added label resolution; clarified `self`/`this` nested function visibility; added glob import conflict rules; clarified `scope_stack`/`scope` parameter convention. |

@@ -131,6 +131,7 @@ public:
   virtual bool isFunctionSymbol() const;
   virtual bool isVariableSymbol() const;
   virtual bool isClassSymbol() const;
+  virtual bool isInterfaceSymbol() const;
 
   // Symbol kind extraction
   virtual SymbolKind getKind() const { return SymbolKind::None; }

@@ -1,6 +1,7 @@
 fun f(x: i32) {
-  match x {
-    #[cfg::feature] 0 => { return 1; }
-    _ => { return 2; }
+  match (x) {
+    #[cfg::feature]
+    when 0 => { return 1; }
+    default => { return 2; }
   }
 }

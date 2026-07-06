@@ -28,6 +28,7 @@
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
+#include "zomlang/compiler/type/type-env.h"
 
 namespace zomlang {
 namespace compiler {
@@ -76,6 +77,8 @@ struct CompilerDriver::Impl {
   zc::MutexGuarded<zc::HashMap<source::BufferId, ast::Tree>> astMutex;
   /// Mutex-guarded map from BufferId to binder metadata side tables.
   zc::MutexGuarded<zc::HashMap<source::BufferId, ast::BindingMetadata>> bindingMetadataMutex;
+  /// Mutex-guarded map from BufferId to type environments from type checking.
+  zc::MutexGuarded<zc::HashMap<source::BufferId, type::TypeEnv>> typeEnvMutex;
 };
 
 // ================================================================================
@@ -114,6 +117,11 @@ const zc::HashMap<source::BufferId, ast::BindingMetadata>& CompilerDriver::getBi
   return *lockedMetadata;
 }
 
+const zc::HashMap<source::BufferId, type::TypeEnv>& CompilerDriver::getTypeEnvs() const {
+  auto lockedTypeEnvs = impl->typeEnvMutex.lockShared();
+  return *lockedTypeEnvs;
+}
+
 bool CompilerDriver::parseSources() {
   // Get BufferIds directly from SourceManager
   zc::Vector<source::BufferId> bufferIds = impl->sourceManager->getManagedBufferIds();
@@ -150,6 +158,28 @@ bool CompilerDriver::bindSources() {
     ast::BindingMetadata metadata;
     basic::performBind(*impl->symbolTable, *impl->diagnosticEngine, entry.value, metadata);
     lockedMetadata->upsert(entry.key, zc::mv(metadata));
+  }
+
+  // Return true if no errors were reported
+  return !impl->diagnosticEngine->hasErrors();
+}
+
+bool CompilerDriver::checkSources() {
+  auto lockedAsts = impl->astMutex.lockShared();
+  auto lockedMetadata = impl->bindingMetadataMutex.lockShared();
+  auto lockedTypeEnvs = impl->typeEnvMutex.lockExclusive();
+
+  for (const auto& entry : *lockedAsts) {
+    // Find the corresponding binding metadata
+    auto metadataMaybe = lockedMetadata->find(entry.key);
+    if (metadataMaybe == zc::none) continue;
+
+    type::TypeEnv typeEnv;
+    ZC_IF_SOME(metadata, metadataMaybe) {
+      basic::performCheck(*impl->symbolTable, *impl->diagnosticEngine, entry.value, metadata,
+                          typeEnv);
+      lockedTypeEnvs->upsert(entry.key, zc::mv(typeEnv));
+    }
   }
 
   // Return true if no errors were reported

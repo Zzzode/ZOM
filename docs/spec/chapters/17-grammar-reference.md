@@ -182,8 +182,10 @@ Declaration ::= ModifierList (
 MutDeclaration   ::= 'mut' VariableDeclarationList ';'
 LetDeclaration   ::= 'let' VariableDeclarationList ';'
 ConstDeclaration ::= 'const' ConstDeclarationList ';'
-FunDeclaration   ::= 'fun' BindingIdentifier TypeParameters? ParameterClause
+FunDeclaration   ::= 'unsafe'? 'fun' BindingIdentifier TypeParameters? ParameterClause
                      ReturnType? BlockStatement
+    (* 'unsafe' marks a function with caller-proven preconditions.
+       See Ch.03 §Unsafe Safety Model and Ch.06 §Unsafe Functions. *)
 VariableDeclarationList ::= VariableDeclaration (',' VariableDeclaration)*
 VariableDeclaration ::= (BindingIdentifier | BindingPattern) TypeAnnotation? Initializer?
 Initializer ::= '=' AssignmentExpression
@@ -213,13 +215,24 @@ ImplementsClause ::= 'implements' InterfaceTypeList
 
 InterfaceDeclaration ::= ClassExtensibility? ModifierList 'interface' BindingIdentifier
                          TypeParameters? InterfaceHeritage? '{' InterfaceBody '}'
-InterfaceHeritage ::= 'extends' InterfaceTypeList
+    (* NOTE: 'unsafe' semantic-invariant attestation appears on the `impl` block
+       (unsafe impl I for T), not on the interface declaration. See Ch.09 §9.7.
+       Canonical grammar: docs/design/syntax-ebnf.md §4.3.5 *)
+InterfaceHeritage ::= ':' InterfaceBoundList
+    (* '+' = conjunction (AND); '|' is ONLY for UnionType.
+       Legacy 'extends' keyword is accepted but deprecated.
+       Canonical grammar: docs/design/syntax-ebnf.md §4.3.5 *)
+InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*
+InterfaceBound ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
 InterfaceBody ::= InterfaceElement*
 InterfaceElement ::= ';'
                    | Modifier* PropertyStorage PropertySignature Initializer? ';'?
                    | Modifier* ConstantDeclaration
-                   | Modifier* 'fun' MethodSignature ( BlockStatement | ';' )
-                      (* BlockStatement = default method body — Ch.09 §6 *)
+                   | Modifier* 'fun' MethodSignature ';'
+                      (* NOTE: Method bodies (BlockStatement) inside interface
+                         declarations are not yet supported by the parser.
+                         Default interface methods are planned for a future
+                         version. See Ch.09 §9.3.1 *)
 PropertySignature ::= PropertyName '?'? TypeAnnotation
 MethodSignature ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType?
 PropertyStorage ::= 'mut' | 'let'
@@ -285,8 +298,9 @@ MarkerImplDeclaration
 
 (* Standalone Interface Impl — Ch.09 §7 *)
 StandaloneImplDeclaration
-    ::= 'impl' TypeArguments? InterfaceBoundList 'for' Type
+    ::= 'unsafe'? 'impl' TypeArguments? InterfaceBoundList 'for' Type
         whereClause? '{' (MethodDeclaration | AssociatedTypeAssignment | ConstantDeclaration)* '}'
+    (* 'unsafe' required when implementing an unsafe interface. See Ch.09 §Unsafe Interfaces. *)
 AssociatedTypeAssignment ::= 'type' Identifier TypeParameters? '=' TypeExpression ';'
 
 (* Type Expressions *)
@@ -303,9 +317,20 @@ AtomType ::= ParenthesizedType
           | TupleType
           | FunctionType
           | TypeQuery
+          | ReferenceType          (* &T / &mut T — Ch.03 §Reference Types *)
+          | RawPointerType         (* *const T / *mut T — Ch.03 §Raw Pointer Types *)
           | DynType                (* existential type — Ch.03 §Existential Types *)
 DynType ::= 'dyn' InterfaceBoundList                          (* Ch.03 §Existential *)
 InterfaceBoundList ::= InterfaceName ( '<' GenericArgs '>' )? ( '+' MarkerPath )*
+
+ReferenceType ::= '&' ('mut')? TypeExpression
+    (* Immutable or mutable reference. Sized = ptr_size.
+       &mut T coerces to &T. See Ch.03 §Reference Types. *)
+
+RawPointerType ::= '*' ('const' | 'mut')? TypeExpression
+    (* Raw pointer for FFI and unsafe code. Sized = ptr_size.
+       Dereference requires unsafe { }. See Ch.03 §Raw Pointer Types. *)
+
 InterfaceName ::= TypeName
 InterfaceType ::= TypeName TypeArguments?
 GenericArgs ::= TypeArgumentList
@@ -368,6 +393,7 @@ ExpressionWithTypeArguments ::= LeftHandSideExpression TypeArguments?
 
 (* Statements *)
 Statement ::= BlockStatement
+           | UnsafeBlockStatement  (* unsafe { } — Ch.05 §Unsafe Block *)
            | EmptyStatement
            | VariableStatement
            | ExpressionStatement
@@ -383,6 +409,11 @@ Statement ::= BlockStatement
            | ReturnStatement
            | DebuggerStatement
            | LabeledStatement
+
+UnsafeBlockStatement ::= 'unsafe' BlockStatement
+    (* Grants capability to perform unsafe operations: raw pointer deref,
+       extern "C" calls, unsafe fun calls, repr(Packed) field borrows,
+       static mut access. See Ch.03 §Unsafe Safety Model and Ch.05. *)
 
 VariableStatement ::= ('mut' | 'let') VariableDeclarationList ';'
 

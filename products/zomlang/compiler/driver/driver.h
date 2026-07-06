@@ -16,10 +16,12 @@
 
 #include "zc/core/map.h"
 #include "zc/core/memory.h"
+#include "zc/core/mutex.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/type/type-env.h"
 
 namespace zomlang {
 namespace compiler {
@@ -67,6 +69,10 @@ public:
   /// \return True if binding succeeded without fatal errors, false otherwise.
   bool bindSources();
 
+  /// Type-checks all bound ASTs.
+  /// \return True if checking succeeded without fatal errors, false otherwise.
+  bool checkSources();
+
   /// Get the parsed syntax trees.
   /// \return A reference to the map of buffer IDs to syntax trees.
   const zc::HashMap<source::BufferId, ast::Tree>& getASTs() const;
@@ -74,6 +80,10 @@ public:
   /// Get binder metadata keyed by buffer ID.
   /// \return A reference to the map of buffer IDs to binder metadata.
   const zc::HashMap<source::BufferId, ast::BindingMetadata>& getBindingMetadata() const;
+
+  /// Get type environments keyed by buffer ID.
+  /// \return A reference to the map of buffer IDs to type environments.
+  const zc::HashMap<source::BufferId, type::TypeEnv>& getTypeEnvs() const;
 
   /// Get the symbol table used by the compiler.
   /// \return A reference to the symbol table

@@ -222,6 +222,24 @@ public:
   void setSymbol(NodeId node, symbol::SymbolId symbolId);
   symbol::SymbolId symbol(NodeId node) const;
 
+  void setIsUnresolved(NodeId node, bool value);
+  bool isUnresolved(NodeId node) const;
+
+  void setIsDeferredMember(NodeId node, bool value);
+  bool isDeferredMember(NodeId node) const;
+
+  void setShadowOf(NodeId node, NodeId shadowed);
+  NodeId shadowOf(NodeId node) const;
+
+  void setIsReexport(NodeId node, bool value);
+  bool isReexport(NodeId node) const;
+
+  void setCaptures(NodeId node, NodeList captures);
+  NodeList captures(NodeId node) const;
+
+  void setLabelTarget(NodeId node, NodeId target);
+  NodeId labelTarget(NodeId node) const;
+
 private:
   struct Impl;
   zc::Own<Impl> impl;

@@ -4,7 +4,7 @@
 // CHECK: Error [ZOM2025]: Expected 'when'
 // CHECK:   --> {{.*attr_on_matcharm_reject_neg_08.zom}}:3:5
 // CHECK:   |
-// CHECK: 3 |     #[cfg::feature] 0 => { return 1; }
+// CHECK: 3 |     #[cfg::feature]
 // CHECK:   |     ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

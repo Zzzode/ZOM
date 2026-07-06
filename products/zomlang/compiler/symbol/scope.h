@@ -62,12 +62,11 @@ public:
   /// \brief Symbol management
   void addSymbol(zc::Own<Symbol> symbol);
   void removeSymbol(zc::StringPtr name);
-  zc::Maybe<Symbol&> lookupSymbol(zc::StringPtr name);
-  zc::Maybe<Symbol&> lookupSymbolLocally(zc::StringPtr name);
-  zc::Maybe<Symbol&> lookupSymbolRecursively(zc::StringPtr name);
+  zc::Maybe<const Symbol&> lookupSymbolLocally(zc::StringPtr name) const;
+  zc::Maybe<const Symbol&> lookupSymbolRecursively(zc::StringPtr name) const;
 
   /// \brief Symbol enumeration
-  bool hasSymbol(zc::StringPtr name);
+  bool hasSymbol(zc::StringPtr name) const;
   size_t getSymbolCount() const;
 
   /// \brief Scope hierarchy
@@ -90,7 +89,6 @@ public:
   zc::String toString() const;
 
   /// \brief Operator overloads
-  zc::Maybe<Symbol&> operator[](zc::StringPtr name);
   bool operator==(const Scope& other) const;
   bool operator!=(const Scope& other) const;
 

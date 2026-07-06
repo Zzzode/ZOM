@@ -277,6 +277,12 @@ bool ClassSymbol::isAbstract() const { return hasFlag(SymbolFlags::Abstract); }
 
 bool ClassSymbol::isFinal() const { return hasFlag(SymbolFlags::Final); }
 
+SymbolKind ClassSymbol::getKind() const {
+  if (hasFlag(SymbolFlags::TypeAlias)) return SymbolKind::TypeAlias;
+  if (hasFlag(SymbolFlags::Enum)) return SymbolKind::Enum;
+  return SymbolKind::Class;
+}
+
 // FunctionTypeSymbol::Impl definition
 struct FunctionTypeSymbol::Impl {
   zc::Maybe<const TypeSymbol&> returnType;

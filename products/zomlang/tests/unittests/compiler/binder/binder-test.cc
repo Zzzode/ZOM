@@ -28,9 +28,10 @@ namespace binder {
 
 namespace {
 
-ast::NodePayload makeSourceFilePayload(ast::NodeId module, ast::NodeList statements) {
+ast::NodePayload makeSourceFilePayload(ast::TreeBuilder& builder, ast::NodeId module,
+                                       ast::NodeList statements) {
   ast::NodePayload payload;
-  payload.words[ast::kSourceFileFileNameWord] = 0;
+  payload.words[ast::kSourceFileFileNameWord] = builder.internString("test.zom"_zc).value;
   payload.words[ast::kSourceFileModuleWord] = module.value;
   payload.words[ast::kSourceFileStatementsFirstWord] = statements.first;
   payload.words[ast::kSourceFileStatementsSizeWord] = statements.size;
@@ -46,8 +47,12 @@ ZC_TEST("Binder.WritesParentMetadataForSourceFileChildren") {
       builder.makeNode(ast::SyntaxKind::ModuleDeclaration, source::SourceRange());
   const ast::NodeId import =
       builder.makeNode(ast::SyntaxKind::ImportDeclaration, source::SourceRange());
+
+  // FunctionDecl needs a valid name IdentId, otherwise DeclCollector crashes.
+  ast::NodePayload funcPayload;
+  funcPayload.words[ast::kFunctionDeclNameWord] = builder.internIdent("testFunc"_zc).value;
   const ast::NodeId declaration =
-      builder.makeNode(ast::SyntaxKind::FunctionDecl, source::SourceRange());
+      builder.makeNode(ast::SyntaxKind::FunctionDecl, source::SourceRange(), funcPayload);
   ast::NodePayload importItemPayload;
   importItemPayload.words[ast::kStatementListItemItemWord] = import.value;
   const ast::NodeId importItem = builder.makeNode(ast::SyntaxKind::StatementListItem,
@@ -63,7 +68,7 @@ ZC_TEST("Binder.WritesParentMetadataForSourceFileChildren") {
   const ast::NodeList statementList = builder.makeList(statements.asPtr());
 
   const ast::NodeId root = builder.makeNode(ast::SyntaxKind::SourceFile, source::SourceRange(),
-                                            makeSourceFilePayload(module, statementList));
+                                            makeSourceFilePayload(builder, module, statementList));
   builder.setRoot(root);
   ast::Tree tree = builder.finish();
 

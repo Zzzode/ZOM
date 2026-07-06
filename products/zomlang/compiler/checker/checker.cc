@@ -15,11 +15,74 @@
 #include "zomlang/compiler/checker/checker.h"
 
 #include "zc/core/common.h"
-#include "zc/core/string.h"
-#include "zomlang/compiler/ast/ast.h"
+#include "zomlang/compiler/ast/tree.h"
+#include "zomlang/compiler/checker/body-checker.h"
+#include "zomlang/compiler/checker/decl-signature.h"
+#include "zomlang/compiler/checker/trait-resolver.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/type/constraint-set.h"
+#include "zomlang/compiler/type/type-env.h"
+#include "zomlang/compiler/type/unification.h"
 
 namespace zomlang {
 namespace compiler {
-namespace checker {}  // namespace checker
+
+namespace symbol {
+class SymbolTable;
+}  // namespace symbol
+
+namespace checker {
+
+struct Checker::Impl {
+  Impl(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diags,
+       const ast::Tree& tree, const ast::BindingMetadata& metadata, type::TypeEnv& typeEnv) noexcept
+      : symbolTable(symbolTable),
+        diags(diags),
+        tree(tree),
+        metadata(metadata),
+        typeEnv(typeEnv),
+        constraints(zc::heap<type::ConstraintSet>()),
+        unification(zc::heap<type::UnificationEngine>(typeEnv)) {}
+
+  symbol::SymbolTable& symbolTable;
+  diagnostics::DiagnosticEngine& diags;
+  const ast::Tree& tree;
+  const ast::BindingMetadata& metadata;
+  type::TypeEnv& typeEnv;
+  zc::Own<type::ConstraintSet> constraints;
+  zc::Own<type::UnificationEngine> unification;
+};
+
+Checker::Checker(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
+                 const ast::Tree& tree, const ast::BindingMetadata& metadata,
+                 type::TypeEnv& typeEnv) noexcept
+    : impl(zc::heap<Impl>(symbolTable, diagnosticEngine, tree, metadata, typeEnv)) {}
+
+Checker::~Checker() noexcept(false) = default;
+
+bool Checker::check() {
+  ZC_IREQUIRE(impl->tree.contains(impl->tree.root()), "cannot check a tree without a valid root");
+
+  // Phase A: Compute declaration signatures
+  DeclSignatureComputer sigComputer(impl->typeEnv, impl->symbolTable, impl->tree, impl->metadata,
+                                    impl->diags);
+  if (!sigComputer.computeSignatures()) return false;
+
+  // Phase B: Check bodies
+  BodyChecker bodyChecker(impl->typeEnv, *impl->unification, *impl->constraints, impl->symbolTable,
+                          impl->tree, impl->metadata, impl->diags);
+  if (!bodyChecker.checkBodies()) return false;
+
+  // Trait resolution
+  TraitResolver traitResolver(impl->typeEnv, impl->symbolTable, impl->tree, impl->metadata,
+                              impl->diags);
+  traitResolver.checkCoherence();
+
+  return !impl->diags.hasErrors();
+}
+
+type::TypeEnv& Checker::getTypeEnv() { return impl->typeEnv; }
+
+}  // namespace checker
 }  // namespace compiler
 }  // namespace zomlang

@@ -76,26 +76,26 @@ void Scope::addSymbol(zc::Own<Symbol> symbol) {
 
 void Scope::removeSymbol(zc::StringPtr name) { impl->symbols.erase(name); }
 
-zc::Maybe<Symbol&> Scope::lookupSymbol(zc::StringPtr name) { return lookupSymbolRecursively(name); }
-
-zc::Maybe<Symbol&> Scope::lookupSymbolLocally(zc::StringPtr name) {
+zc::Maybe<const Symbol&> Scope::lookupSymbolLocally(zc::StringPtr name) const {
   auto it = impl->symbols.find(name);
   ZC_IF_SOME(symbol, it) { return *symbol; }
   return zc::none;
 }
 
-zc::Maybe<Symbol&> Scope::lookupSymbolRecursively(zc::StringPtr name) {
+zc::Maybe<const Symbol&> Scope::lookupSymbolRecursively(zc::StringPtr name) const {
   ZC_IF_SOME(symbol, impl->symbols.find(name)) { return *symbol; }
-  ZC_IF_SOME(parent, impl->parent) { return parent.lookupSymbolRecursively(name); }
+  ZC_IF_SOME(parent, getParent()) { return parent.lookupSymbolRecursively(name); }
   return zc::none;
 }
 
-bool Scope::hasSymbol(zc::StringPtr name) { return lookupSymbolLocally(name) != zc::none; }
+bool Scope::hasSymbol(zc::StringPtr name) const { return lookupSymbolLocally(name) != zc::none; }
 
 size_t Scope::getSymbolCount() const { return impl->symbols.size(); }
 
 void Scope::addChild(zc::Own<Scope> child) {
-  impl->children.insert(child->getName(), zc::mv(child));
+  // Use upsert to avoid crashing on duplicate child names.
+  // Duplicate scopes can happen when redeclaring entities with the same name.
+  impl->children.upsert(child->getName(), zc::mv(child));
 }
 
 void Scope::removeChild(Scope& child) { impl->children.erase(child.getName()); }
@@ -198,9 +198,6 @@ bool Scope::isValid() const {
 
 void Scope::validate() const { ZC_REQUIRE(isValid(), "Invalid scope: ", toString()); }
 
-// Symbol overloads
-zc::Maybe<Symbol&> Scope::operator[](zc::StringPtr name) { return lookupSymbol(name); }
-
 bool Scope::operator==(const Scope& other) const { return this == &other; }
 
 bool Scope::operator!=(const Scope& other) const { return !(*this == other); }
@@ -275,16 +272,17 @@ Scope& ScopeManager::createScope(Scope::Kind kind, zc::StringPtr name, zc::Maybe
     parentScope.addChild(zc::mv(childPtr));
   }
 
-  // Update lookup caches - store references to the heap-allocated scopes
+  // Update lookup caches - store references to the heap-allocated scopes.
+  // Use upsert to handle redeclarations gracefully (latest scope wins).
   switch (kind) {
     case Scope::Kind::Package:
-      impl->packageScopes.insert(name, scope);
+      impl->packageScopes.upsert(name, scope);
       break;
     case Scope::Kind::Class:
-      impl->classScopes.insert(name, scope);
+      impl->classScopes.upsert(name, scope);
       break;
     case Scope::Kind::Function:
-      impl->functionScopes.insert(name, scope);
+      impl->functionScopes.upsert(name, scope);
       break;
     default:
       break;

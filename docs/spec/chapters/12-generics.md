@@ -189,6 +189,22 @@ For each call to a generic function `f<T_real>()`, the compiler performs, for ev
 
 Bound satisfaction is also checked *inside* the generic body (prior to monomorphisation) against the declared bounds alone. The body may not assume any property of `T` that is not listed in its bound set; violations are diagnosed at body-check time via the same ZOM04xx diagnostic codes.
 
+### Variance of Generic Parameters
+
+User-defined generic named types are invariant in all type parameters in v1.
+This conservative rule prevents mutable containers from accidentally lifting a
+reference coercion through the container boundary.
+
+```zom
+let xs: Vec<&mut i32> = make_mut_refs();
+// INVALID: Vec<T> is invariant in T.
+// let ys: Vec<&i32> = xs;
+```
+
+Function types still use the standard variance rule: parameter types are
+contravariant, and return and raises members are covariant. See
+[Ch.03 Variance](03-types.md#variance).
+
 ### Associated Types
 
 ```zom
@@ -217,15 +233,15 @@ enum Option<T> {
 
     fun map<U>(transform: (T) -> U) -> Option<U> {
         match (this) {
-            when Some(value) => Some(transform(value))
-            when None => None
+            when Some(value) => { return Some(transform(value)); }
+            when None => { return None; }
         }
     }
 
     fun flatMap<U>(transform: (T) -> Option<U>) -> Option<U> {
         match (this) {
-            when Some(value) => transform(value)
-            when None => None
+            when Some(value) => { return transform(value); }
+            when None => { return None; }
         }
     }
 }

@@ -9,6 +9,7 @@ add_subdirectory(checker)
 add_subdirectory(ast)
 add_subdirectory(trace)
 add_subdirectory(binder)
+add_subdirectory(type)
 
 add_library(
   frontend STATIC
@@ -22,7 +23,8 @@ add_library(
   $<TARGET_OBJECTS:parser>
   $<TARGET_OBJECTS:source>
   $<TARGET_OBJECTS:symbol>
-  $<TARGET_OBJECTS:trace>)
+  $<TARGET_OBJECTS:trace>
+  $<TARGET_OBJECTS:type>)
 target_link_libraries(frontend PUBLIC zc)
 
 set_target_include_directories(
@@ -37,4 +39,5 @@ set_target_include_directories(
   parser
   source
   symbol
-  trace)
+  trace
+  type)

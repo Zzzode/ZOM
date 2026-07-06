@@ -33,6 +33,10 @@ namespace symbol {
 class SymbolTable;
 }
 
+namespace type {
+class TypeEnv;
+}
+
 namespace basic {
 
 class StringPool;
@@ -57,6 +61,17 @@ zc::Maybe<ast::Tree> performParse(const source::SourceManager& sm,
 /// \return True if binding succeeded, false if errors occurred
 bool performBind(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
                  const ast::Tree& tree, ast::BindingMetadata& metadata);
+
+/// \brief Perform type checking on a bound AST
+/// \param symbolTable Symbol table with resolved names
+/// \param diagnosticEngine Diagnostic engine for error reporting
+/// \param tree Bound syntax tree to check
+/// \param metadata Binder metadata from the binding phase
+/// \param typeEnv Output parameter that receives the type environment
+/// \return True if checking succeeded without fatal errors, false otherwise
+bool performCheck(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
+                  const ast::Tree& tree, const ast::BindingMetadata& metadata,
+                  type::TypeEnv& typeEnv);
 
 }  // namespace basic
 }  // namespace compiler
