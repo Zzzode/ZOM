@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --syntax-only %corpus/04-expressions/ord_trait_signature_mismatch_neg_07.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM0432]: Operator trait 'Ord' for type 'Point' must define 'cmp(Point) -> i32'
+// CHECK:   -->
+// CHECK-SAME: {{[/\\]ord_trait_signature_mismatch_neg_07\.zom:14:1$}}
+// CHECK-LITERAL: 14 | x >= y;
+// CHECK-LITERAL:    | ^

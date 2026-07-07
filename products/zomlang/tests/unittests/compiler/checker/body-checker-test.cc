@@ -655,6 +655,78 @@ ZC_TEST("BodyChecker.BinaryLtUsesUserTypeOrdImpl") {
   expectUserTypeComparisonImpl("Ord"_zc, ast::BinaryOperatorKind::Lt);
 }
 
+ZC_TEST("BodyChecker.BinaryLeUsesUserTypeOrdImpl") {
+  expectUserTypeComparisonImpl("Ord"_zc, ast::BinaryOperatorKind::Le);
+}
+
+ZC_TEST("BodyChecker.BinaryGtUsesUserTypeOrdImpl") {
+  expectUserTypeComparisonImpl("Ord"_zc, ast::BinaryOperatorKind::Gt);
+}
+
+ZC_TEST("BodyChecker.BinaryGeUsesUserTypeOrdImpl") {
+  expectUserTypeComparisonImpl("Ord"_zc, ast::BinaryOperatorKind::Ge);
+}
+
+ZC_TEST("BodyChecker.BinaryOrdRejectsWrongTraitMethodSignature") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> ifaceParams;
+  ifaceParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Point"_zc)));
+  auto ifaceParamList = fix.makeFunctionParamList(fix.makeNodeList(ifaceParams.asPtr()));
+  auto ifaceMethod =
+      fix.makeMethodDecl("cmp"_zc, ast::NodeId(), ifaceParamList, fix.makeNamedTypeExpr("i32"_zc));
+  zc::Vector<ast::NodeId> ifaceMembers;
+  ifaceMembers.add(ifaceMethod);
+  auto ordIface = fix.makeInterfaceDecl(
+      "Ord"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
+
+  auto pointType = fix.makeClassDecl("Point"_zc);
+
+  zc::Vector<ast::NodeId> implIfaceNodes;
+  implIfaceNodes.add(fix.makeNamedTypeExpr("Ord"_zc));
+  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
+
+  zc::Vector<ast::NodeId> implParams;
+  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Point"_zc)));
+  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
+  auto implMethod =
+      fix.makeMethodDecl("cmp"_zc, ast::NodeId(), implParamList, fix.makeNamedTypeExpr("bool"_zc));
+  zc::Vector<ast::NodeId> implMembers;
+  implMembers.add(implMethod);
+  auto implDecl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Point"_zc), implIfaces,
+                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
+
+  auto xDecl =
+      fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc), fix.makeNamedTypeExpr("Point"_zc));
+  auto yDecl =
+      fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc), fix.makeNamedTypeExpr("Point"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(xDecl);
+  decls.add(yDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Ge, fix.makeIdentExpr("x"_zc),
+                                    fix.makeIdentExpr("y"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(ordIface);
+  topDecls.add(pointType);
+  topDecls.add(implDecl);
+  topDecls.add(let);
+  topDecls.add(binExpr);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(
+      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
+  ZC_EXPECT(result.typeEnv.hasType(binExpr));
+  if (result.typeEnv.hasType(binExpr)) { ZC_EXPECT(isError(result.typeEnv.getType(binExpr))); }
+}
+
 ZC_TEST("BodyChecker.BinaryLtRejectsUserTypeWithoutOrdImpl") {
   expectUserTypeComparisonWithoutImplFails("Ord"_zc, ast::BinaryOperatorKind::Lt);
 }
