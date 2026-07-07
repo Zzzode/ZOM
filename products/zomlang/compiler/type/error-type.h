@@ -37,7 +37,7 @@ public:
   ErrorType();
   explicit ErrorType(zc::StringPtr message);
 
-  ~ErrorType() noexcept(false) override;
+  ~ErrorType() noexcept(false);
 
   ZC_DISALLOW_COPY(ErrorType);
 

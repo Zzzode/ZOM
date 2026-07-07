@@ -36,7 +36,7 @@ public:
   /// \brief Construct a raw pointer type.
   RawPointerType(zc::Own<Type> pointee, Mutability mutability);
 
-  ~RawPointerType() noexcept(false) override;
+  ~RawPointerType() noexcept(false);
 
   ZC_DISALLOW_COPY(RawPointerType);
 

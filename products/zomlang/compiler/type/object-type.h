@@ -35,7 +35,7 @@ public:
   /// \brief Construct an empty object type.
   ObjectType();
 
-  ~ObjectType() noexcept(false) override;
+  ~ObjectType() noexcept(false);
 
   ZC_DISALLOW_COPY(ObjectType);
 

@@ -98,7 +98,7 @@ static source::SourceLoc getNodeLoc(const Tree& tree, NodeId id) {
 bool ExhaustivenessChecker::isOpenType(const Type& ty) {
   const Type& resolved = impl->typeEnv.resolve(ty);
 
-  if (resolved.isPrimitive()) {
+  if (isPrimitive(resolved)) {
     const auto& prim = static_cast<const PrimitiveType&>(resolved);
     auto kind = prim.getPrimitiveKind();
     switch (kind) {
@@ -236,7 +236,7 @@ zc::Maybe<const Constructor&> ExhaustivenessChecker::getPatternConstructor(
 
     case SyntaxKind::IsPattern: {
       // `is Type` pattern - matches a specific union branch
-      if (!scrutineeType.isUnion()) return zc::none;
+      if (!isUnion(scrutineeType)) return zc::none;
 
       auto tyId = NodeId(node.payload.words[kIsPatternTyWord]);
       if (!impl->tree.contains(tyId)) return zc::none;
@@ -368,7 +368,7 @@ zc::Vector<Constructor> ExhaustivenessChecker::getConstructors(const Type& ty) {
 
   const Type& resolved = impl->typeEnv.resolve(ty);
 
-  if (resolved.isPrimitive()) {
+  if (isPrimitive(resolved)) {
     const auto& prim = static_cast<const PrimitiveType&>(resolved);
     switch (prim.getPrimitiveKind()) {
       case PrimitiveKind::Bool:
@@ -393,16 +393,16 @@ zc::Vector<Constructor> ExhaustivenessChecker::getConstructors(const Type& ty) {
     }
   }
 
-  if (resolved.isUnion()) {
+  if (isUnion(resolved)) {
     const auto& unionTy = static_cast<const UnionType&>(resolved);
     for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
       const auto& alt = unionTy.getAlternative(i);
       Constructor ctor;
       ctor.kind = Constructor::Kind::UnionBranch;
       ctor.arity = 0;
-      if (alt.isNamed()) {
+      if (isNamed(alt)) {
         ctor.name = static_cast<const NamedType&>(alt).getName();
-      } else if (alt.isPrimitive()) {
+      } else if (isPrimitive(alt)) {
         ctor.name = static_cast<const PrimitiveType&>(alt).getName();
       } else {
         ctor.name = "?"_zc;
@@ -413,7 +413,7 @@ zc::Vector<Constructor> ExhaustivenessChecker::getConstructors(const Type& ty) {
     return result;
   }
 
-  if (resolved.isTuple()) {
+  if (isTuple(resolved)) {
     // Tuple type has one constructor with arity = element count
     const auto& tupleTy = static_cast<const TupleType&>(resolved);
     Constructor ctor;
@@ -424,7 +424,7 @@ zc::Vector<Constructor> ExhaustivenessChecker::getConstructors(const Type& ty) {
     return result;
   }
 
-  if (resolved.isNamed()) {
+  if (isNamed(resolved)) {
     const auto& named = static_cast<const NamedType&>(resolved);
 
     // Search the AST tree for a matching enum declaration.
@@ -487,7 +487,7 @@ zc::Vector<Constructor> ExhaustivenessChecker::getConstructors(const Type& ty) {
     return result;
   }
 
-  if (resolved.isNever()) { return result; }
+  if (isNever(resolved)) { return result; }
 
   // Fallback: treat as open type
   result.add(Constructor::makeOpen("?"_zc));
@@ -497,7 +497,7 @@ zc::Vector<Constructor> ExhaustivenessChecker::getConstructors(const Type& ty) {
 bool ExhaustivenessChecker::isComplete(const zc::Vector<Constructor>& seen, const Type& ty) {
   const Type& resolved = impl->typeEnv.resolve(ty);
 
-  if (resolved.isNever()) { return true; }
+  if (isNever(resolved)) { return true; }
 
   auto allCtors = getConstructors(resolved);
 
@@ -878,7 +878,7 @@ void ExhaustivenessChecker::checkMatchExhaustiveness(NodeId matchStmt, const Typ
   auto matchLoc = getNodeLoc(impl->tree, matchStmt);
 
   if (arms.size == 0) {
-    if (!scrutineeType.isNever()) {
+    if (!isNever(scrutineeType)) {
       auto missing = computeMissingPatterns({}, scrutineeType);
       zc::String missingStr;
       if (!missing.empty()) {
@@ -925,7 +925,7 @@ void ExhaustivenessChecker::checkMatchExhaustiveness(NodeId matchStmt, const Typ
 
   // Check exhaustiveness
   const Type& resolvedScrutinee = impl->typeEnv.resolve(scrutineeType);
-  if (resolvedScrutinee.isNever()) { return; }
+  if (isNever(resolvedScrutinee)) { return; }
 
   // Quick check: unguarded wildcard makes it exhaustive
   if (foundWildcard) { return; }

@@ -167,12 +167,12 @@ void TraitResolver::reportError(ast::NodeId node, zc::StringPtr message) {
 zc::StringPtr TraitResolver::getTypeName(const type::Type& ty) {
   const auto& resolved = impl->typeEnv.find(ty);
 
-  if (resolved.isNamed()) {
+  if (isNamed(resolved)) {
     const auto& named = static_cast<const NamedType&>(resolved);
     return named.getName();
   }
 
-  if (resolved.isPrimitive()) {
+  if (isPrimitive(resolved)) {
     const auto& prim = static_cast<const PrimitiveType&>(resolved);
     return prim.getName();
   }
@@ -635,7 +635,7 @@ bool TraitResolver::implements(const type::Type& ty, zc::StringPtr ifaceName) {
 
   // For named types, check class hierarchy: if the class extends/implements
   // an interface, check if that interface matches
-  if (resolved.isNamed()) {
+  if (isNamed(resolved)) {
     const auto& named = static_cast<const NamedType&>(resolved);
     auto sym = named.getSymbol();
     ZC_IF_SOME(s, sym) {
@@ -675,21 +675,21 @@ bool TraitResolver::implements(const type::Type& ty, zc::StringPtr ifaceName) {
   }
 
   // For existential types (dyn Interface), they implement their own interface
-  if (resolved.isExistential()) {
+  if (isExistential(resolved)) {
     const auto& exist = static_cast<const ExistentialType&>(resolved);
     const auto& ifaceTy = exist.getInterfaceType();
 
-    if (ifaceTy.isNamed()) {
+    if (isNamed(ifaceTy)) {
       const auto& ifaceNamed = static_cast<const NamedType&>(ifaceTy);
       if (ifaceNamed.getName() == ifaceName) return true;
     }
 
     // For intersection of interfaces, check each conjunct
-    if (ifaceTy.isIntersection()) {
+    if (isIntersection(ifaceTy)) {
       const auto& inter = static_cast<const IntersectionType&>(ifaceTy);
       for (size_t i = 0; i < inter.getConjunctCount(); ++i) {
         const auto& conjunct = inter.getConjunct(i);
-        if (conjunct.isNamed()) {
+        if (isNamed(conjunct)) {
           const auto& conjNamed = static_cast<const NamedType&>(conjunct);
           if (conjNamed.getName() == ifaceName) return true;
         }
@@ -748,7 +748,7 @@ bool TraitResolver::checkImplMatches(ast::NodeId implNode, const type::Type& ty,
   // Check if the for-type matches
   if (!forType->equals(ty)) {
     // Also check if ty is a named type with the same name
-    if (ty.isNamed() && forType->isNamed()) {
+    if (isNamed(ty) && isNamed(*forType)) {
       const auto& tyNamed = static_cast<const NamedType&>(ty);
       const auto& forNamed = static_cast<const NamedType&>(*forType);
       if (tyNamed.getName() != forNamed.getName()) return false;
@@ -804,7 +804,7 @@ AssociatedTypeResolution TraitResolver::resolveAssociatedTypeWithStatus(const ty
     bool typeMatches = false;
     if (forType->equals(resolved)) {
       typeMatches = true;
-    } else if (resolved.isNamed() && forType->isNamed()) {
+    } else if (isNamed(resolved) && isNamed(*forType)) {
       const auto& tyNamed = static_cast<const NamedType&>(resolved);
       const auto& forNamed = static_cast<const NamedType&>(*forType);
       if (tyNamed.getName() == forNamed.getName()) { typeMatches = true; }
@@ -901,7 +901,7 @@ bool TraitResolver::isAutoSendable(const type::Type& ty) {
   const auto& resolved = impl->typeEnv.find(ty);
 
   // Primitive types are always Sendable
-  if (resolved.isPrimitive()) {
+  if (isPrimitive(resolved)) {
     const auto& prim = static_cast<const PrimitiveType&>(resolved);
     auto kind = prim.getPrimitiveKind();
     // never, any, unit, null are all Sendable
@@ -911,14 +911,14 @@ bool TraitResolver::isAutoSendable(const type::Type& ty) {
   }
 
   // Error types are Sendable (to avoid cascading errors)
-  if (resolved.isError()) return true;
+  if (isError(resolved)) return true;
 
   // Type variables - can't determine statically, conservative false
-  if (resolved.isTypeVar()) return false;
+  if (isTypeVar(resolved)) return false;
 
   // &T (shared reference) - NOT Sendable by default
   // &mut T - Sendable if T is Sendable
-  if (resolved.isReference()) {
+  if (isReference(resolved)) {
     const auto& ref = static_cast<const ReferenceType&>(resolved);
     if (ref.isMutable()) { return isAutoSendable(ref.getPointeeType()); }
     // Shared reference: not Sendable (can't move shared state across threads
@@ -927,13 +927,13 @@ bool TraitResolver::isAutoSendable(const type::Type& ty) {
   }
 
   // Raw pointers: neither Sendable nor Shared
-  if (resolved.isRawPointer()) { return false; }
+  if (isRawPointer(resolved)) { return false; }
 
   // Function types: Sendable (code pointers are safe to move)
-  if (resolved.isFunction()) { return true; }
+  if (isFunction(resolved)) { return true; }
 
   // Tuple: Sendable if all elements are Sendable
-  if (resolved.isTuple()) {
+  if (isTuple(resolved)) {
     const auto& tuple = static_cast<const TupleType&>(resolved);
     for (size_t i = 0; i < tuple.getElementCount(); ++i) {
       if (!isAutoSendable(tuple.getElementType(i))) return false;
@@ -942,13 +942,13 @@ bool TraitResolver::isAutoSendable(const type::Type& ty) {
   }
 
   // Array: Sendable if element type is Sendable
-  if (resolved.isArray()) {
+  if (isArray(resolved)) {
     const auto& arr = static_cast<const ArrayType&>(resolved);
     return isAutoSendable(arr.getElementType());
   }
 
   // Object type: Sendable if all members are Sendable
-  if (resolved.isObject()) {
+  if (isObject(resolved)) {
     const auto& obj = static_cast<const ObjectType&>(resolved);
     auto members = obj.getMembers();
     for (const auto& entry : members) {
@@ -960,13 +960,13 @@ bool TraitResolver::isAutoSendable(const type::Type& ty) {
   }
 
   // Named types (struct/class): Sendable if all fields are Sendable
-  if (resolved.isNamed()) {
+  if (isNamed(resolved)) {
     const auto& named = static_cast<const NamedType&>(resolved);
     return allFieldsAreSend(named);
   }
 
   // Union: Sendable if all alternatives are Sendable
-  if (resolved.isUnion()) {
+  if (isUnion(resolved)) {
     const auto& unionTy = static_cast<const UnionType&>(resolved);
     for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
       if (!isAutoSendable(unionTy.getAlternative(i))) return false;
@@ -975,7 +975,7 @@ bool TraitResolver::isAutoSendable(const type::Type& ty) {
   }
 
   // Intersection: Sendable if all conjuncts are Sendable
-  if (resolved.isIntersection()) {
+  if (isIntersection(resolved)) {
     const auto& inter = static_cast<const IntersectionType&>(resolved);
     for (size_t i = 0; i < inter.getConjunctCount(); ++i) {
       if (!isAutoSendable(inter.getConjunct(i))) return false;
@@ -984,10 +984,10 @@ bool TraitResolver::isAutoSendable(const type::Type& ty) {
   }
 
   // Existential (dyn Interface): not Sendable by default (unknown concrete type)
-  if (resolved.isExistential()) { return false; }
+  if (isExistential(resolved)) { return false; }
 
   // Associated types: can't determine, conservative
-  if (resolved.isAssociated()) { return false; }
+  if (isAssociated(resolved)) { return false; }
 
   // Unknown type form: conservative
   return false;
@@ -997,30 +997,30 @@ bool TraitResolver::isAutoShared(const type::Type& ty) {
   const auto& resolved = impl->typeEnv.find(ty);
 
   // Primitive types are always Shared
-  if (resolved.isPrimitive()) { return true; }
+  if (isPrimitive(resolved)) { return true; }
 
   // Error types are Shared (to avoid cascading errors)
-  if (resolved.isError()) return true;
+  if (isError(resolved)) return true;
 
   // Type variables: can't determine statically, conservative false
-  if (resolved.isTypeVar()) return false;
+  if (isTypeVar(resolved)) return false;
 
   // &T (shared reference): Shared if T is Shared
   // &mut T: NOT Shared (mutable references can't be shared)
-  if (resolved.isReference()) {
+  if (isReference(resolved)) {
     const auto& ref = static_cast<const ReferenceType&>(resolved);
     if (ref.isMutable()) { return false; }
     return isAutoShared(ref.getPointeeType());
   }
 
   // Raw pointers: neither Sendable nor Shared
-  if (resolved.isRawPointer()) { return false; }
+  if (isRawPointer(resolved)) { return false; }
 
   // Function types: Shared
-  if (resolved.isFunction()) { return true; }
+  if (isFunction(resolved)) { return true; }
 
   // Tuple: Shared if all elements are Shared
-  if (resolved.isTuple()) {
+  if (isTuple(resolved)) {
     const auto& tuple = static_cast<const TupleType&>(resolved);
     for (size_t i = 0; i < tuple.getElementCount(); ++i) {
       if (!isAutoShared(tuple.getElementType(i))) return false;
@@ -1029,13 +1029,13 @@ bool TraitResolver::isAutoShared(const type::Type& ty) {
   }
 
   // Array: Shared if element type is Shared
-  if (resolved.isArray()) {
+  if (isArray(resolved)) {
     const auto& arr = static_cast<const ArrayType&>(resolved);
     return isAutoShared(arr.getElementType());
   }
 
   // Object type: Shared if all members are Shared
-  if (resolved.isObject()) {
+  if (isObject(resolved)) {
     const auto& obj = static_cast<const ObjectType&>(resolved);
     auto members = obj.getMembers();
     for (const auto& entry : members) {
@@ -1047,13 +1047,13 @@ bool TraitResolver::isAutoShared(const type::Type& ty) {
   }
 
   // Named types (struct/class): Shared if all fields are Shared
-  if (resolved.isNamed()) {
+  if (isNamed(resolved)) {
     const auto& named = static_cast<const NamedType&>(resolved);
     return allFieldsAreSync(named);
   }
 
   // Union: Shared if all alternatives are Shared
-  if (resolved.isUnion()) {
+  if (isUnion(resolved)) {
     const auto& unionTy = static_cast<const UnionType&>(resolved);
     for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
       if (!isAutoShared(unionTy.getAlternative(i))) return false;
@@ -1062,7 +1062,7 @@ bool TraitResolver::isAutoShared(const type::Type& ty) {
   }
 
   // Intersection: Shared if all conjuncts are Shared
-  if (resolved.isIntersection()) {
+  if (isIntersection(resolved)) {
     const auto& inter = static_cast<const IntersectionType&>(resolved);
     for (size_t i = 0; i < inter.getConjunctCount(); ++i) {
       if (!isAutoShared(inter.getConjunct(i))) return false;
@@ -1071,10 +1071,10 @@ bool TraitResolver::isAutoShared(const type::Type& ty) {
   }
 
   // Existential: not Shared by default
-  if (resolved.isExistential()) { return false; }
+  if (isExistential(resolved)) { return false; }
 
   // Associated types: can't determine
-  if (resolved.isAssociated()) { return false; }
+  if (isAssociated(resolved)) { return false; }
 
   return false;
 }

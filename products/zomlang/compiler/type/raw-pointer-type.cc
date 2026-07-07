@@ -59,7 +59,7 @@ bool RawPointerType::equals(const Type& other) const {
 }
 
 bool RawPointerType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   if (other.getKind() != TypeKind::RawPointer) { return false; }
 

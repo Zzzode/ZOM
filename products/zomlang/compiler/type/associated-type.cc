@@ -54,7 +54,7 @@ bool AssociatedType::equals(const Type& other) const {
 }
 
 bool AssociatedType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   // Associated types are nominally compared
   if (other.getKind() == TypeKind::Associated) {

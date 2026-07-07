@@ -109,7 +109,7 @@ ZC_TEST("BodyChecker.InfersIntLiteralType") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(result.typeEnv.hasType(lit));
   auto& ty = result.typeEnv.getType(lit);
-  ZC_EXPECT(ty.isPrimitive());
+  ZC_EXPECT(isPrimitive(ty));
 }
 
 ZC_TEST("BodyChecker.InfersFloatLiteralType") {
@@ -123,7 +123,7 @@ ZC_TEST("BodyChecker.InfersFloatLiteralType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(lit)) {
     auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -138,7 +138,7 @@ ZC_TEST("BodyChecker.InfersStringLiteralType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(lit)) {
     auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -153,7 +153,7 @@ ZC_TEST("BodyChecker.InfersBoolLiteralType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(lit)) {
     auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -168,7 +168,7 @@ ZC_TEST("BodyChecker.InfersNullLiteralType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(lit)) {
     auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(ty.isNull());
+    ZC_EXPECT(isNull(ty));
   }
 }
 
@@ -183,7 +183,7 @@ ZC_TEST("BodyChecker.InfersUnitLiteralType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(lit)) {
     auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(ty.isUnit());
+    ZC_EXPECT(isUnit(ty));
   }
 }
 
@@ -205,7 +205,7 @@ ZC_TEST("BodyChecker.InfersBinaryArithExprType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(binExpr)) {
     auto& ty = result.typeEnv.getType(binExpr);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -227,7 +227,7 @@ ZC_TEST("BodyChecker.BinaryArithmeticRejectsImplicitNumericWidening") {
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CannotUnifyTypes));
   ZC_EXPECT(result.typeEnv.hasType(binExpr));
-  ZC_EXPECT(result.typeEnv.getType(binExpr).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(binExpr)));
 }
 
 ZC_TEST("BodyChecker.BinaryAddUsesUserTypeAddImpl") {
@@ -264,15 +264,15 @@ ZC_TEST("BodyChecker.BinaryAddUsesUserTypeAddImpl") {
   ZC_EXPECT(result.typeEnv.hasType(xDecl));
   if (result.typeEnv.hasType(xDecl)) {
     auto& xTy = result.typeEnv.getType(xDecl);
-    ZC_EXPECT(xTy.isNamed());
-    if (xTy.isNamed()) {
+    ZC_EXPECT(isNamed(xTy));
+    if (isNamed(xTy)) {
       ZC_EXPECT(static_cast<const type::NamedType&>(xTy).getName() == "Number"_zc);
     }
   }
   ZC_EXPECT(result.typeEnv.hasType(binExpr));
   auto& ty = result.typeEnv.getType(binExpr);
-  ZC_EXPECT(ty.isNamed());
-  if (ty.isNamed()) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Number"_zc); }
+  ZC_EXPECT(isNamed(ty));
+  if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Number"_zc); }
 }
 
 ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
@@ -290,7 +290,7 @@ ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(binExpr)) {
     auto& ty = result.typeEnv.getType(binExpr);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -308,7 +308,7 @@ ZC_TEST("BodyChecker.InfersBinaryLogicalType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(binExpr)) {
     auto& ty = result.typeEnv.getType(binExpr);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -337,7 +337,7 @@ ZC_TEST("BodyChecker.InfersIdentExprType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(ident)) {
     auto& ty = result.typeEnv.getType(ident);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -378,7 +378,7 @@ ZC_TEST("BodyChecker.InfersCallExprReturnType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(call)) {
     auto& ty = result.typeEnv.getType(call);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -472,8 +472,8 @@ ZC_TEST("BodyChecker.LocalVariableInferenceFlowsFromCallArgument") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(decl));
   auto& declTy = result.typeEnv.getType(decl);
-  ZC_EXPECT(declTy.isPrimitive());
-  if (declTy.isPrimitive()) {
+  ZC_EXPECT(isPrimitive(declTy));
+  if (isPrimitive(declTy)) {
     auto& primitive = static_cast<const type::PrimitiveType&>(declTy);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::U64);
   }
@@ -513,8 +513,8 @@ ZC_TEST("BodyChecker.GenericFunctionInfersTypeArgumentFromCall") {
   ZC_EXPECT(result.typeEnv.hasType(call));
   auto& callTy = result.typeEnv.getType(call);
   auto& resolvedCallTy = result.typeEnv.find(callTy);
-  ZC_EXPECT(resolvedCallTy.isPrimitive());
-  if (resolvedCallTy.isPrimitive()) {
+  ZC_EXPECT(isPrimitive(resolvedCallTy));
+  if (isPrimitive(resolvedCallTy)) {
     auto& primitive = static_cast<const type::PrimitiveType&>(resolvedCallTy);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
   }
@@ -554,8 +554,8 @@ ZC_TEST("BodyChecker.GenericFunctionUsesExplicitTypeArgument") {
   ZC_EXPECT(result.typeEnv.hasType(call));
   auto& callTy = result.typeEnv.getType(call);
   auto& resolvedCallTy = result.typeEnv.find(callTy);
-  ZC_EXPECT(resolvedCallTy.isPrimitive());
-  if (resolvedCallTy.isPrimitive()) {
+  ZC_EXPECT(isPrimitive(resolvedCallTy));
+  if (isPrimitive(resolvedCallTy)) {
     auto& primitive = static_cast<const type::PrimitiveType&>(resolvedCallTy);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::F64);
   }
@@ -593,7 +593,7 @@ ZC_TEST("BodyChecker.GenericFunctionRejectsWrongExplicitTypeArgumentCount") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(call));
-  ZC_EXPECT(result.typeEnv.getType(call).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(call)));
 }
 
 ZC_TEST("BodyChecker.GenericFunctionRejectsIncompatibleExplicitTypeArgument") {
@@ -627,7 +627,7 @@ ZC_TEST("BodyChecker.GenericFunctionRejectsIncompatibleExplicitTypeArgument") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(call));
-  ZC_EXPECT(result.typeEnv.getType(call).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(call)));
 }
 
 ZC_TEST("BodyChecker.GenericFunctionRejectsUnsolvedTypeParameter") {
@@ -653,7 +653,7 @@ ZC_TEST("BodyChecker.GenericFunctionRejectsUnsolvedTypeParameter") {
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CannotInferTypeParameter));
   ZC_EXPECT(result.typeEnv.hasType(call));
-  ZC_EXPECT(result.typeEnv.getType(call).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(call)));
 }
 
 ZC_TEST("BodyChecker.GenericFunctionRejectsUnsatisfiedInterfaceBound") {
@@ -686,7 +686,7 @@ ZC_TEST("BodyChecker.GenericFunctionRejectsUnsatisfiedInterfaceBound") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(call));
-  ZC_EXPECT(result.typeEnv.getType(call).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(call)));
 }
 
 ZC_TEST("BodyChecker.GenericFunctionAcceptsSatisfiedInterfaceBound") {
@@ -813,7 +813,7 @@ ZC_TEST("BodyChecker.SimpleAssignment") {
   ZC_EXPECT(result.typeEnv.hasType(assign));
   ZC_EXPECT(result.constraintCount > 0);
   auto& ty = result.typeEnv.getType(assign);
-  ZC_EXPECT(ty.isPrimitive());
+  ZC_EXPECT(isPrimitive(ty));
 }
 
 ZC_TEST("BodyChecker.AssignmentRecordsUnionInjectionCoercion") {
@@ -864,7 +864,7 @@ ZC_TEST("BodyChecker.AssignmentRejectsImmutableBinding") {
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CannotMutateImmutableVariable));
   ZC_EXPECT(result.typeEnv.hasType(assign));
-  ZC_EXPECT(result.typeEnv.getType(assign).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(assign)));
 }
 
 // ============================================================================
@@ -936,7 +936,7 @@ ZC_TEST("BodyChecker.ConditionalExpr") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(ternary)) {
     auto& ty = result.typeEnv.getType(ternary);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -954,7 +954,7 @@ ZC_TEST("BodyChecker.ConditionalExprDifferentTypesProducesUnion") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(result.typeEnv.hasType(ternary));
   auto& ty = result.typeEnv.getType(ternary);
-  ZC_EXPECT(ty.isUnion());
+  ZC_EXPECT(isUnion(ty));
   ZC_EXPECT(result.typeEnv.hasCoercion(thenExpr));
   ZC_EXPECT(result.typeEnv.hasCoercion(elseExpr));
   ZC_EXPECT(result.typeEnv.getCoercion(thenExpr) == type::CoercionKind::UnionInjection);
@@ -983,8 +983,8 @@ ZC_TEST("BodyChecker.NullCoalesceReturnsNonNullAlternative") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(coalesce));
   auto& tyResult = result.typeEnv.getType(coalesce);
-  ZC_EXPECT(tyResult.isPrimitive());
-  if (tyResult.isPrimitive()) {
+  ZC_EXPECT(isPrimitive(tyResult));
+  if (isPrimitive(tyResult)) {
     auto& primitive = static_cast<const type::PrimitiveType&>(tyResult);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
   }
@@ -1007,7 +1007,7 @@ ZC_TEST("BodyChecker.UnaryMinus") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(unary)) {
     auto& ty = result.typeEnv.getType(unary);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -1024,7 +1024,7 @@ ZC_TEST("BodyChecker.LogicalNot") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(unary)) {
     auto& ty = result.typeEnv.getType(unary);
-    ZC_EXPECT(ty.isPrimitive());
+    ZC_EXPECT(isPrimitive(ty));
   }
 }
 
@@ -1044,7 +1044,7 @@ ZC_TEST("BodyChecker.ErrorUnwrapRejectsNonUnionOperand") {
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ErrorUnwrapNonUnion));
   ZC_EXPECT(result.typeEnv.hasType(unwrap));
-  ZC_EXPECT(result.typeEnv.getType(unwrap).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(unwrap)));
 }
 
 ZC_TEST("BodyChecker.ErrorPropagateRejectsNonUnionOperand") {
@@ -1059,7 +1059,7 @@ ZC_TEST("BodyChecker.ErrorPropagateRejectsNonUnionOperand") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(propagate));
-  ZC_EXPECT(result.typeEnv.getType(propagate).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(propagate)));
 }
 
 ZC_TEST("BodyChecker.ErrorUnwrapReturnsFirstUnionAlternative") {
@@ -1077,8 +1077,8 @@ ZC_TEST("BodyChecker.ErrorUnwrapReturnsFirstUnionAlternative") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(result.typeEnv.hasType(unwrap));
   auto& ty = result.typeEnv.getType(unwrap);
-  ZC_EXPECT(ty.isPrimitive());
-  if (ty.isPrimitive()) {
+  ZC_EXPECT(isPrimitive(ty));
+  if (isPrimitive(ty)) {
     auto& primitive = static_cast<const type::PrimitiveType&>(ty);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
   }
@@ -1110,7 +1110,7 @@ ZC_TEST("BodyChecker.ErrorPropagateRequiresEnclosingRaises") {
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ErrorPropagateOutsideRaises));
   ZC_EXPECT(result.typeEnv.hasType(propagate));
-  ZC_EXPECT(result.typeEnv.getType(propagate).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(propagate)));
 }
 
 ZC_TEST("BodyChecker.ErrorPropagateAllowsMatchingRaises") {
@@ -1137,7 +1137,7 @@ ZC_TEST("BodyChecker.ErrorPropagateAllowsMatchingRaises") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(propagate));
   auto& ty = result.typeEnv.getType(propagate);
-  ZC_EXPECT(ty.isPrimitive());
+  ZC_EXPECT(isPrimitive(ty));
 }
 
 ZC_TEST("BodyChecker.ErrorPropagateAllowsRaisesUnionSubset") {
@@ -1165,7 +1165,7 @@ ZC_TEST("BodyChecker.ErrorPropagateAllowsRaisesUnionSubset") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(propagate));
   auto& ty = result.typeEnv.getType(propagate);
-  ZC_EXPECT(ty.isPrimitive());
+  ZC_EXPECT(isPrimitive(ty));
 }
 
 ZC_TEST("BodyChecker.ErrorPropagateRejectsRaisingCallWithoutEnclosingRaises") {
@@ -1192,7 +1192,7 @@ ZC_TEST("BodyChecker.ErrorPropagateRejectsRaisingCallWithoutEnclosingRaises") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(propagate));
-  ZC_EXPECT(result.typeEnv.getType(propagate).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(propagate)));
 }
 
 ZC_TEST("BodyChecker.ErrorPropagateAllowsRaisingCallWithMatchingRaises") {
@@ -1220,7 +1220,7 @@ ZC_TEST("BodyChecker.ErrorPropagateAllowsRaisingCallWithMatchingRaises") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(propagate));
   auto& ty = result.typeEnv.getType(propagate);
-  ZC_EXPECT(ty.isPrimitive());
+  ZC_EXPECT(isPrimitive(ty));
 }
 
 // ============================================================================
@@ -1243,9 +1243,9 @@ ZC_TEST("BodyChecker.ArrayLiteralInfersType") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(result.typeEnv.hasType(arr));
   auto& ty = result.typeEnv.getType(arr);
-  ZC_EXPECT(ty.isArray());
+  ZC_EXPECT(isArray(ty));
   auto& arrTy = static_cast<const type::ArrayType&>(ty);
-  ZC_EXPECT(arrTy.getElementType().isPrimitive());
+  ZC_EXPECT(isPrimitive(arrTy.getElementType()));
 }
 
 ZC_TEST("BodyChecker.ArrayLiteralRejectsIncompatibleElementTypes") {
@@ -1262,7 +1262,7 @@ ZC_TEST("BodyChecker.ArrayLiteralRejectsIncompatibleElementTypes") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(arr));
-  ZC_EXPECT(result.typeEnv.getType(arr).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(arr)));
 }
 
 ZC_TEST("BodyChecker.DependentErrorExpressionEmitsOnlyOneDiagnostic") {
@@ -1281,9 +1281,9 @@ ZC_TEST("BodyChecker.DependentErrorExpressionEmitsOnlyOneDiagnostic") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().errorCount() == 1);
   ZC_EXPECT(result.typeEnv.hasType(bad));
-  ZC_EXPECT(result.typeEnv.getType(bad).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(bad)));
   ZC_EXPECT(result.typeEnv.hasType(arr));
-  ZC_EXPECT(result.typeEnv.getType(arr).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(arr)));
 }
 
 // ============================================================================
@@ -1305,13 +1305,13 @@ ZC_TEST("BodyChecker.TupleLiteralInfersType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(tuple)) {
     auto& ty = result.typeEnv.getType(tuple);
-    ZC_EXPECT(ty.isTuple());
-    if (ty.isTuple()) {
+    ZC_EXPECT(isTuple(ty));
+    if (isTuple(ty)) {
       auto& tupleTy = static_cast<const type::TupleType&>(ty);
       ZC_EXPECT(tupleTy.getElementCount() == 2);
-      ZC_EXPECT(tupleTy.getElementType(0).isPrimitive());
-      ZC_EXPECT(tupleTy.getElementType(1).isPrimitive());
-      if (tupleTy.getElementType(0).isPrimitive() && tupleTy.getElementType(1).isPrimitive()) {
+      ZC_EXPECT(isPrimitive(tupleTy.getElementType(0)));
+      ZC_EXPECT(isPrimitive(tupleTy.getElementType(1)));
+      if (isPrimitive(tupleTy.getElementType(0)) && isPrimitive(tupleTy.getElementType(1))) {
         auto& first = static_cast<const type::PrimitiveType&>(tupleTy.getElementType(0));
         auto& second = static_cast<const type::PrimitiveType&>(tupleTy.getElementType(1));
         ZC_EXPECT(first.getPrimitiveKind() == type::PrimitiveKind::I32);
@@ -1338,7 +1338,7 @@ ZC_TEST("BodyChecker.LambdaExprInfersFunctionType") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(lambda)) {
     auto& ty = result.typeEnv.getType(lambda);
-    ZC_EXPECT(ty.isFunction());
+    ZC_EXPECT(isFunction(ty));
   }
 }
 
@@ -1359,12 +1359,12 @@ ZC_TEST("BodyChecker.LambdaExprUsesAnnotatedSignature") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(lambda));
   auto& ty = result.typeEnv.getType(lambda);
-  ZC_EXPECT(ty.isFunction());
-  if (ty.isFunction()) {
+  ZC_EXPECT(isFunction(ty));
+  if (isFunction(ty)) {
     auto& fn = static_cast<const type::FunctionType&>(ty);
     ZC_EXPECT(fn.getParamCount() == 1);
-    ZC_EXPECT(fn.getParamType(0).isPrimitive());
-    ZC_EXPECT(fn.getReturnType().isPrimitive());
+    ZC_EXPECT(isPrimitive(fn.getParamType(0)));
+    ZC_EXPECT(isPrimitive(fn.getReturnType()));
   }
 }
 
@@ -1385,12 +1385,12 @@ ZC_TEST("BodyChecker.FunctionExprUsesAnnotatedSignature") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(fnExpr));
   auto& ty = result.typeEnv.getType(fnExpr);
-  ZC_EXPECT(ty.isFunction());
-  if (ty.isFunction()) {
+  ZC_EXPECT(isFunction(ty));
+  if (isFunction(ty)) {
     auto& fn = static_cast<const type::FunctionType&>(ty);
     ZC_EXPECT(fn.getParamCount() == 1);
-    ZC_EXPECT(fn.getParamType(0).isPrimitive());
-    ZC_EXPECT(fn.getReturnType().isPrimitive());
+    ZC_EXPECT(isPrimitive(fn.getParamType(0)));
+    ZC_EXPECT(isPrimitive(fn.getReturnType()));
   }
 }
 
@@ -1411,7 +1411,7 @@ ZC_TEST("BodyChecker.FunctionExprChecksAnnotatedReturnAgainstBody") {
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::TypeCheckerTypeMismatch));
   ZC_EXPECT(result.typeEnv.hasType(fnExpr));
-  ZC_EXPECT(result.typeEnv.getType(fnExpr).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(fnExpr)));
 }
 
 ZC_TEST("BodyChecker.LambdaExprChecksAnnotatedReturnAgainstBody") {
@@ -1431,7 +1431,7 @@ ZC_TEST("BodyChecker.LambdaExprChecksAnnotatedReturnAgainstBody") {
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::TypeCheckerTypeMismatch));
   ZC_EXPECT(result.typeEnv.hasType(lambda));
-  ZC_EXPECT(result.typeEnv.getType(lambda).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(lambda)));
 }
 
 // ============================================================================
@@ -1454,8 +1454,8 @@ ZC_TEST("BodyChecker.MemberAccess") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(member));
   auto& ty = result.typeEnv.getType(member);
-  ZC_EXPECT(ty.isPrimitive());
-  if (ty.isPrimitive()) {
+  ZC_EXPECT(isPrimitive(ty));
+  if (isPrimitive(ty)) {
     auto& primitive = static_cast<const type::PrimitiveType&>(ty);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
   }
@@ -1480,7 +1480,7 @@ ZC_TEST("BodyChecker.CastExpr") {
   if (result.typeEnv.hasType(cast)) {
     auto& resultTy = result.typeEnv.getType(cast);
     // Cast result should be the target type
-    ZC_EXPECT(resultTy.getKind() == type::TypeKind::Named || resultTy.isPrimitive());
+    ZC_EXPECT(resultTy.getKind() == type::TypeKind::Named || isPrimitive(resultTy));
   }
 }
 
@@ -1497,7 +1497,7 @@ ZC_TEST("BodyChecker.CastAllowsNumericConversion") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(result.typeEnv.getType(cast).isPrimitive());
+  ZC_EXPECT(isPrimitive(result.typeEnv.getType(cast)));
 }
 
 ZC_TEST("BodyChecker.CastRejectsIntegerToBool") {
@@ -1513,7 +1513,7 @@ ZC_TEST("BodyChecker.CastRejectsIntegerToBool") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(result.typeEnv.getType(cast).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(cast)));
 }
 
 ZC_TEST("BodyChecker.CastRejectsRawPointerReinterpretOutsideUnsafe") {
@@ -1536,7 +1536,7 @@ ZC_TEST("BodyChecker.CastRejectsRawPointerReinterpretOutsideUnsafe") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(result.typeEnv.getType(cast).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(cast)));
 }
 
 ZC_TEST("BodyChecker.CastAllowsRawPointerReinterpretInsideUnsafe") {
@@ -1563,7 +1563,7 @@ ZC_TEST("BodyChecker.CastAllowsRawPointerReinterpretInsideUnsafe") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(result.typeEnv.getType(cast).isRawPointer());
+  ZC_EXPECT(isRawPointer(result.typeEnv.getType(cast)));
 }
 
 ZC_TEST("BodyChecker.CastAllowsSharedReferenceToConstRawPointer") {
@@ -1587,7 +1587,7 @@ ZC_TEST("BodyChecker.CastAllowsSharedReferenceToConstRawPointer") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(result.typeEnv.getType(cast).isRawPointer());
+  ZC_EXPECT(isRawPointer(result.typeEnv.getType(cast)));
 }
 
 ZC_TEST("BodyChecker.CastAllowsMutableReferenceToMutableRawPointer") {
@@ -1609,7 +1609,7 @@ ZC_TEST("BodyChecker.CastAllowsMutableReferenceToMutableRawPointer") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(result.typeEnv.getType(cast).isRawPointer());
+  ZC_EXPECT(isRawPointer(result.typeEnv.getType(cast)));
 }
 
 ZC_TEST("BodyChecker.CastAllowsDynUpcast") {
@@ -1650,7 +1650,7 @@ ZC_TEST("BodyChecker.CastAllowsDynUpcast") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(result.typeEnv.getType(cast).isExistential());
+  ZC_EXPECT(isExistential(result.typeEnv.getType(cast)));
 }
 
 ZC_TEST("BodyChecker.CastRejectsUnrelatedDynUpcast") {
@@ -1680,7 +1680,7 @@ ZC_TEST("BodyChecker.CastRejectsUnrelatedDynUpcast") {
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::SemanticError));
   ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(result.typeEnv.getType(cast).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(cast)));
 }
 
 // ============================================================================
@@ -1701,7 +1701,7 @@ ZC_TEST("BodyChecker.IsExprReturnsBool") {
   ZC_EXPECT(result.success);
   if (result.typeEnv.hasType(isExpr)) {
     auto& resultTy = result.typeEnv.getType(isExpr);
-    ZC_EXPECT(resultTy.isPrimitive());
+    ZC_EXPECT(isPrimitive(resultTy));
   }
 }
 
@@ -1789,7 +1789,7 @@ ZC_TEST("BodyChecker.LetWithTypeAnnotationRejectsWrongInitializer") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(result.typeEnv.getType(decl).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(decl)));
 }
 
 ZC_TEST("BodyChecker.LetWithoutAnnotationRejectsNullInitializer") {
@@ -1809,7 +1809,7 @@ ZC_TEST("BodyChecker.LetWithoutAnnotationRejectsNullInitializer") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(result.typeEnv.getType(decl).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(decl)));
 }
 
 ZC_TEST("BodyChecker.LetWithNullableAnnotationAcceptsNullInitializer") {
@@ -1830,7 +1830,7 @@ ZC_TEST("BodyChecker.LetWithNullableAnnotationAcceptsNullInitializer") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(result.typeEnv.getType(decl).isUnion());
+  ZC_EXPECT(isUnion(result.typeEnv.getType(decl)));
   ZC_EXPECT(result.typeEnv.hasCoercion(decl));
   ZC_EXPECT(result.typeEnv.getCoercion(decl) == type::CoercionKind::NullToNullableUnion);
 }
@@ -1851,7 +1851,7 @@ ZC_TEST("BodyChecker.LetWithReferenceAnnotationRejectsNullInitializer") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(result.typeEnv.getType(decl).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(decl)));
 }
 
 ZC_TEST("BodyChecker.LetWithNullableReferenceAnnotationAcceptsNullInitializer") {
@@ -1871,7 +1871,7 @@ ZC_TEST("BodyChecker.LetWithNullableReferenceAnnotationAcceptsNullInitializer") 
   ZC_EXPECT(result.success);
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(result.typeEnv.getType(decl).isUnion());
+  ZC_EXPECT(isUnion(result.typeEnv.getType(decl)));
 }
 
 ZC_TEST("BodyChecker.LetWithDynAnnotationRecordsExistentialErasure") {
@@ -1904,7 +1904,7 @@ ZC_TEST("BodyChecker.LetWithDynAnnotationRecordsExistentialErasure") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(yDecl));
-  ZC_EXPECT(result.typeEnv.getType(yDecl).isExistential());
+  ZC_EXPECT(isExistential(result.typeEnv.getType(yDecl)));
   ZC_EXPECT(result.typeEnv.hasCoercion(yDecl));
   ZC_EXPECT(result.typeEnv.getCoercion(yDecl) == type::CoercionKind::ExistentialErasure);
 }
@@ -2068,7 +2068,7 @@ ZC_TEST("BodyChecker.IndexExpr") {
   ZC_EXPECT(result.success);
   ZC_EXPECT(result.typeEnv.hasType(index));
   auto& ty = result.typeEnv.getType(index);
-  ZC_EXPECT(ty.isPrimitive());
+  ZC_EXPECT(isPrimitive(ty));
 }
 
 ZC_TEST("BodyChecker.TupleIndexExprReturnsElementType") {
@@ -2087,8 +2087,8 @@ ZC_TEST("BodyChecker.TupleIndexExprReturnsElementType") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(index));
   auto& ty = result.typeEnv.getType(index);
-  ZC_EXPECT(ty.isPrimitive());
-  if (ty.isPrimitive()) {
+  ZC_EXPECT(isPrimitive(ty));
+  if (isPrimitive(ty)) {
     auto& primitive = static_cast<const type::PrimitiveType&>(ty);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::Str);
   }
@@ -2134,7 +2134,7 @@ ZC_TEST("BodyChecker.ObjectLiteral") {
   if (result.typeEnv.hasType(objLit)) {
     auto& ty = result.typeEnv.getType(objLit);
     ZC_EXPECT(ty.getKind() == type::TypeKind::Object);
-    if (ty.isObject()) {
+    if (isObject(ty)) {
       auto& objTy = static_cast<const type::ObjectType&>(ty);
       ZC_EXPECT(objTy.getMemberCount() == 2);
       auto members = objTy.getMembers();
@@ -2147,8 +2147,8 @@ ZC_TEST("BodyChecker.ObjectLiteral") {
       auto name = objTy.getMember("name"_zc);
       ZC_EXPECT(x != zc::none);
       ZC_EXPECT(name != zc::none);
-      ZC_IF_SOME(xTy, x) { ZC_EXPECT(xTy.isPrimitive()); }
-      ZC_IF_SOME(nameTy, name) { ZC_EXPECT(nameTy.isPrimitive()); }
+      ZC_IF_SOME(xTy, x) { ZC_EXPECT(isPrimitive(xTy)); }
+      ZC_IF_SOME(nameTy, name) { ZC_EXPECT(isPrimitive(nameTy)); }
     }
   }
 }
@@ -2178,8 +2178,8 @@ ZC_TEST("BodyChecker.StructLiteralReturnsNamedType") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(lit));
   auto& ty = result.typeEnv.getType(lit);
-  ZC_EXPECT(ty.isNamed());
-  if (ty.isNamed()) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Point"_zc); }
+  ZC_EXPECT(isNamed(ty));
+  if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Point"_zc); }
   ZC_EXPECT(result.typeEnv.hasCoercion(fieldValue));
   ZC_EXPECT(result.typeEnv.getCoercion(fieldValue) == type::CoercionKind::UnionInjection);
 }
@@ -2205,7 +2205,7 @@ ZC_TEST("BodyChecker.StructLiteralRejectsUnknownField") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(lit));
-  ZC_EXPECT(result.typeEnv.getType(lit).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(lit)));
 }
 
 ZC_TEST("BodyChecker.StructLiteralRejectsMissingField") {
@@ -2231,7 +2231,7 @@ ZC_TEST("BodyChecker.StructLiteralRejectsMissingField") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(lit));
-  ZC_EXPECT(result.typeEnv.getType(lit).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(lit)));
 }
 
 ZC_TEST("BodyChecker.ReturnRecordsReborrowCoercion") {

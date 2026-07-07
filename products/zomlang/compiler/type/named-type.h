@@ -47,7 +47,7 @@ public:
   /// \brief Construct a named type with a resolved symbol reference.
   NamedType(zc::StringPtr name, const symbol::TypeSymbol& symbol);
 
-  ~NamedType() noexcept(false) override;
+  ~NamedType() noexcept(false);
 
   ZC_DISALLOW_COPY(NamedType);
 

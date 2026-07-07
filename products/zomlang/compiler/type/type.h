@@ -108,52 +108,8 @@ class AssociatedType;
 /// - null <: T | null
 class Type {
 public:
-  virtual ~Type() noexcept(false);
-
-  ZC_DISALLOW_COPY(Type);
-
-  // Move semantics
-  Type(Type&& other) noexcept;
-  Type& operator=(Type&& other) noexcept;
-
   /// \brief Get the type kind discriminator.
   virtual TypeKind getKind() const = 0;
-
-  /// \brief Type classification convenience methods.
-  bool isPrimitive() const;
-  bool isError() const;
-  bool isNever() const;
-  bool isUnit() const;
-  bool isNull() const;
-  bool isAny() const;
-  bool isFunction() const;
-  bool isTuple() const;
-  bool isObject() const;
-  bool isArray() const;
-  bool isNamed() const;
-  bool isTypeVar() const;
-  bool isInterface() const;
-  bool isUnion() const;
-  bool isIntersection() const;
-  bool isReference() const;
-  bool isRawPointer() const;
-  bool isExistential() const;
-  bool isAssociated() const;
-
-  /// \brief Check if this is a numeric primitive type.
-  bool isNumeric() const;
-
-  /// \brief Check if this is an integer primitive type.
-  bool isInteger() const;
-
-  /// \brief Check if this is a floating-point primitive type.
-  bool isFloatingPoint() const;
-
-  /// \brief Check if this is a signed integer type.
-  bool isSignedInteger() const;
-
-  /// \brief Check if this is an unsigned integer type.
-  bool isUnsignedInteger() const;
 
   /// \brief Produce a human-readable string representation of this type.
   virtual zc::String toString() const = 0;
@@ -169,19 +125,37 @@ public:
   /// Returns true if this type is a subtype of `other` according to the
   /// subtyping rules defined in RFC 0005.
   virtual bool isSubtypeOf(const Type& other) const = 0;
-
-  /// \brief Check if this type is assignable to the other type.
-  ///
-  /// Assignment compatibility extends subtyping with additional rules
-  /// like numeric widening.
-  bool isAssignableTo(const Type& other) const;
-
-  /// \brief Shared subtype rules used by concrete type implementations.
-  bool hasBasicSubtypeRelation(const Type& other) const;
-
-protected:
-  Type() noexcept;
 };
+
+/// \brief Type classification convenience functions.
+bool isPrimitive(const Type& type);
+bool isError(const Type& type);
+bool isNever(const Type& type);
+bool isUnit(const Type& type);
+bool isNull(const Type& type);
+bool isAny(const Type& type);
+bool isFunction(const Type& type);
+bool isTuple(const Type& type);
+bool isObject(const Type& type);
+bool isArray(const Type& type);
+bool isNamed(const Type& type);
+bool isTypeVar(const Type& type);
+bool isInterface(const Type& type);
+bool isUnion(const Type& type);
+bool isIntersection(const Type& type);
+bool isReference(const Type& type);
+bool isRawPointer(const Type& type);
+bool isExistential(const Type& type);
+bool isAssociated(const Type& type);
+
+bool isNumeric(const Type& type);
+bool isInteger(const Type& type);
+bool isFloatingPoint(const Type& type);
+bool isSignedInteger(const Type& type);
+bool isUnsignedInteger(const Type& type);
+
+bool isAssignableTo(const Type& type, const Type& other);
+bool hasBasicSubtypeRelation(const Type& type, const Type& other);
 
 }  // namespace type
 }  // namespace compiler

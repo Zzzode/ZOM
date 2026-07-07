@@ -295,7 +295,7 @@ const type::Type& BodyChecker::errorType() {
 static bool isAllowedRaiseType(const type::Type& errorAlt, const type::Type& raisesType) {
   if (errorAlt.equals(raisesType) || errorAlt.isSubtypeOf(raisesType)) { return true; }
 
-  if (raisesType.isUnion()) {
+  if (isUnion(raisesType)) {
     auto& raisesUnion = static_cast<const type::UnionType&>(raisesType);
     for (size_t i = 0; i < raisesUnion.getAlternativeCount(); ++i) {
       const auto& alternative = raisesUnion.getAlternative(i);
@@ -307,16 +307,16 @@ static bool isAllowedRaiseType(const type::Type& errorAlt, const type::Type& rai
 }
 
 static zc::StringPtr simpleTypeName(const type::Type& ty) {
-  if (ty.isNamed()) { return static_cast<const type::NamedType&>(ty).getName(); }
-  if (ty.isInterface()) { return static_cast<const type::InterfaceType&>(ty).getName(); }
+  if (isNamed(ty)) { return static_cast<const type::NamedType&>(ty).getName(); }
+  if (isInterface(ty)) { return static_cast<const type::InterfaceType&>(ty).getName(); }
   return ""_zc;
 }
 
 static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv& env) {
   const auto& resolved = env.find(ty);
-  if (resolved.isTypeVar()) { return true; }
+  if (isTypeVar(resolved)) { return true; }
 
-  if (resolved.isFunction()) {
+  if (isFunction(resolved)) {
     auto& fn = static_cast<const type::FunctionType&>(resolved);
     for (size_t i = 0; i < fn.getParamCount(); ++i) {
       if (containsUnresolvedTypeVar(fn.getParamType(i), env)) return true;
@@ -328,7 +328,7 @@ static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv&
     return false;
   }
 
-  if (resolved.isTuple()) {
+  if (isTuple(resolved)) {
     auto& tuple = static_cast<const type::TupleType&>(resolved);
     for (size_t i = 0; i < tuple.getElementCount(); ++i) {
       if (containsUnresolvedTypeVar(tuple.getElementType(i), env)) return true;
@@ -336,12 +336,12 @@ static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv&
     return false;
   }
 
-  if (resolved.isArray()) {
+  if (isArray(resolved)) {
     return containsUnresolvedTypeVar(static_cast<const type::ArrayType&>(resolved).getElementType(),
                                      env);
   }
 
-  if (resolved.isNamed()) {
+  if (isNamed(resolved)) {
     auto& named = static_cast<const type::NamedType&>(resolved);
     for (size_t i = 0; i < named.getTypeArgCount(); ++i) {
       if (containsUnresolvedTypeVar(named.getTypeArg(i), env)) return true;
@@ -349,7 +349,7 @@ static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv&
     return false;
   }
 
-  if (resolved.isUnion()) {
+  if (isUnion(resolved)) {
     auto& unionTy = static_cast<const type::UnionType&>(resolved);
     for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
       if (containsUnresolvedTypeVar(unionTy.getAlternative(i), env)) return true;
@@ -357,17 +357,17 @@ static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv&
     return false;
   }
 
-  if (resolved.isReference()) {
+  if (isReference(resolved)) {
     auto& ref = static_cast<const type::ReferenceType&>(resolved);
     return containsUnresolvedTypeVar(ref.getPointeeType(), env);
   }
 
-  if (resolved.isRawPointer()) {
+  if (isRawPointer(resolved)) {
     auto& ptr = static_cast<const type::RawPointerType&>(resolved);
     return containsUnresolvedTypeVar(ptr.getPointeeType(), env);
   }
 
-  if (resolved.isObject()) {
+  if (isObject(resolved)) {
     auto& object = static_cast<const type::ObjectType&>(resolved);
     auto members = object.getMembers();
     for (size_t i = 0; i < members.size(); ++i) {
@@ -378,12 +378,12 @@ static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv&
     return false;
   }
 
-  if (resolved.isExistential()) {
+  if (isExistential(resolved)) {
     auto& existential = static_cast<const type::ExistentialType&>(resolved);
     return containsUnresolvedTypeVar(existential.getInterfaceType(), env);
   }
 
-  if (resolved.isIntersection()) {
+  if (isIntersection(resolved)) {
     auto& intersection = static_cast<const type::IntersectionType&>(resolved);
     for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
       if (containsUnresolvedTypeVar(intersection.getConjunct(i), env)) return true;
@@ -391,7 +391,7 @@ static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv&
     return false;
   }
 
-  if (resolved.isAssociated()) {
+  if (isAssociated(resolved)) {
     auto& associated = static_cast<const type::AssociatedType&>(resolved);
     return containsUnresolvedTypeVar(associated.getParentType(), env);
   }
@@ -451,7 +451,7 @@ static bool dynTypeExtends(const type::Type& sourceIface, const type::Type& targ
   auto targetName = simpleTypeName(targetIface);
   if (targetName.size() == 0) return false;
 
-  if (sourceIface.isIntersection()) {
+  if (isIntersection(sourceIface)) {
     auto& intersection = static_cast<const type::IntersectionType&>(sourceIface);
     for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
       if (dynTypeExtends(intersection.getConjunct(i), targetIface, tree)) return true;
@@ -471,9 +471,9 @@ zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
   const auto& resolved = impl->typeEnv.find(ty);
   if (&resolved != &ty) { return cloneType(resolved); }
 
-  if (ty.isError()) { return zc::heap<ErrorType>(); }
+  if (isError(ty)) { return zc::heap<ErrorType>(); }
 
-  if (ty.isTypeVar()) {
+  if (isTypeVar(ty)) {
     auto& tv = static_cast<const TypeVar&>(ty);
     // Preserve the same ID so union-find can still resolve it.
     auto result = zc::heap<TypeVar>(tv.getName(), tv.getId());
@@ -486,17 +486,17 @@ zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
     return zc::mv(result);
   }
 
-  if (ty.isPrimitive()) {
+  if (isPrimitive(ty)) {
     auto& prim = static_cast<const PrimitiveType&>(ty);
     return zc::heap<PrimitiveType>(prim.getPrimitiveKind());
   }
 
-  if (ty.isNamed()) {
+  if (isNamed(ty)) {
     auto& named = static_cast<const NamedType&>(ty);
     return zc::heap<NamedType>(named.getName());
   }
 
-  if (ty.isObject()) {
+  if (isObject(ty)) {
     auto& object = static_cast<const ObjectType&>(ty);
     auto result = zc::heap<ObjectType>();
     auto members = object.getMembers();
@@ -508,7 +508,7 @@ zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
     return zc::mv(result);
   }
 
-  if (ty.isUnion()) {
+  if (isUnion(ty)) {
     auto& unionTy = static_cast<const UnionType&>(ty);
     zc::Vector<zc::Own<Type>> alts;
     for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
@@ -517,7 +517,7 @@ zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
     return zc::heap<UnionType>(zc::mv(alts));
   }
 
-  if (ty.isFunction()) {
+  if (isFunction(ty)) {
     auto& fn = static_cast<const FunctionType&>(ty);
     zc::Vector<zc::Own<Type>> params;
     for (size_t i = 0; i < fn.getParamCount(); ++i) { params.add(cloneType(fn.getParamType(i))); }
@@ -540,25 +540,25 @@ zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
     return zc::mv(result);
   }
 
-  if (ty.isReference()) {
+  if (isReference(ty)) {
     auto& ref = static_cast<const ReferenceType&>(ty);
     auto pointee = cloneType(ref.getPointeeType());
     return zc::heap<ReferenceType>(zc::mv(pointee), ref.getMutability());
   }
 
-  if (ty.isRawPointer()) {
+  if (isRawPointer(ty)) {
     auto& ptr = static_cast<const RawPointerType&>(ty);
     auto pointee = cloneType(ptr.getPointeeType());
     return zc::heap<RawPointerType>(zc::mv(pointee), ptr.getMutability());
   }
 
-  if (ty.isArray()) {
+  if (isArray(ty)) {
     auto& arr = static_cast<const ArrayType&>(ty);
     auto elem = cloneType(arr.getElementType());
     return zc::heap<ArrayType>(zc::mv(elem));
   }
 
-  if (ty.isTuple()) {
+  if (isTuple(ty)) {
     auto& tup = static_cast<const TupleType&>(ty);
     zc::Vector<zc::Own<Type>> elems;
     for (size_t i = 0; i < tup.getElementCount(); ++i) {
@@ -567,7 +567,7 @@ zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
     return zc::heap<TupleType>(zc::mv(elems));
   }
 
-  if (ty.isInterface()) {
+  if (isInterface(ty)) {
     auto& iface = static_cast<const InterfaceType&>(ty);
     auto result = zc::heap<InterfaceType>(iface.getName());
     for (size_t i = 0; i < iface.getParentInterfaceCount(); ++i) {
@@ -576,7 +576,7 @@ zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
     return zc::mv(result);
   }
 
-  if (ty.isIntersection()) {
+  if (isIntersection(ty)) {
     auto& intersection = static_cast<const IntersectionType&>(ty);
     zc::Vector<zc::Own<Type>> conjuncts;
     for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
@@ -585,12 +585,12 @@ zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
     return zc::heap<IntersectionType>(zc::mv(conjuncts));
   }
 
-  if (ty.isExistential()) {
+  if (isExistential(ty)) {
     auto& existential = static_cast<const ExistentialType&>(ty);
     return zc::heap<ExistentialType>(cloneType(existential.getInterfaceType()));
   }
 
-  if (ty.isAssociated()) {
+  if (isAssociated(ty)) {
     auto& associated = static_cast<const AssociatedType&>(ty);
     return zc::heap<AssociatedType>(cloneType(associated.getParentType()), associated.getName());
   }
@@ -603,13 +603,13 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
                                      const type::Type& value) {
   const auto& resolved = impl->typeEnv.find(ty);
 
-  if (resolved.isTypeVar()) {
+  if (isTypeVar(resolved)) {
     auto& var = static_cast<const type::TypeVar&>(resolved);
     if (var.getName() == name) { impl->typeEnv.bind(var, cloneType(value)); }
     return;
   }
 
-  if (resolved.isFunction()) {
+  if (isFunction(resolved)) {
     auto& fn = static_cast<const type::FunctionType&>(resolved);
     for (size_t i = 0; i < fn.getParamCount(); ++i) {
       bindTypeVarsByName(fn.getParamType(i), name, value);
@@ -619,7 +619,7 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
     return;
   }
 
-  if (resolved.isTuple()) {
+  if (isTuple(resolved)) {
     auto& tuple = static_cast<const type::TupleType&>(resolved);
     for (size_t i = 0; i < tuple.getElementCount(); ++i) {
       bindTypeVarsByName(tuple.getElementType(i), name, value);
@@ -627,25 +627,25 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
     return;
   }
 
-  if (resolved.isArray()) {
+  if (isArray(resolved)) {
     auto& arr = static_cast<const type::ArrayType&>(resolved);
     bindTypeVarsByName(arr.getElementType(), name, value);
     return;
   }
 
-  if (resolved.isReference()) {
+  if (isReference(resolved)) {
     auto& ref = static_cast<const type::ReferenceType&>(resolved);
     bindTypeVarsByName(ref.getPointeeType(), name, value);
     return;
   }
 
-  if (resolved.isRawPointer()) {
+  if (isRawPointer(resolved)) {
     auto& ptr = static_cast<const type::RawPointerType&>(resolved);
     bindTypeVarsByName(ptr.getPointeeType(), name, value);
     return;
   }
 
-  if (resolved.isUnion()) {
+  if (isUnion(resolved)) {
     auto& unionTy = static_cast<const type::UnionType&>(resolved);
     for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
       bindTypeVarsByName(unionTy.getAlternative(i), name, value);
@@ -653,7 +653,7 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
     return;
   }
 
-  if (resolved.isObject()) {
+  if (isObject(resolved)) {
     auto& object = static_cast<const type::ObjectType&>(resolved);
     auto members = object.getMembers();
     for (size_t i = 0; i < members.size(); ++i) {
@@ -662,7 +662,7 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
     return;
   }
 
-  if (resolved.isInterface()) {
+  if (isInterface(resolved)) {
     auto& iface = static_cast<const type::InterfaceType&>(resolved);
     for (size_t i = 0; i < iface.getParentInterfaceCount(); ++i) {
       bindTypeVarsByName(iface.getParentInterface(i), name, value);
@@ -670,7 +670,7 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
     return;
   }
 
-  if (resolved.isIntersection()) {
+  if (isIntersection(resolved)) {
     auto& intersection = static_cast<const type::IntersectionType&>(resolved);
     for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
       bindTypeVarsByName(intersection.getConjunct(i), name, value);
@@ -678,13 +678,13 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
     return;
   }
 
-  if (resolved.isExistential()) {
+  if (isExistential(resolved)) {
     auto& existential = static_cast<const type::ExistentialType&>(resolved);
     bindTypeVarsByName(existential.getInterfaceType(), name, value);
     return;
   }
 
-  if (resolved.isAssociated()) {
+  if (isAssociated(resolved)) {
     auto& associated = static_cast<const type::AssociatedType&>(resolved);
     bindTypeVarsByName(associated.getParentType(), name, value);
     return;
@@ -693,13 +693,13 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
 
 zc::Maybe<const type::Type&> BodyChecker::findTypeVarByName(const type::Type& ty,
                                                             zc::StringPtr name) {
-  if (ty.isTypeVar()) {
+  if (isTypeVar(ty)) {
     auto& var = static_cast<const type::TypeVar&>(ty);
     if (var.getName() == name) { return var; }
     return zc::none;
   }
 
-  if (ty.isFunction()) {
+  if (isFunction(ty)) {
     auto& fn = static_cast<const type::FunctionType&>(ty);
     for (size_t i = 0; i < fn.getParamCount(); ++i) {
       auto found = findTypeVarByName(fn.getParamType(i), name);
@@ -711,7 +711,7 @@ zc::Maybe<const type::Type&> BodyChecker::findTypeVarByName(const type::Type& ty
     return zc::none;
   }
 
-  if (ty.isTuple()) {
+  if (isTuple(ty)) {
     auto& tuple = static_cast<const type::TupleType&>(ty);
     for (size_t i = 0; i < tuple.getElementCount(); ++i) {
       auto found = findTypeVarByName(tuple.getElementType(i), name);
@@ -720,22 +720,22 @@ zc::Maybe<const type::Type&> BodyChecker::findTypeVarByName(const type::Type& ty
     return zc::none;
   }
 
-  if (ty.isArray()) {
+  if (isArray(ty)) {
     auto& arr = static_cast<const type::ArrayType&>(ty);
     return findTypeVarByName(arr.getElementType(), name);
   }
 
-  if (ty.isReference()) {
+  if (isReference(ty)) {
     auto& ref = static_cast<const type::ReferenceType&>(ty);
     return findTypeVarByName(ref.getPointeeType(), name);
   }
 
-  if (ty.isRawPointer()) {
+  if (isRawPointer(ty)) {
     auto& ptr = static_cast<const type::RawPointerType&>(ty);
     return findTypeVarByName(ptr.getPointeeType(), name);
   }
 
-  if (ty.isUnion()) {
+  if (isUnion(ty)) {
     auto& unionTy = static_cast<const type::UnionType&>(ty);
     for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
       auto found = findTypeVarByName(unionTy.getAlternative(i), name);
@@ -744,7 +744,7 @@ zc::Maybe<const type::Type&> BodyChecker::findTypeVarByName(const type::Type& ty
     return zc::none;
   }
 
-  if (ty.isObject()) {
+  if (isObject(ty)) {
     auto& object = static_cast<const type::ObjectType&>(ty);
     auto members = object.getMembers();
     for (size_t i = 0; i < members.size(); ++i) {
@@ -756,7 +756,7 @@ zc::Maybe<const type::Type&> BodyChecker::findTypeVarByName(const type::Type& ty
     return zc::none;
   }
 
-  if (ty.isInterface()) {
+  if (isInterface(ty)) {
     auto& iface = static_cast<const type::InterfaceType&>(ty);
     for (size_t i = 0; i < iface.getParentInterfaceCount(); ++i) {
       auto found = findTypeVarByName(iface.getParentInterface(i), name);
@@ -765,7 +765,7 @@ zc::Maybe<const type::Type&> BodyChecker::findTypeVarByName(const type::Type& ty
     return zc::none;
   }
 
-  if (ty.isIntersection()) {
+  if (isIntersection(ty)) {
     auto& intersection = static_cast<const type::IntersectionType&>(ty);
     for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
       auto found = findTypeVarByName(intersection.getConjunct(i), name);
@@ -774,12 +774,12 @@ zc::Maybe<const type::Type&> BodyChecker::findTypeVarByName(const type::Type& ty
     return zc::none;
   }
 
-  if (ty.isExistential()) {
+  if (isExistential(ty)) {
     auto& existential = static_cast<const type::ExistentialType&>(ty);
     return findTypeVarByName(existential.getInterfaceType(), name);
   }
 
-  if (ty.isAssociated()) {
+  if (isAssociated(ty)) {
     auto& associated = static_cast<const type::AssociatedType&>(ty);
     return findTypeVarByName(associated.getParentType(), name);
   }
@@ -987,24 +987,24 @@ void BodyChecker::checkAssignable(const type::Type& target, const type::Type& so
   const auto& resolvedSource = impl->typeEnv.find(source);
 
   // Error types are always assignable (prevents cascading errors)
-  if (resolvedTarget.isError() || resolvedSource.isError()) return;
+  if (isError(resolvedTarget) || isError(resolvedSource)) return;
 
   impl->constraints.addSub(impl->typeEnv.internType(resolvedSource),
                            impl->typeEnv.internType(resolvedTarget),
                            zc::str("assignability check"));
 
   // Try unification for type variables
-  if (resolvedTarget.isTypeVar() || resolvedSource.isTypeVar()) {
+  if (isTypeVar(resolvedTarget) || isTypeVar(resolvedSource)) {
     if (impl->unifier.unify(resolvedTarget, resolvedSource)) return;
   }
 
-  if (resolvedTarget.isExistential()) {
+  if (isExistential(resolvedTarget)) {
     auto& existential = static_cast<const type::ExistentialType&>(resolvedTarget);
     auto& ifaceType = impl->typeEnv.find(existential.getInterfaceType());
     zc::StringPtr ifaceName;
-    if (ifaceType.isNamed()) {
+    if (isNamed(ifaceType)) {
       ifaceName = static_cast<const type::NamedType&>(ifaceType).getName();
-    } else if (ifaceType.isInterface()) {
+    } else if (isInterface(ifaceType)) {
       ifaceName = static_cast<const type::InterfaceType&>(ifaceType).getName();
     }
     if (ifaceName.size() > 0) {
@@ -1121,19 +1121,19 @@ const type::Type& BodyChecker::checkExpr(ast::NodeId expr) {
       auto& rhsType = checkExpr(rhsId);
       auto& resolvedLhs = impl->typeEnv.find(lhsType);
       auto& resolvedRhs = impl->typeEnv.find(rhsType);
-      if (resolvedLhs.isError() || resolvedRhs.isError()) {
+      if (isError(resolvedLhs) || isError(resolvedRhs)) {
         return storeType(expr, zc::heap<type::ErrorType>());
       }
 
-      if (resolvedLhs.isNull()) { return storeType(expr, cloneType(resolvedRhs)); }
+      if (isNull(resolvedLhs)) { return storeType(expr, cloneType(resolvedRhs)); }
 
-      if (resolvedLhs.isUnion()) {
+      if (isUnion(resolvedLhs)) {
         auto& unionTy = static_cast<const type::UnionType&>(resolvedLhs);
         if (unionTy.isNullable()) {
           zc::Vector<zc::Own<type::Type>> nonNullAlternatives;
           for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
             auto& alt = unionTy.getAlternative(i);
-            if (!alt.isNull()) { nonNullAlternatives.add(cloneType(alt)); }
+            if (!isNull(alt)) { nonNullAlternatives.add(cloneType(alt)); }
           }
 
           if (nonNullAlternatives.empty()) { return storeType(expr, cloneType(resolvedRhs)); }
@@ -1232,13 +1232,13 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
 
   // Helper: get primitive kind from resolved type
   auto getPrimKind = [](const type::Type& t) -> type::PrimitiveKind {
-    if (t.isPrimitive()) { return static_cast<const type::PrimitiveType&>(t).getPrimitiveKind(); }
+    if (isPrimitive(t)) { return static_cast<const type::PrimitiveType&>(t).getPrimitiveKind(); }
     return type::PrimitiveKind::I32;
   };
 
   // Helper: check if type is str
   auto isStrType = [](const type::Type& t) -> bool {
-    if (t.isPrimitive()) {
+    if (isPrimitive(t)) {
       return static_cast<const type::PrimitiveType&>(t).getPrimitiveKind() ==
              type::PrimitiveKind::Str;
     }
@@ -1255,7 +1255,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
     case 5: {  // Pow
       // Arithmetic: result is the wider numeric type
       // Simplified: return LHS type (should unify with RHS)
-      if (resolvedLhs.isNumeric() && resolvedRhs.isNumeric()) {
+      if (isNumeric(resolvedLhs) && isNumeric(resolvedRhs)) {
         auto unified = impl->unifier.tryUnify(resolvedLhs, resolvedRhs);
         if (!unified.success) {
           if (unified.failureKind ==
@@ -1271,7 +1271,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
       if (isStrType(resolvedLhs) && op == 0) {  // Add + str = str concat
         return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Str));
       }
-      if (op == 0 && resolvedLhs.equals(resolvedRhs) && resolvedLhs.isNamed()) {
+      if (op == 0 && resolvedLhs.equals(resolvedRhs) && isNamed(resolvedLhs)) {
         TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
                                     impl->diags);
         traitResolver.discoverImpls();
@@ -1280,8 +1280,8 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
         }
       }
       // If either operand is ErrorType or TypeVar, suppress cascading errors.
-      if (resolvedLhs.isError() || resolvedRhs.isError() || resolvedLhs.isTypeVar() ||
-          resolvedRhs.isTypeVar()) {
+      if (isError(resolvedLhs) || isError(resolvedRhs) || isTypeVar(resolvedLhs) ||
+          isTypeVar(resolvedRhs)) {
         return storeType(expr, zc::heap<type::ErrorType>());
       }
       reportError(expr, "invalid operands to binary expression"_zc);
@@ -1322,7 +1322,7 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
 
   // Helper: get primitive kind from resolved type
   auto getPrimKind = [](const type::Type& t) -> type::PrimitiveKind {
-    if (t.isPrimitive()) { return static_cast<const type::PrimitiveType&>(t).getPrimitiveKind(); }
+    if (isPrimitive(t)) { return static_cast<const type::PrimitiveType&>(t).getPrimitiveKind(); }
     return type::PrimitiveKind::I32;
   };
 
@@ -1342,12 +1342,12 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
       return storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolved)));
     case ast::UnaryOperatorKind::Deref: {
       // Dereference: returns the pointed-to type
-      if (resolved.isReference()) {
+      if (isReference(resolved)) {
         auto& refTy = static_cast<const type::ReferenceType&>(resolved);
         (void)refTy;
         return storeType(expr, zc::heap<type::ErrorType>());
       }
-      if (resolved.isRawPointer()) {
+      if (isRawPointer(resolved)) {
         auto& ptrTy = static_cast<const type::RawPointerType&>(resolved);
         (void)ptrTy;
         return storeType(expr, zc::heap<type::ErrorType>());
@@ -1357,7 +1357,7 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
     }
     case ast::UnaryOperatorKind::Ref:
       // Address-of: returns a reference to the operand type
-      if (resolved.isError()) { return storeType(expr, zc::heap<type::ErrorType>()); }
+      if (isError(resolved)) { return storeType(expr, zc::heap<type::ErrorType>()); }
       return storeType(expr,
                        zc::heap<type::ReferenceType>(cloneType(resolved), type::Mutability::Const));
     default:
@@ -1375,13 +1375,13 @@ const type::Type& BodyChecker::checkPostfixExpr(ast::NodeId expr) {
   switch (op) {
     case ast::PostfixOperatorKind::Increment:
     case ast::PostfixOperatorKind::Decrement:
-      if (resolved.isNumeric()) { return storeType(expr, cloneType(resolved)); }
-      if (!resolved.isError()) { reportError(expr, "postfix update requires numeric operand"_zc); }
+      if (isNumeric(resolved)) { return storeType(expr, cloneType(resolved)); }
+      if (!isError(resolved)) { reportError(expr, "postfix update requires numeric operand"_zc); }
       return storeType(expr, zc::heap<type::ErrorType>());
     case ast::PostfixOperatorKind::ErrorPropagate:
     case ast::PostfixOperatorKind::ErrorUnwrap: {
-      if (resolved.isError()) { return storeType(expr, zc::heap<type::ErrorType>()); }
-      if (!resolved.isUnion()) {
+      if (isError(resolved)) { return storeType(expr, zc::heap<type::ErrorType>()); }
+      if (!isUnion(resolved)) {
         if (op == ast::PostfixOperatorKind::ErrorUnwrap) {
           auto loc = getNodeLoc(impl->tree, expr);
           impl->diags.diagnose<DiagID::ErrorUnwrapNonUnion>(loc, resolved.toString());
@@ -1457,7 +1457,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
   for (NodeId argId : impl->tree.list(argList)) { argTypes.add(&checkExpr(argId)); }
 
   // If callee is a function type, validate arguments and return return type
-  if (resolvedCallee.isFunction()) {
+  if (isFunction(resolvedCallee)) {
     auto& funcTy = static_cast<const type::FunctionType&>(resolvedCallee);
 
     // --- Let-polymorphism: instantiate generic function ---
@@ -1472,9 +1472,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
       // Instantiate: create fresh type vars for each generic parameter
       instantiatedFn = impl->typeEnv.instantiateFunction(funcTy);
       auto& resolved = impl->typeEnv.find(*instantiatedFn);
-      if (resolved.isFunction()) {
-        effectiveFn = &static_cast<const type::FunctionType&>(resolved);
-      }
+      if (isFunction(resolved)) { effectiveFn = &static_cast<const type::FunctionType&>(resolved); }
 
       if (explicitTypeArgs.size() > 0) {
         if (explicitTypeArgs.size() != funcTy.getGenericParamCount()) {
@@ -1513,7 +1511,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
         if (impl->typeEnv.hasType(declId)) {
           auto& declTy = impl->typeEnv.getType(declId);
           auto& resolvedDecl = impl->typeEnv.find(declTy);
-          if (resolvedDecl.isTypeVar()) {
+          if (isTypeVar(resolvedDecl)) {
             if (impl->unifier.unify(resolvedDecl, paramTy)) {
               auto& refined = impl->typeEnv.find(paramTy);
               impl->typeEnv.setType(declId, cloneType(refined));
@@ -1546,14 +1544,14 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
 
         ZC_IF_SOME(varTy, typeVar) {
           auto& resolvedTypeArg = impl->typeEnv.find(varTy);
-          if (resolvedTypeArg.isTypeVar() || resolvedTypeArg.isError()) continue;
+          if (isTypeVar(resolvedTypeArg) || isError(resolvedTypeArg)) continue;
 
           for (size_t boundIndex = 0; boundIndex < generic.upperBounds.size(); ++boundIndex) {
             auto& bound = impl->typeEnv.find(*generic.upperBounds[boundIndex]);
             zc::StringPtr boundName;
-            if (bound.isNamed()) {
+            if (isNamed(bound)) {
               boundName = static_cast<const type::NamedType&>(bound).getName();
-            } else if (bound.isInterface()) {
+            } else if (isInterface(bound)) {
               boundName = static_cast<const type::InterfaceType&>(bound).getName();
             }
 
@@ -1602,13 +1600,13 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
   }
 
   // If callee is an interface type, it might be callable (function interface)
-  if (resolvedCallee.isInterface()) {
+  if (isInterface(resolvedCallee)) {
     // Simplified: return error type for now
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
   // If callee is a named type, check if it's a class with operator()
-  if (resolvedCallee.isNamed()) {
+  if (isNamed(resolvedCallee)) {
     // Simplified: try to treat as constructor call
     return storeType(expr, zc::heap<type::NamedType>(
                                static_cast<const type::NamedType&>(resolvedCallee).getName()));
@@ -1643,14 +1641,14 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
   if (propName.size() == 0) { return storeType(expr, zc::heap<type::ErrorType>()); }
 
   // Look up member in object type
-  if (resolvedObj.isObject()) {
+  if (isObject(resolvedObj)) {
     auto& objTy = static_cast<const type::ObjectType&>(resolvedObj);
     auto memberTy = objTy.getMember(propName);
     ZC_IF_SOME(mTy, memberTy) { return storeType(expr, cloneType(mTy)); }
   }
 
   // Named type: look up in symbol table
-  if (resolvedObj.isNamed()) {
+  if (isNamed(resolvedObj)) {
     auto& namedTy = static_cast<const type::NamedType&>(resolvedObj);
     auto memberSym = lookupSymbol(zc::str(namedTy.getName(), "."_zc, propName));
     ZC_IF_SOME(sym, memberSym) {
@@ -1675,17 +1673,17 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
   auto& resolvedIdx = impl->typeEnv.find(idxType);
 
   // Array indexing
-  if (resolvedObj.isArray()) {
+  if (isArray(resolvedObj)) {
     auto& arrTy = static_cast<const type::ArrayType&>(resolvedObj);
     // Index must be integer
-    if (!resolvedIdx.isInteger()) { reportError(idxId, "array index must be an integer"_zc); }
+    if (!isInteger(resolvedIdx)) { reportError(idxId, "array index must be an integer"_zc); }
     return storeType(expr, cloneType(arrTy.getElementType()));
   }
 
   // Tuple indexing
-  if (resolvedObj.isTuple()) {
+  if (isTuple(resolvedObj)) {
     auto& tupleTy = static_cast<const type::TupleType&>(resolvedObj);
-    if (!resolvedIdx.isInteger()) {
+    if (!isInteger(resolvedIdx)) {
       reportError(idxId, "tuple index must be an integer literal"_zc);
       return storeType(expr, zc::heap<type::ErrorType>());
     }
@@ -1717,14 +1715,14 @@ const type::Type& BodyChecker::checkNewExpr(ast::NodeId expr) {
   auto& calleeType = checkExpr(calleeId);
   auto& resolved = impl->typeEnv.find(calleeType);
 
-  if (resolved.isNamed()) {
+  if (isNamed(resolved)) {
     return storeType(
         expr, zc::heap<type::NamedType>(static_cast<const type::NamedType&>(resolved).getName()));
   }
 
   // For any other type (including error types from failed lookup),
   // return a clone of the resolved type
-  if (!resolved.isError()) { return storeType(expr, cloneType(resolved)); }
+  if (!isError(resolved)) { return storeType(expr, cloneType(resolved)); }
 
   return storeType(expr, zc::heap<type::ErrorType>());
 }
@@ -1740,18 +1738,18 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
 
   auto targetType = resolveTypeExpr(tyId);
   if (!targetType) {
-    if (!resolvedSource.isError()) { reportError(expr, "unsupported cast target type"_zc); }
+    if (!isError(resolvedSource)) { reportError(expr, "unsupported cast target type"_zc); }
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
   auto& resolvedTarget = impl->typeEnv.find(*targetType);
-  if (resolvedSource.isError() || resolvedTarget.isError()) {
+  if (isError(resolvedSource) || isError(resolvedTarget)) {
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
   if (resolvedSource.equals(resolvedTarget)) { return storeType(expr, cloneType(resolvedTarget)); }
 
-  if (resolvedSource.isPrimitive() && resolvedTarget.isPrimitive()) {
+  if (isPrimitive(resolvedSource) && isPrimitive(resolvedTarget)) {
     auto& sourcePrim = static_cast<const type::PrimitiveType&>(resolvedSource);
     auto& targetPrim = static_cast<const type::PrimitiveType&>(resolvedTarget);
     if ((sourcePrim.isIntegerType() || sourcePrim.isFloatingPointType()) &&
@@ -1760,7 +1758,7 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     }
   }
 
-  if (resolvedSource.isRawPointer() && resolvedTarget.isRawPointer()) {
+  if (isRawPointer(resolvedSource) && isRawPointer(resolvedTarget)) {
     auto& sourcePtr = static_cast<const type::RawPointerType&>(resolvedSource);
     auto& targetPtr = static_cast<const type::RawPointerType&>(resolvedTarget);
     if (sourcePtr.getPointeeType().equals(targetPtr.getPointeeType()) &&
@@ -1775,7 +1773,7 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
-  if (resolvedSource.isReference() && resolvedTarget.isRawPointer()) {
+  if (isReference(resolvedSource) && isRawPointer(resolvedTarget)) {
     auto& sourceRef = static_cast<const type::ReferenceType&>(resolvedSource);
     auto& targetPtr = static_cast<const type::RawPointerType&>(resolvedTarget);
     if (sourceRef.getPointeeType().equals(targetPtr.getPointeeType())) {
@@ -1786,7 +1784,7 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     }
   }
 
-  if (resolvedSource.isExistential() && resolvedTarget.isExistential()) {
+  if (isExistential(resolvedSource) && isExistential(resolvedTarget)) {
     auto& sourceExistential = static_cast<const type::ExistentialType&>(resolvedSource);
     auto& targetExistential = static_cast<const type::ExistentialType&>(resolvedTarget);
     if (dynTypeExtends(sourceExistential.getInterfaceType(), targetExistential.getInterfaceType(),
@@ -1817,18 +1815,18 @@ const type::Type& BodyChecker::checkConditionalExpr(ast::NodeId expr) {
 
   // Condition must be bool
   auto& resolvedCond = impl->typeEnv.find(condType);
-  if (!resolvedCond.isPrimitive() ||
+  if (!isPrimitive(resolvedCond) ||
       static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
           type::PrimitiveKind::Bool) {
-    if (!resolvedCond.isError()) { reportError(condId, "condition must be of type 'bool'"_zc); }
+    if (!isError(resolvedCond)) { reportError(condId, "condition must be of type 'bool'"_zc); }
   }
 
   // Result is the join of then and else types.
   auto& resolvedThen = impl->typeEnv.find(thenType);
   auto& resolvedElse = impl->typeEnv.find(elseType);
 
-  if (resolvedThen.isError()) return storeType(expr, zc::heap<type::ErrorType>());
-  if (resolvedElse.isError()) return storeType(expr, zc::heap<type::ErrorType>());
+  if (isError(resolvedThen)) return storeType(expr, zc::heap<type::ErrorType>());
+  if (isError(resolvedElse)) return storeType(expr, zc::heap<type::ErrorType>());
 
   // If both are the same type, return it
   if (resolvedThen.equals(resolvedElse)) { return storeType(expr, cloneType(resolvedThen)); }
@@ -2052,7 +2050,7 @@ const type::Type& BodyChecker::checkStructLiteralExpr(ast::NodeId expr) {
 
   zc::HashMap<zc::StringPtr, zc::Own<type::Type>> fieldTypes;
   auto& initialTarget = impl->typeEnv.find(*targetType);
-  if (initialTarget.isNamed()) {
+  if (isNamed(initialTarget)) {
     auto targetName = static_cast<const type::NamedType&>(initialTarget).getName();
     auto targetSym = lookupSymbol(targetName);
     ZC_IF_SOME(sym, targetSym) {
@@ -2098,7 +2096,7 @@ const type::Type& BodyChecker::checkStructLiteralExpr(ast::NodeId expr) {
     ZC_IF_SOME(fieldType, fieldTypes.find(fieldName)) { return cloneType(*fieldType); }
 
     auto& resolvedTarget = impl->typeEnv.find(*targetType);
-    if (!resolvedTarget.isNamed()) { return zc::Own<type::Type>(); }
+    if (!isNamed(resolvedTarget)) { return zc::Own<type::Type>(); }
 
     auto targetName = static_cast<const type::NamedType&>(resolvedTarget).getName();
     auto targetSym = lookupSymbol(targetName);
@@ -2164,7 +2162,7 @@ const type::Type& BodyChecker::checkStructLiteralExpr(ast::NodeId expr) {
     if (!impl->tree.contains(valueId)) continue;
     auto& valueType = checkExpr(valueId);
     auto& resolvedValue = impl->typeEnv.find(valueType);
-    if (resolvedValue.isError()) { hadFieldError = true; }
+    if (isError(resolvedValue)) { hadFieldError = true; }
 
     if (propName.size() > 0) {
       seenFields.insert(propName);
@@ -2206,7 +2204,7 @@ const type::Type& BodyChecker::checkArrayLiteral(ast::NodeId expr) {
   for (NodeId elemId : impl->tree.list(elems)) {
     auto& elemTy = checkExpr(elemId);
     auto& resolved = impl->typeEnv.find(elemTy);
-    if (resolved.isError()) {
+    if (isError(resolved)) {
       elementMismatch = true;
       continue;
     }
@@ -2260,7 +2258,7 @@ const type::Type& BodyChecker::checkTupleLiteral(ast::NodeId expr) {
     for (NodeId elemId : impl->tree.list(elems)) {
       auto& elemTy = checkExpr(elemId);
       auto& resolved = impl->typeEnv.find(elemTy);
-      if (resolved.isError()) { hasErrorElement = true; }
+      if (isError(resolved)) { hasErrorElement = true; }
       elemTypes.add(cloneType(resolved));
     }
   } else if (node.kind == SyntaxKind::TupleLiteral1) {
@@ -2268,7 +2266,7 @@ const type::Type& BodyChecker::checkTupleLiteral(ast::NodeId expr) {
     auto elemId = NodeId(node.payload.words[kTupleLiteral1ElemWord]);
     auto& elemTy = checkExpr(elemId);
     auto& resolved = impl->typeEnv.find(elemTy);
-    if (resolved.isError()) { hasErrorElement = true; }
+    if (isError(resolved)) { hasErrorElement = true; }
     elemTypes.add(cloneType(resolved));
   }
 
@@ -2366,13 +2364,13 @@ void BodyChecker::checkIfStmt(ast::NodeId stmt) {
   // Check condition is bool
   auto& condType = checkExpr(condId);
   auto& resolvedCond = impl->typeEnv.find(condType);
-  if (!resolvedCond.isPrimitive() && !resolvedCond.isError()) {
+  if (!isPrimitive(resolvedCond) && !isError(resolvedCond)) {
     reportError(condId, "if condition must be of type 'bool'"_zc);
   }
-  if (resolvedCond.isPrimitive() &&
+  if (isPrimitive(resolvedCond) &&
       static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
           type::PrimitiveKind::Bool &&
-      !resolvedCond.isError()) {
+      !isError(resolvedCond)) {
     reportError(condId, "if condition must be of type 'bool'"_zc);
   }
 
@@ -2390,8 +2388,8 @@ void BodyChecker::checkWhileStmt(ast::NodeId stmt) {
 
   auto& condType = checkExpr(condId);
   auto& resolvedCond = impl->typeEnv.find(condType);
-  if (!resolvedCond.isError() &&
-      (!resolvedCond.isPrimitive() ||
+  if (!isError(resolvedCond) &&
+      (!isPrimitive(resolvedCond) ||
        static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
            type::PrimitiveKind::Bool)) {
     reportError(condId, "while condition must be of type 'bool'"_zc);
@@ -2414,8 +2412,8 @@ void BodyChecker::checkForStmt(ast::NodeId stmt) {
   if (impl->tree.contains(condId)) {
     auto& condType = checkExpr(condId);
     auto& resolvedCond = impl->typeEnv.find(condType);
-    if (!resolvedCond.isError() &&
-        (!resolvedCond.isPrimitive() ||
+    if (!isError(resolvedCond) &&
+        (!isPrimitive(resolvedCond) ||
          static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
              type::PrimitiveKind::Bool)) {
       reportError(condId, "for condition must be of type 'bool'"_zc);
@@ -2445,8 +2443,7 @@ void BodyChecker::checkReturnStmt(ast::NodeId stmt) {
     // Return without value: expected return type should be unit
     auto& expected = expectedReturnType();
     auto& resolvedExpected = impl->typeEnv.find(expected);
-    if (!resolvedExpected.isUnit() && !resolvedExpected.isError() &&
-        !resolvedExpected.isTypeVar()) {
+    if (!isUnit(resolvedExpected) && !isError(resolvedExpected) && !isTypeVar(resolvedExpected)) {
       reportError(
           stmt, zc::str("missing return value of type '"_zc, resolvedExpected.toString(), "'"_zc));
     }
@@ -2496,7 +2493,7 @@ void BodyChecker::checkLetStmt(ast::NodeId stmt) {
       }
     }
 
-    if (resolvedInit.isNull()) {
+    if (isNull(resolvedInit)) {
       reportError(declId, "cannot infer type from null initializer without annotation"_zc);
       impl->typeEnv.setType(declId, zc::heap<type::ErrorType>());
       return;
@@ -2546,8 +2543,8 @@ void BodyChecker::checkMatchStmt(ast::NodeId stmt) {
     if (impl->tree.contains(guardId)) {
       auto& guardType = checkExpr(guardId);
       auto& resolvedGuard = impl->typeEnv.find(guardType);
-      if (!resolvedGuard.isError() &&
-          (!resolvedGuard.isPrimitive() ||
+      if (!isError(resolvedGuard) &&
+          (!isPrimitive(resolvedGuard) ||
            static_cast<const type::PrimitiveType&>(resolvedGuard).getPrimitiveKind() !=
                type::PrimitiveKind::Bool)) {
         reportError(guardId, "match guard must be of type 'bool'"_zc);
@@ -2595,7 +2592,7 @@ void BodyChecker::checkFunctionDecl(ast::NodeId declId) {
   if (hasExplicitRetTy && impl->typeEnv.hasType(declId)) {
     auto& declType = impl->typeEnv.getType(declId);
     auto& resolved = impl->typeEnv.find(declType);
-    if (resolved.isFunction()) {
+    if (isFunction(resolved)) {
       auto& funcTy = static_cast<const type::FunctionType&>(resolved);
       impl->expectedRetType = funcTy.getReturnType();
       auto raisesType = funcTy.getRaisesType();
@@ -2706,7 +2703,7 @@ bool BodyChecker::checkBodies() {
     if (!impl->tree.contains(declId) || !impl->typeEnv.hasType(declId)) continue;
     auto& declTy = impl->typeEnv.getType(declId);
     auto& resolvedDecl = impl->typeEnv.find(declTy);
-    if (resolvedDecl.isTypeVar()) {
+    if (isTypeVar(resolvedDecl)) {
       impl->typeEnv.setType(declId, zc::heap<type::PrimitiveType>(type::PrimitiveKind::I32));
       for (const auto& entry : impl->identExprDeclarations) {
         if (entry.value != declId) continue;

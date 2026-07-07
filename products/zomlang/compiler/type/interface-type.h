@@ -49,7 +49,7 @@ public:
   /// \brief Construct an interface type with a name.
   explicit InterfaceType(zc::StringPtr name);
 
-  ~InterfaceType() noexcept(false) override;
+  ~InterfaceType() noexcept(false);
 
   ZC_DISALLOW_COPY(InterfaceType);
 

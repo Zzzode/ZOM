@@ -73,7 +73,7 @@ bool TypeVar::equals(const Type& other) const {
 }
 
 bool TypeVar::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   // A type variable is a subtype of its upper bounds
   for (size_t i = 0; i < impl->upperBounds.size(); ++i) {

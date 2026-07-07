@@ -34,7 +34,7 @@ namespace type {
 /// Use the static factory methods to obtain instances.
 class PrimitiveType final : public Type {
 public:
-  ~PrimitiveType() noexcept(false) override;
+  ~PrimitiveType() noexcept(false);
 
   ZC_DISALLOW_COPY(PrimitiveType);
 

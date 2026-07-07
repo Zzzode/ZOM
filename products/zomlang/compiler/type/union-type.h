@@ -38,7 +38,7 @@ public:
   /// \brief Construct a union type from alternatives.
   explicit UnionType(zc::Vector<zc::Own<Type>> alternatives);
 
-  ~UnionType() noexcept(false) override;
+  ~UnionType() noexcept(false);
 
   ZC_DISALLOW_COPY(UnionType);
 

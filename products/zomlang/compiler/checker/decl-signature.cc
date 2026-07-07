@@ -107,16 +107,16 @@ static uint32_t querySymbolId(const symbol::Symbol& symbol) {
 static zc::Own<type::Type> cloneType(const type::Type& ty) {
   using namespace type;
 
-  if (ty.isError()) { return zc::heap<ErrorType>(); }
-  if (ty.isPrimitive()) {
+  if (isError(ty)) { return zc::heap<ErrorType>(); }
+  if (isPrimitive(ty)) {
     auto& prim = static_cast<const PrimitiveType&>(ty);
     return zc::heap<PrimitiveType>(prim.getPrimitiveKind());
   }
-  if (ty.isNamed()) {
+  if (isNamed(ty)) {
     auto& named = static_cast<const NamedType&>(ty);
     return zc::heap<NamedType>(named.getName());
   }
-  if (ty.isObject()) {
+  if (isObject(ty)) {
     auto& object = static_cast<const ObjectType&>(ty);
     auto result = zc::heap<ObjectType>();
     auto members = object.getMembers();
@@ -127,7 +127,7 @@ static zc::Own<type::Type> cloneType(const type::Type& ty) {
     }
     return zc::mv(result);
   }
-  if (ty.isFunction()) {
+  if (isFunction(ty)) {
     auto& fn = static_cast<const FunctionType&>(ty);
     zc::Vector<zc::Own<Type>> params;
     for (size_t i = 0; i < fn.getParamCount(); ++i) { params.add(cloneType(fn.getParamType(i))); }
@@ -149,22 +149,22 @@ static zc::Own<type::Type> cloneType(const type::Type& ty) {
     ZC_IF_SOME(r, raises) { result->setRaisesType(cloneType(r)); }
     return zc::mv(result);
   }
-  if (ty.isReference()) {
+  if (isReference(ty)) {
     auto& ref = static_cast<const ReferenceType&>(ty);
     auto pointee = cloneType(ref.getPointeeType());
     return zc::heap<ReferenceType>(zc::mv(pointee), ref.getMutability());
   }
-  if (ty.isRawPointer()) {
+  if (isRawPointer(ty)) {
     auto& ptr = static_cast<const RawPointerType&>(ty);
     auto pointee = cloneType(ptr.getPointeeType());
     return zc::heap<RawPointerType>(zc::mv(pointee), ptr.getMutability());
   }
-  if (ty.isArray()) {
+  if (isArray(ty)) {
     auto& arr = static_cast<const ArrayType&>(ty);
     auto elem = cloneType(arr.getElementType());
     return zc::heap<ArrayType>(zc::mv(elem));
   }
-  if (ty.isTuple()) {
+  if (isTuple(ty)) {
     auto& tup = static_cast<const TupleType&>(ty);
     zc::Vector<zc::Own<Type>> elems;
     for (size_t i = 0; i < tup.getElementCount(); ++i) {
@@ -172,7 +172,7 @@ static zc::Own<type::Type> cloneType(const type::Type& ty) {
     }
     return zc::heap<TupleType>(zc::mv(elems));
   }
-  if (ty.isUnion()) {
+  if (isUnion(ty)) {
     auto& unionTy = static_cast<const UnionType&>(ty);
     zc::Vector<zc::Own<Type>> alts;
     for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
@@ -180,7 +180,7 @@ static zc::Own<type::Type> cloneType(const type::Type& ty) {
     }
     return zc::heap<UnionType>(zc::mv(alts));
   }
-  if (ty.isTypeVar()) {
+  if (isTypeVar(ty)) {
     auto& tv = static_cast<const TypeVar&>(ty);
     auto result = zc::heap<TypeVar>(tv.getName(), tv.getId());
     for (size_t i = 0; i < tv.getUpperBoundCount(); ++i) {
@@ -191,7 +191,7 @@ static zc::Own<type::Type> cloneType(const type::Type& ty) {
     }
     return zc::mv(result);
   }
-  if (ty.isInterface()) {
+  if (isInterface(ty)) {
     auto& iface = static_cast<const InterfaceType&>(ty);
     auto result = zc::heap<InterfaceType>(iface.getName());
     for (size_t i = 0; i < iface.getParentInterfaceCount(); ++i) {
@@ -199,7 +199,7 @@ static zc::Own<type::Type> cloneType(const type::Type& ty) {
     }
     return zc::mv(result);
   }
-  if (ty.isIntersection()) {
+  if (isIntersection(ty)) {
     auto& intersection = static_cast<const IntersectionType&>(ty);
     zc::Vector<zc::Own<Type>> conjuncts;
     for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
@@ -207,11 +207,11 @@ static zc::Own<type::Type> cloneType(const type::Type& ty) {
     }
     return zc::heap<IntersectionType>(zc::mv(conjuncts));
   }
-  if (ty.isExistential()) {
+  if (isExistential(ty)) {
     auto& existential = static_cast<const ExistentialType&>(ty);
     return zc::heap<ExistentialType>(cloneType(existential.getInterfaceType()));
   }
-  if (ty.isAssociated()) {
+  if (isAssociated(ty)) {
     auto& associated = static_cast<const AssociatedType&>(ty);
     return zc::heap<AssociatedType>(cloneType(associated.getParentType()), associated.getName());
   }

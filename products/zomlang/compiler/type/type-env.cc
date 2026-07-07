@@ -196,7 +196,7 @@ uint64_t TypeEnv::findRoot(uint64_t varId) const {
 
 Type& TypeEnv::find(Type& ty) const {
   // If not a TypeVar, it is its own representative.
-  if (!ty.isTypeVar()) { return ty; }
+  if (!isTypeVar(ty)) { return ty; }
 
   auto& var = static_cast<TypeVar&>(ty);
   uint64_t varId = var.getId();
@@ -254,8 +254,8 @@ void TypeEnv::unite(const Type& a, const Type& b) {
 
   if (&repA == &repB) { return; }  // Already unified.
 
-  bool aIsVar = repA.isTypeVar();
-  bool bIsVar = repB.isTypeVar();
+  bool aIsVar = isTypeVar(repA);
+  bool bIsVar = isTypeVar(repB);
 
   if (aIsVar && bIsVar) {
     // Both are TypeVars: link via union by rank.
@@ -335,7 +335,7 @@ void TypeEnv::collectFreeTypeVars(const Type& ty, zc::HashSet<uint64_t>& freeVar
                                   const zc::HashSet<uint64_t>& exclude) const {
   const Type& resolved = find(ty);
 
-  if (resolved.isTypeVar()) {
+  if (isTypeVar(resolved)) {
     auto& var = static_cast<const TypeVar&>(resolved);
     uint64_t id = var.getId();
     if (id == 0) return;  // Legacy var without ID - skip
@@ -344,7 +344,7 @@ void TypeEnv::collectFreeTypeVars(const Type& ty, zc::HashSet<uint64_t>& freeVar
     auto binding = impl->idBindings.find(id);
     if (binding != zc::none) {
       ZC_IF_SOME(boundTy, binding) {
-        if (boundTy && !boundTy->isTypeVar()) {
+        if (boundTy && !isTypeVar(*boundTy)) {
           // Bound to concrete type: recurse into it
           collectFreeTypeVars(*boundTy, freeVars, exclude);
           return;
@@ -430,7 +430,7 @@ zc::Own<Type> TypeEnv::substituteType(const Type& ty,
                                       const zc::HashMap<uint64_t, TypeVar*>& subst) const {
   const Type& resolved = find(ty);
 
-  if (resolved.isTypeVar()) {
+  if (isTypeVar(resolved)) {
     auto& var = static_cast<const TypeVar&>(resolved);
     uint64_t id = var.getId();
 
@@ -448,7 +448,7 @@ zc::Own<Type> TypeEnv::substituteType(const Type& ty,
       auto binding = impl->idBindings.find(id);
       if (binding != zc::none) {
         ZC_IF_SOME(boundTy, binding) {
-          if (boundTy && !boundTy->isTypeVar()) { return substituteType(*boundTy, subst); }
+          if (boundTy && !isTypeVar(*boundTy)) { return substituteType(*boundTy, subst); }
         }
       }
     }
@@ -754,7 +754,7 @@ zc::Maybe<const Type&> TypeEnv::lookup(const TypeVar& var) const {
 const Type& TypeEnv::resolve(const Type& ty) const {
   const Type* current = &ty;
 
-  while (current->isTypeVar()) {
+  while (isTypeVar(*current)) {
     auto& var = static_cast<const TypeVar&>(*current);
     uint64_t varId = var.getId();
 
@@ -763,7 +763,7 @@ const Type& TypeEnv::resolve(const Type& ty) const {
     if (varId != 0) {
       // Use find() to get proper union-find resolution with path compression.
       const Type& found = find(var);
-      if (&found != &var && !found.isTypeVar()) {
+      if (&found != &var && !isTypeVar(found)) {
         current = &found;
         continue;
       }
@@ -810,7 +810,7 @@ bool TypeEnv::occursIn(const TypeVar& var, const Type& type) const {
   const Type& resolved = resolve(type);
 
   // If the resolved type is the same variable, it occurs trivially.
-  if (resolved.isTypeVar()) {
+  if (isTypeVar(resolved)) {
     auto& resolvedVar = static_cast<const TypeVar&>(resolved);
     if (resolvedVar.equals(var)) { return true; }
   }

@@ -108,7 +108,7 @@ bool ObjectType::equals(const Type& other) const {
 }
 
 bool ObjectType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   if (other.getKind() != TypeKind::Object) { return false; }
 

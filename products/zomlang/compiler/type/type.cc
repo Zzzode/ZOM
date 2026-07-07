@@ -20,122 +20,114 @@ namespace zomlang {
 namespace compiler {
 namespace type {
 
-Type::Type() noexcept = default;
+bool isPrimitive(const Type& type) { return type.getKind() == TypeKind::Primitive; }
 
-Type::~Type() noexcept(false) = default;
+bool isError(const Type& type) { return type.getKind() == TypeKind::Error; }
 
-Type::Type(Type&& other) noexcept = default;
-
-Type& Type::operator=(Type&& other) noexcept = default;
-
-bool Type::isPrimitive() const { return getKind() == TypeKind::Primitive; }
-
-bool Type::isError() const { return getKind() == TypeKind::Error; }
-
-bool Type::isNever() const {
-  return isPrimitive() &&
-         static_cast<const PrimitiveType&>(*this).getPrimitiveKind() == PrimitiveKind::Never;
+bool isNever(const Type& type) {
+  return isPrimitive(type) &&
+         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Never;
 }
 
-bool Type::isUnit() const {
-  return isPrimitive() &&
-         static_cast<const PrimitiveType&>(*this).getPrimitiveKind() == PrimitiveKind::Unit;
+bool isUnit(const Type& type) {
+  return isPrimitive(type) &&
+         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Unit;
 }
 
-bool Type::isNull() const {
-  return isPrimitive() &&
-         static_cast<const PrimitiveType&>(*this).getPrimitiveKind() == PrimitiveKind::Null;
+bool isNull(const Type& type) {
+  return isPrimitive(type) &&
+         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Null;
 }
 
-bool Type::isAny() const {
-  return isPrimitive() &&
-         static_cast<const PrimitiveType&>(*this).getPrimitiveKind() == PrimitiveKind::Any;
+bool isAny(const Type& type) {
+  return isPrimitive(type) &&
+         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Any;
 }
 
-bool Type::isFunction() const { return getKind() == TypeKind::Function; }
+bool isFunction(const Type& type) { return type.getKind() == TypeKind::Function; }
 
-bool Type::isTuple() const { return getKind() == TypeKind::Tuple; }
+bool isTuple(const Type& type) { return type.getKind() == TypeKind::Tuple; }
 
-bool Type::isObject() const { return getKind() == TypeKind::Object; }
+bool isObject(const Type& type) { return type.getKind() == TypeKind::Object; }
 
-bool Type::isArray() const { return getKind() == TypeKind::Array; }
+bool isArray(const Type& type) { return type.getKind() == TypeKind::Array; }
 
-bool Type::isNamed() const { return getKind() == TypeKind::Named; }
+bool isNamed(const Type& type) { return type.getKind() == TypeKind::Named; }
 
-bool Type::isTypeVar() const { return getKind() == TypeKind::TypeVar; }
+bool isTypeVar(const Type& type) { return type.getKind() == TypeKind::TypeVar; }
 
-bool Type::isInterface() const { return getKind() == TypeKind::Interface; }
+bool isInterface(const Type& type) { return type.getKind() == TypeKind::Interface; }
 
-bool Type::isUnion() const { return getKind() == TypeKind::Union; }
+bool isUnion(const Type& type) { return type.getKind() == TypeKind::Union; }
 
-bool Type::isIntersection() const { return getKind() == TypeKind::Intersection; }
+bool isIntersection(const Type& type) { return type.getKind() == TypeKind::Intersection; }
 
-bool Type::isReference() const { return getKind() == TypeKind::Reference; }
+bool isReference(const Type& type) { return type.getKind() == TypeKind::Reference; }
 
-bool Type::isRawPointer() const { return getKind() == TypeKind::RawPointer; }
+bool isRawPointer(const Type& type) { return type.getKind() == TypeKind::RawPointer; }
 
-bool Type::isExistential() const { return getKind() == TypeKind::Existential; }
+bool isExistential(const Type& type) { return type.getKind() == TypeKind::Existential; }
 
-bool Type::isAssociated() const { return getKind() == TypeKind::Associated; }
+bool isAssociated(const Type& type) { return type.getKind() == TypeKind::Associated; }
 
-bool Type::isNumeric() const {
-  if (!isPrimitive()) return false;
-  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+bool isNumeric(const Type& type) {
+  if (!isPrimitive(type)) return false;
+  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
   return k >= PrimitiveKind::I8 && k <= PrimitiveKind::F64;
 }
 
-bool Type::isInteger() const {
-  if (!isPrimitive()) return false;
-  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+bool isInteger(const Type& type) {
+  if (!isPrimitive(type)) return false;
+  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
   return k >= PrimitiveKind::I8 && k <= PrimitiveKind::U64;
 }
 
-bool Type::isFloatingPoint() const {
-  if (!isPrimitive()) return false;
-  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+bool isFloatingPoint(const Type& type) {
+  if (!isPrimitive(type)) return false;
+  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
   return k == PrimitiveKind::F32 || k == PrimitiveKind::F64;
 }
 
-bool Type::isSignedInteger() const {
-  if (!isPrimitive()) return false;
-  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+bool isSignedInteger(const Type& type) {
+  if (!isPrimitive(type)) return false;
+  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
   return k >= PrimitiveKind::I8 && k <= PrimitiveKind::I64;
 }
 
-bool Type::isUnsignedInteger() const {
-  if (!isPrimitive()) return false;
-  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+bool isUnsignedInteger(const Type& type) {
+  if (!isPrimitive(type)) return false;
+  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
   return k >= PrimitiveKind::U8 && k <= PrimitiveKind::U64;
 }
 
-bool Type::hasBasicSubtypeRelation(const Type& other) const {
+bool hasBasicSubtypeRelation(const Type& type, const Type& other) {
   // Identity: T ⊂ T
-  if (this == &other) { return true; }
+  if (&type == &other) { return true; }
 
   // never ⊂ all
-  if (isNever()) { return true; }
+  if (isNever(type)) { return true; }
 
   // all ⊂ any
-  if (other.isAny()) { return true; }
+  if (isAny(other)) { return true; }
 
   // Error type is compatible with everything (both directions)
   // If this is error, it's compatible with anything (handled by ErrorType::isSubtypeOf override)
   // If other is error, anything is compatible with it
-  if (other.isError()) { return true; }
+  if (isError(other)) { return true; }
 
   // Structural equality implies subtyping
-  if (equals(other)) { return true; }
+  if (type.equals(other)) { return true; }
 
   return false;
 }
 
-bool Type::isAssignableTo(const Type& other) const {
+bool isAssignableTo(const Type& type, const Type& other) {
   // Subtyping implies assignability
-  if (isSubtypeOf(other)) { return true; }
+  if (type.isSubtypeOf(other)) { return true; }
 
   // Numeric widening
-  if (isNumeric() && other.isNumeric()) {
-    auto thisK = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+  if (isNumeric(type) && isNumeric(other)) {
+    auto thisK = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
     auto otherK = static_cast<const PrimitiveType&>(other).getPrimitiveKind();
 
     // Signed integer widening
@@ -176,8 +168,8 @@ bool Type::isAssignableTo(const Type& other) const {
     if (thisK == PrimitiveKind::F32 && otherK == PrimitiveKind::F64) { return true; }
 
     // Int to float (lossy but allowed)
-    if (isInteger() && otherK == PrimitiveKind::F32) { return true; }
-    if (isInteger() && otherK == PrimitiveKind::F64) { return true; }
+    if (isInteger(type) && otherK == PrimitiveKind::F32) { return true; }
+    if (isInteger(type) && otherK == PrimitiveKind::F64) { return true; }
   }
 
   return false;

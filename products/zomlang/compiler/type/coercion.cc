@@ -42,11 +42,11 @@ CoercionResult CoercionResolver::check(const Type& source, const Type& target) c
     return CoercionResult{true, CoercionKind::Identity};
   }
 
-  if (source.isNever()) { return CoercionResult{true, CoercionKind::NeverToAny}; }
+  if (isNever(source)) { return CoercionResult{true, CoercionKind::NeverToAny}; }
 
-  if (target.isAny()) { return CoercionResult{true, CoercionKind::ToAny}; }
+  if (isAny(target)) { return CoercionResult{true, CoercionKind::ToAny}; }
 
-  if (source.isReference() && target.isReference()) {
+  if (isReference(source) && isReference(target)) {
     auto& sourceRef = static_cast<const ReferenceType&>(source);
     auto& targetRef = static_cast<const ReferenceType&>(target);
     if (sourceRef.getMutability() == Mutability::Mutable &&
@@ -56,7 +56,7 @@ CoercionResult CoercionResolver::check(const Type& source, const Type& target) c
     }
   }
 
-  if (source.isRawPointer() && target.isRawPointer()) {
+  if (isRawPointer(source) && isRawPointer(target)) {
     auto& sourcePtr = static_cast<const RawPointerType&>(source);
     auto& targetPtr = static_cast<const RawPointerType&>(target);
     if (sourcePtr.getMutability() == Mutability::Mutable &&
@@ -66,9 +66,9 @@ CoercionResult CoercionResolver::check(const Type& source, const Type& target) c
     }
   }
 
-  if (target.isUnion()) {
+  if (isUnion(target)) {
     auto& targetUnion = static_cast<const UnionType&>(target);
-    if (source.isNull() && targetUnion.isNullable()) {
+    if (isNull(source) && targetUnion.isNullable()) {
       return CoercionResult{true, CoercionKind::NullToNullableUnion};
     }
     if (unionContainsCoercionTarget(targetUnion, source)) {
@@ -76,7 +76,7 @@ CoercionResult CoercionResolver::check(const Type& source, const Type& target) c
     }
   }
 
-  if (source.isExistential() && target.isExistential() && source.isSubtypeOf(target)) {
+  if (isExistential(source) && isExistential(target) && source.isSubtypeOf(target)) {
     return CoercionResult{true, CoercionKind::DynUpcast};
   }
 

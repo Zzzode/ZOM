@@ -34,7 +34,7 @@ public:
   /// \brief Construct a tuple type from element types.
   explicit TupleType(zc::Vector<zc::Own<Type>> elements);
 
-  ~TupleType() noexcept(false) override;
+  ~TupleType() noexcept(false);
 
   ZC_DISALLOW_COPY(TupleType);
 

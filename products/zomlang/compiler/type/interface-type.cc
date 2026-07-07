@@ -109,7 +109,7 @@ bool InterfaceType::equals(const Type& other) const {
 }
 
 bool InterfaceType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   if (other.getKind() == TypeKind::Interface) {
     auto& otherIface = static_cast<const InterfaceType&>(other);

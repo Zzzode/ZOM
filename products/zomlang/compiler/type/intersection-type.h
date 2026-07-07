@@ -39,7 +39,7 @@ public:
   /// \brief Construct an intersection type from conjuncts.
   explicit IntersectionType(zc::Vector<zc::Own<Type>> conjuncts);
 
-  ~IntersectionType() noexcept(false) override;
+  ~IntersectionType() noexcept(false);
 
   ZC_DISALLOW_COPY(IntersectionType);
 

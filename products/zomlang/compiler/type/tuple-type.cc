@@ -71,10 +71,10 @@ bool TupleType::equals(const Type& other) const {
 }
 
 bool TupleType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   // Empty tuple is equivalent to unit
-  if (isEmpty() && other.isUnit()) { return true; }
+  if (isEmpty() && isUnit(other)) { return true; }
 
   if (other.getKind() != TypeKind::Tuple) { return false; }
 

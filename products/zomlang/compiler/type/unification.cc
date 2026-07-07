@@ -66,13 +66,13 @@ UnificationEngine::UnifyResult UnificationEngine::tryUnify(const Type& a, const 
   if (&repA == &repB) { return success(); }
 
   // Rule 12: ErrorType unifies with everything (error recovery).
-  if (repA.isError() || repB.isError()) { return success(); }
+  if (isError(repA) || isError(repB)) { return success(); }
 
   // Rule 1: Type variable binding.
   // If either representative is an unbound TypeVar, bind it via the
   // union-find structure.
-  if (repA.isTypeVar() || repB.isTypeVar()) {
-    if (repA.isTypeVar()) {
+  if (isTypeVar(repA) || isTypeVar(repB)) {
+    if (isTypeVar(repA)) {
       auto& varA = static_cast<const TypeVar&>(repA);
       if (!unifyVarWith(varA, repB)) {
         auto kind = env_.occursIn(varA, repB) ? UnifyResult::FailureKind::InfiniteType
@@ -203,14 +203,18 @@ bool UnificationEngine::unifyVarWith(const TypeVar& var, const Type& other) {
     const Type& bound = var.getUpperBound(i);
     // Resolve the bound through the env in case it contains type variables.
     const Type& resolvedBound = env_.find(bound);
-    if (!other.isSubtypeOf(resolvedBound) && !other.isAssignableTo(resolvedBound)) { return false; }
+    if (!other.isSubtypeOf(resolvedBound) && !isAssignableTo(other, resolvedBound)) {
+      return false;
+    }
   }
 
   // Validate lower bounds: each lower bound must be a subtype of other.
   for (size_t i = 0; i < var.getLowerBoundCount(); ++i) {
     const Type& bound = var.getLowerBound(i);
     const Type& resolvedBound = env_.find(bound);
-    if (!resolvedBound.isSubtypeOf(other) && !resolvedBound.isAssignableTo(other)) { return false; }
+    if (!resolvedBound.isSubtypeOf(other) && !isAssignableTo(resolvedBound, other)) {
+      return false;
+    }
   }
 
   // Bind via the union-find structure. The unite() method handles:

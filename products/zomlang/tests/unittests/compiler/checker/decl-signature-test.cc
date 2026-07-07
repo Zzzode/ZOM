@@ -85,7 +85,7 @@ ZC_TEST("DeclSignature.FunctionDeclHasSignature") {
   // The function declaration should have a type assigned
   ZC_EXPECT(typeEnv.hasType(fn));
   auto& ty = typeEnv.getType(fn);
-  ZC_EXPECT(ty.isFunction());
+  ZC_EXPECT(isFunction(ty));
 }
 
 ZC_TEST("DeclSignature.FunctionWithParamsHasParamTypes") {
@@ -105,7 +105,7 @@ ZC_TEST("DeclSignature.FunctionWithParamsHasParamTypes") {
 
   ZC_EXPECT(typeEnv.hasType(fn));
   auto& ty = typeEnv.getType(fn);
-  ZC_EXPECT(ty.isFunction());
+  ZC_EXPECT(isFunction(ty));
 
   auto& fnTy = static_cast<const type::FunctionType&>(ty);
   ZC_EXPECT(fnTy.getParamCount() == 2);
@@ -133,8 +133,8 @@ ZC_TEST("DeclSignature.FunctionGenericParamPreservesBound") {
 
   ZC_EXPECT(typeEnv.hasType(fn));
   auto& ty = typeEnv.getType(fn);
-  ZC_EXPECT(ty.isFunction());
-  if (ty.isFunction()) {
+  ZC_EXPECT(isFunction(ty));
+  if (isFunction(ty)) {
     auto& fnTy = static_cast<const type::FunctionType&>(ty);
     ZC_EXPECT(fnTy.getGenericParamCount() == 1);
     if (fnTy.getGenericParamCount() == 1) {
@@ -163,20 +163,20 @@ ZC_TEST("DeclSignature.FunctionParamAndReturnShareGenericTypeVar") {
 
   ZC_EXPECT(typeEnv.hasType(fn));
   auto& ty = typeEnv.getType(fn);
-  ZC_EXPECT(ty.isFunction());
-  if (ty.isFunction()) {
+  ZC_EXPECT(isFunction(ty));
+  if (isFunction(ty)) {
     auto& fnTy = static_cast<const type::FunctionType&>(ty);
     ZC_EXPECT(fnTy.getParamCount() == 1);
-    ZC_EXPECT(fnTy.getParamType(0).isTypeVar());
-    ZC_EXPECT(fnTy.getReturnType().isTypeVar());
-    if (fnTy.getParamType(0).isTypeVar() && fnTy.getReturnType().isTypeVar()) {
+    ZC_EXPECT(isTypeVar(fnTy.getParamType(0)));
+    ZC_EXPECT(isTypeVar(fnTy.getReturnType()));
+    if (isTypeVar(fnTy.getParamType(0)) && isTypeVar(fnTy.getReturnType())) {
       auto& paramVar = static_cast<const type::TypeVar&>(fnTy.getParamType(0));
       auto& retVar = static_cast<const type::TypeVar&>(fnTy.getReturnType());
       ZC_EXPECT(paramVar.getId() == retVar.getId());
     }
   }
   ZC_EXPECT(typeEnv.hasType(generic));
-  ZC_EXPECT(typeEnv.getType(generic).isTypeVar());
+  ZC_EXPECT(isTypeVar(typeEnv.getType(generic)));
 }
 
 ZC_TEST("DeclSignature.FunctionReturnTypeComputed") {
@@ -192,10 +192,10 @@ ZC_TEST("DeclSignature.FunctionReturnTypeComputed") {
 
   ZC_EXPECT(typeEnv.hasType(fn));
   auto& ty = typeEnv.getType(fn);
-  if (ty.isFunction()) {
+  if (isFunction(ty)) {
     auto& fnTy = static_cast<const type::FunctionType&>(ty);
     // Return type should exist and not be error
-    ZC_EXPECT(!fnTy.getReturnType().isError());
+    ZC_EXPECT(!isError(fnTy.getReturnType()));
   }
 }
 
@@ -286,8 +286,8 @@ ZC_TEST("DeclSignature.ConstDeclarationStoresAnnotatedSignature") {
 
   ZC_EXPECT(typeEnv.hasType(decl));
   auto& declType = typeEnv.getType(decl);
-  ZC_EXPECT(declType.isPrimitive());
-  if (declType.isPrimitive()) {
+  ZC_EXPECT(isPrimitive(declType));
+  if (isPrimitive(declType)) {
     auto& prim = static_cast<const type::PrimitiveType&>(declType);
     ZC_EXPECT(prim.getPrimitiveKind() == type::PrimitiveKind::I32);
   }
@@ -308,7 +308,7 @@ ZC_TEST("DeclSignature.VariableDeclWithoutTypeAnnotation") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   ZC_EXPECT(typeEnv.hasType(decl));
-  ZC_EXPECT(typeEnv.getType(decl).isError());
+  ZC_EXPECT(isError(typeEnv.getType(decl)));
 }
 
 // ============================================================================
@@ -343,7 +343,7 @@ ZC_TEST("DeclSignature.RecursiveTypeAliasCycleReportsError") {
 
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(typeEnv.hasType(aliasA));
-  ZC_EXPECT(typeEnv.getType(aliasA).isError());
+  ZC_EXPECT(isError(typeEnv.getType(aliasA)));
 }
 
 // ============================================================================
@@ -364,7 +364,7 @@ ZC_TEST("DeclSignature.ResolvePredefinedI32Type") {
   ZC_EXPECT(typeEnv.hasType(tyExpr) || typeEnv.hasType(alias));
   if (typeEnv.hasType(tyExpr)) {
     auto& ty = typeEnv.getType(tyExpr);
-    ZC_EXPECT(ty.isPrimitive() || ty.getKind() == type::TypeKind::Named);
+    ZC_EXPECT(isPrimitive(ty) || ty.getKind() == type::TypeKind::Named);
   }
 }
 
@@ -379,7 +379,7 @@ ZC_TEST("DeclSignature.ResolvePredefinedBoolType") {
 
   if (typeEnv.hasType(tyExpr)) {
     auto& ty = typeEnv.getType(tyExpr);
-    ZC_EXPECT(ty.isPrimitive() || ty.getKind() == type::TypeKind::Named);
+    ZC_EXPECT(isPrimitive(ty) || ty.getKind() == type::TypeKind::Named);
   }
 }
 
@@ -394,7 +394,7 @@ ZC_TEST("DeclSignature.ResolvePredefinedStrType") {
 
   if (typeEnv.hasType(tyExpr)) {
     auto& ty = typeEnv.getType(tyExpr);
-    ZC_EXPECT(ty.isPrimitive() || ty.getKind() == type::TypeKind::Named);
+    ZC_EXPECT(isPrimitive(ty) || ty.getKind() == type::TypeKind::Named);
   }
 }
 
@@ -416,11 +416,11 @@ ZC_TEST("DeclSignature.ResolveFunctionTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isFunction());
-  if (ty.isFunction()) {
+  ZC_EXPECT(isFunction(ty));
+  if (isFunction(ty)) {
     auto& fnTy = static_cast<const type::FunctionType&>(ty);
     ZC_EXPECT(fnTy.getParamCount() == 1);
-    ZC_EXPECT(fnTy.getReturnType().isPrimitive());
+    ZC_EXPECT(isPrimitive(fnTy.getReturnType()));
   }
 }
 
@@ -443,8 +443,8 @@ ZC_TEST("DeclSignature.ResolveTupleTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isTuple());
-  if (ty.isTuple()) {
+  ZC_EXPECT(isTuple(ty));
+  if (isTuple(ty)) {
     auto& tupleTy = static_cast<const type::TupleType&>(ty);
     ZC_EXPECT(tupleTy.getElementCount() == 2);
   }
@@ -465,7 +465,7 @@ ZC_TEST("DeclSignature.ResolveArrayTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isArray());
+  ZC_EXPECT(isArray(ty));
 }
 
 // ============================================================================
@@ -483,8 +483,8 @@ ZC_TEST("DeclSignature.ResolveOptionalTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isUnion());
-  if (ty.isUnion()) {
+  ZC_EXPECT(isUnion(ty));
+  if (isUnion(ty)) {
     auto& unionTy = static_cast<const type::UnionType&>(ty);
     ZC_EXPECT(unionTy.isNullable());
   }
@@ -505,8 +505,8 @@ ZC_TEST("DeclSignature.ResolveReferenceTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isReference());
-  if (ty.isReference()) {
+  ZC_EXPECT(isReference(ty));
+  if (isReference(ty)) {
     auto& refTy = static_cast<const type::ReferenceType&>(ty);
     ZC_EXPECT(refTy.getMutability() == type::Mutability::Const);
   }
@@ -523,8 +523,8 @@ ZC_TEST("DeclSignature.ResolveMutableReferenceTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isReference());
-  if (ty.isReference()) {
+  ZC_EXPECT(isReference(ty));
+  if (isReference(ty)) {
     auto& refTy = static_cast<const type::ReferenceType&>(ty);
     ZC_EXPECT(refTy.getMutability() == type::Mutability::Mutable);
   }
@@ -545,8 +545,8 @@ ZC_TEST("DeclSignature.ResolveRawPointerTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isRawPointer());
-  if (ty.isRawPointer()) {
+  ZC_EXPECT(isRawPointer(ty));
+  if (isRawPointer(ty)) {
     auto& ptrTy = static_cast<const type::RawPointerType&>(ty);
     ZC_EXPECT(ptrTy.getMutability() == type::Mutability::Const);
   }
@@ -563,8 +563,8 @@ ZC_TEST("DeclSignature.ResolveMutableRawPointerTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isRawPointer());
-  if (ty.isRawPointer()) {
+  ZC_EXPECT(isRawPointer(ty));
+  if (isRawPointer(ty)) {
     auto& ptrTy = static_cast<const type::RawPointerType&>(ty);
     ZC_EXPECT(ptrTy.getMutability() == type::Mutability::Mutable);
   }
@@ -586,8 +586,8 @@ ZC_TEST("DeclSignature.ResolveUnionTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isUnion());
-  if (ty.isUnion()) {
+  ZC_EXPECT(isUnion(ty));
+  if (isUnion(ty)) {
     auto& unionTy = static_cast<const type::UnionType&>(ty);
     ZC_EXPECT(unionTy.getAlternativeCount() == 2);
   }
@@ -609,8 +609,8 @@ ZC_TEST("DeclSignature.ResolveIntersectionTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isIntersection());
-  if (ty.isIntersection()) {
+  ZC_EXPECT(isIntersection(ty));
+  if (isIntersection(ty)) {
     auto& interTy = static_cast<const type::IntersectionType&>(ty);
     ZC_EXPECT(interTy.getConjunctCount() == 2);
   }
@@ -631,7 +631,7 @@ ZC_TEST("DeclSignature.ResolveDynTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isExistential());
+  ZC_EXPECT(isExistential(ty));
 }
 
 ZC_TEST("DeclSignature.ResolveObjectTypeExpr") {
@@ -647,8 +647,8 @@ ZC_TEST("DeclSignature.ResolveObjectTypeExpr") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(ty.isObject());
-  if (ty.isObject()) {
+  ZC_EXPECT(isObject(ty));
+  if (isObject(ty)) {
     auto& objTy = static_cast<const type::ObjectType&>(ty);
     ZC_EXPECT(objTy.getMemberCount() == 2);
     ZC_EXPECT(objTy.hasMember("x"_zc));

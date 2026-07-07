@@ -131,9 +131,9 @@ bool PrimitiveType::equals(const Type& other) const {
 
 bool PrimitiveType::isSubtypeOf(const Type& other) const {
   // Check base rules first (identity, never, any)
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
-  if (impl->kind == PrimitiveKind::Null && other.isUnion()) {
+  if (impl->kind == PrimitiveKind::Null && isUnion(other)) {
     auto& unionTy = static_cast<const UnionType&>(other);
     return unionTy.isNullable();
   }

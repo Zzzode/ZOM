@@ -39,7 +39,7 @@ public:
   /// \brief Construct an existential type for the given interface.
   explicit ExistentialType(zc::Own<Type> interfaceType);
 
-  ~ExistentialType() noexcept(false) override;
+  ~ExistentialType() noexcept(false);
 
   ZC_DISALLOW_COPY(ExistentialType);
 

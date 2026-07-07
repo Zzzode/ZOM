@@ -34,7 +34,7 @@ public:
   /// \brief Construct an array type with the given element type.
   explicit ArrayType(zc::Own<Type> elementType);
 
-  ~ArrayType() noexcept(false) override;
+  ~ArrayType() noexcept(false);
 
   ZC_DISALLOW_COPY(ArrayType);
 

@@ -48,7 +48,7 @@ bool ExistentialType::equals(const Type& other) const {
 }
 
 bool ExistentialType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   // dyn Interface is subtype of Interface (it satisfies the interface)
   if (impl->interfaceType->equals(other)) { return true; }

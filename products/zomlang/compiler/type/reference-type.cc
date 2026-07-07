@@ -61,9 +61,9 @@ bool ReferenceType::equals(const Type& other) const {
 }
 
 bool ReferenceType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
-  if (other.isNull()) { return false; }
+  if (isNull(other)) { return false; }
 
   if (other.getKind() != TypeKind::Reference) { return false; }
 

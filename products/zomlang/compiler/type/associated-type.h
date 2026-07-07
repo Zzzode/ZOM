@@ -43,7 +43,7 @@ public:
   /// \param name The associated type name (e.g., "Item" in T::Item)
   AssociatedType(zc::Own<Type> parent, zc::StringPtr name);
 
-  ~AssociatedType() noexcept(false) override;
+  ~AssociatedType() noexcept(false);
 
   ZC_DISALLOW_COPY(AssociatedType);
 

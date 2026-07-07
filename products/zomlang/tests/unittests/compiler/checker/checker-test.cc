@@ -112,7 +112,7 @@ ZC_TEST("Checker.ChecksValidAnnotatedLocal") {
   ZC_EXPECT(result.checkSuccess);
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(result.typeEnv.getType(decl).isPrimitive());
+  ZC_EXPECT(isPrimitive(result.typeEnv.getType(decl)));
 }
 
 ZC_TEST("Checker.RejectsAnnotatedLocalTypeMismatch") {
@@ -133,7 +133,7 @@ ZC_TEST("Checker.RejectsAnnotatedLocalTypeMismatch") {
   ZC_EXPECT(!result.checkSuccess);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(result.typeEnv.getType(decl).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(decl)));
 }
 
 ZC_TEST("Checker.RejectsUndefinedIdentifier") {
@@ -171,7 +171,7 @@ ZC_TEST("Checker.RejectsFunctionArgumentTypeMismatch") {
   ZC_EXPECT(!result.checkSuccess);
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(call));
-  ZC_EXPECT(result.typeEnv.getType(call).isError());
+  ZC_EXPECT(isError(result.typeEnv.getType(call)));
 }
 
 ZC_TEST("Checker.DoesNotMutateAstNodes") {

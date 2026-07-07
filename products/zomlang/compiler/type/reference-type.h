@@ -34,7 +34,7 @@ public:
   /// \brief Construct a reference type.
   ReferenceType(zc::Own<Type> pointee, Mutability mutability);
 
-  ~ReferenceType() noexcept(false) override;
+  ~ReferenceType() noexcept(false);
 
   ZC_DISALLOW_COPY(ReferenceType);
 

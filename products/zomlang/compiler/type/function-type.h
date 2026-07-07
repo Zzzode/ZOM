@@ -38,7 +38,7 @@ public:
   /// \brief Construct a function type with parameter and return types.
   FunctionType(zc::Vector<zc::Own<Type>> params, zc::Own<Type> returnType);
 
-  ~FunctionType() noexcept(false) override;
+  ~FunctionType() noexcept(false);
 
   ZC_DISALLOW_COPY(FunctionType);
 

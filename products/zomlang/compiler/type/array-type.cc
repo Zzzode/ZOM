@@ -45,7 +45,7 @@ bool ArrayType::equals(const Type& other) const {
 }
 
 bool ArrayType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   if (other.getKind() != TypeKind::Array) { return false; }
 

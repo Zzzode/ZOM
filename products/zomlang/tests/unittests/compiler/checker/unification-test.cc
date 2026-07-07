@@ -136,7 +136,7 @@ ZC_TEST("Unify.TypeVarUnifiesWithI32") {
 
   // After unification, the type var should be bound to i32
   auto& resolved = env.resolve(tv);
-  ZC_EXPECT(resolved.isPrimitive());
+  ZC_EXPECT(isPrimitive(resolved));
 }
 
 ZC_TEST("Unify.I32UnifiesWithTypeVar") {
@@ -148,7 +148,7 @@ ZC_TEST("Unify.I32UnifiesWithTypeVar") {
   ZC_EXPECT(unifier.unify(*i32, tv));
 
   auto& resolved = env.resolve(tv);
-  ZC_EXPECT(resolved.isPrimitive());
+  ZC_EXPECT(isPrimitive(resolved));
 }
 
 ZC_TEST("Unify.TwoTypeVarsUnify") {
@@ -179,8 +179,8 @@ ZC_TEST("Unify.TypeVarUnifiesWithTypeVarThenBothResolve") {
   // Both tv1 and tv2 should now resolve to i32
   auto& r1 = env.resolve(tv1);
   auto& r2 = env.resolve(tv2);
-  ZC_EXPECT(r1.isPrimitive());
-  ZC_EXPECT(r2.isPrimitive());
+  ZC_EXPECT(isPrimitive(r1));
+  ZC_EXPECT(isPrimitive(r2));
 }
 
 ZC_TEST("Unify.TypeVarOccursCheckPreventsInfinite") {
@@ -211,7 +211,7 @@ ZC_TEST("Unify.TypeVarWithSelfReferentialFunctionFailsOccursCheck") {
   ZC_EXPECT(!result.success);
   ZC_EXPECT(result.failureKind == UnificationEngine::UnifyResult::FailureKind::InfiniteType);
   ZC_EXPECT(result.errorMsg.size() > 0);
-  ZC_EXPECT(env.find(tv).isTypeVar());
+  ZC_EXPECT(isTypeVar(env.find(tv)));
 }
 
 // ============================================================================
@@ -307,7 +307,7 @@ ZC_TEST("Unify.FunctionTypesWithTypeVars") {
 
   // The type var should now resolve to i32
   auto& resolved = env.resolve(tv);
-  ZC_EXPECT(resolved.isPrimitive());
+  ZC_EXPECT(isPrimitive(resolved));
 }
 
 // ============================================================================
@@ -660,7 +660,7 @@ ZC_TEST("Unify.TypeVarInFunctionParam") {
 
   ZC_EXPECT(unifier.unify(fn1, fn2));
   auto& resolved = env.resolve(tv);
-  ZC_EXPECT(resolved.isPrimitive());
+  ZC_EXPECT(isPrimitive(resolved));
 }
 
 ZC_TEST("Unify.UnionTypeWithI32Fails") {

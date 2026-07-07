@@ -136,7 +136,7 @@ bool FunctionType::equals(const Type& other) const {
 }
 
 bool FunctionType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   if (other.getKind() != TypeKind::Function) { return false; }
 

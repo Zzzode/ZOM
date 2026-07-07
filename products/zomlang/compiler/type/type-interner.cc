@@ -67,7 +67,7 @@ zc::String joinKeys(zc::StringPtr prefix, zc::StringPtr separator, zc::Vector<zc
 zc::String canonicalKey(const Type& type);
 
 void collectUnionKeys(const Type& type, zc::Vector<zc::String>& keys) {
-  if (type.isUnion()) {
+  if (isUnion(type)) {
     auto& unionType = static_cast<const UnionType&>(type);
     for (size_t i = 0; i < unionType.getAlternativeCount(); ++i) {
       collectUnionKeys(unionType.getAlternative(i), keys);
@@ -75,13 +75,13 @@ void collectUnionKeys(const Type& type, zc::Vector<zc::String>& keys) {
     return;
   }
 
-  if (type.isNever()) { return; }
+  if (isNever(type)) { return; }
 
   addUnique(keys, canonicalKey(type));
 }
 
 void collectIntersectionKeys(const Type& type, zc::Vector<zc::String>& keys, bool& hasNever) {
-  if (type.isIntersection()) {
+  if (isIntersection(type)) {
     auto& intersectionType = static_cast<const IntersectionType&>(type);
     for (size_t i = 0; i < intersectionType.getConjunctCount(); ++i) {
       collectIntersectionKeys(intersectionType.getConjunct(i), keys, hasNever);
@@ -89,7 +89,7 @@ void collectIntersectionKeys(const Type& type, zc::Vector<zc::String>& keys, boo
     return;
   }
 
-  if (type.isNever()) {
+  if (isNever(type)) {
     hasNever = true;
     return;
   }
@@ -98,7 +98,7 @@ void collectIntersectionKeys(const Type& type, zc::Vector<zc::String>& keys, boo
 }
 
 zc::String canonicalKey(const Type& type) {
-  if (type.isUnion()) {
+  if (isUnion(type)) {
     zc::Vector<zc::String> keys;
     collectUnionKeys(type, keys);
     if (keys.empty()) { return zc::str("never"); }
@@ -107,7 +107,7 @@ zc::String canonicalKey(const Type& type) {
     return joinKeys("union"_zc, " | "_zc, keys);
   }
 
-  if (type.isIntersection()) {
+  if (isIntersection(type)) {
     zc::Vector<zc::String> keys;
     bool hasNever = false;
     collectIntersectionKeys(type, keys, hasNever);

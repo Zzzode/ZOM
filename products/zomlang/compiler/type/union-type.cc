@@ -48,7 +48,7 @@ bool UnionType::contains(const Type& type) const {
 
 bool UnionType::isNullable() const {
   for (size_t i = 0; i < impl->alternatives.size(); ++i) {
-    if (impl->alternatives[i]->isNull()) { return true; }
+    if (isNull(*impl->alternatives[i])) { return true; }
   }
   return false;
 }
@@ -81,7 +81,7 @@ bool UnionType::equals(const Type& other) const {
 }
 
 bool UnionType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   // T ⊂ T|E: each alternative is subtype of the union
   // For union subtyping: A|B ⊂ C iff A ⊂ C and B ⊂ C

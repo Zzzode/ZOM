@@ -41,7 +41,7 @@ public:
   /// \brief Construct a type variable with a name and unique ID.
   TypeVar(zc::StringPtr name, uint64_t id);
 
-  ~TypeVar() noexcept(false) override;
+  ~TypeVar() noexcept(false);
 
   ZC_DISALLOW_COPY(TypeVar);
 

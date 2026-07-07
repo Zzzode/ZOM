@@ -45,81 +45,81 @@ ZC_TEST("PrimitiveType.CreateI32") {
   auto ty = PrimitiveType::createI32();
   ZC_EXPECT(ty->getKind() == TypeKind::Primitive);
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::I32);
-  ZC_EXPECT(ty->isPrimitive());
-  ZC_EXPECT(ty->isInteger());
-  ZC_EXPECT(ty->isNumeric());
-  ZC_EXPECT(ty->isSignedInteger());
+  ZC_EXPECT(isPrimitive(*ty));
+  ZC_EXPECT(isInteger(*ty));
+  ZC_EXPECT(isNumeric(*ty));
+  ZC_EXPECT(isSignedInteger(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateI8") {
   auto ty = PrimitiveType::createI8();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::I8);
-  ZC_EXPECT(ty->isInteger());
-  ZC_EXPECT(ty->isSignedInteger());
+  ZC_EXPECT(isInteger(*ty));
+  ZC_EXPECT(isSignedInteger(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateI16") {
   auto ty = PrimitiveType::createI16();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::I16);
-  ZC_EXPECT(ty->isInteger());
+  ZC_EXPECT(isInteger(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateI64") {
   auto ty = PrimitiveType::createI64();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::I64);
-  ZC_EXPECT(ty->isInteger());
+  ZC_EXPECT(isInteger(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateU8") {
   auto ty = PrimitiveType::createU8();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::U8);
-  ZC_EXPECT(ty->isInteger());
-  ZC_EXPECT(ty->isUnsignedInteger());
+  ZC_EXPECT(isInteger(*ty));
+  ZC_EXPECT(isUnsignedInteger(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateU16") {
   auto ty = PrimitiveType::createU16();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::U16);
-  ZC_EXPECT(ty->isUnsignedInteger());
+  ZC_EXPECT(isUnsignedInteger(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateU32") {
   auto ty = PrimitiveType::createU32();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::U32);
-  ZC_EXPECT(ty->isUnsignedInteger());
+  ZC_EXPECT(isUnsignedInteger(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateU64") {
   auto ty = PrimitiveType::createU64();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::U64);
-  ZC_EXPECT(ty->isUnsignedInteger());
+  ZC_EXPECT(isUnsignedInteger(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateF32") {
   auto ty = PrimitiveType::createF32();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::F32);
-  ZC_EXPECT(ty->isFloatingPoint());
-  ZC_EXPECT(ty->isNumeric());
+  ZC_EXPECT(isFloatingPoint(*ty));
+  ZC_EXPECT(isNumeric(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateF64") {
   auto ty = PrimitiveType::createF64();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::F64);
-  ZC_EXPECT(ty->isFloatingPoint());
-  ZC_EXPECT(ty->isNumeric());
+  ZC_EXPECT(isFloatingPoint(*ty));
+  ZC_EXPECT(isNumeric(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateBool") {
   auto ty = PrimitiveType::createBool();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::Bool);
-  ZC_EXPECT(!ty->isNumeric());
-  ZC_EXPECT(!ty->isInteger());
+  ZC_EXPECT(!isNumeric(*ty));
+  ZC_EXPECT(!isInteger(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateStr") {
   auto ty = PrimitiveType::createStr();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::Str);
-  ZC_EXPECT(!ty->isNumeric());
+  ZC_EXPECT(!isNumeric(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateChar") {
@@ -130,25 +130,25 @@ ZC_TEST("PrimitiveType.CreateChar") {
 ZC_TEST("PrimitiveType.CreateNull") {
   auto ty = PrimitiveType::createNull();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::Null);
-  ZC_EXPECT(ty->isNull());
+  ZC_EXPECT(isNull(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateUnit") {
   auto ty = PrimitiveType::createUnit();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::Unit);
-  ZC_EXPECT(ty->isUnit());
+  ZC_EXPECT(isUnit(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateNever") {
   auto ty = PrimitiveType::createNever();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::Never);
-  ZC_EXPECT(ty->isNever());
+  ZC_EXPECT(isNever(*ty));
 }
 
 ZC_TEST("PrimitiveType.CreateAny") {
   auto ty = PrimitiveType::createAny();
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::Any);
-  ZC_EXPECT(ty->isAny());
+  ZC_EXPECT(isAny(*ty));
 }
 
 // ============================================================================
@@ -349,10 +349,10 @@ ZC_TEST("FunctionType.CreateSimple") {
   FunctionType fnTy(zc::mv(params), zc::mv(ret));
 
   ZC_EXPECT(fnTy.getKind() == TypeKind::Function);
-  ZC_EXPECT(fnTy.isFunction());
+  ZC_EXPECT(isFunction(fnTy));
   ZC_EXPECT(fnTy.getParamCount() == 1);
-  ZC_EXPECT(fnTy.getParamType(0).isPrimitive());
-  ZC_EXPECT(fnTy.getReturnType().isPrimitive());
+  ZC_EXPECT(isPrimitive(fnTy.getParamType(0)));
+  ZC_EXPECT(isPrimitive(fnTy.getReturnType()));
 }
 
 ZC_TEST("FunctionType.CreateNoParams") {
@@ -361,7 +361,7 @@ ZC_TEST("FunctionType.CreateNoParams") {
   FunctionType fnTy(zc::mv(params), zc::mv(ret));
 
   ZC_EXPECT(fnTy.getParamCount() == 0);
-  ZC_EXPECT(fnTy.getReturnType().isUnit());
+  ZC_EXPECT(isUnit(fnTy.getReturnType()));
 }
 
 ZC_TEST("FunctionType.CreateMultipleParams") {
@@ -452,7 +452,7 @@ ZC_TEST("TupleType.CreateEmpty") {
   TupleType tuple(zc::mv(elems));
 
   ZC_EXPECT(tuple.getKind() == TypeKind::Tuple);
-  ZC_EXPECT(tuple.isTuple());
+  ZC_EXPECT(isTuple(tuple));
   ZC_EXPECT(tuple.getElementCount() == 0);
   ZC_EXPECT(tuple.isEmpty());
 }
@@ -464,7 +464,7 @@ ZC_TEST("TupleType.CreateSingle") {
 
   ZC_EXPECT(tuple.getElementCount() == 1);
   ZC_EXPECT(!tuple.isEmpty());
-  ZC_EXPECT(tuple.getElementType(0).isPrimitive());
+  ZC_EXPECT(isPrimitive(tuple.getElementType(0)));
 }
 
 ZC_TEST("TupleType.CreateMultiple") {
@@ -521,8 +521,8 @@ ZC_TEST("TupleType.ToString") {
 ZC_TEST("ArrayType.CreateI32Array") {
   ArrayType arr(PrimitiveType::createI32());
   ZC_EXPECT(arr.getKind() == TypeKind::Array);
-  ZC_EXPECT(arr.isArray());
-  ZC_EXPECT(arr.getElementType().isPrimitive());
+  ZC_EXPECT(isArray(arr));
+  ZC_EXPECT(isPrimitive(arr.getElementType()));
 }
 
 ZC_TEST("ArrayType.CreateStrArray") {
@@ -558,8 +558,8 @@ ZC_TEST("ObjectType.MemberLookupUsesStableNameContents") {
   auto name = obj.getMember("name"_zc);
   ZC_EXPECT(x != zc::none);
   ZC_EXPECT(name != zc::none);
-  ZC_IF_SOME(xTy, x) { ZC_EXPECT(xTy.isPrimitive()); }
-  ZC_IF_SOME(nameTy, name) { ZC_EXPECT(nameTy.isPrimitive()); }
+  ZC_IF_SOME(xTy, x) { ZC_EXPECT(isPrimitive(xTy)); }
+  ZC_IF_SOME(nameTy, name) { ZC_EXPECT(isPrimitive(nameTy)); }
 }
 
 // ============================================================================
@@ -569,7 +569,7 @@ ZC_TEST("ObjectType.MemberLookupUsesStableNameContents") {
 ZC_TEST("NamedType.CreateWithName") {
   NamedType ty("MyClass"_zc);
   ZC_EXPECT(ty.getKind() == TypeKind::Named);
-  ZC_EXPECT(ty.isNamed());
+  ZC_EXPECT(isNamed(ty));
   ZC_EXPECT(ty.getName() == "MyClass"_zc);
 }
 
@@ -600,7 +600,7 @@ ZC_TEST("NamedType.AddTypeArg") {
   NamedType ty("Vec"_zc);
   ty.addTypeArg(PrimitiveType::createI32());
   ZC_EXPECT(ty.getTypeArgCount() == 1);
-  ZC_EXPECT(ty.getTypeArg(0).isPrimitive());
+  ZC_EXPECT(isPrimitive(ty.getTypeArg(0)));
 }
 
 ZC_TEST("NamedType.NameLookupUsesStableNameContents") {
@@ -617,7 +617,7 @@ ZC_TEST("NamedType.NameLookupUsesStableNameContents") {
 ZC_TEST("TypeVar.CreateWithName") {
   TypeVar tv("T"_zc);
   ZC_EXPECT(tv.getKind() == TypeKind::TypeVar);
-  ZC_EXPECT(tv.isTypeVar());
+  ZC_EXPECT(isTypeVar(tv));
   ZC_EXPECT(tv.getName() == "T"_zc);
 }
 
@@ -670,7 +670,7 @@ ZC_TEST("TypeVar.AddLowerBound") {
 ZC_TEST("ReferenceType.CreateConstRef") {
   ReferenceType ref(PrimitiveType::createI32(), Mutability::Const);
   ZC_EXPECT(ref.getKind() == TypeKind::Reference);
-  ZC_EXPECT(ref.isReference());
+  ZC_EXPECT(isReference(ref));
   ZC_EXPECT(!ref.isMutable());
   ZC_EXPECT(ref.getMutability() == Mutability::Const);
 }
@@ -683,7 +683,7 @@ ZC_TEST("ReferenceType.CreateMutableRef") {
 
 ZC_TEST("ReferenceType.PointeeType") {
   ReferenceType ref(PrimitiveType::createI32(), Mutability::Const);
-  ZC_EXPECT(ref.getPointeeType().isPrimitive());
+  ZC_EXPECT(isPrimitive(ref.getPointeeType()));
 }
 
 ZC_TEST("ReferenceType.Equality") {
@@ -717,7 +717,7 @@ ZC_TEST("ReferenceType.ToString") {
 ZC_TEST("RawPointerType.CreateConst") {
   RawPointerType ptr(PrimitiveType::createI32(), Mutability::Const);
   ZC_EXPECT(ptr.getKind() == TypeKind::RawPointer);
-  ZC_EXPECT(ptr.isRawPointer());
+  ZC_EXPECT(isRawPointer(ptr));
   ZC_EXPECT(!ptr.isMutable());
 }
 
@@ -749,7 +749,7 @@ ZC_TEST("UnionType.CreateTwoAlternatives") {
   UnionType unionTy(zc::mv(alts));
 
   ZC_EXPECT(unionTy.getKind() == TypeKind::Union);
-  ZC_EXPECT(unionTy.isUnion());
+  ZC_EXPECT(isUnion(unionTy));
   ZC_EXPECT(unionTy.getAlternativeCount() == 2);
 }
 
@@ -808,7 +808,7 @@ ZC_TEST("UnionType.ToString") {
 ZC_TEST("InterfaceType.CreateWithName") {
   InterfaceType iface("Drawable"_zc);
   ZC_EXPECT(iface.getKind() == TypeKind::Interface);
-  ZC_EXPECT(iface.isInterface());
+  ZC_EXPECT(isInterface(iface));
   ZC_EXPECT(iface.getName() == "Drawable"_zc);
 }
 
@@ -821,7 +821,7 @@ ZC_TEST("InterfaceType.AddMethodAndParent") {
   ZC_EXPECT(iface.getMethodCount() == 1);
   ZC_EXPECT(iface.hasMethod("draw"_zc));
   ZC_EXPECT(iface.getParentInterfaceCount() == 1);
-  ZC_EXPECT(iface.getParentInterface(0).isInterface());
+  ZC_EXPECT(isInterface(iface.getParentInterface(0)));
 }
 
 // ============================================================================
@@ -835,7 +835,7 @@ ZC_TEST("IntersectionType.CreateTwoConjuncts") {
   IntersectionType inter(zc::mv(conjuncts));
 
   ZC_EXPECT(inter.getKind() == TypeKind::Intersection);
-  ZC_EXPECT(inter.isIntersection());
+  ZC_EXPECT(isIntersection(inter));
   ZC_EXPECT(inter.getConjunctCount() == 2);
 }
 
@@ -861,8 +861,8 @@ ZC_TEST("ExistentialType.CreateDynInterface") {
   ExistentialType dynDrawable(zc::heap<InterfaceType>("Drawable"_zc));
 
   ZC_EXPECT(dynDrawable.getKind() == TypeKind::Existential);
-  ZC_EXPECT(dynDrawable.isExistential());
-  ZC_EXPECT(dynDrawable.getInterfaceType().isInterface());
+  ZC_EXPECT(isExistential(dynDrawable));
+  ZC_EXPECT(isInterface(dynDrawable.getInterfaceType()));
 }
 
 ZC_TEST("ExistentialType.UpcastsThroughInterfaceParent") {
@@ -882,9 +882,9 @@ ZC_TEST("AssociatedType.CreateProjection") {
   AssociatedType item(zc::heap<NamedType>("Iterator"_zc), "Item"_zc);
 
   ZC_EXPECT(item.getKind() == TypeKind::Associated);
-  ZC_EXPECT(item.isAssociated());
+  ZC_EXPECT(isAssociated(item));
   ZC_EXPECT(item.getName() == "Item"_zc);
-  ZC_EXPECT(item.getParentType().isNamed());
+  ZC_EXPECT(isNamed(item.getParentType()));
 }
 
 ZC_TEST("AssociatedType.Equality") {
@@ -901,12 +901,12 @@ ZC_TEST("AssociatedType.Equality") {
 ZC_TEST("ErrorType.CreateDefault") {
   ErrorType err;
   ZC_EXPECT(err.getKind() == TypeKind::Error);
-  ZC_EXPECT(err.isError());
+  ZC_EXPECT(isError(err));
 }
 
 ZC_TEST("ErrorType.CreateWithMessage") {
   ErrorType err("test error"_zc);
-  ZC_EXPECT(err.isError());
+  ZC_EXPECT(isError(err));
   ZC_EXPECT(err.getMessage() == "test error"_zc);
 }
 
@@ -930,57 +930,57 @@ ZC_TEST("ErrorType.ToString") {
 
 ZC_TEST("Type.IsNumericI32") {
   auto ty = PrimitiveType::createI32();
-  ZC_EXPECT(ty->isNumeric());
+  ZC_EXPECT(isNumeric(*ty));
 }
 
 ZC_TEST("Type.IsNumericF64") {
   auto ty = PrimitiveType::createF64();
-  ZC_EXPECT(ty->isNumeric());
+  ZC_EXPECT(isNumeric(*ty));
 }
 
 ZC_TEST("Type.IsNumericBool") {
   auto ty = PrimitiveType::createBool();
-  ZC_EXPECT(!ty->isNumeric());
+  ZC_EXPECT(!isNumeric(*ty));
 }
 
 ZC_TEST("Type.IsIntegerI32") {
   auto ty = PrimitiveType::createI32();
-  ZC_EXPECT(ty->isInteger());
+  ZC_EXPECT(isInteger(*ty));
 }
 
 ZC_TEST("Type.IsIntegerF64") {
   auto ty = PrimitiveType::createF64();
-  ZC_EXPECT(!ty->isInteger());
+  ZC_EXPECT(!isInteger(*ty));
 }
 
 ZC_TEST("Type.IsSignedIntegerI32") {
   auto ty = PrimitiveType::createI32();
-  ZC_EXPECT(ty->isSignedInteger());
+  ZC_EXPECT(isSignedInteger(*ty));
 }
 
 ZC_TEST("Type.IsSignedIntegerU32") {
   auto ty = PrimitiveType::createU32();
-  ZC_EXPECT(!ty->isSignedInteger());
+  ZC_EXPECT(!isSignedInteger(*ty));
 }
 
 ZC_TEST("Type.IsUnsignedIntegerU32") {
   auto ty = PrimitiveType::createU32();
-  ZC_EXPECT(ty->isUnsignedInteger());
+  ZC_EXPECT(isUnsignedInteger(*ty));
 }
 
 ZC_TEST("Type.IsUnsignedIntegerI32") {
   auto ty = PrimitiveType::createI32();
-  ZC_EXPECT(!ty->isUnsignedInteger());
+  ZC_EXPECT(!isUnsignedInteger(*ty));
 }
 
 ZC_TEST("Type.IsFloatingPointF32") {
   auto ty = PrimitiveType::createF32();
-  ZC_EXPECT(ty->isFloatingPoint());
+  ZC_EXPECT(isFloatingPoint(*ty));
 }
 
 ZC_TEST("Type.IsFloatingPointI32") {
   auto ty = PrimitiveType::createI32();
-  ZC_EXPECT(!ty->isFloatingPoint());
+  ZC_EXPECT(!isFloatingPoint(*ty));
 }
 
 // ============================================================================
@@ -989,19 +989,19 @@ ZC_TEST("Type.IsFloatingPointI32") {
 
 ZC_TEST("Type.AssignableSameType") {
   auto i32 = PrimitiveType::createI32();
-  ZC_EXPECT(i32->isAssignableTo(*i32));
+  ZC_EXPECT(isAssignableTo(*i32, *i32));
 }
 
 ZC_TEST("Type.AssignableNeverToI32") {
   auto never = PrimitiveType::createNever();
   auto i32 = PrimitiveType::createI32();
-  ZC_EXPECT(never->isAssignableTo(*i32));
+  ZC_EXPECT(isAssignableTo(*never, *i32));
 }
 
 ZC_TEST("Type.AssignableI32ToAny") {
   auto i32 = PrimitiveType::createI32();
   auto any = PrimitiveType::createAny();
-  ZC_EXPECT(i32->isAssignableTo(*any));
+  ZC_EXPECT(isAssignableTo(*i32, *any));
 }
 
 ZC_TEST("NamedType.GenericArgumentsAreInvariant") {

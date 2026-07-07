@@ -92,7 +92,7 @@ bool NamedType::equals(const Type& other) const {
 }
 
 bool NamedType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   if (other.getKind() == TypeKind::Named) {
     auto& otherNamed = static_cast<const NamedType&>(other);

@@ -43,7 +43,7 @@ ZC_TEST("TypeEnv.SetAndGetType") {
   ZC_EXPECT(env.hasType(node));
   ZC_EXPECT(env.nodeTypeCount() == 1);
   auto& ty = env.getType(node);
-  ZC_EXPECT(ty.isPrimitive());
+  ZC_EXPECT(isPrimitive(ty));
 }
 
 ZC_TEST("TypeEnv.SetTypeAlsoAssignsCanonicalTypeId") {
@@ -150,7 +150,7 @@ ZC_TEST("TypeEnv.ClearRemovesTypeIds") {
 ZC_TEST("TypeEnv.FreshTypeVar") {
   TypeEnv env;
   auto& tv = env.freshTypeVar();
-  ZC_EXPECT(tv.isTypeVar());
+  ZC_EXPECT(isTypeVar(tv));
 }
 
 ZC_TEST("TypeEnv.FreshTypeVarsHaveUniqueIds") {
@@ -181,7 +181,7 @@ ZC_TEST("TypeEnv.InstantiateFunctionHandlesRepeatedTypeVar") {
 
   auto instantiated = env.instantiateFunction(fn);
   ZC_EXPECT(static_cast<bool>(instantiated));
-  ZC_EXPECT(instantiated->isFunction());
+  ZC_EXPECT(isFunction(*instantiated));
 }
 
 // ============================================================================
@@ -213,14 +213,14 @@ ZC_TEST("TypeEnv.ResolveBoundTypeVar") {
   env.bind(tv, *i32);
 
   auto& resolved = env.resolve(tv);
-  ZC_EXPECT(resolved.isPrimitive());
+  ZC_EXPECT(isPrimitive(resolved));
 }
 
 ZC_TEST("TypeEnv.ResolveUnboundTypeVarReturnsSelf") {
   TypeEnv env;
   auto& tv = env.freshTypeVar();
   auto& resolved = env.resolve(tv);
-  ZC_EXPECT(resolved.isTypeVar());
+  ZC_EXPECT(isTypeVar(resolved));
 }
 
 ZC_TEST("TypeEnv.ResolveChainOfBindings") {
@@ -233,7 +233,7 @@ ZC_TEST("TypeEnv.ResolveChainOfBindings") {
   env.bind(tv2, *i32);
 
   auto& resolved = env.resolve(tv1);
-  ZC_EXPECT(resolved.isPrimitive());
+  ZC_EXPECT(isPrimitive(resolved));
 }
 
 ZC_TEST("TypeEnv.OwnsBoundType") {
@@ -244,7 +244,7 @@ ZC_TEST("TypeEnv.OwnsBoundType") {
 
   ZC_EXPECT(env.isBound(tv));
   auto& resolved = env.resolve(tv);
-  ZC_EXPECT(resolved.isPrimitive());
+  ZC_EXPECT(isPrimitive(resolved));
 }
 
 // ============================================================================
@@ -286,7 +286,7 @@ ZC_TEST("TypeEnv.FindUnboundVarReturnsSelf") {
   TypeEnv env;
   auto& tv = env.freshTypeVar();
   auto& found = env.find(tv);
-  ZC_EXPECT(found.isTypeVar());
+  ZC_EXPECT(isTypeVar(found));
 }
 
 ZC_TEST("TypeEnv.FindBoundVarReturnsBinding") {
@@ -296,7 +296,7 @@ ZC_TEST("TypeEnv.FindBoundVarReturnsBinding") {
   env.bind(tv, *i32);
 
   auto& found = env.find(tv);
-  ZC_EXPECT(found.isPrimitive());
+  ZC_EXPECT(isPrimitive(found));
 }
 
 ZC_TEST("TypeEnv.UniteTwoVars") {
@@ -357,7 +357,7 @@ ZC_TEST("TypeEnv.ErrorTypeSingleton") {
   auto& err1 = env.errorType();
   auto& err2 = env.errorType();
   ZC_EXPECT(&err1 == &err2);
-  ZC_EXPECT(err1.isError());
+  ZC_EXPECT(isError(err1));
 }
 
 // ============================================================================

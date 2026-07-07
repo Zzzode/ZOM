@@ -72,7 +72,7 @@ bool IntersectionType::equals(const Type& other) const {
 }
 
 bool IntersectionType::isSubtypeOf(const Type& other) const {
-  if (hasBasicSubtypeRelation(other)) { return true; }
+  if (hasBasicSubtypeRelation(*this, other)) { return true; }
 
   // A & B ⊂ A and A & B ⊂ B (projection)
   // The intersection is a subtype of each of its conjuncts
