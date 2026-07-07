@@ -54,6 +54,11 @@ class FileChecker:
                     elif line.startswith("// CHECK:"):
                         pattern = line[9:].strip()  # Remove '// CHECK:' prefix
                         self.check_lines.append(("CHECK", pattern))
+                    elif directive.startswith("// CHECK-SAME:"):
+                        pattern = directive[14:]
+                        if pattern.startswith(" "):
+                            pattern = pattern[1:]
+                        self.check_lines.append(("CHECK-SAME", pattern))
                     elif line.startswith("// CHECK-NEXT:"):
                         pattern = line[14:].strip()  # Remove '// CHECK-NEXT:' prefix
                         self.check_lines.append(("CHECK-NEXT", pattern))
@@ -147,6 +152,7 @@ class FileChecker:
         input_lines = normalized_input.splitlines()
 
         current_line = 0
+        last_match_line = None
 
         for check_type, pattern in self.check_lines:
             if check_type == "CHECK":
@@ -155,6 +161,7 @@ class FileChecker:
                 for i in range(current_line, len(input_lines)):
                     if self.match_pattern(pattern, input_lines[i]):
                         current_line = i + 1
+                        last_match_line = i
                         found = True
                         break
 
@@ -169,6 +176,7 @@ class FileChecker:
                 for i in range(current_line, len(input_lines)):
                     if input_lines[i] == pattern:
                         current_line = i + 1
+                        last_match_line = i
                         found = True
                         break
 
@@ -187,7 +195,19 @@ class FileChecker:
                         f"CHECK-NEXT pattern not found on line {current_line + 1}: {pattern}"
                     )
 
+                last_match_line = current_line
                 current_line += 1
+
+            elif check_type == "CHECK-SAME":
+                if last_match_line is None:
+                    raise FileCheckError(
+                        f"CHECK-SAME has no previous matched line: {pattern}"
+                    )
+
+                if not self.match_pattern(pattern, input_lines[last_match_line]):
+                    raise FileCheckError(
+                        f"CHECK-SAME pattern not found on line {last_match_line + 1}: {pattern}"
+                    )
 
             elif check_type == "CHECK-NEXT-LITERAL":
                 if current_line >= len(input_lines):
@@ -200,6 +220,7 @@ class FileChecker:
                         f"CHECK-NEXT-LITERAL line not found on line {current_line + 1}: {pattern}"
                     )
 
+                last_match_line = current_line
                 current_line += 1
 
             elif check_type == "CHECK-NOT":

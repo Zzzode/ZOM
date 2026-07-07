@@ -4,5 +4,4 @@
 // CHECK: SourceFile #
 // CHECK-SAME: file_name="binary-operators.zom"
 // CHECK: statements:
-// CHECK: BinaryExpr #
-// CHECK-SAME: op=Add
+// CHECK: BinaryExpr #{{.*}} op=Add

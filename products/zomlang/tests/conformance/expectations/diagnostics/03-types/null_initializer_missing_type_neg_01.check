@@ -2,6 +2,7 @@
 // RUN: %FileCheck %s --input-file %t
 
 // CHECK-LITERAL: Error [ZOM0421]: Cannot infer type from null initializer without annotation
-// CHECK: {{^  --> .*[\\/]null_initializer_missing_type_neg_01\.zom:1:5$}}
+// CHECK:   -->
+// CHECK-SAME: {{[/\\]null_initializer_missing_type_neg_01\.zom:1:5$}}
 // CHECK-LITERAL: 1 | let x = null;
 // CHECK-LITERAL:   |     ^

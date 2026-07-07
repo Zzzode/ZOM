@@ -2,6 +2,7 @@
 // RUN: %FileCheck %s --input-file %t
 
 // CHECK-LITERAL: Error [ZOM0334]: dyn interface 'Stream' requires associated type 'Item' to be bound
-// CHECK: {{^  --> .*[/\\]dyn_unbound_associated_type_neg_01\.zom:5:12$}}
+// CHECK:   -->
+// CHECK-SAME: {{[/\\]dyn_unbound_associated_type_neg_01\.zom:5:12$}}
 // CHECK-LITERAL: 5 | let x: dyn Stream;
 // CHECK-LITERAL:   |            ^

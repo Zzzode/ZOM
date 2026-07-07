@@ -194,15 +194,33 @@ class SnapshotRegenerator:
             normalized = self._normalize_diagnostic_line(line)
             if not normalized.strip():
                 continue
-            check_lines.append(f"// CHECK: {normalized}")
+            if "{{.*" in normalized:
+                check_lines.extend(self._format_path_sensitive_diagnostic_line(normalized))
+            else:
+                check_lines.append(f"// CHECK-LITERAL: {normalized}")
         if check_lines:
             return check_lines
 
         stable_lines = self._extract_stable_diagnostic_lines(output)
         return [
-            f"// CHECK: {self._normalize_diagnostic_line(line)}"
+            f"// CHECK-LITERAL: {self._normalize_diagnostic_line(line)}"
             for line in stable_lines
         ]
+
+    def _format_path_sensitive_diagnostic_line(self, line: str) -> List[str]:
+        path_match = re.search(r"\{\{\.\*(?P<file>[^}]+\.zom)\}\}(?P<suffix>.*)$", line)
+        if not path_match:
+            return [f"// CHECK: {line}"]
+
+        prefix = line[: path_match.start()]
+        file = path_match.group("file")
+        suffix = path_match.group("suffix")
+        if prefix:
+            return [
+                f"// CHECK: {prefix}",
+                f"// CHECK-SAME: {{{{[/\\\\]{re.escape(file)}{re.escape(suffix)}$}}}}",
+            ]
+        return [f"// CHECK: {{{{[/\\\\]{re.escape(file)}{re.escape(suffix)}$}}}}"]
 
     def _is_json_output(self, output: str) -> bool:
         candidate = output.strip()

@@ -2,6 +2,7 @@
 // RUN: %FileCheck %s --input-file %t
 
 // CHECK-LITERAL: Error [ZOM0332]: Interface 'Cloneable' has method 'clone' returning Self and cannot be used as dyn
-// CHECK: {{^  --> .*[/\\]dyn_self_return_neg_01\.zom:5:12$}}
+// CHECK:   -->
+// CHECK-SAME: {{[/\\]dyn_self_return_neg_01\.zom:5:12$}}
 // CHECK-LITERAL: 5 | let x: dyn Cloneable;
 // CHECK-LITERAL:   |            ^

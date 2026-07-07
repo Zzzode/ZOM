@@ -2,6 +2,7 @@
 // RUN: %FileCheck %s --input-file %t
 
 // CHECK-LITERAL: Error [ZOM0431]: 'Operand' does not implement 'Neg'
-// CHECK: {{^  --> .*[/\\]operator_trait_missing_neg_01\.zom:5:1$}}
+// CHECK:   -->
+// CHECK-SAME: {{[/\\]operator_trait_missing_neg_01\.zom:5:1$}}
 // CHECK-LITERAL: 5 | -value;
 // CHECK-LITERAL:   | ^

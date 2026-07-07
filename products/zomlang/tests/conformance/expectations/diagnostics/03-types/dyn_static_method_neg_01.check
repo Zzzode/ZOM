@@ -2,6 +2,7 @@
 // RUN: %FileCheck %s --input-file %t
 
 // CHECK-LITERAL: Error [ZOM0335]: Interface 'Factory' has a static method and cannot be used as dyn
-// CHECK: {{^  --> .*[/\\]dyn_static_method_neg_01\.zom:5:12$}}
+// CHECK:   -->
+// CHECK-SAME: {{[/\\]dyn_static_method_neg_01\.zom:5:12$}}
 // CHECK-LITERAL: 5 | let x: dyn Factory;
 // CHECK-LITERAL:   |            ^

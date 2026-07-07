@@ -2,6 +2,7 @@
 // RUN: %FileCheck %s --input-file %t
 
 // CHECK-LITERAL: Error [ZOM0431]: 'Box' does not implement 'Hashable'
-// CHECK: {{^  --> .*[/\\]generic_bound_missing_neg_01\.zom:10:1$}}
+// CHECK:   -->
+// CHECK-SAME: {{[/\\]generic_bound_missing_neg_01\.zom:10:1$}}
 // CHECK-LITERAL: 10 | needs(b);
 // CHECK-LITERAL:    | ^
