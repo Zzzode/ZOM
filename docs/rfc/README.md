@@ -76,6 +76,7 @@ not reused.
 | [RFC 0005](0005-type-system-architecture.md) | Type System Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0005-type-system-architecture.md#acceptance-criteria) | [Checker](../../products/zomlang/compiler/checker/checker.cc) |
 | [RFC 0006](0006-error-lowering-runtime-abi.md) | Error Lowering And Runtime ABI | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0006-error-lowering-runtime-abi.md#acceptance-criteria) | TBD |
 | [RFC 0007](0007-borrow-lifetime-ownership-checker.md) | Borrow Lifetime And Ownership Checker | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0007-borrow-lifetime-ownership-checker.md#acceptance-criteria) | TBD |
+| [RFC 0008](0008-compiler-session-cross-module.md) | CompilerSession Cross-Module Architecture | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0008-compiler-session-cross-module.md#acceptance-criteria) | TBD |
 
 ## Status Values
 
