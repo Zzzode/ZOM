@@ -17,3 +17,5 @@ the severity/code line, the primary source location, the source line, and the
 caret line. The FileCheck helper strips ANSI color codes before matching, so
 expectations should match the displayed text directly. Use regex blocks only
 for unstable path prefixes or other intentionally variable fields.
+Use `CHECK-LITERAL` or `CHECK-NEXT-LITERAL` for source and caret lines whose
+leading spaces matter.

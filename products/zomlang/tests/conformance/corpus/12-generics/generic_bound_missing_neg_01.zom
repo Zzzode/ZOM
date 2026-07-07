@@ -3,7 +3,7 @@ interface Hashable { }
 class Box { }
 
 fun needs<T: Hashable>(x: T) -> unit {
-    return ();
+    return;
 }
 
 let b: Box;

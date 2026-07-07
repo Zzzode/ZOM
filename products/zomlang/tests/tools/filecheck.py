@@ -38,9 +38,20 @@ class FileChecker:
             with open(self.check_file, "r", encoding="utf-8") as f:
                 content = f.read()
                 # Extract CHECK lines
-                for line in content.splitlines():
-                    line = line.strip()
-                    if line.startswith("// CHECK:"):
+                for raw_line in content.splitlines():
+                    line = raw_line.strip()
+                    directive = raw_line.lstrip()
+                    if directive.startswith("// CHECK-LITERAL:"):
+                        pattern = directive[17:]
+                        if pattern.startswith(" "):
+                            pattern = pattern[1:]
+                        self.check_lines.append(("CHECK-LITERAL", pattern))
+                    elif directive.startswith("// CHECK-NEXT-LITERAL:"):
+                        pattern = directive[22:]
+                        if pattern.startswith(" "):
+                            pattern = pattern[1:]
+                        self.check_lines.append(("CHECK-NEXT-LITERAL", pattern))
+                    elif line.startswith("// CHECK:"):
                         pattern = line[9:].strip()  # Remove '// CHECK:' prefix
                         self.check_lines.append(("CHECK", pattern))
                     elif line.startswith("// CHECK-NEXT:"):
@@ -153,6 +164,17 @@ class FileChecker:
                     if not self.match_pattern(pattern, remaining_content):
                         raise FileCheckError(f"CHECK pattern not found: {pattern}")
 
+            elif check_type == "CHECK-LITERAL":
+                found = False
+                for i in range(current_line, len(input_lines)):
+                    if input_lines[i] == pattern:
+                        current_line = i + 1
+                        found = True
+                        break
+
+                if not found:
+                    raise FileCheckError(f"CHECK-LITERAL line not found: {pattern}")
+
             elif check_type == "CHECK-NEXT":
                 # Pattern must match the very next line
                 if current_line >= len(input_lines):
@@ -163,6 +185,19 @@ class FileChecker:
                 if not self.match_pattern(pattern, input_lines[current_line]):
                     raise FileCheckError(
                         f"CHECK-NEXT pattern not found on line {current_line + 1}: {pattern}"
+                    )
+
+                current_line += 1
+
+            elif check_type == "CHECK-NEXT-LITERAL":
+                if current_line >= len(input_lines):
+                    raise FileCheckError(
+                        f"CHECK-NEXT-LITERAL pattern beyond end of file: {pattern}"
+                    )
+
+                if input_lines[current_line] != pattern:
+                    raise FileCheckError(
+                        f"CHECK-NEXT-LITERAL line not found on line {current_line + 1}: {pattern}"
                     )
 
                 current_line += 1
