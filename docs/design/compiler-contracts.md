@@ -73,30 +73,30 @@ The table below is the **authoritative copy** of the ZOM diagnostic-code range a
 | 0200–0299 | Parser / syntax | `products/zomlang/compiler/parser` | Error | No | `ZOM0204` = Expected `;` after statement, found unexpected token → Error |
 | 0200–0299 | Parser / syntax | `products/zomlang/compiler/parser` | Error | No | `ZOM0217` = `if` expression missing `else` branch in non-unit type context → Error |
 | 0200–0299 | Parser / syntax | `products/zomlang/compiler/parser` | Warning | Yes | `ZOM0260` = Ambiguous operator precedence requires explicit parentheses (pedantic) → Warning |
-| 0300–0399 | Binder / name resolution | `products/zomlang/compiler/binder` | Error | No | `ZOM0302` = Identifier `x` shadows parent-scope binding of same name without explicit `shadow` keyword → Error |
-| 0300–0399 | Binder / name resolution | `products/zomlang/compiler/binder` | Error | No | `ZOM0315` = Unresolved import path — module `a::b::c` not found in lookup order → Error |
-| 0300–0399 | Binder / name resolution | `products/zomlang/compiler/binder` | Note | Yes | `ZOM0380` = Prior declaration of `f` here (attached as secondary to ZOM0302) → Note |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0411` = Cannot unify expected type `Vec<u8>` with actual type slice `[u8]` — missing `to_vec()` call → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0422` = Trait bound `Hash` is not satisfied for parameter type `T` in call to `map.insert` → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0432` = Default interface method accesses non-interface state via field dereference or accessor that escapes the interface contract → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0440` = Object-safety violation: interface contains a generic method (cannot be dispatched through `dyn` vtable) → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0441` = Object-safety violation: method returns `Self` by value, which is unsized behind `dyn` → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0442` = Object-safety violation: method takes `self` by move (move-out is unsized behind `dyn`) → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0443` = Object-safety violation: associated type is present but not bound to a concrete type in the `dyn` type → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0444` = Object-safety violation: static (non-self) method cannot be dispatched via `dyn` vtable → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0445` = Object-safety violation: generic associated type (GAT) is not object-safe → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0446` = Object-safety violation: method parameter or return is unsized and cannot be stored in a `dyn` vtable slot → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0447` = Object-safety reserved slot (unused, held for future OS-8 rule) → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0448` = Negative interface bound `!I` is not allowed in this position (e.g. `dyn` head or impl target) → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0450` = `dyn` existential head must be an interface; found non-interface type → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0451` = `dyn` existential requires at least one interface in its bound list → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0452` = Duplicate `dyn` prefix: nested `dyn dyn ...` is not permitted → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM0453` = User-provided variance annotation on `dyn` existential conflicts with compiler-inferred variance → Warning |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0454` = Cannot coerce concrete type `T` to `dyn I` — interface `I` is not object-safe or marker-closure failed → Error |
-| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM0477` = Unused type parameter with no trait bounds → Warning |
-| 0400–0499 | Interface resolution / diamond | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM0478` = RedundantInheritedMethod: sub-interface redeclares a method identical to an inherited declaration (name+signature) → Warning (upgrade to Deny in next edition) |
-| 0400–0499 | Interface resolution / diamond | `products/zomlang/compiler/checker` | Error | No | `ZOM0480` = DiamondConflict: two equally near default-method bodies conflict on diamond inheritance; concrete class MUST provide an explicit override → Error |
-| 0400–0499 | Interface resolution / diamond | `products/zomlang/compiler/checker` | Error | No | `ZOM0482` = IncompatibleReturnType: super- and sub-interface declare same-named method with identical params but different return types; sub-interface MUST re-declare explicitly → Error |
+| 0300–0399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM0331` = interface has a generic method and cannot be used as `dyn` → Error |
+| 0300–0399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM0332` = interface method returns bare `Self` and cannot be used as `dyn` → Error |
+| 0300–0399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM0333` = interface method has a move-self receiver and cannot be used as `dyn` → Error |
+| 0300–0399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM0334` = `dyn` interface requires an associated type to be bound → Error |
+| 0300–0399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM0335` = interface has a static method and cannot be used as `dyn` → Error |
+| 0300–0399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM0336` = interface has a generic associated type and cannot be used as `dyn` → Error |
+| 0300–0399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM0337` = interface method has an unsized boundary type and cannot be used as `dyn` → Error |
+| 0300–0399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM0338` = interface inherits an object-unsafe superinterface and cannot be used as `dyn` → Error |
+| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0410` = type mismatch at an assignment, initializer, return, argument, or coercion site → Error |
+| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0411` = cannot unify two types in a specific expression context → Error |
+| 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0412` = infinite type detected during unification → Error |
+| 0400–0499 | Type checker / calls | `products/zomlang/compiler/checker` | Error | No | `ZOM0415` = attempted to call a non-function value → Error |
+| 0400–0499 | Type checker / generic inference | `products/zomlang/compiler/checker` | Error | No | `ZOM0420` = cannot infer an unsolved generic type parameter → Error |
+| 0400–0499 | Type checker / nullable inference | `products/zomlang/compiler/checker` | Error | No | `ZOM0421` = `null` initializer has no explicit target type → Error |
+| 0400–0499 | Type checker / trait coherence | `products/zomlang/compiler/checker` | Error | No | `ZOM0430` = conflicting implementations for the same interface and type → Error |
+| 0400–0499 | Type checker / trait bounds | `products/zomlang/compiler/checker` | Error | No | `ZOM0431` = type does not implement a required interface → Error |
+| 0400–0499 | Type checker / operator traits | `products/zomlang/compiler/checker` | Error | No | `ZOM0432` = operator trait implementation has the wrong method signature → Error |
+| 0400–0499 | Type checker / associated types | `products/zomlang/compiler/checker` | Error | No | `ZOM0433` = associated type projection has no matching binding → Error |
+| 0400–0499 | Type checker / associated types | `products/zomlang/compiler/checker` | Error | No | `ZOM0434` = associated type projection is ambiguous without an interface qualifier → Error |
+| 0400–0499 | Type checker / match analysis | `products/zomlang/compiler/checker` | Error | No | `ZOM0440` = match is non-exhaustive → Error |
+| 0400–0499 | Type checker / match analysis | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM0442` = match arm is unreachable → Warning |
+| 0400–0499 | Type checker / mutability | `products/zomlang/compiler/checker` | Error | No | `ZOM0450` = immutable binding is mutated → Error |
+| 0400–0499 | Type checker / error propagation | `products/zomlang/compiler/checker` | Error | No | `ZOM0460` = `?!` propagates an error not declared by the function's `raises` clause → Error |
+| 0400–0499 | Type checker / error propagation | `products/zomlang/compiler/checker` | Error | No | `ZOM0461` = `!!` is applied to a non-error-union type → Error |
 | 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0501` = Impl of marker `Sendable` for type `*mut T` conflicts with negative impl in scope → Error |
 | 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0502` = MarkerNameClash: a marker, interface, class, and alias cannot share the same identifier in the type namespace → Error |
 | 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0505` = Duplicate standalone `impl I for T` — two impl blocks provide the same (interface, type) pair → Error |
@@ -271,8 +271,9 @@ Concrete language diagnostics are exercised by conformance sources under
 `products/zomlang/tests/conformance/expectations/`, and compiler-only diagnostic
 plumbing is exercised by ztest suites under
 `products/zomlang/tests/unittests/compiler/diagnostics/`. The emitted registry
-is generated from `diagnostics-common.def`, `diagnostics-parse.def`, and
-`diagnostics-sema.def`; `DiagnosticEngine` refuses to emit any code not present
+is generated from `diagnostics-common.def`, `diagnostics-parse.def`,
+`diagnostics-checker.def`, and `diagnostics-sema.def`; `DiagnosticEngine`
+refuses to emit any code not present
 in the generated ids (emitting ZOM9999 `DiagnosticCodeNotRegistered` as an ICE
 fallthrough).
 
@@ -529,7 +530,7 @@ The TypeChecker (`products/zomlang/compiler/checker`) consumes the binder's outp
 
 **B2T-03 Raises-Clause Binding.** For every `fun` declaration and every method declaration that carries a `raises(...)` clause, the binder has lowered the clause into a `RaisesInfo` record on the function's `Symbol`, consisting of an ordered list of `Symbol*` pointers to error-variant enum declarations plus a boolean `isOpen` flag for `raises(...)` wildcards. The binder does **not** verify subtyping of raised variants; it only verifies that each named variant resolves to a declared error enum.
 
-**B2T-04 Raises Subset Verification by TypeChecker.** The TypeChecker is the single authority for raises-clause correctness. If a function body throws an error variant `V` (via `raise V(...)`, or via transitively calling a function that raises `V`) and `V` is not in the function's declared `raises(...)` set, the TypeChecker emits **ZOM0411 RaisesVariantUnbound**. Subset checks use algebraic union (i.e. a function that calls three sub-functions declares the union of all their variants, plus any locally raised variants); the TypeChecker never emits diagnostics at call sites for variants already present in the caller's raises set.
+**B2T-04 Raises Subset Verification by TypeChecker.** The TypeChecker is the single authority for raises-clause correctness. If a `?!` propagation site carries an error type that is not in the enclosing function's declared `raises` set, the TypeChecker emits **ZOM0460 ErrorPropagateOutsideRaises**. Subset checks use algebraic union: a function that calls three raising sub-functions must declare the union of all propagated variants, plus any locally raised variants once direct raise statements are implemented. The TypeChecker never emits propagation diagnostics at call sites for variants already present in the caller's raises set.
 
 **B2T-05 Marker Constraint Re-Run.** The binder attaches marker constraints (`Sendable`, `Shared`, `Linear`, `Copy`, `Drop`, `SuspendSafe`, `NoSuspendHazard`, `TaskBound`) to generic parameters as parsed. During TypeChecker instantiation of a generic function or ADT with concrete arguments, the TypeChecker reruns the S5a (seed-bit propagation), S5b (positive-blanket closure), and S5c (user unsafe-impl override) lowering steps for each concrete type. This is the only way instantiation-site-specific marker facts are computed.
 

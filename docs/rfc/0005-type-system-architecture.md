@@ -98,8 +98,9 @@ continue to satisfy.
 - **G13.** References, class values, and existential values are non-null by
   default. `null` is legal only through an explicit nullable union such as
   `T | null` or its sugar `T?`.
-- **G14.** All diagnostics in the 0400–0499 range per
-  `compiler-contracts.md` §2.
+- **G14.** Checker-owned diagnostics are defined in
+  `products/zomlang/compiler/diagnostics/diagnostics-checker.def` and stay
+  aligned with `compiler-contracts.md` §2.
 
 ## Non-Goals
 
@@ -942,8 +943,8 @@ For a `match` with scrutinee type `T` and patterns `P1..Pn`:
 2. For each arm, run `is_useful(previous_matrix, arm_pattern)`. If false, emit
    ZOM0442 for an unreachable arm.
 3. For exhaustiveness, test whether a synthetic wildcard row is useful after
-   all unguarded arms. If useful, emit ZOM0440/ZOM0441 with the smallest
-   witness set the matrix can produce.
+   all unguarded arms. If useful, emit ZOM0440 with the smallest witness set
+   the matrix can produce.
 4. Pattern guards are treated as conditional coverage: guarded arms may be
    useful for redundancy checking, but they do not contribute to exhaustiveness
    coverage.
@@ -981,7 +982,8 @@ For `bool` scrutinee:
 For integer scrutinee:
 - If patterns include a wildcard or identifier: exhaustive.
 - If patterns are only literals/ranges: not exhaustive (infinite values
-  not covered by finite ranges), emit `ZOM0441: integer match is not exhaustive; add a default clause`.
+  not covered by finite ranges), emit ZOM0440 with a witness describing the
+  uncovered value space.
 
 #### Pattern Guards
 
@@ -1021,15 +1023,12 @@ redundancy diagnostics are suppressed for that match. The checker still assigns
 
 ### Permission and Mutability Checking
 
-The type checker enforces basic permission rules (full borrow checking
-is a separate future stage):
+The type checker enforces basic permission rules that do not require lifetime
+analysis (full borrow checking is a separate future stage):
 
 | Rule | Diagnostic |
 |---|---|
-| Cannot mutate immutable binding through `mut` ref | `ZOM0450: cannot mutate immutable variable '{name}'` |
-| Cannot call `mut` method on non-`mut` reference | `ZOM0451: method '{name}' requires mutable receiver` |
-| Cannot move out of non-`own` binding | `ZOM0452: cannot move out of borrowed context` |
-| `&T` does not coerce to `&mut T` (shared cannot become mutable) | `ZOM0453: cannot reborrow shared reference as mutable: '{from}' -> '{to}'` |
+| Cannot mutate immutable binding | `ZOM0450: Cannot mutate immutable variable '{name}'` |
 
 Note: `&mut T` coerces to `&T` implicitly via reborrow (subtyping rule).
 The reverse (`&T -> &mut T`) is never allowed.
@@ -1115,45 +1114,39 @@ Rules:
 4. `!!` on an error union panics on error, so it does not require the
    enclosing function to raise anything.
 
-### Diagnostic Catalog (0400–0499)
+### Checker Diagnostic Catalog
+
+This table mirrors
+`products/zomlang/compiler/diagnostics/diagnostics-checker.def`. Any checker
+diagnostic added to the implementation must update this catalog in the same
+change.
 
 | Code | Severity | Message Template |
 |---|---|---|
-| ZOM0401 | Error | `missing type annotation for '{name}'; top-level declarations require explicit types` |
-| ZOM0410 | Error | `type mismatch: expected '{expected}', found '{actual}'` |
-| ZOM0411 | Error | `cannot unify '{expected}' with '{actual}' in {context}` |
-| ZOM0412 | Error | `infinite type: {description}` |
-| ZOM0413 | Error | `cannot apply operator '{op}' to type '{type}'` |
-| ZOM0414 | Error | `binary operator '{op}' requires same-type operands, got '{lhs}' and '{rhs}'` |
-| ZOM0415 | Error | `cannot call non-function type '{type}'` |
-| ZOM0416 | Error | `function expects {n} parameters, got {m}` |
-| ZOM0417 | Error | `argument type mismatch: parameter {i} expects '{expected}', got '{actual}'` |
-| ZOM0418 | Error | `no field '{name}' on type '{type}'` |
-| ZOM0419 | Error | `no method '{name}' on type '{type}'` |
-| ZOM0420 | Error | `cannot infer type parameter '{name}'; provide explicit type arguments` |
-| ZOM0421 | Error | `cannot infer type from null initializer without annotation` |
-| ZOM0430 | Error | `conflicting implementations of '{interface}' for '{type}'` |
+| ZOM0331 | Error | `Interface '{interface}' has generic method '{method}' and cannot be used as dyn` |
+| ZOM0332 | Error | `Interface '{interface}' has method '{method}' returning Self and cannot be used as dyn` |
+| ZOM0333 | Error | `Interface '{interface}' has method '{method}' with move self receiver and cannot be used as dyn` |
+| ZOM0334 | Error | `dyn interface '{interface}' requires associated type '{associated}' to be bound` |
+| ZOM0335 | Error | `Interface '{interface}' has a static method and cannot be used as dyn` |
+| ZOM0336 | Error | `Interface '{interface}' has generic associated type '{associated}' and cannot be used as dyn` |
+| ZOM0337 | Error | `Interface '{interface}' has method '{method}' with unsized type '{type}' and cannot be used as dyn` |
+| ZOM0338 | Error | `Interface '{interface}' inherits object-unsafe interface '{superinterface}' and cannot be used as dyn` |
+| ZOM0410 | Error | `Type mismatch: expected {expected}, got {actual}` |
+| ZOM0411 | Error | `Cannot unify '{expected}' with '{actual}' in {context}` |
+| ZOM0412 | Error | `Infinite type: {description}` |
+| ZOM0415 | Error | `Cannot call non-function type '{type}'` |
+| ZOM0420 | Error | `Cannot infer type parameter '{name}'; provide explicit type arguments` |
+| ZOM0421 | Error | `Cannot infer type from null initializer without annotation` |
+| ZOM0430 | Error | `Conflicting implementations of '{interface}' for type '{type}'` |
 | ZOM0431 | Error | `'{type}' does not implement '{interface}'` |
-| ZOM0432 | Error | `ambiguous method call: '{name}' could be from '{iface1}' or '{iface2}'` |
-| ZOM0433 | Error | `no associated type '{name}' for '{type}'` |
-| ZOM0434 | Error | `ambiguous associated type '{name}' for '{type}'; use '<{type} as Interface>::{name}'` |
-| ZOM0440 | Error | `non-exhaustive match; missing variants: {variants}` |
-| ZOM0441 | Error | `match on integer type is not exhaustive; add a default clause` |
-| ZOM0442 | Warning | `unreachable match arm: pattern never matches` |
-| ZOM0443 | Error | `pattern type mismatch: cannot match '{pattern}' against '{scrutinee}'` |
-| ZOM0450 | Error | `cannot mutate immutable variable '{name}'` |
-| ZOM0451 | Error | `method '{name}' requires mutable receiver` |
-| ZOM0452 | Error | `cannot move out of borrowed context` |
-| ZOM0453 | Error | `cannot reborrow shared reference as mutable: '{from}' -> '{to}'` |
-| ZOM0460 | Error | `'?!' propagates error type '{error}' but function does not raise '{error}'` |
+| ZOM0432 | Error | `Operator trait '{trait}' for type '{type}' must define '{method}({parameter}) -> {return}'` |
+| ZOM0433 | Error | `No associated type '{associated}' for type '{type}'` |
+| ZOM0434 | Error | `Ambiguous associated type '{associated}' for type '{type}'; use '<{type} as Interface>::{associated}'` |
+| ZOM0440 | Error | `Non-exhaustive match. Missing patterns: {patterns}` |
+| ZOM0442 | Warning | `Unreachable match arm: pattern never matches` |
+| ZOM0450 | Error | `Cannot mutate immutable variable '{name}'` |
+| ZOM0460 | Error | `'?!' propagates error type '{error}' but function does not raise '{raises}'` |
 | ZOM0461 | Error | `'!!' on non-error-union type '{type}'` |
-| ZOM0462 | Error | `unhandled error: function raises '{raises}' but error is not propagated` |
-| ZOM0470 | Error | `'{type}' is not 'Sendable'; cannot spawn across thread boundary` |
-| ZOM0471 | Error | `'{type}' is not 'Shared'; cannot share across thread boundary` |
-| ZOM0480 | Error | `return type mismatch: expected '{expected}', found '{actual}'` |
-| ZOM0481 | Error | `missing return in function returning '{type}'` |
-| ZOM0490 | Note | `required by bound '{bound}' declared here` (attached to ZOM0431) |
-| ZOM0491 | Note | `type '{type}' defined here` (attached to various errors) |
 
 ### Invariants
 
@@ -1201,7 +1194,7 @@ The type checker is **fail-closed**:
 | Trait resolver | `products/zomlang/compiler/checker/trait-resolver.h`, `trait-resolver.cc` | `binder-checker` |
 | Exhaustiveness checker | `products/zomlang/compiler/checker/exhaustiveness.h`, `exhaustiveness.cc` | `binder-checker` |
 | Type environment | `products/zomlang/compiler/type/type-env.h`, `type-env.cc` | `binder-checker` |
-| Diagnostics | `products/zomlang/compiler/diagnostics/diagnostics-sema.def` | `error-system` |
+| Diagnostics | `products/zomlang/compiler/diagnostics/diagnostics-checker.def` | `error-system` |
 | Driver integration | `products/zomlang/compiler/driver/**` | `module-system` |
 | Spec alignment | `docs/spec/chapters/03-types.md`, `04-expressions.md`, `09-interfaces.md`, `11-error-handling.md`, `12-generics.md` | `spec-audit` |
 | Tests | `products/zomlang/tests/unittests/compiler/checker/*-test.cc` | `verification` |
@@ -1524,7 +1517,7 @@ and tests cover the exact acceptance criterion above.
     checking.
 13. **Permission checking** — Basic mutability enforcement. `&mut T -> &T`
     reborrow through coercion resolver.
-14. **Add checker diagnostics** — Extend `diagnostics-sema.def`.
+14. **Add checker diagnostics** — Extend `diagnostics-checker.def`.
 15. **Wire into driver** — Call checker after binder.
 16. **Update `compiler-contracts.md`** — Document B2T invariants.
 
@@ -1593,3 +1586,4 @@ None.
 | 2026-07-08 | REVIEW | Added diagnostics conformance coverage for non-coercible `let` initializer type mismatches (`ZOM0410`). |
 | 2026-07-08 | REVIEW | Added diagnostics conformance coverage for numeric unification failures in binary arithmetic (`ZOM0411`). |
 | 2026-07-08 | REVIEW | Added a dedicated non-function call checker diagnostic (`ZOM0415`) and diagnostics conformance coverage for its source/caret display. |
+| 2026-07-08 | REVIEW | Aligned the checker diagnostic catalog and design references with `diagnostics-checker.def`, including object-safety diagnostics (`ZOM0331`-`ZOM0338`) and currently registered checker error codes. |
