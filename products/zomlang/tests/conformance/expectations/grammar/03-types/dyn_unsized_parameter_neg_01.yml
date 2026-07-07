@@ -1,0 +1,5 @@
+section: "03-types dyn object safety diagnostics"
+covers_rule: "typeExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks object-safety rejection for unsized method boundary types."

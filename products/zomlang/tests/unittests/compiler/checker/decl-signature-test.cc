@@ -801,6 +801,33 @@ ZC_TEST("DeclSignature.DynRejectsBareSelfReturn") {
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynSelfReturn));
 }
 
+ZC_TEST("DeclSignature.DynRejectsUnsizedMethodParameter") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> params;
+  params.add(fix.makeFunctionParamDecl(
+      "items"_zc, fix.makeSliceArrayTypeExpr(fix.makeNamedTypeExpr("i32"_zc))));
+  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(params.asPtr()));
+  auto method =
+      fix.makeMethodDecl("write"_zc, ast::NodeId(), paramList, fix.makeNamedTypeExpr("unit"_zc));
+  zc::Vector<ast::NodeId> members;
+  members.add(method);
+  auto iface = fix.makeInterfaceDecl("Writer"_zc,
+                                     fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+  auto alias =
+      fix.makeAliasDecl("DynWriter"_zc, fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Writer"_zc)));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynUnsizedParameter));
+}
+
 ZC_TEST("DeclSignature.DynRejectsUnboundAssociatedType") {
   TestFixture fix;
   auto consumer = zc::heap<CapturingDiagnosticConsumer>();

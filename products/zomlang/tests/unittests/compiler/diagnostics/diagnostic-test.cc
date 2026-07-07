@@ -55,6 +55,7 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynSelfReturn) == 332);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynUnassociatedType) == 334);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynStaticMethod) == 335);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynUnsizedParameter) == 337);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::TypeCheckerTypeMismatch) == 410);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotUnifyTypes) == 411);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::InfiniteType) == 412);

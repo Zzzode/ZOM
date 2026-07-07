@@ -1,0 +1,5 @@
+interface Writer {
+    fun write(items: [i32]) -> unit;
+}
+
+let x: dyn Writer;

@@ -868,6 +868,13 @@ public:
     return builder_.makeNode(ast::SyntaxKind::ArrayTypeExpr, source::SourceRange(), payload);
   }
 
+  /// \brief Create a SliceArrayTypeExpr (e.g. `[i32]`).
+  ast::NodeId makeSliceArrayTypeExpr(ast::NodeId elemTy) {
+    ast::NodePayload payload;
+    payload.words[ast::kSliceArrayTypeExprElemWord] = elemTy.value;
+    return builder_.makeNode(ast::SyntaxKind::SliceArrayTypeExpr, source::SourceRange(), payload);
+  }
+
   /// \brief Create an OptionalTypeExpr (e.g. `i32?`).
   ast::NodeId makeOptionalTypeExpr(ast::NodeId innerTy) {
     ast::NodePayload payload;

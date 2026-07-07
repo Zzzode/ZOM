@@ -325,6 +325,11 @@ bool isBareSelfTypeExpr(const ast::Tree& tree, ast::NodeId typeExpr) {
   return names.size() == 1 && tree.ident(names[0]) == "Self"_zc;
 }
 
+bool isUnsizedDynBoundaryTypeExpr(const ast::Tree& tree, ast::NodeId typeExpr) {
+  if (!tree.contains(typeExpr)) { return false; }
+  return tree.node(typeExpr).kind == SyntaxKind::SliceArrayTypeExpr;
+}
+
 void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
                                                  zc::StringPtr ifaceName) {
   const ast::NodeId ifaceDecl = findInterfaceDecl(ifaceName);
@@ -364,6 +369,41 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
         auto methodName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
         impl->diags.diagnose<DiagID::DynSelfReturn>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName,
                                                     methodName);
+        impl->hadErrors = true;
+        continue;
+      }
+    }
+    if (member.kind == SyntaxKind::MethodDecl) {
+      auto methodName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
+      bool hasUnsizedBoundaryType = false;
+      auto paramsId = ast::NodeId(member.payload.words[kMethodDeclParamsIdWord]);
+      if (impl->tree.contains(paramsId)) {
+        const auto& paramsNode = impl->tree.node(paramsId);
+        if (paramsNode.kind == SyntaxKind::FunctionParameterList) {
+          NodeList params;
+          params.first = paramsNode.payload.words[kFunctionParameterListParamsFirstWord];
+          params.size = paramsNode.payload.words[kFunctionParameterListParamsSizeWord];
+          for (ast::NodeId paramId : impl->tree.list(params)) {
+            if (!impl->tree.contains(paramId)) { continue; }
+            const auto& param = impl->tree.node(paramId);
+            if (param.kind != SyntaxKind::FunctionParameterDecl) { continue; }
+            auto tyId = ast::NodeId(param.payload.words[kFunctionParameterDeclTyWord]);
+            if (isUnsizedDynBoundaryTypeExpr(impl->tree, tyId)) {
+              impl->diags.diagnose<DiagID::DynUnsizedParameter>(
+                  nodeLoc(impl->tree, ifaceTypeExpr), ifaceName, methodName, "parameter"_zc);
+              impl->hadErrors = true;
+              hasUnsizedBoundaryType = true;
+              break;
+            }
+          }
+        }
+      }
+      if (hasUnsizedBoundaryType) { continue; }
+
+      auto retTyId = ast::NodeId(member.payload.words[kMethodDeclRetTyWord]);
+      if (isUnsizedDynBoundaryTypeExpr(impl->tree, retTyId)) {
+        impl->diags.diagnose<DiagID::DynUnsizedParameter>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                          ifaceName, methodName, "return"_zc);
         impl->hadErrors = true;
         continue;
       }
