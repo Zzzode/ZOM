@@ -1,0 +1,7 @@
+// RUN: ! %zomc compile --syntax-only %corpus/04-expressions/index_trait_missing_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM0431]: 'Bag' does not implement 'Index'
+// CHECK: {{^  --> .*[/\\]index_trait_missing_neg_01\.zom:5:1$}}
+// CHECK-LITERAL: 5 | bag[0];
+// CHECK-LITERAL:   | ^

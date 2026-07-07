@@ -1,0 +1,5 @@
+section: "04-expressions index trait diagnostics"
+covers_rule: "callExpr (exprIndex)"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the missing Index trait error."

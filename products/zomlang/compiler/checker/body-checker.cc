@@ -1795,6 +1795,37 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
     return storeType(expr, cloneType(tupleTy.getElementType(static_cast<size_t>(index))));
   }
 
+  if (isNamed(resolvedObj)) {
+    TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
+                                impl->diags);
+    traitResolver.discoverImpls();
+
+    if (!traitResolver.implements(resolvedObj, "Index"_zc)) {
+      auto loc = getNodeLoc(impl->tree, expr);
+      impl->diags.diagnose<DiagID::CheckerTraitNotImplemented>(loc, resolvedObj.toString(),
+                                                               "Index"_zc);
+      impl->hadErrors = true;
+      return storeType(expr, zc::heap<type::ErrorType>());
+    }
+
+    auto output =
+        traitResolver.resolveAssociatedTypeWithStatus(resolvedObj, "Index"_zc, "Output"_zc);
+    if (output.kind == AssociatedTypeResolutionKind::Resolved) {
+      ZC_IF_SOME(outputTy, output.type) { return storeType(expr, cloneType(outputTy)); }
+    }
+
+    auto loc = getNodeLoc(impl->tree, expr);
+    if (output.kind == AssociatedTypeResolutionKind::Ambiguous) {
+      impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(loc, "Output"_zc,
+                                                                      resolvedObj.toString());
+    } else {
+      impl->diags.diagnose<DiagID::NoAssociatedTypeProjection>(loc, "Output"_zc,
+                                                               resolvedObj.toString());
+    }
+    impl->hadErrors = true;
+    return storeType(expr, zc::heap<type::ErrorType>());
+  }
+
   reportError(expr, "cannot index non-array/non-tuple type"_zc);
   return storeType(expr, zc::heap<type::ErrorType>());
 }

@@ -1,0 +1,5 @@
+class Bag { }
+
+let bag: Bag;
+
+bag[0];
