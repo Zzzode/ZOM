@@ -1,0 +1,11 @@
+interface Eq {
+    fun eq(rhs: Self) -> bool;
+}
+
+class Box<T> {
+    value: T;
+}
+
+impl<T> Eq for Box<T> where T: Eq {
+    fun eq(rhs: Box<T>) -> bool;
+}

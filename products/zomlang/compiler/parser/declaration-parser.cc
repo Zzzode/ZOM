@@ -2201,12 +2201,20 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
     return ast::NodeId();
   }
 
+  size_t ifaceStart = implIndex + 1;
+  ast::NodeId typeParams;
+  if (ifaceStart < end && kindAt(ifaceStart) == ast::SyntaxKind::LessThan) {
+    typeParams = parseTypeParameters(builder, ifaceStart, end);
+    TokenCursor angleCursor = tokenCursorAt(ifaceStart);
+    ifaceStart = consumeBalancedAngleList(angleCursor, end) ? angleCursor.position() : end;
+  }
+
   TokenCursor bodyCursor = tokenCursorAt(implIndex + 1);
   const size_t bodyOpen = consumeBalancedUntil(bodyCursor, end, ast::SyntaxKind::LeftBrace);
   TokenCursor semiCursor = tokenCursorAt(implIndex + 1);
   const size_t semi = consumeBalancedUntil(semiCursor, end, ast::SyntaxKind::Semicolon);
   const size_t headerEnd = bodyOpen < end ? bodyOpen : (semi < end ? semi : end);
-  TokenCursor forCursor = tokenCursorAt(implIndex + 1);
+  TokenCursor forCursor = tokenCursorAt(ifaceStart);
   const size_t forIndex =
       consumeBalancedTypeUntil(forCursor, headerEnd, ast::SyntaxKind::ForKeyword);
   if (forIndex >= headerEnd) {
@@ -2214,8 +2222,8 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
                                                                   "for"_zc);
     return ast::NodeId();
   }
-  if (implIndex + 1 >= forIndex) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(implIndex + 1));
+  if (ifaceStart >= forIndex) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(ifaceStart));
     return ast::NodeId();
   }
   if (forIndex + 1 >= headerEnd) {
@@ -2233,9 +2241,10 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
   if (where < headerEnd) {
     whereClause = parseWhereClause(builder, where, headerEnd);
     if (!whereClause) { return ast::NodeId(); }
+    if (typeParams) { typeParams = parseTypeParameters(builder, implIndex + 1, end, whereClause); }
   }
 
-  const ast::NodeId ifaces = makeImplIfaceList(builder, implIndex + 1, forIndex);
+  const ast::NodeId ifaces = makeImplIfaceList(builder, ifaceStart, forIndex);
   if (!ifaces) { return ast::NodeId(); }
   const ast::NodeId forTy =
       parseTypeRange(builder, forIndex + 1, where < headerEnd ? where : headerEnd);
@@ -2254,7 +2263,7 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
     if (!members) { members = makeEmptyClassMemberList(builder, rangeFor(bodyOpen, end)); }
   }
   return builder.makeStandaloneImplDecl(rangeFor(start, end), isUnsafe, ifaces, forTy, whereClause,
-                                        ast::NodeId(), members);
+                                        typeParams, members);
 }
 
 }  // namespace parser
