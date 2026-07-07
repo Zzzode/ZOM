@@ -1,0 +1,5 @@
+section: "Ch.05 Assignment semantics"
+covers_rule: "letDeclaration, assignmentExpr"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks immutable let assignment ZOM0450."
