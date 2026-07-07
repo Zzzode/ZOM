@@ -1,4 +1,5 @@
-section: "§4.2 Interfaces"
-covers_rule: "interfaceDeclaration (no where clause — syntax does not support it)"
+section: "§9.3 Interface declarations"
+covers_rule: "interfaceDeclaration (where clause is excluded by current grammar)"
 expected: "REJECT"
-notes: []
+notes:
+  - "Interface type-parameter constraints are written in the type parameter list, not in a where clause."

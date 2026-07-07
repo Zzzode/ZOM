@@ -86,7 +86,13 @@ BoundItem ::= '!' MarkerPath
 
 #### Short Form vs. Where Clause
 
-ZOM offers two equivalent syntactic surfaces. The inline short form is preferred for simple cases; the `where` clause is preferred when type parameters each carry different, lengthy bound sets, or when bounds reference associated types.
+ZOM offers two equivalent syntactic surfaces on declarations that accept a
+`where` clause: functions, classes, structs, and standalone `impl` blocks. The
+inline short form is preferred for simple cases; the `where` clause is preferred
+when type parameters each carry different, lengthy bound sets, or when bounds
+reference associated types. Interface declarations do not accept a `where`
+clause; constraints on interface type parameters are expressed directly in the
+type parameter list.
 
 ```zom
 // Short form (single type param, two bounds)
