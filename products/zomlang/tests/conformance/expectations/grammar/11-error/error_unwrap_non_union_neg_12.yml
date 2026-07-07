@@ -1,0 +1,5 @@
+section: "Ch.11 Error unwrap"
+covers_rule: "postfixExpr, FORCE_UNWRAP token !!"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM0461 for !! on a non-error-union operand."
