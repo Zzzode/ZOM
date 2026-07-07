@@ -1397,8 +1397,9 @@ runs and produces resolved names.
    direct-vs-blanket overlap, produce ZOM0430.
 10. **Associated projections:** `T::Item` resolves only when a unique impl
     binding defines `Item`; missing projections produce ZOM0433 and ambiguous
-    projections produce ZOM0434. Fully qualified projection syntax is outside
-    this checker-landed gate until the parser exposes that AST form.
+    projections produce ZOM0434. Fully qualified projection syntax
+    `<T as I>::Item` is exposed as parser AST surface for follow-on checker
+    disambiguation.
 11. **Variance:** User-defined generic named types are invariant in v1.
     `Vec<&mut i32>` does not coerce to `Vec<&i32>`.
 12. **Exhaustiveness:** Match on enum without wildcard and missing variants
@@ -1443,8 +1444,9 @@ runs and produces resolved names.
     interface inheritance.
 30. **Existential coercion:** `T` coerces to `dyn I` at explicit annotation
     sites when `T: I`. Upcast `dyn I -> dyn J` works when `I extends J`.
-    Marker-list and object-safety validation for `dyn I + M` depends on the
-    parser exposing marker lists and is outside this checker-landed gate.
+    Parser/lit coverage accepts `dyn I + M`, and Phase A rejects the
+    object-unsafe static-method and unbound-associated-type cases currently
+    exposed by interface metadata.
 31. **Subtyping:** `never <: T`, `T <: any`, `&mut T <: &T`,
     `*mut T <: *const T`, `T <: T | E`, and `null <: T | null` hold at
     coercion sites. No numeric widening happens without `as`.
@@ -1460,13 +1462,13 @@ and tests cover the exact acceptance criterion above.
 | 1 | Complete | `type-test.cc`, `type-interner-test.cc`, and `type-env-test.cc` cover all concrete type classes and canonical IDs, including interface, existential, and associated forms. | None. |
 | 2 | Complete | `unification-test.cc` covers primitives, functions, type variables, error propagation, exact reference/raw-pointer mutability, order-insensitive unions, identical/different existentials, `null` only with `null`, mismatch failures, and occurs-check `InfiniteType` classification. `diagnostic-test.cc` fixes ZOM0411/ZOM0412 IDs. | None. |
 | 3 | Complete | `coercion-test.cc` covers never, any, reference reborrow, raw-pointer mut-to-const, union injection, nullable union, rejection, and dyn upcast. `body-checker-test.cc` covers coercion records for function arguments, return statements, assignments, conditional joins, struct literal fields, nullable local initializers, and explicit existential erasure at annotated local sites. | None. |
-| 4 | Complete | `decl-signature-test.cc` covers function, class, interface, enum, alias, variable, const declaration, generic parameter, shared generic type variable, type expression, raises, symbol-keyed parameter/field signatures, and recursive aliases. | None for the checker-landed gate. Parser-accepted `where` clauses are tracked by the parser/spec surface. |
+| 4 | Complete | `decl-signature-test.cc` covers function, class, interface, enum, alias, variable, const declaration, generic parameter, shared generic type variable, type expression, raises, symbol-keyed parameter/field signatures, recursive aliases, and `GenericParams.where_` bounds feeding generic upper bounds. | None for current function-level where-bound signature computation. |
 | 5 | Complete | `body-checker-test.cc` covers literals, identifiers, binary/unary/postfix operators, calls, returns, assignment, if/while/for, conditionals, nested blocks, arrays, tuples, object literals, struct literals with unknown/missing field rejection and field coercions, member access, index, casts, unsafe blocks, `is`, `this`, nullable coalesce, lambdas and function expressions with annotated body checks, match statement integration, and error operators. | None. |
 | 6 | Complete | `body-checker-test.cc` covers `identity<T>(x: T) -> T` inferred from `identity(42)`, explicit shared generic type variables in signatures, and `CannotInferTypeParameter` ZOM0420 for unsolved generic calls. Parser/lit generic declaration coverage remains in `type_params_basic_pos_01.check`, `fun_generic_pos_06.check`, and `decl_generics_pos_07.check`. | None. |
 | 7 | Complete | `body-checker-test.cc` covers explicit type argument substitution for `identity::<f64>(42.0)`, wrong explicit type-argument count rejection, and incompatible explicit type argument rejection. `generic_call_relational_disambig_pos_01.check` covers parsed call type arguments without confusing relational operators. | None. |
-| 8 | Complete | `body-checker-test.cc` covers call-site rejection for an unsatisfied function-level interface bound, positive satisfaction through an impl block, and checker diagnostic ZOM0431 through `CheckerTraitNotImplemented`. `complex_impl_pos_09.check` covers parser/lit impl syntax with generic interface arguments. | None for current bound syntax. Parser-accepted `where` clauses are outside this checker-landed gate. |
+| 8 | Complete | `body-checker-test.cc` covers call-site rejection for an unsatisfied function-level interface bound, positive satisfaction through an impl block, and checker diagnostic ZOM0431 through `CheckerTraitNotImplemented`. `DeclSignature.FunctionGenericParamPreservesWhereBound` covers where-clause bounds entering function signatures. `complex_impl_pos_09.check` covers parser/lit impl syntax with generic interface arguments. | None for current function-level bound syntax. Impl-level where-bound solving remains part of the broader trait resolver contract. |
 | 9 | Complete | `trait-resolver-test.cc` covers duplicate concrete impl coherence and direct-vs-blanket overlap, both asserting stable ZOM0430 (`ConflictingImpl`) diagnostics through the real binder + trait resolver pipeline. | None. |
-| 10 | Complete | `trait-resolver-test.cc` covers unique associated type lookup, ambiguous lookup with ZOM0434, and missing associated type with ZOM0433. | None for current AST surface. Fully qualified projection awaits parser AST support. |
+| 10 | Complete | `trait-resolver-test.cc` covers unique associated type lookup, ambiguous lookup with ZOM0434, and missing associated type with ZOM0433. `associated_projection_pos_01.check` covers parser AST surface for `<T as Iterator>::Item` as `AssociatedTypeProjectionExpr`. | Checker disambiguation from `AssociatedTypeProjectionExpr.iface_ty` remains follow-on work. |
 | 11 | Complete | `type-test.cc` covers invariant `NamedType` generic arguments. | None for v1 invariance. |
 | 12 | Complete | `exhaustiveness-test.cc` covers booleans, open types, unions, wildcard, redundancy, constructors, and wildcard-pass cases. `BodyChecker.MatchStmtReportsNonExhaustiveEnum` covers enum integration through `BodyChecker::checkMatchStmt` with non-exhaustive diagnostics. | None. |
 | 13 | Complete | `exhaustiveness-test.cc` includes `GuardedWildcardDoesNotProveCoverage`, proving guarded arms are useful but do not contribute unconditional coverage. | None. |
@@ -1486,7 +1488,7 @@ and tests cover the exact acceptance criterion above.
 | 27 | Complete | `body-checker-test.cc` covers `T | null` initializer, null-coalesce behavior, `&i32 = null` rejection, `&i32 | null = null` acceptance, and nullable initializer coercion records; coercion tests reject bare reference null. | None. |
 | 28 | Complete | `body-checker-test.cc` covers `+` on a user-defined named type with an `Add` impl and returns the user type; built-in numeric operators are covered by primitive arithmetic tests. | None for current operator surface. Full method-signature dispatch belongs to the later method-call lowering contract. |
 | 29 | Complete | `body-checker-test.cc` covers numeric casts, `i32 as bool` rejection, raw-pointer unsafe gating, shared-reference-to-const-raw casts, mutable-reference-to-mutable-raw casts, accepted dyn upcast through declared interface inheritance, and rejected unrelated dyn casts. | None. |
-| 30 | Complete | `coercion-test.cc` covers `dyn I -> dyn J` upcast; `DeclSignatureComputer` resolves `dyn` type expressions; `BodyChecker.LetWithDynAnnotationRecordsExistentialErasure` verifies concrete `T -> dyn I` erasure at explicit local annotations; `BodyChecker.CastAllowsDynUpcast` verifies inheritance-gated dyn upcast. | None for current dyn AST surface. Marker-list and object-safety checks await parser-exposed marker lists and interface method metadata. |
+| 30 | Complete | `coercion-test.cc` covers `dyn I -> dyn J` upcast; `DeclSignatureComputer` resolves `dyn` type expressions; `BodyChecker.LetWithDynAnnotationRecordsExistentialErasure` verifies concrete `T -> dyn I` erasure at explicit local annotations; `BodyChecker.CastAllowsDynUpcast` verifies inheritance-gated dyn upcast; `dyn_marker_list_pos_02.check` covers `dyn I + M` parser AST surface; `DeclSignature.DynRejectsStaticInterfaceMethod` and `DeclSignature.DynRejectsUnboundAssociatedType` cover object-safety diagnostics ZOM0335 and ZOM0334 for currently exposed interface metadata. | Remaining OS-0/OS-1/OS-2/OS-3/OS-6/OS-7 checks require richer interface method metadata and are tracked outside this slice. |
 | 31 | Complete | `type-test.cc` and `coercion-test.cc` cover bottom/top, reborrow, raw mut-to-const, union injection, and nullable union. `body-checker-test.cc` verifies no implicit numeric widening and covers union-injection/coercion sites for function arguments, returns, assignments, conditionals, struct literal fields, nullable local declarations, reborrow returns, and raw mut-to-const assignments. | None. |
 
 ## Implementation Plan
