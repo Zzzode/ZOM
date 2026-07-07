@@ -351,10 +351,10 @@ private:
   /// Returns an empty zc::Own if the name does not correspond to a primitive type.
   zc::Own<type::Type> makePrimitiveType(zc::StringPtr name);
 
-  /// \brief Validate a user-defined binary operator trait method signature.
-  bool validateBinaryOperatorTrait(ast::NodeId expr, zc::StringPtr traitName,
-                                   zc::StringPtr methodName, const type::Type& lhsType,
-                                   const type::Type& rhsType, const type::Type& returnType);
+  /// \brief Validate a user-defined trait method with one value parameter.
+  bool validateSingleParamTraitMethod(ast::NodeId expr, zc::StringPtr traitName,
+                                      zc::StringPtr methodName, const type::Type& selfType,
+                                      const type::Type& paramType, const type::Type& returnType);
 
   /// \brief Validate a user-defined unary operator trait method signature.
   bool validateUnaryOperatorTrait(ast::NodeId expr, zc::StringPtr traitName,

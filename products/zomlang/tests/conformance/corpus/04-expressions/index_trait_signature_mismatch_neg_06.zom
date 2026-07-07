@@ -1,0 +1,15 @@
+interface Index {
+    type Output;
+    fun index(idx: i32) -> Self.Output;
+}
+
+class Bag { }
+
+impl Index for Bag {
+    type Output = i32;
+    fun index(idx: str) -> i32;
+}
+
+let bag: Bag;
+
+bag[0];

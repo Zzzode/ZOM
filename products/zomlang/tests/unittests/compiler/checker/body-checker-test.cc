@@ -2589,8 +2589,14 @@ ZC_TEST("BodyChecker.UserIndexExprReturnsAssociatedOutput") {
   implIfaceNodes.add(fix.makeNamedTypeExpr("Index"_zc));
   auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
 
+  zc::Vector<ast::NodeId> indexParams;
+  indexParams.add(fix.makeFunctionParamDecl("idx"_zc, fix.makeNamedTypeExpr("i32"_zc)));
+  auto indexParamList = fix.makeFunctionParamList(fix.makeNodeList(indexParams.asPtr()));
+  auto indexMethod = fix.makeMethodDecl("index"_zc, ast::NodeId(), indexParamList,
+                                        fix.makeNamedTypeExpr("i32"_zc));
   zc::Vector<ast::NodeId> implMembers;
   implMembers.add(makeAssociatedTypeDecl(fix, "Output"_zc, fix.makeNamedTypeExpr("i32"_zc)));
+  implMembers.add(indexMethod);
   auto implDecl =
       makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Bag"_zc), implIfaces,
                              fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
@@ -2619,6 +2625,57 @@ ZC_TEST("BodyChecker.UserIndexExprReturnsAssociatedOutput") {
     auto& primitive = static_cast<const type::PrimitiveType&>(ty);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
   }
+}
+
+ZC_TEST("BodyChecker.UserIndexExprRejectsWrongTraitMethodSignature") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> ifaceMembers;
+  ifaceMembers.add(makeAssociatedTypeDecl(fix, "Output"_zc, ast::NodeId()));
+  auto indexIface = fix.makeInterfaceDecl(
+      "Index"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
+  auto bagType = fix.makeClassDecl("Bag"_zc);
+
+  zc::Vector<ast::NodeId> implIfaceNodes;
+  implIfaceNodes.add(fix.makeNamedTypeExpr("Index"_zc));
+  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
+
+  zc::Vector<ast::NodeId> indexParams;
+  indexParams.add(fix.makeFunctionParamDecl("idx"_zc, fix.makeNamedTypeExpr("str"_zc)));
+  auto indexParamList = fix.makeFunctionParamList(fix.makeNodeList(indexParams.asPtr()));
+  auto indexMethod = fix.makeMethodDecl("index"_zc, ast::NodeId(), indexParamList,
+                                        fix.makeNamedTypeExpr("i32"_zc));
+  zc::Vector<ast::NodeId> implMembers;
+  implMembers.add(makeAssociatedTypeDecl(fix, "Output"_zc, fix.makeNamedTypeExpr("i32"_zc)));
+  implMembers.add(indexMethod);
+  auto implDecl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Bag"_zc), implIfaces,
+                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
+
+  auto bagDecl =
+      fix.makeVariableDeclarator(fix.makeBindingPattern("bag"_zc), fix.makeNamedTypeExpr("Bag"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(bagDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto index = fix.makeIndexExpr(fix.makeIdentExpr("bag"_zc), fix.makeIntLiteral(0));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(indexIface);
+  topDecls.add(bagType);
+  topDecls.add(implDecl);
+  topDecls.add(let);
+  topDecls.add(index);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(
+      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
+  ZC_EXPECT(result.typeEnv.hasType(index));
+  if (result.typeEnv.hasType(index)) { ZC_EXPECT(isError(result.typeEnv.getType(index))); }
 }
 
 ZC_TEST("BodyChecker.UserIndexExprRequiresIndexImpl") {

@@ -708,14 +708,14 @@ Binary and unary operators desugar to interface method calls. The compiler provi
 | `a / b` | `Div<Rhs>` | `div(a, b)` | |
 | `a % b` | `Rem<Rhs>` | `rem(a, b)` | |
 | `a == b` | `Eq` | `eq(a, b)` | Returns `bool` |
-| `a != b` | `Eq` | `ne(a, b)` | Default: `!eq(a, b)` |
-| `a < b` | `Ord` | `lt(a, b)` | Returns `bool` |
-| `a <= b` | `Ord` | `le(a, b)` | |
-| `a > b` | `Ord` | `gt(a, b)` | |
-| `a >= b` | `Ord` | `ge(a, b)` | |
+| `a != b` | `Eq` | `eq(a, b)` | Lowering negates the `eq` result |
+| `a < b` | `Ord` | `cmp(a, b)` | Interprets negative as less-than |
+| `a <= b` | `Ord` | `cmp(a, b)` | Interprets negative or zero as true |
+| `a > b` | `Ord` | `cmp(a, b)` | Interprets positive as true |
+| `a >= b` | `Ord` | `cmp(a, b)` | Interprets positive or zero as true |
 | `-a` | `Neg` | `neg(a)` | Unary |
 | `!a` | `Not` | `not(a)` | Unary |
-| `a[b]` | `Index<Idx>` | `index(a, b)` | |
+| `a[b]` | `Index<Idx>` | `index(a, b) -> Output` | Impl method signature is `index(idx: Idx) -> Output` |
 | `a[b] = c` | `IndexMut<Idx>` | `index_mut(a, b, c)` | |
 | `a in b` | `Contains` | `contains(b, a)` | Note argument order reversal |
 

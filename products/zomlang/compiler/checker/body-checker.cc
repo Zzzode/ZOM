@@ -1045,15 +1045,16 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
   return zc::Own<type::Type>();
 }
 
-bool BodyChecker::validateBinaryOperatorTrait(ast::NodeId expr, zc::StringPtr traitName,
-                                              zc::StringPtr methodName, const type::Type& lhsType,
-                                              const type::Type& rhsType,
-                                              const type::Type& returnType) {
+bool BodyChecker::validateSingleParamTraitMethod(ast::NodeId expr, zc::StringPtr traitName,
+                                                 zc::StringPtr methodName,
+                                                 const type::Type& selfType,
+                                                 const type::Type& paramType,
+                                                 const type::Type& returnType) {
   TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
                               impl->diags);
   traitResolver.discoverImpls();
 
-  ZC_IF_SOME(implNodeId, traitResolver.findImpl(lhsType, traitName)) {
+  ZC_IF_SOME(implNodeId, traitResolver.findImpl(selfType, traitName)) {
     if (!impl->tree.contains(implNodeId)) { return false; }
     const auto& implNode = impl->tree.node(implNodeId);
     if (implNode.kind != SyntaxKind::StandaloneImplDecl) { return false; }
@@ -1091,7 +1092,7 @@ bool BodyChecker::validateBinaryOperatorTrait(ast::NodeId expr, zc::StringPtr tr
       auto paramTyId = NodeId(paramNode.payload.words[kFunctionParameterDeclTyWord]);
       auto paramTy = resolveTypeExpr(paramTyId);
       if (!paramTy) { return false; }
-      if (!impl->typeEnv.find(*paramTy).equals(rhsType)) { return false; }
+      if (!impl->typeEnv.find(*paramTy).equals(paramType)) { return false; }
 
       auto retTyId = NodeId(member.payload.words[kMethodDeclRetTyWord]);
       auto retTy = resolveTypeExpr(retTyId);
@@ -1455,8 +1456,8 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
         traitResolver.discoverImpls();
         if (traitResolver.implements(resolvedLhs, traitName)) {
           auto methodName = binaryOperatorTraitMethod(traitName);
-          if (!validateBinaryOperatorTrait(expr, traitName, methodName, resolvedLhs, resolvedRhs,
-                                           resolvedLhs)) {
+          if (!validateSingleParamTraitMethod(expr, traitName, methodName, resolvedLhs, resolvedRhs,
+                                              resolvedLhs)) {
             auto loc = getNodeLoc(impl->tree, expr);
             impl->diags.diagnose<DiagID::OperatorTraitSignatureMismatch>(
                 loc, traitName, resolvedLhs.toString(), methodName, resolvedRhs.toString(),
@@ -1510,8 +1511,8 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
         auto expectedReturn = traitName == "Eq"_zc
                                   ? zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool)
                                   : zc::heap<type::PrimitiveType>(type::PrimitiveKind::I32);
-        if (!validateBinaryOperatorTrait(expr, traitName, methodName, resolvedLhs, resolvedRhs,
-                                         *expectedReturn)) {
+        if (!validateSingleParamTraitMethod(expr, traitName, methodName, resolvedLhs, resolvedRhs,
+                                            *expectedReturn)) {
           auto loc = getNodeLoc(impl->tree, expr);
           impl->diags.diagnose<DiagID::OperatorTraitSignatureMismatch>(
               loc, traitName, resolvedLhs.toString(), methodName, resolvedRhs.toString(),
@@ -1988,7 +1989,18 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
     auto output =
         traitResolver.resolveAssociatedTypeWithStatus(resolvedObj, "Index"_zc, "Output"_zc);
     if (output.kind == AssociatedTypeResolutionKind::Resolved) {
-      ZC_IF_SOME(outputTy, output.type) { return storeType(expr, cloneType(outputTy)); }
+      ZC_IF_SOME(outputTy, output.type) {
+        if (!validateSingleParamTraitMethod(expr, "Index"_zc, "index"_zc, resolvedObj, resolvedIdx,
+                                            outputTy)) {
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::OperatorTraitSignatureMismatch>(
+              loc, "Index"_zc, resolvedObj.toString(), "index"_zc, resolvedIdx.toString(),
+              outputTy.toString());
+          impl->hadErrors = true;
+          return storeType(expr, zc::heap<type::ErrorType>());
+        }
+        return storeType(expr, cloneType(outputTy));
+      }
     }
 
     auto loc = getNodeLoc(impl->tree, expr);
