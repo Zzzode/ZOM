@@ -1269,10 +1269,11 @@ variants:
   - id: 0x11D
     name: InterfaceDecl
     bases: [NamedDeclaration]
-    doc: "interface Name { members }"
+    doc: "interface Name : I + J { members }"
     fields:
       - {name: name, type: IdentId}
       - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
+      - {name: ifaces_id, type: NodeId, cast: ImplIfaceList, optional: true}
       - {name: members_id, type: NodeId, cast: ClassMemberList, optional: true}
 
   - id: 0x11E

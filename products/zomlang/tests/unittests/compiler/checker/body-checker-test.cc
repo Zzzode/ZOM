@@ -1833,10 +1833,10 @@ ZC_TEST("BodyChecker.CastAllowsMutableReferenceToMutableRawPointer") {
 ZC_TEST("BodyChecker.CastAllowsDynUpcast") {
   TestFixture fix;
   auto parentIface = fix.makeInterfaceDecl("Parent"_zc);
-  zc::Vector<ast::NodeId> childMembers;
-  childMembers.add(fix.makeNamedTypeExpr("Parent"_zc));
+  zc::Vector<ast::NodeId> childSuperIfaces;
+  childSuperIfaces.add(fix.makeNamedTypeExpr("Parent"_zc));
   auto childIface = fix.makeInterfaceDecl(
-      "Child"_zc, fix.makeClassMemberList(fix.makeNodeList(childMembers.asPtr())));
+      "Child"_zc, ast::NodeId(), fix.makeImplIfaceList(fix.makeNodeList(childSuperIfaces.asPtr())));
   auto concrete = fix.makeClassDecl("Concrete"_zc);
 
   zc::Vector<ast::NodeId> ifaceNodes;

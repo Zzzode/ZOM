@@ -38,6 +38,7 @@
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
+// CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #20 @2:26..2:49 nmembers=1
 // CHECK-NEXT:               members:

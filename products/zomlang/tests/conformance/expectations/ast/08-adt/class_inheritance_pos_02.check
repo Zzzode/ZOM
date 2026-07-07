@@ -8,6 +8,7 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         InterfaceDecl #5 @1:1..1:43 name="Drawable"
 // CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #4 @1:20..1:43 nmembers=1
 // CHECK-NEXT:               members:
@@ -24,6 +25,7 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         InterfaceDecl #13 @2:1..2:53 name="Updatable"
 // CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #12 @2:21..2:53 nmembers=1
 // CHECK-NEXT:               members:

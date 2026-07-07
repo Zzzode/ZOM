@@ -578,6 +578,10 @@ void DeclCollector::visitInterfaceDecl(NodeId node) {
   NodeId typeParams(n.payload.words[kInterfaceDeclTypeParamsIdWord]);
   if (impl->tree.contains(typeParams)) { visitNode(typeParams); }
 
+  // Visit superinterface bounds
+  NodeId ifaces(n.payload.words[kInterfaceDeclIfacesIdWord]);
+  if (impl->tree.contains(ifaces)) { visitNode(ifaces); }
+
   // Visit members
   NodeId members(n.payload.words[kInterfaceDeclMembersIdWord]);
   if (impl->tree.contains(members)) { visitNode(members); }

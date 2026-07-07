@@ -757,6 +757,9 @@ struct Parser::Impl {
 
   ast::NodeId makeImplIfaceList(AstFactory& builder, size_t start, size_t end) const;
 
+  ast::NodeId parseInterfaceHeritage(AstFactory& builder, size_t headerStart,
+                                     size_t headerEnd) const;
+
   ast::NodeId parseStandaloneImplDeclaration(AstFactory& builder, size_t start, size_t end) const;
 
   ast::NodeId parseExpressionStatement(AstFactory& builder, size_t start, size_t end) const;

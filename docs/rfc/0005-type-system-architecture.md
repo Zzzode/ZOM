@@ -433,7 +433,7 @@ Permitted zero-cost or representation-defined coercions:
 - `any` is a supertype of every type (top type).
 - `&mut T <: &T` (mutable reference coerces to shared reference; reborrow).
 - `*mut T <: *const T` (mut raw coerces to const raw).
-- If `I extends J`, then `dyn I + M <: dyn J + M` (existential upcast; zero cost).
+- If `I : J`, then `dyn I + M <: dyn J + M` (existential upcast; zero cost).
 - Any union member `Ti` coerces to `T1 | ... | Ti | ... | Tn` at a coercion
   site. This includes `null -> T | null`, but never `null -> T`.
 - A concrete `T` coerces to `dyn I + M` only at an explicit target-typed
@@ -744,7 +744,7 @@ built-in impls. For user types, the type checker looks up the trait impl.
 | `*mut T` | `*const T` | Mut-to-const raw | Safe |
 | `&mut T` | `*mut T` | Ref-to-raw | Safe (reborrow) |
 | `&T` | `*const T` | Ref-to-raw | Safe |
-| `dyn I` | `dyn J` (I extends J) | Existential upcast | Safe (zero-cost) |
+| `dyn I` | `dyn J` (I : J) | Existential upcast | Safe (zero-cost) |
 | `T` | `T \| null` | Nullable injection | Safe only at coercion sites; `as` is unnecessary |
 | `null` | `T \| null` | Nullable injection | Safe only at coercion sites; `as` is unnecessary |
 | `i32` | `bool` | Not valid | n/a |
@@ -925,7 +925,7 @@ annotation sites when:
 The coercion is free: no heap allocation, no copy of the value. The
 compiler emits a 2-word fat pointer (`data_ptr` + `vtable_ptr`).
 
-**Upcast:** `dyn I + M` coerces to `dyn J + M` when `I extends J`.
+**Upcast:** `dyn I + M` coerces to `dyn J + M` when `I : J`.
 Zero runtime cost (vtable_ptr offset adjustment only).
 
 ### Pattern Matching and Exhaustiveness
@@ -1443,7 +1443,7 @@ runs and produces resolved names.
     safe reference-to-raw casts, and permits dyn upcasts only through declared
     interface inheritance.
 30. **Existential coercion:** `T` coerces to `dyn I` at explicit annotation
-    sites when `T: I`. Upcast `dyn I -> dyn J` works when `I extends J`.
+    sites when `T: I`. Upcast `dyn I -> dyn J` works when `I : J`.
     Parser/lit coverage accepts `dyn I + M`, and Phase A rejects the
     object-unsafe generic-method, bare-Self-return, static-method, and
     unbound-associated-type cases currently exposed by interface metadata,
@@ -1489,7 +1489,7 @@ and tests cover the exact acceptance criterion above.
 | 27 | Complete | `body-checker-test.cc` covers `T | null` initializer, null-coalesce behavior, `&i32 = null` rejection, `&i32 | null = null` acceptance, and nullable initializer coercion records; coercion tests reject bare reference null. | None. |
 | 28 | Complete | `BinaryExpr.op` is a schema-generated `BinaryOperatorKind`, and parser/test unary helpers use `UnaryOperatorKind`, so operator tests no longer pass raw operator ordinals. `body-checker-test.cc` covers `+`, `-`, `*`, `/`, `%`, and `**` on a user-defined named type with `Add`, `Sub`, `Mul`, `Div`, `Rem`, and `Pow` impls and returns the user type; it also covers `==` with `Eq`, `<` with `Ord`, `-x` with `Neg`, `!x` with `Not`, `bag[0]` with `Index::Output`, and rejection of user-type operators missing the required trait. `operator_trait_missing_neg_01.check` and `index_trait_missing_neg_01.check` cover user-visible ZOM0431 through the diagnostics conformance runner. Built-in numeric operators are covered by primitive arithmetic tests. | Full method-signature dispatch belongs to the later method-call lowering contract. |
 | 29 | Complete | `body-checker-test.cc` covers numeric casts, `i32 as bool` rejection, raw-pointer unsafe gating, shared-reference-to-const-raw casts, mutable-reference-to-mutable-raw casts, accepted dyn upcast through declared interface inheritance, and rejected unrelated dyn casts. | None. |
-| 30 | Complete | `coercion-test.cc` covers `dyn I -> dyn J` upcast; `DeclSignatureComputer` resolves `dyn` type expressions; `BodyChecker.LetWithDynAnnotationRecordsExistentialErasure` verifies concrete `T -> dyn I` erasure at explicit local annotations; `BodyChecker.CastAllowsDynUpcast` verifies inheritance-gated dyn upcast; `dyn_marker_list_pos_02.check` covers `dyn I + M` parser AST surface; `MethodDecl.type_params_id` preserves method-level generic parameters for object-safety analysis, `AssociatedTypeDecl.type_params_id` preserves generic associated type parameters, and `FunctionParameterDecl.attrs` now preserves receiver parameter attributes for OS-3 analysis. `DeclSignature.DynRejectsGenericInterfaceMethod`, `DeclSignature.DynRejectsBareSelfReturn`, `DeclSignature.DynRejectsMoveSelfReceiver`, `DeclSignature.DynRejectsUnsizedMethodParameter`, `DeclSignature.DynRejectsStaticInterfaceMethod`, `DeclSignature.DynRejectsUnboundAssociatedType`, and `DeclSignature.DynRejectsGenericAssociatedType` cover object-safety diagnostics ZOM0331, ZOM0332, ZOM0333, ZOM0337, ZOM0335, ZOM0334, and ZOM0336 for currently exposed interface metadata. `dyn_generic_method_neg_01.check`, `dyn_self_return_neg_01.check`, `dyn_move_self_neg_01.check`, `dyn_unsized_parameter_neg_01.check`, `dyn_static_method_neg_01.check`, `dyn_unbound_associated_type_neg_01.check`, and `dyn_gat_not_allowed_neg_01.check` cover user-visible ZOM0331/ZOM0332/ZOM0333/ZOM0337/ZOM0335/ZOM0334/ZOM0336 and source-caret rendering through the diagnostics conformance runner. | Remaining OS-0 checks require recursive superinterface object-safety analysis and are tracked outside this slice. |
+| 30 | Complete | `coercion-test.cc` covers `dyn I -> dyn J` upcast; `DeclSignatureComputer` resolves `dyn` type expressions; `BodyChecker.LetWithDynAnnotationRecordsExistentialErasure` verifies concrete `T -> dyn I` erasure at explicit local annotations; `BodyChecker.CastAllowsDynUpcast` verifies inheritance-gated dyn upcast through `InterfaceDecl.ifaces_id`; `dyn_marker_list_pos_02.check` covers `dyn I + M` parser AST surface; `InterfaceDecl.ifaces_id` preserves superinterface metadata for OS-0, `MethodDecl.type_params_id` preserves method-level generic parameters for object-safety analysis, `AssociatedTypeDecl.type_params_id` preserves generic associated type parameters, and `FunctionParameterDecl.attrs` preserves receiver parameter attributes for OS-3 analysis. `DeclSignature.DynRejectsObjectUnsafeSuperinterface`, `DeclSignature.DynRejectsGenericInterfaceMethod`, `DeclSignature.DynRejectsBareSelfReturn`, `DeclSignature.DynRejectsMoveSelfReceiver`, `DeclSignature.DynRejectsUnsizedMethodParameter`, `DeclSignature.DynRejectsStaticInterfaceMethod`, `DeclSignature.DynRejectsUnboundAssociatedType`, and `DeclSignature.DynRejectsGenericAssociatedType` cover object-safety diagnostics ZOM0338, ZOM0331, ZOM0332, ZOM0333, ZOM0337, ZOM0335, ZOM0334, and ZOM0336 for currently exposed interface metadata. `dyn_super_not_object_safe_neg_01.check`, `dyn_generic_method_neg_01.check`, `dyn_self_return_neg_01.check`, `dyn_move_self_neg_01.check`, `dyn_unsized_parameter_neg_01.check`, `dyn_static_method_neg_01.check`, `dyn_unbound_associated_type_neg_01.check`, and `dyn_gat_not_allowed_neg_01.check` cover user-visible ZOM0338/ZOM0331/ZOM0332/ZOM0333/ZOM0337/ZOM0335/ZOM0334/ZOM0336 and source-caret rendering through the diagnostics conformance runner. | None. |
 | 31 | Complete | `type-test.cc` and `coercion-test.cc` cover bottom/top, reborrow, raw mut-to-const, union injection, and nullable union. `body-checker-test.cc` verifies no implicit numeric widening and covers union-injection/coercion sites for function arguments, returns, assignments, conditionals, struct literal fields, nullable local declarations, reborrow returns, and raw mut-to-const assignments. | None. |
 
 ## Implementation Plan
@@ -1577,3 +1577,4 @@ None.
 | 2026-07-07 | REVIEW | Added OS-7 `DynUnsizedParameter` evidence for direct unsized slice boundary types in dyn methods. |
 | 2026-07-07 | REVIEW | Preserved associated-type generic parameters and added OS-6 `DynGatNotAllowed` evidence for generic associated types in dyn interfaces. |
 | 2026-07-07 | REVIEW | Preserved receiver parameter attributes and added OS-3 `DynMoveSelf` evidence for `#[zom::param::move] this` in dyn interfaces. |
+| 2026-07-07 | REVIEW | Preserved `InterfaceDecl.ifaces_id` and added OS-0 `DynSuperNotObjectSafe` evidence for recursive superinterface object-safety checking. |

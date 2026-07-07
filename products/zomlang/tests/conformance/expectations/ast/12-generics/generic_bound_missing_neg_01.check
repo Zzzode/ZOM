@@ -8,6 +8,7 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         InterfaceDecl #2 @1:1..1:23 name="Hashable"
 // CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #1 @1:20..1:23 nmembers=0
 // CHECK-NEXT:               members: []

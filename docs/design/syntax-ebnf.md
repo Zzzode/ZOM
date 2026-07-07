@@ -485,7 +485,7 @@ InterfaceDecl  ::= ModifierList 'interface' BindingIdent TypeParameters? Interfa
        ModifierList + semantic annotation; the parser treats 'unsafe' as a soft keyword
        at impl-head position, not interface-head. See Ch.09 §Unsafe Interfaces. *)
 
-InterfaceHeritage ::= ':' InterfaceBoundList   (* super-interfaces; colon-separated, NOT 'extends' *)
+InterfaceHeritage ::= ':' InterfaceBoundList   (* super-interfaces; colon-separated *)
 InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*   (* '+' = conjunction (AND); '|' is ONLY for UnionType *)
 InterfaceBound     ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
 QualifiedPathOrIdent ::= PathSegment ( '::' PathSegment )*
@@ -501,7 +501,6 @@ PropertySignature ::= PropertyName '?'? TypeAnnotation
 MethodSignature   ::= PropertyName '?'? CallSignature
 CallSignature     ::= TypeParameters? ParameterClause FunctionSignature?
 
-InterfaceTypeList ::= TypeRef ( ',' TypeRef )*   (* deprecated; prefer InterfaceBoundList *)
 TypeRef           ::= Identifier TypeArguments?
 ```
 
@@ -677,7 +676,7 @@ TypeParameters  ::= '<' TypeParameterList '>' GenericParamClose
 TypeParameterList ::= TypeParameter ( ',' TypeParameter )* ','?
 TypeParameter   ::= Variance? Identifier ( ':' TypeParameterBoundList )? ( '=' TypeExpr )?
                   (* constraint uses ':' (industry convention: Swift/Kotlin);
-                     bounds are '+' conjunction list, same as impl/interface-extends/dyn *)
+                     bounds are '+' conjunction list, same as impl/interface heritage/dyn *)
 Variance        ::= 'in' | 'out'   (* reserved; parser rejects — variance not supported in v1 *)
 TypeParameterBoundList ::= TypeExpr ( '+' TypeExpr )*
 
@@ -1440,7 +1439,7 @@ Per AGENTS.md Section Spec Alignment Rules, the following is the cross-reference
 | Section 4.3.2 FunctionDecl (G15/G19/G20) | Circular arrow — 06-decl needs unsafe soft-keyword note | -- | Circular arrow (G15/G19/G20) | -- | Circular arrow — parser needs `unsafe fun` prefix support |
 | Section 4.3.3 ClassDecl (G13: `:` heritage) | Circular arrow — 08-classes uses `extends` keyword | -- | Circular arrow (G13) | -- | Checkmark parser class heritage |
 | Section 4.3.4 StructDecl | Checkmark | -- | Checkmark | -- | Checkmark parser struct handling |
-| Section 4.3.5 InterfaceDecl (G13/G14) | Circular arrow — 09-interfaces uses `extends` + comma list | -- | Circular arrow (G13/G14) | -- | Checkmark parser interface handling |
+| Section 4.3.5 InterfaceDecl (G13/G14) | Checkmark 09-interfaces | -- | Checkmark | -- | Checkmark parser interface handling |
 | Section 4.3.6 EnumDecl | Checkmark | -- | Checkmark | -- | Checkmark parser/enum.cc |
 | Section 4.3.7 ErrorDecl (G13: `:` heritage) | Circular arrow — 11-error-handling uses `extends` | -- | Circular arrow (G13) | -- | Checkmark parser error heritage |
 | Section 4.3.8 AliasDecl + default type param (G1) | Checkmark 12-generics | -- | Circular arrow (G1) | -- | Checkmark parser/alias.cc |

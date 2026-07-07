@@ -808,6 +808,26 @@ ast::NodeId Parser::Impl::makeImplIfaceList(AstFactory& builder, size_t start, s
                                    builder.makeList(ifaces.asPtr()));
 }
 
+ast::NodeId Parser::Impl::parseInterfaceHeritage(AstFactory& builder, size_t headerStart,
+                                                 size_t headerEnd) const {
+  if (headerStart >= headerEnd) { return ast::NodeId(); }
+
+  TokenCursor colonCursor = tokenCursorAt(headerStart);
+  const size_t colon = consumeBalancedTypeUntil(colonCursor, headerEnd, ast::SyntaxKind::Colon);
+  if (colon >= headerEnd) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(headerStart),
+                                                                  ":"_zc);
+    return ast::NodeId();
+  }
+
+  if (colon + 1 >= headerEnd) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(colon + 1));
+    return ast::NodeId();
+  }
+
+  return makeImplIfaceList(builder, colon + 1, headerEnd);
+}
+
 ast::NodeId Parser::Impl::parseSpawnStatement(AstFactory& builder, size_t start, size_t end) const {
   size_t exprEnd = end;
   if (start < exprEnd && kindAt(exprEnd - 1) == ast::SyntaxKind::Semicolon) { --exprEnd; }

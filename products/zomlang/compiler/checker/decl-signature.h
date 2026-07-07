@@ -15,6 +15,7 @@
 #pragma once
 
 #include "zc/core/common.h"
+#include "zc/core/map.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/node-id.h"
@@ -189,6 +190,11 @@ private:
 
   /// \brief Emit object-safety diagnostics for a dyn interface head.
   void checkDynObjectSafety(ast::NodeId ifaceTypeExpr, zc::StringPtr ifaceName);
+
+  /// \brief Check whether an interface and its superinterfaces are object-safe.
+  bool isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::StringPtr ifaceName,
+                       zc::StringPtr& failingIface, zc::HashSet<zc::StringPtr>& activeIfaces,
+                       bool emitDirectDiagnostics);
 
   // ==========================================================================
   // Helpers

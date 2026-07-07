@@ -1,4 +1,4 @@
-interface I<T> extends Base {
+interface I<T> : Base {
   public static let x: i32 = 1;
   protected const y?: str;
   private fun foo(n: i32) -> i32;

@@ -444,6 +444,27 @@ static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv&
   return false;
 }
 
+static zc::StringPtr simpleTypeExprName(const ast::Tree& tree, ast::NodeId typeExpr) {
+  if (!tree.contains(typeExpr)) return ""_zc;
+  const auto& node = tree.node(typeExpr);
+  if (node.kind != ast::SyntaxKind::NamedTypeExpr) return ""_zc;
+
+  auto pathId = ast::NodeId(node.payload.words[ast::kNamedTypeExprPathWord]);
+  if (!tree.contains(pathId)) return ""_zc;
+  const auto& path = tree.node(pathId);
+  if (path.kind == ast::SyntaxKind::IdentExpr) {
+    return tree.ident(ast::IdentId(path.payload.words[ast::kIdentExprNameWord]));
+  }
+  if (path.kind != ast::SyntaxKind::ModulePath) return ""_zc;
+
+  ast::IdentList segments;
+  segments.first = path.payload.words[ast::kModulePathSegmentsFirstWord];
+  segments.size = path.payload.words[ast::kModulePathSegmentsSizeWord];
+  auto names = tree.identList(segments);
+  if (names.size() == 0) return ""_zc;
+  return tree.ident(names.back());
+}
+
 static bool namedInterfaceExtends(const ast::Tree& tree, zc::StringPtr childName,
                                   zc::StringPtr parentName) {
   if (childName.size() == 0 || parentName.size() == 0) return false;
@@ -459,25 +480,17 @@ static bool namedInterfaceExtends(const ast::Tree& tree, zc::StringPtr childName
     auto name = tree.ident(ast::IdentId(node.payload.words[ast::kInterfaceDeclNameWord]));
     if (name != childName) return;
 
-    auto membersId = ast::NodeId(node.payload.words[ast::kInterfaceDeclMembersIdWord]);
-    if (!tree.contains(membersId)) return;
-    const auto& membersNode = tree.node(membersId);
-    if (membersNode.kind != ast::SyntaxKind::ClassMemberList) return;
+    auto ifacesId = ast::NodeId(node.payload.words[ast::kInterfaceDeclIfacesIdWord]);
+    if (!tree.contains(ifacesId)) return;
+    const auto& ifacesNode = tree.node(ifacesId);
+    if (ifacesNode.kind != ast::SyntaxKind::ImplIfaceList) return;
 
-    ast::NodeList members;
-    members.first = membersNode.payload.words[ast::kClassMemberListMembersFirstWord];
-    members.size = membersNode.payload.words[ast::kClassMemberListMembersSizeWord];
-    for (ast::NodeId memberId : tree.list(members)) {
-      if (!tree.contains(memberId)) continue;
-      const auto& member = tree.node(memberId);
-      if (member.kind != ast::SyntaxKind::NamedTypeExpr) continue;
-
-      auto pathId = ast::NodeId(member.payload.words[ast::kNamedTypeExprPathWord]);
-      if (!tree.contains(pathId)) continue;
-      const auto& path = tree.node(pathId);
-      if (path.kind != ast::SyntaxKind::IdentExpr) continue;
-
-      auto parentCandidate = tree.ident(ast::IdentId(path.payload.words[ast::kIdentExprNameWord]));
+    ast::NodeList ifaces;
+    ifaces.first = ifacesNode.payload.words[ast::kImplIfaceListIfacesFirstWord];
+    ifaces.size = ifacesNode.payload.words[ast::kImplIfaceListIfacesSizeWord];
+    for (ast::NodeId ifaceId : tree.list(ifaces)) {
+      auto parentCandidate = simpleTypeExprName(tree, ifaceId);
+      if (parentCandidate.size() == 0) continue;
       if (parentCandidate == parentName ||
           namedInterfaceExtends(tree, parentCandidate, parentName)) {
         result = true;

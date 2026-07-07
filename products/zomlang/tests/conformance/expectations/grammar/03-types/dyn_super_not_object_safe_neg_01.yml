@@ -1,0 +1,5 @@
+section: "§4.7 Existential Types"
+covers_rule: "dynTypeExpr, interfaceDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; checker diagnostics reject the object-unsafe superinterface."

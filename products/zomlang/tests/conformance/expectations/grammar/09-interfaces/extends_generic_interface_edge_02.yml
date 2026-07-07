@@ -1,4 +1,4 @@
 section: "§4.2 Interfaces"
-covers_rule: "interfaceDeclaration (extends generic interface with wildcard)"
+covers_rule: "interfaceDeclaration (generic interface heritage)"
 expected: "ACCEPT"
 notes: []

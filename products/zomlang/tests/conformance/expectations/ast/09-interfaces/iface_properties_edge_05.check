@@ -8,6 +8,7 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         InterfaceDecl #12 @1:1..4:2 name="SetOnly"
 // CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #11 @1:19..4:2 nmembers=2
 // CHECK-NEXT:               members:

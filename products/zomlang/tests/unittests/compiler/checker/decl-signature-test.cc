@@ -170,6 +170,24 @@ ast::NodeId makeImplIfaceList(TestFixture& fix, ast::NodeList ifaces) {
   return fix.builder().makeNode(ast::SyntaxKind::ImplIfaceList, source::SourceRange(), payload);
 }
 
+ast::NodeId makeModulePathNamedTypeExpr(TestFixture& fix, zc::StringPtr name) {
+  zc::Vector<ast::IdentId> segments;
+  segments.add(fix.builder().internIdent(name));
+  auto segmentList = fix.builder().makeIdentList(segments.asPtr());
+
+  ast::NodePayload pathPayload;
+  pathPayload.words[ast::kModulePathSegmentsFirstWord] = segmentList.first;
+  pathPayload.words[ast::kModulePathSegmentsSizeWord] = segmentList.size;
+  auto path =
+      fix.builder().makeNode(ast::SyntaxKind::ModulePath, source::SourceRange(), pathPayload);
+
+  ast::NodePayload payload;
+  payload.words[ast::kNamedTypeExprPathWord] = path.value;
+  payload.words[ast::kNamedTypeExprArgsFirstWord] = 0;
+  payload.words[ast::kNamedTypeExprArgsSizeWord] = 0;
+  return fix.builder().makeNode(ast::SyntaxKind::NamedTypeExpr, source::SourceRange(), payload);
+}
+
 ast::NodeId makeStandaloneImplDecl(TestFixture& fix, ast::NodeId forTy, ast::NodeId ifaces,
                                    ast::NodeId members) {
   ast::NodePayload payload;
@@ -961,6 +979,35 @@ ZC_TEST("DeclSignature.DynRejectsGenericAssociatedType") {
   computeSignatures(fix, topDecls.asPtr());
 
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynGatNotAllowed));
+}
+
+ZC_TEST("DeclSignature.DynRejectsObjectUnsafeSuperinterface") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto method = fix.makeMethodDecl("clone"_zc, ast::NodeId(), ast::NodeId(),
+                                   fix.makeNamedTypeExpr("Self"_zc));
+  zc::Vector<ast::NodeId> superMembers;
+  superMembers.add(method);
+  auto baseIface = fix.makeInterfaceDecl(
+      "Base"_zc, fix.makeClassMemberList(fix.makeNodeList(superMembers.asPtr())));
+
+  zc::Vector<ast::NodeId> superIfaces;
+  superIfaces.add(makeModulePathNamedTypeExpr(fix, "Base"_zc));
+  auto childIface = fix.makeInterfaceDecl(
+      "Child"_zc, ast::NodeId(), makeImplIfaceList(fix, fix.makeNodeList(superIfaces.asPtr())));
+  auto alias =
+      fix.makeAliasDecl("DynChild"_zc, fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Child"_zc)));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(baseIface);
+  topDecls.add(childIface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynSuperNotObjectSafe));
 }
 
 ZC_TEST("DeclSignature.ResolveQualifiedAssociatedTypeProjection") {

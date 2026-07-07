@@ -31,6 +31,8 @@ CHECKER_DIAG(336, DynGatNotAllowed, kError,
 CHECKER_DIAG(337, DynUnsizedParameter, kError,
              "Interface '{0}' has method '{1}' with unsized type '{2}' and cannot be used as dyn",
              3)
+CHECKER_DIAG(338, DynSuperNotObjectSafe, kError,
+             "Interface '{0}' inherits object-unsafe interface '{1}' and cannot be used as dyn", 2)
 CHECKER_DIAG(410, TypeCheckerTypeMismatch, kError, "Type mismatch: expected {0}, got {1}", 2)
 CHECKER_DIAG(411, CannotUnifyTypes, kError, "Cannot unify '{0}' with '{1}' in {2}", 3)
 CHECKER_DIAG(412, InfiniteType, kError, "Infinite type: {0}", 1)

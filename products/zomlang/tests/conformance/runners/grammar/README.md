@@ -37,8 +37,8 @@ those belong in compiler AST/FileCheck expectations under
 | # | Directory | Purpose | Pos | Edge | Neg | Other | Total |
 |---|-----------|---------|-----|------|-----|-------|-------|
 | 1 | `02-lexical` | Lexer tokens: literals, keywords, identifiers, escapes, whitespace, comments | 17 | 10 | 17 | 0 | 44 |
-| 2 | `03-types` | Type syntax: primitives, function types, tuples, unions, references, type aliases | 27 | 15 | 24 | 0 | 66 |
-| 3 | `04-expressions` | Operators, precedence, calls, casts, lambdas, spawn, control-flow expressions | 45 | 26 | 35 | 0 | 106 |
+| 2 | `03-types` | Type syntax: primitives, function types, tuples, unions, references, type aliases | 27 | 15 | 25 | 0 | 67 |
+| 3 | `04-expressions` | Operators, precedence, calls, casts, lambdas, spawn, control-flow expressions | 38 | 26 | 34 | 8 | 106 |
 | 4 | `05-statements` | Let, if/else, match, loops, labels, suspend, return, assert | 27 | 12 | 22 | 0 | 61 |
 | 5 | `06-declarations` | Functions, classes, enums, type aliases, modifiers, declarations at module scope | 15 | 8 | 10 | 4 | 37 |
 | 6 | `07-patterns` | Match patterns: literal, binding, struct, tuple, or-pattern, wildcard, guard | 13 | 8 | 10 | 0 | 31 |
@@ -50,9 +50,9 @@ those belong in compiler AST/FileCheck expectations under
 | 12 | `16-attributes` | `@attribute` syntax, built-in attributes, attribute arguments, targets | 9 | 6 | 15 | 0 | 30 |
 | 13 | `15-concurrency` | Concurrency primitives: spawn modifiers, priority/blocking/detached, suspend/until | 8 | 6 | 8 | 0 | 22 |
 | 14 | `19-conditional` | Conditional compilation: `#[zom::cfg(...)]` attribute-gated AST stripping, predicate combinators, file-suffix conventions | 6 | 4 | 5 | 0 | 15 |
-| 15 | `20-ffi` | FFI syntax: extern declarations, ABI strings, unsafe blocks | 9 | 4 | 3 | 0 | 16 |
+| 15 | `20-ffi` | FFI syntax: extern declarations, ABI strings, unsafe blocks | 8 | 4 | 3 | 1 | 16 |
 | 16 | `21-macros` | Macro and derive syntax | 8 | 4 | 3 | 0 | 15 |
-|   | **Total** | | **252** | **145** | **202** | **4** | **613** |
+|   | **Total** | | **244** | **145** | **213** | **13** | **614** |
 
 ## Usage
 

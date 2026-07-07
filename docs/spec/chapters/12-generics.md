@@ -62,7 +62,7 @@ interface Functor<T> {
     fun map<U>(transform: (T) -> U) -> Functor<U>;
 }
 
-interface Monad<T> extends Functor<T> {
+interface Monad<T> : Functor<T> {
     fun flatMap<U>(transform: (T) -> Monad<U>) -> Monad<U>;
 }
 ```

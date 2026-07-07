@@ -68,7 +68,7 @@ struct NodeSchemaEntry final {
 
 constexpr uint8_t kNodeSchemaNoWord = 0xff;
 constexpr const char* kAstSchemaVersion = "2.0";
-constexpr const char* kAstSchemaFingerprint = "84945083157a99d0289e8dddc267977a86bbdd4cdcb7f24ac92e8d5ee220a06b";
+constexpr const char* kAstSchemaFingerprint = "76f584063f8ce328f2c3e9f10dcd6242fbfbe68b72333fbfd0a5aae59173ed1a";
 constexpr uint32_t kAstSchemaVariantCount = 160;
 
 constexpr NodeSchemaEnumValue kAttributePathLeadingEnumValues[] = {
@@ -1129,7 +1129,8 @@ constexpr NodeSchemaFieldEntry kClassMemberListFields[] = {
 constexpr NodeSchemaFieldEntry kInterfaceDeclFields[] = {
   {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
   {"type_params_id", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
-  {"members_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "ClassMemberList", nullptr, nullptr, 0},
+  {"ifaces_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "ImplIfaceList", nullptr, nullptr, 0},
+  {"members_id", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "ClassMemberList", nullptr, nullptr, 0},
 };
 
 constexpr NodeSchemaFieldEntry kErrorDeclFields[] = {
@@ -1362,7 +1363,7 @@ constexpr NodeSchemaEntry kNodeSchemaEntries[] = {
   {SyntaxKind::FunctionParameterList, "FunctionParameterList", kFunctionParameterListFields, 2},
   {SyntaxKind::ImplIfaceList, "ImplIfaceList", kImplIfaceListFields, 2},
   {SyntaxKind::ClassMemberList, "ClassMemberList", kClassMemberListFields, 2},
-  {SyntaxKind::InterfaceDecl, "InterfaceDecl", kInterfaceDeclFields, 3},
+  {SyntaxKind::InterfaceDecl, "InterfaceDecl", kInterfaceDeclFields, 4},
   {SyntaxKind::ErrorDecl, "ErrorDecl", kErrorDeclFields, 2},
   {SyntaxKind::AliasDecl, "AliasDecl", kAliasDeclFields, 3},
   {SyntaxKind::MethodDecl, "MethodDecl", kMethodDeclFields, 7},

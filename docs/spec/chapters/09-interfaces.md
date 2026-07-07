@@ -47,7 +47,7 @@ interface MixedAccess {
 
 ## 9.2 Interface Inheritance
 
-An interface may inherit from one or more super-interfaces using the colon (`:`) syntax with `+` as the conjunction separator. This is the canonical form; the parser also accepts the legacy `extends` keyword for single inheritance, but the `:` + `+` form is preferred.
+An interface may inherit from one or more super-interfaces using the colon (`:`) syntax with `+` as the conjunction separator.
 
 ```zom
 interface ReadableStream {
@@ -268,7 +268,7 @@ When an interface inherits from multiple super-interfaces, a method name may be 
 
 ### 9.5.2 Diamond Inheritance Structure
 
-The following class diagram illustrates a canonical diamond where `D` inherits from both `B` and `C`, each of which extends the common root `A`:
+The following class diagram illustrates a canonical diamond where `D` inherits from both `B` and `C`, each of which inherits from the common root `A`:
 
 ```mermaid
 classDiagram
@@ -289,10 +289,10 @@ classDiagram
     class D {
         <<interface>>
     }
-    A <|-- B : extends
-    A <|-- C : extends
-    B <|-- D : extends
-    C <|-- D : extends
+    A <|-- B : inherits
+    A <|-- C : inherits
+    B <|-- D : inherits
+    C <|-- D : inherits
 ```
 
 Under IR-1, `D` inherits `foo()` from `A` without conflict. For `bar()`, both `B` and `C` redeclare the same signature; IR-1 treats this as redundant and emits a warning. The concrete class implementing `D` provides a single `bar()` that satisfies all inherited obligations.
@@ -333,7 +333,7 @@ Object-safety is a vtable-layout property: every method on the interface must be
 
 ```mermaid
 flowchart TD
-    Start([Input: interface I]) --> OS0{"OS-0: If I extends J,<br/>is J object-safe?"}
+    Start([Input: interface I]) --> OS0{"OS-0: If I : J,<br/>is J object-safe?"}
     OS0 -->|No| E0[ZOM0338 DynSuperNotObjectSafe]
     OS0 -->|Yes| OS1{"OS-1: Any generic method<br/>(method-level type params)?"}
     OS1 -->|Yes| E1[ZOM0331 DynGenericMethod]
@@ -354,7 +354,7 @@ flowchart TD
 
 ### 9.6.2 OS-0 (Inheritance Closure)
 
-If `I : J` (I extends J) and `I` is object-safe, every superinterface `J` must also be object-safe. Otherwise the compiler emits `ZOM0338 DynSuperNotObjectSafe`.
+If `I : J` and `I` is object-safe, every superinterface `J` must also be object-safe. Otherwise the compiler emits `ZOM0338 DynSuperNotObjectSafe`.
 
 ### 9.6.3 OS-1 No Generic Methods
 
@@ -578,7 +578,7 @@ ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters? ParameterClau
 ## 9.10 Summary
 
 - Interfaces declare method signatures, property signatures, and associated type requirements that types satisfy via `impl I for T` blocks.
-- Interface inheritance uses the colon (`:`) syntax with `+` for multiple super-interfaces (conjunction). The legacy `extends` keyword is accepted for single inheritance but `:` + `+` is preferred. Pipe `|` is rejected in heritage position.
+- Interface inheritance uses the colon (`:`) syntax with `+` for multiple super-interfaces (conjunction). Pipe `|` is rejected in heritage position.
 - Interface method and property signatures end with a semicolon; method bodies are not permitted inside interface declarations.
 - Associated types support four forms: unconstrained, bounded, defaulted, and generic (GAT). Full form combines type parameters, bounds, and defaults.
 - Standalone `impl I for T` blocks extend interface coverage to foreign types and allow modular grouping of impls, governed by Ch.22's orphan rule (`ZOM0710 OrphanImpl`, cross-crate `ZOM0714 AmbigImplOverlap`) and the duplicate-impl coherence check (`ZOM0505 DuplicateImpl`).

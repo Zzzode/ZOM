@@ -1711,7 +1711,7 @@ markerImplRest
 // Industry convention (Rust / Swift) - strict separation of conjunctions
 // vs disjunctions:
 //   * PLUS  (+) = CONJUNCTION (AND) - "all bounds apply" at impl / generic-bound /
-//                                      interface-extends / dyn existential positions.
+//                                      interface-heritage / dyn existential positions.
 //   * BIT_OR (|) = DISJUNCTION (OR)  - ONLY valid at UnionType / TypeExpression level
 //                                     (a value is one of several possible types).
 // Preventing `|` at impl-bound position blocks nonsense such as

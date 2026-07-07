@@ -1138,10 +1138,11 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ClassMemberList, zc::mv(range), payload);
   }
 
-  NodeId makeInterfaceDecl(source::SourceRange range, IdentId name, NodeId type_params_id, NodeId members_id) {
+  NodeId makeInterfaceDecl(source::SourceRange range, IdentId name, NodeId type_params_id, NodeId ifaces_id, NodeId members_id) {
     NodePayload payload;
     payload.words[kInterfaceDeclNameWord] = name.value;
     payload.words[kInterfaceDeclTypeParamsIdWord] = type_params_id.value;
+    payload.words[kInterfaceDeclIfacesIdWord] = ifaces_id.value;
     payload.words[kInterfaceDeclMembersIdWord] = members_id.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::InterfaceDecl, zc::mv(range), payload);
   }

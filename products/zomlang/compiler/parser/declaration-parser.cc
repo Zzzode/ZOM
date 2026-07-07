@@ -1496,7 +1496,9 @@ size_t Parser::Impl::consumeNamedTypeDeclarationEnd(size_t start, size_t limit) 
     }
     if (kind == ast::SyntaxKind::Semicolon) { return recoveryFrame.finish(cursor + 1); }
 
-    if (kind == ast::SyntaxKind::ExtendsKeyword || kind == ast::SyntaxKind::ImplementsKeyword) {
+    if (kind == ast::SyntaxKind::ImplementsKeyword ||
+        (kind == ast::SyntaxKind::ExtendsKeyword &&
+         kindAt(start) != ast::SyntaxKind::InterfaceKeyword)) {
       ++cursor;
       while (cursor < limit) {
         if (kindAt(cursor) == ast::SyntaxKind::EndOfFile) { return recoveryFrame.finish(cursor); }
@@ -1993,6 +1995,13 @@ ast::NodeId Parser::Impl::parseNamedTypeDeclaration(AstFactory& builder, size_t 
   const size_t headerEnd = bodyOpen < end ? bodyOpen : end;
   TokenCursor whereCursor = tokenCursorAt(headerCursor);
   const size_t where = consumeBalancedTypeIdentifierUntil(whereCursor, headerEnd, "where"_zc);
+  ast::NodeId ifaces;
+  if (kind == ast::SyntaxKind::InterfaceDecl) {
+    const size_t heritageEnd = where < headerEnd ? where : headerEnd;
+    const size_t errorCountBeforeHeritage = diagnosticEngine.errorCount();
+    ifaces = parseInterfaceHeritage(builder, headerCursor, heritageEnd);
+    if (diagnosticEngine.errorCount() != errorCountBeforeHeritage) { return ast::NodeId(); }
+  }
   ast::NodeId whereClause;
   if (where < headerEnd && kind != ast::SyntaxKind::InterfaceDecl) {
     whereClause = parseWhereClause(builder, where, headerEnd);
@@ -2042,7 +2051,7 @@ ast::NodeId Parser::Impl::parseNamedTypeDeclaration(AstFactory& builder, size_t 
     ast::IdentId name;
     if (nameIndex < end) { name = internIdent(builder, nameIndex); }
     return builder.makeInterfaceDecl(
-        rangeFor(start, end), name, typeParams,
+        rangeFor(start, end), name, typeParams, ifaces,
         members ? members : makeEmptyClassMemberList(builder, rangeFor(start, end)));
   } else if (kind == ast::SyntaxKind::EnumDeclaration) {
     ast::IdentId name;

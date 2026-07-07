@@ -126,12 +126,14 @@ public:
     return builder_.makeNode(ast::SyntaxKind::ClassDecl, source::SourceRange(), payload);
   }
 
-  /// \brief Create an InterfaceDecl with name.
-  ast::NodeId makeInterfaceDecl(zc::StringPtr name, ast::NodeId members = ast::NodeId()) {
+  /// \brief Create an InterfaceDecl with name, optional members, and optional heritage.
+  ast::NodeId makeInterfaceDecl(zc::StringPtr name, ast::NodeId members = ast::NodeId(),
+                                ast::NodeId ifaces = ast::NodeId()) {
     ast::NodePayload payload;
     auto nameId = builder_.internIdent(name);
     payload.words[ast::kInterfaceDeclNameWord] = nameId.value;
     payload.words[ast::kInterfaceDeclTypeParamsIdWord] = 0;
+    payload.words[ast::kInterfaceDeclIfacesIdWord] = ifaces.value;
     payload.words[ast::kInterfaceDeclMembersIdWord] = members.value;
     return builder_.makeNode(ast::SyntaxKind::InterfaceDecl, source::SourceRange(), payload);
   }

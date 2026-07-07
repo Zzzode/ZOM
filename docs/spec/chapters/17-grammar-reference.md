@@ -220,7 +220,6 @@ InterfaceDeclaration ::= ClassExtensibility? ModifierList 'interface' BindingIde
        Canonical grammar: docs/design/syntax-ebnf.md §4.3.5 *)
 InterfaceHeritage ::= ':' InterfaceBoundList
     (* '+' = conjunction (AND); '|' is ONLY for UnionType.
-       Legacy 'extends' keyword is accepted but deprecated.
        Canonical grammar: docs/design/syntax-ebnf.md §4.3.5 *)
 InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*
 InterfaceBound ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?

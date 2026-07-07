@@ -2,6 +2,6 @@ interface Base {
   fun foo();
 }
 
-interface Derived extends Base {
+interface Derived : Base {
   fun bar();
 }

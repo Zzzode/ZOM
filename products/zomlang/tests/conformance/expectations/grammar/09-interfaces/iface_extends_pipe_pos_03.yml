@@ -1,4 +1,4 @@
 section: "§4.2 Interfaces"
-covers_rule: "interfaceDeclaration (EXTENDS interfaceBoundList with PIPE sep G9)"
+covers_rule: "interfaceDeclaration (colon interfaceBoundList with plus sep G9)"
 expected: "ACCEPT"
 notes: []

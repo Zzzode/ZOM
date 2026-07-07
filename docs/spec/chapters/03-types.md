@@ -517,11 +517,11 @@ graph LR
 - The final vtable slot is always `drop_in_place(*mut ())`.
 - Three prefix words precede the first method slot at negative offsets: `size: usize`, `align: usize`, `marker_bitmap: u64`.
 
-**Upcasting.** If `interface I extends J`, then `dyn I + M` coerces to `dyn J + M` with **zero runtime cost**. The upcast operates exclusively on the vtable pointer (a compile-time-constant byte offset adjustment). No heap allocation or copy of the underlying object is performed.
+**Upcasting.** If `interface I : J`, then `dyn I + M` coerces to `dyn J + M` with **zero runtime cost**. The upcast operates exclusively on the vtable pointer (a compile-time-constant byte offset adjustment). No heap allocation or copy of the underlying object is performed.
 
 ```zom
 let circle: dyn Drawable + Sendable = Circle(radius: 5.0);
-let shape: dyn Shape + Sendable = circle;  // zero-cost upcast if Drawable extends Shape
+let shape: dyn Shape + Sendable = circle;  // zero-cost upcast if Drawable inherits Shape
 ```
 
 **Downcasting.** `dyn I.is<T>()` and `dyn I.downcast::<T>()` are **not** part of ZOM v1. Users who need runtime type recovery on a specific interface hierarchy should declare an explicit `as_any() -> any` method on that interface. See [Chapter 9](09-interfaces.md) for object safety rules.
@@ -593,7 +593,7 @@ ZOM provides a limited set of proven-sound subtyping coercions. Subtyping is dir
 | `*mut T <: *const T` | Mutable raw pointer coerces to const raw pointer | Zero-cost |
 | `Ti <: T1 \| ... \| Ti \| ... \| Tn` | Value coerces into union | At coercion sites |
 | `null <: T \| null` | Null coerces into an explicit nullable union | Never into bare `T` |
-| `dyn I + M <: dyn J + M` | Existential upcast | When `I extends J`, zero-cost |
+| `dyn I + M <: dyn J + M` | Existential upcast | When `I : J`, zero-cost |
 
 **No numeric widening** without an explicit `as` cast. `i32` does not implicitly coerce to `i64`.
 
@@ -748,7 +748,7 @@ These conversions are always valid and carry zero runtime cost:
 | `&mut T` | `&T` | always | Mut-to-immut reference coercion (reborrow) |
 | `*mut T` | `*const T` | always | Mut-to-const raw pointer coercion |
 | `T` | `dyn I` | `T implements I`, target explicitly annotated | Existential coercion (fat pointer construction) |
-| `dyn I` | `dyn J` | `I extends J` | Upcast (vtable_ptr adjustment, zero-cost) |
+| `dyn I` | `dyn J` | `I : J` | Upcast (vtable_ptr adjustment, zero-cost) |
 | `T` | `T \| E` | always | Inject into success branch |
 | `null` | `T \| null` | target explicitly contains `null` | Nullable union injection |
 

@@ -766,10 +766,11 @@ constexpr uint32_t kClassMemberListNmembersWord = 0;
 constexpr uint32_t kClassMemberListMembersFirstWord = 1;
 constexpr uint32_t kClassMemberListMembersSizeWord = 2;
 
-constexpr uint32_t kInterfaceDeclPayloadWordCount = 3;
+constexpr uint32_t kInterfaceDeclPayloadWordCount = 4;
 constexpr uint32_t kInterfaceDeclNameWord = 0;
 constexpr uint32_t kInterfaceDeclTypeParamsIdWord = 1;
-constexpr uint32_t kInterfaceDeclMembersIdWord = 2;
+constexpr uint32_t kInterfaceDeclIfacesIdWord = 2;
+constexpr uint32_t kInterfaceDeclMembersIdWord = 3;
 
 constexpr uint32_t kErrorDeclPayloadWordCount = 2;
 constexpr uint32_t kErrorDeclNameWord = 0;

@@ -373,17 +373,58 @@ bool hasMoveSelfReceiverAttribute(const ast::Tree& tree, const ast::Node& param)
   return false;
 }
 
-void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
-                                                 zc::StringPtr ifaceName) {
+void removeActiveInterface(zc::HashSet<zc::StringPtr>& activeIfaces, zc::StringPtr ifaceName) {
+  ZC_IF_SOME(activeIface, activeIfaces.find(ifaceName)) { activeIfaces.erase(activeIface); }
+}
+
+bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::StringPtr ifaceName,
+                                            zc::StringPtr& failingIface,
+                                            zc::HashSet<zc::StringPtr>& activeIfaces,
+                                            bool emitDirectDiagnostics) {
   const ast::NodeId ifaceDecl = findInterfaceDecl(ifaceName);
-  if (!impl->tree.contains(ifaceDecl)) { return; }
+  if (!impl->tree.contains(ifaceDecl)) { return true; }
+
+  if (activeIfaces.contains(ifaceName)) { return true; }
+  activeIfaces.insert(ifaceName);
 
   const auto& ifaceNode = impl->tree.node(ifaceDecl);
+  const ast::NodeId ifacesId(ifaceNode.payload.words[kInterfaceDeclIfacesIdWord]);
+  if (impl->tree.contains(ifacesId)) {
+    const auto& ifacesNode = impl->tree.node(ifacesId);
+    if (ifacesNode.kind == SyntaxKind::ImplIfaceList) {
+      NodeList ifaces;
+      ifaces.first = ifacesNode.payload.words[kImplIfaceListIfacesFirstWord];
+      ifaces.size = ifacesNode.payload.words[kImplIfaceListIfacesSizeWord];
+      for (ast::NodeId superIfaceId : impl->tree.list(ifaces)) {
+        if (!impl->tree.contains(superIfaceId)) { continue; }
+        const auto& superIface = impl->tree.node(superIfaceId);
+        if (superIface.kind != SyntaxKind::NamedTypeExpr) { continue; }
+
+        auto superIfaceName =
+            resolvePathName(ast::NodeId(superIface.payload.words[kNamedTypeExprPathWord]));
+        if (superIfaceName.size() == 0) { continue; }
+
+        zc::StringPtr nestedFailure;
+        if (!isDynObjectSafe(superIfaceId, superIfaceName, nestedFailure, activeIfaces, false)) {
+          failingIface = nestedFailure.size() > 0 ? nestedFailure : superIfaceName;
+          removeActiveInterface(activeIfaces, ifaceName);
+          return false;
+        }
+      }
+    }
+  }
+
   const ast::NodeId membersId(ifaceNode.payload.words[kInterfaceDeclMembersIdWord]);
-  if (!impl->tree.contains(membersId)) { return; }
+  if (!impl->tree.contains(membersId)) {
+    removeActiveInterface(activeIfaces, ifaceName);
+    return true;
+  }
 
   const auto& membersNode = impl->tree.node(membersId);
-  if (membersNode.kind != SyntaxKind::ClassMemberList) { return; }
+  if (membersNode.kind != SyntaxKind::ClassMemberList) {
+    removeActiveInterface(activeIfaces, ifaceName);
+    return true;
+  }
 
   NodeList members;
   members.first = membersNode.payload.words[kClassMemberListMembersFirstWord];
@@ -399,10 +440,14 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
         if (typeParams.kind == SyntaxKind::GenericParams &&
             typeParams.payload.words[kGenericParamsNparamsWord] != 0) {
           auto methodName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
-          impl->diags.diagnose<DiagID::DynGenericMethod>(nodeLoc(impl->tree, ifaceTypeExpr),
-                                                         ifaceName, methodName);
-          impl->hadErrors = true;
-          continue;
+          if (emitDirectDiagnostics) {
+            impl->diags.diagnose<DiagID::DynGenericMethod>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                           ifaceName, methodName);
+            impl->hadErrors = true;
+          }
+          failingIface = ifaceName;
+          removeActiveInterface(activeIfaces, ifaceName);
+          return false;
         }
       }
     }
@@ -410,10 +455,14 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
       auto retTyId = ast::NodeId(member.payload.words[kMethodDeclRetTyWord]);
       if (isBareSelfTypeExpr(impl->tree, retTyId)) {
         auto methodName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
-        impl->diags.diagnose<DiagID::DynSelfReturn>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName,
-                                                    methodName);
-        impl->hadErrors = true;
-        continue;
+        if (emitDirectDiagnostics) {
+          impl->diags.diagnose<DiagID::DynSelfReturn>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName,
+                                                      methodName);
+          impl->hadErrors = true;
+        }
+        failingIface = ifaceName;
+        removeActiveInterface(activeIfaces, ifaceName);
+        return false;
       }
     }
     if (member.kind == SyntaxKind::MethodDecl) {
@@ -431,38 +480,55 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
             const auto& param = impl->tree.node(paramId);
             if (param.kind != SyntaxKind::FunctionParameterDecl) { continue; }
             if (hasMoveSelfReceiverAttribute(impl->tree, param)) {
-              impl->diags.diagnose<DiagID::DynMoveSelf>(nodeLoc(impl->tree, ifaceTypeExpr),
-                                                        ifaceName, methodName);
-              impl->hadErrors = true;
+              if (emitDirectDiagnostics) {
+                impl->diags.diagnose<DiagID::DynMoveSelf>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                          ifaceName, methodName);
+                impl->hadErrors = true;
+              }
               hasUnsizedBoundaryType = true;
               break;
             }
             auto tyId = ast::NodeId(param.payload.words[kFunctionParameterDeclTyWord]);
             if (isUnsizedDynBoundaryTypeExpr(impl->tree, tyId)) {
-              impl->diags.diagnose<DiagID::DynUnsizedParameter>(
-                  nodeLoc(impl->tree, ifaceTypeExpr), ifaceName, methodName, "parameter"_zc);
-              impl->hadErrors = true;
+              if (emitDirectDiagnostics) {
+                impl->diags.diagnose<DiagID::DynUnsizedParameter>(
+                    nodeLoc(impl->tree, ifaceTypeExpr), ifaceName, methodName, "parameter"_zc);
+                impl->hadErrors = true;
+              }
               hasUnsizedBoundaryType = true;
               break;
             }
           }
         }
       }
-      if (hasUnsizedBoundaryType) { continue; }
+      if (hasUnsizedBoundaryType) {
+        failingIface = ifaceName;
+        removeActiveInterface(activeIfaces, ifaceName);
+        return false;
+      }
 
       auto retTyId = ast::NodeId(member.payload.words[kMethodDeclRetTyWord]);
       if (isUnsizedDynBoundaryTypeExpr(impl->tree, retTyId)) {
-        impl->diags.diagnose<DiagID::DynUnsizedParameter>(nodeLoc(impl->tree, ifaceTypeExpr),
-                                                          ifaceName, methodName, "return"_zc);
-        impl->hadErrors = true;
-        continue;
+        if (emitDirectDiagnostics) {
+          impl->diags.diagnose<DiagID::DynUnsizedParameter>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                            ifaceName, methodName, "return"_zc);
+          impl->hadErrors = true;
+        }
+        failingIface = ifaceName;
+        removeActiveInterface(activeIfaces, ifaceName);
+        return false;
       }
     }
     if (member.kind == SyntaxKind::MethodDecl &&
         member.payload.words[kMethodDeclIsStaticWord] != 0) {
-      impl->diags.diagnose<DiagID::DynStaticMethod>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName);
-      impl->hadErrors = true;
-      continue;
+      if (emitDirectDiagnostics) {
+        impl->diags.diagnose<DiagID::DynStaticMethod>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                      ifaceName);
+        impl->hadErrors = true;
+      }
+      failingIface = ifaceName;
+      removeActiveInterface(activeIfaces, ifaceName);
+      return false;
     }
     if (member.kind == SyntaxKind::AssociatedTypeDecl) {
       auto typeParamsId = ast::NodeId(member.payload.words[kAssociatedTypeDeclTypeParamsIdWord]);
@@ -472,10 +538,14 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
             typeParams.payload.words[kGenericParamsNparamsWord] != 0) {
           auto assocName =
               impl->tree.ident(IdentId(member.payload.words[kAssociatedTypeDeclNameWord]));
-          impl->diags.diagnose<DiagID::DynGatNotAllowed>(nodeLoc(impl->tree, ifaceTypeExpr),
-                                                         ifaceName, assocName);
-          impl->hadErrors = true;
-          continue;
+          if (emitDirectDiagnostics) {
+            impl->diags.diagnose<DiagID::DynGatNotAllowed>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                           ifaceName, assocName);
+            impl->hadErrors = true;
+          }
+          failingIface = ifaceName;
+          removeActiveInterface(activeIfaces, ifaceName);
+          return false;
         }
       }
 
@@ -483,12 +553,32 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
       if (!impl->tree.contains(defaultTyId)) {
         auto assocName =
             impl->tree.ident(IdentId(member.payload.words[kAssociatedTypeDeclNameWord]));
-        impl->diags.diagnose<DiagID::DynUnassociatedType>(nodeLoc(impl->tree, ifaceTypeExpr),
-                                                          ifaceName, assocName);
-        impl->hadErrors = true;
+        if (emitDirectDiagnostics) {
+          impl->diags.diagnose<DiagID::DynUnassociatedType>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                            ifaceName, assocName);
+          impl->hadErrors = true;
+        }
+        failingIface = ifaceName;
+        removeActiveInterface(activeIfaces, ifaceName);
+        return false;
       }
     }
   }
+
+  removeActiveInterface(activeIfaces, ifaceName);
+  return true;
+}
+
+void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
+                                                 zc::StringPtr ifaceName) {
+  zc::StringPtr failingIface;
+  zc::HashSet<zc::StringPtr> activeIfaces;
+  if (isDynObjectSafe(ifaceTypeExpr, ifaceName, failingIface, activeIfaces, true)) { return; }
+  if (failingIface.size() == 0 || failingIface == ifaceName) { return; }
+
+  impl->diags.diagnose<DiagID::DynSuperNotObjectSafe>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName,
+                                                      failingIface);
+  impl->hadErrors = true;
 }
 
 // ============================================================================

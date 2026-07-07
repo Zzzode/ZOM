@@ -987,6 +987,39 @@ ZC_TEST("ParserTest.ParseInterfaceDeclaration") {
   ZC_EXPECT(result != zc::none, "Should parse interface declaration");
 }
 
+ZC_TEST("ParserTest.ParseInterfaceHeritagePreservesIfaces") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("interface Derived : Base + Sendable { fun draw(); }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse interface heritage");
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Interface heritage should not diagnose");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& interfaceNode = topLevelStatement(root, 0);
+    ZC_EXPECT(interfaceNode.kind == ast::SyntaxKind::InterfaceDecl);
+
+    const ast::Node& ifaces =
+        root.node(ast::NodeId(interfaceNode.payload.words[ast::kInterfaceDeclIfacesIdWord]));
+    ZC_EXPECT(ifaces.kind == ast::SyntaxKind::ImplIfaceList);
+    ast::NodeList ifaceList;
+    ifaceList.first = ifaces.payload.words[ast::kImplIfaceListIfacesFirstWord];
+    ifaceList.size = ifaces.payload.words[ast::kImplIfaceListIfacesSizeWord];
+    const auto ifaceIds = root.list(ifaceList);
+    ZC_EXPECT(ifaceIds.size() == 2);
+
+    const ast::Node& base = root.node(ifaceIds[0]);
+    ZC_EXPECT(base.kind == ast::SyntaxKind::NamedTypeExpr);
+    const ast::Node& sendable = root.node(ifaceIds[1]);
+    ZC_EXPECT(sendable.kind == ast::SyntaxKind::NamedTypeExpr);
+  }
+}
+
 ZC_TEST("ParserTest.ParseParameterAttributeOnThisReceiver") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
