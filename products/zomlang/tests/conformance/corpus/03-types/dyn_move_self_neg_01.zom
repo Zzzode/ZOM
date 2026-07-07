@@ -1,0 +1,5 @@
+interface Consumable {
+    fun consume(#[zom::param::move] this);
+}
+
+let x: dyn Consumable;

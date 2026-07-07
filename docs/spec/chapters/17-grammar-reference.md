@@ -355,6 +355,9 @@ ElementName ::= Identifier
 FunctionType ::= TypeParameters? ParameterClause '->' TypeExpression RaisesClause?
                | 'fun' TypeParameters? ParameterClause '->' TypeExpression RaisesClause?
 ParameterClause ::= '(' ParameterList? ')'
+ParameterList ::= Parameter (',' Parameter)* ','?
+Parameter ::= OuterAttributeList? (Identifier ':')? TypeExpression Initializer?
+            | OuterAttributeList? 'this'
 RaisesClause ::= 'raises' TypeExpression
     (* Multiple error types are written as a union type expression.
        Example: 'fun f() -> T raises IoError | ParseError | ZOM80xx'

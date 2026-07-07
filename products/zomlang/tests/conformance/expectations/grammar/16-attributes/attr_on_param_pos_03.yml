@@ -1,0 +1,5 @@
+section: "§16 Parameter attributes"
+covers_rule: "parameter, outerAttributeList prefix"
+expected: "ACCEPT"
+notes:
+  - "Parameter declarations accept outer attributes; checker tests consume zom::param::move for dyn object safety."

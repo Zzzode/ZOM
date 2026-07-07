@@ -36,23 +36,23 @@ those belong in compiler AST/FileCheck expectations under
 
 | # | Directory | Purpose | Pos | Edge | Neg | Other | Total |
 |---|-----------|---------|-----|------|-----|-------|-------|
-| 1 | `02-lexical` | Lexer tokens: literals, keywords, identifiers, escapes, whitespace, comments | 16 | 9 | 19 | 0 | 44 |
-| 2 | `03-types` | Type syntax: primitives, function types, tuples, unions, references, type aliases | 23 | 15 | 18 | 0 | 56 |
-| 3 | `04-expressions` | Operators, precedence, calls, casts, lambdas, spawn, control-flow expressions | 37 | 25 | 30 | 0 | 92 |
-| 4 | `05-statements` | Let, if/else, match, loops, labels, suspend, return, assert | 26 | 12 | 20 | 0 | 58 |
+| 1 | `02-lexical` | Lexer tokens: literals, keywords, identifiers, escapes, whitespace, comments | 17 | 10 | 17 | 0 | 44 |
+| 2 | `03-types` | Type syntax: primitives, function types, tuples, unions, references, type aliases | 27 | 15 | 24 | 0 | 66 |
+| 3 | `04-expressions` | Operators, precedence, calls, casts, lambdas, spawn, control-flow expressions | 45 | 26 | 35 | 0 | 106 |
+| 4 | `05-statements` | Let, if/else, match, loops, labels, suspend, return, assert | 27 | 12 | 22 | 0 | 61 |
 | 5 | `06-declarations` | Functions, classes, enums, type aliases, modifiers, declarations at module scope | 15 | 8 | 10 | 4 | 37 |
 | 6 | `07-patterns` | Match patterns: literal, binding, struct, tuple, or-pattern, wildcard, guard | 13 | 8 | 10 | 0 | 31 |
-| 7 | `08-adt` | Algebraic data types: structs, enums, variants, constructors, inheritance, fields | 16 | 10 | 14 | 0 | 40 |
+| 7 | `08-adt` | Algebraic data types: structs, enums, variants, constructors, inheritance, fields | 17 | 10 | 13 | 0 | 40 |
 | 8 | `09-interfaces` | Interface declarations, method signatures, implements clauses, trait bounds | 12 | 8 | 10 | 0 | 30 |
 | 9 | `11-error` | Error handling: try/catch, throw, raises signatures, async/await, yield | 10 | 6 | 10 | 0 | 26 |
-| 10 | `12-generics` | Generic parameters, where clauses, generic instantiation, variance placeholders | 10 | 6 | 8 | 0 | 24 |
+| 10 | `12-generics` | Generic parameters, where clauses, generic instantiation, variance placeholders | 11 | 6 | 8 | 0 | 25 |
 | 11 | `13-modules` | Module files, imports/exports, path resolution, package-level declarations | 18 | 12 | 19 | 0 | 49 |
-| 12 | `16-attributes` | `@attribute` syntax, built-in attributes, attribute arguments, targets | 8 | 6 | 8 | 0 | 22 |
+| 12 | `16-attributes` | `@attribute` syntax, built-in attributes, attribute arguments, targets | 9 | 6 | 15 | 0 | 30 |
 | 13 | `15-concurrency` | Concurrency primitives: spawn modifiers, priority/blocking/detached, suspend/until | 8 | 6 | 8 | 0 | 22 |
 | 14 | `19-conditional` | Conditional compilation: `#[zom::cfg(...)]` attribute-gated AST stripping, predicate combinators, file-suffix conventions | 6 | 4 | 5 | 0 | 15 |
-| 15 | `20-ffi` | FFI syntax: extern declarations, ABI strings, unsafe blocks | 8 | 4 | 3 | 0 | 15 |
+| 15 | `20-ffi` | FFI syntax: extern declarations, ABI strings, unsafe blocks | 9 | 4 | 3 | 0 | 16 |
 | 16 | `21-macros` | Macro and derive syntax | 8 | 4 | 3 | 0 | 15 |
-|   | **Total** | | **234** | **143** | **195** | **4** | **576** |
+|   | **Total** | | **252** | **145** | **202** | **4** | **613** |
 
 ## Usage
 

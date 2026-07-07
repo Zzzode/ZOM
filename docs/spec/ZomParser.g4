@@ -1989,7 +1989,8 @@ parameterList
 
 
 parameter
-    : (identifier COLON)? typeExpr ( ASSIGN expression )?
+    : outerAttributeList ( ( identifier | THIS ) COLON )? typeExpr ( ASSIGN expression )?
+    | outerAttributeList THIS
     ;
 
 

@@ -53,6 +53,7 @@ ZC_TEST("DiagnosticTest.BasicDiagnosticReporting") {
 ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynGenericMethod) == 331);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynSelfReturn) == 332);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynMoveSelf) == 333);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynUnassociatedType) == 334);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynStaticMethod) == 335);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynGatNotAllowed) == 336);

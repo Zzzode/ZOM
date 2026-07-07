@@ -987,6 +987,66 @@ ZC_TEST("ParserTest.ParseInterfaceDeclaration") {
   ZC_EXPECT(result != zc::none, "Should parse interface declaration");
 }
 
+ZC_TEST("ParserTest.ParseParameterAttributeOnThisReceiver") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("interface Consumable { fun consume(#[zom::param::move] this); }").asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse parameter attributes on this receivers");
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Parameter attributes should not diagnose");
+  ZC_IF_SOME(root, result) {
+    const ast::Node& interfaceNode = topLevelStatement(root, 0);
+    ZC_EXPECT(interfaceNode.kind == ast::SyntaxKind::InterfaceDecl);
+
+    const ast::Node& members =
+        root.node(ast::NodeId(interfaceNode.payload.words[ast::kInterfaceDeclMembersIdWord]));
+    ast::NodeList memberList;
+    memberList.first = members.payload.words[ast::kClassMemberListMembersFirstWord];
+    memberList.size = members.payload.words[ast::kClassMemberListMembersSizeWord];
+    const auto memberIds = root.list(memberList);
+    ZC_EXPECT(memberIds.size() == 1);
+
+    const ast::Node& method = root.node(memberIds[0]);
+    const ast::Node& params =
+        root.node(ast::NodeId(method.payload.words[ast::kMethodDeclParamsIdWord]));
+    ast::NodeList paramList;
+    paramList.first = params.payload.words[ast::kFunctionParameterListParamsFirstWord];
+    paramList.size = params.payload.words[ast::kFunctionParameterListParamsSizeWord];
+    const auto paramIds = root.list(paramList);
+    ZC_EXPECT(paramIds.size() == 1);
+
+    const ast::Node& receiver = root.node(paramIds[0]);
+    ZC_EXPECT(root.ident(ast::IdentId(
+                  receiver.payload.words[ast::kFunctionParameterDeclNameWord])) == "this");
+    const ast::Node& attrs =
+        root.node(ast::NodeId(receiver.payload.words[ast::kFunctionParameterDeclAttrsWord]));
+    ZC_EXPECT(attrs.kind == ast::SyntaxKind::AttributeList);
+    ast::NodeList attrList;
+    attrList.first = attrs.payload.words[ast::kAttributeListAttrsFirstWord];
+    attrList.size = attrs.payload.words[ast::kAttributeListAttrsSizeWord];
+    const auto attrIds = root.list(attrList);
+    ZC_EXPECT(attrIds.size() == 1);
+
+    const ast::Node& attr = root.node(attrIds[0]);
+    const ast::Node& path = root.node(ast::NodeId(attr.payload.words[ast::kAttributePathWord]));
+    ast::IdentList segments;
+    segments.first = path.payload.words[ast::kAttributePathSegmentsFirstWord];
+    segments.size = path.payload.words[ast::kAttributePathSegmentsSizeWord];
+    const auto names = root.identList(segments);
+    ZC_EXPECT(names.size() == 3);
+    ZC_EXPECT(root.ident(names[0]) == "zom");
+    ZC_EXPECT(root.ident(names[1]) == "param");
+    ZC_EXPECT(root.ident(names[2]) == "move");
+  }
+}
+
 ZC_TEST("ParserTest.ParseGetSetKeywordMethodNames") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);

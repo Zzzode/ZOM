@@ -192,8 +192,10 @@ RaisesClause   ::= 'raises' TypeExpr
 
 ParameterClause ::= '(' ParameterList? ')'
 ParameterList   ::= Parameter (',' Parameter)* ','?
-Parameter       ::= (Identifier ':')? TypeExpr Initializer?
-                    (* unnamed positional params allowed: `fun f(i32, str) -> i32` *)
+Parameter       ::= OuterAttributeList? (Identifier ':')? TypeExpr Initializer?
+                  | OuterAttributeList? 'this'
+                    (* unnamed positional params allowed: `fun f(i32, str) -> i32`;
+                       `this` is the explicit receiver parameter and defaults to Self. *)
 ```
 
 ### Basic Function Declaration

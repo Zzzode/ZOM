@@ -65,6 +65,55 @@ bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnosti
   return false;
 }
 
+ast::NodeId makeAttributePath(TestFixture& fix, zc::ArrayPtr<const zc::StringPtr> segments) {
+  zc::Vector<ast::IdentId> names;
+  for (zc::StringPtr segment : segments) { names.add(fix.builder().internIdent(segment)); }
+  ast::NodePayload payload;
+  auto identList = fix.builder().makeIdentList(names.asPtr());
+  payload.words[ast::kAttributePathSegmentsFirstWord] = identList.first;
+  payload.words[ast::kAttributePathSegmentsSizeWord] = identList.size;
+  payload.words[ast::kAttributePathLeadingWord] = 0;
+  return fix.builder().makeNode(ast::SyntaxKind::AttributePath, source::SourceRange(), payload);
+}
+
+ast::NodeId makeAttribute(TestFixture& fix, ast::NodeId path) {
+  ast::NodePayload payload;
+  payload.words[ast::kAttributePathWord] = path.value;
+  payload.words[ast::kAttributeArgsFirstWord] = 0;
+  payload.words[ast::kAttributeArgsSizeWord] = 0;
+  return fix.builder().makeNode(ast::SyntaxKind::Attribute, source::SourceRange(), payload);
+}
+
+ast::NodeId makeAttributeList(TestFixture& fix, ast::NodeList attrs) {
+  ast::NodePayload payload;
+  payload.words[ast::kAttributeListAttrsFirstWord] = attrs.first;
+  payload.words[ast::kAttributeListAttrsSizeWord] = attrs.size;
+  return fix.builder().makeNode(ast::SyntaxKind::AttributeList, source::SourceRange(), payload);
+}
+
+ast::NodeId makeMoveParamAttributeList(TestFixture& fix) {
+  zc::Vector<zc::StringPtr> pathSegments;
+  pathSegments.add("zom"_zc);
+  pathSegments.add("param"_zc);
+  pathSegments.add("move"_zc);
+  auto path = makeAttributePath(fix, pathSegments.asPtr());
+
+  zc::Vector<ast::NodeId> attrs;
+  attrs.add(makeAttribute(fix, path));
+  return makeAttributeList(fix, fix.makeNodeList(attrs.asPtr()));
+}
+
+ast::NodeId makeFunctionParamDecl(TestFixture& fix, zc::StringPtr name, ast::NodeId ty,
+                                  ast::NodeId attrs) {
+  ast::NodePayload payload;
+  payload.words[ast::kFunctionParameterDeclNameWord] = fix.builder().internIdent(name).value;
+  payload.words[ast::kFunctionParameterDeclTyWord] = ty.value;
+  payload.words[ast::kFunctionParameterDeclDefaultWord] = 0;
+  payload.words[ast::kFunctionParameterDeclAttrsWord] = attrs.value;
+  return fix.builder().makeNode(ast::SyntaxKind::FunctionParameterDecl, source::SourceRange(),
+                                payload);
+}
+
 // Helper: run Binder then DeclSignatureComputer, return TypeEnv.
 type::TypeEnv computeSignatures(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
   auto tree = fix.buildSourceFile("test"_zc, decls);
@@ -812,6 +861,33 @@ ZC_TEST("DeclSignature.DynRejectsBareSelfReturn") {
   computeSignatures(fix, topDecls.asPtr());
 
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynSelfReturn));
+}
+
+ZC_TEST("DeclSignature.DynRejectsMoveSelfReceiver") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> params;
+  params.add(makeFunctionParamDecl(fix, "this"_zc, fix.makeNamedTypeExpr("Self"_zc),
+                                   makeMoveParamAttributeList(fix)));
+  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(params.asPtr()));
+  auto method =
+      fix.makeMethodDecl("consume"_zc, ast::NodeId(), paramList, fix.makeNamedTypeExpr("unit"_zc));
+  zc::Vector<ast::NodeId> members;
+  members.add(method);
+  auto iface = fix.makeInterfaceDecl("Consumable"_zc,
+                                     fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+  auto alias = fix.makeAliasDecl("DynConsumable"_zc,
+                                 fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Consumable"_zc)));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynMoveSelf));
 }
 
 ZC_TEST("DeclSignature.DynRejectsUnsizedMethodParameter") {

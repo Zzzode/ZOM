@@ -171,7 +171,9 @@ productions:
   OptionalExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   OuterAttribute: {status: direct, parser: parseOuterAttributeList}
   PackageDeclaration: {status: inlined, parser: parseSourceElement, parent: Declaration}
+  Parameter: {status: direct, parser: parseFunctionParameter, ast: [FunctionParameterDecl]}
   ParameterClause: {status: inlined, parser: parseFunctionParameterList, parent: FunctionType}
+  ParameterList: {status: direct, parser: parseFunctionParameterList, ast: [FunctionParameterList]}
   ParenthesizedType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   PathPrefix: {status: inlined, parser: parseSourceElement, parent: Declaration}
   Pattern: {status: direct, parser: parsePatternRange}

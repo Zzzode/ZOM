@@ -397,8 +397,10 @@ RaisesClause   ::= 'raises' TypeExpr   (* single type expression; union types ex
 
 ParameterClause ::= '(' ParameterList? ')'
 ParameterList   ::= Parameter (',' Parameter)* ','?
-Parameter       ::= (Identifier ':')? TypeExpr Initializer?
-                  (* unnamed positional params allowed: `fun f(i32, str) -> i32` *)
+Parameter       ::= OuterAttributeList? (Identifier ':')? TypeExpr Initializer?
+                  | OuterAttributeList? 'this'
+                  (* unnamed positional params allowed: `fun f(i32, str) -> i32`;
+                     `this` is the explicit receiver parameter and defaults to Self. *)
 ```
 
 > Absent intentionally: `async fun`, `fun ... -> T await`. See Section 4.9 for zero-color concurrency via `suspend`/`spawn`.
@@ -1399,7 +1401,7 @@ a Five-Way Consistency Index entry in Section 8.
 | G17 | Missing expression types: lambda, struct literal, unsafe block, macro | Original had no `LambdaExpression`, `StructLiteral`, `UnsafeBlockExpr`, `MacroInvocationExpr` | Add all four to PrimaryExpression | Parser implements all as valid expression forms |
 | G18 | Missing type forms: `fun` keyword function type, array literal `[T;N]`, tuple variant, member access, double-optional, empty object | Original TypeExpr was missing these | Add to AtomType and PostfixTypeSuffix | Parser `typeFunctionKeyword`, `typeArrayLiteralAtom`, `typeTupleVariant`, `typeMemberAccess`, `typeOptionalDouble`, `typeObjectEmpty` implement all |
 | G19 | `raises` clause takes single TypeExpr | Original had `RaisesClause ::= 'raises' TypeList` with explicit `\|` list | `RaisesClause ::= 'raises' TypeExpr` | Union types expressed via TypeExpr itself (simpler, consistent) |
-| G20 | Function parameter may be unnamed | Original required `BindingIdent` | `Parameter ::= (Identifier ':')? TypeExpr Initializer?` | Parser accepts unnamed positional params: `fun f(i32, str) -> i32` |
+| G20 | Function parameter may be unnamed and may carry parameter attributes | Original required `BindingIdent` and had no parameter attribute slot | `Parameter ::= OuterAttributeList? (Identifier ':')? TypeExpr Initializer? \| OuterAttributeList? 'this'` | Parser accepts unnamed positional params (`fun f(i32, str) -> i32`) and explicit attributed receivers (`#[zom::param::move] this`) |
 | G21 | String literals reject unescaped line terminators | Original claimed "multi-line string literals supported natively" | Remove `LineTerminator` from DoubleStringChar / SingleStringChar; line terminators must be escaped | Lexer A3-REJECT enforces this |
 | G22 | 1-tuple type `(T,)` is rejected | Original did not mention this restriction | Add note: "1-tuple type `(T,)` with trailing comma is REJECTED" | Parser `checkTupleTypeNot1Tuple` enforces this |
 | G23 | `#[zom::cfg(...)]` special attribute sub-grammar | Original had no cfg predicate syntax | Add full CfgPredicate sub-grammar with `all`/`any`/`not` combinators and `cfgAtom` | Parser implements elaborate dispatch for cfg predicates (ZOM1900/ZOM1903) |

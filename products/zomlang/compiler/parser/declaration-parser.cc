@@ -1203,18 +1203,15 @@ size_t Parser::Impl::recoverFunctionParameter(TokenCursor& cursor, size_t closeP
 
 ast::NodeId Parser::Impl::parseFunctionParameter(AstFactory& builder, TokenCursor& cursor,
                                                  size_t closeParen) const {
-  size_t parameterStart = cursor.position();
-  if (isOuterAttributeStart(parameterStart, closeParen)) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-        tokenAt(parameterStart).getLocation());
-    parameterStart = skipOuterAttributePrefix(parameterStart, closeParen);
-    cursor.moveTo(parameterStart);
-  }
+  const size_t parameterStart = cursor.position();
+  const ast::NodeId attrs = parseOuterAttributeList(builder, parameterStart, closeParen);
+  cursor.moveTo(skipOuterAttributePrefix(parameterStart, closeParen));
 
-  if (parameterStart >= closeParen) { return ast::NodeId(); }
+  if (cursor.position() >= closeParen) { return ast::NodeId(); }
 
   const size_t nameIndex = cursor.position();
-  if (cursor.peek() != ast::SyntaxKind::Identifier) {
+  if (cursor.peek() != ast::SyntaxKind::Identifier &&
+      cursor.peek() != ast::SyntaxKind::ThisKeyword) {
     diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(
         tokenAt(nameIndex).getLocation());
     recoverFunctionParameter(cursor, closeParen);
@@ -1222,6 +1219,18 @@ ast::NodeId Parser::Impl::parseFunctionParameter(AstFactory& builder, TokenCurso
   }
   const ast::IdentId name = internIdent(builder, nameIndex);
   cursor.advance();
+
+  if (kindAt(nameIndex) == ast::SyntaxKind::ThisKeyword &&
+      (cursor.position() >= closeParen || cursor.peek() == ast::SyntaxKind::Comma)) {
+    zc::Vector<ast::IdentId> selfSegment;
+    selfSegment.add(builder.internIdent("Self"_zc));
+    const ast::NodeId selfPath = builder.makeModulePath(rangeFor(nameIndex, nameIndex + 1),
+                                                        builder.makeIdentList(selfSegment.asPtr()));
+    const ast::NodeId selfType =
+        builder.makeNamedTypeExpr(rangeFor(nameIndex, nameIndex + 1), selfPath, ast::NodeList());
+    return builder.makeFunctionParameterDecl(rangeFor(parameterStart, cursor.position()), name,
+                                             selfType, ast::NodeId(), attrs);
+  }
 
   if (cursor.position() >= closeParen || cursor.peek() != ast::SyntaxKind::Colon) {
     diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor.position()),
@@ -1253,7 +1262,7 @@ ast::NodeId Parser::Impl::parseFunctionParameter(AstFactory& builder, TokenCurso
   }
 
   return builder.makeFunctionParameterDecl(rangeFor(parameterStart, cursor.position()), name,
-                                           ty.node, defaultValue, ast::NodeId());
+                                           ty.node, defaultValue, attrs);
 }
 
 ast::NodeList Parser::Impl::parseFunctionParameterNodeList(AstFactory& builder, size_t openParen,

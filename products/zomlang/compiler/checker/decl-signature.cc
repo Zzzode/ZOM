@@ -330,6 +330,49 @@ bool isUnsizedDynBoundaryTypeExpr(const ast::Tree& tree, ast::NodeId typeExpr) {
   return tree.node(typeExpr).kind == SyntaxKind::SliceArrayTypeExpr;
 }
 
+bool isThisParameter(const ast::Tree& tree, const ast::Node& param) {
+  if (param.kind != SyntaxKind::FunctionParameterDecl) { return false; }
+  auto name = tree.ident(IdentId(param.payload.words[kFunctionParameterDeclNameWord]));
+  return name == "this"_zc;
+}
+
+bool isZomParamMoveAttribute(const ast::Tree& tree, ast::NodeId attrId) {
+  if (!tree.contains(attrId)) { return false; }
+  const auto& attr = tree.node(attrId);
+  if (attr.kind != SyntaxKind::Attribute) { return false; }
+
+  auto pathId = ast::NodeId(attr.payload.words[kAttributePathWord]);
+  if (!tree.contains(pathId)) { return false; }
+  const auto& path = tree.node(pathId);
+  if (path.kind != SyntaxKind::AttributePath) { return false; }
+
+  IdentList segments;
+  segments.first = path.payload.words[kAttributePathSegmentsFirstWord];
+  segments.size = path.payload.words[kAttributePathSegmentsSizeWord];
+  if (segments.size != 3) { return false; }
+
+  auto names = tree.identList(segments);
+  return names.size() == 3 && tree.ident(names[0]) == "zom"_zc &&
+         tree.ident(names[1]) == "param"_zc && tree.ident(names[2]) == "move"_zc;
+}
+
+bool hasMoveSelfReceiverAttribute(const ast::Tree& tree, const ast::Node& param) {
+  if (!isThisParameter(tree, param)) { return false; }
+
+  auto attrsId = ast::NodeId(param.payload.words[kFunctionParameterDeclAttrsWord]);
+  if (!tree.contains(attrsId)) { return false; }
+  const auto& attrs = tree.node(attrsId);
+  if (attrs.kind != SyntaxKind::AttributeList) { return false; }
+
+  NodeList attrList;
+  attrList.first = attrs.payload.words[kAttributeListAttrsFirstWord];
+  attrList.size = attrs.payload.words[kAttributeListAttrsSizeWord];
+  for (ast::NodeId attrId : tree.list(attrList)) {
+    if (isZomParamMoveAttribute(tree, attrId)) { return true; }
+  }
+  return false;
+}
+
 void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
                                                  zc::StringPtr ifaceName) {
   const ast::NodeId ifaceDecl = findInterfaceDecl(ifaceName);
@@ -387,6 +430,13 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
             if (!impl->tree.contains(paramId)) { continue; }
             const auto& param = impl->tree.node(paramId);
             if (param.kind != SyntaxKind::FunctionParameterDecl) { continue; }
+            if (hasMoveSelfReceiverAttribute(impl->tree, param)) {
+              impl->diags.diagnose<DiagID::DynMoveSelf>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                        ifaceName, methodName);
+              impl->hadErrors = true;
+              hasUnsizedBoundaryType = true;
+              break;
+            }
             auto tyId = ast::NodeId(param.payload.words[kFunctionParameterDeclTyWord]);
             if (isUnsizedDynBoundaryTypeExpr(impl->tree, tyId)) {
               impl->diags.diagnose<DiagID::DynUnsizedParameter>(

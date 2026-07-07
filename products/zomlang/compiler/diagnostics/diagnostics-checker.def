@@ -19,6 +19,9 @@ CHECKER_DIAG(331, DynGenericMethod, kError,
              "Interface '{0}' has generic method '{1}' and cannot be used as dyn", 2)
 CHECKER_DIAG(332, DynSelfReturn, kError,
              "Interface '{0}' has method '{1}' returning Self and cannot be used as dyn", 2)
+CHECKER_DIAG(333, DynMoveSelf, kError,
+             "Interface '{0}' has method '{1}' with move self receiver and cannot be used as dyn",
+             2)
 CHECKER_DIAG(334, DynUnassociatedType, kError,
              "dyn interface '{0}' requires associated type '{1}' to be bound", 2)
 CHECKER_DIAG(335, DynStaticMethod, kError,
