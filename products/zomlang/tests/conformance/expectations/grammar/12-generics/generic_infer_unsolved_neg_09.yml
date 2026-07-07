@@ -1,0 +1,5 @@
+section: "12-generics generic inference diagnostics"
+covers_rule: "functionDeclaration, callExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; checker diagnostics reject the unsolved generic return type parameter."
