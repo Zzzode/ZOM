@@ -1,0 +1,19 @@
+interface Iterator {
+    type Item;
+}
+
+interface Stream {
+    type Item;
+}
+
+class Box { }
+
+impl Iterator for Box {
+    type Item = i32;
+}
+
+impl Stream for Box {
+    type Item = str;
+}
+
+alias Bad = Box::Item;

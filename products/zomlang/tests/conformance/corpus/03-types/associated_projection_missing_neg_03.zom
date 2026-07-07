@@ -1,0 +1,9 @@
+interface Iterator {
+    type Item;
+}
+
+class Box { }
+
+impl Iterator for Box { }
+
+alias Bad = Box::Item;

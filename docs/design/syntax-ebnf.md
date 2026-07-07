@@ -620,7 +620,7 @@ PostfixType     ::= AtomType PostfixTypeSuffix*
 PostfixTypeSuffix ::= '[' ']'         (* array T[] *)
                     | '?'             (* optional T? *)
                     | '??'            (* double-optional T??; lexer longest-match produces ?? token *)
-                    | '.' Identifier  (* type member access e.g. T::Assoc *)
+                    | '.' Identifier  (* type member access, reserved for future member-type syntax *)
 
 AtomType        ::= ParenthesizedType
                   | PredefinedType
@@ -646,6 +646,9 @@ PredefinedType  ::= 'i8' | 'i16' | 'i32' | 'i64'
 
 TypeRef         ::= Identifier TypeArguments?
 QualifiedTypeRef ::= AttrPath TypeArguments?   (* e.g. std::collections::HashMap<T> *)
+(* T::Item is parsed as QualifiedTypeRef and resolved by the checker as an
+   unqualified associated type projection only when T denotes a type or generic
+   parameter. Longer paths remain ordinary qualified type references. *)
 
 ObjectType      ::= '{' TypeBody? '}'
                   | '{' '}'                     (* empty object type *)

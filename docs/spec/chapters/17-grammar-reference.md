@@ -342,6 +342,10 @@ PredefinedType ::= 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'
 TypeReference ::= TypeName TypeArguments?
 TypeName ::= QualifiedPath
 AssociatedTypeProjection ::= '<' TypeExpression 'as' TypeExpression '>' '::' Identifier
+    (* The unqualified spelling T::Item is parsed by TypeReference as a
+       two-segment QualifiedPath. The checker resolves it as an associated
+       type projection only when the first segment denotes a type or generic
+       parameter; longer paths remain ordinary qualified type references. *)
 TypeQuery ::= 'typeof' TypeQueryExpression
 TypeQueryExpression ::= Identifier ('.' Identifier)*
 

@@ -216,6 +216,13 @@ const symbol::Scope& BodyChecker::currentScope() {
   ZC_UNREACHABLE;
 }
 
+static ast::IdentList modulePathSegments(const ast::Node& path) {
+  ast::IdentList segments;
+  segments.first = path.payload.words[ast::kModulePathSegmentsFirstWord];
+  segments.size = path.payload.words[ast::kModulePathSegmentsSizeWord];
+  return segments;
+}
+
 zc::Maybe<const type::Type&> BodyChecker::getSymbolType(symbol::Symbol& sym) {
   // Try to get type from TypeEnv via declaration node
   auto declRefs = sym.getDeclarationRefs();
@@ -907,11 +914,43 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
       // Simple type name: e.g., `i32`, `MyClass`
       typeName = impl->tree.ident(IdentId(pathNode.payload.words[kIdentExprNameWord]));
     } else if (pathNode.kind == SyntaxKind::ModulePath) {
-      // Qualified type name: e.g., `std::string`
-      ast::IdentList segments;
-      segments.first = pathNode.payload.words[kModulePathSegmentsFirstWord];
-      segments.size = pathNode.payload.words[kModulePathSegmentsSizeWord];
+      // Qualified type name: e.g., `foo::Bar`
+      auto segments = modulePathSegments(pathNode);
       auto segIds = impl->tree.identList(segments);
+      NodeList argsList;
+      argsList.first = node.payload.words[kNamedTypeExprArgsFirstWord];
+      argsList.size = node.payload.words[kNamedTypeExprArgsSizeWord];
+      if (segIds.size() == 2 && argsList.empty()) {
+        auto baseName = impl->tree.ident(segIds[0]);
+        auto assocName = impl->tree.ident(segIds[1]);
+        auto baseSym = lookupSymbol(baseName);
+        ZC_IF_SOME(base, baseSym) {
+          if (base.isTypeSymbol()) {
+            auto baseType = zc::heap<type::NamedType>(baseName);
+            baseType->setSymbol(static_cast<const symbol::TypeSymbol&>(base));
+            TraitResolver resolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
+                                   impl->diags);
+            auto result = resolver.resolveAssociatedTypeWithStatus(*baseType, assocName);
+            if (result.kind == AssociatedTypeResolutionKind::Resolved) {
+              ZC_IF_SOME(resolved, result.type) { return cloneType(resolved); }
+            }
+
+            if (result.kind == AssociatedTypeResolutionKind::Ambiguous) {
+              auto baseTypeText = baseType->toString();
+              impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(
+                  node.range.getStart(), assocName, baseTypeText.asPtr(), baseTypeText.asPtr(),
+                  assocName);
+              impl->hadErrors = true;
+              return zc::heap<type::ErrorType>("ambiguous associated type projection");
+            }
+
+            impl->diags.diagnose<DiagID::NoAssociatedTypeProjection>(
+                node.range.getStart(), assocName, baseType->toString());
+            impl->hadErrors = true;
+            return zc::heap<type::ErrorType>("missing associated type projection");
+          }
+        }
+      }
       if (segIds.size() > 0) { typeName = impl->tree.ident(segIds.back()); }
     }
 
@@ -2016,8 +2055,9 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
 
     auto loc = getNodeLoc(impl->tree, expr);
     if (output.kind == AssociatedTypeResolutionKind::Ambiguous) {
-      impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(loc, "Output"_zc,
-                                                                      resolvedObj.toString());
+      auto typeText = resolvedObj.toString();
+      impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(
+          loc, "Output"_zc, typeText.asPtr(), typeText.asPtr(), "Output"_zc);
     } else {
       impl->diags.diagnose<DiagID::NoAssociatedTypeProjection>(loc, "Output"_zc,
                                                                resolvedObj.toString());

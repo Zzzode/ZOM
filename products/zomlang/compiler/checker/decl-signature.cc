@@ -255,6 +255,13 @@ zc::StringPtr DeclSignatureComputer::resolvePathName(ast::NodeId pathNode) const
   return impl->tree.ident(lastSeg);
 }
 
+static ast::IdentList modulePathSegments(const ast::Node& path) {
+  ast::IdentList segments;
+  segments.first = path.payload.words[ast::kModulePathSegmentsFirstWord];
+  segments.size = path.payload.words[ast::kModulePathSegmentsSizeWord];
+  return segments;
+}
+
 const symbol::Scope& DeclSignatureComputer::currentScope() {
   auto scope = impl->symbols.getCurrentScope();
   ZC_IF_SOME(s, scope) { return s; }
@@ -1088,6 +1095,63 @@ zc::Own<type::Type> DeclSignatureComputer::resolveNamedType(const ast::Node& nod
 
   if (name.size() == 0) { return zc::heap<type::ErrorType>("empty type name"); }
 
+  if (impl->tree.contains(pathId)) {
+    const auto& pathNode = impl->tree.node(pathId);
+    if (pathNode.kind == SyntaxKind::ModulePath) {
+      auto segments = modulePathSegments(pathNode);
+      auto segIds = impl->tree.identList(segments);
+      NodeList argsList;
+      argsList.first = node.payload.words[kNamedTypeExprArgsFirstWord];
+      argsList.size = node.payload.words[kNamedTypeExprArgsSizeWord];
+
+      if (segIds.size() == 2 && argsList.empty()) {
+        auto baseName = impl->tree.ident(segIds[0]);
+        auto assocName = impl->tree.ident(segIds[1]);
+        zc::Own<type::Type> baseType;
+
+        ZC_IF_SOME(typeVar, impl->genericTypeVars.find(baseName)) {
+          if (typeVar != nullptr) { baseType = cloneType(*typeVar); }
+        }
+
+        if (!baseType) {
+          auto baseSymbol = lookupSymbol(baseName);
+          ZC_IF_SOME(base, baseSymbol) {
+            if (base.getKind() == symbol::SymbolKind::TypeAlias) {
+              baseType = resolveTypeAliasTarget(base, pathId);
+            } else if (base.isTypeSymbol()) {
+              auto namedTy = zc::heap<type::NamedType>(baseName);
+              namedTy->setSymbol(static_cast<const symbol::TypeSymbol&>(base));
+              baseType = zc::mv(namedTy);
+            }
+          }
+        }
+
+        if (baseType) {
+          TraitResolver resolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
+                                 impl->diags);
+          auto result = resolver.resolveAssociatedTypeWithStatus(*baseType, assocName);
+          if (result.kind == AssociatedTypeResolutionKind::Resolved) {
+            ZC_IF_SOME(resolved, result.type) { return cloneType(resolved); }
+          }
+
+          if (result.kind == AssociatedTypeResolutionKind::Ambiguous) {
+            auto baseTypeText = baseType->toString();
+            impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(
+                node.range.getStart(), assocName, baseTypeText.asPtr(), baseTypeText.asPtr(),
+                assocName);
+            impl->hadErrors = true;
+            return zc::heap<type::ErrorType>("ambiguous associated type projection");
+          }
+
+          impl->diags.diagnose<DiagID::NoAssociatedTypeProjection>(node.range.getStart(), assocName,
+                                                                   baseType->toString());
+          impl->hadErrors = true;
+          return zc::heap<type::ErrorType>("missing associated type projection");
+        }
+      }
+    }
+  }
+
   ZC_IF_SOME(typeVar, impl->genericTypeVars.find(name)) {
     if (typeVar != nullptr) { return cloneType(*typeVar); }
   }
@@ -1496,8 +1560,10 @@ zc::Own<type::Type> DeclSignatureComputer::resolveAssociatedTypeProjection(const
     ZC_IF_SOME(resolved, result.type) { return cloneType(resolved); }
   }
   if (result.kind == AssociatedTypeResolutionKind::Ambiguous) {
-    impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(nodeLoc(impl->tree, baseTyId),
-                                                                    assocName, baseTy->toString());
+    auto baseTypeText = baseTy->toString();
+    impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(
+        nodeLoc(impl->tree, baseTyId), assocName, baseTypeText.asPtr(), baseTypeText.asPtr(),
+        assocName);
     impl->hadErrors = true;
     return zc::heap<type::ErrorType>("ambiguous associated type projection");
   }

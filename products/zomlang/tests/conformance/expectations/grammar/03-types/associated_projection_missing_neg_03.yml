@@ -1,0 +1,5 @@
+section: "Ch.03 Associated type projections"
+covers_rule: "typeQualified, associated type projection semantic resolution"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks missing unqualified associated type projection binding."

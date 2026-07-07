@@ -46,7 +46,8 @@ CHECKER_DIAG(432, OperatorTraitSignatureMismatch, kError,
              "Operator trait '{0}' for type '{1}' must define '{2}({3}) -> {4}'", 5)
 CHECKER_DIAG(433, NoAssociatedTypeProjection, kError, "No associated type '{0}' for type '{1}'", 2)
 CHECKER_DIAG(434, AmbiguousAssociatedTypeProjection, kError,
-             "Ambiguous associated type '{0}' for type '{1}'; use '<{1} as Interface>::{0}'", 2)
+             "Ambiguous associated type '{0}' for type '{1}'; use '<{2} as Interface>::{3}'",
+             4)
 CHECKER_DIAG(440, CheckerNonExhaustiveMatch, kError, "Non-exhaustive match. Missing patterns: {0}",
              1)
 CHECKER_DIAG(442, CheckerUnreachableMatchArm, kWarning,

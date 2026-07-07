@@ -931,10 +931,11 @@ zc::Maybe<const type::Type&> TraitResolver::resolveAssociatedType(const type::Ty
     auto typeName = getTypeName(ty);
     if (typeName.size() == 0) {
       auto rendered = ty.toString();
-      impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(loc, assocName,
-                                                                      zc::mv(rendered));
+      impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(
+          loc, assocName, rendered.asPtr(), rendered.asPtr(), assocName);
     } else {
-      impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(loc, assocName, typeName);
+      impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(loc, assocName, typeName,
+                                                                      typeName, assocName);
     }
     impl->hadErrors = true;
     return zc::none;

@@ -549,6 +549,10 @@ implemented by `T`. If more than one bound can provide `Item`, the fully
 qualified projection `<T as Interface>::Item` selects the source interface
 explicitly. Associated types are resolved during trait/interface bound
 discharge. See [Chapter 9](09-interfaces.md) and [Chapter 12](12-generics.md).
+The parser preserves `T::Item` as a two-segment type path; the checker resolves
+it as an unqualified associated type projection only when the first segment
+denotes a type or generic parameter. Longer paths such as
+`std::collections::HashMap` remain ordinary qualified type references.
 
 ### Parenthesized Types
 
