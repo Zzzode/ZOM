@@ -1,0 +1,5 @@
+section: "12-generics generic bound diagnostics"
+covers_rule: "functionDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the unsatisfied trait bound error."

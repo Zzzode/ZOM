@@ -1,0 +1,3 @@
+// RUN: ! %zomc compile --syntax-only %corpus/12-generics/generic_bound_missing_neg_01.zom 2>&1 | %FileCheck %s
+
+// CHECK: [ZOM0431]
