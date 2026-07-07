@@ -532,11 +532,12 @@ public:
   /// \brief Create a MethodDecl.
   ast::NodeId makeMethodDecl(zc::StringPtr name, ast::NodeId body = ast::NodeId(),
                              ast::NodeId params = ast::NodeId(), ast::NodeId retTy = ast::NodeId(),
-                             bool isStatic = false) {
+                             bool isStatic = false, ast::NodeId typeParams = ast::NodeId()) {
     ast::NodePayload payload;
     auto nameId = builder_.internIdent(name);
     payload.words[ast::kMethodDeclNameWord] = nameId.value;
     payload.words[ast::kMethodDeclParamsIdWord] = params.value;
+    payload.words[ast::kMethodDeclTypeParamsIdWord] = typeParams.value;
     payload.words[ast::kMethodDeclRetTyWord] = retTy.value;
     payload.words[ast::kMethodDeclBodyWord] = body.value;
     payload.words[ast::kMethodDeclIsStaticWord] = isStatic ? 1 : 0;

@@ -15,6 +15,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @1:28..1:30 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @1:34..1:38 kind=Unit
 // CHECK-NEXT:                   body: null
@@ -30,6 +31,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #7 @2:31..2:33 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #8 @2:37..2:41 kind=Unit
 // CHECK-NEXT:                   body: null
@@ -46,6 +48,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #13 @3:27..3:29 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #14 @3:33..3:37 kind=Unit
 // CHECK-NEXT:                   body:
@@ -64,6 +67,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #20 @5:21..5:23 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #21 @5:27..5:31 kind=Unit
 // CHECK-NEXT:                   body:
@@ -73,6 +77,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #24 @6:13..6:15 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #25 @6:19..6:23 kind=Unit
 // CHECK-NEXT:                   body:

@@ -120,6 +120,7 @@
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #68 @8:28..8:67
@@ -164,6 +165,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #70 @9:11..9:13 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #71 @9:14..9:16
@@ -184,6 +186,7 @@
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     NamedTypeExpr #80 @10:32..10:33
 // CHECK-NEXT:                       path:

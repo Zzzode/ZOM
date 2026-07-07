@@ -15,6 +15,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:21..2:23 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:27..2:31 kind=Unit
 // CHECK-NEXT:                   body: null
@@ -22,6 +23,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #4 @3:23..3:25 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @3:29..3:33 kind=Unit
 // CHECK-NEXT:                   body: null
@@ -29,6 +31,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #7 @4:14..4:16 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #8 @4:20..4:23 kind=I64
 // CHECK-NEXT:                   body: null

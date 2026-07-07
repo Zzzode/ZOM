@@ -15,6 +15,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:13..2:15 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:19..2:23 kind=Unit
 // CHECK-NEXT:                   body: null

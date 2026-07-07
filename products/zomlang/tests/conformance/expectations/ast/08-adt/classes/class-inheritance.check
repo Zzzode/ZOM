@@ -16,6 +16,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:10..2:12 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #2 @2:13..2:15
@@ -33,6 +34,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #7 @6:10..6:12 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #8 @6:13..6:15

@@ -16,6 +16,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:26..2:28 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:32..2:35 kind=Str
 // CHECK-NEXT:                   body: null
@@ -28,6 +29,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #4 @3:29..3:32 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #7 @3:37..3:40 kind=I32
 // CHECK-NEXT:                   body: null

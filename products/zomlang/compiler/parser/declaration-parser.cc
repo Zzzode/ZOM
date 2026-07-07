@@ -877,10 +877,12 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
       }
 
       // Find parameter list.
+      ast::NodeId typeParams;
       size_t openParen = memberEnd;
       size_t openParenSearch = isInitOrDeinit ? cursor + 1 : nameIndex + 1;
       if (openParenSearch < memberContentEnd &&
           kindAt(openParenSearch) == ast::SyntaxKind::LessThan) {
+        typeParams = parseTypeParameters(builder, openParenSearch, memberContentEnd);
         TokenCursor angleCursor = tokenCursorAt(openParenSearch);
         openParenSearch = consumeBalancedAngleList(angleCursor, memberContentEnd)
                               ? angleCursor.position()
@@ -930,8 +932,8 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
 
       if (nameIndex < memberEnd) {
         members.add(builder.makeMethodDecl(rangeFor(memberStart, memberEnd),
-                                           internIdent(builder, nameIndex), paramsId, retTy, body,
-                                           isStatic, visibility));
+                                           internIdent(builder, nameIndex), paramsId, typeParams,
+                                           retTy, body, isStatic, visibility));
       }
     } else if (head == ast::SyntaxKind::TypeKeyword) {
       // Associated type declaration.

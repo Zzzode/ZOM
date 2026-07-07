@@ -41,6 +41,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #11 @5:43..5:46 kind=Str
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #32 @5:48..7:6
@@ -85,6 +86,7 @@
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #34 @8:17..8:19 nparams=0
 // CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #35 @8:23..8:26 kind=Str
 // CHECK-NEXT:                   body:

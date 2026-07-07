@@ -443,14 +443,13 @@ zc::Maybe<zc::String> dumpRaw(zc::OutputStream& output, const Tree& tree) {
   for (const Node& node : tree.nodes()) {
     const NodeSchemaEntry* schema = lookupNodeSchema(node.kind);
     zc::StringPtr name = schema == nullptr ? "Unknown"_zc : zc::StringPtr(schema->name);
-    output.write(zc::str("node ", static_cast<uint64_t>(id), ": kind=", name, " payload=[",
-                         static_cast<uint64_t>(node.payload.words[0]), ",",
-                         static_cast<uint64_t>(node.payload.words[1]), ",",
-                         static_cast<uint64_t>(node.payload.words[2]), ",",
-                         static_cast<uint64_t>(node.payload.words[3]), ",",
-                         static_cast<uint64_t>(node.payload.words[4]), ",",
-                         static_cast<uint64_t>(node.payload.words[5]), "]\n")
-                     .asBytes());
+    output.write(
+        zc::str("node ", static_cast<uint64_t>(id), ": kind=", name, " payload=[").asBytes());
+    for (uint32_t word = 0; word < kNodePayloadWordCount; ++word) {
+      if (word > 0) { output.write(","_zcb); }
+      output.write(zc::str(static_cast<uint64_t>(node.payload.words[word])).asBytes());
+    }
+    output.write("]\n"_zcb);
     ++id;
   }
   return zc::none;

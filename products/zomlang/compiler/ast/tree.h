@@ -100,7 +100,7 @@ struct IdentList final {
 
 /// \brief Fixed payload words for schema-generated syntax nodes.
 struct NodePayload final {
-  uint32_t words[6] = {};
+  uint32_t words[7] = {};
 };
 
 /// \brief Main syntax record used by ast::Tree.

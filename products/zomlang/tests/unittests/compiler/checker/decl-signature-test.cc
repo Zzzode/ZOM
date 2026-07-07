@@ -752,6 +752,32 @@ ZC_TEST("DeclSignature.DynRejectsStaticInterfaceMethod") {
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynStaticMethod));
 }
 
+ZC_TEST("DeclSignature.DynRejectsGenericInterfaceMethod") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> genericNodes;
+  genericNodes.add(fix.makeGenericTypeParam("U"_zc));
+  auto methodTypeParams = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()));
+  auto method = fix.makeMethodDecl("map"_zc, ast::NodeId(), ast::NodeId(),
+                                   fix.makeNamedTypeExpr("U"_zc), false, methodTypeParams);
+  zc::Vector<ast::NodeId> members;
+  members.add(method);
+  auto iface = fix.makeInterfaceDecl("Mapper"_zc,
+                                     fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+  auto alias =
+      fix.makeAliasDecl("DynMapper"_zc, fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Mapper"_zc)));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynGenericMethod));
+}
+
 ZC_TEST("DeclSignature.DynRejectsUnboundAssociatedType") {
   TestFixture fix;
   auto consumer = zc::heap<CapturingDiagnosticConsumer>();

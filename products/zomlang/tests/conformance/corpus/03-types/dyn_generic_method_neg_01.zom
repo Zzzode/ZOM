@@ -1,0 +1,5 @@
+interface Mapper {
+    fun map<U>(value: i32) -> U;
+}
+
+let x: dyn Mapper;

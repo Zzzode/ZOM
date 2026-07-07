@@ -94,7 +94,7 @@ enum class CaptureMode : uint8_t {
   ByValue, ByRef, This
 };
 
-constexpr uint32_t kNodePayloadWordCount = 6;
+constexpr uint32_t kNodePayloadWordCount = 7;
 
 constexpr uint32_t kAttributeListPayloadWordCount = 2;
 constexpr uint32_t kAttributeListAttrsFirstWord = 0;
@@ -780,13 +780,14 @@ constexpr uint32_t kAliasDeclNameWord = 0;
 constexpr uint32_t kAliasDeclTypeParamsIdWord = 1;
 constexpr uint32_t kAliasDeclTargetWord = 2;
 
-constexpr uint32_t kMethodDeclPayloadWordCount = 6;
+constexpr uint32_t kMethodDeclPayloadWordCount = 7;
 constexpr uint32_t kMethodDeclNameWord = 0;
 constexpr uint32_t kMethodDeclParamsIdWord = 1;
-constexpr uint32_t kMethodDeclRetTyWord = 2;
-constexpr uint32_t kMethodDeclBodyWord = 3;
-constexpr uint32_t kMethodDeclIsStaticWord = 4;
-constexpr uint32_t kMethodDeclVisibilityWord = 5;
+constexpr uint32_t kMethodDeclTypeParamsIdWord = 2;
+constexpr uint32_t kMethodDeclRetTyWord = 3;
+constexpr uint32_t kMethodDeclBodyWord = 4;
+constexpr uint32_t kMethodDeclIsStaticWord = 5;
+constexpr uint32_t kMethodDeclVisibilityWord = 6;
 
 constexpr uint32_t kFieldDeclPayloadWordCount = 6;
 constexpr uint32_t kFieldDeclNameWord = 0;

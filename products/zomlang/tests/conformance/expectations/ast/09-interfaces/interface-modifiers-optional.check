@@ -34,6 +34,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #7 @4:22..4:25 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #10 @4:30..4:33 kind=I32
 // CHECK-NEXT:                   body: null

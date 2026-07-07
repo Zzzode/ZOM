@@ -25,6 +25,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #3 @2:31..2:34 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #6 @2:39..2:42 kind=I32
 // CHECK-NEXT:                   body: null
@@ -42,6 +43,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #10 @3:24..3:27 kind=F64
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #13 @3:32..3:35 kind=F64
 // CHECK-NEXT:                   body: null
@@ -54,6 +56,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #15 @4:21..4:24 kind=Str
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #18 @4:29..4:32 kind=Str
 // CHECK-NEXT:                   body: null
@@ -66,6 +69,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #20 @5:28..5:31 kind=Str
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #23 @5:36..5:40 kind=Unit
 // CHECK-NEXT:                   body: null

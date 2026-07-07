@@ -20,6 +20,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #1 @2:17..2:20 kind=Str
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @2:25..2:29 kind=Unit
 // CHECK-NEXT:                   body: null
@@ -32,6 +33,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #6 @3:20..3:23 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #9 @3:28..3:32 kind=Unit
 // CHECK-NEXT:                   body: null

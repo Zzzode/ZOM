@@ -15,6 +15,8 @@
 // RFC 0005 type checker diagnostics. Numeric values are explicit because
 // the language specification assigns stable semantic codes, not file-order IDs.
 
+CHECKER_DIAG(331, DynGenericMethod, kError,
+             "Interface '{0}' has generic method '{1}' and cannot be used as dyn", 2)
 CHECKER_DIAG(334, DynUnassociatedType, kError,
              "dyn interface '{0}' requires associated type '{1}' to be bound", 2)
 CHECKER_DIAG(335, DynStaticMethod, kError,

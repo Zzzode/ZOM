@@ -1299,6 +1299,7 @@ variants:
     fields:
       - {name: name, type: IdentId}
       - {name: params_id, type: NodeId, cast: FunctionParameterList}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
       - {name: ret_ty, type: NodeId, cast: TypeExpr, optional: true}
       - {name: body, type: NodeId, cast: BlockStmt, optional: true}
       - {name: is_static, type: bool}

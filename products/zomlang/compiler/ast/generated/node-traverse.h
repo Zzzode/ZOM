@@ -1233,6 +1233,10 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         if (tree.contains(child)) { fn(child); }
       }
       {
+        const NodeId child(node.payload.words[kMethodDeclTypeParamsIdWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
         const NodeId child(node.payload.words[kMethodDeclRetTyWord]);
         if (tree.contains(child)) { fn(child); }
       }

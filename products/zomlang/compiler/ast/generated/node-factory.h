@@ -1161,10 +1161,11 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::AliasDecl, zc::mv(range), payload);
   }
 
-  NodeId makeMethodDecl(source::SourceRange range, IdentId name, NodeId params_id, NodeId ret_ty, NodeId body, bool is_static, uint8_t visibility) {
+  NodeId makeMethodDecl(source::SourceRange range, IdentId name, NodeId params_id, NodeId type_params_id, NodeId ret_ty, NodeId body, bool is_static, uint8_t visibility) {
     NodePayload payload;
     payload.words[kMethodDeclNameWord] = name.value;
     payload.words[kMethodDeclParamsIdWord] = params_id.value;
+    payload.words[kMethodDeclTypeParamsIdWord] = type_params_id.value;
     payload.words[kMethodDeclRetTyWord] = ret_ty.value;
     payload.words[kMethodDeclBodyWord] = body.value;
     payload.words[kMethodDeclIsStaticWord] = is_static ? 1u : 0u;

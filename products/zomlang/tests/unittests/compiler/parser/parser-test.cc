@@ -1045,6 +1045,44 @@ ZC_TEST("ParserTest.ParseInterfacePropertySignature") {
   else { ZC_EXPECT(false, "Parse should succeed"); }
 }
 
+ZC_TEST("ParserTest.ParseInterfaceGenericMethodPreservesTypeParams") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("interface Mapper { fun map<U>(value: i32) -> U; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    const ast::Node& interfaceNode = topLevelStatement(root, 0);
+    ZC_EXPECT(interfaceNode.kind == ast::SyntaxKind::InterfaceDecl);
+
+    const auto membersId =
+        ast::NodeId(interfaceNode.payload.words[ast::kInterfaceDeclMembersIdWord]);
+    const ast::Node& members = root.node(membersId);
+    ZC_EXPECT(members.kind == ast::SyntaxKind::ClassMemberList);
+
+    ast::NodeList memberList;
+    memberList.first = members.payload.words[ast::kClassMemberListMembersFirstWord];
+    memberList.size = members.payload.words[ast::kClassMemberListMembersSizeWord];
+    const auto memberIds = root.list(memberList);
+    ZC_EXPECT(memberIds.size() == 1);
+
+    const ast::Node& method = root.node(memberIds[0]);
+    ZC_EXPECT(method.kind == ast::SyntaxKind::MethodDecl);
+    const auto typeParamsId = ast::NodeId(method.payload.words[ast::kMethodDeclTypeParamsIdWord]);
+    ZC_EXPECT(root.contains(typeParamsId));
+    if (root.contains(typeParamsId)) {
+      const ast::Node& typeParams = root.node(typeParamsId);
+      ZC_EXPECT(typeParams.kind == ast::SyntaxKind::GenericParams);
+      ZC_EXPECT(typeParams.payload.words[ast::kGenericParamsNparamsWord] == 1);
+    }
+  }
+  else { ZC_EXPECT(false, "Parse should succeed"); }
+}
+
 ZC_TEST("ParserTest.ParseClassMemberMissingSemicolon") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);

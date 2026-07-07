@@ -300,8 +300,8 @@ def field_storage(schema: dict[str, Any], field: dict[str, Any]) -> str:
 def validate_payload_layouts(schema: dict[str, Any]) -> None:
     for item in variants(schema):
         _, word_count = payload_layout(item)
-        if word_count > 6:
-            raise SchemaError(f"{item['name']} payload uses {word_count} words; max is 6")
+        if word_count > 7:
+            raise SchemaError(f"{item['name']} payload uses {word_count} words; max is 7")
 
 
 def validate_schema(schema: dict[str, Any]) -> None:
@@ -402,7 +402,7 @@ def generate_node_payload_h(schema: dict[str, Any]) -> str:
     ]
     lines.extend(enum_lines)
     lines += [
-        "constexpr uint32_t kNodePayloadWordCount = 6;",
+        "constexpr uint32_t kNodePayloadWordCount = 7;",
         "",
     ]
     for item in variants(schema):

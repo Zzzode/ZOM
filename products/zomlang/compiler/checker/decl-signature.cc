@@ -320,6 +320,20 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
   for (ast::NodeId memberId : impl->tree.list(members)) {
     if (!impl->tree.contains(memberId)) { continue; }
     const auto& member = impl->tree.node(memberId);
+    if (member.kind == SyntaxKind::MethodDecl) {
+      auto methodTypeParamsId = ast::NodeId(member.payload.words[kMethodDeclTypeParamsIdWord]);
+      if (impl->tree.contains(methodTypeParamsId)) {
+        const auto& typeParams = impl->tree.node(methodTypeParamsId);
+        if (typeParams.kind == SyntaxKind::GenericParams &&
+            typeParams.payload.words[kGenericParamsNparamsWord] != 0) {
+          auto methodName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
+          impl->diags.diagnose<DiagID::DynGenericMethod>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                         ifaceName, methodName);
+          impl->hadErrors = true;
+          continue;
+        }
+      }
+    }
     if (member.kind == SyntaxKind::MethodDecl &&
         member.payload.words[kMethodDeclIsStaticWord] != 0) {
       impl->diags.diagnose<DiagID::DynStaticMethod>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName);

@@ -68,7 +68,7 @@ struct NodeSchemaEntry final {
 
 constexpr uint8_t kNodeSchemaNoWord = 0xff;
 constexpr const char* kAstSchemaVersion = "2.0";
-constexpr const char* kAstSchemaFingerprint = "8b9a198cc32c69d8056571cdd5f2feaf2922d3292850e2630fde3e1479f38f12";
+constexpr const char* kAstSchemaFingerprint = "0153d4fbcbeccb364d32da3d43421775dc56f30c873488af3c9e3bcb0940deab";
 constexpr uint32_t kAstSchemaVariantCount = 160;
 
 constexpr NodeSchemaEnumValue kAttributePathLeadingEnumValues[] = {
@@ -1146,10 +1146,11 @@ constexpr NodeSchemaFieldEntry kAliasDeclFields[] = {
 constexpr NodeSchemaFieldEntry kMethodDeclFields[] = {
   {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
   {"params_id", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "FunctionParameterList", nullptr, nullptr, 0},
-  {"ret_ty", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
-  {"body", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "BlockStmt", nullptr, nullptr, 0},
-  {"is_static", NodeSchemaFieldStorage::Bool, 4, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
-  {"visibility", NodeSchemaFieldStorage::Enum, 5, kNodeSchemaNoWord, false, nullptr, "MethodDecl.visibility", kMethodDeclVisibilityEnumValues, 4},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"ret_ty", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+  {"body", NodeSchemaFieldStorage::NodeId, 4, kNodeSchemaNoWord, true, "BlockStmt", nullptr, nullptr, 0},
+  {"is_static", NodeSchemaFieldStorage::Bool, 5, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"visibility", NodeSchemaFieldStorage::Enum, 6, kNodeSchemaNoWord, false, nullptr, "MethodDecl.visibility", kMethodDeclVisibilityEnumValues, 4},
 };
 
 constexpr NodeSchemaFieldEntry kFieldDeclFields[] = {
@@ -1363,7 +1364,7 @@ constexpr NodeSchemaEntry kNodeSchemaEntries[] = {
   {SyntaxKind::InterfaceDecl, "InterfaceDecl", kInterfaceDeclFields, 3},
   {SyntaxKind::ErrorDecl, "ErrorDecl", kErrorDeclFields, 2},
   {SyntaxKind::AliasDecl, "AliasDecl", kAliasDeclFields, 3},
-  {SyntaxKind::MethodDecl, "MethodDecl", kMethodDeclFields, 6},
+  {SyntaxKind::MethodDecl, "MethodDecl", kMethodDeclFields, 7},
   {SyntaxKind::FieldDecl, "FieldDecl", kFieldDeclFields, 6},
   {SyntaxKind::AssociatedTypeDecl, "AssociatedTypeDecl", kAssociatedTypeDeclFields, 3},
   {SyntaxKind::GenericTypeParam, "GenericTypeParam", kGenericTypeParamFields, 4},
