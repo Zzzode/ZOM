@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-// RFC 0005 type checker diagnostics.  Numeric values are explicit because
-// the RFC assigns stable 0400-0499 codes by semantic category, not by file order.
+// RFC 0005 type checker diagnostics. Numeric values are explicit because
+// the language specification assigns stable semantic codes, not file-order IDs.
 
 CHECKER_DIAG(334, DynUnassociatedType, kError,
              "dyn interface '{0}' requires associated type '{1}' to be bound", 2)
