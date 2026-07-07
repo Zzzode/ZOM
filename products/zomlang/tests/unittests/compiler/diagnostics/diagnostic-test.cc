@@ -65,6 +65,7 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotInferTypeParameter) == 420);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotInferNullInitializer) == 421);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ConflictingImpl) == 430);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::OperatorTraitSignatureMismatch) == 432);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::AmbiguousAssociatedTypeProjection) == 434);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::NoAssociatedTypeProjection) == 433);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerNonExhaustiveMatch) == 440);

@@ -743,14 +743,15 @@ public:
 
   /// \brief Create a StandaloneImplDecl.
   ast::NodeId makeStandaloneImplDecl(ast::NodeId forTy = ast::NodeId(),
-                                     ast::NodeId ifaces = ast::NodeId()) {
+                                     ast::NodeId ifaces = ast::NodeId(),
+                                     ast::NodeId members = ast::NodeId()) {
     ast::NodePayload payload;
     payload.words[ast::kStandaloneImplDeclIsUnsafeWord] = 0;
     payload.words[ast::kStandaloneImplDeclIfacesIdWord] = ifaces.value;
     payload.words[ast::kStandaloneImplDeclForTyWord] = forTy.value;
     payload.words[ast::kStandaloneImplDeclWhereWord] = 0;
     payload.words[ast::kStandaloneImplDeclTypeParamsIdWord] = 0;
-    payload.words[ast::kStandaloneImplDeclMembersIdWord] = 0;
+    payload.words[ast::kStandaloneImplDeclMembersIdWord] = members.value;
     return builder_.makeNode(ast::SyntaxKind::StandaloneImplDecl, source::SourceRange(), payload);
   }
 

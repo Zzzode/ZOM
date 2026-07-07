@@ -42,6 +42,8 @@ CHECKER_DIAG(421, CannotInferNullInitializer, kError,
              "Cannot infer type from null initializer without annotation", 0)
 CHECKER_DIAG(430, ConflictingImpl, kError, "Conflicting implementations of '{0}' for type '{1}'", 2)
 CHECKER_DIAG(431, CheckerTraitNotImplemented, kError, "'{0}' does not implement '{1}'", 2)
+CHECKER_DIAG(432, OperatorTraitSignatureMismatch, kError,
+             "Operator trait '{0}' for type '{1}' must define '{2}({3}) -> {4}'", 5)
 CHECKER_DIAG(433, NoAssociatedTypeProjection, kError, "No associated type '{0}' for type '{1}'", 2)
 CHECKER_DIAG(434, AmbiguousAssociatedTypeProjection, kError,
              "Ambiguous associated type '{0}' for type '{1}'; use '<{1} as Interface>::{0}'", 2)

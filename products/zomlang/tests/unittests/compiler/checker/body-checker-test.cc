@@ -59,6 +59,16 @@ bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnosti
   return false;
 }
 
+zc::StringPtr binaryOperatorMethodName(zc::StringPtr ifaceName) {
+  if (ifaceName == "Add"_zc) return "add"_zc;
+  if (ifaceName == "Sub"_zc) return "sub"_zc;
+  if (ifaceName == "Mul"_zc) return "mul"_zc;
+  if (ifaceName == "Div"_zc) return "div"_zc;
+  if (ifaceName == "Rem"_zc) return "rem"_zc;
+  if (ifaceName == "Pow"_zc) return "pow"_zc;
+  return ""_zc;
+}
+
 // Helper: run full pipeline (Binder + DeclSignatureComputer + BodyChecker) and return
 // the TypeEnv for inspection.
 struct CheckResult {
@@ -100,7 +110,17 @@ void expectUserTypeBinaryOperatorImpl(zc::StringPtr ifaceName, ast::BinaryOperat
   zc::Vector<ast::NodeId> ifaceNodes;
   ifaceNodes.add(fix.makeNamedTypeExpr(ifaceName));
   auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-  auto implDecl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList);
+
+  zc::Vector<ast::NodeId> implParams;
+  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Number"_zc)));
+  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
+  auto implMethod = fix.makeMethodDecl(binaryOperatorMethodName(ifaceName), ast::NodeId(),
+                                       implParamList, fix.makeNamedTypeExpr("Number"_zc));
+  zc::Vector<ast::NodeId> implMembers;
+  implMembers.add(implMethod);
+  auto implDecl =
+      fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList,
+                                 fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
 
   auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
                                           fix.makeNamedTypeExpr("Number"_zc));
@@ -437,6 +457,66 @@ ZC_TEST("BodyChecker.BinaryArithmeticRejectsImplicitNumericWidening") {
 
 ZC_TEST("BodyChecker.BinaryAddUsesUserTypeAddImpl") {
   expectUserTypeBinaryOperatorImpl("Add"_zc, ast::BinaryOperatorKind::Add);
+}
+
+ZC_TEST("BodyChecker.BinaryAddRejectsWrongTraitMethodSignature") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> ifaceParams;
+  ifaceParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Number"_zc)));
+  auto ifaceParamList = fix.makeFunctionParamList(fix.makeNodeList(ifaceParams.asPtr()));
+  auto ifaceMethod = fix.makeMethodDecl("add"_zc, ast::NodeId(), ifaceParamList,
+                                        fix.makeNamedTypeExpr("Number"_zc));
+  zc::Vector<ast::NodeId> ifaceMembers;
+  ifaceMembers.add(ifaceMethod);
+  auto addIface = fix.makeInterfaceDecl(
+      "Add"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
+
+  auto numberType = fix.makeClassDecl("Number"_zc);
+
+  zc::Vector<ast::NodeId> implIfaceNodes;
+  implIfaceNodes.add(fix.makeNamedTypeExpr("Add"_zc));
+  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
+
+  zc::Vector<ast::NodeId> implParams;
+  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("bool"_zc)));
+  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
+  auto implMethod =
+      fix.makeMethodDecl("add"_zc, ast::NodeId(), implParamList, fix.makeNamedTypeExpr("str"_zc));
+  zc::Vector<ast::NodeId> implMembers;
+  implMembers.add(implMethod);
+  auto implDecl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Number"_zc), implIfaces,
+                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
+
+  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
+                                          fix.makeNamedTypeExpr("Number"_zc));
+  auto yDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc),
+                                          fix.makeNamedTypeExpr("Number"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(xDecl);
+  decls.add(yDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, fix.makeIdentExpr("x"_zc),
+                                    fix.makeIdentExpr("y"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(addIface);
+  topDecls.add(numberType);
+  topDecls.add(implDecl);
+  topDecls.add(let);
+  topDecls.add(binExpr);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(
+      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
+  ZC_EXPECT(result.typeEnv.hasType(binExpr));
+  if (result.typeEnv.hasType(binExpr)) { ZC_EXPECT(isError(result.typeEnv.getType(binExpr))); }
 }
 
 ZC_TEST("BodyChecker.BinarySubUsesUserTypeSubImpl") {

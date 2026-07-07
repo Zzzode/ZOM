@@ -1,0 +1,14 @@
+interface Add {
+    fun add(rhs: Number) -> Number;
+}
+
+class Number { }
+
+impl Add for Number {
+    fun add(rhs: bool) -> str;
+}
+
+let x: Number;
+let y: Number;
+
+x + y;

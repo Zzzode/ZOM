@@ -357,6 +357,18 @@ static zc::StringPtr unaryOperatorTrait(ast::UnaryOperatorKind op) {
   }
 }
 
+static zc::StringPtr binaryOperatorTraitMethod(zc::StringPtr traitName) {
+  if (traitName == "Add"_zc) return "add"_zc;
+  if (traitName == "Sub"_zc) return "sub"_zc;
+  if (traitName == "Mul"_zc) return "mul"_zc;
+  if (traitName == "Div"_zc) return "div"_zc;
+  if (traitName == "Rem"_zc) return "rem"_zc;
+  if (traitName == "Pow"_zc) return "pow"_zc;
+  if (traitName == "Eq"_zc) return "eq"_zc;
+  if (traitName == "Ord"_zc) return "cmp"_zc;
+  return ""_zc;
+}
+
 static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv& env) {
   const auto& resolved = env.find(ty);
   if (isTypeVar(resolved)) { return true; }
@@ -1027,6 +1039,64 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
   return zc::Own<type::Type>();
 }
 
+bool BodyChecker::validateBinaryOperatorTrait(ast::NodeId expr, zc::StringPtr traitName,
+                                              zc::StringPtr methodName, const type::Type& lhsType,
+                                              const type::Type& rhsType,
+                                              const type::Type& returnType) {
+  TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
+                              impl->diags);
+  traitResolver.discoverImpls();
+
+  ZC_IF_SOME(implNodeId, traitResolver.findImpl(lhsType, traitName)) {
+    if (!impl->tree.contains(implNodeId)) { return false; }
+    const auto& implNode = impl->tree.node(implNodeId);
+    if (implNode.kind != SyntaxKind::StandaloneImplDecl) { return false; }
+
+    auto membersId = NodeId(implNode.payload.words[kStandaloneImplDeclMembersIdWord]);
+    if (!impl->tree.contains(membersId)) { return false; }
+
+    const auto& membersNode = impl->tree.node(membersId);
+    if (membersNode.kind != SyntaxKind::ClassMemberList) { return false; }
+
+    NodeList members;
+    members.first = membersNode.payload.words[kClassMemberListMembersFirstWord];
+    members.size = membersNode.payload.words[kClassMemberListMembersSizeWord];
+    for (NodeId memberId : impl->tree.list(members)) {
+      if (!impl->tree.contains(memberId)) { continue; }
+      const auto& member = impl->tree.node(memberId);
+      if (member.kind != SyntaxKind::MethodDecl) { continue; }
+
+      auto memberName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
+      if (memberName != methodName) { continue; }
+
+      auto paramsId = NodeId(member.payload.words[kMethodDeclParamsIdWord]);
+      if (!impl->tree.contains(paramsId)) { return false; }
+      const auto& paramsNode = impl->tree.node(paramsId);
+      if (paramsNode.kind != SyntaxKind::FunctionParameterList) { return false; }
+
+      NodeList params;
+      params.first = paramsNode.payload.words[kFunctionParameterListParamsFirstWord];
+      params.size = paramsNode.payload.words[kFunctionParameterListParamsSizeWord];
+      auto paramIds = impl->tree.list(params);
+      if (paramIds.size() != 1) { return false; }
+
+      const auto& paramNode = impl->tree.node(paramIds[0]);
+      if (paramNode.kind != SyntaxKind::FunctionParameterDecl) { return false; }
+      auto paramTyId = NodeId(paramNode.payload.words[kFunctionParameterDeclTyWord]);
+      auto paramTy = resolveTypeExpr(paramTyId);
+      if (!paramTy) { return false; }
+      if (!impl->typeEnv.find(*paramTy).equals(rhsType)) { return false; }
+
+      auto retTyId = NodeId(member.payload.words[kMethodDeclRetTyWord]);
+      auto retTy = resolveTypeExpr(retTyId);
+      if (!retTy) { return false; }
+      return impl->typeEnv.find(*retTy).equals(returnType);
+    }
+  }
+
+  return false;
+}
+
 const type::Type& BodyChecker::expectedReturnType() const {
   ZC_IF_SOME(rt, impl->expectedRetType) { return rt; }
   // Default: unit type for functions without explicit return type
@@ -1331,6 +1401,16 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
                                     impl->diags);
         traitResolver.discoverImpls();
         if (traitResolver.implements(resolvedLhs, traitName)) {
+          auto methodName = binaryOperatorTraitMethod(traitName);
+          if (!validateBinaryOperatorTrait(expr, traitName, methodName, resolvedLhs, resolvedRhs,
+                                           resolvedLhs)) {
+            auto loc = getNodeLoc(impl->tree, expr);
+            impl->diags.diagnose<DiagID::OperatorTraitSignatureMismatch>(
+                loc, traitName, resolvedLhs.toString(), methodName, resolvedRhs.toString(),
+                resolvedLhs.toString());
+            impl->hadErrors = true;
+            return storeType(expr, zc::heap<type::ErrorType>());
+          }
           return storeType(expr, cloneType(resolvedLhs));
         }
       }
