@@ -1,0 +1,19 @@
+// RUN: %zomc compile --dump-ast %corpus/09-interfaces/conflicting_impl_neg_17.zom | %FileCheck %s
+
+// CHECK: SourceFile
+// CHECK:         InterfaceDecl
+// CHECK-SAME:    name="Hashable"
+// CHECK:         ClassDecl
+// CHECK-SAME:    name="Box"
+// CHECK:         StandaloneImplDecl
+// CHECK:           ifaces_id:
+// CHECK-NEXT:             ImplIfaceList
+// CHECK-SAME:       n_ifaces=1
+// CHECK:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr
+// CHECK:         StandaloneImplDecl
+// CHECK:           ifaces_id:
+// CHECK-NEXT:             ImplIfaceList
+// CHECK-SAME:       n_ifaces=1
+// CHECK:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr
