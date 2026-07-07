@@ -55,5 +55,5 @@ CHECKER_DIAG(442, CheckerUnreachableMatchArm, kWarning,
 CHECKER_DIAG(450, CannotMutateImmutableVariable, kError, "Cannot mutate immutable variable '{0}'",
              1)
 CHECKER_DIAG(460, ErrorPropagateOutsideRaises, kError,
-             "'?!' propagates error type '{0}' but function does not raise '{0}'", 1)
+             "'?!' propagates error type '{0}' but function does not raise '{1}'", 2)
 CHECKER_DIAG(461, ErrorUnwrapNonUnion, kError, "'!!' on non-error-union type '{0}'", 1)

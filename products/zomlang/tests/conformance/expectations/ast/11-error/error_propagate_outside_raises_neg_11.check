@@ -1,0 +1,15 @@
+// RUN: %zomc compile --dump-ast %corpus/11-error/error_propagate_outside_raises_neg_11.zom | %FileCheck %s
+
+// CHECK: SourceFile
+// CHECK:         FunctionDecl
+// CHECK-SAME:    name="fail"
+// CHECK:           raises_ty:
+// CHECK-NEXT:             NamedTypeExpr
+// CHECK:         FunctionDecl
+// CHECK-SAME:    name="main"
+// CHECK:                     ReturnStmt
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         PostfixExpression
+// CHECK-SAME:                           op=ErrorPropagate
+// CHECK-NEXT:                           operand:
+// CHECK-NEXT:                             CallExpression

@@ -1723,7 +1723,9 @@ const type::Type& BodyChecker::checkPostfixExpr(ast::NodeId expr) {
         const auto& errorAlt = unionTy.getAlternative(1);
         if (impl->expectedRaisesType == zc::none) {
           auto loc = getNodeLoc(impl->tree, expr);
-          impl->diags.diagnose<DiagID::ErrorPropagateOutsideRaises>(loc, errorAlt.toString());
+          auto errorText = errorAlt.toString();
+          impl->diags.diagnose<DiagID::ErrorPropagateOutsideRaises>(loc, errorText.asPtr(),
+                                                                    errorText.asPtr());
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
@@ -1731,7 +1733,9 @@ const type::Type& BodyChecker::checkPostfixExpr(ast::NodeId expr) {
           auto& resolvedRaises = impl->typeEnv.find(raisesType);
           if (!isAllowedRaiseType(errorAlt, resolvedRaises)) {
             auto loc = getNodeLoc(impl->tree, expr);
-            impl->diags.diagnose<DiagID::ErrorPropagateOutsideRaises>(loc, errorAlt.toString());
+            auto errorText = errorAlt.toString();
+            impl->diags.diagnose<DiagID::ErrorPropagateOutsideRaises>(loc, errorText.asPtr(),
+                                                                      errorText.asPtr());
             impl->hadErrors = true;
             return storeType(expr, zc::heap<type::ErrorType>());
           }

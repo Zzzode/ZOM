@@ -1,0 +1,5 @@
+section: "Ch.11 Error propagation"
+covers_rule: "postfixExpr, raisesClause"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM0460 for propagation outside a matching raises clause."
