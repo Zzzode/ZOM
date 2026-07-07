@@ -288,9 +288,9 @@ public:
   }
 
   /// \brief Create a BinaryExpr.
-  ast::NodeId makeBinaryExpr(uint8_t op, ast::NodeId lhs, ast::NodeId rhs) {
+  ast::NodeId makeBinaryExpr(ast::BinaryOperatorKind op, ast::NodeId lhs, ast::NodeId rhs) {
     ast::NodePayload payload;
-    payload.words[ast::kBinaryExprOpWord] = op;
+    payload.words[ast::kBinaryExprOpWord] = static_cast<uint32_t>(op);
     payload.words[ast::kBinaryExprLhsWord] = lhs.value;
     payload.words[ast::kBinaryExprRhsWord] = rhs.value;
     return builder_.makeNode(ast::SyntaxKind::BinaryExpr, source::SourceRange(), payload);

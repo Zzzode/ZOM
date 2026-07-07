@@ -312,20 +312,35 @@ static zc::StringPtr simpleTypeName(const type::Type& ty) {
   return ""_zc;
 }
 
-static zc::StringPtr arithmeticOperatorTrait(uint32_t op) {
+static zc::StringPtr arithmeticOperatorTrait(ast::BinaryOperatorKind op) {
   switch (op) {
-    case 0:
+    case ast::BinaryOperatorKind::Add:
       return "Add"_zc;
-    case 1:
+    case ast::BinaryOperatorKind::Sub:
       return "Sub"_zc;
-    case 2:
+    case ast::BinaryOperatorKind::Mul:
       return "Mul"_zc;
-    case 3:
+    case ast::BinaryOperatorKind::Div:
       return "Div"_zc;
-    case 4:
+    case ast::BinaryOperatorKind::Mod:
       return "Rem"_zc;
-    case 5:
+    case ast::BinaryOperatorKind::Pow:
       return "Pow"_zc;
+    default:
+      return ""_zc;
+  }
+}
+
+static zc::StringPtr comparisonOperatorTrait(ast::BinaryOperatorKind op) {
+  switch (op) {
+    case ast::BinaryOperatorKind::Eq:
+    case ast::BinaryOperatorKind::Ne:
+      return "Eq"_zc;
+    case ast::BinaryOperatorKind::Lt:
+    case ast::BinaryOperatorKind::Le:
+    case ast::BinaryOperatorKind::Gt:
+    case ast::BinaryOperatorKind::Ge:
+      return "Ord"_zc;
     default:
       return ""_zc;
   }
@@ -1233,7 +1248,7 @@ const type::Type& BodyChecker::checkLiteral(ast::NodeId expr) {
 
 const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
   const auto& node = impl->tree.node(expr);
-  auto op = node.payload.words[kBinaryExprOpWord];
+  auto op = static_cast<ast::BinaryOperatorKind>(node.payload.words[kBinaryExprOpWord]);
   auto lhsId = NodeId(node.payload.words[kBinaryExprLhsWord]);
   auto rhsId = NodeId(node.payload.words[kBinaryExprRhsWord]);
 
@@ -1243,10 +1258,6 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
   auto& resolvedLhs = impl->typeEnv.find(lhsType);
   auto& resolvedRhs = impl->typeEnv.find(rhsType);
 
-  // Binary operator codes (from node-schema.h kBinaryExprOpEnumValues):
-  // 0=Add, 1=Sub, 2=Mul, 3=Div, 4=Mod, 5=Pow, 6=Shl, 7=Shr, 8=UShr,
-  // 9=BitAnd, 10=BitOr, 11=BitXor, 12=LogAnd, 13=LogOr,
-  // 14=Eq, 15=Ne, 16=StrictEq, 17=StrictNe, 18=Lt, 19=Le, 20=Gt, 21=Ge
   (void)resolvedRhs;
 
   // Helper: get primitive kind from resolved type
@@ -1266,12 +1277,12 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
 
   // Determine result type based on operator
   switch (op) {
-    case 0:    // Add
-    case 1:    // Sub
-    case 2:    // Mul
-    case 3:    // Div
-    case 4:    // Mod
-    case 5: {  // Pow
+    case ast::BinaryOperatorKind::Add:
+    case ast::BinaryOperatorKind::Sub:
+    case ast::BinaryOperatorKind::Mul:
+    case ast::BinaryOperatorKind::Div:
+    case ast::BinaryOperatorKind::Mod:
+    case ast::BinaryOperatorKind::Pow: {
       // Arithmetic: result is the wider numeric type
       // Simplified: return LHS type (should unify with RHS)
       if (isNumeric(resolvedLhs) && isNumeric(resolvedRhs)) {
@@ -1287,7 +1298,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
         }
         return storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolvedLhs)));
       }
-      if (isStrType(resolvedLhs) && op == 0) {  // Add + str = str concat
+      if (isStrType(resolvedLhs) && op == ast::BinaryOperatorKind::Add) {
         return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Str));
       }
       auto traitName = arithmeticOperatorTrait(op);
@@ -1307,26 +1318,49 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
       reportError(expr, "invalid operands to binary expression"_zc);
       return storeType(expr, zc::heap<type::ErrorType>());
     }
-    case 14:  // Eq
-    case 15:  // Ne
-    case 16:  // StrictEq
-    case 17:  // StrictNe
-    case 18:  // Lt
-    case 19:  // Le
-    case 20:  // Gt
-    case 21:  // Ge
-      // Comparison: always returns bool
+    case ast::BinaryOperatorKind::StrictEq:
+    case ast::BinaryOperatorKind::StrictNe:
       return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
-    case 12:  // LogAnd
-    case 13:  // LogOr
+    case ast::BinaryOperatorKind::Eq:
+    case ast::BinaryOperatorKind::Ne:
+    case ast::BinaryOperatorKind::Lt:
+    case ast::BinaryOperatorKind::Le:
+    case ast::BinaryOperatorKind::Gt:
+    case ast::BinaryOperatorKind::Ge: {
+      auto traitName = comparisonOperatorTrait(op);
+      if (traitName.size() > 0 && (isNamed(resolvedLhs) || isNamed(resolvedRhs))) {
+        if (isError(resolvedLhs) || isError(resolvedRhs) || isTypeVar(resolvedLhs) ||
+            isTypeVar(resolvedRhs)) {
+          return storeType(expr, zc::heap<type::ErrorType>());
+        }
+        if (!resolvedLhs.equals(resolvedRhs) || !isNamed(resolvedLhs) || !isNamed(resolvedRhs)) {
+          reportError(expr, "invalid operands to binary comparison"_zc);
+          return storeType(expr, zc::heap<type::ErrorType>());
+        }
+
+        TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
+                                    impl->diags);
+        traitResolver.discoverImpls();
+        if (!traitResolver.implements(resolvedLhs, traitName)) {
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::CheckerTraitNotImplemented>(loc, resolvedLhs.toString(),
+                                                                   traitName);
+          impl->hadErrors = true;
+          return storeType(expr, zc::heap<type::ErrorType>());
+        }
+      }
+      return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
+    }
+    case ast::BinaryOperatorKind::LogAnd:
+    case ast::BinaryOperatorKind::LogOr:
       // Logical: always returns bool, operands must be bool
       return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
-    case 9:   // BitAnd
-    case 10:  // BitOr
-    case 11:  // BitXor
-    case 6:   // Shl
-    case 7:   // Shr
-    case 8:   // UShr
+    case ast::BinaryOperatorKind::BitAnd:
+    case ast::BinaryOperatorKind::BitOr:
+    case ast::BinaryOperatorKind::BitXor:
+    case ast::BinaryOperatorKind::Shl:
+    case ast::BinaryOperatorKind::Shr:
+    case ast::BinaryOperatorKind::UShr:
       // Bitwise: result is operand type
       return storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolvedLhs)));
     default:

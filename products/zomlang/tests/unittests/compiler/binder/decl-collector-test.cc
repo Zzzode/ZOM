@@ -635,7 +635,8 @@ ZC_TEST("DeclCollector.ForStmtCreatesScope") {
   auto initVarList = fix.makeVariableDeclaratorList(fix.makeNodeList(initDeclList.asPtr()));
   auto initLet = fix.makeLetStmt(initVarList);
 
-  auto cond = fix.makeBinaryExpr(0, fix.makeIdentExpr("i"_zc), fix.makeIntLiteral(10));
+  auto cond = fix.makeBinaryExpr(ast::BinaryOperatorKind::Lt, fix.makeIdentExpr("i"_zc),
+                                 fix.makeIntLiteral(10));
   auto update = fix.makeAssignmentExpr(fix.makeIdentExpr("i"_zc), fix.makeIntLiteral(1), 1);
 
   zc::Vector<ast::NodeId> bodyStmts;

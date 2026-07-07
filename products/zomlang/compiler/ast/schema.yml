@@ -67,6 +67,10 @@ enums:
     type: uint8
     values: [ Increment, Decrement, ErrorPropagate, ErrorUnwrap ]
 
+  BinaryOperatorKind:
+    type: uint16
+    values: [ Add, Sub, Mul, Div, Mod, Pow, Shl, Shr, UShr, BitAnd, BitOr, BitXor, LogAnd, LogOr, Eq, Ne, StrictEq, StrictNe, Lt, Le, Gt, Ge ]
+
   BindingDeclarationKind:
     type: uint8
     values: [ Let, Mut, Const ]
@@ -695,7 +699,7 @@ variants:
     name: BinaryExpr
     doc:  "Arithmetic / bitwise / logical / relational op"
     fields:
-      - {name: op, type: uint16, enum: [Add, Sub, Mul, Div, Mod, Pow, Shl, Shr, UShr, BitAnd, BitOr, BitXor, LogAnd, LogOr, Eq, Ne, StrictEq, StrictNe, Lt, Le, Gt, Ge]}
+      - {name: op, type: BinaryOperatorKind}
       - {name: lhs, type: NodeId, cast: Expression}
       - {name: rhs, type: NodeId, cast: Expression}
 

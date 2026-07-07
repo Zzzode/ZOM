@@ -92,7 +92,7 @@ CheckResult runFullCheck(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls
   return {success, zc::mv(typeEnv), fix, constraintCount};
 }
 
-void expectUserTypeBinaryOperatorImpl(zc::StringPtr ifaceName, uint8_t op) {
+void expectUserTypeBinaryOperatorImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKind op) {
   TestFixture fix;
   auto iface = fix.makeInterfaceDecl(ifaceName);
   auto numberType = fix.makeClassDecl("Number"_zc);
@@ -127,6 +127,79 @@ void expectUserTypeBinaryOperatorImpl(zc::StringPtr ifaceName, uint8_t op) {
   auto& ty = result.typeEnv.getType(binExpr);
   ZC_EXPECT(isNamed(ty));
   if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Number"_zc); }
+}
+
+void expectUserTypeComparisonImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKind op) {
+  TestFixture fix;
+  auto iface = fix.makeInterfaceDecl(ifaceName);
+  auto pointType = fix.makeClassDecl("Point"_zc);
+
+  zc::Vector<ast::NodeId> ifaceNodes;
+  ifaceNodes.add(fix.makeNamedTypeExpr(ifaceName));
+  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
+  auto implDecl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Point"_zc), ifaceList);
+
+  auto xDecl =
+      fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc), fix.makeNamedTypeExpr("Point"_zc));
+  auto yDecl =
+      fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc), fix.makeNamedTypeExpr("Point"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(xDecl);
+  decls.add(yDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  auto binExpr = fix.makeBinaryExpr(op, fix.makeIdentExpr("x"_zc), fix.makeIdentExpr("y"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(pointType);
+  topDecls.add(implDecl);
+  topDecls.add(let);
+  topDecls.add(binExpr);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(binExpr));
+  auto& ty = result.typeEnv.getType(binExpr);
+  ZC_EXPECT(isPrimitive(ty));
+  if (isPrimitive(ty)) {
+    ZC_EXPECT(static_cast<const type::PrimitiveType&>(ty).getPrimitiveKind() ==
+              type::PrimitiveKind::Bool);
+  }
+}
+
+void expectUserTypeComparisonWithoutImplFails(zc::StringPtr missingIfaceName,
+                                              ast::BinaryOperatorKind op) {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto pointType = fix.makeClassDecl("Point"_zc);
+  auto xDecl =
+      fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc), fix.makeNamedTypeExpr("Point"_zc));
+  auto yDecl =
+      fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc), fix.makeNamedTypeExpr("Point"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(xDecl);
+  decls.add(yDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  auto binExpr = fix.makeBinaryExpr(op, fix.makeIdentExpr("x"_zc), fix.makeIdentExpr("y"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(pointType);
+  topDecls.add(let);
+  topDecls.add(binExpr);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerTraitNotImplemented));
+  ZC_EXPECT(result.typeEnv.hasType(binExpr));
+  ZC_EXPECT(isError(result.typeEnv.getType(binExpr)));
+  (void)missingIfaceName;
 }
 
 }  // namespace
@@ -233,7 +306,7 @@ ZC_TEST("BodyChecker.InfersBinaryArithExprType") {
   // 1 + 2
   auto lhs = fix.makeIntLiteral(1);
   auto rhs = fix.makeIntLiteral(2);
-  auto binExpr = fix.makeBinaryExpr(0, lhs, rhs);  // 0 = Plus
+  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, lhs, rhs);
 
   zc::Vector<ast::NodeId> topDecls;
   topDecls.add(binExpr);
@@ -254,7 +327,7 @@ ZC_TEST("BodyChecker.BinaryArithmeticRejectsImplicitNumericWidening") {
 
   auto lhs = fix.makeIntLiteral(1);
   auto rhs = fix.makeFloatLiteral(2.0);
-  auto binExpr = fix.makeBinaryExpr(0, lhs, rhs);
+  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, lhs, rhs);
 
   zc::Vector<ast::NodeId> topDecls;
   topDecls.add(binExpr);
@@ -268,27 +341,27 @@ ZC_TEST("BodyChecker.BinaryArithmeticRejectsImplicitNumericWidening") {
 }
 
 ZC_TEST("BodyChecker.BinaryAddUsesUserTypeAddImpl") {
-  expectUserTypeBinaryOperatorImpl("Add"_zc, 0);
+  expectUserTypeBinaryOperatorImpl("Add"_zc, ast::BinaryOperatorKind::Add);
 }
 
 ZC_TEST("BodyChecker.BinarySubUsesUserTypeSubImpl") {
-  expectUserTypeBinaryOperatorImpl("Sub"_zc, 1);
+  expectUserTypeBinaryOperatorImpl("Sub"_zc, ast::BinaryOperatorKind::Sub);
 }
 
 ZC_TEST("BodyChecker.BinaryMulUsesUserTypeMulImpl") {
-  expectUserTypeBinaryOperatorImpl("Mul"_zc, 2);
+  expectUserTypeBinaryOperatorImpl("Mul"_zc, ast::BinaryOperatorKind::Mul);
 }
 
 ZC_TEST("BodyChecker.BinaryDivUsesUserTypeDivImpl") {
-  expectUserTypeBinaryOperatorImpl("Div"_zc, 3);
+  expectUserTypeBinaryOperatorImpl("Div"_zc, ast::BinaryOperatorKind::Div);
 }
 
 ZC_TEST("BodyChecker.BinaryModUsesUserTypeRemImpl") {
-  expectUserTypeBinaryOperatorImpl("Rem"_zc, 4);
+  expectUserTypeBinaryOperatorImpl("Rem"_zc, ast::BinaryOperatorKind::Mod);
 }
 
 ZC_TEST("BodyChecker.BinaryPowUsesUserTypePowImpl") {
-  expectUserTypeBinaryOperatorImpl("Pow"_zc, 5);
+  expectUserTypeBinaryOperatorImpl("Pow"_zc, ast::BinaryOperatorKind::Pow);
 }
 
 ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
@@ -296,8 +369,7 @@ ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
   // 1 == 2 -> bool
   auto lhs = fix.makeIntLiteral(1);
   auto rhs = fix.makeIntLiteral(2);
-  // Use comparison operator (EqualsEquals is typically a higher value)
-  auto binExpr = fix.makeBinaryExpr(5, lhs, rhs);  // 5 = Equals
+  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Eq, lhs, rhs);
 
   zc::Vector<ast::NodeId> topDecls;
   topDecls.add(binExpr);
@@ -310,12 +382,28 @@ ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
   }
 }
 
+ZC_TEST("BodyChecker.BinaryEqUsesUserTypeEqImpl") {
+  expectUserTypeComparisonImpl("Eq"_zc, ast::BinaryOperatorKind::Eq);
+}
+
+ZC_TEST("BodyChecker.BinaryEqRejectsUserTypeWithoutEqImpl") {
+  expectUserTypeComparisonWithoutImplFails("Eq"_zc, ast::BinaryOperatorKind::Eq);
+}
+
+ZC_TEST("BodyChecker.BinaryLtUsesUserTypeOrdImpl") {
+  expectUserTypeComparisonImpl("Ord"_zc, ast::BinaryOperatorKind::Lt);
+}
+
+ZC_TEST("BodyChecker.BinaryLtRejectsUserTypeWithoutOrdImpl") {
+  expectUserTypeComparisonWithoutImplFails("Ord"_zc, ast::BinaryOperatorKind::Lt);
+}
+
 ZC_TEST("BodyChecker.InfersBinaryLogicalType") {
   TestFixture fix;
   // true && false -> bool
   auto lhs = fix.makeBoolLiteral(true);
   auto rhs = fix.makeBoolLiteral(false);
-  auto binExpr = fix.makeBinaryExpr(10, lhs, rhs);  // 10 = LogicalAnd
+  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::LogAnd, lhs, rhs);
 
   zc::Vector<ast::NodeId> topDecls;
   topDecls.add(binExpr);
@@ -409,7 +497,8 @@ ZC_TEST("BodyChecker.CallWithArgs") {
   paramNodes.add(paramB);
   auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
 
-  auto retExpr = fix.makeBinaryExpr(0, fix.makeIdentExpr("a"_zc), fix.makeIdentExpr("b"_zc));
+  auto retExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, fix.makeIdentExpr("a"_zc),
+                                    fix.makeIdentExpr("b"_zc));
   zc::Vector<ast::NodeId> bodyStmts;
   bodyStmts.add(fix.makeReturnStmt(retExpr));
   auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
@@ -1284,7 +1373,8 @@ ZC_TEST("BodyChecker.ArrayLiteralRejectsIncompatibleElementTypes") {
 ZC_TEST("BodyChecker.DependentErrorExpressionEmitsOnlyOneDiagnostic") {
   TestFixture fix;
 
-  auto bad = fix.makeBinaryExpr(0, fix.makeIntLiteral(1), fix.makeStrLiteral("two"_zc));
+  auto bad = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, fix.makeIntLiteral(1),
+                                fix.makeStrLiteral("two"_zc));
   zc::Vector<ast::NodeId> elems;
   elems.add(bad);
   elems.add(fix.makeIntLiteral(2));
@@ -1751,7 +1841,8 @@ ZC_TEST("BodyChecker.ForStmt") {
   auto initVarList = fix.makeVariableDeclaratorList(fix.makeNodeList(initDeclList.asPtr()));
   auto initLet = fix.makeLetStmt(initVarList);
 
-  auto cond = fix.makeBinaryExpr(5, fix.makeIdentExpr("i"_zc), fix.makeIntLiteral(10));
+  auto cond = fix.makeBinaryExpr(ast::BinaryOperatorKind::Lt, fix.makeIdentExpr("i"_zc),
+                                 fix.makeIntLiteral(10));
   auto update = fix.makeAssignmentExpr(fix.makeIdentExpr("i"_zc), fix.makeIntLiteral(1), 1);
   auto bodyBlock = fix.makeBlockStmt(ast::NodeList());
 
@@ -1989,7 +2080,8 @@ ZC_TEST("BodyChecker.FunctionWithParams") {
   paramNodes.add(paramB);
   auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
 
-  auto retExpr = fix.makeBinaryExpr(0, fix.makeIdentExpr("a"_zc), fix.makeIdentExpr("b"_zc));
+  auto retExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, fix.makeIdentExpr("a"_zc),
+                                    fix.makeIdentExpr("b"_zc));
   zc::Vector<ast::NodeId> bodyStmts;
   bodyStmts.add(fix.makeReturnStmt(retExpr));
   auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));

@@ -396,7 +396,7 @@ ZC_TEST("NameResolver.ResolvesBinaryOperands") {
 
   auto refA = fix.makeIdentExpr("a"_zc);
   auto refB = fix.makeIdentExpr("b"_zc);
-  auto binExpr = fix.makeBinaryExpr(0, refA, refB);
+  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, refA, refB);
 
   zc::Vector<ast::NodeId> topDecls;
   topDecls.add(let);

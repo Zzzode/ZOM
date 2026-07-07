@@ -172,65 +172,54 @@ int32_t binaryPrecedence(ast::SyntaxKind kind) {
   }
 }
 
-uint16_t binaryOpCode(ast::SyntaxKind kind) {
+ast::BinaryOperatorKind binaryOpCode(ast::SyntaxKind kind) {
   switch (kind) {
     case ast::SyntaxKind::Plus:
-      return 0;
+      return ast::BinaryOperatorKind::Add;
     case ast::SyntaxKind::Minus:
-      return 1;
+      return ast::BinaryOperatorKind::Sub;
     case ast::SyntaxKind::Asterisk:
-      return 2;
+      return ast::BinaryOperatorKind::Mul;
     case ast::SyntaxKind::Slash:
-      return 3;
+      return ast::BinaryOperatorKind::Div;
     case ast::SyntaxKind::Percent:
-      return 4;
+      return ast::BinaryOperatorKind::Mod;
     case ast::SyntaxKind::AsteriskAsterisk:
-      return 5;
+      return ast::BinaryOperatorKind::Pow;
     case ast::SyntaxKind::LessThanLessThan:
-      return 6;
+      return ast::BinaryOperatorKind::Shl;
     case ast::SyntaxKind::GreaterThanGreaterThan:
-      return 7;
+      return ast::BinaryOperatorKind::Shr;
     case ast::SyntaxKind::GreaterThanGreaterThanGreaterThan:
-      return 8;
+      return ast::BinaryOperatorKind::UShr;
     case ast::SyntaxKind::Ampersand:
-      return 9;
+      return ast::BinaryOperatorKind::BitAnd;
     case ast::SyntaxKind::Bar:
-      return 10;
+      return ast::BinaryOperatorKind::BitOr;
     case ast::SyntaxKind::Caret:
-      return 11;
+      return ast::BinaryOperatorKind::BitXor;
     case ast::SyntaxKind::AmpersandAmpersand:
-      return 12;
+      return ast::BinaryOperatorKind::LogAnd;
     case ast::SyntaxKind::BarBar:
-      return 13;
+      return ast::BinaryOperatorKind::LogOr;
     case ast::SyntaxKind::EqualsEquals:
-      return 14;
+      return ast::BinaryOperatorKind::Eq;
     case ast::SyntaxKind::ExclamationEquals:
-      return 15;
+      return ast::BinaryOperatorKind::Ne;
     case ast::SyntaxKind::EqualsEqualsEquals:
-      return 16;
+      return ast::BinaryOperatorKind::StrictEq;
     case ast::SyntaxKind::ExclamationEqualsEquals:
-      return 17;
+      return ast::BinaryOperatorKind::StrictNe;
     case ast::SyntaxKind::LessThan:
-      return 18;
+      return ast::BinaryOperatorKind::Lt;
     case ast::SyntaxKind::LessThanEquals:
-      return 19;
+      return ast::BinaryOperatorKind::Le;
     case ast::SyntaxKind::GreaterThan:
-      return 20;
+      return ast::BinaryOperatorKind::Gt;
     case ast::SyntaxKind::GreaterThanEquals:
-      return 21;
-    // Extended opcodes for operators handled as dedicated AST node types
-    // (NullCoalesceExpr, CastExpr, TypeTestExpr, CommaExpr) but included
-    // here for precedence table completeness per RFC 0002 Section 5.
-    case ast::SyntaxKind::QuestionQuestion:
-      return 22;  // NullCoalesce
-    case ast::SyntaxKind::AsKeyword:
-      return 23;  // TypeCast
-    case ast::SyntaxKind::IsKeyword:
-      return 24;  // TypeTest
-    case ast::SyntaxKind::Comma:
-      return 25;  // Sequence
+      return ast::BinaryOperatorKind::Ge;
     default:
-      return 0;
+      return ast::BinaryOperatorKind::Add;
   }
 }
 

@@ -78,6 +78,10 @@ enum class PostfixOperatorKind : uint8_t {
   Increment, Decrement, ErrorPropagate, ErrorUnwrap
 };
 
+enum class BinaryOperatorKind : uint16_t {
+  Add, Sub, Mul, Div, Mod, Pow, Shl, Shr, UShr, BitAnd, BitOr, BitXor, LogAnd, LogOr, Eq, Ne, StrictEq, StrictNe, Lt, Le, Gt, Ge
+};
+
 enum class BindingDeclarationKind : uint8_t {
   Let, Mut, Const
 };

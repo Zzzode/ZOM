@@ -68,7 +68,7 @@ struct NodeSchemaEntry final {
 
 constexpr uint8_t kNodeSchemaNoWord = 0xff;
 constexpr const char* kAstSchemaVersion = "2.0";
-constexpr const char* kAstSchemaFingerprint = "260d8b14f2f646e58b65d69373e4b0b9f7cb0e1c04609c754277e4ac66a4fdc8";
+constexpr const char* kAstSchemaFingerprint = "8b9a198cc32c69d8056571cdd5f2feaf2922d3292850e2630fde3e1479f38f12";
 constexpr uint32_t kAstSchemaVariantCount = 160;
 
 constexpr NodeSchemaEnumValue kAttributePathLeadingEnumValues[] = {
@@ -742,7 +742,7 @@ constexpr NodeSchemaFieldEntry kCallExpressionFields[] = {
 };
 
 constexpr NodeSchemaFieldEntry kBinaryExprFields[] = {
-  {"op", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "BinaryExpr.op", kBinaryExprOpEnumValues, 22},
+  {"op", NodeSchemaFieldStorage::Enum, 0, kNodeSchemaNoWord, false, nullptr, "BinaryOperatorKind", kBinaryExprOpEnumValues, 22},
   {"lhs", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
   {"rhs", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
 };

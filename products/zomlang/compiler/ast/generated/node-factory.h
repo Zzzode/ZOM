@@ -565,7 +565,7 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CallExpression, zc::mv(range), payload);
   }
 
-  NodeId makeBinaryExpr(source::SourceRange range, uint16_t op, NodeId lhs, NodeId rhs) {
+  NodeId makeBinaryExpr(source::SourceRange range, BinaryOperatorKind op, NodeId lhs, NodeId rhs) {
     NodePayload payload;
     payload.words[kBinaryExprOpWord] = static_cast<uint32_t>(op);
     payload.words[kBinaryExprLhsWord] = lhs.value;

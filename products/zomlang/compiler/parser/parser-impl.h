@@ -60,7 +60,7 @@ uint8_t integerBase(zc::StringPtr text);
 
 int32_t binaryPrecedence(ast::SyntaxKind kind);
 
-uint16_t binaryOpCode(ast::SyntaxKind kind);
+ast::BinaryOperatorKind binaryOpCode(ast::SyntaxKind kind);
 
 bool isPrefixUnaryOperator(ast::SyntaxKind kind);
 
