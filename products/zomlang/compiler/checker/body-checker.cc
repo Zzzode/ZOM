@@ -312,6 +312,25 @@ static zc::StringPtr simpleTypeName(const type::Type& ty) {
   return ""_zc;
 }
 
+static zc::StringPtr arithmeticOperatorTrait(uint32_t op) {
+  switch (op) {
+    case 0:
+      return "Add"_zc;
+    case 1:
+      return "Sub"_zc;
+    case 2:
+      return "Mul"_zc;
+    case 3:
+      return "Div"_zc;
+    case 4:
+      return "Rem"_zc;
+    case 5:
+      return "Pow"_zc;
+    default:
+      return ""_zc;
+  }
+}
+
 static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv& env) {
   const auto& resolved = env.find(ty);
   if (isTypeVar(resolved)) { return true; }
@@ -1271,11 +1290,12 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
       if (isStrType(resolvedLhs) && op == 0) {  // Add + str = str concat
         return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Str));
       }
-      if (op == 0 && resolvedLhs.equals(resolvedRhs) && isNamed(resolvedLhs)) {
+      auto traitName = arithmeticOperatorTrait(op);
+      if (traitName.size() > 0 && resolvedLhs.equals(resolvedRhs) && isNamed(resolvedLhs)) {
         TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
                                     impl->diags);
         traitResolver.discoverImpls();
-        if (traitResolver.implements(resolvedLhs, "Add"_zc)) {
+        if (traitResolver.implements(resolvedLhs, traitName)) {
           return storeType(expr, cloneType(resolvedLhs));
         }
       }

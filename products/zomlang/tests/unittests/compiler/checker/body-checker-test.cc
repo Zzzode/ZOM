@@ -92,6 +92,43 @@ CheckResult runFullCheck(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls
   return {success, zc::mv(typeEnv), fix, constraintCount};
 }
 
+void expectUserTypeBinaryOperatorImpl(zc::StringPtr ifaceName, uint8_t op) {
+  TestFixture fix;
+  auto iface = fix.makeInterfaceDecl(ifaceName);
+  auto numberType = fix.makeClassDecl("Number"_zc);
+
+  zc::Vector<ast::NodeId> ifaceNodes;
+  ifaceNodes.add(fix.makeNamedTypeExpr(ifaceName));
+  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
+  auto implDecl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList);
+
+  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
+                                          fix.makeNamedTypeExpr("Number"_zc));
+  auto yDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc),
+                                          fix.makeNamedTypeExpr("Number"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(xDecl);
+  decls.add(yDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  auto binExpr = fix.makeBinaryExpr(op, fix.makeIdentExpr("x"_zc), fix.makeIdentExpr("y"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(numberType);
+  topDecls.add(implDecl);
+  topDecls.add(let);
+  topDecls.add(binExpr);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(binExpr));
+  auto& ty = result.typeEnv.getType(binExpr);
+  ZC_EXPECT(isNamed(ty));
+  if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Number"_zc); }
+}
+
 }  // namespace
 
 // ============================================================================
@@ -231,48 +268,27 @@ ZC_TEST("BodyChecker.BinaryArithmeticRejectsImplicitNumericWidening") {
 }
 
 ZC_TEST("BodyChecker.BinaryAddUsesUserTypeAddImpl") {
-  TestFixture fix;
-  auto addIface = fix.makeInterfaceDecl("Add"_zc);
-  auto numberType = fix.makeClassDecl("Number"_zc);
+  expectUserTypeBinaryOperatorImpl("Add"_zc, 0);
+}
 
-  zc::Vector<ast::NodeId> ifaceNodes;
-  ifaceNodes.add(fix.makeNamedTypeExpr("Add"_zc));
-  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-  auto addImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList);
+ZC_TEST("BodyChecker.BinarySubUsesUserTypeSubImpl") {
+  expectUserTypeBinaryOperatorImpl("Sub"_zc, 1);
+}
 
-  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
-                                          fix.makeNamedTypeExpr("Number"_zc));
-  auto yDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc),
-                                          fix.makeNamedTypeExpr("Number"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+ZC_TEST("BodyChecker.BinaryMulUsesUserTypeMulImpl") {
+  expectUserTypeBinaryOperatorImpl("Mul"_zc, 2);
+}
 
-  auto binExpr = fix.makeBinaryExpr(0, fix.makeIdentExpr("x"_zc), fix.makeIdentExpr("y"_zc));
+ZC_TEST("BodyChecker.BinaryDivUsesUserTypeDivImpl") {
+  expectUserTypeBinaryOperatorImpl("Div"_zc, 3);
+}
 
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(addIface);
-  topDecls.add(numberType);
-  topDecls.add(addImpl);
-  topDecls.add(let);
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
+ZC_TEST("BodyChecker.BinaryModUsesUserTypeRemImpl") {
+  expectUserTypeBinaryOperatorImpl("Rem"_zc, 4);
+}
 
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(xDecl));
-  if (result.typeEnv.hasType(xDecl)) {
-    auto& xTy = result.typeEnv.getType(xDecl);
-    ZC_EXPECT(isNamed(xTy));
-    if (isNamed(xTy)) {
-      ZC_EXPECT(static_cast<const type::NamedType&>(xTy).getName() == "Number"_zc);
-    }
-  }
-  ZC_EXPECT(result.typeEnv.hasType(binExpr));
-  auto& ty = result.typeEnv.getType(binExpr);
-  ZC_EXPECT(isNamed(ty));
-  if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Number"_zc); }
+ZC_TEST("BodyChecker.BinaryPowUsesUserTypePowImpl") {
+  expectUserTypeBinaryOperatorImpl("Pow"_zc, 5);
 }
 
 ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
