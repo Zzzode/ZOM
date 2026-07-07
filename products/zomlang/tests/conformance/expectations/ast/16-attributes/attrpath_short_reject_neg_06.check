@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/16-attributes/attrpath_short_reject_neg_06.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*attrpath_short_reject_neg_06.zom}}:1:3
 // CHECK:   |
 // CHECK: 1 | #[short]

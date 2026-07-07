@@ -17,6 +17,7 @@
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @1:21..1:25 kind=Unit
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           extends: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #11 @1:27..4:2 nmembers=2

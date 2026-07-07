@@ -357,7 +357,12 @@ struct Parser::Impl {
 
   void diagnoseDeclarationTypeParameterSyntax(size_t afterName, size_t limit) const;
 
-  ast::NodeId parseTypeParameters(AstFactory& builder, size_t start, size_t limit) const;
+  ast::NodeId parseWherePredicate(AstFactory& builder, size_t start, size_t end) const;
+
+  ast::NodeId parseWhereClause(AstFactory& builder, size_t start, size_t end) const;
+
+  ast::NodeId parseTypeParameters(AstFactory& builder, size_t start, size_t limit,
+                                  ast::NodeId whereClause = ast::NodeId()) const;
 
   ast::NodeId parseRequiredExpression(AstFactory& builder, size_t start, size_t end) const;
 
@@ -415,6 +420,11 @@ struct Parser::Impl {
   TypeParseResult parsePostfixType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
 
   TypeParseResult parseFunctionType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+
+  TypeParseResult parseDynType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+
+  TypeParseResult parseAssociatedTypeProjection(AstFactory& builder, TokenCursor& cursor,
+                                                size_t limit) const;
 
   TypeParseResult parseParenthesizedOrTupleType(AstFactory& builder, TokenCursor& cursor,
                                                 size_t limit) const;

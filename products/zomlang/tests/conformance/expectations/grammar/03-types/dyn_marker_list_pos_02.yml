@@ -1,0 +1,4 @@
+section: "§3 Existential marker bounds"
+covers_rule: "dynType, interfaceBoundList"
+expected: "ACCEPT"
+notes: []

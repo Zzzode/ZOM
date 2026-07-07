@@ -16,6 +16,7 @@
 // CHECK-NEXT:                 GenericTypeParam #2 @1:18..1:19 name="V" variance=Invariant
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           extends: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #11 @1:31..3:2 nmembers=1

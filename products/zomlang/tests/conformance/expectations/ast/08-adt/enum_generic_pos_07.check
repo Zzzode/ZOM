@@ -16,6 +16,7 @@
 // CHECK-NEXT:                 GenericTypeParam #2 @1:16..1:17 name="E" variance=Invariant
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           variants_id:
 // CHECK-NEXT:             EnumVariantList #10 @1:19..4:2 nvars=2
 // CHECK-NEXT:               variants:

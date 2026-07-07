@@ -1905,27 +1905,33 @@ ast::NodeId Parser::Impl::parseFunctionDeclaration(AstFactory& builder, size_t s
       parts.closeParen < parts.headerEnd ? parts.closeParen + 1 : parts.headerEnd;
   TokenCursor whereCursor = tokenCursorAt(whereSearchStart);
   const size_t where = consumeBalancedTypeIdentifierUntil(whereCursor, parts.headerEnd, "where"_zc);
-  if (where < parts.headerEnd) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-        tokenAt(where).getLocation());
-    return ast::NodeId();
-  }
+  ast::NodeId whereClause;
+  if (where < parts.headerEnd) { whereClause = parseWhereClause(builder, where, parts.headerEnd); }
 
   ast::IdentId name;
   if (parts.nameIndex < end) { name = internIdent(builder, parts.nameIndex); }
   const ast::NodeId params = parseFunctionParameterList(builder, parts.openParen, parts.closeParen);
   ast::NodeId retTy;
-  if (parts.arrow < end) {
-    const size_t retEnd = parts.raises < parts.headerEnd ? parts.raises : parts.headerEnd;
+  const size_t signatureEnd = where < parts.headerEnd ? where : parts.headerEnd;
+  if (parts.arrow < signatureEnd) {
+    const size_t retEnd = parts.raises < signatureEnd ? parts.raises : signatureEnd;
     retTy = parseTypeRange(builder, parts.arrow + 1, retEnd);
   }
   ast::NodeId raisesTy;
-  if (parts.raises < parts.headerEnd) {
-    if (parts.raises + 1 >= parts.headerEnd || kindAt(parts.raises + 1) == ast::SyntaxKind::Arrow) {
+  if (parts.raises < signatureEnd) {
+    if (parts.raises + 1 >= signatureEnd || kindAt(parts.raises + 1) == ast::SyntaxKind::Arrow) {
       diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(parts.raises + 1));
       return ast::NodeId();
     }
-    raisesTy = parseTypeRange(builder, parts.raises + 1, parts.headerEnd);
+    raisesTy = parseTypeRange(builder, parts.raises + 1, signatureEnd);
+  }
+  if (where < parts.headerEnd && !whereClause) { return ast::NodeId(); }
+  if (typeParams && whereClause) {
+    typeParams = parseTypeParameters(builder, parts.nameIndex + 1, end, whereClause);
+  } else if (whereClause) {
+    zc::Vector<ast::NodeId> emptyParams;
+    typeParams = builder.makeGenericParams(rangeFor(where, parts.headerEnd), 0,
+                                           builder.makeList(emptyParams.asPtr()), whereClause);
   }
   return builder.makeFunctionDecl(rangeFor(start, end), name, params, typeParams, retTy, raisesTy,
                                   parseBlock(builder, parts.bodyOpen, end));
@@ -1966,7 +1972,18 @@ ast::NodeId Parser::Impl::parseNamedTypeDeclaration(AstFactory& builder, size_t 
   const size_t headerEnd = bodyOpen < end ? bodyOpen : end;
   TokenCursor whereCursor = tokenCursorAt(headerCursor);
   const size_t where = consumeBalancedTypeIdentifierUntil(whereCursor, headerEnd, "where"_zc);
-  if (where < headerEnd) {
+  ast::NodeId whereClause;
+  if (where < headerEnd && kind != ast::SyntaxKind::InterfaceDecl) {
+    whereClause = parseWhereClause(builder, where, headerEnd);
+    if (!whereClause) { return ast::NodeId(); }
+    if (typeParams) {
+      typeParams = parseTypeParameters(builder, nameIndex + 1, end, whereClause);
+    } else {
+      zc::Vector<ast::NodeId> emptyParams;
+      typeParams = builder.makeGenericParams(rangeFor(where, headerEnd), 0,
+                                             builder.makeList(emptyParams.asPtr()), whereClause);
+    }
+  } else if (where < headerEnd) {
     if (!shouldSuppressDiagnostic(where)) {
       diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
           tokenAt(where).getLocation());
@@ -2072,7 +2089,9 @@ ast::NodeId Parser::Impl::parseAliasDeclaration(AstFactory& builder, size_t star
   }
   if (equals < end) {
     const size_t errorCountBeforeTarget = diagnosticEngine.errorCount();
-    const ast::NodeId target = parseTypeRange(builder, equals + 1, end);
+    const size_t targetEnd =
+        end > equals + 1 && kindAt(end - 1) == ast::SyntaxKind::Semicolon ? end - 1 : end;
+    const ast::NodeId target = parseTypeRange(builder, equals + 1, targetEnd);
     if (!target) {
       if (diagnosticEngine.errorCount() == errorCountBeforeTarget) {
         diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(equals + 1));
@@ -2178,9 +2197,18 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
     return ast::NodeId();
   }
 
+  TokenCursor whereCursor = tokenCursorAt(forIndex + 1);
+  const size_t where = consumeBalancedTypeIdentifierUntil(whereCursor, headerEnd, "where"_zc);
+  ast::NodeId whereClause;
+  if (where < headerEnd) {
+    whereClause = parseWhereClause(builder, where, headerEnd);
+    if (!whereClause) { return ast::NodeId(); }
+  }
+
   const ast::NodeId ifaces = makeImplIfaceList(builder, implIndex + 1, forIndex);
   if (!ifaces) { return ast::NodeId(); }
-  const ast::NodeId forTy = parseTypeRange(builder, forIndex + 1, headerEnd);
+  const ast::NodeId forTy =
+      parseTypeRange(builder, forIndex + 1, where < headerEnd ? where : headerEnd);
   if (!forTy) {
     diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(forIndex + 1));
     return ast::NodeId();
@@ -2195,8 +2223,8 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
     }
     if (!members) { members = makeEmptyClassMemberList(builder, rangeFor(bodyOpen, end)); }
   }
-  return builder.makeStandaloneImplDecl(rangeFor(start, end), isUnsafe, ifaces, forTy,
-                                        ast::NodeId(), ast::NodeId(), members);
+  return builder.makeStandaloneImplDecl(rangeFor(start, end), isUnsafe, ifaces, forTy, whereClause,
+                                        ast::NodeId(), members);
 }
 
 }  // namespace parser

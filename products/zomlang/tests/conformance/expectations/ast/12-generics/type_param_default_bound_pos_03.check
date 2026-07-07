@@ -25,6 +25,7 @@
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @1:9..1:13 kind=Unit
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
 // CHECK-NEXT:             NamedTypeExpr #9 @1:24..1:25
 // CHECK-NEXT:               path:

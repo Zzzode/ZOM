@@ -1,7 +1,12 @@
 // RUN: ! %zomc compile --dump-ast %corpus/16-attributes/hash_in_body_reject_neg_16.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2057]: stray '#' with no attribute following; expected '[' after '#' to start an attribute
+// CHECK: Error [ZOM2057]: Stray '#' with no attribute following; expected '[' after '#' to start an attribute.
+// CHECK:   --> {{.*hash_in_body_reject_neg_16.zom}}:2:3
+// CHECK:   |
+// CHECK: 2 |   #
+// CHECK:   |   ^
+// CHECK: Note [ZOM2058]: To start an attribute, write #[path::to::attribute].
 // CHECK:   --> {{.*hash_in_body_reject_neg_16.zom}}:2:3
 // CHECK:   |
 // CHECK: 2 |   #

@@ -849,6 +849,16 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         for (NodeId child : tree.list(list)) { fn(child); }
       }
       return;
+    case SyntaxKind::AssociatedTypeProjectionExpr:
+      {
+        const NodeId child(node.payload.words[kAssociatedTypeProjectionExprBaseTyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kAssociatedTypeProjectionExprIfaceTyWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
     case SyntaxKind::SuspendStatement:
       {
         const NodeId child(node.payload.words[kSuspendStatementUntilCondWord]);
@@ -1147,6 +1157,10 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         list.first = node.payload.words[kGenericParamsParamsFirstWord];
         list.size = node.payload.words[kGenericParamsParamsSizeWord];
         for (NodeId child : tree.list(list)) { fn(child); }
+      }
+      {
+        const NodeId child(node.payload.words[kGenericParamsWhereWord]);
+        if (tree.contains(child)) { fn(child); }
       }
       return;
     case SyntaxKind::FunctionParameterDecl:

@@ -47,6 +47,7 @@
 // CHECK-NEXT:                     GenericTypeParam #2 @1:19..1:20 name="U" variance=Invariant
 // CHECK-NEXT:                       bound: null
 // CHECK-NEXT:                       default_ty: null
+// CHECK-NEXT:                   where_: null
 // CHECK-NEXT:               ret_ty:
 // CHECK-NEXT:                 SliceArrayTypeExpr #17 @1:50..1:53
 // CHECK-NEXT:                   elem:

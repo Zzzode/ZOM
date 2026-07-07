@@ -1,0 +1,4 @@
+section: "§3 Associated type projections"
+covers_rule: "associatedTypeProjection"
+expected: "ACCEPT"
+notes: []

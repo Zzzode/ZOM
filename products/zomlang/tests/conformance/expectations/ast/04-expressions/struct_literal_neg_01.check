@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/struct_literal_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*struct_literal_neg_01.zom}}:1:11
 // CHECK:   |
 // CHECK: 1 | struct Box(i32);

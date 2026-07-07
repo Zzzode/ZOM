@@ -11,7 +11,7 @@
 // CHECK:   |
 // CHECK: 2 | fun f() { let a = await p; }
 // CHECK:   |                   ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*async_await_reject_neg_06.zom}}:2:19
 // CHECK:   |
 // CHECK: 2 | fun f() { let a = await p; }

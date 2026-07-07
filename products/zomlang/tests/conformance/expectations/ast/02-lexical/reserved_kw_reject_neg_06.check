@@ -6,7 +6,7 @@
 // CHECK:   |
 // CHECK: 1 | fun f() { throw 1; }
 // CHECK:   |           ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*reserved_kw_reject_neg_06.zom}}:1:11
 // CHECK:   |
 // CHECK: 1 | fun f() { throw 1; }

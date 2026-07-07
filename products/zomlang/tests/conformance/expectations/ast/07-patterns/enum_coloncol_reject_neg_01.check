@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/enum_coloncol_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Fatal [ZOM2078]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
+// CHECK: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
 // CHECK:   --> {{.*enum_coloncol_reject_neg_01.zom}}:1:1
 // CHECK:   |
 // CHECK: 1 | enum Color { Red, Green, Blue }

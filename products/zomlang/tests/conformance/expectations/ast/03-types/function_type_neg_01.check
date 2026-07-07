@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/03-types/function_type_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*function_type_neg_01.zom}}:1:21
 // CHECK:   |
 // CHECK: 1 | alias NoParen = i32 -> str;

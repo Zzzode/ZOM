@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/06-declarations/aliases/alias-declarations.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*alias-declarations.zom}}:5:21
 // CHECK:   |
 // CHECK: 5 | alias Constrained<T extends U> = T;

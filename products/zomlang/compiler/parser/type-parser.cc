@@ -643,6 +643,75 @@ Parser::Impl::TypeParseResult Parser::Impl::parseFunctionType(AstFactory& builde
       cursor.position()};
 }
 
+Parser::Impl::TypeParseResult Parser::Impl::parseDynType(AstFactory& builder, TokenCursor& cursor,
+                                                         size_t limit) const {
+  const size_t start = cursor.position();
+  if (start >= limit || !isIdentifierText(start, "dyn"_zc)) { return TypeParseResult(); }
+  cursor.advance();
+
+  zc::Vector<ast::NodeId> ifaces;
+  while (cursor.position() < limit) {
+    if (cursor.peek() == ast::SyntaxKind::Plus) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(
+          diagnosticLoc(cursor.position()));
+      return TypeParseResult();
+    }
+
+    const size_t itemStart = cursor.position();
+    TypeParseResult item = parsePostfixType(builder, cursor, limit);
+    if (!item.node) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(itemStart));
+      return TypeParseResult();
+    }
+    ifaces.add(item.node);
+
+    if (cursor.position() >= limit || cursor.peek() != ast::SyntaxKind::Plus) { break; }
+    cursor.advance();
+  }
+
+  if (ifaces.empty()) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start + 1));
+    return TypeParseResult();
+  }
+
+  ast::NodeId ifaceList = builder.makeDynTypeIfaceList(rangeFor(start + 1, cursor.position()),
+                                                       static_cast<uint8_t>(ifaces.size()),
+                                                       builder.makeList(ifaces.asPtr()));
+  return TypeParseResult{builder.makeDynTypeExpr(rangeFor(start, cursor.position()), ifaceList,
+                                                 ast::NodeId(), false, ast::IdentId()),
+                         cursor.position()};
+}
+
+Parser::Impl::TypeParseResult Parser::Impl::parseAssociatedTypeProjection(AstFactory& builder,
+                                                                          TokenCursor& cursor,
+                                                                          size_t limit) const {
+  const size_t start = cursor.position();
+  if (start >= limit || cursor.peek() != ast::SyntaxKind::LessThan) { return TypeParseResult(); }
+
+  const size_t closeAngle = findMatchingAngleClose(start, limit);
+  if (closeAngle >= limit || closeAngle + 2 >= limit ||
+      kindAt(closeAngle + 1) != ast::SyntaxKind::ColonColon ||
+      kindAt(closeAngle + 2) != ast::SyntaxKind::Identifier) {
+    return TypeParseResult();
+  }
+
+  TokenCursor asCursor = tokenCursorAt(start + 1);
+  const size_t asIndex = consumeBalancedTypeUntil(asCursor, closeAngle, ast::SyntaxKind::AsKeyword);
+  if (asIndex >= closeAngle || start + 1 >= asIndex || asIndex + 1 >= closeAngle) {
+    return TypeParseResult();
+  }
+
+  const ast::NodeId baseTy = parseTypeRange(builder, start + 1, asIndex);
+  const ast::NodeId ifaceTy = parseTypeRange(builder, asIndex + 1, closeAngle);
+  if (!baseTy || !ifaceTy) { return TypeParseResult(); }
+
+  cursor.moveTo(closeAngle + 3);
+  return TypeParseResult{
+      builder.makeAssociatedTypeProjectionExpr(rangeFor(start, cursor.position()), baseTy, ifaceTy,
+                                               internIdent(builder, closeAngle + 2)),
+      cursor.position()};
+}
+
 Parser::Impl::TypeParseResult Parser::Impl::parseParenthesizedOrTupleType(AstFactory& builder,
                                                                           TokenCursor& cursor,
                                                                           size_t limit) const {
@@ -694,9 +763,8 @@ Parser::Impl::TypeParseResult Parser::Impl::parseParenthesizedOrTupleType(AstFac
       cursor.moveTo(innerStart);
       TypeParseResult firstElem = parseTypeExpression(builder, cursor, closeParen);
       if (!firstElem.node) { return TypeParseResult(); }
-      if (cursor.position() < closeParen &&
-          (cursor.peek() == ast::SyntaxKind::Comma ||
-           cursor.peek() == ast::SyntaxKind::DotDotDot)) {
+      if (cursor.position() < closeParen && (cursor.peek() == ast::SyntaxKind::Comma ||
+                                             cursor.peek() == ast::SyntaxKind::DotDotDot)) {
         const ast::NodeId tuple = parseTupleTypeRange(builder, start, closeParen + 1);
         if (tuple) { cursor.moveTo(closeParen + 1); }
         return TypeParseResult{tuple, tuple ? cursor.position() : start};
@@ -864,10 +932,18 @@ Parser::Impl::TypeParseResult Parser::Impl::parseAtomType(AstFactory& builder, T
   const ast::SyntaxKind atomStart = cursor.peek();
   if (atomStart == ast::SyntaxKind::FunKeyword || atomStart == ast::SyntaxKind::LessThan ||
       atomStart == ast::SyntaxKind::LeftParen) {
+    if (atomStart == ast::SyntaxKind::LessThan) {
+      TypeParseResult projection = parseAssociatedTypeProjection(builder, cursor, limit);
+      if (projection.node) { return projection; }
+      cursor.moveTo(start);
+    }
+
     TypeParseResult functionType = parseFunctionType(builder, cursor, limit);
     if (functionType.node) { return functionType; }
     cursor.moveTo(start);
   }
+
+  if (isIdentifierText(start, "dyn"_zc)) { return parseDynType(builder, cursor, limit); }
 
   switch (atomStart) {
     case ast::SyntaxKind::LeftParen:
@@ -1015,9 +1091,8 @@ ast::NodeId Parser::Impl::parseExternTypeAliasDecl(AstFactory& builder, size_t s
   // gives us the exact boundary and we test the next token directly.
   const size_t nameEnd = findTypePathEnd(nameIndex, end);
   const size_t equals =
-      (nameEnd > nameIndex && nameEnd < end && kindAt(nameEnd) == ast::SyntaxKind::Equals)
-          ? nameEnd
-          : end;
+      (nameEnd > nameIndex && nameEnd < end && kindAt(nameEnd) == ast::SyntaxKind::Equals) ? nameEnd
+                                                                                           : end;
   if (nameIndex >= end || kindAt(nameIndex) != ast::SyntaxKind::Identifier) {
     diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(diagnosticLoc(nameIndex));
     return ast::NodeId();
@@ -1039,8 +1114,60 @@ ast::NodeId Parser::Impl::parseExternTypeAliasDecl(AstFactory& builder, size_t s
                                parseTypeRange(builder, targetStart, targetEnd));
 }
 
-ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
-                                              size_t limit) const {
+ast::NodeId Parser::Impl::parseWherePredicate(AstFactory& builder, size_t start, size_t end) const {
+  while (start < end && kindAt(start) == ast::SyntaxKind::Comma) { ++start; }
+  while (end > start && kindAt(end - 1) == ast::SyntaxKind::Comma) { --end; }
+  if (start >= end) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start));
+    return ast::NodeId();
+  }
+
+  TokenCursor colonCursor = tokenCursorAt(start);
+  const size_t colon = consumeBalancedTypeUntil(colonCursor, end, ast::SyntaxKind::Colon);
+  if (colon >= end) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(start), ":"_zc);
+    return ast::NodeId();
+  }
+  if (start >= colon || colon + 1 >= end) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start));
+    return ast::NodeId();
+  }
+
+  const ast::NodeId ty = parseTypeRange(builder, start, colon);
+  const ast::NodeId bound = parseTypeRange(builder, colon + 1, end);
+  if (!ty || !bound) { return ast::NodeId(); }
+
+  return builder.makeWherePred(rangeFor(start, end), ast::WhereBoundKind::Implements, ty, bound);
+}
+
+ast::NodeId Parser::Impl::parseWhereClause(AstFactory& builder, size_t start, size_t end) const {
+  if (start >= end || !isIdentifierText(start, "where"_zc)) { return ast::NodeId(); }
+
+  zc::Vector<ast::NodeId> preds;
+  size_t cursor = start + 1;
+  while (cursor < end) {
+    while (cursor < end && kindAt(cursor) == ast::SyntaxKind::Comma) { ++cursor; }
+    if (cursor >= end) { break; }
+
+    TokenCursor commaCursor = tokenCursorAt(cursor);
+    const size_t comma = consumeBalancedTypeUntil(commaCursor, end, ast::SyntaxKind::Comma);
+    const size_t predEnd = comma < end ? comma : end;
+    const ast::NodeId pred = parseWherePredicate(builder, cursor, predEnd);
+    if (!pred) { return ast::NodeId(); }
+    preds.add(pred);
+    cursor = comma < end ? comma + 1 : end;
+  }
+
+  if (preds.empty()) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start + 1));
+    return ast::NodeId();
+  }
+
+  return builder.makeWhereClause(rangeFor(start, end), builder.makeList(preds.asPtr()));
+}
+
+ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start, size_t limit,
+                                              ast::NodeId whereClause) const {
   if (start >= limit || kindAt(start) != ast::SyntaxKind::LessThan) { return ast::NodeId(); }
 
   // Run existing diagnostics on the type parameter list.
@@ -1201,7 +1328,7 @@ ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
 
   return builder.makeGenericParams(rangeFor(start, closeAngle + 1),
                                    static_cast<uint16_t>(params.size()),
-                                   builder.makeList(params.asPtr()));
+                                   builder.makeList(params.asPtr()), whereClause);
 }
 
 }  // namespace parser

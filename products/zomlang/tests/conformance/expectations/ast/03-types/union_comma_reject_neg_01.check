@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --dump-ast %corpus/03-types/union_comma_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*union_comma_reject_neg_01.zom}}:1:14
 // CHECK:   |
 // CHECK: 1 | alias U = i32, str;

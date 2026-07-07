@@ -6,7 +6,7 @@
 // CHECK:   |
 // CHECK: 2 |     throw 1;
 // CHECK:   |     ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*reserved_8_groups_neg_01.zom}}:2:5
 // CHECK:   |
 // CHECK: 2 |     throw 1;

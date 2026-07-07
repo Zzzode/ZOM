@@ -200,13 +200,13 @@ ConstExpression ::= AssignmentExpression
    `init` path before `this` escapes; after initialization it is immutable. *)
 
 FunctionDeclaration ::= 'fun' BindingIdentifier TypeParameters? ParameterClause
-                       ReturnType? BlockStatement
+                       ReturnType? WhereClause? BlockStatement
 ReturnType ::= '->' TypeExpression RaisesClause?
 
 ClassDeclaration ::= ClassExtensibility? ModifierList 'class' BindingIdentifier
-                     TypeParameters? HeritageClauses? '{' ClassElement* '}'
+                     TypeParameters? WhereClause? HeritageClauses? '{' ClassElement* '}'
 StructDeclaration ::= ModifierList 'struct' BindingIdentifier TypeParameters?
-                      HeritageClauses? '{' ClassElement* '}'
+                      WhereClause? HeritageClauses? '{' ClassElement* '}'
 HeritageClauses ::= HeritageClause+
 HeritageClause ::= ExtendsClause | ImplementsClause
 ExtendsClause ::= 'extends' ExpressionWithTypeArguments
@@ -276,7 +276,7 @@ QualifiedMarkerPath ::= Identifier ( '::' Identifier )+
 
 MarkerImplDeclaration
     ::= 'unsafe'? 'impl' '!'? attributePath typeArguments?
-        'for' TypeExpression whereClause? ( structBody | ';' )
+        'for' TypeExpression WhereClause? ( structBody | ';' )
 
 (* ── impl-head disambiguation — MarkerImpl vs ordinary TraitImpl ─────────
    After the keyword 'impl', parser attempts MarkerImplDeclaration FIRST,
@@ -299,7 +299,7 @@ MarkerImplDeclaration
 (* Standalone Interface Impl — Ch.09 §7 *)
 StandaloneImplDeclaration
     ::= 'unsafe'? 'impl' TypeArguments? InterfaceBoundList 'for' Type
-        whereClause? '{' (MethodDeclaration | AssociatedTypeAssignment | ConstantDeclaration)* '}'
+        WhereClause? '{' (MethodDeclaration | AssociatedTypeAssignment | ConstantDeclaration)* '}'
     (* 'unsafe' required when implementing an unsafe interface. See Ch.09 §Unsafe Interfaces. *)
 AssociatedTypeAssignment ::= 'type' Identifier TypeParameters? '=' TypeExpression ';'
 
@@ -313,6 +313,7 @@ PostfixTypeSuffix ::= '[' ']' | '?' | '??'
 AtomType ::= ParenthesizedType
           | PredefinedType
           | TypeReference
+          | AssociatedTypeProjection
           | ObjectType
           | TupleType
           | FunctionType
@@ -341,6 +342,7 @@ PredefinedType ::= 'i8' | 'i16' | 'i32' | 'i64' | 'u8' | 'u16' | 'u32' | 'u64'
                 | 'null' | 'unit'
 TypeReference ::= TypeName TypeArguments?
 TypeName ::= QualifiedPath
+AssociatedTypeProjection ::= '<' TypeExpression 'as' TypeExpression '>' '::' Identifier
 TypeQuery ::= 'typeof' TypeQueryExpression
 TypeQueryExpression ::= Identifier ('.' Identifier)*
 
@@ -377,6 +379,12 @@ BoundItem      ::= '!'? ( TypeExpression | MarkerPath )
 
 TypeArguments ::= '<' TypeArgumentList '>'
 TypeArgumentList ::= TypeExpression (',' TypeExpression)*
+WhereClause ::= 'where' WherePredicate (',' WherePredicate)* ','?
+WherePredicate ::= TypeExpression ':' TypeExpression
+    (* AST note: declarations that carry TypeParameters and WhereClause store
+       both in a GenericParams wrapper. If a declaration has no explicit
+       TypeParameters but has WhereClause, the parser still creates
+       GenericParams with nparams=0 so the where-clause is preserved. *)
 
 TypeAnnotation ::= ':' TypeExpression
 CallSignature ::= TypeParameters? ParameterClause ReturnType?

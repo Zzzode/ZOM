@@ -13,6 +13,7 @@
 // CHECK-NEXT:                 GenericTypeParam #1 @1:13..1:14 name="T" variance=Invariant
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           variants_id:
 // CHECK-NEXT:             EnumVariantList #7 @1:16..1:33 nvars=2
 // CHECK-NEXT:               variants:
@@ -36,6 +37,7 @@
 // CHECK-NEXT:                 GenericTypeParam #11 @2:23..2:24 name="V" variance=Invariant
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #20 @2:26..2:49 nmembers=1
 // CHECK-NEXT:               members:
@@ -88,6 +90,7 @@
 // CHECK-NEXT:                 GenericTypeParam #32 @4:16..4:17 name="B" variance=Invariant
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #40 @4:19..4:38 nmembers=2
 // CHECK-NEXT:               members:

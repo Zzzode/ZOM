@@ -6,7 +6,7 @@
 // CHECK:   |
 // CHECK: 1 | var x: i32 = 5;
 // CHECK:   | ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*var_reject_neg_08.zom}}:1:1
 // CHECK:   |
 // CHECK: 1 | var x: i32 = 5;

@@ -1,0 +1,4 @@
+section: "§3 Existential types"
+covers_rule: "dynType"
+expected: "ACCEPT"
+notes: []

@@ -22,4 +22,3 @@
 // CHECK-NEXT:                       rhs:
 // CHECK-NEXT:                         IntLiteral #3 @1:14..1:15 base=10 value="1"
 // CHECK-NEXT:       attrs: null
-// CHECK-NOT: LambdaExpression

@@ -1,0 +1,4 @@
+section: "§12.2 WhereClause"
+covers_rule: "functionDeclaration, whereClause"
+expected: "ACCEPT"
+notes: []

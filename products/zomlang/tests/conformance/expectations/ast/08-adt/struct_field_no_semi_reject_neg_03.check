@@ -6,7 +6,7 @@
 // CHECK:   |
 // CHECK: 3 |     y: i32;
 // CHECK:   |     ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*struct_field_no_semi_reject_neg_03.zom}}:3:5
 // CHECK:   |
 // CHECK: 3 |     y: i32;

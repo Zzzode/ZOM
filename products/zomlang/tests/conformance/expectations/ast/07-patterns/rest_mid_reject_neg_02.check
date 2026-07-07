@@ -1,12 +1,12 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/rest_mid_reject_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*rest_mid_reject_neg_02.zom}}:2:14
 // CHECK:   |
 // CHECK: 2 |     when [a, ...mid, z] => { print(a); }
 // CHECK:   |              ^
-// CHECK: Fatal [ZOM2078]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
+// CHECK: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
 // CHECK:   --> {{.*rest_mid_reject_neg_02.zom}}:1:1
 // CHECK:   |
 // CHECK: 1 | match (arr) {

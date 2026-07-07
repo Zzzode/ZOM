@@ -67,6 +67,7 @@
 // CHECK-NEXT:                         ModulePath #27 @4:23..4:30 segments=["numeric"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #102 @4:32..11:2 nmembers=6
 // CHECK-NEXT:               members:

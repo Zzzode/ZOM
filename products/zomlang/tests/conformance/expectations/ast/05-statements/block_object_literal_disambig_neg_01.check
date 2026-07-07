@@ -5,6 +5,6 @@
 // CHECK:   --> {{.*block_object_literal_disambig_neg_01.zom}}:2:12
 // CHECK:   |
 // CHECK: 2 |     { x: 1 }
-// CHECK:   |           ^
+// CHECK:   |            ^
 // CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
 // CHECK: Try '{{.*zomc}} compile --help' for more information.

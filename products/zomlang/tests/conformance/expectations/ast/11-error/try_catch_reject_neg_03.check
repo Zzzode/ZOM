@@ -6,12 +6,12 @@
 // CHECK:   |
 // CHECK: 3 | }
 // CHECK:   | ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*try_catch_reject_neg_03.zom}}:2:5
 // CHECK:   |
 // CHECK: 2 |     try { bar(); } catch(e) { }
 // CHECK:   |     ^
-// CHECK: Error [ZOM2072]: Unexpected token expected
+// CHECK: Error [ZOM2076]: Unexpected token expected
 // CHECK:   --> {{.*try_catch_reject_neg_03.zom}}:2:20
 // CHECK:   |
 // CHECK: 2 |     try { bar(); } catch(e) { }

@@ -586,6 +586,11 @@ constexpr uint32_t kTupleTypeExprPayloadWordCount = 2;
 constexpr uint32_t kTupleTypeExprElemsFirstWord = 0;
 constexpr uint32_t kTupleTypeExprElemsSizeWord = 1;
 
+constexpr uint32_t kAssociatedTypeProjectionExprPayloadWordCount = 3;
+constexpr uint32_t kAssociatedTypeProjectionExprBaseTyWord = 0;
+constexpr uint32_t kAssociatedTypeProjectionExprIfaceTyWord = 1;
+constexpr uint32_t kAssociatedTypeProjectionExprNameWord = 2;
+
 constexpr uint32_t kSuspendStatementPayloadWordCount = 3;
 constexpr uint32_t kSuspendStatementModeWord = 0;
 constexpr uint32_t kSuspendStatementUntilCondWord = 1;
@@ -730,10 +735,11 @@ constexpr uint32_t kStructDeclExtensibilityWord = 1;
 constexpr uint32_t kStructDeclTypeParamsIdWord = 2;
 constexpr uint32_t kStructDeclMembersIdWord = 3;
 
-constexpr uint32_t kGenericParamsPayloadWordCount = 3;
+constexpr uint32_t kGenericParamsPayloadWordCount = 4;
 constexpr uint32_t kGenericParamsNparamsWord = 0;
 constexpr uint32_t kGenericParamsParamsFirstWord = 1;
 constexpr uint32_t kGenericParamsParamsSizeWord = 2;
+constexpr uint32_t kGenericParamsWhereWord = 3;
 
 constexpr uint32_t kFunctionParameterDeclPayloadWordCount = 4;
 constexpr uint32_t kFunctionParameterDeclNameWord = 0;

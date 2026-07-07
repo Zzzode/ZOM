@@ -969,6 +969,14 @@ variants:
     fields:
       - {name: elems, type: NodeList, cast: TypeExpr}
 
+  - id: 0x0D0
+    name: AssociatedTypeProjectionExpr
+    doc:  "Fully qualified associated type projection: <T as Interface>::Item"
+    fields:
+      - {name: base_ty, type: NodeId, cast: TypeExpr}
+      - {name: iface_ty, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: name, type: IdentId}
+
   - id: 0x180
     name: ObjectTypeMember
     doc:  "Single structural object type field"
@@ -1217,10 +1225,11 @@ variants:
 
   - id: 0x118
     name: GenericParams
-    doc:  "<T: Copy, U: Debug = u32> generic parameter list wrapper (shared node to keep parent Decl payloads ≤24B)"
+    doc:  "<T: Copy, U: Debug = u32> generic parameter list wrapper with optional where-clause"
     fields:
       - {name: nparams, type: uint16}
       - {name: params, type: NodeList, cast: TypeParamDecl}
+      - {name: where_, type: NodeId, cast: WhereClause, optional: true}
 
   - id: 0x119
     name: FunctionParameterDecl
@@ -1370,7 +1379,7 @@ derived:
 
   - kind: RangeSyntax
     from: DynTypeExpr         # 0x0C0
-    to:   ObjectTypeExpr      # 0x0CE
+    to:   AssociatedTypeProjectionExpr # 0x0D0
     name: FirstTypeFamily / LastTypeFamily
 
   - kind: RangeSyntax

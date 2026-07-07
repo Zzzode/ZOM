@@ -6,6 +6,7 @@ productions:
   AliasDeclaration: {status: direct, parser: parseAliasDeclaration, ast: [AliasDecl]}
   ArgumentList: {status: inlined, parser: parseExpressionArguments, parent: Arguments}
   Arguments: {status: direct, parser: parseExpressionArguments}
+  AssociatedTypeProjection: {status: direct, parser: parseAssociatedTypeProjection, ast: [AssociatedTypeProjectionExpr]}
   ArrayBindingPattern: {status: inlined, parser: parsePatternRange, parent: BindingPattern}
   ArrayLiteral: {status: direct, parser: parseExpressionList, ast: [ArrayLiteral]}
   ArrayPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
@@ -252,6 +253,8 @@ productions:
   VariableDeclarationList: {status: inlined, parser: parseLetStatement, parent: LetDeclaration}
   VariableStatement: {status: direct, parser: parseLetStatement, ast: [LetStmt]}
   Visibility: {status: inlined, parser: parseSourceElement, parent: Declaration}
+  WhereClause: {status: direct, parser: parseWhereClause, ast: [WhereClause]}
+  WherePredicate: {status: direct, parser: parseWherePredicate, ast: [WherePred]}
   WhileStatement: {status: direct, parser: parseWhileStatement, ast: [WhileStmt]}
   Whitespace: {status: lexical}
   WildcardPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}

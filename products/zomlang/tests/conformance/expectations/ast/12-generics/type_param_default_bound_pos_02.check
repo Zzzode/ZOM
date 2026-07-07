@@ -28,6 +28,7 @@
 // CHECK-NEXT:                         ModulePath #1 @1:10..1:16 segments=["number"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
 // CHECK-NEXT:             NamedTypeExpr #10 @1:27..1:28
 // CHECK-NEXT:               path:

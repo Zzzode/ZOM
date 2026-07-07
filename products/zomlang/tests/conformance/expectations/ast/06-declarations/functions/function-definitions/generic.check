@@ -24,6 +24,7 @@
 // CHECK-NEXT:                 GenericTypeParam #1 @1:13..1:14 name="T" variance=Invariant
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
 // CHECK-NEXT:             NamedTypeExpr #8 @1:25..1:26
 // CHECK-NEXT:               path:

@@ -475,6 +475,12 @@ let b: dyn Iterator<Item = T> = vec.iter();
 let c: dyn Read + Sendable + Shared = open_file();
 ```
 
+The parser represents every item after `dyn` in a single `DynTypeIfaceList`.
+Semantic analysis classifies each item as an object-safe interface or marker
+bound after name resolution. This keeps the syntax surface simple while still
+allowing object-safety diagnostics to distinguish interface methods, associated
+type bindings, and marker-only bounds.
+
 **Three normative rules:**
 
 1. **First-class type.** `dyn I` is a standalone, sized, first-class language type. The interface declaration alone does not introduce a usable type.
@@ -538,7 +544,11 @@ impl Iterator for VecIter<T> {
 }
 ```
 
-The syntax `T::Item` refers to the associated type `Item` of the interface implemented by `T`. Associated types are resolved during trait/interface bound discharge. See [Chapter 9](09-interfaces.md) and [Chapter 12](12-generics.md).
+The syntax `T::Item` refers to the associated type `Item` of the interface
+implemented by `T`. If more than one bound can provide `Item`, the fully
+qualified projection `<T as Interface>::Item` selects the source interface
+explicitly. Associated types are resolved during trait/interface bound
+discharge. See [Chapter 9](09-interfaces.md) and [Chapter 12](12-generics.md).
 
 ### Parenthesized Types
 

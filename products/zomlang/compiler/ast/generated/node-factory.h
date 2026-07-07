@@ -854,6 +854,14 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::TupleTypeExpr, zc::mv(range), payload);
   }
 
+  NodeId makeAssociatedTypeProjectionExpr(source::SourceRange range, NodeId base_ty, NodeId iface_ty, IdentId name) {
+    NodePayload payload;
+    payload.words[kAssociatedTypeProjectionExprBaseTyWord] = base_ty.value;
+    payload.words[kAssociatedTypeProjectionExprIfaceTyWord] = iface_ty.value;
+    payload.words[kAssociatedTypeProjectionExprNameWord] = name.value;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::AssociatedTypeProjectionExpr, zc::mv(range), payload);
+  }
+
   NodeId makeSuspendStatement(source::SourceRange range, SuspendMode mode, NodeId until_cond, uint32_t on_timeout_ms) {
     NodePayload payload;
     payload.words[kSuspendStatementModeWord] = static_cast<uint32_t>(mode);
@@ -1088,11 +1096,12 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::StructDecl, zc::mv(range), payload);
   }
 
-  NodeId makeGenericParams(source::SourceRange range, uint16_t nparams, NodeList params) {
+  NodeId makeGenericParams(source::SourceRange range, uint16_t nparams, NodeList params, NodeId where_) {
     NodePayload payload;
     payload.words[kGenericParamsNparamsWord] = static_cast<uint32_t>(nparams);
     payload.words[kGenericParamsParamsFirstWord] = params.first;
     payload.words[kGenericParamsParamsSizeWord] = params.size;
+    payload.words[kGenericParamsWhereWord] = where_.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::GenericParams, zc::mv(range), payload);
   }
 

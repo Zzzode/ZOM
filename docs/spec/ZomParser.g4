@@ -253,6 +253,14 @@ options {
         if (!text.equals("marker")) return false;
         return true;
     }
+    static boolean checkIsWhereKeyword(String text, Object parser) {
+        if (!text.equals("where")) return false;
+        return true;
+    }
+    static boolean checkIsDynKeyword(String text, Object parser) {
+        if (!text.equals("dyn")) return false;
+        return true;
+    }
     static boolean checkIsUnsafePrefix(String text, Object parser) {
 
 
@@ -1612,12 +1620,14 @@ declaration
     | modifierList CLASS memberIdentifier
       typeParameters?
       ( COLON typeExpr )?
+      whereClause?
       classBody                                                                             # classDeclaration
 
 
     // Interfaces are implemented via standalone impl.
     | modifierList STRUCT memberIdentifier
       typeParameters?
+      whereClause?
       structBody                                                                            # structDeclaration   // named fields only (G5: no positional/newtype)
 
 
@@ -1644,6 +1654,7 @@ declaration
     | modifierList FUN memberIdentifier
       typeParameters?
       functionSignature
+      whereClause?
       ( SEMICOLON | blockBody )                                                             # functionDeclaration
 
     | modifierList ALIAS memberIdentifier typeParameters? ASSIGN typeExpr SEMICOLON               # typeAliasDeclaration
@@ -1672,6 +1683,7 @@ declaration
       typeParameters?
       interfaceBoundList
       FOR typeExpr
+      whereClause?
       implBody                                                                              # standaloneImplDeclaration
 
 
@@ -1690,6 +1702,7 @@ markerImplRest
       attributePath
       typeParameters?
       FOR typeExpr
+      whereClause?
       ( SEMICOLON | structBody )
     ;
 
@@ -1753,7 +1766,7 @@ importBody
     //                        | AttributePath ('.' | '::')? '{' ImportSpecList? '}'
     //                        | AttributePath '..' AttributePath ( 'as' Identifier )?
 
-    // （`import std;` / `import std as s;` REJECT）
+    // Bare single-segment imports are rejected (`import std;`, `import std as s;`).
 
 
     : importClause { rejectImportBareIdUnlessStarOrAttrPath($importClause.ctx, this) }?  # importSimple
@@ -1999,6 +2012,15 @@ typeParameter
 
 typeParameterBoundList
     : typeExpr ( PLUS typeExpr )*
+    ;
+
+whereClause
+    : whereTok=identifier { checkIsWhereKeyword($whereTok.text, this) }?
+      wherePredicate ( COMMA wherePredicate )* COMMA?
+    ;
+
+wherePredicate
+    : typeExpr COLON typeExpr
     ;
 
 
@@ -2533,7 +2555,7 @@ expression
     | assignmentExpr                                                                       # exprAssignSingle
     ;
 
-// Level 20: Assignment（right-assoc）
+// Level 20: Assignment (right-associative)
 
 assignmentExpr
     : <assoc=right> conditionalExpr assignmentOp assignmentExpr                           # exprAssignment
@@ -2548,14 +2570,14 @@ assignmentOp
     | LSHIFT_ASSIGN | RSHIFT_ASSIGN | URSHIFT_ASSIGN
     | BIT_AND_ASSIGN | BIT_XOR_ASSIGN | BIT_OR_ASSIGN
     | POW_ASSIGN | AND_ASSIGN | OR_ASSIGN | NULL_COALESCE_ASSIGN
-    // — Spaced-form equivalents for fixtures that spell compound tokens with
+    // Spaced-form equivalents for fixtures that spell compound tokens with
     //   whitespace between characters (readability aids in reference tests):
     | GT GT GT ASSIGN    // ">>>=" written with spaces = URSHIFT_ASSIGN equivalent
     | GT GT ASSIGN       // ">>=" written with spaces = RSHIFT_ASSIGN equivalent
     | GT GT GTE          // "> > >=" spaced URSHIFT_ASSIGN where third GT+ASSIGN lexed as GTE
     ;
 
-// Level 19: Ternary cond ? expr : expr（right-assoc）
+// Level 19: Ternary cond ? expr : expr (right-associative)
 
 conditionalExpr
     : <assoc=right> errorDefaultExpr QUESTION expression COLON conditionalExpr            # exprTernary
@@ -2660,7 +2682,7 @@ multiplicativeExpr
     | powerExpr                                                                           # exprPowerSingle
     ;
 
-// Level 6: Power ** （right-assoc）
+// Level 6: Power ** (right-associative)
 
 powerExpr
     : <assoc=right> unaryExpr POW powerExpr                                               # exprPower
@@ -2861,7 +2883,7 @@ enumPatternPath
 
 // ============================================================================
 
-//               → atomType）
+//               to atomType.
 //
 
 // ============================================================================
@@ -2937,6 +2959,8 @@ postfixType
 
 atomType
     : predefinedType                                                                      # typePredefined
+    | dynType                                                                             # typeDyn
+    | associatedTypeProjection                                                            # typeAssociatedProjection
     | attributePath ( LT typeArgList genericClose )?                                     # typeQualified
     | identifier ( LT typeArgList genericClose )?                                        # typeNamed
     | LPAREN typeExpr ( COMMA typeExpr )* COMMA? RPAREN
@@ -2945,6 +2969,15 @@ atomType
     | identifier LPAREN variantTypeList RPAREN                                                    # typeTupleVariant
     | LBRACE RBRACE                                                                        # typeObjectEmpty
     | LBRACK typeExpr (SEMICOLON expression)? RBRACK                                         # typeArrayLiteralAtom
+    ;
+
+dynType
+    : dynTok=identifier { checkIsDynKeyword($dynTok.text, this) }?
+      interfaceBoundList
+    ;
+
+associatedTypeProjection
+    : LT typeExpr AS typeExpr genericClose colonColon memberIdentifier
     ;
 
 
