@@ -2399,6 +2399,10 @@ void BodyChecker::checkStmt(ast::NodeId stmt) {
   if (!impl->tree.contains(stmt)) return;
 
   const auto& node = impl->tree.node(stmt);
+  if (node.kind == SyntaxKind::StatementListItem) {
+    checkStmt(NodeId(node.payload.words[kStatementListItemItemWord]));
+    return;
+  }
 
   switch (node.kind) {
     case SyntaxKind::BlockStmt:
@@ -2628,9 +2632,9 @@ void BodyChecker::checkMatchStmt(ast::NodeId stmt) {
     const auto& armNode = impl->tree.node(armId);
     if (armNode.kind != SyntaxKind::MatchArmStmt) continue;
 
-    // Check the arm body expression
+    // Check the arm body statement.
     auto bodyId = NodeId(armNode.payload.words[kMatchArmStmtBodyWord]);
-    if (impl->tree.contains(bodyId)) { checkExpr(bodyId); }
+    if (impl->tree.contains(bodyId)) { checkStmt(bodyId); }
 
     // Check guard if present
     auto guardId = NodeId(armNode.payload.words[kMatchArmStmtGuardWord]);

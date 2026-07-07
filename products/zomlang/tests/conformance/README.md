@@ -32,6 +32,7 @@ expectation file.
 |---|---|---|---|
 | Grammar | `conformance-grammar` | `corpus/**/*.zom` | `expectations/grammar/**/*.yml` |
 | AST | `conformance-ast` | `corpus/**/*.zom` | `expectations/ast/**/*.check` |
+| Diagnostics | `conformance-diagnostics` | `corpus/**/*.zom` | `expectations/diagnostics/**/*.check` |
 | Parser coverage | `parser;coverage;specification` | `docs/spec/chapters/17-grammar-reference.md` | `products/zomlang/compiler/parser/parser-coverage.yml` |
 
 Future layers must reuse `corpus/` and add only their own expectation schema and

@@ -32,10 +32,11 @@ Current oracles:
 |---|---|---|
 | `check-conformance-grammar` | `conformance-grammar` | ANTLR `ZomLexer.g4` / `ZomParser.g4` ACCEPT/REJECT verdicts |
 | `check-conformance-ast` | `conformance-ast` | Real `zomc compile --dump-ast` output checked with lit/FileCheck |
+| `check-conformance-diagnostics` | `conformance-diagnostics` | Real `zomc compile --syntax-only` diagnostics checked with lit/FileCheck |
 | `check-conformance` | `conformance` | Every registered conformance oracle |
 
-Future diagnostics, binder, and e2e layers must consume the same corpus and add
-only their own expectation files plus runner implementation.
+Future binder and e2e layers must consume the same corpus and add only their own
+expectation files plus runner implementation.
 
 ## Running Tests
 

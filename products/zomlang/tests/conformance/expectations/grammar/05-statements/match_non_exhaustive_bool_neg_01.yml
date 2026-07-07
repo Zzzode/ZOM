@@ -1,0 +1,5 @@
+section: "05-statements match diagnostics"
+covers_rule: "matchStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks non-exhaustive bool match."

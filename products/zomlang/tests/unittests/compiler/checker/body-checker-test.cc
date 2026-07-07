@@ -2111,6 +2111,10 @@ ZC_TEST("BodyChecker.LetWithDynAnnotationRecordsExistentialErasure") {
 
 ZC_TEST("BodyChecker.MatchStmtReportsNonExhaustiveEnum") {
   TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
   zc::Vector<ast::NodeId> variants;
   variants.add(fix.makeEnumVariant("Red"_zc));
   variants.add(fix.makeEnumVariant("Blue"_zc));
@@ -2139,6 +2143,7 @@ ZC_TEST("BodyChecker.MatchStmtReportsNonExhaustiveEnum") {
 
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerNonExhaustiveMatch));
 }
 
 ZC_TEST("BodyChecker.LetWithoutInit") {

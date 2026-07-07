@@ -1,3 +1,7 @@
-// RUN: ! %zomc compile --syntax-only %corpus/03-types/null_initializer_missing_type_neg_01.zom 2>&1 | %FileCheck %s
+// RUN: ! %zomc compile --syntax-only %corpus/03-types/null_initializer_missing_type_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
 
-// CHECK: [ZOM0421]
+// CHECK: Error [ZOM0421]: Cannot infer type from null initializer without annotation
+// CHECK: --> {{.*[\\/]}}null_initializer_missing_type_neg_01.zom:1:5
+// CHECK: 1 | let x = null;
+// CHECK: |     ^
