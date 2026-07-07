@@ -2,13 +2,13 @@
 rfc: 4
 title: Binder Architecture
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, spec-audit, verification]
 approvers: []
 created: 2026-07-05
-updated: 2026-07-05
+updated: 2026-07-07
 area: compiler
 requires: [1, 2, 3]
 supersedes: []
@@ -1009,3 +1009,4 @@ None.
 |---|---|---|
 | 2026-07-05 | DRAFT | Initial draft of complete binder architecture. Covers two-phase collection/resolution, scope tree, import resolution, BindingMetadata contract, and 18 acceptance criteria. |
 | 2026-07-05 | DRAFT | Applied fixes: moved match arm scope creation to Phase 1; added binding position vs. expression position rules; added `collect_pattern_bindings()` helper; added Phase 1.5 import resolution; added closure capture tracking; added `if let`/`while let` scope rules; added label resolution; clarified `self`/`this` nested function visibility; added glob import conflict rules; clarified `scope_stack`/`scope` parameter convention. |
+| 2026-07-07 | REVIEW | Binder implementation is complete and verified; opened implementation-backed owner review before acceptance. Required decision and approvers remain the next governance gate. |

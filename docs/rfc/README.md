@@ -72,8 +72,8 @@ not reused.
 | [RFC 0001](0001-ast-dump-format.md) | AST Dump Format | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0001-ast-dump-format.md#acceptance-criteria) | [AST Dumper](../../products/zomlang/compiler/ast/dump.cc) |
 | [RFC 0002](0002-parser-architecture.md) | Parser Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0002-parser-architecture.md#acceptance-criteria) | [Parser](../../products/zomlang/compiler/parser/parser.cc) |
 | [RFC 0003](0003-lexer-architecture.md) | Lexer Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0003-lexer-architecture.md#acceptance-criteria) | [Lexer](../../products/zomlang/compiler/lexer/lexer.cc) |
-| [RFC 0004](0004-binder-architecture.md) | Binder Architecture | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0004-binder-architecture.md#acceptance-criteria) | [Binder](../../products/zomlang/compiler/binder/binder.cc) |
-| [RFC 0005](0005-type-system-architecture.md) | Type System Architecture | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0005-type-system-architecture.md#acceptance-criteria) | [Checker](../../products/zomlang/compiler/checker/checker.cc) |
+| [RFC 0004](0004-binder-architecture.md) | Binder Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0004-binder-architecture.md#acceptance-criteria) | [Binder](../../products/zomlang/compiler/binder/binder.cc) |
+| [RFC 0005](0005-type-system-architecture.md) | Type System Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0005-type-system-architecture.md#acceptance-criteria) | [Checker](../../products/zomlang/compiler/checker/checker.cc) |
 
 ## Status Values
 

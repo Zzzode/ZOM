@@ -2,13 +2,13 @@
 rfc: 5
 title: Type System Architecture
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, spec-audit, verification]
 approvers: []
 created: 2026-07-05
-updated: 2026-07-06
+updated: 2026-07-07
 area: compiler
 requires: [1, 2, 3, 4]
 supersedes: []
@@ -1567,3 +1567,4 @@ None.
 | 2026-07-05 | DRAFT | Initial draft of complete type system architecture. Covers type representation, unification, two-phase checking, trait resolution, exhaustiveness, error propagation, marker derivation, raises integration, and 20 acceptance criteria. |
 | 2026-07-05 | DRAFT | Expanded type forms (union, intersection, reference, raw pointer, existential, associated type). Added subtyping rules, local variable inference direction, operator desugaring table, cast validity table, where clause support, existential coercion rules. Clarified monomorphization as codegen phase, null type semantics, raises as union type sugar. Updated TypeEnv stability wording. Expanded acceptance criteria to 25 items. |
 | 2026-07-06 | DRAFT | Reworked checker architecture for production soundness: equality-only unification, directional coercion sites, non-null references/classes/existentials, explicit nullable unions, conservative variance, type interning, query cycle detection, associated projection disambiguation, guard-aware exhaustiveness, and updated acceptance criteria. |
+| 2026-07-07 | REVIEW | Type checker implementation is complete and verified; opened implementation-backed owner review before acceptance. Required decision and approvers remain the next governance gate. |
