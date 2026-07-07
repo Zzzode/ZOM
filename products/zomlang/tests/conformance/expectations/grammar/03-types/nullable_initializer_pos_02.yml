@@ -1,0 +1,5 @@
+section: "Ch.03 Nullable initializer semantics"
+covers_rule: "optionalType, nullCoalesceExpr"
+expected: "ACCEPT"
+notes:
+  - "Self-contained checker-positive fixture for null coercion into T? and null-coalescing to T."

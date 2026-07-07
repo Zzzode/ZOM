@@ -940,6 +940,17 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
     return zc::heap<type::UnionType>(zc::mv(alternatives));
   }
 
+  if (node.kind == SyntaxKind::OptionalTypeExpr) {
+    auto innerId = NodeId(node.payload.words[kOptionalTypeExprInnerWord]);
+    auto innerType = resolveTypeExpr(innerId);
+    if (!innerType) { return zc::Own<type::Type>(); }
+
+    zc::Vector<zc::Own<type::Type>> alternatives;
+    alternatives.add(zc::mv(innerType));
+    alternatives.add(type::PrimitiveType::createNull());
+    return zc::heap<type::UnionType>(zc::mv(alternatives));
+  }
+
   if (node.kind == SyntaxKind::DynTypeExpr) {
     auto ifacesId = NodeId(node.payload.words[kDynTypeExprIfacesIdWord]);
     if (!impl->tree.contains(ifacesId)) {
