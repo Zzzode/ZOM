@@ -346,6 +346,17 @@ static zc::StringPtr comparisonOperatorTrait(ast::BinaryOperatorKind op) {
   }
 }
 
+static zc::StringPtr unaryOperatorTrait(ast::UnaryOperatorKind op) {
+  switch (op) {
+    case ast::UnaryOperatorKind::Minus:
+      return "Neg"_zc;
+    case ast::UnaryOperatorKind::LogicalNot:
+      return "Not"_zc;
+    default:
+      return ""_zc;
+  }
+}
+
 static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv& env) {
   const auto& resolved = env.find(ty);
   if (isTypeVar(resolved)) { return true; }
@@ -1386,9 +1397,36 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
     case ast::UnaryOperatorKind::Minus:
     case ast::UnaryOperatorKind::PreIncrement:
     case ast::UnaryOperatorKind::PreDecrement:
+      if (isNamed(resolved) && op == ast::UnaryOperatorKind::Minus) {
+        TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
+                                    impl->diags);
+        traitResolver.discoverImpls();
+        auto traitName = unaryOperatorTrait(op);
+        if (!traitResolver.implements(resolved, traitName)) {
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::CheckerTraitNotImplemented>(loc, resolved.toString(),
+                                                                   traitName);
+          impl->hadErrors = true;
+          return storeType(expr, zc::heap<type::ErrorType>());
+        }
+        return storeType(expr, cloneType(resolved));
+      }
       // Numeric unary: result is operand type
       return storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolved)));
     case ast::UnaryOperatorKind::LogicalNot:
+      if (isNamed(resolved)) {
+        TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
+                                    impl->diags);
+        traitResolver.discoverImpls();
+        auto traitName = unaryOperatorTrait(op);
+        if (!traitResolver.implements(resolved, traitName)) {
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::CheckerTraitNotImplemented>(loc, resolved.toString(),
+                                                                   traitName);
+          impl->hadErrors = true;
+          return storeType(expr, zc::heap<type::ErrorType>());
+        }
+      }
       // Logical not: returns bool
       return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
     case ast::UnaryOperatorKind::BitNot:
@@ -2730,6 +2768,7 @@ bool BodyChecker::checkBodies() {
             itemNode.kind == SyntaxKind::StrLiteral || itemNode.kind == SyntaxKind::BoolLiteral ||
             itemNode.kind == SyntaxKind::NullLiteral || itemNode.kind == SyntaxKind::UnitLiteral ||
             itemNode.kind == SyntaxKind::BinaryExpr ||
+            itemNode.kind == SyntaxKind::UnaryExpression ||
             itemNode.kind == SyntaxKind::PostfixExpression ||
             itemNode.kind == SyntaxKind::ConditionalExpr ||
             itemNode.kind == SyntaxKind::NullCoalesceExpr ||

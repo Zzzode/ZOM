@@ -878,9 +878,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseUnaryExpressionAt(AstFact
       diagnoseExpressionExpected(start + 1);
       return ExpressionParseResult();
     }
-    return {builder.makeUnaryExpression(
-                rangeFor(start, operand.next),
-                static_cast<ast::UnaryOperatorKind>(unaryOpCode(kindAt(start))), operand.node),
+    return {builder.makeUnaryExpression(rangeFor(start, operand.next), unaryOpCode(kindAt(start)),
+                                        operand.node),
             operand.next};
   }
 

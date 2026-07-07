@@ -64,7 +64,7 @@ ast::BinaryOperatorKind binaryOpCode(ast::SyntaxKind kind);
 
 bool isPrefixUnaryOperator(ast::SyntaxKind kind);
 
-uint8_t unaryOpCode(ast::SyntaxKind kind);
+ast::UnaryOperatorKind unaryOpCode(ast::SyntaxKind kind);
 
 bool isPostfixOperator(ast::SyntaxKind kind);
 

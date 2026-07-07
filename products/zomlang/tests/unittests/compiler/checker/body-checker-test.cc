@@ -202,6 +202,77 @@ void expectUserTypeComparisonWithoutImplFails(zc::StringPtr missingIfaceName,
   (void)missingIfaceName;
 }
 
+void expectUserTypeUnaryOperatorImpl(zc::StringPtr ifaceName, ast::UnaryOperatorKind op,
+                                     bool returnsOperandType) {
+  TestFixture fix;
+  auto iface = fix.makeInterfaceDecl(ifaceName);
+  auto operandType = fix.makeClassDecl("Operand"_zc);
+
+  zc::Vector<ast::NodeId> ifaceNodes;
+  ifaceNodes.add(fix.makeNamedTypeExpr(ifaceName));
+  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
+  auto implDecl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Operand"_zc), ifaceList);
+
+  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc),
+                                              fix.makeNamedTypeExpr("Operand"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(valueDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto unary = fix.makeUnaryExpr(op, fix.makeIdentExpr("value"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(operandType);
+  topDecls.add(implDecl);
+  topDecls.add(let);
+  topDecls.add(unary);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(unary));
+  auto& ty = result.typeEnv.getType(unary);
+  if (returnsOperandType) {
+    ZC_EXPECT(isNamed(ty));
+    if (isNamed(ty)) {
+      ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Operand"_zc);
+    }
+  } else {
+    ZC_EXPECT(isPrimitive(ty));
+    if (isPrimitive(ty)) {
+      ZC_EXPECT(static_cast<const type::PrimitiveType&>(ty).getPrimitiveKind() ==
+                type::PrimitiveKind::Bool);
+    }
+  }
+}
+
+void expectUserTypeUnaryWithoutImplFails(ast::UnaryOperatorKind op) {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto operandType = fix.makeClassDecl("Operand"_zc);
+  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc),
+                                              fix.makeNamedTypeExpr("Operand"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(valueDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto unary = fix.makeUnaryExpr(op, fix.makeIdentExpr("value"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(operandType);
+  topDecls.add(let);
+  topDecls.add(unary);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerTraitNotImplemented));
+  ZC_EXPECT(result.typeEnv.hasType(unary));
+  if (result.typeEnv.hasType(unary)) { ZC_EXPECT(isError(result.typeEnv.getType(unary))); }
+}
+
 }  // namespace
 
 // ============================================================================
@@ -1103,13 +1174,14 @@ ZC_TEST("BodyChecker.UnaryMinus") {
   TestFixture fix;
   // -1
   auto operand = fix.makeIntLiteral(1);
-  auto unary = fix.makeUnaryExpr(1, operand);  // 1 = Minus
+  auto unary = fix.makeUnaryExpr(ast::UnaryOperatorKind::Minus, operand);
 
   zc::Vector<ast::NodeId> topDecls;
   topDecls.add(unary);
   auto result = runFullCheck(fix, topDecls.asPtr());
 
   ZC_EXPECT(result.success);
+  ZC_EXPECT(result.typeEnv.hasType(unary));
   if (result.typeEnv.hasType(unary)) {
     auto& ty = result.typeEnv.getType(unary);
     ZC_EXPECT(isPrimitive(ty));
@@ -1120,17 +1192,34 @@ ZC_TEST("BodyChecker.LogicalNot") {
   TestFixture fix;
   // !true
   auto operand = fix.makeBoolLiteral(true);
-  auto unary = fix.makeUnaryExpr(2, operand);  // 2 = LogicalNot
+  auto unary = fix.makeUnaryExpr(ast::UnaryOperatorKind::LogicalNot, operand);
 
   zc::Vector<ast::NodeId> topDecls;
   topDecls.add(unary);
   auto result = runFullCheck(fix, topDecls.asPtr());
 
   ZC_EXPECT(result.success);
+  ZC_EXPECT(result.typeEnv.hasType(unary));
   if (result.typeEnv.hasType(unary)) {
     auto& ty = result.typeEnv.getType(unary);
     ZC_EXPECT(isPrimitive(ty));
   }
+}
+
+ZC_TEST("BodyChecker.UnaryMinusUsesUserTypeNegImpl") {
+  expectUserTypeUnaryOperatorImpl("Neg"_zc, ast::UnaryOperatorKind::Minus, true);
+}
+
+ZC_TEST("BodyChecker.UnaryMinusRejectsUserTypeWithoutNegImpl") {
+  expectUserTypeUnaryWithoutImplFails(ast::UnaryOperatorKind::Minus);
+}
+
+ZC_TEST("BodyChecker.LogicalNotUsesUserTypeNotImpl") {
+  expectUserTypeUnaryOperatorImpl("Not"_zc, ast::UnaryOperatorKind::LogicalNot, false);
+}
+
+ZC_TEST("BodyChecker.LogicalNotRejectsUserTypeWithoutNotImpl") {
+  expectUserTypeUnaryWithoutImplFails(ast::UnaryOperatorKind::LogicalNot);
 }
 
 ZC_TEST("BodyChecker.ErrorUnwrapRejectsNonUnionOperand") {
@@ -1678,8 +1767,7 @@ ZC_TEST("BodyChecker.CastAllowsSharedReferenceToConstRawPointer") {
   auto targetTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
   auto pat = fix.makeBindingPattern("r"_zc);
   auto decl = fix.makeVariableDeclarator(
-      pat, sourceTy,
-      fix.makeUnaryExpr(static_cast<uint8_t>(ast::UnaryOperatorKind::Ref), fix.makeIntLiteral(1)));
+      pat, sourceTy, fix.makeUnaryExpr(ast::UnaryOperatorKind::Ref, fix.makeIntLiteral(1)));
   zc::Vector<ast::NodeId> declList;
   declList.add(decl);
   auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr())));

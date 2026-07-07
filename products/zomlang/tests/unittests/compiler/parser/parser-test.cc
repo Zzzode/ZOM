@@ -2171,7 +2171,7 @@ ZC_TEST("ParserTest.ParsePrefixUnaryExpressionShape") {
     const ast::Node& init = letInitializer(root, 0);
     ZC_EXPECT(init.kind == ast::SyntaxKind::UnaryExpression);
     ZC_EXPECT(init.payload.words[ast::kUnaryExpressionOpWord] ==
-              static_cast<uint8_t>(ast::UnaryOperatorKind::Minus));
+              static_cast<uint32_t>(ast::UnaryOperatorKind::Minus));
     const ast::Node& operand =
         root.node(ast::NodeId(init.payload.words[ast::kUnaryExpressionOperandWord]));
     ZC_EXPECT(operand.kind == ast::SyntaxKind::IdentExpr);
@@ -2338,7 +2338,7 @@ ZC_TEST("ParserTest.ParsePrefixIncrementExpression") {
     const ast::Node& expression = expressionStatementExpression(root, 0);
     ZC_EXPECT(expression.kind == ast::SyntaxKind::UnaryExpression);
     ZC_EXPECT(expression.payload.words[ast::kUnaryExpressionOpWord] ==
-              static_cast<uint8_t>(ast::UnaryOperatorKind::PreIncrement));
+              static_cast<uint32_t>(ast::UnaryOperatorKind::PreIncrement));
   }
 }
 
@@ -2357,7 +2357,7 @@ ZC_TEST("ParserTest.ParsePrefixDecrementExpression") {
     const ast::Node& expression = expressionStatementExpression(root, 0);
     ZC_EXPECT(expression.kind == ast::SyntaxKind::UnaryExpression);
     ZC_EXPECT(expression.payload.words[ast::kUnaryExpressionOpWord] ==
-              static_cast<uint8_t>(ast::UnaryOperatorKind::PreDecrement));
+              static_cast<uint32_t>(ast::UnaryOperatorKind::PreDecrement));
   }
 }
 

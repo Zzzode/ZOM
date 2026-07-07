@@ -241,26 +241,26 @@ bool isPrefixUnaryOperator(ast::SyntaxKind kind) {
   }
 }
 
-uint8_t unaryOpCode(ast::SyntaxKind kind) {
+ast::UnaryOperatorKind unaryOpCode(ast::SyntaxKind kind) {
   switch (kind) {
     case ast::SyntaxKind::Plus:
-      return static_cast<uint8_t>(ast::UnaryOperatorKind::Plus);
+      return ast::UnaryOperatorKind::Plus;
     case ast::SyntaxKind::Minus:
-      return static_cast<uint8_t>(ast::UnaryOperatorKind::Minus);
+      return ast::UnaryOperatorKind::Minus;
     case ast::SyntaxKind::Exclamation:
-      return static_cast<uint8_t>(ast::UnaryOperatorKind::LogicalNot);
+      return ast::UnaryOperatorKind::LogicalNot;
     case ast::SyntaxKind::Tilde:
-      return static_cast<uint8_t>(ast::UnaryOperatorKind::BitNot);
+      return ast::UnaryOperatorKind::BitNot;
     case ast::SyntaxKind::Asterisk:
-      return static_cast<uint8_t>(ast::UnaryOperatorKind::Deref);
+      return ast::UnaryOperatorKind::Deref;
     case ast::SyntaxKind::Ampersand:
-      return static_cast<uint8_t>(ast::UnaryOperatorKind::Ref);
+      return ast::UnaryOperatorKind::Ref;
     case ast::SyntaxKind::PlusPlus:
-      return static_cast<uint8_t>(ast::UnaryOperatorKind::PreIncrement);
+      return ast::UnaryOperatorKind::PreIncrement;
     case ast::SyntaxKind::MinusMinus:
-      return static_cast<uint8_t>(ast::UnaryOperatorKind::PreDecrement);
+      return ast::UnaryOperatorKind::PreDecrement;
     default:
-      return static_cast<uint8_t>(ast::UnaryOperatorKind::Plus);
+      return ast::UnaryOperatorKind::Plus;
   }
 }
 

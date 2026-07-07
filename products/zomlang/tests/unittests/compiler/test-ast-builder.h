@@ -653,9 +653,9 @@ public:
   }
 
   /// \brief Create a UnaryExpression.
-  ast::NodeId makeUnaryExpr(uint8_t op, ast::NodeId operand) {
+  ast::NodeId makeUnaryExpr(ast::UnaryOperatorKind op, ast::NodeId operand) {
     ast::NodePayload payload;
-    payload.words[ast::kUnaryExpressionOpWord] = op;
+    payload.words[ast::kUnaryExpressionOpWord] = static_cast<uint32_t>(op);
     payload.words[ast::kUnaryExpressionOperandWord] = operand.value;
     return builder_.makeNode(ast::SyntaxKind::UnaryExpression, source::SourceRange(), payload);
   }
@@ -883,7 +883,7 @@ public:
       args.add(innerTy);
       operand = makeNamedTypeExpr("mut"_zc, makeNodeList(args.asPtr()));
     }
-    return makeUnaryExpr(static_cast<uint8_t>(ast::UnaryOperatorKind::Ref), operand);
+    return makeUnaryExpr(ast::UnaryOperatorKind::Ref, operand);
   }
 
   /// \brief Create a raw pointer type expression.
@@ -894,7 +894,7 @@ public:
       args.add(innerTy);
       operand = makeNamedTypeExpr("mut"_zc, makeNodeList(args.asPtr()));
     }
-    return makeUnaryExpr(static_cast<uint8_t>(ast::UnaryOperatorKind::Deref), operand);
+    return makeUnaryExpr(ast::UnaryOperatorKind::Deref, operand);
   }
 
   /// \brief Create an UnsafeBlockExpr.
