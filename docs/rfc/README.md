@@ -74,6 +74,7 @@ not reused.
 | [RFC 0003](0003-lexer-architecture.md) | Lexer Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0003-lexer-architecture.md#acceptance-criteria) | [Lexer](../../products/zomlang/compiler/lexer/lexer.cc) |
 | [RFC 0004](0004-binder-architecture.md) | Binder Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0004-binder-architecture.md#acceptance-criteria) | [Binder](../../products/zomlang/compiler/binder/binder.cc) |
 | [RFC 0005](0005-type-system-architecture.md) | Type System Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0005-type-system-architecture.md#acceptance-criteria) | [Checker](../../products/zomlang/compiler/checker/checker.cc) |
+| [RFC 0006](0006-error-lowering-runtime-abi.md) | Error Lowering And Runtime ABI | DRAFT | compiler | compiler | rfc | [Acceptance Criteria](0006-error-lowering-runtime-abi.md#acceptance-criteria) | TBD |
 
 ## Status Values
 
