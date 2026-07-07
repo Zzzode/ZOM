@@ -349,6 +349,48 @@ ZC_TEST("TraitResolver.ResolveAssociatedTypeRequiresUniqueBinding") {
   ZC_EXPECT(result.type != zc::none);
 }
 
+ZC_TEST("TraitResolver.ResolveAssociatedTypeWithInterfaceQualifier") {
+  TestFixture fix;
+
+  zc::Vector<ast::NodeId> iteratorIfaceNodes;
+  iteratorIfaceNodes.add(fix.makeNamedTypeExpr("Iterator"_zc));
+  auto iteratorIfaces = makeImplIfaceList(fix, fix.makeNodeList(iteratorIfaceNodes.asPtr()));
+  zc::Vector<ast::NodeId> iteratorMembers;
+  iteratorMembers.add(makeAssociatedTypeDecl(fix, "Item"_zc, fix.makeNamedTypeExpr("i32"_zc)));
+  auto iteratorMemberList = makeClassMemberList(fix, fix.makeNodeList(iteratorMembers.asPtr()));
+  auto iteratorImpl = makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Box"_zc), iteratorIfaces,
+                                             iteratorMemberList);
+
+  zc::Vector<ast::NodeId> streamIfaceNodes;
+  streamIfaceNodes.add(fix.makeNamedTypeExpr("Stream"_zc));
+  auto streamIfaces = makeImplIfaceList(fix, fix.makeNodeList(streamIfaceNodes.asPtr()));
+  zc::Vector<ast::NodeId> streamMembers;
+  streamMembers.add(makeAssociatedTypeDecl(fix, "Item"_zc, fix.makeNamedTypeExpr("str"_zc)));
+  auto streamMemberList = makeClassMemberList(fix, fix.makeNodeList(streamMembers.asPtr()));
+  auto streamImpl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Box"_zc), streamIfaces, streamMemberList);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iteratorImpl);
+  topDecls.add(streamImpl);
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+
+  type::TypeEnv typeEnv;
+  TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
+  type::NamedType box("Box"_zc);
+
+  auto result = resolver.resolveAssociatedTypeWithStatus(box, "Iterator"_zc, "Item"_zc);
+  ZC_EXPECT(result.kind == AssociatedTypeResolutionKind::Resolved);
+  ZC_EXPECT(result.type != zc::none);
+  ZC_IF_SOME(resolved, result.type) {
+    ZC_EXPECT(isPrimitive(resolved));
+    if (isPrimitive(resolved)) {
+      auto& primitive = static_cast<const type::PrimitiveType&>(resolved);
+      ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
+    }
+  }
+}
+
 ZC_TEST("TraitResolver.ResolveAssociatedTypeReportsAmbiguousBinding") {
   TestFixture fix;
 

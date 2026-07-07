@@ -23,6 +23,7 @@
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/checker/query-cycle-detector.h"
+#include "zomlang/compiler/checker/trait-resolver.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/symbol/scope.h"
@@ -803,6 +804,9 @@ zc::Own<type::Type> DeclSignatureComputer::resolveTypeExpr(ast::NodeId typeExprI
     case SyntaxKind::DynTypeExpr:
       return resolveDynType(node);
 
+    case SyntaxKind::AssociatedTypeProjectionExpr:
+      return resolveAssociatedTypeProjection(node);
+
     case SyntaxKind::BottomTypeExpr:
       return type::PrimitiveType::createNever();
 
@@ -1223,6 +1227,43 @@ zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node)
   }
   auto ifaceType = resolveTypeExpr(firstIfaceId);
   return zc::heap<type::ExistentialType>(zc::mv(ifaceType));
+}
+
+zc::Own<type::Type> DeclSignatureComputer::resolveAssociatedTypeProjection(const ast::Node& node) {
+  auto baseTyId = ast::NodeId(node.payload.words[kAssociatedTypeProjectionExprBaseTyWord]);
+  auto ifaceTyId = ast::NodeId(node.payload.words[kAssociatedTypeProjectionExprIfaceTyWord]);
+  auto assocName =
+      impl->tree.ident(IdentId(node.payload.words[kAssociatedTypeProjectionExprNameWord]));
+  if (!impl->tree.contains(baseTyId) || !impl->tree.contains(ifaceTyId) || assocName.size() == 0) {
+    return zc::heap<type::ErrorType>("invalid associated type projection");
+  }
+
+  auto baseTy = resolveTypeExpr(baseTyId);
+  zc::StringPtr ifaceName;
+  const auto& ifaceNode = impl->tree.node(ifaceTyId);
+  if (ifaceNode.kind == SyntaxKind::NamedTypeExpr) {
+    ifaceName = resolvePathName(ast::NodeId(ifaceNode.payload.words[kNamedTypeExprPathWord]));
+  }
+  if (ifaceName.size() == 0) {
+    return zc::heap<type::ErrorType>("invalid associated type interface");
+  }
+
+  TraitResolver resolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata, impl->diags);
+  auto result = resolver.resolveAssociatedTypeWithStatus(*baseTy, ifaceName, assocName);
+  if (result.kind == AssociatedTypeResolutionKind::Resolved) {
+    ZC_IF_SOME(resolved, result.type) { return cloneType(resolved); }
+  }
+  if (result.kind == AssociatedTypeResolutionKind::Ambiguous) {
+    impl->diags.diagnose<DiagID::AmbiguousAssociatedTypeProjection>(nodeLoc(impl->tree, baseTyId),
+                                                                    assocName, baseTy->toString());
+    impl->hadErrors = true;
+    return zc::heap<type::ErrorType>("ambiguous associated type projection");
+  }
+
+  impl->diags.diagnose<DiagID::NoAssociatedTypeProjection>(nodeLoc(impl->tree, baseTyId), assocName,
+                                                           baseTy->toString());
+  impl->hadErrors = true;
+  return zc::heap<type::ErrorType>("missing associated type projection");
 }
 
 // ============================================================================

@@ -949,6 +949,17 @@ public:
     return builder_.makeNode(ast::SyntaxKind::DynTypeExpr, source::SourceRange(), payload);
   }
 
+  /// \brief Create an AssociatedTypeProjectionExpr.
+  ast::NodeId makeAssociatedTypeProjectionExpr(ast::NodeId baseTy, ast::NodeId ifaceTy,
+                                               zc::StringPtr name) {
+    ast::NodePayload payload;
+    payload.words[ast::kAssociatedTypeProjectionExprBaseTyWord] = baseTy.value;
+    payload.words[ast::kAssociatedTypeProjectionExprIfaceTyWord] = ifaceTy.value;
+    payload.words[ast::kAssociatedTypeProjectionExprNameWord] = builder_.internIdent(name).value;
+    return builder_.makeNode(ast::SyntaxKind::AssociatedTypeProjectionExpr, source::SourceRange(),
+                             payload);
+  }
+
   /// \brief Create a PredefinedTypeExpr (e.g. `i32`, `bool`).
   ast::NodeId makePredefinedTypeExpr(uint8_t kind) {
     ast::NodePayload payload;

@@ -178,6 +178,9 @@ private:
   /// \brief Resolve a dynamic/existential type (e.g., dyn Drawable).
   zc::Own<type::Type> resolveDynType(const ast::Node& node);
 
+  /// \brief Resolve a fully qualified associated type projection.
+  zc::Own<type::Type> resolveAssociatedTypeProjection(const ast::Node& node);
+
   /// \brief Resolve an optional type (e.g., T?).
   zc::Own<type::Type> resolveOptionalType(const ast::Node& node);
 

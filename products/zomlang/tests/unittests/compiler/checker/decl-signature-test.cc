@@ -91,6 +91,36 @@ ast::NodeId makeAssociatedTypeDecl(TestFixture& fix, zc::StringPtr name) {
                                 payload);
 }
 
+ast::NodeId makeAssociatedTypeBinding(TestFixture& fix, zc::StringPtr name, ast::NodeId defaultTy) {
+  ast::NodePayload payload;
+  payload.words[ast::kAssociatedTypeDeclNameWord] = fix.builder().internIdent(name).value;
+  payload.words[ast::kAssociatedTypeDeclBoundWord] = 0;
+  payload.words[ast::kAssociatedTypeDeclDefaultTyWord] = defaultTy.value;
+  return fix.builder().makeNode(ast::SyntaxKind::AssociatedTypeDecl, source::SourceRange(),
+                                payload);
+}
+
+ast::NodeId makeImplIfaceList(TestFixture& fix, ast::NodeList ifaces) {
+  ast::NodePayload payload;
+  payload.words[ast::kImplIfaceListNIfacesWord] = ifaces.size;
+  payload.words[ast::kImplIfaceListIfacesFirstWord] = ifaces.first;
+  payload.words[ast::kImplIfaceListIfacesSizeWord] = ifaces.size;
+  return fix.builder().makeNode(ast::SyntaxKind::ImplIfaceList, source::SourceRange(), payload);
+}
+
+ast::NodeId makeStandaloneImplDecl(TestFixture& fix, ast::NodeId forTy, ast::NodeId ifaces,
+                                   ast::NodeId members) {
+  ast::NodePayload payload;
+  payload.words[ast::kStandaloneImplDeclIsUnsafeWord] = 0;
+  payload.words[ast::kStandaloneImplDeclIfacesIdWord] = ifaces.value;
+  payload.words[ast::kStandaloneImplDeclForTyWord] = forTy.value;
+  payload.words[ast::kStandaloneImplDeclWhereWord] = 0;
+  payload.words[ast::kStandaloneImplDeclTypeParamsIdWord] = 0;
+  payload.words[ast::kStandaloneImplDeclMembersIdWord] = members.value;
+  return fix.builder().makeNode(ast::SyntaxKind::StandaloneImplDecl, source::SourceRange(),
+                                payload);
+}
+
 const type::Type& aliasType(type::TypeEnv& typeEnv, ast::NodeId alias) {
   ZC_EXPECT(typeEnv.hasType(alias));
   return typeEnv.getType(alias);
@@ -741,6 +771,44 @@ ZC_TEST("DeclSignature.DynRejectsUnboundAssociatedType") {
   computeSignatures(fix, topDecls.asPtr());
 
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynUnassociatedType));
+}
+
+ZC_TEST("DeclSignature.ResolveQualifiedAssociatedTypeProjection") {
+  TestFixture fix;
+  zc::Vector<ast::NodeId> iteratorIfaceNodes;
+  iteratorIfaceNodes.add(fix.makeNamedTypeExpr("Iterator"_zc));
+  auto iteratorIfaces = makeImplIfaceList(fix, fix.makeNodeList(iteratorIfaceNodes.asPtr()));
+  zc::Vector<ast::NodeId> iteratorMembers;
+  iteratorMembers.add(makeAssociatedTypeBinding(fix, "Item"_zc, fix.makeNamedTypeExpr("i32"_zc)));
+  auto iteratorImpl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Box"_zc), iteratorIfaces,
+                             fix.makeClassMemberList(fix.makeNodeList(iteratorMembers.asPtr())));
+
+  zc::Vector<ast::NodeId> streamIfaceNodes;
+  streamIfaceNodes.add(fix.makeNamedTypeExpr("Stream"_zc));
+  auto streamIfaces = makeImplIfaceList(fix, fix.makeNodeList(streamIfaceNodes.asPtr()));
+  zc::Vector<ast::NodeId> streamMembers;
+  streamMembers.add(makeAssociatedTypeBinding(fix, "Item"_zc, fix.makeNamedTypeExpr("str"_zc)));
+  auto streamImpl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Box"_zc), streamIfaces,
+                             fix.makeClassMemberList(fix.makeNodeList(streamMembers.asPtr())));
+
+  auto projection = fix.makeAssociatedTypeProjectionExpr(
+      fix.makeNamedTypeExpr("Box"_zc), fix.makeNamedTypeExpr("Iterator"_zc), "Item"_zc);
+  auto alias = fix.makeAliasDecl("BoxItem"_zc, projection);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iteratorImpl);
+  topDecls.add(streamImpl);
+  topDecls.add(alias);
+  auto typeEnv = computeSignatures(fix, topDecls.asPtr());
+
+  auto& ty = aliasType(typeEnv, alias);
+  ZC_EXPECT(isPrimitive(ty));
+  if (isPrimitive(ty)) {
+    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
+    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
+  }
 }
 
 ZC_TEST("DeclSignature.ResolveObjectTypeExpr") {

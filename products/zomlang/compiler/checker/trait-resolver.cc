@@ -860,6 +860,68 @@ AssociatedTypeResolution TraitResolver::resolveAssociatedTypeWithStatus(const ty
   return AssociatedTypeResolution{AssociatedTypeResolutionKind::Resolved, result};
 }
 
+AssociatedTypeResolution TraitResolver::resolveAssociatedTypeWithStatus(const type::Type& ty,
+                                                                        zc::StringPtr ifaceName,
+                                                                        zc::StringPtr assocName) {
+  if (ifaceName.size() == 0 || assocName.size() == 0) {
+    return AssociatedTypeResolution{AssociatedTypeResolutionKind::NotFound, zc::none};
+  }
+
+  const auto& resolved = impl->typeEnv.find(ty);
+  const auto rootId = impl->tree.root();
+  if (!impl->tree.contains(rootId)) {
+    return AssociatedTypeResolution{AssociatedTypeResolutionKind::NotFound, zc::none};
+  }
+
+  zc::Maybe<const type::Type&> result = zc::none;
+  bool ambiguous = false;
+
+  visitTreePreOrder(impl->tree, rootId, [&](ast::NodeId id, const ast::Node& node) {
+    if (ambiguous || node.kind != SyntaxKind::StandaloneImplDecl) { return; }
+    if (!checkImplMatches(id, resolved, ifaceName)) { return; }
+
+    auto membersId = ast::NodeId(node.payload.words[kStandaloneImplDeclMembersIdWord]);
+    if (!impl->tree.contains(membersId)) { return; }
+
+    const auto& memberList = impl->tree.node(membersId);
+    if (memberList.kind != SyntaxKind::ClassMemberList) { return; }
+
+    NodeList memberNodeList;
+    memberNodeList.first = memberList.payload.words[kClassMemberListMembersFirstWord];
+    memberNodeList.size = memberList.payload.words[kClassMemberListMembersSizeWord];
+
+    for (ast::NodeId memberId : impl->tree.list(memberNodeList)) {
+      if (!impl->tree.contains(memberId)) { continue; }
+      const auto& memberNode = impl->tree.node(memberId);
+      if (memberNode.kind != SyntaxKind::AssociatedTypeDecl) { continue; }
+
+      auto memberName =
+          impl->tree.ident(IdentId(memberNode.payload.words[kAssociatedTypeDeclNameWord]));
+      if (memberName != assocName) { continue; }
+
+      auto defaultTyId = ast::NodeId(memberNode.payload.words[kAssociatedTypeDeclDefaultTyWord]);
+      if (!impl->tree.contains(defaultTyId)) { continue; }
+
+      auto assocTy = resolveTypeExpr(defaultTyId);
+      impl->typeEnv.setType(memberId, zc::mv(assocTy));
+      if (result != zc::none) {
+        ambiguous = true;
+        result = zc::none;
+        return;
+      }
+      result = impl->typeEnv.getType(memberId);
+    }
+  });
+
+  if (ambiguous) {
+    return AssociatedTypeResolution{AssociatedTypeResolutionKind::Ambiguous, zc::none};
+  }
+  if (result == zc::none) {
+    return AssociatedTypeResolution{AssociatedTypeResolutionKind::NotFound, zc::none};
+  }
+  return AssociatedTypeResolution{AssociatedTypeResolutionKind::Resolved, result};
+}
+
 zc::Maybe<const type::Type&> TraitResolver::resolveAssociatedType(const type::Type& ty,
                                                                   zc::StringPtr assocName) {
   auto result = resolveAssociatedTypeWithStatus(ty, assocName);

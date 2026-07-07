@@ -113,6 +113,11 @@ public:
   AssociatedTypeResolution resolveAssociatedTypeWithStatus(const type::Type& ty,
                                                            zc::StringPtr assocName);
 
+  /// \brief Resolve an associated type through a specific interface impl.
+  AssociatedTypeResolution resolveAssociatedTypeWithStatus(const type::Type& ty,
+                                                           zc::StringPtr ifaceName,
+                                                           zc::StringPtr assocName);
+
   /// \brief Check if a type auto-derives the Sendable marker trait.
   ///
   /// Follows RFC 0005 auto-derivation rules:
