@@ -502,12 +502,31 @@ public:
   }
 
   /// \brief Create a GenericParams list.
-  ast::NodeId makeGenericParams(ast::NodeList params) {
+  ast::NodeId makeGenericParams(ast::NodeList params, ast::NodeId whereClause = ast::NodeId()) {
     ast::NodePayload payload;
     payload.words[ast::kGenericParamsNparamsWord] = params.size;
     payload.words[ast::kGenericParamsParamsFirstWord] = params.first;
     payload.words[ast::kGenericParamsParamsSizeWord] = params.size;
+    payload.words[ast::kGenericParamsWhereWord] = whereClause.value;
     return builder_.makeNode(ast::SyntaxKind::GenericParams, source::SourceRange(), payload);
+  }
+
+  /// \brief Create a WherePred.
+  ast::NodeId makeWherePred(ast::NodeId ty, ast::NodeId bound,
+                            ast::WhereBoundKind kind = ast::WhereBoundKind::Implements) {
+    ast::NodePayload payload;
+    payload.words[ast::kWherePredKindWord] = static_cast<uint32_t>(kind);
+    payload.words[ast::kWherePredTyWord] = ty.value;
+    payload.words[ast::kWherePredBoundWord] = bound.value;
+    return builder_.makeNode(ast::SyntaxKind::WherePred, source::SourceRange(), payload);
+  }
+
+  /// \brief Create a WhereClause.
+  ast::NodeId makeWhereClause(ast::NodeList predicates) {
+    ast::NodePayload payload;
+    payload.words[ast::kWhereClausePredsFirstWord] = predicates.first;
+    payload.words[ast::kWhereClausePredsSizeWord] = predicates.size;
+    return builder_.makeNode(ast::SyntaxKind::WhereClause, source::SourceRange(), payload);
   }
 
   /// \brief Create a MethodDecl.

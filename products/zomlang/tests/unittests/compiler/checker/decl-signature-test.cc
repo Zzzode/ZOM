@@ -171,6 +171,43 @@ ZC_TEST("DeclSignature.FunctionGenericParamPreservesBound") {
   }
 }
 
+ZC_TEST("DeclSignature.FunctionGenericParamPreservesWhereBound") {
+  TestFixture fix;
+  auto iface = fix.makeInterfaceDecl("Hashable"_zc);
+  auto generic = fix.makeGenericTypeParam("T"_zc);
+  auto wherePred =
+      fix.makeWherePred(fix.makeNamedTypeExpr("T"_zc), fix.makeNamedTypeExpr("Hashable"_zc));
+  zc::Vector<ast::NodeId> wherePreds;
+  wherePreds.add(wherePred);
+  auto whereClause = fix.makeWhereClause(fix.makeNodeList(wherePreds.asPtr()));
+  zc::Vector<ast::NodeId> genericNodes;
+  genericNodes.add(generic);
+  auto generics = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()), whereClause);
+
+  auto param = fix.makeFunctionParamDecl("value"_zc, fix.makeNamedTypeExpr("T"_zc));
+  zc::Vector<ast::NodeId> paramNodes;
+  paramNodes.add(param);
+  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
+  auto fn = fix.makeFunctionDecl("f"_zc, ast::NodeId(), paramList, fix.makeNamedTypeExpr("unit"_zc),
+                                 ast::NodeId(), generics);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(fn);
+  auto typeEnv = computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(typeEnv.hasType(fn));
+  auto& ty = typeEnv.getType(fn);
+  ZC_EXPECT(isFunction(ty));
+  if (isFunction(ty)) {
+    auto& fnTy = static_cast<const type::FunctionType&>(ty);
+    ZC_EXPECT(fnTy.getGenericParamCount() == 1);
+    if (fnTy.getGenericParamCount() == 1) {
+      ZC_EXPECT(fnTy.getGenericParam(0).upperBounds.size() == 1);
+    }
+  }
+}
+
 ZC_TEST("DeclSignature.FunctionParamAndReturnShareGenericTypeVar") {
   TestFixture fix;
   auto generic = fix.makeGenericTypeParam("T"_zc);

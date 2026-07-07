@@ -68,7 +68,7 @@ struct DeclSignatureComputer::Impl {
   const ast::BindingMetadata& metadata;
   diagnostics::DiagnosticEngine& diags;
   QueryCycleDetector cycles;
-  zc::HashMap<zc::StringPtr, const type::TypeVar*> genericTypeVars;  // non-owning
+  zc::HashMap<zc::StringPtr, type::TypeVar*> genericTypeVars;  // non-owning
   bool hadErrors = false;
 
   Impl(type::TypeEnv& te, symbol::SymbolTable& sym, const ast::Tree& t,
@@ -218,6 +218,14 @@ static zc::Own<type::Type> cloneType(const type::Type& ty) {
 
   // Fallback
   return zc::heap<ErrorType>();
+}
+
+static zc::Maybe<size_t> findGenericParamIndex(
+    zc::Vector<zc::Own<type::GenericParam>>& genericParams, zc::StringPtr name) {
+  for (size_t i = 0; i < genericParams.size(); ++i) {
+    if (genericParams[i]->name == name) { return i; }
+  }
+  return zc::none;
 }
 
 zc::StringPtr DeclSignatureComputer::resolvePathName(ast::NodeId pathNode) const {
@@ -473,7 +481,7 @@ void DeclSignatureComputer::computeFunctionSignature(symbol::FunctionSymbol& fn,
   const auto& node = impl->tree.node(fnDecl);
 
   auto oldGenericTypeVars = zc::mv(impl->genericTypeVars);
-  impl->genericTypeVars = zc::HashMap<zc::StringPtr, const type::TypeVar*>();
+  impl->genericTypeVars = zc::HashMap<zc::StringPtr, type::TypeVar*>();
   zc::Vector<zc::Own<type::GenericParam>> genericParams;
 
   auto typeParamsId = ast::NodeId(node.payload.words[kFunctionDeclTypeParamsIdWord]);
@@ -502,6 +510,42 @@ void DeclSignatureComputer::computeFunctionSignature(symbol::FunctionSymbol& fn,
         if (impl->tree.contains(defaultTyId)) { (void)resolveTypeExpr(defaultTyId); }
         genericParams.add(zc::mv(genericParam));
         impl->typeEnv.setType(genericId, cloneType(typeVar));
+      }
+      auto whereClause = ast::NodeId(typeParams.payload.words[kGenericParamsWhereWord]);
+      if (impl->tree.contains(whereClause)) {
+        const auto& whereNode = impl->tree.node(whereClause);
+        if (whereNode.kind == SyntaxKind::WhereClause) {
+          NodeList predicates;
+          predicates.first = whereNode.payload.words[kWhereClausePredsFirstWord];
+          predicates.size = whereNode.payload.words[kWhereClausePredsSizeWord];
+
+          for (ast::NodeId predId : impl->tree.list(predicates)) {
+            if (!impl->tree.contains(predId)) { continue; }
+            const auto& pred = impl->tree.node(predId);
+            if (pred.kind != SyntaxKind::WherePred) { continue; }
+            auto kind = static_cast<WhereBoundKind>(pred.payload.words[kWherePredKindWord]);
+            if (kind != WhereBoundKind::Implements && kind != WhereBoundKind::Subtype) { continue; }
+
+            auto tyId = ast::NodeId(pred.payload.words[kWherePredTyWord]);
+            auto boundId = ast::NodeId(pred.payload.words[kWherePredBoundWord]);
+            if (!impl->tree.contains(tyId) || !impl->tree.contains(boundId)) { continue; }
+
+            const auto& tyNode = impl->tree.node(tyId);
+            if (tyNode.kind != SyntaxKind::NamedTypeExpr) { continue; }
+            auto typeParamName =
+                resolvePathName(ast::NodeId(tyNode.payload.words[kNamedTypeExprPathWord]));
+            if (typeParamName.size() == 0) { continue; }
+
+            ZC_IF_SOME(typeVar, impl->genericTypeVars.find(typeParamName)) {
+              if (typeVar == nullptr) { continue; }
+              auto boundType = resolveTypeExpr(boundId);
+              typeVar->addUpperBound(cloneType(*boundType));
+              ZC_IF_SOME(index, findGenericParamIndex(genericParams, typeParamName)) {
+                genericParams[index]->upperBounds.add(zc::mv(boundType));
+              }
+            }
+          }
+        }
       }
     }
   }
