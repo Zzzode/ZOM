@@ -1,0 +1,5 @@
+class Box<T> {
+    value: T;
+}
+
+impl<T> !std::marker::Shared for Box<T> where T: Eq;

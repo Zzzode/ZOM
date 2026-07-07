@@ -460,8 +460,8 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
   if (kindAt(start) == ast::SyntaxKind::Hash && start == nodeStart) {
     if (!shouldSuppressDiagnostic(start)) {
       diagnosticEngine.diagnose<diagnostics::DiagID::DanglingHash>(diagnosticLoc(start))
-          .addChild(zc::heap<diagnostics::Diagnostic>(
-              diagnostics::DiagID::DanglingHashHelp, diagnosticLoc(start)));
+          .addChild(zc::heap<diagnostics::Diagnostic>(diagnostics::DiagID::DanglingHashHelp,
+                                                      diagnosticLoc(start)));
     }
     const size_t afterHash = start + 1;
     boundary.nodeStart = afterHash;
@@ -613,7 +613,9 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
       } else if (isSoftKeyword(head, "impl"_zc) ||
                  (isSoftKeyword(head, "unsafe"_zc) && head + 1 < limit &&
                   isSoftKeyword(head + 1, "impl"_zc))) {
-        boundary.kind = ast::SyntaxKind::StandaloneImplDecl;
+        boundary.kind = isMarkerImplDeclarationStart(head, limit)
+                            ? ast::SyntaxKind::MarkerImpl
+                            : ast::SyntaxKind::StandaloneImplDecl;
         boundary.end = consumeBracedDeclarationEnd(head, limit);
       } else if (head + 1 < limit && kindAt(head + 1) == ast::SyntaxKind::Colon) {
         boundary.kind = ast::SyntaxKind::LabeledStatement;
@@ -708,6 +710,8 @@ ast::NodeId Parser::Impl::parseSourceElementOfKind(AstFactory& builder, size_t s
       return parseExternBlockDeclaration(builder, start, end);
     case ast::SyntaxKind::StandaloneImplDecl:
       return parseStandaloneImplDeclaration(builder, start, end);
+    case ast::SyntaxKind::MarkerImpl:
+      return parseMarkerImplDeclaration(builder, start, end);
     case ast::SyntaxKind::ReturnStmt:
       return parseReturnStatement(builder, start, end);
     case ast::SyntaxKind::SuspendStatement:

@@ -1310,6 +1310,79 @@ static void insertRemainingAngleTokens(int compactType, Object parser) {
         catch (Exception ignore) { return false; }
     }
 
+    static boolean peekIsMarkerImplAfterOptionalUnsafe(Object parser, boolean hasUnsafePrefix) {
+        if (!(parser instanceof ZomParser)) return false;
+        org.antlr.v4.runtime.TokenStream ts;
+        try { ts = ((ZomParser) parser).getTokenStream(); }
+        catch (Exception ignore) { return false; }
+        int implOffset = hasUnsafePrefix ? 2 : 1;
+        try {
+            org.antlr.v4.runtime.Token implTok = ts.LT(implOffset);
+            if (implTok == null || !"impl".equals(implTok.getText())) return false;
+            return peekIsMarkerImplRestFromOffset(parser, implOffset + 1);
+        } catch (Exception ignore) {
+            return false;
+        }
+    }
+
+    static boolean peekIsMarkerImplRestFromOffset(Object parser, int offset) {
+        if (!(parser instanceof ZomParser)) return false;
+        org.antlr.v4.runtime.TokenStream ts;
+        try { ts = ((ZomParser) parser).getTokenStream(); }
+        catch (Exception ignore) { return false; }
+        try {
+            if (ts.LA(offset) == LT) {
+                int depth = 0;
+                while (true) {
+                    int tokenType = ts.LA(offset);
+                    if (tokenType == EOF) return false;
+                    if (tokenType == LT) {
+                        ++depth;
+                    } else if (tokenType == GT) {
+                        --depth;
+                        if (depth == 0) {
+                            ++offset;
+                            break;
+                        }
+                    } else if (tokenType == RSHIFT) {
+                        depth -= 2;
+                        ++offset;
+                        if (depth <= 0) break;
+                        continue;
+                    } else if (tokenType == URSHIFT) {
+                        depth -= 3;
+                        ++offset;
+                        if (depth <= 0) break;
+                        continue;
+                    }
+                    ++offset;
+                }
+            }
+
+            if (ts.LA(offset) == NOT) return true;
+
+            int cursor = offset;
+            int segments = 0;
+            boolean sawMarkerSegment = false;
+            while (true) {
+                org.antlr.v4.runtime.Token segment = ts.LT(cursor);
+                if (segment == null) return false;
+                int segmentType = segment.getType();
+                if (segmentType == EOF || segmentType == FOR) return false;
+
+                ++segments;
+                if ("marker".equals(segment.getText())) { sawMarkerSegment = true; }
+
+                if (ts.LA(cursor + 1) != COLONCOLON) { break; }
+                cursor += 2;
+            }
+
+            return segments >= 2 && sawMarkerSegment && ts.LA(cursor + 1) == FOR;
+        } catch (Exception ignore) {
+            return false;
+        }
+    }
+
     /** Verify that a two-token compound spelling has no trivia between tokens. */
     static boolean checkAdjacent(Token left, Token right, String spelling) {
         if (left == null || right == null) return true;
@@ -1672,10 +1745,12 @@ declaration
 
 
 
-    | unsafeTok=identifier { checkIsUnsafePrefix($unsafeTok.text, this) }?
+    | { peekIsMarkerImplAfterOptionalUnsafe(this, true) }?
+      unsafeTok=identifier { checkIsUnsafePrefix($unsafeTok.text, this) }?
       markerImplRest                                                                        # markerImplUnsafe
 
-    | markerImplRest                                                                        # markerImplPlain
+    | { peekIsMarkerImplAfterOptionalUnsafe(this, false) }?
+      markerImplRest                                                                        # markerImplPlain
 
 
     // impl <GenericParams>? InterfaceName ('+' MarkerPath)* for Type { ImplMember* }
@@ -1698,12 +1773,16 @@ declaration
 // ---------- MarkerImpl common stem (after optional unsafe prefix)
 markerImplRest
     : implTok=identifier   { checkIsImplKeyword($implTok.text, this) }?
-      ( NOT )?
-      attributePath
       typeParameters?
+      ( NOT )?
+      markerImplPath
       FOR typeExpr
       whereClause?
       ( SEMICOLON | structBody )
+    ;
+
+markerImplPath
+    : pathSegment ( colonColon pathSegment )*
     ;
 
 // ---------- Interface-bound list (17-gr line 294)
@@ -1724,8 +1803,8 @@ markerImplRest
 // 1+ segment interface/marker path.
 //   * 1-segment  -> local/imported interface name, e.g. `Serialize`, `Debug`
 //   * 2+ segment -> fully qualified marker/interface name, e.g. `core::marker::Send`
-//   (marker impls by definition require 2+ segments per 17-gr line 254; we accept
-//    1+ here so the same nonterminal works for plain interface names).
+//   Marker impls use `attributePath`; negative marker impls are syntactically
+//   disambiguated by `!`, while positive short marker names are resolved by S1.
 qualifiedPathOrIdent
     : pathSegment ( colonColon pathSegment )*
     ;

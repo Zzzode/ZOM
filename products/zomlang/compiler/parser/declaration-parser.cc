@@ -70,6 +70,38 @@ bool Parser::Impl::isSoftDeclarationHead(size_t index, size_t limit) const {
          isSoftKeyword(index + 1, "impl"_zc);
 }
 
+bool Parser::Impl::attributePathContainsSegment(size_t start, size_t end,
+                                                zc::StringPtr expected) const {
+  for (size_t cursor = start; cursor < end; ++cursor) {
+    if (!isAttributePathSegment(kindAt(cursor))) { continue; }
+    zc::StringPtr text = tokenAt(cursor).getValue();
+    if (text.size() == 0) { text = tokenLabel(tokenAt(cursor)); }
+    if (text == expected) { return true; }
+  }
+  return false;
+}
+
+bool Parser::Impl::isMarkerImplDeclarationStart(size_t index, size_t limit) const {
+  if (index >= limit) { return false; }
+
+  size_t cursor = index;
+  if (isSoftKeyword(cursor, "unsafe"_zc)) { ++cursor; }
+  if (cursor >= limit || !isSoftKeyword(cursor, "impl"_zc)) { return false; }
+  ++cursor;
+
+  if (cursor < limit && kindAt(cursor) == ast::SyntaxKind::LessThan) {
+    TokenCursor angleCursor = tokenCursorAt(cursor);
+    if (!consumeBalancedAngleList(angleCursor, limit)) { return false; }
+    cursor = angleCursor.position();
+  }
+
+  if (cursor < limit && kindAt(cursor) == ast::SyntaxKind::Exclamation) { return true; }
+
+  const size_t pathEnd = findAttributePathEnd(cursor, limit);
+  return attributePathSegmentCount(cursor, pathEnd) >= 2 &&
+         attributePathContainsSegment(cursor, pathEnd, "marker"_zc);
+}
+
 bool Parser::Impl::parseExternAbi(size_t index, ast::Abi& abi) const {
   abi = ast::Abi::Cdecl;
   if (kindAt(index) != ast::SyntaxKind::StringLiteral) { return true; }
@@ -2264,6 +2296,86 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
   }
   return builder.makeStandaloneImplDecl(rangeFor(start, end), isUnsafe, ifaces, forTy, whereClause,
                                         typeParams, members);
+}
+
+ast::NodeId Parser::Impl::parseMarkerImplDeclaration(AstFactory& builder, size_t start,
+                                                     size_t end) const {
+  bool isUnsafe = false;
+  size_t implIndex = start;
+  if (isSoftKeyword(implIndex, "unsafe"_zc)) {
+    isUnsafe = true;
+    ++implIndex;
+  }
+
+  if (!isSoftKeyword(implIndex, "impl"_zc)) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(implIndex),
+                                                                  "impl"_zc);
+    return ast::NodeId();
+  }
+
+  size_t markerStart = implIndex + 1;
+  ast::NodeId typeParams;
+  if (markerStart < end && kindAt(markerStart) == ast::SyntaxKind::LessThan) {
+    typeParams = parseTypeParameters(builder, markerStart, end);
+    TokenCursor angleCursor = tokenCursorAt(markerStart);
+    markerStart = consumeBalancedAngleList(angleCursor, end) ? angleCursor.position() : end;
+  }
+
+  bool isNegated = false;
+  if (markerStart < end && kindAt(markerStart) == ast::SyntaxKind::Exclamation) {
+    isNegated = true;
+    ++markerStart;
+  }
+
+  TokenCursor bodyCursor = tokenCursorAt(implIndex + 1);
+  const size_t bodyOpen = consumeBalancedUntil(bodyCursor, end, ast::SyntaxKind::LeftBrace);
+  TokenCursor semiCursor = tokenCursorAt(implIndex + 1);
+  const size_t semi = consumeBalancedUntil(semiCursor, end, ast::SyntaxKind::Semicolon);
+  const size_t headerEnd = bodyOpen < end ? bodyOpen : (semi < end ? semi : end);
+  if (bodyOpen >= end && semi >= end) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(headerEnd), "{"_zc);
+    return ast::NodeId();
+  }
+
+  const size_t markerEnd = findAttributePathEnd(markerStart, headerEnd);
+  if (markerEnd <= markerStart ||
+      (!isNegated && attributePathSegmentCount(markerStart, markerEnd) < 2)) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(markerStart));
+    return ast::NodeId();
+  }
+
+  TokenCursor forCursor = tokenCursorAt(markerEnd);
+  const size_t forIndex =
+      consumeBalancedTypeUntil(forCursor, headerEnd, ast::SyntaxKind::ForKeyword);
+  if (forIndex >= headerEnd) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(headerEnd),
+                                                                  "for"_zc);
+    return ast::NodeId();
+  }
+  if (forIndex + 1 >= headerEnd) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(forIndex + 1));
+    return ast::NodeId();
+  }
+
+  TokenCursor whereCursor = tokenCursorAt(forIndex + 1);
+  const size_t where = consumeBalancedTypeIdentifierUntil(whereCursor, headerEnd, "where"_zc);
+  ast::NodeId whereClause;
+  if (where < headerEnd) {
+    whereClause = parseWhereClause(builder, where, headerEnd);
+    if (!whereClause) { return ast::NodeId(); }
+    if (typeParams) { typeParams = parseTypeParameters(builder, implIndex + 1, end, whereClause); }
+  }
+
+  const ast::NodeId forTy =
+      parseTypeRange(builder, forIndex + 1, where < headerEnd ? where : headerEnd);
+  if (!forTy) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(forIndex + 1));
+    return ast::NodeId();
+  }
+
+  return builder.makeMarkerImpl(rangeFor(start, end), isUnsafe, isNegated,
+                                makeAttributePath(builder, markerStart, markerEnd), forTy,
+                                whereClause, typeParams);
 }
 
 }  // namespace parser

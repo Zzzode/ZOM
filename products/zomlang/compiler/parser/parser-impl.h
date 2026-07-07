@@ -242,6 +242,10 @@ struct Parser::Impl {
 
   bool isSoftDeclarationHead(size_t index, size_t limit) const;
 
+  bool attributePathContainsSegment(size_t start, size_t end, zc::StringPtr expected) const;
+
+  bool isMarkerImplDeclarationStart(size_t index, size_t limit) const;
+
   bool parseExternAbi(size_t index, ast::Abi& abi) const;
 
   bool rangeIsWrapped(size_t start, size_t end, ast::SyntaxKind open, ast::SyntaxKind close) const;
@@ -761,6 +765,8 @@ struct Parser::Impl {
                                      size_t headerEnd) const;
 
   ast::NodeId parseStandaloneImplDeclaration(AstFactory& builder, size_t start, size_t end) const;
+
+  ast::NodeId parseMarkerImplDeclaration(AstFactory& builder, size_t start, size_t end) const;
 
   ast::NodeId parseExpressionStatement(AstFactory& builder, size_t start, size_t end) const;
 

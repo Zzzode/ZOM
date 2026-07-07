@@ -1,0 +1,5 @@
+section: "Ch.17 StandaloneImplDeclaration"
+covers_rule: "standaloneImplDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Qualified interface paths without a marker namespace segment remain standalone interface impls."

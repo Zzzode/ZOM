@@ -1,0 +1,5 @@
+class Box {
+    value: i32;
+}
+
+impl !Shared for Box;

@@ -43,7 +43,7 @@ those belong in compiler AST/FileCheck expectations under
 | 5 | `06-declarations` | Functions, classes, enums, type aliases, modifiers, declarations at module scope | 15 | 8 | 10 | 4 | 37 |
 | 6 | `07-patterns` | Match patterns: literal, binding, struct, tuple, or-pattern, wildcard, guard | 13 | 8 | 10 | 0 | 31 |
 | 7 | `08-adt` | Algebraic data types: structs, enums, variants, constructors, inheritance, fields | 18 | 10 | 13 | 0 | 41 |
-| 8 | `09-interfaces` | Interface declarations, method signatures, implements clauses, trait bounds | 13 | 8 | 10 | 0 | 31 |
+| 8 | `09-interfaces` | Interface declarations, method signatures, implements clauses, trait bounds | 16 | 8 | 10 | 0 | 34 |
 | 9 | `11-error` | Error handling: try/catch, throw, raises signatures, async/await, yield | 10 | 6 | 10 | 0 | 26 |
 | 10 | `12-generics` | Generic parameters, where clauses, generic instantiation, variance placeholders | 11 | 6 | 9 | 0 | 26 |
 | 11 | `13-modules` | Module files, imports/exports, path resolution, package-level declarations | 18 | 12 | 19 | 0 | 49 |
@@ -52,7 +52,7 @@ those belong in compiler AST/FileCheck expectations under
 | 14 | `19-conditional` | Conditional compilation: `#[zom::cfg(...)]` attribute-gated AST stripping, predicate combinators, file-suffix conventions | 6 | 4 | 5 | 0 | 15 |
 | 15 | `20-ffi` | FFI syntax: extern declarations, ABI strings, unsafe blocks | 8 | 4 | 3 | 1 | 16 |
 | 16 | `21-macros` | Macro and derive syntax | 8 | 4 | 3 | 0 | 15 |
-|   | **Total** | | **247** | **145** | **219** | **13** | **624** |
+|   | **Total** | | **250** | **145** | **219** | **13** | **627** |
 
 ## Usage
 
@@ -144,10 +144,10 @@ Each semantic predicate in the grammar has explicit trigger coverage in the suit
 | `checkSpawnModifierCall` (spawn modifier requires a call expression, not a statement) | `04-expressions/spawn_expr_edge_01.zom`, `15-concurrency/spawn_priority_call_pos_04.zom`, `15-concurrency/spawn_priority_nocall_reject_neg_01.zom`, `15-concurrency/spawn_multi_mods_edge_01.zom` |
 | `checkLabelNoAttrAfterLabel` (attributes on labeled statements are illegal) | `05-statements/label_attr_reject_neg_01.zom` |
 | `checkSuspendUntil` (`suspend` must be followed by `until` + expr, or a standalone expression) | `05-statements/suspend_forms_pos_01.zom`, `05-statements/suspend_forms_pos_02.zom`, `05-statements/suspend_not_until_reject_neg_01.zom`, `15-concurrency/suspend_until_pos_07.zom`, `15-concurrency/suspend_until_complex_edge_03.zom`, `15-concurrency/suspend_foo_reject_neg_04.zom`, `15-concurrency/suspend_ill_formed_neg_05.zom`, `15-concurrency/suspend_plain_pos_06.zom`, `15-concurrency/multi_suspend_edge_02.zom` |
-| `checkImplementsKeyword` (enforces `implements` token presence in class declaration and rejects `impl` reserved syntax) | `08-adt/class_inheritance_pos_02.zom`, `08-adt/multi_implements_pos_13.zom`, `08-adt/extends_plus_implements_pos_14.zom`, `06-declarations/class_decl_edge_01.zom`, `09-interfaces/class_implements_pos_08.zom`, `09-interfaces/class_implements_edge_07.zom`, `09-interfaces/complex_impl_pos_09.zom`, `09-interfaces/implements_comma_reject_neg_06.zom`, `09-interfaces/iface_impl_keyword_neg_10.zom` |
+| `checkImplementsKeyword` (enforces `implements` token presence in class declarations and keeps standalone `impl` as the implementation form) | `08-adt/class_inheritance_pos_02.zom`, `08-adt/multi_implements_pos_13.zom`, `08-adt/extends_plus_implements_pos_14.zom`, `06-declarations/class_decl_edge_01.zom`, `09-interfaces/class_implements_pos_08.zom`, `09-interfaces/class_implements_edge_07.zom`, `09-interfaces/complex_impl_pos_09.zom`, `09-interfaces/qualified_impl_pos_15.zom`, `09-interfaces/marker_impl_where_pos_14.zom`, `09-interfaces/marker_impl_short_neg_pos_16.zom`, `09-interfaces/implements_comma_reject_neg_06.zom`, `09-interfaces/iface_impl_keyword_neg_10.zom` |
 | `checkBoolLiteral` (true/false literals inside pattern context) | `07-patterns/literal_bool_predicate_trigger_edge_01.zom` |
 | `checkBindPat` (binding-pattern disambiguation; `_` by itself is wildcard, not a bind) | `07-patterns/underscore_bind_reject_neg_01.zom` |
-| `reserved` (rejects reserved keywords used as identifiers, or reserved syntax like `impl X for Y`) | `02-lexical/kw_vs_ident_neg_01.zom`, `02-lexical/reserved_kw_reject_neg_*.zom`, `04-expressions/reserved_*_neg_01.zom` (`var`, `namespace`, `yield`, `delete`, `await`, `instanceof`, `async`, `throw`), `09-interfaces/iface_impl_keyword_neg_10.zom`, `11-error/try_catch_reject_neg_03.zom`, `11-error/throw_reject_neg_04.zom`, `11-error/async_await_reject_neg_06.zom`, `11-error/var_reject_neg_08.zom`, `11-error/yield_reject_neg_09.zom` |
+| `reserved` (rejects reserved keywords used as identifiers and reserved feature syntax) | `02-lexical/kw_vs_ident_neg_01.zom`, `02-lexical/reserved_kw_reject_neg_*.zom`, `04-expressions/reserved_*_neg_01.zom` (`var`, `namespace`, `yield`, `delete`, `await`, `instanceof`, `async`, `throw`), `09-interfaces/iface_impl_keyword_neg_10.zom`, `11-error/try_catch_reject_neg_03.zom`, `11-error/throw_reject_neg_04.zom`, `11-error/async_await_reject_neg_06.zom`, `11-error/var_reject_neg_08.zom`, `11-error/yield_reject_neg_09.zom` |
 | `char literal single-scalar` (char literal holds exactly one Unicode scalar value) | `02-lexical/char_single_scalar_pos_01.zom`, `02-lexical/char_single_scalar_pos_02.zom`, `02-lexical/char_single_scalar_edge_01.zom`, `02-lexical/char_single_scalar_neg_01.zom`, `04-expressions/char_literal_neg_01.zom` |
 | `decimal leading-sep` (DECIMAL_LITERAL reject `_` as leading separator) | `02-lexical/decimal_leading_sep_reject_neg_01.zom`, `02-lexical/decimal_forms_pos_03.zom`, `02-lexical/radix_literals_pos_01.zom`, `04-expressions/decimal_leading_sep_neg_01.zom` |
 | `unicode escape range` (validates `\u{...}` escapes fit Unicode scalar range and use hex digits) | `02-lexical/string_escapes_pos_01.zom`, `02-lexical/string_escapes_neg_01.zom`, `02-lexical/string_escapes_neg_02.zom`, `02-lexical/ident_unicode_escapes_pos_01.zom`, `02-lexical/ident_zwnj_zwj_edge_01.zom` |

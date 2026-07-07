@@ -274,25 +274,25 @@ MarkerPath        ::= '!'? ( Identifier | QualifiedMarkerPath )
 QualifiedMarkerPath ::= Identifier ( '::' Identifier )+
 
 MarkerImplDeclaration
-    ::= 'unsafe'? 'impl' '!'? attributePath typeArguments?
+    ::= 'unsafe'? 'impl' TypeParameters? '!'? MarkerImplPath
         'for' TypeExpression WhereClause? ( structBody | ';' )
+MarkerImplPath ::= attributePath | Identifier
 
 (* ── impl-head disambiguation — MarkerImpl vs ordinary TraitImpl ─────────
    After the keyword 'impl', parser attempts MarkerImplDeclaration FIRST,
    using the following committed prefix:
-     (a) '!' present                 → definitely marker impl.
-     (b) 'unsafe' '!'                → definitely marker impl.
-     (c) otherwise, try to parse an attributePath enforcing ≥2 segments
-         (Ch.16 §16.3.7 hard rule — ≥2 segments for all namespaced attrs).
-         If ≥2-segment path is present AND keyword 'for' is found after
-         the path's optional typeArguments → marker impl.
-     (d) If (c) fails (path is 1-segment, or no 'for' follows, or path is
-         not a marker in the parser-visible prelude bitmap) → fall back
-         to ordinary TraitImplDeclaration parsing.
-   Fallback records the two alternatives in a disambiguation side-channel
-   for S1; name resolution picks the valid one; if BOTH are valid after
-   resolution → ZOM0799 AmbiguousMarkerOrTraitImpl with a note: "use
-   'marker impl' prefix or qualify the marker to ≥2 segments to disambiguate."
+     (a) after optional impl TypeParameters, '!' present -> definitely marker impl.
+         The marker path may be a short prelude name or a qualified path.
+     (b) 'unsafe' TypeParameters? '!' -> definitely marker impl.
+     (c) otherwise, after optional impl TypeParameters, a path containing
+         the `marker` namespace segment (for example `std::marker::Shared`)
+         is parsed directly as a marker impl.
+     (d) Other positive impl heads fall back to ordinary TraitImplDeclaration
+         parsing and are resolved semantically by S1.
+   If S1 later finds that a positive impl head is ambiguous between an
+   interface and a marker, it emits ZOM0799 AmbiguousMarkerOrTraitImpl with a
+   note: "write the marker through its qualified marker namespace path to
+   disambiguate."
    ────────────────────────────────────────────────────────────────────── *)
 
 (* Standalone Interface Impl — Ch.09 §7 *)

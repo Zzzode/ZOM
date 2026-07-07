@@ -557,8 +557,9 @@ ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters? ParameterClau
                  | 'const' ConstDeclList ';'
                  | ModifierList 'alias' BindingIdent TypeParameters? '=' TypeExpr ';'
 
-MarkerImplDecl ::= UnsafePrefix? 'impl' '!'? AttrPath TypeParameters?
-                   'for' TypeExpr ( ';' | '{' StructElement* '}' )
+MarkerImplDecl ::= UnsafePrefix? 'impl' TypeParameters? '!'? MarkerImplPath
+                   'for' TypeExpr WhereClause? ( ';' | '{' StructElement* '}' )
+MarkerImplPath ::= AttrPath | BindingIdent
     (* Marker impl: provides explicit marker trait evidence.
        '!' negates the impl (negative impl).
        'unsafe' prefix marks a marker impl with caller-proven invariants. *)

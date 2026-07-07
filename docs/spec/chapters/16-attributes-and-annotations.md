@@ -222,14 +222,17 @@ markerBound                                                     (* [A-018] *)
 (* ---------- [A-019] Marker (positive / negative) implementation ---------- *)
 
 markerImplDeclaration                                           (* [A-019] *)
-  = 'unsafe'? 'impl' '!'? attributePath typeArguments?
+  = 'unsafe'? 'impl' typeParameters? '!'? markerImplPath
       'for' type
       whereClause?
       ( structBody | ';' )
   ;
-  (*   Positive:  impl Sendable for MyStruct;                /  unsafe impl Shared for Mutex<T> {…}
-   *   Negative:  impl !Shared for UnsafeCell<T>;            — negation INFIX after 'impl'.
-   *   Conditional blanket: impl<T> Sendable for Vec<T> where T: Sendable;
+markerImplPath
+  = attributePath | Identifier
+  ;
+  (*   Positive:  impl std::marker::Sendable for MyStruct;   /  unsafe impl std::marker::Shared for Mutex<T> {...}
+   *   Negative:  impl !Shared for UnsafeCell<T>;            -- negation INFIX after optional type parameters.
+   *   Conditional blanket: impl<T> std::marker::Sendable for Vec<T> where T: Sendable;
    *)
 
 (* ---------- [A-020..A-023] Where-clause extension for negative bounds ---------- *)
@@ -313,8 +316,8 @@ syntactic context is considered non-conformant.
                              |                   |   NEVER reaches parser as a token.
    markerDeclaration         | { marker }        | contextual keyword, disambiguated as
                              |                   |   FIRST of a topLevelDecl.
-   markerImplDeclaration     | { impl, unsafe }  | after impl peek !? Ident ⇒ marker form;
-                             |                   |   plain type ⇒ ordinary impl.
+   markerImplDeclaration     | { impl, unsafe }  | after optional impl type parameters,
+                             |                   |   `!` or a marker namespace path selects marker form.
    Parameter-decl (At path)  | { At }            | guarded inside ParameterList.
    --------------------------+-------------------+-----------------------------
    Hash disambiguation in the parser (called when next token is Hash):
@@ -1429,7 +1432,7 @@ Positive marker impls and auto-derivation are monotone: once a type satisfies a 
 Canonical grammar (reproduced from 16.2 [A-019]):
 ```
 markerImplDeclaration
-  : 'unsafe'? 'impl' '!' attributePath typeArguments? 'for' type
+  : 'unsafe'? 'impl' typeParameters? '!' markerImplPath 'for' type
       whereClause? ( structBody | ';' )
   ;
 ```

@@ -1,0 +1,5 @@
+class Box {
+    value: i32;
+}
+
+impl foo::Debug for Box { }

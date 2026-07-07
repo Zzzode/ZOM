@@ -136,7 +136,8 @@ productions:
   LogicalORExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   MarkerConjunction: {status: inlined, parser: parseSourceElement, parent: Declaration}
   MarkerDeclaration: {status: inlined, parser: parseSourceElement, parent: Declaration}
-  MarkerImplDeclaration: {status: inlined, parser: parseSourceElement, parent: Declaration}
+  MarkerImplDeclaration: {status: direct, parser: parseMarkerImplDeclaration, ast: [MarkerImpl]}
+  MarkerImplPath: {status: inlined, parser: parseMarkerImplDeclaration, parent: MarkerImplDeclaration}
   MarkerPath: {status: inlined, parser: parseSourceElement, parent: Declaration}
   MatchBlock: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
   MatchClause: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}

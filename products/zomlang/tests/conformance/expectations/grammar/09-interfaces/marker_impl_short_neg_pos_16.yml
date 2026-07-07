@@ -1,0 +1,5 @@
+section: "Ch.17 MarkerImplDeclaration"
+covers_rule: "markerImplRest"
+expected: "ACCEPT"
+notes:
+  - "Negative marker impls may use a short prelude marker name because `!` disambiguates the impl head."
