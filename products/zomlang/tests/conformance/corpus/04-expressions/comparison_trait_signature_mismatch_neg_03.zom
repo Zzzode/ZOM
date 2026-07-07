@@ -1,0 +1,14 @@
+interface Eq {
+    fun eq(rhs: Point) -> bool;
+}
+
+class Point { }
+
+impl Eq for Point {
+    fun eq(rhs: str) -> Point;
+}
+
+let x: Point;
+let y: Point;
+
+x == y;

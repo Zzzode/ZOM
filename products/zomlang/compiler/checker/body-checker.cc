@@ -1452,6 +1452,20 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
+
+        auto methodName = binaryOperatorTraitMethod(traitName);
+        auto expectedReturn = traitName == "Eq"_zc
+                                  ? zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool)
+                                  : zc::heap<type::PrimitiveType>(type::PrimitiveKind::I32);
+        if (!validateBinaryOperatorTrait(expr, traitName, methodName, resolvedLhs, resolvedRhs,
+                                         *expectedReturn)) {
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::OperatorTraitSignatureMismatch>(
+              loc, traitName, resolvedLhs.toString(), methodName, resolvedRhs.toString(),
+              expectedReturn->toString());
+          impl->hadErrors = true;
+          return storeType(expr, zc::heap<type::ErrorType>());
+        }
       }
       return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
     }

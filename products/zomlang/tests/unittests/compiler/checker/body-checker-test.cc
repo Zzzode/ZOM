@@ -157,7 +157,18 @@ void expectUserTypeComparisonImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKi
   zc::Vector<ast::NodeId> ifaceNodes;
   ifaceNodes.add(fix.makeNamedTypeExpr(ifaceName));
   auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-  auto implDecl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Point"_zc), ifaceList);
+
+  zc::Vector<ast::NodeId> implParams;
+  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Point"_zc)));
+  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
+  const bool isEq = ifaceName == "Eq"_zc;
+  auto implMethod = fix.makeMethodDecl(isEq ? "eq"_zc : "cmp"_zc, ast::NodeId(), implParamList,
+                                       fix.makeNamedTypeExpr(isEq ? "bool"_zc : "i32"_zc));
+  zc::Vector<ast::NodeId> implMembers;
+  implMembers.add(implMethod);
+  auto implDecl =
+      fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Point"_zc), ifaceList,
+                                 fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
 
   auto xDecl =
       fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc), fix.makeNamedTypeExpr("Point"_zc));
@@ -559,6 +570,66 @@ ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
 
 ZC_TEST("BodyChecker.BinaryEqUsesUserTypeEqImpl") {
   expectUserTypeComparisonImpl("Eq"_zc, ast::BinaryOperatorKind::Eq);
+}
+
+ZC_TEST("BodyChecker.BinaryEqRejectsWrongTraitMethodSignature") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> ifaceParams;
+  ifaceParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Point"_zc)));
+  auto ifaceParamList = fix.makeFunctionParamList(fix.makeNodeList(ifaceParams.asPtr()));
+  auto ifaceMethod =
+      fix.makeMethodDecl("eq"_zc, ast::NodeId(), ifaceParamList, fix.makeNamedTypeExpr("bool"_zc));
+  zc::Vector<ast::NodeId> ifaceMembers;
+  ifaceMembers.add(ifaceMethod);
+  auto eqIface = fix.makeInterfaceDecl(
+      "Eq"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
+
+  auto pointType = fix.makeClassDecl("Point"_zc);
+
+  zc::Vector<ast::NodeId> implIfaceNodes;
+  implIfaceNodes.add(fix.makeNamedTypeExpr("Eq"_zc));
+  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
+
+  zc::Vector<ast::NodeId> implParams;
+  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("str"_zc)));
+  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
+  auto implMethod =
+      fix.makeMethodDecl("eq"_zc, ast::NodeId(), implParamList, fix.makeNamedTypeExpr("Point"_zc));
+  zc::Vector<ast::NodeId> implMembers;
+  implMembers.add(implMethod);
+  auto implDecl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Point"_zc), implIfaces,
+                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
+
+  auto xDecl =
+      fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc), fix.makeNamedTypeExpr("Point"_zc));
+  auto yDecl =
+      fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc), fix.makeNamedTypeExpr("Point"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(xDecl);
+  decls.add(yDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Eq, fix.makeIdentExpr("x"_zc),
+                                    fix.makeIdentExpr("y"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(eqIface);
+  topDecls.add(pointType);
+  topDecls.add(implDecl);
+  topDecls.add(let);
+  topDecls.add(binExpr);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(
+      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
+  ZC_EXPECT(result.typeEnv.hasType(binExpr));
+  if (result.typeEnv.hasType(binExpr)) { ZC_EXPECT(isError(result.typeEnv.getType(binExpr))); }
 }
 
 ZC_TEST("BodyChecker.BinaryEqRejectsUserTypeWithoutEqImpl") {
