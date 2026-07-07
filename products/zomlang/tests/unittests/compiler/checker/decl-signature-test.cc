@@ -19,7 +19,9 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/binder/binder.h"
+#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
@@ -46,6 +48,23 @@ using tests::TestFixture;
 
 namespace {
 
+class CapturingDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
+public:
+  zc::Vector<diagnostics::DiagID> ids;
+
+  void handleDiagnostic(const source::SourceManager&,
+                        const diagnostics::Diagnostic& diagnostic) override {
+    ids.add(diagnostic.getId());
+  }
+};
+
+bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnostics::DiagID id) {
+  for (auto emitted : consumer.ids) {
+    if (emitted == id) return true;
+  }
+  return false;
+}
+
 // Helper: run Binder then DeclSignatureComputer, return TypeEnv.
 type::TypeEnv computeSignatures(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
   auto tree = fix.buildSourceFile("test"_zc, decls);
@@ -61,6 +80,15 @@ type::TypeEnv computeSignatures(TestFixture& fix, zc::ArrayPtr<const ast::NodeId
   sigComputer.computeSignatures();
 
   return typeEnv;
+}
+
+ast::NodeId makeAssociatedTypeDecl(TestFixture& fix, zc::StringPtr name) {
+  ast::NodePayload payload;
+  payload.words[ast::kAssociatedTypeDeclNameWord] = fix.builder().internIdent(name).value;
+  payload.words[ast::kAssociatedTypeDeclBoundWord] = 0;
+  payload.words[ast::kAssociatedTypeDeclDefaultTyWord] = 0;
+  return fix.builder().makeNode(ast::SyntaxKind::AssociatedTypeDecl, source::SourceRange(),
+                                payload);
 }
 
 const type::Type& aliasType(type::TypeEnv& typeEnv, ast::NodeId alias) {
@@ -632,6 +660,50 @@ ZC_TEST("DeclSignature.ResolveDynTypeExpr") {
 
   auto& ty = aliasType(typeEnv, alias);
   ZC_EXPECT(isExistential(ty));
+}
+
+ZC_TEST("DeclSignature.DynRejectsStaticInterfaceMethod") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto method = fix.makeMethodDecl("create"_zc, ast::NodeId(), ast::NodeId(),
+                                   fix.makeNamedTypeExpr("Factory"_zc), true);
+  zc::Vector<ast::NodeId> members;
+  members.add(method);
+  auto iface = fix.makeInterfaceDecl("Factory"_zc,
+                                     fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+  auto alias =
+      fix.makeAliasDecl("DynFactory"_zc, fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Factory"_zc)));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynStaticMethod));
+}
+
+ZC_TEST("DeclSignature.DynRejectsUnboundAssociatedType") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> members;
+  members.add(makeAssociatedTypeDecl(fix, "Item"_zc));
+  auto iface = fix.makeInterfaceDecl("Iterator"_zc,
+                                     fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+  auto alias = fix.makeAliasDecl("DynIterator"_zc,
+                                 fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Iterator"_zc)));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynUnassociatedType));
 }
 
 ZC_TEST("DeclSignature.ResolveObjectTypeExpr") {

@@ -15,6 +15,10 @@
 // RFC 0005 type checker diagnostics.  Numeric values are explicit because
 // the RFC assigns stable 0400-0499 codes by semantic category, not by file order.
 
+CHECKER_DIAG(334, DynUnassociatedType, kError,
+             "dyn interface '{0}' requires associated type '{1}' to be bound", 2)
+CHECKER_DIAG(335, DynStaticMethod, kError,
+             "Interface '{0}' has a static method and cannot be used as dyn", 1)
 CHECKER_DIAG(410, TypeCheckerTypeMismatch, kError, "Type mismatch: expected {0}, got {1}", 2)
 CHECKER_DIAG(411, CannotUnifyTypes, kError, "Cannot unify '{0}' with '{1}' in {2}", 3)
 CHECKER_DIAG(412, InfiniteType, kError, "Infinite type: {0}", 1)

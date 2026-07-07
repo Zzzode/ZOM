@@ -181,6 +181,12 @@ private:
   /// \brief Resolve an optional type (e.g., T?).
   zc::Own<type::Type> resolveOptionalType(const ast::Node& node);
 
+  /// \brief Find the interface declaration node for a resolved interface name.
+  ast::NodeId findInterfaceDecl(zc::StringPtr name) const;
+
+  /// \brief Emit object-safety diagnostics for a dyn interface head.
+  void checkDynObjectSafety(ast::NodeId ifaceTypeExpr, zc::StringPtr ifaceName);
+
   // ==========================================================================
   // Helpers
   // ==========================================================================

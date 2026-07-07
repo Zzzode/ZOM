@@ -278,6 +278,58 @@ void DeclSignatureComputer::reportError(ast::NodeId node, zc::StringPtr message)
   impl->hadErrors = true;
 }
 
+ast::NodeId DeclSignatureComputer::findInterfaceDecl(zc::StringPtr name) const {
+  ast::NodeId result;
+  const auto rootId = impl->tree.root();
+  if (!impl->tree.contains(rootId)) { return result; }
+
+  visitTreePreOrder(impl->tree, rootId, [&](ast::NodeId id, const ast::Node& node) {
+    if (result || node.kind != SyntaxKind::InterfaceDecl) { return; }
+    auto ifaceName = impl->tree.ident(IdentId(node.payload.words[kInterfaceDeclNameWord]));
+    if (ifaceName == name) { result = id; }
+  });
+
+  return result;
+}
+
+void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
+                                                 zc::StringPtr ifaceName) {
+  const ast::NodeId ifaceDecl = findInterfaceDecl(ifaceName);
+  if (!impl->tree.contains(ifaceDecl)) { return; }
+
+  const auto& ifaceNode = impl->tree.node(ifaceDecl);
+  const ast::NodeId membersId(ifaceNode.payload.words[kInterfaceDeclMembersIdWord]);
+  if (!impl->tree.contains(membersId)) { return; }
+
+  const auto& membersNode = impl->tree.node(membersId);
+  if (membersNode.kind != SyntaxKind::ClassMemberList) { return; }
+
+  NodeList members;
+  members.first = membersNode.payload.words[kClassMemberListMembersFirstWord];
+  members.size = membersNode.payload.words[kClassMemberListMembersSizeWord];
+
+  for (ast::NodeId memberId : impl->tree.list(members)) {
+    if (!impl->tree.contains(memberId)) { continue; }
+    const auto& member = impl->tree.node(memberId);
+    if (member.kind == SyntaxKind::MethodDecl &&
+        member.payload.words[kMethodDeclIsStaticWord] != 0) {
+      impl->diags.diagnose<DiagID::DynStaticMethod>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName);
+      impl->hadErrors = true;
+      continue;
+    }
+    if (member.kind == SyntaxKind::AssociatedTypeDecl) {
+      auto defaultTyId = ast::NodeId(member.payload.words[kAssociatedTypeDeclDefaultTyWord]);
+      if (!impl->tree.contains(defaultTyId)) {
+        auto assocName =
+            impl->tree.ident(IdentId(member.payload.words[kAssociatedTypeDeclNameWord]));
+        impl->diags.diagnose<DiagID::DynUnassociatedType>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                          ifaceName, assocName);
+        impl->hadErrors = true;
+      }
+    }
+  }
+}
+
 // ============================================================================
 // computeSignatures - main entry point
 // ============================================================================
@@ -1077,6 +1129,11 @@ zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node)
   const auto& ifaceListNode = impl->tree.node(ifacesId);
   if (ifaceListNode.kind != SyntaxKind::DynTypeIfaceList) {
     // The ifaces_id points directly to a type expression (e.g., a NamedTypeExpr)
+    if (ifaceListNode.kind == SyntaxKind::NamedTypeExpr) {
+      auto ifaceName =
+          resolvePathName(ast::NodeId(ifaceListNode.payload.words[kNamedTypeExprPathWord]));
+      if (ifaceName.size() > 0) { checkDynObjectSafety(ifacesId, ifaceName); }
+    }
     auto ifaceType = resolveTypeExpr(ifacesId);
     return zc::heap<type::ExistentialType>(zc::mv(ifaceType));
   }
@@ -1095,13 +1152,31 @@ zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node)
   // first, then package as an existential.
   if (ifaces.size() > 1) {
     zc::Vector<zc::Own<type::Type>> conjuncts;
-    for (ast::NodeId ifaceId : ifaces) { conjuncts.add(resolveTypeExpr(ifaceId)); }
+    for (ast::NodeId ifaceId : ifaces) {
+      if (impl->tree.contains(ifaceId)) {
+        const auto& ifaceNode = impl->tree.node(ifaceId);
+        if (ifaceNode.kind == SyntaxKind::NamedTypeExpr) {
+          auto ifaceName =
+              resolvePathName(ast::NodeId(ifaceNode.payload.words[kNamedTypeExprPathWord]));
+          if (ifaceName.size() > 0) { checkDynObjectSafety(ifaceId, ifaceName); }
+        }
+      }
+      conjuncts.add(resolveTypeExpr(ifaceId));
+    }
     auto interTy = zc::heap<type::IntersectionType>(zc::mv(conjuncts));
     return zc::heap<type::ExistentialType>(zc::mv(interTy));
   }
 
   // Single interface
   auto firstIfaceId = ifaces.front();
+  if (impl->tree.contains(firstIfaceId)) {
+    const auto& ifaceNode = impl->tree.node(firstIfaceId);
+    if (ifaceNode.kind == SyntaxKind::NamedTypeExpr) {
+      auto ifaceName =
+          resolvePathName(ast::NodeId(ifaceNode.payload.words[kNamedTypeExprPathWord]));
+      if (ifaceName.size() > 0) { checkDynObjectSafety(firstIfaceId, ifaceName); }
+    }
+  }
   auto ifaceType = resolveTypeExpr(firstIfaceId);
   return zc::heap<type::ExistentialType>(zc::mv(ifaceType));
 }
