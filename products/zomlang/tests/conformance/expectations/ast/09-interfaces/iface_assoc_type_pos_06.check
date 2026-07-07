@@ -1,40 +1,50 @@
 // RUN: %zomc compile --dump-ast %corpus/09-interfaces/iface_assoc_type_pos_06.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #15 @1:1..7:1 file_name="iface_assoc_type_pos_06.zom"
+// CHECK: SourceFile #17 @1:1..7:1 file_name="iface_assoc_type_pos_06.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #14 @1:1..6:2
+// CHECK-NEXT:     StatementListItem #16 @1:1..6:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #13 @1:1..6:2 name="Collection"
+// CHECK-NEXT:         InterfaceDecl #15 @1:1..6:2 name="Collection"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #12 @1:22..6:2 nmembers=4
+// CHECK-NEXT:             ClassMemberList #14 @1:22..6:2 nmembers=4
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 AssociatedTypeDecl #1 @2:5..2:15 name="Item"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 AssociatedTypeDecl #2 @3:5..3:18 name="Iter"
+// CHECK-NEXT:                 AssociatedTypeDecl #4 @3:5..3:18 name="Iter"
+// CHECK-NEXT:                   type_params_id:
+// CHECK-NEXT:                     GenericParams #3 @3:14..3:17 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         GenericTypeParam #2 @3:15..3:16 name="T" variance=Invariant
+// CHECK-NEXT:                           bound: null
+// CHECK-NEXT:                           default_ty: null
+// CHECK-NEXT:                       where_: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 AssociatedTypeDecl #5 @4:5..4:24 name="Error"
+// CHECK-NEXT:                 AssociatedTypeDecl #7 @4:5..4:24 name="Error"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound:
-// CHECK-NEXT:                     NamedTypeExpr #4 @4:18..4:23
+// CHECK-NEXT:                     NamedTypeExpr #6 @4:18..4:23
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #3 @4:18..4:23 segments=["Error"]
+// CHECK-NEXT:                         ModulePath #5 @4:18..4:23 segments=["Error"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 AssociatedTypeDecl #11 @5:5..5:32 name="State"
+// CHECK-NEXT:                 AssociatedTypeDecl #13 @5:5..5:32 name="State"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty:
-// CHECK-NEXT:                     UnionTypeExpr #10 @5:18..5:31
+// CHECK-NEXT:                     UnionTypeExpr #12 @5:18..5:31
 // CHECK-NEXT:                       alts:
-// CHECK-NEXT:                         NamedTypeExpr #7 @5:18..5:24
+// CHECK-NEXT:                         NamedTypeExpr #9 @5:18..5:24
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #6 @5:18..5:24 segments=["Closed"]
+// CHECK-NEXT:                             ModulePath #8 @5:18..5:24 segments=["Closed"]
 // CHECK-NEXT:                           args: []
-// CHECK-NEXT:                         NamedTypeExpr #9 @5:27..5:31
+// CHECK-NEXT:                         NamedTypeExpr #11 @5:27..5:31
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #8 @5:27..5:31 segments=["Open"]
+// CHECK-NEXT:                             ModulePath #10 @5:27..5:31 segments=["Open"]
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:       attrs: null

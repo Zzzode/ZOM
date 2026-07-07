@@ -85,6 +85,18 @@ type::TypeEnv computeSignatures(TestFixture& fix, zc::ArrayPtr<const ast::NodeId
 ast::NodeId makeAssociatedTypeDecl(TestFixture& fix, zc::StringPtr name) {
   ast::NodePayload payload;
   payload.words[ast::kAssociatedTypeDeclNameWord] = fix.builder().internIdent(name).value;
+  payload.words[ast::kAssociatedTypeDeclTypeParamsIdWord] = 0;
+  payload.words[ast::kAssociatedTypeDeclBoundWord] = 0;
+  payload.words[ast::kAssociatedTypeDeclDefaultTyWord] = 0;
+  return fix.builder().makeNode(ast::SyntaxKind::AssociatedTypeDecl, source::SourceRange(),
+                                payload);
+}
+
+ast::NodeId makeGenericAssociatedTypeDecl(TestFixture& fix, zc::StringPtr name,
+                                          ast::NodeId typeParams) {
+  ast::NodePayload payload;
+  payload.words[ast::kAssociatedTypeDeclNameWord] = fix.builder().internIdent(name).value;
+  payload.words[ast::kAssociatedTypeDeclTypeParamsIdWord] = typeParams.value;
   payload.words[ast::kAssociatedTypeDeclBoundWord] = 0;
   payload.words[ast::kAssociatedTypeDeclDefaultTyWord] = 0;
   return fix.builder().makeNode(ast::SyntaxKind::AssociatedTypeDecl, source::SourceRange(),
@@ -94,6 +106,7 @@ ast::NodeId makeAssociatedTypeDecl(TestFixture& fix, zc::StringPtr name) {
 ast::NodeId makeAssociatedTypeBinding(TestFixture& fix, zc::StringPtr name, ast::NodeId defaultTy) {
   ast::NodePayload payload;
   payload.words[ast::kAssociatedTypeDeclNameWord] = fix.builder().internIdent(name).value;
+  payload.words[ast::kAssociatedTypeDeclTypeParamsIdWord] = 0;
   payload.words[ast::kAssociatedTypeDeclBoundWord] = 0;
   payload.words[ast::kAssociatedTypeDeclDefaultTyWord] = defaultTy.value;
   return fix.builder().makeNode(ast::SyntaxKind::AssociatedTypeDecl, source::SourceRange(),
@@ -847,6 +860,31 @@ ZC_TEST("DeclSignature.DynRejectsUnboundAssociatedType") {
   computeSignatures(fix, topDecls.asPtr());
 
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynUnassociatedType));
+}
+
+ZC_TEST("DeclSignature.DynRejectsGenericAssociatedType") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> genericNodes;
+  genericNodes.add(fix.makeGenericTypeParam("T"_zc));
+  auto assocTypeParams = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()));
+
+  zc::Vector<ast::NodeId> members;
+  members.add(makeGenericAssociatedTypeDecl(fix, "Iter"_zc, assocTypeParams));
+  auto iface = fix.makeInterfaceDecl("Iterable"_zc,
+                                     fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+  auto alias = fix.makeAliasDecl("DynIterable"_zc,
+                                 fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Iterable"_zc)));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynGatNotAllowed));
 }
 
 ZC_TEST("DeclSignature.ResolveQualifiedAssociatedTypeProjection") {

@@ -797,10 +797,11 @@ constexpr uint32_t kFieldDeclIsMutWord = 3;
 constexpr uint32_t kFieldDeclIsStaticWord = 4;
 constexpr uint32_t kFieldDeclVisibilityWord = 5;
 
-constexpr uint32_t kAssociatedTypeDeclPayloadWordCount = 3;
+constexpr uint32_t kAssociatedTypeDeclPayloadWordCount = 4;
 constexpr uint32_t kAssociatedTypeDeclNameWord = 0;
-constexpr uint32_t kAssociatedTypeDeclBoundWord = 1;
-constexpr uint32_t kAssociatedTypeDeclDefaultTyWord = 2;
+constexpr uint32_t kAssociatedTypeDeclTypeParamsIdWord = 1;
+constexpr uint32_t kAssociatedTypeDeclBoundWord = 2;
+constexpr uint32_t kAssociatedTypeDeclDefaultTyWord = 3;
 
 constexpr uint32_t kGenericTypeParamPayloadWordCount = 4;
 constexpr uint32_t kGenericTypeParamNameWord = 0;

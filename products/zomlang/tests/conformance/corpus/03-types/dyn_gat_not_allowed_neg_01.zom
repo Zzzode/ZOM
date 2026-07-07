@@ -1,0 +1,5 @@
+interface Iterable {
+    type Iter<T>;
+}
+
+let x: dyn Iterable;

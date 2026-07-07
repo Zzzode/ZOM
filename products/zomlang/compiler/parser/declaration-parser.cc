@@ -947,19 +947,28 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
 
       ast::NodeId bound;
       ast::NodeId defaultTy;
+      ast::NodeId typeParams;
 
       if (nameIndex < memberEnd) {
+        size_t constraintSearchStart = nameIndex + 1;
+        if (constraintSearchStart < memberContentEnd &&
+            kindAt(constraintSearchStart) == ast::SyntaxKind::LessThan) {
+          typeParams = parseTypeParameters(builder, constraintSearchStart, memberContentEnd);
+          TokenCursor angleCursor = tokenCursorAt(constraintSearchStart);
+          constraintSearchStart = consumeBalancedAngleList(angleCursor, memberContentEnd)
+                                      ? angleCursor.position()
+                                      : memberContentEnd;
+        }
+
         // Find colon and equals within the rest of the member.
         size_t colonPos = memberContentEnd;
         size_t equalsPos = memberContentEnd;
-        for (size_t i = nameIndex + 1; i < memberContentEnd; ++i) {
-          const ast::SyntaxKind k = kindAt(i);
-          if (k == ast::SyntaxKind::Colon && colonPos == memberContentEnd) { colonPos = i; }
-          if (k == ast::SyntaxKind::Equals) {
-            equalsPos = i;
-            break;
-          }
-        }
+        TokenCursor equalsCursor = tokenCursorAt(constraintSearchStart);
+        equalsPos =
+            consumeBalancedTypeUntil(equalsCursor, memberContentEnd, ast::SyntaxKind::Equals);
+        TokenCursor colonCursor = tokenCursorAt(constraintSearchStart);
+        colonPos = consumeBalancedTypeUntil(colonCursor, memberContentEnd, ast::SyntaxKind::Colon);
+        if (equalsPos < memberContentEnd && colonPos > equalsPos) { colonPos = memberContentEnd; }
 
         if (colonPos < memberContentEnd) {
           const size_t boundEnd = equalsPos < memberContentEnd ? equalsPos : memberContentEnd;
@@ -973,8 +982,9 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
           defaultTy = parseTypeRange(builder, equalsPos + 1, defaultEnd);
         }
 
-        members.add(builder.makeAssociatedTypeDecl(
-            rangeFor(memberStart, memberEnd), internIdent(builder, nameIndex), bound, defaultTy));
+        members.add(builder.makeAssociatedTypeDecl(rangeFor(memberStart, memberEnd),
+                                                   internIdent(builder, nameIndex), typeParams,
+                                                   bound, defaultTy));
       }
 
       if (parentKind == ast::SyntaxKind::InterfaceDecl && semi >= memberEnd) {

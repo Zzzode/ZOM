@@ -12,9 +12,11 @@
 // CHECK-NEXT:             ClassMemberList #11 @1:19..5:2 nmembers=3
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 AssociatedTypeDecl #1 @2:5..2:17 name="Output"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:                 AssociatedTypeDecl #2 @3:5..3:16 name="Error"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:                 MethodDecl #10 @4:5..4:52 name="build" is_static=false visibility=Default

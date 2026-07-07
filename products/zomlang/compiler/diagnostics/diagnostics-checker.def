@@ -23,6 +23,8 @@ CHECKER_DIAG(334, DynUnassociatedType, kError,
              "dyn interface '{0}' requires associated type '{1}' to be bound", 2)
 CHECKER_DIAG(335, DynStaticMethod, kError,
              "Interface '{0}' has a static method and cannot be used as dyn", 1)
+CHECKER_DIAG(336, DynGatNotAllowed, kError,
+             "Interface '{0}' has generic associated type '{1}' and cannot be used as dyn", 2)
 CHECKER_DIAG(337, DynUnsizedParameter, kError,
              "Interface '{0}' has method '{1}' with unsized type '{2}' and cannot be used as dyn",
              3)

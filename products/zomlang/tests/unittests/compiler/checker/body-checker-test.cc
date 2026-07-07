@@ -277,6 +277,7 @@ ast::NodeId makeAssociatedTypeDecl(TestFixture& fix, zc::StringPtr name, ast::No
   ast::NodePayload payload;
   auto nameId = fix.builder().internIdent(name);
   payload.words[ast::kAssociatedTypeDeclNameWord] = nameId.value;
+  payload.words[ast::kAssociatedTypeDeclTypeParamsIdWord] = 0;
   payload.words[ast::kAssociatedTypeDeclBoundWord] = 0;
   payload.words[ast::kAssociatedTypeDeclDefaultTyWord] = defaultTy.value;
   return fix.builder().makeNode(ast::SyntaxKind::AssociatedTypeDecl, source::SourceRange(),

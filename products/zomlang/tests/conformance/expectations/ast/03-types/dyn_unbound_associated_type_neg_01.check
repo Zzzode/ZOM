@@ -12,6 +12,7 @@
 // CHECK-NEXT:             ClassMemberList #2 @1:18..3:2 nmembers=1
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 AssociatedTypeDecl #1 @2:5..2:15 name="Item"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:       attrs: null

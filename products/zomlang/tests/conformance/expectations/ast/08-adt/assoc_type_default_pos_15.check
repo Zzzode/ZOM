@@ -12,13 +12,16 @@
 // CHECK-NEXT:             ClassMemberList #8 @1:21..5:2 nmembers=3
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 AssociatedTypeDecl #1 @2:5..2:18 name="Element"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:                 AssociatedTypeDecl #3 @3:5..3:21 name="Size"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @3:17..3:20 kind=U64
 // CHECK-NEXT:                 AssociatedTypeDecl #7 @4:5..4:27 name="Key"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound:
 // CHECK-NEXT:                     NamedTypeExpr #5 @4:16..4:20
 // CHECK-NEXT:                       path:

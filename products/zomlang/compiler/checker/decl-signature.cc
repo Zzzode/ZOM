@@ -415,6 +415,20 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
       continue;
     }
     if (member.kind == SyntaxKind::AssociatedTypeDecl) {
+      auto typeParamsId = ast::NodeId(member.payload.words[kAssociatedTypeDeclTypeParamsIdWord]);
+      if (impl->tree.contains(typeParamsId)) {
+        const auto& typeParams = impl->tree.node(typeParamsId);
+        if (typeParams.kind == SyntaxKind::GenericParams &&
+            typeParams.payload.words[kGenericParamsNparamsWord] != 0) {
+          auto assocName =
+              impl->tree.ident(IdentId(member.payload.words[kAssociatedTypeDeclNameWord]));
+          impl->diags.diagnose<DiagID::DynGatNotAllowed>(nodeLoc(impl->tree, ifaceTypeExpr),
+                                                         ifaceName, assocName);
+          impl->hadErrors = true;
+          continue;
+        }
+      }
+
       auto defaultTyId = ast::NodeId(member.payload.words[kAssociatedTypeDeclDefaultTyWord]);
       if (!impl->tree.contains(defaultTyId)) {
         auto assocName =

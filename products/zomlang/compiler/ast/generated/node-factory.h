@@ -1184,9 +1184,10 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::FieldDecl, zc::mv(range), payload);
   }
 
-  NodeId makeAssociatedTypeDecl(source::SourceRange range, IdentId name, NodeId bound, NodeId default_ty) {
+  NodeId makeAssociatedTypeDecl(source::SourceRange range, IdentId name, NodeId type_params_id, NodeId bound, NodeId default_ty) {
     NodePayload payload;
     payload.words[kAssociatedTypeDeclNameWord] = name.value;
+    payload.words[kAssociatedTypeDeclTypeParamsIdWord] = type_params_id.value;
     payload.words[kAssociatedTypeDeclBoundWord] = bound.value;
     payload.words[kAssociatedTypeDeclDefaultTyWord] = default_ty.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::AssociatedTypeDecl, zc::mv(range), payload);

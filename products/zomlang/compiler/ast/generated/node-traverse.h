@@ -1257,6 +1257,10 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
       return;
     case SyntaxKind::AssociatedTypeDecl:
       {
+        const NodeId child(node.payload.words[kAssociatedTypeDeclTypeParamsIdWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      {
         const NodeId child(node.payload.words[kAssociatedTypeDeclBoundWord]);
         if (tree.contains(child)) { fn(child); }
       }

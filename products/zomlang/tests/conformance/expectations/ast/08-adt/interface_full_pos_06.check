@@ -18,9 +18,11 @@
 // CHECK-NEXT:             ClassMemberList #16 @1:41..6:2 nmembers=4
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 AssociatedTypeDecl #3 @2:5..2:15 name="Item"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:                 AssociatedTypeDecl #5 @3:5..3:22 name="Index"
+// CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @3:18..3:21 kind=U64

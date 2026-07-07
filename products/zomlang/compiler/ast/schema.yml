@@ -1320,9 +1320,10 @@ variants:
   - id: 0x122
     name: AssociatedTypeDecl
     bases: [DeclarationStatement]
-    doc:  "Interface associated type: type Name [: Bound] [= DefaultTy];"
+    doc:  "Interface associated type: type Name [<T...>] [: Bound] [= DefaultTy];"
     fields:
       - {name: name, type: IdentId}
+      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
       - {name: bound, type: NodeId, cast: TypeExpr, optional: true}
       - {name: default_ty, type: NodeId, cast: TypeExpr, optional: true}
 

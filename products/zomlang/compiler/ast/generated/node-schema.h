@@ -68,7 +68,7 @@ struct NodeSchemaEntry final {
 
 constexpr uint8_t kNodeSchemaNoWord = 0xff;
 constexpr const char* kAstSchemaVersion = "2.0";
-constexpr const char* kAstSchemaFingerprint = "0153d4fbcbeccb364d32da3d43421775dc56f30c873488af3c9e3bcb0940deab";
+constexpr const char* kAstSchemaFingerprint = "84945083157a99d0289e8dddc267977a86bbdd4cdcb7f24ac92e8d5ee220a06b";
 constexpr uint32_t kAstSchemaVariantCount = 160;
 
 constexpr NodeSchemaEnumValue kAttributePathLeadingEnumValues[] = {
@@ -1164,8 +1164,9 @@ constexpr NodeSchemaFieldEntry kFieldDeclFields[] = {
 
 constexpr NodeSchemaFieldEntry kAssociatedTypeDeclFields[] = {
   {"name", NodeSchemaFieldStorage::IdentId, 0, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
-  {"bound", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
-  {"default_ty", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+  {"type_params_id", NodeSchemaFieldStorage::NodeId, 1, kNodeSchemaNoWord, true, "GenericParams", nullptr, nullptr, 0},
+  {"bound", NodeSchemaFieldStorage::NodeId, 2, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
+  {"default_ty", NodeSchemaFieldStorage::NodeId, 3, kNodeSchemaNoWord, true, "TypeExpr", nullptr, nullptr, 0},
 };
 
 constexpr NodeSchemaFieldEntry kGenericTypeParamFields[] = {
@@ -1366,7 +1367,7 @@ constexpr NodeSchemaEntry kNodeSchemaEntries[] = {
   {SyntaxKind::AliasDecl, "AliasDecl", kAliasDeclFields, 3},
   {SyntaxKind::MethodDecl, "MethodDecl", kMethodDeclFields, 7},
   {SyntaxKind::FieldDecl, "FieldDecl", kFieldDeclFields, 6},
-  {SyntaxKind::AssociatedTypeDecl, "AssociatedTypeDecl", kAssociatedTypeDeclFields, 3},
+  {SyntaxKind::AssociatedTypeDecl, "AssociatedTypeDecl", kAssociatedTypeDeclFields, 4},
   {SyntaxKind::GenericTypeParam, "GenericTypeParam", kGenericTypeParamFields, 4},
   {SyntaxKind::SourceFile, "SourceFile", kSourceFileFields, 3},
   {SyntaxKind::ModulePath, "ModulePath", kModulePathFields, 1},
