@@ -778,6 +778,29 @@ ZC_TEST("DeclSignature.DynRejectsGenericInterfaceMethod") {
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynGenericMethod));
 }
 
+ZC_TEST("DeclSignature.DynRejectsBareSelfReturn") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto method = fix.makeMethodDecl("clone"_zc, ast::NodeId(), ast::NodeId(),
+                                   fix.makeNamedTypeExpr("Self"_zc));
+  zc::Vector<ast::NodeId> members;
+  members.add(method);
+  auto iface = fix.makeInterfaceDecl("Cloneable"_zc,
+                                     fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+  auto alias = fix.makeAliasDecl("DynCloneable"_zc,
+                                 fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Cloneable"_zc)));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynSelfReturn));
+}
+
 ZC_TEST("DeclSignature.DynRejectsUnboundAssociatedType") {
   TestFixture fix;
   auto consumer = zc::heap<CapturingDiagnosticConsumer>();

@@ -301,6 +301,30 @@ ast::NodeId DeclSignatureComputer::findInterfaceDecl(zc::StringPtr name) const {
   return result;
 }
 
+bool isBareSelfTypeExpr(const ast::Tree& tree, ast::NodeId typeExpr) {
+  if (!tree.contains(typeExpr)) { return false; }
+
+  const auto& node = tree.node(typeExpr);
+  if (node.kind != SyntaxKind::NamedTypeExpr) { return false; }
+
+  const auto pathId = ast::NodeId(node.payload.words[kNamedTypeExprPathWord]);
+  if (!tree.contains(pathId)) { return false; }
+
+  const auto& path = tree.node(pathId);
+  if (path.kind == SyntaxKind::IdentExpr) {
+    return tree.ident(IdentId(path.payload.words[kIdentExprNameWord])) == "Self"_zc;
+  }
+  if (path.kind != SyntaxKind::ModulePath) { return false; }
+
+  IdentList segments;
+  segments.first = path.payload.words[kModulePathSegmentsFirstWord];
+  segments.size = path.payload.words[kModulePathSegmentsSizeWord];
+  if (segments.size != 1) { return false; }
+
+  auto names = tree.identList(segments);
+  return names.size() == 1 && tree.ident(names[0]) == "Self"_zc;
+}
+
 void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
                                                  zc::StringPtr ifaceName) {
   const ast::NodeId ifaceDecl = findInterfaceDecl(ifaceName);
@@ -332,6 +356,16 @@ void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
           impl->hadErrors = true;
           continue;
         }
+      }
+    }
+    if (member.kind == SyntaxKind::MethodDecl) {
+      auto retTyId = ast::NodeId(member.payload.words[kMethodDeclRetTyWord]);
+      if (isBareSelfTypeExpr(impl->tree, retTyId)) {
+        auto methodName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
+        impl->diags.diagnose<DiagID::DynSelfReturn>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName,
+                                                    methodName);
+        impl->hadErrors = true;
+        continue;
       }
     }
     if (member.kind == SyntaxKind::MethodDecl &&

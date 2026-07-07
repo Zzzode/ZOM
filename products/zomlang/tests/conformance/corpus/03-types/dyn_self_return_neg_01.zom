@@ -1,0 +1,5 @@
+interface Cloneable {
+    fun clone() -> Self;
+}
+
+let x: dyn Cloneable;
