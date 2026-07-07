@@ -2586,7 +2586,9 @@ void BodyChecker::checkLetStmt(ast::NodeId stmt) {
     }
 
     if (isNull(resolvedInit)) {
-      reportError(declId, "cannot infer type from null initializer without annotation"_zc);
+      auto loc = getNodeLoc(impl->tree, declId);
+      impl->diags.diagnose<DiagID::CannotInferNullInitializer>(loc);
+      impl->hadErrors = true;
       impl->typeEnv.setType(declId, zc::heap<type::ErrorType>());
       return;
     }

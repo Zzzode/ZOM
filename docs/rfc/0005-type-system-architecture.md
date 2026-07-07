@@ -664,7 +664,7 @@ outward to their parent.
 | String literal | `str` |
 | Character literal | `char` |
 | Boolean literal | `bool` |
-| `null` | `PrimitiveType(Null)`. Equal only to itself. It can coerce only into an explicit union containing `null`, such as `T \| null` or `T?`. `let x = null` without type annotation is an error (ZOM0410: cannot infer type from null alone). |
+| `null` | `PrimitiveType(Null)`. Equal only to itself. It can coerce only into an explicit union containing `null`, such as `T \| null` or `T?`. `let x = null` without type annotation is an error (ZOM0421: cannot infer type from null initializer without annotation). |
 | `unit` expression (`{}` or `()`) | `unit` |
 | `IdentifierExpr` | Look up symbol's type from `TypeEnv`. If symbol is a generic parameter, return the `TypeVar` for that parameter. |
 | `BinaryExpr(op, lhs, rhs)` | Infer `lhs` type, infer `rhs` type, unify them (for arithmetic/comparison), check `op` is valid for that type. Result type: arithmetic -> same as operands; comparison -> `bool`. |
@@ -797,12 +797,12 @@ When checking bounds, where-clause constraints are also verified:
 function check_bounds(type_arg: Type, bounds: [Bound], where_bounds: [WhereBound]):
   for bound in bounds:
     if not satisfies(type_arg, bound.interface):
-      emit(ZOM0421, ..., "type parameter does not satisfy bound '{bound}'")
+      emit(ZOM0431, ..., "'{type}' does not implement '{bound}'")
   for wb in where_bounds:
     // wb constrains a specific TP; verify after substitution
     resolved = substitute(wb.constrained_param, current_substitution)
     if not satisfies(resolved, wb.bounds):
-      emit(ZOM0421, ..., "where clause not satisfied: '{wb}'")
+      emit(ZOM0431, ..., "'{type}' does not implement '{bound}'")
 ```
 
 **Type argument inference** (when `<T>` is omitted at call site):
@@ -1131,7 +1131,7 @@ Rules:
 | ZOM0418 | Error | `no field '{name}' on type '{type}'` |
 | ZOM0419 | Error | `no method '{name}' on type '{type}'` |
 | ZOM0420 | Error | `cannot infer type parameter '{name}'; provide explicit type arguments` |
-| ZOM0421 | Error | `type parameter '{name}' does not satisfy bound '{bound}'` |
+| ZOM0421 | Error | `cannot infer type from null initializer without annotation` |
 | ZOM0430 | Error | `conflicting implementations of '{interface}' for '{type}'` |
 | ZOM0431 | Error | `'{type}' does not implement '{interface}'` |
 | ZOM0432 | Error | `ambiguous method call: '{name}' could be from '{iface1}' or '{iface2}'` |
@@ -1152,7 +1152,7 @@ Rules:
 | ZOM0471 | Error | `'{type}' is not 'Shared'; cannot share across thread boundary` |
 | ZOM0480 | Error | `return type mismatch: expected '{expected}', found '{actual}'` |
 | ZOM0481 | Error | `missing return in function returning '{type}'` |
-| ZOM0490 | Note | `required by bound '{bound}' declared here` (attached to ZOM0421) |
+| ZOM0490 | Note | `required by bound '{bound}' declared here` (attached to ZOM0431) |
 | ZOM0491 | Note | `type '{type}' defined here` (attached to various errors) |
 
 ### Invariants
@@ -1431,7 +1431,7 @@ runs and produces resolved names.
 24. **`check-format.py` passes.**
 25. **All existing tests pass under `ctest --preset default --output-on-failure`.**
 26. **Local variable inference:** `let x = 5; takes_u64(x)` infers `x: u64`
-    through use-site constraints. `let x = null` without annotation -> ZOM0410.
+    through use-site constraints. `let x = null` without annotation -> ZOM0421.
 27. **Nullable semantics:** `let r: &i32 = null` is rejected. `let r: &i32? =
     null` or `let r: &i32 | null = null` is accepted and records nullable
     injection.
@@ -1484,7 +1484,7 @@ and tests cover the exact acceptance criterion above.
 | 23 | Complete | `python3 scripts/check-rfc.py` passes. | None. |
 | 24 | Complete | `python3 scripts/check-format.py` passes after formatting changed C++ files. | None. |
 | 25 | Complete | Full `ctest --preset default --output-on-failure` passes, including lit and grammar conformance. | None. |
-| 26 | Complete | `body-checker-test.cc` covers `let x = 5; takes_u64(x)` and `let x = null` rejection; CLI now emits ZOM0410 for type mismatch. | None for current local-inference scope. |
+| 26 | Complete | `body-checker-test.cc` covers `let x = 5; takes_u64(x)` and `let x = null` rejection; `null_initializer_missing_type_neg_01.check` covers the user-visible ZOM0421 through the diagnostics conformance runner. | None for current local-inference scope. |
 | 27 | Complete | `body-checker-test.cc` covers `T | null` initializer, null-coalesce behavior, `&i32 = null` rejection, `&i32 | null = null` acceptance, and nullable initializer coercion records; coercion tests reject bare reference null. | None. |
 | 28 | Complete | `BinaryExpr.op` is a schema-generated `BinaryOperatorKind`, and parser/test unary helpers use `UnaryOperatorKind`, so operator tests no longer pass raw operator ordinals. `body-checker-test.cc` covers `+`, `-`, `*`, `/`, `%`, and `**` on a user-defined named type with `Add`, `Sub`, `Mul`, `Div`, `Rem`, and `Pow` impls and returns the user type; it also covers `==` with `Eq`, `<` with `Ord`, `-x` with `Neg`, `!x` with `Not`, and rejection of user-type operators missing the required trait. `operator_trait_missing_neg_01.check` covers user-visible ZOM0431 through the diagnostics conformance runner. Built-in numeric operators are covered by primitive arithmetic tests. | Full method-signature dispatch belongs to the later method-call lowering contract. |
 | 29 | Complete | `body-checker-test.cc` covers numeric casts, `i32 as bool` rejection, raw-pointer unsafe gating, shared-reference-to-const-raw casts, mutable-reference-to-mutable-raw casts, accepted dyn upcast through declared interface inheritance, and rejected unrelated dyn casts. | None. |

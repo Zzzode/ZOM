@@ -1989,6 +1989,10 @@ ZC_TEST("BodyChecker.LetWithTypeAnnotationRejectsWrongInitializer") {
 
 ZC_TEST("BodyChecker.LetWithoutAnnotationRejectsNullInitializer") {
   TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
   auto pat = fix.makeBindingPattern("x"_zc);
   auto init = fix.makeNullLiteral();
   auto decl = fix.makeVariableDeclarator(pat, ast::NodeId(), init);
@@ -2003,6 +2007,7 @@ ZC_TEST("BodyChecker.LetWithoutAnnotationRejectsNullInitializer") {
 
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CannotInferNullInitializer));
   ZC_EXPECT(result.typeEnv.hasType(decl));
   ZC_EXPECT(isError(result.typeEnv.getType(decl)));
 }

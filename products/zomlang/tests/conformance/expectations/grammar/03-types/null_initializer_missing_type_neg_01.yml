@@ -1,0 +1,5 @@
+section: "03-types null initializer diagnostics"
+covers_rule: "variableStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks null initializer inference failure."

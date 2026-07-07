@@ -24,6 +24,8 @@ CHECKER_DIAG(411, CannotUnifyTypes, kError, "Cannot unify '{0}' with '{1}' in {2
 CHECKER_DIAG(412, InfiniteType, kError, "Infinite type: {0}", 1)
 CHECKER_DIAG(420, CannotInferTypeParameter, kError,
              "Cannot infer type parameter '{0}'; provide explicit type arguments", 1)
+CHECKER_DIAG(421, CannotInferNullInitializer, kError,
+             "Cannot infer type from null initializer without annotation", 0)
 CHECKER_DIAG(430, ConflictingImpl, kError, "Conflicting implementations of '{0}' for type '{1}'", 2)
 CHECKER_DIAG(431, CheckerTraitNotImplemented, kError, "'{0}' does not implement '{1}'", 2)
 CHECKER_DIAG(433, NoAssociatedTypeProjection, kError, "No associated type '{0}' for type '{1}'", 2)
