@@ -1,0 +1,5 @@
+section: "04-expressions operator trait diagnostics"
+covers_rule: "standaloneImplDeclaration, unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; checker diagnostics reject the unary logical-not trait method signature."

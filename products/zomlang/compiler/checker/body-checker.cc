@@ -369,6 +369,12 @@ static zc::StringPtr binaryOperatorTraitMethod(zc::StringPtr traitName) {
   return ""_zc;
 }
 
+static zc::StringPtr unaryOperatorTraitMethod(zc::StringPtr traitName) {
+  if (traitName == "Neg"_zc) return "neg"_zc;
+  if (traitName == "Not"_zc) return "not"_zc;
+  return ""_zc;
+}
+
 static bool containsUnresolvedTypeVar(const type::Type& ty, const type::TypeEnv& env) {
   const auto& resolved = env.find(ty);
   if (isTypeVar(resolved)) { return true; }
@@ -1097,6 +1103,53 @@ bool BodyChecker::validateBinaryOperatorTrait(ast::NodeId expr, zc::StringPtr tr
   return false;
 }
 
+bool BodyChecker::validateUnaryOperatorTrait(ast::NodeId expr, zc::StringPtr traitName,
+                                             zc::StringPtr methodName,
+                                             const type::Type& operandType,
+                                             const type::Type& returnType) {
+  TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
+                              impl->diags);
+  traitResolver.discoverImpls();
+
+  ZC_IF_SOME(implNodeId, traitResolver.findImpl(operandType, traitName)) {
+    if (!impl->tree.contains(implNodeId)) { return false; }
+    const auto& implNode = impl->tree.node(implNodeId);
+    if (implNode.kind != SyntaxKind::StandaloneImplDecl) { return false; }
+
+    auto membersId = NodeId(implNode.payload.words[kStandaloneImplDeclMembersIdWord]);
+    if (!impl->tree.contains(membersId)) { return false; }
+
+    const auto& membersNode = impl->tree.node(membersId);
+    if (membersNode.kind != SyntaxKind::ClassMemberList) { return false; }
+
+    NodeList members;
+    members.first = membersNode.payload.words[kClassMemberListMembersFirstWord];
+    members.size = membersNode.payload.words[kClassMemberListMembersSizeWord];
+    for (NodeId memberId : impl->tree.list(members)) {
+      if (!impl->tree.contains(memberId)) { continue; }
+      const auto& member = impl->tree.node(memberId);
+      if (member.kind != SyntaxKind::MethodDecl) { continue; }
+
+      auto memberName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
+      if (memberName != methodName) { continue; }
+
+      auto paramsId = NodeId(member.payload.words[kMethodDeclParamsIdWord]);
+      if (impl->tree.contains(paramsId)) {
+        const auto& paramsNode = impl->tree.node(paramsId);
+        if (paramsNode.kind != SyntaxKind::FunctionParameterList) { return false; }
+        if (paramsNode.payload.words[kFunctionParameterListParamsSizeWord] != 0) { return false; }
+      }
+
+      auto retTyId = NodeId(member.payload.words[kMethodDeclRetTyWord]);
+      auto retTy = resolveTypeExpr(retTyId);
+      if (!retTy) { return false; }
+      return impl->typeEnv.find(*retTy).equals(returnType);
+    }
+  }
+
+  return false;
+}
+
 const type::Type& BodyChecker::expectedReturnType() const {
   ZC_IF_SOME(rt, impl->expectedRetType) { return rt; }
   // Default: unit type for functions without explicit return type
@@ -1516,6 +1569,14 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
+        auto methodName = unaryOperatorTraitMethod(traitName);
+        if (!validateUnaryOperatorTrait(expr, traitName, methodName, resolved, resolved)) {
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::OperatorTraitSignatureMismatch>(
+              loc, traitName, resolved.toString(), methodName, ""_zc, resolved.toString());
+          impl->hadErrors = true;
+          return storeType(expr, zc::heap<type::ErrorType>());
+        }
         return storeType(expr, cloneType(resolved));
       }
       // Numeric unary: result is operand type
@@ -1530,6 +1591,15 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
           auto loc = getNodeLoc(impl->tree, expr);
           impl->diags.diagnose<DiagID::CheckerTraitNotImplemented>(loc, resolved.toString(),
                                                                    traitName);
+          impl->hadErrors = true;
+          return storeType(expr, zc::heap<type::ErrorType>());
+        }
+        auto methodName = unaryOperatorTraitMethod(traitName);
+        type::PrimitiveType boolTy(type::PrimitiveKind::Bool);
+        if (!validateUnaryOperatorTrait(expr, traitName, methodName, resolved, boolTy)) {
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::OperatorTraitSignatureMismatch>(
+              loc, traitName, resolved.toString(), methodName, ""_zc, boolTy.toString());
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }

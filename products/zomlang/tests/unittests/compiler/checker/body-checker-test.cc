@@ -69,6 +69,12 @@ zc::StringPtr binaryOperatorMethodName(zc::StringPtr ifaceName) {
   return ""_zc;
 }
 
+zc::StringPtr unaryOperatorMethodName(zc::StringPtr ifaceName) {
+  if (ifaceName == "Neg"_zc) return "neg"_zc;
+  if (ifaceName == "Not"_zc) return "not"_zc;
+  return ""_zc;
+}
+
 // Helper: run full pipeline (Binder + DeclSignatureComputer + BodyChecker) and return
 // the TypeEnv for inspection.
 struct CheckResult {
@@ -242,7 +248,16 @@ void expectUserTypeUnaryOperatorImpl(zc::StringPtr ifaceName, ast::UnaryOperator
   zc::Vector<ast::NodeId> ifaceNodes;
   ifaceNodes.add(fix.makeNamedTypeExpr(ifaceName));
   auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-  auto implDecl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Operand"_zc), ifaceList);
+
+  auto implRetTy =
+      returnsOperandType ? fix.makeNamedTypeExpr("Operand"_zc) : fix.makeNamedTypeExpr("bool"_zc);
+  auto implMethod = fix.makeMethodDecl(unaryOperatorMethodName(ifaceName), ast::NodeId(),
+                                       ast::NodeId(), implRetTy);
+  zc::Vector<ast::NodeId> implMembers;
+  implMembers.add(implMethod);
+  auto implDecl =
+      fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Operand"_zc), ifaceList,
+                                 fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
 
   auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc),
                                               fix.makeNamedTypeExpr("Operand"_zc));
@@ -1385,12 +1400,98 @@ ZC_TEST("BodyChecker.UnaryMinusUsesUserTypeNegImpl") {
   expectUserTypeUnaryOperatorImpl("Neg"_zc, ast::UnaryOperatorKind::Minus, true);
 }
 
+ZC_TEST("BodyChecker.UnaryMinusRejectsWrongTraitMethodSignature") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto negIface = fix.makeInterfaceDecl("Neg"_zc);
+  auto operandType = fix.makeClassDecl("Operand"_zc);
+
+  zc::Vector<ast::NodeId> implIfaceNodes;
+  implIfaceNodes.add(fix.makeNamedTypeExpr("Neg"_zc));
+  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
+  auto implMethod =
+      fix.makeMethodDecl("neg"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("bool"_zc));
+  zc::Vector<ast::NodeId> implMembers;
+  implMembers.add(implMethod);
+  auto implDecl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Operand"_zc), implIfaces,
+                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
+
+  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc),
+                                              fix.makeNamedTypeExpr("Operand"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(valueDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto unary = fix.makeUnaryExpr(ast::UnaryOperatorKind::Minus, fix.makeIdentExpr("value"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(negIface);
+  topDecls.add(operandType);
+  topDecls.add(implDecl);
+  topDecls.add(let);
+  topDecls.add(unary);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(
+      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
+  ZC_EXPECT(result.typeEnv.hasType(unary));
+  if (result.typeEnv.hasType(unary)) { ZC_EXPECT(isError(result.typeEnv.getType(unary))); }
+}
+
 ZC_TEST("BodyChecker.UnaryMinusRejectsUserTypeWithoutNegImpl") {
   expectUserTypeUnaryWithoutImplFails(ast::UnaryOperatorKind::Minus);
 }
 
 ZC_TEST("BodyChecker.LogicalNotUsesUserTypeNotImpl") {
   expectUserTypeUnaryOperatorImpl("Not"_zc, ast::UnaryOperatorKind::LogicalNot, false);
+}
+
+ZC_TEST("BodyChecker.LogicalNotRejectsWrongTraitMethodSignature") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto notIface = fix.makeInterfaceDecl("Not"_zc);
+  auto operandType = fix.makeClassDecl("Operand"_zc);
+
+  zc::Vector<ast::NodeId> implIfaceNodes;
+  implIfaceNodes.add(fix.makeNamedTypeExpr("Not"_zc));
+  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
+  auto implMethod = fix.makeMethodDecl("not"_zc, ast::NodeId(), ast::NodeId(),
+                                       fix.makeNamedTypeExpr("Operand"_zc));
+  zc::Vector<ast::NodeId> implMembers;
+  implMembers.add(implMethod);
+  auto implDecl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Operand"_zc), implIfaces,
+                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
+
+  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc),
+                                              fix.makeNamedTypeExpr("Operand"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(valueDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto unary = fix.makeUnaryExpr(ast::UnaryOperatorKind::LogicalNot, fix.makeIdentExpr("value"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(notIface);
+  topDecls.add(operandType);
+  topDecls.add(implDecl);
+  topDecls.add(let);
+  topDecls.add(unary);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(
+      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
+  ZC_EXPECT(result.typeEnv.hasType(unary));
+  if (result.typeEnv.hasType(unary)) { ZC_EXPECT(isError(result.typeEnv.getType(unary))); }
 }
 
 ZC_TEST("BodyChecker.LogicalNotRejectsUserTypeWithoutNotImpl") {

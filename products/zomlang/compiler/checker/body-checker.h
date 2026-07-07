@@ -355,6 +355,11 @@ private:
   bool validateBinaryOperatorTrait(ast::NodeId expr, zc::StringPtr traitName,
                                    zc::StringPtr methodName, const type::Type& lhsType,
                                    const type::Type& rhsType, const type::Type& returnType);
+
+  /// \brief Validate a user-defined unary operator trait method signature.
+  bool validateUnaryOperatorTrait(ast::NodeId expr, zc::StringPtr traitName,
+                                  zc::StringPtr methodName, const type::Type& operandType,
+                                  const type::Type& returnType);
 };
 
 }  // namespace checker

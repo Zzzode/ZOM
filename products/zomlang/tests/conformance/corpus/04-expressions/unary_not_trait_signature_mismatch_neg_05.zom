@@ -1,0 +1,13 @@
+interface Not {
+    fun not() -> bool;
+}
+
+class Operand { }
+
+impl Not for Operand {
+    fun not() -> Operand;
+}
+
+let value: Operand;
+
+!value;
