@@ -27,7 +27,7 @@ struct UnionType::Impl {
 };
 
 UnionType::UnionType(zc::Vector<zc::Own<Type>> alternatives)
-    : Type(TypeKind::Union), impl(zc::heap<Impl>(zc::mv(alternatives))) {}
+    : impl(zc::heap<Impl>(zc::mv(alternatives))) {}
 
 UnionType::~UnionType() noexcept(false) = default;
 
@@ -81,7 +81,7 @@ bool UnionType::equals(const Type& other) const {
 }
 
 bool UnionType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   // T ⊂ T|E: each alternative is subtype of the union
   // For union subtyping: A|B ⊂ C iff A ⊂ C and B ⊂ C

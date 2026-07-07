@@ -74,6 +74,7 @@ public:
   const Type& getLowerBound(size_t index) const;
 
   // Type overrides
+  TypeKind getKind() const override { return TypeKind::TypeVar; }
   zc::String toString() const override;
   bool equals(const Type& other) const override;
   bool isSubtypeOf(const Type& other) const override;

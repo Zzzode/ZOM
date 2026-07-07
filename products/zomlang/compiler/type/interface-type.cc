@@ -29,8 +29,7 @@ struct InterfaceType::Impl {
   explicit Impl(zc::StringPtr n) : name(n) {}
 };
 
-InterfaceType::InterfaceType(zc::StringPtr name)
-    : Type(TypeKind::Interface), impl(zc::heap<Impl>(name)) {}
+InterfaceType::InterfaceType(zc::StringPtr name) : impl(zc::heap<Impl>(name)) {}
 
 InterfaceType::~InterfaceType() noexcept(false) = default;
 
@@ -110,7 +109,7 @@ bool InterfaceType::equals(const Type& other) const {
 }
 
 bool InterfaceType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   if (other.getKind() == TypeKind::Interface) {
     auto& otherIface = static_cast<const InterfaceType&>(other);

@@ -26,8 +26,7 @@ struct PrimitiveType::Impl {
   explicit Impl(PrimitiveKind k) : kind(k) {}
 };
 
-PrimitiveType::PrimitiveType(PrimitiveKind kind)
-    : Type(TypeKind::Primitive), impl(zc::heap<Impl>(kind)) {}
+PrimitiveType::PrimitiveType(PrimitiveKind kind) : impl(zc::heap<Impl>(kind)) {}
 
 PrimitiveType::~PrimitiveType() noexcept(false) = default;
 
@@ -132,7 +131,7 @@ bool PrimitiveType::equals(const Type& other) const {
 
 bool PrimitiveType::isSubtypeOf(const Type& other) const {
   // Check base rules first (identity, never, any)
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   if (impl->kind == PrimitiveKind::Null && other.isUnion()) {
     auto& unionTy = static_cast<const UnionType&>(other);

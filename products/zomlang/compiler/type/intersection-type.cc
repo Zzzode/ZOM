@@ -25,7 +25,7 @@ struct IntersectionType::Impl {
 };
 
 IntersectionType::IntersectionType(zc::Vector<zc::Own<Type>> conjuncts)
-    : Type(TypeKind::Intersection), impl(zc::heap<Impl>(zc::mv(conjuncts))) {}
+    : impl(zc::heap<Impl>(zc::mv(conjuncts))) {}
 
 IntersectionType::~IntersectionType() noexcept(false) = default;
 
@@ -72,7 +72,7 @@ bool IntersectionType::equals(const Type& other) const {
 }
 
 bool IntersectionType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   // A & B ⊂ A and A & B ⊂ B (projection)
   // The intersection is a subtype of each of its conjuncts

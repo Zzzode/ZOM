@@ -32,7 +32,7 @@ struct FunctionType::Impl {
 };
 
 FunctionType::FunctionType(zc::Vector<zc::Own<Type>> params, zc::Own<Type> returnType)
-    : Type(TypeKind::Function), impl(zc::heap<Impl>(zc::mv(params), zc::mv(returnType))) {}
+    : impl(zc::heap<Impl>(zc::mv(params), zc::mv(returnType))) {}
 
 FunctionType::~FunctionType() noexcept(false) = default;
 
@@ -136,7 +136,7 @@ bool FunctionType::equals(const Type& other) const {
 }
 
 bool FunctionType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   if (other.getKind() != TypeKind::Function) { return false; }
 

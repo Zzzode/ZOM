@@ -25,10 +25,9 @@ struct ErrorType::Impl {
   explicit Impl(zc::StringPtr msg) : message(msg) {}
 };
 
-ErrorType::ErrorType() : Type(TypeKind::Error), impl(zc::heap<Impl>()) {}
+ErrorType::ErrorType() : impl(zc::heap<Impl>()) {}
 
-ErrorType::ErrorType(zc::StringPtr message)
-    : Type(TypeKind::Error), impl(zc::heap<Impl>(message)) {}
+ErrorType::ErrorType(zc::StringPtr message) : impl(zc::heap<Impl>(message)) {}
 
 ErrorType::~ErrorType() noexcept(false) = default;
 

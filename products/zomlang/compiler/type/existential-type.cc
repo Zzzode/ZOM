@@ -25,7 +25,7 @@ struct ExistentialType::Impl {
 };
 
 ExistentialType::ExistentialType(zc::Own<Type> interfaceType)
-    : Type(TypeKind::Existential), impl(zc::heap<Impl>(zc::mv(interfaceType))) {}
+    : impl(zc::heap<Impl>(zc::mv(interfaceType))) {}
 
 ExistentialType::~ExistentialType() noexcept(false) = default;
 
@@ -48,7 +48,7 @@ bool ExistentialType::equals(const Type& other) const {
 }
 
 bool ExistentialType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   // dyn Interface is subtype of Interface (it satisfies the interface)
   if (impl->interfaceType->equals(other)) { return true; }

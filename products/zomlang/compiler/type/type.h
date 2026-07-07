@@ -117,7 +117,7 @@ public:
   Type& operator=(Type&& other) noexcept;
 
   /// \brief Get the type kind discriminator.
-  TypeKind getKind() const;
+  virtual TypeKind getKind() const = 0;
 
   /// \brief Type classification convenience methods.
   bool isPrimitive() const;
@@ -168,19 +168,19 @@ public:
   ///
   /// Returns true if this type is a subtype of `other` according to the
   /// subtyping rules defined in RFC 0005.
-  virtual bool isSubtypeOf(const Type& other) const;
+  virtual bool isSubtypeOf(const Type& other) const = 0;
 
   /// \brief Check if this type is assignable to the other type.
   ///
   /// Assignment compatibility extends subtyping with additional rules
   /// like numeric widening.
-  virtual bool isAssignableTo(const Type& other) const;
+  bool isAssignableTo(const Type& other) const;
+
+  /// \brief Shared subtype rules used by concrete type implementations.
+  bool hasBasicSubtypeRelation(const Type& other) const;
 
 protected:
-  explicit Type(TypeKind kind);
-
-  struct Impl;
-  zc::Own<Impl> impl;
+  Type() noexcept;
 };
 
 }  // namespace type

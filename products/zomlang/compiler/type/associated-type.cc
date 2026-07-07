@@ -26,7 +26,7 @@ struct AssociatedType::Impl {
 };
 
 AssociatedType::AssociatedType(zc::Own<Type> parent, zc::StringPtr name)
-    : Type(TypeKind::Associated), impl(zc::heap<Impl>(zc::mv(parent), name)) {}
+    : impl(zc::heap<Impl>(zc::mv(parent), name)) {}
 
 AssociatedType::~AssociatedType() noexcept(false) = default;
 
@@ -54,7 +54,7 @@ bool AssociatedType::equals(const Type& other) const {
 }
 
 bool AssociatedType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   // Associated types are nominally compared
   if (other.getKind() == TypeKind::Associated) {

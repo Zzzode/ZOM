@@ -35,7 +35,7 @@ struct ObjectType::Impl {
   Impl() = default;
 };
 
-ObjectType::ObjectType() : Type(TypeKind::Object), impl(zc::heap<Impl>()) {}
+ObjectType::ObjectType() : impl(zc::heap<Impl>()) {}
 
 ObjectType::~ObjectType() noexcept(false) = default;
 
@@ -108,7 +108,7 @@ bool ObjectType::equals(const Type& other) const {
 }
 
 bool ObjectType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   if (other.getKind() != TypeKind::Object) { return false; }
 

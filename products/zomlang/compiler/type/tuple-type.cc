@@ -26,8 +26,7 @@ struct TupleType::Impl {
   explicit Impl(zc::Vector<zc::Own<Type>> elems) : elements(zc::mv(elems)) {}
 };
 
-TupleType::TupleType(zc::Vector<zc::Own<Type>> elements)
-    : Type(TypeKind::Tuple), impl(zc::heap<Impl>(zc::mv(elements))) {}
+TupleType::TupleType(zc::Vector<zc::Own<Type>> elements) : impl(zc::heap<Impl>(zc::mv(elements))) {}
 
 TupleType::~TupleType() noexcept(false) = default;
 
@@ -72,7 +71,7 @@ bool TupleType::equals(const Type& other) const {
 }
 
 bool TupleType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   // Empty tuple is equivalent to unit
   if (isEmpty() && other.isUnit()) { return true; }

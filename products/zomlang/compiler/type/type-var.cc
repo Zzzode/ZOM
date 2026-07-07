@@ -28,10 +28,9 @@ struct TypeVar::Impl {
   Impl(zc::StringPtr n, uint64_t i) : name(n), id(i) {}
 };
 
-TypeVar::TypeVar(zc::StringPtr name) : Type(TypeKind::TypeVar), impl(zc::heap<Impl>(name)) {}
+TypeVar::TypeVar(zc::StringPtr name) : impl(zc::heap<Impl>(name)) {}
 
-TypeVar::TypeVar(zc::StringPtr name, uint64_t id)
-    : Type(TypeKind::TypeVar), impl(zc::heap<Impl>(name, id)) {}
+TypeVar::TypeVar(zc::StringPtr name, uint64_t id) : impl(zc::heap<Impl>(name, id)) {}
 
 TypeVar::~TypeVar() noexcept(false) = default;
 
@@ -74,7 +73,7 @@ bool TypeVar::equals(const Type& other) const {
 }
 
 bool TypeVar::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   // A type variable is a subtype of its upper bounds
   for (size_t i = 0; i < impl->upperBounds.size(); ++i) {

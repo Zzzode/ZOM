@@ -32,10 +32,10 @@ struct NamedType::Impl {
   Impl(zc::StringPtr n, const symbol::TypeSymbol& s) : name(nameArena.copyString(n)), symbol(s) {}
 };
 
-NamedType::NamedType(zc::StringPtr name) : Type(TypeKind::Named), impl(zc::heap<Impl>(name)) {}
+NamedType::NamedType(zc::StringPtr name) : impl(zc::heap<Impl>(name)) {}
 
 NamedType::NamedType(zc::StringPtr name, const symbol::TypeSymbol& symbol)
-    : Type(TypeKind::Named), impl(zc::heap<Impl>(name, symbol)) {}
+    : impl(zc::heap<Impl>(name, symbol)) {}
 
 NamedType::~NamedType() noexcept(false) = default;
 
@@ -92,7 +92,7 @@ bool NamedType::equals(const Type& other) const {
 }
 
 bool NamedType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   if (other.getKind() == TypeKind::Named) {
     auto& otherNamed = static_cast<const NamedType&>(other);

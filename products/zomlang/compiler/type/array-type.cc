@@ -24,8 +24,7 @@ struct ArrayType::Impl {
   explicit Impl(zc::Own<Type> elem) : elementType(zc::mv(elem)) {}
 };
 
-ArrayType::ArrayType(zc::Own<Type> elementType)
-    : Type(TypeKind::Array), impl(zc::heap<Impl>(zc::mv(elementType))) {}
+ArrayType::ArrayType(zc::Own<Type> elementType) : impl(zc::heap<Impl>(zc::mv(elementType))) {}
 
 ArrayType::~ArrayType() noexcept(false) = default;
 
@@ -46,7 +45,7 @@ bool ArrayType::equals(const Type& other) const {
 }
 
 bool ArrayType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   if (other.getKind() != TypeKind::Array) { return false; }
 

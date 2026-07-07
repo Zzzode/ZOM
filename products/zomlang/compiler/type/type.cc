@@ -20,21 +20,13 @@ namespace zomlang {
 namespace compiler {
 namespace type {
 
-struct Type::Impl {
-  TypeKind kind;
-
-  explicit Impl(TypeKind k) : kind(k) {}
-};
-
-Type::Type(TypeKind kind) : impl(zc::heap<Impl>(kind)) {}
+Type::Type() noexcept = default;
 
 Type::~Type() noexcept(false) = default;
 
 Type::Type(Type&& other) noexcept = default;
 
 Type& Type::operator=(Type&& other) noexcept = default;
-
-TypeKind Type::getKind() const { return impl->kind; }
 
 bool Type::isPrimitive() const { return getKind() == TypeKind::Primitive; }
 
@@ -116,7 +108,7 @@ bool Type::isUnsignedInteger() const {
   return k >= PrimitiveKind::U8 && k <= PrimitiveKind::U64;
 }
 
-bool Type::isSubtypeOf(const Type& other) const {
+bool Type::hasBasicSubtypeRelation(const Type& other) const {
   // Identity: T ⊂ T
   if (this == &other) { return true; }
 

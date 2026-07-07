@@ -65,6 +65,7 @@ public:
   zc::Array<MemberEntry> getMembers() const;
 
   // Type overrides
+  TypeKind getKind() const override { return TypeKind::Object; }
   zc::String toString() const override;
   bool equals(const Type& other) const override;
   bool isSubtypeOf(const Type& other) const override;

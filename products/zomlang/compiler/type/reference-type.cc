@@ -28,7 +28,7 @@ struct ReferenceType::Impl {
 };
 
 ReferenceType::ReferenceType(zc::Own<Type> pointee, Mutability mutability)
-    : Type(TypeKind::Reference), impl(zc::heap<Impl>(zc::mv(pointee), mutability)) {}
+    : impl(zc::heap<Impl>(zc::mv(pointee), mutability)) {}
 
 ReferenceType::~ReferenceType() noexcept(false) = default;
 
@@ -61,7 +61,7 @@ bool ReferenceType::equals(const Type& other) const {
 }
 
 bool ReferenceType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   if (other.isNull()) { return false; }
 

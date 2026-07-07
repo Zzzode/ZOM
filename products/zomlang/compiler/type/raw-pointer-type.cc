@@ -26,7 +26,7 @@ struct RawPointerType::Impl {
 };
 
 RawPointerType::RawPointerType(zc::Own<Type> pointee, Mutability mutability)
-    : Type(TypeKind::RawPointer), impl(zc::heap<Impl>(zc::mv(pointee), mutability)) {}
+    : impl(zc::heap<Impl>(zc::mv(pointee), mutability)) {}
 
 RawPointerType::~RawPointerType() noexcept(false) = default;
 
@@ -59,7 +59,7 @@ bool RawPointerType::equals(const Type& other) const {
 }
 
 bool RawPointerType::isSubtypeOf(const Type& other) const {
-  if (Type::isSubtypeOf(other)) { return true; }
+  if (hasBasicSubtypeRelation(other)) { return true; }
 
   if (other.getKind() != TypeKind::RawPointer) { return false; }
 
