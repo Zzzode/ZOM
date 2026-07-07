@@ -1,0 +1,5 @@
+section: "§3 Associated type projections"
+covers_rule: "associatedTypeProjection"
+expected: "ACCEPT"
+notes:
+  - "Qualified projection uses the iface_ty branch to disambiguate Iterator::Item from Stream::Item."
