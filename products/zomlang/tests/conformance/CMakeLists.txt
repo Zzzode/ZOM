@@ -17,6 +17,7 @@
 
 add_subdirectory(runners/grammar)
 add_subdirectory(runners/ast)
+add_subdirectory(runners/diagnostics)
 
 add_test(
   NAME parser-coverage
@@ -55,5 +56,11 @@ add_custom_target(check-conformance-grammar
   COMMENT "Running ANTLR grammar conformance tests"
 )
 
+add_custom_target(check-conformance-diagnostics
+  COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -L "conformance-diagnostics"
+  COMMENT "Running diagnostics/FileCheck conformance tests"
+)
+
 add_dependencies(check-conformance zomc)
 add_dependencies(check-conformance-ast zomc)
+add_dependencies(check-conformance-diagnostics zomc)
