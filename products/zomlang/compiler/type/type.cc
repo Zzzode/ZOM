@@ -41,31 +41,23 @@ bool Type::isPrimitive() const { return getKind() == TypeKind::Primitive; }
 bool Type::isError() const { return getKind() == TypeKind::Error; }
 
 bool Type::isNever() const {
-  if (auto* prim = dynamic_cast<const PrimitiveType*>(this)) {
-    return prim->getPrimitiveKind() == PrimitiveKind::Never;
-  }
-  return false;
+  return isPrimitive() &&
+         static_cast<const PrimitiveType&>(*this).getPrimitiveKind() == PrimitiveKind::Never;
 }
 
 bool Type::isUnit() const {
-  if (auto* prim = dynamic_cast<const PrimitiveType*>(this)) {
-    return prim->getPrimitiveKind() == PrimitiveKind::Unit;
-  }
-  return false;
+  return isPrimitive() &&
+         static_cast<const PrimitiveType&>(*this).getPrimitiveKind() == PrimitiveKind::Unit;
 }
 
 bool Type::isNull() const {
-  if (auto* prim = dynamic_cast<const PrimitiveType*>(this)) {
-    return prim->getPrimitiveKind() == PrimitiveKind::Null;
-  }
-  return false;
+  return isPrimitive() &&
+         static_cast<const PrimitiveType&>(*this).getPrimitiveKind() == PrimitiveKind::Null;
 }
 
 bool Type::isAny() const {
-  if (auto* prim = dynamic_cast<const PrimitiveType*>(this)) {
-    return prim->getPrimitiveKind() == PrimitiveKind::Any;
-  }
-  return false;
+  return isPrimitive() &&
+         static_cast<const PrimitiveType&>(*this).getPrimitiveKind() == PrimitiveKind::Any;
 }
 
 bool Type::isFunction() const { return getKind() == TypeKind::Function; }
@@ -95,43 +87,33 @@ bool Type::isExistential() const { return getKind() == TypeKind::Existential; }
 bool Type::isAssociated() const { return getKind() == TypeKind::Associated; }
 
 bool Type::isNumeric() const {
-  if (auto* prim = dynamic_cast<const PrimitiveType*>(this)) {
-    auto k = prim->getPrimitiveKind();
-    return k >= PrimitiveKind::I8 && k <= PrimitiveKind::F64;
-  }
-  return false;
+  if (!isPrimitive()) return false;
+  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+  return k >= PrimitiveKind::I8 && k <= PrimitiveKind::F64;
 }
 
 bool Type::isInteger() const {
-  if (auto* prim = dynamic_cast<const PrimitiveType*>(this)) {
-    auto k = prim->getPrimitiveKind();
-    return k >= PrimitiveKind::I8 && k <= PrimitiveKind::U64;
-  }
-  return false;
+  if (!isPrimitive()) return false;
+  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+  return k >= PrimitiveKind::I8 && k <= PrimitiveKind::U64;
 }
 
 bool Type::isFloatingPoint() const {
-  if (auto* prim = dynamic_cast<const PrimitiveType*>(this)) {
-    auto k = prim->getPrimitiveKind();
-    return k == PrimitiveKind::F32 || k == PrimitiveKind::F64;
-  }
-  return false;
+  if (!isPrimitive()) return false;
+  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+  return k == PrimitiveKind::F32 || k == PrimitiveKind::F64;
 }
 
 bool Type::isSignedInteger() const {
-  if (auto* prim = dynamic_cast<const PrimitiveType*>(this)) {
-    auto k = prim->getPrimitiveKind();
-    return k >= PrimitiveKind::I8 && k <= PrimitiveKind::I64;
-  }
-  return false;
+  if (!isPrimitive()) return false;
+  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+  return k >= PrimitiveKind::I8 && k <= PrimitiveKind::I64;
 }
 
 bool Type::isUnsignedInteger() const {
-  if (auto* prim = dynamic_cast<const PrimitiveType*>(this)) {
-    auto k = prim->getPrimitiveKind();
-    return k >= PrimitiveKind::U8 && k <= PrimitiveKind::U64;
-  }
-  return false;
+  if (!isPrimitive()) return false;
+  auto k = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+  return k >= PrimitiveKind::U8 && k <= PrimitiveKind::U64;
 }
 
 bool Type::isSubtypeOf(const Type& other) const {
@@ -161,54 +143,49 @@ bool Type::isAssignableTo(const Type& other) const {
 
   // Numeric widening
   if (isNumeric() && other.isNumeric()) {
-    auto* thisPrim = dynamic_cast<const PrimitiveType*>(this);
-    auto* otherPrim = dynamic_cast<const PrimitiveType*>(&other);
-    if (thisPrim && otherPrim) {
-      // Integer widening: smaller to larger
-      auto thisK = thisPrim->getPrimitiveKind();
-      auto otherK = otherPrim->getPrimitiveKind();
+    auto thisK = static_cast<const PrimitiveType&>(*this).getPrimitiveKind();
+    auto otherK = static_cast<const PrimitiveType&>(other).getPrimitiveKind();
 
-      // Signed integer widening
-      if (thisK == PrimitiveKind::I8 &&
-          (otherK == PrimitiveKind::I16 || otherK == PrimitiveKind::I32 ||
-           otherK == PrimitiveKind::I64 || otherK == PrimitiveKind::F32 ||
-           otherK == PrimitiveKind::F64)) {
-        return true;
-      }
-      if (thisK == PrimitiveKind::I16 &&
-          (otherK == PrimitiveKind::I32 || otherK == PrimitiveKind::I64 ||
-           otherK == PrimitiveKind::F32 || otherK == PrimitiveKind::F64)) {
-        return true;
-      }
-      if (thisK == PrimitiveKind::I32 &&
-          (otherK == PrimitiveKind::I64 || otherK == PrimitiveKind::F64)) {
-        return true;
-      }
-
-      // Unsigned integer widening
-      if (thisK == PrimitiveKind::U8 &&
-          (otherK == PrimitiveKind::U16 || otherK == PrimitiveKind::U32 ||
-           otherK == PrimitiveKind::U64 || otherK == PrimitiveKind::F32 ||
-           otherK == PrimitiveKind::F64)) {
-        return true;
-      }
-      if (thisK == PrimitiveKind::U16 &&
-          (otherK == PrimitiveKind::U32 || otherK == PrimitiveKind::U64 ||
-           otherK == PrimitiveKind::F32 || otherK == PrimitiveKind::F64)) {
-        return true;
-      }
-      if (thisK == PrimitiveKind::U32 &&
-          (otherK == PrimitiveKind::U64 || otherK == PrimitiveKind::F64)) {
-        return true;
-      }
-
-      // Float widening
-      if (thisK == PrimitiveKind::F32 && otherK == PrimitiveKind::F64) { return true; }
-
-      // Int to float (lossy but allowed)
-      if (isInteger() && otherK == PrimitiveKind::F32) { return true; }
-      if (isInteger() && otherK == PrimitiveKind::F64) { return true; }
+    // Signed integer widening
+    if (thisK == PrimitiveKind::I8 &&
+        (otherK == PrimitiveKind::I16 || otherK == PrimitiveKind::I32 ||
+         otherK == PrimitiveKind::I64 || otherK == PrimitiveKind::F32 ||
+         otherK == PrimitiveKind::F64)) {
+      return true;
     }
+    if (thisK == PrimitiveKind::I16 &&
+        (otherK == PrimitiveKind::I32 || otherK == PrimitiveKind::I64 ||
+         otherK == PrimitiveKind::F32 || otherK == PrimitiveKind::F64)) {
+      return true;
+    }
+    if (thisK == PrimitiveKind::I32 &&
+        (otherK == PrimitiveKind::I64 || otherK == PrimitiveKind::F64)) {
+      return true;
+    }
+
+    // Unsigned integer widening
+    if (thisK == PrimitiveKind::U8 &&
+        (otherK == PrimitiveKind::U16 || otherK == PrimitiveKind::U32 ||
+         otherK == PrimitiveKind::U64 || otherK == PrimitiveKind::F32 ||
+         otherK == PrimitiveKind::F64)) {
+      return true;
+    }
+    if (thisK == PrimitiveKind::U16 &&
+        (otherK == PrimitiveKind::U32 || otherK == PrimitiveKind::U64 ||
+         otherK == PrimitiveKind::F32 || otherK == PrimitiveKind::F64)) {
+      return true;
+    }
+    if (thisK == PrimitiveKind::U32 &&
+        (otherK == PrimitiveKind::U64 || otherK == PrimitiveKind::F64)) {
+      return true;
+    }
+
+    // Float widening
+    if (thisK == PrimitiveKind::F32 && otherK == PrimitiveKind::F64) { return true; }
+
+    // Int to float (lossy but allowed)
+    if (isInteger() && otherK == PrimitiveKind::F32) { return true; }
+    if (isInteger() && otherK == PrimitiveKind::F64) { return true; }
   }
 
   return false;

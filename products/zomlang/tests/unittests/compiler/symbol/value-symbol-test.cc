@@ -45,7 +45,7 @@ ZC_TEST("VariableSymbol_Properties") {
   ZC_IF_SOME(globalScope, scopeManager.getCurrentScope()) {
     auto& variable = symbolTable.createVariable("testVar", globalScope);
 
-    // Use SymbolKind check instead of dynamic_cast
+    // Use SymbolKind checks before downcasting.
     ZC_EXPECT(variable.getKind() == SymbolKind::Variable);
 
     // Type-safe casting using SymbolKind check

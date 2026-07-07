@@ -73,7 +73,7 @@ ZC_TEST("ClassSymbol_Hierarchy") {
   ClassSymbol& derivedClass = table.createClass("DerivedClass", globalScope);
   InterfaceSymbol& interfaceSymbol = table.createInterface("TestInterface", globalScope);
 
-  // Verify symbol kinds using SymbolKind instead of dynamic_cast
+  // Verify symbol kinds before downcasting.
   ZC_EXPECT(baseClass.getKind() == SymbolKind::Class);
   ZC_EXPECT(derivedClass.getKind() == SymbolKind::Class);
   ZC_EXPECT(interfaceSymbol.getKind() == SymbolKind::Interface);
