@@ -1936,7 +1936,9 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
                                static_cast<const type::NamedType&>(resolvedCallee).getName()));
   }
 
-  reportError(expr, "cannot call non-function type"_zc);
+  auto loc = getNodeLoc(impl->tree, expr);
+  impl->diags.diagnose<DiagID::CannotCallNonFunction>(loc, resolvedCallee.toString());
+  impl->hadErrors = true;
   return storeType(expr, zc::heap<type::ErrorType>());
 }
 
