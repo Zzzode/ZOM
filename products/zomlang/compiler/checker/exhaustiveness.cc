@@ -662,7 +662,7 @@ PatternMatrix ExhaustivenessChecker::defaultMatrix(const PatternMatrix& matrix) 
     if (isWildcardPattern(firstPat)) {
       PatternRow newRow;
       for (size_t i = 1; i < row.size(); ++i) { newRow.add(row[i]); }
-      if (!newRow.empty()) { result.add(zc::mv(newRow)); }
+      result.add(zc::mv(newRow));
     }
   }
 

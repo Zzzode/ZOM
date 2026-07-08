@@ -62,6 +62,35 @@ public:
     return builder_.finish();
   }
 
+  ast::NodeId makeModulePath(zc::StringPtr path) {
+    zc::Vector<ast::IdentId> segIds;
+    const char* data = path.cStr();
+    size_t len = path.size();
+    size_t start = 0;
+    for (size_t i = 0; i <= len; ++i) {
+      bool isDot = i < len && data[i] == '.';
+      bool isColonColon = i + 1 < len && data[i] == ':' && data[i + 1] == ':';
+      if (isDot || isColonColon || i == len) {
+        if (i > start) {
+          segIds.add(builder_.internIdent(zc::heapString(data + start, i - start)));
+        }
+        if (isColonColon) {
+          start = i + 2;
+          ++i;
+        } else {
+          start = i + 1;
+        }
+      }
+    }
+    if (segIds.empty()) { segIds.add(builder_.internIdent(path)); }
+
+    auto identList = builder_.makeIdentList(segIds.asPtr());
+    ast::NodePayload payload;
+    payload.words[ast::kModulePathSegmentsFirstWord] = identList.first;
+    payload.words[ast::kModulePathSegmentsSizeWord] = identList.size;
+    return builder_.makeNode(ast::SyntaxKind::ModulePath, source::SourceRange(), payload);
+  }
+
   // ==========================================================================
   // AST node factory methods
   // ==========================================================================
@@ -384,40 +413,8 @@ public:
   /// \brief Create an ImportDeclaration.
   ast::NodeId makeImportDecl(zc::StringPtr path, zc::StringPtr alias = zc::StringPtr(),
                              ast::NodeList specifiers = ast::NodeList()) {
-    // Build a ModulePath node from the path string. The path may contain "::" separators.
-    zc::Vector<ast::IdentId> segIds;
-    const char* data = path.cStr();
-    size_t len = path.size();
-    size_t start = 0;
-    for (size_t i = 0; i <= len; ++i) {
-      if (i + 1 < len && data[i] == ':' && data[i + 1] == ':') {
-        if (i > start) {
-          // heapString creates a NUL-terminated copy that StringPtr requires
-          segIds.add(builder_.internIdent(zc::heapString(data + start, i - start)));
-        }
-        start = i + 2;
-        ++i;  // skip second colon
-      } else if (i == len) {
-        if (i > start) {
-          segIds.add(builder_.internIdent(zc::heapString(data + start, i - start)));
-        }
-      }
-    }
-    if (segIds.empty()) {
-      // Fallback: use entire path as one segment
-      segIds.add(builder_.internIdent(path));
-    }
-    auto identList = builder_.makeIdentList(segIds.asPtr());
-
-    // Create ModulePath node manually (TreeBuilder doesn't have makeModulePath)
-    ast::NodePayload modPathPayload;
-    modPathPayload.words[ast::kModulePathSegmentsFirstWord] = identList.first;
-    modPathPayload.words[ast::kModulePathSegmentsSizeWord] = identList.size;
-    auto modulePath =
-        builder_.makeNode(ast::SyntaxKind::ModulePath, source::SourceRange(), modPathPayload);
-
     ast::NodePayload payload;
-    payload.words[ast::kImportDeclarationPathWord] = modulePath.value;
+    payload.words[ast::kImportDeclarationPathWord] = makeModulePath(path).value;
     if (alias.size() > 0) {
       auto aliasId = builder_.internIdent(alias);
       payload.words[ast::kImportDeclarationAliasWord] = aliasId.value;
@@ -829,7 +826,7 @@ public:
   /// \brief Create an EnumPattern (e.g. `Color::Red`).
   ast::NodeId makeEnumPattern(zc::StringPtr path, ast::NodeList args = ast::NodeList()) {
     ast::NodePayload payload;
-    auto pathId = builder_.internIdent(path);
+    auto pathId = makeModulePath(path);
     payload.words[ast::kEnumPatternPathWord] = pathId.value;
     payload.words[ast::kEnumPatternArgsFirstWord] = args.first;
     payload.words[ast::kEnumPatternArgsSizeWord] = args.size;

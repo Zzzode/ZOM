@@ -1,0 +1,5 @@
+section: "Ch.05 Enum match exhaustiveness"
+covers_rule: "matchStmt, enumPattern"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that missing enum variants produce ZOM4022."

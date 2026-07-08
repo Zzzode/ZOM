@@ -2687,6 +2687,52 @@ ZC_TEST("BodyChecker.MatchStmtReportsNonExhaustiveEnum") {
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerNonExhaustiveMatch));
 }
 
+ZC_TEST("BodyChecker.MatchStmtAcceptsExhaustiveTupleEnum") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> okFields;
+  okFields.add(fix.makePredefinedTypeExpr(static_cast<uint8_t>(type::PrimitiveKind::I32)));
+  zc::Vector<ast::NodeId> errFields;
+  errFields.add(fix.makePredefinedTypeExpr(static_cast<uint8_t>(type::PrimitiveKind::Str)));
+  zc::Vector<ast::NodeId> variants;
+  variants.add(fix.makeTupleVariant("Ok"_zc, fix.makeNodeList(okFields.asPtr())));
+  variants.add(fix.makeTupleVariant("Err"_zc, fix.makeNodeList(errFields.asPtr())));
+  auto resultEnum =
+      fix.makeEnumDecl("Result"_zc, fix.makeEnumVariantList(fix.makeNodeList(variants.asPtr())));
+
+  zc::Vector<ast::NodeId> params;
+  params.add(fix.makeFunctionParamDecl("r"_zc, fix.makeNamedTypeExpr("Result"_zc)));
+  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(params.asPtr()));
+
+  zc::Vector<ast::NodeId> okArgs;
+  okArgs.add(fix.makeIdentifierPattern("value"_zc));
+  zc::Vector<ast::NodeId> errArgs;
+  errArgs.add(fix.makeIdentifierPattern("message"_zc));
+  zc::Vector<ast::NodeId> arms;
+  arms.add(fix.makeMatchArmStmt(fix.makeEnumPattern("Ok"_zc, fix.makeNodeList(okArgs.asPtr())),
+                                fix.makeBlockStmt(ast::NodeList())));
+  arms.add(fix.makeMatchArmStmt(fix.makeEnumPattern("Err"_zc, fix.makeNodeList(errArgs.asPtr())),
+                                fix.makeBlockStmt(ast::NodeList())));
+  auto match = fix.makeMatchStmt(fix.makeIdentExpr("r"_zc), fix.makeNodeList(arms.asPtr()));
+
+  zc::Vector<ast::NodeId> bodyStmts;
+  bodyStmts.add(match);
+  auto fn = fix.makeFunctionDecl("f"_zc, fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr())),
+                                 paramList, fix.makeNamedTypeExpr("unit"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(resultEnum);
+  topDecls.add(fn);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(!containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerNonExhaustiveMatch));
+}
+
 ZC_TEST("BodyChecker.MatchStmtReportsUnreachableArmAfterWildcard") {
   TestFixture fix;
   auto consumer = zc::heap<CapturingDiagnosticConsumer>();

@@ -1,0 +1,61 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/match_non_exhaustive_enum_neg_05.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #24 @1:1..11:1 file_name="match_non_exhaustive_enum_neg_05.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         EnumDeclaration #6 @1:1..4:2 name="Result" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           variants_id:
+// CHECK-NEXT:             EnumVariantList #5 @1:13..4:2 nvars=2
+// CHECK-NEXT:               variants:
+// CHECK-NEXT:                 TupleVariant #2 @2:5..2:13 name="Ok" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                   tys:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:8..2:11 kind=I32
+// CHECK-NEXT:                 TupleVariant #4 @3:5..3:14 name="Err" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                   tys:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @3:9..3:12 kind=Str
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #23 @6:1..10:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #22 @6:1..10:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #11 @6:6..6:17 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #10 @6:7..6:16 name="r"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #9 @6:10..6:16
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #8 @6:10..6:16 segments=["Result"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #12 @6:21..6:25 kind=Unit
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #21 @6:26..10:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #20 @7:5..9:6
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     MatchStmt #19 @7:5..9:6
+// CHECK-NEXT:                       scrutinee:
+// CHECK-NEXT:                         IdentExpr #18 @7:12..7:13 name="r"
+// CHECK-NEXT:                       arms:
+// CHECK-NEXT:                         MatchArmStmt #17 @8:9..8:33
+// CHECK-NEXT:                           pattern:
+// CHECK-NEXT:                             EnumPattern #15 @8:14..8:26
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #14 @8:14..8:23 segments=["Result", "Ok"]
+// CHECK-NEXT:                               args:
+// CHECK-NEXT:                                 IdentifierPattern #13 @8:24..8:25 name="v"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                           guard: null
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #16 @8:30..8:33
+// CHECK-NEXT:                               stmts: []
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

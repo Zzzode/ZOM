@@ -1,0 +1,10 @@
+enum Result {
+    Ok(i32),
+    Err(str),
+}
+
+fun f(r: Result) -> unit {
+    match (r) {
+        when Result.Ok(v) => { }
+    }
+}
