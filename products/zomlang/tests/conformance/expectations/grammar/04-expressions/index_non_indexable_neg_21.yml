@@ -1,0 +1,5 @@
+section: "Ch.04 Indexing non-indexable value"
+covers_rule: "indexExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4041 for indexing a non-array/non-tuple value."
