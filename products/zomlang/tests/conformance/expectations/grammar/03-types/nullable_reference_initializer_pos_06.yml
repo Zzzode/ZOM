@@ -1,0 +1,5 @@
+section: "Ch.03 Nullable reference types"
+covers_rule: "referenceType, unionType, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that null can initialize an explicit nullable reference union."
