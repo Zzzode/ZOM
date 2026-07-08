@@ -16,10 +16,12 @@
 
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/node-id.h"
+#include "zomlang/compiler/type/associated-type.h"
 #include "zomlang/compiler/type/coercion.h"
 #include "zomlang/compiler/type/error-type.h"
 #include "zomlang/compiler/type/existential-type.h"
 #include "zomlang/compiler/type/function-type.h"
+#include "zomlang/compiler/type/intersection-type.h"
 #include "zomlang/compiler/type/named-type.h"
 #include "zomlang/compiler/type/primitive-type.h"
 #include "zomlang/compiler/type/type-scheme.h"
@@ -245,6 +247,44 @@ ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicExistential") {
     const auto& existential = static_cast<const ExistentialType&>(*instantiated);
     ZC_EXPECT(existential.getMarkerCount() == 1);
     ZC_EXPECT(existential.getMarkerName(0) == "Sendable"_zc);
+  }
+}
+
+ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicAssociatedType") {
+  TypeEnv env;
+  zc::Vector<zc::Own<GenericParam>> params;
+  auto body = zc::heap<AssociatedType>(zc::heap<NamedType>("Iterator"_zc), "Item"_zc);
+  TypeScheme scheme(zc::mv(params), zc::mv(body));
+
+  auto instantiated = env.instantiate(scheme);
+
+  ZC_EXPECT(static_cast<bool>(instantiated));
+  ZC_EXPECT(isAssociated(*instantiated));
+  if (isAssociated(*instantiated)) {
+    const auto& associated = static_cast<const AssociatedType&>(*instantiated);
+    ZC_EXPECT(associated.getName() == "Item"_zc);
+    ZC_EXPECT(isNamed(associated.getParentType()));
+  }
+}
+
+ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicIntersection") {
+  TypeEnv env;
+  zc::Vector<zc::Own<GenericParam>> params;
+  zc::Vector<zc::Own<Type>> conjuncts;
+  conjuncts.add(zc::heap<NamedType>("Drawable"_zc));
+  conjuncts.add(zc::heap<NamedType>("Clickable"_zc));
+  auto body = zc::heap<IntersectionType>(zc::mv(conjuncts));
+  TypeScheme scheme(zc::mv(params), zc::mv(body));
+
+  auto instantiated = env.instantiate(scheme);
+
+  ZC_EXPECT(static_cast<bool>(instantiated));
+  ZC_EXPECT(isIntersection(*instantiated));
+  if (isIntersection(*instantiated)) {
+    const auto& intersection = static_cast<const IntersectionType&>(*instantiated);
+    ZC_EXPECT(intersection.getConjunctCount() == 2);
+    ZC_EXPECT(isNamed(intersection.getConjunct(0)));
+    ZC_EXPECT(isNamed(intersection.getConjunct(1)));
   }
 }
 
