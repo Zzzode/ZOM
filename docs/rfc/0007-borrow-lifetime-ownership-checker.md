@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, runtime-memory, concurrency, spec-audit, verification]
 approvers: []
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-07-09
 area: compiler
 requires: [4, 5, 6]
 supersedes: []
@@ -298,8 +298,14 @@ non-goal.
 
 ### Diagnostics
 
-The concrete numeric code allocation is intentionally left for the implementation
-RFC transition, but the diagnostic families are fixed:
+Borrow-checker diagnostics are checker-owned diagnostics. They must be allocated
+from the checker-owned diagnostic authority in `diagnostics-checker.def` when
+the implementation lands, and the RFC diagnostic catalog must be updated in the
+same change. They must not use the `ZOM30xx` range, which is reserved for
+binder diagnostics.
+
+The concrete numeric code allocation is intentionally left for the
+implementation transition, but the diagnostic families are fixed:
 
 | Family | Trigger |
 |---|---|
@@ -466,9 +472,6 @@ borrow-checker corpus before the RFC can move to `LANDED`.
 
 ## Open Questions
 
-- Which numeric diagnostic range should own borrow-checker errors: a dedicated
-  `ZOM30xx` range as currently reserved in design docs, or a compiler-checker
-  subrange near existing type diagnostics?
 - Should field-sensitive partial moves ship in the first implementation or only
   after whole-place move checking is stable?
 - Which standard-library APIs are trusted scoped-task roots for the first
@@ -479,4 +482,5 @@ borrow-checker corpus before the RFC can move to `LANDED`.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-07-08 | DRAFT | Initial draft separating borrow, lifetime, ownership, move, reborrow, linear, and scoped-task checking from RFC 0005 type checking. |
-| 2026-07-08 | REVIEW | The proposal now has a complete post-type-check borrow-checker design, safety impact, acceptance criteria, implementation plan, and local discussion/tracking anchors. Approval remains blocked on owner review, diagnostic-range resolution, non-empty approvers, a recorded decision, and implementation evidence. |
+| 2026-07-08 | REVIEW | The proposal now has a complete post-type-check borrow-checker design, safety impact, acceptance criteria, implementation plan, and local discussion/tracking anchors. Approval remains blocked on owner review, non-empty approvers, a recorded decision, and implementation evidence. |
+| 2026-07-09 | REVIEW | Resolved the diagnostic-range question: borrow-checker diagnostics are checker-owned and must be allocated in `diagnostics-checker.def` when the implementation lands, not in the binder-owned ZOM30xx range. |
