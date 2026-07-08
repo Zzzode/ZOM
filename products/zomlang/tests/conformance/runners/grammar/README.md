@@ -45,14 +45,14 @@ those belong in compiler AST/FileCheck expectations under
 | 7 | `08-adt` | Algebraic data types: structs, enums, variants, constructors, inheritance, fields | 18 | 10 | 13 | 0 | 41 |
 | 8 | `09-interfaces` | Interface declarations, method signatures, implements clauses, trait bounds | 16 | 8 | 11 | 0 | 35 |
 | 9 | `11-error` | Error handling: try/catch, throw, raises signatures, async/await, yield | 10 | 6 | 12 | 0 | 28 |
-| 10 | `12-generics` | Generic parameters, where clauses, generic instantiation, variance placeholders | 11 | 6 | 9 | 0 | 26 |
+| 10 | `12-generics` | Generic parameters, where clauses, generic instantiation, variance placeholders | 12 | 6 | 9 | 0 | 27 |
 | 11 | `13-modules` | Module files, imports/exports, path resolution, package-level declarations | 18 | 12 | 19 | 0 | 49 |
 | 12 | `16-attributes` | `@attribute` syntax, built-in attributes, attribute arguments, targets | 9 | 6 | 15 | 0 | 30 |
 | 13 | `15-concurrency` | Concurrency primitives: spawn modifiers, priority/blocking/detached, suspend/until | 8 | 6 | 8 | 0 | 22 |
 | 14 | `19-conditional` | Conditional compilation: `#[zom::cfg(...)]` attribute-gated AST stripping, predicate combinators, file-suffix conventions | 6 | 4 | 5 | 0 | 15 |
 | 15 | `20-ffi` | FFI syntax: extern declarations, ABI strings, unsafe blocks | 8 | 4 | 3 | 1 | 16 |
 | 16 | `21-macros` | Macro and derive syntax | 8 | 4 | 3 | 0 | 15 |
-|   | **Total** | | **252** | **145** | **228** | **13** | **638** |
+|   | **Total** | | **253** | **145** | **228** | **13** | **639** |
 
 ## Usage
 
@@ -171,4 +171,4 @@ These parser edge cases are **not** enforced by the grammar today and are captur
 
 ## Total
 
-Recursive count of grammar expectation files: **638**
+Recursive count of grammar expectation files: **639**

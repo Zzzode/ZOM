@@ -1,0 +1,5 @@
+section: "12-generics generic bound satisfaction"
+covers_rule: "genericParams, standaloneImplDeclaration, callExpr"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that a satisfied interface bound passes through the CLI pipeline."

@@ -1,0 +1,12 @@
+interface Hashable { }
+
+class Box { }
+
+impl Hashable for Box { }
+
+fun needs<T: Hashable>(x: T) -> unit {
+    return;
+}
+
+let b: Box;
+needs(b);
