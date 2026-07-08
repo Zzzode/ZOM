@@ -2,7 +2,7 @@
 rfc: 6
 title: Error Lowering And Runtime ABI
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, runtime-memory, spec-audit, verification]
@@ -13,10 +13,10 @@ area: compiler
 requires: [3, 5]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/0006-error-lowering-runtime-abi.md#status-history
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/0006-error-lowering-runtime-abi.md#acceptance-criteria
 ---
 
 # RFC 0006: Error Lowering And Runtime ABI
@@ -499,3 +499,4 @@ clear configure-time or compile-time rejection path.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-07-08 | DRAFT | Initial draft defining error-union ABI, `?!` lowering, `!!` panic lowering, cleanup discipline, and runtime panic boundaries. |
+| 2026-07-08 | REVIEW | The proposal now has a complete backend/runtime ABI contract, ordered implementation plan, concrete acceptance criteria, and local discussion/tracking anchors. Approval remains blocked on owner review, non-empty approvers, a recorded decision, and follow-on backend implementation evidence. |
