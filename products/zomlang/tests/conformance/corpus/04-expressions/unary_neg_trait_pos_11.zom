@@ -1,0 +1,12 @@
+interface Neg {
+    fun neg() -> Operand;
+}
+
+class Operand { }
+
+impl Neg for Operand {
+    fun neg() -> Operand;
+}
+
+let value: Operand;
+let negated: Operand = -value;

@@ -1,0 +1,5 @@
+section: "04-expressions unary operator trait conformance"
+covers_rule: "standaloneImplDeclaration, unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that Neg.neg() -> Operand accepts -value through the CLI pipeline."
