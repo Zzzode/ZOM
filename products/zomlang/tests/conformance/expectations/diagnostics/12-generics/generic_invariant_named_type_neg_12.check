@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/12-generics/generic_invariant_named_type_neg_12.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0410]: Type mismatch: expected Vec<&i32>, got Vec<&mut i32>
+// CHECK-LITERAL: Error [ZOM4410]: Type mismatch: expected Vec<&i32>, got Vec<&mut i32>
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]generic_invariant_named_type_neg_12\.zom:9:1$}}
 // CHECK-LITERAL: 9 | read_refs(make_mut_refs());

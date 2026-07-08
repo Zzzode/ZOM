@@ -12,143 +12,143 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-DIAG(ThisCharCannotBeEscapedInARegularExpression, kError,
+DIAG(2001, ThisCharCannotBeEscapedInARegularExpression, kError,
      "This character cannot be escaped in a regular expression", 0)
-DIAG(InvalidCharacter, kError, "Invalid character", 0)
-DIAG(UnterminatedString, kError, "Unterminated string literal", 0)
-DIAG(UnterminatedTemplateLiteral, kError, "Unterminated template literal", 0)
-DIAG(UnterminatedComment, kError, "Unterminated comment", 0)
-DIAG(AsteriskSlashExpected, kError, "'*/' expected", 0)
-DIAG(UnexpectedEndOfText, kError, "Unexpected end of text", 0)
-DIAG(UnaryExpressionInExponentiation, kError,
+DIAG(2002, InvalidCharacter, kError, "Invalid character", 0)
+DIAG(2003, UnterminatedString, kError, "Unterminated string literal", 0)
+DIAG(2004, UnterminatedTemplateLiteral, kError, "Unterminated template literal", 0)
+DIAG(2005, UnterminatedComment, kError, "Unterminated comment", 0)
+DIAG(2006, AsteriskSlashExpected, kError, "'*/' expected", 0)
+DIAG(2007, UnexpectedEndOfText, kError, "Unexpected end of text", 0)
+DIAG(2008, UnaryExpressionInExponentiation, kError,
      "A unary expression with the '{0}' operator is not allowed in the left hand side of an "
      "exponentiation expression. Consider enclosing the expression in parentheses",
      1)
-DIAG(InvalidOptionalChainFromNewExpression, kError,
+DIAG(2009, InvalidOptionalChainFromNewExpression, kError,
      "Invalid optional chain from a 'new' expression. Consider calling the constructor first", 0)
-DIAG(ReservedKeywordAsIdentifier, kError, "Reserved keyword '{0}' cannot be used as an identifier",
+DIAG(2010, ReservedKeywordAsIdentifier, kError, "Reserved keyword '{0}' cannot be used as an identifier",
      1)
-DIAG(ExceptedIdentifier, kError, "Identifier expected, found '{0}'", 1)
-DIAG(MissingSemicolon, kError, "Missing semicolon before '{0}'", 1)
-DIAG(VariableDeclarationNotAllowedHere, kError, "Variable declaration not allowed at this location",
+DIAG(2011, ExceptedIdentifier, kError, "Identifier expected, found '{0}'", 1)
+DIAG(2012, MissingSemicolon, kError, "Missing semicolon before '{0}'", 1)
+DIAG(2013, VariableDeclarationNotAllowedHere, kError, "Variable declaration not allowed at this location",
      0)
-DIAG(InterfaceNameCannotBeKeyword, kError, "Interface name cannot be '{0}'", 1)
-DIAG(InterfaceMustBeGivenAName, kError, "Interface must be given a name", 0)
-DIAG(TypeAliasNameCannotBeKeyword, kError, "Type alias name cannot be '{0}'", 1)
-DIAG(TypeAliasMustBeGivenAName, kError, "Type alias must be given a name", 0)
-DIAG(NamespaceNameCannotBeKeyword, kError, "Namespace name cannot be '{0}'", 1)
-DIAG(NamespaceMustBeGivenAName, kError, "Namespace must be given a name", 0)
-DIAG(DidYouMean, kError, "Unknown keyword or identifier. Did you mean '{0}'?", 1)
-DIAG(UnexpectedKeywordOrIdentifier, kError, "Unexpected keyword or identifier", 0)
-DIAG(TypePredicateOnlyInReturn, kError,
+DIAG(2014, InterfaceNameCannotBeKeyword, kError, "Interface name cannot be '{0}'", 1)
+DIAG(2015, InterfaceMustBeGivenAName, kError, "Interface must be given a name", 0)
+DIAG(2016, TypeAliasNameCannotBeKeyword, kError, "Type alias name cannot be '{0}'", 1)
+DIAG(2017, TypeAliasMustBeGivenAName, kError, "Type alias must be given a name", 0)
+DIAG(2018, NamespaceNameCannotBeKeyword, kError, "Namespace name cannot be '{0}'", 1)
+DIAG(2019, NamespaceMustBeGivenAName, kError, "Namespace must be given a name", 0)
+DIAG(2020, DidYouMean, kError, "Unknown keyword or identifier. Did you mean '{0}'?", 1)
+DIAG(2021, UnexpectedKeywordOrIdentifier, kError, "Unexpected keyword or identifier", 0)
+DIAG(2022, TypePredicateOnlyInReturn, kError,
      "A type predicate is only allowed in return type position for functions and methods", 0)
-DIAG(CannotStartFunctionCallInTypeAnnotation, kError,
+DIAG(2023, CannotStartFunctionCallInTypeAnnotation, kError,
      "Cannot start a function call in a type annotation", 0)
-DIAG(ExpectedForPropertyInitializer, kError, "Expected '=' for property initializer", 0)
-DIAG(ExpectedToken, kError, "Expected '{0}'", 1)
-DIAG(OctalLiteralsAreNotAllowedUseTheSyntax0o, kError,
+DIAG(2024, ExpectedForPropertyInitializer, kError, "Expected '=' for property initializer", 0)
+DIAG(2025, ExpectedToken, kError, "Expected '{0}'", 1)
+DIAG(2026, OctalLiteralsAreNotAllowedUseTheSyntax0o, kError,
      "Octal literals are not allowed. Use the syntax '{0}'", 1)
-DIAG(OctalEscapeSequencesNotAllowed, kError,
+DIAG(2027, OctalEscapeSequencesNotAllowed, kError,
      "Octal escape sequences are not allowed. Use the syntax '\\x{0}'", 1)
-DIAG(OctalEscapeSequencesAndBackreferencesNotAllowed, kError,
+DIAG(2028, OctalEscapeSequencesAndBackreferencesNotAllowed, kError,
      "Octal escape sequences and backreferences are not allowed in a character class. If this was "
      "intended as an escape sequence, use the syntax '\\x{0}'",
      1)
-DIAG(
+DIAG(2029,
     DecimalEscapeSequencesAndBackreferencesNotAllowed, kError,
     "Decimal escape sequences and backreferences are not allowed in a character class. If this was "
     "intended as an escape sequence, use the syntax '\\x{0}'",
     1)
-DIAG(EscapeSequenceNotAllowed, kError, "Escape sequence '{0}' is not allowed", 1)
-DIAG(UnicodeEscapeSequenceCannotAppearHere, kError, "Unicode escape sequence cannot appear here", 0)
-DIAG(HexadecimalDigitExpected, kError, "Hexadecimal digit expected", 0)
-DIAG(BinaryOrOctalDigitExpected, kError, "Binary or octal digit expected", 0)
-DIAG(OctalDigitExpected, kError, "Octal digit expected", 0)
-DIAG(NumericSeparatorsAreNotAllowedHere, kError, "Numeric separators are not allowed here", 0)
-DIAG(MultipleConsecutiveNumericSeparatorsAreNotPermitted, kError,
+DIAG(2030, EscapeSequenceNotAllowed, kError, "Escape sequence '{0}' is not allowed", 1)
+DIAG(2031, UnicodeEscapeSequenceCannotAppearHere, kError, "Unicode escape sequence cannot appear here", 0)
+DIAG(2032, HexadecimalDigitExpected, kError, "Hexadecimal digit expected", 0)
+DIAG(2033, BinaryOrOctalDigitExpected, kError, "Binary or octal digit expected", 0)
+DIAG(2034, OctalDigitExpected, kError, "Octal digit expected", 0)
+DIAG(2035, NumericSeparatorsAreNotAllowedHere, kError, "Numeric separators are not allowed here", 0)
+DIAG(2036, MultipleConsecutiveNumericSeparatorsAreNotPermitted, kError,
      "Multiple consecutive numeric separators are not permitted", 0)
-DIAG(UnicodeEscapeSequencesOnlyAvailableWithUnicodeFlag, kError,
+DIAG(2037, UnicodeEscapeSequencesOnlyAvailableWithUnicodeFlag, kError,
      "Unicode escape sequences are only available when the Unicode (u) flag or the Unicode Sets "
      "(v) flag is set",
      0)
-DIAG(ExtendedUnicodeEscapeValueOutOfRange, kError,
+DIAG(2038, ExtendedUnicodeEscapeValueOutOfRange, kError,
      "An extended Unicode escape value must be between 0x0 and 0x10FFFF inclusive", 0)
-DIAG(UnterminatedUnicodeEscapeSequence, kError, "Unterminated Unicode escape sequence", 0)
-DIAG(ExpectedMatchingTokenHere, kNote,
+DIAG(2039, UnterminatedUnicodeEscapeSequence, kError, "Unterminated Unicode escape sequence", 0)
+DIAG(2040, ExpectedMatchingTokenHere, kNote,
      "The parser expected to find a {0} to match the {1} token here", 2)
-DIAG(DecimalsWithLeadingZerosAreNotAllowed, kError, "Decimals with leading zeros are not allowed",
+DIAG(2041, DecimalsWithLeadingZerosAreNotAllowed, kError, "Decimals with leading zeros are not allowed",
      0)
-DIAG(DigitExpected, kError, "Digit expected", 0)
-DIAG(ABigIntLiteralCannotUseExponentialNotation, kError,
+DIAG(2042, DigitExpected, kError, "Digit expected", 0)
+DIAG(2043, ABigIntLiteralCannotUseExponentialNotation, kError,
      "A BigInt literal cannot use exponential notation", 0)
-DIAG(ABigIntLiteralMustBeAnInteger, kError, "A BigInt literal must be an integer", 0)
-DIAG(AnIdentifierOrKeywordCannotImmediatelyFollowANumericLiteral, kError,
+DIAG(2044, ABigIntLiteralMustBeAnInteger, kError, "A BigInt literal must be an integer", 0)
+DIAG(2045, AnIdentifierOrKeywordCannotImmediatelyFollowANumericLiteral, kError,
      "An identifier or keyword cannot immediately follow a numeric literal", 0)
-DIAG(XCanOnlyUsedAtStartOfFile, kError,
+DIAG(2046, XCanOnlyUsedAtStartOfFile, kError,
      "Hashbang comment can only be used at the start of the file", 0)
 
 // Diagnostics for list parsing error recovery
-DIAG(DeclarationExpected, kError, "Declaration expected", 0)
-DIAG(DeclarationOrStatementExpected, kError, "Declaration or statement expected", 0)
-DIAG(ModuleDeclarationMustBeFirst, kError,
+DIAG(2047, DeclarationExpected, kError, "Declaration expected", 0)
+DIAG(2048, DeclarationOrStatementExpected, kError, "Declaration or statement expected", 0)
+DIAG(2049, ModuleDeclarationMustBeFirst, kError,
      "A module declaration can only appear at the top of a file", 0)
-DIAG(CaseOrDefaultExpected, kError, "case or default expected", 0)
-DIAG(StatementExpected, kError, "Statement expected", 0)
-DIAG(PropertyOrSignatureExpected, kError, "Property or signature expected", 0)
-DIAG(UnexpectedTokenClassMemberExpected, kError,
+DIAG(2050, CaseOrDefaultExpected, kError, "case or default expected", 0)
+DIAG(2051, StatementExpected, kError, "Statement expected", 0)
+DIAG(2052, PropertyOrSignatureExpected, kError, "Property or signature expected", 0)
+DIAG(2053, UnexpectedTokenClassMemberExpected, kError,
      "Unexpected token. A property, method, accessor or constructor was expected", 0)
-DIAG(UnexpectedTokenStructMemberExpected, kError,
+DIAG(2054, UnexpectedTokenStructMemberExpected, kError,
      "Unexpected token. A property, method or accessor was expected", 0)
-DIAG(EnumMemberExpected, kError, "Enum member expected", 0)
-DIAG(ExpressionExpected, kError, "Expression expected", 0)
-DIAG(DanglingHash, kError,
+DIAG(2055, EnumMemberExpected, kError, "Enum member expected", 0)
+DIAG(2056, ExpressionExpected, kError, "Expression expected", 0)
+DIAG(2057, DanglingHash, kError,
      "Stray '#' with no attribute following; expected '[' after '#' to start an attribute.", 0)
-DIAG(DanglingHashHelp, kNote,
+DIAG(2058, DanglingHashHelp, kNote,
      "To start an attribute, write #[path::to::attribute].", 0)
-DIAG(ObjectLiteralPropertyNameExpected, kError,
+DIAG(2059, ObjectLiteralPropertyNameExpected, kError,
      "Expected an identifier as object property name", 0)
-DIAG(ObjectLiteralMethodSyntax, kError,
+DIAG(2060, ObjectLiteralMethodSyntax, kError,
      "Method syntax is not allowed in object literals. Use a property with a function value instead",
      0)
-DIAG(VariableDeclarationNameNotAllowed, kError,
+DIAG(2061, VariableDeclarationNameNotAllowed, kError,
      "'{0}' is not allowed as a variable declaration name", 1)
-DIAG(VariableDeclarationExpected, kError, "Variable declaration expected", 0)
-DIAG(PropertyDestructuringPatternExpected, kError, "Property destructuring pattern expected", 0)
-DIAG(ArrayElementDestructuringPatternExpected, kError,
+DIAG(2062, VariableDeclarationExpected, kError, "Variable declaration expected", 0)
+DIAG(2063, PropertyDestructuringPatternExpected, kError, "Property destructuring pattern expected", 0)
+DIAG(2064, ArrayElementDestructuringPatternExpected, kError,
      "Array element destructuring pattern expected", 0)
-DIAG(ArgumentExpressionExpected, kError, "Argument expression expected", 0)
-DIAG(PropertyAssignmentExpected, kError, "Property assignment expected", 0)
-DIAG(ExpressionOrCommaExpected, kError, "Expression or comma expected", 0)
-DIAG(ParameterDeclarationExpected, kError, "Parameter declaration expected", 0)
-DIAG(ParameterNameNotAllowed, kError, "'{0}' is not allowed as a parameter name", 1)
-DIAG(TypeParameterDeclarationExpected, kError, "Type parameter declaration expected", 0)
-DIAG(TypeArgumentExpected, kError, "Type argument expected", 0)
-DIAG(TypeExpected, kError, "Type expected", 0)
-DIAG(LineBreakNotAllowedBeforeAsCast, kError,
+DIAG(2065, ArgumentExpressionExpected, kError, "Argument expression expected", 0)
+DIAG(2066, PropertyAssignmentExpected, kError, "Property assignment expected", 0)
+DIAG(2067, ExpressionOrCommaExpected, kError, "Expression or comma expected", 0)
+DIAG(2068, ParameterDeclarationExpected, kError, "Parameter declaration expected", 0)
+DIAG(2069, ParameterNameNotAllowed, kError, "'{0}' is not allowed as a parameter name", 1)
+DIAG(2070, TypeParameterDeclarationExpected, kError, "Type parameter declaration expected", 0)
+DIAG(2071, TypeArgumentExpected, kError, "Type argument expected", 0)
+DIAG(2072, TypeExpected, kError, "Type expected", 0)
+DIAG(2073, LineBreakNotAllowedBeforeAsCast, kError,
      "A line break is not allowed before an 'as' cast expression", 0)
-DIAG(FunctionTypeNotationMustBeParenthesizedInUnionType, kError,
+DIAG(2074, FunctionTypeNotationMustBeParenthesizedInUnionType, kError,
      "Function type notation must be parenthesized when used in a union type", 0)
-DIAG(FunctionTypeNotationMustBeParenthesizedInIntersectionType, kError,
+DIAG(2075, FunctionTypeNotationMustBeParenthesizedInIntersectionType, kError,
      "Function type notation must be parenthesized when used in an intersection type", 0)
-DIAG(UnexpectedTokenExpected, kError, "Unexpected token expected", 0)
-DIAG(IdentifierExpected, kError, "Identifier expected", 0)
-DIAG(IdentifierOrStringLiteralExpected, kError, "Identifier or string literal expected", 0)
-DIAG(InterfaceMethodSignatureInitializerNotAllowed, kError,
+DIAG(2076, UnexpectedTokenExpected, kError, "Unexpected token expected", 0)
+DIAG(2077, IdentifierExpected, kError, "Identifier expected", 0)
+DIAG(2078, IdentifierOrStringLiteralExpected, kError, "Identifier or string literal expected", 0)
+DIAG(2079, InterfaceMethodSignatureInitializerNotAllowed, kError,
      "Interface method signatures cannot have initializers", 0)
-DIAG(DeclarationOrStatementExpectedAfterBlock, kError,
+DIAG(2080, DeclarationOrStatementExpectedAfterBlock, kError,
      "Declaration or statement expected. This follows a block of statements, so if you intended to "
      "write a destructuring assignment, you might need to wrap the whole assignment in parentheses",
      0)
-DIAG(AnInstantiationExpressionCannotBeFollowedByAPropertyAccess, kError,
+DIAG(2081, AnInstantiationExpressionCannotBeFollowedByAPropertyAccess, kError,
      "An instantiation expression cannot be followed by a property access", 0)
-DIAG(ParserInvariantViolation, kFatal, "Internal parser invariant violated: {0}", 1)
-DIAG(DuplicateDeclarationModifier, kError, "Duplicate declaration modifier '{0}'", 1)
-DIAG(IncompatibleDeclarationModifiers, kError,
+DIAG(2082, ParserInvariantViolation, kFatal, "Internal parser invariant violated: {0}", 1)
+DIAG(2083, DuplicateDeclarationModifier, kError, "Duplicate declaration modifier '{0}'", 1)
+DIAG(2084, IncompatibleDeclarationModifiers, kError,
      "Declaration modifiers '{0}' and '{1}' cannot be used together", 2)
-DIAG(MultiCharacterSingleQuotedLiteral, kError,
+DIAG(2085, MultiCharacterSingleQuotedLiteral, kError,
      "Multi-character single-quoted literals are not allowed", 0)
-DIAG(NumericLiteralCannotStartWithUnderscore, kError, "Numeric literals cannot start with '_'", 0)
+DIAG(2086, NumericLiteralCannotStartWithUnderscore, kError, "Numeric literals cannot start with '_'", 0)
 
 // --- Warning-level diagnostics ---
-DIAG(LineBreakBeforeAsCast, kWarning,
+DIAG(2087, LineBreakBeforeAsCast, kWarning,
      "A line break before an 'as' cast expression may be confusing", 0)

@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/05-statements/immutable_assignment_neg_02.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0450]: Cannot mutate immutable variable 'x'
+// CHECK-LITERAL: Error [ZOM4450]: Cannot mutate immutable variable 'x'
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]immutable_assignment_neg_02\.zom:2:1$}}
 // CHECK-LITERAL: 2 | x = 2;

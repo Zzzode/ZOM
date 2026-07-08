@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/11-error/error_unwrap_non_union_neg_12.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0461]: '!!' on non-error-union type 'i32'
+// CHECK-LITERAL: Error [ZOM4461]: '!!' on non-error-union type 'i32'
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]error_unwrap_non_union_neg_12\.zom:2:14$}}
 // CHECK-LITERAL: 2 | let y: i32 = x!!;

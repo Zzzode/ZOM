@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/03-types/dyn_gat_not_allowed_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0336]: Interface 'Iterable' has generic associated type 'Iter' and cannot be used as dyn
+// CHECK-LITERAL: Error [ZOM4336]: Interface 'Iterable' has generic associated type 'Iter' and cannot be used as dyn
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]dyn_gat_not_allowed_neg_01\.zom:5:12$}}
 // CHECK-LITERAL: 5 | let x: dyn Iterable;

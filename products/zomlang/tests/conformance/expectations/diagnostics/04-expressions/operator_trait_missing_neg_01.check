@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/04-expressions/operator_trait_missing_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0431]: 'Operand' does not implement 'Neg'
+// CHECK-LITERAL: Error [ZOM4431]: 'Operand' does not implement 'Neg'
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]operator_trait_missing_neg_01\.zom:5:1$}}
 // CHECK-LITERAL: 5 | -value;

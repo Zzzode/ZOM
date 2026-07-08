@@ -1,0 +1,5 @@
+section: "04-expressions undefined identifier diagnostics"
+covers_rule: "primaryExpr, expressionStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; diagnostics runner checks binder-stage unresolved identifier output."

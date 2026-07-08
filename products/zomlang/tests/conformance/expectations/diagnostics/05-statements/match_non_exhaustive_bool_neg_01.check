@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/05-statements/match_non_exhaustive_bool_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0440]: Non-exhaustive match. Missing patterns: false
+// CHECK-LITERAL: Error [ZOM4440]: Non-exhaustive match. Missing patterns: false
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]match_non_exhaustive_bool_neg_01\.zom:2:5$}}
 // CHECK-LITERAL: 2 |     match (b) {

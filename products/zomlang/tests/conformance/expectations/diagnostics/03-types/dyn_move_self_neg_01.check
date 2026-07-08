@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/03-types/dyn_move_self_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0333]: Interface 'Consumable' has method 'consume' with move self receiver and cannot be used as dyn
+// CHECK-LITERAL: Error [ZOM4333]: Interface 'Consumable' has method 'consume' with move self receiver and cannot be used as dyn
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]dyn_move_self_neg_01\.zom:5:12$}}
 // CHECK-LITERAL: 5 | let x: dyn Consumable;

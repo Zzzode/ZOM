@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/03-types/dyn_super_not_object_safe_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0338]: Interface 'Child' inherits object-unsafe interface 'Base' and cannot be used as dyn
+// CHECK-LITERAL: Error [ZOM4338]: Interface 'Child' inherits object-unsafe interface 'Base' and cannot be used as dyn
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]dyn_super_not_object_safe_neg_01\.zom:9:12$}}
 // CHECK-LITERAL: 9 | let x: dyn Child;

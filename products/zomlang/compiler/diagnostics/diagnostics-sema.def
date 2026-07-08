@@ -16,172 +16,171 @@
 // Basic semantic errors
 // ============================================================================
 
-DIAG(TypeMismatch, kError, "Type mismatch: expected {0}, got {1}", 2)
-DIAG(UndefinedIdentifier, kError, "Undefined identifier: '{0}'", 1)
-DIAG(DuplicateIdentifier, kError, "Duplicate identifier: '{0}'", 1)
-DIAG(RedeclareVariable, kError, "Cannot redeclare variable '{0}'", 1)
-DIAG(RedeclareParameter, kError, "Cannot redeclare parameter '{0}'", 1)
-DIAG(RedeclareFunction, kError, "Cannot redeclare function '{0}'", 1)
-DIAG(RedeclareClass, kError, "Cannot redeclare class '{0}'", 1)
-DIAG(RedeclareInterface, kError, "Cannot redeclare interface '{0}'", 1)
-DIAG(RedeclareEnum, kError, "Cannot redeclare enum '{0}'", 1)
-DIAG(RedeclareTypeAlias, kError, "Cannot redeclare type alias '{0}'", 1)
-DIAG(RedeclaraBlockScopedVariable, kError, "Cannot redeclare block-scoped variable '{0}'", 1)
-DIAG(EnumMergeConflict, kError,
+DIAG(3001, TypeMismatch, kError, "Type mismatch: expected {0}, got {1}", 2)
+DIAG(3002, DuplicateIdentifier, kError, "Duplicate identifier: '{0}'", 1)
+DIAG(3003, RedeclareVariable, kError, "Cannot redeclare variable '{0}'", 1)
+DIAG(3004, RedeclareParameter, kError, "Cannot redeclare parameter '{0}'", 1)
+DIAG(3005, RedeclareFunction, kError, "Cannot redeclare function '{0}'", 1)
+DIAG(3006, RedeclareClass, kError, "Cannot redeclare class '{0}'", 1)
+DIAG(3007, RedeclareInterface, kError, "Cannot redeclare interface '{0}'", 1)
+DIAG(3008, RedeclareEnum, kError, "Cannot redeclare enum '{0}'", 1)
+DIAG(3009, RedeclareTypeAlias, kError, "Cannot redeclare type alias '{0}'", 1)
+DIAG(3010, RedeclaraBlockScopedVariable, kError, "Cannot redeclare block-scoped variable '{0}'", 1)
+DIAG(3011, EnumMergeConflict, kError,
      "Enum declarations can only merge with namespace or other enum declarations", 0)
-DIAG(MultipleDefaultExports, kError, "A module cannot have multiple default exports", 0)
+DIAG(3012, MultipleDefaultExports, kError, "A module cannot have multiple default exports", 0)
 
 // Contextual identifier validation errors
-DIAG(ReservedWord, kError, "Identifier expected. '{0}' is a reserved word", 1)
-DIAG(ReservedInContext, kError,
+DIAG(3013, ReservedWord, kError, "Identifier expected. '{0}' is a reserved word", 1)
+DIAG(3014, ReservedInContext, kError,
      "Identifier expected. '{0}' is a reserved word that cannot be used here", 1)
-DIAG(ReservedInModule, kError,
+DIAG(3015, ReservedInModule, kError,
      "Identifier expected. '{0}' is a reserved word at the top level of a module", 1)
 
-DIAG(SemanticError, kError, "{0}", 1)
+DIAG(3016, SemanticError, kError, "{0}", 1)
 
 // ============================================================================
 // Type mismatch diagnostics
 // ============================================================================
 
-DIAG(ReturnTypeMismatch, kError, "Return type mismatch: expected {0}, got {1}", 2)
-DIAG(ArgumentTypeMismatch, kError,
+DIAG(3017, ReturnTypeMismatch, kError, "Return type mismatch: expected {0}, got {1}", 2)
+DIAG(3018, ArgumentTypeMismatch, kError,
      "Argument type mismatch in call to '{0}': expected {1}, got {2}", 3)
-DIAG(AssignmentTypeMismatch, kError,
+DIAG(3019, AssignmentTypeMismatch, kError,
      "Cannot assign value of type '{0}' to variable of type '{1}'", 2)
-DIAG(InitializerTypeMismatch, kError,
+DIAG(3020, InitializerTypeMismatch, kError,
      "Initializer type '{0}' does not match declared type '{1}'", 2)
-DIAG(ConditionNotBool, kError, "Condition must be of type 'bool', got '{0}'", 1)
-DIAG(OperandTypeMismatch, kError,
+DIAG(3021, ConditionNotBool, kError, "Condition must be of type 'bool', got '{0}'", 1)
+DIAG(3022, OperandTypeMismatch, kError,
      "Operator '{0}' cannot be applied to types '{1}' and '{2}'", 3)
-DIAG(UnaryOperandTypeMismatch, kError,
+DIAG(3023, UnaryOperandTypeMismatch, kError,
      "Unary operator '{0}' cannot be applied to type '{1}'", 2)
-DIAG(InvalidCast, kError, "Cannot cast from type '{0}' to type '{1}'", 2)
-DIAG(NotCallable, kError, "Type '{0}' is not callable", 1)
-DIAG(NotIndexable, kError, "Type '{0}' is not indexable", 1)
-DIAG(ArrayIndexNotInt, kError, "Array index must be of integer type, got '{0}'", 1)
-DIAG(InvalidNewTarget, kError, "Cannot use 'new' on type '{0}': not a class type", 1)
+DIAG(3024, InvalidCast, kError, "Cannot cast from type '{0}' to type '{1}'", 2)
+DIAG(3025, NotCallable, kError, "Type '{0}' is not callable", 1)
+DIAG(3026, NotIndexable, kError, "Type '{0}' is not indexable", 1)
+DIAG(3027, ArrayIndexNotInt, kError, "Array index must be of integer type, got '{0}'", 1)
+DIAG(3028, InvalidNewTarget, kError, "Cannot use 'new' on type '{0}': not a class type", 1)
 
 // ============================================================================
 // Undefined symbol diagnostics
 // ============================================================================
 
-DIAG(UndefinedType, kError, "Undefined type: '{0}'", 1)
-DIAG(UndefinedMember, kError, "Type '{0}' has no member named '{1}'", 2)
-DIAG(UndefinedMethod, kError, "Type '{0}' has no method named '{1}'", 2)
-DIAG(UndefinedEnumVariant, kError, "Enum '{0}' has no variant named '{1}'", 2)
-DIAG(UndefinedInterface, kError, "Undefined interface: '{0}'", 1)
-DIAG(NotAType, kError, "'{0}' does not refer to a type", 1)
-DIAG(NotAValue, kError, "'{0}' does not refer to a value", 1)
-DIAG(AmbiguousReference, kError, "Ambiguous reference to '{0}'", 1)
-DIAG(UseBeforeDecl, kError, "Use of '{0}' before its declaration", 1)
+DIAG(3029, UndefinedType, kError, "Undefined type: '{0}'", 1)
+DIAG(3030, UndefinedMember, kError, "Type '{0}' has no member named '{1}'", 2)
+DIAG(3031, UndefinedMethod, kError, "Type '{0}' has no method named '{1}'", 2)
+DIAG(3032, UndefinedEnumVariant, kError, "Enum '{0}' has no variant named '{1}'", 2)
+DIAG(3033, UndefinedInterface, kError, "Undefined interface: '{0}'", 1)
+DIAG(3034, NotAType, kError, "'{0}' does not refer to a type", 1)
+DIAG(3035, NotAValue, kError, "'{0}' does not refer to a value", 1)
+DIAG(3036, AmbiguousReference, kError, "Ambiguous reference to '{0}'", 1)
+DIAG(3037, UseBeforeDecl, kError, "Use of '{0}' before its declaration", 1)
 
 // ============================================================================
 // Exhaustiveness diagnostics
 // ============================================================================
 
-DIAG(NonExhaustiveMatch, kError,
+DIAG(3038, NonExhaustiveMatch, kError,
      "Match expression is not exhaustive. Missing patterns: {0}", 1)
-DIAG(UnreachableMatchArm, kWarning, "Match arm is unreachable", 0)
-DIAG(IrrefutablePattern, kWarning,
+DIAG(3039, UnreachableMatchArm, kWarning, "Match arm is unreachable", 0)
+DIAG(3040, IrrefutablePattern, kWarning,
      "Pattern always matches; subsequent arms are unreachable", 0)
 
 // ============================================================================
 // Trait and interface diagnostics
 // ============================================================================
 
-DIAG(TraitNotImplemented, kError,
+DIAG(3041, TraitNotImplemented, kError,
      "Type '{0}' does not implement trait '{1}'", 2)
-DIAG(OrphanImpl, kError,
+DIAG(3042, OrphanImpl, kError,
      "Orphan impl: cannot implement trait '{0}' for type '{1}' (neither is local)", 2)
-DIAG(DuplicateImpl, kError,
+DIAG(3043, DuplicateImpl, kError,
      "Duplicate implementation of trait '{0}' for type '{1}'", 2)
-DIAG(ImplMissingMethod, kError,
+DIAG(3044, ImplMissingMethod, kError,
      "Impl of trait '{0}' for type '{1}' is missing required method '{2}'", 3)
-DIAG(ImplMethodSignatureMismatch, kError,
+DIAG(3045, ImplMethodSignatureMismatch, kError,
      "Method '{0}' in impl of trait '{1}' has wrong signature: expected {2}, got {3}", 4)
-DIAG(ImplExtraMethod, kWarning,
+DIAG(3046, ImplExtraMethod, kWarning,
      "Method '{0}' is not a member of trait '{1}'", 2)
-DIAG(MarkerImplNonLocal, kError,
+DIAG(3047, MarkerImplNonLocal, kError,
      "Marker impl of '{0}' must be in the same module as the type or trait", 1)
-DIAG(SealedImplOutside, kError,
+DIAG(3048, SealedImplOutside, kError,
      "Cannot implement sealed trait '{0}' outside its defining module", 1)
-DIAG(AmbiguousAssociatedType, kError,
+DIAG(3049, AmbiguousAssociatedType, kError,
      "Ambiguous associated type '{0}' for type '{1}'; use '<{1} as Interface>::{0}'", 2)
 
 // ============================================================================
 // Subtype diagnostics
 // ============================================================================
 
-DIAG(NotSubtype, kError, "Type '{0}' is not a subtype of '{1}'", 2)
-DIAG(WidthSubtypeViolation, kError,
+DIAG(3050, NotSubtype, kError, "Type '{0}' is not a subtype of '{1}'", 2)
+DIAG(3051, WidthSubtypeViolation, kError,
      "Object type '{0}' is missing required field '{1}' of type '{2}'", 3)
-DIAG(DepthSubtypeViolation, kError,
+DIAG(3052, DepthSubtypeViolation, kError,
      "Field '{0}' has type '{1}' which is not a subtype of expected '{2}'", 3)
-DIAG(VarianceMismatch, kError,
+DIAG(3053, VarianceMismatch, kError,
      "Type parameter variance mismatch: expected {0}, got {1}", 2)
-DIAG(MutableReferenceSubtype, kError,
+DIAG(3054, MutableReferenceSubtype, kError,
      "Cannot convert mutable reference to immutable reference of a different type", 0)
-DIAG(ReferenceLifetimeMismatch, kError, "Reference lifetime mismatch", 0)
+DIAG(3055, ReferenceLifetimeMismatch, kError, "Reference lifetime mismatch", 0)
 
 // ============================================================================
 // Function and call diagnostics
 // ============================================================================
 
-DIAG(TooManyArguments, kError,
+DIAG(3056, TooManyArguments, kError,
      "Too many arguments: expected {0}, got {1}", 2)
-DIAG(TooFewArguments, kError,
+DIAG(3057, TooFewArguments, kError,
      "Too few arguments: expected {0}, got {1}", 2)
-DIAG(ArgumentCountMismatch, kError,
+DIAG(3058, ArgumentCountMismatch, kError,
      "Function '{0}' expects {1} arguments, but {2} were provided", 3)
-DIAG(NoMatchingOverload, kError, "No matching overload for call to '{0}'", 1)
-DIAG(ReturnFromVoid, kError,
+DIAG(3059, NoMatchingOverload, kError, "No matching overload for call to '{0}'", 1)
+DIAG(3060, ReturnFromVoid, kError,
      "Returning value from function with 'void' return type", 0)
-DIAG(MissingReturn, kError,
+DIAG(3061, MissingReturn, kError,
      "Function '{0}' declared to return '{1}' but no return statement found", 2)
-DIAG(NamedArgNotFound, kError, "No parameter named '{0}' found in function '{1}'", 2)
-DIAG(DuplicateNamedArg, kError, "Duplicate named argument: '{0}'", 1)
+DIAG(3062, NamedArgNotFound, kError, "No parameter named '{0}' found in function '{1}'", 2)
+DIAG(3063, DuplicateNamedArg, kError, "Duplicate named argument: '{0}'", 1)
 
 // ============================================================================
 // Class and inheritance diagnostics
 // ============================================================================
 
-DIAG(OverrideMismatch, kError,
+DIAG(3064, OverrideMismatch, kError,
      "Method '{0}' overrides base method with incompatible signature: expected {1}, got {2}", 3)
-DIAG(OverrideNonVirtual, kError,
+DIAG(3065, OverrideNonVirtual, kError,
      "Method '{0}' marked 'override' but base class has no virtual method with that name", 1)
-DIAG(FinalOverride, kError,
+DIAG(3066, FinalOverride, kError,
      "Cannot override final method '{0}' from base class", 1)
-DIAG(SealedExtend, kError, "Cannot extend sealed class '{0}' outside its module", 1)
-DIAG(AbstractInstantiation, kError,
+DIAG(3067, SealedExtend, kError, "Cannot extend sealed class '{0}' outside its module", 1)
+DIAG(3068, AbstractInstantiation, kError,
      "Cannot instantiate abstract class '{0}': missing implementations for {1}", 2)
-DIAG(FieldAccessDenied, kError, "Cannot access private field '{0}'", 1)
-DIAG(MethodAccessDenied, kError, "Cannot access private method '{0}'", 1)
-DIAG(ThisOutsideClass, kError, "'this' used outside of class method", 0)
-DIAG(SuperOutsideClass, kError, "'super' used outside of class method", 0)
-DIAG(SuperNoBase, kError, "'super' used but class has no base class", 0)
+DIAG(3069, FieldAccessDenied, kError, "Cannot access private field '{0}'", 1)
+DIAG(3070, MethodAccessDenied, kError, "Cannot access private method '{0}'", 1)
+DIAG(3071, ThisOutsideClass, kError, "'this' used outside of class method", 0)
+DIAG(3072, SuperOutsideClass, kError, "'super' used outside of class method", 0)
+DIAG(3073, SuperNoBase, kError, "'super' used but class has no base class", 0)
 
 // ============================================================================
 // Generic and type parameter diagnostics
 // ============================================================================
 
-DIAG(TypeArgCountMismatch, kError,
+DIAG(3074, TypeArgCountMismatch, kError,
      "Type '{0}' expects {1} type arguments, but {2} were provided", 3)
-DIAG(TypeParamBoundViolation, kError,
+DIAG(3075, TypeParamBoundViolation, kError,
      "Type argument '{0}' does not satisfy bound '{1}'", 2)
-DIAG(InconsistentTypeVar, kError,
+DIAG(3076, InconsistentTypeVar, kError,
      "Inconsistent type variable usage: '{0}' inferred to both '{1}' and '{2}'", 3)
-DIAG(OccursCheck, kError, "Infinite type detected: '{0}' occurs in '{1}'", 2)
-DIAG(UnresolvedTypeVar, kWarning, "Could not infer type for '{0}'; using 'any'", 1)
+DIAG(3077, OccursCheck, kError, "Infinite type detected: '{0}' occurs in '{1}'", 2)
+DIAG(3078, UnresolvedTypeVar, kWarning, "Could not infer type for '{0}'; using 'any'", 1)
 
 // ============================================================================
 // Miscellaneous diagnostics
 // ============================================================================
 
-DIAG(UnusedVariable, kWarning, "Unused variable: '{0}'", 1)
-DIAG(UnusedImport, kWarning, "Unused import: '{0}'", 1)
-DIAG(ShadowedVariable, kRemark, "Variable '{0}' shadows an outer declaration", 1)
-DIAG(ImplicitAny, kWarning, "Parameter '{0}' implicitly has 'any' type", 1)
-DIAG(DiscardedValue, kWarning, "Value of type '{0}' is discarded", 1)
-DIAG(IntegerOverflow, kWarning, "Integer literal overflows type '{0}'", 1)
-DIAG(DivideByZero, kWarning, "Potential division by zero", 0)
+DIAG(3079, UnusedVariable, kWarning, "Unused variable: '{0}'", 1)
+DIAG(3080, UnusedImport, kWarning, "Unused import: '{0}'", 1)
+DIAG(3081, ShadowedVariable, kRemark, "Variable '{0}' shadows an outer declaration", 1)
+DIAG(3082, ImplicitAny, kWarning, "Parameter '{0}' implicitly has 'any' type", 1)
+DIAG(3083, DiscardedValue, kWarning, "Value of type '{0}' is discarded", 1)
+DIAG(3084, IntegerOverflow, kWarning, "Integer literal overflows type '{0}'", 1)
+DIAG(3085, DivideByZero, kWarning, "Potential division by zero", 0)

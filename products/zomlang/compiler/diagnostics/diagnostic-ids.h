@@ -23,18 +23,12 @@ namespace compiler {
 namespace diagnostics {
 
 enum class DiagID : uint32_t {
-#define DIAG(Name, ...) Name,
-  Common = 1000,
-#include "zomlang/compiler/diagnostics/diagnostics-common.def"
-  Parse = 2000,
-#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
-  TypeChecker = 400,
-#define CHECKER_DIAG(Code, Name, ...) Name = Code,
+#define DIAG(Code, Name, ...) Name = Code,
+#include "zomlang/compiler/diagnostics/diagnostics-binder.def"
 #include "zomlang/compiler/diagnostics/diagnostics-checker.def"
-#undef CHECKER_DIAG
-  Semantic = 3000,
+#include "zomlang/compiler/diagnostics/diagnostics-common.def"
+#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
 #include "zomlang/compiler/diagnostics/diagnostics-sema.def"
-  CodeGen = 4000,
 #undef DIAG
 };
 

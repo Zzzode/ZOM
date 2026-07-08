@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/12-generics/generic_explicit_incompatible_neg_11.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0410]: Type mismatch: expected str, got i32
+// CHECK-LITERAL: Error [ZOM4410]: Type mismatch: expected str, got i32
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]generic_explicit_incompatible_neg_11\.zom:5:14$}}
 // CHECK-LITERAL: 5 | let y: str = identity<str>(42);

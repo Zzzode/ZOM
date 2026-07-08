@@ -1,7 +1,7 @@
 // RUN: ! %zomc compile --syntax-only %corpus/03-types/associated_projection_missing_neg_03.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM0433]: No associated type 'Item' for type 'Box'
+// CHECK-LITERAL: Error [ZOM4433]: No associated type 'Item' for type 'Box'
 // CHECK:   -->
 // CHECK-SAME: {{[/\\]associated_projection_missing_neg_03\.zom:9:13$}}
 // CHECK-LITERAL: 9 | alias Bad = Box::Item;
