@@ -2051,6 +2051,10 @@ ZC_TEST("BodyChecker.CastAllowsNumericConversion") {
 
 ZC_TEST("BodyChecker.CastRejectsIntegerToBool") {
   TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
   auto expr = fix.makeIntLiteral(42);
   auto ty = fix.makeNamedTypeExpr("bool"_zc);
   auto cast = fix.makeCastExpr(expr, ty);
@@ -2061,6 +2065,7 @@ ZC_TEST("BodyChecker.CastRejectsIntegerToBool") {
 
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerInvalidCast));
   ZC_EXPECT(result.typeEnv.hasType(cast));
   ZC_EXPECT(isError(result.typeEnv.getType(cast)));
 }

@@ -85,6 +85,7 @@ The table below is the **authoritative copy** of the ZOM diagnostic-code range a
 | 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0411` = cannot unify two types in a specific expression context → Error |
 | 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM0412` = infinite type detected during unification → Error |
 | 0400–0499 | Type checker / calls | `products/zomlang/compiler/checker` | Error | No | `ZOM0415` = attempted to call a non-function value → Error |
+| 0400–0499 | Type checker / casts | `products/zomlang/compiler/checker` | Error | No | `ZOM0416` = invalid cast between source and target types → Error |
 | 0400–0499 | Type checker / generic inference | `products/zomlang/compiler/checker` | Error | No | `ZOM0420` = cannot infer an unsolved generic type parameter → Error |
 | 0400–0499 | Type checker / nullable inference | `products/zomlang/compiler/checker` | Error | No | `ZOM0421` = `null` initializer has no explicit target type → Error |
 | 0400–0499 | Type checker / generic inference | `products/zomlang/compiler/checker` | Error | No | `ZOM0423` = explicit generic call type argument count mismatch → Error |

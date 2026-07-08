@@ -37,6 +37,7 @@ CHECKER_DIAG(410, TypeCheckerTypeMismatch, kError, "Type mismatch: expected {0},
 CHECKER_DIAG(411, CannotUnifyTypes, kError, "Cannot unify '{0}' with '{1}' in {2}", 3)
 CHECKER_DIAG(412, InfiniteType, kError, "Infinite type: {0}", 1)
 CHECKER_DIAG(415, CannotCallNonFunction, kError, "Cannot call non-function type '{0}'", 1)
+CHECKER_DIAG(416, CheckerInvalidCast, kError, "Invalid cast from '{0}' to '{1}'", 2)
 CHECKER_DIAG(420, CannotInferTypeParameter, kError,
              "Cannot infer type parameter '{0}'; provide explicit type arguments", 1)
 CHECKER_DIAG(421, CannotInferNullInitializer, kError,

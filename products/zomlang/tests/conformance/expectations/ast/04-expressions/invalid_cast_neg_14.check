@@ -1,0 +1,25 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/invalid_cast_neg_14.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #10 @1:1..2:1 file_name="invalid_cast_neg_14.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #9 @1:1..1:26
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #8 @1:1..1:26 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #7 @1:5..1:25 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #6 @1:5..1:25
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="x"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:8..1:12 kind=Bool
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     CastExpression #5 @1:15..1:25 mode=As
+// CHECK-NEXT:                       expr:
+// CHECK-NEXT:                         IntLiteral #3 @1:15..1:17 base=10 value="42"
+// CHECK-NEXT:                       ty:
+// CHECK-NEXT:                         PredefinedTypeExpr #4 @1:21..1:25 kind=Bool
+// CHECK-NEXT:       attrs: null

@@ -446,6 +446,7 @@ Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by
 | 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | `ZOM0411` = cannot unify two types in a specific expression context → Error |
 | 0400–0499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | `ZOM0412` = infinite type detected during unification → Error |
 | 0400–0499 | Type checker / calls | `products/zomlang/compiler/checker` | Error | `ZOM0415` = attempted to call a non-function value → Error |
+| 0400–0499 | Type checker / casts | `products/zomlang/compiler/checker` | Error | `ZOM0416` = invalid cast between source and target types → Error |
 | 0400–0499 | Type checker / generic inference | `products/zomlang/compiler/checker` | Error | `ZOM0420` = cannot infer an unsolved generic type parameter → Error |
 | 0400–0499 | Type checker / nullable inference | `products/zomlang/compiler/checker` | Error | `ZOM0421` = `null` initializer has no explicit target type → Error |
 | 0400–0499 | Type checker / generic inference | `products/zomlang/compiler/checker` | Error | `ZOM0423` = explicit generic call type argument count mismatch → Error |

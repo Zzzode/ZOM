@@ -1,0 +1,5 @@
+section: "04-expressions cast diagnostics"
+covers_rule: "castExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; checker diagnostics reject an invalid primitive cast."

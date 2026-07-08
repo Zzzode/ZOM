@@ -2039,8 +2039,10 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
-  reportError(expr, zc::str("invalid cast from '"_zc, resolvedSource.toString(), "' to '"_zc,
-                            resolvedTarget.toString(), "'"_zc));
+  auto loc = getNodeLoc(impl->tree, expr);
+  impl->diags.diagnose<DiagID::CheckerInvalidCast>(loc, resolvedSource.toString(),
+                                                   resolvedTarget.toString());
+  impl->hadErrors = true;
   return storeType(expr, zc::heap<type::ErrorType>());
 }
 
