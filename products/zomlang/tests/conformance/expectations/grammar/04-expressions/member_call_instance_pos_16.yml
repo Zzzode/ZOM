@@ -1,0 +1,5 @@
+section: "Ch.04 Instance member call"
+covers_rule: "memberExpr, callExpr"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks the checker accepts concrete instance method dispatch."

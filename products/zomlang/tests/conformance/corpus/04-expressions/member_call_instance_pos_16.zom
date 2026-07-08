@@ -1,0 +1,6 @@
+class Counter {
+  fun value() -> i32;
+}
+
+let counter: Counter;
+counter.value();
