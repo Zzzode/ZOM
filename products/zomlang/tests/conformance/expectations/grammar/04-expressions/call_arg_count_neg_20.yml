@@ -1,0 +1,5 @@
+section: "Ch.04 Call argument count"
+covers_rule: "callExpr, argumentList"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4036 for function call argument-count mismatch."
