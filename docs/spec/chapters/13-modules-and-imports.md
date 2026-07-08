@@ -661,7 +661,7 @@ fun demo() {
     //   -or-
     //   import std.collections;
     //   then use collections::Vec.
-    // let v = Vec::<i32>::new();
+    // let v = Vec.new<i32>();
 }
 ```
 

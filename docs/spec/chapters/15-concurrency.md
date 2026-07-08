@@ -608,21 +608,21 @@ prevents OOM on fast-producer/slow-consumer paths.
 
 ### 15.7.1 Families
 
-**SPSC** (`spsc::channel::<T>(cap)`) — Single Producer, Single Consumer.
+**SPSC** (`spsc.channel<T>(cap)`) — Single Producer, Single Consumer.
 Lock-free ring buffer using atomic head/tail indices plus store-release /
 load-acquire ordering. Fastest family, linearizable, no CAS on the hot path.
 If two threads call `send` on the same `Sender` side, the behavior is
 defined: the runtime detects the second concurrent producer via a checked
 bit at the send site and raises **ZOM1030 ChannelNotSpsc**.
 
-**MPSC** (`mpsc::channel::<T>(cap)`) — Multiple Producers, Single Consumer.
+**MPSC** (`mpsc.channel<T>(cap)`) — Multiple Producers, Single Consumer.
 Mutex-free: each producer takes a slot via CAS on `head`, writes the value
 into that slot, then does a release-store on the slot's state word. The
 consumer reads slots sequentially; it observes slots in program order via
 acquire-loads.
 
-**MPMC** (`channel::<T>(cap)`) — Multiple Producers, Multiple Consumers.
-Default returned by the unqualified `channel::<T>(cap)` constructor. Uses
+**MPMC** (`channel<T>(cap)`) — Multiple Producers, Multiple Consumers.
+Default returned by the unqualified `channel<T>(cap)` constructor. Uses
 a per-slot atomic state machine (EMPTY → WRITING → READY → READING → EMPTY).
 Producers CAS on EMPTY; consumers CAS on READY. Both sides are lock-free and
 bounded-wait under contention.
@@ -848,10 +848,10 @@ cancel propagation, backpressure) is **uniform** with in-process channels.
 
 | Constructor | Transport | Platform | Sendable bound on T | Max message |
 |---|---|---|---|---|
-| `channel::unix::<T>(path, cap)` | UNIX domain socket (SOCK_SEQPACKET) | Linux/macOS/*BSD | T: `Serialize + Sendable` | SO_SNDBUF |
-| `channel::unix_dgram::<T>(path)` | UNIX domain socket (SOCK_DGRAM, datagram) | POSIX | T: `Serialize + Sendable` | 64 KiB |
-| `channel::named_pipe::<T>(name, cap)` | Windows Named Pipe (PIPE_TYPE_MESSAGE) | Windows 10+ | T: `Serialize + Sendable` | 64 KiB |
-| `channel::uds::<T>(fd, cap)` | Pre-connected socket FD (any SOCK_STREAM/SOCK_SEQPACKET) | Any | T: `Serialize + Sendable` | transport MTU |
+| `channel.unix<T>(path, cap)` | UNIX domain socket (SOCK_SEQPACKET) | Linux/macOS/*BSD | T: `Serialize + Sendable` | SO_SNDBUF |
+| `channel.unix_dgram<T>(path)` | UNIX domain socket (SOCK_DGRAM, datagram) | POSIX | T: `Serialize + Sendable` | 64 KiB |
+| `channel.named_pipe<T>(name, cap)` | Windows Named Pipe (PIPE_TYPE_MESSAGE) | Windows 10+ | T: `Serialize + Sendable` | 64 KiB |
+| `channel.uds<T>(fd, cap)` | Pre-connected socket FD (any SOCK_STREAM/SOCK_SEQPACKET) | Any | T: `Serialize + Sendable` | transport MTU |
 
 The `Serialize` bound comes from the `interface serde::Serialize` contract
 (normative in `zom/serde`, Edition 2026). If the payload type is not
@@ -859,7 +859,7 @@ The `Serialize` bound comes from the `interface serde::Serialize` contract
 before transport-level code is even emitted.
 
 Abstract namespace UNIX sockets (Linux-only, leading NUL byte path) are
-available via `channel::unix_abstract::<T>(id)`; the id is up to 107 bytes
+available via `channel.unix_abstract<T>(id)`; the id is up to 107 bytes
 after the NUL, consistent with Linux `man 7 unix`. Other platforms reject
 the constructor at compile time via `cfg(target_os = "linux")` (Ch.19) —
 **ZOM1096 IpcTransportUnsupported** otherwise.
@@ -938,10 +938,10 @@ let stream_a = ds.stream(gpu::StreamPriority::Normal)?;
 let stream_b = ds.stream(gpu::StreamPriority::High)?;
 
 // Spawn kernel-like task onto stream_b:
-stream_b.spawn(|| gpu::kernel::<256>(grid=1024, ||{ /* body */ }))?.await?;
+stream_b.spawn(|| gpu.kernel<256>(grid=1024, ||{ /* body */ }))?.await?;
 ```
 
-The `gpu::kernel::<BLOCK>(grid, body)` builtin lowers to backend-specific
+The `gpu.kernel<BLOCK>(grid, body)` builtin lowers to backend-specific
 shims (PTX launch, HIP `hipLaunchKernelGGL`, `MTLComputeCommandEncoder`
 dispatch). `body` captures are limited to `T: Shared + Pod`; captures that
 fail marker checks → **ZOM1084 GpuNonPodCapture**. Grid dimensions must be
@@ -954,8 +954,8 @@ ZOM defines three memory tiers:
 | Tier | Allocation | Visibility | Marker guarantee |
 |---|---|---|---|
 | **Host** | `heap.alloc<T>()` | CPU only | `Sendable` |
-| **Managed** | `ds.alloc_managed::<T>(n)` | CPU + ALL devices | `Sendable + Shared` (coherency page-fault based) |
-| **Device-local** | `ds.alloc_device::<T>(n)` | Device `ds` only | `!Sendable: cannot move across scopes` |
+| **Managed** | `ds.alloc_managed<T>(n)` | CPU + ALL devices | `Sendable + Shared` (coherency page-fault based) |
+| **Device-local** | `ds.alloc_device<T>(n)` | Device `ds` only | `!Sendable: cannot move across scopes` |
 
 Transfer semantics:
 - `memcpy<Managed, Host>` is synchronous on first-touch page fault;
@@ -998,7 +998,7 @@ hard requirement.
    that `trace_id` when its `recv()` returns `Ok(msg)`. If the receiver was
    already inside a different trace, it records a `link` edge instead of
    overwriting — never silently merge two traces.
-4. **GPU dispatch.** Each `kernel::<B>` spawn carries its caller's
+4. **GPU dispatch.** Each `kernel<B>` spawn carries its caller's
    `trace_id`/`span_id`; GPU timestamps (CUDA event / HIP event / Metal
    counter sample) are normalized to host nanoseconds and written as
    child spans of the enqueuing stream.
@@ -1062,7 +1062,7 @@ worker thread):
    the trace mode is `Record`.
 5. **Timer firings.** Per timer entry, the actual elapsed time in ns
    (subject to timer slack) instead of the scheduled deadline.
-6. **GPU kernel completion.** Each `kernel::<B>` record carries the CUDA
+6. **GPU kernel completion.** Each `kernel<B>` record carries the CUDA
    event / HIP event / Metal timestamp delta.
 
 ### 15.15.2 Replay Execution
@@ -1337,7 +1337,7 @@ are part of P2.
 | ZOM1098 | IpcFdsExceedLimit | Error | `send_with_fds` count exceeds `SCM_MAX_FDS_DEFAULT` |
 | ZOM1099 | IpcConnectionFailed | Warning | Cross-process constructor returned `IpcError` unhandled |
 | ZOM1084 | GpuNonPodCapture | Error | GPU kernel closure captures non-`Pod + Shared` type |
-| ZOM1085 | GpuNonConstGridDim | Error | Grid dimension of `kernel::<B>` not statically evaluable |
+| ZOM1085 | GpuNonConstGridDim | Error | Grid dimension of `kernel<B>` not statically evaluable |
 | ZOM1086 | GpuDirectTransferNotAllowed | Error | `memcpy<Device-local, Host>` without staging buffer |
 | ZOM1087 | GpuBackendUnavailable | Warning | No vendor loader found; falling back to CPU |
 | ZOM1088 | TraceAlreadyCommitted | Warning | `set_sampled(true)` on a scope with recorded children |

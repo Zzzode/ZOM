@@ -771,7 +771,7 @@ enum AppError {
 // ---- config.zom ----
 fun load_config() -> Config raises ConfigError {
     let text = std.fs.read_to_string("app.toml")?!;
-    parse_toml::<Config>(text)?!
+    parse_toml<Config>(text)?!
 }
 
 // ---- db.zom ----

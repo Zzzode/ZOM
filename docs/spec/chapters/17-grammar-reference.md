@@ -561,7 +561,7 @@ SuperProperty ::= 'super' '.' Identifier
 SuperCall ::= 'super' Arguments
 ImportCall ::= 'import' Arguments
 
-CallExpression ::= MemberExpression Arguments
+CallExpression ::= MemberExpression TypeArguments? Arguments
                 | SuperCall
                 | ImportCall
                 | CallExpression Arguments

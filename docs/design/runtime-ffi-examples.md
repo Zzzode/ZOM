@@ -290,8 +290,8 @@ fun sink(rx: Receiver<u32>) -> Result<u64, SystemError> {
 
 fun main() -> Result<(), SystemError> {
     spawn_scope(fun(scope: &Scope<()>) -> Result<(), SystemError> {
-        let (work_tx, work_rx) = Channel::<u32>::bounded(CAP).split();
-        let (res_tx,  res_rx)  = Channel::<u32>::bounded(CAP * 2).split();
+        let (work_tx, work_rx) = Channel.bounded<u32>(CAP).split();
+        let (res_tx,  res_rx)  = Channel.bounded<u32>(CAP * 2).split();
 
         let h_prod = spawn { producer(work_tx) };
         // into_shared / dup splits a single endpoint into N shared endpoints
@@ -329,7 +329,7 @@ fun worker(id: u32, iterations: u32) -> Result<u64, SystemError> {
     mut rng = thread_rng();
     mut counter: u64 = 0;
     for (_ in 0..iterations) {
-        if rng.gen::<u8>() < 26 {
+        if rng.gen<u8>() < 26 {
             raise SystemError::Panic {
                 task_id: 0,
                 msg: "worker " + id.to_str() + " simulated crash"

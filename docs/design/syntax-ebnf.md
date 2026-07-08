@@ -932,7 +932,7 @@ SuperProperty          ::= 'super' '.' Identifier
 SuperCall              ::= 'super' Arguments
 ImportCall             ::= 'import' Arguments   (* dynamic import; parser accepts but semantic pass may restrict *)
 
-CallExpression         ::= ( MemberExpression Arguments
+CallExpression         ::= ( MemberExpression TypeArguments? Arguments
                            | SuperCall
                            ) ( Arguments | '[' Expression ']' | '.' Identifier
                              | '?.' Arguments | '?.' '[' Expression ']' | '?.' Identifier )*
@@ -1290,8 +1290,8 @@ From highest (1) to lowest (21); within the same precedence, operators associate
 
 | Precedence | Operator | Meaning | Associativity | Section |
 |---|---|---|---|---|
-| 1 | `()` `[]` `.` `?.` `::<T>` | Grouping / subscript / member / optional chain / explicit type arguments | L | Section 4.6 LHS |
-| 2 | `f(args)` `expr(args)` | Function / method call | L | Section 4.6 CallExpression |
+| 1 | `()` `[]` `.` `?.` | Grouping / subscript / member / optional chain | L | Section 4.6 LHS |
+| 2 | `f(args)` `f<T>(args)` `expr(args)` | Function / generic / method call | L | Section 4.6 CallExpression |
 | 3 | `expr++` `expr--` `?!` `!!` | Postfix inc/dec, error propagation, force-unwrap | L | Section 4.6 PostfixExpr |
 | 4 | `++expr` `--expr` | Prefix inc/dec | R | Section 4.6 PrefixUpdateExpr |
 | 5 | `+` `-` `!` `~` `typeof` | Unary plus/minus, logical not, bitwise not, type query | R | Section 4.6 UnaryExpr |

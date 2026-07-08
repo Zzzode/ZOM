@@ -95,7 +95,7 @@ A struct declaration of the form `struct Name(T)` (exactly one unnamed field, no
 - `AsRef<T>` for `Name (non-move default) → T (non-move)`
 - `Into<T>` for `Name → T (linear consume, via #[zom::param::move])`
 
-These conversions are **opt-in at use-site** via explicit `as_ref()` / `into()` calls. There are no broad implicit coercions: a function expecting `T` will not accept `Name` without a call-site conversion. Newtype is always layout-equivalent to `T`; `size_of::<Name>() == size_of::<T>()`, `align_of::<Name>() == align_of::<T>()`.
+These conversions are **opt-in at use-site** via explicit `as_ref()` / `into()` calls. There are no broad implicit coercions: a function expecting `T` will not accept `Name` without a call-site conversion. Newtype is always layout-equivalent to `T`; `size_of<Name>() == size_of<T>()`, `align_of<Name>() == align_of<T>()`.
 
 ### 2.4 EBNF — Newtype + repr(C) attribute (snippet 3 of 6)
 
@@ -207,7 +207,7 @@ The user overrides with `#[zom::repr(u16)]` etc. Per-variant explicit `= N` disc
 
 ### 3.4 Niche optimization
 
-When a sum type has exactly two variants, at least one of which contains a type `T` declared with a **niche** (a range of bit-patterns known never to appear in valid inhabitants of `T`), the tag is folded into the niche bits, and the payload size remains exactly `size_of::<T>()`.
+When a sum type has exactly two variants, at least one of which contains a type `T` declared with a **niche** (a range of bit-patterns known never to appear in valid inhabitants of `T`), the tag is folded into the niche bits, and the payload size remains exactly `size_of<T>()`.
 
 **Canonical niches:**
 
@@ -259,7 +259,7 @@ stateDiagram-v2
     Layout --> LabelVariant
 ```
 
-Concrete size and alignment: `size_of::<Shape>() = 32`, `min_align_of::<Shape>() = 8`, tag at offset 0 bytes, union starts at offset 8 (aligned for `String`'s pointer).
+Concrete size and alignment: `size_of<Shape>() = 32`, `min_align_of<Shape>() = 8`, tag at offset 0 bytes, union starts at offset 8 (aligned for `String`'s pointer).
 
 ### 3.6 Variant coverage decision-tree (mermaid flowchart)
 
@@ -284,7 +284,7 @@ flowchart TD
     M --> N[layout done:\nreturn LayoutInfo{size, align, tag_width, fields}]
 ```
 
-Every decision is deterministic per §3.3 (tag width table) and §3.4 (niche table). A single diagnostic ZOM0612 fires at node B if any explicit `= N` discriminant overflows the chosen width. Nodes J/K are purely an optimization and are observable via `size_of::<E>()`; the user disables this path with `#[zom::repr(..., no_niche)]`.
+Every decision is deterministic per §3.3 (tag width table) and §3.4 (niche table). A single diagnostic ZOM0612 fires at node B if any explicit `= N` discriminant overflows the chosen width. Nodes J/K are purely an optimization and are observable via `size_of<E>()`; the user disables this path with `#[zom::repr(..., no_niche)]`.
 
 ---
 
@@ -440,7 +440,7 @@ Without the explicit `#[repr(box)]` the compiler would still insert them automat
 
 Automatic boxing inserts exactly one `Own<T>` allocation per constructor call on the recursive arm, and exactly one deallocation per drop. There is no extra indirection on top of what the user would write manually. The type-checker does **not** re-box on assignment: `let x = Bst::Node { … }` allocates once at construction.
 
-On a 64-bit target each implicit box contributes 8 bytes (one pointer) to the containing variant's payload instead of the infinite product. For `Bst` above: `Node` payload size = 2 pointers + 8-byte key + tag = 8 + 8 + 8 + 1 = 25 bytes, padded to alignment 8 → `size_of::<Bst>() = 32`.
+On a 64-bit target each implicit box contributes 8 bytes (one pointer) to the containing variant's payload instead of the infinite product. For `Bst` above: `Node` payload size = 2 pointers + 8-byte key + tag = 8 + 8 + 8 + 1 = 25 bytes, padded to alignment 8 → `size_of<Bst>() = 32`.
 
 ---
 
@@ -632,7 +632,7 @@ enum OptNonNull<T> { Some(NonNull<T>), None }
 ```
 - `NonNull<T>` niche = `0x0`.
 - Discriminant 0 encodes `None` inside the niche; payload alone.
-- **size_of = size_of::<NonNull<T>>() = 8**, **align_of = 8**. Tag absent.
+- **size_of = size_of<NonNull<T>>() = 8**, **align_of = 8**. Tag absent.
 
 **Sum C — FFI repr:**
 ```zom
@@ -845,9 +845,9 @@ Fifteen release-blocking test cases. Each has a (name, ZOM source sketch, expect
 
 | # | Name | Source sketch | Expected |
 |---|---|---|---|
-| RB-01 | Niche-optimized Option size-of | `static_assert(size_of::<Option<NonNull<u8>>>() == size_of::<NonNull<u8>>());` | Compile OK; static assert passes. |
+| RB-01 | Niche-optimized Option size-of | `static_assert(size_of<Option<NonNull<u8>>>() == size_of<NonNull<u8>>());` | Compile OK; static assert passes. |
 | RB-02 | Niche-optimized Option null-discriminant runtime | `let o: Option<NonNull<u8>> = None; assert(o as u64 == 0);` | Compile OK; runtime assert passes. |
-| RB-03 | Niche does not apply when no niche exists | `static_assert(size_of::<Option<u32>>() == 8); // tag+payload, not 4` | Compile OK. |
+| RB-03 | Niche does not apply when no niche exists | `static_assert(size_of<Option<u32>>() == 8); // tag+payload, not 4` | Compile OK. |
 | RB-04 | Recursive auto-boxing inserts Own | `enum L { Nil, Cons(u32, L) } let c = Cons(1, Cons(2, Nil));` | Compile OK; sema note ZOM6050 emitted for the recursive field; layout size = 24. |
 | RB-05 | repr(unboxed) on infinite recursion errors | `struct Inf(#[zom::repr(unboxed)] Inf);` | Compile ERROR ZOM6051 "recursive layout would be infinite". |
 | RB-06 | Exhaustiveness: missing variant | `match (Some(1)) { when Some(v) => { return v; } }` | Compile ERROR ZOM3010 with fix-it suggesting `None => ...`. |
@@ -857,7 +857,7 @@ Fifteen release-blocking test cases. Each has a (name, ZOM source sketch, expect
 | RB-10 | Negative impl coherence — orphan rejected | Downstream crate writes `impl !Shared for std::vec::Vector<T>` | Compile ERROR ZOM0702. |
 | RB-11 | Negative impl justified by lang-item | Impl block `impl !Shared for UnsafeCell<T>` in std crate | Compile OK; justification = lang-item. |
 | RB-12 | repr(C) cross-FFI round-trip | `extern "C" fn f(s: Packet) -> Packet;` then call and assert fields identical on 3 platforms: Linux x86_64, macOS arm64, Windows x64 | C ABI byte-equality verified per target. |
-| RB-13 | Newtype layout equivalence | `struct Meters(f64); static_assert(size_of::<Meters>() == 8 && align_of::<Meters>() == 8);` | Compile OK. |
+| RB-13 | Newtype layout equivalence | `struct Meters(f64); static_assert(size_of<Meters>() == 8 && align_of<Meters>() == 8);` | Compile OK. |
 | RB-14 | Linear missing path rejected | `fun bad(h: FileHandle) { if cond { consume(h); } }` | Compile ERROR ZOM0743a on the else path. |
 | RB-15 | Discriminant explicit + repr(u16) overflow | `#[zom::repr(u16)] enum X { A = 70000 }` | Compile ERROR ZOM0612 "discriminant 70000 exceeds u16 range". |
 

@@ -510,8 +510,8 @@ graph LR
     VTBL --> SLOTN["vtable[N-1] = drop_in_place"]
 ```
 
-- `size_of::<dyn I>() = 2 * ptr_size`.
-- `align_of::<dyn I>() = ptr_align`.
+- `size_of<dyn I>() = 2 * ptr_size`.
+- `align_of<dyn I>() = ptr_align`.
 - Word 0 (`data_ptr`): pointer to the erased concrete object. Never null for a well-formed value.
 - Word 1 (`vtable_ptr`): pointer to a static, immutable, per-(concrete-type, interface) virtual dispatch table.
 - The final vtable slot is always `drop_in_place(*mut ())`.
@@ -524,7 +524,7 @@ let circle: dyn Drawable + Sendable = Circle(radius: 5.0);
 let shape: dyn Shape + Sendable = circle;  // zero-cost upcast if Drawable inherits Shape
 ```
 
-**Downcasting.** `dyn I.is<T>()` and `dyn I.downcast::<T>()` are **not** part of ZOM v1. Users who need runtime type recovery on a specific interface hierarchy should declare an explicit `as_any() -> any` method on that interface. See [Chapter 9](09-interfaces.md) for object safety rules.
+**Downcasting.** `dyn I.is<T>()` and `dyn I.downcast<T>()` are **not** part of ZOM v1. Users who need runtime type recovery on a specific interface hierarchy should declare an explicit `as_any() -> any` method on that interface. See [Chapter 9](09-interfaces.md) for object safety rules.
 
 **Variance.** Type parameters inside an interface are **invariant** by default when instantiated as a `dyn` type. Covariance or contravariance requires explicit `#[zom::variance(...)]` on the interface declaration. See [Chapter 12](12-generics.md).
 
