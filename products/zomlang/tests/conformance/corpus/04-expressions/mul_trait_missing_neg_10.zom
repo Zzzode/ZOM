@@ -1,0 +1,6 @@
+class Number { }
+
+let x: Number;
+let y: Number;
+
+x * y;
