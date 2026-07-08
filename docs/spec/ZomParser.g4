@@ -300,15 +300,9 @@ options {
     /** A6: standalone `dyn` on the RHS of `as` is not a valid cast target. */
     static boolean checkAsRightIsNotDyn(org.antlr.v4.runtime.RuleContext rhsCtx, Object parser) {
         if (rhsCtx == null) return true;
-        // Walk until finding a terminal IDENTIFIER text=="dyn".
-        java.util.Collection<?> col1 =
-            org.antlr.v4.runtime.tree.Trees.findAllTokenNodes(rhsCtx, ZomParser.IDENTIFIER);
-        for (Object o1 : col1) {
-            org.antlr.v4.runtime.tree.TerminalNode tn = (org.antlr.v4.runtime.tree.TerminalNode) o1;
-            if ("dyn".equals(tn.getText()))
-                throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                    "`dyn` is not a valid standalone cast target (use `dyn InterfaceName`)");
-        }
+        if ("dyn".equals(rhsCtx.getText()))
+            throw new org.antlr.v4.runtime.misc.ParseCancellationException(
+                "`dyn` is not a valid standalone cast target (use `dyn InterfaceName`)");
         return true;
     }
 

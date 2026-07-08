@@ -1,0 +1,5 @@
+section: "03-types dyn upcast"
+covers_rule: "interfaceDeclaration, dynType, castExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; diagnostics runner checks dyn interface upcast through declared inheritance."

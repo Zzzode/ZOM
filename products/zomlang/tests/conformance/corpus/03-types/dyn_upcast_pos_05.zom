@@ -1,0 +1,5 @@
+interface Shape { }
+interface Drawable : Shape { }
+
+let drawable: dyn Drawable;
+let shape: dyn Shape = drawable as dyn Shape;

@@ -1,0 +1,4 @@
+// RUN: %zomc compile --syntax-only %corpus/03-types/dyn_upcast_pos_05.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Syntax check completed successfully.
