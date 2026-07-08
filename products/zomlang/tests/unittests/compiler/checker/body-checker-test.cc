@@ -485,6 +485,12 @@ ZC_TEST("BodyChecker.InfersBinaryArithExprType") {
     auto& ty = result.typeEnv.getType(binExpr);
     ZC_EXPECT(isPrimitive(ty));
   }
+  ZC_EXPECT(result.typeEnv.hasDispatch(binExpr));
+  auto& dispatch = result.typeEnv.getDispatch(binExpr);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
 }
 
 ZC_TEST("BodyChecker.BinaryArithmeticRejectsImplicitNumericWidening") {
@@ -608,6 +614,12 @@ ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
     auto& ty = result.typeEnv.getType(binExpr);
     ZC_EXPECT(isPrimitive(ty));
   }
+  ZC_EXPECT(result.typeEnv.hasDispatch(binExpr));
+  auto& dispatch = result.typeEnv.getDispatch(binExpr);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
 }
 
 ZC_TEST("BodyChecker.BinaryEqUsesUserTypeEqImpl") {
@@ -1481,6 +1493,12 @@ ZC_TEST("BodyChecker.UnaryMinus") {
     auto& ty = result.typeEnv.getType(unary);
     ZC_EXPECT(isPrimitive(ty));
   }
+  ZC_EXPECT(result.typeEnv.hasDispatch(unary));
+  auto& dispatch = result.typeEnv.getDispatch(unary);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorOperand);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(unary));
 }
 
 ZC_TEST("BodyChecker.LogicalNot") {
@@ -1499,6 +1517,12 @@ ZC_TEST("BodyChecker.LogicalNot") {
     auto& ty = result.typeEnv.getType(unary);
     ZC_EXPECT(isPrimitive(ty));
   }
+  ZC_EXPECT(result.typeEnv.hasDispatch(unary));
+  auto& dispatch = result.typeEnv.getDispatch(unary);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorOperand);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(unary));
 }
 
 ZC_TEST("BodyChecker.UnaryMinusUsesUserTypeNegImpl") {
@@ -2766,6 +2790,12 @@ ZC_TEST("BodyChecker.IndexExpr") {
   ZC_EXPECT(result.typeEnv.hasType(index));
   auto& ty = result.typeEnv.getType(index);
   ZC_EXPECT(isPrimitive(ty));
+  ZC_EXPECT(result.typeEnv.hasDispatch(index));
+  auto& dispatch = result.typeEnv.getDispatch(index);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::IndexBase);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(index));
 }
 
 ZC_TEST("BodyChecker.TupleIndexExprReturnsElementType") {
@@ -2789,6 +2819,12 @@ ZC_TEST("BodyChecker.TupleIndexExprReturnsElementType") {
     auto& primitive = static_cast<const type::PrimitiveType&>(ty);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::Str);
   }
+  ZC_EXPECT(result.typeEnv.hasDispatch(index));
+  auto& dispatch = result.typeEnv.getDispatch(index);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::IndexBase);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(index));
 }
 
 ZC_TEST("BodyChecker.UserIndexExprReturnsAssociatedOutput") {

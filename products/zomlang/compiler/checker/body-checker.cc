@@ -168,6 +168,18 @@ void BodyChecker::reportError(ast::NodeId node, zc::StringPtr message) {
   impl->hadErrors = true;
 }
 
+static void recordPrimitiveDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
+                                    type::ReceiverMode receiverMode,
+                                    zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                    const type::Type& resultType) {
+  type::CallDispatchRecord record;
+  record.targetKind = type::CallTargetKind::PrimitiveOperator;
+  record.receiverMode = receiverMode;
+  for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
+  record.resultType = typeEnv.internType(resultType);
+  typeEnv.setDispatch(node, zc::mv(record));
+}
+
 void BodyChecker::reportTypeMismatch(ast::NodeId node, const type::Type& expected,
                                      const type::Type& actual) {
   auto loc = getNodeLoc(impl->tree, node);
@@ -1301,10 +1313,22 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
           }
           return storeType(expr, zc::heap<type::ErrorType>());
         }
-        return storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolvedLhs)));
+        auto& result = storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolvedLhs)));
+        zc::Vector<type::TypeId> args;
+        args.add(impl->typeEnv.internType(resolvedLhs));
+        args.add(impl->typeEnv.internType(resolvedRhs));
+        recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorLeftHandSide,
+                                args.asPtr(), result);
+        return result;
       }
       if (isStrType(resolvedLhs) && op == ast::BinaryOperatorKind::Add) {
-        return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Str));
+        auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Str));
+        zc::Vector<type::TypeId> args;
+        args.add(impl->typeEnv.internType(resolvedLhs));
+        args.add(impl->typeEnv.internType(resolvedRhs));
+        recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorLeftHandSide,
+                                args.asPtr(), result);
+        return result;
       }
       auto traitName = arithmeticOperatorTrait(op);
       if (traitName.size() > 0 && resolvedLhs.equals(resolvedRhs) && isNamed(resolvedLhs)) {
@@ -1352,8 +1376,15 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
       return storeType(expr, zc::heap<type::ErrorType>());
     }
     case ast::BinaryOperatorKind::StrictEq:
-    case ast::BinaryOperatorKind::StrictNe:
-      return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
+    case ast::BinaryOperatorKind::StrictNe: {
+      auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
+      zc::Vector<type::TypeId> args;
+      args.add(impl->typeEnv.internType(resolvedLhs));
+      args.add(impl->typeEnv.internType(resolvedRhs));
+      recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorLeftHandSide,
+                              args.asPtr(), result);
+      return result;
+    }
     case ast::BinaryOperatorKind::Eq:
     case ast::BinaryOperatorKind::Ne:
     case ast::BinaryOperatorKind::Lt:
@@ -1410,7 +1441,13 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
         }
         return result;
       }
-      return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
+      auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
+      zc::Vector<type::TypeId> args;
+      args.add(impl->typeEnv.internType(resolvedLhs));
+      args.add(impl->typeEnv.internType(resolvedRhs));
+      recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorLeftHandSide,
+                              args.asPtr(), result);
+      return result;
     }
     case ast::BinaryOperatorKind::LogAnd:
     case ast::BinaryOperatorKind::LogOr:
@@ -1482,7 +1519,14 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
         return result;
       }
       // Numeric unary: result is operand type
-      return storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolved)));
+      {
+        auto& result = storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolved)));
+        zc::Vector<type::TypeId> args;
+        args.add(impl->typeEnv.internType(resolved));
+        recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorOperand,
+                                args.asPtr(), result);
+        return result;
+      }
     case ast::UnaryOperatorKind::LogicalNot:
       if (isNamed(resolved)) {
         TraitResolver traitResolver(impl->typeEnv, impl->symbols, impl->tree, impl->metadata,
@@ -1520,10 +1564,24 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
         return result;
       }
       // Logical not: returns bool
-      return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
+      {
+        auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
+        zc::Vector<type::TypeId> args;
+        args.add(impl->typeEnv.internType(resolved));
+        recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorOperand,
+                                args.asPtr(), result);
+        return result;
+      }
     case ast::UnaryOperatorKind::BitNot:
       // Bitwise not: result is operand type
-      return storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolved)));
+      {
+        auto& result = storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolved)));
+        zc::Vector<type::TypeId> args;
+        args.add(impl->typeEnv.internType(resolved));
+        recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorOperand,
+                                args.asPtr(), result);
+        return result;
+      }
     case ast::UnaryOperatorKind::Deref: {
       // Dereference: returns the pointed-to type
       if (isReference(resolved)) {
@@ -1868,7 +1926,13 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
     auto& arrTy = static_cast<const type::ArrayType&>(resolvedObj);
     // Index must be integer
     if (!isInteger(resolvedIdx)) { reportError(idxId, "array index must be an integer"_zc); }
-    return storeType(expr, cloneType(arrTy.getElementType()));
+    auto& result = storeType(expr, cloneType(arrTy.getElementType()));
+    zc::Vector<type::TypeId> args;
+    args.add(impl->typeEnv.internType(resolvedObj));
+    args.add(impl->typeEnv.internType(resolvedIdx));
+    recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::IndexBase, args.asPtr(),
+                            result);
+    return result;
   }
 
   // Tuple indexing
@@ -1891,7 +1955,13 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
       return storeType(expr, zc::heap<type::ErrorType>());
     }
 
-    return storeType(expr, cloneType(tupleTy.getElementType(static_cast<size_t>(index))));
+    auto& result = storeType(expr, cloneType(tupleTy.getElementType(static_cast<size_t>(index))));
+    zc::Vector<type::TypeId> args;
+    args.add(impl->typeEnv.internType(resolvedObj));
+    args.add(impl->typeEnv.internType(resolvedIdx));
+    recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::IndexBase, args.asPtr(),
+                            result);
+    return result;
   }
 
   if (isNamed(resolvedObj)) {
