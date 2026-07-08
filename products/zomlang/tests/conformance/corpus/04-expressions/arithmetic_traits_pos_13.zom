@@ -1,0 +1,40 @@
+interface Sub {
+    fun sub(rhs: Number) -> Number;
+}
+
+interface Mul {
+    fun mul(rhs: Number) -> Number;
+}
+
+interface Div {
+    fun div(rhs: Number) -> Number;
+}
+
+interface Rem {
+    fun rem(rhs: Number) -> Number;
+}
+
+class Number { }
+
+impl Sub for Number {
+    fun sub(rhs: Number) -> Number;
+}
+
+impl Mul for Number {
+    fun mul(rhs: Number) -> Number;
+}
+
+impl Div for Number {
+    fun div(rhs: Number) -> Number;
+}
+
+impl Rem for Number {
+    fun rem(rhs: Number) -> Number;
+}
+
+let x: Number;
+let y: Number;
+let difference: Number = x - y;
+let product: Number = x * y;
+let quotient: Number = x / y;
+let remainder: Number = x % y;

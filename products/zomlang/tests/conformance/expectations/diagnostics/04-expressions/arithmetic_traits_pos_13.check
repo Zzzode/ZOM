@@ -1,0 +1,4 @@
+// RUN: %zomc compile --syntax-only %corpus/04-expressions/arithmetic_traits_pos_13.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Syntax check completed successfully.

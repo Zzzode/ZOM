@@ -1,0 +1,5 @@
+section: "04-expressions arithmetic operator trait conformance"
+covers_rule: "standaloneImplDeclaration, binaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that Sub, Mul, Div, and Rem impls accept x - y, x * y, x / y, and x % y through the CLI pipeline."
