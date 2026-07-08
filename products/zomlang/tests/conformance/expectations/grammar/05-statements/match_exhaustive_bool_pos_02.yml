@@ -1,0 +1,5 @@
+section: "05-statements match exhaustiveness"
+covers_rule: "matchStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that a bool match covering true and false is exhaustive through the CLI pipeline."
