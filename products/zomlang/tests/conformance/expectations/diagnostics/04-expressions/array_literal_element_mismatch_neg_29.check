@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/array_literal_element_mismatch_neg_29.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4050]: Array element type mismatch: expected 'i32', got 'str'
+// CHECK-LITERAL:   --> 04-expressions/array_literal_element_mismatch_neg_29.zom:1:15
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let arr = [1, "two"];
+// CHECK-LITERAL:   |               ^
