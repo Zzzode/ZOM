@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/index_array_non_integer_neg_22.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4038]: Array index must be an integer
+// CHECK-LITERAL:   --> 04-expressions/index_array_non_integer_neg_22.zom:2:17
+// CHECK-LITERAL: 2 | let value = arr[true];
+// CHECK-LITERAL:   |                 ^

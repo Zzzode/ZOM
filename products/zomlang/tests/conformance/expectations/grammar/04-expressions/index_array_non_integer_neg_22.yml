@@ -1,0 +1,5 @@
+section: "Ch.04 Array index type"
+covers_rule: "indexExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4038 for a non-integer array index."

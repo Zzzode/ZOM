@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/index_tuple_oob_neg_24.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4040]: Tuple index is out of bounds
+// CHECK-LITERAL:   --> 04-expressions/index_tuple_oob_neg_24.zom:2:18
+// CHECK-LITERAL: 2 | let value = pair[2];
+// CHECK-LITERAL:   |                  ^

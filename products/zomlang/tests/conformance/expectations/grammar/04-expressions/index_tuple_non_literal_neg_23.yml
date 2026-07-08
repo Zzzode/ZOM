@@ -1,0 +1,5 @@
+section: "Ch.04 Tuple index literal requirement"
+covers_rule: "indexExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4039 for a non-literal tuple index."

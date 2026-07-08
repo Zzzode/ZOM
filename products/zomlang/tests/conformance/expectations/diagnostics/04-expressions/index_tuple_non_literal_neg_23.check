@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/index_tuple_non_literal_neg_23.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4039]: Tuple index must be an integer literal
+// CHECK-LITERAL:   --> 04-expressions/index_tuple_non_literal_neg_23.zom:3:18
+// CHECK-LITERAL: 3 | let value = pair[idx];
+// CHECK-LITERAL:   |                  ^

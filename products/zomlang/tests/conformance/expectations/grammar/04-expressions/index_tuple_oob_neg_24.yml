@@ -1,0 +1,5 @@
+section: "Ch.04 Tuple index bounds"
+covers_rule: "indexExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4040 for a tuple index outside the tuple arity."
