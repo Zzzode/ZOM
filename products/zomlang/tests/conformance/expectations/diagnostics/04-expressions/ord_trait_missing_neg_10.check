@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/ord_trait_missing_neg_10.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4018]: 'Point' does not implement 'Ord'
+// CHECK-LITERAL:   --> 04-expressions/ord_trait_missing_neg_10.zom:6:1
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 6 | x < y;
+// CHECK-LITERAL:   | ^

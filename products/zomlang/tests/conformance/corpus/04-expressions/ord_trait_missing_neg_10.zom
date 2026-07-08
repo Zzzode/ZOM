@@ -1,0 +1,6 @@
+class Point { }
+
+let x: Point;
+let y: Point;
+
+x < y;
