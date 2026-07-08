@@ -1,0 +1,6 @@
+struct Point {
+  fun norm() -> i32;
+}
+
+let point: Point;
+point.norm();

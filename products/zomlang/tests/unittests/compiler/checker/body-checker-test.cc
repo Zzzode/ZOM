@@ -2117,6 +2117,48 @@ ZC_TEST("BodyChecker.MemberCallRecordsInstanceMethodDispatch") {
   ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
 }
 
+ZC_TEST("BodyChecker.StructMemberCallRecordsInstanceMethodDispatch") {
+  TestFixture fix;
+  auto method =
+      fix.makeMethodDecl("norm"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("i32"_zc));
+  zc::Vector<ast::NodeId> members;
+  members.add(method);
+  auto point =
+      fix.makeStructDecl("Point"_zc, fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+
+  auto pointDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("point"_zc),
+                                              fix.makeNamedTypeExpr("Point"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(pointDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("point"_zc), "norm"_zc);
+  auto call = fix.makeCallExpr(callee, ast::NodeList());
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(point);
+  topDecls.add(let);
+  topDecls.add(call);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(call));
+  auto& ty = result.typeEnv.getType(call);
+  ZC_EXPECT(isPrimitive(ty));
+  if (isPrimitive(ty)) {
+    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
+    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
+  }
+  ZC_EXPECT(result.typeEnv.hasDispatch(call));
+  auto& dispatch = result.typeEnv.getDispatch(call);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::InstanceMethod);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ImplicitSelf);
+  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+}
+
 ZC_TEST("BodyChecker.MemberCallRecordsStaticMethodDispatch") {
   TestFixture fix;
   auto method = fix.makeMethodDecl("make"_zc, ast::NodeId(), ast::NodeId(),
