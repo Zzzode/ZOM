@@ -1,0 +1,5 @@
+section: "Ch.03 Nullable existential types"
+covers_rule: "dynType, unionType, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that null can initialize an explicit nullable dyn union."

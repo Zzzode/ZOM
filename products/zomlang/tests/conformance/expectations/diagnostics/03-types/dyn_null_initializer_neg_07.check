@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_null_initializer_neg_07.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected dyn Add, got null
+// CHECK-LITERAL:   --> 03-types/dyn_null_initializer_neg_07.zom:2:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 | let x: dyn Add = null;
+// CHECK-LITERAL:   |     ^

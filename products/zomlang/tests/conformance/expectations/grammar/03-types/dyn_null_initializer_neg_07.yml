@@ -1,0 +1,5 @@
+section: "Ch.03 Non-null existential types"
+covers_rule: "dynType, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that null cannot initialize a non-null dyn existential."
