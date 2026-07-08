@@ -1,0 +1,5 @@
+section: "Ch.04 Ternary condition type"
+covers_rule: "conditionalExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4045 for a non-bool ternary condition."

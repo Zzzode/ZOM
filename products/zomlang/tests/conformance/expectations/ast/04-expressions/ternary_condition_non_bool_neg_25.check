@@ -1,0 +1,26 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/ternary_condition_non_bool_neg_25.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #10 @1:1..2:1 file_name="ternary_condition_non_bool_neg_25.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #9 @1:1..1:19
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #8 @1:1..1:19 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #7 @1:5..1:18 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #6 @1:5..1:18
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="x"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     ConditionalExpr #5 @1:9..1:18
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         IntLiteral #2 @1:9..1:10 base=10 value="1"
+// CHECK-NEXT:                       then_expr:
+// CHECK-NEXT:                         IntLiteral #3 @1:13..1:14 base=10 value="2"
+// CHECK-NEXT:                       else_expr:
+// CHECK-NEXT:                         IntLiteral #4 @1:17..1:18 base=10 value="3"
+// CHECK-NEXT:       attrs: null
