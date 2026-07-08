@@ -1,0 +1,5 @@
+section: "Ch.03 Non-null class values"
+covers_rule: "classDeclaration, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that null cannot initialize a non-null class value."

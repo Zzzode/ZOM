@@ -1,0 +1,5 @@
+section: "Ch.03 Nullable class values"
+covers_rule: "classDeclaration, unionType, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that null can initialize an explicit nullable class union."
