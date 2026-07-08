@@ -331,10 +331,12 @@ struct NameResolver::Impl {
         bindSymbol(node, member);
         return;
       }
-      markUnresolved(node);
+      metadata.setIsDeferredMember(node, true);
+      metadata.setIsUnresolved(node, false);
       return;
     }
 
+    metadata.setIsDeferredMember(node, true);
     metadata.setIsUnresolved(node, false);
   }
 

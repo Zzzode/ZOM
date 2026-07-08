@@ -346,11 +346,11 @@ ZC_TEST("NameResolver.ResolvesMemberAccessObject") {
   topDecls.add(let);
   topDecls.add(member);
 
-  // collectAndResolve may return false due to member lookup failure, but the
-  // object identifier should still be resolved.
-  collectAndResolve(fix, topDecls.asPtr());
+  ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
   auto objSymId = fix.metadata().symbol(objRef);
   ZC_EXPECT(objSymId.isValid());
+  ZC_EXPECT(fix.metadata().isDeferredMember(member));
 }
 
 // ============================================================================
