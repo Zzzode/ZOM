@@ -308,6 +308,15 @@ void expectUserTypeUnaryOperatorImpl(zc::StringPtr ifaceName, ast::UnaryOperator
                 type::PrimitiveKind::Bool);
     }
   }
+  ZC_EXPECT(result.typeEnv.hasDispatch(unary));
+  auto& dispatch = result.typeEnv.getDispatch(unary);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::OperatorMethod);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorOperand);
+  ZC_EXPECT(dispatch.interfaceName == ifaceName);
+  ZC_EXPECT(dispatch.methodName == unaryOperatorMethodName(ifaceName));
+  ZC_EXPECT(dispatch.implNode == implDecl);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(unary));
 }
 
 void expectUserTypeUnaryWithoutImplFails(ast::UnaryOperatorKind op) {

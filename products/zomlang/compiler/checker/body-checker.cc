@@ -1467,7 +1467,19 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
-        return storeType(expr, cloneType(resolved));
+        auto& result = storeType(expr, cloneType(resolved));
+        ZC_IF_SOME(implNode, traitResolver.findImpl(resolved, traitName)) {
+          type::CallDispatchRecord record;
+          record.targetKind = type::CallTargetKind::OperatorMethod;
+          record.receiverMode = type::ReceiverMode::OperatorOperand;
+          record.interfaceName = traitName;
+          record.methodName = methodName;
+          record.implNode = implNode;
+          record.argumentTypes.add(impl->typeEnv.internType(resolved));
+          record.resultType = impl->typeEnv.internType(result);
+          impl->typeEnv.setDispatch(expr, zc::mv(record));
+        }
+        return result;
       }
       // Numeric unary: result is operand type
       return storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolved)));
@@ -1493,6 +1505,19 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
+        auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
+        ZC_IF_SOME(implNode, traitResolver.findImpl(resolved, traitName)) {
+          type::CallDispatchRecord record;
+          record.targetKind = type::CallTargetKind::OperatorMethod;
+          record.receiverMode = type::ReceiverMode::OperatorOperand;
+          record.interfaceName = traitName;
+          record.methodName = methodName;
+          record.implNode = implNode;
+          record.argumentTypes.add(impl->typeEnv.internType(resolved));
+          record.resultType = impl->typeEnv.internType(result);
+          impl->typeEnv.setDispatch(expr, zc::mv(record));
+        }
+        return result;
       }
       // Logical not: returns bool
       return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
