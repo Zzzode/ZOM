@@ -1,0 +1,5 @@
+section: "Ch.11 Error propagation"
+covers_rule: "postfix error propagation, function raises clause"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that ?! is accepted when the enclosing function declares the matching raises type."

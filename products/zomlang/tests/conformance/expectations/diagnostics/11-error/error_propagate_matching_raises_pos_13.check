@@ -1,0 +1,5 @@
+// RUN: cd %corpus && %zomc compile --syntax-only 11-error/error_propagate_matching_raises_pos_13.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Syntax check completed successfully.

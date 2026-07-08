@@ -1,0 +1,7 @@
+fun fail() -> i32 raises Error {
+    return 1;
+}
+
+fun main() -> i32 raises Error {
+    return fail()?!;
+}
