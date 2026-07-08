@@ -15,8 +15,12 @@
 #include "zomlang/compiler/type/type-env.h"
 
 #include "zomlang/compiler/type/array-type.h"
+#include "zomlang/compiler/type/associated-type.h"
 #include "zomlang/compiler/type/error-type.h"
+#include "zomlang/compiler/type/existential-type.h"
 #include "zomlang/compiler/type/function-type.h"
+#include "zomlang/compiler/type/interface-type.h"
+#include "zomlang/compiler/type/intersection-type.h"
 #include "zomlang/compiler/type/named-type.h"
 #include "zomlang/compiler/type/object-type.h"
 #include "zomlang/compiler/type/primitive-type.h"
@@ -475,6 +479,8 @@ zc::Own<Type> TypeEnv::substituteType(const Type& ty,
 
   // Clone compound types recursively
   switch (resolved.getKind()) {
+    case TypeKind::TypeVar:
+      ZC_UNREACHABLE;
     case TypeKind::Primitive: {
       auto& prim = static_cast<const PrimitiveType&>(resolved);
       return zc::heap<PrimitiveType>(prim.getPrimitiveKind());
@@ -520,6 +526,7 @@ zc::Own<Type> TypeEnv::substituteType(const Type& ty,
     case TypeKind::Named: {
       auto& named = static_cast<const NamedType&>(resolved);
       auto result = zc::heap<NamedType>(named.getName());
+      ZC_IF_SOME(symbol, named.getSymbol()) { result->setSymbol(symbol); }
       for (size_t i = 0; i < named.getTypeArgCount(); ++i) {
         result->addTypeArg(substituteType(named.getTypeArg(i), subst));
       }
@@ -543,14 +550,42 @@ zc::Own<Type> TypeEnv::substituteType(const Type& ty,
       auto pointee = substituteType(ptr.getPointeeType(), subst);
       return zc::heap<RawPointerType>(zc::mv(pointee), ptr.getMutability());
     }
+    case TypeKind::Interface: {
+      auto& iface = static_cast<const InterfaceType&>(resolved);
+      auto result = zc::heap<InterfaceType>(iface.getName());
+      for (size_t i = 0; i < iface.getParentInterfaceCount(); ++i) {
+        result->addParentInterface(substituteType(iface.getParentInterface(i), subst));
+      }
+      return zc::mv(result);
+    }
+    case TypeKind::Intersection: {
+      auto& intersection = static_cast<const IntersectionType&>(resolved);
+      zc::Vector<zc::Own<Type>> conjuncts;
+      for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
+        conjuncts.add(substituteType(intersection.getConjunct(i), subst));
+      }
+      return zc::heap<IntersectionType>(zc::mv(conjuncts));
+    }
+    case TypeKind::Existential: {
+      auto& existential = static_cast<const ExistentialType&>(resolved);
+      zc::Vector<zc::StringPtr> markers;
+      for (size_t i = 0; i < existential.getMarkerCount(); ++i) {
+        markers.add(existential.getMarkerName(i));
+      }
+      return zc::heap<ExistentialType>(substituteType(existential.getInterfaceType(), subst),
+                                       markers.asPtr());
+    }
+    case TypeKind::Associated: {
+      auto& associated = static_cast<const AssociatedType&>(resolved);
+      return zc::heap<AssociatedType>(substituteType(associated.getParentType(), subst),
+                                      associated.getName());
+    }
     case TypeKind::Error: {
       return zc::heap<ErrorType>();
     }
-    default:
-      // For types we can't substitute into (Interface, Intersection, etc.),
-      // return error type as fallback.
-      return zc::heap<ErrorType>();
   }
+
+  ZC_UNREACHABLE;
 }
 
 zc::Own<TypeScheme> TypeEnv::generalize(const Type& ty) {

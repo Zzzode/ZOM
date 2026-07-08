@@ -18,8 +18,11 @@
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/type/coercion.h"
 #include "zomlang/compiler/type/error-type.h"
+#include "zomlang/compiler/type/existential-type.h"
 #include "zomlang/compiler/type/function-type.h"
+#include "zomlang/compiler/type/named-type.h"
 #include "zomlang/compiler/type/primitive-type.h"
+#include "zomlang/compiler/type/type-scheme.h"
 #include "zomlang/compiler/type/type-var.h"
 
 namespace zomlang {
@@ -224,6 +227,25 @@ ZC_TEST("TypeEnv.InstantiateFunctionHandlesRepeatedTypeVar") {
   auto instantiated = env.instantiateFunction(fn);
   ZC_EXPECT(static_cast<bool>(instantiated));
   ZC_EXPECT(isFunction(*instantiated));
+}
+
+ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicExistential") {
+  TypeEnv env;
+  zc::Vector<zc::Own<GenericParam>> params;
+  zc::Vector<zc::StringPtr> markers;
+  markers.add("Sendable"_zc);
+  auto body = zc::heap<ExistentialType>(zc::heap<NamedType>("Drawable"_zc), markers.asPtr());
+  TypeScheme scheme(zc::mv(params), zc::mv(body));
+
+  auto instantiated = env.instantiate(scheme);
+
+  ZC_EXPECT(static_cast<bool>(instantiated));
+  ZC_EXPECT(isExistential(*instantiated));
+  if (isExistential(*instantiated)) {
+    const auto& existential = static_cast<const ExistentialType&>(*instantiated);
+    ZC_EXPECT(existential.getMarkerCount() == 1);
+    ZC_EXPECT(existential.getMarkerName(0) == "Sendable"_zc);
+  }
 }
 
 // ============================================================================
