@@ -239,14 +239,14 @@ Note: `where`-clauses on `interface` declarations themselves are **not** support
 
 ### 9.4.3 Orphan Rule
 
-An `impl I for T` block is legal if **either**: (1) `I` is declared in the current crate, OR (2) `T` is declared in the current crate. If both the interface and the target type are foreign to the current crate the compiler emits `ZOM0710 OrphanImpl`. This rule preserves coherence across crate boundaries: downstream crates cannot inject conflicting implementations for types and interfaces they do not own.
+An `impl I for T` block is legal if **either**: (1) `I` is declared in the current crate, OR (2) `T` is declared in the current crate. If both the interface and the target type are foreign to the current crate, the orphan-rule checker emits the orphan-impl diagnostic for that follow-up coherence contract. This rule preserves coherence across crate boundaries: downstream crates cannot inject conflicting implementations for types and interfaces they do not own.
 
 Common legitimate use cases:
 
 - **External type + internal interface:** e.g. `impl JsonSerializable for u64` where `u64` is from the standard crate but `JsonSerializable` is local.
 - **Internal type + external interface:** e.g. `impl Display for MyUuid` where `MyUuid` is local but `Display` comes from the standard library.
 
-Per-crate coherence allows at most **one** `impl I for T` per `(I, T)` pair; if two distinct `impl I for T` blocks exist for the same nominal pair within the same crate, the compiler emits `ZOM0505 DuplicateImpl`. The cross-crate overlap case is rejected by `ZOM0714 AmbigImplOverlap` (Ch.22 §22.4).
+Per-crate coherence allows at most **one** `impl I for T` per `(I, T)` pair; if two distinct `impl I for T` blocks exist for the same nominal pair within the same crate, the type checker emits `ZOM4017 ConflictingImpl`. Cross-crate overlap is owned by the cross-module coherence contract (Ch.22 §22.4).
 
 ### 9.4.4 Marker Forwarding
 
@@ -258,11 +258,11 @@ When an interface inherits from multiple super-interfaces, a method name may be 
 
 ### 9.5.1 Inheritance-Conflict Resolution Rules (IR-1 .. IR-4)
 
-**IR-1: Identical signatures are redundant.** Redundant redeclaration of a method already inherited from a superinterface is allowed but produces the `ZOM0478 RedundantInheritedMethod` warning (not an error).
+**IR-1: Identical signatures are redundant.** Redundant redeclaration of a method already inherited from a superinterface is allowed but produces a redundant-inherited-method warning (not an error).
 
 **IR-2: Same name, different parameter list = independent overload.** No conflict is reported; each signature is tracked separately and dispatch selects the matching overload by argument shape.
 
-**IR-3: Same name, same params, different return type = incompatible.** The compiler emits `ZOM0482 IncompatibleReturnType` error. The user must resolve by explicitly re-declaring the method in the child interface with the single correct return type.
+**IR-3: Same name, same params, different return type = incompatible.** The compiler emits an incompatible-return-type error. The user must resolve by explicitly re-declaring the method in the child interface with the single correct return type.
 
 **IR-4: Conflicting pure-method obligations.** If two super-interfaces declare the same method signature as abstract (no body), there is no ambiguity — the concrete type simply implements it once. The obligation is the same regardless of which path it is reached through.
 
@@ -334,34 +334,34 @@ Object-safety is a vtable-layout property: every method on the interface must be
 ```mermaid
 flowchart TD
     Start([Input: interface I]) --> OS0{"OS-0: If I : J,<br/>is J object-safe?"}
-    OS0 -->|No| E0[ZOM0338 DynSuperNotObjectSafe]
+    OS0 -->|No| E0[ZOM4008 DynSuperNotObjectSafe]
     OS0 -->|Yes| OS1{"OS-1: Any generic method<br/>(method-level type params)?"}
-    OS1 -->|Yes| E1[ZOM0331 DynGenericMethod]
+    OS1 -->|Yes| E1[ZOM4001 DynGenericMethod]
     OS1 -->|No| OS2{"OS-2: Any method returning<br/>bare Self?"}
-    OS2 -->|Yes| E2[ZOM0332 DynSelfReturn]
+    OS2 -->|Yes| E2[ZOM4002 DynSelfReturn]
     OS2 -->|No| OS3{"OS-3: Any method with move self<br/>#[zom::param::move]?"}
-    OS3 -->|Yes| E3[ZOM0333 DynMoveSelf]
+    OS3 -->|Yes| E3[ZOM4003 DynMoveSelf]
     OS3 -->|No| OS4{"OS-4: All associated types<br/>bound in dyn head?"}
-    OS4 -->|No| E4[ZOM0334 DynUnassociatedType]
+    OS4 -->|No| E4[ZOM4004 DynUnassociatedType]
     OS4 -->|Yes| OS5{"OS-5: Any static method<br/>(no this receiver)?"}
-    OS5 -->|Yes| E5[ZOM0335 DynStaticMethod]
+    OS5 -->|Yes| E5[ZOM4005 DynStaticMethod]
     OS5 -->|No| OS6{"OS-6: Any GAT<br/>(lifetime-parametric assoc type)?"}
-    OS6 -->|Yes| E6[ZOM0336 DynGatNotAllowed]
+    OS6 -->|Yes| E6[ZOM4006 DynGatNotAllowed]
     OS6 -->|No| OS7{"OS-7: All param/return types<br/>impl Sized?"}
-    OS7 -->|No| E7[ZOM0337 DynUnsizedParameter]
+    OS7 -->|No| E7[ZOM4007 DynUnsizedParameter]
     OS7 -->|Yes| OK([dyn I allowed])
 ```
 
 ### 9.6.2 OS-0 (Inheritance Closure)
 
-If `I : J` and `I` is object-safe, every superinterface `J` must also be object-safe. Otherwise the compiler emits `ZOM0338 DynSuperNotObjectSafe`.
+If `I : J` and `I` is object-safe, every superinterface `J` must also be object-safe. Otherwise the compiler emits `ZOM4008 DynSuperNotObjectSafe`.
 
 ### 9.6.3 OS-1 No Generic Methods
 
 Methods may not introduce their own type parameters. Each distinct instantiation would otherwise require a fresh vtable slot and the set of instantiations is unbounded.
 
 ```zom
-interface X { fun map<T>(f: fun(Self)->T) -> T; }   // ZOM0331 DynGenericMethod
+interface X { fun map<T>(f: fun(Self)->T) -> T; }   // ZOM4001 DynGenericMethod
 ```
 
 ### 9.6.4 OS-2 No Methods Returning Bare Self
@@ -369,7 +369,7 @@ interface X { fun map<T>(f: fun(Self)->T) -> T; }   // ZOM0331 DynGenericMethod
 `Self` (the concrete implementing type) cannot be returned by value because its size is not statically known behind `dyn`. `Self?` is allowed only because the `dyn` calling convention lowers it as an explicit nullable union whose success payload is materialized behind the erased data pointer. The source type remains `Self | null`; the pointer-sized representation is a dyn ABI lowering detail, not the general layout of every nullable union.
 
 ```zom
-interface Cloneable { fun clone() -> Self; }           // ZOM0332 DynSelfReturn
+interface Cloneable { fun clone() -> Self; }           // ZOM4002 DynSelfReturn
 ```
 
 ### 9.6.5 OS-3 No Move-Consume Self
@@ -377,7 +377,7 @@ interface Cloneable { fun clone() -> Self; }           // ZOM0332 DynSelfReturn
 A receiver with the linear move attribute, `fun consume(#[zom::param::move] this)`, is forbidden. Linear move of a `dyn I` receiver requires compile-time known size, which is not available. Allowed receivers are `borrow this`, `&mut this`, and `self` passed by non-move reference.
 
 ```zom
-interface Consumable { fun consume(#[zom::param::move] this); }   // ZOM0333 DynMoveSelf
+interface Consumable { fun consume(#[zom::param::move] this); }   // ZOM4003 DynMoveSelf
 ```
 
 ### 9.6.6 OS-4 All Associated Types Bound in the dyn Head
@@ -385,7 +385,7 @@ interface Consumable { fun consume(#[zom::param::move] this); }   // ZOM0333 Dyn
 If an interface declares associated types, every one must be assigned in the `dyn` head. Writing bare `dyn Iterator` leaves `Item` unknown and therefore breaks the calling convention of `next() -> Item?`; the coerced type must be `dyn Iterator<Item = T>`.
 
 ```zom
-let it: dyn Iterator = make_iter();                       // ZOM0334 DynUnassociatedType
+let it: dyn Iterator = make_iter();                       // ZOM4004 DynUnassociatedType
 let it_ok: dyn Iterator<Item = u8> = make_iter();         // OK
 ```
 
@@ -394,7 +394,7 @@ let it_ok: dyn Iterator<Item = u8> = make_iter();         // OK
 A method lacking any form of `this` receiver has no dispatch target in the vtable. Such methods remain callable through the qualified path `I::static_method()`; they are simply excluded from the dyn vtable.
 
 ```zom
-interface Factory { static fun new() -> Self; }           // ZOM0335 DynStaticMethod
+interface Factory { static fun new() -> Self; }           // ZOM4005 DynStaticMethod
 ```
 
 ### 9.6.8 OS-6 No Generic Associated Types (GAT)
@@ -402,14 +402,14 @@ interface Factory { static fun new() -> Self; }           // ZOM0335 DynStaticMe
 An associated type that introduces its own lifetime or type parameters (e.g. `type Iter<'a>;`) is a GAT. GAT vtable representation is deferred to post-v1.
 
 ```zom
-interface Iterable { type Iter<'a>: Iterator; }           // ZOM0336 DynGatNotAllowed
+interface Iterable { type Iter<'a>: Iterator; }           // ZOM4006 DynGatNotAllowed
 ```
 
 ### 9.6.9 OS-7 All Parameters and Returns Are Sized
 
 Every method parameter type and return type, modulo the explicit exceptions above, must impl the `Sized` marker at coercion time. DSTs such as `[T]` or unsized structs cannot flow across a vtable boundary because their layout is not static.
 
-Diagnostic: `ZOM0337 DynUnsizedParameter`.
+Diagnostic: `ZOM4007 DynUnsizedParameter`.
 
 ### 9.6.10 Examples of dyn-Compatible Interfaces
 
@@ -468,7 +468,7 @@ unsafe impl GlobalAllocator for MyArena {
 }
 ```
 
-Omitting `unsafe` produces `ZOM0907 UnsafeInterfaceImplMustBeUnsafe` when the target interface is marked as requiring unsafe implementation.
+Omitting `unsafe` produces an unsafe-implementation diagnostic when the target interface is marked as requiring unsafe implementation.
 
 ### 9.7.2 Calling Methods of Semantically Unsafe Interfaces
 
@@ -476,7 +476,7 @@ When an interface is documented as requiring `unsafe impl`, calling its methods 
 
 ### 9.7.3 Documentation Required
 
-Every semantically unsafe interface SHOULD include a `# Safety` section in its doc comment describing the invariants that implementors must uphold. Lint `ZOM0921 MissingUnsafeInterfaceSafetyDoc` warns when absent.
+Every semantically unsafe interface SHOULD include a `# Safety` section in its doc comment describing the invariants that implementors must uphold. A missing-safety-doc lint warns when absent.
 
 ### 9.7.4 When to Use
 
@@ -504,7 +504,7 @@ A type parameter's bound list therefore has the general form `<T: Interface1<Arg
 
 ### 9.8.1 Negation Prefix (`!`) — Interface Bounds Are Positive Only
 
-The `!` prefix is ONLY legal on marker bounds. Writing `!Drawable` as a bound is a semantic error emitted as `ZOM0422 NegativeInterfaceBoundNotAllowed`. Interfaces are behavioral contracts, not structural properties; the predicate "explicitly does NOT have interface I" is not meaningful in ZOM's type system because negative interface impls are deliberately not supported, and the orphan rule has no mechanism for coherently propagating negations across crate boundaries.
+The `!` prefix is ONLY legal on marker bounds. Writing `!Drawable` as a bound is a semantic error because interfaces are behavioral contracts, not structural properties; the predicate "explicitly does NOT have interface I" is not meaningful in ZOM's type system because negative interface impls are deliberately not supported, and the orphan rule has no mechanism for coherently propagating negations across crate boundaries.
 
 Marker bounds MAY use `!` to express a negative bound. For example `!Shared` means "definitely not shared" and is a valid structural predicate.
 
@@ -531,10 +531,10 @@ Combining an interface bound, a positive marker bound, and a NEGATED marker boun
 fun clone_into<T: Cloneable + Linear + !Shared>(x: T, target: &mut Vec<T>);
 ```
 
-Attempting to negate an interface bound is an error. The following declaration is rejected with `ZOM0422 NegativeInterfaceBoundNotAllowed`:
+Attempting to negate an interface bound is an error:
 
 ```zom
-// Incorrect — ZOM0422 NegativeInterfaceBoundNotAllowed
+// Incorrect — interface bounds cannot be negated.
 fun bad<T: !Drawable>(x: T);
 ```
 
@@ -581,8 +581,8 @@ ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters? ParameterClau
 - Interface inheritance uses the colon (`:`) syntax with `+` for multiple super-interfaces (conjunction). Pipe `|` is rejected in heritage position.
 - Interface method and property signatures end with a semicolon; method bodies are not permitted inside interface declarations.
 - Associated types support four forms: unconstrained, bounded, defaulted, and generic (GAT). Full form combines type parameters, bounds, and defaults.
-- Standalone `impl I for T` blocks extend interface coverage to foreign types and allow modular grouping of impls, governed by Ch.22's orphan rule (`ZOM0710 OrphanImpl`, cross-crate `ZOM0714 AmbigImplOverlap`) and the duplicate-impl coherence check (`ZOM0505 DuplicateImpl`).
-- Multiple interface inheritance uses four conflict-resolution rules (IR-1..IR-4): redundant signatures warn (`ZOM0478`), independent overloads coexist, incompatible return types error (`ZOM0482`), and shared pure-method obligations converge.
-- Eight object-safety rules (OS-0..OS-7) govern whether an interface can be coerced to `dyn I` (Ch.03 §Existential Types), each with a dedicated `ZOM033x` diagnostic.
-- Semantically unsafe interfaces require `unsafe impl` to implement. The `unsafe` keyword appears on the `impl` block, not on the `interface` declaration. Lint `ZOM0921` warns when a `# Safety` doc section is missing.
-- Interface names participate in Ch.12's generic bound lists alongside marker bounds; only marker bounds may be negated, and a negated interface bound is `ZOM0422 NegativeInterfaceBoundNotAllowed`.
+- Standalone `impl I for T` blocks extend interface coverage to foreign types and allow modular grouping of impls, governed by Ch.22's orphan rule and the duplicate-impl coherence check (`ZOM4017 ConflictingImpl` for the same nominal pair within one crate).
+- Multiple interface inheritance uses four conflict-resolution rules (IR-1..IR-4): redundant signatures warn, independent overloads coexist, incompatible return types error, and shared pure-method obligations converge.
+- Eight object-safety rules (OS-0..OS-7) govern whether an interface can be coerced to `dyn I` (Ch.03 §Existential Types), with dedicated diagnostics `ZOM4001` through `ZOM4008`.
+- Semantically unsafe interfaces require `unsafe impl` to implement. The `unsafe` keyword appears on the `impl` block, not on the `interface` declaration. A missing `# Safety` doc section is linted.
+- Interface names participate in Ch.12's generic bound lists alongside marker bounds. Only marker bounds may be negated.

@@ -79,7 +79,7 @@ BoundItem ::= '!' MarkerPath
             | InterfaceName ( '<' GenericArgs '>' )?
 ```
 
-- **Positive interface bounds only.** Writing `fun f<T: !Drawable>(x: T)` is a hard error. Rationale: interfaces describe *behavioral obligations* — "does NOT implement Drawable" is not a useful static contract; refactoring into smaller, finer-grained interfaces achieves the same goal without requiring negative reasoning. The diagnostic is ZOM0422 `NegativeInterfaceBoundNotAllowed`.
+- **Positive interface bounds only.** Writing `fun f<T: !Drawable>(x: T)` is a hard error. Rationale: interfaces describe *behavioral obligations* — "does NOT implement Drawable" is not a useful static contract; refactoring into smaller, finer-grained interfaces achieves the same goal without requiring negative reasoning.
 - **Marker bounds allow negation.** The form `!Shared` means "definitely does NOT impl the Shared marker". Marker negation is sound because markers are structural Boolean properties of types, closed under negative coherence (Ch.22 §22.3).
 - **Order-independence.** The bound set `{Drawable, Sendable, Shared}` describes exactly the same predicate as `{Sendable, Drawable, Shared}`. The tooling canonicalization convention is: interface bounds first, then marker bounds, each subgroup sorted alphabetically.
 - **Duplicate detection.** Duplicate bounds within the same list produce warning W1204 `DuplicateBound`, suppressed by default.
@@ -150,11 +150,11 @@ Two anti-examples:
 ```zom
 // ERROR — interface negation is not a meaningful static contract.
 // fun f<T: !Drawable>(x: T) -> unit;
-// → ZOM0422 NegativeInterfaceBoundNotAllowed
+// → error: interface bounds cannot be negated
 
 // ERROR — two interface negations; rewrite using structural marker bounds
 // fun g<T: !JsonSerializable + !BinarySerializable>(x: T) -> unit;
-// → ZOM0422 × 2
+// → error: interface bounds cannot be negated
 ```
 
 #### Semantic Rules for Bound Lists
@@ -168,7 +168,7 @@ Two anti-examples:
 
    Type intersections `A & B` at type position are independent from the bound conjunction above. They are enforced structurally by the type checker as true sub-typing relationships, not as proof obligations on generic parameters. To name an intersection as an existential, write `dyn (Drawable & Movable)` (requires object-safe interfaces).
 
-2. **Marker negation `!` is legal only on marker bounds.** Applied to an interface name it raises ZOM0422.
+2. **Marker negation `!` is legal only on marker bounds.** Applied to an interface name it is a semantic error.
 
 3. **Marker-only privileges in where clauses.** Markers are Boolean predicates in a proper lattice, which grants them two syntactic privileges that interface bounds do not possess:
    - **Negation.** As above.
@@ -187,7 +187,7 @@ Two anti-examples:
 
 For each call to a generic function `f<T_real>()`, the compiler performs, for every bound declared on each type parameter:
 
-- **Interface bound** `T: I<...>` → a valid impl block must exist declaring `impl I<...> for T_real`. Failure raises `ZOM0431 CheckerTraitNotImplemented`.
+- **Interface bound** `T: I<...>` → a valid impl block must exist declaring `impl I<...> for T_real`. Failure raises `ZOM4018 CheckerTraitNotImplemented`.
 - **Positive marker bound** `T: M` → the marker bitmap for `T_real` must have bit `M` set. Marker-bound failure diagnostics belong to the marker/coherence diagnostic range and must not reuse the type-mismatch or trait-coherence codes reserved by RFC 0005.
 - **Negative marker bound** `T: !M` → the marker bitmap for `T_real` must have bit `M` explicitly clear (either by negative impl or by the negative-closure lattice rejecting derivation). Negative marker-bound failure diagnostics belong to the marker/coherence diagnostic range and must not reuse the trait-bound code reserved for missing interface implementations.
 

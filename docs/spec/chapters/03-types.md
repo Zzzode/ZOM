@@ -411,7 +411,10 @@ The reverse (`&T` to `&mut T`) is **never** permitted.
 3. Multiple `&T` to the same place are permitted.
 4. A reference must not outlive its referent.
 
-Violations produce diagnostics in the `ZOM09xx` range. Full non-lexical lifetime (NLL) checking is planned for a future edition; v1 performs scope-based lifetime checking. See [Chapter 14](14-memory-management.md).
+Full borrow and lifetime diagnostics are owned by the dedicated borrow-checker
+phase. The current type-checker surface covers reference typing and `&mut T`
+to `&T` reborrow coercions, not full non-lexical lifetime analysis. See
+[Chapter 14](14-memory-management.md).
 
 ### Raw Pointer Types
 
@@ -491,10 +494,10 @@ type bindings, and marker-only bounds.
 
 | Form | Diagnostic |
 |------|------------|
-| `let x: dyn = value;` (bare `dyn` with no interface) | ZOM0340 `DynEmpty` |
-| `let x: dyn (i32 \| str) = value;` (non-interface after `dyn`) | ZOM0341 `DynNonInterface` |
-| `let x: dyn Error + dyn Sendable = value;` (repeated `dyn` prefix) | ZOM0342 `DynRepeatedPrefix` |
-| `let x: dyn Iterator = value;` (associated type `Item` not bound) | ZOM0334 `DynUnassociatedType` |
+| `let x: dyn = value;` (bare `dyn` with no interface) | Parser/type diagnostic for missing dyn interface head |
+| `let x: dyn (i32 \| str) = value;` (non-interface after `dyn`) | Type diagnostic for non-interface dyn head |
+| `let x: dyn Error + dyn Sendable = value;` (repeated `dyn` prefix) | Parser/type diagnostic for repeated dyn prefix |
+| `let x: dyn Iterator = value;` (associated type `Item` not bound) | ZOM4004 `DynUnassociatedType` |
 
 **Runtime layout (2-word fat pointer):**
 
@@ -654,7 +657,7 @@ For `let x = expr` (no type annotation):
 4. After all uses of `x` are processed:
    - If `?X` resolved to a concrete type, `x` has that type.
    - If `?X` is still unbound and is a numeric type variable, it defaults to `i32` (integer) or `f64` (float).
-   - If `?X` is still unbound and non-numeric, the checker reports `ZOM0420: cannot infer type for 'x'`.
+   - If `?X` is still unbound and non-numeric, the checker reports `ZOM4014: cannot infer type parameter`.
 
 For `let x: T = expr` (with annotation):
 
