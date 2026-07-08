@@ -1,0 +1,5 @@
+section: "12-generics generic inference"
+covers_rule: "genericParams, callExpr"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that identity<T>(x: T) infers from an argument through the CLI pipeline."

@@ -1,0 +1,5 @@
+fun identity<T>(x: T) -> T {
+    return x;
+}
+
+let y: i32 = identity(42);

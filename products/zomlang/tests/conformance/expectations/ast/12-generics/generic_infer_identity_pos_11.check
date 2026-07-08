@@ -1,0 +1,39 @@
+// RUN: %zomc compile --dump-ast %corpus/12-generics/generic_infer_identity_pos_11.zom | %FileCheck %s
+
+// CHECK: SourceFile
+// CHECK-SAME: file_name="generic_infer_identity_pos_11.zom"
+// CHECK:         FunctionDecl
+// CHECK-SAME:      name="identity"
+// CHECK:           params_id:
+// CHECK:             FunctionParameterList
+// CHECK-SAME:          nparams=1
+// CHECK:                 FunctionParameterDecl
+// CHECK-SAME:              name="x"
+// CHECK:                     NamedTypeExpr
+// CHECK:                       path:
+// CHECK:                         ModulePath
+// CHECK-SAME:                      segments=["T"]
+// CHECK:           type_params_id:
+// CHECK:             GenericParams
+// CHECK-SAME:          nparams=1
+// CHECK:                 GenericTypeParam
+// CHECK-SAME:              name="T"
+// CHECK:           ret_ty:
+// CHECK:             NamedTypeExpr
+// CHECK:               path:
+// CHECK:                 ModulePath
+// CHECK-SAME:              segments=["T"]
+// CHECK:         LetStmt
+// CHECK:                 VariableDeclarator
+// CHECK:                     IdentifierPattern
+// CHECK-SAME:                  name="y"
+// CHECK:                     PredefinedTypeExpr
+// CHECK-SAME:                  kind=I32
+// CHECK:                     CallExpression
+// CHECK:                       callee:
+// CHECK:                         IdentExpr
+// CHECK-SAME:                      name="identity"
+// CHECK:                       type_args: []
+// CHECK:                       args:
+// CHECK:                         IntLiteral
+// CHECK-SAME:                      value="42"
