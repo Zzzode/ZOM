@@ -303,6 +303,35 @@ ZC_TEST("TypeEnv.GeneralizeCollectsExistentialInterfaceTypeVars") {
   if (scheme->getParamCount() == 1) { ZC_EXPECT(scheme->getParam(0).name == "T"_zc); }
 }
 
+ZC_TEST("TypeEnv.GeneralizeCollectsAssociatedParentTypeVars") {
+  TypeEnv env;
+  auto& tv = env.freshTypeVar("T"_zc);
+  auto parent = zc::heap<NamedType>("Iterator"_zc);
+  parent->addTypeArg(zc::heap<TypeVar>(tv.getName(), tv.getId()));
+  auto associated = zc::heap<AssociatedType>(zc::mv(parent), "Item"_zc);
+
+  auto scheme = env.generalize(*associated);
+
+  ZC_EXPECT(scheme->getParamCount() == 1);
+  if (scheme->getParamCount() == 1) { ZC_EXPECT(scheme->getParam(0).name == "T"_zc); }
+}
+
+ZC_TEST("TypeEnv.GeneralizeCollectsIntersectionConjunctTypeVars") {
+  TypeEnv env;
+  auto& tv = env.freshTypeVar("T"_zc);
+  auto drawable = zc::heap<NamedType>("Drawable"_zc);
+  drawable->addTypeArg(zc::heap<TypeVar>(tv.getName(), tv.getId()));
+  zc::Vector<zc::Own<Type>> conjuncts;
+  conjuncts.add(zc::mv(drawable));
+  conjuncts.add(zc::heap<NamedType>("Clickable"_zc));
+  auto intersection = zc::heap<IntersectionType>(zc::mv(conjuncts));
+
+  auto scheme = env.generalize(*intersection);
+
+  ZC_EXPECT(scheme->getParamCount() == 1);
+  if (scheme->getParamCount() == 1) { ZC_EXPECT(scheme->getParam(0).name == "T"_zc); }
+}
+
 // ============================================================================
 // TypeEnv type variable binding and resolution
 // ============================================================================
