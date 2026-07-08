@@ -1149,6 +1149,34 @@ change.
 | ZOM4024 | Error | `Cannot mutate immutable variable '{name}'` |
 | ZOM4025 | Error | `'?!' propagates error type '{error}' but function does not raise '{raises}'` |
 | ZOM4026 | Error | `'!!' on non-error-union type '{type}'` |
+| ZOM4027 | Error | `Use of undeclared identifier '{name}'` |
+| ZOM4028 | Error | `Invalid operands to binary expression` |
+| ZOM4029 | Error | `Invalid operands to binary comparison` |
+| ZOM4030 | Error | `Cannot dereference non-pointer type` |
+| ZOM4031 | Error | `Postfix update requires numeric operand` |
+| ZOM4032 | Error | `Postfix error operator requires error-union operand, got '{type}'` |
+| ZOM4033 | Error | `Postfix error operator requires a non-empty union operand` |
+| ZOM4034 | Error | `Unsupported explicit type argument` |
+| ZOM4035 | Error | `Explicit type arguments require a generic callee` |
+| ZOM4036 | Error | `Expected {expected} argument(s), got {actual}` |
+| ZOM4037 | Error | `No member named '{member}' in type '{type}'` |
+| ZOM4038 | Error | `Array index must be an integer` |
+| ZOM4039 | Error | `Tuple index must be an integer literal` |
+| ZOM4040 | Error | `Tuple index is out of bounds` |
+| ZOM4041 | Error | `Cannot index non-array/non-tuple type` |
+| ZOM4042 | Error | `Unsupported cast target type` |
+| ZOM4043 | Error | `Raw pointer cast from '{source}' to '{target}' requires unsafe block` |
+| ZOM4044 | Error | `Invalid dyn upcast from '{source}' to '{target}'` |
+| ZOM4045 | Error | `Condition must be of type 'bool'` |
+| ZOM4046 | Error | `Missing return value of type '{type}'` |
+| ZOM4047 | Error | `Unsupported struct literal target type` |
+| ZOM4048 | Error | `Unknown field '{field}' in struct literal` |
+| ZOM4049 | Error | `Missing field '{field}' in struct literal` |
+| ZOM4050 | Error | `Array element type mismatch: expected '{expected}', got '{actual}'` |
+| ZOM4051 | Error | `Match guard must be of type 'bool'` |
+| ZOM4052 | Error | `Recursive type alias cycle` |
+| ZOM4053 | Error | `Unsupported type expression` |
+| ZOM4054 | Error | `Cannot implement '{interface}' for '{type}': either the type or the interface must be defined in the current module` |
 
 ### Invariants
 
@@ -1649,3 +1677,4 @@ None.
 | 2026-07-09 | REVIEW | Added TypeEnv composite substitution and free-type-variable traversal evidence for existential, associated, and intersection types. |
 | 2026-07-09 | REVIEW | Added CLI conformance coverage for non-null and explicitly nullable reference, class, and existential initializers. |
 | 2026-07-09 | REVIEW | Fixed tuple enum payload exhaustiveness and added CLI conformance coverage for exhaustive and non-exhaustive tuple enum matches. |
+| 2026-07-09 | REVIEW | Aligned the checker diagnostic catalog with the current `diagnostics-checker.def` registry after removing the obsolete general semantic diagnostic registry. |

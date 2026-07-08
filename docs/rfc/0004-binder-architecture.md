@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, spec-audit, verification]
 approvers: []
 created: 2026-07-05
-updated: 2026-07-08
+updated: 2026-07-09
 area: compiler
 requires: [1, 2, 3]
 supersedes: []
@@ -218,8 +218,10 @@ The binder resolves each `use` path:
 3. `Vec` → find the `Vec` symbol in `vector`'s scope.
 4. Insert a re-export of `Vec` into the current module scope.
 
-If any segment of the path is not found, the binder emits `ZOM3015:
-unresolved import path`.
+If the module path is not found, the binder emits `ZOM3012:
+Cannot resolve module '{path}'`. If a named import member is not exported
+from the module scope, it emits `ZOM3013: Module '{module}' has no exported
+member '{name}'`.
 
 ### Shadowing
 
@@ -231,9 +233,9 @@ fun f() {
 }
 ```
 
-The binder records that the inner `x` shadows the outer `x`. If the
-`shadow` lint is enabled, a note diagnostic `ZOM3002` is emitted pointing
-to both declarations.
+The binder records that the inner `x` shadows the outer `x`. Shadowing itself
+is not a binder error in the current implementation; any user-facing shadowing
+lint must be registered by a later lint pass, not by the binder.
 
 ## Reference-Level Design
 
@@ -317,7 +319,8 @@ regardless of source order.**
 
 **Nested function visibility rule:** `self` and `this` are only visible in the
 direct method/constructor body. Nested functions
-(`fun helper() { self.bar() }`) cannot access `self` — emit ZOM3020. Use
+(`fun helper() { self.bar() }`) cannot access `self`; the implementation must
+emit a future dedicated binder diagnostic for that invalid context. Use
 closures to capture outer variables.
 
 #### Collection Algorithm (Pseudocode)
@@ -450,8 +453,14 @@ in Phase 1:
 
 | Condition | Diagnostic |
 |---|---|
-| Two symbols with same name in same scope (non-method) | `ZOM3003: redeclaration of 'x'` |
-| Method with same name as non-method in same scope | `ZOM3004: 'x' conflicts with prior declaration` |
+| Duplicate variable declaration | `ZOM3003: Cannot redeclare variable 'x'` |
+| Duplicate parameter declaration | `ZOM3004: Cannot redeclare parameter 'x'` |
+| Duplicate function declaration | `ZOM3005: Cannot redeclare function 'f'` |
+| Duplicate class declaration | `ZOM3006: Cannot redeclare class 'C'` |
+| Duplicate interface declaration | `ZOM3007: Cannot redeclare interface 'I'` |
+| Duplicate enum declaration | `ZOM3008: Cannot redeclare enum 'E'` |
+| Duplicate type-alias declaration | `ZOM3009: Cannot redeclare type alias 'T'` |
+| Other duplicate declaration/import/export binding | `ZOM3010: Duplicate identifier: 'x'` |
 
 ### Phase 1.5: Import Resolution
 
@@ -464,7 +473,7 @@ function resolve_imports(scope: Scope):
   for import in pending_imports:
     resolved = resolve_import_path(import.path, scope)
     if resolved is NotFound:
-      emit(ZOM3015, import.range, "unresolved import '{path}'")
+      emit(ZOM3012, import.range, "Cannot resolve module '{path}'")
       metadata.set_unresolved(import.id)
     else:
       metadata.set_symbol(import.id, resolved.symbol.id)
@@ -562,15 +571,12 @@ function resolve(node: NodeId, scope: Scope):
         metadata.set_unresolved(node.id)
       else:
         metadata.set_symbol(node.id, result.symbol.id)
-        if result.symbol.is_shadowed():
-          emit_note(ZOM3002, node.range,
-                    "'{name}' shadows prior declaration at {prev_range}")
 
     case IdentifierType:
       name = node.token.text
       result = resolve_name(name, scope, Type)
       if result is NotFound:
-        emit(ZOM3010, node.range, "unknown type '{name}'")
+        emit(ZOM3001, node.range, "Undefined identifier: '{name}'")
         metadata.set_unresolved(node.id)
       else:
         metadata.set_symbol(node.id, result.symbol.id)
@@ -640,7 +646,7 @@ function resolve_import_path(segments: [String], from: Scope) -> LookupResult:
       member_scope = current_sym.get_member_scope()
       next_sym = member_scope.lookup_locally(segments[i])
     else:
-      emit(ZOM3016, ..., "'{segments[i-1]}' is not importable as a path")
+      emit(ZOM3012, ..., "Cannot resolve module '{path}'")
       return NotFound
 
     if next_sym is NotFound:
@@ -671,7 +677,8 @@ in the importing scope. The symbol's canonical identity is preserved.
   local declaration in the same scope, the local declaration wins and no
   diagnostic is emitted (local takes precedence, like Rust).
 - If two glob imports both provide the same name, and no local declaration
-  resolves it, emit ZOM3017 for ambiguity.
+  resolves it, emit a future dedicated ambiguity diagnostic. The current
+  registered binder diagnostic set does not publish this code yet.
 
 ### BindingMetadata Contract
 
@@ -728,25 +735,26 @@ Labels live in a **label namespace** separate from value/type namespaces.
 - If a label is not found in any enclosing scope, emit ZOM3001 adapted
   for labels: `unresolved label 'label_name'`.
 
-### Diagnostic Catalog (3000–3099)
+### Binder Diagnostic Catalog
 
 | Code | Severity | Message Template |
 |---|---|---|
 | ZOM3001 | Error | `Undefined identifier: '{name}'` |
-| ZOM3002 | Note | `'{name}' shadows prior declaration here` |
-| ZOM3003 | Error | `redeclaration of '{name}'` |
-| ZOM3004 | Error | `'{name}' conflicts with prior declaration of kind '{kind}'` |
-| ZOM3005 | Error | `cannot shadow '{name}'; use explicit 'shadow' keyword` |
-| ZOM3010 | Error | `unknown type '{name}'` |
-| ZOM3011 | Error | `'{name}' is not a type` |
-| ZOM3012 | Error | `generic parameter '{name}' already declared` |
-| ZOM3015 | Error | `unresolved import '{path}'` |
-| ZOM3016 | Error | `'{segment}' is not importable as a path` |
-| ZOM3017 | Error | `import '{name}' conflicts with local declaration` |
-| ZOM3020 | Error | `'self' is not available in this context` |
-| ZOM3021 | Error | `'this' is not available in this context` |
-| ZOM3030 | Error | `enum variant '{name}' not found in enum '{enum_name}'` |
-| ZOM3080 | Note | `prior declaration of '{name}' here` (attached to ZOM3003) |
+| ZOM3002 | Error | `Symbol '{name}' cannot be used in {context} context` |
+| ZOM3003 | Error | `Cannot redeclare variable '{name}'` |
+| ZOM3004 | Error | `Cannot redeclare parameter '{name}'` |
+| ZOM3005 | Error | `Cannot redeclare function '{name}'` |
+| ZOM3006 | Error | `Cannot redeclare class '{name}'` |
+| ZOM3007 | Error | `Cannot redeclare interface '{name}'` |
+| ZOM3008 | Error | `Cannot redeclare enum '{name}'` |
+| ZOM3009 | Error | `Cannot redeclare type alias '{name}'` |
+| ZOM3010 | Error | `Duplicate identifier: '{name}'` |
+| ZOM3011 | Error | `Circular import detected for module '{module}'` |
+| ZOM3012 | Error | `Cannot resolve module '{module}'` |
+| ZOM3013 | Error | `Module '{module}' has no exported member '{name}'` |
+| ZOM3014 | Error | `Circular re-export detected for module '{module}'` |
+| ZOM3015 | Error | `Cannot resolve module '{module}' for re-export` |
+| ZOM3016 | Error | `Module '{module}' has no exported member '{name}' for re-export` |
 
 ### Invariants
 
@@ -938,7 +946,8 @@ already defined in `ast/tree.h`.
     `undefined_identifier_neg_15.check` asserts the exact source/caret
     display at the unresolved identifier token.
 14. **`self` resolution:** Inside a method, `self` resolves to the
-    method-scope self variable. Outside a method, `self` emits ZOM3020.
+    method-scope self variable. Outside a method, `self` emits a future
+    dedicated binder diagnostic; no concrete code is currently registered.
 15. **Scope tree shape:** The scope tree mirrors AST lexical nesting
     exactly. Verified by dumping scope tree and comparing to expected
     structure.
@@ -957,9 +966,11 @@ already defined in `ast/tree.h`.
     symbol in `captures()` metadata. Unit test.
 21. **Glob import precedence:** Local declaration takes precedence over
     glob-imported name of same name (no diagnostic). Two globs providing
-    same name emit ZOM3017.
+    same name emit a future dedicated ambiguity diagnostic; no concrete code
+    is currently registered.
 22. **Nested function `self` access:** `fun helper() { self.bar() }`
-    inside a method emits ZOM3020.
+    inside a method emits the same future dedicated binder diagnostic as
+    other invalid `self` contexts.
 23. **`check-rfc.py` passes.**
 24. **`check-format.py` passes.**
 25. **All existing 742+ tests still pass.**
@@ -981,7 +992,8 @@ already defined in `ast/tree.h`.
    Computes closure capture sets and label targets.
    File: `binder/name-resolver.cc` + `.h`.
 5. **Add binder diagnostics** — Create `diagnostics-binder.def` with
-   codes ZOM3001-ZOM3080.
+   registered codes ZOM3001-ZOM3016 for the currently implemented binder
+   surface.
 6. **Wire into `Binder::bind()`** — Call collect, then resolve_imports,
    then resolve.
 7. **Driver integration** — Call `binder.bind()` after successful parse.
@@ -998,7 +1010,7 @@ already defined in `ast/tree.h`.
 - **Lit tests:** Add `products/zomlang/tests/conformance/corpus/06-declarations/`
   tests for name resolution edge cases.
 - **Conformance:** Existing 667 conformance tests must still pass.
-  New tests for import resolution and shadowing diagnostics.
+  New tests for import resolution and shadowing metadata.
 - **Generated files:** None.
 - **Format:** `python3 scripts/check-format.py` passes.
 - **RFC check:** `python3 scripts/check-rfc.py` passes.
@@ -1034,3 +1046,4 @@ None.
 | 2026-07-07 | REVIEW | Binder implementation is complete and verified; opened implementation-backed owner review before acceptance. Required decision and approvers remain the next governance gate. |
 | 2026-07-08 | REVIEW | Added binder diagnostic conformance coverage for unresolved identifiers (`ZOM3001`) and aligned the implementation diagnostic registry with the RFC 0004 ZOM30xx range. |
 | 2026-07-08 | REVIEW | Added explicit review-readiness governance notes: RFC 0004 remains blocked on owner approval, recorded decision metadata, and a criterion-by-criterion acceptance audit; cross-module binding remains owned by RFC 0008. |
+| 2026-07-09 | REVIEW | Aligned the binder diagnostic catalog with the current `diagnostics-binder.def` registry after removing the obsolete general semantic diagnostic registry. |
