@@ -645,102 +645,6 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
   }
 }
 
-zc::Maybe<const type::Type&> BodyChecker::findTypeVarByName(const type::Type& ty,
-                                                            zc::StringPtr name) {
-  if (isTypeVar(ty)) {
-    auto& var = static_cast<const type::TypeVar&>(ty);
-    if (var.getName() == name) { return var; }
-    return zc::none;
-  }
-
-  if (isFunction(ty)) {
-    auto& fn = static_cast<const type::FunctionType&>(ty);
-    for (size_t i = 0; i < fn.getParamCount(); ++i) {
-      auto found = findTypeVarByName(fn.getParamType(i), name);
-      if (found != zc::none) return found;
-    }
-    auto ret = findTypeVarByName(fn.getReturnType(), name);
-    if (ret != zc::none) return ret;
-    ZC_IF_SOME(raises, fn.getRaisesType()) { return findTypeVarByName(raises, name); }
-    return zc::none;
-  }
-
-  if (isTuple(ty)) {
-    auto& tuple = static_cast<const type::TupleType&>(ty);
-    for (size_t i = 0; i < tuple.getElementCount(); ++i) {
-      auto found = findTypeVarByName(tuple.getElementType(i), name);
-      if (found != zc::none) return found;
-    }
-    return zc::none;
-  }
-
-  if (isArray(ty)) {
-    auto& arr = static_cast<const type::ArrayType&>(ty);
-    return findTypeVarByName(arr.getElementType(), name);
-  }
-
-  if (isReference(ty)) {
-    auto& ref = static_cast<const type::ReferenceType&>(ty);
-    return findTypeVarByName(ref.getPointeeType(), name);
-  }
-
-  if (isRawPointer(ty)) {
-    auto& ptr = static_cast<const type::RawPointerType&>(ty);
-    return findTypeVarByName(ptr.getPointeeType(), name);
-  }
-
-  if (isUnion(ty)) {
-    auto& unionTy = static_cast<const type::UnionType&>(ty);
-    for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
-      auto found = findTypeVarByName(unionTy.getAlternative(i), name);
-      if (found != zc::none) return found;
-    }
-    return zc::none;
-  }
-
-  if (isObject(ty)) {
-    auto& object = static_cast<const type::ObjectType&>(ty);
-    auto members = object.getMembers();
-    for (size_t i = 0; i < members.size(); ++i) {
-      ZC_IF_SOME(memberType, members[i].type) {
-        auto found = findTypeVarByName(memberType, name);
-        if (found != zc::none) return found;
-      }
-    }
-    return zc::none;
-  }
-
-  if (isInterface(ty)) {
-    auto& iface = static_cast<const type::InterfaceType&>(ty);
-    for (size_t i = 0; i < iface.getParentInterfaceCount(); ++i) {
-      auto found = findTypeVarByName(iface.getParentInterface(i), name);
-      if (found != zc::none) return found;
-    }
-    return zc::none;
-  }
-
-  if (isIntersection(ty)) {
-    auto& intersection = static_cast<const type::IntersectionType&>(ty);
-    for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
-      auto found = findTypeVarByName(intersection.getConjunct(i), name);
-      if (found != zc::none) return found;
-    }
-    return zc::none;
-  }
-
-  if (isExistential(ty)) {
-    auto& existential = static_cast<const type::ExistentialType&>(ty);
-    return findTypeVarByName(existential.getInterfaceType(), name);
-  }
-
-  if (isAssociated(ty)) {
-    auto& associated = static_cast<const type::AssociatedType&>(ty);
-    return findTypeVarByName(associated.getParentType(), name);
-  }
-
-  return zc::none;
-}
-
 zc::Own<type::Type> BodyChecker::makePrimitiveType(zc::StringPtr name) {
   using type::PrimitiveKind;
   using type::PrimitiveType;
@@ -1755,7 +1659,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
         auto& generic = funcTy.getGenericParam(i);
         if (generic.upperBounds.empty()) continue;
 
-        auto typeVar = findTypeVarByName(*effectiveFn, generic.name);
+        auto typeVar = type::findTypeVarByName(*effectiveFn, generic.name);
         if (typeVar == zc::none) continue;
 
         ZC_IF_SOME(varTy, typeVar) {
@@ -1785,7 +1689,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
 
       for (size_t i = 0; i < funcTy.getGenericParamCount(); ++i) {
         auto& generic = funcTy.getGenericParam(i);
-        auto typeVar = findTypeVarByName(*effectiveFn, generic.name);
+        auto typeVar = type::findTypeVarByName(*effectiveFn, generic.name);
         if (typeVar == zc::none) continue;
 
         ZC_IF_SOME(varTy, typeVar) {

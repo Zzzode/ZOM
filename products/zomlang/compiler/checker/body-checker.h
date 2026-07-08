@@ -337,9 +337,6 @@ private:
   /// \brief Bind instantiated generic type variables by parameter name.
   void bindTypeVarsByName(const type::Type& ty, zc::StringPtr name, const type::Type& value);
 
-  /// \brief Find an instantiated generic type variable by parameter name.
-  zc::Maybe<const type::Type&> findTypeVarByName(const type::Type& ty, zc::StringPtr name);
-
   /// \brief Resolve a type expression AST node to a concrete type.
   ///
   /// Handles NamedTypeExpr (both simple IdentExpr paths and qualified

@@ -169,6 +169,101 @@ zc::Own<Type> cloneType(const Type& type) {
   ZC_UNREACHABLE;
 }
 
+zc::Maybe<const Type&> findTypeVarByName(const Type& type, zc::StringPtr name) {
+  if (isTypeVar(type)) {
+    auto& var = static_cast<const TypeVar&>(type);
+    if (var.getName() == name) { return var; }
+    return zc::none;
+  }
+
+  if (isFunction(type)) {
+    auto& function = static_cast<const FunctionType&>(type);
+    for (size_t i = 0; i < function.getParamCount(); ++i) {
+      auto found = findTypeVarByName(function.getParamType(i), name);
+      if (found != zc::none) return found;
+    }
+    auto ret = findTypeVarByName(function.getReturnType(), name);
+    if (ret != zc::none) return ret;
+    ZC_IF_SOME(raises, function.getRaisesType()) { return findTypeVarByName(raises, name); }
+    return zc::none;
+  }
+
+  if (isTuple(type)) {
+    auto& tuple = static_cast<const TupleType&>(type);
+    for (size_t i = 0; i < tuple.getElementCount(); ++i) {
+      auto found = findTypeVarByName(tuple.getElementType(i), name);
+      if (found != zc::none) return found;
+    }
+    return zc::none;
+  }
+
+  if (isArray(type)) {
+    auto& array = static_cast<const ArrayType&>(type);
+    return findTypeVarByName(array.getElementType(), name);
+  }
+
+  if (isReference(type)) {
+    auto& reference = static_cast<const ReferenceType&>(type);
+    return findTypeVarByName(reference.getPointeeType(), name);
+  }
+
+  if (isRawPointer(type)) {
+    auto& pointer = static_cast<const RawPointerType&>(type);
+    return findTypeVarByName(pointer.getPointeeType(), name);
+  }
+
+  if (isUnion(type)) {
+    auto& unionType = static_cast<const UnionType&>(type);
+    for (size_t i = 0; i < unionType.getAlternativeCount(); ++i) {
+      auto found = findTypeVarByName(unionType.getAlternative(i), name);
+      if (found != zc::none) return found;
+    }
+    return zc::none;
+  }
+
+  if (isObject(type)) {
+    auto& object = static_cast<const ObjectType&>(type);
+    auto members = object.getMembers();
+    for (size_t i = 0; i < members.size(); ++i) {
+      ZC_IF_SOME(memberType, members[i].type) {
+        auto found = findTypeVarByName(memberType, name);
+        if (found != zc::none) return found;
+      }
+    }
+    return zc::none;
+  }
+
+  if (isInterface(type)) {
+    auto& iface = static_cast<const InterfaceType&>(type);
+    for (size_t i = 0; i < iface.getParentInterfaceCount(); ++i) {
+      auto found = findTypeVarByName(iface.getParentInterface(i), name);
+      if (found != zc::none) return found;
+    }
+    return zc::none;
+  }
+
+  if (isIntersection(type)) {
+    auto& intersection = static_cast<const IntersectionType&>(type);
+    for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
+      auto found = findTypeVarByName(intersection.getConjunct(i), name);
+      if (found != zc::none) return found;
+    }
+    return zc::none;
+  }
+
+  if (isExistential(type)) {
+    auto& existential = static_cast<const ExistentialType&>(type);
+    return findTypeVarByName(existential.getInterfaceType(), name);
+  }
+
+  if (isAssociated(type)) {
+    auto& associated = static_cast<const AssociatedType&>(type);
+    return findTypeVarByName(associated.getParentType(), name);
+  }
+
+  return zc::none;
+}
+
 }  // namespace type
 }  // namespace compiler
 }  // namespace zomlang

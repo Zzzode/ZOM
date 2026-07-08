@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zomlang/compiler/type/type.h"
 
@@ -25,6 +26,12 @@ namespace type {
 /// \param type The type tree to clone.
 /// \return An owned structural copy of the type.
 zc::Own<Type> cloneType(const Type& type);
+
+/// \brief Find the first type variable with the requested name in a type tree.
+/// \param type The type tree to search.
+/// \param name The type variable name to find.
+/// \return A reference to the first matching type variable, or none.
+zc::Maybe<const Type&> findTypeVarByName(const Type& type, zc::StringPtr name);
 
 }  // namespace type
 }  // namespace compiler
