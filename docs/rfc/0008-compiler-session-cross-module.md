@@ -2,7 +2,7 @@
 rfc: 8
 title: CompilerSession Cross-Module Architecture
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, module-system, binder-checker, error-system, spec-audit, verification]
@@ -13,10 +13,10 @@ area: compiler
 requires: [2, 3, 4, 5]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/0008-compiler-session-cross-module.md#status-history
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/0008-compiler-session-cross-module.md#acceptance-criteria
 ---
 
 # RFC 0008: CompilerSession Cross-Module Architecture
@@ -462,3 +462,4 @@ worker counts.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-07-08 | DRAFT | Initial draft defining `CompilerSession`, module graph scheduling, module interface publication, cross-module type signatures, and global coherence indexing. |
+| 2026-07-08 | REVIEW | The proposal now has a complete cross-module session design, repository impact, acceptance criteria, implementation plan, and local discussion/tracking anchors. Approval remains blocked on owner review, non-empty approvers, a recorded decision, and implementation evidence. |

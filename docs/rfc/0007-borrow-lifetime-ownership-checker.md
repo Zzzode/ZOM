@@ -2,7 +2,7 @@
 rfc: 7
 title: Borrow Lifetime And Ownership Checker
 type: compiler
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, binder-checker, runtime-memory, concurrency, spec-audit, verification]
@@ -13,10 +13,10 @@ area: compiler
 requires: [4, 5, 6]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/0007-borrow-lifetime-ownership-checker.md#status-history
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/0007-borrow-lifetime-ownership-checker.md#acceptance-criteria
 ---
 
 # RFC 0007: Borrow Lifetime And Ownership Checker
@@ -479,3 +479,4 @@ borrow-checker corpus before the RFC can move to `LANDED`.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-07-08 | DRAFT | Initial draft separating borrow, lifetime, ownership, move, reborrow, linear, and scoped-task checking from RFC 0005 type checking. |
+| 2026-07-08 | REVIEW | The proposal now has a complete post-type-check borrow-checker design, safety impact, acceptance criteria, implementation plan, and local discussion/tracking anchors. Approval remains blocked on owner review, diagnostic-range resolution, non-empty approvers, a recorded decision, and implementation evidence. |
