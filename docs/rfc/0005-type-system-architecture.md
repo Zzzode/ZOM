@@ -1554,6 +1554,36 @@ and tests cover the exact acceptance criterion above.
 - **Format:** `python3 scripts/check-format.py` passes.
 - **RFC check:** `python3 scripts/check-rfc.py` passes.
 
+### Review Readiness
+
+This RFC is intentionally kept in `REVIEW`. The implementation evidence table
+records the current checker surface, but RFC governance does not allow moving
+to `ACCEPTED` while `approvers` is empty and `decision` is `TBD`.
+
+Status advancement is blocked on:
+
+1. owner approval from `rfc`, `binder-checker`, `error-system`,
+   `module-system`, `spec-audit`, and `verification`;
+2. a recorded decision link replacing `decision: TBD`;
+3. a final acceptance audit that checks each acceptance criterion against the
+   implementation, tests, spec chapters, and user-visible diagnostics.
+
+The remaining work is deliberately split across follow-up contracts instead of
+being hidden inside this type-checker RFC:
+
+| Follow-up area | Owning contract |
+|---|---|
+| `?!` lowering, `!!` panic boundaries, error-union ABI, and runtime cleanup discipline | RFC 0006 |
+| Borrow checking, move checking, reborrow lifetimes, and ownership dataflow | RFC 0007 |
+| Cross-module `CompilerSession`, visibility, module interface publication, and global impl coherence | RFC 0008 |
+| Full method-call lowering and dispatch after operator trait selection | Follow-up call-dispatch contract |
+
+Parser/spec alignment for `where` clauses is also intentionally narrow: the
+parser accepts `where` on functions, structs, classes, and standalone impls,
+and rejects interface declaration `where` clauses through
+`iface_where_reject_neg_05`. Interface constraints remain attached to the type
+parameter list until a separate spec and parser change expands that surface.
+
 ## Open Questions
 
 None.
@@ -1609,3 +1639,4 @@ None.
 | 2026-07-08 | REVIEW | Clarified that `where` clauses are supported on functions, structs, classes, and standalone impls, while interface declaration `where` remains a parser-level rejection covered by `iface_where_reject_neg_05`. |
 | 2026-07-08 | REVIEW | Added diagnostics conformance coverage for invariant named generic type arguments (`generic_invariant_named_type_neg_12`). |
 | 2026-07-08 | REVIEW | Added parser, AST, ANTLR grammar, and conformance coverage for reference and raw-pointer type expressions inside generic type arguments (`generic_reference_arg_pos_03`, `generic_raw_pointer_arg_pos_04`). |
+| 2026-07-08 | REVIEW | Added explicit review-readiness governance notes: RFC 0005 remains blocked on owner approval, recorded decision metadata, and a criterion-by-criterion acceptance audit; error lowering, borrow checking, cross-module sessions, and call-dispatch lowering are assigned to follow-up contracts. |

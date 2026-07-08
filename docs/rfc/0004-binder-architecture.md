@@ -1003,6 +1003,24 @@ already defined in `ast/tree.h`.
 - **Format:** `python3 scripts/check-format.py` passes.
 - **RFC check:** `python3 scripts/check-rfc.py` passes.
 
+### Review Readiness
+
+This RFC is intentionally kept in `REVIEW`. The implementation evidence is
+substantial, but RFC governance does not allow moving to `ACCEPTED` while
+`approvers` is empty and `decision` is `TBD`.
+
+Status advancement is blocked on:
+
+1. owner approval from `rfc`, `binder-checker`, `error-system`,
+   `module-system`, `spec-audit`, and `verification`;
+2. a recorded decision link replacing `decision: TBD`;
+3. a final acceptance audit that checks the implementation evidence against
+   every acceptance criterion instead of relying on test pass/fail status alone.
+
+The current cross-module limitations are out of scope for RFC 0004 and are
+owned by RFC 0008. RFC 0004 remains the single-compilation-unit binder
+contract until the `CompilerSession` design lands.
+
 ## Open Questions
 
 None.
@@ -1015,3 +1033,4 @@ None.
 | 2026-07-05 | DRAFT | Applied fixes: moved match arm scope creation to Phase 1; added binding position vs. expression position rules; added `collect_pattern_bindings()` helper; added Phase 1.5 import resolution; added closure capture tracking; added `if let`/`while let` scope rules; added label resolution; clarified `self`/`this` nested function visibility; added glob import conflict rules; clarified `scope_stack`/`scope` parameter convention. |
 | 2026-07-07 | REVIEW | Binder implementation is complete and verified; opened implementation-backed owner review before acceptance. Required decision and approvers remain the next governance gate. |
 | 2026-07-08 | REVIEW | Added binder diagnostic conformance coverage for unresolved identifiers (`ZOM3001`) and aligned the implementation diagnostic registry with the RFC 0004 ZOM30xx range. |
+| 2026-07-08 | REVIEW | Added explicit review-readiness governance notes: RFC 0004 remains blocked on owner approval, recorded decision metadata, and a criterion-by-criterion acceptance audit; cross-module binding remains owned by RFC 0008. |
