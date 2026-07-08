@@ -364,16 +364,32 @@ requires reverting the lowering integration in the same change.
 15. `python3 scripts/check-format.py` passes after implementation changes.
 16. `ctest --preset default --output-on-failure` passes before `LANDED`.
 
+### Implementation Evidence
+
+This RFC remains in `REVIEW`; the implementation is intentionally partial.
+
+| AC | Status | Evidence | Remaining Work |
+|---|---|---|---|
+| 1 | Partial | `type::CallDispatchRecord`, `CallTargetKind`, and `ReceiverMode` are stored in `TypeEnv` by expression `NodeId`. `type-env-test.cc` covers set/get and clear behavior. | Extend coverage beyond operator/index records and freeze mutation after checker completion. |
+| 6 | Partial | `BodyChecker` records `OperatorMethod` dispatch targets for user-defined binary arithmetic and comparison operators, and `IndexMethod` targets for user-defined `Index.index`. `body-checker-test.cc` verifies interface/method names, impl node IDs, argument type IDs, result type IDs, and receiver mode. | Add unary operator dispatch records and later integrate method-call lowering records. |
+| 8 | Partial | Dispatch records are exposed through immutable `getDispatch()` references after insertion. | Add an explicit checker-completion immutability boundary if a later mutable dispatch builder is introduced. |
+| 14 | Complete | `python3 scripts/check-rfc.py` passes. | None. |
+| 15 | Complete | `python3 scripts/check-format.py` passes after implementation changes. | None. |
+| 16 | Partial | Focused debug and sanitizer builds plus focused dispatch-related tests pass for the implemented operator/index slice. | Full `ctest --preset default --output-on-failure` is still required before `LANDED`. |
+
 ## Implementation Plan
 
 1. Define the dispatch record data model in the type environment or checker
-   side-table module.
-2. Add construction APIs and immutable read APIs.
+   side-table module. **Started:** the first implementation stores records in
+   `TypeEnv`.
+2. Add construction APIs and immutable read APIs. **Started:** `TypeEnv`
+   exposes `setDispatch`, `hasDispatch`, and `getDispatch`.
 3. Populate records for direct function calls.
 4. Populate records for concrete member calls.
 5. Populate records for qualified interface calls.
 6. Populate records for primitive operators.
-7. Populate records for user-defined operator and index methods.
+7. Populate records for user-defined operator and index methods. **Started:**
+   binary user-defined operator and index records are populated.
 8. Populate records for `dyn` receiver vtable calls.
 9. Add diagnostics for missing or ambiguous call dispatch when existing
    diagnostics are insufficient.
@@ -396,8 +412,6 @@ requires reverting the lowering integration in the same change.
 
 ## Open Questions
 
-- Should dispatch records live in `TypeEnv` or in a dedicated checker-owned
-  `DispatchEnv` side table?
 - What exact debug dump flag should expose dispatch records?
 - Should `DynVTable` slots be flattened during checker completion or delayed
   until ABI lowering?
@@ -408,3 +422,4 @@ requires reverting the lowering integration in the same change.
 |---|---|---|
 | 2026-07-08 | DRAFT | Initial draft defining call dispatch, operator lowering, dispatch side-table records, and IR-lowering ownership. |
 | 2026-07-08 | REVIEW | The proposal has complete motivation, reference-level dispatch records, follow-up implementation plan, and local tracking anchors. Approval remains blocked on owner review, non-empty approvers, a recorded decision, and implementation evidence. |
+| 2026-07-08 | REVIEW | Started implementation by adding `TypeEnv` dispatch records and recording user-defined binary operator and index method dispatch targets. RFC remains blocked on the remaining dispatch target variants, debug dumping, IR-lowering consumption, owner approval, and decision metadata. |
