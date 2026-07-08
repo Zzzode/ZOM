@@ -1,0 +1,5 @@
+fun identity<T>(value: T) -> T {
+    return value;
+}
+
+let y: str = identity<str>(42);
