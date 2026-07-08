@@ -1,0 +1,5 @@
+section: "Ch.04 Missing member call"
+covers_rule: "memberExpr, callExpr"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4037 for a missing concrete member without cascading ZOM4012."

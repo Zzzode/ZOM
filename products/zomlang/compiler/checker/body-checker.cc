@@ -1982,6 +1982,8 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
+  if (isError(resolvedCallee)) { return storeType(expr, zc::heap<type::ErrorType>()); }
+
   // If callee is a named type, check if it's a class with operator()
   if (isNamed(resolvedCallee)) {
     // Simplified: try to treat as constructor call
