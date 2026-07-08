@@ -1,0 +1,5 @@
+section: "Ch.11 Forced error unwrap"
+covers_rule: "postfix forced unwrap, conditional expression union"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that !! is accepted on a union operand and returns the first alternative."
