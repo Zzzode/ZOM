@@ -1,0 +1,5 @@
+section: "Ch.04 Struct literal missing field"
+covers_rule: "structLiteral"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4049 for a missing required struct literal field."

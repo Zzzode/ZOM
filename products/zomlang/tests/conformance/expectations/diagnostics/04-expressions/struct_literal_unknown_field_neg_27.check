@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/struct_literal_unknown_field_neg_27.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4048]: Unknown field 'z' in struct literal
+// CHECK-LITERAL:   --> 04-expressions/struct_literal_unknown_field_neg_27.zom:6:29
+// CHECK-LITERAL: 6 | let p = Point { x: 1, y: 2, z: 3 };
+// CHECK-LITERAL:   |                             ^

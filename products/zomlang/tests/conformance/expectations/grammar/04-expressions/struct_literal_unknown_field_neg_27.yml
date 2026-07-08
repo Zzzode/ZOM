@@ -1,0 +1,5 @@
+section: "Ch.04 Struct literal unknown field"
+covers_rule: "structLiteral"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4048 for an unknown struct literal field."
