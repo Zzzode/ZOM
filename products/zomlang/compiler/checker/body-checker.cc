@@ -99,6 +99,7 @@ struct BodyChecker::Impl {
   // Unannotated local bindings can be refined by later use-site constraints.
   zc::HashMap<uint32_t, ast::NodeId> identExprDeclarations;
   zc::HashMap<uint32_t, symbol::SymbolId> memberExprSymbols;
+  zc::HashMap<uint32_t, bool> memberExprIsStatic;
   zc::Vector<ast::NodeId> pendingLocalIntDeclarations;
 
   Impl(type::TypeEnv& te, type::UnificationEngine& u, type::ConstraintSet& cs,
@@ -195,6 +196,19 @@ static void recordInstanceMethodDispatch(type::TypeEnv& typeEnv, ast::NodeId nod
   type::CallDispatchRecord record;
   record.targetKind = type::CallTargetKind::InstanceMethod;
   record.receiverMode = type::ReceiverMode::ImplicitSelf;
+  record.targetSymbol = targetSymbol;
+  for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
+  record.resultType = typeEnv.internType(resultType);
+  typeEnv.setDispatch(node, zc::mv(record));
+}
+
+static void recordStaticMethodDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
+                                       symbol::SymbolId targetSymbol,
+                                       zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                       const type::Type& resultType) {
+  type::CallDispatchRecord record;
+  record.targetKind = type::CallTargetKind::StaticMethod;
+  record.receiverMode = type::ReceiverMode::None;
   record.targetSymbol = targetSymbol;
   for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
   record.resultType = typeEnv.internType(resultType);
@@ -1733,6 +1747,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
 
   symbol::SymbolId freeFunctionTarget;
   symbol::SymbolId instanceMethodTarget;
+  bool isStaticMethodTarget = false;
   NodeId instanceReceiverId;
   if (impl->tree.contains(calleeId) && impl->tree.node(calleeId).kind == SyntaxKind::IdentExpr) {
     const auto& calleeNode = impl->tree.node(calleeId);
@@ -1747,6 +1762,9 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
     instanceReceiverId = NodeId(calleeNode.payload.words[kMemberExpressionObjectWord]);
     ZC_IF_SOME(symbolId, impl->memberExprSymbols.find(calleeId.value)) {
       instanceMethodTarget = symbolId;
+    }
+    ZC_IF_SOME(isStatic, impl->memberExprIsStatic.find(calleeId.value)) {
+      isStaticMethodTarget = isStatic;
     }
   }
 
@@ -1917,7 +1935,10 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
       auto& result = storeType(expr, zc::heap<type::UnionType>(zc::mv(alternatives)));
       if (instanceMethodTarget.isValid()) {
         auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
-        if (impl->typeEnv.hasType(instanceReceiverId)) {
+        if (isStaticMethodTarget) {
+          recordStaticMethodDispatch(impl->typeEnv, expr, instanceMethodTarget,
+                                     dispatchArgs.asPtr(), result);
+        } else if (impl->typeEnv.hasType(instanceReceiverId)) {
           zc::Vector<type::TypeId> argsWithReceiver;
           argsWithReceiver.add(impl->typeEnv.internType(
               impl->typeEnv.find(impl->typeEnv.getType(instanceReceiverId))));
@@ -1936,7 +1957,10 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
     auto& result = storeType(expr, cloneResolvedType(resolvedRet));
     if (instanceMethodTarget.isValid()) {
       auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
-      if (impl->typeEnv.hasType(instanceReceiverId)) {
+      if (isStaticMethodTarget) {
+        recordStaticMethodDispatch(impl->typeEnv, expr, instanceMethodTarget, dispatchArgs.asPtr(),
+                                   result);
+      } else if (impl->typeEnv.hasType(instanceReceiverId)) {
         zc::Vector<type::TypeId> argsWithReceiver;
         argsWithReceiver.add(impl->typeEnv.internType(
             impl->typeEnv.find(impl->typeEnv.getType(instanceReceiverId))));
@@ -2010,6 +2034,7 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
       auto ty = getSymbolType(sym);
       ZC_IF_SOME(memberType, ty) {
         impl->memberExprSymbols.upsert(expr.value, sym.getId());
+        impl->memberExprIsStatic.upsert(expr.value, sym.isStatic());
         return storeType(expr, cloneResolvedType(memberType));
       }
     }
@@ -2026,6 +2051,7 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
             auto ty = getSymbolType(member);
             ZC_IF_SOME(memberType, ty) {
               impl->memberExprSymbols.upsert(expr.value, member.getId());
+              impl->memberExprIsStatic.upsert(expr.value, member.isStatic());
               return storeType(expr, cloneResolvedType(memberType));
             }
           }
@@ -2040,6 +2066,7 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
         auto ty = getSymbolType(member);
         ZC_IF_SOME(memberType, ty) {
           impl->memberExprSymbols.upsert(expr.value, member.getId());
+          impl->memberExprIsStatic.upsert(expr.value, member.isStatic());
           return storeType(expr, cloneResolvedType(memberType));
         }
       }

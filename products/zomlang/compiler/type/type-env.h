@@ -39,6 +39,7 @@ enum class CallTargetKind {
   PrimitiveOperator,
   FreeFunction,
   InstanceMethod,
+  StaticMethod,
   OperatorMethod,
   IndexMethod,
   ErrorTarget

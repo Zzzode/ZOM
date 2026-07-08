@@ -2117,6 +2117,38 @@ ZC_TEST("BodyChecker.MemberCallRecordsInstanceMethodDispatch") {
   ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
 }
 
+ZC_TEST("BodyChecker.MemberCallRecordsStaticMethodDispatch") {
+  TestFixture fix;
+  auto method = fix.makeMethodDecl("make"_zc, ast::NodeId(), ast::NodeId(),
+                                   fix.makeNamedTypeExpr("Counter"_zc), true);
+  zc::Vector<ast::NodeId> members;
+  members.add(method);
+  auto cls = fix.makeClassDecl("Counter"_zc, ast::NodeId(),
+                               fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+
+  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("Counter"_zc), "make"_zc);
+  auto call = fix.makeCallExpr(callee, ast::NodeList());
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(cls);
+  topDecls.add(call);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(call));
+  auto& ty = result.typeEnv.getType(call);
+  ZC_EXPECT(isNamed(ty));
+  if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Counter"_zc); }
+  ZC_EXPECT(result.typeEnv.hasDispatch(call));
+  auto& dispatch = result.typeEnv.getDispatch(call);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::StaticMethod);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::None);
+  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.argumentTypes.size() == 0);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+}
+
 // ============================================================================
 // Cast expression
 // ============================================================================
