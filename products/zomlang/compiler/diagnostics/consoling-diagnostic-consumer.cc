@@ -163,7 +163,7 @@ ConsolingDiagnosticConsumer::~ConsolingDiagnosticConsumer() noexcept(false) { pr
 void ConsolingDiagnosticConsumer::printSummary() {
   if (impl->numErrors == 0 && impl->numWarnings == 0) return;
 
-  zc::std::StdOutputStream& output = impl->numErrors > 0 ? impl->stdErr : impl->stdOut;
+  zc::std::StdOutputStream& output = impl->stdErr;
 
   auto printCount = [&](size_t count, zc::StringPtr name, DiagSeverity colorSev) {
     if (impl->useColors) output.write(getColorForSeverity(colorSev).asBytes());
@@ -192,8 +192,7 @@ void ConsolingDiagnosticConsumer::handleDiagnostic(const source::SourceManager& 
     impl->numWarnings++;
   }
 
-  zc::std::StdOutputStream& output =
-      info.severity >= DiagSeverity::kError ? impl->stdErr : impl->stdOut;
+  zc::std::StdOutputStream& output = impl->stdErr;
 
   // 1. Output diagnostic level (with color) + Error Code + Message
   if (impl->useColors) { output.write(getColorForSeverity(info.severity).asBytes()); }

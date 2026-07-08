@@ -1,0 +1,59 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/match_duplicate_arm_warn_04.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #23 @1:1..8:1 file_name="match_duplicate_arm_warn_04.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #22 @1:1..7:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #21 @1:1..7:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #3 @1:6..1:18 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:7..1:17 name="flag"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:13..1:17 kind=Bool
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #4 @1:22..1:26 kind=Unit
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #20 @1:27..7:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #19 @2:5..6:6
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     MatchStmt #18 @2:5..6:6
+// CHECK-NEXT:                       scrutinee:
+// CHECK-NEXT:                         IdentExpr #17 @2:12..2:16 name="flag"
+// CHECK-NEXT:                       arms:
+// CHECK-NEXT:                         MatchArmStmt #8 @3:9..3:25
+// CHECK-NEXT:                           pattern:
+// CHECK-NEXT:                             LiteralPattern #6 @3:14..3:18
+// CHECK-NEXT:                               literal:
+// CHECK-NEXT:                                 BoolLiteral #5 @3:14..3:18 value=true
+// CHECK-NEXT:                           guard: null
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #7 @3:22..3:25
+// CHECK-NEXT:                               stmts: []
+// CHECK-NEXT:                         MatchArmStmt #12 @4:9..4:25
+// CHECK-NEXT:                           pattern:
+// CHECK-NEXT:                             LiteralPattern #10 @4:14..4:18
+// CHECK-NEXT:                               literal:
+// CHECK-NEXT:                                 BoolLiteral #9 @4:14..4:18 value=true
+// CHECK-NEXT:                           guard: null
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #11 @4:22..4:25
+// CHECK-NEXT:                               stmts: []
+// CHECK-NEXT:                         MatchArmStmt #16 @5:9..5:26
+// CHECK-NEXT:                           pattern:
+// CHECK-NEXT:                             LiteralPattern #14 @5:14..5:19
+// CHECK-NEXT:                               literal:
+// CHECK-NEXT:                                 BoolLiteral #13 @5:14..5:19 value=false
+// CHECK-NEXT:                           guard: null
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #15 @5:23..5:26
+// CHECK-NEXT:                               stmts: []
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

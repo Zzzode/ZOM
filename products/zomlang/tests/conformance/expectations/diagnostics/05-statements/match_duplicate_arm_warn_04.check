@@ -1,0 +1,9 @@
+// RUN: %zomc compile --syntax-only %corpus/05-statements/match_duplicate_arm_warn_04.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Warning [ZOM0442]: Unreachable match arm: pattern never matches
+// CHECK:   -->
+// CHECK-SAME: {{[/\\]match_duplicate_arm_warn_04\.zom:4:9$}}
+// CHECK-LITERAL: 4 |         when true => { }
+// CHECK-LITERAL:   |         ^
+// CHECK-LITERAL: Syntax check completed successfully.

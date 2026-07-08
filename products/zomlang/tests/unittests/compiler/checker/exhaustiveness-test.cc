@@ -18,7 +18,9 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/tree.h"
+#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/type/primitive-type.h"
 #include "zomlang/compiler/type/type-env.h"
@@ -32,6 +34,23 @@ namespace checker {
 using tests::TestFixture;
 
 namespace {
+
+class CapturingDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
+public:
+  zc::Vector<diagnostics::DiagID> ids;
+
+  void handleDiagnostic(const source::SourceManager&,
+                        const diagnostics::Diagnostic& diagnostic) override {
+    ids.add(diagnostic.getId());
+  }
+};
+
+bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnostics::DiagID id) {
+  for (auto emitted : consumer.ids) {
+    if (emitted == id) return true;
+  }
+  return false;
+}
 
 // Helper: build a simple match statement with given arms and check exhaustiveness.
 struct MatchBuildResult {
@@ -492,6 +511,10 @@ ZC_TEST("Exhaustiveness.OpenTypeStrWithWildcardExhaustive") {
 
 ZC_TEST("Exhaustiveness.WildcardFirstMakesLaterArmsUnreachable") {
   TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
   auto scrutinee = fix.makeBoolLiteral(true);
 
   // wildcard first, then true - true arm is unreachable
@@ -512,13 +535,15 @@ ZC_TEST("Exhaustiveness.WildcardFirstMakesLaterArmsUnreachable") {
   ExhaustivenessChecker checker(typeEnv, tree, fix.diagnostics());
   checker.checkMatchExhaustiveness(matchStmt, *boolTy);
 
-  // Should warn about unreachable arm
-  // (may be a warning rather than error, depending on implementation)
-  ZC_EXPECT(true);  // Verify no crash at minimum
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerUnreachableMatchArm));
 }
 
 ZC_TEST("Exhaustiveness.DuplicateBoolPatternUnreachable") {
   TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
   auto scrutinee = fix.makeBoolLiteral(true);
 
   // true, true, false - second true is unreachable
@@ -541,8 +566,7 @@ ZC_TEST("Exhaustiveness.DuplicateBoolPatternUnreachable") {
   ExhaustivenessChecker checker(typeEnv, tree, fix.diagnostics());
   checker.checkMatchExhaustiveness(matchStmt, *boolTy);
 
-  // Should detect duplicate/unreachable pattern
-  ZC_EXPECT(true);  // Verify no crash
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerUnreachableMatchArm));
 }
 
 // ============================================================================

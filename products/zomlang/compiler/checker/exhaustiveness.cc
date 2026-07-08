@@ -908,8 +908,9 @@ void ExhaustivenessChecker::checkMatchExhaustiveness(NodeId matchStmt, const Typ
 
     PatternRow row = buildPatternRow(patId);
 
-    // Check if this arm is unreachable (only if we haven't seen a wildcard yet)
-    if (!matrix.empty() && !foundWildcard) {
+    // Check if this arm is unreachable against all prior arms. A previous
+    // unguarded wildcard makes every later arm unreachable.
+    if (!matrix.empty()) {
       if (!isUseful(matrix, row, scrutineeType)) {
         auto armLoc = getNodeLoc(impl->tree, armId);
         impl->diags.diagnose<DiagID::CheckerUnreachableMatchArm>(armLoc);

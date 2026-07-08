@@ -1,0 +1,5 @@
+section: "05-statements match redundancy diagnostics"
+covers_rule: "matchStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; checker diagnostics warn for a duplicate bool match arm."

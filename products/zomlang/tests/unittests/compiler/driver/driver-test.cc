@@ -20,9 +20,12 @@
 #include "zc/core/common.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/string.h"
+#include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
+#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/type/type-env.h"
 
@@ -31,6 +34,23 @@ namespace compiler {
 namespace driver {
 
 namespace {
+
+class CapturingDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
+public:
+  zc::Vector<diagnostics::DiagID> ids;
+
+  void handleDiagnostic(const source::SourceManager&,
+                        const diagnostics::Diagnostic& diagnostic) override {
+    ids.add(diagnostic.getId());
+  }
+};
+
+bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnostics::DiagID id) {
+  for (auto emitted : consumer.ids) {
+    if (emitted == id) return true;
+  }
+  return false;
+}
 
 zc::String writeTempZomFile(zc::StringPtr source) {
   zc::String path = zc::str("/tmp/zom-driver-test.XXXXXX.zom");
@@ -143,6 +163,32 @@ ZC_TEST("DriverTest.CheckSourcesStoresTypeEnv") {
     ZC_EXPECT(env != zc::none);
     ZC_IF_SOME(typeEnv, env) { ZC_EXPECT(typeEnv.nodeTypeCount() > 0); }
   }
+}
+
+ZC_TEST("DriverTest.CheckSourcesReportsUnreachableMatchArmWarning") {
+  auto source = writeTempZomFile(
+      "fun f(flag: bool) -> unit {\n"
+      "    match (flag) {\n"
+      "        default => { }\n"
+      "        when true => { }\n"
+      "    }\n"
+      "}\n"_zc);
+  ZC_DEFER(unlink(source.cStr()));
+
+  auto langOpts = basic::LangOptions();
+  auto compilerOpts = basic::CompilerOptions();
+  auto driver = zc::heap<CompilerDriver>(langOpts, compilerOpts);
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  driver->getDiagnosticEngine().addConsumer(zc::mv(consumer));
+
+  auto bufferId = driver->addSourceFile(source);
+  ZC_EXPECT(bufferId != zc::none);
+  ZC_EXPECT(driver->parseSources());
+  ZC_EXPECT(driver->bindSources());
+  ZC_EXPECT(driver->checkSources());
+  ZC_EXPECT(!driver->getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerUnreachableMatchArm));
 }
 
 ZC_TEST("DriverTest.CheckSourcesRejectsTypeError") {
