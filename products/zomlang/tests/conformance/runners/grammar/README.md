@@ -37,7 +37,7 @@ those belong in compiler AST/FileCheck expectations under
 | # | Directory | Purpose | Pos | Edge | Neg | Other | Total |
 |---|-----------|---------|-----|------|-----|-------|-------|
 | 1 | `02-lexical` | Lexer tokens: literals, keywords, identifiers, escapes, whitespace, comments | 17 | 10 | 17 | 0 | 44 |
-| 2 | `03-types` | Type syntax: primitives, function types, tuples, unions, references, type aliases | 29 | 15 | 27 | 0 | 71 |
+| 2 | `03-types` | Type syntax: primitives, function types, tuples, unions, references, type aliases | 30 | 15 | 27 | 0 | 72 |
 | 3 | `04-expressions` | Operators, precedence, calls, casts, lambdas, spawn, control-flow expressions | 38 | 26 | 42 | 8 | 114 |
 | 4 | `05-statements` | Let, if/else, match, loops, labels, suspend, return, assert | 27 | 12 | 24 | 0 | 63 |
 | 5 | `06-declarations` | Functions, classes, enums, type aliases, modifiers, declarations at module scope | 15 | 8 | 10 | 4 | 37 |
@@ -52,7 +52,7 @@ those belong in compiler AST/FileCheck expectations under
 | 14 | `19-conditional` | Conditional compilation: `#[zom::cfg(...)]` attribute-gated AST stripping, predicate combinators, file-suffix conventions | 6 | 4 | 5 | 0 | 15 |
 | 15 | `20-ffi` | FFI syntax: extern declarations, ABI strings, unsafe blocks | 8 | 4 | 3 | 1 | 16 |
 | 16 | `21-macros` | Macro and derive syntax | 8 | 4 | 3 | 0 | 15 |
-|   | **Total** | | **251** | **145** | **228** | **13** | **637** |
+|   | **Total** | | **252** | **145** | **228** | **13** | **638** |
 
 ## Usage
 
@@ -171,4 +171,4 @@ These parser edge cases are **not** enforced by the grammar today and are captur
 
 ## Total
 
-Recursive count of grammar expectation files: **637**
+Recursive count of grammar expectation files: **638**

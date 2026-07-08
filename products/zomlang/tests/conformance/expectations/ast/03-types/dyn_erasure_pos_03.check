@@ -1,0 +1,44 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/dyn_erasure_pos_03.zom | %FileCheck %s
+
+// CHECK: SourceFile
+// CHECK-SAME: file_name="dyn_erasure_pos_03.zom"
+// CHECK:         InterfaceDecl
+// CHECK-SAME:      name="Add"
+// CHECK:         ClassDecl
+// CHECK-SAME:      name="Number"
+// CHECK:         StandaloneImplDecl
+// CHECK:           ifaces_id:
+// CHECK:             ImplIfaceList
+// CHECK-SAME:          n_ifaces=1
+// CHECK:                 NamedTypeExpr
+// CHECK:                   path:
+// CHECK:                     ModulePath
+// CHECK-SAME:                  segments=["Add"]
+// CHECK:           for_ty:
+// CHECK:             NamedTypeExpr
+// CHECK:               path:
+// CHECK:                 ModulePath
+// CHECK-SAME:              segments=["Number"]
+// CHECK:         LetStmt
+// CHECK:                 VariableDeclarator
+// CHECK:                     IdentifierPattern
+// CHECK-SAME:                  name="x"
+// CHECK:                     NamedTypeExpr
+// CHECK:                       path:
+// CHECK:                         ModulePath
+// CHECK-SAME:                      segments=["Number"]
+// CHECK:         LetStmt
+// CHECK:                 VariableDeclarator
+// CHECK:                     IdentifierPattern
+// CHECK-SAME:                  name="y"
+// CHECK:                     DynTypeExpr
+// CHECK-SAME:                  has_lifetime=false lifetime=null
+// CHECK:                       ifaces_id:
+// CHECK:                         DynTypeIfaceList
+// CHECK-SAME:                      n_ifaces=1
+// CHECK:                             NamedTypeExpr
+// CHECK:                               path:
+// CHECK:                                 ModulePath
+// CHECK-SAME:                              segments=["Add"]
+// CHECK:                     IdentExpr
+// CHECK-SAME:                  name="x"

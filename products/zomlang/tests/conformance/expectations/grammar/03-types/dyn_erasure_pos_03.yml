@@ -1,0 +1,5 @@
+section: "Ch.03 Existential erasure semantics"
+covers_rule: "dynType, standaloneImplDeclaration, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks concrete-to-dyn erasure through the CLI pipeline."
