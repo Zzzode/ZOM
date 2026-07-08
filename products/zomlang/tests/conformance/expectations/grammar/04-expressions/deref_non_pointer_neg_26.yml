@@ -1,0 +1,5 @@
+section: "Ch.04 Dereference operand type"
+covers_rule: "unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4030 for dereferencing a non-pointer value."

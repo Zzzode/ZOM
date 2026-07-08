@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/deref_non_pointer_neg_26.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4030]: Cannot dereference non-pointer type
+// CHECK-LITERAL:   --> 04-expressions/deref_non_pointer_neg_26.zom:1:9
+// CHECK-LITERAL: 1 | let x = *1;
+// CHECK-LITERAL:   |         ^
