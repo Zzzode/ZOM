@@ -439,9 +439,33 @@ void TypeEnv::collectFreeTypeVars(const Type& ty, zc::HashSet<uint64_t>& freeVar
       collectFreeTypeVars(ptr.getPointeeType(), freeVars, exclude);
       break;
     }
-    default:
-      // Primitive, Error, Interface, Intersection, Existential, Associated
-      // are leaf types with no type variables.
+    case TypeKind::Interface: {
+      auto& iface = static_cast<const InterfaceType&>(resolved);
+      for (size_t i = 0; i < iface.getParentInterfaceCount(); ++i) {
+        collectFreeTypeVars(iface.getParentInterface(i), freeVars, exclude);
+      }
+      break;
+    }
+    case TypeKind::Intersection: {
+      auto& intersection = static_cast<const IntersectionType&>(resolved);
+      for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
+        collectFreeTypeVars(intersection.getConjunct(i), freeVars, exclude);
+      }
+      break;
+    }
+    case TypeKind::Existential: {
+      auto& existential = static_cast<const ExistentialType&>(resolved);
+      collectFreeTypeVars(existential.getInterfaceType(), freeVars, exclude);
+      break;
+    }
+    case TypeKind::Associated: {
+      auto& associated = static_cast<const AssociatedType&>(resolved);
+      collectFreeTypeVars(associated.getParentType(), freeVars, exclude);
+      break;
+    }
+    case TypeKind::Primitive:
+    case TypeKind::Error:
+    case TypeKind::TypeVar:
       break;
   }
 }

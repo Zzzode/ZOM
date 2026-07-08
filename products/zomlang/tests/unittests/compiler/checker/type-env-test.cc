@@ -288,6 +288,21 @@ ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicIntersection") {
   }
 }
 
+ZC_TEST("TypeEnv.GeneralizeCollectsExistentialInterfaceTypeVars") {
+  TypeEnv env;
+  auto& tv = env.freshTypeVar("T"_zc);
+  auto iface = zc::heap<NamedType>("Box"_zc);
+  iface->addTypeArg(zc::heap<TypeVar>(tv.getName(), tv.getId()));
+  zc::Vector<zc::StringPtr> markers;
+  markers.add("Sendable"_zc);
+  auto dynTy = zc::heap<ExistentialType>(zc::mv(iface), markers.asPtr());
+
+  auto scheme = env.generalize(*dynTy);
+
+  ZC_EXPECT(scheme->getParamCount() == 1);
+  if (scheme->getParamCount() == 1) { ZC_EXPECT(scheme->getParam(0).name == "T"_zc); }
+}
+
 // ============================================================================
 // TypeEnv type variable binding and resolution
 // ============================================================================
