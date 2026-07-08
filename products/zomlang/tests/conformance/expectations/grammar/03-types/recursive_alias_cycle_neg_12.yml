@@ -1,0 +1,5 @@
+section: "03-types recursive alias diagnostics"
+covers_rule: "aliasDecl"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks recursive alias cycles."
