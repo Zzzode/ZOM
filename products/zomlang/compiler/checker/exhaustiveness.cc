@@ -894,8 +894,10 @@ void ExhaustivenessChecker::checkMatchExhaustiveness(NodeId matchStmt, const Typ
     return;
   }
 
-  // Build the pattern matrix incrementally, checking for unreachable arms
-  PatternMatrix matrix;
+  // Build two matrices: guarded arms participate in reachability checks, but
+  // only unguarded arms prove exhaustiveness.
+  PatternMatrix reachabilityMatrix;
+  PatternMatrix coverageMatrix;
   bool foundWildcard = false;
 
   for (NodeId armId : impl->tree.list(arms)) {
@@ -910,16 +912,15 @@ void ExhaustivenessChecker::checkMatchExhaustiveness(NodeId matchStmt, const Typ
 
     // Check if this arm is unreachable against all prior arms. A previous
     // unguarded wildcard makes every later arm unreachable.
-    if (!matrix.empty()) {
-      if (!isUseful(matrix, row, scrutineeType)) {
+    if (!reachabilityMatrix.empty()) {
+      if (!isUseful(reachabilityMatrix, row, scrutineeType)) {
         auto armLoc = getNodeLoc(impl->tree, armId);
         impl->diags.diagnose<DiagID::CheckerUnreachableMatchArm>(armLoc);
       }
     }
 
-    // Guarded arms don't contribute to guaranteed exhaustiveness, but we
-    // still add them to the matrix for unreachable arm detection.
-    matrix.add(zc::mv(row));
+    reachabilityMatrix.add(zc::mv(row));
+    if (!hasGuard) { coverageMatrix.add(buildPatternRow(patId)); }
 
     if (isWildcardPattern(patId) && !hasGuard) { foundWildcard = true; }
   }
@@ -935,9 +936,9 @@ void ExhaustivenessChecker::checkMatchExhaustiveness(NodeId matchStmt, const Typ
   PatternRow wildcardTest;
   wildcardTest.add(NodeId());
 
-  bool useful = isUseful(matrix, wildcardTest, scrutineeType);
+  bool useful = isUseful(coverageMatrix, wildcardTest, scrutineeType);
   if (useful) {
-    auto missing = computeMissingPatterns(matrix, scrutineeType);
+    auto missing = computeMissingPatterns(coverageMatrix, scrutineeType);
 
     zc::String missingStr;
     if (!missing.empty()) {

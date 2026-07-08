@@ -119,7 +119,6 @@ productions:
   InterfaceDeclaration: {status: direct, parser: parseNamedTypeDeclaration, ast: [InterfaceDecl]}
   InterfaceElement: {status: inlined, parser: parseNamedTypeDeclaration, parent: InterfaceBody}
   InterfaceHeritage: {status: inlined, parser: parseNamedTypeDeclaration, parent: InterfaceDeclaration}
-  InterfaceName: {status: inlined, parser: parseTypeRange, parent: InterfaceBoundList}
   InterfaceType: {status: inlined, parser: parseTypeRange, parent: InterfaceTypeList}
   InterfaceTypeList: {status: inlined, parser: parseTypeRange, parent: InterfaceHeritage}
   ImplementsClause: {status: inlined, parser: parseNamedTypeDeclaration, parent: HeritageClause}
