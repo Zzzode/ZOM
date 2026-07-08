@@ -1671,9 +1671,10 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
 
       if (explicitTypeArgs.size() > 0) {
         if (explicitTypeArgs.size() != funcTy.getGenericParamCount()) {
-          reportError(expr,
-                      zc::str("expected "_zc, funcTy.getGenericParamCount(),
-                              " explicit type argument(s), got "_zc, explicitTypeArgs.size()));
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::ExplicitTypeArgumentCountMismatch>(
+              loc, zc::str(funcTy.getGenericParamCount()), zc::str(explicitTypeArgs.size()));
+          impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
         for (size_t i = 0; i < explicitTypeArgs.size(); ++i) {

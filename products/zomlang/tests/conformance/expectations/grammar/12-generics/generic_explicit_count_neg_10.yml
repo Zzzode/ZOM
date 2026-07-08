@@ -1,0 +1,5 @@
+section: "12-generics explicit generic call diagnostics"
+covers_rule: "functionDeclaration, callExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; checker diagnostics reject the wrong explicit type argument count."

@@ -448,6 +448,7 @@ Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by
 | 0400–0499 | Type checker / calls | `products/zomlang/compiler/checker` | Error | `ZOM0415` = attempted to call a non-function value → Error |
 | 0400–0499 | Type checker / generic inference | `products/zomlang/compiler/checker` | Error | `ZOM0420` = cannot infer an unsolved generic type parameter → Error |
 | 0400–0499 | Type checker / nullable inference | `products/zomlang/compiler/checker` | Error | `ZOM0421` = `null` initializer has no explicit target type → Error |
+| 0400–0499 | Type checker / generic inference | `products/zomlang/compiler/checker` | Error | `ZOM0423` = explicit generic call type argument count mismatch → Error |
 | 0400–0499 | Type checker / trait coherence | `products/zomlang/compiler/checker` | Error | `ZOM0430` = conflicting implementations for the same interface and type → Error |
 | 0400–0499 | Type checker / trait bounds | `products/zomlang/compiler/checker` | Error | `ZOM0431` = type does not implement a required interface → Error |
 | 0400–0499 | Type checker / operator traits | `products/zomlang/compiler/checker` | Error | `ZOM0432` = operator trait implementation has the wrong method signature → Error |

@@ -1001,6 +1001,10 @@ ZC_TEST("BodyChecker.GenericFunctionUsesExplicitTypeArgument") {
 
 ZC_TEST("BodyChecker.GenericFunctionRejectsWrongExplicitTypeArgumentCount") {
   TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
   auto genericT = fix.makeGenericTypeParam("T"_zc);
   zc::Vector<ast::NodeId> genericNodes;
   genericNodes.add(genericT);
@@ -1030,6 +1034,8 @@ ZC_TEST("BodyChecker.GenericFunctionRejectsWrongExplicitTypeArgumentCount") {
 
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(
+      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ExplicitTypeArgumentCountMismatch));
   ZC_EXPECT(result.typeEnv.hasType(call));
   ZC_EXPECT(isError(result.typeEnv.getType(call)));
 }

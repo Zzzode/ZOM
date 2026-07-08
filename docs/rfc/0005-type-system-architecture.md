@@ -1137,6 +1137,7 @@ change.
 | ZOM0415 | Error | `Cannot call non-function type '{type}'` |
 | ZOM0420 | Error | `Cannot infer type parameter '{name}'; provide explicit type arguments` |
 | ZOM0421 | Error | `Cannot infer type from null initializer without annotation` |
+| ZOM0423 | Error | `Expected {expected} explicit type argument(s), got {actual}` |
 | ZOM0430 | Error | `Conflicting implementations of '{interface}' for type '{type}'` |
 | ZOM0431 | Error | `'{type}' does not implement '{interface}'` |
 | ZOM0432 | Error | `Operator trait '{trait}' for type '{type}' must define '{method}({parameter}) -> {return}'` |
@@ -1264,7 +1265,7 @@ sub-expressions upward, but no unification.
 
 - **Rejected because:** Cannot handle generic function instantiation
   without explicit type arguments. The user would have to write
-  `identity::<str>("hello")` every time instead of `identity("hello")`.
+  `identity<str>("hello")` every time instead of `identity("hello")`.
   Unification is necessary for ergonomic generics.
 
 ### Alternative C: Type Checker as a Tree Transformer (dotc-style)
@@ -1380,7 +1381,7 @@ runs and produces resolved names.
    from arguments. `identity(42)` returns `i32`. The function signature keeps
    one shared type variable per generic parameter, and unsolved call-site type
    parameters produce ZOM0420.
-7. **Explicit type args:** `identity::<f64>(42.0)` works. Wrong count and
+7. **Explicit type args:** `identity<f64>(42.0)` works. Wrong count and
    incompatible explicit type arguments fail.
 8. **Trait bound discharge:** `fun f<T: Hashable>(x: T)` requires callers to
    pass types that implement `Hashable`. Non-implementing type -> ZOM0431.
@@ -1459,7 +1460,7 @@ and tests cover the exact acceptance criterion above.
 | 4 | Complete | `decl-signature-test.cc` covers function, class, interface, enum, alias, variable, const declaration, generic parameter, shared generic type variable, type expression, raises, symbol-keyed parameter/field signatures, recursive aliases, and `GenericParams.where_` bounds feeding generic upper bounds. | None for current function-level where-bound signature computation. |
 | 5 | Complete | `body-checker-test.cc` covers literals, identifiers, binary/unary/postfix operators, calls, returns, assignment, if/while/for, conditionals, nested blocks, arrays, tuples, object literals, struct literals with unknown/missing field rejection and field coercions, member access, index, casts, unsafe blocks, `is`, `this`, nullable coalesce, lambdas and function expressions with annotated body checks, match statement integration, and error operators. `call_non_function_neg_09.check` covers user-visible ZOM0415 through the diagnostics conformance runner for calling a non-function value. | None. |
 | 6 | Complete | `body-checker-test.cc` covers `identity<T>(x: T) -> T` inferred from `identity(42)`, explicit shared generic type variables in signatures, and `CannotInferTypeParameter` ZOM0420 for unsolved generic calls. `generic_infer_identity_pos_11.check` covers the positive identity-inference path through the diagnostics conformance runner, and `generic_infer_unsolved_neg_09.check` covers the unsolved generic return type parameter negative path. Parser/lit generic declaration coverage remains in `type_params_basic_pos_01.check`, `fun_generic_pos_06.check`, and `decl_generics_pos_07.check`. | None. |
-| 7 | Complete | `body-checker-test.cc` covers explicit type argument substitution for `identity::<f64>(42.0)`, wrong explicit type-argument count rejection, and incompatible explicit type argument rejection. `generic_call_relational_disambig_pos_01.check` covers parsed call type arguments without confusing relational operators. | None. |
+| 7 | Complete | `body-checker-test.cc` covers explicit type argument substitution for `identity<f64>(42.0)`, wrong explicit type-argument count rejection with stable ZOM0423 diagnostics, and incompatible explicit type argument rejection. `generic_call_relational_disambig_pos_01.check` covers parsed call type arguments without confusing relational operators. `generic_explicit_count_neg_10.check` covers the wrong explicit type-argument count through the diagnostics conformance runner with normal source/caret display. | None. |
 | 8 | Complete | `body-checker-test.cc` covers call-site rejection for an unsatisfied function-level interface bound, positive satisfaction through an impl block, and checker diagnostic ZOM0431 through `CheckerTraitNotImplemented`. `generic_bound_missing_neg_01.check` covers the same unsatisfied generic bound through the diagnostics conformance runner, and `generic_bound_satisfied_pos_10.check` covers the positive satisfied-bound CLI path. `DeclSignature.FunctionGenericParamPreservesWhereBound` covers where-clause bounds entering function signatures. `where_clause_pos_01.check`, `where_clause_pos_02.check`, `where_clause_pos_06.check`, `class_where_clause_pos_17.check`, and `impl_where_clause_pos_13.check` cover function, struct, class, and standalone impl where-clause AST retention. `complex_impl_pos_09.check` covers parser/lit impl syntax with generic interface arguments. | Impl-level where-bound solving remains part of the broader trait resolver contract. |
 | 9 | Complete | `trait-resolver-test.cc` covers duplicate concrete impl coherence and direct-vs-blanket overlap, both asserting stable ZOM0430 (`ConflictingImpl`) diagnostics through the real binder + trait resolver pipeline. `conflicting_impl_neg_17.check` covers the same duplicate-impl coherence error through the diagnostics conformance runner with normal source/caret display. | None. |
 | 10 | Complete | `trait-resolver-test.cc` covers unique associated type lookup, interface-qualified lookup, ambiguous lookup with ZOM0434, and missing associated type with ZOM0433. `DeclSignature.ResolveQualifiedAssociatedTypeProjection` covers checker disambiguation through `AssociatedTypeProjectionExpr.iface_ty`, selecting `Iterator::Item` over `Stream::Item` for the same base type. `associated_projection_pos_01.check` covers parser AST surface for `<T as Iterator>::Item`; `associated_projection_qualified_pos_02.check` covers user-visible qualified projection syntax with two same-named associated types and no ambiguity diagnostic. `associated_projection_missing_neg_03.check` and `associated_projection_ambiguous_neg_04.check` cover user-visible ZOM0433/ZOM0434 diagnostics for unqualified `T::Item`-style projection paths, while qualified module paths remain ordinary `NamedTypeExpr` paths. | None. |
@@ -1587,6 +1588,7 @@ None.
 | 2026-07-08 | REVIEW | Added diagnostics conformance coverage for numeric unification failures in binary arithmetic (`ZOM0411`). |
 | 2026-07-08 | REVIEW | Added a dedicated non-function call checker diagnostic (`ZOM0415`) and diagnostics conformance coverage for its source/caret display. |
 | 2026-07-08 | REVIEW | Aligned the checker diagnostic catalog and design references with `diagnostics-checker.def`, including object-safety diagnostics (`ZOM0331`-`ZOM0338`) and currently registered checker error codes. |
+| 2026-07-08 | REVIEW | Added a dedicated explicit type-argument count checker diagnostic (`ZOM0423`) plus diagnostics conformance coverage for user-visible source/caret display, and aligned explicit generic call examples with the parser-supported `f<T>(x)` syntax. |
 | 2026-07-08 | REVIEW | Added `type-algebra.cc` as the shared home for structural type cloning and replaced duplicate checker-local clone helpers. |
 | 2026-07-08 | REVIEW | Added user-visible CLI conformance coverage for concrete-to-`dyn` existential erasure (`dyn_erasure_pos_03`). |
 | 2026-07-08 | REVIEW | Added user-visible CLI conformance coverage for satisfied generic interface bounds (`generic_bound_satisfied_pos_10`). |

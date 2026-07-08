@@ -1,0 +1,5 @@
+fun identity<T>(value: T) -> T {
+    return value;
+}
+
+identity<i32, str>(42);
