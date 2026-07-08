@@ -185,9 +185,9 @@ Two anti-examples:
 
 For each call to a generic function `f<T_real>()`, the compiler performs, for every bound declared on each type parameter:
 
-- **Interface bound** `T: I<...>` → a valid impl block must exist declaring `impl I<...> for T_real`. Failure raises a member of the ZOM04xx series (`ZOM0410 TraitBoundUnsatisfied` and friends; see chapter-level diagnostic table).
-- **Positive marker bound** `T: M` → the marker bitmap for `T_real` must have bit `M` set. Otherwise `ZOM0430 MarkerBoundMissing`.
-- **Negative marker bound** `T: !M` → the marker bitmap for `T_real` must have bit `M` explicitly clear (either by negative impl or by the negative-closure lattice rejecting derivation). Otherwise `ZOM0431 NegativeMarkerBoundViolated`.
+- **Interface bound** `T: I<...>` → a valid impl block must exist declaring `impl I<...> for T_real`. Failure raises `ZOM0431 CheckerTraitNotImplemented`.
+- **Positive marker bound** `T: M` → the marker bitmap for `T_real` must have bit `M` set. Marker-bound failure diagnostics belong to the marker/coherence diagnostic range and must not reuse the type-mismatch or trait-coherence codes reserved by RFC 0005.
+- **Negative marker bound** `T: !M` → the marker bitmap for `T_real` must have bit `M` explicitly clear (either by negative impl or by the negative-closure lattice rejecting derivation). Negative marker-bound failure diagnostics belong to the marker/coherence diagnostic range and must not reuse the trait-bound code reserved for missing interface implementations.
 
 Bound satisfaction is also checked *inside* the generic body (prior to monomorphisation) against the declared bounds alone. The body may not assume any property of `T` that is not listed in its bound set; violations are diagnosed at body-check time via the same ZOM04xx diagnostic codes.
 
