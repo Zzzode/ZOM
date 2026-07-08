@@ -1689,9 +1689,10 @@ Rules.
 - Markers share the top-level **type** namespace with classes, interfaces, enums, and aliases. Name clashes with any of those fire `ZOM0502 MarkerNameClash`.
 - Recommended convention (enforced as lint `W5101 MarkerNamingConvention` by `zom fmt`): suffix marker names with `-able`, `-Safe`, or `-Compatible` (e.g. `Sendable`, `ZeroCopyCompatible`, `FfiLayoutStable`). Derived / conjunctive markers prefer noun forms (e.g. `Value`).
 
-### 16.14.4 Three Privileges of Marker Bounds (vs. Interface Bounds)
+### 16.14.4 Marker-Bound Privileges
 
-Markers are a separate mechanism from interfaces precisely because the former enjoys three structural privileges that behavioral interfaces cannot.
+Markers are a separate mechanism from interfaces precisely because marker bounds
+support structural rules that behavioral interfaces cannot.
 
 1. **Negation `!M` is allowed.**
 
@@ -1702,18 +1703,7 @@ fun broken<T>(x: T)       where T: !Drawable { ... }           // ZOM0422: behav
 
 Principle: structure is Boolean (a type *definitely does not* have interior mutability). Behavior is not — "doesn't draw" is unprovable in general and would collapse the interface-subtyping lattice. Only marker bounds carry negation; interface bounds always require a positive witness.
 
-2. **Optional-relax `?M` is allowed** (only meaningful for auto-derived markers / auto-traits).
-
-```zom
-// By default auto-derived T implicitly carries {Sendable, Shared} as
-// upper bounds. The `?Sendable` syntax in the parameter head relaxes
-// this — reads "T does not need to be Sendable".
-fun raw_alloc<T: ?Sized + ?Sendable>(size: usize) -> *mut T { ... }
-```
-
-Optional-relax is exclusively a bound-side operation; it cannot appear in an `impl` head because it does not declare a fact — it *removes* a default assumption about a type parameter. Writing `?M` on a non-auto marker fires `W5102 OptionalRelaxOnNonAutoMarker` (lint, downgraded from hard error to preserve generality of future compiler features).
-
-3. **Commutative / Associative Lattice.** `M + N` and `N + M` are literally identical predicates; `(M + N) + P` and `M + (N + P)` are also identical. While interface bounds are order-independent (rule 1 of Chapter 12 — Type Constraints), the underlying impl graph does **not** form a closed lattice (e.g. `Drawable + Hashable` does not automatically produce a third named interface). Marker conjunctions, by contrast, form a proper Boolean lattice: every finite set of markers has a unique conjunction, a unique disjunction, and a unique complement, all representable on the 64-bit bitmap.
+2. **Commutative / Associative Lattice.** `M + N` and `N + M` are literally identical predicates; `(M + N) + P` and `M + (N + P)` are also identical. While interface bounds are order-independent (rule 1 of Chapter 12 — Type Constraints), the underlying impl graph does **not** form a closed lattice (e.g. `Drawable + Hashable` does not automatically produce a third named interface). Marker conjunctions, by contrast, form a proper Boolean lattice: every finite set of markers has a unique conjunction, a unique disjunction, and a unique complement, all representable on the 64-bit bitmap.
 
 ### 16.14.5 Dataflow: From Marker Declaration to Bound Check
 

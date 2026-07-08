@@ -609,7 +609,7 @@ The language uses three distinct separator usages, and users sometimes confuse t
 | `import` module path  | `.`       | `import graphics.rendering.opengl;`   |
 | Named-import grouping | `.{}`     | `import collections.{Vec, VecDeque};` |
 | Item path (expression)| `::`      | `collections::Vec::new()`             |
-| Item path (type)      | `::`      | `fn f() -> collections::Vec<i32>`     |
+| Item path (type)      | `::`      | `fun f() -> collections::Vec<i32>`    |
 | Attribute namespace   | `::`      | `#[zom::marker::Sendable]`            |
 | Path prefixes         | `::` tail | `crate::` `self::` `super::` `::`     |
 

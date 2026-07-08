@@ -44,7 +44,7 @@ These markers are automatically attached by the compiler to primitive and user-d
 -   `Linear` — single ownership; values must be consumed explicitly; they cannot be dropped silently. `Own<T>` destruction is the explicit consumption.
 -   `Copy` — bitwise-copy semantics; values are implicitly duplicated on assignment.
 -   `Drop` — the type carries an explicit destructor.
--   `Sized` — compile-time-known size. The default for all type parameters unless `?Sized` appears in the bound.
+-   `Sized` — compile-time-known size. The default for all type parameters.
 
 ### 25.1.3  Functions (top-level convenience)
 

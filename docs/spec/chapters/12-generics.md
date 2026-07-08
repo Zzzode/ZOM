@@ -87,12 +87,12 @@ BoundItem ::= '!' MarkerPath
 #### Short Form vs. Where Clause
 
 ZOM offers two equivalent syntactic surfaces on declarations that accept a
-`where` clause: functions, classes, structs, and standalone `impl` blocks. The
-inline short form is preferred for simple cases; the `where` clause is preferred
-when type parameters each carry different, lengthy bound sets, or when bounds
-reference associated types. Interface declarations do not accept a `where`
-clause; constraints on interface type parameters are expressed directly in the
-type parameter list.
+`where` clause: functions, classes, structs, standalone interface `impl` blocks,
+and standalone marker `impl` blocks. The inline short form is preferred for
+simple cases; the `where` clause is preferred when type parameters each carry
+different, lengthy bound sets, or when bounds reference associated types.
+Interface declarations do not accept a `where` clause; constraints on interface
+type parameters are expressed directly in the type parameter list.
 
 ```zom
 // Short form (single type param, two bounds)
@@ -168,21 +168,17 @@ Two anti-examples:
 
 2. **Marker negation `!` is legal only on marker bounds.** Applied to an interface name it raises ZOM0422.
 
-3. **Marker-only privileges in where clauses.** Markers are Boolean predicates in a proper lattice, which grants them three syntactic privileges that interface bounds do not possess:
+3. **Marker-only privileges in where clauses.** Markers are Boolean predicates in a proper lattice, which grants them two syntactic privileges that interface bounds do not possess:
    - **Negation.** As above.
-   - **Optional relaxation with `?`.** On auto-derived markers the syntax `?M` means "T does NOT implicitly carry M as a precondition", relaxing the default upper bound. Meaningful only for prelude-closed markers (Sendable, Shared, Sized) and user-defined auto-markers.
    - **Commutative / associative closure.** The expression `M1 + M2 + M3` forms a proper Boolean conjunction. Interface bounds share the alphabetical-order rule but do NOT form a closed lattice — there is no automatic way to combine `Drawable + Hashable` into a named third interface.
 
    ```zom
-   fn spawn_single_writer<F, T>(f: F) -> JoinHandle<T>
-       where
-           F: FnOnce() -> T,
-           F: Sendable + !Shared,        // !Shared: requires no shared-read aliasing
-           T: Sendable + Linear,         // Linear: must be consumed exactly once
+   fun spawn_single_writer<F, T>(f: F) -> JoinHandle<T>
+   where
+       F: FnOnce() -> T,
+       F: Sendable + !Shared,        // !Shared: requires no shared-read aliasing
+       T: Sendable + Linear,         // Linear: must be consumed exactly once
    { ... }
-
-   // Relaxation for a raw allocator — do NOT require Sendable or Sized on T
-   fn raw_alloc<T: ?Sized + ?Sendable>(size_bytes: usize) -> *mut T { ... }
    ```
 
 #### Bound Satisfaction at Call Site
