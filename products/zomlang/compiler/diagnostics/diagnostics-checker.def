@@ -61,3 +61,40 @@ DIAG(4024, CannotMutateImmutableVariable, kError, "Cannot mutate immutable varia
 DIAG(4025, ErrorPropagateOutsideRaises, kError,
              "'?!' propagates error type '{0}' but function does not raise '{1}'", 2)
 DIAG(4026, ErrorUnwrapNonUnion, kError, "'!!' on non-error-union type '{0}'", 1)
+DIAG(4027, UndeclaredValue, kError, "Use of undeclared identifier '{0}'", 1)
+DIAG(4028, InvalidBinaryOperands, kError, "Invalid operands to binary expression", 0)
+DIAG(4029, InvalidComparisonOperands, kError, "Invalid operands to binary comparison", 0)
+DIAG(4030, CannotDereferenceType, kError, "Cannot dereference non-pointer type", 0)
+DIAG(4031, PostfixUpdateRequiresNumeric, kError, "Postfix update requires numeric operand", 0)
+DIAG(4032, ErrorPropagateNonUnion, kError,
+             "Postfix error operator requires error-union operand, got '{0}'", 1)
+DIAG(4033, ErrorUnionEmpty, kError,
+             "Postfix error operator requires a non-empty union operand", 0)
+DIAG(4034, UnsupportedExplicitTypeArgument, kError, "Unsupported explicit type argument", 0)
+DIAG(4035, ExplicitTypeArgumentsRequireGenericCallee, kError,
+             "Explicit type arguments require a generic callee", 0)
+DIAG(4036, CallArgumentCountMismatch, kError,
+             "Expected {0} argument(s), got {1}", 2)
+DIAG(4037, MemberNotFound, kError, "No member named '{0}' in type '{1}'", 2)
+DIAG(4038, IndexRequiresInteger, kError, "Array index must be an integer", 0)
+DIAG(4039, TupleIndexRequiresIntegerLiteral, kError,
+             "Tuple index must be an integer literal", 0)
+DIAG(4040, TupleIndexOutOfBounds, kError, "Tuple index is out of bounds", 0)
+DIAG(4041, CannotIndexType, kError, "Cannot index non-array/non-tuple type", 0)
+DIAG(4042, UnsupportedCastTarget, kError, "Unsupported cast target type", 0)
+DIAG(4043, RawPointerCastRequiresUnsafe, kError,
+             "Raw pointer cast from '{0}' to '{1}' requires unsafe block", 2)
+DIAG(4044, InvalidDynUpcast, kError, "Invalid dyn upcast from '{0}' to '{1}'", 2)
+DIAG(4045, ConditionMustBeBool, kError, "Condition must be of type 'bool'", 0)
+DIAG(4046, MissingReturnValue, kError, "Missing return value of type '{0}'", 1)
+DIAG(4047, UnsupportedStructLiteralTarget, kError, "Unsupported struct literal target type", 0)
+DIAG(4048, UnknownStructField, kError, "Unknown field '{0}' in struct literal", 1)
+DIAG(4049, MissingStructField, kError, "Missing field '{0}' in struct literal", 1)
+DIAG(4050, ArrayElementTypeMismatch, kError,
+             "Array element type mismatch: expected '{0}', got '{1}'", 2)
+DIAG(4051, MatchGuardMustBeBool, kError, "Match guard must be of type 'bool'", 0)
+DIAG(4052, RecursiveTypeAliasCycle, kError, "Recursive type alias cycle", 0)
+DIAG(4053, UnsupportedTypeExpression, kError, "Unsupported type expression", 0)
+DIAG(4054, OrphanImpl, kError,
+             "Cannot implement '{0}' for '{1}': either the type or the interface must be "
+             "defined in the current module", 2)

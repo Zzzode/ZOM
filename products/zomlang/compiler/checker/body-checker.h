@@ -296,9 +296,6 @@ private:
   /// \brief Set the expected return type for the current function context.
   void setExpectedReturnType(const type::Type& ty);
 
-  /// \brief Report an error diagnostic at the given node.
-  void reportError(ast::NodeId node, zc::StringPtr message);
-
   /// \brief Report a type mismatch diagnostic.
   void reportTypeMismatch(ast::NodeId node, const type::Type& expected, const type::Type& actual);
 

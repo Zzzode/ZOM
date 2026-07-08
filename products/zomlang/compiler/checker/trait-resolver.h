@@ -212,9 +212,6 @@ private:
   /// \brief Get the current scope from the symbol table.
   const symbol::Scope& currentScope();
 
-  /// \brief Report a diagnostic at the given AST node's location.
-  void reportError(ast::NodeId node, zc::StringPtr message);
-
   /// \brief Resolve a type expression from the AST.
   zc::Own<type::Type> resolveTypeExpr(ast::NodeId typeExpr);
 

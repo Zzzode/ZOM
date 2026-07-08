@@ -213,9 +213,7 @@ struct NameResolver::Impl {
   void reportTypeNamespaceMismatch(NodeId node, zc::StringPtr expectedCtx) {
     const Node& n = tree.node(node);
     zc::StringPtr name = extractNameForDiag(node);
-    diags.diagnose<DiagID::SemanticError>(
-        n.range.getStart(),
-        zc::str("Symbol '"_zc, name, "' cannot be used in "_zc, expectedCtx, " context"_zc));
+    diags.diagnose<DiagID::SymbolNamespaceMismatch>(n.range.getStart(), name, expectedCtx);
   }
 
   // -----------------------------------------------------------------------

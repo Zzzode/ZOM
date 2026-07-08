@@ -71,7 +71,6 @@ The table below is the **authoritative copy** of the ZOM diagnostic-code range a
 | 3000-3099 | Binder diagnostics | `products/zomlang/compiler/binder` | Error | No | `ZOM3001` = undefined identifier -> Error |
 | 4000-4099 | Type checker / semantic analysis | `products/zomlang/compiler/checker` | Error | No | `ZOM4001` = dyn interface has a generic method; `ZOM4026` = `!!` on a non-error-union type -> Error |
 | 5000-5999 | Reserved syntax rejections | `products/zomlang/compiler/parser` | Error | No | `ZOM5001` = reserved exception syntax -> Error |
-| 9000-9899 | General semantic diagnostics | `products/zomlang/compiler/diagnostics` | Error | No | `ZOM9001` = type mismatch -> Error |
 | 9900-9999 | Internal compiler errors | `products/zomlang/compiler/diagnostics` | ICE | No | `ZOM9999` = compiler invariant violation -> ICE |
 
 Diagnostic codes and default severities are allocated by the diagnostic
@@ -84,10 +83,9 @@ Concrete language diagnostics are exercised by conformance sources under
 plumbing is exercised by ztest suites under
 `products/zomlang/tests/unittests/compiler/diagnostics/`. The emitted registry
 is generated from `diagnostics-common.def`, `diagnostics-parse.def`,
-`diagnostics-binder.def`, `diagnostics-checker.def`, and
-`diagnostics-sema.def`; `DiagnosticEngine` refuses to emit any code not present
-in the generated ids (emitting ZOM9999 `DiagnosticCodeNotRegistered` as an ICE
-fallthrough).
+`diagnostics-binder.def`, and `diagnostics-checker.def`; `DiagnosticEngine`
+refuses to emit any code not present in the generated ids (emitting ZOM9999
+`DiagnosticCodeNotRegistered` as an ICE fallthrough).
 
 Additional structural rules for the 100-block sub-allocation:
 

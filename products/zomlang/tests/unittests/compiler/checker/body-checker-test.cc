@@ -2338,7 +2338,7 @@ ZC_TEST("BodyChecker.CastRejectsUnrelatedDynUpcast") {
 
   ZC_EXPECT(!result.success);
   ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::SemanticError));
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::InvalidDynUpcast));
   ZC_EXPECT(result.typeEnv.hasType(cast));
   ZC_EXPECT(isError(result.typeEnv.getType(cast)));
 }

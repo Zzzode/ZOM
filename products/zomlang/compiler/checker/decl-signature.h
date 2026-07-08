@@ -208,9 +208,6 @@ private:
 
   /// \brief Look up a symbol by name in the current scope chain.
   zc::Maybe<symbol::Symbol&> lookupSymbol(zc::StringPtr name);
-
-  /// \brief Report a diagnostic at the given AST node's location.
-  void reportError(ast::NodeId node, zc::StringPtr message);
 };
 
 }  // namespace checker

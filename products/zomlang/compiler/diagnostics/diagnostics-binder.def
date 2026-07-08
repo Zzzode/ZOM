@@ -16,3 +16,22 @@
 // contract assigns stable ZOM30xx codes independent of file order.
 
 DIAG(3001, UndefinedIdentifier, kError, "Undefined identifier: '{0}'", 1)
+DIAG(3002, SymbolNamespaceMismatch, kError,
+             "Symbol '{0}' cannot be used in {1} context", 2)
+DIAG(3003, RedeclareVariable, kError, "Cannot redeclare variable '{0}'", 1)
+DIAG(3004, RedeclareParameter, kError, "Cannot redeclare parameter '{0}'", 1)
+DIAG(3005, RedeclareFunction, kError, "Cannot redeclare function '{0}'", 1)
+DIAG(3006, RedeclareClass, kError, "Cannot redeclare class '{0}'", 1)
+DIAG(3007, RedeclareInterface, kError, "Cannot redeclare interface '{0}'", 1)
+DIAG(3008, RedeclareEnum, kError, "Cannot redeclare enum '{0}'", 1)
+DIAG(3009, RedeclareTypeAlias, kError, "Cannot redeclare type alias '{0}'", 1)
+DIAG(3010, DuplicateIdentifier, kError, "Duplicate identifier: '{0}'", 1)
+DIAG(3011, CircularImport, kError, "Circular import detected for module '{0}'", 1)
+DIAG(3012, ImportModuleNotFound, kError, "Cannot resolve module '{0}'", 1)
+DIAG(3013, ImportMemberNotFound, kError,
+             "Module '{0}' has no exported member '{1}'", 2)
+DIAG(3014, CircularReexport, kError, "Circular re-export detected for module '{0}'", 1)
+DIAG(3015, ReexportModuleNotFound, kError,
+             "Cannot resolve module '{0}' for re-export", 1)
+DIAG(3016, ReexportMemberNotFound, kError,
+             "Module '{0}' has no exported member '{1}' for re-export", 2)

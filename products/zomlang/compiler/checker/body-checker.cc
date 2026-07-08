@@ -163,12 +163,6 @@ static source::SourceLoc getNodeLoc(const ast::Tree& tree, ast::NodeId id) {
   return tree.node(id).range.getStart();
 }
 
-void BodyChecker::reportError(ast::NodeId node, zc::StringPtr message) {
-  auto loc = getNodeLoc(impl->tree, node);
-  impl->diags.diagnose<DiagID::SemanticError>(loc, message);
-  impl->hadErrors = true;
-}
-
 static void recordPrimitiveDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
                                     type::ReceiverMode receiverMode,
                                     zc::ArrayPtr<const type::TypeId> argumentTypes,
@@ -1261,7 +1255,9 @@ const type::Type& BodyChecker::checkIdentExpr(ast::NodeId expr) {
 
   auto symResult = lookupSymbol(name);
   if (symResult == zc::none) {
-    reportError(expr, zc::str("use of undeclared identifier '"_zc, name, "'"_zc));
+    auto loc = getNodeLoc(impl->tree, expr);
+    impl->diags.diagnose<DiagID::UndeclaredValue>(loc, name);
+    impl->hadErrors = true;
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
@@ -1412,7 +1408,9 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
           isTypeVar(resolvedRhs)) {
         return storeType(expr, zc::heap<type::ErrorType>());
       }
-      reportError(expr, "invalid operands to binary expression"_zc);
+      auto loc = getNodeLoc(impl->tree, expr);
+      impl->diags.diagnose<DiagID::InvalidBinaryOperands>(loc);
+      impl->hadErrors = true;
       return storeType(expr, zc::heap<type::ErrorType>());
     }
     case ast::BinaryOperatorKind::StrictEq:
@@ -1438,7 +1436,9 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
           return storeType(expr, zc::heap<type::ErrorType>());
         }
         if (!resolvedLhs.equals(resolvedRhs) || !isNamed(resolvedLhs) || !isNamed(resolvedRhs)) {
-          reportError(expr, "invalid operands to binary comparison"_zc);
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::InvalidComparisonOperands>(loc);
+          impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
 
@@ -1634,7 +1634,9 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
         (void)ptrTy;
         return storeType(expr, zc::heap<type::ErrorType>());
       }
-      reportError(expr, "cannot dereference non-pointer type"_zc);
+      auto loc = getNodeLoc(impl->tree, expr);
+      impl->diags.diagnose<DiagID::CannotDereferenceType>(loc);
+      impl->hadErrors = true;
       return storeType(expr, zc::heap<type::ErrorType>());
     }
     case ast::UnaryOperatorKind::Ref:
@@ -1658,7 +1660,11 @@ const type::Type& BodyChecker::checkPostfixExpr(ast::NodeId expr) {
     case ast::PostfixOperatorKind::Increment:
     case ast::PostfixOperatorKind::Decrement:
       if (isNumeric(resolved)) { return storeType(expr, cloneResolvedType(resolved)); }
-      if (!isError(resolved)) { reportError(expr, "postfix update requires numeric operand"_zc); }
+      if (!isError(resolved)) {
+        auto loc = getNodeLoc(impl->tree, expr);
+        impl->diags.diagnose<DiagID::PostfixUpdateRequiresNumeric>(loc);
+        impl->hadErrors = true;
+      }
       return storeType(expr, zc::heap<type::ErrorType>());
     case ast::PostfixOperatorKind::ErrorPropagate:
     case ast::PostfixOperatorKind::ErrorUnwrap: {
@@ -1669,15 +1675,18 @@ const type::Type& BodyChecker::checkPostfixExpr(ast::NodeId expr) {
           impl->diags.diagnose<DiagID::ErrorUnwrapNonUnion>(loc, resolved.toString());
           impl->hadErrors = true;
         } else {
-          reportError(expr, zc::str("postfix error operator requires error-union operand, got '"_zc,
-                                    resolved.toString(), "'"_zc));
+          auto loc = getNodeLoc(impl->tree, expr);
+          impl->diags.diagnose<DiagID::ErrorPropagateNonUnion>(loc, resolved.toString());
+          impl->hadErrors = true;
         }
         return storeType(expr, zc::heap<type::ErrorType>());
       }
 
       const auto& unionTy = static_cast<const type::UnionType&>(resolved);
       if (unionTy.getAlternativeCount() == 0) {
-        reportError(expr, "postfix error operator requires a non-empty union operand"_zc);
+        auto loc = getNodeLoc(impl->tree, expr);
+        impl->diags.diagnose<DiagID::ErrorUnionEmpty>(loc);
+        impl->hadErrors = true;
         return storeType(expr, zc::heap<type::ErrorType>());
       }
 
@@ -1748,7 +1757,9 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
   for (NodeId typeArgId : impl->tree.list(typeArgList)) {
     auto typeArg = resolveTypeExpr(typeArgId);
     if (!typeArg) {
-      reportError(typeArgId, "unsupported explicit type argument"_zc);
+      auto loc = getNodeLoc(impl->tree, typeArgId);
+      impl->diags.diagnose<DiagID::UnsupportedExplicitTypeArgument>(loc);
+      impl->hadErrors = true;
       return storeType(expr, zc::heap<type::ErrorType>());
     }
     explicitTypeArgs.add(zc::mv(typeArg));
@@ -1794,14 +1805,18 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
         }
       }
     } else if (explicitTypeArgs.size() > 0) {
-      reportError(expr, "explicit type arguments require a generic callee"_zc);
+      auto loc = getNodeLoc(impl->tree, expr);
+      impl->diags.diagnose<DiagID::ExplicitTypeArgumentsRequireGenericCallee>(loc);
+      impl->hadErrors = true;
       return storeType(expr, zc::heap<type::ErrorType>());
     }
 
     // Check argument count
     if (argTypes.size() != effectiveFn->getParamCount()) {
-      reportError(expr, zc::str("expected "_zc, effectiveFn->getParamCount(),
-                                " argument(s), got "_zc, argTypes.size()));
+      auto loc = getNodeLoc(impl->tree, expr);
+      impl->diags.diagnose<DiagID::CallArgumentCountMismatch>(
+          loc, zc::str(effectiveFn->getParamCount()), zc::str(argTypes.size()));
+      impl->hadErrors = true;
       return storeType(expr, zc::heap<type::ErrorType>());
     }
 
@@ -2031,8 +2046,9 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
     }
   }
 
-  reportError(expr, zc::str("no member named '"_zc, propName, "' in type '"_zc,
-                            resolvedObj.toString(), "'"_zc));
+  auto memberLoc = getNodeLoc(impl->tree, expr);
+  impl->diags.diagnose<DiagID::MemberNotFound>(memberLoc, propName, resolvedObj.toString());
+  impl->hadErrors = true;
   return storeType(expr, zc::heap<type::ErrorType>());
 }
 
@@ -2050,7 +2066,11 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
   if (isArray(resolvedObj)) {
     auto& arrTy = static_cast<const type::ArrayType&>(resolvedObj);
     // Index must be integer
-    if (!isInteger(resolvedIdx)) { reportError(idxId, "array index must be an integer"_zc); }
+    if (!isInteger(resolvedIdx)) {
+      auto loc = getNodeLoc(impl->tree, idxId);
+      impl->diags.diagnose<DiagID::IndexRequiresInteger>(loc);
+      impl->hadErrors = true;
+    }
     auto& result = storeType(expr, cloneResolvedType(arrTy.getElementType()));
     zc::Vector<type::TypeId> args;
     args.add(impl->typeEnv.internType(resolvedObj));
@@ -2064,11 +2084,15 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
   if (isTuple(resolvedObj)) {
     auto& tupleTy = static_cast<const type::TupleType&>(resolvedObj);
     if (!isInteger(resolvedIdx)) {
-      reportError(idxId, "tuple index must be an integer literal"_zc);
+      auto loc = getNodeLoc(impl->tree, idxId);
+      impl->diags.diagnose<DiagID::TupleIndexRequiresIntegerLiteral>(loc);
+      impl->hadErrors = true;
       return storeType(expr, zc::heap<type::ErrorType>());
     }
     if (!impl->tree.contains(idxId) || impl->tree.node(idxId).kind != SyntaxKind::IntLiteral) {
-      reportError(idxId, "tuple index must be an integer literal"_zc);
+      auto loc = getNodeLoc(impl->tree, idxId);
+      impl->diags.diagnose<DiagID::TupleIndexRequiresIntegerLiteral>(loc);
+      impl->hadErrors = true;
       return storeType(expr, zc::heap<type::ErrorType>());
     }
 
@@ -2076,7 +2100,9 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
     auto indexText = impl->tree.bigInt(BigIntId(idxNode.payload.words[kIntLiteralValueWord]));
     auto index = indexText.parseAs<unsigned long long>();
     if (index >= tupleTy.getElementCount()) {
-      reportError(idxId, "tuple index is out of bounds"_zc);
+      auto loc = getNodeLoc(impl->tree, idxId);
+      impl->diags.diagnose<DiagID::TupleIndexOutOfBounds>(loc);
+      impl->hadErrors = true;
       return storeType(expr, zc::heap<type::ErrorType>());
     }
 
@@ -2146,7 +2172,9 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
-  reportError(expr, "cannot index non-array/non-tuple type"_zc);
+  auto indexLoc = getNodeLoc(impl->tree, expr);
+  impl->diags.diagnose<DiagID::CannotIndexType>(indexLoc);
+  impl->hadErrors = true;
   return storeType(expr, zc::heap<type::ErrorType>());
 }
 
@@ -2181,7 +2209,11 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
 
   auto targetType = resolveTypeExpr(tyId);
   if (!targetType) {
-    if (!isError(resolvedSource)) { reportError(expr, "unsupported cast target type"_zc); }
+    if (!isError(resolvedSource)) {
+      auto loc = getNodeLoc(impl->tree, expr);
+      impl->diags.diagnose<DiagID::UnsupportedCastTarget>(loc);
+      impl->hadErrors = true;
+    }
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
@@ -2213,8 +2245,10 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     }
     if (impl->unsafeDepth > 0) { return storeType(expr, cloneResolvedType(resolvedTarget)); }
 
-    reportError(expr, zc::str("raw pointer cast from '"_zc, resolvedSource.toString(), "' to '"_zc,
-                              resolvedTarget.toString(), "' requires unsafe block"_zc));
+    auto loc = getNodeLoc(impl->tree, expr);
+    impl->diags.diagnose<DiagID::RawPointerCastRequiresUnsafe>(loc, resolvedSource.toString(),
+                                                               resolvedTarget.toString());
+    impl->hadErrors = true;
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
@@ -2238,8 +2272,10 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
       return storeType(expr, cloneResolvedType(resolvedTarget));
     }
 
-    reportError(expr, zc::str("invalid dyn upcast from '"_zc, resolvedSource.toString(),
-                              "' to '"_zc, resolvedTarget.toString(), "'"_zc));
+    auto loc = getNodeLoc(impl->tree, expr);
+    impl->diags.diagnose<DiagID::InvalidDynUpcast>(loc, resolvedSource.toString(),
+                                                   resolvedTarget.toString());
+    impl->hadErrors = true;
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
@@ -2265,7 +2301,11 @@ const type::Type& BodyChecker::checkConditionalExpr(ast::NodeId expr) {
   if (!isPrimitive(resolvedCond) ||
       static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
           type::PrimitiveKind::Bool) {
-    if (!isError(resolvedCond)) { reportError(condId, "condition must be of type 'bool'"_zc); }
+    if (!isError(resolvedCond)) {
+      auto loc = getNodeLoc(impl->tree, condId);
+      impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
+      impl->hadErrors = true;
+    }
   }
 
   // Result is the join of then and else types.
@@ -2493,7 +2533,9 @@ const type::Type& BodyChecker::checkStructLiteralExpr(ast::NodeId expr) {
   auto tyId = NodeId(node.payload.words[kStructLiteralExprTyWord]);
   auto targetType = resolveTypeExpr(tyId);
   if (!targetType) {
-    reportError(expr, "unsupported struct literal target type"_zc);
+    auto loc = getNodeLoc(impl->tree, expr);
+    impl->diags.diagnose<DiagID::UnsupportedStructLiteralTarget>(loc);
+    impl->hadErrors = true;
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
@@ -2622,7 +2664,9 @@ const type::Type& BodyChecker::checkStructLiteralExpr(ast::NodeId expr) {
         checkAssignable(resolvedField, resolvedValue, expr, valueId);
         if (!hadErrorsBefore && impl->hadErrors) { hadFieldError = true; }
       } else if (fieldTypes.size() != 0) {
-        reportError(propId, zc::str("unknown field '"_zc, propName, "' in struct literal"_zc));
+        auto loc = getNodeLoc(impl->tree, propId);
+        impl->diags.diagnose<DiagID::UnknownStructField>(loc, propName);
+        impl->hadErrors = true;
         hadFieldError = true;
       }
     }
@@ -2630,7 +2674,9 @@ const type::Type& BodyChecker::checkStructLiteralExpr(ast::NodeId expr) {
 
   for (auto& entry : fieldTypes) {
     if (!seenFields.contains(entry.key)) {
-      reportError(expr, zc::str("missing field '"_zc, entry.key, "' in struct literal"_zc));
+      auto loc = getNodeLoc(impl->tree, expr);
+      impl->diags.diagnose<DiagID::MissingStructField>(loc, entry.key);
+      impl->hadErrors = true;
       hadFieldError = true;
     }
   }
@@ -2672,8 +2718,10 @@ const type::Type& BodyChecker::checkArrayLiteral(ast::NodeId expr) {
           } else if (currentToNew.success) {
             elemType = resolved;
           } else {
-            reportError(elemId, zc::str("array element type mismatch: expected '"_zc, et.toString(),
-                                        "', got '"_zc, resolved.toString(), "'"_zc));
+            auto loc = getNodeLoc(impl->tree, elemId);
+            impl->diags.diagnose<DiagID::ArrayElementTypeMismatch>(loc, et.toString(),
+                                                                   resolved.toString());
+            impl->hadErrors = true;
             elementMismatch = true;
           }
         }
@@ -2820,13 +2868,17 @@ void BodyChecker::checkIfStmt(ast::NodeId stmt) {
   auto& condType = checkExpr(condId);
   auto& resolvedCond = impl->typeEnv.find(condType);
   if (!isPrimitive(resolvedCond) && !isError(resolvedCond)) {
-    reportError(condId, "if condition must be of type 'bool'"_zc);
+    auto loc = getNodeLoc(impl->tree, condId);
+    impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
+    impl->hadErrors = true;
   }
   if (isPrimitive(resolvedCond) &&
       static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
           type::PrimitiveKind::Bool &&
       !isError(resolvedCond)) {
-    reportError(condId, "if condition must be of type 'bool'"_zc);
+    auto loc = getNodeLoc(impl->tree, condId);
+    impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
+    impl->hadErrors = true;
   }
 
   // Check then branch
@@ -2847,7 +2899,9 @@ void BodyChecker::checkWhileStmt(ast::NodeId stmt) {
       (!isPrimitive(resolvedCond) ||
        static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
            type::PrimitiveKind::Bool)) {
-    reportError(condId, "while condition must be of type 'bool'"_zc);
+    auto loc = getNodeLoc(impl->tree, condId);
+    impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
+    impl->hadErrors = true;
   }
 
   checkStmt(bodyId);
@@ -2871,7 +2925,9 @@ void BodyChecker::checkForStmt(ast::NodeId stmt) {
         (!isPrimitive(resolvedCond) ||
          static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
              type::PrimitiveKind::Bool)) {
-      reportError(condId, "for condition must be of type 'bool'"_zc);
+      auto loc = getNodeLoc(impl->tree, condId);
+      impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
+      impl->hadErrors = true;
     }
   }
 
@@ -2899,8 +2955,9 @@ void BodyChecker::checkReturnStmt(ast::NodeId stmt) {
     auto& expected = expectedReturnType();
     auto& resolvedExpected = impl->typeEnv.find(expected);
     if (!isUnit(resolvedExpected) && !isError(resolvedExpected) && !isTypeVar(resolvedExpected)) {
-      reportError(
-          stmt, zc::str("missing return value of type '"_zc, resolvedExpected.toString(), "'"_zc));
+      auto loc = getNodeLoc(impl->tree, stmt);
+      impl->diags.diagnose<DiagID::MissingReturnValue>(loc, resolvedExpected.toString());
+      impl->hadErrors = true;
     }
     return;
   }
@@ -3004,7 +3061,9 @@ void BodyChecker::checkMatchStmt(ast::NodeId stmt) {
           (!isPrimitive(resolvedGuard) ||
            static_cast<const type::PrimitiveType&>(resolvedGuard).getPrimitiveKind() !=
                type::PrimitiveKind::Bool)) {
-        reportError(guardId, "match guard must be of type 'bool'"_zc);
+        auto loc = getNodeLoc(impl->tree, guardId);
+        impl->diags.diagnose<DiagID::MatchGuardMustBeBool>(loc);
+        impl->hadErrors = true;
       }
     }
   }

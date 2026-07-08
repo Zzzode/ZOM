@@ -171,12 +171,6 @@ zc::Maybe<symbol::Symbol&> TraitResolver::lookupSymbol(zc::StringPtr name) {
   return zc::none;
 }
 
-void TraitResolver::reportError(ast::NodeId node, zc::StringPtr message) {
-  auto loc = nodeLoc(impl->tree, node);
-  impl->diags.diagnose<DiagID::SemanticError>(loc, message);
-  impl->hadErrors = true;
-}
-
 zc::StringPtr TraitResolver::getTypeName(const type::Type& ty) {
   const auto& resolved = impl->typeEnv.find(ty);
 
@@ -1481,10 +1475,9 @@ void TraitResolver::checkCoherence() {
       bool ifaceLocal = isInterfaceLocal(ifaceName);
 
       if (!typeLocal && !ifaceLocal) {
-        reportError(id,
-                    zc::str("cannot implement '"_zc, ifaceName, "' for '"_zc, getTypeName(*forType),
-                            "': either the type or the interface "
-                            "must be defined in the current module (orphan rule violation)"_zc));
+        auto loc = nodeLoc(impl->tree, id);
+        impl->diags.diagnose<DiagID::OrphanImpl>(loc, ifaceName, getTypeName(*forType));
+        impl->hadErrors = true;
         continue;
       }
 

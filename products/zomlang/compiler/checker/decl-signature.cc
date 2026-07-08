@@ -170,12 +170,6 @@ zc::Maybe<symbol::Symbol&> DeclSignatureComputer::lookupSymbol(zc::StringPtr nam
   return zc::none;
 }
 
-void DeclSignatureComputer::reportError(ast::NodeId node, zc::StringPtr message) {
-  auto loc = nodeLoc(impl->tree, node);
-  impl->diags.diagnose<DiagID::SemanticError>(loc, message);
-  impl->hadErrors = true;
-}
-
 ast::NodeId DeclSignatureComputer::findInterfaceDecl(zc::StringPtr name) const {
   ast::NodeId result;
   const auto rootId = impl->tree.root();
@@ -559,7 +553,8 @@ bool DeclSignatureComputer::computeSignatures() {
           auto guard =
               impl->cycles.enter(QueryKey::typeAliasOf(static_cast<uint32_t>(symbolId.getRaw())));
           if (guard.hasCycle()) {
-            reportError(id, "recursive type alias cycle");
+            impl->diags.diagnose<DiagID::RecursiveTypeAliasCycle>(nodeLoc(impl->tree, id));
+            impl->hadErrors = true;
             break;
           }
           auto targetType = resolveTypeExpr(targetId);
@@ -951,7 +946,8 @@ zc::Own<type::Type> DeclSignatureComputer::resolveTypeExpr(ast::NodeId typeExprI
   }
 
   // Unknown type expression kind
-  reportError(typeExprId, "unsupported type expression");
+  impl->diags.diagnose<DiagID::UnsupportedTypeExpression>(nodeLoc(impl->tree, typeExprId));
+  impl->hadErrors = true;
   return zc::heap<type::ErrorType>("unsupported type expression");
 }
 
@@ -1072,7 +1068,8 @@ zc::Own<type::Type> DeclSignatureComputer::resolveTypeAliasTarget(symbol::Symbol
                                                                   ast::NodeId useSite) {
   auto guard = impl->cycles.enter(QueryKey::typeAliasOf(querySymbolId(symbol)));
   if (guard.hasCycle()) {
-    reportError(useSite, "recursive type alias cycle");
+    impl->diags.diagnose<DiagID::RecursiveTypeAliasCycle>(nodeLoc(impl->tree, useSite));
+    impl->hadErrors = true;
     return zc::heap<type::ErrorType>("recursive type alias cycle");
   }
 

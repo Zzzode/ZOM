@@ -135,9 +135,8 @@ struct ImportResolver::Impl {
 
     // Circular import detection.
     if (resolvingModules.contains(modulePathPtr)) {
-      diags.diagnose<diagnostics::DiagID::SemanticError>(
-          importRef.range.getStart(),
-          zc::str("Circular import detected for module '"_zc, modulePathStr, "'"_zc));
+      diags.diagnose<diagnostics::DiagID::CircularImport>(importRef.range.getStart(),
+                                                          modulePathPtr);
       return;
     }
 
@@ -170,8 +169,8 @@ struct ImportResolver::Impl {
       }
     }
     else {
-      diags.diagnose<diagnostics::DiagID::SemanticError>(
-          importRef.range.getStart(), zc::str("Cannot resolve module '"_zc, modulePathStr, "'"_zc));
+      diags.diagnose<diagnostics::DiagID::ImportModuleNotFound>(importRef.range.getStart(),
+                                                                modulePathPtr);
     }
 
     resolvingModules.erase(insertedMod);
@@ -232,10 +231,8 @@ struct ImportResolver::Impl {
     }
 
     // Symbol not found in the module.
-    diags.diagnose<diagnostics::DiagID::SemanticError>(
-        tree.node(specNode).range.getStart(),
-        zc::str("Module '"_zc, moduleScope.getName(), "' has no exported member '"_zc, originalName,
-                "'"_zc));
+    diags.diagnose<diagnostics::DiagID::ImportMemberNotFound>(tree.node(specNode).range.getStart(),
+                                                              moduleScope.getName(), originalName);
     metadata.setIsUnresolved(specNode, true);
   }
 
@@ -273,9 +270,8 @@ struct ImportResolver::Impl {
       zc::StringPtr modulePathPtr = modulePathStr.asPtr();
 
       if (resolvingModules.contains(modulePathPtr)) {
-        diags.diagnose<diagnostics::DiagID::SemanticError>(
-            exportRef.range.getStart(),
-            zc::str("Circular re-export detected for module '"_zc, modulePathStr, "'"_zc));
+        diags.diagnose<diagnostics::DiagID::CircularReexport>(exportRef.range.getStart(),
+                                                              modulePathPtr);
         return;
       }
 
@@ -289,9 +285,8 @@ struct ImportResolver::Impl {
         }
       }
       else {
-        diags.diagnose<diagnostics::DiagID::SemanticError>(
-            exportRef.range.getStart(),
-            zc::str("Cannot resolve module '"_zc, modulePathStr, "' for re-export"_zc));
+        diags.diagnose<diagnostics::DiagID::ReexportModuleNotFound>(exportRef.range.getStart(),
+                                                                    modulePathPtr);
       }
 
       resolvingModules.erase(insertedMod2);
@@ -328,10 +323,8 @@ struct ImportResolver::Impl {
       return;
     }
 
-    diags.diagnose<diagnostics::DiagID::SemanticError>(
-        specRef.range.getStart(),
-        zc::str("Module '"_zc, moduleScope.getName(), "' has no exported member '"_zc, originalName,
-                "' for re-export"_zc));
+    diags.diagnose<diagnostics::DiagID::ReexportMemberNotFound>(
+        specRef.range.getStart(), moduleScope.getName(), originalName);
     metadata.setIsUnresolved(specNode, true);
   }
 

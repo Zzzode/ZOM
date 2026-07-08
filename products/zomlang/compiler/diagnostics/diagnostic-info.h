@@ -42,7 +42,6 @@ struct DiagnosticTraits;
 #include "zomlang/compiler/diagnostics/diagnostics-checker.def"
 #include "zomlang/compiler/diagnostics/diagnostics-common.def"
 #include "zomlang/compiler/diagnostics/diagnostics-parse.def"
-#include "zomlang/compiler/diagnostics/diagnostics-sema.def"
 #undef DIAG
 
 namespace detail {
@@ -68,7 +67,6 @@ constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
 #include "zomlang/compiler/diagnostics/diagnostics-checker.def"
 #include "zomlang/compiler/diagnostics/diagnostics-common.def"
 #include "zomlang/compiler/diagnostics/diagnostics-parse.def"
-#include "zomlang/compiler/diagnostics/diagnostics-sema.def"
 
 #undef DIAG
     default:

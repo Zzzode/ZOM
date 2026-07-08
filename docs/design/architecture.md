@@ -432,7 +432,6 @@ Every diagnostic in ZOM carries a stable five-character prefix `ZOM` followed by
 | 3000-3099 | Binder diagnostics | `products/zomlang/compiler/binder` | Error | `ZOM3001` = undefined identifier -> Error |
 | 4000-4099 | Type checker / semantic analysis | `products/zomlang/compiler/checker` | Error | `ZOM4001` = dyn interface has a generic method; `ZOM4026` = `!!` on a non-error-union type -> Error |
 | 5000-5999 | Reserved syntax rejections | `products/zomlang/compiler/parser` | Error | `ZOM5001` = reserved exception syntax -> Error |
-| 9000-9899 | General semantic diagnostics | `products/zomlang/compiler/diagnostics` | Error | `ZOM9001` = type mismatch -> Error |
 | 9900-9999 | Internal compiler errors | `products/zomlang/compiler/diagnostics` | ICE | `ZOM9999` = compiler invariant violation -> ICE |
 
 A diagnostic's declared minimum severity is the floor below which it cannot be promoted to a weaker level via command-line flags. Promoting a Warning to Error via `-Werror` is always permitted; suppressing an Error to Warning via `-Wno-error=ZOM4010` is permitted only when the minimum severity is strictly Error (never ICE). ICEs are fatal and cannot be suppressed by any flag.

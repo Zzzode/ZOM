@@ -28,7 +28,6 @@ enum class DiagID : uint32_t {
 #include "zomlang/compiler/diagnostics/diagnostics-checker.def"
 #include "zomlang/compiler/diagnostics/diagnostics-common.def"
 #include "zomlang/compiler/diagnostics/diagnostics-parse.def"
-#include "zomlang/compiler/diagnostics/diagnostics-sema.def"
 #undef DIAG
 };
 
