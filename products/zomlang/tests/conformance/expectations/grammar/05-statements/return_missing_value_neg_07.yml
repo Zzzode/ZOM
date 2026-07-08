@@ -1,0 +1,5 @@
+section: "05-statements return diagnostics"
+covers_rule: "returnStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks missing return value."

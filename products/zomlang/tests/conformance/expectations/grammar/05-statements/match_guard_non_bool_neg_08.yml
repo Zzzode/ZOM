@@ -1,0 +1,5 @@
+section: "05-statements match guard diagnostics"
+covers_rule: "matchStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks non-bool match guard."
