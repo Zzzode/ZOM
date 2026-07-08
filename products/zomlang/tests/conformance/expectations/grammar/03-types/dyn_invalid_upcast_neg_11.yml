@@ -1,0 +1,5 @@
+section: "03-types dyn cast diagnostics"
+covers_rule: "castExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks invalid dyn upcast."

@@ -1,0 +1,5 @@
+interface A {}
+interface B {}
+
+let a: dyn A;
+let b: dyn B = a as dyn B;

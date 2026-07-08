@@ -1,0 +1,5 @@
+section: "11-error error propagation diagnostics"
+covers_rule: "postfixExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks non-error-union propagation."
