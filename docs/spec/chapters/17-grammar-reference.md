@@ -217,6 +217,8 @@ InterfaceDeclaration ::= ClassExtensibility? ModifierList 'interface' BindingIde
                          TypeParameters? InterfaceHeritage? '{' InterfaceBody '}'
     (* NOTE: 'unsafe' semantic-invariant attestation appears on the `impl` block
        (unsafe impl I for T), not on the interface declaration. See Ch.09 §9.7.
+       Interface declarations do not accept WhereClause. Put interface type
+       parameter constraints in TypeParameters.
        Canonical grammar: docs/design/syntax-ebnf.md §4.3.5 *)
 InterfaceHeritage ::= ':' InterfaceBoundList
     (* '+' = conjunction (AND); '|' is ONLY for UnionType.

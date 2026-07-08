@@ -91,8 +91,10 @@ ZOM offers two equivalent syntactic surfaces on declarations that accept a
 and standalone marker `impl` blocks. The inline short form is preferred for
 simple cases; the `where` clause is preferred when type parameters each carry
 different, lengthy bound sets, or when bounds reference associated types.
-Interface declarations do not accept a `where` clause; constraints on interface
-type parameters are expressed directly in the type parameter list.
+Interface declarations do not accept a `where` clause at the parser level;
+constraints on interface type parameters are expressed directly in the type
+parameter list. A source form such as `interface I<T> where T: Eq { ... }` is a
+syntax error, not a delayed type-checker rule.
 
 ```zom
 // Short form (single type param, two bounds)
