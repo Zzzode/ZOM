@@ -1347,6 +1347,11 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
           }
           return storeType(expr, cloneType(resolvedLhs));
         }
+        auto loc = getNodeLoc(impl->tree, expr);
+        impl->diags.diagnose<DiagID::CheckerTraitNotImplemented>(loc, resolvedLhs.toString(),
+                                                                 traitName);
+        impl->hadErrors = true;
+        return storeType(expr, zc::heap<type::ErrorType>());
       }
       // If either operand is ErrorType or TypeVar, suppress cascading errors.
       if (isError(resolvedLhs) || isError(resolvedRhs) || isTypeVar(resolvedLhs) ||
