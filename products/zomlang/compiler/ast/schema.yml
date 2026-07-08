@@ -955,6 +955,20 @@ variants:
       - {name: elem, type: NodeId, cast: TypeExpr}
       - {name: len_expr, type: NodeId, cast: Expression, optional: true}
 
+  - id: 0x0D1
+    name: ReferenceTypeExpr
+    doc:  "&T / &mut T reference type"
+    fields:
+      - {name: elem, type: NodeId, cast: TypeExpr}
+      - {name: is_mut, type: bool}
+
+  - id: 0x0D2
+    name: RawPointerTypeExpr
+    doc:  "*const T / *mut T raw pointer type"
+    fields:
+      - {name: elem, type: NodeId, cast: TypeExpr}
+      - {name: is_mut, type: bool}
+
   - id: 0x0CD
     name: TypeQueryExpr
     doc:  "typeof path type query"

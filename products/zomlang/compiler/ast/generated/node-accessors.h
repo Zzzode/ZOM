@@ -224,6 +224,8 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::ObjectTypeExpr: return true;
     case SyntaxKind::TupleTypeExpr: return true;
     case SyntaxKind::AssociatedTypeProjectionExpr: return true;
+    case SyntaxKind::ReferenceTypeExpr: return true;
+    case SyntaxKind::RawPointerTypeExpr: return true;
     case SyntaxKind::SuspendStatement: return true;
     case SyntaxKind::UntilClause: return true;
     case SyntaxKind::BlockStmt: return true;
@@ -390,6 +392,8 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::ObjectTypeExpr: return "ObjectTypeExpr";
     case SyntaxKind::TupleTypeExpr: return "TupleTypeExpr";
     case SyntaxKind::AssociatedTypeProjectionExpr: return "AssociatedTypeProjectionExpr";
+    case SyntaxKind::ReferenceTypeExpr: return "ReferenceTypeExpr";
+    case SyntaxKind::RawPointerTypeExpr: return "RawPointerTypeExpr";
     case SyntaxKind::SuspendStatement: return "SuspendStatement";
     case SyntaxKind::UntilClause: return "UntilClause";
     case SyntaxKind::BlockStmt: return "BlockStmt";

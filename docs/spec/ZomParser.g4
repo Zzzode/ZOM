@@ -3033,6 +3033,8 @@ postfixType
 
 atomType
     : predefinedType                                                                      # typePredefined
+    | BIT_AND MUT? typeExpr                                                               # typeReference
+    | MUL ( CONST | MUT )? typeExpr                                                       # typeRawPointer
     | dynType                                                                             # typeDyn
     | associatedTypeProjection                                                            # typeAssociatedProjection
     | attributePath ( LT typeArgList genericClose )?                                     # typeQualified

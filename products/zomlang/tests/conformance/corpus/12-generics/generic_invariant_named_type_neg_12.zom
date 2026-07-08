@@ -1,12 +1,9 @@
-interface Shape { }
-interface Drawable : Shape { }
-
 class Vec<T> { }
 
-fun make_drawables() -> Vec<dyn Drawable>;
+fun make_mut_refs() -> Vec<&mut i32>;
 
-fun read_shapes(xs: Vec<dyn Shape>) -> unit {
+fun read_refs(xs: Vec<&i32>) -> unit {
     return;
 }
 
-read_shapes(make_drawables());
+read_refs(make_mut_refs());

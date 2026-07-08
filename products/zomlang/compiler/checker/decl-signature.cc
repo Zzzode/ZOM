@@ -940,6 +940,12 @@ zc::Own<type::Type> DeclSignatureComputer::resolveTypeExpr(ast::NodeId typeExprI
     case SyntaxKind::BottomTypeExpr:
       return type::PrimitiveType::createNever();
 
+    case SyntaxKind::ReferenceTypeExpr:
+      return resolveReferenceType(typeExprId);
+
+    case SyntaxKind::RawPointerTypeExpr:
+      return resolveRawPointerType(typeExprId);
+
     case SyntaxKind::UnaryExpression: {
       auto op = static_cast<ast::UnaryOperatorKind>(node.payload.words[kUnaryExpressionOpWord]);
       if (op == ast::UnaryOperatorKind::Ref) { return resolveReferenceType(typeExprId); }
@@ -1247,27 +1253,28 @@ zc::Own<type::Type> DeclSignatureComputer::resolveReferenceType(ast::NodeId type
 
   const auto& node = impl->tree.node(typeExprId);
 
-  // Handle UnaryExpression with Ref operator: &T or &mut T
+  if (node.kind == SyntaxKind::ReferenceTypeExpr) {
+    auto elemId = ast::NodeId(node.payload.words[kReferenceTypeExprElemWord]);
+    auto elemType = resolveTypeExpr(elemId);
+    auto mutability = node.payload.words[kReferenceTypeExprIsMutWord] != 0
+                          ? type::Mutability::Mutable
+                          : type::Mutability::Const;
+    return zc::heap<type::ReferenceType>(zc::mv(elemType), mutability);
+  }
+
+  // Compatibility path for existing unit-test builders that still encode &T
+  // as a UnaryExpression over a type expression.
   if (node.kind == SyntaxKind::UnaryExpression) {
     auto operandId = ast::NodeId(node.payload.words[kUnaryExpressionOperandWord]);
 
-    // Determine mutability.
-    // Default to Const. The parser may encode &mut T differently (e.g., as
-    // a nested structure or with a keyword marker). For now, we check if
-    // the operand has any mutability indicator.
     auto mutability = type::Mutability::Const;
 
-    // Check if the operand indicates mutability (e.g., the inner expression
-    // starts with a `mut` keyword). This handles the case where the parser
-    // represents `&mut T` as &(mut T) with mut as a prefix NamedTypeExpr.
     if (impl->tree.contains(operandId)) {
       const auto& operand = impl->tree.node(operandId);
       if (operand.kind == SyntaxKind::NamedTypeExpr) {
         auto pathId = ast::NodeId(operand.payload.words[kNamedTypeExprPathWord]);
         auto name = resolvePathName(pathId);
         if (name == "mut"_zc) {
-          // This is `&mut T` where `mut T` is represented as a NamedTypeExpr
-          // with path "mut". The actual pointee type is in the type args.
           mutability = type::Mutability::Mutable;
           NodeList args;
           args.first = operand.payload.words[kNamedTypeExprArgsFirstWord];
@@ -1281,7 +1288,6 @@ zc::Own<type::Type> DeclSignatureComputer::resolveReferenceType(ast::NodeId type
       }
     }
 
-    // Standard case: &T where T is the operand
     auto innerType = resolveTypeExpr(operandId);
     return zc::heap<type::ReferenceType>(zc::mv(innerType), mutability);
   }
@@ -1300,15 +1306,22 @@ zc::Own<type::Type> DeclSignatureComputer::resolveRawPointerType(ast::NodeId typ
 
   const auto& node = impl->tree.node(typeExprId);
 
-  // Handle UnaryExpression with Deref operator: *T
-  // For *const T and *mut T, the parser may represent this as *(mut T)
-  // or *(const T) with the mutability keyword as a NamedTypeExpr prefix.
+  if (node.kind == SyntaxKind::RawPointerTypeExpr) {
+    auto elemId = ast::NodeId(node.payload.words[kRawPointerTypeExprElemWord]);
+    auto elemType = resolveTypeExpr(elemId);
+    auto mutability = node.payload.words[kRawPointerTypeExprIsMutWord] != 0
+                          ? type::Mutability::Mutable
+                          : type::Mutability::Const;
+    return zc::heap<type::RawPointerType>(zc::mv(elemType), mutability);
+  }
+
+  // Compatibility path for existing unit-test builders that still encode *T
+  // as a UnaryExpression over a type expression.
   if (node.kind == SyntaxKind::UnaryExpression) {
     auto operandId = ast::NodeId(node.payload.words[kUnaryExpressionOperandWord]);
 
     auto mutability = type::Mutability::Const;
 
-    // Check if the operand indicates mutability (*mut T) or const (*const T).
     if (impl->tree.contains(operandId)) {
       const auto& operand = impl->tree.node(operandId);
       if (operand.kind == SyntaxKind::NamedTypeExpr) {
@@ -1316,7 +1329,6 @@ zc::Own<type::Type> DeclSignatureComputer::resolveRawPointerType(ast::NodeId typ
         auto name = resolvePathName(pathId);
         if (name == "mut"_zc) {
           mutability = type::Mutability::Mutable;
-          // Extract actual pointee from type args
           NodeList args;
           args.first = operand.payload.words[kNamedTypeExprArgsFirstWord];
           args.size = operand.payload.words[kNamedTypeExprArgsSizeWord];
@@ -1328,7 +1340,6 @@ zc::Own<type::Type> DeclSignatureComputer::resolveRawPointerType(ast::NodeId typ
         }
         if (name == "const"_zc) {
           mutability = type::Mutability::Const;
-          // Extract actual pointee from type args
           NodeList args;
           args.first = operand.payload.words[kNamedTypeExprArgsFirstWord];
           args.size = operand.payload.words[kNamedTypeExprArgsSizeWord];
@@ -1341,7 +1352,6 @@ zc::Own<type::Type> DeclSignatureComputer::resolveRawPointerType(ast::NodeId typ
       }
     }
 
-    // Standard case: *T where T is the operand
     auto innerType = resolveTypeExpr(operandId);
     return zc::heap<type::RawPointerType>(zc::mv(innerType), mutability);
   }

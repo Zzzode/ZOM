@@ -1,0 +1,5 @@
+section: "03-types generic raw pointer type arguments"
+covers_rule: "typeNamed, typeArgList, rawPointerType"
+expected: "ACCEPT"
+notes:
+  - "Generic type arguments may be raw pointer types, including *const T and *mut T."

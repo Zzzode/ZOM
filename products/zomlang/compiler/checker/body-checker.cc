@@ -897,6 +897,26 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
     return zc::heap<type::ExistentialType>(zc::mv(intersection));
   }
 
+  if (node.kind == SyntaxKind::ReferenceTypeExpr) {
+    auto elemId = NodeId(node.payload.words[kReferenceTypeExprElemWord]);
+    auto elemType = resolveTypeExpr(elemId);
+    if (!elemType) { return zc::Own<type::Type>(); }
+    auto mutability = node.payload.words[kReferenceTypeExprIsMutWord] != 0
+                          ? type::Mutability::Mutable
+                          : type::Mutability::Const;
+    return zc::heap<type::ReferenceType>(zc::mv(elemType), mutability);
+  }
+
+  if (node.kind == SyntaxKind::RawPointerTypeExpr) {
+    auto elemId = NodeId(node.payload.words[kRawPointerTypeExprElemWord]);
+    auto elemType = resolveTypeExpr(elemId);
+    if (!elemType) { return zc::Own<type::Type>(); }
+    auto mutability = node.payload.words[kRawPointerTypeExprIsMutWord] != 0
+                          ? type::Mutability::Mutable
+                          : type::Mutability::Const;
+    return zc::heap<type::RawPointerType>(zc::mv(elemType), mutability);
+  }
+
   if (node.kind == SyntaxKind::UnaryExpression) {
     auto op = static_cast<ast::UnaryOperatorKind>(node.payload.words[kUnaryExpressionOpWord]);
     auto operandId = NodeId(node.payload.words[kUnaryExpressionOperandWord]);

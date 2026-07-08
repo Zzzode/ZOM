@@ -859,6 +859,18 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
         if (tree.contains(child)) { fn(child); }
       }
       return;
+    case SyntaxKind::ReferenceTypeExpr:
+      {
+        const NodeId child(node.payload.words[kReferenceTypeExprElemWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
+    case SyntaxKind::RawPointerTypeExpr:
+      {
+        const NodeId child(node.payload.words[kRawPointerTypeExprElemWord]);
+        if (tree.contains(child)) { fn(child); }
+      }
+      return;
     case SyntaxKind::SuspendStatement:
       {
         const NodeId child(node.payload.words[kSuspendStatementUntilCondWord]);

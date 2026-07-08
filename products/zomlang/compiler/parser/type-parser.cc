@@ -946,6 +946,40 @@ Parser::Impl::TypeParseResult Parser::Impl::parseAtomType(AstFactory& builder, T
   if (isIdentifierText(start, "dyn"_zc)) { return parseDynType(builder, cursor, limit); }
 
   switch (atomStart) {
+    case ast::SyntaxKind::Ampersand: {
+      cursor.advance();
+      bool isMut = false;
+      if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::MutKeyword) {
+        isMut = true;
+        cursor.advance();
+      }
+      TypeParseResult operand = parseTypeExpression(builder, cursor, limit);
+      if (!operand.node) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start + 1));
+        return TypeParseResult();
+      }
+      return TypeParseResult{
+          builder.makeReferenceTypeExpr(rangeFor(start, operand.next), operand.node, isMut),
+          operand.next};
+    }
+    case ast::SyntaxKind::Asterisk: {
+      cursor.advance();
+      bool isMut = false;
+      if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::MutKeyword) {
+        isMut = true;
+        cursor.advance();
+      } else if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::ConstKeyword) {
+        cursor.advance();
+      }
+      TypeParseResult operand = parseTypeExpression(builder, cursor, limit);
+      if (!operand.node) {
+        diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start + 1));
+        return TypeParseResult();
+      }
+      return TypeParseResult{
+          builder.makeRawPointerTypeExpr(rangeFor(start, operand.next), operand.node, isMut),
+          operand.next};
+    }
     case ast::SyntaxKind::LeftParen:
       return parseParenthesizedOrTupleType(builder, cursor, limit);
     case ast::SyntaxKind::TypeOfKeyword:

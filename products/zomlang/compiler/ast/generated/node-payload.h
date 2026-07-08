@@ -595,6 +595,14 @@ constexpr uint32_t kAssociatedTypeProjectionExprBaseTyWord = 0;
 constexpr uint32_t kAssociatedTypeProjectionExprIfaceTyWord = 1;
 constexpr uint32_t kAssociatedTypeProjectionExprNameWord = 2;
 
+constexpr uint32_t kReferenceTypeExprPayloadWordCount = 2;
+constexpr uint32_t kReferenceTypeExprElemWord = 0;
+constexpr uint32_t kReferenceTypeExprIsMutWord = 1;
+
+constexpr uint32_t kRawPointerTypeExprPayloadWordCount = 2;
+constexpr uint32_t kRawPointerTypeExprElemWord = 0;
+constexpr uint32_t kRawPointerTypeExprIsMutWord = 1;
+
 constexpr uint32_t kSuspendStatementPayloadWordCount = 3;
 constexpr uint32_t kSuspendStatementModeWord = 0;
 constexpr uint32_t kSuspendStatementUntilCondWord = 1;

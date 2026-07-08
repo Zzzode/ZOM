@@ -862,6 +862,20 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::AssociatedTypeProjectionExpr, zc::mv(range), payload);
   }
 
+  NodeId makeReferenceTypeExpr(source::SourceRange range, NodeId elem, bool is_mut) {
+    NodePayload payload;
+    payload.words[kReferenceTypeExprElemWord] = elem.value;
+    payload.words[kReferenceTypeExprIsMutWord] = is_mut ? 1u : 0u;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ReferenceTypeExpr, zc::mv(range), payload);
+  }
+
+  NodeId makeRawPointerTypeExpr(source::SourceRange range, NodeId elem, bool is_mut) {
+    NodePayload payload;
+    payload.words[kRawPointerTypeExprElemWord] = elem.value;
+    payload.words[kRawPointerTypeExprIsMutWord] = is_mut ? 1u : 0u;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::RawPointerTypeExpr, zc::mv(range), payload);
+  }
+
   NodeId makeSuspendStatement(source::SourceRange range, SuspendMode mode, NodeId until_cond, uint32_t on_timeout_ms) {
     NodePayload payload;
     payload.words[kSuspendStatementModeWord] = static_cast<uint32_t>(mode);

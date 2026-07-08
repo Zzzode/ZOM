@@ -1,0 +1,2 @@
+alias ConstPtrVec = Vec<*const i32>;
+alias MutPtrVec = Vec<*mut i32>;

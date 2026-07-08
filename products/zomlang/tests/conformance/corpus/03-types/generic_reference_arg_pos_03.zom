@@ -1,0 +1,2 @@
+alias MutRefVec = Vec<&mut i32>;
+alias SharedRefVec = Vec<&i32>;

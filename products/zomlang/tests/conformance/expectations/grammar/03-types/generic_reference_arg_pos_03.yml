@@ -1,0 +1,5 @@
+section: "03-types generic reference type arguments"
+covers_rule: "typeNamed, typeArgList, referenceType"
+expected: "ACCEPT"
+notes:
+  - "Generic type arguments may be reference types, including &T and &mut T."
