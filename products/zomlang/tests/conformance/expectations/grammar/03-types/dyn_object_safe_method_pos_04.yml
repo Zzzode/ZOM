@@ -1,0 +1,5 @@
+section: "03-types dyn object safety conformance"
+covers_rule: "dynType, standaloneImplDeclaration, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that a concrete type implementing an object-safe interface with an instance method coerces to dyn Drawable through the CLI pipeline."
