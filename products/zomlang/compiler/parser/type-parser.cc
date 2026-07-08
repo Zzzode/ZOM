@@ -650,35 +650,47 @@ Parser::Impl::TypeParseResult Parser::Impl::parseDynType(AstFactory& builder, To
   cursor.advance();
 
   zc::Vector<ast::NodeId> ifaces;
-  while (cursor.position() < limit) {
-    if (cursor.peek() == ast::SyntaxKind::Plus) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(
-          diagnosticLoc(cursor.position()));
-      return TypeParseResult();
-    }
+  zc::Vector<ast::NodeId> markers;
 
-    const size_t itemStart = cursor.position();
-    TypeParseResult item = parsePostfixType(builder, cursor, limit);
-    if (!item.node) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(itemStart));
-      return TypeParseResult();
-    }
-    ifaces.add(item.node);
-
-    if (cursor.position() >= limit || cursor.peek() != ast::SyntaxKind::Plus) { break; }
-    cursor.advance();
-  }
-
-  if (ifaces.empty()) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start + 1));
+  if (cursor.position() >= limit || cursor.peek() == ast::SyntaxKind::Plus) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(cursor.position()));
     return TypeParseResult();
   }
 
-  ast::NodeId ifaceList = builder.makeDynTypeIfaceList(rangeFor(start + 1, cursor.position()),
+  const size_t ifaceStart = cursor.position();
+  TypeParseResult iface = parsePostfixType(builder, cursor, limit);
+  if (!iface.node) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(ifaceStart));
+    return TypeParseResult();
+  }
+  ifaces.add(iface.node);
+
+  while (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::Plus) {
+    cursor.advance();
+
+    const size_t markerStart = cursor.position();
+    const size_t markerEnd = findAttributePathEnd(markerStart, limit);
+    if (markerEnd <= markerStart) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(markerStart));
+      return TypeParseResult();
+    }
+
+    markers.add(makeAttributePath(builder, markerStart, markerEnd));
+    cursor.moveTo(markerEnd);
+  }
+
+  ast::NodeId ifaceList = builder.makeDynTypeIfaceList(rangeFor(start + 1, iface.next),
                                                        static_cast<uint8_t>(ifaces.size()),
                                                        builder.makeList(ifaces.asPtr()));
+  ast::NodeId markerList;
+  if (!markers.empty()) {
+    markerList = builder.makeDynTypeMarkerList(rangeFor(iface.next + 1, cursor.position()),
+                                               static_cast<uint8_t>(markers.size()),
+                                               builder.makeList(markers.asPtr()));
+  }
+
   return TypeParseResult{builder.makeDynTypeExpr(rangeFor(start, cursor.position()), ifaceList,
-                                                 ast::NodeId(), false, ast::IdentId()),
+                                                 markerList, false, ast::IdentId()),
                          cursor.position()};
 }
 

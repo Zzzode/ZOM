@@ -11,15 +11,14 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             DynTypeExpr #6 @1:17..1:36 has_lifetime=false lifetime=null
 // CHECK-NEXT:               ifaces_id:
-// CHECK-NEXT:                 DynTypeIfaceList #5 @1:21..1:36 n_ifaces=2
+// CHECK-NEXT:                 DynTypeIfaceList #4 @1:21..1:25 n_ifaces=1
 // CHECK-NEXT:                   ifaces:
 // CHECK-NEXT:                     NamedTypeExpr #2 @1:21..1:25
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #1 @1:21..1:25 segments=["Read"]
 // CHECK-NEXT:                       args: []
-// CHECK-NEXT:                     NamedTypeExpr #4 @1:28..1:36
-// CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #3 @1:28..1:36 segments=["Sendable"]
-// CHECK-NEXT:                       args: []
-// CHECK-NEXT:               markers_id: null
+// CHECK-NEXT:               markers_id:
+// CHECK-NEXT:                 DynTypeMarkerList #5 @1:28..1:36 n_markers=1
+// CHECK-NEXT:                   markers:
+// CHECK-NEXT:                     AttributePath #3 @1:28..1:36 segments=["Sendable"] leading=None
 // CHECK-NEXT:       attrs: null
