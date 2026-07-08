@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/04-expressions/index_trait_signature_mismatch_neg_06.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/index_trait_signature_mismatch_neg_06.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4432]: Operator trait 'Index' for type 'Bag' must define 'index(i32) -> i32'
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]index_trait_signature_mismatch_neg_06\.zom:15:1$}}
+
+// CHECK-LITERAL: Error [ZOM4019]: Operator trait 'Index' for type 'Bag' must define 'index(i32) -> i32'
+// CHECK-LITERAL:   --> 04-expressions/index_trait_signature_mismatch_neg_06.zom:15:1
+// CHECK-LITERAL:    |
 // CHECK-LITERAL: 15 | bag[0];
 // CHECK-LITERAL:    | ^

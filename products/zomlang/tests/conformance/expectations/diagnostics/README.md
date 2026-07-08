@@ -8,7 +8,7 @@ Use the safe two-step failure pattern so FileCheck failures are not hidden by
 shell pipeline negation:
 
 ```text
-// RUN: ! %zomc compile --syntax-only %corpus/<path>.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only <path>.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 ```
 
@@ -19,6 +19,8 @@ expectations should match the displayed text directly. Use regex blocks only
 for unstable path prefixes or other intentionally variable fields.
 Use `CHECK-LITERAL` or `CHECK-NEXT-LITERAL` for source and caret lines whose
 leading spaces matter.
-For source-location lines, prefer `CHECK:   -->` followed by `CHECK-SAME` for
-the platform-dependent path suffix; do not encode gutter or caret lines as
-regexes.
+For source-location lines, run the compiler from `%corpus` and match the
+relative path literally, for example
+`CHECK-LITERAL:   --> 04-expressions/example.zom:1:1`. Do not split the arrow
+and path across `CHECK` / `CHECK-SAME`, and do not encode gutter or caret lines
+as regexes.

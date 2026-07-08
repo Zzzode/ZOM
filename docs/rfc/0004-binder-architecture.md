@@ -79,7 +79,7 @@ or resolve identifiers. This RFC specifies the complete binding contract.
   correct scopes with proper visibility.
 - **G8.** `BindingMetadata` provides O(1) lookup from `NodeId` to resolved
   `SymbolId` for every identifier node.
-- **G9.** The binder emits diagnostics in the 3300–3399 range per
+- **G9.** The binder emits diagnostics in the 3000–3099 range per
   `compiler-contracts.md` §2.
 
 ## Non-Goals
@@ -199,7 +199,7 @@ The binder performs these steps:
 3. In `main`'s body: `IdentifierExpr("fibonacci")` → module scope lookup.
 4. `IdentifierExpr("result")` → function scope lookup.
 5. `IdentifierExpr("print")` → module scope → not found → emits
-   `ZOM3301: unresolved identifier 'print'`.
+   `ZOM3001: Undefined identifier: 'print'`.
 
 The result: every `IdentifierExpr` node has its `NodeId` mapped to a
 `SymbolId` in `BindingMetadata`. The type checker later reads this mapping
@@ -218,7 +218,7 @@ The binder resolves each `use` path:
 3. `Vec` → find the `Vec` symbol in `vector`'s scope.
 4. Insert a re-export of `Vec` into the current module scope.
 
-If any segment of the path is not found, the binder emits `ZOM3315:
+If any segment of the path is not found, the binder emits `ZOM3015:
 unresolved import path`.
 
 ### Shadowing
@@ -232,7 +232,7 @@ fun f() {
 ```
 
 The binder records that the inner `x` shadows the outer `x`. If the
-`shadow` lint is enabled, a note diagnostic `ZOM3302` is emitted pointing
+`shadow` lint is enabled, a note diagnostic `ZOM3002` is emitted pointing
 to both declarations.
 
 ## Reference-Level Design
@@ -268,7 +268,7 @@ flowchart TD
     P2 -->|resolutions| BM
     P1 -->|new symbols| ST2
     P2 --> DE
-    DE -->|3300-3399 range| BM
+    DE -->|3000-3099 range| BM
 ```
 
 ### Phase 1: Declaration Collection
@@ -317,7 +317,7 @@ regardless of source order.**
 
 **Nested function visibility rule:** `self` and `this` are only visible in the
 direct method/constructor body. Nested functions
-(`fun helper() { self.bar() }`) cannot access `self` — emit ZOM3320. Use
+(`fun helper() { self.bar() }`) cannot access `self` — emit ZOM3020. Use
 closures to capture outer variables.
 
 #### Collection Algorithm (Pseudocode)
@@ -450,8 +450,8 @@ in Phase 1:
 
 | Condition | Diagnostic |
 |---|---|
-| Two symbols with same name in same scope (non-method) | `ZOM3303: redeclaration of 'x'` |
-| Method with same name as non-method in same scope | `ZOM3304: 'x' conflicts with prior declaration` |
+| Two symbols with same name in same scope (non-method) | `ZOM3003: redeclaration of 'x'` |
+| Method with same name as non-method in same scope | `ZOM3004: 'x' conflicts with prior declaration` |
 
 ### Phase 1.5: Import Resolution
 
@@ -464,7 +464,7 @@ function resolve_imports(scope: Scope):
   for import in pending_imports:
     resolved = resolve_import_path(import.path, scope)
     if resolved is NotFound:
-      emit(ZOM3315, import.range, "unresolved import '{path}'")
+      emit(ZOM3015, import.range, "unresolved import '{path}'")
       metadata.set_unresolved(import.id)
     else:
       metadata.set_symbol(import.id, resolved.symbol.id)
@@ -558,19 +558,19 @@ function resolve(node: NodeId, scope: Scope):
       name = node.token.text
       result = resolve_name(name, scope, Value)
       if result is NotFound:
-        emit(ZOM3301, node.range, "unresolved identifier '{name}'")
+        emit(ZOM3001, node.range, "Undefined identifier: '{name}'")
         metadata.set_unresolved(node.id)
       else:
         metadata.set_symbol(node.id, result.symbol.id)
         if result.symbol.is_shadowed():
-          emit_note(ZOM3302, node.range,
+          emit_note(ZOM3002, node.range,
                     "'{name}' shadows prior declaration at {prev_range}")
 
     case IdentifierType:
       name = node.token.text
       result = resolve_name(name, scope, Type)
       if result is NotFound:
-        emit(ZOM3310, node.range, "unknown type '{name}'")
+        emit(ZOM3010, node.range, "unknown type '{name}'")
         metadata.set_unresolved(node.id)
       else:
         metadata.set_symbol(node.id, result.symbol.id)
@@ -640,7 +640,7 @@ function resolve_import_path(segments: [String], from: Scope) -> LookupResult:
       member_scope = current_sym.get_member_scope()
       next_sym = member_scope.lookup_locally(segments[i])
     else:
-      emit(ZOM3316, ..., "'{segments[i-1]}' is not importable as a path")
+      emit(ZOM3016, ..., "'{segments[i-1]}' is not importable as a path")
       return NotFound
 
     if next_sym is NotFound:
@@ -671,7 +671,7 @@ in the importing scope. The symbol's canonical identity is preserved.
   local declaration in the same scope, the local declaration wins and no
   diagnostic is emitted (local takes precedence, like Rust).
 - If two glob imports both provide the same name, and no local declaration
-  resolves it, emit ZOM3317 for ambiguity.
+  resolves it, emit ZOM3017 for ambiguity.
 
 ### BindingMetadata Contract
 
@@ -725,28 +725,28 @@ Labels live in a **label namespace** separate from value/type namespaces.
   Phase 2.
 - `label_target(node) -> Maybe<NodeId>` in `BindingMetadata` records the
   resolved label target node.
-- If a label is not found in any enclosing scope, emit ZOM3301 adapted
+- If a label is not found in any enclosing scope, emit ZOM3001 adapted
   for labels: `unresolved label 'label_name'`.
 
-### Diagnostic Catalog (3300–3399)
+### Diagnostic Catalog (3000–3099)
 
 | Code | Severity | Message Template |
 |---|---|---|
-| ZOM3301 | Error | `unresolved identifier '{name}'` |
-| ZOM3302 | Note | `'{name}' shadows prior declaration here` |
-| ZOM3303 | Error | `redeclaration of '{name}'` |
-| ZOM3304 | Error | `'{name}' conflicts with prior declaration of kind '{kind}'` |
-| ZOM3305 | Error | `cannot shadow '{name}'; use explicit 'shadow' keyword` |
-| ZOM3310 | Error | `unknown type '{name}'` |
-| ZOM3311 | Error | `'{name}' is not a type` |
-| ZOM3312 | Error | `generic parameter '{name}' already declared` |
-| ZOM3315 | Error | `unresolved import '{path}'` |
-| ZOM3316 | Error | `'{segment}' is not importable as a path` |
-| ZOM3317 | Error | `import '{name}' conflicts with local declaration` |
-| ZOM3320 | Error | `'self' is not available in this context` |
-| ZOM3321 | Error | `'this' is not available in this context` |
-| ZOM3330 | Error | `enum variant '{name}' not found in enum '{enum_name}'` |
-| ZOM3380 | Note | `prior declaration of '{name}' here` (attached to ZOM3303) |
+| ZOM3001 | Error | `Undefined identifier: '{name}'` |
+| ZOM3002 | Note | `'{name}' shadows prior declaration here` |
+| ZOM3003 | Error | `redeclaration of '{name}'` |
+| ZOM3004 | Error | `'{name}' conflicts with prior declaration of kind '{kind}'` |
+| ZOM3005 | Error | `cannot shadow '{name}'; use explicit 'shadow' keyword` |
+| ZOM3010 | Error | `unknown type '{name}'` |
+| ZOM3011 | Error | `'{name}' is not a type` |
+| ZOM3012 | Error | `generic parameter '{name}' already declared` |
+| ZOM3015 | Error | `unresolved import '{path}'` |
+| ZOM3016 | Error | `'{segment}' is not importable as a path` |
+| ZOM3017 | Error | `import '{name}' conflicts with local declaration` |
+| ZOM3020 | Error | `'self' is not available in this context` |
+| ZOM3021 | Error | `'this' is not available in this context` |
+| ZOM3030 | Error | `enum variant '{name}' not found in enum '{enum_name}'` |
+| ZOM3080 | Note | `prior declaration of '{name}' here` (attached to ZOM3003) |
 
 ### Invariants
 
@@ -815,7 +815,7 @@ operates entirely within the compiler process. However:
 | Two-phase design requires walking the AST twice. | The AST is already fully materialized in memory. A full walk of 100K-node trees takes < 1ms. The clarity benefit of separate phases outweighs the cost. |
 | Deferred member resolution pushes work to the checker. | This is the correct division: member resolution requires type information. The binder provides the member name token; the checker does the lookup with full type knowledge. |
 | Forward references could hide circular dependency bugs. | The checker detects circular type dependencies. Forward *value* references (function calling function declared later) are intentional and well-defined. |
-| Separate value/type namespaces may confuse users. | This is the standard in ML, Rust, and Swift. The error messages explicitly say "not a type" (ZOM3311) or "unresolved identifier" (ZOM3301) to guide the user. |
+| Separate value/type namespaces may confuse users. | This is the standard in ML, Rust, and Swift. The error messages explicitly say "not a type" (ZOM3011) or "Undefined identifier" (ZOM3001) to guide the user. |
 | Import resolution without cross-crate support in v1. | Single-crate binding is sufficient for initial testing. Cross-crate support is a `CompilerSession` concern tracked separately. |
 
 ## Alternatives Considered
@@ -917,11 +917,11 @@ already defined in `ast/tree.h`.
    name. Unit test: verify `shadow_of` metadata is set correctly.
 5. **Import resolution:** `use std::collections::Vec` resolves to the
    correct symbol. Conformance test with a mock two-module setup.
-6. **Unresolved identifier:** Using an undefined name emits ZOM3301 and
+6. **Unresolved identifier:** Using an undefined name emits ZOM3001 and
    marks the node `is_unresolved`. `name-resolver-test.cc` covers the
    metadata path and `undefined_identifier_neg_15.check` covers the
    user-visible CLI diagnostic display.
-7. **Redeclaration:** Two `let x` in the same scope emit ZOM3303.
+7. **Redeclaration:** Two `let x` in the same scope emit ZOM3003.
 8. **Value/type namespace separation:** `fun foo()` and `struct Foo`
    coexist without conflict. Unit test.
 9. **Generic parameters:** `fun f<T>(x: T) -> T { x }` correctly binds
@@ -933,12 +933,12 @@ already defined in `ast/tree.h`.
     diagnostic is emitted.
 12. **No AST mutation:** After binding, the AST tree is byte-identical
     to before binding. Unit test with tree hash.
-13. **Diagnostic range:** ZOM3301 diagnostic points at the identifier
+13. **Diagnostic range:** ZOM3001 diagnostic points at the identifier
     token's source range, not the enclosing expression.
     `undefined_identifier_neg_15.check` asserts the exact source/caret
     display at the unresolved identifier token.
 14. **`self` resolution:** Inside a method, `self` resolves to the
-    method-scope self variable. Outside a method, `self` emits ZOM3320.
+    method-scope self variable. Outside a method, `self` emits ZOM3020.
 15. **Scope tree shape:** The scope tree mirrors AST lexical nesting
     exactly. Verified by dumping scope tree and comparing to expected
     structure.
@@ -957,9 +957,9 @@ already defined in `ast/tree.h`.
     symbol in `captures()` metadata. Unit test.
 21. **Glob import precedence:** Local declaration takes precedence over
     glob-imported name of same name (no diagnostic). Two globs providing
-    same name emit ZOM3317.
+    same name emit ZOM3017.
 22. **Nested function `self` access:** `fun helper() { self.bar() }`
-    inside a method emits ZOM3320.
+    inside a method emits ZOM3020.
 23. **`check-rfc.py` passes.**
 24. **`check-format.py` passes.**
 25. **All existing 742+ tests still pass.**
@@ -981,7 +981,7 @@ already defined in `ast/tree.h`.
    Computes closure capture sets and label targets.
    File: `binder/name-resolver.cc` + `.h`.
 5. **Add binder diagnostics** — Create `diagnostics-binder.def` with
-   codes ZOM3301-ZOM3380.
+   codes ZOM3001-ZOM3080.
 6. **Wire into `Binder::bind()`** — Call collect, then resolve_imports,
    then resolve.
 7. **Driver integration** — Call `binder.bind()` after successful parse.
@@ -1014,4 +1014,4 @@ None.
 | 2026-07-05 | DRAFT | Initial draft of complete binder architecture. Covers two-phase collection/resolution, scope tree, import resolution, BindingMetadata contract, and 18 acceptance criteria. |
 | 2026-07-05 | DRAFT | Applied fixes: moved match arm scope creation to Phase 1; added binding position vs. expression position rules; added `collect_pattern_bindings()` helper; added Phase 1.5 import resolution; added closure capture tracking; added `if let`/`while let` scope rules; added label resolution; clarified `self`/`this` nested function visibility; added glob import conflict rules; clarified `scope_stack`/`scope` parameter convention. |
 | 2026-07-07 | REVIEW | Binder implementation is complete and verified; opened implementation-backed owner review before acceptance. Required decision and approvers remain the next governance gate. |
-| 2026-07-08 | REVIEW | Added binder diagnostic conformance coverage for unresolved identifiers (`ZOM3301`) and aligned the implementation diagnostic registry with the RFC 0004 ZOM33xx range. |
+| 2026-07-08 | REVIEW | Added binder diagnostic conformance coverage for unresolved identifiers (`ZOM3001`) and aligned the implementation diagnostic registry with the RFC 0004 ZOM30xx range. |

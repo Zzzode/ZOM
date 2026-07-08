@@ -13,6 +13,6 @@
 // the License.
 
 // RFC 0004 binder diagnostics. Numeric values are explicit because the binder
-// contract assigns stable ZOM33xx codes independent of file order.
+// contract assigns stable ZOM30xx codes independent of file order.
 
-DIAG(3301, UndefinedIdentifier, kError, "Undefined identifier: '{0}'", 1)
+DIAG(3001, UndefinedIdentifier, kError, "Undefined identifier: '{0}'", 1)

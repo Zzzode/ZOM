@@ -62,220 +62,30 @@ A compiler engineer who modifies behavior along any labeled edge must update the
 
 ## 2. Diagnostic Code Authority
 
-The table below is the **authoritative copy** of the ZOM diagnostic-code range assignment. The three columns `Range`, `Subsystem`, and `Min-Severity` are a bit-identical mirror of `docs/design/architecture.md` §8; PRs changing any of the three values require simultaneous updates to both files. Additional ZIS-only columns document the owning C++ directory path and whether a subsystem owner may allocate unused sub-ranges without an accepted RFC under `docs/rfc/` (`Extensible = No` means every new code requires an RFC before implementation).
+The table below is the **authoritative copy** of the ZOM diagnostic-code range assignment. The three columns `Range`, `Subsystem`, and `Default Severity` are a bit-identical mirror of `docs/design/architecture.md` §8; PRs changing any of the three values require simultaneous updates to both files. Additional ZIS-only columns document the owning C++ directory path and whether a subsystem owner may allocate unused sub-ranges without an accepted RFC under `docs/rfc/` (`Extensible = No` means every new code requires an RFC before implementation).
 
-| Range (start–end) | Subsystem / Owner path | Owner (C++ dir path) | Min-Severity | Extensible | Example Code |
+| Range (start-end) | Subsystem / Owner path | Owner (C++ dir path) | Default Severity | Extensible | Example Code |
 |---|---|---|---|---|---|
-| 0000–0099 | Reserved for ICE sentinels | `products/zomlang/compiler/diagnostics` | ICE | No | `ZOM0001` = Assertion failure in generic invariant check → ICE |
-| 0100–0199 | Lexer / tokenization | `products/zomlang/compiler/lexer` | Error | No | `ZOM0108` = Unclosed block comment at EOF with no matching `*/` → Error |
-| 0100–0199 | Lexer / tokenization | `products/zomlang/compiler/lexer` | Error | No | `ZOM0121` = Invalid UTF-8 continuation byte in string literal → Error |
-| 0100–0199 | Lexer / tokenization | `products/zomlang/compiler/lexer` | Warning | Yes | `ZOM0153` = Numeric literal contains non-semantic underscore run ≥ 4 chars → Warning |
-| 0200–0299 | Parser / syntax | `products/zomlang/compiler/parser` | Error | No | `ZOM0204` = Expected `;` after statement, found unexpected token → Error |
-| 0200–0299 | Parser / syntax | `products/zomlang/compiler/parser` | Error | No | `ZOM0217` = `if` expression missing `else` branch in non-unit type context → Error |
-| 0200–0299 | Parser / syntax | `products/zomlang/compiler/parser` | Warning | Yes | `ZOM0260` = Ambiguous operator precedence requires explicit parentheses (pedantic) → Warning |
-| 4300–4399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM4331` = interface has a generic method and cannot be used as `dyn` → Error |
-| 4300–4399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM4332` = interface method returns bare `Self` and cannot be used as `dyn` → Error |
-| 4300–4399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM4333` = interface method has a move-self receiver and cannot be used as `dyn` → Error |
-| 4300–4399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM4334` = `dyn` interface requires an associated type to be bound → Error |
-| 4300–4399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM4335` = interface has a static method and cannot be used as `dyn` → Error |
-| 4300–4399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM4336` = interface has a generic associated type and cannot be used as `dyn` → Error |
-| 4300–4399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM4337` = interface method has an unsized boundary type and cannot be used as `dyn` → Error |
-| 4300–4399 | Type checker / dyn object safety | `products/zomlang/compiler/checker` | Error | No | `ZOM4338` = interface inherits an object-unsafe superinterface and cannot be used as `dyn` → Error |
-| 4400–4499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM4410` = type mismatch at an assignment, initializer, return, argument, or coercion site → Error |
-| 4400–4499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM4411` = cannot unify two types in a specific expression context → Error |
-| 4400–4499 | Type checker / unification | `products/zomlang/compiler/checker` | Error | No | `ZOM4412` = infinite type detected during unification → Error |
-| 4400–4499 | Type checker / calls | `products/zomlang/compiler/checker` | Error | No | `ZOM4415` = attempted to call a non-function value → Error |
-| 4400–4499 | Type checker / casts | `products/zomlang/compiler/checker` | Error | No | `ZOM4416` = invalid cast between source and target types → Error |
-| 4400–4499 | Type checker / generic inference | `products/zomlang/compiler/checker` | Error | No | `ZOM4420` = cannot infer an unsolved generic type parameter → Error |
-| 4400–4499 | Type checker / nullable inference | `products/zomlang/compiler/checker` | Error | No | `ZOM4421` = `null` initializer has no explicit target type → Error |
-| 4400–4499 | Type checker / generic inference | `products/zomlang/compiler/checker` | Error | No | `ZOM4423` = explicit generic call type argument count mismatch → Error |
-| 4400–4499 | Type checker / trait coherence | `products/zomlang/compiler/checker` | Error | No | `ZOM4430` = conflicting implementations for the same interface and type → Error |
-| 4400–4499 | Type checker / trait bounds | `products/zomlang/compiler/checker` | Error | No | `ZOM4431` = type does not implement a required interface → Error |
-| 4400–4499 | Type checker / operator traits | `products/zomlang/compiler/checker` | Error | No | `ZOM4432` = operator trait implementation has the wrong method signature → Error |
-| 4400–4499 | Type checker / associated types | `products/zomlang/compiler/checker` | Error | No | `ZOM4433` = associated type projection has no matching binding → Error |
-| 4400–4499 | Type checker / associated types | `products/zomlang/compiler/checker` | Error | No | `ZOM4434` = associated type projection is ambiguous without an interface qualifier → Error |
-| 4400–4499 | Type checker / match analysis | `products/zomlang/compiler/checker` | Error | No | `ZOM4440` = match is non-exhaustive → Error |
-| 4400–4499 | Type checker / match analysis | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM4442` = match arm is unreachable → Warning |
-| 4400–4499 | Type checker / mutability | `products/zomlang/compiler/checker` | Error | No | `ZOM4450` = immutable binding is mutated → Error |
-| 4400–4499 | Type checker / error propagation | `products/zomlang/compiler/checker` | Error | No | `ZOM4460` = `?!` propagates an error not declared by the function's `raises` clause → Error |
-| 4400–4499 | Type checker / error propagation | `products/zomlang/compiler/checker` | Error | No | `ZOM4461` = `!!` is applied to a non-error-union type → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0501` = Impl of marker `Sendable` for type `*mut T` conflicts with negative impl in scope → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0502` = MarkerNameClash: a marker, interface, class, and alias cannot share the same identifier in the type namespace → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0505` = Duplicate standalone `impl I for T` — two impl blocks provide the same (interface, type) pair → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0508` = Diamond-resolution ambiguous: multiple inherited impls provide `foo`; disambiguate with `InterfaceName::foo(this)` → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0517` = MarkerCannotHaveMethods: a marker declaration contains a block body, method signature, or associated type; markers are zero-method structural predicates. Use interface for behavior → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0519` = MarkerCycle: derived-marker declaration transitively references itself (e.g. marker A = A + B). Break the cycle at one participating marker → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0524` = Closure captured value is `!Shared` yet escaped to `spawn()` call boundary → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0531` = AutoMarkerUnionAmbiguous: an auto marker cannot be structurally derived for union types or untagged enums; write an explicit positive or negative impl → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Error | No | `ZOM0535` = UnsafeMarkerImplRequiresUnsafe: impl M for T on an unsafe marker requires the unsafe keyword; attest soundness via `unsafe impl M for T` → Error |
-| 0500–0599 | Marker / coherence engine | `products/zomlang/compiler/checker` | Note | Yes | `ZOM0588` = Coherence scope originates from module declared here → Note |
-| 0600–0699 | Attributes / annotations | `products/zomlang/compiler/parser` | Error | No | `ZOM0611` = Attribute namespace `vendor` missing reverse-domain prefix (expected `com.vendor.xxx`) → Error |
-| 0600–0699 | Attributes / annotations | `products/zomlang/compiler/parser` | Error | No | `ZOM0630` = `#[inline(never)]` applied to generic function with only in-MTU callers → Error |
-| 0600–0699 | Attributes / annotations | `products/zomlang/compiler/parser` | Warning | Yes | `ZOM0670` = Unknown attribute `#[magic]`; no registered handler — ignoring → Warning |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0701` = UnjustifiedNegativeImpl: Negative impl `!M for T` tries to erase a Phase-A seed lang-item marker bit → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0702` = OrphanNegativeImpl: `impl !M for T` where both marker `M` and type `T` are foreign to declaring crate → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0703` = Impl for foreign trait `ForeignTrait` on foreign type `ForeignTy` violates orphan rule → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0708` = Orphan interface impl: both the interface `I` and type `T` are foreign to the declaring crate → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0710` = OrphanGenericHeadUnresolved: Generic parameter at impl-head position cannot be proven local at compile time → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0711` = NegativeImplOnInterface: `impl !I for T` not allowed — interfaces are behavioural contracts, only structural markers can be negated → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0712` = DownstreamBlanketRevivesNegated: Downstream blanket impl restores a marker bit that upstream explicitly negated via `unsafe impl !M for T` → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0713` = OverlapBlanketNotCovered: Blanket impl partially overlaps a concrete impl without v1 specialization support → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0714` = Conflicting impls for trait `Eq<A>` both match after type normalization → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0715` = OrphanFundamentalWrapperMisuse: Type used as "fundamental" in orphan test is not in the compiler-approved Box/Pin/Cell/Unique/RefCell/UnsafeCell list → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0716` = CoherenceMetadataHashMismatch: Upstream crate metadata hash changed between incremental builds; cache flushed and rebuild required → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0720` = SealedInterfaceImplOutsideCrate: `impl I for T` on a `sealed interface I` outside declaring crate or explicit `#[zom::sealed(allow=[...])]` list → Error |
-| 0700–0799 | Orphan rule / impl locality | `products/zomlang/compiler/checker` | Error | No | `ZOM0721` = MarkerIncompatibleUserDefined: Marker pair declared incompatible via `#[zom::marker::incompatible(A, B)]` violated on type `T` → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0805` = Cyclic module dependency: A → B → C → A detected during topological sort → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0810` = ImportNotFound / ModuleNotFound: module `math::geometry::proj` cannot be resolved under any active search path → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0815` = SymbolNotExported: named import `math.geometry.{_distance}` targets symbol declared without `export` in the upstream module → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0820` = AmbiguousImport / ImportNameClash: two imports bind the same local name; use `as` alias to disambiguate → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0821` = `export` symbol not declared in the current module's root scope → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0825` = ReexportNonExportedSymbol: `export a.b.{X}` re-exports a symbol that upstream `a.b` did not itself publish → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0827` = ExportUndefinedSymbol: `export { X }` references a name not present in current module scope → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0828` = DuplicateExportName: two different declaration-sites exported under the same public name → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0830` = PrivateAccessCrossBoundary: identifier `X` (declared `pub(crate)` in upstream crate) is not visible to downstream consumer → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0832` = InvalidVisibilityOnTopLevel: `public` / `private` / `protected` used at module top level; valid only inside class/interface/struct/enum bodies → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0833` = ExportInsideNonExportedContainer: `export` keyword applied to a member of a non-exported container class/struct → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0834` = FinalClassSubclassed: class `B` extends final class `A`; final-classes cannot be subclassed by default — write `open class A` to permit inheritance → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0835` = SealedClassOutsideHierarchy: subclass of sealed `A` declared outside `A`'s declaring crate or `#[zom::sealed(allow=[...])]` list → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0836` = ExtensibilityOnMarker: `open` / `sealed` / `final` modifier applied to a `marker` declaration — markers are always open for implementation → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0840` = ImportMustBeTopLevel: `import` statement appears inside function body / block scope → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0845` = ExportMustBeTopLevel: declaration-site `export` applied to non-top-level nested declaration → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0850` = DuplicateModuleDeclaration: more than one `module x.y;` declaration in a single source file → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Warning | Yes | `ZOM0860` = Import of `foo::bar` is never used in this compilation unit → Warning |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0870` = PackageNotFound: dependency package declared in Zom.toml cannot be resolved → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0871` = VersionConflict: PubGrub resolver cannot satisfy all dependency version constraints — prints conflict chain → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0872` = UnresolvedDependency: `import other_crate::foo` references a crate not listed in `[dependencies]` → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0873` = WorkspaceMemberNotFound: `[workspace].members` glob pattern matches zero valid Zom.toml paths → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0875` = MissingEditionField: Zom.toml `[package]` section missing mandatory `edition` field → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0876` = EditionTooNew: dependency crate requires edition beyond what current compiler version supports → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0881` = ModulePathAmbiguous: symbolic path resolves to BOTH `a/b.zom` AND `a/b/mod.zom` on disk — delete one → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` (bind phase) | Error | No | `ZOM0888` = FileSuffixAmbiguous: file-name suffix could resolve to more than one predefined cfg gate; use explicit `zom::cfg` attribute instead → Error |
-| 0800–0899 | Module / import / export | `products/zomlang/compiler/modules` | Error | No | `ZOM0890` = BuildScriptFailed: `[package].build` helper program exited with non-zero status — full stderr logged → Error |
-| 0900–0949 | FFI / interop | `products/zomlang/compiler/checker` + `products/zomlang/compiler/backend` (planned) | Error | No | `ZOM0904` = `extern "C"` function returns non-FFI-safe type `String` without `#[repr(C)]` → Error |
-| 0900–0949 | FFI / interop | `products/zomlang/compiler/checker` + `products/zomlang/compiler/backend` (planned) | Error | No | `ZOM0918` = C ABI linkage mismatch: declaration specifies `cdecl` but library provides `stdcall` → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0950` = Error-union tagset is ambiguous; two or more variants share identical disambiguation context at this use site → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0951` = Raises-signature mismatch: function body propagates an error variant not declared in the enclosing function's `raises(...)` clause → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0952` = Cannot propagate error: the `?!` operator is used in a context (e.g., unit-returning function or loop body with no enclosing `raises` / return-type union) that has no residual channel → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0953` = Operand of `?!` or `!!` does not implement `interface Try` and is not an error-union type → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0954` = `Try::branch` residual kind does not match the residual expected by the enclosing function's declared return type → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM0955` = `!!` unwrap operator used under the release profile; prefer explicit error handling or document why panic is impossible → Warning |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM0956` = An expression typed `T | E` (or an impl of `interface Try`) is silently discarded without pattern-matching or `?!` propagation → Warning |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Info | Yes | `ZOM0957` = The `main` function declared a non-zero exit-code path that is not reflected in a corresponding raises-clause or `process::exit` call → Info |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0958` = Built-in allocation function is invoked with a layout whose size, alignment, or total padded bytes violate the platform allocator contract → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0959` = Allocation function is annotated (or crate-defaults via `#[zom::oom(panic)]`) to panic on OOM, but a downstream call-site expects an error-union return; declaration-site OOM policy conflicts with use-site error handling → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0960` = `#[zom::derive(Error)]` applied to a declaration that is not an enum and not a struct (e.g. an interface, alias, or function) → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0961` = A helper attribute used inside a `#[zom::derive(Error)]` target (`#[source]`, `#[backtrace]`, `#[message = "..."]`) is attached to the wrong node kind or carries an ill-typed value → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM0962` = `catch_unwind` is invoked outside an `extern "C"` boundary; prefer raises clauses or `?!` propagation for in-ZOM error handling → Warning |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Error | No | `ZOM0963` = The crate-level `#![zom::panic(strategy)]` attribute and the explicit `[profile.*].panic` field in `Zom.toml` specify conflicting strategies (one "unwind", one "abort") → Error |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM0964` = Backtrace capture was requested (directly via `Backtrace::capture()` or transitively via `#[zom::error(trace)]`) but the current target profile or build environment does not provide debug-info or frame-pointer based unwinding support → Warning |
-| 0950–0999 | Error handling / raises clause | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM0965` = An `extern "C"` function whose panic strategy is "unwind" has no visible `catch_unwind` or `#[zom::error_boundary]` wrapper; a panic escaping this function is undefined behavior → Warning |
-| 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Error | No | `ZOM1801` = `extern "X"` specifies ABI not supported by current compiler/target → Error |
-| 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Error | No | `ZOM1802` = Parameter or return type in extern block does not impl marker `FfiSafe` → Error |
-| 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Error | No | `ZOM1803` = Struct/enum used as FFI parameter lacks `#[repr(C)]` attribute (or enum lacks fixed-int repr) → Error |
-| 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Error | No | `ZOM1804` = Extern block function contains a body — bodies are not allowed (functions are imported, not defined) → Error |
-| 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Error | No | `ZOM1805` = `#[zom::no_mangle]` applied to generic function; cannot produce a single symbol for all monomorphizations → Error |
-| 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Error | No | `ZOM1810` = Attempt to export or import a function taking/returning a Linear type through `extern "C"` → Error |
-| 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Error | No | `ZOM1820` = C-string contains unexpected interior NUL byte at a nonzero offset → Error |
-| 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Error | No | `ZOM1821` = C-string length exceeds `isize::MAX`, violating the length-prefix contract → Error |
-| 1800–1899 | FFI / interop | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM1830` = `...` varargs in extern block require platform support that is unavailable on the current architecture (e.g. some wasm profiles) → Warning |
-| 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` | Error | No | `ZOM1900` = CfgPredicateParseFailure: `zom::cfg` attribute predicate parse failure (unbalanced parens, unknown combinator, malformed atom) → Error |
-| 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` | Error | No | `ZOM1901` = CfgOnExpression: `zom::cfg` attribute applied to expression position (expression-level gating not supported) → Error |
-| 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` | Error | No | `ZOM1902` = UnknownCfgKey: cfg predicate references a key not declared by the current compiler target model or package manifest -> Error |
-| 1900–1949 | Conditional Compilation | `products/zomlang/compiler/checker` | Error | No | `ZOM1903` = UndeclaredFeatureRef: cfg predicate references `feature = "foo"` but feature `foo` not declared in manifest `[features]` → Error |
-| 1900–1949 | Conditional Compilation | `products/zomlang/compiler/modules` | Error | No | `ZOM1904` = FeatureCycle: feature dependency graph contains a cycle (e.g. `features.foo = ["bar"]`, `features.bar = ["foo"]`) → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1000` = ScopeNotFound: referenced scope id does not exist or already terminated → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1001` = ScopeAlreadyCanceled: second cancel_all call on already-canceled scope → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1002` = ScopeDroppedWhileRunning: scope handle dropped before nested children joined → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1003` = ChildNotFoundInSupervisor: supervisor restart references child id not in child map → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1004` = SupervisorMaxRestarts: supervisor exceeded max_restarts within restart_period → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1005` = TaskPanicIsolated: panic inside task caught at scope boundary → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1006` = NestedRuntimeStart: block_on called within thread that already runs a runtime → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1007` = RuntimeShutdownTimeout: top-level runtime did not shut down within graceful window → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1010` = ScopeLocalUninitialized: scope-local read before first set → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1011` = ScopeLocalTypeMismatch: scope-local stored value type differs from declared static type → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1012` = ScopeLocalAlreadyInitialized: set on already-initialized once scope-local → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1020` = TimerHandleInvalid: timer handle generation counter does not match wheel slot → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1021` = TimerExpiredWhileCancelled: cancel issued on timer that has already fired → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1022` = TimerWheelCapacityExceeded: live timer count exceeded WHEEL_MAX_ENTRIES → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1030` = ChannelNotSpsc: second concurrent producer detected on an spsc::Sender → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1031` = ChannelClosed: operation attempted on channel whose both halves are gone → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1032` = ChannelBipartisanDisconnect: sender/receiver dropped mid in-flight transfer → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1033` = SenderHalfDropped: recv on channel whose only sender has been dropped → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1034` = ReceiverHalfDropped: send on channel whose only receiver has been dropped → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1035` = ChannelFull: try_send failed because all capacity slots are occupied → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1036` = ChannelEmpty: try_recv failed because no message is queued → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1037` = CapacityZero: channel(0) or mpsc::channel(0): zero capacity not permitted → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1040` = MutexDeadlockSuspected: same task re-locks non-reentrant Mutex it already owns → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1041` = MutexPoisoned: lock() on Mutex whose previous holder panicked → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1042` = RwLockReadersExceeded: read() saturates reader-count field on saturated RwLock → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1043` = CondvarMismatchedMutex: condvar.wait(guard) with guard from different Mutex → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1044` = DeadlockDetected: wait-for-graph SCC of size ≥ 2 detected under Report policy → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1045` = DeadlockEscalatedByCancel: SCC found but cancel_all already active; waiting grace window → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1050` = NotSendable: spawn body captures value whose type is !Sendable → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1051` = NotShared: spawn body captures &T where T is !Shared → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1052` = IncomparableMemoryOrder: atomic method invoked with ordering outside allowed set → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1053` = AtomicAlignmentInvalid: Atomic<T> instantiated for type not in canonical valid list → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1054` = DoubleJoin: join() called twice on the same JoinHandle → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1055` = JoinOnDetachedHandle: join() called on handle previously passed to detach() → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1060` = NumaNodeOutOfRange: affinity(N) requested NUMA node beyond host count → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1061` = WorkerThreadAffinityFailed: OS setaffinity call failed for a worker thread → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1062` = ParkTimeoutSpuriousWakeupPolicyIgnored: park timeout wakeup policy not supported → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1070` = FfiRustAsyncABIInvalid: Rust-async bridge shim signature mismatch at load time → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1071` = FfiRustFuturePollPanicked: Rust future panicked inside poll, surfaced as PanicInfo → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1072` = FfiRustWakerLeaks: waker refcount imbalance detected at ZOM scope shutdown → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1080` = SelectEmptySet: select([]) called with zero handles → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1081` = RaceEmptySet: race([]) called with zero handles → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1082` = JoinEmptySet: join_all([]) called with zero handles → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1083` = ZipArityMismatch: zip / zipN invoked with incorrect handle arity → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1084` = GpuNonPodCapture: GPU kernel closure captures a type that is not Pod + Shared → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1085` = GpuNonConstGridDim: grid dimension of `kernel<B>` is not a statically evaluable integer → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1086` = GpuDirectTransferNotAllowed: direct memcpy between Device-local and Host tiers without staging buffer → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1087` = GpuBackendUnavailable: no vendor loader discovered; CPU fallback activated → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1088` = TraceAlreadyCommitted: `set_sampled(true)` on a scope that already has recorded children → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1089` = TraceExporterMissing: trace sampling > 0 but no `TraceExporter` installed at runtime start → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1090` = CancelAllWithoutPermission: cancel_all on scope whose policy disallows cancellation → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1091` = DeterministicUnrecordedSyscall: raw syscall outside runtime wrapper in Record mode → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1092` = DeterministicDivergence: replay observation differs from trace-recorded bits → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1093` = DeterministicTraceVersionMismatch: trace header edition/runtime_sha256 does not match current build → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1094` = FairnessViolation: debug-build runtime detected violation of F-1..F-5 rule → Warning |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1095` = ChannelPayloadNotSerializable: cross-process channel T bound `Serialize` not satisfied → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1096` = IpcTransportUnsupported: `unix_abstract` or `named_pipe` constructor on unsupported OS → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1097` = IpcFrameCorrupted: IPC frame checksum mismatch; channel closed → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Error | No | `ZOM1098` = IpcFdsExceedLimit: `send_with_fds` descriptor count exceeds `SCM_MAX_FDS_DEFAULT` → Error |
-| 1000–1099 | Concurrency / runtime / scope & scheduler | `products/zomlang/compiler/checker` + `products/zomlang/runtime` | Warning | Yes | `ZOM1099` = IpcConnectionFailed: cross-process constructor returned `IpcError` not handled at call site → Warning |
-| 1100–1199 | Comptime blocks / builtins | `products/zomlang/compiler/checker` | Error | No | `ZOM1107` = `@comptime` expression failed to evaluate at compile time — division by zero → Error |
-| 1100–1199 | Comptime blocks / builtins | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM1140` = `@sizeOf(T)` depends on opaque forward type — resolved lazily → Warning |
-| 1200–1299 | Lint framework | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM1201` = Function exceeds recommended cyclomatic complexity threshold of 20 → Warning |
-| 1200–1299 | Lint framework | `products/zomlang/compiler/checker` | Warning | Yes | `ZOM1215` = Unused local variable prefixed with non-underscore; prefix `_` to suppress → Warning |
-| 1300–1399 | Driver / CLI / options | `products/zomlang/compiler/driver` | Error | No | `ZOM1303` = Unknown flag `--magical` passed to `zom build` → Error |
-| 1300–1399 | Driver / CLI / options | `products/zomlang/compiler/driver` | Warning | Yes | `ZOM1340` = Debug build with LTO enabled produces excessive link times → Warning |
-| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` | Error | No | `ZOM2001` = ForbidLintDowngrade: attempted to lower a FORBID-level lint via `#[zom::allow(...)]`; forbid lints cannot be suppressed → Error |
-| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` | Error | No | `ZOM2002` = RemovedLanguageConstruct: source uses a construct that is not part of the active language definition -> Error |
-| 2000–2049 | Edition & Lint | `products/zomlang/compiler/checker` | Error | No | `ZOM2003` = UnsupportedEditionMode: source or command-line options request an edition mode not implemented by this compiler -> Error |
-| 1400–1999 | Reserved for future type-system sub-features | `products/zomlang/compiler/checker` (reserved) | Error | No | `ZOM14xx` block held for specialization, variance, and permission sub-typing diagnostics → Error |
-| 2050–2999 | Reserved for trait / impl solver | `products/zomlang/compiler/checker` | Error | No | `ZOM2xxx` block held for solver overflow, recursion, and solver model diagnostics -> Error |
-| 3000–3999 | Binder and legacy semantic diagnostics | Binder plus shared semantic diagnostics | Error | No | `ZOM3301` = unresolved identifier; `ZOM30xx` backs legacy semantic diagnostics while subsystem-specific ranges are being split → Error |
-| 4000–4999 | Reserved for constant evaluator | `products/zomlang/compiler/checker` | Error | No | `ZOM4xxx` block held for extended comptime, const generics, and interpreter diagnostics → Error |
-| 5000–5999 | Reserved syntax and semantic fallback diagnostics | Parser / binder / checker integration | Error | No | `ZOM5001` = reserved exception syntax; `ZOM50xx` also backs legacy semantic diagnostics while subsystem-specific ranges are being split → Error |
-| 6000–6999 | Reserved for link-time / LTO | `products/zomlang/compiler/backend` (planned) | Error | No | `ZOM6xxx` block held for thinLTO, GC-sections, and symbol-collision diagnostics → Error |
-| 7000–7999 | Reserved for target / platform | `products/zomlang/compiler/backend` (planned) | Error | No | `ZOM7xxx` block held for ABI, target feature, and alignment diagnostics → Error |
-| 8000–8999 | Runtime / concurrency | `products/zomlang/runtime` + `products/zomlang/compiler/checker` | Error | No | `ZOM8011` = `spawn()` task captured `borrow` reference outlives its parent executor scope → Error |
-| 8000–8999 | Runtime / concurrency | `products/zomlang/runtime` + `products/zomlang/compiler/checker` | Error | No | `ZOM8024` = Async executor panics on recursive `block_on` call on the same thread → Error |
-| 8000–8999 | Runtime / concurrency | `products/zomlang/runtime` + `products/zomlang/compiler/checker` | Warning | Yes | `ZOM8080` = `Mutex` acquired inside polling function risks executor deadlock → Warning |
-| 9000–9899 | Miscellaneous / pass infrastructure | `products/zomlang/compiler/diagnostics` | Warning | Yes | `ZOM9001` = Pass registered twice — ignoring duplicate registration → Warning |
-| 9900–9999 | Internal compiler errors | `products/zomlang/compiler/diagnostics` | ICE | No | `ZOM9999` = Unhandled case in `NodeKind` switch — compiler invariant broken → ICE |
+| 1000-1099 | Common diagnostics | `products/zomlang/compiler/diagnostics` | Error | No | `ZOM1000` = common diagnostic sentinel; `ZOM1001` = invalid source path -> Error |
+| 2000-2999 | Parser / syntax | `products/zomlang/compiler/parser` | Error | No | `ZOM2002` = invalid character; `ZOM2076` = unexpected token -> Error |
+| 3000-3099 | Binder diagnostics | `products/zomlang/compiler/binder` | Error | No | `ZOM3001` = undefined identifier -> Error |
+| 4000-4099 | Type checker / semantic analysis | `products/zomlang/compiler/checker` | Error | No | `ZOM4001` = dyn interface has a generic method; `ZOM4026` = `!!` on a non-error-union type -> Error |
+| 5000-5999 | Reserved syntax rejections | `products/zomlang/compiler/parser` | Error | No | `ZOM5001` = reserved exception syntax -> Error |
+| 9000-9899 | General semantic diagnostics | `products/zomlang/compiler/diagnostics` | Error | No | `ZOM9001` = type mismatch -> Error |
+| 9900-9999 | Internal compiler errors | `products/zomlang/compiler/diagnostics` | ICE | No | `ZOM9999` = compiler invariant violation -> ICE |
 
-Each 100-block inside an extensible row is allocated by the subsystem owner via
-the diagnostic definition files under `products/zomlang/compiler/diagnostics/`.
+Diagnostic codes and default severities are allocated by the diagnostic
+definition files under `products/zomlang/compiler/diagnostics/`; design
+documents must not publish a code that is absent from those definitions unless
+the implementation lands in the same change.
 Concrete language diagnostics are exercised by conformance sources under
 `products/zomlang/tests/conformance/corpus/` plus matching expectations under
 `products/zomlang/tests/conformance/expectations/`, and compiler-only diagnostic
 plumbing is exercised by ztest suites under
 `products/zomlang/tests/unittests/compiler/diagnostics/`. The emitted registry
 is generated from `diagnostics-common.def`, `diagnostics-parse.def`,
-`diagnostics-checker.def`, and `diagnostics-sema.def`; `DiagnosticEngine`
-refuses to emit any code not present
+`diagnostics-binder.def`, `diagnostics-checker.def`, and
+`diagnostics-sema.def`; `DiagnosticEngine` refuses to emit any code not present
 in the generated ids (emitting ZOM9999 `DiagnosticCodeNotRegistered` as an ICE
 fallthrough).
 
@@ -345,7 +155,7 @@ flowchart LR
 
 Concretely, the merge rules along each edge are:
 
-1. `CodeEmit → ComputeDefault`: The DiagnosticEngine performs a map lookup on the diagnostic code; the default severity is exactly the `Min-Severity` column from the table in section 2 (Warning for lints, Error for semantic failures).
+1. `CodeEmit → ComputeDefault`: The DiagnosticEngine performs a map lookup on the diagnostic code; the default severity is exactly the severity field in the corresponding diagnostic definition entry (Warning for lints, Error for semantic failures).
 2. `ComputeDefault → ApplyLintAttr`: Walk outward from the diagnostic's primary AST node to the nearest ancestor that carries a lint attribute matching the code. The first match sets the effective level.
 3. `ApplyLintAttr → ApplyCrateAttr`: Merge with the crate-level lint map. The highest rank wins (`forbid > deny > warn > allow`); identical ranks fall back to the inner-most (item) attribute.
 4. `ApplyCrateAttr → FinalSeverity`: Attach secondary Note and Help diagnostics to the primary span, then push into the session's DiagnosticBuffer. If the final severity is `Error` or `ICE`, the session's `has_errors` bit is set.
@@ -484,9 +294,9 @@ The **Binder** (`products/zomlang/compiler/binder`) walks the AST produced by th
 
 **P2B-03 Single-Pass Post-Order Scope Construction.** The binder performs exactly **one** post-order walk of the AST to build the scope forest. It does not revisit nodes. Scopes are created on the way down (pre) and populated on the way up (post); every declaration is inserted into the correct scope exactly once. The scope forest is therefore a tree rooted at the crate scope; cross-module edges are represented as `ImportEdge` records that point from the importing module's scope into the imported module's public symbol layer.
 
-**P2B-04 Undeclared Reference Emission Rule.** For each identifier reference that cannot be resolved to a symbol within its scope chain plus reachable imports, the binder emits **exactly one** diagnostic in the ZOM33xx range. The binder does **not** emit secondary diagnostics at every downstream use of the unresolved reference; it attaches a `Symbol::unresolvedSentinel()` pointer to the reference so that the TypeChecker can short-circuit further resolution without cascading errors.
+**P2B-04 Undeclared Reference Emission Rule.** For each identifier reference that cannot be resolved to a symbol within its scope chain plus reachable imports, the binder emits **exactly one** diagnostic in the ZOM30xx range. The binder does **not** emit secondary diagnostics at every downstream use of the unresolved reference; it attaches a `Symbol::unresolvedSentinel()` pointer to the reference so that the TypeChecker can short-circuit further resolution without cascading errors.
 
-**P2B-05 Duplicate Declaration.** Two declarations with the same name inserted into the same non-function scope produce diagnostic **ZOM3301 DuplicateDeclaration** (Error). The second declaration is inserted into the scope's `overloadShadow` list rather than the primary name map; lookup never returns it, but IDE "show all references" queries use the shadow list.
+**P2B-05 Duplicate Declaration.** Two declarations with the same name inserted into the same non-function scope produce a binder Error diagnostic allocated from the ZOM30xx range. The second declaration is inserted into the scope's `overloadShadow` list rather than the primary name map; lookup never returns it, but IDE "show all references" queries use the shadow list.
 
 **P2B-06 Shadowing Is Not a Diagnostic.** When an inner scope declares a name that already exists in an outer scope, the binder does not emit any diagnostic. Shadowing is a deliberate, supported language feature. Inner-scope lookups return the inner declaration; outer-scope lookups (via qualified paths, or explicit `super::` references) return the outer declaration; lints that wish to flag shadowing must register as lint passes and operate on the post-bind scope forest.
 
@@ -532,13 +342,13 @@ The TypeChecker (`products/zomlang/compiler/checker`) consumes the binder's outp
 
 **B2T-03 Raises-Clause Binding.** For every `fun` declaration and every method declaration that carries a `raises(...)` clause, the binder has lowered the clause into a `RaisesInfo` record on the function's `Symbol`, consisting of an ordered list of `Symbol*` pointers to error-variant enum declarations plus a boolean `isOpen` flag for `raises(...)` wildcards. The binder does **not** verify subtyping of raised variants; it only verifies that each named variant resolves to a declared error enum.
 
-**B2T-04 Raises Subset Verification by TypeChecker.** The TypeChecker is the single authority for raises-clause correctness. If a `?!` propagation site carries an error type that is not in the enclosing function's declared `raises` set, the TypeChecker emits **ZOM4460 ErrorPropagateOutsideRaises**. Subset checks use algebraic union: a function that calls three raising sub-functions must declare the union of all propagated variants, plus any locally raised variants once direct raise statements are implemented. The TypeChecker never emits propagation diagnostics at call sites for variants already present in the caller's raises set.
+**B2T-04 Raises Subset Verification by TypeChecker.** The TypeChecker is the single authority for raises-clause correctness. If a `?!` propagation site carries an error type that is not in the enclosing function's declared `raises` set, the TypeChecker emits **ZOM4025 ErrorPropagateOutsideRaises**. Subset checks use algebraic union: a function that calls three raising sub-functions must declare the union of all propagated variants, plus any locally raised variants once direct raise statements are implemented. The TypeChecker never emits propagation diagnostics at call sites for variants already present in the caller's raises set.
 
 **B2T-05 Marker Constraint Re-Run.** The binder attaches marker constraints (`Sendable`, `Shared`, `Linear`, `Copy`, `Drop`, `SuspendSafe`, `NoSuspendHazard`, `TaskBound`) to generic parameters as parsed. During TypeChecker instantiation of a generic function or ADT with concrete arguments, the TypeChecker reruns the S5a (seed-bit propagation), S5b (positive-blanket closure), and S5c (user unsafe-impl override) lowering steps for each concrete type. This is the only way instantiation-site-specific marker facts are computed.
 
 **B2T-06 Inference Variable Scoping.** Every type-inference variable introduced by the TypeChecker is tagged with the `NodeId` of the expression or pattern that created it. No inference variable outlives its originating function body; cross-body unification is performed solely via declared type signatures and never via leaked inference variables. Violation produces ICE ZOM9402.
 
-**B2T-07 Binder Errors Short-Circuit TypeChecker.** If the binder emits any Error-level diagnostic (including ZOM33xx and duplicate-declaration ZOM3301), the TypeChecker runs in **lenient mode**. In lenient mode, the TypeChecker performs only local propagation of already-assigned types; it does not emit cascading diagnostics for nodes whose input types contain the unresolved sentinel. This rule is enforced in the TypeChecker driver (`TypeChecker::run()`) by checking `session.has_errors_at_stage(Stage::Bind)` before entering the expression visitor.
+**B2T-07 Binder Errors Short-Circuit TypeChecker.** If the binder emits any Error-level diagnostic, including `ZOM3001` undefined identifier or another ZOM30xx binder error, the TypeChecker runs in **lenient mode**. In lenient mode, the TypeChecker performs only local propagation of already-assigned types; it does not emit cascading diagnostics for nodes whose input types contain the unresolved sentinel. This rule is enforced in the TypeChecker driver (`TypeChecker::run()`) by checking `session.has_errors_at_stage(Stage::Bind)` before entering the expression visitor.
 
 ---
 
@@ -714,7 +524,7 @@ public:
 
 ### 10.3 LintPass
 
-LintPass extensions run at a well-defined stage between TypeChecker completion and codegen start, and only over well-typed code (no lint runs if any ZOM33xx+ binder errors exist).
+LintPass extensions run at a well-defined stage between TypeChecker completion and codegen start, and only over well-typed code (no lint runs if any ZOM30xx+ binder errors exist).
 
 ```cpp
 // products/zomlang/compiler/driver/extension-lint-pass.h
@@ -784,8 +594,8 @@ public:
                              bool resolvedValue) = 0;
 
     /// Run after the built-in raises-subtyping check on a function body,
-    /// before ZOM4411 diagnostics are finalized. Implementations may call
-    /// `sess.diagnostics().suppress(ZOM4411, nodeId)` to selectively permit
+    /// before ZOM4010 diagnostics are finalized. Implementations may call
+    /// `sess.diagnostics().suppress(ZOM4010, nodeId)` to selectively permit
     /// additional raise variants.
     virtual void postRaisesCheck(Session& sess, typeck::TypeChecker& tc,
                                  binder::Symbol const& fnSym) = 0;
@@ -873,7 +683,7 @@ Three zones of the compiler are so performance-critical that they require explic
 |--------------------------------|----------------------------------------------------------------------|
 | Parser node creation (beginNode/endNode) | At most 1 `_ASSERT` per `beginNode()` call; no ICE macros. Failures must be recoverable user diagnostics. |
 | Binder symbol insert           | `_ASSERT` on hash-table insertion result exactly once per name; no ICE unless the duplicate ID (P2B-01) case fires. |
-| TypeChecker unification        | `_ASSERT` allowed only on internal state, never on user-provided types; a failed unification of user types is always a ZOM44xx diagnostic, never an ICE. |
+| TypeChecker unification        | `_ASSERT` allowed only on internal state, never on user-provided types; a failed unification of user types is always a ZOM40xx diagnostic, never an ICE. |
 
 ### 11.5 ICE Report Checklist
 

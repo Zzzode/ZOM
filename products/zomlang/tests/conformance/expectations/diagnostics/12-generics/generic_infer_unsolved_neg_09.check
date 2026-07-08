@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/12-generics/generic_infer_unsolved_neg_09.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 12-generics/generic_infer_unsolved_neg_09.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4420]: Cannot infer type parameter 'T'; provide explicit type arguments
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]generic_infer_unsolved_neg_09\.zom:3:1$}}
+
+// CHECK-LITERAL: Error [ZOM4014]: Cannot infer type parameter 'T'; provide explicit type arguments
+// CHECK-LITERAL:   --> 12-generics/generic_infer_unsolved_neg_09.zom:3:1
+// CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 | make();
 // CHECK-LITERAL:   | ^

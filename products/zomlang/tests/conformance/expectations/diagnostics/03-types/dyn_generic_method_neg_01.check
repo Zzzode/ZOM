@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/03-types/dyn_generic_method_neg_01.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_generic_method_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4331]: Interface 'Mapper' has generic method 'map' and cannot be used as dyn
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]dyn_generic_method_neg_01\.zom:5:12$}}
+
+// CHECK-LITERAL: Error [ZOM4001]: Interface 'Mapper' has generic method 'map' and cannot be used as dyn
+// CHECK-LITERAL:   --> 03-types/dyn_generic_method_neg_01.zom:5:12
+// CHECK-LITERAL:   |
 // CHECK-LITERAL: 5 | let x: dyn Mapper;
 // CHECK-LITERAL:   |            ^

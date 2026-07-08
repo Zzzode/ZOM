@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/03-types/associated_projection_ambiguous_neg_04.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/associated_projection_ambiguous_neg_04.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4434]: Ambiguous associated type 'Item' for type 'Box'; use '<Box as Interface>::Item'
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]associated_projection_ambiguous_neg_04\.zom:19:13$}}
+
+// CHECK-LITERAL: Error [ZOM4021]: Ambiguous associated type 'Item' for type 'Box'; use '<Box as Interface>::Item'
+// CHECK-LITERAL:   --> 03-types/associated_projection_ambiguous_neg_04.zom:19:13
+// CHECK-LITERAL:    |
 // CHECK-LITERAL: 19 | alias Bad = Box::Item;
 // CHECK-LITERAL:    |             ^

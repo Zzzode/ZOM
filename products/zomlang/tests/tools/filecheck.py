@@ -76,8 +76,8 @@ class FileChecker:
 
     def normalize_json(self, content: str) -> str:
         """Normalize JSON content for comparison."""
-        # Return content as-is to match original zomc output format
-        return re.sub(r"\x1b\[[0-9;]*m", "", content)
+        stripped = re.sub(r"\x1b\[[0-9;]*m", "", content)
+        return "\n".join(line.rstrip() for line in stripped.splitlines())
 
     def build_regex_pattern(self, pattern: str) -> Optional[str]:
         """Convert a FileCheck-style pattern with inline regex blocks into a regex."""

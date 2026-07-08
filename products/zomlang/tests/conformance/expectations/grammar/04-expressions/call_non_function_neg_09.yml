@@ -2,4 +2,4 @@ section: "Ch.04 Call expressions"
 covers_rule: "callExpr"
 expected: "ACCEPT"
 notes:
-  - "Syntax is valid; diagnostics runner checks non-function call ZOM4415."
+  - "Syntax is valid; diagnostics runner checks non-function call ZOM4012."

@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/11-error/error_unwrap_non_union_neg_12.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 11-error/error_unwrap_non_union_neg_12.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4461]: '!!' on non-error-union type 'i32'
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]error_unwrap_non_union_neg_12\.zom:2:14$}}
+
+// CHECK-LITERAL: Error [ZOM4026]: '!!' on non-error-union type 'i32'
+// CHECK-LITERAL:   --> 11-error/error_unwrap_non_union_neg_12.zom:2:14
+// CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let y: i32 = x!!;
 // CHECK-LITERAL:   |              ^

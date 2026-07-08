@@ -15,49 +15,49 @@
 // RFC 0005 type checker diagnostics. Numeric values are explicit because
 // the language specification assigns stable semantic codes, not file-order IDs.
 
-DIAG(4331, DynGenericMethod, kError,
+DIAG(4001, DynGenericMethod, kError,
              "Interface '{0}' has generic method '{1}' and cannot be used as dyn", 2)
-DIAG(4332, DynSelfReturn, kError,
+DIAG(4002, DynSelfReturn, kError,
              "Interface '{0}' has method '{1}' returning Self and cannot be used as dyn", 2)
-DIAG(4333, DynMoveSelf, kError,
+DIAG(4003, DynMoveSelf, kError,
              "Interface '{0}' has method '{1}' with move self receiver and cannot be used as dyn",
              2)
-DIAG(4334, DynUnassociatedType, kError,
+DIAG(4004, DynUnassociatedType, kError,
              "dyn interface '{0}' requires associated type '{1}' to be bound", 2)
-DIAG(4335, DynStaticMethod, kError,
+DIAG(4005, DynStaticMethod, kError,
              "Interface '{0}' has a static method and cannot be used as dyn", 1)
-DIAG(4336, DynGatNotAllowed, kError,
+DIAG(4006, DynGatNotAllowed, kError,
              "Interface '{0}' has generic associated type '{1}' and cannot be used as dyn", 2)
-DIAG(4337, DynUnsizedParameter, kError,
+DIAG(4007, DynUnsizedParameter, kError,
              "Interface '{0}' has method '{1}' with unsized type '{2}' and cannot be used as dyn",
              3)
-DIAG(4338, DynSuperNotObjectSafe, kError,
+DIAG(4008, DynSuperNotObjectSafe, kError,
              "Interface '{0}' inherits object-unsafe interface '{1}' and cannot be used as dyn", 2)
-DIAG(4410, TypeCheckerTypeMismatch, kError, "Type mismatch: expected {0}, got {1}", 2)
-DIAG(4411, CannotUnifyTypes, kError, "Cannot unify '{0}' with '{1}' in {2}", 3)
-DIAG(4412, InfiniteType, kError, "Infinite type: {0}", 1)
-DIAG(4415, CannotCallNonFunction, kError, "Cannot call non-function type '{0}'", 1)
-DIAG(4416, CheckerInvalidCast, kError, "Invalid cast from '{0}' to '{1}'", 2)
-DIAG(4420, CannotInferTypeParameter, kError,
+DIAG(4009, TypeCheckerTypeMismatch, kError, "Type mismatch: expected {0}, got {1}", 2)
+DIAG(4010, CannotUnifyTypes, kError, "Cannot unify '{0}' with '{1}' in {2}", 3)
+DIAG(4011, InfiniteType, kError, "Infinite type: {0}", 1)
+DIAG(4012, CannotCallNonFunction, kError, "Cannot call non-function type '{0}'", 1)
+DIAG(4013, CheckerInvalidCast, kError, "Invalid cast from '{0}' to '{1}'", 2)
+DIAG(4014, CannotInferTypeParameter, kError,
              "Cannot infer type parameter '{0}'; provide explicit type arguments", 1)
-DIAG(4421, CannotInferNullInitializer, kError,
+DIAG(4015, CannotInferNullInitializer, kError,
              "Cannot infer type from null initializer without annotation", 0)
-DIAG(4423, ExplicitTypeArgumentCountMismatch, kError,
+DIAG(4016, ExplicitTypeArgumentCountMismatch, kError,
              "Expected {0} explicit type argument(s), got {1}", 2)
-DIAG(4430, ConflictingImpl, kError, "Conflicting implementations of '{0}' for type '{1}'", 2)
-DIAG(4431, CheckerTraitNotImplemented, kError, "'{0}' does not implement '{1}'", 2)
-DIAG(4432, OperatorTraitSignatureMismatch, kError,
+DIAG(4017, ConflictingImpl, kError, "Conflicting implementations of '{0}' for type '{1}'", 2)
+DIAG(4018, CheckerTraitNotImplemented, kError, "'{0}' does not implement '{1}'", 2)
+DIAG(4019, OperatorTraitSignatureMismatch, kError,
              "Operator trait '{0}' for type '{1}' must define '{2}({3}) -> {4}'", 5)
-DIAG(4433, NoAssociatedTypeProjection, kError, "No associated type '{0}' for type '{1}'", 2)
-DIAG(4434, AmbiguousAssociatedTypeProjection, kError,
+DIAG(4020, NoAssociatedTypeProjection, kError, "No associated type '{0}' for type '{1}'", 2)
+DIAG(4021, AmbiguousAssociatedTypeProjection, kError,
              "Ambiguous associated type '{0}' for type '{1}'; use '<{2} as Interface>::{3}'",
              4)
-DIAG(4440, CheckerNonExhaustiveMatch, kError, "Non-exhaustive match. Missing patterns: {0}",
+DIAG(4022, CheckerNonExhaustiveMatch, kError, "Non-exhaustive match. Missing patterns: {0}",
              1)
-DIAG(4442, CheckerUnreachableMatchArm, kWarning,
+DIAG(4023, CheckerUnreachableMatchArm, kWarning,
              "Unreachable match arm: pattern never matches", 0)
-DIAG(4450, CannotMutateImmutableVariable, kError, "Cannot mutate immutable variable '{0}'",
+DIAG(4024, CannotMutateImmutableVariable, kError, "Cannot mutate immutable variable '{0}'",
              1)
-DIAG(4460, ErrorPropagateOutsideRaises, kError,
+DIAG(4025, ErrorPropagateOutsideRaises, kError,
              "'?!' propagates error type '{0}' but function does not raise '{1}'", 2)
-DIAG(4461, ErrorUnwrapNonUnion, kError, "'!!' on non-error-union type '{0}'", 1)
+DIAG(4026, ErrorUnwrapNonUnion, kError, "'!!' on non-error-union type '{0}'", 1)

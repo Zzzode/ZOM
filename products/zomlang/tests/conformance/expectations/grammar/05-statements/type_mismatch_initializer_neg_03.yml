@@ -2,4 +2,4 @@ section: "Ch.05 Let initializer semantics"
 covers_rule: "letDeclaration, variableDeclaration"
 expected: "ACCEPT"
 notes:
-  - "Syntax is valid; diagnostics runner checks initializer type mismatch ZOM4410."
+  - "Syntax is valid; diagnostics runner checks initializer type mismatch ZOM4009."

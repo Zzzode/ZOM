@@ -1,4 +1,5 @@
-// RUN: %zomc compile --syntax-only %corpus/05-statements/match_exhaustive_bool_pos_02.zom > %t 2>&1
+// RUN: cd %corpus && %zomc compile --syntax-only 05-statements/match_exhaustive_bool_pos_02.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
+
 
 // CHECK-LITERAL: Syntax check completed successfully.

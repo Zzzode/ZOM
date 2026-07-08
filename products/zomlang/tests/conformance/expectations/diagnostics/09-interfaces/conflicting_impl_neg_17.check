@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/09-interfaces/conflicting_impl_neg_17.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 09-interfaces/conflicting_impl_neg_17.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4430]: Conflicting implementations of 'Hashable' for type 'Box'
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]conflicting_impl_neg_17\.zom:6:1$}}
+
+// CHECK-LITERAL: Error [ZOM4017]: Conflicting implementations of 'Hashable' for type 'Box'
+// CHECK-LITERAL:   --> 09-interfaces/conflicting_impl_neg_17.zom:6:1
+// CHECK-LITERAL:   |
 // CHECK-LITERAL: 6 | impl Hashable for Box { }
 // CHECK-LITERAL:   | ^

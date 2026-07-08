@@ -238,7 +238,7 @@ The type checker:
    - `x as f64`: `x` is `i32`, `f64` is a valid numeric cast target.
      `y` is `f64`.
    - `x + y`: `x` is `i32`, `y` is `f64`. `+` requires same-type operands.
-     Emits `ZOM4411: cannot unify 'i32' with 'f64' in binary operator '+'`.
+     Emits `ZOM4010: cannot unify 'i32' with 'f64' in binary operator '+'`.
      The expression `x + y` gets type `Error`.
 
 3. **Error propagation:** `let z = <error>` gets type `Error` too,
@@ -328,7 +328,7 @@ flowchart TD
     COERCE --> TE
     UNIFY --> TE
     TRAIT --> IMPL
-    BC -->|4400-4499| DE
+    BC -->|4000-4099| DE
 ```
 
 ### Type Representation
@@ -518,11 +518,11 @@ struct TypeVar {
 11. If both are `ExistentialType`: check same interface + same markers
     (set equality, order-independent).
 12. If both are `null`, succeed.
-13. Otherwise, fail with `ZOM4411: cannot unify 'T1' with 'T2'`.
+13. Otherwise, fail with `ZOM4010: cannot unify 'T1' with 'T2'`.
 
 **Occurs check:** Before binding a type variable to a type, verify the
 variable does not appear inside the type (prevents infinite types like
-`T = List<T>`). If it does, fail with `ZOM4412: infinite type`.
+`T = List<T>`). If it does, fail with `ZOM4011: infinite type`.
 
 #### Constraint Solving
 
@@ -665,7 +665,7 @@ outward to their parent.
 | String literal | `str` |
 | Character literal | `char` |
 | Boolean literal | `bool` |
-| `null` | `PrimitiveType(Null)`. Equal only to itself. It can coerce only into an explicit union containing `null`, such as `T \| null` or `T?`. `let x = null` without type annotation is an error (ZOM4421: cannot infer type from null initializer without annotation). |
+| `null` | `PrimitiveType(Null)`. Equal only to itself. It can coerce only into an explicit union containing `null`, such as `T \| null` or `T?`. `let x = null` without type annotation is an error (ZOM4015: cannot infer type from null initializer without annotation). |
 | `unit` expression (`{}` or `()`) | `unit` |
 | `IdentifierExpr` | Look up symbol's type from `TypeEnv`. If symbol is a generic parameter, return the `TypeVar` for that parameter. |
 | `BinaryExpr(op, lhs, rhs)` | Infer `lhs` type, infer `rhs` type, unify them (for arithmetic/comparison), check `op` is valid for that type. Result type: arithmetic -> same as operands; comparison -> `bool`. |
@@ -694,7 +694,7 @@ For `let x = expr` (no type annotation):
    - If `?X` resolved to a concrete type, `x` has that type.
    - If `?X` is still unbound and is a numeric type var, default to `i32`
      (integer) or `f64` (float).
-   - If `?X` is still unbound and non-numeric, emit ZOM4420.
+   - If `?X` is still unbound and non-numeric, emit ZOM4014.
 
 For `let x: T = expr` (with annotation):
 1. Infer `expr` type -> `T_expr`.
@@ -798,12 +798,12 @@ When checking bounds, where-clause constraints are also verified:
 function check_bounds(type_arg: Type, bounds: [Bound], where_bounds: [WhereBound]):
   for bound in bounds:
     if not satisfies(type_arg, bound.interface):
-      emit(ZOM4431, ..., "'{type}' does not implement '{bound}'")
+      emit(ZOM4018, ..., "'{type}' does not implement '{bound}'")
   for wb in where_bounds:
     // wb constrains a specific TP; verify after substitution
     resolved = substitute(wb.constrained_param, current_substitution)
     if not satisfies(resolved, wb.bounds):
-      emit(ZOM4431, ..., "'{type}' does not implement '{bound}'")
+      emit(ZOM4018, ..., "'{type}' does not implement '{bound}'")
 ```
 
 **Type argument inference** (when `<T>` is omitted at call site):
@@ -813,7 +813,7 @@ function check_bounds(type_arg: Type, bounds: [Bound], where_bounds: [WhereBound
    still solved by unification.
 3. After unification, read off the solved type variables.
 4. Verify that all type arguments are fully determined (no remaining
-   unsolved type vars; if so, emit `ZOM4420: cannot infer type parameter 'T'`).
+   unsolved type vars; if so, emit `ZOM4014: cannot infer type parameter 'T'`).
 
 ### Trait / Interface Resolution
 
@@ -877,7 +877,7 @@ function check_coherence():
     for each other_impl in impl_table where other_impl != impl:
       if impl.self_type overlaps(other_impl.self_type) and
          impl.interface == other_impl.interface:
-        emit(ZOM4430, "conflicting implementations of '{iface}' for '{type}'")
+        emit(ZOM4017, "conflicting implementations of '{iface}' for '{type}'")
 ```
 
 **Overlap** is defined as: there exists any concrete type that could
@@ -887,7 +887,7 @@ covers the other's concrete type).
 
 There is no specialization or priority rule in v1. A direct impl does not beat
 a blanket impl. If two impl declarations can apply to the same concrete
-`(type, interface)` pair, coherence rejects both with ZOM4430.
+`(type, interface)` pair, coherence rejects both with ZOM4017.
 
 #### Associated Type Projection
 
@@ -898,10 +898,10 @@ source interface is unique.
 function normalize_projection(base: TypeId, name: Name) -> TypeId:
   obligations = bounds_on(base).filter(bound_has_assoc_type(name))
   if obligations.length == 0:
-    emit(ZOM4433, "no associated type '{name}' for '{base}'")
+    emit(ZOM4020, "no associated type '{name}' for '{base}'")
     return ErrorType
   if obligations.length > 1:
-    emit(ZOM4434, "ambiguous associated type '{name}' for '{base}'")
+    emit(ZOM4021, "ambiguous associated type '{name}' for '{base}'")
     return ErrorType
 
   iface = obligations[0].interface
@@ -941,9 +941,9 @@ For a `match` with scrutinee type `T` and patterns `P1..Pn`:
 1. Lower each arm pattern into the constructor matrix described by Luc
    Maranget's usefulness algorithm.
 2. For each arm, run `is_useful(previous_matrix, arm_pattern)`. If false, emit
-   ZOM4442 for an unreachable arm.
+   ZOM4023 for an unreachable arm.
 3. For exhaustiveness, test whether a synthetic wildcard row is useful after
-   all unguarded arms. If useful, emit ZOM4440 with the smallest witness set
+   all unguarded arms. If useful, emit ZOM4022 with the smallest witness set
    the matrix can produce.
 4. Pattern guards are treated as conditional coverage: guarded arms may be
    useful for redundancy checking, but they do not contribute to exhaustiveness
@@ -970,7 +970,7 @@ For enum scrutinee `E` with variants `V1..Vn`:
 - If a wildcard or identifier pattern exists, it covers any remaining
   variants not explicitly matched.
 - If not all variants are covered and no wildcard exists:
-  `ZOM4440: non-exhaustive match; missing variants: V1, V2`.
+  `ZOM4022: non-exhaustive match; missing variants: V1, V2`.
 
 #### Exhaustiveness for Booleans
 
@@ -982,7 +982,7 @@ For `bool` scrutinee:
 For integer scrutinee:
 - If patterns include a wildcard or identifier: exhaustive.
 - If patterns are only literals/ranges: not exhaustive (infinite values
-  not covered by finite ranges), emit ZOM4440 with a witness describing the
+  not covered by finite ranges), emit ZOM4022 with a witness describing the
   uncovered value space.
 
 #### Pattern Guards
@@ -1028,7 +1028,7 @@ analysis (full borrow checking is a separate future stage):
 
 | Rule | Diagnostic |
 |---|---|
-| Cannot mutate immutable binding | `ZOM4450: Cannot mutate immutable variable '{name}'` |
+| Cannot mutate immutable binding | `ZOM4024: Cannot mutate immutable variable '{name}'` |
 
 Note: `&mut T` coerces to `&T` implicitly via reborrow (subtyping rule).
 The reverse (`&T -> &mut T`) is never allowed.
@@ -1107,7 +1107,7 @@ Rules:
 1. A function with `raises {E1, E2}` may use `?!` on error unions
    containing `E1` or `E2`.
 2. Using `?!` on an error union with error type `E` requires `E` to be
-   in the enclosing function's `raises` set. If not: `ZOM4460: '?!'
+   in the enclosing function's `raises` set. If not: `ZOM4025: '?!'
    propagates error type '{E}' but function does not raise '{E}'`.
 3. Calling a function that raises `{E}` inside a function that does
    NOT raise `{E}` requires handling the error (match or `!!`).
@@ -1123,32 +1123,32 @@ change.
 
 | Code | Severity | Message Template |
 |---|---|---|
-| ZOM4331 | Error | `Interface '{interface}' has generic method '{method}' and cannot be used as dyn` |
-| ZOM4332 | Error | `Interface '{interface}' has method '{method}' returning Self and cannot be used as dyn` |
-| ZOM4333 | Error | `Interface '{interface}' has method '{method}' with move self receiver and cannot be used as dyn` |
-| ZOM4334 | Error | `dyn interface '{interface}' requires associated type '{associated}' to be bound` |
-| ZOM4335 | Error | `Interface '{interface}' has a static method and cannot be used as dyn` |
-| ZOM4336 | Error | `Interface '{interface}' has generic associated type '{associated}' and cannot be used as dyn` |
-| ZOM4337 | Error | `Interface '{interface}' has method '{method}' with unsized type '{type}' and cannot be used as dyn` |
-| ZOM4338 | Error | `Interface '{interface}' inherits object-unsafe interface '{superinterface}' and cannot be used as dyn` |
-| ZOM4410 | Error | `Type mismatch: expected {expected}, got {actual}` |
-| ZOM4411 | Error | `Cannot unify '{expected}' with '{actual}' in {context}` |
-| ZOM4412 | Error | `Infinite type: {description}` |
-| ZOM4415 | Error | `Cannot call non-function type '{type}'` |
-| ZOM4416 | Error | `Invalid cast from '{source}' to '{target}'` |
-| ZOM4420 | Error | `Cannot infer type parameter '{name}'; provide explicit type arguments` |
-| ZOM4421 | Error | `Cannot infer type from null initializer without annotation` |
-| ZOM4423 | Error | `Expected {expected} explicit type argument(s), got {actual}` |
-| ZOM4430 | Error | `Conflicting implementations of '{interface}' for type '{type}'` |
-| ZOM4431 | Error | `'{type}' does not implement '{interface}'` |
-| ZOM4432 | Error | `Operator trait '{trait}' for type '{type}' must define '{method}({parameter}) -> {return}'` |
-| ZOM4433 | Error | `No associated type '{associated}' for type '{type}'` |
-| ZOM4434 | Error | `Ambiguous associated type '{associated}' for type '{type}'; use '<{type} as Interface>::{associated}'` |
-| ZOM4440 | Error | `Non-exhaustive match. Missing patterns: {patterns}` |
-| ZOM4442 | Warning | `Unreachable match arm: pattern never matches` |
-| ZOM4450 | Error | `Cannot mutate immutable variable '{name}'` |
-| ZOM4460 | Error | `'?!' propagates error type '{error}' but function does not raise '{raises}'` |
-| ZOM4461 | Error | `'!!' on non-error-union type '{type}'` |
+| ZOM4001 | Error | `Interface '{interface}' has generic method '{method}' and cannot be used as dyn` |
+| ZOM4002 | Error | `Interface '{interface}' has method '{method}' returning Self and cannot be used as dyn` |
+| ZOM4003 | Error | `Interface '{interface}' has method '{method}' with move self receiver and cannot be used as dyn` |
+| ZOM4004 | Error | `dyn interface '{interface}' requires associated type '{associated}' to be bound` |
+| ZOM4005 | Error | `Interface '{interface}' has a static method and cannot be used as dyn` |
+| ZOM4006 | Error | `Interface '{interface}' has generic associated type '{associated}' and cannot be used as dyn` |
+| ZOM4007 | Error | `Interface '{interface}' has method '{method}' with unsized type '{type}' and cannot be used as dyn` |
+| ZOM4008 | Error | `Interface '{interface}' inherits object-unsafe interface '{superinterface}' and cannot be used as dyn` |
+| ZOM4009 | Error | `Type mismatch: expected {expected}, got {actual}` |
+| ZOM4010 | Error | `Cannot unify '{expected}' with '{actual}' in {context}` |
+| ZOM4011 | Error | `Infinite type: {description}` |
+| ZOM4012 | Error | `Cannot call non-function type '{type}'` |
+| ZOM4013 | Error | `Invalid cast from '{source}' to '{target}'` |
+| ZOM4014 | Error | `Cannot infer type parameter '{name}'; provide explicit type arguments` |
+| ZOM4015 | Error | `Cannot infer type from null initializer without annotation` |
+| ZOM4016 | Error | `Expected {expected} explicit type argument(s), got {actual}` |
+| ZOM4017 | Error | `Conflicting implementations of '{interface}' for type '{type}'` |
+| ZOM4018 | Error | `'{type}' does not implement '{interface}'` |
+| ZOM4019 | Error | `Operator trait '{trait}' for type '{type}' must define '{method}({parameter}) -> {return}'` |
+| ZOM4020 | Error | `No associated type '{associated}' for type '{type}'` |
+| ZOM4021 | Error | `Ambiguous associated type '{associated}' for type '{type}'; use '<{type} as Interface>::{associated}'` |
+| ZOM4022 | Error | `Non-exhaustive match. Missing patterns: {patterns}` |
+| ZOM4023 | Warning | `Unreachable match arm: pattern never matches` |
+| ZOM4024 | Error | `Cannot mutate immutable variable '{name}'` |
+| ZOM4025 | Error | `'?!' propagates error type '{error}' but function does not raise '{raises}'` |
+| ZOM4026 | Error | `'!!' on non-error-union type '{type}'` |
 
 ### Invariants
 
@@ -1364,8 +1364,8 @@ runs and produces resolved names.
    primitives, matching function types, type variables to concrete types,
    `ErrorType` with anything, raw pointers with exact mutability, unions after
    canonicalization, identical existentials, and `null` only with `null`.
-   It fails mismatched types with ZOM4411 and prevents infinite types with
-   ZOM4412.
+   It fails mismatched types with ZOM4010 and prevents infinite types with
+   ZOM4011.
 3. **Coercion resolver:** Directional coercions succeed only at recorded
    coercion sites for `never -> T`, `T -> any`, `&mut T -> &T`,
    `*mut T -> *const T`, union member injection, `null -> T | null`, explicit
@@ -1381,39 +1381,39 @@ runs and produces resolved names.
 6. **Generic instantiation:** Calling a generic function infers type arguments
    from arguments. `identity(42)` returns `i32`. The function signature keeps
    one shared type variable per generic parameter, and unsolved call-site type
-   parameters produce ZOM4420.
+   parameters produce ZOM4014.
 7. **Explicit type args:** `identity<f64>(42.0)` works. Wrong count and
    incompatible explicit type arguments fail.
 8. **Trait bound discharge:** `fun f<T: Hashable>(x: T)` requires callers to
-   pass types that implement `Hashable`. Non-implementing type -> ZOM4431.
+   pass types that implement `Hashable`. Non-implementing type -> ZOM4018.
    Bound checks run at generic call sites.
 9. **Coherence:** Two impls that can overlap for the same concrete
    `(type, interface)` pair, including duplicate concrete impls and
-   direct-vs-blanket overlap, produce ZOM4430.
+   direct-vs-blanket overlap, produce ZOM4017.
 10. **Associated projections:** `T::Item` resolves only when a unique impl
-    binding defines `Item`; missing projections produce ZOM4433 and ambiguous
-    projections produce ZOM4434. Fully qualified projection syntax
+    binding defines `Item`; missing projections produce ZOM4020 and ambiguous
+    projections produce ZOM4021. Fully qualified projection syntax
     `<T as I>::Item` is exposed as parser AST surface for follow-on checker
     disambiguation.
 11. **Variance:** User-defined generic named types are invariant in v1.
     `Vec<&mut i32>` does not coerce to `Vec<&i32>`.
 12. **Exhaustiveness:** Match on enum without wildcard and missing variants
-    -> ZOM4440. Match with wildcard passes.
+    -> ZOM4022. Match with wildcard passes.
 13. **Pattern guards:** Guarded arms are useful but do not prove
     exhaustiveness coverage.
-14. **Redundancy:** Pattern after wildcard -> ZOM4442 (warning).
+14. **Redundancy:** Pattern after wildcard -> ZOM4023 (warning).
 15. **Error propagation:** One type error -> one diagnostic. Dependent
     expressions get `ErrorType` silently.
 16. **`?!` integration:** `?!` in function without matching `raises` ->
-    ZOM4460. Raising calls return an error union until handled or propagated.
-17. **`!!` integration:** `!!` on non-error-union -> ZOM4461. On error unions,
+    ZOM4025. Raising calls return an error union until handled or propagated.
+17. **`!!` integration:** `!!` on non-error-union -> ZOM4026. On error unions,
     it returns the success alternative. Runtime panic-boundary lowering is a
     backend contract outside this checker-landed gate.
 18. **`Sendable`/`Shared` derivation:** Structs/classes with all-`Sendable` or
     all-`Shared` fields derive the marker. Raw-pointer fields block automatic
     derivation. Explicit positive unsafe marker impls override structural
     rejection, and explicit negative marker impls suppress auto-derivation.
-19. **Mutability checking:** Mutating immutable variable -> ZOM4450.
+19. **Mutability checking:** Mutating immutable variable -> ZOM4024.
     `&mut T` coerces to `&T` (reborrow) without error.
 20. **Cycle detection:** Recursive type aliases and explicit query-stack cycle
     checks produce diagnostics and terminate. Projection and marker query
@@ -1426,7 +1426,7 @@ runs and produces resolved names.
 24. **`check-format.py` passes.**
 25. **All existing tests pass under `ctest --preset default --output-on-failure`.**
 26. **Local variable inference:** `let x = 5; takes_u64(x)` infers `x: u64`
-    through use-site constraints. `let x = null` without annotation -> ZOM4421.
+    through use-site constraints. `let x = null` without annotation -> ZOM4015.
 27. **Nullable semantics:** `let r: &i32 = null` is rejected. `let r: &i32? =
     null` or `let r: &i32 | null = null` is accepted and records nullable
     injection.
@@ -1456,36 +1456,36 @@ and tests cover the exact acceptance criterion above.
 | AC | Status | Evidence | Remaining Work |
 |---|---|---|---|
 | 1 | Complete | `type-test.cc`, `type-interner-test.cc`, and `type-env-test.cc` cover all concrete type classes and canonical IDs, including interface, existential, and associated forms. `type-algebra.cc` centralizes structural type cloning, and `TypeAlgebra.ClonePreservesCompositeStructure` covers function, generic, raises, reference, union, intersection, existential, and associated-type cloning. | None. |
-| 2 | Complete | `unification-test.cc` covers primitives, functions, type variables, error propagation, exact reference/raw-pointer mutability, order-insensitive unions, identical/different existentials, `null` only with `null`, mismatch failures, and occurs-check `InfiniteType` classification. `diagnostic-test.cc` fixes ZOM4411/ZOM4412 IDs. `cannot_unify_numeric_neg_08.check` covers ZOM4411 through the diagnostics conformance runner for mismatched numeric operands. | None. |
+| 2 | Complete | `unification-test.cc` covers primitives, functions, type variables, error propagation, exact reference/raw-pointer mutability, order-insensitive unions, identical/different existentials, `null` only with `null`, mismatch failures, and occurs-check `InfiniteType` classification. `diagnostic-test.cc` fixes ZOM4010/ZOM4011 IDs. `cannot_unify_numeric_neg_08.check` covers ZOM4010 through the diagnostics conformance runner for mismatched numeric operands. | None. |
 | 3 | Complete | `coercion-test.cc` covers never, any, reference reborrow, raw-pointer mut-to-const, union injection, nullable union, rejection, and dyn upcast. `body-checker-test.cc` covers coercion records for function arguments, return statements, assignments, conditional joins, struct literal fields, nullable local initializers, and explicit existential erasure at annotated local sites. | None. |
 | 4 | Complete | `decl-signature-test.cc` covers function, class, interface, enum, alias, variable, const declaration, generic parameter, shared generic type variable, type expression, raises, symbol-keyed parameter/field signatures, recursive aliases, and `GenericParams.where_` bounds feeding generic upper bounds. | None for current function-level where-bound signature computation. |
-| 5 | Complete | `body-checker-test.cc` covers literals, identifiers, binary/unary/postfix operators, calls, returns, assignment, if/while/for, conditionals, nested blocks, arrays, tuples, object literals, struct literals with unknown/missing field rejection and field coercions, member access, index, casts, unsafe blocks, `is`, `this`, nullable coalesce, lambdas and function expressions with annotated body checks, match statement integration, and error operators. `call_non_function_neg_09.check` covers user-visible ZOM4415 through the diagnostics conformance runner for calling a non-function value. | None. |
-| 6 | Complete | `body-checker-test.cc` covers `identity<T>(x: T) -> T` inferred from `identity(42)`, explicit shared generic type variables in signatures, and `CannotInferTypeParameter` ZOM4420 for unsolved generic calls. `generic_infer_identity_pos_11.check` covers the positive identity-inference path through the diagnostics conformance runner, and `generic_infer_unsolved_neg_09.check` covers the unsolved generic return type parameter negative path. Parser/lit generic declaration coverage remains in `type_params_basic_pos_01.check`, `fun_generic_pos_06.check`, and `decl_generics_pos_07.check`. | None. |
-| 7 | Complete | `body-checker-test.cc` covers explicit type argument substitution for `identity<f64>(42.0)`, wrong explicit type-argument count rejection with stable ZOM4423 diagnostics, and incompatible explicit type argument rejection. `generic_call_relational_disambig_pos_01.check` covers parsed call type arguments without confusing relational operators. `generic_explicit_success_pos_12.check` covers the positive explicit type argument path through the CLI pipeline. `generic_explicit_count_neg_10.check` covers the wrong explicit type-argument count through the diagnostics conformance runner with normal source/caret display, and `generic_explicit_incompatible_neg_11.check` covers explicit type arguments that conflict with call arguments through user-visible ZOM4410 source/caret output. | None. |
-| 8 | Complete | `body-checker-test.cc` covers call-site rejection for an unsatisfied function-level interface bound, positive satisfaction through an impl block, and checker diagnostic ZOM4431 through `CheckerTraitNotImplemented`. `generic_bound_missing_neg_01.check` covers the same unsatisfied generic bound through the diagnostics conformance runner, and `generic_bound_satisfied_pos_10.check` covers the positive satisfied-bound CLI path. `DeclSignature.FunctionGenericParamPreservesWhereBound` covers where-clause bounds entering function signatures. `where_clause_pos_01.check`, `where_clause_pos_02.check`, `where_clause_pos_06.check`, `class_where_clause_pos_17.check`, and `impl_where_clause_pos_13.check` cover function, struct, class, and standalone impl where-clause AST retention. `iface_where_reject_neg_05.check` covers the intentional parser-level rejection of `where` clauses on interface declarations; interface type-parameter constraints remain in the type-parameter list. `complex_impl_pos_09.check` covers parser/lit impl syntax with generic interface arguments. | Impl-level where-bound solving remains part of the broader trait resolver contract. |
-| 9 | Complete | `trait-resolver-test.cc` covers duplicate concrete impl coherence and direct-vs-blanket overlap, both asserting stable ZOM4430 (`ConflictingImpl`) diagnostics through the real binder + trait resolver pipeline. `conflicting_impl_neg_17.check` covers the same duplicate-impl coherence error through the diagnostics conformance runner with normal source/caret display. | None. |
-| 10 | Complete | `trait-resolver-test.cc` covers unique associated type lookup, interface-qualified lookup, ambiguous lookup with ZOM4434, and missing associated type with ZOM4433. `DeclSignature.ResolveQualifiedAssociatedTypeProjection` covers checker disambiguation through `AssociatedTypeProjectionExpr.iface_ty`, selecting `Iterator::Item` over `Stream::Item` for the same base type. `associated_projection_pos_01.check` covers parser AST surface for `<T as Iterator>::Item`; `associated_projection_qualified_pos_02.check` covers user-visible qualified projection syntax with two same-named associated types and no ambiguity diagnostic. `associated_projection_missing_neg_03.check` and `associated_projection_ambiguous_neg_04.check` cover user-visible ZOM4433/ZOM4434 diagnostics for unqualified `T::Item`-style projection paths, while qualified module paths remain ordinary `NamedTypeExpr` paths. | None. |
+| 5 | Complete | `body-checker-test.cc` covers literals, identifiers, binary/unary/postfix operators, calls, returns, assignment, if/while/for, conditionals, nested blocks, arrays, tuples, object literals, struct literals with unknown/missing field rejection and field coercions, member access, index, casts, unsafe blocks, `is`, `this`, nullable coalesce, lambdas and function expressions with annotated body checks, match statement integration, and error operators. `call_non_function_neg_09.check` covers user-visible ZOM4012 through the diagnostics conformance runner for calling a non-function value. | None. |
+| 6 | Complete | `body-checker-test.cc` covers `identity<T>(x: T) -> T` inferred from `identity(42)`, explicit shared generic type variables in signatures, and `CannotInferTypeParameter` ZOM4014 for unsolved generic calls. `generic_infer_identity_pos_11.check` covers the positive identity-inference path through the diagnostics conformance runner, and `generic_infer_unsolved_neg_09.check` covers the unsolved generic return type parameter negative path. Parser/lit generic declaration coverage remains in `type_params_basic_pos_01.check`, `fun_generic_pos_06.check`, and `decl_generics_pos_07.check`. | None. |
+| 7 | Complete | `body-checker-test.cc` covers explicit type argument substitution for `identity<f64>(42.0)`, wrong explicit type-argument count rejection with stable ZOM4016 diagnostics, and incompatible explicit type argument rejection. `generic_call_relational_disambig_pos_01.check` covers parsed call type arguments without confusing relational operators. `generic_explicit_success_pos_12.check` covers the positive explicit type argument path through the CLI pipeline. `generic_explicit_count_neg_10.check` covers the wrong explicit type-argument count through the diagnostics conformance runner with normal source/caret display, and `generic_explicit_incompatible_neg_11.check` covers explicit type arguments that conflict with call arguments through user-visible ZOM4009 source/caret output. | None. |
+| 8 | Complete | `body-checker-test.cc` covers call-site rejection for an unsatisfied function-level interface bound, positive satisfaction through an impl block, and checker diagnostic ZOM4018 through `CheckerTraitNotImplemented`. `generic_bound_missing_neg_01.check` covers the same unsatisfied generic bound through the diagnostics conformance runner, and `generic_bound_satisfied_pos_10.check` covers the positive satisfied-bound CLI path. `DeclSignature.FunctionGenericParamPreservesWhereBound` covers where-clause bounds entering function signatures. `where_clause_pos_01.check`, `where_clause_pos_02.check`, `where_clause_pos_06.check`, `class_where_clause_pos_17.check`, and `impl_where_clause_pos_13.check` cover function, struct, class, and standalone impl where-clause AST retention. `iface_where_reject_neg_05.check` covers the intentional parser-level rejection of `where` clauses on interface declarations; interface type-parameter constraints remain in the type-parameter list. `complex_impl_pos_09.check` covers parser/lit impl syntax with generic interface arguments. | Impl-level where-bound solving remains part of the broader trait resolver contract. |
+| 9 | Complete | `trait-resolver-test.cc` covers duplicate concrete impl coherence and direct-vs-blanket overlap, both asserting stable ZOM4017 (`ConflictingImpl`) diagnostics through the real binder + trait resolver pipeline. `conflicting_impl_neg_17.check` covers the same duplicate-impl coherence error through the diagnostics conformance runner with normal source/caret display. | None. |
+| 10 | Complete | `trait-resolver-test.cc` covers unique associated type lookup, interface-qualified lookup, ambiguous lookup with ZOM4021, and missing associated type with ZOM4020. `DeclSignature.ResolveQualifiedAssociatedTypeProjection` covers checker disambiguation through `AssociatedTypeProjectionExpr.iface_ty`, selecting `Iterator::Item` over `Stream::Item` for the same base type. `associated_projection_pos_01.check` covers parser AST surface for `<T as Iterator>::Item`; `associated_projection_qualified_pos_02.check` covers user-visible qualified projection syntax with two same-named associated types and no ambiguity diagnostic. `associated_projection_missing_neg_03.check` and `associated_projection_ambiguous_neg_04.check` cover user-visible ZOM4020/ZOM4021 diagnostics for unqualified `T::Item`-style projection paths, while qualified module paths remain ordinary `NamedTypeExpr` paths. | None. |
 | 11 | Complete | `type-test.cc` covers invariant `NamedType` generic arguments. `generic_invariant_named_type_neg_12.check` covers the user-visible CLI rejection of `Vec<&mut i32>` where `Vec<&i32>` is expected, proving named generic arguments remain invariant even when the inner `&mut i32` can reborrow to `&i32`. | None for v1 invariance. |
-| 12 | Complete | `exhaustiveness-test.cc` covers booleans, open types, unions, wildcard, redundancy, constructors, and wildcard-pass cases. `BodyChecker.MatchStmtReportsNonExhaustiveEnum` covers enum integration through `BodyChecker::checkMatchStmt` with non-exhaustive diagnostics. `match_exhaustive_bool_pos_02.check` covers the positive user-visible CLI path for a bool match that covers both `true` and `false`. `match_non_exhaustive_bool_neg_01.check` covers user-visible ZOM4440 and source-caret rendering through the diagnostics conformance runner; diagnostics expectations use two-step RUN lines so FileCheck failures are not hidden by shell pipeline negation. | None. |
+| 12 | Complete | `exhaustiveness-test.cc` covers booleans, open types, unions, wildcard, redundancy, constructors, and wildcard-pass cases. `BodyChecker.MatchStmtReportsNonExhaustiveEnum` covers enum integration through `BodyChecker::checkMatchStmt` with non-exhaustive diagnostics. `match_exhaustive_bool_pos_02.check` covers the positive user-visible CLI path for a bool match that covers both `true` and `false`. `match_non_exhaustive_bool_neg_01.check` covers user-visible ZOM4022 and source-caret rendering through the diagnostics conformance runner; diagnostics expectations use two-step RUN lines so FileCheck failures are not hidden by shell pipeline negation. | None. |
 | 13 | Complete | `exhaustiveness-test.cc` includes `GuardedWildcardDoesNotProveCoverage`, proving guarded arms are useful but do not contribute unconditional coverage. | None. |
-| 14 | Complete | `exhaustiveness-test.cc` covers wildcard-first and duplicate-pattern redundancy with stable `ZOM4442` warning diagnostics. `BodyChecker.MatchStmtReportsUnreachableArmAfterWildcard` covers the full binder/signature/body-checker pipeline for an arm after an unguarded wildcard, and `match_duplicate_arm_warn_04.check` covers user-visible CLI warning output for duplicate bool arms. | None for current redundancy surface. |
+| 14 | Complete | `exhaustiveness-test.cc` covers wildcard-first and duplicate-pattern redundancy with stable `ZOM4023` warning diagnostics. `BodyChecker.MatchStmtReportsUnreachableArmAfterWildcard` covers the full binder/signature/body-checker pipeline for an arm after an unguarded wildcard, and `match_duplicate_arm_warn_04.check` covers user-visible CLI warning output for duplicate bool arms. | None for current redundancy surface. |
 | 15 | Complete | `checker-test.cc` and `body-checker-test.cc` verify fail-closed error nodes for local init, calls, arrays, struct literals, casts, and anonymous functions. `BodyChecker.DependentErrorExpressionEmitsOnlyOneDiagnostic` verifies one source type error produces one diagnostic while dependent expressions become `ErrorType`. | None. |
-| 16 | Complete | `body-checker-test.cc` covers `?!` requiring matching `raises`, `raises A | B` subset acceptance, raising-call propagation, and dedicated checker diagnostic ZOM4460 through `ErrorPropagateOutsideRaises`. `error_propagate_outside_raises_neg_11.check` covers ZOM4460 through the diagnostics conformance runner with normal source/caret display. `error-handling-operators.check`, `return_error_prop_pos_08.check`, and `fun_raises_pipe_pos_01.check` cover parser/lit syntax for `?!` and raises unions. | None. |
-| 17 | Complete | `body-checker-test.cc` covers `!!` on non-error-union with ZOM4461 and successful unwrap returning the first union alternative. `error_unwrap_non_union_neg_12.check` covers ZOM4461 through the diagnostics conformance runner with normal source/caret display. `error-handling-operators.check` covers parsed `!!` syntax. | None for checker semantics. Backend panic lowering is outside this gate. |
+| 16 | Complete | `body-checker-test.cc` covers `?!` requiring matching `raises`, `raises A | B` subset acceptance, raising-call propagation, and dedicated checker diagnostic ZOM4025 through `ErrorPropagateOutsideRaises`. `error_propagate_outside_raises_neg_11.check` covers ZOM4025 through the diagnostics conformance runner with normal source/caret display. `error-handling-operators.check`, `return_error_prop_pos_08.check`, and `fun_raises_pipe_pos_01.check` cover parser/lit syntax for `?!` and raises unions. | None. |
+| 17 | Complete | `body-checker-test.cc` covers `!!` on non-error-union with ZOM4026 and successful unwrap returning the first union alternative. `error_unwrap_non_union_neg_12.check` covers ZOM4026 through the diagnostics conformance runner with normal source/caret display. `error-handling-operators.check` covers parsed `!!` syntax. | None for checker semantics. Backend panic lowering is outside this gate. |
 | 18 | Complete | `trait-resolver-test.cc` covers primitive marker derivation, structural object rejection through raw pointer fields, named struct positive/negative field-based derivation, explicit negative marker impl suppression, and explicit unsafe marker impl override. `marker_impl_where_pos_14.check` and `marker_impl_short_neg_pos_16.check` cover user-visible `MarkerImpl` AST retention for qualified generic marker impls with `where` clauses and short negative marker impls. `qualified_impl_pos_15.check` proves qualified interface impls remain `StandaloneImplDecl` rather than being captured by marker-impl parsing. | None. |
-| 19 | Complete | `coercion-test.cc` covers `&mut T -> &T`; `decl-collector-test.cc` proves `let` bindings are immutable and `mut` bindings are mutable; `body-checker-test.cc` rejects assignment to immutable bindings and records return-site reborrow coercion; `diagnostic-test.cc` fixes ZOM4450. `immutable_assignment_neg_02.check` covers ZOM4450 through the diagnostics conformance runner with normal source/caret display. | None for local binding mutability. |
+| 19 | Complete | `coercion-test.cc` covers `&mut T -> &T`; `decl-collector-test.cc` proves `let` bindings are immutable and `mut` bindings are mutable; `body-checker-test.cc` rejects assignment to immutable bindings and records return-site reborrow coercion; `diagnostic-test.cc` fixes ZOM4024. `immutable_assignment_neg_02.check` covers ZOM4024 through the diagnostics conformance runner with normal source/caret display. | None for local binding mutability. |
 | 20 | Complete | `query-cycle-detector-test.cc` covers signature, alias, associated-projection, and marker-derivation query keys. `decl-signature-test.cc` covers recursive aliases returning an error path. | None for implemented query users. |
 | 21 | Complete | `checker-test.cc`, `driver-test.cc`, and CLI smoke checks cover false return on checker errors. | None. |
 | 22 | Complete | Checker entry points take `const ast::Tree&` and `const ast::BindingMetadata&`; `checker-test.cc` snapshots AST nodes and public `BindingMetadata` fields before and after checking. | None. |
 | 23 | Complete | `python3 scripts/check-rfc.py` passes. | None. |
 | 24 | Complete | `python3 scripts/check-format.py` passes after formatting changed C++ files. | None. |
 | 25 | Complete | Full `ctest --preset default --output-on-failure` passes, including lit and grammar conformance. | None. |
-| 26 | Complete | `body-checker-test.cc` covers `let x = 5; takes_u64(x)` and `let x = null` rejection; `null_initializer_missing_type_neg_01.check` covers the user-visible ZOM4421 through the diagnostics conformance runner. | None for current local-inference scope. |
+| 26 | Complete | `body-checker-test.cc` covers `let x = 5; takes_u64(x)` and `let x = null` rejection; `null_initializer_missing_type_neg_01.check` covers the user-visible ZOM4015 through the diagnostics conformance runner. | None for current local-inference scope. |
 | 27 | Complete | `body-checker-test.cc` covers `T | null` initializer, null-coalesce behavior, `&i32 = null` rejection, `&i32 | null = null` acceptance, and nullable initializer coercion records; coercion tests reject bare reference null. `nullable_initializer_pos_02.check` covers the user-visible positive CLI path for `let x: i32? = null` followed by `x ?? 7`. | None. |
-| 28 | Complete | `BinaryExpr.op` is a schema-generated `BinaryOperatorKind`, and parser/test unary helpers use `UnaryOperatorKind`, so operator tests no longer pass raw operator ordinals. `body-checker-test.cc` covers `+`, `-`, `*`, `/`, `%`, and `**` on a user-defined named type with `Add`, `Sub`, `Mul`, `Div`, `Rem`, and `Pow` impls and returns the user type; it also covers `Add.add(rhs: Number) -> Number`, `Eq.eq(rhs: Point) -> bool`, `Ord.cmp(rhs: Point) -> i32`, `Neg.neg() -> Operand`, `Not.not() -> bool`, and `Index.index(idx: i32) -> Output` signature validation, `==` with `Eq`, `<`, `<=`, `>`, and `>=` with `Ord`, `-x` with `Neg`, `!x` with `Not`, `bag[0]` with `Index::Output`, and rejection of user-type operators missing the required trait. `operator_trait_add_pos_10.check` covers the positive `Add.add(rhs: Number) -> Number` path for `x + y` through the diagnostics conformance runner. `arithmetic_traits_pos_13.check` covers the positive `Sub.sub`, `Mul.mul`, `Div.div`, and `Rem.rem` paths for `x - y`, `x * y`, `x / y`, and `x % y`. `eq_trait_pos_08.check` covers the positive `Eq.eq(rhs: Point) -> bool` path for `x == y`, and `ord_trait_pos_09.check` covers the positive `Ord.cmp(rhs: Point) -> i32` path for `<`, `<=`, `>`, and `>=` through the diagnostics conformance runner. `unary_neg_trait_pos_11.check` covers the positive `Neg.neg() -> Operand` path for `-value`, and `unary_not_trait_pos_12.check` covers the positive `Not.not() -> bool` path for `!value` through the diagnostics conformance runner. `index_trait_pos_07.check` covers the positive `Index.index(idx: i32) -> Output` path for `bag[0]` through the diagnostics conformance runner. `operator_trait_missing_neg_01.check`, `operator_trait_signature_mismatch_neg_02.check`, `comparison_trait_signature_mismatch_neg_03.check`, `ord_trait_signature_mismatch_neg_07.check`, `unary_neg_trait_signature_mismatch_neg_04.check`, `unary_not_trait_signature_mismatch_neg_05.check`, `index_trait_signature_mismatch_neg_06.check`, and `index_trait_missing_neg_01.check` cover user-visible ZOM4431/ZOM4432 through the diagnostics conformance runner. Built-in numeric operators are covered by primitive arithmetic tests. | Full method-call lowering belongs to the later call-dispatch contract. |
-| 29 | Complete | `body-checker-test.cc` covers numeric casts, `i32 as bool` rejection with stable ZOM4416 diagnostics, raw-pointer unsafe gating, shared-reference-to-const-raw casts, mutable-reference-to-mutable-raw casts, accepted dyn upcast through declared interface inheritance, and rejected unrelated dyn casts. `invalid_cast_neg_14.check` covers user-visible invalid primitive cast diagnostics through the CLI pipeline, and `dyn_upcast_pos_05.check` covers accepted `dyn I -> dyn J` casts through declared interface inheritance. | None. |
-| 30 | Complete | `coercion-test.cc` covers `dyn I -> dyn J` upcast; `DeclSignatureComputer` resolves `dyn` type expressions; `BodyChecker.LetWithDynAnnotationRecordsExistentialErasure` verifies concrete `T -> dyn I` erasure at explicit local annotations; `dyn_erasure_pos_03.check` covers the concrete-to-empty-interface `dyn` erasure path through the user-visible CLI pipeline, `dyn_object_safe_method_pos_04.check` covers the same path for an object-safe interface with an ordinary instance method, and `dyn_upcast_pos_05.check` covers the positive `dyn Drawable -> dyn Shape` upcast path. `BodyChecker.CastAllowsDynUpcast` verifies inheritance-gated dyn upcast through `InterfaceDecl.ifaces_id`; `dyn_marker_list_pos_02.check` covers `dyn I + M` parser AST surface; `InterfaceDecl.ifaces_id` preserves superinterface metadata for OS-0, `MethodDecl.type_params_id` preserves method-level generic parameters for object-safety analysis, `AssociatedTypeDecl.type_params_id` preserves generic associated type parameters, and `FunctionParameterDecl.attrs` preserves receiver parameter attributes for OS-3 analysis. `DeclSignature.DynRejectsObjectUnsafeSuperinterface`, `DeclSignature.DynRejectsGenericInterfaceMethod`, `DeclSignature.DynRejectsBareSelfReturn`, `DeclSignature.DynRejectsMoveSelfReceiver`, `DeclSignature.DynRejectsUnsizedMethodParameter`, `DeclSignature.DynRejectsStaticInterfaceMethod`, `DeclSignature.DynRejectsUnboundAssociatedType`, and `DeclSignature.DynRejectsGenericAssociatedType` cover object-safety diagnostics ZOM4338, ZOM4331, ZOM4332, ZOM4333, ZOM4337, ZOM4335, ZOM4334, and ZOM4336 for currently exposed interface metadata. `dyn_super_not_object_safe_neg_01.check`, `dyn_generic_method_neg_01.check`, `dyn_self_return_neg_01.check`, `dyn_move_self_neg_01.check`, `dyn_unsized_parameter_neg_01.check`, `dyn_static_method_neg_01.check`, `dyn_unbound_associated_type_neg_01.check`, and `dyn_gat_not_allowed_neg_01.check` cover user-visible ZOM4338/ZOM4331/ZOM4332/ZOM4333/ZOM4337/ZOM4335/ZOM4334/ZOM4336 and source-caret rendering through the diagnostics conformance runner. | None. |
-| 31 | Complete | `type-test.cc` and `coercion-test.cc` cover bottom/top, reborrow, raw mut-to-const, union injection, and nullable union. `body-checker-test.cc` verifies no implicit numeric widening and covers union-injection/coercion sites for function arguments, returns, assignments, conditionals, struct literal fields, nullable local declarations, reborrow returns, and raw mut-to-const assignments. `type_mismatch_initializer_neg_03.check` covers ZOM4410 through the diagnostics conformance runner for a non-coercible `let` initializer. | None. |
+| 28 | Complete | `BinaryExpr.op` is a schema-generated `BinaryOperatorKind`, and parser/test unary helpers use `UnaryOperatorKind`, so operator tests no longer pass raw operator ordinals. `body-checker-test.cc` covers `+`, `-`, `*`, `/`, `%`, and `**` on a user-defined named type with `Add`, `Sub`, `Mul`, `Div`, `Rem`, and `Pow` impls and returns the user type; it also covers `Add.add(rhs: Number) -> Number`, `Eq.eq(rhs: Point) -> bool`, `Ord.cmp(rhs: Point) -> i32`, `Neg.neg() -> Operand`, `Not.not() -> bool`, and `Index.index(idx: i32) -> Output` signature validation, `==` with `Eq`, `<`, `<=`, `>`, and `>=` with `Ord`, `-x` with `Neg`, `!x` with `Not`, `bag[0]` with `Index::Output`, and rejection of user-type operators missing the required trait. `operator_trait_add_pos_10.check` covers the positive `Add.add(rhs: Number) -> Number` path for `x + y` through the diagnostics conformance runner. `arithmetic_traits_pos_13.check` covers the positive `Sub.sub`, `Mul.mul`, `Div.div`, and `Rem.rem` paths for `x - y`, `x * y`, `x / y`, and `x % y`. `eq_trait_pos_08.check` covers the positive `Eq.eq(rhs: Point) -> bool` path for `x == y`, and `ord_trait_pos_09.check` covers the positive `Ord.cmp(rhs: Point) -> i32` path for `<`, `<=`, `>`, and `>=` through the diagnostics conformance runner. `unary_neg_trait_pos_11.check` covers the positive `Neg.neg() -> Operand` path for `-value`, and `unary_not_trait_pos_12.check` covers the positive `Not.not() -> bool` path for `!value` through the diagnostics conformance runner. `index_trait_pos_07.check` covers the positive `Index.index(idx: i32) -> Output` path for `bag[0]` through the diagnostics conformance runner. `operator_trait_missing_neg_01.check`, `operator_trait_signature_mismatch_neg_02.check`, `comparison_trait_signature_mismatch_neg_03.check`, `ord_trait_signature_mismatch_neg_07.check`, `unary_neg_trait_signature_mismatch_neg_04.check`, `unary_not_trait_signature_mismatch_neg_05.check`, `index_trait_signature_mismatch_neg_06.check`, and `index_trait_missing_neg_01.check` cover user-visible ZOM4018/ZOM4019 through the diagnostics conformance runner. Built-in numeric operators are covered by primitive arithmetic tests. | Full method-call lowering belongs to the later call-dispatch contract. |
+| 29 | Complete | `body-checker-test.cc` covers numeric casts, `i32 as bool` rejection with stable ZOM4013 diagnostics, raw-pointer unsafe gating, shared-reference-to-const-raw casts, mutable-reference-to-mutable-raw casts, accepted dyn upcast through declared interface inheritance, and rejected unrelated dyn casts. `invalid_cast_neg_14.check` covers user-visible invalid primitive cast diagnostics through the CLI pipeline, and `dyn_upcast_pos_05.check` covers accepted `dyn I -> dyn J` casts through declared interface inheritance. | None. |
+| 30 | Complete | `coercion-test.cc` covers `dyn I -> dyn J` upcast; `DeclSignatureComputer` resolves `dyn` type expressions; `BodyChecker.LetWithDynAnnotationRecordsExistentialErasure` verifies concrete `T -> dyn I` erasure at explicit local annotations; `dyn_erasure_pos_03.check` covers the concrete-to-empty-interface `dyn` erasure path through the user-visible CLI pipeline, `dyn_object_safe_method_pos_04.check` covers the same path for an object-safe interface with an ordinary instance method, and `dyn_upcast_pos_05.check` covers the positive `dyn Drawable -> dyn Shape` upcast path. `BodyChecker.CastAllowsDynUpcast` verifies inheritance-gated dyn upcast through `InterfaceDecl.ifaces_id`; `dyn_marker_list_pos_02.check` covers `dyn I + M` parser AST surface; `InterfaceDecl.ifaces_id` preserves superinterface metadata for OS-0, `MethodDecl.type_params_id` preserves method-level generic parameters for object-safety analysis, `AssociatedTypeDecl.type_params_id` preserves generic associated type parameters, and `FunctionParameterDecl.attrs` preserves receiver parameter attributes for OS-3 analysis. `DeclSignature.DynRejectsObjectUnsafeSuperinterface`, `DeclSignature.DynRejectsGenericInterfaceMethod`, `DeclSignature.DynRejectsBareSelfReturn`, `DeclSignature.DynRejectsMoveSelfReceiver`, `DeclSignature.DynRejectsUnsizedMethodParameter`, `DeclSignature.DynRejectsStaticInterfaceMethod`, `DeclSignature.DynRejectsUnboundAssociatedType`, and `DeclSignature.DynRejectsGenericAssociatedType` cover object-safety diagnostics ZOM4008, ZOM4001, ZOM4002, ZOM4003, ZOM4007, ZOM4005, ZOM4004, and ZOM4006 for currently exposed interface metadata. `dyn_super_not_object_safe_neg_01.check`, `dyn_generic_method_neg_01.check`, `dyn_self_return_neg_01.check`, `dyn_move_self_neg_01.check`, `dyn_unsized_parameter_neg_01.check`, `dyn_static_method_neg_01.check`, `dyn_unbound_associated_type_neg_01.check`, and `dyn_gat_not_allowed_neg_01.check` cover user-visible ZOM4008/ZOM4001/ZOM4002/ZOM4003/ZOM4007/ZOM4005/ZOM4004/ZOM4006 and source-caret rendering through the diagnostics conformance runner. | None. |
+| 31 | Complete | `type-test.cc` and `coercion-test.cc` cover bottom/top, reborrow, raw mut-to-const, union injection, and nullable union. `body-checker-test.cc` verifies no implicit numeric widening and covers union-injection/coercion sites for function arguments, returns, assignments, conditionals, struct literal fields, nullable local declarations, reborrow returns, and raw mut-to-const assignments. `type_mismatch_initializer_neg_03.check` covers ZOM4009 through the diagnostics conformance runner for a non-coercible `let` initializer. | None. |
 
 ## Implementation Plan
 
@@ -1577,19 +1577,19 @@ None.
 | 2026-07-08 | REVIEW | Added `<=`, `>`, and `>=` `Ord` coverage plus diagnostics conformance coverage for invalid `Ord.cmp` signatures. |
 | 2026-07-08 | REVIEW | Added class and generic standalone impl where-clause parser support evidence, including AST retention for `StandaloneImplDecl.type_params_id.where_`. |
 | 2026-07-08 | REVIEW | Added user-visible evidence for interface-qualified associated type projection disambiguation through `AssociatedTypeProjectionExpr.iface_ty`. |
-| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for unsolved generic type parameter inference (`ZOM4420`). |
+| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for unsolved generic type parameter inference (`ZOM4014`). |
 | 2026-07-08 | REVIEW | Added marker impl parser/spec conformance evidence for `MarkerImpl` AST retention and qualified interface impl disambiguation. |
 | 2026-07-08 | REVIEW | Added diagnostics conformance coverage for nullable initializer acceptance and null-coalescing after parser-produced `OptionalTypeExpr`. |
-| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for unqualified associated type projection errors (`ZOM4433` and `ZOM4434`) and documented checker-side disambiguation from qualified module paths. |
-| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for duplicate impl coherence errors (`ZOM4430`). |
-| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for error propagation outside a matching `raises` clause (`ZOM4460`). |
-| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for assignment to immutable `let` bindings (`ZOM4450`). |
-| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for forced error unwrap on non-error-union operands (`ZOM4461`). |
-| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for non-coercible `let` initializer type mismatches (`ZOM4410`). |
-| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for numeric unification failures in binary arithmetic (`ZOM4411`). |
-| 2026-07-08 | REVIEW | Added a dedicated non-function call checker diagnostic (`ZOM4415`) and diagnostics conformance coverage for its source/caret display. |
-| 2026-07-08 | REVIEW | Aligned the checker diagnostic catalog and design references with `diagnostics-checker.def`, including object-safety diagnostics (`ZOM4331`-`ZOM4338`) and currently registered checker error codes. |
-| 2026-07-08 | REVIEW | Added a dedicated explicit type-argument count checker diagnostic (`ZOM4423`) plus diagnostics conformance coverage for user-visible source/caret display, and aligned explicit generic call examples with the parser-supported `f<T>(x)` syntax. |
+| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for unqualified associated type projection errors (`ZOM4020` and `ZOM4021`) and documented checker-side disambiguation from qualified module paths. |
+| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for duplicate impl coherence errors (`ZOM4017`). |
+| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for error propagation outside a matching `raises` clause (`ZOM4025`). |
+| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for assignment to immutable `let` bindings (`ZOM4024`). |
+| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for forced error unwrap on non-error-union operands (`ZOM4026`). |
+| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for non-coercible `let` initializer type mismatches (`ZOM4009`). |
+| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for numeric unification failures in binary arithmetic (`ZOM4010`). |
+| 2026-07-08 | REVIEW | Added a dedicated non-function call checker diagnostic (`ZOM4012`) and diagnostics conformance coverage for its source/caret display. |
+| 2026-07-08 | REVIEW | Aligned the checker diagnostic catalog and design references with `diagnostics-checker.def`, including object-safety diagnostics (`ZOM4001`-`ZOM4008`) and currently registered checker error codes. |
+| 2026-07-08 | REVIEW | Added a dedicated explicit type-argument count checker diagnostic (`ZOM4016`) plus diagnostics conformance coverage for user-visible source/caret display, and aligned explicit generic call examples with the parser-supported `f<T>(x)` syntax. |
 | 2026-07-08 | REVIEW | Added `type-algebra.cc` as the shared home for structural type cloning and replaced duplicate checker-local clone helpers. |
 | 2026-07-08 | REVIEW | Added user-visible CLI conformance coverage for concrete-to-`dyn` existential erasure (`dyn_erasure_pos_03`). |
 | 2026-07-08 | REVIEW | Added user-visible CLI conformance coverage for satisfied generic interface bounds (`generic_bound_satisfied_pos_10`). |
@@ -1601,10 +1601,10 @@ None.
 | 2026-07-08 | REVIEW | Added user-visible CLI conformance coverage for positive user-defined `Neg` and `Not` unary operator trait dispatch (`unary_neg_trait_pos_11`, `unary_not_trait_pos_12`). |
 | 2026-07-08 | REVIEW | Added user-visible CLI conformance coverage for positive user-defined `Sub`, `Mul`, `Div`, and `Rem` operator trait dispatch (`arithmetic_traits_pos_13`). |
 | 2026-07-08 | REVIEW | Added user-visible CLI conformance coverage for object-safe interface methods in concrete-to-`dyn` erasure (`dyn_object_safe_method_pos_04`). |
-| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for explicit generic type arguments that conflict with call arguments (`generic_explicit_incompatible_neg_11`, ZOM4410). |
+| 2026-07-08 | REVIEW | Added diagnostics conformance coverage for explicit generic type arguments that conflict with call arguments (`generic_explicit_incompatible_neg_11`, ZOM4009). |
 | 2026-07-08 | REVIEW | Added user-visible CLI conformance coverage for positive explicit generic type argument substitution (`generic_explicit_success_pos_12`). |
-| 2026-07-08 | REVIEW | Added a dedicated invalid-cast checker diagnostic (`ZOM4416`) and diagnostics conformance coverage for invalid primitive casts (`invalid_cast_neg_14`). |
-| 2026-07-08 | REVIEW | Fixed wildcard-first match redundancy checking and added diagnostics conformance coverage for `ZOM4442` duplicate-arm warnings (`match_duplicate_arm_warn_04`). |
+| 2026-07-08 | REVIEW | Added a dedicated invalid-cast checker diagnostic (`ZOM4013`) and diagnostics conformance coverage for invalid primitive casts (`invalid_cast_neg_14`). |
+| 2026-07-08 | REVIEW | Fixed wildcard-first match redundancy checking and added diagnostics conformance coverage for `ZOM4023` duplicate-arm warnings (`match_duplicate_arm_warn_04`). |
 | 2026-07-08 | REVIEW | Added CLI conformance coverage for positive `dyn I -> dyn J` upcasts through declared interface inheritance (`dyn_upcast_pos_05`). |
 | 2026-07-08 | REVIEW | Clarified that `where` clauses are supported on functions, structs, classes, and standalone impls, while interface declaration `where` remains a parser-level rejection covered by `iface_where_reject_neg_05`. |
 | 2026-07-08 | REVIEW | Added diagnostics conformance coverage for invariant named generic type arguments (`generic_invariant_named_type_neg_12`). |

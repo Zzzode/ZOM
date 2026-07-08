@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/03-types/dyn_static_method_neg_01.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_static_method_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4335]: Interface 'Factory' has a static method and cannot be used as dyn
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]dyn_static_method_neg_01\.zom:5:12$}}
+
+// CHECK-LITERAL: Error [ZOM4005]: Interface 'Factory' has a static method and cannot be used as dyn
+// CHECK-LITERAL:   --> 03-types/dyn_static_method_neg_01.zom:5:12
+// CHECK-LITERAL:   |
 // CHECK-LITERAL: 5 | let x: dyn Factory;
 // CHECK-LITERAL:   |            ^

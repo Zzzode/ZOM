@@ -25,6 +25,7 @@ add_test(
 
 set_tests_properties(conformance-grammar PROPERTIES
   LABELS "conformance;conformance-grammar;grammar"
-  TIMEOUT 900
+  # Full ANTLR grammar conformance is a single serial matrix over the corpus.
+  TIMEOUT 1800
   ENVIRONMENT "ZOM_CONFORMANCE_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}/antlr"
 )

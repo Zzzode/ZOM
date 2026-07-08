@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Snapshot regeneration tool for ZomLang AST tests.
+Snapshot regeneration tool for ZomLang conformance tests.
 
-This tool regenerates CHECK comments in AST expectation files by running the
-zomc compiler on the matching source under conformance/corpus.
+This tool regenerates CHECK comments in AST and diagnostics expectation files
+by running the zomc compiler on the matching source under conformance/corpus.
 """
 
 import argparse
@@ -19,7 +19,7 @@ from typing import List, Optional, Tuple
 
 
 class SnapshotRegenerator:
-    """Tool to regenerate test snapshots for ZomLang AST tests."""
+    """Tool to regenerate test snapshots for ZomLang conformance tests."""
 
     REGEN_SKIP_PREFIX = "// REGEN-SKIP:"
 
@@ -35,6 +35,9 @@ class SnapshotRegenerator:
         )
         self.corpus_root = self.conformance_root / "corpus"
         self.ast_expectation_root = self.conformance_root / "expectations" / "ast"
+        self.diagnostics_expectation_root = (
+            self.conformance_root / "expectations" / "diagnostics"
+        )
 
     def _zomc_path_in_build_dir(self, build_dir: Path) -> Path:
         return build_dir / "products" / "zomlang" / "utils" / "zomc" / "zomc"
@@ -79,11 +82,24 @@ class SnapshotRegenerator:
 
         return None
 
-    def run_zomc(self, test_file: str) -> Tuple[int, str]:
+    def run_zomc(self, test_file: str, snapshot_kind: str) -> Tuple[int, str]:
         """Run zomc compiler and get combined output."""
         zomc = self.find_zomc()
         if not zomc:
             raise RuntimeError("Could not find zomc compiler")
+
+        if snapshot_kind == "diagnostics":
+            source_file = Path(test_file).resolve()
+            rel = source_file.relative_to(self.corpus_root).as_posix()
+            result = subprocess.run(
+                [zomc, "compile", "--syntax-only", rel],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                cwd=self.corpus_root,
+                check=False,
+            )
+            return result.returncode, result.stdout
 
         result = subprocess.run(
             [zomc, "compile", "--dump-ast", test_file],
@@ -137,7 +153,7 @@ class SnapshotRegenerator:
     def _normalize_diagnostic_line(self, line: str) -> str:
         line = self._strip_ansi(line).rstrip()
         line = re.sub(
-            r"(?:/?[A-Za-z0-9_.-]+/)+(?P<file>[^/\s:]+\.zom)",
+            r"/(?:[A-Za-z0-9_.-]+/)+(?P<file>[^/\s:]+\.zom)",
             lambda m: f"{{{{.*{m.group('file')}}}}}",
             line,
         )
@@ -194,6 +210,14 @@ class SnapshotRegenerator:
             normalized = self._normalize_diagnostic_line(line)
             if not normalized.strip():
                 continue
+            if "zomc}} compile: Compilation failed" in normalized:
+                continue
+            if "zomc compile: Compilation failed" in normalized:
+                continue
+            if normalized.startswith("Try '") and "zomc}} compile --help" in normalized:
+                continue
+            if normalized.startswith("Try '") and "zomc compile --help" in normalized:
+                continue
             if "{{.*" in normalized:
                 check_lines.extend(self._format_path_sensitive_diagnostic_line(normalized))
             else:
@@ -215,12 +239,11 @@ class SnapshotRegenerator:
         prefix = line[: path_match.start()]
         file = path_match.group("file")
         suffix = path_match.group("suffix")
+        path_prefix_regex = r"(?:.*[/\\])?"
+        path_regex = f"{path_prefix_regex}{re.escape(file)}{re.escape(suffix)}$"
         if prefix:
-            return [
-                f"// CHECK: {prefix}",
-                f"// CHECK-SAME: {{{{[/\\\\]{re.escape(file)}{re.escape(suffix)}$}}}}",
-            ]
-        return [f"// CHECK: {{{{[/\\\\]{re.escape(file)}{re.escape(suffix)}$}}}}"]
+            return [f"// CHECK: {prefix} {{{{{path_regex}}}}}"]
+        return [f"// CHECK: {{{{{path_regex}}}}}"]
 
     def _is_json_output(self, output: str) -> bool:
         candidate = output.strip()
@@ -234,37 +257,66 @@ class SnapshotRegenerator:
         except Exception:
             return False
 
-    def resolve_source_and_expectation(self, target: str) -> Tuple[Path, Path]:
+    def resolve_source_and_expectation(self, target: str) -> Tuple[Path, Path, str]:
         """Resolve a corpus source or AST expectation to both paths."""
         path = Path(target).resolve()
 
         if path.suffix == ".check":
-            rel = path.relative_to(self.ast_expectation_root).with_suffix(".zom")
-            return self.corpus_root / rel, path
+            if (
+                path == self.ast_expectation_root
+                or self.ast_expectation_root in path.parents
+            ):
+                rel = path.relative_to(self.ast_expectation_root).with_suffix(".zom")
+                return self.corpus_root / rel, path, "ast"
+            if (
+                path == self.diagnostics_expectation_root
+                or self.diagnostics_expectation_root in path.parents
+            ):
+                rel = path.relative_to(self.diagnostics_expectation_root).with_suffix(
+                    ".zom"
+                )
+                return self.corpus_root / rel, path, "diagnostics"
+            raise RuntimeError(f"unsupported snapshot expectation path: {path}")
 
         if path.suffix == ".zom":
             rel = path.relative_to(self.corpus_root)
-            return path, (self.ast_expectation_root / rel).with_suffix(".check")
+            return path, (self.ast_expectation_root / rel).with_suffix(".check"), "ast"
 
         raise RuntimeError(f"unsupported snapshot target suffix: {path}")
 
-    def default_run_line(self, source_file: Path, returncode: int) -> str:
-        """Create a RUN line for a new AST expectation file."""
+    def default_run_line(
+        self, source_file: Path, returncode: int, snapshot_kind: str
+    ) -> str:
+        """Create a RUN line for a new expectation file."""
         rel = source_file.relative_to(self.corpus_root).as_posix()
+        if snapshot_kind == "diagnostics":
+            if returncode == 0:
+                return f"// RUN: cd %corpus && %zomc compile --syntax-only {rel} > %t 2>&1"
+            return f"// RUN: cd %corpus && ! %zomc compile --syntax-only {rel} > %t 2>&1"
         if returncode == 0:
             return f"// RUN: %zomc compile --dump-ast %corpus/{rel} | %FileCheck %s"
         return f"// RUN: ! %zomc compile --dump-ast %corpus/{rel} 2>&1 | %FileCheck %s"
 
+    def default_filecheck_run_line(self, snapshot_kind: str) -> Optional[str]:
+        """Create the secondary FileCheck RUN line for two-step tests."""
+        if snapshot_kind == "diagnostics":
+            return "// RUN: %FileCheck %s --input-file %t"
+        return None
+
     def normalize_run_line(
-        self, line: str, source_file: Path, returncode: int
+        self, line: str, source_file: Path, returncode: int, snapshot_kind: str
     ) -> str:
         """Keep existing RUN lines unless the source path or status changed."""
+        expected = self.default_run_line(source_file, returncode, snapshot_kind)
+        if snapshot_kind == "diagnostics":
+            return line if line.strip() == expected else expected + "\n"
+
         rel = source_file.relative_to(self.corpus_root).as_posix()
         stripped = line.strip()
         expects_failure = stripped.startswith("// RUN: !")
         actual_failure = returncode != 0
         if f"%corpus/{rel}" not in stripped or expects_failure != actual_failure:
-            return self.default_run_line(source_file, returncode) + "\n"
+            return expected + "\n"
         return line
 
     def read_lines(self, path: Path) -> List[str]:
@@ -302,17 +354,21 @@ class SnapshotRegenerator:
 
     def regenerate_snapshot(self, target: str, append_mode: bool = False):
         """Regenerate snapshot for a single test file."""
-        source_file, expectation_file = self.resolve_source_and_expectation(target)
+        source_file, expectation_file, snapshot_kind = self.resolve_source_and_expectation(
+            target
+        )
         if self.should_skip_regeneration(expectation_file):
             print(f"Skipping hand-written snapshot: {expectation_file}")
             return
 
         print(f"Regenerating snapshot for: {source_file}")
 
-        returncode, output = self.run_zomc(str(source_file))
+        returncode, output = self.run_zomc(str(source_file), snapshot_kind)
         output = output.rstrip()
 
-        if returncode == 0:
+        if snapshot_kind == "diagnostics":
+            check_lines = self.format_diagnostics_for_check(output)
+        elif returncode == 0:
             if self._is_json_output(output):
                 check_lines = self.format_json_for_check(output)
             else:
@@ -323,7 +379,7 @@ class SnapshotRegenerator:
         if expectation_file.exists():
             lines = self.read_lines(expectation_file)
         else:
-            lines = [self.default_run_line(source_file, returncode) + "\n"]
+            lines = [self.default_run_line(source_file, returncode, snapshot_kind) + "\n"]
 
         if append_mode:
             # Remove trailing empty lines and ensure exactly 2 empty lines before CHECK comments
@@ -344,20 +400,39 @@ class SnapshotRegenerator:
             # Remove existing CHECK comments and trailing empty lines
             filtered_lines = self.remove_existing_checks(lines)
 
-            has_run_line = any(
-                line.strip().startswith("// RUN:") for line in filtered_lines
-            )
-            if not has_run_line:
-                filtered_lines.insert(
-                    0, self.default_run_line(source_file, returncode) + "\n"
-                )
-            else:
+            if snapshot_kind == "diagnostics":
                 filtered_lines = [
-                    self.normalize_run_line(line, source_file, returncode)
-                    if line.strip().startswith("// RUN:")
-                    else line
+                    line
                     for line in filtered_lines
+                    if not line.strip().startswith("// RUN:")
                 ]
+                filtered_lines.insert(
+                    0,
+                    self.default_run_line(source_file, returncode, snapshot_kind)
+                    + "\n",
+                )
+                filecheck_run_line = self.default_filecheck_run_line(snapshot_kind)
+                if filecheck_run_line is not None:
+                    filtered_lines.insert(1, filecheck_run_line + "\n")
+            else:
+                has_run_line = any(
+                    line.strip().startswith("// RUN:") for line in filtered_lines
+                )
+                if not has_run_line:
+                    filtered_lines.insert(
+                        0,
+                        self.default_run_line(source_file, returncode, snapshot_kind)
+                        + "\n",
+                    )
+                else:
+                    filtered_lines = [
+                        self.normalize_run_line(
+                            line, source_file, returncode, snapshot_kind
+                        )
+                        if line.strip().startswith("// RUN:")
+                        else line
+                        for line in filtered_lines
+                    ]
 
             # Remove trailing empty lines
             while filtered_lines and filtered_lines[-1].strip() == "":
@@ -387,6 +462,8 @@ class SnapshotRegenerator:
             ".check"
             if directory_path == self.ast_expectation_root
             or self.ast_expectation_root in directory_path.parents
+            or directory_path == self.diagnostics_expectation_root
+            or self.diagnostics_expectation_root in directory_path.parents
             else ".zom"
         )
         test_files = []
@@ -408,7 +485,7 @@ class SnapshotRegenerator:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Regenerate snapshots for ZomLang AST tests"
+        description="Regenerate snapshots for ZomLang conformance tests"
     )
     parser.add_argument(
         "target", help="Test file or directory to regenerate snapshots for"

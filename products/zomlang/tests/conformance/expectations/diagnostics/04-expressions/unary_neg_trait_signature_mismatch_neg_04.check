@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/04-expressions/unary_neg_trait_signature_mismatch_neg_04.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/unary_neg_trait_signature_mismatch_neg_04.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4432]: Operator trait 'Neg' for type 'Operand' must define 'neg() -> Operand'
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]unary_neg_trait_signature_mismatch_neg_04\.zom:13:1$}}
+
+// CHECK-LITERAL: Error [ZOM4019]: Operator trait 'Neg' for type 'Operand' must define 'neg() -> Operand'
+// CHECK-LITERAL:   --> 04-expressions/unary_neg_trait_signature_mismatch_neg_04.zom:13:1
+// CHECK-LITERAL:    |
 // CHECK-LITERAL: 13 | -value;
 // CHECK-LITERAL:    | ^

@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/04-expressions/invalid_cast_neg_14.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/invalid_cast_neg_14.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4416]: Invalid cast from 'i32' to 'bool'
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]invalid_cast_neg_14\.zom:1:15$}}
+
+// CHECK-LITERAL: Error [ZOM4013]: Invalid cast from 'i32' to 'bool'
+// CHECK-LITERAL:   --> 04-expressions/invalid_cast_neg_14.zom:1:15
+// CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x: bool = 42 as bool;
 // CHECK-LITERAL:   |               ^

@@ -1,4 +1,5 @@
-// RUN: %zomc compile --syntax-only %corpus/04-expressions/unary_neg_trait_pos_11.zom > %t 2>&1
+// RUN: cd %corpus && %zomc compile --syntax-only 04-expressions/unary_neg_trait_pos_11.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
+
 
 // CHECK-LITERAL: Syntax check completed successfully.

@@ -51,31 +51,32 @@ ZC_TEST("DiagnosticTest.BasicDiagnosticReporting") {
 }
 
 ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynGenericMethod) == 4331);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynSelfReturn) == 4332);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynMoveSelf) == 4333);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynUnassociatedType) == 4334);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynStaticMethod) == 4335);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynGatNotAllowed) == 4336);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynUnsizedParameter) == 4337);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynSuperNotObjectSafe) == 4338);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::TypeCheckerTypeMismatch) == 4410);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotUnifyTypes) == 4411);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::InfiniteType) == 4412);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerInvalidCast) == 4416);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotInferTypeParameter) == 4420);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotInferNullInitializer) == 4421);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::ExplicitTypeArgumentCountMismatch) == 4423);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::ConflictingImpl) == 4430);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::OperatorTraitSignatureMismatch) == 4432);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::AmbiguousAssociatedTypeProjection) == 4434);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::NoAssociatedTypeProjection) == 4433);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerNonExhaustiveMatch) == 4440);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerUnreachableMatchArm) == 4442);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotMutateImmutableVariable) == 4450);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::ErrorPropagateOutsideRaises) == 4460);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::ErrorUnwrapNonUnion) == 4461);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::TypeMismatch) >= 3000);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynGenericMethod) == 4001);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynSelfReturn) == 4002);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynMoveSelf) == 4003);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynUnassociatedType) == 4004);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynStaticMethod) == 4005);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynGatNotAllowed) == 4006);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynUnsizedParameter) == 4007);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynSuperNotObjectSafe) == 4008);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::TypeCheckerTypeMismatch) == 4009);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotUnifyTypes) == 4010);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::InfiniteType) == 4011);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerInvalidCast) == 4013);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotInferTypeParameter) == 4014);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotInferNullInitializer) == 4015);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ExplicitTypeArgumentCountMismatch) == 4016);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ConflictingImpl) == 4017);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::OperatorTraitSignatureMismatch) == 4019);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::AmbiguousAssociatedTypeProjection) == 4021);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::NoAssociatedTypeProjection) == 4020);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerNonExhaustiveMatch) == 4022);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerUnreachableMatchArm) == 4023);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotMutateImmutableVariable) == 4024);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ErrorPropagateOutsideRaises) == 4025);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ErrorUnwrapNonUnion) == 4026);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::UndefinedIdentifier) == 3001);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::TypeMismatch) == 9001);
 }
 
 ZC_TEST("DiagnosticTest.MultipleDiagnostics") {

@@ -2,4 +2,4 @@ section: "Ch.04 Binary arithmetic"
 covers_rule: "additiveExpr"
 expected: "ACCEPT"
 notes:
-  - "Syntax is valid; diagnostics runner checks numeric unification failure ZOM4411."
+  - "Syntax is valid; diagnostics runner checks numeric unification failure ZOM4010."

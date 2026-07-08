@@ -1,8 +1,9 @@
-// RUN: ! %zomc compile --syntax-only %corpus/11-error/error_propagate_outside_raises_neg_11.zom > %t 2>&1
+// RUN: cd %corpus && ! %zomc compile --syntax-only 11-error/error_propagate_outside_raises_neg_11.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4460]: '?!' propagates error type 'Error' but function does not raise 'Error'
-// CHECK:   -->
-// CHECK-SAME: {{[/\\]error_propagate_outside_raises_neg_11\.zom:6:12$}}
+
+// CHECK-LITERAL: Error [ZOM4025]: '?!' propagates error type 'Error' but function does not raise 'Error'
+// CHECK-LITERAL:   --> 11-error/error_propagate_outside_raises_neg_11.zom:6:12
+// CHECK-LITERAL:   |
 // CHECK-LITERAL: 6 |     return fail()?!;
 // CHECK-LITERAL:   |            ^
