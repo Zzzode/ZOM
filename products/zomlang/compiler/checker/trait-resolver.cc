@@ -103,6 +103,30 @@ static source::SourceLoc nodeLoc(const ast::Tree& tree, ast::NodeId id) {
   return tree.node(id).range.getStart();
 }
 
+static zc::Vector<zc::StringPtr> dynMarkerNames(const ast::Tree& tree, const ast::Node& node) {
+  zc::Vector<zc::StringPtr> result;
+  auto markersId = ast::NodeId(node.payload.words[kDynTypeExprMarkersIdWord]);
+  if (!tree.contains(markersId)) { return result; }
+  const auto& markersNode = tree.node(markersId);
+  if (markersNode.kind != SyntaxKind::DynTypeMarkerList) { return result; }
+
+  NodeList markers;
+  markers.first = markersNode.payload.words[kDynTypeMarkerListMarkersFirstWord];
+  markers.size = markersNode.payload.words[kDynTypeMarkerListMarkersSizeWord];
+  for (ast::NodeId markerId : tree.list(markers)) {
+    if (!tree.contains(markerId)) { continue; }
+    const auto& marker = tree.node(markerId);
+    if (marker.kind != SyntaxKind::AttributePath) { continue; }
+    IdentList segments;
+    segments.first = marker.payload.words[kAttributePathSegmentsFirstWord];
+    segments.size = marker.payload.words[kAttributePathSegmentsSizeWord];
+    auto names = tree.identList(segments);
+    if (names.size() == 0) { continue; }
+    result.add(tree.ident(names.back()));
+  }
+  return result;
+}
+
 zc::StringPtr TraitResolver::resolvePathName(ast::NodeId pathNode) {
   if (!impl->tree.contains(pathNode)) return ""_zc;
   const auto& path = impl->tree.node(pathNode);
@@ -443,6 +467,7 @@ zc::Own<type::Type> TraitResolver::resolveTypeExpr(ast::NodeId typeExprId) {
 
     case SyntaxKind::DynTypeExpr: {
       auto ifacesId = ast::NodeId(node.payload.words[kDynTypeExprIfacesIdWord]);
+      auto markerNames = dynMarkerNames(impl->tree, node);
       if (!impl->tree.contains(ifacesId)) {
         return zc::heap<type::ErrorType>("dyn type requires at least one interface");
       }
@@ -450,7 +475,7 @@ zc::Own<type::Type> TraitResolver::resolveTypeExpr(ast::NodeId typeExprId) {
       const auto& ifaceListNode = impl->tree.node(ifacesId);
       if (ifaceListNode.kind != SyntaxKind::DynTypeIfaceList) {
         auto ifaceType = resolveTypeExpr(ifacesId);
-        return zc::heap<type::ExistentialType>(zc::mv(ifaceType));
+        return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
       }
 
       NodeList ifaceNodeList;
@@ -466,12 +491,12 @@ zc::Own<type::Type> TraitResolver::resolveTypeExpr(ast::NodeId typeExprId) {
         zc::Vector<zc::Own<type::Type>> conjuncts;
         for (ast::NodeId ifaceId : ifaces) { conjuncts.add(resolveTypeExpr(ifaceId)); }
         auto interTy = zc::heap<type::IntersectionType>(zc::mv(conjuncts));
-        return zc::heap<type::ExistentialType>(zc::mv(interTy));
+        return zc::heap<type::ExistentialType>(zc::mv(interTy), markerNames.asPtr());
       }
 
       auto firstIfaceId = ifaces.front();
       auto ifaceType = resolveTypeExpr(firstIfaceId);
-      return zc::heap<type::ExistentialType>(zc::mv(ifaceType));
+      return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
     }
 
     case SyntaxKind::ObjectTypeExpr: {

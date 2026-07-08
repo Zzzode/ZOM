@@ -960,6 +960,46 @@ public:
     return builder_.makeNode(ast::SyntaxKind::DynTypeExpr, source::SourceRange(), payload);
   }
 
+  /// \brief Create a DynTypeExpr with one marker bound.
+  ast::NodeId makeDynTypeExpr(ast::NodeId ifaceTy, zc::StringPtr markerName) {
+    zc::Vector<ast::NodeId> ifaces;
+    ifaces.add(ifaceTy);
+    auto ifaceList = builder_.makeList(ifaces.asPtr());
+    ast::NodePayload ifaceListPayload;
+    ifaceListPayload.words[ast::kDynTypeIfaceListNIfacesWord] = ifaceList.size;
+    ifaceListPayload.words[ast::kDynTypeIfaceListIfacesFirstWord] = ifaceList.first;
+    ifaceListPayload.words[ast::kDynTypeIfaceListIfacesSizeWord] = ifaceList.size;
+    auto ifaceListNode = builder_.makeNode(ast::SyntaxKind::DynTypeIfaceList, source::SourceRange(),
+                                           ifaceListPayload);
+
+    zc::Vector<ast::IdentId> markerSegments;
+    markerSegments.add(builder_.internIdent(markerName));
+    auto markerSegmentList = builder_.makeIdentList(markerSegments.asPtr());
+    ast::NodePayload markerPathPayload;
+    markerPathPayload.words[ast::kAttributePathSegmentsFirstWord] = markerSegmentList.first;
+    markerPathPayload.words[ast::kAttributePathSegmentsSizeWord] = markerSegmentList.size;
+    markerPathPayload.words[ast::kAttributePathLeadingWord] = 0;
+    auto markerPath =
+        builder_.makeNode(ast::SyntaxKind::AttributePath, source::SourceRange(), markerPathPayload);
+
+    zc::Vector<ast::NodeId> markers;
+    markers.add(markerPath);
+    auto markerList = builder_.makeList(markers.asPtr());
+    ast::NodePayload markerListPayload;
+    markerListPayload.words[ast::kDynTypeMarkerListNMarkersWord] = markerList.size;
+    markerListPayload.words[ast::kDynTypeMarkerListMarkersFirstWord] = markerList.first;
+    markerListPayload.words[ast::kDynTypeMarkerListMarkersSizeWord] = markerList.size;
+    auto markerListNode = builder_.makeNode(ast::SyntaxKind::DynTypeMarkerList,
+                                            source::SourceRange(), markerListPayload);
+
+    ast::NodePayload payload;
+    payload.words[ast::kDynTypeExprIfacesIdWord] = ifaceListNode.value;
+    payload.words[ast::kDynTypeExprMarkersIdWord] = markerListNode.value;
+    payload.words[ast::kDynTypeExprHasLifetimeWord] = 0;
+    payload.words[ast::kDynTypeExprLifetimeWord] = 0;
+    return builder_.makeNode(ast::SyntaxKind::DynTypeExpr, source::SourceRange(), payload);
+  }
+
   /// \brief Create an AssociatedTypeProjectionExpr.
   ast::NodeId makeAssociatedTypeProjectionExpr(ast::NodeId baseTy, ast::NodeId ifaceTy,
                                                zc::StringPtr name) {

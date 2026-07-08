@@ -442,6 +442,11 @@ bool UnificationEngine::unifyRawPointers(const RawPointerType& a, const RawPoint
 // ===========================================================================
 
 bool UnificationEngine::unifyExistentials(const ExistentialType& a, const ExistentialType& b) {
+  if (a.getMarkerCount() != b.getMarkerCount()) { return false; }
+  for (size_t i = 0; i < a.getMarkerCount(); ++i) {
+    if (a.getMarkerName(i) != b.getMarkerName(i)) { return false; }
+  }
+
   const Type& ifaceA = a.getInterfaceType();
   const Type& ifaceB = b.getInterfaceType();
   return unify(ifaceA, ifaceB);

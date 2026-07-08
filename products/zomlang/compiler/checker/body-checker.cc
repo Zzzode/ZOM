@@ -161,6 +161,30 @@ static source::SourceLoc getNodeLoc(const ast::Tree& tree, ast::NodeId id) {
   return tree.node(id).range.getStart();
 }
 
+static zc::Vector<zc::StringPtr> dynMarkerNames(const ast::Tree& tree, const ast::Node& node) {
+  zc::Vector<zc::StringPtr> result;
+  auto markersId = ast::NodeId(node.payload.words[kDynTypeExprMarkersIdWord]);
+  if (!tree.contains(markersId)) { return result; }
+  const auto& markersNode = tree.node(markersId);
+  if (markersNode.kind != SyntaxKind::DynTypeMarkerList) { return result; }
+
+  NodeList markers;
+  markers.first = markersNode.payload.words[kDynTypeMarkerListMarkersFirstWord];
+  markers.size = markersNode.payload.words[kDynTypeMarkerListMarkersSizeWord];
+  for (ast::NodeId markerId : tree.list(markers)) {
+    if (!tree.contains(markerId)) { continue; }
+    const auto& marker = tree.node(markerId);
+    if (marker.kind != SyntaxKind::AttributePath) { continue; }
+    IdentList segments;
+    segments.first = marker.payload.words[kAttributePathSegmentsFirstWord];
+    segments.size = marker.payload.words[kAttributePathSegmentsSizeWord];
+    auto names = tree.identList(segments);
+    if (names.size() == 0) { continue; }
+    result.add(tree.ident(names.back()));
+  }
+  return result;
+}
+
 void BodyChecker::reportError(ast::NodeId node, zc::StringPtr message) {
   auto loc = getNodeLoc(impl->tree, node);
   impl->diags.diagnose<DiagID::SemanticError>(loc, message);
@@ -767,6 +791,7 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
 
   if (node.kind == SyntaxKind::DynTypeExpr) {
     auto ifacesId = NodeId(node.payload.words[kDynTypeExprIfacesIdWord]);
+    auto markerNames = dynMarkerNames(impl->tree, node);
     if (!impl->tree.contains(ifacesId)) {
       return zc::heap<type::ErrorType>("dyn type requires at least one interface");
     }
@@ -775,7 +800,7 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
     if (ifaceListNode.kind != SyntaxKind::DynTypeIfaceList) {
       auto ifaceType = resolveTypeExpr(ifacesId);
       if (!ifaceType) { return zc::heap<type::ErrorType>(); }
-      return zc::heap<type::ExistentialType>(zc::mv(ifaceType));
+      return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
     }
 
     NodeList ifaceNodeList;
@@ -788,7 +813,7 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
     if (ifaces.size() == 1) {
       auto ifaceType = resolveTypeExpr(ifaces.front());
       if (!ifaceType) { return zc::heap<type::ErrorType>(); }
-      return zc::heap<type::ExistentialType>(zc::mv(ifaceType));
+      return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
     }
 
     zc::Vector<zc::Own<type::Type>> conjuncts;
@@ -798,7 +823,7 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
       conjuncts.add(zc::mv(ifaceType));
     }
     zc::Own<type::Type> intersection = zc::heap<type::IntersectionType>(zc::mv(conjuncts));
-    return zc::heap<type::ExistentialType>(zc::mv(intersection));
+    return zc::heap<type::ExistentialType>(zc::mv(intersection), markerNames.asPtr());
   }
 
   if (node.kind == SyntaxKind::ReferenceTypeExpr) {
@@ -1039,6 +1064,16 @@ void BodyChecker::checkAssignable(const type::Type& target, const type::Type& so
                                   impl->diags);
       traitResolver.discoverImpls();
       if (traitResolver.implements(resolvedSource, ifaceName)) {
+        for (size_t i = 0; i < existential.getMarkerCount(); ++i) {
+          auto markerName = existential.getMarkerName(i);
+          if (!traitResolver.implements(resolvedSource, markerName)) {
+            auto loc = getNodeLoc(impl->tree, node);
+            impl->diags.diagnose<DiagID::CheckerTraitNotImplemented>(loc, resolvedSource.toString(),
+                                                                     markerName);
+            impl->hadErrors = true;
+            return;
+          }
+        }
         impl->typeEnv.setCoercion(coercionSite, type::CoercionKind::ExistentialErasure);
         return;
       }

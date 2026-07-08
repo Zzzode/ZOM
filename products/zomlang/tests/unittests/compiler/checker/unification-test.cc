@@ -720,6 +720,28 @@ ZC_TEST("Unify.IdenticalExistentialsUnify") {
   ZC_EXPECT(unifier.unify(left, right));
 }
 
+ZC_TEST("Unify.ExistentialMarkersMustMatch") {
+  TypeEnv env;
+  UnificationEngine unifier(env);
+  zc::Vector<zc::StringPtr> firstMarkers;
+  firstMarkers.add("Sendable"_zc);
+  firstMarkers.add("Shared"_zc);
+  zc::Vector<zc::StringPtr> secondMarkers;
+  secondMarkers.add("Shared"_zc);
+  secondMarkers.add("Sendable"_zc);
+  zc::Vector<zc::StringPtr> sendableMarker;
+  sendableMarker.add("Sendable"_zc);
+
+  ExistentialType left(zc::heap<InterfaceType>("Drawable"_zc), firstMarkers.asPtr());
+  ExistentialType same(zc::heap<InterfaceType>("Drawable"_zc), secondMarkers.asPtr());
+  ExistentialType missingMarker(zc::heap<InterfaceType>("Drawable"_zc), sendableMarker.asPtr());
+  ExistentialType plain(zc::heap<InterfaceType>("Drawable"_zc));
+
+  ZC_EXPECT(unifier.unify(left, same));
+  ZC_EXPECT(!unifier.unify(left, missingMarker));
+  ZC_EXPECT(!unifier.unify(left, plain));
+}
+
 ZC_TEST("Unify.DifferentExistentialsFail") {
   TypeEnv env;
   UnificationEngine unifier(env);

@@ -169,6 +169,31 @@ ZC_TEST("TypeInterner.ExistentialGetsStableId") {
   ZC_EXPECT(interner.intern(first) == interner.intern(second));
 }
 
+ZC_TEST("TypeInterner.ExistentialMarkersAffectStableId") {
+  TypeInterner interner;
+  zc::Vector<zc::StringPtr> markers;
+  markers.add("Sendable"_zc);
+  ExistentialType plain(zc::heap<InterfaceType>("Drawable"_zc));
+  ExistentialType marked(zc::heap<InterfaceType>("Drawable"_zc), markers.asPtr());
+
+  ZC_EXPECT(interner.intern(plain) != interner.intern(marked));
+}
+
+ZC_TEST("TypeInterner.ExistentialMarkerOrderDoesNotAffectStableId") {
+  TypeInterner interner;
+  zc::Vector<zc::StringPtr> firstMarkers;
+  firstMarkers.add("Sendable"_zc);
+  firstMarkers.add("Shared"_zc);
+  zc::Vector<zc::StringPtr> secondMarkers;
+  secondMarkers.add("Shared"_zc);
+  secondMarkers.add("Sendable"_zc);
+  secondMarkers.add("Shared"_zc);
+  ExistentialType first(zc::heap<InterfaceType>("Drawable"_zc), firstMarkers.asPtr());
+  ExistentialType second(zc::heap<InterfaceType>("Drawable"_zc), secondMarkers.asPtr());
+
+  ZC_EXPECT(interner.intern(first) == interner.intern(second));
+}
+
 ZC_TEST("TypeInterner.AssociatedTypeGetsStableId") {
   TypeInterner interner;
   AssociatedType first(zc::heap<NamedType>("Iterator"_zc), "Item"_zc);

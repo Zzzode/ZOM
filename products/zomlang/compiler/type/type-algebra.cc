@@ -157,7 +157,11 @@ zc::Own<Type> cloneType(const Type& type) {
 
     case TypeKind::Existential: {
       auto& existential = static_cast<const ExistentialType&>(type);
-      return zc::heap<ExistentialType>(cloneType(existential.getInterfaceType()));
+      zc::Vector<zc::StringPtr> markers;
+      for (size_t i = 0; i < existential.getMarkerCount(); ++i) {
+        markers.add(existential.getMarkerName(i));
+      }
+      return zc::heap<ExistentialType>(cloneType(existential.getInterfaceType()), markers.asPtr());
     }
 
     case TypeKind::Associated: {

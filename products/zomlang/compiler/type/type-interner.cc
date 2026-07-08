@@ -195,7 +195,11 @@ zc::String canonicalKey(const Type& type) {
     }
     case TypeKind::Existential: {
       auto& existential = static_cast<const ExistentialType&>(type);
-      return zc::str("dyn(", canonicalKey(existential.getInterfaceType()), ")");
+      auto result = zc::str("dyn(", canonicalKey(existential.getInterfaceType()));
+      for (size_t i = 0; i < existential.getMarkerCount(); ++i) {
+        result = zc::str(result, "+", existential.getMarkerName(i));
+      }
+      return zc::str(result, ")");
     }
     case TypeKind::Associated: {
       auto& associated = static_cast<const AssociatedType&>(type);

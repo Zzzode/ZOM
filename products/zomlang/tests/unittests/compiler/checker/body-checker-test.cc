@@ -2468,6 +2468,81 @@ ZC_TEST("BodyChecker.LetWithDynAnnotationRecordsExistentialErasure") {
   ZC_EXPECT(result.typeEnv.getCoercion(yDecl) == type::CoercionKind::ExistentialErasure);
 }
 
+ZC_TEST("BodyChecker.LetWithDynMarkerAnnotationRequiresMarker") {
+  TestFixture fix;
+  auto addIface = fix.makeInterfaceDecl("Add"_zc);
+  auto numberType = fix.makeClassDecl("Number"_zc);
+
+  zc::Vector<ast::NodeId> ifaceNodes;
+  ifaceNodes.add(fix.makeNamedTypeExpr("Add"_zc));
+  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
+  auto addImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList);
+
+  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
+                                          fix.makeNamedTypeExpr("Number"_zc));
+  auto yDecl = fix.makeVariableDeclarator(
+      fix.makeBindingPattern("y"_zc),
+      fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Add"_zc), "Sendable"_zc),
+      fix.makeIdentExpr("x"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(xDecl);
+  decls.add(yDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(addIface);
+  topDecls.add(numberType);
+  topDecls.add(addImpl);
+  topDecls.add(let);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(yDecl));
+  ZC_EXPECT(isExistential(result.typeEnv.getType(yDecl)));
+  ZC_EXPECT(result.typeEnv.hasCoercion(yDecl));
+  ZC_EXPECT(result.typeEnv.getCoercion(yDecl) == type::CoercionKind::ExistentialErasure);
+}
+
+ZC_TEST("BodyChecker.LetWithDynMarkerAnnotationRejectsMissingMarker") {
+  TestFixture fix;
+  auto addIface = fix.makeInterfaceDecl("Add"_zc);
+  auto rawField =
+      fix.makeFieldDecl("ptr"_zc, fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
+  zc::Vector<ast::NodeId> members;
+  members.add(rawField);
+  auto numberType = fix.makeClassDecl("Number"_zc, ast::NodeId(),
+                                      fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+
+  zc::Vector<ast::NodeId> ifaceNodes;
+  ifaceNodes.add(fix.makeNamedTypeExpr("Add"_zc));
+  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
+  auto addImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList);
+
+  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
+                                          fix.makeNamedTypeExpr("Number"_zc));
+  auto yDecl = fix.makeVariableDeclarator(
+      fix.makeBindingPattern("y"_zc),
+      fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Add"_zc), "Sendable"_zc),
+      fix.makeIdentExpr("x"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(xDecl);
+  decls.add(yDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(addIface);
+  topDecls.add(numberType);
+  topDecls.add(addImpl);
+  topDecls.add(let);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(yDecl));
+  ZC_EXPECT(isError(result.typeEnv.getType(yDecl)));
+}
+
 ZC_TEST("BodyChecker.MatchStmtReportsNonExhaustiveEnum") {
   TestFixture fix;
   auto consumer = zc::heap<CapturingDiagnosticConsumer>();

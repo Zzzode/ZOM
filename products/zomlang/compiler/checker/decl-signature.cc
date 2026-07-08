@@ -98,6 +98,30 @@ static source::SourceLoc nodeLoc(const ast::Tree& tree, ast::NodeId id) {
   return tree.node(id).range.getStart();
 }
 
+static zc::Vector<zc::StringPtr> dynMarkerNames(const ast::Tree& tree, const ast::Node& node) {
+  zc::Vector<zc::StringPtr> result;
+  auto markersId = ast::NodeId(node.payload.words[kDynTypeExprMarkersIdWord]);
+  if (!tree.contains(markersId)) { return result; }
+  const auto& markersNode = tree.node(markersId);
+  if (markersNode.kind != SyntaxKind::DynTypeMarkerList) { return result; }
+
+  NodeList markers;
+  markers.first = markersNode.payload.words[kDynTypeMarkerListMarkersFirstWord];
+  markers.size = markersNode.payload.words[kDynTypeMarkerListMarkersSizeWord];
+  for (ast::NodeId markerId : tree.list(markers)) {
+    if (!tree.contains(markerId)) { continue; }
+    const auto& marker = tree.node(markerId);
+    if (marker.kind != SyntaxKind::AttributePath) { continue; }
+    IdentList segments;
+    segments.first = marker.payload.words[kAttributePathSegmentsFirstWord];
+    segments.size = marker.payload.words[kAttributePathSegmentsSizeWord];
+    auto names = tree.identList(segments);
+    if (names.size() == 0) { continue; }
+    result.add(tree.ident(names.back()));
+  }
+  return result;
+}
+
 static uint32_t querySymbolId(const symbol::Symbol& symbol) {
   return static_cast<uint32_t>(symbol.getId().getRaw());
 }
@@ -1366,6 +1390,7 @@ zc::Own<type::Type> DeclSignatureComputer::resolveRawPointerType(ast::NodeId typ
 zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node) {
   // Extract interface list
   auto ifacesId = ast::NodeId(node.payload.words[kDynTypeExprIfacesIdWord]);
+  auto markerNames = dynMarkerNames(impl->tree, node);
 
   if (!impl->tree.contains(ifacesId)) {
     return zc::heap<type::ErrorType>("dyn type requires at least one interface");
@@ -1380,7 +1405,7 @@ zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node)
       if (ifaceName.size() > 0) { checkDynObjectSafety(ifacesId, ifaceName); }
     }
     auto ifaceType = resolveTypeExpr(ifacesId);
-    return zc::heap<type::ExistentialType>(zc::mv(ifaceType));
+    return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
   }
 
   // Resolve the first interface from the list
@@ -1409,7 +1434,7 @@ zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node)
       conjuncts.add(resolveTypeExpr(ifaceId));
     }
     auto interTy = zc::heap<type::IntersectionType>(zc::mv(conjuncts));
-    return zc::heap<type::ExistentialType>(zc::mv(interTy));
+    return zc::heap<type::ExistentialType>(zc::mv(interTy), markerNames.asPtr());
   }
 
   // Single interface
@@ -1423,7 +1448,7 @@ zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node)
     }
   }
   auto ifaceType = resolveTypeExpr(firstIfaceId);
-  return zc::heap<type::ExistentialType>(zc::mv(ifaceType));
+  return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
 }
 
 zc::Own<type::Type> DeclSignatureComputer::resolveAssociatedTypeProjection(const ast::Node& node) {

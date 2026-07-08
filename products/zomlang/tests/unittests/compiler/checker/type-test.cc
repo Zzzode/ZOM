@@ -875,6 +875,41 @@ ZC_TEST("ExistentialType.UpcastsThroughInterfaceParent") {
   ZC_EXPECT(childDyn.isSubtypeOf(parentDyn));
 }
 
+ZC_TEST("ExistentialType.MarkerBoundsParticipateInIdentity") {
+  zc::Vector<zc::StringPtr> sendable;
+  sendable.add("Sendable"_zc);
+  ExistentialType dynDrawable(zc::heap<InterfaceType>("Drawable"_zc));
+  ExistentialType dynDrawableSendable(zc::heap<InterfaceType>("Drawable"_zc), sendable.asPtr());
+
+  ZC_EXPECT(dynDrawableSendable.getMarkerCount() == 1);
+  ZC_EXPECT(dynDrawableSendable.getMarkerName(0) == "Sendable"_zc);
+  ZC_EXPECT(!dynDrawable.equals(dynDrawableSendable));
+  ZC_EXPECT(dynDrawableSendable.isSubtypeOf(dynDrawable));
+  ZC_EXPECT(!dynDrawable.isSubtypeOf(dynDrawableSendable));
+}
+
+ZC_TEST("ExistentialType.MarkerBoundsAreCanonicalized") {
+  zc::Vector<zc::StringPtr> firstMarkers;
+  firstMarkers.add("Sendable"_zc);
+  firstMarkers.add("Shared"_zc);
+  zc::Vector<zc::StringPtr> secondMarkers;
+  secondMarkers.add("Shared"_zc);
+  secondMarkers.add("Sendable"_zc);
+  secondMarkers.add("Shared"_zc);
+  ExistentialType first(zc::heap<InterfaceType>("Drawable"_zc), firstMarkers.asPtr());
+  ExistentialType second(zc::heap<InterfaceType>("Drawable"_zc), secondMarkers.asPtr());
+  ExistentialType sendableOnly(zc::heap<InterfaceType>("Drawable"_zc), firstMarkers.first(1));
+
+  ZC_EXPECT(first.getMarkerCount() == 2);
+  ZC_EXPECT(first.getMarkerName(0) == "Sendable"_zc);
+  ZC_EXPECT(first.getMarkerName(1) == "Shared"_zc);
+  ZC_EXPECT(first.equals(second));
+  ZC_EXPECT(first.isSubtypeOf(second));
+  ZC_EXPECT(second.isSubtypeOf(first));
+  ZC_EXPECT(first.isSubtypeOf(sendableOnly));
+  ZC_EXPECT(!sendableOnly.isSubtypeOf(first));
+}
+
 // ============================================================================
 // AssociatedType
 // ============================================================================

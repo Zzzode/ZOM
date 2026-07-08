@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "zc/core/array.h"
 #include "zomlang/compiler/type/type.h"
 
 namespace zomlang {
@@ -39,6 +40,9 @@ public:
   /// \brief Construct an existential type for the given interface.
   explicit ExistentialType(zc::Own<Type> interfaceType);
 
+  /// \brief Construct an existential type for the given interface and marker bounds.
+  ExistentialType(zc::Own<Type> interfaceType, zc::ArrayPtr<const zc::StringPtr> markerNames);
+
   ~ExistentialType() noexcept(false);
 
   ZC_DISALLOW_COPY(ExistentialType);
@@ -49,6 +53,12 @@ public:
 
   /// \brief Get the interface type that the existential satisfies.
   const Type& getInterfaceType() const;
+
+  /// \brief Return the number of marker bounds on this existential.
+  size_t getMarkerCount() const;
+
+  /// \brief Return a marker bound by index.
+  zc::StringPtr getMarkerName(size_t index) const;
 
   // Type overrides
   TypeKind getKind() const override { return TypeKind::Existential; }
