@@ -1,0 +1,5 @@
+fun identity<T>(value: T) -> T {
+    return value;
+}
+
+let y: f64 = identity<f64>(42.0);

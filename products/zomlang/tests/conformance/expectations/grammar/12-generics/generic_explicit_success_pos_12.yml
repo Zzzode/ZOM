@@ -1,0 +1,5 @@
+section: "12-generics explicit generic call"
+covers_rule: "functionDeclaration, callExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; diagnostics runner checks an explicit type argument that matches the call argument."
