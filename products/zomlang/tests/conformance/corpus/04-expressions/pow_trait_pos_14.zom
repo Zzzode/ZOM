@@ -1,0 +1,13 @@
+interface Pow {
+    fun pow(rhs: Number) -> Number;
+}
+
+class Number { }
+
+impl Pow for Number {
+    fun pow(rhs: Number) -> Number;
+}
+
+let x: Number;
+let y: Number;
+let raised: Number = x ** y;
