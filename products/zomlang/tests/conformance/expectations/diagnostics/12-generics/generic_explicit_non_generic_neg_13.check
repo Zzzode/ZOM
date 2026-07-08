@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 12-generics/generic_explicit_non_generic_neg_13.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4035]: Explicit type arguments require a generic callee
+// CHECK-LITERAL:   --> 12-generics/generic_explicit_non_generic_neg_13.zom:3:9
+// CHECK-LITERAL: 3 | let x = id<i32>();
+// CHECK-LITERAL:   |         ^

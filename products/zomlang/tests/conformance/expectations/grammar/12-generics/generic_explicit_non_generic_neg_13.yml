@@ -1,0 +1,5 @@
+section: "Ch.12 Explicit type arguments on non-generic callee"
+covers_rule: "callExpression, typeArgList"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4035 for explicit type arguments on a non-generic callee."
