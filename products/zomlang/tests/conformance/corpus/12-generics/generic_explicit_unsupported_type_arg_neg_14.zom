@@ -1,0 +1,5 @@
+fun id<T>(x: T) -> T {
+    return x;
+}
+
+let y = id<fun(i32) -> i32>(1);

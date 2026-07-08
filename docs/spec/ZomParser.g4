@@ -2796,6 +2796,8 @@ postfixExpr
 
 callExpr
     : callExpr LPAREN expressionList? RPAREN (RAISES typeExpr)?                           # exprCall
+    | callExpr LT typeArgList genericClose LPAREN expressionList? RPAREN
+      (RAISES typeExpr)?                                                                  # exprGenericCall
     | callExpr OPTIONAL_CHAIN LPAREN expressionList? RPAREN (RAISES typeExpr)?             # exprOptionalCall
     | callExpr QUESTION? PERIOD memberIdentifier                                          # exprMember
     | callExpr OPTIONAL_CHAIN memberIdentifier                                            # exprOptionalMember
