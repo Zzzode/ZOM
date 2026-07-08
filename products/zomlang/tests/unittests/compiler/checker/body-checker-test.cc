@@ -856,6 +856,13 @@ ZC_TEST("BodyChecker.InfersCallExprReturnType") {
     auto& ty = result.typeEnv.getType(call);
     ZC_EXPECT(isPrimitive(ty));
   }
+  ZC_EXPECT(result.typeEnv.hasDispatch(call));
+  auto& dispatch = result.typeEnv.getDispatch(call);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::FreeFunction);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::None);
+  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.argumentTypes.size() == 0);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
 }
 
 ZC_TEST("BodyChecker.CallWithArgs") {
@@ -889,6 +896,13 @@ ZC_TEST("BodyChecker.CallWithArgs") {
   auto result = runFullCheck(fix, topDecls.asPtr());
 
   ZC_EXPECT(result.success);
+  ZC_EXPECT(result.typeEnv.hasDispatch(call));
+  auto& dispatch = result.typeEnv.getDispatch(call);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::FreeFunction);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::None);
+  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
 }
 
 ZC_TEST("BodyChecker.CallArgumentRecordsUnionInjectionCoercion") {

@@ -180,6 +180,30 @@ static void recordPrimitiveDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
   typeEnv.setDispatch(node, zc::mv(record));
 }
 
+static void recordFreeFunctionDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
+                                       symbol::SymbolId targetSymbol,
+                                       zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                       const type::Type& resultType) {
+  type::CallDispatchRecord record;
+  record.targetKind = type::CallTargetKind::FreeFunction;
+  record.receiverMode = type::ReceiverMode::None;
+  record.targetSymbol = targetSymbol;
+  for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
+  record.resultType = typeEnv.internType(resultType);
+  typeEnv.setDispatch(node, zc::mv(record));
+}
+
+static zc::Vector<type::TypeId> dispatchArgTypeIds(type::TypeEnv& typeEnv,
+                                                   zc::ArrayPtr<const ast::NodeId> argNodes) {
+  zc::Vector<type::TypeId> result;
+  for (auto argNode : argNodes) {
+    if (typeEnv.hasType(argNode)) {
+      result.add(typeEnv.internType(typeEnv.find(typeEnv.getType(argNode))));
+    }
+  }
+  return result;
+}
+
 void BodyChecker::reportTypeMismatch(ast::NodeId node, const type::Type& expected,
                                      const type::Type& actual) {
   auto loc = getNodeLoc(impl->tree, node);
@@ -1682,6 +1706,16 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
   auto& calleeType = checkExpr(calleeId);
   auto& resolvedCallee = impl->typeEnv.find(calleeType);
 
+  symbol::SymbolId freeFunctionTarget;
+  if (impl->tree.contains(calleeId) && impl->tree.node(calleeId).kind == SyntaxKind::IdentExpr) {
+    const auto& calleeNode = impl->tree.node(calleeId);
+    auto calleeName = impl->tree.ident(IdentId(calleeNode.payload.words[kIdentExprNameWord]));
+    auto calleeSym = lookupSymbol(calleeName);
+    ZC_IF_SOME(sym, calleeSym) {
+      if (sym.isFunctionSymbol()) { freeFunctionTarget = sym.getId(); }
+    }
+  }
+
   NodeList typeArgList;
   typeArgList.first = typeArgsFirst;
   typeArgList.size = typeArgsSize;
@@ -1840,10 +1874,22 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
       zc::Vector<zc::Own<type::Type>> alternatives;
       alternatives.add(cloneType(resolvedRet));
       alternatives.add(cloneType(resolvedRaises));
-      return storeType(expr, zc::heap<type::UnionType>(zc::mv(alternatives)));
+      auto& result = storeType(expr, zc::heap<type::UnionType>(zc::mv(alternatives)));
+      if (freeFunctionTarget.isValid()) {
+        auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
+        recordFreeFunctionDispatch(impl->typeEnv, expr, freeFunctionTarget, dispatchArgs.asPtr(),
+                                   result);
+      }
+      return result;
     }
 
-    return storeType(expr, cloneType(resolvedRet));
+    auto& result = storeType(expr, cloneType(resolvedRet));
+    if (freeFunctionTarget.isValid()) {
+      auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
+      recordFreeFunctionDispatch(impl->typeEnv, expr, freeFunctionTarget, dispatchArgs.asPtr(),
+                                 result);
+    }
+    return result;
   }
 
   // If callee is an interface type, it might be callable (function interface)

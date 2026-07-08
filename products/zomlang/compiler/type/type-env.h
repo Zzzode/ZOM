@@ -21,6 +21,7 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/node-id.h"
+#include "zomlang/compiler/symbol/symbol-id.h"
 #include "zomlang/compiler/type/coercion.h"
 #include "zomlang/compiler/type/type-interner.h"
 #include "zomlang/compiler/type/type-scheme.h"
@@ -34,7 +35,13 @@ class TypeVar;
 class ErrorType;
 
 /// \brief Dispatch target category for checked call-like expressions.
-enum class CallTargetKind { PrimitiveOperator, OperatorMethod, IndexMethod, ErrorTarget };
+enum class CallTargetKind {
+  PrimitiveOperator,
+  FreeFunction,
+  OperatorMethod,
+  IndexMethod,
+  ErrorTarget
+};
 
 /// \brief Receiver passing mode for checked call-like expressions.
 enum class ReceiverMode { None, OperatorLeftHandSide, OperatorOperand, IndexBase };
@@ -45,6 +52,7 @@ struct CallDispatchRecord {
   ReceiverMode receiverMode = ReceiverMode::None;
   zc::StringPtr interfaceName;
   zc::StringPtr methodName;
+  symbol::SymbolId targetSymbol;
   ast::NodeId implNode;
   zc::Vector<TypeId> argumentTypes;
   TypeId resultType;
