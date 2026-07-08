@@ -1,0 +1,122 @@
+// RUN: %zomc compile --dump-ast %corpus/12-generics/generic_invariant_named_type_neg_12.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #45 @1:1..13:1 file_name="generic_invariant_named_type_neg_12.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:20
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #2 @1:1..1:20 name="Shape"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #1 @1:17..1:20 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #9 @2:1..2:31
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #8 @2:1..2:31 name="Drawable"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id:
+// CHECK-NEXT:             ImplIfaceList #6 @2:22..2:27 n_ifaces=1
+// CHECK-NEXT:               ifaces:
+// CHECK-NEXT:                 NamedTypeExpr #5 @2:22..2:27
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #4 @2:22..2:27 segments=["Shape"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #7 @2:28..2:31 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #14 @4:1..4:17
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #13 @4:1..4:17 name="Vec" extensibility=Sealed
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #11 @4:10..4:13 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #10 @4:11..4:12 name="T" variance=Invariant
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
+// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #12 @4:14..4:17 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #24 @6:1..6:43
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #23 @6:1..6:43 name="make_drawables"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #15 @6:19..6:21 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             NamedTypeExpr #21 @6:25..6:42
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #20 @6:25..6:28 segments=["Vec"]
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 DynTypeExpr #19 @6:29..6:41 has_lifetime=false lifetime=null
+// CHECK-NEXT:                   ifaces_id:
+// CHECK-NEXT:                     DynTypeIfaceList #18 @6:33..6:41 n_ifaces=1
+// CHECK-NEXT:                       ifaces:
+// CHECK-NEXT:                         NamedTypeExpr #17 @6:33..6:41
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #16 @6:33..6:41 segments=["Drawable"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   markers_id: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #22 @8:1..8:4
+// CHECK-NEXT:               stmts: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #38 @8:1..10:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #37 @8:1..10:2 name="read_shapes"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #32 @8:16..8:36 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #31 @8:17..8:35 name="xs"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #30 @8:21..8:35
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #29 @8:21..8:24 segments=["Vec"]
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         DynTypeExpr #28 @8:25..8:34 has_lifetime=false lifetime=null
+// CHECK-NEXT:                           ifaces_id:
+// CHECK-NEXT:                             DynTypeIfaceList #27 @8:29..8:34 n_ifaces=1
+// CHECK-NEXT:                               ifaces:
+// CHECK-NEXT:                                 NamedTypeExpr #26 @8:29..8:34
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #25 @8:29..8:34 segments=["Shape"]
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                           markers_id: null
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #33 @8:40..8:44 kind=Unit
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #36 @8:45..10:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #35 @9:5..9:12
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #34 @9:5..9:12
+// CHECK-NEXT:                       value: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #44 @12:1..12:31
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #43 @12:1..12:31
+// CHECK-NEXT:           expression:
+// CHECK-NEXT:             CallExpression #42 @12:1..12:30
+// CHECK-NEXT:               callee:
+// CHECK-NEXT:                 IdentExpr #39 @12:1..12:12 name="read_shapes"
+// CHECK-NEXT:               type_args: []
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 CallExpression #41 @12:13..12:29
+// CHECK-NEXT:                   callee:
+// CHECK-NEXT:                     IdentExpr #40 @12:13..12:27 name="make_drawables"
+// CHECK-NEXT:                   type_args: []
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:       attrs: null

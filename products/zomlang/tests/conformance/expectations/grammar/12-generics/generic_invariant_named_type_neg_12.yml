@@ -1,0 +1,5 @@
+section: "12-generics invariant named type arguments"
+covers_rule: "classDeclaration, functionDeclaration, dynType, typeArgList, callExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; checker diagnostics reject Vec<dyn Drawable> as an argument for Vec<dyn Shape>, proving named generic arguments are invariant even when the inner dyn type can upcast."
