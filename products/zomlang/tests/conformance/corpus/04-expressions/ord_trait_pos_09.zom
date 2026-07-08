@@ -1,0 +1,16 @@
+interface Ord {
+    fun cmp(rhs: Point) -> i32;
+}
+
+class Point { }
+
+impl Ord for Point {
+    fun cmp(rhs: Point) -> i32;
+}
+
+let x: Point;
+let y: Point;
+let lt: bool = x < y;
+let le: bool = x <= y;
+let gt: bool = x > y;
+let ge: bool = x >= y;
