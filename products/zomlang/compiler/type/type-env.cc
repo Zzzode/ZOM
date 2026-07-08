@@ -37,9 +37,10 @@ namespace type {
 
 struct TypeEnv::Impl {
   // --- Node type mapping ---
-  zc::HashMap<uint32_t, zc::Own<Type>> nodeTypes;     // keyed by NodeId::value
-  zc::HashMap<uint32_t, TypeId> nodeTypeIds;          // keyed by NodeId::value
-  zc::HashMap<uint32_t, CoercionKind> nodeCoercions;  // keyed by NodeId::value
+  zc::HashMap<uint32_t, zc::Own<Type>> nodeTypes;            // keyed by NodeId::value
+  zc::HashMap<uint32_t, TypeId> nodeTypeIds;                 // keyed by NodeId::value
+  zc::HashMap<uint32_t, CoercionKind> nodeCoercions;         // keyed by NodeId::value
+  zc::HashMap<uint32_t, CallDispatchRecord> nodeDispatches;  // keyed by NodeId::value
   TypeInterner interner;
 
   // --- Type variable storage ---
@@ -144,6 +145,21 @@ CoercionKind TypeEnv::getCoercion(ast::NodeId node) const {
   ZC_IREQUIRE(found != zc::none, "TypeEnv::getCoercion: node has no recorded coercion");
   ZC_IF_SOME(kind, found) { return kind; }
   return CoercionKind::Identity;
+}
+
+void TypeEnv::setDispatch(ast::NodeId node, CallDispatchRecord record) {
+  impl->nodeDispatches.upsert(node.value, zc::mv(record));
+}
+
+bool TypeEnv::hasDispatch(ast::NodeId node) const {
+  return impl->nodeDispatches.find(node.value) != zc::none;
+}
+
+const CallDispatchRecord& TypeEnv::getDispatch(ast::NodeId node) const {
+  auto found = impl->nodeDispatches.find(node.value);
+  ZC_IREQUIRE(found != zc::none, "TypeEnv::getDispatch: node has no dispatch record");
+  ZC_IF_SOME(record, found) { return record; }
+  ZC_UNREACHABLE;
 }
 
 // ===========================================================================
@@ -948,6 +964,7 @@ void TypeEnv::clear() {
   impl->nodeTypes.clear();
   impl->nodeTypeIds.clear();
   impl->nodeCoercions.clear();
+  impl->nodeDispatches.clear();
   impl->typeVars.clear();
   impl->nextTypeVarId = 1;
   impl->unionParent.clear();

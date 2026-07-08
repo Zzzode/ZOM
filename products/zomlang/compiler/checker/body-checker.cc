@@ -1322,7 +1322,20 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
             impl->hadErrors = true;
             return storeType(expr, zc::heap<type::ErrorType>());
           }
-          return storeType(expr, cloneType(resolvedLhs));
+          auto& result = storeType(expr, cloneType(resolvedLhs));
+          ZC_IF_SOME(implNode, traitResolver.findImpl(resolvedLhs, traitName)) {
+            type::CallDispatchRecord record;
+            record.targetKind = type::CallTargetKind::OperatorMethod;
+            record.receiverMode = type::ReceiverMode::OperatorLeftHandSide;
+            record.interfaceName = traitName;
+            record.methodName = methodName;
+            record.implNode = implNode;
+            record.argumentTypes.add(impl->typeEnv.internType(resolvedLhs));
+            record.argumentTypes.add(impl->typeEnv.internType(resolvedRhs));
+            record.resultType = impl->typeEnv.internType(result);
+            impl->typeEnv.setDispatch(expr, zc::mv(record));
+          }
+          return result;
         }
         auto loc = getNodeLoc(impl->tree, expr);
         impl->diags.diagnose<DiagID::CheckerTraitNotImplemented>(loc, resolvedLhs.toString(),
@@ -1382,6 +1395,20 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
+        auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
+        ZC_IF_SOME(implNode, traitResolver.findImpl(resolvedLhs, traitName)) {
+          type::CallDispatchRecord record;
+          record.targetKind = type::CallTargetKind::OperatorMethod;
+          record.receiverMode = type::ReceiverMode::OperatorLeftHandSide;
+          record.interfaceName = traitName;
+          record.methodName = methodName;
+          record.implNode = implNode;
+          record.argumentTypes.add(impl->typeEnv.internType(resolvedLhs));
+          record.argumentTypes.add(impl->typeEnv.internType(resolvedRhs));
+          record.resultType = impl->typeEnv.internType(result);
+          impl->typeEnv.setDispatch(expr, zc::mv(record));
+        }
+        return result;
       }
       return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
     }
@@ -1868,7 +1895,20 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
-        return storeType(expr, cloneType(outputTy));
+        auto& result = storeType(expr, cloneType(outputTy));
+        ZC_IF_SOME(implNode, traitResolver.findImpl(resolvedObj, "Index"_zc)) {
+          type::CallDispatchRecord record;
+          record.targetKind = type::CallTargetKind::IndexMethod;
+          record.receiverMode = type::ReceiverMode::IndexBase;
+          record.interfaceName = "Index"_zc;
+          record.methodName = "index"_zc;
+          record.implNode = implNode;
+          record.argumentTypes.add(impl->typeEnv.internType(resolvedObj));
+          record.argumentTypes.add(impl->typeEnv.internType(resolvedIdx));
+          record.resultType = impl->typeEnv.internType(result);
+          impl->typeEnv.setDispatch(expr, zc::mv(record));
+        }
+        return result;
       }
     }
 

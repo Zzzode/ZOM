@@ -153,6 +153,15 @@ void expectUserTypeBinaryOperatorImpl(zc::StringPtr ifaceName, ast::BinaryOperat
   auto& ty = result.typeEnv.getType(binExpr);
   ZC_EXPECT(isNamed(ty));
   if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Number"_zc); }
+  ZC_EXPECT(result.typeEnv.hasDispatch(binExpr));
+  auto& dispatch = result.typeEnv.getDispatch(binExpr);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::OperatorMethod);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
+  ZC_EXPECT(dispatch.interfaceName == ifaceName);
+  ZC_EXPECT(dispatch.methodName == binaryOperatorMethodName(ifaceName));
+  ZC_EXPECT(dispatch.implNode == implDecl);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
 }
 
 void expectUserTypeComparisonImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKind op) {
@@ -204,6 +213,15 @@ void expectUserTypeComparisonImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKi
     ZC_EXPECT(static_cast<const type::PrimitiveType&>(ty).getPrimitiveKind() ==
               type::PrimitiveKind::Bool);
   }
+  ZC_EXPECT(result.typeEnv.hasDispatch(binExpr));
+  auto& dispatch = result.typeEnv.getDispatch(binExpr);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::OperatorMethod);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
+  ZC_EXPECT(dispatch.interfaceName == ifaceName);
+  ZC_EXPECT(dispatch.methodName == (isEq ? "eq"_zc : "cmp"_zc));
+  ZC_EXPECT(dispatch.implNode == implDecl);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
 }
 
 void expectUserTypeComparisonWithoutImplFails(zc::StringPtr missingIfaceName,
@@ -2813,6 +2831,15 @@ ZC_TEST("BodyChecker.UserIndexExprReturnsAssociatedOutput") {
     auto& primitive = static_cast<const type::PrimitiveType&>(ty);
     ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
   }
+  ZC_EXPECT(result.typeEnv.hasDispatch(index));
+  auto& dispatch = result.typeEnv.getDispatch(index);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::IndexMethod);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::IndexBase);
+  ZC_EXPECT(dispatch.interfaceName == "Index"_zc);
+  ZC_EXPECT(dispatch.methodName == "index"_zc);
+  ZC_EXPECT(dispatch.implNode == implDecl);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(index));
 }
 
 ZC_TEST("BodyChecker.UserIndexExprRejectsWrongTraitMethodSignature") {

@@ -143,6 +143,46 @@ ZC_TEST("TypeEnv.ClearRemovesTypeIds") {
   ZC_EXPECT(!env.hasTypeId(node));
 }
 
+ZC_TEST("TypeEnv.SetAndGetDispatch") {
+  TypeEnv env;
+  ast::NodeId node(42);
+
+  CallDispatchRecord record;
+  record.targetKind = CallTargetKind::OperatorMethod;
+  record.receiverMode = ReceiverMode::OperatorLeftHandSide;
+  record.interfaceName = "Add"_zc;
+  record.methodName = "add"_zc;
+  record.implNode = ast::NodeId(7);
+  record.argumentTypes.add(TypeId(1));
+  record.argumentTypes.add(TypeId(2));
+  record.resultType = TypeId(3);
+  env.setDispatch(node, zc::mv(record));
+
+  ZC_EXPECT(env.hasDispatch(node));
+  auto& stored = env.getDispatch(node);
+  ZC_EXPECT(stored.targetKind == CallTargetKind::OperatorMethod);
+  ZC_EXPECT(stored.receiverMode == ReceiverMode::OperatorLeftHandSide);
+  ZC_EXPECT(stored.interfaceName == "Add"_zc);
+  ZC_EXPECT(stored.methodName == "add"_zc);
+  ZC_EXPECT(stored.implNode == ast::NodeId(7));
+  ZC_EXPECT(stored.argumentTypes.size() == 2);
+  ZC_EXPECT(stored.argumentTypes[0] == TypeId(1));
+  ZC_EXPECT(stored.argumentTypes[1] == TypeId(2));
+  ZC_EXPECT(stored.resultType == TypeId(3));
+}
+
+ZC_TEST("TypeEnv.ClearRemovesDispatch") {
+  TypeEnv env;
+  ast::NodeId node(42);
+  CallDispatchRecord record;
+  record.targetKind = CallTargetKind::IndexMethod;
+  env.setDispatch(node, zc::mv(record));
+  ZC_EXPECT(env.hasDispatch(node));
+
+  env.clear();
+  ZC_EXPECT(!env.hasDispatch(node));
+}
+
 // ============================================================================
 // TypeEnv fresh type variables
 // ============================================================================

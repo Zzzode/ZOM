@@ -33,6 +33,23 @@ namespace type {
 class TypeVar;
 class ErrorType;
 
+/// \brief Dispatch target category for checked call-like expressions.
+enum class CallTargetKind { PrimitiveOperator, OperatorMethod, IndexMethod, ErrorTarget };
+
+/// \brief Receiver passing mode for checked call-like expressions.
+enum class ReceiverMode { None, OperatorLeftHandSide, OperatorOperand, IndexBase };
+
+/// \brief Resolved dispatch metadata for a checked call-like expression.
+struct CallDispatchRecord {
+  CallTargetKind targetKind = CallTargetKind::ErrorTarget;
+  ReceiverMode receiverMode = ReceiverMode::None;
+  zc::StringPtr interfaceName;
+  zc::StringPtr methodName;
+  ast::NodeId implNode;
+  zc::Vector<TypeId> argumentTypes;
+  TypeId resultType;
+};
+
 /// \brief TypeEnv - Type environment for the ZOM type checker.
 ///
 /// TypeEnv is the core data structure of the type checker, maintaining:
@@ -114,6 +131,19 @@ public:
 
   /// \brief Get the coercion kind recorded for an AST node.
   CoercionKind getCoercion(ast::NodeId node) const;
+
+  // =========================================================================
+  // Dispatch records
+  // =========================================================================
+
+  /// \brief Record resolved dispatch metadata for a call-like AST node.
+  void setDispatch(ast::NodeId node, CallDispatchRecord record);
+
+  /// \brief Check whether dispatch metadata was recorded for an AST node.
+  bool hasDispatch(ast::NodeId node) const;
+
+  /// \brief Get resolved dispatch metadata for an AST node.
+  const CallDispatchRecord& getDispatch(ast::NodeId node) const;
 
   // =========================================================================
   // Type variable creation
