@@ -371,7 +371,7 @@ This RFC remains in `REVIEW`; the implementation is intentionally partial.
 | AC | Status | Evidence | Remaining Work |
 |---|---|---|---|
 | 1 | Partial | `type::CallDispatchRecord`, `CallTargetKind`, and `ReceiverMode` are stored in `TypeEnv` by expression `NodeId`. `type-env-test.cc` covers set/get and clear behavior. | Extend coverage beyond operator/index records and freeze mutation after checker completion. |
-| 6 | Partial | `BodyChecker` records `OperatorMethod` dispatch targets for user-defined binary arithmetic and comparison operators, and `IndexMethod` targets for user-defined `Index.index`. `body-checker-test.cc` verifies interface/method names, impl node IDs, argument type IDs, result type IDs, and receiver mode. | Add unary operator dispatch records and later integrate method-call lowering records. |
+| 6 | Partial | `BodyChecker` records `OperatorMethod` dispatch targets for user-defined binary arithmetic, comparison, `Neg`, and `Not` operators, and `IndexMethod` targets for user-defined `Index.index`. `body-checker-test.cc` verifies interface/method names, impl node IDs, argument type IDs, result type IDs, and receiver mode, including `OperatorOperand` for unary operators. | Later integrate function, member, qualified-interface, and dyn-vtable call records. |
 | 8 | Partial | Dispatch records are exposed through immutable `getDispatch()` references after insertion. | Add an explicit checker-completion immutability boundary if a later mutable dispatch builder is introduced. |
 | 14 | Complete | `python3 scripts/check-rfc.py` passes. | None. |
 | 15 | Complete | `python3 scripts/check-format.py` passes after implementation changes. | None. |
@@ -423,3 +423,4 @@ This RFC remains in `REVIEW`; the implementation is intentionally partial.
 | 2026-07-08 | DRAFT | Initial draft defining call dispatch, operator lowering, dispatch side-table records, and IR-lowering ownership. |
 | 2026-07-08 | REVIEW | The proposal has complete motivation, reference-level dispatch records, follow-up implementation plan, and local tracking anchors. Approval remains blocked on owner review, non-empty approvers, a recorded decision, and implementation evidence. |
 | 2026-07-08 | REVIEW | Started implementation by adding `TypeEnv` dispatch records and recording user-defined binary operator and index method dispatch targets. RFC remains blocked on the remaining dispatch target variants, debug dumping, IR-lowering consumption, owner approval, and decision metadata. |
+| 2026-07-08 | REVIEW | Added user-defined unary `Neg` and `Not` operator dispatch records with `OperatorOperand` receiver mode. |
