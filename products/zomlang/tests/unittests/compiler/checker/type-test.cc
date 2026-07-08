@@ -30,6 +30,7 @@
 #include "zomlang/compiler/type/raw-pointer-type.h"
 #include "zomlang/compiler/type/reference-type.h"
 #include "zomlang/compiler/type/tuple-type.h"
+#include "zomlang/compiler/type/type-algebra.h"
 #include "zomlang/compiler/type/type-var.h"
 #include "zomlang/compiler/type/union-type.h"
 
@@ -1013,6 +1014,36 @@ ZC_TEST("NamedType.GenericArgumentsAreInvariant") {
 
   ZC_EXPECT(!vecMutRef.isSubtypeOf(vecSharedRef));
   ZC_EXPECT(!vecSharedRef.isSubtypeOf(vecMutRef));
+}
+
+ZC_TEST("TypeAlgebra.ClonePreservesCompositeStructure") {
+  zc::Vector<zc::Own<Type>> params;
+  params.add(zc::heap<ReferenceType>(PrimitiveType::createI32(), Mutability::Mutable));
+
+  zc::Vector<zc::Own<Type>> returnAlts;
+  returnAlts.add(PrimitiveType::createBool());
+  returnAlts.add(zc::heap<NamedType>("ParseError"_zc));
+
+  auto fn = zc::heap<FunctionType>(zc::mv(params), zc::heap<UnionType>(zc::mv(returnAlts)));
+  auto generic = zc::heap<GenericParam>("T"_zc);
+  generic->upperBounds.add(zc::heap<NamedType>("Display"_zc));
+  fn->addGenericParam(zc::mv(generic));
+  fn->setRaisesType(zc::heap<NamedType>("ParseError"_zc));
+
+  zc::Vector<zc::Own<Type>> conjuncts;
+  conjuncts.add(zc::heap<ExistentialType>(zc::heap<NamedType>("Drawable"_zc)));
+  conjuncts.add(zc::heap<AssociatedType>(zc::heap<NamedType>("Iterator"_zc), "Item"_zc));
+
+  zc::Vector<zc::Own<Type>> alts;
+  alts.add(zc::mv(fn));
+  alts.add(zc::heap<IntersectionType>(zc::mv(conjuncts)));
+
+  UnionType original(zc::mv(alts));
+  auto cloned = cloneType(original);
+
+  ZC_EXPECT(cloned.get() != &original);
+  ZC_EXPECT(cloned->equals(original));
+  ZC_EXPECT(cloned->toString() == original.toString());
 }
 
 }  // namespace type

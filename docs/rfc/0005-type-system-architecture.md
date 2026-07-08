@@ -1453,7 +1453,7 @@ and tests cover the exact acceptance criterion above.
 
 | AC | Status | Evidence | Remaining Work |
 |---|---|---|---|
-| 1 | Complete | `type-test.cc`, `type-interner-test.cc`, and `type-env-test.cc` cover all concrete type classes and canonical IDs, including interface, existential, and associated forms. | None. |
+| 1 | Complete | `type-test.cc`, `type-interner-test.cc`, and `type-env-test.cc` cover all concrete type classes and canonical IDs, including interface, existential, and associated forms. `type-algebra.cc` centralizes structural type cloning, and `TypeAlgebra.ClonePreservesCompositeStructure` covers function, generic, raises, reference, union, intersection, existential, and associated-type cloning. | None. |
 | 2 | Complete | `unification-test.cc` covers primitives, functions, type variables, error propagation, exact reference/raw-pointer mutability, order-insensitive unions, identical/different existentials, `null` only with `null`, mismatch failures, and occurs-check `InfiniteType` classification. `diagnostic-test.cc` fixes ZOM0411/ZOM0412 IDs. `cannot_unify_numeric_neg_08.check` covers ZOM0411 through the diagnostics conformance runner for mismatched numeric operands. | None. |
 | 3 | Complete | `coercion-test.cc` covers never, any, reference reborrow, raw-pointer mut-to-const, union injection, nullable union, rejection, and dyn upcast. `body-checker-test.cc` covers coercion records for function arguments, return statements, assignments, conditional joins, struct literal fields, nullable local initializers, and explicit existential erasure at annotated local sites. | None. |
 | 4 | Complete | `decl-signature-test.cc` covers function, class, interface, enum, alias, variable, const declaration, generic parameter, shared generic type variable, type expression, raises, symbol-keyed parameter/field signatures, recursive aliases, and `GenericParams.where_` bounds feeding generic upper bounds. | None for current function-level where-bound signature computation. |
@@ -1587,3 +1587,4 @@ None.
 | 2026-07-08 | REVIEW | Added diagnostics conformance coverage for numeric unification failures in binary arithmetic (`ZOM0411`). |
 | 2026-07-08 | REVIEW | Added a dedicated non-function call checker diagnostic (`ZOM0415`) and diagnostics conformance coverage for its source/caret display. |
 | 2026-07-08 | REVIEW | Aligned the checker diagnostic catalog and design references with `diagnostics-checker.def`, including object-safety diagnostics (`ZOM0331`-`ZOM0338`) and currently registered checker error codes. |
+| 2026-07-08 | REVIEW | Added `type-algebra.cc` as the shared home for structural type cloning and replaced duplicate checker-local clone helpers. |

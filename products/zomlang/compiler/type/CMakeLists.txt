@@ -1,6 +1,7 @@
 set(TYPE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/constraint-set.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/type.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/type-algebra.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/primitive-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/function-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/tuple-type.cc

@@ -45,6 +45,7 @@
 #include "zomlang/compiler/type/raw-pointer-type.h"
 #include "zomlang/compiler/type/reference-type.h"
 #include "zomlang/compiler/type/tuple-type.h"
+#include "zomlang/compiler/type/type-algebra.h"
 #include "zomlang/compiler/type/type-env.h"
 #include "zomlang/compiler/type/type-var.h"
 #include "zomlang/compiler/type/type.h"
@@ -548,138 +549,8 @@ static bool dynTypeExtends(const type::Type& sourceIface, const type::Type& targ
 }
 
 zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
-  using namespace type;
-
-  // Resolve type variables first so we clone the concrete bound type.
   const auto& resolved = impl->typeEnv.find(ty);
-  if (&resolved != &ty) { return cloneType(resolved); }
-
-  if (isError(ty)) { return zc::heap<ErrorType>(); }
-
-  if (isTypeVar(ty)) {
-    auto& tv = static_cast<const TypeVar&>(ty);
-    // Preserve the same ID so union-find can still resolve it.
-    auto result = zc::heap<TypeVar>(tv.getName(), tv.getId());
-    for (size_t i = 0; i < tv.getUpperBoundCount(); ++i) {
-      result->addUpperBound(cloneType(tv.getUpperBound(i)));
-    }
-    for (size_t i = 0; i < tv.getLowerBoundCount(); ++i) {
-      result->addLowerBound(cloneType(tv.getLowerBound(i)));
-    }
-    return zc::mv(result);
-  }
-
-  if (isPrimitive(ty)) {
-    auto& prim = static_cast<const PrimitiveType&>(ty);
-    return zc::heap<PrimitiveType>(prim.getPrimitiveKind());
-  }
-
-  if (isNamed(ty)) {
-    auto& named = static_cast<const NamedType&>(ty);
-    return zc::heap<NamedType>(named.getName());
-  }
-
-  if (isObject(ty)) {
-    auto& object = static_cast<const ObjectType&>(ty);
-    auto result = zc::heap<ObjectType>();
-    auto members = object.getMembers();
-    for (size_t i = 0; i < members.size(); ++i) {
-      ZC_IF_SOME(memberType, members[i].type) {
-        result->addMember(members[i].name, cloneType(memberType));
-      }
-    }
-    return zc::mv(result);
-  }
-
-  if (isUnion(ty)) {
-    auto& unionTy = static_cast<const UnionType&>(ty);
-    zc::Vector<zc::Own<Type>> alts;
-    for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
-      alts.add(cloneType(unionTy.getAlternative(i)));
-    }
-    return zc::heap<UnionType>(zc::mv(alts));
-  }
-
-  if (isFunction(ty)) {
-    auto& fn = static_cast<const FunctionType&>(ty);
-    zc::Vector<zc::Own<Type>> params;
-    for (size_t i = 0; i < fn.getParamCount(); ++i) { params.add(cloneType(fn.getParamType(i))); }
-    auto ret = cloneType(fn.getReturnType());
-    auto result = zc::heap<FunctionType>(zc::mv(params), zc::mv(ret));
-    result->setVariadic(fn.isVariadic());
-    for (size_t i = 0; i < fn.getGenericParamCount(); ++i) {
-      auto& generic = fn.getGenericParam(i);
-      auto clone = zc::heap<GenericParam>(generic.name);
-      for (size_t j = 0; j < generic.upperBounds.size(); ++j) {
-        clone->upperBounds.add(cloneType(*generic.upperBounds[j]));
-      }
-      for (size_t j = 0; j < generic.lowerBounds.size(); ++j) {
-        clone->lowerBounds.add(cloneType(*generic.lowerBounds[j]));
-      }
-      result->addGenericParam(zc::mv(clone));
-    }
-    auto raises = fn.getRaisesType();
-    ZC_IF_SOME(r, raises) { result->setRaisesType(cloneType(r)); }
-    return zc::mv(result);
-  }
-
-  if (isReference(ty)) {
-    auto& ref = static_cast<const ReferenceType&>(ty);
-    auto pointee = cloneType(ref.getPointeeType());
-    return zc::heap<ReferenceType>(zc::mv(pointee), ref.getMutability());
-  }
-
-  if (isRawPointer(ty)) {
-    auto& ptr = static_cast<const RawPointerType&>(ty);
-    auto pointee = cloneType(ptr.getPointeeType());
-    return zc::heap<RawPointerType>(zc::mv(pointee), ptr.getMutability());
-  }
-
-  if (isArray(ty)) {
-    auto& arr = static_cast<const ArrayType&>(ty);
-    auto elem = cloneType(arr.getElementType());
-    return zc::heap<ArrayType>(zc::mv(elem));
-  }
-
-  if (isTuple(ty)) {
-    auto& tup = static_cast<const TupleType&>(ty);
-    zc::Vector<zc::Own<Type>> elems;
-    for (size_t i = 0; i < tup.getElementCount(); ++i) {
-      elems.add(cloneType(tup.getElementType(i)));
-    }
-    return zc::heap<TupleType>(zc::mv(elems));
-  }
-
-  if (isInterface(ty)) {
-    auto& iface = static_cast<const InterfaceType&>(ty);
-    auto result = zc::heap<InterfaceType>(iface.getName());
-    for (size_t i = 0; i < iface.getParentInterfaceCount(); ++i) {
-      result->addParentInterface(cloneType(iface.getParentInterface(i)));
-    }
-    return zc::mv(result);
-  }
-
-  if (isIntersection(ty)) {
-    auto& intersection = static_cast<const IntersectionType&>(ty);
-    zc::Vector<zc::Own<Type>> conjuncts;
-    for (size_t i = 0; i < intersection.getConjunctCount(); ++i) {
-      conjuncts.add(cloneType(intersection.getConjunct(i)));
-    }
-    return zc::heap<IntersectionType>(zc::mv(conjuncts));
-  }
-
-  if (isExistential(ty)) {
-    auto& existential = static_cast<const ExistentialType&>(ty);
-    return zc::heap<ExistentialType>(cloneType(existential.getInterfaceType()));
-  }
-
-  if (isAssociated(ty)) {
-    auto& associated = static_cast<const AssociatedType&>(ty);
-    return zc::heap<AssociatedType>(cloneType(associated.getParentType()), associated.getName());
-  }
-
-  // Fallback: return error type for unsupported type kinds
-  return zc::heap<ErrorType>();
+  return type::cloneType(resolved);
 }
 
 void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
