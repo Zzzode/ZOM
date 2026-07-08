@@ -514,13 +514,7 @@ bool DeclSignatureComputer::computeSignatures() {
         break;
       }
       case SyntaxKind::MethodDecl: {
-        auto name = impl->tree.ident(IdentId(node.payload.words[kMethodDeclNameWord]));
-        auto sym = lookupSymbol(name);
-        ZC_IF_SOME(s, sym) {
-          if (s.isFunctionSymbol()) {
-            computeMethodSignature(static_cast<symbol::FunctionSymbol&>(s), id);
-          }
-        }
+        computeMethodSignature(id);
         break;
       }
       case SyntaxKind::VariableDeclarator: {
@@ -789,9 +783,7 @@ void DeclSignatureComputer::computeInterfaceSignature(symbol::InterfaceSymbol& i
 // Method signature computation
 // ============================================================================
 
-void DeclSignatureComputer::computeMethodSignature(symbol::FunctionSymbol& method,
-                                                   ast::NodeId methodDecl) {
-  (void)method;  // Symbol used for identity; type computed from AST below
+void DeclSignatureComputer::computeMethodSignature(ast::NodeId methodDecl) {
   const auto& node = impl->tree.node(methodDecl);
 
   // Extract parameter list

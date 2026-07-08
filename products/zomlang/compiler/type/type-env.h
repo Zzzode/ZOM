@@ -38,13 +38,14 @@ class ErrorType;
 enum class CallTargetKind {
   PrimitiveOperator,
   FreeFunction,
+  InstanceMethod,
   OperatorMethod,
   IndexMethod,
   ErrorTarget
 };
 
 /// \brief Receiver passing mode for checked call-like expressions.
-enum class ReceiverMode { None, OperatorLeftHandSide, OperatorOperand, IndexBase };
+enum class ReceiverMode { None, ImplicitSelf, OperatorLeftHandSide, OperatorOperand, IndexBase };
 
 /// \brief Resolved dispatch metadata for a checked call-like expression.
 struct CallDispatchRecord {

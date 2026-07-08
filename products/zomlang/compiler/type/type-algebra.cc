@@ -49,6 +49,7 @@ zc::Own<Type> cloneType(const Type& type) {
     case TypeKind::Named: {
       auto& named = static_cast<const NamedType&>(type);
       auto result = zc::heap<NamedType>(named.getName());
+      ZC_IF_SOME(symbol, named.getSymbol()) { result->setSymbol(symbol); }
       for (size_t i = 0; i < named.getTypeArgCount(); ++i) {
         result->addTypeArg(cloneType(named.getTypeArg(i)));
       }

@@ -1165,7 +1165,7 @@ bool TraitResolver::allFieldsAreSend(const type::NamedType& namedTy) {
   ZC_IF_SOME(s, sym) {
     if (s.isClassSymbol()) {
       const auto& cls = static_cast<const symbol::ClassSymbol&>(s);
-      return allClassFieldsAreSend(cls);
+      if (cls.getMembers().size() > 0) { return allClassFieldsAreSend(cls); }
     }
   }
 
@@ -1266,7 +1266,7 @@ bool TraitResolver::allFieldsAreSync(const type::NamedType& namedTy) {
   ZC_IF_SOME(s, sym) {
     if (s.isClassSymbol()) {
       const auto& cls = static_cast<const symbol::ClassSymbol&>(s);
-      return allClassFieldsAreSync(cls);
+      if (cls.getMembers().size() > 0) { return allClassFieldsAreSync(cls); }
     }
   }
 

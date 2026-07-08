@@ -320,7 +320,7 @@ private:
   /// Returns the type from TypeEnv if the symbol has a declaration node,
   /// or from the symbol's TypeSymbol if available.
   /// Returns an empty Maybe if no type can be determined.
-  zc::Maybe<const type::Type&> getSymbolType(symbol::Symbol& sym);
+  zc::Maybe<const type::Type&> getSymbolType(const symbol::Symbol& sym);
 
   /// \brief Store an inferred type for an expression node.
   ///

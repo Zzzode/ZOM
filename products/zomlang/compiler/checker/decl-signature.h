@@ -125,7 +125,7 @@ private:
   /// \brief Compute the type signature for a method declaration.
   ///
   /// Resolves parameter types and return type, producing a FunctionType.
-  void computeMethodSignature(symbol::FunctionSymbol& method, ast::NodeId methodDecl);
+  void computeMethodSignature(ast::NodeId methodDecl);
 
   /// \brief Compute the type signature for a variable declaration.
   ///

@@ -2075,6 +2075,48 @@ ZC_TEST("BodyChecker.MemberAccess") {
   }
 }
 
+ZC_TEST("BodyChecker.MemberCallRecordsInstanceMethodDispatch") {
+  TestFixture fix;
+  auto method =
+      fix.makeMethodDecl("value"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("i32"_zc));
+  zc::Vector<ast::NodeId> members;
+  members.add(method);
+  auto cls = fix.makeClassDecl("Counter"_zc, ast::NodeId(),
+                               fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+
+  auto counterDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("counter"_zc),
+                                                fix.makeNamedTypeExpr("Counter"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(counterDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("counter"_zc), "value"_zc);
+  auto call = fix.makeCallExpr(callee, ast::NodeList());
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(cls);
+  topDecls.add(let);
+  topDecls.add(call);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(call));
+  auto& ty = result.typeEnv.getType(call);
+  ZC_EXPECT(isPrimitive(ty));
+  if (isPrimitive(ty)) {
+    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
+    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
+  }
+  ZC_EXPECT(result.typeEnv.hasDispatch(call));
+  auto& dispatch = result.typeEnv.getDispatch(call);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::InstanceMethod);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ImplicitSelf);
+  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+}
+
 // ============================================================================
 // Cast expression
 // ============================================================================

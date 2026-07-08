@@ -98,6 +98,7 @@ struct BodyChecker::Impl {
 
   // Unannotated local bindings can be refined by later use-site constraints.
   zc::HashMap<uint32_t, ast::NodeId> identExprDeclarations;
+  zc::HashMap<uint32_t, symbol::SymbolId> memberExprSymbols;
   zc::Vector<ast::NodeId> pendingLocalIntDeclarations;
 
   Impl(type::TypeEnv& te, type::UnificationEngine& u, type::ConstraintSet& cs,
@@ -193,6 +194,19 @@ static void recordFreeFunctionDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
   typeEnv.setDispatch(node, zc::mv(record));
 }
 
+static void recordInstanceMethodDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
+                                         symbol::SymbolId targetSymbol,
+                                         zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                         const type::Type& resultType) {
+  type::CallDispatchRecord record;
+  record.targetKind = type::CallTargetKind::InstanceMethod;
+  record.receiverMode = type::ReceiverMode::ImplicitSelf;
+  record.targetSymbol = targetSymbol;
+  for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
+  record.resultType = typeEnv.internType(resultType);
+  typeEnv.setDispatch(node, zc::mv(record));
+}
+
 static zc::Vector<type::TypeId> dispatchArgTypeIds(type::TypeEnv& typeEnv,
                                                    zc::ArrayPtr<const ast::NodeId> argNodes) {
   zc::Vector<type::TypeId> result;
@@ -261,7 +275,7 @@ static ast::IdentList modulePathSegments(const ast::Node& path) {
   return segments;
 }
 
-zc::Maybe<const type::Type&> BodyChecker::getSymbolType(symbol::Symbol& sym) {
+zc::Maybe<const type::Type&> BodyChecker::getSymbolType(const symbol::Symbol& sym) {
   // Try to get type from TypeEnv via declaration node
   auto declRefs = sym.getDeclarationRefs();
   for (const auto& ref : declRefs) {
@@ -290,7 +304,7 @@ zc::Maybe<const type::Type&> BodyChecker::getSymbolType(symbol::Symbol& sym) {
 
   // Try TypeSymbol - create a NamedType from the symbol name
   if (sym.isTypeSymbol()) {
-    auto& typeSym = static_cast<symbol::TypeSymbol&>(sym);
+    auto& typeSym = static_cast<const symbol::TypeSymbol&>(sym);
     auto typeName = typeSym.getName();
     if (typeName.size() > 0) {
       auto astType = typeSym.getAstType();
@@ -1707,12 +1721,21 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
   auto& resolvedCallee = impl->typeEnv.find(calleeType);
 
   symbol::SymbolId freeFunctionTarget;
+  symbol::SymbolId instanceMethodTarget;
+  NodeId instanceReceiverId;
   if (impl->tree.contains(calleeId) && impl->tree.node(calleeId).kind == SyntaxKind::IdentExpr) {
     const auto& calleeNode = impl->tree.node(calleeId);
     auto calleeName = impl->tree.ident(IdentId(calleeNode.payload.words[kIdentExprNameWord]));
     auto calleeSym = lookupSymbol(calleeName);
     ZC_IF_SOME(sym, calleeSym) {
       if (sym.isFunctionSymbol()) { freeFunctionTarget = sym.getId(); }
+    }
+  } else if (impl->tree.contains(calleeId) &&
+             impl->tree.node(calleeId).kind == SyntaxKind::MemberExpression) {
+    const auto& calleeNode = impl->tree.node(calleeId);
+    instanceReceiverId = NodeId(calleeNode.payload.words[kMemberExpressionObjectWord]);
+    ZC_IF_SOME(symbolId, impl->memberExprSymbols.find(calleeId.value)) {
+      instanceMethodTarget = symbolId;
     }
   }
 
@@ -1875,7 +1898,17 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
       alternatives.add(cloneType(resolvedRet));
       alternatives.add(cloneType(resolvedRaises));
       auto& result = storeType(expr, zc::heap<type::UnionType>(zc::mv(alternatives)));
-      if (freeFunctionTarget.isValid()) {
+      if (instanceMethodTarget.isValid()) {
+        auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
+        if (impl->typeEnv.hasType(instanceReceiverId)) {
+          zc::Vector<type::TypeId> argsWithReceiver;
+          argsWithReceiver.add(impl->typeEnv.internType(
+              impl->typeEnv.find(impl->typeEnv.getType(instanceReceiverId))));
+          for (auto argType : dispatchArgs) { argsWithReceiver.add(argType); }
+          recordInstanceMethodDispatch(impl->typeEnv, expr, instanceMethodTarget,
+                                       argsWithReceiver.asPtr(), result);
+        }
+      } else if (freeFunctionTarget.isValid()) {
         auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
         recordFreeFunctionDispatch(impl->typeEnv, expr, freeFunctionTarget, dispatchArgs.asPtr(),
                                    result);
@@ -1884,7 +1917,17 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
     }
 
     auto& result = storeType(expr, cloneType(resolvedRet));
-    if (freeFunctionTarget.isValid()) {
+    if (instanceMethodTarget.isValid()) {
+      auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
+      if (impl->typeEnv.hasType(instanceReceiverId)) {
+        zc::Vector<type::TypeId> argsWithReceiver;
+        argsWithReceiver.add(impl->typeEnv.internType(
+            impl->typeEnv.find(impl->typeEnv.getType(instanceReceiverId))));
+        for (auto argType : dispatchArgs) { argsWithReceiver.add(argType); }
+        recordInstanceMethodDispatch(impl->typeEnv, expr, instanceMethodTarget,
+                                     argsWithReceiver.asPtr(), result);
+      }
+    } else if (freeFunctionTarget.isValid()) {
       auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
       recordFreeFunctionDispatch(impl->typeEnv, expr, freeFunctionTarget, dispatchArgs.asPtr(),
                                  result);
@@ -1948,7 +1991,41 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
     auto memberSym = lookupSymbol(zc::str(namedTy.getName(), "."_zc, propName));
     ZC_IF_SOME(sym, memberSym) {
       auto ty = getSymbolType(sym);
-      ZC_IF_SOME(memberType, ty) { return storeType(expr, cloneType(memberType)); }
+      ZC_IF_SOME(memberType, ty) {
+        impl->memberExprSymbols.upsert(expr.value, sym.getId());
+        return storeType(expr, cloneType(memberType));
+      }
+    }
+
+    auto typeSym = namedTy.getSymbol();
+    ZC_IF_SOME(sym, typeSym) {
+      auto refs = sym.getDeclarationRefs();
+      if (refs.size() > 0) {
+        auto scopeId = impl->metadata.scope(refs[0].node);
+        auto scopeEntry = impl->scopeIdMap.find(scopeId);
+        ZC_IF_SOME(scopePtr, scopeEntry) {
+          auto scopedMember = impl->symbols.lookup(propName, *scopePtr);
+          ZC_IF_SOME(member, scopedMember) {
+            auto ty = getSymbolType(member);
+            ZC_IF_SOME(memberType, ty) {
+              impl->memberExprSymbols.upsert(expr.value, member.getId());
+              return storeType(expr, cloneType(memberType));
+            }
+          }
+        }
+      }
+    }
+
+    auto classScope = impl->symbols.getScopeManager().getClassScope(namedTy.getName());
+    ZC_IF_SOME(scope, classScope) {
+      auto scopedMember = impl->symbols.lookup(propName, scope);
+      ZC_IF_SOME(member, scopedMember) {
+        auto ty = getSymbolType(member);
+        ZC_IF_SOME(memberType, ty) {
+          impl->memberExprSymbols.upsert(expr.value, member.getId());
+          return storeType(expr, cloneType(memberType));
+        }
+      }
     }
   }
 
