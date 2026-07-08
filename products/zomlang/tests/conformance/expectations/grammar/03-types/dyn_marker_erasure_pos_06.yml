@@ -1,0 +1,5 @@
+section: "Ch.03 Existential marker bounds"
+covers_rule: "dynType, marker bound erasure"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks concrete-to-dyn erasure with a satisfied marker bound."

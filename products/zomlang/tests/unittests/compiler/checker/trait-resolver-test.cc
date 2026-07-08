@@ -127,6 +127,31 @@ ast::NodeId makeMarkerImpl(TestFixture& fix, zc::StringPtr markerName, ast::Node
   return fix.builder().makeNode(ast::SyntaxKind::MarkerImpl, source::SourceRange(), payload);
 }
 
+ast::NodeId makeAttributePath(TestFixture& fix, zc::StringPtr name) {
+  zc::Vector<ast::IdentId> segments;
+  segments.add(fix.builder().internIdent(name));
+  auto segmentList = fix.builder().makeIdentList(segments.asPtr());
+
+  ast::NodePayload payload;
+  payload.words[ast::kAttributePathSegmentsFirstWord] = segmentList.first;
+  payload.words[ast::kAttributePathSegmentsSizeWord] = segmentList.size;
+  payload.words[ast::kAttributePathLeadingWord] = 0;
+  return fix.builder().makeNode(ast::SyntaxKind::AttributePath, source::SourceRange(), payload);
+}
+
+ast::NodeId makeAttributePathMarkerImpl(TestFixture& fix, zc::StringPtr markerName,
+                                        ast::NodeId forTy, bool isUnsafe = false,
+                                        bool isNegated = false) {
+  ast::NodePayload payload;
+  payload.words[ast::kMarkerImplIsUnsafeWord] = isUnsafe ? 1 : 0;
+  payload.words[ast::kMarkerImplIsNegatedWord] = isNegated ? 1 : 0;
+  payload.words[ast::kMarkerImplMarkerPathWord] = makeAttributePath(fix, markerName).value;
+  payload.words[ast::kMarkerImplForTyWord] = forTy.value;
+  payload.words[ast::kMarkerImplWhereWord] = 0;
+  payload.words[ast::kMarkerImplTypeParamsIdWord] = 0;
+  return fix.builder().makeNode(ast::SyntaxKind::MarkerImpl, source::SourceRange(), payload);
+}
+
 struct ResolverFixture {
   TestFixture fix;
   type::TypeEnv typeEnv;
@@ -291,6 +316,29 @@ ZC_TEST("TraitResolver.NegativeMarkerImplSuppressesAutoDerivation") {
       fix.makeStructDecl("SafeBox"_zc, makeClassMemberList(fix, fix.makeNodeList(members.asPtr())));
   auto negativeImpl =
       makeMarkerImpl(fix, "Sendable"_zc, fix.makeNamedTypeExpr("SafeBox"_zc), false, true);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(safeStruct);
+  topDecls.add(negativeImpl);
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+
+  type::TypeEnv typeEnv;
+  TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
+  resolver.discoverImpls();
+
+  type::NamedType safe("SafeBox"_zc);
+  ZC_EXPECT(!resolver.implements(safe, "Sendable"_zc));
+}
+
+ZC_TEST("TraitResolver.AttributePathNegativeMarkerImplSuppressesAutoDerivation") {
+  TestFixture fix;
+  auto safeField = fix.makeFieldDecl("value"_zc, fix.makeNamedTypeExpr("i32"_zc));
+  zc::Vector<ast::NodeId> members;
+  members.add(safeField);
+  auto safeStruct =
+      fix.makeStructDecl("SafeBox"_zc, makeClassMemberList(fix, fix.makeNodeList(members.asPtr())));
+  auto negativeImpl = makeAttributePathMarkerImpl(fix, "Sendable"_zc,
+                                                  fix.makeNamedTypeExpr("SafeBox"_zc), false, true);
 
   zc::Vector<ast::NodeId> topDecls;
   topDecls.add(safeStruct);

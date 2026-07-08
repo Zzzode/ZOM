@@ -1,0 +1,5 @@
+section: "Ch.03 Existential marker bounds"
+covers_rule: "dynType, marker bound erasure"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that a negative marker impl rejects dyn erasure requiring that marker."

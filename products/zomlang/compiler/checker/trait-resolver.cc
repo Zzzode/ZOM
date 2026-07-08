@@ -149,6 +149,18 @@ zc::StringPtr TraitResolver::resolvePathName(ast::NodeId pathNode) {
     return impl->tree.ident(lastSeg);
   }
 
+  if (path.kind == SyntaxKind::AttributePath) {
+    IdentList segments;
+    segments.first = path.payload.words[kAttributePathSegmentsFirstWord];
+    segments.size = path.payload.words[kAttributePathSegmentsSizeWord];
+
+    auto segIds = impl->tree.identList(segments);
+    if (segIds.size() == 0) return ""_zc;
+
+    auto lastSeg = segIds.back();
+    return impl->tree.ident(lastSeg);
+  }
+
   // If it's an identifier expression, extract the name
   if (path.kind == SyntaxKind::IdentExpr) {
     auto name = impl->tree.ident(IdentId(path.payload.words[kIdentExprNameWord]));

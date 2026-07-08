@@ -1,0 +1,10 @@
+interface Add {
+}
+class Number {
+  value: i32;
+}
+impl Add for Number {
+}
+impl !Sendable for Number;
+let x: Number;
+let y: dyn Add + Sendable = x;

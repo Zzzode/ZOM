@@ -1,0 +1,8 @@
+interface Add {
+}
+class Number {
+}
+impl Add for Number {
+}
+let x: Number;
+let y: dyn Add + Sendable = x;
