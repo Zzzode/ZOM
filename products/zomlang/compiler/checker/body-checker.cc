@@ -24,6 +24,7 @@
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/checker/exhaustiveness.h"
 #include "zomlang/compiler/checker/trait-resolver.h"
+#include "zomlang/compiler/checker/type-expr-utils.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
@@ -159,30 +160,6 @@ const type::ConstraintSet& BodyChecker::getConstraints() const { return impl->co
 
 static source::SourceLoc getNodeLoc(const ast::Tree& tree, ast::NodeId id) {
   return tree.node(id).range.getStart();
-}
-
-static zc::Vector<zc::StringPtr> dynMarkerNames(const ast::Tree& tree, const ast::Node& node) {
-  zc::Vector<zc::StringPtr> result;
-  auto markersId = ast::NodeId(node.payload.words[kDynTypeExprMarkersIdWord]);
-  if (!tree.contains(markersId)) { return result; }
-  const auto& markersNode = tree.node(markersId);
-  if (markersNode.kind != SyntaxKind::DynTypeMarkerList) { return result; }
-
-  NodeList markers;
-  markers.first = markersNode.payload.words[kDynTypeMarkerListMarkersFirstWord];
-  markers.size = markersNode.payload.words[kDynTypeMarkerListMarkersSizeWord];
-  for (ast::NodeId markerId : tree.list(markers)) {
-    if (!tree.contains(markerId)) { continue; }
-    const auto& marker = tree.node(markerId);
-    if (marker.kind != SyntaxKind::AttributePath) { continue; }
-    IdentList segments;
-    segments.first = marker.payload.words[kAttributePathSegmentsFirstWord];
-    segments.size = marker.payload.words[kAttributePathSegmentsSizeWord];
-    auto names = tree.identList(segments);
-    if (names.size() == 0) { continue; }
-    result.add(tree.ident(names.back()));
-  }
-  return result;
 }
 
 void BodyChecker::reportError(ast::NodeId node, zc::StringPtr message) {
