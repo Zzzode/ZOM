@@ -331,8 +331,8 @@ private:
   /// \brief Get or create the error type singleton.
   const type::Type& errorType();
 
-  /// \brief Clone a type, creating a new owned copy.
-  zc::Own<type::Type> cloneType(const type::Type& ty);
+  /// \brief Resolve type variables through TypeEnv, then clone the resolved type.
+  zc::Own<type::Type> cloneResolvedType(const type::Type& ty);
 
   /// \brief Bind instantiated generic type variables by parameter name.
   void bindTypeVarsByName(const type::Type& ty, zc::StringPtr name, const type::Type& value);

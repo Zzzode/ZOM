@@ -599,7 +599,7 @@ static bool dynTypeExtends(const type::Type& sourceIface, const type::Type& targ
   return namedInterfaceExtends(tree, sourceName, targetName);
 }
 
-zc::Own<type::Type> BodyChecker::cloneType(const type::Type& ty) {
+zc::Own<type::Type> BodyChecker::cloneResolvedType(const type::Type& ty) {
   const auto& resolved = impl->typeEnv.find(ty);
   return type::cloneType(resolved);
 }
@@ -610,7 +610,7 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
 
   if (isTypeVar(resolved)) {
     auto& var = static_cast<const type::TypeVar&>(resolved);
-    if (var.getName() == name) { impl->typeEnv.bind(var, cloneType(value)); }
+    if (var.getName() == name) { impl->typeEnv.bind(var, cloneResolvedType(value)); }
     return;
   }
 
@@ -758,7 +758,7 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
                                    impl->diags);
             auto result = resolver.resolveAssociatedTypeWithStatus(*baseType, assocName);
             if (result.kind == AssociatedTypeResolutionKind::Resolved) {
-              ZC_IF_SOME(resolved, result.type) { return cloneType(resolved); }
+              ZC_IF_SOME(resolved, result.type) { return cloneResolvedType(resolved); }
             }
 
             if (result.kind == AssociatedTypeResolutionKind::Ambiguous) {
@@ -1214,7 +1214,7 @@ const type::Type& BodyChecker::checkExpr(ast::NodeId expr) {
         return storeType(expr, zc::heap<type::ErrorType>());
       }
 
-      if (isNull(resolvedLhs)) { return storeType(expr, cloneType(resolvedRhs)); }
+      if (isNull(resolvedLhs)) { return storeType(expr, cloneResolvedType(resolvedRhs)); }
 
       if (isUnion(resolvedLhs)) {
         auto& unionTy = static_cast<const type::UnionType&>(resolvedLhs);
@@ -1222,10 +1222,12 @@ const type::Type& BodyChecker::checkExpr(ast::NodeId expr) {
           zc::Vector<zc::Own<type::Type>> nonNullAlternatives;
           for (size_t i = 0; i < unionTy.getAlternativeCount(); ++i) {
             auto& alt = unionTy.getAlternative(i);
-            if (!isNull(alt)) { nonNullAlternatives.add(cloneType(alt)); }
+            if (!isNull(alt)) { nonNullAlternatives.add(cloneResolvedType(alt)); }
           }
 
-          if (nonNullAlternatives.empty()) { return storeType(expr, cloneType(resolvedRhs)); }
+          if (nonNullAlternatives.empty()) {
+            return storeType(expr, cloneResolvedType(resolvedRhs));
+          }
 
           zc::Own<type::Type> nonNullType;
           if (nonNullAlternatives.size() == 1) {
@@ -1241,7 +1243,7 @@ const type::Type& BodyChecker::checkExpr(ast::NodeId expr) {
         }
       }
 
-      return storeType(expr, cloneType(resolvedLhs));
+      return storeType(expr, cloneResolvedType(resolvedLhs));
     }
     case SyntaxKind::ErrorDefaultExpr:
       // `error(...)` - returns error type
@@ -1270,7 +1272,7 @@ const type::Type& BodyChecker::checkIdentExpr(ast::NodeId expr) {
     auto ty = getSymbolType(sym);
     ZC_IF_SOME(t, ty) {
       // Found the symbol's type. Store a cloned copy for this ident expression.
-      return storeType(expr, cloneType(t));
+      return storeType(expr, cloneResolvedType(t));
     }
   }
 
@@ -1384,7 +1386,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
             impl->hadErrors = true;
             return storeType(expr, zc::heap<type::ErrorType>());
           }
-          auto& result = storeType(expr, cloneType(resolvedLhs));
+          auto& result = storeType(expr, cloneResolvedType(resolvedLhs));
           ZC_IF_SOME(implNode, traitResolver.findImpl(resolvedLhs, traitName)) {
             type::CallDispatchRecord record;
             record.targetKind = type::CallTargetKind::OperatorMethod;
@@ -1542,7 +1544,7 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
-        auto& result = storeType(expr, cloneType(resolved));
+        auto& result = storeType(expr, cloneResolvedType(resolved));
         ZC_IF_SOME(implNode, traitResolver.findImpl(resolved, traitName)) {
           type::CallDispatchRecord record;
           record.targetKind = type::CallTargetKind::OperatorMethod;
@@ -1638,8 +1640,8 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
     case ast::UnaryOperatorKind::Ref:
       // Address-of: returns a reference to the operand type
       if (isError(resolved)) { return storeType(expr, zc::heap<type::ErrorType>()); }
-      return storeType(expr,
-                       zc::heap<type::ReferenceType>(cloneType(resolved), type::Mutability::Const));
+      return storeType(expr, zc::heap<type::ReferenceType>(cloneResolvedType(resolved),
+                                                           type::Mutability::Const));
     default:
       return storeType(expr, zc::heap<type::ErrorType>());
   }
@@ -1655,7 +1657,7 @@ const type::Type& BodyChecker::checkPostfixExpr(ast::NodeId expr) {
   switch (op) {
     case ast::PostfixOperatorKind::Increment:
     case ast::PostfixOperatorKind::Decrement:
-      if (isNumeric(resolved)) { return storeType(expr, cloneType(resolved)); }
+      if (isNumeric(resolved)) { return storeType(expr, cloneResolvedType(resolved)); }
       if (!isError(resolved)) { reportError(expr, "postfix update requires numeric operand"_zc); }
       return storeType(expr, zc::heap<type::ErrorType>());
     case ast::PostfixOperatorKind::ErrorPropagate:
@@ -1702,7 +1704,7 @@ const type::Type& BodyChecker::checkPostfixExpr(ast::NodeId expr) {
         }
       }
 
-      return storeType(expr, cloneType(unionTy.getAlternative(0)));
+      return storeType(expr, cloneResolvedType(unionTy.getAlternative(0)));
     }
   }
 
@@ -1818,8 +1820,8 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
           if (isTypeVar(resolvedDecl)) {
             if (impl->unifier.unify(resolvedDecl, paramTy)) {
               auto& refined = impl->typeEnv.find(paramTy);
-              impl->typeEnv.setType(declId, cloneType(refined));
-              impl->typeEnv.setType(argId, cloneType(refined));
+              impl->typeEnv.setType(declId, cloneResolvedType(refined));
+              impl->typeEnv.setType(argId, cloneResolvedType(refined));
               refinedLocal = true;
             }
           }
@@ -1895,8 +1897,8 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
     ZC_IF_SOME(raises, raisesType) {
       auto& resolvedRaises = impl->typeEnv.find(raises);
       zc::Vector<zc::Own<type::Type>> alternatives;
-      alternatives.add(cloneType(resolvedRet));
-      alternatives.add(cloneType(resolvedRaises));
+      alternatives.add(cloneResolvedType(resolvedRet));
+      alternatives.add(cloneResolvedType(resolvedRaises));
       auto& result = storeType(expr, zc::heap<type::UnionType>(zc::mv(alternatives)));
       if (instanceMethodTarget.isValid()) {
         auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
@@ -1916,7 +1918,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
       return result;
     }
 
-    auto& result = storeType(expr, cloneType(resolvedRet));
+    auto& result = storeType(expr, cloneResolvedType(resolvedRet));
     if (instanceMethodTarget.isValid()) {
       auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
       if (impl->typeEnv.hasType(instanceReceiverId)) {
@@ -1982,7 +1984,7 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
   if (isObject(resolvedObj)) {
     auto& objTy = static_cast<const type::ObjectType&>(resolvedObj);
     auto memberTy = objTy.getMember(propName);
-    ZC_IF_SOME(mTy, memberTy) { return storeType(expr, cloneType(mTy)); }
+    ZC_IF_SOME(mTy, memberTy) { return storeType(expr, cloneResolvedType(mTy)); }
   }
 
   // Named type: look up in symbol table
@@ -1993,7 +1995,7 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
       auto ty = getSymbolType(sym);
       ZC_IF_SOME(memberType, ty) {
         impl->memberExprSymbols.upsert(expr.value, sym.getId());
-        return storeType(expr, cloneType(memberType));
+        return storeType(expr, cloneResolvedType(memberType));
       }
     }
 
@@ -2009,7 +2011,7 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
             auto ty = getSymbolType(member);
             ZC_IF_SOME(memberType, ty) {
               impl->memberExprSymbols.upsert(expr.value, member.getId());
-              return storeType(expr, cloneType(memberType));
+              return storeType(expr, cloneResolvedType(memberType));
             }
           }
         }
@@ -2023,7 +2025,7 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
         auto ty = getSymbolType(member);
         ZC_IF_SOME(memberType, ty) {
           impl->memberExprSymbols.upsert(expr.value, member.getId());
-          return storeType(expr, cloneType(memberType));
+          return storeType(expr, cloneResolvedType(memberType));
         }
       }
     }
@@ -2049,7 +2051,7 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
     auto& arrTy = static_cast<const type::ArrayType&>(resolvedObj);
     // Index must be integer
     if (!isInteger(resolvedIdx)) { reportError(idxId, "array index must be an integer"_zc); }
-    auto& result = storeType(expr, cloneType(arrTy.getElementType()));
+    auto& result = storeType(expr, cloneResolvedType(arrTy.getElementType()));
     zc::Vector<type::TypeId> args;
     args.add(impl->typeEnv.internType(resolvedObj));
     args.add(impl->typeEnv.internType(resolvedIdx));
@@ -2078,7 +2080,8 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
       return storeType(expr, zc::heap<type::ErrorType>());
     }
 
-    auto& result = storeType(expr, cloneType(tupleTy.getElementType(static_cast<size_t>(index))));
+    auto& result =
+        storeType(expr, cloneResolvedType(tupleTy.getElementType(static_cast<size_t>(index))));
     zc::Vector<type::TypeId> args;
     args.add(impl->typeEnv.internType(resolvedObj));
     args.add(impl->typeEnv.internType(resolvedIdx));
@@ -2113,7 +2116,7 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
           impl->hadErrors = true;
           return storeType(expr, zc::heap<type::ErrorType>());
         }
-        auto& result = storeType(expr, cloneType(outputTy));
+        auto& result = storeType(expr, cloneResolvedType(outputTy));
         ZC_IF_SOME(implNode, traitResolver.findImpl(resolvedObj, "Index"_zc)) {
           type::CallDispatchRecord record;
           record.targetKind = type::CallTargetKind::IndexMethod;
@@ -2162,7 +2165,7 @@ const type::Type& BodyChecker::checkNewExpr(ast::NodeId expr) {
 
   // For any other type (including error types from failed lookup),
   // return a clone of the resolved type
-  if (!isError(resolved)) { return storeType(expr, cloneType(resolved)); }
+  if (!isError(resolved)) { return storeType(expr, cloneResolvedType(resolved)); }
 
   return storeType(expr, zc::heap<type::ErrorType>());
 }
@@ -2187,14 +2190,16 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
-  if (resolvedSource.equals(resolvedTarget)) { return storeType(expr, cloneType(resolvedTarget)); }
+  if (resolvedSource.equals(resolvedTarget)) {
+    return storeType(expr, cloneResolvedType(resolvedTarget));
+  }
 
   if (isPrimitive(resolvedSource) && isPrimitive(resolvedTarget)) {
     auto& sourcePrim = static_cast<const type::PrimitiveType&>(resolvedSource);
     auto& targetPrim = static_cast<const type::PrimitiveType&>(resolvedTarget);
     if ((sourcePrim.isIntegerType() || sourcePrim.isFloatingPointType()) &&
         (targetPrim.isIntegerType() || targetPrim.isFloatingPointType())) {
-      return storeType(expr, cloneType(resolvedTarget));
+      return storeType(expr, cloneResolvedType(resolvedTarget));
     }
   }
 
@@ -2204,9 +2209,9 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     if (sourcePtr.getPointeeType().equals(targetPtr.getPointeeType()) &&
         sourcePtr.getMutability() == type::Mutability::Mutable &&
         targetPtr.getMutability() == type::Mutability::Const) {
-      return storeType(expr, cloneType(resolvedTarget));
+      return storeType(expr, cloneResolvedType(resolvedTarget));
     }
-    if (impl->unsafeDepth > 0) { return storeType(expr, cloneType(resolvedTarget)); }
+    if (impl->unsafeDepth > 0) { return storeType(expr, cloneResolvedType(resolvedTarget)); }
 
     reportError(expr, zc::str("raw pointer cast from '"_zc, resolvedSource.toString(), "' to '"_zc,
                               resolvedTarget.toString(), "' requires unsafe block"_zc));
@@ -2219,7 +2224,7 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     if (sourceRef.getPointeeType().equals(targetPtr.getPointeeType())) {
       if (sourceRef.getMutability() == type::Mutability::Mutable ||
           targetPtr.getMutability() == type::Mutability::Const) {
-        return storeType(expr, cloneType(resolvedTarget));
+        return storeType(expr, cloneResolvedType(resolvedTarget));
       }
     }
   }
@@ -2230,7 +2235,7 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     if (dynTypeExtends(sourceExistential.getInterfaceType(), targetExistential.getInterfaceType(),
                        impl->tree)) {
       impl->typeEnv.setCoercion(expr, type::CoercionKind::DynUpcast);
-      return storeType(expr, cloneType(resolvedTarget));
+      return storeType(expr, cloneResolvedType(resolvedTarget));
     }
 
     reportError(expr, zc::str("invalid dyn upcast from '"_zc, resolvedSource.toString(),
@@ -2271,14 +2276,16 @@ const type::Type& BodyChecker::checkConditionalExpr(ast::NodeId expr) {
   if (isError(resolvedElse)) return storeType(expr, zc::heap<type::ErrorType>());
 
   // If both are the same type, return it
-  if (resolvedThen.equals(resolvedElse)) { return storeType(expr, cloneType(resolvedThen)); }
+  if (resolvedThen.equals(resolvedElse)) {
+    return storeType(expr, cloneResolvedType(resolvedThen));
+  }
 
   auto thenToElse = impl->coercions.check(resolvedThen, resolvedElse);
   if (thenToElse.success) {
     if (thenToElse.kind != type::CoercionKind::Identity) {
       impl->typeEnv.setCoercion(thenId, thenToElse.kind);
     }
-    return storeType(expr, cloneType(resolvedElse));
+    return storeType(expr, cloneResolvedType(resolvedElse));
   }
 
   auto elseToThen = impl->coercions.check(resolvedElse, resolvedThen);
@@ -2286,12 +2293,12 @@ const type::Type& BodyChecker::checkConditionalExpr(ast::NodeId expr) {
     if (elseToThen.kind != type::CoercionKind::Identity) {
       impl->typeEnv.setCoercion(elseId, elseToThen.kind);
     }
-    return storeType(expr, cloneType(resolvedThen));
+    return storeType(expr, cloneResolvedType(resolvedThen));
   }
 
   zc::Vector<zc::Own<type::Type>> alternatives;
-  alternatives.add(cloneType(resolvedThen));
-  alternatives.add(cloneType(resolvedElse));
+  alternatives.add(cloneResolvedType(resolvedThen));
+  alternatives.add(cloneResolvedType(resolvedElse));
   impl->typeEnv.setCoercion(thenId, type::CoercionKind::UnionInjection);
   impl->typeEnv.setCoercion(elseId, type::CoercionKind::UnionInjection);
   return storeType(expr, zc::heap<type::UnionType>(zc::mv(alternatives)));
@@ -2324,7 +2331,7 @@ const type::Type& BodyChecker::checkAssignmentExpr(ast::NodeId expr) {
   if (impl->hadErrors) { return storeType(expr, zc::heap<type::ErrorType>()); }
 
   auto& resolvedRhs = impl->typeEnv.find(rhsType);
-  return storeType(expr, cloneType(resolvedRhs));
+  return storeType(expr, cloneResolvedType(resolvedRhs));
 }
 
 const type::Type& BodyChecker::checkLambdaExpr(ast::NodeId expr) {
@@ -2474,7 +2481,7 @@ const type::Type& BodyChecker::checkObjectLiteral(ast::NodeId expr) {
     if (propName.size() > 0 && impl->tree.contains(propValueId)) {
       auto& valueType = checkExpr(propValueId);
       auto& resolvedValue = impl->typeEnv.find(valueType);
-      objTy->addMember(propName, cloneType(resolvedValue));
+      objTy->addMember(propName, cloneResolvedType(resolvedValue));
     }
   }
 
@@ -2535,7 +2542,7 @@ const type::Type& BodyChecker::checkStructLiteralExpr(ast::NodeId expr) {
   }
 
   auto findFieldType = [&](zc::StringPtr fieldName) -> zc::Own<type::Type> {
-    ZC_IF_SOME(fieldType, fieldTypes.find(fieldName)) { return cloneType(*fieldType); }
+    ZC_IF_SOME(fieldType, fieldTypes.find(fieldName)) { return cloneResolvedType(*fieldType); }
 
     auto& resolvedTarget = impl->typeEnv.find(*targetType);
     if (!isNamed(resolvedTarget)) { return zc::Own<type::Type>(); }
@@ -2631,7 +2638,7 @@ const type::Type& BodyChecker::checkStructLiteralExpr(ast::NodeId expr) {
   if (hadFieldError) { return storeType(expr, zc::heap<type::ErrorType>()); }
 
   auto& resolvedTarget = impl->typeEnv.find(*targetType);
-  return storeType(expr, cloneType(resolvedTarget));
+  return storeType(expr, cloneResolvedType(resolvedTarget));
 }
 
 const type::Type& BodyChecker::checkArrayLiteral(ast::NodeId expr) {
@@ -2678,10 +2685,12 @@ const type::Type& BodyChecker::checkArrayLiteral(ast::NodeId expr) {
 
   if (elemType == zc::none) {
     auto& tv = impl->typeEnv.freshTypeVar("array_elem"_zc);
-    return storeType(expr, zc::heap<type::ArrayType>(cloneType(tv)));
+    return storeType(expr, zc::heap<type::ArrayType>(cloneResolvedType(tv)));
   }
 
-  ZC_IF_SOME(et, elemType) { return storeType(expr, zc::heap<type::ArrayType>(cloneType(et))); }
+  ZC_IF_SOME(et, elemType) {
+    return storeType(expr, zc::heap<type::ArrayType>(cloneResolvedType(et)));
+  }
 
   return storeType(expr, zc::heap<type::ArrayType>(zc::heap<type::ErrorType>()));
 }
@@ -2701,7 +2710,7 @@ const type::Type& BodyChecker::checkTupleLiteral(ast::NodeId expr) {
       auto& elemTy = checkExpr(elemId);
       auto& resolved = impl->typeEnv.find(elemTy);
       if (isError(resolved)) { hasErrorElement = true; }
-      elemTypes.add(cloneType(resolved));
+      elemTypes.add(cloneResolvedType(resolved));
     }
   } else if (node.kind == SyntaxKind::TupleLiteral1) {
     // Single-element tuple
@@ -2709,7 +2718,7 @@ const type::Type& BodyChecker::checkTupleLiteral(ast::NodeId expr) {
     auto& elemTy = checkExpr(elemId);
     auto& resolved = impl->typeEnv.find(elemTy);
     if (isError(resolved)) { hasErrorElement = true; }
-    elemTypes.add(cloneType(resolved));
+    elemTypes.add(cloneResolvedType(resolved));
   }
 
   if (hasErrorElement) { return storeType(expr, zc::heap<type::ErrorType>()); }
@@ -2934,7 +2943,7 @@ void BodyChecker::checkLetStmt(ast::NodeId stmt) {
           impl->typeEnv.setType(declId, zc::heap<type::ErrorType>());
           return;
         }
-        impl->typeEnv.setType(declId, cloneType(resolvedAnnotated));
+        impl->typeEnv.setType(declId, cloneResolvedType(resolvedAnnotated));
         return;
       }
     }
@@ -2949,13 +2958,13 @@ void BodyChecker::checkLetStmt(ast::NodeId stmt) {
 
     if (impl->tree.node(initId).kind == SyntaxKind::IntLiteral) {
       auto& tv = impl->typeEnv.freshTypeVar("local_int"_zc);
-      impl->typeEnv.setType(declId, cloneType(tv));
+      impl->typeEnv.setType(declId, cloneResolvedType(tv));
       impl->pendingLocalIntDeclarations.add(declId);
       return;
     }
 
     // Store the type for the declarator node
-    impl->typeEnv.setType(declId, cloneType(resolvedInit));
+    impl->typeEnv.setType(declId, cloneResolvedType(resolvedInit));
   });
 }
 
@@ -3104,7 +3113,7 @@ bool BodyChecker::checkBodies() {
         auto initId = NodeId(itemNode.payload.words[kVariableDeclaratorInitWord]);
         if (impl->tree.contains(initId)) {
           auto& initTy = checkExpr(initId);
-          impl->typeEnv.setType(itemId, cloneType(initTy));
+          impl->typeEnv.setType(itemId, cloneResolvedType(initTy));
         }
         break;
       }
