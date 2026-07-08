@@ -1645,3 +1645,4 @@ None.
 | 2026-07-08 | REVIEW | Added diagnostics conformance evidence for missing binary arithmetic and comparison operator traits (`Add`, `Eq`, `Ord`) through stable ZOM4018 source/caret output. |
 | 2026-07-08 | REVIEW | Added diagnostics conformance evidence for missing `Sub`, `Mul`, `Div`, and `Rem` operator traits through stable ZOM4018 source/caret output. |
 | 2026-07-08 | REVIEW | Moved shared `dyn I + marker` AST extraction into `checker/type-expr-utils` so Phase A, Phase B, and trait-resolution paths cannot drift independently. |
+| 2026-07-08 | REVIEW | Aligned `dyn I + marker`, reference/raw-pointer type atoms, type queries, and fully qualified associated projection documentation with the current parser, ANTLR grammar, AST schema, and conformance evidence. |

@@ -630,10 +630,10 @@ AtomType        ::= ParenthesizedType
                   | TupleType
                   | TupleVariantType
                   | ArrayLiteralType
-                  | TypeQuery           (* PARSER GAP: typeof in type position not yet implemented *)
-                  | ReferenceType       (* PARSER GAP: &T / &mut T not yet implemented in type parser *)
-                  | RawPointerType      (* PARSER GAP: *const T / *mut T not yet implemented in type parser *)
-                  | DynType             (* PARSER GAP: dyn I + Markers not yet implemented; 'dyn' is parsed as plain identifier *)
+                  | TypeQuery
+                  | ReferenceType
+                  | RawPointerType
+                  | DynType
                   | MarkerType        (* Sendable/Shared/Linear/NoInternalMutability markers *)
 
 ParenthesizedType ::= '(' TypeExpr ')'
@@ -716,10 +716,11 @@ RawPointerType  ::= '*' ( 'const' | 'mut' )? TypeExpr
                      Does NOT auto-impl Sendable or Shared.
                      See Ch.03 §Raw Pointer Types for full semantics. *)
 
-DynType         ::= 'dyn' InterfaceBoundList
+DynType         ::= 'dyn' InterfaceType ( '+' MarkerPath )*
                   (* Existential type — 2-word fat pointer (data_ptr + vtable_ptr).
                      Only object-safe interfaces permitted.
-                     InterfaceBoundList ::= TypeName TypeArguments? ( '+' MarkerPath )*
+                     Parser AST stores the first interface head in DynTypeIfaceList
+                     and marker suffixes in DynTypeMarkerList.
                      See Ch.03 §Existential Types for full semantics. *)
 ```
 
@@ -1416,7 +1417,7 @@ a Five-Way Consistency Index entry in Section 8.
 | G29 | `@` pattern binding | Original patterns did not include `@` binding | Add `BindingPattern ::= Identifier ('@' Pattern)?` | Parser `bindPat` implements `ident @ pat` syntax |
 | G30 | `?:` and `??` associativity | EBNF implied left-associativity via `(...)*` notation; parser uses `<assoc=right>` | Annotate as right-associative in EBNF; update precedence table | Aligns with Kotlin/Swift semantics and parser implementation |
 | G31 | `PropertyDefinition` shorthand-init form | EBNF listed `Identifier Initializer?` implying `{ x = 3 }` syntax; parser only supports `{ x }` (shorthand ref) and `{ x: expr }` (key-value) | Remove `Initializer?` from shorthand form; add explicit note | Parser `objectProperty` rule only accepts `propertyName ( COLON expression )?` |
-| G32 | `DynType` / `ReferenceType` / `RawPointerType` / `TypeQuery` in type position | EBNF listed these as valid `AtomType` productions; parser does not implement them (`dyn` parsed as plain ident; `&`/`*` only valid as unary expr ops; `typeof` only in expression position) | Add PARSER GAP annotations to all four | Clarifies spec-vs-implementation status; guides future parser work |
+| G32 | `DynType` / `ReferenceType` / `RawPointerType` / `TypeQuery` in type position | Earlier alignment notes marked these as parser gaps. The current parser implements `parseDynType`, reference/raw-pointer type atoms, and `parseTypeQuery`. | Mark the productions as implemented and document that `dyn I + M` stores the interface head and marker suffixes in separate AST lists. | Keeps the authoritative EBNF aligned with `type-parser.cc`, `ZomParser.g4`, and the generated AST schema. |
 | G33 | `ImportCall` (`import(expr)`) | EBNF claimed "reserved; v1 parser rejects"; parser `exprImportCall` accepts it in `primaryExpr` | Update to "parser accepts; semantic pass may restrict" | Aligns with actual parser behavior |
 | G34 | `UnsafeBlockStatement` bare form | EBNF implied `unsafe { stmt* }` works as a statement; parser only accepts `unsafe { stmt* expr? };` via expression-statement path | Clarify: bare form (no `;`) NOT supported; expression form with `;` IS supported | Prevents user confusion about why `unsafe { }` at statement level fails |
 
@@ -1456,7 +1457,7 @@ Per AGENTS.md Section Spec Alignment Rules, the following is the cross-reference
 | Section 4.7 Patterns (G29: `@` binding) | Circular arrow — 07-patterns needs `@` binding | -- | Circular arrow (G29) | -- | Checkmark parser/pattern.cc |
 | Section 4.6 Expressions (G30: `?:`/`??` right-assoc) | Circular arrow — 04-expressions precedence table needs update | -- | Circular arrow (G30) | Circular arrow doc table correction | Checkmark parser (annotated <assoc=right>) |
 | Section 4.6 ObjectLiteral (G31: no shorthand-init) | -- | -- | Circular arrow (G31) | -- | Checkmark parser/expr.cc (objectProperty) |
-| Section 4.4 TypeExpr (G32: DynType/RefType/RawPtr/TypeQuery gaps) | Circular arrow — 03-types documents these | -- | Circular arrow (G32) | -- | Circular arrow — parser gaps: dyn parsed as ident, &/* only in unary expr, typeof only in expr |
+| Section 4.4 TypeExpr (G32: DynType/RefType/RawPtr/TypeQuery implemented) | Checkmark 03-types | -- | Checkmark 17-grammar-ref | -- | Checkmark type-parser.cc / ZomParser.g4 |
 | Section 4.6 ImportCall (G33: accepted) | -- | -- | Circular arrow (G33) | -- | Checkmark parser exprImportCall |
 | Section 4.5 UnsafeBlockStatement (G34: bare form not supported) | -- | -- | Circular arrow (G34) | -- | Checkmark — only via expression statement |
 | Section 4.8 Attributes (G6/G23: cfg sub-grammar) | Circular arrow — chapter 16 requires rewrite | Checkmark HASH/LBRACK adjacency | Circular arrow (G6/G23) | -- | Checkmark parser attribute handling |
@@ -1747,7 +1748,7 @@ let bad_tuple: (i32,);  // ZOM type error: 1-tuple type (T,) not allowed
 **Changelog (v1.2.0)**:
 - G30: Corrected `?:` and `??` associativity from left to right (matching parser `<assoc=right>`)
 - G31: Removed unsupported `Identifier Initializer?` shorthand-init from `PropertyDefinition`; parser only accepts `{ x }` (shorthand ref) and `{ x: expr }` (key-value)
-- G32: Added PARSER GAP annotations for `DynType`, `ReferenceType`, `RawPointerType`, `TypeQuery` in type position (not yet implemented)
+- G32: Removed stale parser-gap annotations for `DynType`, `ReferenceType`, `RawPointerType`, and `TypeQuery`; the C++ parser, ANTLR grammar, and AST schema now expose these type atoms.
 - G33: Updated `ImportCall` status from "reserved" to "parser accepts" (matching `exprImportCall` in primaryExpr)
 - G34: Clarified `UnsafeBlockStatement` — bare `unsafe { }` without semicolon is NOT supported; `unsafe { ... };` via expression statement IS supported
 - Added note: `OPTIONAL_CHAIN` (`?.`) is a direct lexer token; parser also accepts `? .` (QUESTION + PERIOD) for compatibility

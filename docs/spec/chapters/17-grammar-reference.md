@@ -322,8 +322,9 @@ AtomType ::= ParenthesizedType
           | ReferenceType          (* &T / &mut T — Ch.03 §Reference Types *)
           | RawPointerType         (* *const T / *mut T — Ch.03 §Raw Pointer Types *)
           | DynType                (* existential type — Ch.03 §Existential Types *)
-DynType ::= 'dyn' InterfaceBoundList                          (* Ch.03 §Existential *)
-InterfaceBoundList ::= InterfaceName ( '<' GenericArgs '>' )? ( '+' MarkerPath )*
+DynType ::= 'dyn' InterfaceType ( '+' MarkerPath )*            (* Ch.03 §Existential *)
+    (* Parser AST stores the interface head in DynTypeIfaceList and marker
+       suffixes in DynTypeMarkerList. *)
 
 ReferenceType ::= '&' ('mut')? TypeExpression
     (* Immutable or mutable reference. Sized = ptr_size.
@@ -333,7 +334,6 @@ RawPointerType ::= '*' ('const' | 'mut')? TypeExpression
     (* Raw pointer for FFI and unsafe code. Sized = ptr_size.
        Dereference requires unsafe { }. See Ch.03 §Raw Pointer Types. *)
 
-InterfaceName ::= TypeName
 InterfaceType ::= TypeName TypeArguments?
 GenericArgs ::= TypeArgumentList
 

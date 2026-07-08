@@ -468,8 +468,9 @@ Existential types provide first-class runtime-dispatched values whose concrete t
 ZOM follows an **explicit existential erasure model** (Swift 6 `any` semantics). An `interface I { ... }` declaration introduces only a *bound* — a predicate on type variables. It does **not** by itself introduce a type that can appear in value position. To treat "any value whose type implements I" as a first-class type, the programmer writes `dyn I`.
 
 ```ebnf
-ExistentialType      ::= 'dyn' InterfaceBoundList
-InterfaceBoundList   ::= InterfaceName ( '<' GenericArgs '>' )? ( '+' MarkerPath )*
+ExistentialType      ::= 'dyn' InterfaceType ( '+' MarkerPath )*
+InterfaceType        ::= InterfaceName ( '<' GenericArgs '>' )?
+MarkerPath           ::= AttributePath | Identifier
 ```
 
 ```zom
@@ -478,11 +479,13 @@ let b: dyn Iterator<Item = T> = vec.iter();
 let c: dyn Read + Sendable + Shared = open_file();
 ```
 
-The parser represents every item after `dyn` in a single `DynTypeIfaceList`.
-Semantic analysis classifies each item as an object-safe interface or marker
-bound after name resolution. This keeps the syntax surface simple while still
-allowing object-safety diagnostics to distinguish interface methods, associated
-type bindings, and marker-only bounds.
+The parser represents the first item after `dyn` as the object-safe interface
+head in `DynTypeIfaceList` and every `+ MarkerPath` suffix as marker bounds in
+`DynTypeMarkerList`. Semantic analysis resolves the interface head as the
+dispatch contract and resolves marker paths as marker-only bounds. Keeping the
+two lists distinct prevents object-safety checks from mistaking marker bounds
+for callable interface requirements while preserving the compact source form
+`dyn I + Sendable + Shared`.
 
 **Three normative rules:**
 
