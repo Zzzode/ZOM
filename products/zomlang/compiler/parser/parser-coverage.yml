@@ -200,8 +200,8 @@ productions:
   QualifiedPath: {status: inlined, parser: parseSourceElement, parent: Declaration}
   RaisesClause: {status: inlined, parser: parseTypeRange, parent: FunctionType}
   ReexportClause: {status: inlined, parser: parseExportDeclaration, parent: ExportDeclaration}
-  RawPointerType: {status: inlined, parser: parseTypeRange, parent: AtomType}
-  ReferenceType: {status: inlined, parser: parseTypeRange, parent: AtomType}
+  RawPointerType: {status: inlined, parser: parseTypeRange, parent: AtomType, ast: [RawPointerTypeExpr]}
+  ReferenceType: {status: inlined, parser: parseTypeRange, parent: AtomType, ast: [ReferenceTypeExpr]}
   RelationalExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   ReturnStatement: {status: direct, parser: parseReturnStatement, ast: [ReturnStmt]}
   ReturnType: {status: inlined, parser: parseTypeRange, parent: FunctionDeclaration}
