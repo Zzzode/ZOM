@@ -391,7 +391,10 @@ let it_ok: dyn Iterator<Item = u8> = make_iter();         // OK
 
 ### 9.6.7 OS-5 No Static Methods
 
-A method lacking any form of `this` receiver has no dispatch target in the vtable. Such methods remain callable through the qualified path `I::static_method()`; they are simply excluded from the dyn vtable.
+A method lacking any form of `this` receiver has no dispatch target in the
+vtable. Such methods remain callable through the qualified path
+`I::static_method()` on the interface itself, but their presence makes the
+interface ineligible for `dyn I`.
 
 ```zom
 interface Factory { static fun new() -> Self; }           // ZOM4005 DynStaticMethod
