@@ -14,10 +14,70 @@
 
 #include "zomlang/runtime/panic.h"
 
+#include <errno.h>
+
 #include <cstdlib>
+
+#include "zc/core/miniposix.h"
 
 namespace zomlang {
 namespace runtime {
+
+namespace {
+
+void writeAllToStderr(zc::ArrayPtr<const zc::byte> data) {
+  auto pos = data.begin();
+  auto remaining = data.size();
+  while (remaining > 0) {
+    zc::miniposix::ssize_t written = zc::miniposix::write(STDERR_FILENO, pos, remaining);
+    if (written < 0 && errno == EINTR) continue;
+    if (written <= 0) return;
+    pos += written;
+    remaining -= static_cast<size_t>(written);
+  }
+}
+
+void writeStringToStderr(zc::StringPtr text) { writeAllToStderr(text.asBytes()); }
+
+void writeUIntToStderr(uint64_t value) {
+  char buffer[20];
+  char* end = buffer + sizeof(buffer);
+  char* pos = end;
+  do {
+    *--pos = static_cast<char>('0' + (value % 10));
+    value /= 10;
+  } while (value > 0);
+  writeAllToStderr(zc::arrayPtr(pos, end).asBytes());
+}
+
+void reportPanicBeforeAbort(const ZomPanicInfo* info) {
+  ZomPanicInfo fallback;
+  const auto& resolvedInfo = info == nullptr ? fallback : *info;
+  zc::StringPtr file =
+      resolvedInfo.span.file == nullptr ? "<unknown>"_zc : zc::StringPtr(resolvedInfo.span.file);
+  zc::StringPtr message =
+      resolvedInfo.message == nullptr ? "<none>"_zc : zc::StringPtr(resolvedInfo.message);
+
+  writeStringToStderr("panic(kind="_zc);
+  writeStringToStderr(panicKindName(resolvedInfo.kind));
+  writeStringToStderr(", file="_zc);
+  writeStringToStderr(file);
+  writeStringToStderr(", line="_zc);
+  writeUIntToStderr(resolvedInfo.span.line);
+  writeStringToStderr(", column="_zc);
+  writeUIntToStderr(resolvedInfo.span.column);
+  writeStringToStderr(", bytes="_zc);
+  writeUIntToStderr(resolvedInfo.span.byteStart);
+  writeStringToStderr(".."_zc);
+  writeUIntToStderr(resolvedInfo.span.byteEnd);
+  writeStringToStderr(", message="_zc);
+  writeStringToStderr(message);
+  writeStringToStderr(", task="_zc);
+  writeUIntToStderr(resolvedInfo.taskId);
+  writeStringToStderr(")\n"_zc);
+}
+
+}  // namespace
 
 zc::StringPtr panicKindName(ZomPanicKind kind) {
   switch (kind) {
@@ -66,7 +126,7 @@ extern "C" {
 }
 
 [[noreturn]] void __zom_abort_panic(const zomlang::runtime::ZomPanicInfo* info) {
-  (void)info;
+  zomlang::runtime::reportPanicBeforeAbort(info);
   std::abort();
 }
 

@@ -14,9 +14,17 @@
 
 #include "zomlang/runtime/panic.h"
 
+#include <errno.h>
 #include <signal.h>
+#if !_WIN32
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
+#include "zc/core/exception.h"
 #include "zc/core/function.h"
+#include "zc/core/io.h"
+#include "zc/core/miniposix.h"
 #include "zc/ztest/test.h"
 
 namespace zomlang {
@@ -28,6 +36,43 @@ void setBool(void* context) {
   bool& value = *static_cast<bool*>(context);
   value = true;
 }
+
+#if !_WIN32
+bool abortPanicWritesToStderrAndSignals(const ZomPanicInfo& info, zc::StringPtr expected) {
+  int pipeFds[2]{};
+  ZC_SYSCALL(zc::miniposix::pipe(pipeFds));
+
+  pid_t child;
+  ZC_SYSCALL(child = fork());
+  if (child == 0) {
+    zc::resetCrashHandlers();
+    zc::miniposix::close(pipeFds[0]);
+    if (dup2(pipeFds[1], STDERR_FILENO) < 0) { _exit(127); }
+    zc::miniposix::close(pipeFds[1]);
+    __zom_abort_panic(&info);
+  }
+
+  zc::miniposix::close(pipeFds[1]);
+  zc::VectorOutputStream stderrOutput;
+  zc::byte buffer[256];
+  for (;;) {
+    zc::miniposix::ssize_t bytesRead = zc::miniposix::read(pipeFds[0], buffer, sizeof(buffer));
+    if (bytesRead < 0 && errno == EINTR) continue;
+    if (bytesRead <= 0) break;
+    stderrOutput.write(zc::arrayPtr(buffer).first(static_cast<size_t>(bytesRead)));
+  }
+  zc::miniposix::close(pipeFds[0]);
+
+  int status;
+  ZC_SYSCALL(waitpid(child, &status, 0));
+  auto actual = zc::str(stderrOutput.getArray().asChars());
+  bool signaled = WIFSIGNALED(status) && WTERMSIG(status) == SIGABRT;
+  bool matches = actual == expected;
+  ZC_EXPECT(signaled);
+  ZC_EXPECT(matches);
+  return signaled && matches;
+}
+#endif
 
 }  // namespace
 
@@ -90,9 +135,37 @@ ZC_TEST("Runtime.CatchUnwindHandlesNullThunk") {
 }
 
 ZC_TEST("Runtime.AbortPanicRaisesSigabrt") {
+#if _WIN32
+  ZC_EXPECT_SIGNAL(SIGABRT, __zom_abort_panic(nullptr));
+#else
   ZomPanicInfo info;
   info.kind = ZomPanicKind::ExplicitPanic;
-  ZC_EXPECT_SIGNAL(SIGABRT, __zom_abort_panic(&info));
+  ZC_EXPECT(abortPanicWritesToStderrAndSignals(
+      info,
+      "panic(kind=explicit_panic, file=<unknown>, line=0, column=0, bytes=0..0, "
+      "message=<none>, task=0)\n"_zc));
+#endif
+}
+
+ZC_TEST("Runtime.AbortPanicWritesMetadataBeforeSignal") {
+#if _WIN32
+  ZC_EXPECT(true);
+#else
+  ZomPanicInfo info;
+  info.kind = ZomPanicKind::Assertion;
+  info.span.file = "assert.zom";
+  info.span.line = 8;
+  info.span.column = 3;
+  info.span.byteStart = 40;
+  info.span.byteEnd = 47;
+  info.message = "assertion failed";
+  info.taskId = 77;
+
+  ZC_EXPECT(abortPanicWritesToStderrAndSignals(
+      info,
+      "panic(kind=assertion, file=assert.zom, line=8, column=3, bytes=40..47, "
+      "message=assertion failed, task=77)\n"_zc));
+#endif
 }
 
 ZC_TEST("Runtime.PanicAbiSymbolsAreLinkable") {
