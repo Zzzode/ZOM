@@ -38,7 +38,10 @@ void setBool(void* context) {
 }
 
 #if !_WIN32
-bool abortPanicWritesToStderrAndSignals(const ZomPanicInfo& info, zc::StringPtr expected) {
+using PanicEntry = void (*)(const ZomPanicInfo*);
+
+bool panicEntryWritesToStderrAndSignals(PanicEntry entry, const ZomPanicInfo& info,
+                                        zc::StringPtr expected) {
   int pipeFds[2]{};
   ZC_SYSCALL(zc::miniposix::pipe(pipeFds));
 
@@ -49,7 +52,7 @@ bool abortPanicWritesToStderrAndSignals(const ZomPanicInfo& info, zc::StringPtr 
     zc::miniposix::close(pipeFds[0]);
     if (dup2(pipeFds[1], STDERR_FILENO) < 0) { _exit(127); }
     zc::miniposix::close(pipeFds[1]);
-    __zom_abort_panic(&info);
+    entry(&info);
   }
 
   zc::miniposix::close(pipeFds[1]);
@@ -140,8 +143,8 @@ ZC_TEST("Runtime.AbortPanicRaisesSigabrt") {
 #else
   ZomPanicInfo info;
   info.kind = ZomPanicKind::ExplicitPanic;
-  ZC_EXPECT(abortPanicWritesToStderrAndSignals(
-      info,
+  ZC_EXPECT(panicEntryWritesToStderrAndSignals(
+      __zom_abort_panic, info,
       "panic(kind=explicit_panic, file=<unknown>, line=0, column=0, bytes=0..0, "
       "message=<none>, task=0)\n"_zc));
 #endif
@@ -161,10 +164,35 @@ ZC_TEST("Runtime.AbortPanicWritesMetadataBeforeSignal") {
   info.message = "assertion failed";
   info.taskId = 77;
 
-  ZC_EXPECT(abortPanicWritesToStderrAndSignals(
-      info,
+  ZC_EXPECT(panicEntryWritesToStderrAndSignals(
+      __zom_abort_panic, info,
       "panic(kind=assertion, file=assert.zom, line=8, column=3, bytes=40..47, "
       "message=assertion failed, task=77)\n"_zc));
+#endif
+}
+
+ZC_TEST("Runtime.PanicEntrypointsUseAbortStrategy") {
+#if _WIN32
+  ZC_EXPECT_SIGNAL(SIGABRT, __zom_panic(nullptr));
+#else
+  ZomPanicInfo info;
+  info.kind = ZomPanicKind::Bounds;
+  info.span.file = "bounds.zom";
+  info.span.line = 12;
+  info.span.column = 9;
+  info.span.byteStart = 50;
+  info.span.byteEnd = 55;
+  info.message = "index out of bounds";
+  info.taskId = 4;
+
+  ZC_EXPECT(panicEntryWritesToStderrAndSignals(
+      __zom_panic, info,
+      "panic(kind=bounds, file=bounds.zom, line=12, column=9, bytes=50..55, "
+      "message=index out of bounds, task=4)\n"_zc));
+  ZC_EXPECT(panicEntryWritesToStderrAndSignals(
+      __zom_begin_panic_unwind, info,
+      "panic(kind=bounds, file=bounds.zom, line=12, column=9, bytes=50..55, "
+      "message=index out of bounds, task=4)\n"_zc));
 #endif
 }
 
