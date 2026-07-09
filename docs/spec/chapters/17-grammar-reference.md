@@ -163,7 +163,7 @@ Declaration ::= ModifierList (
                    MutDeclaration
                  | LetDeclaration
                  | ConstDeclaration
-                 | FunDeclaration
+                 | FunctionDeclaration
                  | ClassDeclaration
                  | StructDeclaration
                  | InterfaceDeclaration
@@ -182,10 +182,6 @@ Declaration ::= ModifierList (
 MutDeclaration   ::= 'mut' VariableDeclarationList ';'
 LetDeclaration   ::= 'let' VariableDeclarationList ';'
 ConstDeclaration ::= 'const' ConstDeclarationList ';'
-FunDeclaration   ::= 'unsafe'? 'fun' BindingIdentifier TypeParameters? ParameterClause
-                     ReturnType? BlockStatement
-    (* 'unsafe' marks a function with caller-proven preconditions.
-       See Ch.03 §Unsafe Safety Model and Ch.06 §Unsafe Functions. *)
 VariableDeclarationList ::= VariableDeclaration (',' VariableDeclaration)*
 VariableDeclaration ::= (BindingIdentifier | BindingPattern) TypeAnnotation? Initializer?
 Initializer ::= '=' AssignmentExpression
@@ -199,8 +195,10 @@ ConstExpression ::= AssignmentExpression
    storage address. A `let` field may be definitely assigned by its owning
    `init` path before `this` escapes; after initialization it is immutable. *)
 
-FunctionDeclaration ::= 'fun' BindingIdentifier TypeParameters? ParameterClause
+FunctionDeclaration ::= 'unsafe'? 'fun' BindingIdentifier TypeParameters? ParameterClause
                        ReturnType? WhereClause? BlockStatement
+    (* 'unsafe' marks a function with caller-proven preconditions.
+       See Ch.03 Unsafe Safety Model and Ch.06 Unsafe Functions. *)
 ReturnType ::= '->' TypeExpression RaisesClause?
 
 ClassDeclaration ::= ClassExtensibility? ModifierList 'class' BindingIdentifier

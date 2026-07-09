@@ -87,7 +87,6 @@ productions:
   ForInit: {status: inlined, parser: parseForStatement, parent: ForStatement}
   ForStatement: {status: direct, parser: parseForStatement, ast: [ForStmt]}
   ForUpdate: {status: inlined, parser: parseForStatement, parent: ForStatement}
-  FunDeclaration: {status: direct, parser: parseFunctionDeclaration, ast: [FunctionDecl]}
   FunctionDeclaration: {status: direct, parser: parseFunctionDeclaration, ast: [FunctionDecl]}
   FunctionExpression: {status: direct, parser: parseFunctionExpression, ast: [FunctionExpression]}
   FunctionType: {status: direct, parser: parseFunctionType, ast: [FunctionTypeExpr]}
