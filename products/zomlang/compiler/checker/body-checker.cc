@@ -1476,15 +1476,6 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
     return type::PrimitiveKind::I32;
   };
 
-  // Helper: check if type is str
-  auto isStrType = [](const type::Type& t) -> bool {
-    if (isPrimitive(t)) {
-      return static_cast<const type::PrimitiveType&>(t).getPrimitiveKind() ==
-             type::PrimitiveKind::Str;
-    }
-    return false;
-  };
-
   // Determine result type based on operator
   switch (op) {
     case ast::BinaryOperatorKind::Add:
@@ -1514,7 +1505,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
                                 args.asPtr(), result);
         return result;
       }
-      if (isStrType(resolvedLhs) && op == ast::BinaryOperatorKind::Add) {
+      if (isString(resolvedLhs) && op == ast::BinaryOperatorKind::Add) {
         auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Str));
         zc::Vector<type::TypeId> args;
         args.add(impl->typeEnv.internType(resolvedLhs));

@@ -134,6 +134,7 @@ bool isNever(const Type& type);
 bool isUnit(const Type& type);
 bool isNull(const Type& type);
 bool isAny(const Type& type);
+bool isString(const Type& type);
 bool isFunction(const Type& type);
 bool isTuple(const Type& type);
 bool isObject(const Type& type);

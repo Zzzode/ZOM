@@ -44,6 +44,11 @@ bool isAny(const Type& type) {
          static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Any;
 }
 
+bool isString(const Type& type) {
+  return isPrimitive(type) &&
+         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Str;
+}
+
 bool isFunction(const Type& type) { return type.getKind() == TypeKind::Function; }
 
 bool isTuple(const Type& type) { return type.getKind() == TypeKind::Tuple; }

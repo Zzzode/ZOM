@@ -1695,3 +1695,4 @@ None.
 | 2026-07-09 | REVIEW | Added unit coverage for checker-internal fallback diagnostics that are not current CLI contracts (`ZOM4027`, `ZOM4033`, `ZOM4047`, `ZOM4053`, and `ZOM4054`). |
 | 2026-07-09 | REVIEW | Audited where-clause parser/spec alignment: functions, structs, classes, and standalone impls accept `where`; interface declarations intentionally reject it and keep constraints in the type-parameter list. |
 | 2026-07-09 | REVIEW | Added positive dyn conformance coverage for object-safe interfaces whose associated types have default bindings. |
+| 2026-07-09 | REVIEW | Moved string primitive classification into the shared type helper layer so checker operator rules no longer carry a local string predicate. |
