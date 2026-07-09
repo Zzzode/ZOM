@@ -48,6 +48,8 @@ bool isAny(const Type& type) { return hasPrimitiveKind(type, PrimitiveKind::Any)
 
 bool isString(const Type& type) { return hasPrimitiveKind(type, PrimitiveKind::Str); }
 
+bool isBool(const Type& type) { return hasPrimitiveKind(type, PrimitiveKind::Bool); }
+
 bool isFunction(const Type& type) { return type.getKind() == TypeKind::Function; }
 
 bool isTuple(const Type& type) { return type.getKind() == TypeKind::Tuple; }

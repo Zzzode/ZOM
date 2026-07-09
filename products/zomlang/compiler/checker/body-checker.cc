@@ -2565,9 +2565,7 @@ const type::Type& BodyChecker::checkConditionalExpr(ast::NodeId expr) {
 
   // Condition must be bool
   auto& resolvedCond = impl->typeEnv.find(condType);
-  if (!isPrimitive(resolvedCond) ||
-      static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
-          type::PrimitiveKind::Bool) {
+  if (!isBool(resolvedCond)) {
     if (!isError(resolvedCond)) {
       auto loc = getNodeLoc(impl->tree, condId);
       impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
@@ -3134,15 +3132,7 @@ void BodyChecker::checkIfStmt(ast::NodeId stmt) {
   // Check condition is bool
   auto& condType = checkExpr(condId);
   auto& resolvedCond = impl->typeEnv.find(condType);
-  if (!isPrimitive(resolvedCond) && !isError(resolvedCond)) {
-    auto loc = getNodeLoc(impl->tree, condId);
-    impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
-    impl->hadErrors = true;
-  }
-  if (isPrimitive(resolvedCond) &&
-      static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
-          type::PrimitiveKind::Bool &&
-      !isError(resolvedCond)) {
+  if (!isBool(resolvedCond) && !isError(resolvedCond)) {
     auto loc = getNodeLoc(impl->tree, condId);
     impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
     impl->hadErrors = true;
@@ -3162,10 +3152,7 @@ void BodyChecker::checkWhileStmt(ast::NodeId stmt) {
 
   auto& condType = checkExpr(condId);
   auto& resolvedCond = impl->typeEnv.find(condType);
-  if (!isError(resolvedCond) &&
-      (!isPrimitive(resolvedCond) ||
-       static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
-           type::PrimitiveKind::Bool)) {
+  if (!isError(resolvedCond) && !isBool(resolvedCond)) {
     auto loc = getNodeLoc(impl->tree, condId);
     impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
     impl->hadErrors = true;
@@ -3188,10 +3175,7 @@ void BodyChecker::checkForStmt(ast::NodeId stmt) {
   if (impl->tree.contains(condId)) {
     auto& condType = checkExpr(condId);
     auto& resolvedCond = impl->typeEnv.find(condType);
-    if (!isError(resolvedCond) &&
-        (!isPrimitive(resolvedCond) ||
-         static_cast<const type::PrimitiveType&>(resolvedCond).getPrimitiveKind() !=
-             type::PrimitiveKind::Bool)) {
+    if (!isError(resolvedCond) && !isBool(resolvedCond)) {
       auto loc = getNodeLoc(impl->tree, condId);
       impl->diags.diagnose<DiagID::ConditionMustBeBool>(loc);
       impl->hadErrors = true;
@@ -3324,10 +3308,7 @@ void BodyChecker::checkMatchStmt(ast::NodeId stmt) {
     if (impl->tree.contains(guardId)) {
       auto& guardType = checkExpr(guardId);
       auto& resolvedGuard = impl->typeEnv.find(guardType);
-      if (!isError(resolvedGuard) &&
-          (!isPrimitive(resolvedGuard) ||
-           static_cast<const type::PrimitiveType&>(resolvedGuard).getPrimitiveKind() !=
-               type::PrimitiveKind::Bool)) {
+      if (!isError(resolvedGuard) && !isBool(resolvedGuard)) {
         auto loc = getNodeLoc(impl->tree, guardId);
         impl->diags.diagnose<DiagID::MatchGuardMustBeBool>(loc);
         impl->hadErrors = true;

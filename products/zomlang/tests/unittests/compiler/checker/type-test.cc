@@ -1001,6 +1001,16 @@ ZC_TEST("Type.IsStringI32") {
   ZC_EXPECT(!isString(*ty));
 }
 
+ZC_TEST("Type.IsBoolBool") {
+  auto ty = PrimitiveType::createBool();
+  ZC_EXPECT(isBool(*ty));
+}
+
+ZC_TEST("Type.IsBoolI32") {
+  auto ty = PrimitiveType::createI32();
+  ZC_EXPECT(!isBool(*ty));
+}
+
 ZC_TEST("Type.IsIntegerI32") {
   auto ty = PrimitiveType::createI32();
   ZC_EXPECT(isInteger(*ty));
