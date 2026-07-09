@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, runtime-memory, spec-audit, verification]
 approvers: []
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-07-09
 area: compiler
 requires: [3, 5]
 supersedes: []
@@ -60,7 +60,7 @@ optimization. The design must be explicit before backend work starts.
 - Define a stable metadata contract for source span, error payload, and
   backtrace capture at panic sites.
 - Define verification gates for unit, lit, runtime, and ABI tests before this
-  RFC can move beyond `DRAFT`.
+  RFC can move to `LANDED`.
 
 ## Non-Goals
 
@@ -411,6 +411,17 @@ experiments and generated snapshots should be affected. Once cross-module
 artifacts are emitted, layout changes require regenerating all ABI fixtures and
 module metadata.
 
+### Current Implementation Readiness
+
+`implementation: TBD` is intentional while this RFC remains in `REVIEW`. The
+current repository has no backend IR or codegen directory that can own the
+lowering contract, and `products/zomlang/runtime/**` currently exposes only the
+runtime build entry point rather than panic ABI entry points. The first
+implementation link must point to concrete landed code for error-union layout,
+cleanup graph lowering, panic ABI entry points, or FFI panic-boundary
+enforcement. Until that code exists, the RFC index must continue to show `TBD`
+rather than linking to a placeholder.
+
 ## Documentation And Teaching Plan
 
 - Update Chapter 11 with any accepted wording that differs from this RFC.
@@ -500,3 +511,4 @@ clear configure-time or compile-time rejection path.
 |---|---|---|
 | 2026-07-08 | DRAFT | Initial draft defining error-union ABI, `?!` lowering, `!!` panic lowering, cleanup discipline, and runtime panic boundaries. |
 | 2026-07-08 | REVIEW | The proposal now has a complete backend/runtime ABI contract, ordered implementation plan, concrete acceptance criteria, and local discussion/tracking anchors. Approval remains blocked on owner review, non-empty approvers, a recorded decision, and follow-on backend implementation evidence. |
+| 2026-07-09 | REVIEW | Implementation remains deliberately `TBD` because the repository has not landed a backend IR/codegen owner or runtime panic ABI entry points for this RFC. |
