@@ -866,19 +866,9 @@ void DeclSignatureComputer::computeVariableSignature(symbol::VariableSymbol& var
 
 static zc::Maybe<type::PrimitiveKind> resolvePrimitiveKind(zc::StringPtr name) {
   using type::PrimitiveKind;
-  if (name == "i8"_zc) return PrimitiveKind::I8;
-  if (name == "i16"_zc) return PrimitiveKind::I16;
-  if (name == "i32"_zc) return PrimitiveKind::I32;
-  if (name == "i64"_zc) return PrimitiveKind::I64;
-  if (name == "u8"_zc) return PrimitiveKind::U8;
-  if (name == "u16"_zc) return PrimitiveKind::U16;
-  if (name == "u32"_zc) return PrimitiveKind::U32;
-  if (name == "u64"_zc) return PrimitiveKind::U64;
-  if (name == "f32"_zc) return PrimitiveKind::F32;
-  if (name == "f64"_zc) return PrimitiveKind::F64;
-  if (name == "bool"_zc) return PrimitiveKind::Bool;
-  if (name == "str"_zc || name == "string"_zc) return PrimitiveKind::Str;
-  if (name == "unit"_zc || name == "void"_zc) return PrimitiveKind::Unit;
+  ZC_IF_SOME(kind, type::PrimitiveType::findByName(name)) { return kind; }
+  if (name == "string"_zc) return PrimitiveKind::Str;
+  if (name == "void"_zc) return PrimitiveKind::Unit;
   return zc::none;
 }
 

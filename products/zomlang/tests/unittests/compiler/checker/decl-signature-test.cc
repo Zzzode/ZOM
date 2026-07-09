@@ -461,11 +461,9 @@ ZC_TEST("DeclSignature.ConstDeclarationStoresAnnotatedSignature") {
 
   ZC_EXPECT(typeEnv.hasType(decl));
   auto& declType = typeEnv.getType(decl);
-  ZC_EXPECT(isPrimitive(declType));
-  if (isPrimitive(declType)) {
-    auto& prim = static_cast<const type::PrimitiveType&>(declType);
-    ZC_EXPECT(prim.getPrimitiveKind() == type::PrimitiveKind::I32);
-  }
+  auto kind = type::primitiveKindOf(declType);
+  ZC_EXPECT(kind != zc::none);
+  ZC_IF_SOME(value, kind) { ZC_EXPECT(value == type::PrimitiveKind::I32); }
 }
 
 ZC_TEST("DeclSignature.VariableDeclWithoutTypeAnnotation") {
@@ -1060,11 +1058,9 @@ ZC_TEST("DeclSignature.ResolveQualifiedAssociatedTypeProjection") {
   auto typeEnv = computeSignatures(fix, topDecls.asPtr());
 
   auto& ty = aliasType(typeEnv, alias);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
-  }
+  auto kind = type::primitiveKindOf(ty);
+  ZC_EXPECT(kind != zc::none);
+  ZC_IF_SOME(value, kind) { ZC_EXPECT(value == type::PrimitiveKind::I32); }
 }
 
 ZC_TEST("DeclSignature.ResolveObjectTypeExpr") {
