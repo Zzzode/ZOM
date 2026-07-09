@@ -402,6 +402,17 @@ Rollback before `LANDED` is cheap: disable the borrow checker phase and keep the
 RFC in `IMPLEMENTING` or `RETURNED`. After `LANDED`, weakening checks requires a
 new RFC because users will rely on the safety guarantee.
 
+### Current Implementation Readiness
+
+`implementation: TBD` is intentional while this RFC remains in `REVIEW`. The
+current compiler has no dedicated borrow-checker phase, no borrow side-table
+owner, and no `Place`, `Region`, `Loan`, or `Move` dataflow implementation.
+RFC 0005 covers only type checking, basic mutability, and coercion records; it
+does not prove moves, loan overlap, lifetime containment, reborrow restoration,
+linear consumption, or scoped-task capture safety. The first implementation
+link must point to concrete landed code for the post-type-check borrow checker
+phase or its side-table model, not to the existing type checker.
+
 ## Documentation And Teaching Plan
 
 - Update Chapter 03 with reference lifetime and reborrow rules after acceptance.
@@ -484,3 +495,4 @@ borrow-checker corpus before the RFC can move to `LANDED`.
 | 2026-07-08 | DRAFT | Initial draft separating borrow, lifetime, ownership, move, reborrow, linear, and scoped-task checking from RFC 0005 type checking. |
 | 2026-07-08 | REVIEW | The proposal now has a complete post-type-check borrow-checker design, safety impact, acceptance criteria, implementation plan, and local discussion/tracking anchors. Approval remains blocked on owner review, non-empty approvers, a recorded decision, and implementation evidence. |
 | 2026-07-09 | REVIEW | Resolved the diagnostic-range question: borrow-checker diagnostics are checker-owned and must be allocated in `diagnostics-checker.def` when the implementation lands, not in the binder-owned ZOM30xx range. |
+| 2026-07-09 | REVIEW | Implementation remains deliberately `TBD` because the repository has not landed a dedicated borrow-checker phase, borrow side-table owner, or place/loan/move dataflow model. |

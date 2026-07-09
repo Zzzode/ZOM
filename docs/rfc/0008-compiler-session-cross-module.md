@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, module-system, binder-checker, error-system, spec-audit, verification]
 approvers: []
 created: 2026-07-08
-updated: 2026-07-08
+updated: 2026-07-09
 area: compiler
 requires: [2, 3, 4, 5]
 supersedes: []
@@ -377,6 +377,16 @@ Rollback before `LANDED` is straightforward: keep `CompilerDriver` as the CLI
 entry point and disable session scheduling. After `LANDED`, rolling back would
 weaken module and coherence guarantees and requires another RFC.
 
+### Current Implementation Readiness
+
+`implementation: TBD` is intentional while this RFC remains in `REVIEW`. The
+current compiler still uses the existing `CompilerDriver` shape and does not
+provide a `CompilerSession`, `ModuleGraph`, `ModuleInterface`,
+`SignatureStore`, crate metadata serializer, or global coherence index. The
+first implementation link must point to concrete landed code that owns
+cross-module scheduling or immutable module-interface publication, not to the
+current single-compilation-unit driver path.
+
 ## Documentation And Teaching Plan
 
 - Update Chapter 13 with any accepted module-interface terminology.
@@ -463,3 +473,4 @@ worker counts.
 |---|---|---|
 | 2026-07-08 | DRAFT | Initial draft defining `CompilerSession`, module graph scheduling, module interface publication, cross-module type signatures, and global coherence indexing. |
 | 2026-07-08 | REVIEW | The proposal now has a complete cross-module session design, repository impact, acceptance criteria, implementation plan, and local discussion/tracking anchors. Approval remains blocked on owner review, non-empty approvers, a recorded decision, and implementation evidence. |
+| 2026-07-09 | REVIEW | Implementation remains deliberately `TBD` because the repository has not landed `CompilerSession`, module graph ownership, immutable module interfaces, signature-store lookup, crate metadata serialization, or a global coherence index. |
