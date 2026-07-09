@@ -1,0 +1,5 @@
+interface Stream {
+    type Item = i32;
+}
+
+let x: dyn Stream;

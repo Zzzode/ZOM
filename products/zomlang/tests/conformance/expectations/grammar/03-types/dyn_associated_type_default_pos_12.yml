@@ -1,0 +1,5 @@
+section: "03-types dyn object safety"
+covers_rule: "interfaceDeclaration, dynType"
+expected: "ACCEPT"
+notes:
+  - "Associated type defaults make the interface object-safe for dyn use."

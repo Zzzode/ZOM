@@ -1,0 +1,5 @@
+// RUN: cd %corpus && %zomc compile --syntax-only 03-types/dyn_associated_type_default_pos_12.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Syntax check completed successfully.
