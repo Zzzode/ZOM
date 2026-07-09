@@ -1,0 +1,13 @@
+interface Drawable {
+    fun draw() -> unit;
+}
+
+class Sprite { }
+
+impl Drawable for Sprite {
+    fun draw() -> unit { }
+}
+
+let sprite: Sprite;
+let drawable: dyn Drawable = sprite;
+drawable.draw();

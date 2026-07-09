@@ -1,0 +1,5 @@
+section: "03-types dyn method calls"
+covers_rule: "interfaceDeclaration, callExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks dyn receiver method calls."

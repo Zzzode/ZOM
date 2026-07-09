@@ -155,10 +155,11 @@ ZC_TEST("TypeEnv.SetAndGetDispatch") {
   CallDispatchRecord record;
   record.targetKind = CallTargetKind::OperatorMethod;
   record.receiverMode = ReceiverMode::OperatorLeftHandSide;
-  record.interfaceName = "Add"_zc;
-  record.methodName = "add"_zc;
+  record.interfaceName = zc::str("Add"_zc);
+  record.methodName = zc::str("add"_zc);
   record.targetSymbol = symbol::SymbolId::create(99);
   record.implNode = ast::NodeId(7);
+  record.vtableSlot = 11;
   record.argumentTypes.add(TypeId(1));
   record.argumentTypes.add(TypeId(2));
   record.resultType = TypeId(3);
@@ -168,10 +169,11 @@ ZC_TEST("TypeEnv.SetAndGetDispatch") {
   auto& stored = env.getDispatch(node);
   ZC_EXPECT(stored.targetKind == CallTargetKind::OperatorMethod);
   ZC_EXPECT(stored.receiverMode == ReceiverMode::OperatorLeftHandSide);
-  ZC_EXPECT(stored.interfaceName == "Add"_zc);
-  ZC_EXPECT(stored.methodName == "add"_zc);
+  ZC_EXPECT(stored.interfaceName.asPtr() == "Add"_zc);
+  ZC_EXPECT(stored.methodName.asPtr() == "add"_zc);
   ZC_EXPECT(stored.targetSymbol == symbol::SymbolId::create(99));
   ZC_EXPECT(stored.implNode == ast::NodeId(7));
+  ZC_EXPECT(stored.vtableSlot == 11);
   ZC_EXPECT(stored.argumentTypes.size() == 2);
   ZC_EXPECT(stored.argumentTypes[0] == TypeId(1));
   ZC_EXPECT(stored.argumentTypes[1] == TypeId(2));

@@ -158,8 +158,8 @@ void expectUserTypeBinaryOperatorImpl(zc::StringPtr ifaceName, ast::BinaryOperat
   auto& dispatch = result.typeEnv.getDispatch(binExpr);
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::OperatorMethod);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
-  ZC_EXPECT(dispatch.interfaceName == ifaceName);
-  ZC_EXPECT(dispatch.methodName == binaryOperatorMethodName(ifaceName));
+  ZC_EXPECT(dispatch.interfaceName.asPtr() == ifaceName);
+  ZC_EXPECT(dispatch.methodName.asPtr() == binaryOperatorMethodName(ifaceName));
   ZC_EXPECT(dispatch.implNode == implDecl);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
   ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
@@ -218,8 +218,8 @@ void expectUserTypeComparisonImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKi
   auto& dispatch = result.typeEnv.getDispatch(binExpr);
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::OperatorMethod);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
-  ZC_EXPECT(dispatch.interfaceName == ifaceName);
-  ZC_EXPECT(dispatch.methodName == (isEq ? "eq"_zc : "cmp"_zc));
+  ZC_EXPECT(dispatch.interfaceName.asPtr() == ifaceName);
+  ZC_EXPECT(dispatch.methodName.asPtr() == (isEq ? "eq"_zc : "cmp"_zc));
   ZC_EXPECT(dispatch.implNode == implDecl);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
   ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
@@ -313,8 +313,8 @@ void expectUserTypeUnaryOperatorImpl(zc::StringPtr ifaceName, ast::UnaryOperator
   auto& dispatch = result.typeEnv.getDispatch(unary);
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::OperatorMethod);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorOperand);
-  ZC_EXPECT(dispatch.interfaceName == ifaceName);
-  ZC_EXPECT(dispatch.methodName == unaryOperatorMethodName(ifaceName));
+  ZC_EXPECT(dispatch.interfaceName.asPtr() == ifaceName);
+  ZC_EXPECT(dispatch.methodName.asPtr() == unaryOperatorMethodName(ifaceName));
   ZC_EXPECT(dispatch.implNode == implDecl);
   ZC_EXPECT(dispatch.argumentTypes.size() == 1);
   ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(unary));
@@ -2731,6 +2731,62 @@ ZC_TEST("BodyChecker.LetWithDynAnnotationRecordsExistentialErasure") {
   ZC_EXPECT(result.typeEnv.getCoercion(yDecl) == type::CoercionKind::ExistentialErasure);
 }
 
+ZC_TEST("BodyChecker.DynReceiverCallRecordsVTableDispatch") {
+  TestFixture fix;
+  auto drawMethod =
+      fix.makeMethodDecl("draw"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc));
+  zc::Vector<ast::NodeId> ifaceMembers;
+  ifaceMembers.add(drawMethod);
+  auto drawableIface = fix.makeInterfaceDecl(
+      "Drawable"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
+
+  auto spriteType = fix.makeClassDecl("Sprite"_zc);
+  zc::Vector<ast::NodeId> implIfaceNodes;
+  implIfaceNodes.add(fix.makeNamedTypeExpr("Drawable"_zc));
+  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
+  auto drawableImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Sprite"_zc), implIfaces);
+
+  auto spriteDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("sprite"_zc),
+                                               fix.makeNamedTypeExpr("Sprite"_zc));
+  auto drawableDecl = fix.makeVariableDeclarator(
+      fix.makeBindingPattern("drawable"_zc),
+      fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Drawable"_zc)), fix.makeIdentExpr("sprite"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(spriteDecl);
+  decls.add(drawableDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("drawable"_zc), "draw"_zc);
+  auto call = fix.makeCallExpr(callee, ast::NodeList());
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(drawableIface);
+  topDecls.add(spriteType);
+  topDecls.add(drawableImpl);
+  topDecls.add(let);
+  topDecls.add(call);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(call));
+  auto& ty = result.typeEnv.getType(call);
+  ZC_EXPECT(isPrimitive(ty));
+  if (isPrimitive(ty)) {
+    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
+    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::Unit);
+  }
+  ZC_EXPECT(result.typeEnv.hasDispatch(call));
+  auto& dispatch = result.typeEnv.getDispatch(call);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::DynVTable);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ImplicitSelf);
+  ZC_EXPECT(dispatch.interfaceName.asPtr() == "Drawable"_zc);
+  ZC_EXPECT(dispatch.methodName.asPtr() == "draw"_zc);
+  ZC_EXPECT(dispatch.vtableSlot == 0);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+}
+
 ZC_TEST("BodyChecker.LetWithDynMarkerAnnotationRequiresMarker") {
   TestFixture fix;
   auto addIface = fix.makeInterfaceDecl("Add"_zc);
@@ -3138,8 +3194,8 @@ ZC_TEST("BodyChecker.UserIndexExprReturnsAssociatedOutput") {
   auto& dispatch = result.typeEnv.getDispatch(index);
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::IndexMethod);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::IndexBase);
-  ZC_EXPECT(dispatch.interfaceName == "Index"_zc);
-  ZC_EXPECT(dispatch.methodName == "index"_zc);
+  ZC_EXPECT(dispatch.interfaceName.asPtr() == "Index"_zc);
+  ZC_EXPECT(dispatch.methodName.asPtr() == "index"_zc);
   ZC_EXPECT(dispatch.implNode == implDecl);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
   ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(index));

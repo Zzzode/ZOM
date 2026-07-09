@@ -42,6 +42,7 @@ enum class CallTargetKind {
   StaticMethod,
   OperatorMethod,
   IndexMethod,
+  DynVTable,
   ErrorTarget
 };
 
@@ -52,10 +53,11 @@ enum class ReceiverMode { None, ImplicitSelf, OperatorLeftHandSide, OperatorOper
 struct CallDispatchRecord {
   CallTargetKind targetKind = CallTargetKind::ErrorTarget;
   ReceiverMode receiverMode = ReceiverMode::None;
-  zc::StringPtr interfaceName;
-  zc::StringPtr methodName;
+  zc::String interfaceName;
+  zc::String methodName;
   symbol::SymbolId targetSymbol;
   ast::NodeId implNode;
+  uint32_t vtableSlot = 0;
   zc::Vector<TypeId> argumentTypes;
   TypeId resultType;
 };
