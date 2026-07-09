@@ -320,12 +320,12 @@ let hasProperty = "length" in object;  // Property existence check
 let isInstance = obj instanceof MyClass; // Instance check
 ```
 
-### Range Operators
+### Range Syntax Is Not Part Of V1
 
-```zom
-let closedRange = 1...10;    // Closed range [1, 10]
-let halfOpenRange = 1..<10;  // Half-open range [1, 10)
-```
+ZOM v1 does not define range-expression syntax. Sequence ranges are library
+values constructed through ordinary functions and methods. The parser rejects
+`a .. b`, `a ..< b`, and `a ... b` in expression position; the `...` token is
+reserved for spread and rest syntax.
 
 ## Conditional Expressions
 

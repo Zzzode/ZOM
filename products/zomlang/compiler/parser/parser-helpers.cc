@@ -162,8 +162,6 @@ int32_t binaryPrecedence(ast::SyntaxKind kind) {
     // not by parseBinaryExpressionAt (creates NullCoalesceExpr, not BinaryExpr).
     // Do NOT add QuestionQuestion here; returning -1 ensures parseBinaryExpressionAt
     // stops at ?? so the dedicated handler can build the correct node type.
-    // Level 13: Range operator .. (requires DotDot token; see RFC 0002 Section 5)
-    // TODO: Add DotDot SyntaxKind token support. Placeholder for future range operator.
     // Level 14: Type test / cast as
     case ast::SyntaxKind::AsKeyword:
       return 14;

@@ -1,4 +1,5 @@
-section: "§4.6 Range ..< not a binary operator"
+section: "§4 Range syntax is not part of v1"
 covers_rule: "shiftExpr / additiveExpr"
 expected: "REJECT"
-notes: []
+notes:
+  - "`..<` is not a ZOM v1 expression operator."
