@@ -1,0 +1,6 @@
+let xs = [1, 2, 3];
+let x = xs[0];
+let pair = (1, 2);
+let y = pair[1];
+let z = -x;
+let ok = !false;
