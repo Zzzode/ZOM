@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/0006-error-lowering-runtime-abi.md#status-history
 decision: TBD
-implementation: TBD
+implementation: products/zomlang/runtime/panic.cc
 tracking-issue: docs/rfc/0006-error-lowering-runtime-abi.md#acceptance-criteria
 ---
 
@@ -413,14 +413,12 @@ module metadata.
 
 ### Current Implementation Readiness
 
-`implementation: TBD` is intentional while this RFC remains in `REVIEW`. The
-current repository has no backend IR or codegen directory that can own the
-lowering contract, and `products/zomlang/runtime/**` currently exposes only the
-runtime build entry point rather than panic ABI entry points. The first
-implementation link must point to concrete landed code for error-union layout,
-cleanup graph lowering, panic ABI entry points, or FFI panic-boundary
-enforcement. Until that code exists, the RFC index must continue to show `TBD`
-rather than linking to a placeholder.
+The implementation link points to the first landed runtime panic ABI surface.
+The current repository still has no backend IR or codegen directory that can
+own the lowering contract, and no error-union layout, cleanup graph lowering,
+or FFI panic-boundary enforcement exists yet. The runtime panic entry point
+surface is therefore partial evidence for this RFC, not a signal that the RFC
+can move beyond `REVIEW`.
 
 ## Documentation And Teaching Plan
 
@@ -463,6 +461,17 @@ clear configure-time or compile-time rejection path.
 14. `python3 scripts/check-rfc.py` passes.
 15. `python3 scripts/check-format.py` passes after implementation changes.
 16. `ctest --preset default --output-on-failure` passes before `LANDED`.
+
+### Implementation Evidence
+
+This RFC remains in `REVIEW`; the implementation is intentionally partial.
+
+| AC | Status | Evidence | Remaining Work |
+|---|---|---|---|
+| 6 | Partial | `products/zomlang/runtime/panic.h` and `panic.cc` define `ZomPanicInfo`, `ZomPanicKind`, `__zom_panic`, `__zom_begin_panic_unwind`, `__zom_abort_panic`, and `__zom_catch_unwind`. `panic-test.cc` verifies stable panic kind names, that `__zom_catch_unwind` calls its thunk and returns `false` under the current abort strategy, and that exported panic ABI symbols link. | Add real unwind support or explicit unsupported-target rejection before accepting `panic = "unwind"`. Add deterministic panic printing policy and runtime tests for abort behavior without making ordinary tests abort. |
+| 7 | Partial | `__zom_catch_unwind` is defined for the current abort strategy and cannot catch panics; it invokes the thunk and returns `false` if the thunk returns. | Define and test unwind-mode catch behavior once runtime unwinding exists. |
+| 14 | Complete | `python3 scripts/check-rfc.py` passes. | None. |
+| 15 | Complete | `python3 scripts/check-format.py` passes after implementation changes. | None. |
 
 ## Implementation Plan
 
@@ -512,3 +521,4 @@ clear configure-time or compile-time rejection path.
 | 2026-07-08 | DRAFT | Initial draft defining error-union ABI, `?!` lowering, `!!` panic lowering, cleanup discipline, and runtime panic boundaries. |
 | 2026-07-08 | REVIEW | The proposal now has a complete backend/runtime ABI contract, ordered implementation plan, concrete acceptance criteria, and local discussion/tracking anchors. Approval remains blocked on owner review, non-empty approvers, a recorded decision, and follow-on backend implementation evidence. |
 | 2026-07-09 | REVIEW | Implementation remains deliberately `TBD` because the repository has not landed a backend IR/codegen owner or runtime panic ABI entry points for this RFC. |
+| 2026-07-09 | REVIEW | Added the first runtime panic ABI entry points and abort-strategy catch-unwind boundary, with unit coverage for panic metadata names, `__zom_catch_unwind`, and exported symbol linkage. |
