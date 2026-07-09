@@ -118,7 +118,7 @@ struct TypeEnv::Impl {
 
   // --- Type variable storage ---
   zc::Vector<zc::Own<TypeVar>> typeVars;  // owns all created type variables
-  uint64_t nextTypeVarId = 1;             // 0 means "no ID", start from 1
+  uint64_t nextTypeVarId = 1;
 
   // --- Union-Find for type variables ---
   // parent[varId] = parent varId; 0 means self (root).
@@ -133,12 +133,9 @@ struct TypeEnv::Impl {
   // Mutable to allow path compression in const methods.
   mutable zc::HashMap<uint64_t, const Type*> idBindings;  // non-owning
 
-  // For TypeVars without IDs (legacy / named): keyed by string.
-  zc::HashMap<zc::String, const Type*> stringBindings;  // non-owning
-
   // --- Owning storage for bind(Own<Type>) ---
   // When bind() is called with an Own<Type>, we take ownership. The pointer
-  // in idBindings/stringBindings points into this vector.
+  // in idBindings points into this vector.
   zc::Vector<zc::Own<Type>> ownedBindings;
 
   // --- Impl table ---
@@ -303,10 +300,7 @@ TypeVar& TypeEnv::freshTypeVar(zc::StringPtr name) {
 
 uint64_t TypeEnv::findRoot(uint64_t varId) const {
   auto parentEntry = impl->unionParent.find(varId);
-  if (parentEntry == zc::none) {
-    // Not in union-find (e.g. legacy TypeVar without ID).
-    return varId;
-  }
+  if (parentEntry == zc::none) { return varId; }
 
   ZC_IF_SOME(parentId, parentEntry) {
     if (parentId == 0) {
@@ -332,18 +326,6 @@ Type& TypeEnv::find(Type& ty) const {
 
   auto& var = static_cast<TypeVar&>(ty);
   uint64_t varId = var.getId();
-
-  if (varId == 0) {
-    // Legacy TypeVar without an ID — use string-keyed lookup.
-    auto key = makeKey(var);
-    auto found = impl->stringBindings.find(key);
-    if (found != zc::none) {
-      ZC_IF_SOME(bound, found) {
-        if (bound) { return find(const_cast<Type&>(*bound)); }
-      }
-    }
-    return ty;
-  }
 
   // Find root in union-find.
   uint64_t rootId = findRoot(varId);
@@ -397,18 +379,6 @@ void TypeEnv::unite(const Type& a, const Type& b) {
     uint64_t idA = varA.getId();
     uint64_t idB = varB.getId();
 
-    // If either lacks an ID, fall back to string-keyed binding.
-    if (idA == 0 || idB == 0) {
-      if (idA == 0) {
-        auto key = makeKey(varA);
-        impl->stringBindings.upsert(zc::mv(key), &varB);
-      } else {
-        // varA has an ID; bind varB (no ID) to varA's root.
-        impl->idBindings.upsert(findRoot(idA), &varB);
-      }
-      return;
-    }
-
     uint64_t rootA = findRoot(idA);
     uint64_t rootB = findRoot(idB);
 
@@ -436,25 +406,15 @@ void TypeEnv::unite(const Type& a, const Type& b) {
     auto& varA = static_cast<const TypeVar&>(repA);
     uint64_t idA = varA.getId();
 
-    if (idA != 0) {
-      uint64_t rootA = findRoot(idA);
-      impl->idBindings.upsert(rootA, &repB);
-    } else {
-      auto key = makeKey(varA);
-      impl->stringBindings.upsert(zc::mv(key), &repB);
-    }
+    uint64_t rootA = findRoot(idA);
+    impl->idBindings.upsert(rootA, &repB);
   } else if (!aIsVar && bIsVar) {
     // Bind TypeVar repB to concrete type repA.
     auto& varB = static_cast<const TypeVar&>(repB);
     uint64_t idB = varB.getId();
 
-    if (idB != 0) {
-      uint64_t rootB = findRoot(idB);
-      impl->idBindings.upsert(rootB, &repA);
-    } else {
-      auto key = makeKey(varB);
-      impl->stringBindings.upsert(zc::mv(key), &repA);
-    }
+    uint64_t rootB = findRoot(idB);
+    impl->idBindings.upsert(rootB, &repA);
   }
   // If neither is a TypeVar, nothing to do.
 }
@@ -470,7 +430,6 @@ void TypeEnv::collectFreeTypeVars(const Type& ty, zc::HashSet<uint64_t>& freeVar
   if (isTypeVar(resolved)) {
     auto& var = static_cast<const TypeVar&>(resolved);
     uint64_t id = var.getId();
-    if (id == 0) return;  // Legacy var without ID - skip
 
     // Check if this var is bound to a concrete type
     auto binding = impl->idBindings.find(id);
@@ -600,12 +559,10 @@ zc::Own<Type> TypeEnv::substituteType(const Type& ty,
     }
 
     // Check if bound to concrete type
-    if (id != 0) {
-      auto binding = impl->idBindings.find(id);
-      if (binding != zc::none) {
-        ZC_IF_SOME(boundTy, binding) {
-          if (boundTy && !isTypeVar(*boundTy)) { return substituteType(*boundTy, subst); }
-        }
+    auto binding = impl->idBindings.find(id);
+    if (binding != zc::none) {
+      ZC_IF_SOME(boundTy, binding) {
+        if (boundTy && !isTypeVar(*boundTy)) { return substituteType(*boundTy, subst); }
       }
     }
 
@@ -873,23 +830,12 @@ zc::Own<Type> TypeEnv::instantiateFunction(const FunctionType& fnTy) {
 }
 
 // ===========================================================================
-// Legacy binding API
+// Type variable binding API
 // ===========================================================================
-
-zc::String TypeEnv::makeKey(const TypeVar& var) {
-  uint64_t id = var.getId();
-  if (id != 0) { return zc::str("#", zc::str(id)); }
-  return zc::heapString(var.getName());
-}
 
 void TypeEnv::bind(const TypeVar& var, const Type& type) {
   uint64_t id = var.getId();
-  if (id != 0) {
-    impl->idBindings.upsert(id, &type);
-  } else {
-    auto key = makeKey(var);
-    impl->stringBindings.upsert(zc::mv(key), &type);
-  }
+  impl->idBindings.upsert(id, &type);
 }
 
 void TypeEnv::bind(const TypeVar& var, zc::Own<Type> type) {
@@ -900,40 +846,28 @@ void TypeEnv::bind(const TypeVar& var, zc::Own<Type> type) {
 
 zc::Maybe<const Type&> TypeEnv::lookup(const TypeVar& var) const {
   uint64_t id = var.getId();
-  if (id != 0) {
-    // Check direct binding first.
-    auto found = impl->idBindings.find(id);
-    if (found != zc::none) {
-      ZC_IF_SOME(binding, found) {
-        if (binding) return *binding;
-      }
+  auto found = impl->idBindings.find(id);
+  if (found != zc::none) {
+    ZC_IF_SOME(binding, found) {
+      if (binding) return *binding;
     }
-    // If this var has a union parent, the root might be bound.
-    auto parentEntry = impl->unionParent.find(id);
-    if (parentEntry != zc::none) {
-      ZC_IF_SOME(parentId, parentEntry) {
-        if (parentId != 0 && parentId != id) {
-          uint64_t rootId = findRoot(id);
-          if (rootId != id) {
-            auto rootBinding = impl->idBindings.find(rootId);
-            if (rootBinding != zc::none) {
-              ZC_IF_SOME(binding, rootBinding) {
-                if (binding) return *binding;
-              }
+  }
+  // If this var has a union parent, the root might be bound.
+  auto parentEntry = impl->unionParent.find(id);
+  if (parentEntry != zc::none) {
+    ZC_IF_SOME(parentId, parentEntry) {
+      if (parentId != 0 && parentId != id) {
+        uint64_t rootId = findRoot(id);
+        if (rootId != id) {
+          auto rootBinding = impl->idBindings.find(rootId);
+          if (rootBinding != zc::none) {
+            ZC_IF_SOME(binding, rootBinding) {
+              if (binding) return *binding;
             }
           }
         }
       }
     }
-    return zc::none;
-  }
-
-  // Legacy string-keyed lookup.
-  auto key = makeKey(var);
-  auto found = impl->stringBindings.find(key);
-  if (found == zc::none) { return zc::none; }
-  ZC_IF_SOME(binding, found) {
-    if (binding) return *binding;
   }
   return zc::none;
 }
@@ -947,37 +881,29 @@ const Type& TypeEnv::resolve(const Type& ty) const {
 
     const Type* bound = nullptr;
 
-    if (varId != 0) {
-      // Use find() to get proper union-find resolution with path compression.
-      const Type& found = find(var);
-      if (&found != &var && !isTypeVar(found)) {
-        current = &found;
-        continue;
-      }
-      // If find() returned another TypeVar, check for concrete binding.
-      auto foundBinding = impl->idBindings.find(varId);
-      if (foundBinding != zc::none) {
-        ZC_IF_SOME(b, foundBinding) { bound = b; }
-      }
-      // Also check the root's binding.
-      if (!bound) {
-        uint64_t rootId = findRoot(varId);
-        if (rootId != varId) {
-          auto rootBinding = impl->idBindings.find(rootId);
-          if (rootBinding != zc::none) {
-            ZC_IF_SOME(b, rootBinding) {
-              bound = b;
-              // Path compression: bind varId directly to root's binding.
-              impl->idBindings.upsert(varId, bound);
-            }
+    // Use find() to get proper union-find resolution with path compression.
+    const Type& found = find(var);
+    if (&found != &var && !isTypeVar(found)) {
+      current = &found;
+      continue;
+    }
+    // If find() returned another TypeVar, check for concrete binding.
+    auto foundBinding = impl->idBindings.find(varId);
+    if (foundBinding != zc::none) {
+      ZC_IF_SOME(b, foundBinding) { bound = b; }
+    }
+    // Also check the root's binding.
+    if (!bound) {
+      uint64_t rootId = findRoot(varId);
+      if (rootId != varId) {
+        auto rootBinding = impl->idBindings.find(rootId);
+        if (rootBinding != zc::none) {
+          ZC_IF_SOME(b, rootBinding) {
+            bound = b;
+            // Path compression: bind varId directly to root's binding.
+            impl->idBindings.upsert(varId, bound);
           }
         }
-      }
-    } else {
-      auto key = makeKey(var);
-      auto found = impl->stringBindings.find(key);
-      if (found != zc::none) {
-        ZC_IF_SOME(b, found) { bound = b; }
       }
     }
 
@@ -1069,8 +995,6 @@ bool TypeEnv::occursIn(const TypeVar& var, const Type& type) const {
   }
 }
 
-uint64_t TypeEnv::freshId() { return impl->nextTypeVarId++; }
-
 bool TypeEnv::isBound(const TypeVar& var) const { return lookup(var) != zc::none; }
 
 // ===========================================================================
@@ -1142,12 +1066,11 @@ void TypeEnv::clear() {
   impl->unionParent.clear();
   impl->unionRank.clear();
   impl->idBindings.clear();
-  impl->stringBindings.clear();
   impl->ownedBindings.clear();
   impl->implTable.clear();
 }
 
-size_t TypeEnv::size() const { return impl->idBindings.size() + impl->stringBindings.size(); }
+size_t TypeEnv::size() const { return impl->idBindings.size(); }
 
 }  // namespace type
 }  // namespace compiler

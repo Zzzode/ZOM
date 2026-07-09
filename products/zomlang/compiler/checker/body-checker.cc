@@ -2595,7 +2595,8 @@ const type::Type& BodyChecker::checkLambdaExpr(ast::NodeId expr) {
         }
         auto paramName =
             impl->tree.ident(IdentId(pNode.payload.words[kFunctionParameterDeclNameWord]));
-        paramTypes.add(zc::heap<type::TypeVar>(paramName, impl->typeEnv.freshId()));
+        auto& typeVar = impl->typeEnv.freshTypeVar(paramName);
+        paramTypes.add(zc::heap<type::TypeVar>(typeVar.getName(), typeVar.getId()));
       }
     });
   }
@@ -2648,7 +2649,8 @@ const type::Type& BodyChecker::checkFunctionExpr(ast::NodeId expr) {
         }
         auto paramName =
             impl->tree.ident(IdentId(pNode.payload.words[kFunctionParameterDeclNameWord]));
-        paramTypes.add(zc::heap<type::TypeVar>(paramName, impl->typeEnv.freshId()));
+        auto& typeVar = impl->typeEnv.freshTypeVar(paramName);
+        paramTypes.add(zc::heap<type::TypeVar>(typeVar.getName(), typeVar.getId()));
       }
     });
   }

@@ -628,10 +628,11 @@ ZC_TEST("NamedType.NameLookupUsesStableNameContents") {
 // ============================================================================
 
 ZC_TEST("TypeVar.CreateWithName") {
-  TypeVar tv("T"_zc);
+  TypeVar tv("T"_zc, 1);
   ZC_EXPECT(tv.getKind() == TypeKind::TypeVar);
   ZC_EXPECT(isTypeVar(tv));
   ZC_EXPECT(tv.getName() == "T"_zc);
+  ZC_EXPECT(tv.getId() == 1);
 }
 
 ZC_TEST("TypeVar.CreateWithId") {
@@ -659,19 +660,19 @@ ZC_TEST("TypeVar.EqualityDifferentId") {
 }
 
 ZC_TEST("TypeVar.ToString") {
-  TypeVar tv("T"_zc);
+  TypeVar tv("T"_zc, 1);
   auto s = tv.toString();
-  ZC_EXPECT(s.contains("T"));
+  ZC_EXPECT(s == "T#1"_zc);
 }
 
 ZC_TEST("TypeVar.AddUpperBound") {
-  TypeVar tv("T"_zc);
+  TypeVar tv("T"_zc, 1);
   tv.addUpperBound(PrimitiveType::createI32());
   ZC_EXPECT(tv.getUpperBoundCount() == 1);
 }
 
 ZC_TEST("TypeVar.AddLowerBound") {
-  TypeVar tv("T"_zc);
+  TypeVar tv("T"_zc, 1);
   tv.addLowerBound(PrimitiveType::createI32());
   ZC_EXPECT(tv.getLowerBoundCount() == 1);
 }

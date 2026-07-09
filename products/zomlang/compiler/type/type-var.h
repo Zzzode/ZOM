@@ -35,9 +35,6 @@ namespace type {
 /// type variables may be resolved to concrete types.
 class TypeVar final : public Type {
 public:
-  /// \brief Construct a type variable with a name.
-  explicit TypeVar(zc::StringPtr name);
-
   /// \brief Construct a type variable with a name and unique ID.
   TypeVar(zc::StringPtr name, uint64_t id);
 

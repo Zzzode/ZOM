@@ -269,7 +269,7 @@ public:
   zc::Own<Type> instantiateFunction(const FunctionType& fnTy);
 
   // =========================================================================
-  // Legacy binding API
+  // Type variable binding API
   // =========================================================================
 
   /// \brief Resolve a type by following all type variable bindings.
@@ -315,9 +315,6 @@ public:
   /// Resolves type before checking.
   bool occursIn(const TypeVar& var, const Type& type) const;
 
-  /// \brief Generate a fresh unique type variable ID.
-  uint64_t freshId();
-
   /// \brief Check if a type variable is bound.
   bool isBound(const TypeVar& var) const;
 
@@ -361,9 +358,6 @@ public:
   size_t size() const;
 
 private:
-  /// Build a unique lookup key for a type variable.
-  static zc::String makeKey(const TypeVar& var);
-
   /// Find the root type variable ID in the union-find structure.
   /// Performs path compression as a side effect (hence mutable).
   uint64_t findRoot(uint64_t varId) const;

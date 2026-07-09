@@ -697,7 +697,8 @@ void DeclSignatureComputer::computeFunctionSignature(symbol::FunctionSymbol& fn,
           // without reporting spurious "invalid operands" errors.
           auto paramName =
               impl->tree.ident(IdentId(paramNode.payload.words[kFunctionParameterDeclNameWord]));
-          paramType = zc::heap<type::TypeVar>(paramName);
+          auto& typeVar = impl->typeEnv.freshTypeVar(paramName);
+          paramType = zc::heap<type::TypeVar>(typeVar.getName(), typeVar.getId());
         }
 
         // Store parameter type in TypeEnv keyed by parameter node, so that
@@ -805,7 +806,8 @@ void DeclSignatureComputer::computeMethodSignature(ast::NodeId methodDecl) {
           // No type annotation - create a fresh type variable for inference.
           auto paramName =
               impl->tree.ident(IdentId(paramNode.payload.words[kFunctionParameterDeclNameWord]));
-          paramType = zc::heap<type::TypeVar>(paramName);
+          auto& typeVar = impl->typeEnv.freshTypeVar(paramName);
+          paramType = zc::heap<type::TypeVar>(typeVar.getName(), typeVar.getId());
         }
 
         // Store parameter type in TypeEnv keyed by parameter node

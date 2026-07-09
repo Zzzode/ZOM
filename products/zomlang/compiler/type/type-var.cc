@@ -24,11 +24,8 @@ struct TypeVar::Impl {
   zc::Vector<zc::Own<Type>> upperBounds;
   zc::Vector<zc::Own<Type>> lowerBounds;
 
-  explicit Impl(zc::StringPtr n) : name(n), id(0) {}
   Impl(zc::StringPtr n, uint64_t i) : name(n), id(i) {}
 };
-
-TypeVar::TypeVar(zc::StringPtr name) : impl(zc::heap<Impl>(name)) {}
 
 TypeVar::TypeVar(zc::StringPtr name, uint64_t id) : impl(zc::heap<Impl>(name, id)) {}
 
@@ -54,10 +51,7 @@ size_t TypeVar::getLowerBoundCount() const { return impl->lowerBounds.size(); }
 
 const Type& TypeVar::getLowerBound(size_t index) const { return *impl->lowerBounds[index]; }
 
-zc::String TypeVar::toString() const {
-  if (impl->id != 0) { return zc::str(impl->name, "#", zc::str(impl->id)); }
-  return zc::heapString(impl->name);
-}
+zc::String TypeVar::toString() const { return zc::str(impl->name, "#", zc::str(impl->id)); }
 
 bool TypeVar::equals(const Type& other) const {
   if (this == &other) { return true; }
@@ -65,11 +59,7 @@ bool TypeVar::equals(const Type& other) const {
 
   auto& otherVar = static_cast<const TypeVar&>(other);
 
-  // Type variables are equal if they have the same ID
-  if (impl->id != 0 && otherVar.impl->id != 0) { return impl->id == otherVar.impl->id; }
-
-  // Fall back to name comparison
-  return impl->name == otherVar.impl->name;
+  return impl->id == otherVar.impl->id;
 }
 
 bool TypeVar::isSubtypeOf(const Type& other) const {
