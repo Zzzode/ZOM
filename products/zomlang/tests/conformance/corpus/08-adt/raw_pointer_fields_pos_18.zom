@@ -1,0 +1,9 @@
+struct RawStruct {
+    ptr: *const i32;
+    mut_ptr: *mut i32;
+}
+
+class RawClass {
+    ptr: *const i32;
+    mut_ptr: *mut i32;
+}

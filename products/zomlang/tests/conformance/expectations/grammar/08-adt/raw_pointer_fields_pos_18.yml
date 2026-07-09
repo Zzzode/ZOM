@@ -1,0 +1,5 @@
+section: "§8.1 StructDeclaration / §8.2 ClassDeclaration"
+covers_rule: "fieldDeclaration, rawPointerType"
+expected: "ACCEPT"
+notes:
+  - "Struct and class fields accept raw pointer type annotations using *const and *mut."

@@ -589,7 +589,11 @@ size_t Parser::Impl::consumeMemberBoundary(size_t start, size_t limit) const {
         return index + 1;
       }
       // Stop at member-starting keywords when we've advanced past the head token.
+      const bool rawConstPointerType = sawFieldColon && !sawEquals &&
+                                       kind == ast::SyntaxKind::ConstKeyword && index > start &&
+                                       kindAt(index - 1) == ast::SyntaxKind::Asterisk;
       if (index > start && (isMemberStartToken(kind) || isSoftKeywordModifier(index)) &&
+          !rawConstPointerType &&
           !(head == ast::SyntaxKind::FunKeyword && index == start + 1 &&
             isFunctionNameToken(kind))) {
         return index;
