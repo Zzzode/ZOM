@@ -42,6 +42,30 @@ ZC_TEST("Runtime.PanicKindNamesAreStable") {
   ZC_EXPECT(panicKindName(ZomPanicKind::Runtime) == "runtime"_zc);
 }
 
+ZC_TEST("Runtime.FormatPanicInfoIncludesStableMetadata") {
+  ZomPanicInfo info;
+  info.kind = ZomPanicKind::ForcedUnwrap;
+  info.span.file = "main.zom";
+  info.span.line = 4;
+  info.span.column = 12;
+  info.span.byteStart = 20;
+  info.span.byteEnd = 24;
+  info.message = "forced unwrap failed";
+  info.taskId = 9;
+
+  ZC_EXPECT(formatPanicInfo(info) ==
+            "panic(kind=forced_unwrap, file=main.zom, line=4, column=12, bytes=20..24, "
+            "message=forced unwrap failed, task=9)"_zc);
+}
+
+ZC_TEST("Runtime.FormatPanicInfoHandlesMissingOptionalFields") {
+  ZomPanicInfo info;
+
+  ZC_EXPECT(formatPanicInfo(info) ==
+            "panic(kind=runtime, file=<unknown>, line=0, column=0, bytes=0..0, "
+            "message=<none>, task=0)"_zc);
+}
+
 ZC_TEST("Runtime.CatchUnwindAbortStrategyCallsThunkAndReturnsFalse") {
   bool called = false;
   ZomPanicInfo info;

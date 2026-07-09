@@ -57,6 +57,9 @@ using ZomPanicThunk = void (*)(void*);
 /// \brief Stable text name for a panic kind.
 zc::StringPtr panicKindName(ZomPanicKind kind);
 
+/// \brief Format panic metadata as deterministic diagnostic text.
+zc::String formatPanicInfo(const ZomPanicInfo& info);
+
 }  // namespace runtime
 }  // namespace zomlang
 

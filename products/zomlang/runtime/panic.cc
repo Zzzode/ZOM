@@ -41,6 +41,17 @@ zc::StringPtr panicKindName(ZomPanicKind kind) {
   ZC_UNREACHABLE;
 }
 
+zc::String formatPanicInfo(const ZomPanicInfo& info) {
+  zc::StringPtr file = info.span.file == nullptr ? "<unknown>"_zc : zc::StringPtr(info.span.file);
+  zc::StringPtr message = info.message == nullptr ? "<none>"_zc : zc::StringPtr(info.message);
+  return zc::str("panic(kind=", panicKindName(info.kind), ", file=", file,
+                 ", line=", static_cast<uint64_t>(info.span.line),
+                 ", column=", static_cast<uint64_t>(info.span.column),
+                 ", bytes=", static_cast<uint64_t>(info.span.byteStart), "..",
+                 static_cast<uint64_t>(info.span.byteEnd), ", message=", message,
+                 ", task=", info.taskId, ")");
+}
+
 }  // namespace runtime
 }  // namespace zomlang
 
