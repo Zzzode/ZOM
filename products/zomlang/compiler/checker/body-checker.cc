@@ -851,23 +851,8 @@ zc::Own<type::Type> BodyChecker::makePrimitiveType(zc::StringPtr name) {
   using type::PrimitiveKind;
   using type::PrimitiveType;
 
-  if (name == "i8"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::I8);
-  if (name == "i16"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::I16);
-  if (name == "i32"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::I32);
-  if (name == "i64"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::I64);
-  if (name == "u8"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::U8);
-  if (name == "u16"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::U16);
-  if (name == "u32"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::U32);
-  if (name == "u64"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::U64);
-  if (name == "f32"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::F32);
-  if (name == "f64"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::F64);
-  if (name == "bool"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::Bool);
-  if (name == "str"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::Str);
-  if (name == "char"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::Char);
-  if (name == "null"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::Null);
-  if (name == "unit"_zc || name == "void"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::Unit);
-  if (name == "never"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::Never);
-  if (name == "any"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::Any);
+  ZC_IF_SOME(kind, PrimitiveType::findByName(name)) { return PrimitiveType::create(kind); }
+  if (name == "void"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::Unit);
   return zc::Own<type::Type>();
 }
 
