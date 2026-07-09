@@ -1,0 +1,5 @@
+section: "§3 Union coercion sites"
+covers_rule: "unionType, callExpression, returnStatement, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Union member values coerce into explicit union targets at local initializer, call argument, and return sites."
