@@ -848,11 +848,9 @@ void BodyChecker::bindTypeVarsByName(const type::Type& ty, zc::StringPtr name,
 }
 
 zc::Own<type::Type> BodyChecker::makePrimitiveType(zc::StringPtr name) {
-  using type::PrimitiveKind;
   using type::PrimitiveType;
 
   ZC_IF_SOME(kind, PrimitiveType::findByName(name)) { return PrimitiveType::create(kind); }
-  if (name == "void"_zc) return zc::heap<PrimitiveType>(PrimitiveKind::Unit);
   return zc::Own<type::Type>();
 }
 

@@ -1,0 +1,7 @@
+// RUN: printf 'let x: string = "s";\n' > %t.zom
+// RUN: ! %zomc compile --syntax-only %t.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected string, got str
+// CHECK-LITERAL: 1 | let x: string = "s";

@@ -1,0 +1,7 @@
+// RUN: printf 'fun f() -> void { return (); }\n' > %t.zom
+// RUN: ! %zomc compile --syntax-only %t.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected void, got ()
+// CHECK-LITERAL: 1 | fun f() -> void { return (); }

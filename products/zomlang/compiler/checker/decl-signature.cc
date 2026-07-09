@@ -865,11 +865,7 @@ void DeclSignatureComputer::computeVariableSignature(symbol::VariableSymbol& var
 // ============================================================================
 
 static zc::Maybe<type::PrimitiveKind> resolvePrimitiveKind(zc::StringPtr name) {
-  using type::PrimitiveKind;
-  ZC_IF_SOME(kind, type::PrimitiveType::findByName(name)) { return kind; }
-  if (name == "string"_zc) return PrimitiveKind::Str;
-  if (name == "void"_zc) return PrimitiveKind::Unit;
-  return zc::none;
+  return type::PrimitiveType::findByName(name);
 }
 
 zc::Own<type::Type> DeclSignatureComputer::resolveTypeExpr(ast::NodeId typeExprId) {

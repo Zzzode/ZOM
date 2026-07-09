@@ -1696,3 +1696,4 @@ None.
 | 2026-07-09 | REVIEW | Audited where-clause parser/spec alignment: functions, structs, classes, and standalone impls accept `where`; interface declarations intentionally reject it and keep constraints in the type-parameter list. |
 | 2026-07-09 | REVIEW | Added positive dyn conformance coverage for object-safe interfaces whose associated types have default bindings. |
 | 2026-07-09 | REVIEW | Moved string primitive classification into the shared type helper layer so checker operator rules no longer carry a local string predicate. |
+| 2026-07-09 | REVIEW | Removed checker-only `string` and `void` primitive aliases so predefined type names stay aligned with the spec's `str` and `unit` spellings. |
