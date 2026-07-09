@@ -972,14 +972,7 @@ bool TraitResolver::isAutoSendable(const type::Type& ty) {
   const auto& resolved = impl->typeEnv.find(ty);
 
   // Primitive types are always Sendable
-  if (isPrimitive(resolved)) {
-    const auto& prim = static_cast<const PrimitiveType&>(resolved);
-    auto kind = prim.getPrimitiveKind();
-    // never, any, unit, null are all Sendable
-    // All integer, float, bool, str, char are Sendable
-    (void)kind;
-    return true;
-  }
+  if (isPrimitive(resolved)) { return true; }
 
   // Error types are Sendable (to avoid cascading errors)
   if (isError(resolved)) return true;

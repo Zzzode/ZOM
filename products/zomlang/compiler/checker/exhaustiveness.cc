@@ -98,9 +98,7 @@ static source::SourceLoc getNodeLoc(const Tree& tree, NodeId id) {
 bool ExhaustivenessChecker::isOpenType(const Type& ty) {
   const Type& resolved = impl->typeEnv.resolve(ty);
 
-  if (isPrimitive(resolved)) {
-    const auto& prim = static_cast<const PrimitiveType&>(resolved);
-    auto kind = prim.getPrimitiveKind();
+  ZC_IF_SOME(kind, primitiveKindOf(resolved)) {
     switch (kind) {
       case PrimitiveKind::I8:
       case PrimitiveKind::I16:
@@ -368,9 +366,8 @@ zc::Vector<Constructor> ExhaustivenessChecker::getConstructors(const Type& ty) {
 
   const Type& resolved = impl->typeEnv.resolve(ty);
 
-  if (isPrimitive(resolved)) {
-    const auto& prim = static_cast<const PrimitiveType&>(resolved);
-    switch (prim.getPrimitiveKind()) {
+  ZC_IF_SOME(kind, primitiveKindOf(resolved)) {
+    switch (kind) {
       case PrimitiveKind::Bool:
         result.add(Constructor::makeBoolTrue());
         result.add(Constructor::makeBoolFalse());
@@ -387,9 +384,11 @@ zc::Vector<Constructor> ExhaustivenessChecker::getConstructors(const Type& ty) {
       case PrimitiveKind::Never:
         return result;
 
-      default:
-        result.add(Constructor::makeOpen(prim.getName()));
+      default: {
+        PrimitiveType primitive(kind);
+        result.add(Constructor::makeOpen(primitive.getName()));
         return result;
+      }
     }
   }
 
