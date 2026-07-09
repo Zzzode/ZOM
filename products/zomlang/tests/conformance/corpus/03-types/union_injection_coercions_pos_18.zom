@@ -1,5 +1,9 @@
 class Err { }
 
+struct Holder {
+    value: i32 | Err;
+}
+
 fun take(x: i32 | Err) -> unit {
     return;
 }
@@ -14,3 +18,6 @@ fun produce(flag: bool) -> i32 | Err {
 let local: i32 | Err = 1;
 take(2);
 let from_call: i32 | Err = produce(true);
+mut target: i32 | Err = Err {};
+target = 7;
+let holder = Holder { value: 3 };
