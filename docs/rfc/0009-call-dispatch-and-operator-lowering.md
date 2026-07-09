@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/0009-call-dispatch-and-operator-lowering.md#status-history
 decision: TBD
-implementation: TBD
+implementation: products/zomlang/compiler/checker/body-checker.cc
 tracking-issue: docs/rfc/0009-call-dispatch-and-operator-lowering.md#acceptance-criteria
 ---
 
