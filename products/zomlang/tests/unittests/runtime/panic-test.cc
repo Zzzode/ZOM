@@ -14,6 +14,9 @@
 
 #include "zomlang/runtime/panic.h"
 
+#include <signal.h>
+
+#include "zc/core/function.h"
 #include "zc/ztest/test.h"
 
 namespace zomlang {
@@ -60,6 +63,12 @@ ZC_TEST("Runtime.CatchUnwindHandlesNullThunk") {
 
   ZC_EXPECT(!caught);
   ZC_EXPECT(info.kind == ZomPanicKind::Runtime);
+}
+
+ZC_TEST("Runtime.AbortPanicRaisesSigabrt") {
+  ZomPanicInfo info;
+  info.kind = ZomPanicKind::ExplicitPanic;
+  ZC_EXPECT_SIGNAL(SIGABRT, __zom_abort_panic(&info));
 }
 
 ZC_TEST("Runtime.PanicAbiSymbolsAreLinkable") {
