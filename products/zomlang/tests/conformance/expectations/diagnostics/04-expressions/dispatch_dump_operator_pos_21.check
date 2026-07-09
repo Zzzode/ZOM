@@ -1,0 +1,6 @@
+// RUN: cd %corpus && %zomc compile --dump-dispatch 04-expressions/operator_trait_add_pos_10.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: zom.dispatch.v0
+// CHECK: node={{[0-9]+}} target=OperatorMethod receiver=OperatorLeftHandSide interface=Add method=add impl={{[0-9]+}} args=[{{[0-9]+}},{{[0-9]+}}] result={{[0-9]+}}
