@@ -70,11 +70,13 @@ public:
         .addOptionWithArg({'o', "output"}, ZC_BIND_METHOD(*this, addOutput), "<dir>",
                           "Specify the output directory or file path.")
         .addOptionWithArg({"emit"}, ZC_BIND_METHOD(*this, setEmitType), "<type>",
-                          "Set output type: ast, ir, binary (default: binary)")
+                          "Set output type: ast, dispatch, ir, binary (default: binary)")
         .addOptionWithArg({"ast-format"}, ZC_BIND_METHOD(*this, setASTDumpFormat), "<format>",
                           "Set AST dump format: tree, json, raw (default: tree)")
         .addOption({"dump-ast"}, ZC_BIND_METHOD(*this, enableASTDump),
                    "Dump AST to stdout (shorthand for --emit=ast)")
+        .addOption({"dump-dispatch"}, ZC_BIND_METHOD(*this, enableDispatchDump),
+                   "Dump checked call dispatch records to stdout (shorthand for --emit=dispatch)")
         .addOption({"syntax-only"}, ZC_BIND_METHOD(*this, enableSyntaxOnly),
                    "Only perform syntax checking, no code generation")
         .addOptionWithArg({'O', "optimize"}, ZC_BIND_METHOD(*this, setOptimizationLevel), "<level>",
@@ -110,13 +112,16 @@ public:
   zc::MainBuilder::Validity setEmitType(zc::StringPtr type) {
     if (type == "ast") {
       compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::AST;
+    } else if (type == "dispatch") {
+      compilerOpts.emission.outputType =
+          basic::CompilerOptions::EmissionOptions::OutputType::Dispatch;
     } else if (type == "ir") {
       compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::IR;
     } else if (type == "binary") {
       compilerOpts.emission.outputType =
           basic::CompilerOptions::EmissionOptions::OutputType::Binary;
     } else {
-      return zc::str("Invalid output type: ", type, ". Valid types are: ast, ir, binary");
+      return zc::str("Invalid output type: ", type, ". Valid types are: ast, dispatch, ir, binary");
     }
     return true;
   }
@@ -139,6 +144,12 @@ public:
 
   zc::MainBuilder::Validity enableASTDump() {
     compilerOpts.emission.outputType = basic::CompilerOptions::EmissionOptions::OutputType::AST;
+    return true;
+  }
+
+  zc::MainBuilder::Validity enableDispatchDump() {
+    compilerOpts.emission.outputType =
+        basic::CompilerOptions::EmissionOptions::OutputType::Dispatch;
     return true;
   }
 
@@ -202,13 +213,19 @@ public:
       return zc::str("Compilation failed due to type checking errors.");
     }
 
-    // 5. Syntax Only Check
+    // 5. Dispatch Dump
+    if (options.emission.outputType ==
+        basic::CompilerOptions::EmissionOptions::OutputType::Dispatch) {
+      return emitDispatch();
+    }
+
+    // 6. Syntax Only Check
     if (options.emission.syntaxOnly) {
       context.warning("Syntax check completed successfully.");
       return true;
     }
 
-    // 6. Final Emission
+    // 7. Final Emission
     switch (options.emission.outputType) {
       case basic::CompilerOptions::EmissionOptions::OutputType::IR:
         return emitIR();
@@ -225,8 +242,8 @@ public:
     const auto& asts = driver->getASTs();
     const auto& options = driver->getCompilerOptions();
 
-    zc::Maybe<zc::Own<zc::OutputStream>> outputStream =
-        createOutputStream(options.emission.outputPath, options.emission.astDumpFormat);
+    zc::Maybe<zc::Own<zc::OutputStream>> outputStream = createOutputStream(
+        options.emission.outputPath, options.emission.astDumpFormat, DumpOutputKind::Ast);
     ZC_IF_SOME(stream, outputStream) {
       return dumpASTsToStream(*stream, asts, options.emission.astDumpFormat);
     }
@@ -234,8 +251,21 @@ public:
     return "Failed to create output stream.";
   }
 
+  zc::MainBuilder::Validity emitDispatch() {
+    zc::Maybe<zc::Own<zc::OutputStream>> outputStream = createOutputStream(
+        compilerOpts.emission.outputPath, ASTDumpFormat::Tree, DumpOutputKind::Dispatch);
+    ZC_IF_SOME(stream, outputStream) { return dumpDispatchToStream(*stream); }
+
+    return "Failed to create output stream.";
+  }
+
 private:
   using ASTDumpFormat = basic::CompilerOptions::EmissionOptions::ASTDumpFormat;
+
+  enum class DumpOutputKind {
+    Ast,
+    Dispatch,
+  };
 
   static ast::AstDumpFormat toAstDumpFormat(ASTDumpFormat format) {
     switch (format) {
@@ -251,22 +281,23 @@ private:
 
   /// Creates an appropriate output stream based on the given path and format
   zc::Maybe<zc::Own<zc::OutputStream>> createOutputStream(
-      const zc::Maybe<zc::StringPtr>& outputPath, ASTDumpFormat format) {
-    ZC_IF_SOME(path, outputPath) { return createFileOutputStream(path, format); }
+      const zc::Maybe<zc::StringPtr>& outputPath, ASTDumpFormat format, DumpOutputKind kind) {
+    ZC_IF_SOME(path, outputPath) { return createFileOutputStream(path, format, kind); }
     // Use stdout file descriptor to ensure shell redirection works properly
     return zc::heap<zc::FdOutputStream>(STDOUT_FILENO);
   }
 
   /// Creates a file output stream, handling directory paths appropriately
   zc::Maybe<zc::Own<zc::OutputStream>> createFileOutputStream(zc::StringPtr outputPath,
-                                                              ASTDumpFormat format) {
+                                                              ASTDumpFormat format,
+                                                              DumpOutputKind kind) {
     auto filesystem = zc::newDiskFilesystem();
     bool isAbsolute = outputPath.size() > 0 && outputPath[0] == '/';
 
     const zc::Directory& baseDir = isAbsolute ? filesystem->getRoot() : filesystem->getCurrent();
     zc::StringPtr pathText = isAbsolute ? outputPath.slice(1) : outputPath;
 
-    zc::Path path = resolveOutputPath(pathText, format, baseDir);
+    zc::Path path = resolveOutputPath(pathText, format, kind, baseDir);
 
     auto file = baseDir.openFile(
         path, zc::WriteMode::CREATE | zc::WriteMode::MODIFY | zc::WriteMode::CREATE_PARENT);
@@ -275,14 +306,14 @@ private:
   }
 
   /// Resolves the final output path, generating filename if path is a directory
-  zc::Path resolveOutputPath(zc::StringPtr outputPath, ASTDumpFormat format,
+  zc::Path resolveOutputPath(zc::StringPtr outputPath, ASTDumpFormat format, DumpOutputKind kind,
                              const zc::Directory& currentDir) {
     zc::Path path = zc::Path::parse(outputPath);
 
     if (currentDir.exists(path)) {
       auto stat = currentDir.lstat(path);
       if (stat.type == zc::FsNode::Type::DIRECTORY) {
-        zc::String filename = generateDefaultFilename(format);
+        zc::String filename = generateDefaultFilename(format, kind);
         path = path.append(zc::mv(filename));
       }
     }
@@ -291,14 +322,16 @@ private:
   }
 
   /// Generates a default filename based on the first source file and format
-  zc::String generateDefaultFilename(ASTDumpFormat format) {
+  zc::String generateDefaultFilename(ASTDumpFormat format, DumpOutputKind kind) {
     static constexpr char kDefaultBaseName[] = "ast_dump";
 
     auto maybeBaseName = extractSourceBaseName();
     zc::String baseName;
     ZC_IF_SOME(name, maybeBaseName) { baseName = zc::mv(name); }
     else { baseName = zc::str(kDefaultBaseName); }
-    zc::StringPtr extension = ast::astDumpFileExtension(toAstDumpFormat(format));
+    zc::StringPtr extension = kind == DumpOutputKind::Dispatch
+                                  ? ".dispatch.txt"_zc
+                                  : ast::astDumpFileExtension(toAstDumpFormat(format));
 
     return zc::str(baseName, extension);
   }
@@ -335,6 +368,14 @@ private:
       }
     }
 
+    return true;
+  }
+
+  zc::MainBuilder::Validity dumpDispatchToStream(zc::OutputStream& outputStream) {
+    const auto& typeEnvs = driver->getTypeEnvs();
+    for (const source::BufferId& bufferId : driver->getSourceManager().getManagedBufferIds()) {
+      ZC_IF_SOME(typeEnv, typeEnvs.find(bufferId)) { typeEnv.dumpDispatch(outputStream); }
+    }
     return true;
   }
 

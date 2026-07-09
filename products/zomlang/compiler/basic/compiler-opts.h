@@ -29,6 +29,7 @@ struct CompilerOptions {
   struct EmissionOptions {
     enum class OutputType {
       AST,
+      Dispatch,
       IR,
       Binary,
     };
