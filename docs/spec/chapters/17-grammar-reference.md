@@ -229,9 +229,9 @@ InterfaceElement ::= ';'
                    | Modifier* ConstantDeclaration
                    | Modifier* 'fun' MethodSignature ';'
                       (* NOTE: Method bodies (BlockStatement) inside interface
-                         declarations are not yet supported by the parser.
-                         Default interface methods are planned for a future
-                         version. See Ch.09 §9.3.1 *)
+                         declarations are not part of ZOM v1. The parser
+                         rejects a block after an interface method signature.
+                         See Ch.09 §9.3.1. *)
 PropertySignature ::= PropertyName '?'? TypeAnnotation
 MethodSignature ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType?
 PropertyStorage ::= 'mut' | 'let'
