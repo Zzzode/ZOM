@@ -363,76 +363,22 @@ zc::Own<type::Type> TraitResolver::resolveTypeExpr(ast::NodeId typeExprId) {
     case SyntaxKind::BottomTypeExpr:
       return type::PrimitiveType::createNever();
 
-    case SyntaxKind::UnaryExpression: {
-      auto op = static_cast<ast::UnaryOperatorKind>(node.payload.words[kUnaryExpressionOpWord]);
-      auto operandId = ast::NodeId(node.payload.words[kUnaryExpressionOperandWord]);
+    case SyntaxKind::ReferenceTypeExpr: {
+      auto elemId = ast::NodeId(node.payload.words[kReferenceTypeExprElemWord]);
+      auto elemType = resolveTypeExpr(elemId);
+      auto mutability = node.payload.words[kReferenceTypeExprIsMutWord] != 0
+                            ? type::Mutability::Mutable
+                            : type::Mutability::Const;
+      return zc::heap<type::ReferenceType>(zc::mv(elemType), mutability);
+    }
 
-      if (op == ast::UnaryOperatorKind::Ref) {
-        // &T or &mut T
-        auto mutability = type::Mutability::Const;
-
-        if (impl->tree.contains(operandId)) {
-          const auto& operand = impl->tree.node(operandId);
-          if (operand.kind == SyntaxKind::NamedTypeExpr) {
-            auto pathId = ast::NodeId(operand.payload.words[kNamedTypeExprPathWord]);
-            auto name = resolvePathName(pathId);
-            if (name == "mut"_zc) {
-              mutability = type::Mutability::Mutable;
-              NodeList args;
-              args.first = operand.payload.words[kNamedTypeExprArgsFirstWord];
-              args.size = operand.payload.words[kNamedTypeExprArgsSizeWord];
-              if (args.size > 0) {
-                auto firstArg = impl->tree.list(args).front();
-                auto pointeeType = resolveTypeExpr(firstArg);
-                return zc::heap<type::ReferenceType>(zc::mv(pointeeType), mutability);
-              }
-            }
-          }
-        }
-
-        auto innerType = resolveTypeExpr(operandId);
-        return zc::heap<type::ReferenceType>(zc::mv(innerType), mutability);
-      }
-
-      if (op == ast::UnaryOperatorKind::Deref) {
-        // *T, *const T, *mut T
-        auto mutability = type::Mutability::Const;
-
-        if (impl->tree.contains(operandId)) {
-          const auto& operand = impl->tree.node(operandId);
-          if (operand.kind == SyntaxKind::NamedTypeExpr) {
-            auto pathId = ast::NodeId(operand.payload.words[kNamedTypeExprPathWord]);
-            auto name = resolvePathName(pathId);
-            if (name == "mut"_zc) {
-              mutability = type::Mutability::Mutable;
-              NodeList args;
-              args.first = operand.payload.words[kNamedTypeExprArgsFirstWord];
-              args.size = operand.payload.words[kNamedTypeExprArgsSizeWord];
-              if (args.size > 0) {
-                auto firstArg = impl->tree.list(args).front();
-                auto pointeeType = resolveTypeExpr(firstArg);
-                return zc::heap<type::RawPointerType>(zc::mv(pointeeType), mutability);
-              }
-            }
-            if (name == "const"_zc) {
-              mutability = type::Mutability::Const;
-              NodeList args;
-              args.first = operand.payload.words[kNamedTypeExprArgsFirstWord];
-              args.size = operand.payload.words[kNamedTypeExprArgsSizeWord];
-              if (args.size > 0) {
-                auto firstArg = impl->tree.list(args).front();
-                auto pointeeType = resolveTypeExpr(firstArg);
-                return zc::heap<type::RawPointerType>(zc::mv(pointeeType), mutability);
-              }
-            }
-          }
-        }
-
-        auto innerType = resolveTypeExpr(operandId);
-        return zc::heap<type::RawPointerType>(zc::mv(innerType), mutability);
-      }
-
-      break;
+    case SyntaxKind::RawPointerTypeExpr: {
+      auto elemId = ast::NodeId(node.payload.words[kRawPointerTypeExprElemWord]);
+      auto elemType = resolveTypeExpr(elemId);
+      auto mutability = node.payload.words[kRawPointerTypeExprIsMutWord] != 0
+                            ? type::Mutability::Mutable
+                            : type::Mutability::Const;
+      return zc::heap<type::RawPointerType>(zc::mv(elemType), mutability);
     }
 
     case SyntaxKind::OptionalTypeExpr: {

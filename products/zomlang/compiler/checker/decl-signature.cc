@@ -1238,36 +1238,6 @@ zc::Own<type::Type> DeclSignatureComputer::resolveReferenceType(ast::NodeId type
     return zc::heap<type::ReferenceType>(zc::mv(elemType), mutability);
   }
 
-  // Compatibility path for existing unit-test builders that still encode &T
-  // as a UnaryExpression over a type expression.
-  if (node.kind == SyntaxKind::UnaryExpression) {
-    auto operandId = ast::NodeId(node.payload.words[kUnaryExpressionOperandWord]);
-
-    auto mutability = type::Mutability::Const;
-
-    if (impl->tree.contains(operandId)) {
-      const auto& operand = impl->tree.node(operandId);
-      if (operand.kind == SyntaxKind::NamedTypeExpr) {
-        auto pathId = ast::NodeId(operand.payload.words[kNamedTypeExprPathWord]);
-        auto name = resolvePathName(pathId);
-        if (name == "mut"_zc) {
-          mutability = type::Mutability::Mutable;
-          NodeList args;
-          args.first = operand.payload.words[kNamedTypeExprArgsFirstWord];
-          args.size = operand.payload.words[kNamedTypeExprArgsSizeWord];
-          if (!args.empty()) {
-            auto firstArg = impl->tree.list(args).front();
-            auto pointeeType = resolveTypeExpr(firstArg);
-            return zc::heap<type::ReferenceType>(zc::mv(pointeeType), mutability);
-          }
-        }
-      }
-    }
-
-    auto innerType = resolveTypeExpr(operandId);
-    return zc::heap<type::ReferenceType>(zc::mv(innerType), mutability);
-  }
-
   return zc::heap<type::ErrorType>("invalid reference type syntax");
 }
 
@@ -1289,47 +1259,6 @@ zc::Own<type::Type> DeclSignatureComputer::resolveRawPointerType(ast::NodeId typ
                           ? type::Mutability::Mutable
                           : type::Mutability::Const;
     return zc::heap<type::RawPointerType>(zc::mv(elemType), mutability);
-  }
-
-  // Compatibility path for existing unit-test builders that still encode *T
-  // as a UnaryExpression over a type expression.
-  if (node.kind == SyntaxKind::UnaryExpression) {
-    auto operandId = ast::NodeId(node.payload.words[kUnaryExpressionOperandWord]);
-
-    auto mutability = type::Mutability::Const;
-
-    if (impl->tree.contains(operandId)) {
-      const auto& operand = impl->tree.node(operandId);
-      if (operand.kind == SyntaxKind::NamedTypeExpr) {
-        auto pathId = ast::NodeId(operand.payload.words[kNamedTypeExprPathWord]);
-        auto name = resolvePathName(pathId);
-        if (name == "mut"_zc) {
-          mutability = type::Mutability::Mutable;
-          NodeList args;
-          args.first = operand.payload.words[kNamedTypeExprArgsFirstWord];
-          args.size = operand.payload.words[kNamedTypeExprArgsSizeWord];
-          if (!args.empty()) {
-            auto firstArg = impl->tree.list(args).front();
-            auto pointeeType = resolveTypeExpr(firstArg);
-            return zc::heap<type::RawPointerType>(zc::mv(pointeeType), mutability);
-          }
-        }
-        if (name == "const"_zc) {
-          mutability = type::Mutability::Const;
-          NodeList args;
-          args.first = operand.payload.words[kNamedTypeExprArgsFirstWord];
-          args.size = operand.payload.words[kNamedTypeExprArgsSizeWord];
-          if (!args.empty()) {
-            auto firstArg = impl->tree.list(args).front();
-            auto pointeeType = resolveTypeExpr(firstArg);
-            return zc::heap<type::RawPointerType>(zc::mv(pointeeType), mutability);
-          }
-        }
-      }
-    }
-
-    auto innerType = resolveTypeExpr(operandId);
-    return zc::heap<type::RawPointerType>(zc::mv(innerType), mutability);
   }
 
   return zc::heap<type::ErrorType>("invalid raw pointer type syntax");

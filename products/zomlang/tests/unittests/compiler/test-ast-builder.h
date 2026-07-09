@@ -885,24 +885,18 @@ public:
 
   /// \brief Create a reference type expression.
   ast::NodeId makeReferenceTypeExpr(ast::NodeId innerTy, bool isMut = false) {
-    auto operand = innerTy;
-    if (isMut) {
-      zc::Vector<ast::NodeId> args;
-      args.add(innerTy);
-      operand = makeNamedTypeExpr("mut"_zc, makeNodeList(args.asPtr()));
-    }
-    return makeUnaryExpr(ast::UnaryOperatorKind::Ref, operand);
+    ast::NodePayload payload;
+    payload.words[ast::kReferenceTypeExprElemWord] = innerTy.value;
+    payload.words[ast::kReferenceTypeExprIsMutWord] = isMut ? 1u : 0u;
+    return builder_.makeNode(ast::SyntaxKind::ReferenceTypeExpr, source::SourceRange(), payload);
   }
 
   /// \brief Create a raw pointer type expression.
   ast::NodeId makeRawPointerTypeExpr(ast::NodeId innerTy, bool isMut = false) {
-    auto operand = innerTy;
-    if (isMut) {
-      zc::Vector<ast::NodeId> args;
-      args.add(innerTy);
-      operand = makeNamedTypeExpr("mut"_zc, makeNodeList(args.asPtr()));
-    }
-    return makeUnaryExpr(ast::UnaryOperatorKind::Deref, operand);
+    ast::NodePayload payload;
+    payload.words[ast::kRawPointerTypeExprElemWord] = innerTy.value;
+    payload.words[ast::kRawPointerTypeExprIsMutWord] = isMut ? 1u : 0u;
+    return builder_.makeNode(ast::SyntaxKind::RawPointerTypeExpr, source::SourceRange(), payload);
   }
 
   /// \brief Create an UnsafeBlockExpr.
