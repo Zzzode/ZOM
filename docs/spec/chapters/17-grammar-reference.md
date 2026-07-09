@@ -558,6 +558,7 @@ MemberExpression ::= PrimaryExpression
                   | 'new' MemberExpression Arguments
                   | MemberExpression '[' Expression ']'
                   | MemberExpression '.' Identifier
+                  | MemberExpression '::' Identifier
 
 SuperProperty ::= 'super' '.' Identifier
 SuperCall ::= 'super' Arguments

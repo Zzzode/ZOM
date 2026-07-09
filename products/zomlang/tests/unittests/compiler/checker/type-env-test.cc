@@ -153,10 +153,10 @@ ZC_TEST("TypeEnv.SetAndGetDispatch") {
   ast::NodeId node(42);
 
   CallDispatchRecord record;
-  record.targetKind = CallTargetKind::OperatorMethod;
-  record.receiverMode = ReceiverMode::OperatorLeftHandSide;
-  record.interfaceName = zc::str("Add"_zc);
-  record.methodName = zc::str("add"_zc);
+  record.targetKind = CallTargetKind::QualifiedInterfaceMethod;
+  record.receiverMode = ReceiverMode::ExplicitFirstArgument;
+  record.interfaceName = zc::str("Drawable"_zc);
+  record.methodName = zc::str("draw"_zc);
   record.targetSymbol = symbol::SymbolId::create(99);
   record.implNode = ast::NodeId(7);
   record.vtableSlot = 11;
@@ -167,10 +167,10 @@ ZC_TEST("TypeEnv.SetAndGetDispatch") {
 
   ZC_EXPECT(env.hasDispatch(node));
   auto& stored = env.getDispatch(node);
-  ZC_EXPECT(stored.targetKind == CallTargetKind::OperatorMethod);
-  ZC_EXPECT(stored.receiverMode == ReceiverMode::OperatorLeftHandSide);
-  ZC_EXPECT(stored.interfaceName.asPtr() == "Add"_zc);
-  ZC_EXPECT(stored.methodName.asPtr() == "add"_zc);
+  ZC_EXPECT(stored.targetKind == CallTargetKind::QualifiedInterfaceMethod);
+  ZC_EXPECT(stored.receiverMode == ReceiverMode::ExplicitFirstArgument);
+  ZC_EXPECT(stored.interfaceName.asPtr() == "Drawable"_zc);
+  ZC_EXPECT(stored.methodName.asPtr() == "draw"_zc);
   ZC_EXPECT(stored.targetSymbol == symbol::SymbolId::create(99));
   ZC_EXPECT(stored.implNode == ast::NodeId(7));
   ZC_EXPECT(stored.vtableSlot == 11);

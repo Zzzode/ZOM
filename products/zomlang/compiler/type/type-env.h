@@ -40,6 +40,7 @@ enum class CallTargetKind {
   FreeFunction,
   InstanceMethod,
   StaticMethod,
+  QualifiedInterfaceMethod,
   OperatorMethod,
   IndexMethod,
   DynVTable,
@@ -47,7 +48,14 @@ enum class CallTargetKind {
 };
 
 /// \brief Receiver passing mode for checked call-like expressions.
-enum class ReceiverMode { None, ImplicitSelf, OperatorLeftHandSide, OperatorOperand, IndexBase };
+enum class ReceiverMode {
+  None,
+  ExplicitFirstArgument,
+  ImplicitSelf,
+  OperatorLeftHandSide,
+  OperatorOperand,
+  IndexBase
+};
 
 /// \brief Resolved dispatch metadata for a checked call-like expression.
 struct CallDispatchRecord {

@@ -1,0 +1,12 @@
+interface Drawable {
+    fun draw(value: Sprite) -> unit;
+}
+
+class Sprite { }
+
+impl Drawable for Sprite {
+    fun draw(value: Sprite) -> unit { }
+}
+
+let sprite: Sprite;
+Drawable::draw(sprite);

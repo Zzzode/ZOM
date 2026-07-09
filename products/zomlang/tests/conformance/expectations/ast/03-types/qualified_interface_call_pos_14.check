@@ -1,0 +1,109 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/qualified_interface_call_pos_14.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #41 @1:1..13:1 file_name="qualified_interface_call_pos_14.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #9 @1:1..3:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #8 @1:1..3:2 name="Drawable"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #7 @1:20..3:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #6 @2:5..2:37 name="draw" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #4 @2:13..2:28 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:14..2:27 name="value"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             NamedTypeExpr #2 @2:21..2:27
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #1 @2:21..2:27 segments=["Sprite"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:32..2:36 kind=Unit
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #12 @5:1..5:17
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #11 @5:1..5:17 name="Sprite" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #10 @5:14..5:17 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #27 @7:1..9:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StandaloneImplDecl #26 @7:1..9:2 is_unsafe=false
+// CHECK-NEXT:           ifaces_id:
+// CHECK-NEXT:             ImplIfaceList #15 @7:6..7:14 n_ifaces=1
+// CHECK-NEXT:               ifaces:
+// CHECK-NEXT:                 NamedTypeExpr #14 @7:6..7:14
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #13 @7:6..7:14 segments=["Drawable"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #17 @7:19..7:25
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #16 @7:19..7:25 segments=["Sprite"]
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           where_: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #25 @7:26..9:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #24 @8:5..8:40 name="draw" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #21 @8:13..8:28 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #20 @8:14..8:27 name="value"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             NamedTypeExpr #19 @8:21..8:27
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #18 @8:21..8:27 segments=["Sprite"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #22 @8:32..8:36 kind=Unit
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #23 @8:37..8:40
+// CHECK-NEXT:                       stmts: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #34 @11:1..11:20
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #33 @11:1..11:20 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #32 @11:5..11:19 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #31 @11:5..11:19
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #28 @11:5..11:11 name="sprite"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #30 @11:13..11:19
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #29 @11:13..11:19 segments=["Sprite"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #40 @12:1..12:24
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #39 @12:1..12:24
+// CHECK-NEXT:           expression:
+// CHECK-NEXT:             CallExpression #38 @12:1..12:23
+// CHECK-NEXT:               callee:
+// CHECK-NEXT:                 MemberExpression #36 @12:1..12:15 property="draw"
+// CHECK-NEXT:                   object:
+// CHECK-NEXT:                     IdentExpr #35 @12:1..12:9 name="Drawable"
+// CHECK-NEXT:               type_args: []
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 IdentExpr #37 @12:16..12:22 name="sprite"
+// CHECK-NEXT:       attrs: null

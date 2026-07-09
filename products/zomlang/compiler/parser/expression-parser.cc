@@ -1003,7 +1003,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(AstFa
       continue;
     }
 
-    if (kind == ast::SyntaxKind::Period ||
+    if (kind == ast::SyntaxKind::Period || kind == ast::SyntaxKind::ColonColon ||
         (kind == ast::SyntaxKind::QuestionDot && cursor + 1 < limit &&
          isPropertyNameLike(kindAt(cursor + 1)))) {
       if (cursor + 1 >= limit || !isPropertyNameLike(kindAt(cursor + 1))) {

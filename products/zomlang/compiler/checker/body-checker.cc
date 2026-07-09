@@ -100,6 +100,8 @@ struct BodyChecker::Impl {
   zc::HashMap<uint32_t, ast::NodeId> identExprDeclarations;
   zc::HashMap<uint32_t, symbol::SymbolId> memberExprSymbols;
   zc::HashMap<uint32_t, bool> memberExprIsStatic;
+  zc::HashMap<uint32_t, zc::StringPtr> memberExprQualifiedInterfaceNames;
+  zc::HashMap<uint32_t, zc::StringPtr> memberExprQualifiedMethodNames;
   zc::HashMap<uint32_t, zc::StringPtr> memberExprDynInterfaceNames;
   zc::HashMap<uint32_t, zc::StringPtr> memberExprDynMethodNames;
   zc::HashMap<uint32_t, uint32_t> memberExprDynVTableSlots;
@@ -213,6 +215,20 @@ static void recordStaticMethodDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
   record.targetKind = type::CallTargetKind::StaticMethod;
   record.receiverMode = type::ReceiverMode::None;
   record.targetSymbol = targetSymbol;
+  for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
+  record.resultType = typeEnv.internType(resultType);
+  typeEnv.setDispatch(node, zc::mv(record));
+}
+
+static void recordQualifiedInterfaceDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
+                                             zc::StringPtr interfaceName, zc::StringPtr methodName,
+                                             zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                             const type::Type& resultType) {
+  type::CallDispatchRecord record;
+  record.targetKind = type::CallTargetKind::QualifiedInterfaceMethod;
+  record.receiverMode = type::ReceiverMode::ExplicitFirstArgument;
+  record.interfaceName = zc::str(interfaceName);
+  record.methodName = zc::str(methodName);
   for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
   record.resultType = typeEnv.internType(resultType);
   typeEnv.setDispatch(node, zc::mv(record));
@@ -625,26 +641,22 @@ static bool dynTypeExtends(const type::Type& sourceIface, const type::Type& targ
   return namedInterfaceExtends(tree, sourceName, targetName);
 }
 
-struct DynMethodLookup {
+struct InterfaceMethodLookup {
   zc::StringPtr interfaceName;
   zc::StringPtr methodName;
   ast::NodeId methodDecl;
   uint32_t slot = 0;
 };
 
-static zc::Maybe<DynMethodLookup> findDynInterfaceMethod(const ast::Tree& tree,
-                                                         const type::Type& receiver,
-                                                         zc::StringPtr methodName) {
-  if (!isExistential(receiver) || methodName.size() == 0) return zc::none;
-
-  const auto& existential = static_cast<const type::ExistentialType&>(receiver);
-  auto interfaceName = simpleTypeName(existential.getInterfaceType());
-  if (interfaceName.size() == 0) return zc::none;
+static zc::Maybe<InterfaceMethodLookup> findInterfaceMethod(const ast::Tree& tree,
+                                                            zc::StringPtr interfaceName,
+                                                            zc::StringPtr methodName) {
+  if (interfaceName.size() == 0 || methodName.size() == 0) return zc::none;
 
   const auto root = tree.root();
   if (!tree.contains(root)) return zc::none;
 
-  zc::Maybe<DynMethodLookup> result = zc::none;
+  zc::Maybe<InterfaceMethodLookup> result = zc::none;
   visitTreePreOrder(tree, root, [&](ast::NodeId, const ast::Node& node) {
     if (result != zc::none || node.kind != ast::SyntaxKind::InterfaceDecl) return;
 
@@ -668,7 +680,7 @@ static zc::Maybe<DynMethodLookup> findDynInterfaceMethod(const ast::Tree& tree,
 
       auto memberName = tree.ident(ast::IdentId(member.payload.words[ast::kMethodDeclNameWord]));
       if (memberName == methodName) {
-        result = DynMethodLookup{interfaceName, memberName, memberId, slot};
+        result = InterfaceMethodLookup{interfaceName, memberName, memberId, slot};
         return;
       }
       ++slot;
@@ -676,6 +688,15 @@ static zc::Maybe<DynMethodLookup> findDynInterfaceMethod(const ast::Tree& tree,
   });
 
   return result;
+}
+
+static zc::Maybe<InterfaceMethodLookup> findDynInterfaceMethod(const ast::Tree& tree,
+                                                               const type::Type& receiver,
+                                                               zc::StringPtr methodName) {
+  if (!isExistential(receiver)) return zc::none;
+
+  const auto& existential = static_cast<const type::ExistentialType&>(receiver);
+  return findInterfaceMethod(tree, simpleTypeName(existential.getInterfaceType()), methodName);
 }
 
 zc::Own<type::Type> BodyChecker::cloneResolvedType(const type::Type& ty) {
@@ -1823,6 +1844,9 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
   zc::StringPtr dynMethodName;
   uint32_t dynVTableSlot = 0;
   bool isDynVTableTarget = false;
+  zc::StringPtr qualifiedInterfaceName;
+  zc::StringPtr qualifiedMethodName;
+  bool isQualifiedInterfaceTarget = false;
   NodeId instanceReceiverId;
   if (impl->tree.contains(calleeId) && impl->tree.node(calleeId).kind == SyntaxKind::IdentExpr) {
     const auto& calleeNode = impl->tree.node(calleeId);
@@ -1849,6 +1873,13 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
       dynMethodName = methodName;
     }
     ZC_IF_SOME(slot, impl->memberExprDynVTableSlots.find(calleeId.value)) { dynVTableSlot = slot; }
+    ZC_IF_SOME(interfaceName, impl->memberExprQualifiedInterfaceNames.find(calleeId.value)) {
+      qualifiedInterfaceName = interfaceName;
+      isQualifiedInterfaceTarget = true;
+    }
+    ZC_IF_SOME(methodName, impl->memberExprQualifiedMethodNames.find(calleeId.value)) {
+      qualifiedMethodName = methodName;
+    }
   }
 
   NodeList typeArgList;
@@ -2037,6 +2068,10 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
         for (auto argType : dispatchArgs) { argsWithReceiver.add(argType); }
         recordDynVTableDispatch(impl->typeEnv, expr, dynInterfaceName, dynMethodName, dynVTableSlot,
                                 argsWithReceiver.asPtr(), result);
+      } else if (isQualifiedInterfaceTarget) {
+        auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
+        recordQualifiedInterfaceDispatch(impl->typeEnv, expr, qualifiedInterfaceName,
+                                         qualifiedMethodName, dispatchArgs.asPtr(), result);
       } else if (freeFunctionTarget.isValid()) {
         auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
         recordFreeFunctionDispatch(impl->typeEnv, expr, freeFunctionTarget, dispatchArgs.asPtr(),
@@ -2067,6 +2102,10 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
       for (auto argType : dispatchArgs) { argsWithReceiver.add(argType); }
       recordDynVTableDispatch(impl->typeEnv, expr, dynInterfaceName, dynMethodName, dynVTableSlot,
                               argsWithReceiver.asPtr(), result);
+    } else if (isQualifiedInterfaceTarget) {
+      auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
+      recordQualifiedInterfaceDispatch(impl->typeEnv, expr, qualifiedInterfaceName,
+                                       qualifiedMethodName, dispatchArgs.asPtr(), result);
     } else if (freeFunctionTarget.isValid()) {
       auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
       recordFreeFunctionDispatch(impl->typeEnv, expr, freeFunctionTarget, dispatchArgs.asPtr(),
@@ -2130,6 +2169,41 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
   // Named type: look up in symbol table
   if (isNamed(resolvedObj)) {
     auto& namedTy = static_cast<const type::NamedType&>(resolvedObj);
+    auto ifaceMethod = findInterfaceMethod(impl->tree, namedTy.getName(), propName);
+    ZC_IF_SOME(method, ifaceMethod) {
+      const auto& methodNode = impl->tree.node(method.methodDecl);
+      zc::Vector<zc::Own<type::Type>> paramTypes;
+
+      auto paramsId = NodeId(methodNode.payload.words[kMethodDeclParamsIdWord]);
+      if (impl->tree.contains(paramsId)) {
+        const auto& paramsNode = impl->tree.node(paramsId);
+        if (paramsNode.kind == SyntaxKind::FunctionParameterList) {
+          NodeList params;
+          params.first = paramsNode.payload.words[kFunctionParameterListParamsFirstWord];
+          params.size = paramsNode.payload.words[kFunctionParameterListParamsSizeWord];
+          for (NodeId paramId : impl->tree.list(params)) {
+            if (!impl->tree.contains(paramId)) continue;
+            const auto& param = impl->tree.node(paramId);
+            if (param.kind != SyntaxKind::FunctionParameterDecl) continue;
+            auto tyId = NodeId(param.payload.words[kFunctionParameterDeclTyWord]);
+            auto paramTy = resolveTypeExpr(tyId);
+            if (!paramTy) { return storeType(expr, zc::heap<type::ErrorType>()); }
+            paramTypes.add(zc::mv(paramTy));
+          }
+        }
+      }
+
+      auto retTyId = NodeId(methodNode.payload.words[kMethodDeclRetTyWord]);
+      auto retTy = impl->tree.contains(retTyId)
+                       ? resolveTypeExpr(retTyId)
+                       : zc::heap<type::PrimitiveType>(type::PrimitiveKind::Unit);
+      if (!retTy) { return storeType(expr, zc::heap<type::ErrorType>()); }
+
+      impl->memberExprQualifiedInterfaceNames.upsert(expr.value, method.interfaceName);
+      impl->memberExprQualifiedMethodNames.upsert(expr.value, method.methodName);
+      return storeType(expr, zc::heap<type::FunctionType>(zc::mv(paramTypes), zc::mv(retTy)));
+    }
+
     auto memberSym = lookupSymbol(zc::str(namedTy.getName(), "."_zc, propName));
     ZC_IF_SOME(sym, memberSym) {
       auto ty = getSymbolType(sym);

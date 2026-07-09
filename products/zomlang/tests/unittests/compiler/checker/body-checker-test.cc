@@ -2787,6 +2787,62 @@ ZC_TEST("BodyChecker.DynReceiverCallRecordsVTableDispatch") {
   ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
 }
 
+ZC_TEST("BodyChecker.QualifiedInterfaceCallRecordsDispatch") {
+  TestFixture fix;
+  zc::Vector<ast::NodeId> params;
+  params.add(fix.makeFunctionParamDecl("value"_zc, fix.makeNamedTypeExpr("Sprite"_zc)));
+  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(params.asPtr()));
+  auto drawMethod =
+      fix.makeMethodDecl("draw"_zc, ast::NodeId(), paramList, fix.makeNamedTypeExpr("unit"_zc));
+  zc::Vector<ast::NodeId> ifaceMembers;
+  ifaceMembers.add(drawMethod);
+  auto drawableIface = fix.makeInterfaceDecl(
+      "Drawable"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
+
+  auto spriteType = fix.makeClassDecl("Sprite"_zc);
+  zc::Vector<ast::NodeId> implIfaceNodes;
+  implIfaceNodes.add(fix.makeNamedTypeExpr("Drawable"_zc));
+  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
+  auto drawableImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Sprite"_zc), implIfaces);
+
+  auto spriteDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("sprite"_zc),
+                                               fix.makeNamedTypeExpr("Sprite"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(spriteDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("Drawable"_zc), "draw"_zc);
+  zc::Vector<ast::NodeId> args;
+  args.add(fix.makeIdentExpr("sprite"_zc));
+  auto call = fix.makeCallExpr(callee, fix.makeNodeList(args.asPtr()));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(drawableIface);
+  topDecls.add(spriteType);
+  topDecls.add(drawableImpl);
+  topDecls.add(let);
+  topDecls.add(call);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(call));
+  auto& ty = result.typeEnv.getType(call);
+  ZC_EXPECT(isPrimitive(ty));
+  if (isPrimitive(ty)) {
+    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
+    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::Unit);
+  }
+  ZC_EXPECT(result.typeEnv.hasDispatch(call));
+  auto& dispatch = result.typeEnv.getDispatch(call);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::QualifiedInterfaceMethod);
+  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ExplicitFirstArgument);
+  ZC_EXPECT(dispatch.interfaceName.asPtr() == "Drawable"_zc);
+  ZC_EXPECT(dispatch.methodName.asPtr() == "draw"_zc);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+}
+
 ZC_TEST("BodyChecker.LetWithDynMarkerAnnotationRequiresMarker") {
   TestFixture fix;
   auto addIface = fix.makeInterfaceDecl("Add"_zc);

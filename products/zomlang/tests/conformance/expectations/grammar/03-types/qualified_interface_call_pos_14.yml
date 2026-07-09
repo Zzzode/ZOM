@@ -1,0 +1,5 @@
+section: "03-types qualified interface calls"
+covers_rule: "interfaceDeclaration, callExpression"
+expected: "ACCEPT"
+notes:
+  - "Qualified interface member syntax uses `::` and is checked as an explicit receiver call."

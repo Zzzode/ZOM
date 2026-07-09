@@ -2800,6 +2800,7 @@ callExpr
       (RAISES typeExpr)?                                                                  # exprGenericCall
     | callExpr OPTIONAL_CHAIN LPAREN expressionList? RPAREN (RAISES typeExpr)?             # exprOptionalCall
     | callExpr QUESTION? PERIOD memberIdentifier                                          # exprMember
+    | callExpr colonColon memberIdentifier                                                # exprQualifiedMember
     | callExpr OPTIONAL_CHAIN memberIdentifier                                            # exprOptionalMember
     | callExpr OPTIONAL_CHAIN LBRACK expression RBRACK                                     # exprOptionalIndex
     | callExpr QUESTION? LBRACK expression RBRACK                                         # exprIndex
