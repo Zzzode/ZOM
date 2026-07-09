@@ -27,7 +27,9 @@ struct TypeVar::Impl {
   Impl(zc::StringPtr n, uint64_t i) : name(n), id(i) {}
 };
 
-TypeVar::TypeVar(zc::StringPtr name, uint64_t id) : impl(zc::heap<Impl>(name, id)) {}
+TypeVar::TypeVar(zc::StringPtr name, uint64_t id) : impl(zc::heap<Impl>(name, id)) {
+  ZC_IREQUIRE(id != 0, "TypeVar id must be non-zero");
+}
 
 TypeVar::~TypeVar() noexcept(false) = default;
 
