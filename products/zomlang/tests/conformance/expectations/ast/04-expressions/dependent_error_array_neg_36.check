@@ -1,0 +1,27 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/dependent_error_array_neg_36.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #11 @1:1..2:1 file_name="dependent_error_array_neg_36.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #10 @1:1..1:25
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #9 @1:1..1:25 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #8 @1:5..1:24 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #7 @1:5..1:24
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:7 name="xs"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     ArrayLiteral #6 @1:11..1:23
+// CHECK-NEXT:                       elems:
+// CHECK-NEXT:                         BinaryExpr #4 @1:11..1:20 op=Add
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IntLiteral #2 @1:11..1:12 base=10 value="1"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             StrLiteral #3 @1:15..1:20 value="two" is_raw=false prefix=None
+// CHECK-NEXT:                         IntLiteral #5 @1:22..1:23 base=10 value="2"
+// CHECK-NEXT:       attrs: null

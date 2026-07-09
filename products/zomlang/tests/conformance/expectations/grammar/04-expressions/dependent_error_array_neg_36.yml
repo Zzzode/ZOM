@@ -1,0 +1,5 @@
+section: "§4 Array literal dependent error propagation"
+covers_rule: "arrayLiteral, binaryExpression"
+expected: "REJECT"
+notes:
+  - "A source binary-expression type error inside an array literal suppresses cascading array element mismatch diagnostics."
