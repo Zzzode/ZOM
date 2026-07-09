@@ -1,0 +1,6 @@
+// RUN: cd %corpus && %zomc compile --dump-dispatch 03-types/dyn_method_call_pos_13.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: zom.dispatch.v0
+// CHECK: node={{[0-9]+}} target=DynVTable receiver=ImplicitSelf interface=Drawable method=draw slot=0 args=[{{[0-9]+}}] result={{[0-9]+}}
