@@ -648,46 +648,97 @@ struct InterfaceMethodLookup {
   uint32_t slot = 0;
 };
 
+static void removeActiveInterface(zc::HashSet<zc::StringPtr>& activeInterfaces,
+                                  zc::StringPtr interfaceName) {
+  ZC_IF_SOME(active, activeInterfaces.find(interfaceName)) { activeInterfaces.erase(active); }
+}
+
+static ast::NodeId findInterfaceDecl(const ast::Tree& tree, zc::StringPtr interfaceName) {
+  ast::NodeId result;
+  if (interfaceName.size() == 0) return result;
+  const auto root = tree.root();
+  if (!tree.contains(root)) return result;
+  visitTreePreOrder(tree, root, [&](ast::NodeId id, const ast::Node& node) {
+    if (result || node.kind != ast::SyntaxKind::InterfaceDecl) return;
+
+    auto name = tree.ident(ast::IdentId(node.payload.words[ast::kInterfaceDeclNameWord]));
+    if (name == interfaceName) { result = id; }
+  });
+  return result;
+}
+
+static zc::Maybe<InterfaceMethodLookup> findInterfaceMethodInDecl(
+    const ast::Tree& tree, ast::NodeId interfaceDecl, zc::StringPtr methodName, uint32_t& nextSlot,
+    zc::HashSet<zc::StringPtr>& activeInterfaces) {
+  if (!tree.contains(interfaceDecl)) return zc::none;
+  const auto& node = tree.node(interfaceDecl);
+  if (node.kind != ast::SyntaxKind::InterfaceDecl) return zc::none;
+
+  auto interfaceName = tree.ident(ast::IdentId(node.payload.words[ast::kInterfaceDeclNameWord]));
+  if (activeInterfaces.contains(interfaceName)) return zc::none;
+  activeInterfaces.insert(interfaceName);
+
+  auto ifacesId = ast::NodeId(node.payload.words[ast::kInterfaceDeclIfacesIdWord]);
+  if (tree.contains(ifacesId)) {
+    const auto& ifacesNode = tree.node(ifacesId);
+    if (ifacesNode.kind == ast::SyntaxKind::ImplIfaceList) {
+      ast::NodeList ifaces;
+      ifaces.first = ifacesNode.payload.words[ast::kImplIfaceListIfacesFirstWord];
+      ifaces.size = ifacesNode.payload.words[ast::kImplIfaceListIfacesSizeWord];
+      for (ast::NodeId ifaceId : tree.list(ifaces)) {
+        auto parentName = simpleTypeExprName(tree, ifaceId);
+        auto parentDecl = findInterfaceDecl(tree, parentName);
+        auto parentResult =
+            findInterfaceMethodInDecl(tree, parentDecl, methodName, nextSlot, activeInterfaces);
+        if (parentResult != zc::none) {
+          removeActiveInterface(activeInterfaces, interfaceName);
+          return parentResult;
+        }
+      }
+    }
+  }
+
+  auto membersId = ast::NodeId(node.payload.words[ast::kInterfaceDeclMembersIdWord]);
+  if (!tree.contains(membersId)) {
+    removeActiveInterface(activeInterfaces, interfaceName);
+    return zc::none;
+  }
+  const auto& membersNode = tree.node(membersId);
+  if (membersNode.kind != ast::SyntaxKind::ClassMemberList) {
+    removeActiveInterface(activeInterfaces, interfaceName);
+    return zc::none;
+  }
+
+  ast::NodeList members;
+  members.first = membersNode.payload.words[ast::kClassMemberListMembersFirstWord];
+  members.size = membersNode.payload.words[ast::kClassMemberListMembersSizeWord];
+
+  for (ast::NodeId memberId : tree.list(members)) {
+    if (!tree.contains(memberId)) continue;
+    const auto& member = tree.node(memberId);
+    if (member.kind != ast::SyntaxKind::MethodDecl) continue;
+
+    auto memberName = tree.ident(ast::IdentId(member.payload.words[ast::kMethodDeclNameWord]));
+    auto slot = nextSlot++;
+    if (memberName == methodName) {
+      removeActiveInterface(activeInterfaces, interfaceName);
+      return InterfaceMethodLookup{interfaceName, memberName, memberId, slot};
+    }
+  }
+
+  removeActiveInterface(activeInterfaces, interfaceName);
+  return zc::none;
+}
+
 static zc::Maybe<InterfaceMethodLookup> findInterfaceMethod(const ast::Tree& tree,
                                                             zc::StringPtr interfaceName,
                                                             zc::StringPtr methodName) {
   if (interfaceName.size() == 0 || methodName.size() == 0) return zc::none;
 
-  const auto root = tree.root();
-  if (!tree.contains(root)) return zc::none;
-
-  zc::Maybe<InterfaceMethodLookup> result = zc::none;
-  visitTreePreOrder(tree, root, [&](ast::NodeId, const ast::Node& node) {
-    if (result != zc::none || node.kind != ast::SyntaxKind::InterfaceDecl) return;
-
-    auto name = tree.ident(ast::IdentId(node.payload.words[ast::kInterfaceDeclNameWord]));
-    if (name != interfaceName) return;
-
-    auto membersId = ast::NodeId(node.payload.words[ast::kInterfaceDeclMembersIdWord]);
-    if (!tree.contains(membersId)) return;
-    const auto& membersNode = tree.node(membersId);
-    if (membersNode.kind != ast::SyntaxKind::ClassMemberList) return;
-
-    ast::NodeList members;
-    members.first = membersNode.payload.words[ast::kClassMemberListMembersFirstWord];
-    members.size = membersNode.payload.words[ast::kClassMemberListMembersSizeWord];
-
-    uint32_t slot = 0;
-    for (ast::NodeId memberId : tree.list(members)) {
-      if (!tree.contains(memberId)) continue;
-      const auto& member = tree.node(memberId);
-      if (member.kind != ast::SyntaxKind::MethodDecl) continue;
-
-      auto memberName = tree.ident(ast::IdentId(member.payload.words[ast::kMethodDeclNameWord]));
-      if (memberName == methodName) {
-        result = InterfaceMethodLookup{interfaceName, memberName, memberId, slot};
-        return;
-      }
-      ++slot;
-    }
-  });
-
-  return result;
+  auto interfaceDecl = findInterfaceDecl(tree, interfaceName);
+  uint32_t nextSlot = 0;
+  zc::HashSet<zc::StringPtr> activeInterfaces;
+  return findInterfaceMethodInDecl(tree, interfaceDecl, methodName, nextSlot, activeInterfaces);
 }
 
 static zc::Maybe<InterfaceMethodLookup> findDynInterfaceMethod(const ast::Tree& tree,

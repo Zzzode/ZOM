@@ -1,0 +1,169 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/dyn_inherited_method_call_pos_15.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #65 @1:1..22:1 file_name="dyn_inherited_method_call_pos_15.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..3:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #5 @1:1..3:2 name="Base"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #4 @1:16..3:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:24 name="ping" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #1 @2:13..2:15 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:19..2:23 kind=Unit
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #15 @5:1..7:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #14 @5:1..7:2 name="Child"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id:
+// CHECK-NEXT:             ImplIfaceList #9 @5:19..5:23 n_ifaces=1
+// CHECK-NEXT:               ifaces:
+// CHECK-NEXT:                 NamedTypeExpr #8 @5:19..5:23
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #7 @5:19..5:23 segments=["Base"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #13 @5:24..7:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #12 @6:5..6:24 name="draw" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #10 @6:13..6:15 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #11 @6:19..6:23 kind=Unit
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #18 @9:1..9:17
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #17 @9:1..9:17 name="Sprite" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #16 @9:14..9:17 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #30 @11:1..13:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StandaloneImplDecl #29 @11:1..13:2 is_unsafe=false
+// CHECK-NEXT:           ifaces_id:
+// CHECK-NEXT:             ImplIfaceList #21 @11:6..11:10 n_ifaces=1
+// CHECK-NEXT:               ifaces:
+// CHECK-NEXT:                 NamedTypeExpr #20 @11:6..11:10
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #19 @11:6..11:10 segments=["Base"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #23 @11:15..11:21
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #22 @11:15..11:21 segments=["Sprite"]
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           where_: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #28 @11:22..13:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #27 @12:5..12:27 name="ping" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #24 @12:13..12:15 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #25 @12:19..12:23 kind=Unit
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #26 @12:24..12:27
+// CHECK-NEXT:                       stmts: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #42 @15:1..17:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StandaloneImplDecl #41 @15:1..17:2 is_unsafe=false
+// CHECK-NEXT:           ifaces_id:
+// CHECK-NEXT:             ImplIfaceList #33 @15:6..15:11 n_ifaces=1
+// CHECK-NEXT:               ifaces:
+// CHECK-NEXT:                 NamedTypeExpr #32 @15:6..15:11
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #31 @15:6..15:11 segments=["Child"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #35 @15:16..15:22
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #34 @15:16..15:22 segments=["Sprite"]
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           where_: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #40 @15:23..17:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #39 @16:5..16:27 name="draw" is_static=false visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #36 @16:13..16:15 nparams=0
+// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #37 @16:19..16:23 kind=Unit
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #38 @16:24..16:27
+// CHECK-NEXT:                       stmts: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #49 @19:1..19:20
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #48 @19:1..19:20 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #47 @19:5..19:19 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #46 @19:5..19:19
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #43 @19:5..19:11 name="sprite"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #45 @19:13..19:19
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #44 @19:13..19:19 segments=["Sprite"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #59 @20:1..20:31
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #58 @20:1..20:31 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #57 @20:5..20:30 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #56 @20:5..20:30
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #50 @20:5..20:10 name="child"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     DynTypeExpr #54 @20:12..20:21 has_lifetime=false lifetime=null
+// CHECK-NEXT:                       ifaces_id:
+// CHECK-NEXT:                         DynTypeIfaceList #53 @20:16..20:21 n_ifaces=1
+// CHECK-NEXT:                           ifaces:
+// CHECK-NEXT:                             NamedTypeExpr #52 @20:16..20:21
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #51 @20:16..20:21 segments=["Child"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IdentExpr #55 @20:24..20:30 name="sprite"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #64 @21:1..21:14
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #63 @21:1..21:14
+// CHECK-NEXT:           expression:
+// CHECK-NEXT:             CallExpression #62 @21:1..21:13
+// CHECK-NEXT:               callee:
+// CHECK-NEXT:                 MemberExpression #61 @21:1..21:11 property="ping"
+// CHECK-NEXT:                   object:
+// CHECK-NEXT:                     IdentExpr #60 @21:1..21:6 name="child"
+// CHECK-NEXT:               type_args: []
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:       attrs: null

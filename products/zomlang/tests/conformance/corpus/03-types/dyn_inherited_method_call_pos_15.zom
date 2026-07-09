@@ -1,0 +1,21 @@
+interface Base {
+    fun ping() -> unit;
+}
+
+interface Child : Base {
+    fun draw() -> unit;
+}
+
+class Sprite { }
+
+impl Base for Sprite {
+    fun ping() -> unit { }
+}
+
+impl Child for Sprite {
+    fun draw() -> unit { }
+}
+
+let sprite: Sprite;
+let child: dyn Child = sprite;
+child.ping();

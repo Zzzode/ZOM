@@ -2788,6 +2788,70 @@ ZC_TEST("BodyChecker.DynReceiverCallRecordsVTableDispatch") {
   ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
 }
 
+ZC_TEST("BodyChecker.DynReceiverCallFindsInheritedVTableSlot") {
+  TestFixture fix;
+  auto pingMethod =
+      fix.makeMethodDecl("ping"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc));
+  zc::Vector<ast::NodeId> baseMembers;
+  baseMembers.add(pingMethod);
+  auto baseIface = fix.makeInterfaceDecl(
+      "Base"_zc, fix.makeClassMemberList(fix.makeNodeList(baseMembers.asPtr())));
+
+  zc::Vector<ast::NodeId> childIfaces;
+  childIfaces.add(fix.makeNamedTypeExpr("Base"_zc));
+  auto childIfaceList = fix.makeImplIfaceList(fix.makeNodeList(childIfaces.asPtr()));
+  auto drawMethod =
+      fix.makeMethodDecl("draw"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc));
+  zc::Vector<ast::NodeId> childMembers;
+  childMembers.add(drawMethod);
+  auto childIface = fix.makeInterfaceDecl(
+      "Child"_zc, fix.makeClassMemberList(fix.makeNodeList(childMembers.asPtr())), childIfaceList);
+
+  auto spriteType = fix.makeClassDecl("Sprite"_zc);
+  zc::Vector<ast::NodeId> baseImplIfaceNodes;
+  baseImplIfaceNodes.add(fix.makeNamedTypeExpr("Base"_zc));
+  auto baseImplIfaces = fix.makeImplIfaceList(fix.makeNodeList(baseImplIfaceNodes.asPtr()));
+  auto baseImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Sprite"_zc), baseImplIfaces);
+  zc::Vector<ast::NodeId> childImplIfaceNodes;
+  childImplIfaceNodes.add(fix.makeNamedTypeExpr("Child"_zc));
+  auto childImplIfaces = fix.makeImplIfaceList(fix.makeNodeList(childImplIfaceNodes.asPtr()));
+  auto childImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Sprite"_zc), childImplIfaces);
+
+  auto spriteDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("sprite"_zc),
+                                               fix.makeNamedTypeExpr("Sprite"_zc));
+  auto childDecl = fix.makeVariableDeclarator(
+      fix.makeBindingPattern("child"_zc), fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Child"_zc)),
+      fix.makeIdentExpr("sprite"_zc));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(spriteDecl);
+  decls.add(childDecl);
+  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+
+  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("child"_zc), "ping"_zc);
+  auto call = fix.makeCallExpr(callee, ast::NodeList());
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(baseIface);
+  topDecls.add(childIface);
+  topDecls.add(spriteType);
+  topDecls.add(baseImpl);
+  topDecls.add(childImpl);
+  topDecls.add(let);
+  topDecls.add(call);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasDispatch(call));
+  auto& dispatch = result.typeEnv.getDispatch(call);
+  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::DynVTable);
+  ZC_EXPECT(dispatch.interfaceName.asPtr() == "Base"_zc);
+  ZC_EXPECT(dispatch.methodName.asPtr() == "ping"_zc);
+  ZC_EXPECT(dispatch.vtableSlot == 0);
+  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+}
+
 ZC_TEST("BodyChecker.QualifiedInterfaceCallRecordsDispatch") {
   TestFixture fix;
   zc::Vector<ast::NodeId> params;

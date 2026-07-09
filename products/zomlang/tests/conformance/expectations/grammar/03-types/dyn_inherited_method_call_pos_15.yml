@@ -1,0 +1,5 @@
+section: "03-types dyn inherited method calls"
+covers_rule: "interfaceDeclaration, callExpression"
+expected: "ACCEPT"
+notes:
+  - "Inherited interface methods are available through dyn receiver vtable lookup."
