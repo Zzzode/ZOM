@@ -551,6 +551,9 @@ InterfaceDecl  ::= ModifierList 'interface' BindingIdent TypeParameters?
                    InterfaceHeritage?
                    '{' InterfaceBody '}'
 
+Interface declarations do not accept `WhereClause`; generic constraints for an
+interface are written in `TypeParameters`.
+
 InterfaceHeritage ::= ':' InterfaceBoundList
 InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*
 InterfaceBound     ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
