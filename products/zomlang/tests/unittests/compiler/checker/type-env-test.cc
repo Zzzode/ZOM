@@ -192,6 +192,17 @@ ZC_TEST("TypeEnv.ClearRemovesDispatch") {
   ZC_EXPECT(!env.hasDispatch(node));
 }
 
+ZC_TEST("TypeEnv.DispatchFreezeStateClearsWithEnvironment") {
+  TypeEnv env;
+
+  ZC_EXPECT(!env.isDispatchFrozen());
+  env.freezeDispatch();
+  ZC_EXPECT(env.isDispatchFrozen());
+
+  env.clear();
+  ZC_EXPECT(!env.isDispatchFrozen());
+}
+
 // ============================================================================
 // TypeEnv fresh type variables
 // ============================================================================

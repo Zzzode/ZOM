@@ -105,6 +105,7 @@ CheckResult runFullCheck(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls
                           fix.diagnostics());
   bool success = bodyChecker.checkBodies();
   size_t constraintCount = bodyChecker.getConstraints().size();
+  ZC_EXPECT(typeEnv.isDispatchFrozen());
 
   return {success, zc::mv(typeEnv), fix, constraintCount};
 }

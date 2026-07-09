@@ -3472,6 +3472,7 @@ bool BodyChecker::checkBodies() {
     }
   }
 
+  impl->typeEnv.freezeDispatch();
   return !impl->hadErrors;
 }
 

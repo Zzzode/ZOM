@@ -45,6 +45,7 @@ struct TypeEnv::Impl {
   zc::HashMap<uint32_t, TypeId> nodeTypeIds;                 // keyed by NodeId::value
   zc::HashMap<uint32_t, CoercionKind> nodeCoercions;         // keyed by NodeId::value
   zc::HashMap<uint32_t, CallDispatchRecord> nodeDispatches;  // keyed by NodeId::value
+  bool dispatchFrozen = false;
   TypeInterner interner;
 
   // --- Type variable storage ---
@@ -152,8 +153,13 @@ CoercionKind TypeEnv::getCoercion(ast::NodeId node) const {
 }
 
 void TypeEnv::setDispatch(ast::NodeId node, CallDispatchRecord record) {
+  ZC_IREQUIRE(!impl->dispatchFrozen, "TypeEnv::setDispatch: dispatch metadata is frozen");
   impl->nodeDispatches.upsert(node.value, zc::mv(record));
 }
+
+void TypeEnv::freezeDispatch() { impl->dispatchFrozen = true; }
+
+bool TypeEnv::isDispatchFrozen() const { return impl->dispatchFrozen; }
 
 bool TypeEnv::hasDispatch(ast::NodeId node) const {
   return impl->nodeDispatches.find(node.value) != zc::none;
@@ -1024,6 +1030,7 @@ void TypeEnv::clear() {
   impl->nodeTypeIds.clear();
   impl->nodeCoercions.clear();
   impl->nodeDispatches.clear();
+  impl->dispatchFrozen = false;
   impl->typeVars.clear();
   impl->nextTypeVarId = 1;
   impl->unionParent.clear();

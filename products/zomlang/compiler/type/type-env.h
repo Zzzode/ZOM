@@ -159,6 +159,12 @@ public:
   /// \brief Record resolved dispatch metadata for a call-like AST node.
   void setDispatch(ast::NodeId node, CallDispatchRecord record);
 
+  /// \brief Freeze dispatch metadata after checker completion.
+  void freezeDispatch();
+
+  /// \brief Return whether dispatch metadata is frozen.
+  bool isDispatchFrozen() const;
+
   /// \brief Check whether dispatch metadata was recorded for an AST node.
   bool hasDispatch(ast::NodeId node) const;
 
