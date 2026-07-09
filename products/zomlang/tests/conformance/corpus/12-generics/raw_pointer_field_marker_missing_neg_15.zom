@@ -6,5 +6,10 @@ fun needs<T: Sendable>(x: T) -> unit {
     return;
 }
 
+fun needs_shared<T: Shared>(x: T) -> unit {
+    return;
+}
+
 let b: UnsafeBox;
 needs(b);
+needs_shared(b);

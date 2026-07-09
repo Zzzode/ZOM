@@ -3,7 +3,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM4018]: 'UnsafeBox' does not implement 'Sendable'
-// CHECK-LITERAL:   --> 12-generics/raw_pointer_field_marker_missing_neg_15.zom:10:1
+// CHECK-LITERAL:   --> 12-generics/raw_pointer_field_marker_missing_neg_15.zom:14:1
 // CHECK-LITERAL:    |
-// CHECK-LITERAL: 10 | needs(b);
+// CHECK-LITERAL: 14 | needs(b);
+// CHECK-LITERAL:    | ^
+// CHECK-LITERAL: Error [ZOM4018]: 'UnsafeBox' does not implement 'Shared'
+// CHECK-LITERAL:   --> 12-generics/raw_pointer_field_marker_missing_neg_15.zom:15:1
+// CHECK-LITERAL:    |
+// CHECK-LITERAL: 15 | needs_shared(b);
 // CHECK-LITERAL:    | ^

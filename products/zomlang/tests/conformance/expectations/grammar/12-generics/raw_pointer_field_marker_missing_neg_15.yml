@@ -2,4 +2,4 @@ section: "§12 Generic bounds / marker auto-derivation"
 covers_rule: "genericBound, rawPointerType field marker derivation"
 expected: "REJECT"
 notes:
-  - "A class containing a raw pointer field does not auto-derive Sendable."
+  - "A class containing a raw pointer field does not auto-derive Sendable or Shared."
