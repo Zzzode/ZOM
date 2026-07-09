@@ -283,6 +283,18 @@ ZC_TEST("PrimitiveType.CreateByKindNever") {
   ZC_EXPECT(ty->getPrimitiveKind() == PrimitiveKind::Never);
 }
 
+ZC_TEST("Type.PrimitiveKindOfPrimitive") {
+  auto ty = PrimitiveType::createStr();
+  auto kind = primitiveKindOf(*ty);
+  ZC_EXPECT(kind != zc::none);
+  ZC_IF_SOME(value, kind) { ZC_EXPECT(value == PrimitiveKind::Str); }
+}
+
+ZC_TEST("Type.PrimitiveKindOfNamedIsNone") {
+  NamedType ty("Box"_zc);
+  ZC_EXPECT(primitiveKindOf(ty) == zc::none);
+}
+
 // ============================================================================
 // PrimitiveType name lookup
 // ============================================================================

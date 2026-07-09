@@ -149,6 +149,7 @@ bool isRawPointer(const Type& type);
 bool isExistential(const Type& type);
 bool isAssociated(const Type& type);
 
+zc::Maybe<PrimitiveKind> primitiveKindOf(const Type& type);
 bool isNumeric(const Type& type);
 bool isInteger(const Type& type);
 bool isFloatingPoint(const Type& type);

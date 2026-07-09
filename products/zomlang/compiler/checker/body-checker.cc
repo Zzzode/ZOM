@@ -1472,7 +1472,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
 
   // Helper: get primitive kind from resolved type
   auto getPrimKind = [](const type::Type& t) -> type::PrimitiveKind {
-    if (isPrimitive(t)) { return static_cast<const type::PrimitiveType&>(t).getPrimitiveKind(); }
+    ZC_IF_SOME(kind, type::primitiveKindOf(t)) { return kind; }
     return type::PrimitiveKind::I32;
   };
 
@@ -1662,7 +1662,7 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
 
   // Helper: get primitive kind from resolved type
   auto getPrimKind = [](const type::Type& t) -> type::PrimitiveKind {
-    if (isPrimitive(t)) { return static_cast<const type::PrimitiveType&>(t).getPrimitiveKind(); }
+    ZC_IF_SOME(kind, type::primitiveKindOf(t)) { return kind; }
     return type::PrimitiveKind::I32;
   };
 

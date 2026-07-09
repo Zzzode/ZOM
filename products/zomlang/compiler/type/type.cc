@@ -24,30 +24,29 @@ bool isPrimitive(const Type& type) { return type.getKind() == TypeKind::Primitiv
 
 bool isError(const Type& type) { return type.getKind() == TypeKind::Error; }
 
-bool isNever(const Type& type) {
-  return isPrimitive(type) &&
-         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Never;
+zc::Maybe<PrimitiveKind> primitiveKindOf(const Type& type) {
+  if (!isPrimitive(type)) { return zc::none; }
+  return static_cast<const PrimitiveType&>(type).getPrimitiveKind();
 }
 
-bool isUnit(const Type& type) {
-  return isPrimitive(type) &&
-         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Unit;
+namespace {
+
+bool hasPrimitiveKind(const Type& type, PrimitiveKind expected) {
+  ZC_IF_SOME(kind, primitiveKindOf(type)) { return kind == expected; }
+  return false;
 }
 
-bool isNull(const Type& type) {
-  return isPrimitive(type) &&
-         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Null;
-}
+}  // namespace
 
-bool isAny(const Type& type) {
-  return isPrimitive(type) &&
-         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Any;
-}
+bool isNever(const Type& type) { return hasPrimitiveKind(type, PrimitiveKind::Never); }
 
-bool isString(const Type& type) {
-  return isPrimitive(type) &&
-         static_cast<const PrimitiveType&>(type).getPrimitiveKind() == PrimitiveKind::Str;
-}
+bool isUnit(const Type& type) { return hasPrimitiveKind(type, PrimitiveKind::Unit); }
+
+bool isNull(const Type& type) { return hasPrimitiveKind(type, PrimitiveKind::Null); }
+
+bool isAny(const Type& type) { return hasPrimitiveKind(type, PrimitiveKind::Any); }
+
+bool isString(const Type& type) { return hasPrimitiveKind(type, PrimitiveKind::Str); }
 
 bool isFunction(const Type& type) { return type.getKind() == TypeKind::Function; }
 
@@ -76,33 +75,38 @@ bool isExistential(const Type& type) { return type.getKind() == TypeKind::Existe
 bool isAssociated(const Type& type) { return type.getKind() == TypeKind::Associated; }
 
 bool isNumeric(const Type& type) {
-  if (!isPrimitive(type)) return false;
-  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
-  return k >= PrimitiveKind::I8 && k <= PrimitiveKind::F64;
+  ZC_IF_SOME(kind, primitiveKindOf(type)) {
+    return kind >= PrimitiveKind::I8 && kind <= PrimitiveKind::F64;
+  }
+  return false;
 }
 
 bool isInteger(const Type& type) {
-  if (!isPrimitive(type)) return false;
-  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
-  return k >= PrimitiveKind::I8 && k <= PrimitiveKind::U64;
+  ZC_IF_SOME(kind, primitiveKindOf(type)) {
+    return kind >= PrimitiveKind::I8 && kind <= PrimitiveKind::U64;
+  }
+  return false;
 }
 
 bool isFloatingPoint(const Type& type) {
-  if (!isPrimitive(type)) return false;
-  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
-  return k == PrimitiveKind::F32 || k == PrimitiveKind::F64;
+  ZC_IF_SOME(kind, primitiveKindOf(type)) {
+    return kind == PrimitiveKind::F32 || kind == PrimitiveKind::F64;
+  }
+  return false;
 }
 
 bool isSignedInteger(const Type& type) {
-  if (!isPrimitive(type)) return false;
-  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
-  return k >= PrimitiveKind::I8 && k <= PrimitiveKind::I64;
+  ZC_IF_SOME(kind, primitiveKindOf(type)) {
+    return kind >= PrimitiveKind::I8 && kind <= PrimitiveKind::I64;
+  }
+  return false;
 }
 
 bool isUnsignedInteger(const Type& type) {
-  if (!isPrimitive(type)) return false;
-  auto k = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
-  return k >= PrimitiveKind::U8 && k <= PrimitiveKind::U64;
+  ZC_IF_SOME(kind, primitiveKindOf(type)) {
+    return kind >= PrimitiveKind::U8 && kind <= PrimitiveKind::U64;
+  }
+  return false;
 }
 
 bool hasBasicSubtypeRelation(const Type& type, const Type& other) {
@@ -132,8 +136,10 @@ bool isAssignableTo(const Type& type, const Type& other) {
 
   // Numeric widening
   if (isNumeric(type) && isNumeric(other)) {
-    auto thisK = static_cast<const PrimitiveType&>(type).getPrimitiveKind();
-    auto otherK = static_cast<const PrimitiveType&>(other).getPrimitiveKind();
+    PrimitiveKind thisK = PrimitiveKind::I32;
+    PrimitiveKind otherK = PrimitiveKind::I32;
+    ZC_IF_SOME(kind, primitiveKindOf(type)) { thisK = kind; }
+    ZC_IF_SOME(kind, primitiveKindOf(other)) { otherK = kind; }
 
     // Signed integer widening
     if (thisK == PrimitiveKind::I8 &&
