@@ -14,6 +14,7 @@
 
 #include "zomlang/compiler/type/type-env.h"
 
+#include "zc/core/io.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/type/associated-type.h"
@@ -201,6 +202,46 @@ ZC_TEST("TypeEnv.DispatchFreezeStateClearsWithEnvironment") {
 
   env.clear();
   ZC_EXPECT(!env.isDispatchFrozen());
+}
+
+ZC_TEST("TypeEnv.DumpDispatchEmptyTable") {
+  TypeEnv env;
+  zc::VectorOutputStream output;
+
+  env.dumpDispatch(output);
+
+  ZC_EXPECT(zc::str(output.getArray().asChars()) == "zom.dispatch.v0\n"_zc);
+}
+
+ZC_TEST("TypeEnv.DumpDispatchIsSortedAndComplete") {
+  TypeEnv env;
+
+  CallDispatchRecord later;
+  later.targetKind = CallTargetKind::DynVTable;
+  later.receiverMode = ReceiverMode::ImplicitSelf;
+  later.interfaceName = zc::str("Drawable"_zc);
+  later.methodName = zc::str("draw"_zc);
+  later.vtableSlot = 3;
+  later.argumentTypes.add(TypeId(1));
+  later.argumentTypes.add(TypeId(2));
+  later.resultType = TypeId(4);
+  env.setDispatch(ast::NodeId(9), zc::mv(later));
+
+  CallDispatchRecord earlier;
+  earlier.targetKind = CallTargetKind::FreeFunction;
+  earlier.receiverMode = ReceiverMode::None;
+  earlier.targetSymbol = symbol::SymbolId::create(42);
+  earlier.resultType = TypeId(7);
+  env.setDispatch(ast::NodeId(2), zc::mv(earlier));
+
+  zc::VectorOutputStream output;
+  env.dumpDispatch(output);
+
+  ZC_EXPECT(zc::str(output.getArray().asChars()) ==
+            "zom.dispatch.v0\n"
+            "node=2 target=FreeFunction receiver=None symbol=42 args=[] result=7\n"
+            "node=9 target=DynVTable receiver=ImplicitSelf interface=Drawable method=draw "
+            "slot=3 args=[1,2] result=4\n"_zc);
 }
 
 // ============================================================================

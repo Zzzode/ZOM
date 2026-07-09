@@ -27,6 +27,10 @@
 #include "zomlang/compiler/type/type-scheme.h"
 #include "zomlang/compiler/type/type.h"
 
+namespace zc {
+class OutputStream;
+}  // namespace zc
+
 namespace zomlang {
 namespace compiler {
 namespace type {
@@ -170,6 +174,9 @@ public:
 
   /// \brief Get resolved dispatch metadata for an AST node.
   const CallDispatchRecord& getDispatch(ast::NodeId node) const;
+
+  /// \brief Dump dispatch metadata in a deterministic debug format.
+  void dumpDispatch(zc::OutputStream& output) const;
 
   // =========================================================================
   // Type variable creation

@@ -14,6 +14,7 @@
 
 #include "zomlang/compiler/type/type-env.h"
 
+#include "zc/core/io.h"
 #include "zomlang/compiler/type/array-type.h"
 #include "zomlang/compiler/type/associated-type.h"
 #include "zomlang/compiler/type/error-type.h"
@@ -34,6 +35,73 @@
 namespace zomlang {
 namespace compiler {
 namespace type {
+
+namespace {
+
+zc::StringPtr callTargetKindName(CallTargetKind kind) {
+  switch (kind) {
+    case CallTargetKind::PrimitiveOperator:
+      return "PrimitiveOperator"_zc;
+    case CallTargetKind::FreeFunction:
+      return "FreeFunction"_zc;
+    case CallTargetKind::InstanceMethod:
+      return "InstanceMethod"_zc;
+    case CallTargetKind::StaticMethod:
+      return "StaticMethod"_zc;
+    case CallTargetKind::QualifiedInterfaceMethod:
+      return "QualifiedInterfaceMethod"_zc;
+    case CallTargetKind::OperatorMethod:
+      return "OperatorMethod"_zc;
+    case CallTargetKind::IndexMethod:
+      return "IndexMethod"_zc;
+    case CallTargetKind::DynVTable:
+      return "DynVTable"_zc;
+    case CallTargetKind::ErrorTarget:
+      return "ErrorTarget"_zc;
+  }
+  ZC_UNREACHABLE;
+}
+
+zc::StringPtr receiverModeName(ReceiverMode mode) {
+  switch (mode) {
+    case ReceiverMode::None:
+      return "None"_zc;
+    case ReceiverMode::ExplicitFirstArgument:
+      return "ExplicitFirstArgument"_zc;
+    case ReceiverMode::ImplicitSelf:
+      return "ImplicitSelf"_zc;
+    case ReceiverMode::OperatorLeftHandSide:
+      return "OperatorLeftHandSide"_zc;
+    case ReceiverMode::OperatorOperand:
+      return "OperatorOperand"_zc;
+    case ReceiverMode::IndexBase:
+      return "IndexBase"_zc;
+  }
+  ZC_UNREACHABLE;
+}
+
+void sortNodeIds(zc::Vector<uint32_t>& ids) {
+  for (size_t i = 1; i < ids.size(); ++i) {
+    size_t j = i;
+    while (j > 0 && ids[j] < ids[j - 1]) {
+      uint32_t tmp = ids[j - 1];
+      ids[j - 1] = ids[j];
+      ids[j] = tmp;
+      --j;
+    }
+  }
+}
+
+void writeTypeIds(zc::OutputStream& output, zc::ArrayPtr<const TypeId> ids) {
+  output.write("["_zcb);
+  for (size_t i = 0; i < ids.size(); ++i) {
+    if (i > 0) { output.write(","_zcb); }
+    output.write(zc::str(ids[i].value).asBytes());
+  }
+  output.write("]"_zcb);
+}
+
+}  // namespace
 
 // ===========================================================================
 // Impl struct
@@ -170,6 +238,44 @@ const CallDispatchRecord& TypeEnv::getDispatch(ast::NodeId node) const {
   ZC_IREQUIRE(found != zc::none, "TypeEnv::getDispatch: node has no dispatch record");
   ZC_IF_SOME(record, found) { return record; }
   ZC_UNREACHABLE;
+}
+
+void TypeEnv::dumpDispatch(zc::OutputStream& output) const {
+  output.write("zom.dispatch.v0\n"_zcb);
+
+  zc::Vector<uint32_t> nodeIds;
+  for (const auto& entry : impl->nodeDispatches) { nodeIds.add(entry.key); }
+  sortNodeIds(nodeIds);
+
+  for (uint32_t nodeId : nodeIds) {
+    auto found = impl->nodeDispatches.find(nodeId);
+    ZC_IREQUIRE(found != zc::none, "TypeEnv::dumpDispatch: sorted node id has no record");
+    ZC_IF_SOME(record, found) {
+      output.write(zc::str("node=", static_cast<uint64_t>(nodeId),
+                           " target=", callTargetKindName(record.targetKind),
+                           " receiver=", receiverModeName(record.receiverMode))
+                       .asBytes());
+      if (record.interfaceName.size() > 0) {
+        output.write(zc::str(" interface=", record.interfaceName).asBytes());
+      }
+      if (record.methodName.size() > 0) {
+        output.write(zc::str(" method=", record.methodName).asBytes());
+      }
+      if (record.targetSymbol.isValid()) {
+        output.write(zc::str(" symbol=", record.targetSymbol.getRaw()).asBytes());
+      }
+      if (record.implNode) {
+        output.write(zc::str(" impl=", static_cast<uint64_t>(record.implNode.value)).asBytes());
+      }
+      if (record.targetKind == CallTargetKind::DynVTable) {
+        output.write(zc::str(" slot=", static_cast<uint64_t>(record.vtableSlot)).asBytes());
+      }
+      output.write(" args="_zcb);
+      writeTypeIds(output, record.argumentTypes.asPtr());
+      output.write(
+          zc::str(" result=", static_cast<uint64_t>(record.resultType.value), "\n").asBytes());
+    }
+  }
 }
 
 // ===========================================================================
