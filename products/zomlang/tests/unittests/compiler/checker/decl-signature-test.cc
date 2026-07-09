@@ -573,6 +573,25 @@ ZC_TEST("DeclSignature.ResolvePredefinedStrType") {
   }
 }
 
+ZC_TEST("DeclSignature.UnsupportedTypeExpressionDiagnosticIsInternalFallback") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto unsupportedTy = fix.makeIntLiteral(1);
+  auto alias = fix.makeAliasDecl("Bad"_zc, unsupportedTy);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(alias);
+  auto typeEnv = computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::UnsupportedTypeExpression));
+  ZC_EXPECT(typeEnv.hasType(alias));
+  ZC_EXPECT(isError(typeEnv.getType(alias)));
+}
+
 // ============================================================================
 // Function type expression
 // ============================================================================

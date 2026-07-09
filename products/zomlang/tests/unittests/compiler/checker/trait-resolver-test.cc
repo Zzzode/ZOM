@@ -307,6 +307,31 @@ ZC_TEST("TraitResolver.DirectAndBlanketImplOverlapReportsCoherenceError") {
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ConflictingImpl));
 }
 
+ZC_TEST("TraitResolver.OrphanImplDiagnosticIsCrossModuleFallback") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> ifaceNodes;
+  ifaceNodes.add(fix.makeNamedTypeExpr("ExternalIface"_zc));
+  auto ifaces = makeImplIfaceList(fix, fix.makeNodeList(ifaceNodes.asPtr()));
+  auto members = makeClassMemberList(fix, ast::NodeList());
+  auto implDecl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("ExternalType"_zc), ifaces, members);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(implDecl);
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+
+  type::TypeEnv typeEnv;
+  TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
+  resolver.checkCoherence();
+
+  ZC_EXPECT(fix.diagnostics().hasErrors());
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OrphanImpl));
+}
+
 ZC_TEST("TraitResolver.NegativeMarkerImplSuppressesAutoDerivation") {
   TestFixture fix;
   auto safeField = fix.makeFieldDecl("value"_zc, fix.makeNamedTypeExpr("i32"_zc));

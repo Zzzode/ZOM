@@ -32,6 +32,7 @@
 #include "zomlang/compiler/type/type-env.h"
 #include "zomlang/compiler/type/type.h"
 #include "zomlang/compiler/type/unification.h"
+#include "zomlang/compiler/type/union-type.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
 
 namespace zomlang {
@@ -1898,6 +1899,87 @@ ZC_TEST("BodyChecker.DependentErrorExpressionEmitsOnlyOneDiagnostic") {
   ZC_EXPECT(isError(result.typeEnv.getType(bad)));
   ZC_EXPECT(result.typeEnv.hasType(arr));
   ZC_EXPECT(isError(result.typeEnv.getType(arr)));
+}
+
+ZC_TEST("BodyChecker.UndeclaredValueDiagnosticIsCheckerFallback") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto ident = fix.makeIdentExpr("missing"_zc);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(ident);
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+
+  type::TypeEnv typeEnv;
+  type::UnificationEngine unifier(typeEnv);
+  type::ConstraintSet constraints;
+  BodyChecker bodyChecker(typeEnv, unifier, constraints, fix.symbols(), tree, fix.metadata(),
+                          fix.diagnostics());
+  bool success = bodyChecker.checkBodies();
+
+  ZC_EXPECT(!success);
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::UndeclaredValue));
+  ZC_EXPECT(typeEnv.hasType(ident));
+  ZC_EXPECT(isError(typeEnv.getType(ident)));
+}
+
+ZC_TEST("BodyChecker.EmptyUnionErrorOperatorDiagnosticIsCheckerFallback") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto operand = fix.makeIdentExpr("value"_zc);
+  auto propagate = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorPropagate, operand);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(propagate);
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+
+  type::TypeEnv typeEnv;
+  zc::Vector<zc::Own<type::Type>> alternatives;
+  typeEnv.setType(operand, zc::heap<type::UnionType>(zc::mv(alternatives)));
+  type::UnificationEngine unifier(typeEnv);
+  type::ConstraintSet constraints;
+  BodyChecker bodyChecker(typeEnv, unifier, constraints, fix.symbols(), tree, fix.metadata(),
+                          fix.diagnostics());
+  bool success = bodyChecker.checkBodies();
+
+  ZC_EXPECT(!success);
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ErrorUnionEmpty));
+  ZC_EXPECT(typeEnv.hasType(propagate));
+  ZC_EXPECT(isError(typeEnv.getType(propagate)));
+}
+
+ZC_TEST("BodyChecker.UnsupportedStructLiteralTargetDiagnosticIsCheckerFallback") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> props;
+  props.add(fix.makeObjectProperty("value"_zc, fix.makeIntLiteral(1)));
+  auto lit = fix.makeStructLiteralExpr(ast::NodeId(), fix.makeNodeList(props.asPtr()));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(lit);
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+
+  type::TypeEnv typeEnv;
+  type::UnificationEngine unifier(typeEnv);
+  type::ConstraintSet constraints;
+  BodyChecker bodyChecker(typeEnv, unifier, constraints, fix.symbols(), tree, fix.metadata(),
+                          fix.diagnostics());
+  bool success = bodyChecker.checkBodies();
+
+  ZC_EXPECT(!success);
+  ZC_EXPECT(
+      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::UnsupportedStructLiteralTarget));
+  ZC_EXPECT(typeEnv.hasType(lit));
+  ZC_EXPECT(isError(typeEnv.getType(lit)));
 }
 
 // ============================================================================
