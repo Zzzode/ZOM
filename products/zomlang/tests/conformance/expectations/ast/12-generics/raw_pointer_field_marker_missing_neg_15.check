@@ -1,0 +1,86 @@
+// RUN: %zomc compile --dump-ast %corpus/12-generics/raw_pointer_field_marker_missing_neg_15.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #33 @1:1..11:1 file_name="raw_pointer_field_marker_missing_neg_15.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..3:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #5 @1:1..3:2 name="UnsafeBox" extensibility=Sealed
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #4 @1:17..3:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #3 @2:5..2:21 name="ptr" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     RawPointerTypeExpr #2 @2:10..2:20 is_mut=false
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         PredefinedTypeExpr #1 @2:17..2:20 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #20 @5:1..7:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #19 @5:1..7:2 name="needs"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #14 @5:23..5:29 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #13 @5:24..5:28 name="x"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #12 @5:27..5:28
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #11 @5:27..5:28 segments=["T"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #10 @5:10..5:23 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #9 @5:11..5:22 name="T" variance=Invariant
+// CHECK-NEXT:                   bound:
+// CHECK-NEXT:                     NamedTypeExpr #8 @5:14..5:22
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #7 @5:14..5:22 segments=["Sendable"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #15 @5:33..5:37 kind=Unit
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #18 @5:38..7:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #17 @6:5..6:12
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #16 @6:5..6:12
+// CHECK-NEXT:                       value: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #27 @9:1..9:18
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #26 @9:1..9:18 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #25 @9:5..9:17 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #24 @9:5..9:17
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #21 @9:5..9:6 name="b"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #23 @9:8..9:17
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #22 @9:8..9:17 segments=["UnsafeBox"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #32 @10:1..10:10
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #31 @10:1..10:10
+// CHECK-NEXT:           expression:
+// CHECK-NEXT:             CallExpression #30 @10:1..10:9
+// CHECK-NEXT:               callee:
+// CHECK-NEXT:                 IdentExpr #28 @10:1..10:6 name="needs"
+// CHECK-NEXT:               type_args: []
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 IdentExpr #29 @10:7..10:8 name="b"
+// CHECK-NEXT:       attrs: null

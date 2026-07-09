@@ -1,0 +1,10 @@
+class UnsafeBox {
+    ptr: *const i32;
+}
+
+fun needs<T: Sendable>(x: T) -> unit {
+    return;
+}
+
+let b: UnsafeBox;
+needs(b);

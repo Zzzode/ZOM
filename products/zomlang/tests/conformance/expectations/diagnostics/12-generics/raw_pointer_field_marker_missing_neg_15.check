@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 12-generics/raw_pointer_field_marker_missing_neg_15.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4018]: 'UnsafeBox' does not implement 'Sendable'
+// CHECK-LITERAL:   --> 12-generics/raw_pointer_field_marker_missing_neg_15.zom:10:1
+// CHECK-LITERAL:    |
+// CHECK-LITERAL: 10 | needs(b);
+// CHECK-LITERAL:    | ^
