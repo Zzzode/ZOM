@@ -101,6 +101,26 @@ zc::StringPtr panicKindName(ZomPanicKind kind) {
   ZC_UNREACHABLE;
 }
 
+zc::StringPtr panicStrategyName(ZomPanicStrategy strategy) {
+  switch (strategy) {
+    case ZomPanicStrategy::Abort:
+      return "abort"_zc;
+    case ZomPanicStrategy::Unwind:
+      return "unwind"_zc;
+  }
+  ZC_UNREACHABLE;
+}
+
+bool isPanicStrategySupported(ZomPanicStrategy strategy) {
+  switch (strategy) {
+    case ZomPanicStrategy::Abort:
+      return true;
+    case ZomPanicStrategy::Unwind:
+      return false;
+  }
+  ZC_UNREACHABLE;
+}
+
 zc::String formatPanicInfo(const ZomPanicInfo& info) {
   zc::StringPtr file = info.span.file == nullptr ? "<unknown>"_zc : zc::StringPtr(info.span.file);
   zc::StringPtr message = info.message == nullptr ? "<none>"_zc : zc::StringPtr(info.message);

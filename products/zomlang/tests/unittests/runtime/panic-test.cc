@@ -90,6 +90,16 @@ ZC_TEST("Runtime.PanicKindNamesAreStable") {
   ZC_EXPECT(panicKindName(ZomPanicKind::Runtime) == "runtime"_zc);
 }
 
+ZC_TEST("Runtime.PanicStrategyNamesAreStable") {
+  ZC_EXPECT(panicStrategyName(ZomPanicStrategy::Abort) == "abort"_zc);
+  ZC_EXPECT(panicStrategyName(ZomPanicStrategy::Unwind) == "unwind"_zc);
+}
+
+ZC_TEST("Runtime.PanicStrategySupportReflectsCurrentRuntime") {
+  ZC_EXPECT(isPanicStrategySupported(ZomPanicStrategy::Abort));
+  ZC_EXPECT(!isPanicStrategySupported(ZomPanicStrategy::Unwind));
+}
+
 ZC_TEST("Runtime.FormatPanicInfoIncludesStableMetadata") {
   ZomPanicInfo info;
   info.kind = ZomPanicKind::ForcedUnwrap;

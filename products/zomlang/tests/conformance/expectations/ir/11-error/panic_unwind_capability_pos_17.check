@@ -1,0 +1,4 @@
+// RUN: not %zomc compile --emit ir --panic unwind %corpus/11-error/panic_unwind_capability_pos_17.zom 2>&1 | %FileCheck %s
+
+// CHECK: Error [ZOM6006]: The selected runtime and target do not support panic unwinding
+// CHECK-NOT: zom.ir.v0

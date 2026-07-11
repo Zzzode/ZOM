@@ -33,6 +33,12 @@ enum class ZomPanicKind : uint8_t {
   Runtime,
 };
 
+/// \brief Runtime panic strategy selected for a crate or target.
+enum class ZomPanicStrategy : uint8_t {
+  Abort,
+  Unwind,
+};
+
 /// \brief Source position carried by panic metadata.
 struct ZomSourceSpan {
   const char* file = nullptr;
@@ -56,6 +62,12 @@ using ZomPanicThunk = void (*)(void*);
 
 /// \brief Stable text name for a panic kind.
 zc::StringPtr panicKindName(ZomPanicKind kind);
+
+/// \brief Stable text name for a panic strategy.
+zc::StringPtr panicStrategyName(ZomPanicStrategy strategy);
+
+/// \brief Return whether this runtime supports the selected panic strategy.
+bool isPanicStrategySupported(ZomPanicStrategy strategy);
 
 /// \brief Format panic metadata as deterministic diagnostic text.
 zc::String formatPanicInfo(const ZomPanicInfo& info);

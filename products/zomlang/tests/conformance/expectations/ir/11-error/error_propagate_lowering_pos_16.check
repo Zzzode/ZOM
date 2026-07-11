@@ -1,0 +1,20 @@
+// RUN: %zomc compile --emit ir %corpus/11-error/error_propagate_lowering_pos_16.zom | %FileCheck %s
+
+// CHECK: layout 0 type=union(i32 | str) kind=tagged_union tag=u8 tag_offset=0 payload_state=known payload_offset=8 payload_size=16 payload_align=8 size=24 align=8
+// CHECK: layout 1 type=union(bool | i32 | str) kind=tagged_union tag=u8 tag_offset=0 payload_state=known payload_offset=8 payload_size=16 payload_align=8 size=24 align=8
+// CHECK:   alternative tag=1 kind=error type=bool payload_state=known payload_size=1 payload_align=1
+// CHECK-NEXT:   alternative tag=2 kind=error type=str payload_state=known payload_size=16 payload_align=8
+// CHECK: function @answer signature=fn() -> i32 raises union(bool | str) abi_return=union(bool | i32 | str) layout=1
+// CHECK-NEXT:   ^bb1:
+// CHECK-NEXT:     %{{[0-9]+}} = call.raising @fetch type=union(i32 | str)
+// CHECK-NEXT:     error_union.branch %{{[0-9]+}} layout=0 success=^bb2 error=^bb3
+// CHECK-NEXT:   ^bb2:
+// CHECK-NEXT:     %{{[0-9]+}} = error_union.move_payload %{{[0-9]+}} layout=0 tag=0 type=i32
+// CHECK-NEXT:     %{{[0-9]+}} = error_union.construct %{{[0-9]+}} layout=1 tag=0 type=union(bool | i32 | str)
+// CHECK-NEXT:     jump ^bb4(%{{[0-9]+}})
+// CHECK-NEXT:   ^bb3:
+// CHECK-NEXT:     %{{[0-9]+}} = error_union.move_payload %{{[0-9]+}} layout=0 tag=1 type=str
+// CHECK-NEXT:     %{{[0-9]+}} = error_union.construct %{{[0-9]+}} layout=1 tag=2 type=union(bool | i32 | str)
+// CHECK-NEXT:     jump ^bb4(%{{[0-9]+}})
+// CHECK-NEXT:   ^bb4(%{{[0-9]+}}:union(bool | i32 | str)):
+// CHECK-NEXT:     return %{{[0-9]+}} type=union(bool | i32 | str)

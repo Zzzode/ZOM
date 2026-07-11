@@ -1,0 +1,39 @@
+// Copyright (c) 2024-2025 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and limitations under
+// the License.
+
+// IR emission diagnostics. ZOM6000-ZOM6999 are user-facing lowering and
+// backend capability diagnostics. ZOM9900-ZOM9999 are compiler invariants.
+
+DIAG(6001, IrUnsupportedSourceShape, kError,
+             "IR emission does not support this checked source shape", 0)
+DIAG(6002, IrUnsupportedExpression, kError,
+             "IR emission does not support this checked expression", 0)
+DIAG(6003, IrUnknownTargetLayout, kError,
+             "IR emission cannot determine the selected target layout", 0)
+DIAG(6004, IrCrossSourceCallUnsupported, kError,
+             "IR emission does not support a call target outside the current source", 0)
+DIAG(6005, IrSingleSourceRequired, kError,
+             "IR emission currently requires exactly one source", 0)
+DIAG(6006, PanicUnwindUnsupported, kError,
+             "The selected runtime and target do not support panic unwinding", 0)
+DIAG(6007, BinaryEmissionUnavailable, kError,
+             "Binary emission is not implemented", 0)
+DIAG(6008, IrOutputCreationFailed, kError,
+             "IR emission could not create its output stream", 0)
+DIAG(9901, IrLoweringInvariantViolation, kFatal,
+             "Internal IR lowering invariant violated (phase={0}, kind={1}, node={2})", 3)
+DIAG(9902, IrCheckedInputMissing, kFatal,
+             "IR emission did not receive the required checked compiler state", 0)
+DIAG(9903, IrDumpInvariantViolation, kFatal,
+             "Internal IR dump invariant violated (site={0}, kind={1}, symbol={2}, block={3}, value={4}, type={5}, index={6})", 7)
