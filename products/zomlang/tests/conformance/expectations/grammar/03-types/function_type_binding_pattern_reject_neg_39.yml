@@ -1,0 +1,4 @@
+section: "§3 function type parameters contain types, not binding patterns"
+covers_rule: "functionType"
+expected: "REJECT"
+notes: []

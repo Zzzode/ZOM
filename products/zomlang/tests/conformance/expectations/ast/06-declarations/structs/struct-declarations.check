@@ -6,7 +6,7 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #17 @1:1..7:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #16 @1:1..7:2 name="Point" extensibility=Sealed
+// CHECK-NEXT:         StructDecl #16 @1:1..7:2 name="Point"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #15 @1:14..7:2 nmembers=3
@@ -15,7 +15,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @2:17..2:20 kind=I32
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 FieldDecl #5 @3:3..3:27 name="y" is_mut=false is_static=false visibility=Private
+// CHECK-NEXT:                 ClassConstDecl #5 @3:3..3:27 name="y" is_static=false visibility=Private
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #3 @3:20..3:23 kind=I32
 // CHECK-NEXT:                   init:
@@ -27,6 +27,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #7 @4:18..4:22 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #13 @4:23..6:4
 // CHECK-NEXT:                       stmts:
@@ -44,7 +45,7 @@
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #28 @9:1..12:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #27 @9:1..12:2 name="Pair" extensibility=Sealed
+// CHECK-NEXT:         StructDecl #27 @9:1..12:2 name="Pair"
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #19 @9:12..9:15 nparams=1
 // CHECK-NEXT:               params:
@@ -62,7 +63,7 @@
 // CHECK-NEXT:                         ModulePath #20 @10:13..10:14 segments=["T"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 FieldDecl #25 @11:3..11:17 name="right" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                 ClassConstDecl #25 @11:3..11:17 name="right" is_static=false visibility=Default
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #24 @11:16..11:17
 // CHECK-NEXT:                       path:

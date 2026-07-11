@@ -1,0 +1,6 @@
+fun takes_u64(x: u64) -> unit {
+    return;
+}
+
+let x = 5;
+takes_u64(x);

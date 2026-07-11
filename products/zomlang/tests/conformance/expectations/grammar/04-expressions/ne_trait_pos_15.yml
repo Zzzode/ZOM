@@ -1,0 +1,5 @@
+section: "§4 Equality operators"
+covers_rule: "equalityExpr, binaryExpr"
+expected: "ACCEPT"
+notes:
+  - "Covers user-defined inequality dispatch through Eq.eq; lowering negates the Eq result."

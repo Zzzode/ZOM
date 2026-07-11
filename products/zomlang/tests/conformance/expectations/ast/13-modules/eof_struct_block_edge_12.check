@@ -8,7 +8,7 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         ExportDeclaration #8 @1:1..1:30
 // CHECK-NEXT:           declaration:
-// CHECK-NEXT:             StructDecl #7 @1:8..1:30 name="Box" extensibility=Sealed
+// CHECK-NEXT:             StructDecl #7 @1:8..1:30 name="Box"
 // CHECK-NEXT:               type_params_id:
 // CHECK-NEXT:                 GenericParams #2 @1:18..1:21 nparams=1
 // CHECK-NEXT:                   params:

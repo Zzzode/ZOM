@@ -27,11 +27,12 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @2:26..2:30 kind=Bool
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #17 @5:1..7:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #16 @5:1..7:2 name="Box" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #16 @5:1..7:2 name="Box"
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #11 @5:10..5:13 nparams=1
 // CHECK-NEXT:               params:
@@ -39,7 +40,7 @@
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #15 @5:14..7:2 nmembers=1
 // CHECK-NEXT:               members:
@@ -126,5 +127,6 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #41 @10:28..10:32 kind=Bool
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

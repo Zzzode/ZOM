@@ -1,0 +1,5 @@
+section: "§3 Existential associated type bindings"
+covers_rule: "dynType, dyn associated type binding"
+expected: "ACCEPT"
+notes:
+  - "Covers dyn interface associated type bindings such as dyn Iterator<Item = u8>."

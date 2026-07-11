@@ -1,0 +1,3 @@
+let value: i32 = 1;
+let shared: &i32 = &value;
+let ptr: *mut i32 = shared;

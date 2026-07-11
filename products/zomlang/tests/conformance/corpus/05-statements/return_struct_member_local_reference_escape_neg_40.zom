@@ -1,0 +1,6 @@
+struct Box { item: &i32 }
+
+fun leak() -> &i32 {
+    let value: i32;
+    return Box { item: (&value) }.item;
+}

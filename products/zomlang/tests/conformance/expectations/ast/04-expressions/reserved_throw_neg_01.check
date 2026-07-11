@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/reserved_throw_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*reserved_throw_neg_01.zom}}:2:3
-// CHECK:   |
-// CHECK: 2 |   throw err;
-// CHECK:   |   ^
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*reserved_throw_neg_01.zom}}:2:3
-// CHECK:   |
-// CHECK: 2 |   throw err;
-// CHECK:   |   ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?reserved_throw_neg_01\.zom:2:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   throw err;
+// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?reserved_throw_neg_01\.zom:2:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   throw err;
+// CHECK-LITERAL:   |   ^

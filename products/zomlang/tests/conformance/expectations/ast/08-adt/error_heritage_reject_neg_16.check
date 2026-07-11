@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/08-adt/error_heritage_reject_neg_16.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?error_heritage_reject_neg_16\.zom:1:18$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | error QueryError : DatabaseError {
+// CHECK-LITERAL:   |                  ^

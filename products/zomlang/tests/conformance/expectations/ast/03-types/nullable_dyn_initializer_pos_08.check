@@ -35,6 +35,7 @@
 // CHECK-NEXT:                                     ModulePath #5 @2:13..2:16 segments=["Add"]
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                           markers_id: null
+// CHECK-NEXT:                           assoc_bindings_id: null
 // CHECK-NEXT:                         PredefinedTypeExpr #9 @2:20..2:24 kind=Null
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     NullLiteral #11 @2:27..2:31

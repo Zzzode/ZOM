@@ -1,0 +1,4 @@
+fun leak(flag: bool) -> &i32 {
+    let value: i32;
+    return flag ? (&value) : (&value);
+}

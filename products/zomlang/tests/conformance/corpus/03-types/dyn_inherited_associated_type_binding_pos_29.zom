@@ -1,0 +1,16 @@
+interface Iterator {
+    type Item;
+}
+
+interface Child : Iterator { }
+
+class Bytes { }
+
+impl Iterator for Bytes {
+    type Item = u8;
+}
+
+impl Child for Bytes { }
+
+let value: Bytes;
+let child: dyn Child<Item = u8> = value;

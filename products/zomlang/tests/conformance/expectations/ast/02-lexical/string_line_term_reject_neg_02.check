@@ -1,25 +1,23 @@
 // RUN: ! %zomc compile --dump-ast %corpus/02-lexical/string_line_term_reject_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2003]: Unterminated string literal
-// CHECK:   --> {{.*string_line_term_reject_neg_02.zom}}:1:9
-// CHECK:   |
-// CHECK: 1 | let x = 'hello
-// CHECK:   |         ^
-// CHECK: Error [ZOM2003]: Unterminated string literal
-// CHECK:   --> {{.*string_line_term_reject_neg_02.zom}}:2:6
-// CHECK:   |
-// CHECK: 2 | world';
-// CHECK:   |      ^
-// CHECK: Error [ZOM2012]: Missing semicolon before '<token>'
-// CHECK:   --> {{.*string_line_term_reject_neg_02.zom}}:3:1
-// CHECK:   |
-// CHECK: 3 |
-// CHECK:   | ^
-// CHECK: Error [ZOM2025]: Expected ';'
-// CHECK:   --> {{.*string_line_term_reject_neg_02.zom}}:3:1
-// CHECK:   |
-// CHECK: 3 |
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2003]: Unterminated string literal
+// CHECK:   --> products {{(?:.*[/\\])?string_line_term_reject_neg_02\.zom:1:9$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let x = 'hello
+// CHECK-LITERAL:   |         ^
+// CHECK-LITERAL: Error [ZOM2003]: Unterminated string literal
+// CHECK:   --> products {{(?:.*[/\\])?string_line_term_reject_neg_02\.zom:2:6$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 | world';
+// CHECK-LITERAL:   |      ^
+// CHECK-LITERAL: Error [ZOM2012]: Missing semicolon before '<token>'
+// CHECK:   --> products {{(?:.*[/\\])?string_line_term_reject_neg_02\.zom:3:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |
+// CHECK-LITERAL:   | ^
+// CHECK-LITERAL: Error [ZOM2025]: Expected ';'
+// CHECK:   --> products {{(?:.*[/\\])?string_line_term_reject_neg_02\.zom:3:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |
+// CHECK-LITERAL:   | ^

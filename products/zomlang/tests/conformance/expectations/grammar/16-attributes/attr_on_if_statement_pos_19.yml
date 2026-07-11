@@ -1,0 +1,4 @@
+section: "§16 Attribute on Non-Expression Block Item"
+covers_rule: "statementList, moduleItem, outerAttributeList, ifStatement"
+expected: "ACCEPT"
+notes: ["Qualified attributes are retained on non-expression block items."]

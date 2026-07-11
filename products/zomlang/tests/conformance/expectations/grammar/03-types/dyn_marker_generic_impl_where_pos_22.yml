@@ -1,0 +1,5 @@
+section: "Ch.03 Dyn marker generic impl where-bound"
+covers_rule: "dynType, markerImplDeclaration, whereClause"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that generic marker impl where-bounds satisfy dyn marker packing."

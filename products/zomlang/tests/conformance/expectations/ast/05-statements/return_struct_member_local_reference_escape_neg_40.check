@@ -1,0 +1,69 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/return_struct_member_local_reference_escape_neg_40.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #29 @1:1..7:1 file_name="return_struct_member_local_reference_escape_neg_40.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:26
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #5 @1:1..1:26 name="Box"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #4 @1:12..1:26 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #3 @1:14..1:24 name="item" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     ReferenceTypeExpr #2 @1:20..1:24 is_mut=false
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         PredefinedTypeExpr #1 @1:21..1:24 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #28 @3:1..6:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #27 @3:1..6:2 name="leak"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #7 @3:9..3:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             ReferenceTypeExpr #9 @3:15..3:19 is_mut=false
+// CHECK-NEXT:               elem:
+// CHECK-NEXT:                 PredefinedTypeExpr #8 @3:16..3:19 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #26 @3:20..6:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #15 @4:5..4:20
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #14 @4:5..4:20 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #13 @4:9..4:19 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #12 @4:9..4:19
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #10 @4:9..4:14 name="value"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #11 @4:16..4:19 kind=I32
+// CHECK-NEXT:                               init: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #25 @5:5..5:40
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #24 @5:5..5:40
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         MemberExpression #23 @5:12..5:39 property="item"
+// CHECK-NEXT:                           object:
+// CHECK-NEXT:                             StructLiteralExpr #22 @5:12..5:34
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 NamedTypeExpr #18 @5:12..5:15
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #17 @5:12..5:15 segments=["Box"]
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                               properties:
+// CHECK-NEXT:                                 ObjectProperty #21 @5:18..5:32 name="item" short_form=false
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     UnaryExpression #20 @5:25..5:31 op=Ref
+// CHECK-NEXT:                                       operand:
+// CHECK-NEXT:                                         IdentExpr #19 @5:26..5:31 name="value"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

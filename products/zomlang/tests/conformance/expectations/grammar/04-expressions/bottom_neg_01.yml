@@ -1,4 +1,5 @@
-section: "§4.6 standalone ! BottomType REJECT (no such token in expression)"
+section: "§3 never type spelling / §4 unary !"
 covers_rule: "unaryExpr"
 expected: "REJECT"
-notes: []
+notes:
+  - "`!` is logical-not in expression position and is not a ZOM v1 type spelling; use `never` in type position."

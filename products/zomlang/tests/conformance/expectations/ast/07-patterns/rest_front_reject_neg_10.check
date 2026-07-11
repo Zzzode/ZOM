@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/rest_front_reject_neg_10.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*rest_front_reject_neg_10.zom}}:2:11
-// CHECK:   |
-// CHECK: 2 |     when (...rest, z) => { print(z); }
-// CHECK:   |           ^
-// CHECK: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
-// CHECK:   --> {{.*rest_front_reject_neg_10.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | match (t) {
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?rest_front_reject_neg_10\.zom:2:11$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     when (...rest, z) => { print(z); }
+// CHECK-LITERAL:   |           ^
+// CHECK-LITERAL: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
+// CHECK:   --> products {{(?:.*[/\\])?rest_front_reject_neg_10\.zom:1:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | match (t) {
+// CHECK-LITERAL:   | ^

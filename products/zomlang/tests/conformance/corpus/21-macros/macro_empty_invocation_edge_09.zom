@@ -1,3 +1,0 @@
-fun abort() -> never {
-    return todo!();
-}

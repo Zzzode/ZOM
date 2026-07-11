@@ -1,4 +1,4 @@
-section: "§4.5 Reserved syntax ZOM5003: var"
+section: "§4.5 Reserved syntax var"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
 notes: []

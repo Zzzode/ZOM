@@ -1,0 +1,72 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/borrow_conflict_shared_neg_13.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #30 @1:1..6:1 file_name="borrow_conflict_shared_neg_13.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #29 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #28 @1:1..5:2 name="main"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:15..1:19 kind=Unit
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #27 @1:20..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #8 @2:5..2:20
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #7 @2:5..2:20 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #6 @2:9..2:19 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #5 @2:9..2:19
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #3 @2:9..2:14 name="value"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #4 @2:16..2:19 kind=I32
+// CHECK-NEXT:                               init: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #17 @3:5..3:42
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #16 @3:5..3:42 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #15 @3:9..3:41 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #14 @3:9..3:41
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #9 @3:9..3:18 name="exclusive"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 ReferenceTypeExpr #11 @3:20..3:28 is_mut=true
+// CHECK-NEXT:                                   elem:
+// CHECK-NEXT:                                     PredefinedTypeExpr #10 @3:25..3:28 kind=I32
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 UnaryExpression #13 @3:31..3:41 op=RefMut
+// CHECK-NEXT:                                   operand:
+// CHECK-NEXT:                                     IdentExpr #12 @3:36..3:41 name="value"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #26 @4:5..4:31
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #25 @4:5..4:31 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #24 @4:9..4:30 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #23 @4:9..4:30
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #18 @4:9..4:15 name="shared"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 ReferenceTypeExpr #20 @4:17..4:21 is_mut=false
+// CHECK-NEXT:                                   elem:
+// CHECK-NEXT:                                     PredefinedTypeExpr #19 @4:18..4:21 kind=I32
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 UnaryExpression #22 @4:24..4:30 op=Ref
+// CHECK-NEXT:                                   operand:
+// CHECK-NEXT:                                     IdentExpr #21 @4:25..4:30 name="value"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

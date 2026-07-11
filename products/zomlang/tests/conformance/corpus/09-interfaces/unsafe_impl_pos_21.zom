@@ -1,0 +1,13 @@
+interface UnsafeContract {
+    fun check() -> bool;
+}
+
+class Guard {
+    value: i32;
+}
+
+unsafe impl UnsafeContract for Guard {
+    fun check() -> bool {
+        return true;
+    }
+}

@@ -1,0 +1,6 @@
+fun f(flag: bool) -> unit {
+    match (flag) {
+        when _ => { }
+        when true => { }
+    }
+}

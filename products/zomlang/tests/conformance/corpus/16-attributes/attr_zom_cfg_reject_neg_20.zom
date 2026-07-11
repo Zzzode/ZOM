@@ -1,0 +1,2 @@
+#[zom::cfg(test)]
+fun conditional_entry() {}

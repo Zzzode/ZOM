@@ -1,0 +1,5 @@
+section: "05-statements use-after-move diagnostics"
+covers_rule: "blockStmt, letStmt, expressionStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4056 and the ZOM4057 move-origin note."

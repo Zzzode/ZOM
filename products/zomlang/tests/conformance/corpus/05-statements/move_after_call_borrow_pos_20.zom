@@ -1,0 +1,11 @@
+class Owner { }
+
+fun use_ref(value: &Owner) -> unit {
+    return;
+}
+
+fun main() -> unit {
+    let owned: Owner;
+    use_ref(&owned);
+    let sink: Owner = owned;
+}

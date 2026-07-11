@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/16-attributes/attr_zom_cfg_reject_neg_20.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2090]: Conditional compilation is unavailable; remove 'zom::cfg'
+// CHECK:   --> products {{(?:.*[/\\])?attr_zom_cfg_reject_neg_20\.zom:1:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | #[zom::cfg(test)]
+// CHECK-LITERAL:   |   ^

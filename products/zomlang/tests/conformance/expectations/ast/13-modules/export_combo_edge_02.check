@@ -8,7 +8,7 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         ExportDeclaration #11 @2:1..6:2
 // CHECK-NEXT:           declaration:
-// CHECK-NEXT:             EnumDeclaration #10 @2:8..6:2 name="Color" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:             EnumDeclaration #10 @2:8..6:2 name="Color"
 // CHECK-NEXT:               type_params_id:
 // CHECK-NEXT:                 GenericParams #5 @2:18..2:21 nparams=1
 // CHECK-NEXT:                   params:
@@ -19,9 +19,12 @@
 // CHECK-NEXT:               variants_id:
 // CHECK-NEXT:                 EnumVariantList #9 @2:22..6:2 nvars=3
 // CHECK-NEXT:                   variants:
-// CHECK-NEXT:                     UnitVariant #6 @3:5..3:9 name="Red" has_disc=false disc=null
-// CHECK-NEXT:                     UnitVariant #7 @4:5..4:11 name="Green" has_disc=false disc=null
-// CHECK-NEXT:                     UnitVariant #8 @5:5..5:10 name="Blue" has_disc=false disc=null
+// CHECK-NEXT:                     UnitVariant #6 @3:5..3:9 name="Red"
+// CHECK-NEXT:                       discriminant: null
+// CHECK-NEXT:                     UnitVariant #7 @4:5..4:11 name="Green"
+// CHECK-NEXT:                       discriminant: null
+// CHECK-NEXT:                     UnitVariant #8 @5:5..5:10 name="Blue"
+// CHECK-NEXT:                       discriminant: null
 // CHECK-NEXT:           path: null
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs:

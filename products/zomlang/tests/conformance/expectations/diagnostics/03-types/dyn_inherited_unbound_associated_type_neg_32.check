@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_inherited_unbound_associated_type_neg_32.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4008]: Interface 'Child' inherits object-unsafe interface 'Iterator' and cannot be used as dyn
+// CHECK-LITERAL:   --> 03-types/dyn_inherited_unbound_associated_type_neg_32.zom:7:16
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 7 | let child: dyn Child;
+// CHECK-LITERAL:   |                ^

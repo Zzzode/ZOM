@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/import_dot_group_reject_neg_19.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?import_dot_group_reject_neg_19\.zom:1:15$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | import std::io.{Read};
+// CHECK-LITERAL:   |               ^

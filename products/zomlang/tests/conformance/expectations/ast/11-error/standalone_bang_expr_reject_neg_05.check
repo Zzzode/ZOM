@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/11-error/standalone_bang_expr_reject_neg_05.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*standalone_bang_expr_reject_neg_05.zom}}:1:13
-// CHECK:   |
-// CHECK: 1 | let bang = !;
-// CHECK:   |             ^
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*standalone_bang_expr_reject_neg_05.zom}}:1:12
-// CHECK:   |
-// CHECK: 1 | let bang = !;
-// CHECK:   |            ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?standalone_bang_expr_reject_neg_05\.zom:1:13$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let bang = !;
+// CHECK-LITERAL:   |             ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?standalone_bang_expr_reject_neg_05\.zom:1:12$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let bang = !;
+// CHECK-LITERAL:   |            ^

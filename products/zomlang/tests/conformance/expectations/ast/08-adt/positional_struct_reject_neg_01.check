@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/08-adt/positional_struct_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*positional_struct_reject_neg_01.zom}}:1:18
-// CHECK:   |
-// CHECK: 1 | struct Positional(i32, str);
-// CHECK:   |                  ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?positional_struct_reject_neg_01\.zom:1:18$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | struct Positional(i32, str);
+// CHECK-LITERAL:   |                  ^

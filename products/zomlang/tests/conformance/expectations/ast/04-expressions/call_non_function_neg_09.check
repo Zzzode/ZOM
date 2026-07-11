@@ -1,17 +1,31 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/call_non_function_neg_09.zom | %FileCheck %s
 
-// CHECK: SourceFile
-// CHECK:         LetStmt
-// CHECK-SAME:    kind=Let
-// CHECK:                     IdentifierPattern
-// CHECK-SAME:                  name="f"
-// CHECK:                     PredefinedTypeExpr
-// CHECK-SAME:                  kind=I32
-// CHECK:         ExpressionStatement
+
+// CHECK: SourceFile #12 @1:1..3:1 file_name="call_non_function_neg_09.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:16
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #6 @1:1..1:16 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #5 @1:5..1:15 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #4 @1:5..1:15
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="f"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:8..1:11 kind=I32
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IntLiteral #3 @1:14..1:15 base=10 value="1"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #11 @2:1..2:5
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #10 @2:1..2:5
 // CHECK-NEXT:           expression:
-// CHECK-NEXT:             CallExpression
+// CHECK-NEXT:             CallExpression #9 @2:1..2:4
 // CHECK-NEXT:               callee:
-// CHECK-NEXT:                 IdentExpr
-// CHECK-SAME:                  name="f"
+// CHECK-NEXT:                 IdentExpr #8 @2:1..2:2 name="f"
 // CHECK-NEXT:               type_args: []
 // CHECK-NEXT:               args: []
+// CHECK-NEXT:       attrs: null

@@ -6,7 +6,7 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #13 @1:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #12 @1:1..4:2 name="Result" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #12 @1:1..4:2 name="Result"
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #4 @1:13..1:26 nparams=2
 // CHECK-NEXT:               params:
@@ -18,7 +18,7 @@
 // CHECK-NEXT:                   default_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @1:21..1:25 kind=Unit
 // CHECK-NEXT:               where_: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #11 @1:27..4:2 nmembers=2
 // CHECK-NEXT:               members:

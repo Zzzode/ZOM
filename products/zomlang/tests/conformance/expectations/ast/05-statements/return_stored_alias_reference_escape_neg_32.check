@@ -1,0 +1,92 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/return_stored_alias_reference_escape_neg_32.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #39 @1:1..10:1 file_name="return_stored_alias_reference_escape_neg_32.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #38 @1:1..9:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #37 @1:1..9:2 name="leak"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             ReferenceTypeExpr #3 @1:15..1:19 is_mut=false
+// CHECK-NEXT:               elem:
+// CHECK-NEXT:                 PredefinedTypeExpr #2 @1:16..1:19 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #36 @1:20..9:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #10 @2:5..2:20
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #9 @2:5..2:20 kind=Mut
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #8 @2:9..2:19 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #7 @2:9..2:19
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #4 @2:9..2:13 name="slot"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 ReferenceTypeExpr #6 @2:15..2:19 is_mut=false
+// CHECK-NEXT:                                   elem:
+// CHECK-NEXT:                                     PredefinedTypeExpr #5 @2:16..2:19 kind=I32
+// CHECK-NEXT:                               init: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #32 @3:5..7:6
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     BlockStmt #31 @3:5..7:6
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #16 @4:9..4:24
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             LetStmt #15 @4:9..4:24 kind=Let
+// CHECK-NEXT:                               declarations:
+// CHECK-NEXT:                                 VariableDeclaratorList #14 @4:13..4:23 n_decls=1
+// CHECK-NEXT:                                   decls:
+// CHECK-NEXT:                                     VariableDeclarator #13 @4:13..4:23
+// CHECK-NEXT:                                       pattern:
+// CHECK-NEXT:                                         IdentifierPattern #11 @4:13..4:18 name="value"
+// CHECK-NEXT:                                           ty: null
+// CHECK-NEXT:                                       ty:
+// CHECK-NEXT:                                         PredefinedTypeExpr #12 @4:20..4:23 kind=I32
+// CHECK-NEXT:                                       init: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         StatementListItem #25 @5:9..5:32
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             LetStmt #24 @5:9..5:32 kind=Let
+// CHECK-NEXT:                               declarations:
+// CHECK-NEXT:                                 VariableDeclaratorList #23 @5:13..5:31 n_decls=1
+// CHECK-NEXT:                                   decls:
+// CHECK-NEXT:                                     VariableDeclarator #22 @5:13..5:31
+// CHECK-NEXT:                                       pattern:
+// CHECK-NEXT:                                         IdentifierPattern #17 @5:13..5:16 name="ref"
+// CHECK-NEXT:                                           ty: null
+// CHECK-NEXT:                                       ty:
+// CHECK-NEXT:                                         ReferenceTypeExpr #19 @5:18..5:22 is_mut=false
+// CHECK-NEXT:                                           elem:
+// CHECK-NEXT:                                             PredefinedTypeExpr #18 @5:19..5:22 kind=I32
+// CHECK-NEXT:                                       init:
+// CHECK-NEXT:                                         UnaryExpression #21 @5:25..5:31 op=Ref
+// CHECK-NEXT:                                           operand:
+// CHECK-NEXT:                                             IdentExpr #20 @5:26..5:31 name="value"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         StatementListItem #30 @6:9..6:20
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ExpressionStatement #29 @6:9..6:20
+// CHECK-NEXT:                               expression:
+// CHECK-NEXT:                                 AssignmentExpr #28 @6:9..6:19 op=Assign
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     IdentExpr #26 @6:9..6:13 name="slot"
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IdentExpr #27 @6:16..6:19 name="ref"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #35 @8:5..8:17
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #34 @8:5..8:17
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #33 @8:12..8:16 name="slot"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

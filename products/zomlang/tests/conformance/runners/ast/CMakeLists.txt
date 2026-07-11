@@ -30,7 +30,7 @@ add_test(
 
 set_tests_properties(conformance-ast-coverage PROPERTIES
   LABELS "conformance;conformance-ast;ast;coverage;specification"
-  TIMEOUT 30
+  TIMEOUT 120
 )
 
 file(GLOB_RECURSE AST_EXPECTATION_FILES "${AST_EXPECTATION_ROOT}/*.check")

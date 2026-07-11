@@ -1,0 +1,23 @@
+// RUN: ! %zomc compile --dump-ast %corpus/20-ffi/extern_type_alias_simple_reject_neg_14.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_simple_reject_neg_14\.zom:2:5$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     type Foo = Bar;
+// CHECK-LITERAL:   |     ^
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_simple_reject_neg_14\.zom:2:10$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     type Foo = Bar;
+// CHECK-LITERAL:   |          ^
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_simple_reject_neg_14\.zom:2:14$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     type Foo = Bar;
+// CHECK-LITERAL:   |              ^
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_simple_reject_neg_14\.zom:2:16$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     type Foo = Bar;
+// CHECK-LITERAL:   |                ^

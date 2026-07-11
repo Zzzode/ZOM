@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/raw_pointer_deref_struct_literal_requires_unsafe_neg_54.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4069]: Raw pointer safe boundary requires unsafe acknowledgement
+// CHECK-LITERAL:   --> 04-expressions/raw_pointer_deref_struct_literal_requires_unsafe_neg_54.zom:4:29
+// CHECK-LITERAL: 4 |     let value = Point { x: (*ptr) };

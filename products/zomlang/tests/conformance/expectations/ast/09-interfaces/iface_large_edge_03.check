@@ -35,6 +35,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #7 @5:19..5:22 kind=U64
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #14 @6:5..6:29 name="get" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -51,6 +52,7 @@
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #12 @6:24..6:28 segments=["Item"]
 // CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #22 @7:5..7:38 name="set" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -72,6 +74,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #21 @7:33..7:37 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #28 @8:5..8:35 name="contains" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -88,6 +91,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #27 @8:30..8:34 kind=Bool
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #36 @9:5..9:43 name="find" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -109,6 +113,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #35 @9:39..9:42 kind=I64
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #49 @10:5..10:39 name="map" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -144,6 +149,7 @@
 // CHECK-NEXT:                           path:
 // CHECK-NEXT:                             ModulePath #46 @10:36..10:37 segments=["U"]
 // CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #59 @11:5..11:48 name="filter" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -170,6 +176,7 @@
 // CHECK-NEXT:                           path:
 // CHECK-NEXT:                             ModulePath #56 @11:42..11:46 segments=["Item"]
 // CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #76 @12:5..12:51 name="reduce" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -215,6 +222,7 @@
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #74 @12:49..12:50 segments=["A"]
 // CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #79 @13:5..13:27 name="isEmpty" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -223,6 +231,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #78 @13:22..13:26 kind=Bool
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #82 @14:5..14:25 name="length" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -231,6 +240,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #81 @14:21..14:24 kind=U64
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #87 @15:5..15:32 name="length" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -244,5 +254,6 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #86 @15:27..15:31 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

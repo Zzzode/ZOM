@@ -1,0 +1,1 @@
+alias MixedIterator = dyn Iterator<i32><Item = u8>;

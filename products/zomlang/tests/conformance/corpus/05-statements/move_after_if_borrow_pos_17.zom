@@ -1,0 +1,9 @@
+class Owner { }
+
+fun main() -> unit {
+    let owned: Owner;
+    if (true) {
+        let ref = &owned;
+    }
+    let sink: Owner = owned;
+}

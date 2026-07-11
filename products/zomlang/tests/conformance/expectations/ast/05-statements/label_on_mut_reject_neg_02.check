@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %corpus/05-statements/label_on_mut_reject_neg_02.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?label_on_mut_reject_neg_02\.zom:2:10$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     lab: mut x = 1;
+// CHECK-LITERAL:   |          ^
+// CHECK-LITERAL: Error [ZOM2012]: Missing semicolon before 'x'
+// CHECK:   --> products {{(?:.*[/\\])?label_on_mut_reject_neg_02\.zom:2:14$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     lab: mut x = 1;
+// CHECK-LITERAL:   |              ^

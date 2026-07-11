@@ -6,7 +6,7 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #9 @1:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #8 @1:1..4:2 name="RawStruct" extensibility=Sealed
+// CHECK-NEXT:         StructDecl #8 @1:1..4:2 name="RawStruct"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #7 @1:18..4:2 nmembers=2
@@ -26,9 +26,9 @@
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #18 @6:1..9:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #17 @6:1..9:2 name="RawClass" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #17 @6:1..9:2 name="RawClass"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #16 @6:16..9:2 nmembers=2
 // CHECK-NEXT:               members:

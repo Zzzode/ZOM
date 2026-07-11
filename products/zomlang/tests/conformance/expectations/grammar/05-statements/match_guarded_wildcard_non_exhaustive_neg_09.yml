@@ -1,0 +1,5 @@
+section: "§5 Match guard exhaustiveness"
+covers_rule: "matchStmt, matchArmGuard"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that a guarded wildcard arm is useful but does not prove exhaustiveness."

@@ -1,0 +1,5 @@
+section: "§3 Bottom type coercion"
+covers_rule: "predefinedType, functionDeclaration, letStmt"
+expected: "ACCEPT"
+notes:
+  - "A value of type `never` can flow into ordinary target types and the top type `any` at explicit coercion sites."

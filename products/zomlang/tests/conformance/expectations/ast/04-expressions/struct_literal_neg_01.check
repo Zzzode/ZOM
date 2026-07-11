@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/struct_literal_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*struct_literal_neg_01.zom}}:1:11
-// CHECK:   |
-// CHECK: 1 | struct Box(i32);
-// CHECK:   |           ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?struct_literal_neg_01\.zom:1:11$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | struct Box(i32);
+// CHECK-LITERAL:   |           ^

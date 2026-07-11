@@ -1,0 +1,5 @@
+struct Point { x: i32 }
+
+fun main(ptr: *const i32) -> unit {
+    let value = Point { x: (*ptr) };
+}

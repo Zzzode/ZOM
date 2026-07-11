@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/errors/interface-invalid-braces.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*interface-invalid-braces.zom}}:1:13
-// CHECK:   |
-// CHECK: 1 | interface {{}
-// CHECK:   |             ^
-// CHECK: Fatal [ZOM2082]: Internal parser invariant violated: Required scalar field name is empty on InterfaceDecl
-// CHECK:   --> {{.*interface-invalid-braces.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | interface {{}
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2025]: Expected '}'
+// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-braces\.zom:1:13$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | interface {{}
+// CHECK-LITERAL:   |             ^
+// CHECK-LITERAL: Fatal [ZOM2082]: Internal parser invariant violated: Required scalar field name is empty on InterfaceDecl
+// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-braces\.zom:1:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | interface {{}
+// CHECK-LITERAL:   | ^

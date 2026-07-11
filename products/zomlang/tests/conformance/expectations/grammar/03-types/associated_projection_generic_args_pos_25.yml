@@ -1,0 +1,5 @@
+section: "§3 Associated type projections"
+covers_rule: "associatedTypeProjection, typeArgList, genericClose"
+expected: "ACCEPT"
+notes:
+  - "Covers fully qualified associated type projection with generic arguments on both base and interface types."

@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/12-generics/unbalanced_angle_neg_08.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2025]: Expected '>'
-// CHECK:   --> {{.*unbalanced_angle_neg_08.zom}}:1:6
-// CHECK:   |
-// CHECK: 1 | fun f<T: i32(a: T) -> T { return a; }
-// CHECK:   |      ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2025]: Expected '>'
+// CHECK:   --> products {{(?:.*[/\\])?unbalanced_angle_neg_08\.zom:1:6$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | fun f<T: i32(a: T) -> T { return a; }
+// CHECK-LITERAL:   |      ^

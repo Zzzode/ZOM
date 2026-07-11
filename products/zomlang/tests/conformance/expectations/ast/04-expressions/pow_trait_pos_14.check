@@ -30,13 +30,14 @@
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #5 @2:29..2:35 segments=["Number"]
 // CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #13 @5:1..5:17
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #12 @5:1..5:17 name="Number" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #12 @5:1..5:17 name="Number"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #11 @5:14..5:17 nmembers=0
 // CHECK-NEXT:               members: []
@@ -79,6 +80,7 @@
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #23 @8:29..8:35 segments=["Number"]
 // CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #35 @11:1..11:15

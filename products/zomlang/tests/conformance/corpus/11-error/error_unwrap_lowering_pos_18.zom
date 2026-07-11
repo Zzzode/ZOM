@@ -1,0 +1,7 @@
+fun fetch() -> i32 raises str {
+    return 42;
+}
+
+fun answer() -> i32 raises bool {
+    return fetch()!!;
+}

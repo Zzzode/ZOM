@@ -1,0 +1,4 @@
+section: "§8.2 Class Base and Interface Implementation"
+covers_rule: "classDeclaration (class base) + standaloneImplDeclaration"
+expected: "ACCEPT"
+notes: []

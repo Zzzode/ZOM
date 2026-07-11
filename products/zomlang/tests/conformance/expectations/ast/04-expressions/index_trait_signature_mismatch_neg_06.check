@@ -31,13 +31,14 @@
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #5 @3:28..3:39 segments=["Self", "Output"]
 // CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #13 @6:1..6:14
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #12 @6:1..6:14 name="Bag" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #12 @6:1..6:14 name="Bag"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #11 @6:11..6:14 nmembers=0
 // CHECK-NEXT:               members: []
@@ -79,6 +80,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #24 @10:28..10:31 kind=I32
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #35 @13:1..13:14

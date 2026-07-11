@@ -1,0 +1,5 @@
+section: "§3 Reference reborrow coercion"
+covers_rule: "referenceType, callExpression"
+expected: "ACCEPT"
+notes:
+  - "A mutable reference can flow into a shared-reference parameter through reborrow coercion."

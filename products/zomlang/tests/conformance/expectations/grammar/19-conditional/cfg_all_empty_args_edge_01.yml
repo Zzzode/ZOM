@@ -1,4 +1,0 @@
-section: "§19.3.2 all() — empty arg list evaluates to TRUE (conjunction identity)"
-covers_rule: "cfgAll (empty-args alt), cfgPredicate, attrCfg"
-expected: "ACCEPT"
-notes: []

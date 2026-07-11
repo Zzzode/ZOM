@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/literals/legacy-octal.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2026]: Octal literals are not allowed. Use the syntax '0o123'
-// CHECK:   --> {{.*legacy-octal.zom}}:2:9
-// CHECK:   |
-// CHECK: 2 | let x = 0123;
-// CHECK:   |         ^~~~
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2026]: Octal literals are not allowed. Use the syntax '0o123'
+// CHECK:   --> products {{(?:.*[/\\])?legacy\-octal\.zom:2:9$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 | let x = 0123;
+// CHECK-LITERAL:   |         ^~~~

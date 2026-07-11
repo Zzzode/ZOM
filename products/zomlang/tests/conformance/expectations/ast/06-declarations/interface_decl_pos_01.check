@@ -18,5 +18,6 @@
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

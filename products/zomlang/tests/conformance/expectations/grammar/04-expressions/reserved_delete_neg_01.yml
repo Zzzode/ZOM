@@ -1,4 +1,4 @@
-section: "§4.6 delete reserved (ZOM5008) as unary"
+section: "§4.6 delete reserved as unary"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
 notes: []

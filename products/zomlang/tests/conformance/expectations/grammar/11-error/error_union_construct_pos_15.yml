@@ -1,0 +1,5 @@
+section: "Ch.11 Raising function success return"
+covers_rule: "functionDeclaration, raisesClause, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "The IR runner verifies construction of the success alternative in the physical error union."

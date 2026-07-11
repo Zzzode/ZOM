@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/16-attributes/inner_attr_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2002]: Invalid character
-// CHECK:   --> {{.*inner_attr_reject_neg_01.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | #![allow::dead_code]
-// CHECK:   | ^~
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*inner_attr_reject_neg_01.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | #![allow::dead_code]
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2002]: Invalid character
+// CHECK:   --> products {{(?:.*[/\\])?inner_attr_reject_neg_01\.zom:1:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | #![allow::dead_code]
+// CHECK-LITERAL:   | ^~
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?inner_attr_reject_neg_01\.zom:1:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | #![allow::dead_code]
+// CHECK-LITERAL:   | ^

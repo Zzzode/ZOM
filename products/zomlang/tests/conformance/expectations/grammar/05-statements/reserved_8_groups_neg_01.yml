@@ -1,4 +1,4 @@
-section: "§4.5 Reserved syntax ZOM5001: throw"
+section: "§4.5 Reserved syntax throw"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
 notes: []

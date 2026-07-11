@@ -1,4 +1,0 @@
-section: "§19.3.2 not(P) negation"
-covers_rule: "cfgNot, cfgAtom, cfgPredicate, attrCfg"
-expected: "ACCEPT"
-notes: []

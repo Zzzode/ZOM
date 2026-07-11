@@ -1,0 +1,13 @@
+interface Drawable { }
+
+class Unsafe {
+    ptr: *mut i32;
+}
+class Box<T> { value: T; }
+
+impl Drawable for Box<Unsafe> { }
+
+unsafe impl<T> std::marker::Sendable for Box<T> where T: Sendable;
+
+let value: Box<Unsafe>;
+let packed: dyn Drawable + Sendable = value;

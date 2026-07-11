@@ -1,21 +1,30 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/enum_discriminant_edge_08.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #11 @1:1..10:1 file_name="enum_discriminant_edge_08.zom"
+// CHECK: SourceFile #13 @1:1..10:1 file_name="enum_discriminant_edge_08.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #10 @1:1..9:2
+// CHECK-NEXT:     StatementListItem #12 @1:1..9:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         EnumDeclaration #9 @1:1..9:2 name="Weekday" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:         EnumDeclaration #11 @1:1..9:2 name="Weekday"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           variants_id:
-// CHECK-NEXT:             EnumVariantList #8 @1:14..9:2 nvars=7
+// CHECK-NEXT:             EnumVariantList #10 @1:14..9:2 nvars=7
 // CHECK-NEXT:               variants:
-// CHECK-NEXT:                 UnitVariant #1 @2:5..2:16 name="Monday" has_disc=true disc="1"
-// CHECK-NEXT:                 UnitVariant #2 @3:5..3:13 name="Tuesday" has_disc=false disc=null
-// CHECK-NEXT:                 UnitVariant #3 @4:5..4:15 name="Wednesday" has_disc=false disc=null
-// CHECK-NEXT:                 UnitVariant #4 @5:5..5:14 name="Thursday" has_disc=false disc=null
-// CHECK-NEXT:                 UnitVariant #5 @6:5..6:16 name="Friday" has_disc=true disc="5"
-// CHECK-NEXT:                 UnitVariant #6 @7:5..7:14 name="Saturday" has_disc=false disc=null
-// CHECK-NEXT:                 UnitVariant #7 @8:5..8:12 name="Sunday" has_disc=false disc=null
+// CHECK-NEXT:                 UnitVariant #2 @2:5..2:16 name="Monday"
+// CHECK-NEXT:                   discriminant:
+// CHECK-NEXT:                     IntLiteral #1 @2:14..2:15 base=10 value="1"
+// CHECK-NEXT:                 UnitVariant #3 @3:5..3:13 name="Tuesday"
+// CHECK-NEXT:                   discriminant: null
+// CHECK-NEXT:                 UnitVariant #4 @4:5..4:15 name="Wednesday"
+// CHECK-NEXT:                   discriminant: null
+// CHECK-NEXT:                 UnitVariant #5 @5:5..5:14 name="Thursday"
+// CHECK-NEXT:                   discriminant: null
+// CHECK-NEXT:                 UnitVariant #7 @6:5..6:16 name="Friday"
+// CHECK-NEXT:                   discriminant:
+// CHECK-NEXT:                     IntLiteral #6 @6:14..6:15 base=10 value="5"
+// CHECK-NEXT:                 UnitVariant #8 @7:5..7:14 name="Saturday"
+// CHECK-NEXT:                   discriminant: null
+// CHECK-NEXT:                 UnitVariant #9 @8:5..8:12 name="Sunday"
+// CHECK-NEXT:                   discriminant: null
 // CHECK-NEXT:       attrs: null

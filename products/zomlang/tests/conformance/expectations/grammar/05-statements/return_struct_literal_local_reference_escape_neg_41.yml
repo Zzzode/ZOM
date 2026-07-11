@@ -1,0 +1,5 @@
+section: "05-statements borrow region diagnostics"
+covers_rule: "returnStatement, structLiteral, unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks returned struct literals that contain local borrows."

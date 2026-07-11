@@ -6,9 +6,9 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #25 @1:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #24 @1:1..5:2 name="Person" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #24 @1:1..5:2 name="Person"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #23 @1:14..5:2 nmembers=3
 // CHECK-NEXT:               members:
@@ -23,6 +23,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @3:26..3:29 kind=Str
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #9 @3:30..3:52
 // CHECK-NEXT:                       stmts:
@@ -46,6 +47,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #14 @4:32..4:36 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #21 @4:37..4:56
 // CHECK-NEXT:                       stmts:

@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/raw_pointer_deref_is_requires_unsafe_neg_49.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4069]: Raw pointer safe boundary requires unsafe acknowledgement
+// CHECK-LITERAL:   --> 04-expressions/raw_pointer_deref_is_requires_unsafe_neg_49.zom:2:17
+// CHECK-LITERAL: 2 |     let value = *ptr is i32;

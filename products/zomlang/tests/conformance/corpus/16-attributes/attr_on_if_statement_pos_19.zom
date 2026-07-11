@@ -1,0 +1,6 @@
+fun trace_branch() {
+  #[trace::branch]
+  if (true) {
+    return;
+  }
+}

@@ -6,16 +6,19 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #8 @1:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         EnumDeclaration #7 @1:1..5:2 name="Event" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:         EnumDeclaration #7 @1:1..5:2 name="Event"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           variants_id:
 // CHECK-NEXT:             EnumVariantList #6 @1:12..5:2 nvars=3
 // CHECK-NEXT:               variants:
-// CHECK-NEXT:                 TupleVariant #2 @2:5..2:17 name="Click" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                 TupleVariant #2 @2:5..2:17 name="Click" nfields=1
 // CHECK-NEXT:                   tys:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @2:11..2:15 kind=Unit
-// CHECK-NEXT:                 TupleVariant #4 @3:5..3:14 name="Key" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                   discriminant: null
+// CHECK-NEXT:                 TupleVariant #4 @3:5..3:14 name="Key" nfields=1
 // CHECK-NEXT:                   tys:
 // CHECK-NEXT:                     PredefinedTypeExpr #3 @3:9..3:12 kind=Str
-// CHECK-NEXT:                 UnitVariant #5 @4:5..4:10 name="Tick" has_disc=false disc=null
+// CHECK-NEXT:                   discriminant: null
+// CHECK-NEXT:                 UnitVariant #5 @4:5..4:10 name="Tick"
+// CHECK-NEXT:                   discriminant: null
 // CHECK-NEXT:       attrs: null

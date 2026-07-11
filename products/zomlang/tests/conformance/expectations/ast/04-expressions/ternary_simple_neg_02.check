@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/ternary_simple_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*ternary_simple_neg_02.zom}}:1:9
-// CHECK:   |
-// CHECK: 1 | let x = ? b : c;
-// CHECK:   |         ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?ternary_simple_neg_02\.zom:1:9$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let x = ? b : c;
+// CHECK-LITERAL:   |         ^

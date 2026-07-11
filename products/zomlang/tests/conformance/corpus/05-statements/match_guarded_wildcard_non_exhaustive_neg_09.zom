@@ -1,0 +1,5 @@
+fun f(b: bool) -> unit {
+    match (b) {
+        when _ if true => { }
+    }
+}

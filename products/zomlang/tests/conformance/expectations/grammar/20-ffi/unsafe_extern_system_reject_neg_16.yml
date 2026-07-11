@@ -1,0 +1,4 @@
+section: "§18.1 Extern block declaration"
+covers_rule: "externDecl rejects an unsafe prefix"
+expected: "REJECT"
+notes: []

@@ -1,5 +1,0 @@
-section: "04-expressions cast diagnostics"
-covers_rule: "castExpression"
-expected: "ACCEPT"
-notes:
-  - "Syntax is valid; diagnostics runner checks unsupported cast target type."

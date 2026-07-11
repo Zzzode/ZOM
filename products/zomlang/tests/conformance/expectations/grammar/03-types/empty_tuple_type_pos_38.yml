@@ -1,0 +1,4 @@
+section: "§3 Tuple Types"
+covers_rule: "TupleType accepts the empty unit form"
+expected: "ACCEPT"
+notes: []

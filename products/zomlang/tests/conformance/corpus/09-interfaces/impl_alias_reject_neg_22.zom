@@ -1,0 +1,11 @@
+interface I {
+    fun f() -> bool;
+}
+
+class C {
+    value: i32;
+}
+
+impl I for C {
+    alias Local = i32;
+}

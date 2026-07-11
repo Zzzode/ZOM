@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_marker_generic_impl_where_neg_23.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4018]: 'Box<Unsafe>' does not implement 'Sendable'
+// CHECK-LITERAL:   --> 03-types/dyn_marker_generic_impl_where_neg_23.zom:13:5
+// CHECK-LITERAL:    |
+// CHECK-LITERAL: 13 | let packed: dyn Drawable + Sendable = value;
+// CHECK-LITERAL:    |     ^

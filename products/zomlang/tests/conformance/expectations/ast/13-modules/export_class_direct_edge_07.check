@@ -8,9 +8,9 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         ExportDeclaration #9 @1:1..4:2
 // CHECK-NEXT:           declaration:
-// CHECK-NEXT:             ClassDecl #8 @1:8..4:2 name="Point" extensibility=Sealed
+// CHECK-NEXT:             ClassDecl #8 @1:8..4:2 name="Point"
 // CHECK-NEXT:               type_params_id: null
-// CHECK-NEXT:               extends: null
+// CHECK-NEXT:               base_ty: null
 // CHECK-NEXT:               members_id:
 // CHECK-NEXT:                 ClassMemberList #7 @1:20..4:2 nmembers=2
 // CHECK-NEXT:                   members:

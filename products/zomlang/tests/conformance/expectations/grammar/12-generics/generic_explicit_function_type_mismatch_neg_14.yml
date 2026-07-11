@@ -1,0 +1,5 @@
+section: "12-generics explicit type argument diagnostics"
+covers_rule: "callExpression"
+expected: "ACCEPT"
+notes:
+  - "Function types are valid explicit type arguments; diagnostics checks the resulting argument type mismatch."

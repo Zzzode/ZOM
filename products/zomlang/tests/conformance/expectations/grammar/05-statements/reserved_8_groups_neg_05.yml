@@ -1,4 +1,4 @@
-section: "§4.5 Reserved syntax ZOM5005: yield"
+section: "§4.5 Reserved syntax yield"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
 notes: []

@@ -62,8 +62,8 @@ class SnapshotRegenerator:
             candidates = [f"build-{self.preset}"]
         else:
             candidates = [
-                "build-debug",
                 "build-sanitizer",
+                "build-debug",
                 "build-release",
                 "build-coverage",
                 "build",

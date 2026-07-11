@@ -1,4 +1,0 @@
-section: "§21.2 Deep (4-level) nesting of heterogeneous macro invocation delimiter types"
-covers_rule: "macroTokenTree (4× balanced-group descent — brace → brack → paren → paren)"
-expected: "ACCEPT"
-notes: []

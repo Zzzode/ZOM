@@ -1,0 +1,5 @@
+section: "05-statements borrow diagnostics"
+covers_rule: "ifStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that a borrow scoped to an if branch no longer blocks a move after the branch."

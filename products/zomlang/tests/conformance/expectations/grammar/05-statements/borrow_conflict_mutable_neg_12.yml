@@ -1,0 +1,5 @@
+section: "05-statements mutable borrow conflict diagnostics"
+covers_rule: "blockStmt, letStmt, expressionStatement, unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks ZOM4058 and the ZOM4060 borrow-origin note for &mut after an active shared borrow."

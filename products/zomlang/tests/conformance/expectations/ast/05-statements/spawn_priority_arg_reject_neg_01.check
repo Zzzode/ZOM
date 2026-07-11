@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/05-statements/spawn_priority_arg_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*spawn_priority_arg_reject_neg_01.zom}}:2:20
-// CHECK:   |
-// CHECK: 2 |     spawn priority(other) {};
-// CHECK:   |                    ^
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*spawn_priority_arg_reject_neg_01.zom}}:2:5
-// CHECK:   |
-// CHECK: 2 |     spawn priority(other) {};
-// CHECK:   |     ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?spawn_priority_arg_reject_neg_01\.zom:2:20$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     spawn priority(other) {};
+// CHECK-LITERAL:   |                    ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?spawn_priority_arg_reject_neg_01\.zom:2:5$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     spawn priority(other) {};
+// CHECK-LITERAL:   |     ^

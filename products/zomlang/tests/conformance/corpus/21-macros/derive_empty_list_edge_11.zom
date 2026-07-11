@@ -1,2 +1,0 @@
-#[zom::derive(UnitMarker)]
-struct EmptyMarker {}

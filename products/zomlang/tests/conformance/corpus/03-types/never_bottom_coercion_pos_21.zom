@@ -1,0 +1,4 @@
+fun fail() -> never;
+
+let value: i32 = fail();
+let top: any = fail();

@@ -1,4 +1,0 @@
-section: "§21.2 Unbalanced parentheses inside a macro token tree — nested group never closed"
-covers_rule: "macroToken (macroParenGroup requires matching RPAREN — missing → error)"
-expected: "REJECT"
-notes: []

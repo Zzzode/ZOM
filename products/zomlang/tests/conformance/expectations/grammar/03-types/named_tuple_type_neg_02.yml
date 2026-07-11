@@ -1,0 +1,4 @@
+section: "§3 Tuple Types"
+covers_rule: "TupleType rejects labelled elements"
+expected: "REJECT"
+notes: []

@@ -1,4 +1,4 @@
-section: "§4.5 Label immediately followed by #[…] outer attribute (C25 #1 predicate)"
-covers_rule: "labeledStatement (checkLabelNoAttrAfterLabel)"
+section: "Section 5.15 labeled statement target"
+covers_rule: "labelTarget"
 expected: "REJECT"
 notes: []

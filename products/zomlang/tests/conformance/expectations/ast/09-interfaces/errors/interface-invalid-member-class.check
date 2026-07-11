@@ -1,15 +1,18 @@
 // RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/errors/interface-invalid-member-class.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*interface-invalid-member-class.zom}}:2:3
-// CHECK:   |
-// CHECK: 2 |   class C {}
-// CHECK:   |   ^
-// CHECK: Error [ZOM2052]: Property or signature expected
-// CHECK:   --> {{.*interface-invalid-member-class.zom}}:2:3
-// CHECK:   |
-// CHECK: 2 |   class C {}
-// CHECK:   |   ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-member\-class\.zom:2:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   class C {}
+// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL: Error [ZOM2092]: Interface bodies accept only methods, accessors, and associated type declarations
+// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-member\-class\.zom:2:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   class C {}
+// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL: Error [ZOM2052]: Property or signature expected
+// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-member\-class\.zom:2:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   class C {}
+// CHECK-LITERAL:   |   ^

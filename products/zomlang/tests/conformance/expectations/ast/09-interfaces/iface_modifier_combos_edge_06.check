@@ -19,6 +19,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:32..2:35 kind=Str
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #6 @3:5..3:31 name="tag" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -27,5 +28,6 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @3:27..3:30 kind=Str
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

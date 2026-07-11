@@ -1,0 +1,5 @@
+section: "§3 Reference and raw pointer coercions"
+covers_rule: "referenceType, rawPointerType, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Shared references coerce to const raw pointers, mutable references coerce to mutable raw pointers, and mutable raw pointers coerce to const raw pointers."

@@ -1,62 +1,68 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/interface_full_pos_06.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #22 @1:1..7:1 file_name="interface_full_pos_06.zom"
+// CHECK: SourceFile #23 @1:1..7:1 file_name="interface_full_pos_06.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #21 @1:1..6:2
+// CHECK-NEXT:     StatementListItem #22 @1:1..6:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #20 @1:1..6:2 name="Iterator"
-// CHECK-NEXT:           type_params_id:
-// CHECK-NEXT:             GenericParams #2 @1:26..1:29 nparams=1
-// CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #1 @1:27..1:28 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
-// CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:               where_: null
-// CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #5 @1:32..1:40 n_ifaces=1
-// CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #4 @1:32..1:40
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #3 @1:32..1:40 segments=["Iterable"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #19 @1:41..6:2 nmembers=4
-// CHECK-NEXT:               members:
-// CHECK-NEXT:                 AssociatedTypeDecl #6 @2:5..2:15 name="Item"
-// CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
-// CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 AssociatedTypeDecl #8 @3:5..3:22 name="Index"
-// CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
-// CHECK-NEXT:                   default_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:18..3:21 kind=U64
-// CHECK-NEXT:                 MethodDecl #14 @4:5..4:37 name="next" is_static=false visibility=Default
-// CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #9 @4:13..4:15 nparams=0
-// CHECK-NEXT:                       params: []
-// CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #13 @4:19..4:36
+// CHECK-NEXT:         ExportDeclaration #21 @1:1..6:2
+// CHECK-NEXT:           declaration:
+// CHECK-NEXT:             InterfaceDecl #20 @1:8..6:2 name="Iterator"
+// CHECK-NEXT:               type_params_id:
+// CHECK-NEXT:                 GenericParams #2 @1:26..1:29 nparams=1
+// CHECK-NEXT:                   params:
+// CHECK-NEXT:                     GenericTypeParam #1 @1:27..1:28 name="T" variance=Invariant
+// CHECK-NEXT:                       bound: null
+// CHECK-NEXT:                       default_ty: null
+// CHECK-NEXT:                   where_: null
+// CHECK-NEXT:               ifaces_id:
+// CHECK-NEXT:                 ImplIfaceList #5 @1:32..1:40 n_ifaces=1
+// CHECK-NEXT:                   ifaces:
+// CHECK-NEXT:                     NamedTypeExpr #4 @1:32..1:40
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #12 @4:19..4:25 segments=["Option"]
-// CHECK-NEXT:                       args:
-// CHECK-NEXT:                         NamedTypeExpr #11 @4:26..4:35
-// CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #10 @4:26..4:35 segments=["Self", "Item"]
-// CHECK-NEXT:                           args: []
-// CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #18 @5:5..5:32 name="current" is_static=false visibility=Default
-// CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #15 @5:16..5:18 nparams=0
-// CHECK-NEXT:                       params: []
-// CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #17 @5:22..5:31
-// CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #16 @5:22..5:31 segments=["Self", "Item"]
+// CHECK-NEXT:                         ModulePath #3 @1:32..1:40 segments=["Iterable"]
 // CHECK-NEXT:                       args: []
-// CHECK-NEXT:                   body: null
+// CHECK-NEXT:               members_id:
+// CHECK-NEXT:                 ClassMemberList #19 @1:41..6:2 nmembers=4
+// CHECK-NEXT:                   members:
+// CHECK-NEXT:                     AssociatedTypeDecl #6 @2:5..2:15 name="Item"
+// CHECK-NEXT:                       type_params_id: null
+// CHECK-NEXT:                       bound: null
+// CHECK-NEXT:                       default_ty: null
+// CHECK-NEXT:                     AssociatedTypeDecl #8 @3:5..3:22 name="Index"
+// CHECK-NEXT:                       type_params_id: null
+// CHECK-NEXT:                       bound: null
+// CHECK-NEXT:                       default_ty:
+// CHECK-NEXT:                         PredefinedTypeExpr #7 @3:18..3:21 kind=U64
+// CHECK-NEXT:                     MethodDecl #14 @4:5..4:37 name="next" is_static=false visibility=Default
+// CHECK-NEXT:                       params_id:
+// CHECK-NEXT:                         FunctionParameterList #9 @4:13..4:15 nparams=0
+// CHECK-NEXT:                           params: []
+// CHECK-NEXT:                       type_params_id: null
+// CHECK-NEXT:                       ret_ty:
+// CHECK-NEXT:                         NamedTypeExpr #13 @4:19..4:36
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #12 @4:19..4:25 segments=["Option"]
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             NamedTypeExpr #11 @4:26..4:35
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #10 @4:26..4:35 segments=["Self", "Item"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                       raises_ty: null
+// CHECK-NEXT:                       body: null
+// CHECK-NEXT:                     MethodDecl #18 @5:5..5:32 name="current" is_static=false visibility=Default
+// CHECK-NEXT:                       params_id:
+// CHECK-NEXT:                         FunctionParameterList #15 @5:16..5:18 nparams=0
+// CHECK-NEXT:                           params: []
+// CHECK-NEXT:                       type_params_id: null
+// CHECK-NEXT:                       ret_ty:
+// CHECK-NEXT:                         NamedTypeExpr #17 @5:22..5:31
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #16 @5:22..5:31 segments=["Self", "Item"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                       raises_ty: null
+// CHECK-NEXT:                       body: null
+// CHECK-NEXT:           path: null
+// CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null

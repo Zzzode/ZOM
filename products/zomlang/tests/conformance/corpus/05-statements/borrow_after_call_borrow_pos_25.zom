@@ -1,0 +1,9 @@
+fun use_ref(value: &i32) -> unit {
+    return;
+}
+
+fun main() -> unit {
+    let value: i32;
+    use_ref(&value);
+    let exclusive = &mut value;
+}

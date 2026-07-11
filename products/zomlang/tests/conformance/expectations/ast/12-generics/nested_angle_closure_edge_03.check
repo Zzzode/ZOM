@@ -6,7 +6,7 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #6 @1:1..1:23
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #5 @1:1..1:23 name="HashMap" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #5 @1:1..1:23 name="HashMap"
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #3 @1:14..1:20 nparams=2
 // CHECK-NEXT:               params:
@@ -17,14 +17,14 @@
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #4 @1:21..1:23 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #11 @2:1..2:16
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #10 @2:1..2:16 name="Vec" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #10 @2:1..2:16 name="Vec"
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #8 @2:10..2:13 nparams=1
 // CHECK-NEXT:               params:
@@ -32,7 +32,7 @@
 // CHECK-NEXT:                   bound: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #9 @2:14..2:16 nmembers=0
 // CHECK-NEXT:               members: []

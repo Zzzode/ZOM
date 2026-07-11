@@ -2,4 +2,4 @@ alias OptStr = str?;
 alias U = i32 | str;
 alias I = A & B;
 alias Box<T> = { value: T };
-alias Constrained<T extends U> = T;
+alias Constrained<T: U +> = T;

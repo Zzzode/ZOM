@@ -1,0 +1,5 @@
+section: "Ch.03 Generic dynamic interface head"
+covers_rule: "dynType, typeArgList"
+expected: "ACCEPT"
+notes:
+  - "Covers generic arguments on the interface named by a dynamic type."

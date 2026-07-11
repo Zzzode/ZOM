@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/struct_literal_neg_02.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4037]: No member named 'A' in type 'E'
+// CHECK-LITERAL:   --> 04-expressions/struct_literal_neg_02.zom:2:9
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 | let e = E::A(1);
+// CHECK-LITERAL:   |         ^

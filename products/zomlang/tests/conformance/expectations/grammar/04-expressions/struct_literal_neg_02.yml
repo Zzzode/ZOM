@@ -1,4 +1,5 @@
 section: "§4.6 structLiteral with brace enum variant form (in expression)"
 covers_rule: "structLiteral"
-expected: "REJECT"
-notes: []
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that enum variant construction with `::` call syntax has no member target in v1."

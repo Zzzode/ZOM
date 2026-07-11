@@ -1,4 +1,4 @@
-section: "§4.5 Reserved syntax ZOM5007: type"
+section: "§4.5 Reserved syntax type"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
 notes: []

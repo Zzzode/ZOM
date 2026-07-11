@@ -1,11 +1,21 @@
 // RUN: %zomc compile --dump-ast %corpus/05-statements/type_mismatch_initializer_neg_03.zom | %FileCheck %s
 
-// CHECK: SourceFile
-// CHECK:         LetStmt
-// CHECK-SAME:    kind=Let
-// CHECK:                     IdentifierPattern
-// CHECK-SAME:                  name="x"
-// CHECK:                     PredefinedTypeExpr
-// CHECK-SAME:                  kind=I32
-// CHECK:                     BoolLiteral
-// CHECK-SAME:                  value=true
+
+// CHECK: SourceFile #8 @1:1..2:1 file_name="type_mismatch_initializer_neg_03.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:19
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #6 @1:1..1:19 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #5 @1:5..1:18 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #4 @1:5..1:18
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="x"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:8..1:11 kind=I32
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     BoolLiteral #3 @1:14..1:18 value=true
+// CHECK-NEXT:       attrs: null

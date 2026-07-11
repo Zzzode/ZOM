@@ -32,6 +32,7 @@
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #20 @5:1..5:23
@@ -54,5 +55,6 @@
 // CHECK-NEXT:                                 ModulePath #13 @5:12..5:22 segments=["Consumable"]
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                       assoc_bindings_id: null
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

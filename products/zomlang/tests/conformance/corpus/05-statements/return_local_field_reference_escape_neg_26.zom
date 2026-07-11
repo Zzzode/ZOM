@@ -1,0 +1,8 @@
+class Owner {
+    let field: i32;
+}
+
+fun leak() -> &i32 {
+    let obj: Owner;
+    return &obj.field;
+}

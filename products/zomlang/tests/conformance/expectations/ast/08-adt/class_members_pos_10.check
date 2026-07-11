@@ -6,9 +6,9 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #44 @1:1..8:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #43 @1:1..8:2 name="Counter" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #43 @1:1..8:2 name="Counter"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #42 @1:15..8:2 nmembers=6
 // CHECK-NEXT:               members:
@@ -22,12 +22,12 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @3:27..3:30 kind=I32
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IntLiteral #5 @3:33..3:34 base=10 value="0"
-// CHECK-NEXT:                 FieldDecl #9 @4:5..4:27 name="MAX" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                 ClassConstDecl #9 @4:5..4:27 name="MAX" is_static=false visibility=Default
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #7 @4:16..4:19 kind=I32
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IntLiteral #8 @4:22..4:26 base=10 value="1000"
-// CHECK-NEXT:                 MethodDecl #20 @5:5..5:50 name="init" is_static=false visibility=Default
+// CHECK-NEXT:                 ConstructorDecl #20 @5:5..5:50 name="init" visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #12 @5:9..5:23 nparams=1
 // CHECK-NEXT:                       params:
@@ -36,8 +36,7 @@
 // CHECK-NEXT:                             PredefinedTypeExpr #10 @5:19..5:22 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   ret_ty: null
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #19 @5:24..5:50
 // CHECK-NEXT:                       stmts:
@@ -60,6 +59,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #22 @6:18..6:22 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #32 @6:23..6:57
 // CHECK-NEXT:                       stmts:
@@ -88,6 +88,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #35 @7:23..7:26 kind=I32
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #40 @7:27..7:50
 // CHECK-NEXT:                       stmts:

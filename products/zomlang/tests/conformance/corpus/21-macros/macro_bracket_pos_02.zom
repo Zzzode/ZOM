@@ -1,4 +1,0 @@
-fun json_demo() -> unit {
-    let arr = json_array![1, "hello", null, true];
-    return arr;
-}

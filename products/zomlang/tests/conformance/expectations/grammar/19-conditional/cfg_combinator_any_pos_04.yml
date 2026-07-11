@@ -1,4 +1,0 @@
-section: "§19.3.2 any(P, Q, ...) disjunction"
-covers_rule: "cfgAny, cfgAtom, cfgPredicate, attrCfg"
-expected: "ACCEPT"
-notes: []

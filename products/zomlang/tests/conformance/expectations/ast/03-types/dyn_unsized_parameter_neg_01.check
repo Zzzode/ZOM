@@ -26,6 +26,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @2:32..2:36 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #18 @5:1..5:19
@@ -48,5 +49,6 @@
 // CHECK-NEXT:                                 ModulePath #11 @5:12..5:18 segments=["Writer"]
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                       assoc_bindings_id: null
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

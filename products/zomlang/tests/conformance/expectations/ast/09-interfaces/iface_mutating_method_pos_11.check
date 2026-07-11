@@ -19,6 +19,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:27..2:31 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #6 @3:5..3:34 name="reset" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -27,6 +28,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @3:29..3:33 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #9 @4:5..4:24 name="value" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -35,5 +37,6 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #8 @4:20..4:23 kind=I64
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

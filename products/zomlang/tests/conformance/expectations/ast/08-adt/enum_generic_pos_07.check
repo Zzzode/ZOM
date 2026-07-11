@@ -6,7 +6,7 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #12 @1:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         EnumDeclaration #11 @1:1..4:2 name="Result" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:         EnumDeclaration #11 @1:1..4:2 name="Result"
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #3 @1:12..1:18 nparams=2
 // CHECK-NEXT:               params:
@@ -20,16 +20,18 @@
 // CHECK-NEXT:           variants_id:
 // CHECK-NEXT:             EnumVariantList #10 @1:19..4:2 nvars=2
 // CHECK-NEXT:               variants:
-// CHECK-NEXT:                 TupleVariant #6 @2:5..2:11 name="Ok" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                 TupleVariant #6 @2:5..2:11 name="Ok" nfields=1
 // CHECK-NEXT:                   tys:
 // CHECK-NEXT:                     NamedTypeExpr #5 @2:8..2:9
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #4 @2:8..2:9 segments=["T"]
 // CHECK-NEXT:                       args: []
-// CHECK-NEXT:                 TupleVariant #9 @3:5..3:12 name="Err" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                   discriminant: null
+// CHECK-NEXT:                 TupleVariant #9 @3:5..3:12 name="Err" nfields=1
 // CHECK-NEXT:                   tys:
 // CHECK-NEXT:                     NamedTypeExpr #8 @3:9..3:10
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #7 @3:9..3:10 segments=["E"]
 // CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   discriminant: null
 // CHECK-NEXT:       attrs: null

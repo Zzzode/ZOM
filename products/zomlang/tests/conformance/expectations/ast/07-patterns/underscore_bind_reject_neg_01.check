@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/underscore_bind_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2062]: Variable declaration expected
-// CHECK:   --> {{.*underscore_bind_reject_neg_01.zom}}:1:5
-// CHECK:   |
-// CHECK: 1 | let _ @ p = 5;
-// CHECK:   |     ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2062]: Variable declaration expected
+// CHECK:   --> products {{(?:.*[/\\])?underscore_bind_reject_neg_01\.zom:1:5$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let _ @ p = 5;
+// CHECK-LITERAL:   |     ^

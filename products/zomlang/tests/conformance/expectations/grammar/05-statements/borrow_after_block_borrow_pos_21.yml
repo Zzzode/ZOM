@@ -1,0 +1,5 @@
+section: "05-statements borrow diagnostics"
+covers_rule: "blockStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that a borrow scoped to a nested block no longer conflicts with a later mutable borrow."

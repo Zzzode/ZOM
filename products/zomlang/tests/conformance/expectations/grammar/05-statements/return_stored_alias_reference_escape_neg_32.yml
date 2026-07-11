@@ -1,0 +1,5 @@
+section: "05-statements return diagnostics"
+covers_rule: "returnStatement, assignmentExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks borrow-checker rejection for returning a mutable reference slot assigned from a local reference alias."

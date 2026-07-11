@@ -1,6 +1,6 @@
 interface Drawable { fun draw() -> unit; }
 interface Updatable { fun update(dt: f32) -> unit; }
-public class Sprite : Object {
+export class Sprite : Object {
     protected mut x: f32 = 0.0;
     let name: str;
     init(name: str, x: f32) { self.name = name; self.x = x; }

@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/iface_where_reject_neg_05.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*iface_where_reject_neg_05.zom}}:1:23
-// CHECK:   |
-// CHECK: 1 | interface BadIface<T> where T: Eq {
-// CHECK:   |                       ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?iface_where_reject_neg_05\.zom:1:23$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | interface BadIface<T> where T: Eq {
+// CHECK-LITERAL:   |                       ^

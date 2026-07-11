@@ -1,0 +1,5 @@
+section: "Ch.04 Reference to raw pointer coercions"
+covers_rule: "letDeclaration, rawPointerType, referenceExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that shared references do not coerce to mutable raw pointers."

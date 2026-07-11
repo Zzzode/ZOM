@@ -1,0 +1,5 @@
+section: "Ch.03 Dynamic type bindings and markers"
+covers_rule: "dynType, dynAssocBindingArgs, markerPath"
+expected: "ACCEPT"
+notes:
+  - "Covers an associated type binding followed by a marker constraint."

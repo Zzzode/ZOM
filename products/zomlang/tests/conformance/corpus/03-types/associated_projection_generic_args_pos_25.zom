@@ -1,0 +1,1 @@
+alias IterItem = <Box<i32> as Iterator<i32>>::Item;

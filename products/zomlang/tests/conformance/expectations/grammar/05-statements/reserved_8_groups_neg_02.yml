@@ -1,4 +1,4 @@
-section: "§4.5 Reserved syntax ZOM5002: async / await"
+section: "§4.5 Reserved syntax async / await"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
 notes: []

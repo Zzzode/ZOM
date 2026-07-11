@@ -1,0 +1,4 @@
+fun main() -> unit {
+    let ptr: *const i32;
+    *ptr;
+}

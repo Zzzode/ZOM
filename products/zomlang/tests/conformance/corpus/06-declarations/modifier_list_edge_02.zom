@@ -1,1 +1,3 @@
-protected readonly mutating fun adjust() {}
+class Adjuster {
+    protected readonly mutating fun adjust() {}
+}

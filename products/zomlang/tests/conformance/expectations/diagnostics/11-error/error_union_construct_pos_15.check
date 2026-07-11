@@ -1,0 +1,4 @@
+// RUN: cd %corpus && %zomc compile --syntax-only 11-error/error_union_construct_pos_15.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Syntax check completed successfully.

@@ -3,7 +3,7 @@ class C {
   private const y: str = "s";
 
   init(n: i32) { return; }
-  deinit { ; }
+  deinit() { ; }
 
   get value() -> i32 { return x; }
   set value(n: i32) { return; }

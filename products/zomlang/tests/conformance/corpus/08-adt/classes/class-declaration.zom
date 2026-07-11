@@ -10,7 +10,7 @@ class Animal {
   }
 }
 
-class Dog extends Animal {
+class Dog : Animal {
   private let breed: str;
 
   init(n: str, b: str) {

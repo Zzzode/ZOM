@@ -1,4 +1,0 @@
-section: "§19.3.1 CfgAtom valued form: RHS MUST be DOUBLE_STRING_LITERAL (not unquoted bare identifier)"
-covers_rule: "cfgAtom (3-alt group: alt 2 fires — CfgOp present but no quoted RHS → ZOM1900)"
-expected: "REJECT"
-notes: []

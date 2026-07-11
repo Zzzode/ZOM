@@ -1,0 +1,6 @@
+fun f(x: i32) -> unit {
+    match (x) {
+        when 0 => { }
+        when 1 => { }
+    }
+}

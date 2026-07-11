@@ -1,0 +1,5 @@
+section: "§3 Top type coercion"
+covers_rule: "predefinedType, letStmt"
+expected: "ACCEPT"
+notes:
+  - "Concrete primitive values coerce into the top type `any` at explicit local initializer sites."

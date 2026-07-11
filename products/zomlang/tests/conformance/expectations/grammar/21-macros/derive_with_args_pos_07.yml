@@ -1,4 +1,0 @@
-section: "§21.4 Derive helper with KV args: #[zom::derive(T(k=\"v\"))]"
-covers_rule: "outerAttribute, attr (genericMultiSeg), attrInput (KV-pair form)"
-expected: "ACCEPT"
-notes: []

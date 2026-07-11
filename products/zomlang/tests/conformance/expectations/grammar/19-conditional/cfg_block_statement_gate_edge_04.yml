@@ -1,4 +1,0 @@
-section: "§19.6.2 Statement-level gate: #[zom::cfg(...)] { stmt* } (only allowed form)"
-covers_rule: "moduleItemStatementCfgGated, checkStatementCfgGate, moduleItemDeclaration"
-expected: "ACCEPT"
-notes: []

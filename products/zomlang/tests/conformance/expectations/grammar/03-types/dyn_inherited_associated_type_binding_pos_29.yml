@@ -1,0 +1,5 @@
+section: "§3 Existential associated type bindings"
+covers_rule: "dynType, dyn associated type binding, interfaceHeritage"
+expected: "ACCEPT"
+notes:
+  - "Covers dyn head associated type bindings declared by an inherited interface."

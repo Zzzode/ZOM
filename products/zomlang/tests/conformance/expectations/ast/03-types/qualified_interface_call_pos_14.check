@@ -27,13 +27,14 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @2:32..2:36 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #12 @5:1..5:17
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #11 @5:1..5:17 name="Sprite" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #11 @5:1..5:17 name="Sprite"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #10 @5:14..5:17 nmembers=0
 // CHECK-NEXT:               members: []
@@ -73,6 +74,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #22 @8:32..8:36 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #23 @8:37..8:40
 // CHECK-NEXT:                       stmts: []

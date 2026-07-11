@@ -1,0 +1,5 @@
+fun leak() -> &i32 {
+    let value: i32;
+    let ref: &i32 = &value;
+    return ref;
+}

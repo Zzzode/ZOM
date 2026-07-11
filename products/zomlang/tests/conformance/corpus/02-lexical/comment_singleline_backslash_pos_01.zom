@@ -1,3 +1,3 @@
 let x = 1;
 // escape like \n or \u{41} must be ignored in comment
-let y = 2;  // trailing \ backslash OK
+let y = 2;  // apostrophe ' plus + and trailing \ backslash are comment text

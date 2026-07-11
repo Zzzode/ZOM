@@ -2,6 +2,6 @@ class Base {
   fun foo() {}
 }
 
-class Derived extends Base {
+class Derived : Base {
   fun bar() {}
 }

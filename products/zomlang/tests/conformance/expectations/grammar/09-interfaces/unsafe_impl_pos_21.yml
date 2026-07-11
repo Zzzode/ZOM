@@ -1,0 +1,5 @@
+section: "Ch.09 Unsafe standalone implementation"
+covers_rule: "standaloneImplDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Covers the unsafe prefix on an ordinary interface implementation."

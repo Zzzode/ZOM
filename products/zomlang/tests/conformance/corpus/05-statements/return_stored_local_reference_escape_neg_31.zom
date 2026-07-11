@@ -1,0 +1,8 @@
+fun leak() -> &i32 {
+    mut slot: &i32;
+    {
+        let value: i32;
+        slot = &value;
+    }
+    return slot;
+}

@@ -1,4 +1,4 @@
 section: "§6.2 ClassDecl"
-covers_rule: "classDecl, extendsClause, standaloneImplDeclaration"
+covers_rule: "classDecl, class base, standaloneImplDeclaration"
 expected: "ACCEPT"
 notes: []

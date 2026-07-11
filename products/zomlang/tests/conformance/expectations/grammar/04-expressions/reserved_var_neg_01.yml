@@ -1,4 +1,4 @@
-section: "§4.6 var keyword reserved (ZOM5003) in declaration"
+section: "§4.6 var keyword reserved in declaration"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
 notes: []

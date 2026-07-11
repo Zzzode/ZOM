@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/reserved_async_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*reserved_async_neg_01.zom}}:1:9
-// CHECK:   |
-// CHECK: 1 | let x = async { 1 };
-// CHECK:   |         ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?reserved_async_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let x = async { 1 };
+// CHECK-LITERAL:   |         ^

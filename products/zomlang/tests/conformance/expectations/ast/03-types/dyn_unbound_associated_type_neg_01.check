@@ -37,5 +37,6 @@
 // CHECK-NEXT:                                 ModulePath #6 @5:12..5:18 segments=["Stream"]
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                       assoc_bindings_id: null
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

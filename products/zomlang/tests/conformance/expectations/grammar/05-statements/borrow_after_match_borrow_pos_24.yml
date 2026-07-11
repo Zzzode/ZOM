@@ -1,0 +1,5 @@
+section: "05-statements borrow diagnostics"
+covers_rule: "matchStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that a borrow scoped to a match arm no longer conflicts with a later mutable borrow."

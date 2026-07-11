@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/function_type_named_parameter_reject_neg_37.zom > %t 2>&1
+// RUN: %FileCheck %s < %t
+
+
+// CHECK-LITERAL: Error [ZOM2025]: Expected ','
+// CHECK:   --> 03-types/function_type_named_parameter_reject_neg_37.zom:1:21
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let callback: (value: i32) -> i32 = fn;
+// CHECK-LITERAL:   |                     ^

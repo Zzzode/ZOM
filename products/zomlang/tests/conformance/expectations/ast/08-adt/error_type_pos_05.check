@@ -1,21 +1,25 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/error_type_pos_05.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #8 @1:1..5:1 file_name="error_type_pos_05.zom"
+// CHECK: SourceFile #9 @1:1..5:1 file_name="error_type_pos_05.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #7 @1:1..4:2
+// CHECK-NEXT:     StatementListItem #8 @1:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ErrorDecl #6 @1:1..4:2 name="IoError"
-// CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #5 @1:22..4:2 nmembers=2
-// CHECK-NEXT:               members:
-// CHECK-NEXT:                 FieldDecl #2 @2:5..2:15 name="code" is_mut=false is_static=false visibility=Default
-// CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:11..2:14 kind=I32
-// CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 FieldDecl #4 @3:5..3:18 name="message" is_mut=false is_static=false visibility=Default
-// CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #3 @3:14..3:17 kind=Str
-// CHECK-NEXT:                   init: null
+// CHECK-NEXT:         ExportDeclaration #7 @1:1..4:2
+// CHECK-NEXT:           declaration:
+// CHECK-NEXT:             ErrorDecl #6 @1:8..4:2 name="IoError"
+// CHECK-NEXT:               members_id:
+// CHECK-NEXT:                 ClassMemberList #5 @1:22..4:2 nmembers=2
+// CHECK-NEXT:                   members:
+// CHECK-NEXT:                     FieldDecl #2 @2:5..2:15 name="code" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                       ty:
+// CHECK-NEXT:                         PredefinedTypeExpr #1 @2:11..2:14 kind=I32
+// CHECK-NEXT:                       init: null
+// CHECK-NEXT:                     FieldDecl #4 @3:5..3:18 name="message" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                       ty:
+// CHECK-NEXT:                         PredefinedTypeExpr #3 @3:14..3:17 kind=Str
+// CHECK-NEXT:                       init: null
+// CHECK-NEXT:           path: null
+// CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null

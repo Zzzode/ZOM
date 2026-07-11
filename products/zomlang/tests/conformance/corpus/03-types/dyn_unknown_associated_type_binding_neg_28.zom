@@ -1,0 +1,3 @@
+interface Drawable { }
+
+let drawable: dyn Drawable<Item = u8>;

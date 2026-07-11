@@ -1,0 +1,4 @@
+section: "§4.6 as! forced cast"
+covers_rule: "relationalExpr"
+expected: "ACCEPT"
+notes: []

@@ -6,17 +6,19 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #7 @1:1..1:34
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         EnumDeclaration #6 @1:1..1:34 name="Result" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:         EnumDeclaration #6 @1:1..1:34 name="Result"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           variants_id:
 // CHECK-NEXT:             EnumVariantList #5 @1:13..1:34 nvars=2
 // CHECK-NEXT:               variants:
-// CHECK-NEXT:                 TupleVariant #2 @1:15..1:23 name="Ok" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                 TupleVariant #2 @1:15..1:23 name="Ok" nfields=1
 // CHECK-NEXT:                   tys:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @1:18..1:21 kind=I32
-// CHECK-NEXT:                 TupleVariant #4 @1:24..1:32 name="Err" nfields=1 has_disc=false disc=null
+// CHECK-NEXT:                   discriminant: null
+// CHECK-NEXT:                 TupleVariant #4 @1:24..1:32 name="Err" nfields=1
 // CHECK-NEXT:                   tys:
 // CHECK-NEXT:                     PredefinedTypeExpr #3 @1:28..1:31 kind=Str
+// CHECK-NEXT:                   discriminant: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #30 @2:1..5:2
 // CHECK-NEXT:       item:

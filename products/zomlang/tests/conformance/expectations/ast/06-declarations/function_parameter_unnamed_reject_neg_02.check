@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/function_parameter_unnamed_reject_neg_02.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2077]: Identifier expected
+// CHECK:   --> products {{(?:.*[/\\])?function_parameter_unnamed_reject_neg_02\.zom:1:7$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | fun f(i32, str) -> i32;
+// CHECK-LITERAL:   |       ^
+// CHECK-LITERAL: Error [ZOM2077]: Identifier expected
+// CHECK:   --> products {{(?:.*[/\\])?function_parameter_unnamed_reject_neg_02\.zom:1:12$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | fun f(i32, str) -> i32;
+// CHECK-LITERAL:   |            ^

@@ -1,0 +1,4 @@
+section: "§18.1 Extern item boundary"
+covers_rule: "externItem rejects foreign type aliases"
+expected: "REJECT"
+notes: []

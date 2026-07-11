@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/05-statements/for_forms_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2025]: Expected ';'
-// CHECK:   --> {{.*for_forms_neg_01.zom}}:2:19
-// CHECK:   |
-// CHECK: 2 |     for (let x arr) {}
-// CHECK:   |                   ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2025]: Expected ';'
+// CHECK:   --> products {{(?:.*[/\\])?for_forms_neg_01\.zom:2:19$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     for (let x arr) {}
+// CHECK-LITERAL:   |                   ^

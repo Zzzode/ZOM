@@ -25,6 +25,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #6 @4:23..4:26 kind=Str
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #11 @4:27..4:51
 // CHECK-NEXT:                       stmts:

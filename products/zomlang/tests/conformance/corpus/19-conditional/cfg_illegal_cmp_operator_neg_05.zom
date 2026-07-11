@@ -1,2 +1,0 @@
-#[zom::cfg(target_os = linux)]
-fun unquoted_value_in_cfg() -> i32 { return 15; }

@@ -1,0 +1,4 @@
+section: "§4.6 forced cast versus exponentiation precedence"
+covers_rule: "relationalExpr, powerExpr"
+expected: "ACCEPT"
+notes: []

@@ -1,4 +1,0 @@
-section: "§20.4 extern block opaque type alias: FILE bound to an unseen C struct impl"
-covers_rule: "externItem (externTypeAlias alt, opaque soft-keyword enabled)"
-expected: "ACCEPT"
-notes: []

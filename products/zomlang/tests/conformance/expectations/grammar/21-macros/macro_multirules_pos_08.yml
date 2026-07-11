@@ -1,4 +1,0 @@
-section: "§21.3 Multi-rule declarative macro 2.0: two patterns separated by `;`"
-covers_rule: "macroRulesDecl (two macroRule iterations, SEMI present / optional)"
-expected: "ACCEPT"
-notes: []

@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/08-adt/error_generic_reject_neg_15.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?error_generic_reject_neg_15\.zom:1:17$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | error ParseError<T> {
+// CHECK-LITERAL:   |                 ^

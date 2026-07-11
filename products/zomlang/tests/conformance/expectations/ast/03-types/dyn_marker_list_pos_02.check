@@ -21,4 +21,5 @@
 // CHECK-NEXT:                 DynTypeMarkerList #5 @1:28..1:36 n_markers=1
 // CHECK-NEXT:                   markers:
 // CHECK-NEXT:                     AttributePath #3 @1:28..1:36 segments=["Sendable"] leading=None
+// CHECK-NEXT:               assoc_bindings_id: null
 // CHECK-NEXT:       attrs: null

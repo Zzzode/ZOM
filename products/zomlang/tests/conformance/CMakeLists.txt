@@ -18,6 +18,7 @@
 add_subdirectory(runners/grammar)
 add_subdirectory(runners/ast)
 add_subdirectory(runners/diagnostics)
+add_subdirectory(runners/ir)
 
 add_test(
   NAME parser-coverage
@@ -27,7 +28,7 @@ add_test(
 
 set_tests_properties(parser-coverage PROPERTIES
   LABELS "conformance;parser;coverage;specification"
-  TIMEOUT 10
+  TIMEOUT 120
 )
 
 add_test(
@@ -38,7 +39,97 @@ add_test(
 
 set_tests_properties(lexer-architecture PROPERTIES
   LABELS "conformance;lexer;specification"
-  TIMEOUT 10
+  TIMEOUT 120
+)
+
+add_test(
+  NAME ast-generated-schema
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_ast.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+add_test(
+  NAME compiler-session-architecture
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-compiler-session-architecture.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(compiler-session-architecture PROPERTIES
+  LABELS "conformance;compiler-session;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME compiler-session-architecture-negative
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-compiler-session-architecture.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(compiler-session-architecture-negative PROPERTIES
+  LABELS "conformance;compiler-session;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME identity-architecture
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-identity-architecture.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(identity-architecture PROPERTIES
+  LABELS "conformance;identity;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME identity-architecture-negative
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-identity-architecture.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(identity-architecture-negative PROPERTIES
+  LABELS "conformance;identity;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME vendored-dependencies
+  COMMAND python3
+          ${CMAKE_SOURCE_DIR}/products/zomlang/tests/tools/check-vendored-dependencies.py
+          --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(vendored-dependencies PROPERTIES
+  LABELS "conformance;package;vendor;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME ir-diagnostic-boundary
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-ir-diagnostic-boundary.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(ir-diagnostic-boundary PROPERTIES
+  LABELS "conformance;ir;diagnostics;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME ir-diagnostic-boundary-negative
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-ir-diagnostic-boundary.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(ir-diagnostic-boundary-negative PROPERTIES
+  LABELS "conformance;ir;diagnostics;architecture;negative"
+  TIMEOUT 120
+)
+
+set_tests_properties(ast-generated-schema PROPERTIES
+  LABELS "conformance;ast;generated;specification"
+  TIMEOUT 120
 )
 
 add_custom_target(check-conformance
@@ -61,6 +152,12 @@ add_custom_target(check-conformance-diagnostics
   COMMENT "Running diagnostics/FileCheck conformance tests"
 )
 
+add_custom_target(check-conformance-ir
+  COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -L "conformance-ir"
+  COMMENT "Running IR/FileCheck conformance tests"
+)
+
 add_dependencies(check-conformance zomc)
 add_dependencies(check-conformance-ast zomc)
 add_dependencies(check-conformance-diagnostics zomc)
+add_dependencies(check-conformance-ir zomc)

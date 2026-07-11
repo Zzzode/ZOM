@@ -1,10 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/05-statements/label_on_let_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2012]: Missing semicolon before 'x'
-// CHECK:   --> {{.*label_on_let_reject_neg_01.zom}}:2:14
-// CHECK:   |
-// CHECK: 2 |     lab: let x = 1;
-// CHECK:   |              ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?label_on_let_reject_neg_01\.zom:2:10$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     lab: let x = 1;
+// CHECK-LITERAL:   |          ^
+// CHECK-LITERAL: Error [ZOM2012]: Missing semicolon before 'x'
+// CHECK:   --> products {{(?:.*[/\\])?label_on_let_reject_neg_01\.zom:2:14$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     lab: let x = 1;
+// CHECK-LITERAL:   |              ^

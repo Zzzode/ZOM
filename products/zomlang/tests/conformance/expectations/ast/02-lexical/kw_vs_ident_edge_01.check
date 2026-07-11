@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/02-lexical/kw_vs_ident_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #49 @1:1..9:1 file_name="kw_vs_ident_edge_01.zom"
+// CHECK: SourceFile #61 @1:1..11:1 file_name="kw_vs_ident_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #6 @1:1..1:18
@@ -115,4 +115,32 @@
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IntLiteral #44 @8:11..8:12 base=10 value="8"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #54 @9:1..9:17
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #53 @9:1..9:17 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #52 @9:5..9:16 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #51 @9:5..9:16
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #49 @9:5..9:12 name="extends"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IntLiteral #50 @9:15..9:16 base=10 value="9"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #60 @10:1..10:21
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #59 @10:1..10:21 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #58 @10:5..10:20 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #57 @10:5..10:20
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #55 @10:5..10:15 name="implements"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IntLiteral #56 @10:18..10:20 base=10 value="10"
 // CHECK-NEXT:       attrs: null

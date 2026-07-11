@@ -6,3 +6,5 @@ let auto = 5;
 let use = 6;
 let high = 7;
 let low = 8;
+let extends = 9;
+let implements = 10;

@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/bind_pat_double_at_neg_09.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*bind_pat_double_at_neg_09.zom}}:2:12
-// CHECK:   |
-// CHECK: 2 |     when a @ b @ p => { print(a); }
-// CHECK:   |            ^
-// CHECK: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
-// CHECK:   --> {{.*bind_pat_double_at_neg_09.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | match (v) {
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?bind_pat_double_at_neg_09\.zom:2:12$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     when a @ b @ p => { print(a); }
+// CHECK-LITERAL:   |            ^
+// CHECK-LITERAL: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
+// CHECK:   --> products {{(?:.*[/\\])?bind_pat_double_at_neg_09\.zom:1:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | match (v) {
+// CHECK-LITERAL:   | ^

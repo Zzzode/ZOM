@@ -1,0 +1,23 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/array_literal_element_mismatch_neg_29.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #9 @1:1..2:1 file_name="array_literal_element_mismatch_neg_29.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #8 @1:1..1:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #7 @1:1..1:22 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #6 @1:5..1:21 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #5 @1:5..1:21
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:8 name="arr"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     ArrayLiteral #4 @1:12..1:20
+// CHECK-NEXT:                       elems:
+// CHECK-NEXT:                         IntLiteral #2 @1:12..1:13 base=10 value="1"
+// CHECK-NEXT:                         StrLiteral #3 @1:15..1:20 value="two" is_raw=false prefix=None
+// CHECK-NEXT:       attrs: null

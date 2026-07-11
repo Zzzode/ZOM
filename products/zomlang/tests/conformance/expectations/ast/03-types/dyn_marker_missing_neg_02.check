@@ -15,9 +15,9 @@
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #8 @3:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #7 @3:1..5:2 name="Number" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #7 @3:1..5:2 name="Number"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #6 @3:14..5:2 nmembers=1
 // CHECK-NEXT:               members:
@@ -100,6 +100,7 @@
 // CHECK-NEXT:                         DynTypeMarkerList #34 @10:18..10:26 n_markers=1
 // CHECK-NEXT:                           markers:
 // CHECK-NEXT:                             AttributePath #32 @10:18..10:26 segments=["Sendable"] leading=None
+// CHECK-NEXT:                       assoc_bindings_id: null
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IdentExpr #36 @10:29..10:30 name="x"
 // CHECK-NEXT:       attrs: null

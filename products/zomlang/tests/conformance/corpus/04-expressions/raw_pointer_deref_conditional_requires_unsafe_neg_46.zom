@@ -1,0 +1,3 @@
+fun main(flag: bool, ptr: *const i32) -> unit {
+    let value = flag ? *ptr : 0;
+}

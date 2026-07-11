@@ -1,0 +1,5 @@
+// RUN: cd %corpus && %zomc compile --syntax-only 05-statements/borrow_after_while_borrow_pos_23.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Syntax check completed successfully.

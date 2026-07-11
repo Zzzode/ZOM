@@ -1,0 +1,4 @@
+section: "§16 Attribute on Enum Variant"
+covers_rule: "enumVariant"
+expected: "REJECT"
+notes: ["Enum variants have no attribute storage and reject the prefix."]

@@ -1,0 +1,11 @@
+class Owner { }
+
+fun main(flag: bool) -> unit {
+    let owned: Owner;
+    match (flag) {
+        when _ => {
+            let ref = &owned;
+        }
+    }
+    let sink: Owner = owned;
+}

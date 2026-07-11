@@ -1,0 +1,5 @@
+section: "§5 Match redundancy"
+covers_rule: "matchStmt, wildcardPattern"
+expected: "ACCEPT"
+notes:
+  - "An unguarded wildcard arm makes later bool literal arms unreachable and produces ZOM4023."

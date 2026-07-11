@@ -1,0 +1,4 @@
+section: "Section 13.2 module declarations"
+covers_rule: "moduleDeclaration"
+expected: "ACCEPT"
+notes: []

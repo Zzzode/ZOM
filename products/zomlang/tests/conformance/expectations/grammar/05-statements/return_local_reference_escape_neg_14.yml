@@ -1,0 +1,5 @@
+section: "05-statements return diagnostics"
+covers_rule: "returnStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks borrow-checker rejection for returning a reference to a local binding."

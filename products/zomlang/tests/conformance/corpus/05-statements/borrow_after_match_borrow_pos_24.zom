@@ -1,0 +1,9 @@
+fun main(flag: bool) -> unit {
+    let value: i32;
+    match (flag) {
+        when _ => {
+            let shared = &value;
+        }
+    }
+    let exclusive = &mut value;
+}

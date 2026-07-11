@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/05-statements/label_on_expression_reject_neg_03.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?label_on_expression_reject_neg_03\.zom:2:10$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     lab: call();
+// CHECK-LITERAL:   |          ^

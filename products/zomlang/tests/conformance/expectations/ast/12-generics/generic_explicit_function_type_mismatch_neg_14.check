@@ -1,0 +1,68 @@
+// RUN: %zomc compile --dump-ast %corpus/12-generics/generic_explicit_function_type_mismatch_neg_14.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #26 @1:1..6:1 file_name="generic_explicit_function_type_mismatch_neg_14.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #14 @1:1..3:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #13 @1:1..3:2 name="id"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #6 @1:10..1:16 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #5 @1:11..1:15 name="x"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #4 @1:14..1:15
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #3 @1:14..1:15 segments=["T"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #2 @1:7..1:10 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #1 @1:8..1:9 name="T" variance=Invariant
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             NamedTypeExpr #8 @1:20..1:21
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #7 @1:20..1:21 segments=["T"]
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #12 @1:22..3:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #11 @2:5..2:14
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #10 @2:5..2:14
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #9 @2:12..2:13 name="x"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #25 @5:1..5:32
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #24 @5:1..5:32 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #23 @5:5..5:31 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #22 @5:5..5:31
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #15 @5:5..5:6 name="y"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     CallExpression #21 @5:9..5:31
+// CHECK-NEXT:                       callee:
+// CHECK-NEXT:                         IdentExpr #16 @5:9..5:11 name="id"
+// CHECK-NEXT:                       type_args:
+// CHECK-NEXT:                         FunctionTypeExpr #19 @5:12..5:27
+// CHECK-NEXT:                           params:
+// CHECK-NEXT:                             PredefinedTypeExpr #18 @5:16..5:19 kind=I32
+// CHECK-NEXT:                           ret_ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #17 @5:24..5:27 kind=I32
+// CHECK-NEXT:                           raises: null
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         IntLiteral #20 @5:29..5:30 base=10 value="1"
+// CHECK-NEXT:       attrs: null

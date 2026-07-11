@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/08-adt/enum_discriminant_expr_neg_13.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*enum_discriminant_expr_neg_13.zom}}:2:9
-// CHECK:   |
-// CHECK: 2 |     A = ,
-// CHECK:   |         ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?enum_discriminant_expr_neg_13\.zom:2:9$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     A = ,
+// CHECK-LITERAL:   |         ^

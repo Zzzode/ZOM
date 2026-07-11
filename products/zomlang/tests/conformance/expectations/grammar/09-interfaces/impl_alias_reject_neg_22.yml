@@ -1,0 +1,5 @@
+section: "Ch.09 Standalone implementation members"
+covers_rule: "implMember"
+expected: "REJECT"
+notes:
+  - "Aliases are not valid standalone implementation members."

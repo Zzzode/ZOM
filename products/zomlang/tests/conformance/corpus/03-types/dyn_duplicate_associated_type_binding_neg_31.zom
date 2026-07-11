@@ -1,0 +1,5 @@
+interface Iterator {
+    type Item;
+}
+
+let it: dyn Iterator<Item = u8, Item = str>;

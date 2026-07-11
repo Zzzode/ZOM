@@ -1,0 +1,44 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/raw_pointer_deref_expression_requires_unsafe_neg_41.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #17 @1:1..5:1 file_name="raw_pointer_deref_expression_requires_unsafe_neg_41.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #16 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #15 @1:1..4:2 name="main"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:15..1:19 kind=Unit
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #14 @1:20..4:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #9 @2:5..2:25
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #8 @2:5..2:25 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #7 @2:9..2:24 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #6 @2:9..2:24
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #3 @2:9..2:12 name="ptr"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 RawPointerTypeExpr #5 @2:14..2:24 is_mut=false
+// CHECK-NEXT:                                   elem:
+// CHECK-NEXT:                                     PredefinedTypeExpr #4 @2:21..2:24 kind=I32
+// CHECK-NEXT:                               init: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #13 @3:5..3:10
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #12 @3:5..3:10
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         UnaryExpression #11 @3:5..3:9 op=Deref
+// CHECK-NEXT:                           operand:
+// CHECK-NEXT:                             IdentExpr #10 @3:6..3:9 name="ptr"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

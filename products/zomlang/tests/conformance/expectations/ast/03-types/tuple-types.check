@@ -25,24 +25,24 @@
 // CHECK-NEXT:                         IntLiteral #5 @1:22..1:23 base=10 value="1"
 // CHECK-NEXT:                         StrLiteral #6 @1:25..1:32 value="hello" is_raw=false prefix=None
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #22 @2:1..2:37
+// CHECK-NEXT:     StatementListItem #22 @2:1..2:31
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #21 @2:1..2:37 kind=Let
+// CHECK-NEXT:         LetStmt #21 @2:1..2:31 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #20 @2:5..2:36 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #20 @2:5..2:30 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #19 @2:5..2:36
+// CHECK-NEXT:                 VariableDeclarator #19 @2:5..2:30
 // CHECK-NEXT:                   pattern:
 // CHECK-NEXT:                     IdentifierPattern #12 @2:5..2:7 name="t2"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     TupleTypeExpr #15 @2:9..2:25
+// CHECK-NEXT:                     TupleTypeExpr #15 @2:9..2:19
 // CHECK-NEXT:                       elems:
-// CHECK-NEXT:                         PredefinedTypeExpr #13 @2:13..2:16 kind=I32
-// CHECK-NEXT:                         PredefinedTypeExpr #14 @2:21..2:24 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #13 @2:10..2:13 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #14 @2:15..2:18 kind=I32
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     TupleLiteral #18 @2:29..2:35
+// CHECK-NEXT:                     TupleLiteral #18 @2:23..2:29
 // CHECK-NEXT:                       elems:
-// CHECK-NEXT:                         IntLiteral #16 @2:29..2:31 base=10 value="10"
-// CHECK-NEXT:                         IntLiteral #17 @2:33..2:35 base=10 value="20"
+// CHECK-NEXT:                         IntLiteral #16 @2:23..2:25 base=10 value="10"
+// CHECK-NEXT:                         IntLiteral #17 @2:27..2:29 base=10 value="20"
 // CHECK-NEXT:       attrs: null

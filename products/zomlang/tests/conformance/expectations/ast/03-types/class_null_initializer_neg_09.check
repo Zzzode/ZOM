@@ -6,9 +6,9 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #3 @1:1..1:13
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #2 @1:1..1:13 name="Box" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #2 @1:1..1:13 name="Box"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #1 @1:11..1:13 nmembers=0
 // CHECK-NEXT:               members: []

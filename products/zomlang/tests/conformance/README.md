@@ -13,12 +13,14 @@ conformance/
 │   ├── binder/
 │   ├── diagnostics/
 │   ├── e2e/
+│   ├── ir/
 │   └── grammar/
 └── runners/           # Executable runner glue registered with CTest
     ├── ast/
     ├── binder/
     ├── diagnostics/
     ├── e2e/
+    ├── ir/
     └── grammar/
 ```
 
@@ -33,10 +35,11 @@ expectation file.
 | Grammar | `conformance-grammar` | `corpus/**/*.zom` | `expectations/grammar/**/*.yml` |
 | AST | `conformance-ast` | `corpus/**/*.zom` | `expectations/ast/**/*.check` |
 | Diagnostics | `conformance-diagnostics` | `corpus/**/*.zom` | `expectations/diagnostics/**/*.check` |
+| IR | `conformance-ir` | `corpus/**/*.zom` | `expectations/ir/**/*.check` |
 | Parser coverage | `parser;coverage;specification` | `docs/spec/chapters/17-grammar-reference.md` | `products/zomlang/compiler/parser/parser-coverage.yml` |
 
-Future layers must reuse `corpus/` and add only their own expectation schema and
-runner.
+Every additional layer must reuse `corpus/` and add only its own expectation
+schema and runner.
 
 The parser coverage guard maps every grammar production in
 `17-grammar-reference.md` to the parser function that owns it. The guard checks
@@ -72,9 +75,7 @@ The corpus is grouped by spec chapter:
 13-modules/
 15-concurrency/
 16-attributes/
-19-conditional/
 20-ffi/
-21-macros/
 ```
 
 Use nested construct directories only when they clarify the source fixture. Do

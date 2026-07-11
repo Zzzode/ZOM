@@ -1,0 +1,5 @@
+section: "Ch.03 Generic dynamic interface head with associated binding"
+covers_rule: "dynType, typeArgList, dynAssocBindingArgs"
+expected: "ACCEPT"
+notes:
+  - "Covers generic interface arguments and associated type bindings in the same dynamic type."

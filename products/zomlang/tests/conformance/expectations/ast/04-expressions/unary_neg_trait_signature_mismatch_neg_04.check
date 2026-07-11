@@ -22,13 +22,14 @@
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #2 @2:18..2:25 segments=["Operand"]
 // CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #10 @5:1..5:18
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #9 @5:1..5:18 name="Operand" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #9 @5:1..5:18 name="Operand"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #8 @5:15..5:18 nmembers=0
 // CHECK-NEXT:               members: []
@@ -60,6 +61,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #17 @8:18..8:22 kind=Bool
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #28 @11:1..11:20

@@ -4,33 +4,33 @@
 // CHECK: SourceFile #14 @1:1..2:1 file_name="function-types.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #13 @1:1..1:39
+// CHECK-NEXT:     StatementListItem #13 @1:1..1:36
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #12 @1:1..1:39 kind=Let
+// CHECK-NEXT:         LetStmt #12 @1:1..1:36 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #11 @1:5..1:38 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #11 @1:5..1:35 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #10 @1:5..1:38
+// CHECK-NEXT:                 VariableDeclarator #10 @1:5..1:35
 // CHECK-NEXT:                   pattern:
 // CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="h"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     FunctionTypeExpr #8 @1:8..1:33
+// CHECK-NEXT:                     FunctionTypeExpr #8 @1:8..1:30
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         NamedTypeExpr #7 @1:15..1:16
+// CHECK-NEXT:                         NamedTypeExpr #7 @1:12..1:13
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #6 @1:15..1:16 segments=["T"]
+// CHECK-NEXT:                             ModulePath #6 @1:12..1:13 segments=["T"]
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       ret_ty:
-// CHECK-NEXT:                         NamedTypeExpr #3 @1:21..1:22
+// CHECK-NEXT:                         NamedTypeExpr #3 @1:18..1:19
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #2 @1:21..1:22 segments=["T"]
+// CHECK-NEXT:                             ModulePath #2 @1:18..1:19 segments=["T"]
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       raises:
-// CHECK-NEXT:                         NamedTypeExpr #5 @1:30..1:33
+// CHECK-NEXT:                         NamedTypeExpr #5 @1:27..1:30
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @1:30..1:33 segments=["Err"]
+// CHECK-NEXT:                             ModulePath #4 @1:27..1:30 segments=["Err"]
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     IdentExpr #9 @1:36..1:38 name="fn"
+// CHECK-NEXT:                     IdentExpr #9 @1:33..1:35 name="fn"
 // CHECK-NEXT:       attrs: null

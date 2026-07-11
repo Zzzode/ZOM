@@ -7,5 +7,5 @@ interface Comparable<T> {
 }
 
 interface Named {
-  readonly let name: str;
+  readonly get name() -> str;
 }

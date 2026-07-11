@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/03-types/function_type_named_parameter_reject_neg_37.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2025]: Expected ','
+// CHECK:   --> products {{(?:.*[/\\])?function_type_named_parameter_reject_neg_37\.zom:1:21$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let callback: (value: i32) -> i32 = fn;
+// CHECK-LITERAL:   |                     ^

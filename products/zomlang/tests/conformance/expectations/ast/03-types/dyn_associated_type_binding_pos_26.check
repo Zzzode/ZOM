@@ -1,0 +1,82 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/dyn_associated_type_binding_pos_26.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #30 @1:1..12:1 file_name="dyn_associated_type_binding_pos_26.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #4 @1:1..3:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #3 @1:1..3:2 name="Iterator"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #2 @1:20..3:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 AssociatedTypeDecl #1 @2:5..2:15 name="Item"
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #7 @5:1..5:16
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #6 @5:1..5:16 name="Bytes"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           base_ty: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #5 @5:13..5:16 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #17 @7:1..9:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StandaloneImplDecl #16 @7:1..9:2 is_unsafe=false
+// CHECK-NEXT:           ifaces_id:
+// CHECK-NEXT:             ImplIfaceList #10 @7:6..7:14 n_ifaces=1
+// CHECK-NEXT:               ifaces:
+// CHECK-NEXT:                 NamedTypeExpr #9 @7:6..7:14
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #8 @7:6..7:14 segments=["Iterator"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #12 @7:19..7:24
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #11 @7:19..7:24 segments=["Bytes"]
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           where_: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #15 @7:25..9:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 AssociatedTypeDecl #14 @8:5..8:20 name="Item"
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #13 @8:17..8:19 kind=U8
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #29 @11:1..11:33
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #28 @11:1..11:33 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #27 @11:5..11:32 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #26 @11:5..11:32
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #18 @11:5..11:7 name="it"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     DynTypeExpr #25 @11:9..11:32 has_lifetime=false lifetime=null
+// CHECK-NEXT:                       ifaces_id:
+// CHECK-NEXT:                         DynTypeIfaceList #23 @11:13..11:32 n_ifaces=1
+// CHECK-NEXT:                           ifaces:
+// CHECK-NEXT:                             NamedTypeExpr #20 @11:13..11:21
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #19 @11:13..11:21 segments=["Iterator"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                       assoc_bindings_id:
+// CHECK-NEXT:                         DynTypeAssocBindingList #24 @11:21..11:32 n_bindings=1
+// CHECK-NEXT:                           bindings:
+// CHECK-NEXT:                             DynTypeAssocBinding #22 @11:22..11:31 name="Item"
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #21 @11:29..11:31 kind=U8
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null

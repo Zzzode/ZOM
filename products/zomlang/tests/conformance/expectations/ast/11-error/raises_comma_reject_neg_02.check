@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/11-error/raises_comma_reject_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*raises_comma_reject_neg_02.zom}}:1:27
-// CHECK:   |
-// CHECK: 1 | fun bad() -> void raises A, B, C;
-// CHECK:   |                           ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?raises_comma_reject_neg_02\.zom:1:27$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | fun bad() -> void raises A, B, C;
+// CHECK-LITERAL:   |                           ^

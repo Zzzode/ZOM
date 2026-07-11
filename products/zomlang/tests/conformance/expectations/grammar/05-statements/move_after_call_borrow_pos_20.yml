@@ -1,0 +1,5 @@
+section: "05-statements borrow diagnostics"
+covers_rule: "callExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that a borrow scoped to a call argument no longer blocks a move after the call."

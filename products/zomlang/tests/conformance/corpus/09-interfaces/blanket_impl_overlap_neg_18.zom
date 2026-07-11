@@ -1,0 +1,6 @@
+interface Hashable { }
+
+class Box { }
+
+impl Hashable for Box { }
+impl<T> Hashable for T { }

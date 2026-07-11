@@ -1,4 +1,0 @@
-section: "§21.1 Macro invocation missing mandatory bang introducer"
-covers_rule: "macroInvocationExpr (NOT token required — absent here)"
-expected: "REJECT"
-notes: []

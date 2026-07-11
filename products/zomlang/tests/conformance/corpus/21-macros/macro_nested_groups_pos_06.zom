@@ -1,3 +1,0 @@
-fun nested_tt() -> unit {
-    let _ = outer!{ inner!( (a)(b)[c]{d} ) };
-}

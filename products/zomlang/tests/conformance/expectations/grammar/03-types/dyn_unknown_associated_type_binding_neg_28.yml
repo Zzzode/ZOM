@@ -1,0 +1,5 @@
+section: "§3 Existential associated type bindings"
+covers_rule: "dynType, dyn associated type binding"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that dyn head associated type bindings must name associated types declared by the interface."

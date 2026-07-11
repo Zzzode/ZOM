@@ -6,9 +6,9 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #14 @1:1..4:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #13 @1:1..4:2 name="ReadOnly" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #13 @1:1..4:2 name="ReadOnly"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #12 @1:16..4:2 nmembers=2
 // CHECK-NEXT:               members:
@@ -24,6 +24,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @3:18..3:21 kind=I32
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #10 @3:22..3:41
 // CHECK-NEXT:                       stmts:

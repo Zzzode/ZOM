@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/06-declarations/static_mutating_reject_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2084]: Declaration modifiers 'static' and 'mutating' cannot be used together
-// CHECK:   --> {{.*static_mutating_reject_neg_01.zom}}:1:8
-// CHECK:   |
-// CHECK: 1 | static mutating fun f() {}
-// CHECK:   |        ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2084]: Declaration modifiers 'static' and 'mutating' cannot be used together
+// CHECK:   --> products {{(?:.*[/\\])?static_mutating_reject_neg_01\.zom:1:8$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | static mutating fun f() {}
+// CHECK-LITERAL:   |        ^

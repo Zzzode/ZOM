@@ -1,0 +1,5 @@
+section: "§3 Existential object safety"
+covers_rule: "dynType, interfaceHeritage"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks inherited associated type object-safety rejection."

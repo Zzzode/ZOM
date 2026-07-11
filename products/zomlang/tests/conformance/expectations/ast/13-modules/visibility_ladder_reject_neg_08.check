@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/13-modules/visibility_ladder_reject_neg_08.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2047]: Declaration expected
-// CHECK:   --> {{.*visibility_ladder_reject_neg_08.zom}}:1:8
-// CHECK:   |
-// CHECK: 1 | export pub(crate) fun foo() {}
-// CHECK:   |        ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2047]: Declaration expected
+// CHECK:   --> products {{(?:.*[/\\])?visibility_ladder_reject_neg_08\.zom:1:8$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | export pub(crate) fun foo() {}
+// CHECK-LITERAL:   |        ^

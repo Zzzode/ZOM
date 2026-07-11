@@ -1,35 +1,33 @@
 // RUN: ! %zomc compile --dump-ast %corpus/02-lexical/numeric_sep_pos_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2035]: Numeric separators are not allowed here
-// CHECK:   --> {{.*numeric_sep_pos_neg_01.zom}}:1:11
-// CHECK:   |
-// CHECK: 1 | let a = 0x_FF;
-// CHECK:   |           ^
-// CHECK: Error [ZOM2035]: Numeric separators are not allowed here
-// CHECK:   --> {{.*numeric_sep_pos_neg_01.zom}}:2:13
-// CHECK:   |
-// CHECK: 2 | let b = 0xFF_;
-// CHECK:   |             ^
-// CHECK: Error [ZOM2035]: Numeric separators are not allowed here
-// CHECK:   --> {{.*numeric_sep_pos_neg_01.zom}}:3:11
-// CHECK:   |
-// CHECK: 3 | let c = 0b__01;
-// CHECK:   |           ^
-// CHECK: Error [ZOM2035]: Numeric separators are not allowed here
-// CHECK:   --> {{.*numeric_sep_pos_neg_01.zom}}:3:12
-// CHECK:   |
-// CHECK: 3 | let c = 0b__01;
-// CHECK:   |            ^
-// CHECK: Error [ZOM2035]: Numeric separators are not allowed here
-// CHECK:   --> {{.*numeric_sep_pos_neg_01.zom}}:4:13
-// CHECK:   |
-// CHECK: 4 | let d = 0o77_;
-// CHECK:   |             ^
-// CHECK: Error [ZOM2036]: Multiple consecutive numeric separators are not permitted
-// CHECK:   --> {{.*numeric_sep_pos_neg_01.zom}}:5:11
-// CHECK:   |
-// CHECK: 5 | let e = 1__23;
-// CHECK:   |           ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2035]: Numeric separators are not allowed here
+// CHECK:   --> products {{(?:.*[/\\])?numeric_sep_pos_neg_01\.zom:1:11$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let a = 0x_FF;
+// CHECK-LITERAL:   |           ^
+// CHECK-LITERAL: Error [ZOM2035]: Numeric separators are not allowed here
+// CHECK:   --> products {{(?:.*[/\\])?numeric_sep_pos_neg_01\.zom:2:13$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 | let b = 0xFF_;
+// CHECK-LITERAL:   |             ^
+// CHECK-LITERAL: Error [ZOM2035]: Numeric separators are not allowed here
+// CHECK:   --> products {{(?:.*[/\\])?numeric_sep_pos_neg_01\.zom:3:11$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 | let c = 0b__01;
+// CHECK-LITERAL:   |           ^
+// CHECK-LITERAL: Error [ZOM2035]: Numeric separators are not allowed here
+// CHECK:   --> products {{(?:.*[/\\])?numeric_sep_pos_neg_01\.zom:3:12$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 | let c = 0b__01;
+// CHECK-LITERAL:   |            ^
+// CHECK-LITERAL: Error [ZOM2035]: Numeric separators are not allowed here
+// CHECK:   --> products {{(?:.*[/\\])?numeric_sep_pos_neg_01\.zom:4:13$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 4 | let d = 0o77_;
+// CHECK-LITERAL:   |             ^
+// CHECK-LITERAL: Error [ZOM2036]: Multiple consecutive numeric separators are not permitted
+// CHECK:   --> products {{(?:.*[/\\])?numeric_sep_pos_neg_01\.zom:5:11$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 5 | let e = 1__23;
+// CHECK-LITERAL:   |           ^

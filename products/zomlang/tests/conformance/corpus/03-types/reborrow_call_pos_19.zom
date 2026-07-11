@@ -1,0 +1,6 @@
+fun read(x: &i32) -> unit {
+    return;
+}
+
+let mutable: &mut i32;
+read(mutable);

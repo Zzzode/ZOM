@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/16-attributes/attr_on_enum_variant_reject_neg_18.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2089]: Attributes are supported only on module items, non-expression block items, and function parameters
+// CHECK:   --> products {{(?:.*[/\\])?attr_on_enum_variant_reject_neg_18\.zom:2:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   #[wire::value(1)]
+// CHECK-LITERAL:   |   ^

@@ -1,0 +1,4 @@
+fun main(ptr: *const i32) -> unit {
+    let arr: [i32] = [1, 2];
+    let value = arr[*ptr];
+}

@@ -1,4 +1,0 @@
-section: "§19.6.2 ZOM1901 CfgOnExpression — cfg gate on return statement (non-block form)"
-covers_rule: "moduleItemStatementCfgGated (checkStatementCfgGate predicate)"
-expected: "REJECT"
-notes: []

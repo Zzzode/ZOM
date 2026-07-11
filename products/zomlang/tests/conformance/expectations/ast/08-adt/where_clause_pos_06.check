@@ -6,7 +6,7 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #16 @1:1..3:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #15 @1:1..3:2 name="S" extensibility=Sealed
+// CHECK-NEXT:         StructDecl #15 @1:1..3:2 name="S"
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #10 @1:9..1:12 nparams=1
 // CHECK-NEXT:               params:

@@ -1,0 +1,13 @@
+interface Eq { }
+
+class Plain { }
+class Box<T> { value: T; }
+
+impl<T> Eq for Box<T> where T: Eq { }
+
+fun needs<T: Eq>(x: T) -> unit {
+    return;
+}
+
+let value: Box<Plain>;
+needs(value);

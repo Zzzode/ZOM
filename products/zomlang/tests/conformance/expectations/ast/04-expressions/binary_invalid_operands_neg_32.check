@@ -1,0 +1,24 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/binary_invalid_operands_neg_32.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #9 @1:1..2:1 file_name="binary_invalid_operands_neg_32.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #8 @1:1..1:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #7 @1:1..1:22 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #6 @1:5..1:21 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #5 @1:5..1:21
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:6 name="y"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     BinaryExpr #4 @1:9..1:21 op=Add
+// CHECK-NEXT:                       lhs:
+// CHECK-NEXT:                         BoolLiteral #2 @1:9..1:13 value=true
+// CHECK-NEXT:                       rhs:
+// CHECK-NEXT:                         BoolLiteral #3 @1:16..1:21 value=false
+// CHECK-NEXT:       attrs: null

@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/16-attributes/empty_attr_reject_neg_05.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2025]: Expected 'attribute path'
-// CHECK:   --> {{.*empty_attr_reject_neg_05.zom}}:1:3
-// CHECK:   |
-// CHECK: 1 | #[]
-// CHECK:   |   ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2025]: Expected 'attribute path'
+// CHECK:   --> products {{(?:.*[/\\])?empty_attr_reject_neg_05\.zom:1:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | #[]
+// CHECK-LITERAL:   |   ^

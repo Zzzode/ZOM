@@ -1,15 +1,23 @@
 // RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/errors/interface-method-missing-parens.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2025]: Expected '('
-// CHECK:   --> {{.*interface-method-missing-parens.zom}}:2:11
-// CHECK:   |
-// CHECK: 2 |   fun foo -> i32;
-// CHECK:   |           ^
-// CHECK: Error [ZOM2025]: Expected ':'
-// CHECK:   --> {{.*interface-method-missing-parens.zom}}:3:9
-// CHECK:   |
-// CHECK: 3 |   let i -> i32;
-// CHECK:   |         ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2092]: Interface bodies accept only methods, accessors, and associated type declarations
+// CHECK:   --> products {{(?:.*[/\\])?interface\-method\-missing\-parens\.zom:3:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |   let i -> i32;
+// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL: Error [ZOM2092]: Interface bodies accept only methods, accessors, and associated type declarations
+// CHECK:   --> products {{(?:.*[/\\])?interface\-method\-missing\-parens\.zom:4:3$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 4 |   const f: str;
+// CHECK-LITERAL:   |   ^
+// CHECK-LITERAL: Error [ZOM2025]: Expected '('
+// CHECK:   --> products {{(?:.*[/\\])?interface\-method\-missing\-parens\.zom:2:11$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   fun foo -> i32;
+// CHECK-LITERAL:   |           ^
+// CHECK-LITERAL: Error [ZOM2025]: Expected ':'
+// CHECK:   --> products {{(?:.*[/\\])?interface\-method\-missing\-parens\.zom:3:9$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |   let i -> i32;
+// CHECK-LITERAL:   |         ^

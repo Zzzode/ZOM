@@ -6,7 +6,7 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #14 @1:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #13 @1:1..5:2 name="Node" extensibility=Sealed
+// CHECK-NEXT:         StructDecl #13 @1:1..5:2 name="Node"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #12 @1:13..5:2 nmembers=3

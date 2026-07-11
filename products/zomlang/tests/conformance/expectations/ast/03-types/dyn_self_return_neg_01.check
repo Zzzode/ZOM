@@ -22,6 +22,7 @@
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #2 @2:20..2:24 segments=["Self"]
 // CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #16 @5:1..5:22
@@ -44,5 +45,6 @@
 // CHECK-NEXT:                                 ModulePath #9 @5:12..5:21 segments=["Cloneable"]
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                       assoc_bindings_id: null
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

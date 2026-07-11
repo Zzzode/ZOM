@@ -19,6 +19,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:17..2:20 kind=U64
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #6 @3:5..3:23 name="name" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -27,6 +28,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @3:19..3:22 kind=Str
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #11 @4:5..4:30 name="name" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -40,6 +42,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #10 @4:25..4:29 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #16 @5:5..5:31 name="email" is_static=false visibility=Default
 // CHECK-NEXT:                   params_id:
@@ -53,5 +56,6 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #15 @5:26..5:30 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

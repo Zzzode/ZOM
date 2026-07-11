@@ -1,4 +1,4 @@
-public error IoError {
+export error IoError {
     code: i32;
     message: str;
 }

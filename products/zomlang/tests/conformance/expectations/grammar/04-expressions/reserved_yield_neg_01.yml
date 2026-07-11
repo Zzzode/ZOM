@@ -1,4 +1,4 @@
-section: "§4.6 yield reserved (ZOM5005) in expression"
+section: "§4.6 yield reserved in expression"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
 notes: []

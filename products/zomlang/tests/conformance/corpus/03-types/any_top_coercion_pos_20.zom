@@ -1,0 +1,3 @@
+let number: any = 1;
+let text: any = "value";
+let flag: any = true;

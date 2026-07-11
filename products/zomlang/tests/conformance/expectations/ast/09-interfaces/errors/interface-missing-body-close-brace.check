@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/errors/interface-missing-body-close-brace.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*interface-missing-body-close-brace.zom}}:3:1
-// CHECK:   |
-// CHECK: 3 |
-// CHECK:   | ^
-// CHECK: Error [ZOM2025]: Expected '}'
-// CHECK:   --> {{.*interface-missing-body-close-brace.zom}}:2:13
-// CHECK:   |
-// CHECK: 2 |   let x: i32;
-// CHECK:   |             ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2025]: Expected '}'
+// CHECK:   --> products {{(?:.*[/\\])?interface\-missing\-body\-close\-brace\.zom:3:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |
+// CHECK-LITERAL:   | ^
+// CHECK-LITERAL: Error [ZOM2025]: Expected '}'
+// CHECK:   --> products {{(?:.*[/\\])?interface\-missing\-body\-close\-brace\.zom:2:13$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |   let x: i32;
+// CHECK-LITERAL:   |             ^

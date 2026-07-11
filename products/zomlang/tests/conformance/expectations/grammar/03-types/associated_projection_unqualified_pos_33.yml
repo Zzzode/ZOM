@@ -1,0 +1,5 @@
+section: "Ch.03 Unqualified associated type projection"
+covers_rule: "typeExpr, attributePath"
+expected: "ACCEPT"
+notes:
+  - "The checker resolves a two-segment type path as an associated projection when its head denotes a type parameter."

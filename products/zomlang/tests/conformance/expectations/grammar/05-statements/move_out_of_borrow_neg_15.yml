@@ -1,0 +1,5 @@
+section: "05-statements borrow diagnostics"
+covers_rule: "letStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that moving an owner while it is borrowed is rejected."

@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/top_level_visibility_reject_neg_03.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2088]: Visibility modifier 'private' is valid only on a type member; use 'export' for a module-level API
+// CHECK:   --> products {{(?:.*[/\\])?top_level_visibility_reject_neg_03\.zom:1:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | private fun hidden() {}
+// CHECK-LITERAL:   | ^

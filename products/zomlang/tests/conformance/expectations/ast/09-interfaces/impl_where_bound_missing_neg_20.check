@@ -1,0 +1,172 @@
+// RUN: %zomc compile --dump-ast %corpus/09-interfaces/impl_where_bound_missing_neg_20.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #63 @1:1..14:1 file_name="impl_where_bound_missing_neg_20.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:17
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #2 @1:1..1:17 name="Eq"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #1 @1:14..1:17 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #6 @3:1..3:16
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #5 @3:1..3:16 name="Plain"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           base_ty: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #4 @3:13..3:16 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #14 @4:1..4:27
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #13 @4:1..4:27 name="Box"
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #8 @4:10..4:13 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #7 @4:11..4:12 name="T" variance=Invariant
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
+// CHECK-NEXT:           base_ty: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #12 @4:14..4:27 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #11 @4:16..4:25 name="value" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #10 @4:23..4:24
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #9 @4:23..4:24 segments=["T"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #34 @6:1..6:38
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StandaloneImplDecl #33 @6:1..6:38 is_unsafe=false
+// CHECK-NEXT:           ifaces_id:
+// CHECK-NEXT:             ImplIfaceList #27 @6:9..6:11 n_ifaces=1
+// CHECK-NEXT:               ifaces:
+// CHECK-NEXT:                 NamedTypeExpr #26 @6:9..6:11
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #25 @6:9..6:11 segments=["Eq"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #31 @6:16..6:22
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #30 @6:16..6:19 segments=["Box"]
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 NamedTypeExpr #29 @6:20..6:21
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #28 @6:20..6:21 segments=["T"]
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           where_:
+// CHECK-NEXT:             WhereClause #22 @6:23..6:34
+// CHECK-NEXT:               preds:
+// CHECK-NEXT:                 WherePred #21 @6:29..6:34 kind=Implements
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #18 @6:29..6:30
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #17 @6:29..6:30 segments=["T"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   bound:
+// CHECK-NEXT:                     NamedTypeExpr #20 @6:32..6:34
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #19 @6:32..6:34 segments=["Eq"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #24 @6:5..6:8 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #23 @6:6..6:7 name="T" variance=Invariant
+// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_:
+// CHECK-NEXT:                 WhereClause #22 @6:23..6:34
+// CHECK-NEXT:                   preds:
+// CHECK-NEXT:                     WherePred #21 @6:29..6:34 kind=Implements
+// CHECK-NEXT:                       ty:
+// CHECK-NEXT:                         NamedTypeExpr #18 @6:29..6:30
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #17 @6:29..6:30 segments=["T"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                       bound:
+// CHECK-NEXT:                         NamedTypeExpr #20 @6:32..6:34
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #19 @6:32..6:34 segments=["Eq"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #32 @6:35..6:38 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #48 @8:1..10:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #47 @8:1..10:2 name="needs"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #42 @8:17..8:23 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #41 @8:18..8:22 name="x"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #40 @8:21..8:22
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #39 @8:21..8:22 segments=["T"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #38 @8:10..8:17 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #37 @8:11..8:16 name="T" variance=Invariant
+// CHECK-NEXT:                   bound:
+// CHECK-NEXT:                     NamedTypeExpr #36 @8:14..8:16
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #35 @8:14..8:16 segments=["Eq"]
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #43 @8:27..8:31 kind=Unit
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #46 @8:32..10:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #45 @9:5..9:12
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #44 @9:5..9:12
+// CHECK-NEXT:                       value: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #57 @12:1..12:23
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #56 @12:1..12:23 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #55 @12:5..12:22 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #54 @12:5..12:22
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #49 @12:5..12:10 name="value"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #53 @12:12..12:22
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #52 @12:12..12:15 segments=["Box"]
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         NamedTypeExpr #51 @12:16..12:21
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #50 @12:16..12:21 segments=["Plain"]
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #62 @13:1..13:14
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExpressionStatement #61 @13:1..13:14
+// CHECK-NEXT:           expression:
+// CHECK-NEXT:             CallExpression #60 @13:1..13:13
+// CHECK-NEXT:               callee:
+// CHECK-NEXT:                 IdentExpr #58 @13:1..13:6 name="needs"
+// CHECK-NEXT:               type_args: []
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 IdentExpr #59 @13:7..13:12 name="value"
+// CHECK-NEXT:       attrs: null

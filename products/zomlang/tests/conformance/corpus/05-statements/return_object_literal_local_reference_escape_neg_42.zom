@@ -1,0 +1,4 @@
+fun leak() -> { item: &i32 } {
+    let value: i32;
+    return { item: (&value) };
+}

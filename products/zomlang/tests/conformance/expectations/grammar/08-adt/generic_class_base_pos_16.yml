@@ -1,0 +1,4 @@
+section: "§8.2 Generic Class Base"
+covers_rule: "classDeclaration (class base with type arguments)"
+expected: "ACCEPT"
+notes: []

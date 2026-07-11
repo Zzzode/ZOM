@@ -1,0 +1,7 @@
+class Owner { }
+
+fun main() -> unit {
+    let owned: Owner;
+    let sink: Owner = owned;
+    owned;
+}

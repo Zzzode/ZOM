@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/08-adt/nested_class_reject_neg_04.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*nested_class_reject_neg_04.zom}}:2:5
-// CHECK:   |
-// CHECK: 2 |     class Inner {
-// CHECK:   |     ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?nested_class_reject_neg_04\.zom:2:5$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     class Inner {
+// CHECK-LITERAL:   |     ^

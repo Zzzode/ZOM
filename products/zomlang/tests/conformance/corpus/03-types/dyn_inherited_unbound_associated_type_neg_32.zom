@@ -1,0 +1,7 @@
+interface Iterator {
+    type Item;
+}
+
+interface Child : Iterator { }
+
+let child: dyn Child;

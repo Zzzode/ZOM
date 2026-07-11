@@ -3,7 +3,8 @@
 
 // CHECK: SourceFile #3 @1:1..2:1 file_name="module_alias_long_path_pos_04.zom"
 // CHECK-NEXT:   module:
-// CHECK-NEXT:     ModuleDeclaration #2 @1:1..1:25
-// CHECK-NEXT:       path:
-// CHECK-NEXT:         ModulePath #1 @1:8..1:11 segments=["qux"]
+// CHECK-NEXT:     ModuleDeclaration #2 @1:1..1:25 form=Alias declared_name="qux" exported_alias=false
+// CHECK-NEXT:       alias_target:
+// CHECK-NEXT:         ModulePath #1 @1:14..1:24 segments=["a", "b", "c", "d"]
+// CHECK-NEXT:       inline_items: []
 // CHECK-NEXT:   statements: []

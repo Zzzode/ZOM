@@ -1,0 +1,12 @@
+class Child {
+    let value: i32;
+}
+
+class Owner {
+    let field: Child;
+}
+
+fun leak() -> &i32 {
+    let obj: Owner;
+    return &obj.field.value;
+}

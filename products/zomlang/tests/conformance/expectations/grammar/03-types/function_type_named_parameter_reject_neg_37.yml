@@ -1,0 +1,4 @@
+section: "§3 Function Types"
+covers_rule: "FunctionTypeParameterList contains types only"
+expected: "REJECT"
+notes: []

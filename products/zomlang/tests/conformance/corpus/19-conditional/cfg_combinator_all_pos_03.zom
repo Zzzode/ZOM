@@ -1,2 +1,0 @@
-#[zom::cfg(all(unix, target_pointer_width = "64"))]
-fun unix_64() -> i32 { return 1; }

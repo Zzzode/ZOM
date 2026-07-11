@@ -18,4 +18,5 @@
 // CHECK-NEXT:                         ModulePath #1 @1:15..1:19 segments=["Read"]
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:               markers_id: null
+// CHECK-NEXT:               assoc_bindings_id: null
 // CHECK-NEXT:       attrs: null

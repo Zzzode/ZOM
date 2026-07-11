@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/08-adt/class_members_neg_11.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2084]: Declaration modifiers 'static' and 'mutating' cannot be used together
-// CHECK:   --> {{.*class_members_neg_11.zom}}:2:12
-// CHECK:   |
-// CHECK: 2 |     static mutating fun f() -> unit { }
-// CHECK:   |            ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2084]: Declaration modifiers 'static' and 'mutating' cannot be used together
+// CHECK:   --> products {{(?:.*[/\\])?class_members_neg_11\.zom:2:12$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     static mutating fun f() -> unit { }
+// CHECK-LITERAL:   |            ^

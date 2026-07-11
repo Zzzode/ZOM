@@ -1,0 +1,6 @@
+let value: i32 = 1;
+let shared: &i32 = &value;
+let ptr: *const i32 = shared;
+let mutable: &mut i32;
+let mut_ptr: *mut i32 = mutable;
+let const_ptr: *const i32 = mut_ptr;

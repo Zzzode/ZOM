@@ -48,6 +48,7 @@
 // CHECK-NEXT:                                 ModulePath #11 @4:19..4:27 segments=["Drawable"]
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                       assoc_bindings_id: null
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #33 @5:1..5:46
@@ -70,6 +71,7 @@
 // CHECK-NEXT:                                 ModulePath #20 @5:16..5:21 segments=["Shape"]
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                       assoc_bindings_id: null
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     CastExpression #29 @5:24..5:45 mode=As
 // CHECK-NEXT:                       expr:
@@ -84,4 +86,5 @@
 // CHECK-NEXT:                                     ModulePath #25 @5:40..5:45 segments=["Shape"]
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                           markers_id: null
+// CHECK-NEXT:                           assoc_bindings_id: null
 // CHECK-NEXT:       attrs: null

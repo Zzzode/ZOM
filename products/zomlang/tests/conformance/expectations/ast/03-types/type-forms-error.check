@@ -1,25 +1,23 @@
 // RUN: ! %zomc compile --dump-ast %corpus/03-types/type-forms-error.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2077]: Identifier expected
-// CHECK:   --> {{.*type-forms-error.zom}}:2:27
-// CHECK:   |
-// CHECK: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
-// CHECK:   |                           ^
-// CHECK: Error [ZOM2072]: Type expected
-// CHECK:   --> {{.*type-forms-error.zom}}:2:8
-// CHECK:   |
-// CHECK: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
-// CHECK:   |        ^
-// CHECK: Error [ZOM2011]: Identifier expected, found 'k'
-// CHECK:   --> {{.*type-forms-error.zom}}:2:27
-// CHECK:   |
-// CHECK: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
-// CHECK:   |                           ^
-// CHECK: Error [ZOM2011]: Identifier expected, found '1'
-// CHECK:   --> {{.*type-forms-error.zom}}:2:36
-// CHECK:   |
-// CHECK: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
-// CHECK:   |                                    ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2077]: Identifier expected
+// CHECK:   --> products {{(?:.*[/\\])?type\-forms\-error\.zom:2:27$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK-LITERAL:   |                           ^
+// CHECK-LITERAL: Error [ZOM2072]: Type expected
+// CHECK:   --> products {{(?:.*[/\\])?type\-forms\-error\.zom:2:8$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK-LITERAL:   |        ^
+// CHECK-LITERAL: Error [ZOM2011]: Identifier expected, found 'k'
+// CHECK:   --> products {{(?:.*[/\\])?type\-forms\-error\.zom:2:27$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK-LITERAL:   |                           ^
+// CHECK-LITERAL: Error [ZOM2011]: Identifier expected, found '1'
+// CHECK:   --> products {{(?:.*[/\\])?type\-forms\-error\.zom:2:36$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
+// CHECK-LITERAL:   |                                    ^

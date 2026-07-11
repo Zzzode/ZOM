@@ -1,0 +1,4 @@
+section: "§16.6.2 Unavailable Conditional Compilation"
+covers_rule: "attr, rejectUnavailableConditionalAttribute"
+expected: "REJECT"
+notes: ["The exact zom::cfg path is rejected until an accepted RFC provides complete semantics."]

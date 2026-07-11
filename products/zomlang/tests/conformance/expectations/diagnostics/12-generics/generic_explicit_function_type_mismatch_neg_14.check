@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 12-generics/generic_explicit_function_type_mismatch_neg_14.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected fn(i32) -> i32, got i32
+// CHECK-LITERAL:   --> 12-generics/generic_explicit_function_type_mismatch_neg_14.zom:5:9
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 5 | let y = id<fun(i32) -> i32>(1);
+// CHECK-LITERAL:   |         ^

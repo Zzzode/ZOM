@@ -1,4 +1,4 @@
-section: "§4.6 instanceof reserved (ZOM5008)"
+section: "§4.6 instanceof reserved"
 covers_rule: "reservedSyntax"
 expected: "REJECT"
 notes: []

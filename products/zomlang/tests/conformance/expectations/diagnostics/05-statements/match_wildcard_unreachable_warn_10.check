@@ -1,0 +1,10 @@
+// RUN: cd %corpus && %zomc compile --syntax-only 05-statements/match_wildcard_unreachable_warn_10.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Warning [ZOM4023]: Unreachable match arm: pattern never matches
+// CHECK-LITERAL:   --> 05-statements/match_wildcard_unreachable_warn_10.zom:4:9
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 4 |         when true => { }
+// CHECK-LITERAL:   |         ^
+// CHECK-LITERAL: Syntax check completed successfully.

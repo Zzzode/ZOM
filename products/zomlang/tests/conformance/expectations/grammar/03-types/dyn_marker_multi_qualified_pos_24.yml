@@ -1,0 +1,5 @@
+section: "§3 Existential marker bounds"
+covers_rule: "dynType, interfaceBoundList, markerPath"
+expected: "ACCEPT"
+notes:
+  - "Covers multiple marker suffixes and qualified marker paths in dyn existential types."

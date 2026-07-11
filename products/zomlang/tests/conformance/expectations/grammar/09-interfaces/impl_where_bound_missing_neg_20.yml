@@ -1,0 +1,5 @@
+section: "Ch.09 Generic impl where-bound solving"
+covers_rule: "standaloneImplDeclaration, whereClause, genericType"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks rejection when generic impl where-bounds are not satisfied."

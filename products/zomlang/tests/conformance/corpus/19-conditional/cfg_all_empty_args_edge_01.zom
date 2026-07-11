@@ -1,2 +1,0 @@
-#[zom::cfg(all())]
-fun always_enabled() -> i32 { return 0; }

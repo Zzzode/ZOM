@@ -1,4 +1,6 @@
-class Err { }
+class Err {
+    code: i32;
+}
 
 struct Holder {
     value: i32 | Err;
@@ -12,12 +14,12 @@ fun produce(flag: bool) -> i32 | Err {
     if (flag) {
         return 1;
     }
-    return Err {};
+    return Err { code: 1 };
 }
 
 let local: i32 | Err = 1;
 take(2);
 let from_call: i32 | Err = produce(true);
-mut target: i32 | Err = Err {};
+mut target: i32 | Err = Err { code: 2 };
 target = 7;
 let holder = Holder { value: 3 };

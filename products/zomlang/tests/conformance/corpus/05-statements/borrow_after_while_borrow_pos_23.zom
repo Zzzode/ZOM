@@ -1,0 +1,7 @@
+fun main() -> unit {
+    let value: i32;
+    while (false) {
+        let shared = &value;
+    }
+    let exclusive = &mut value;
+}

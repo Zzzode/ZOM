@@ -117,53 +117,53 @@
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IdentExpr #49 @6:20..6:21 name="x"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #62 @7:1..7:31
+// CHECK-NEXT:     StatementListItem #62 @7:1..7:25
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #61 @7:1..7:31 kind=Let
+// CHECK-NEXT:         LetStmt #61 @7:1..7:25 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #60 @7:5..7:30 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #60 @7:5..7:24 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #59 @7:5..7:30
+// CHECK-NEXT:                 VariableDeclarator #59 @7:5..7:24
 // CHECK-NEXT:                   pattern:
 // CHECK-NEXT:                     IdentifierPattern #54 @7:5..7:6 name="g"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     TupleTypeExpr #57 @7:8..7:24
+// CHECK-NEXT:                     TupleTypeExpr #57 @7:8..7:18
 // CHECK-NEXT:                       elems:
 // CHECK-NEXT:                         PredefinedTypeExpr #55 @7:9..7:12 kind=I32
-// CHECK-NEXT:                         PredefinedTypeExpr #56 @7:20..7:23 kind=Str
+// CHECK-NEXT:                         PredefinedTypeExpr #56 @7:14..7:17 kind=Str
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     IdentExpr #58 @7:27..7:30 name="tup"
+// CHECK-NEXT:                     IdentExpr #58 @7:21..7:24 name="tup"
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #75 @8:1..8:39
+// CHECK-NEXT:     StatementListItem #75 @8:1..8:36
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #74 @8:1..8:39 kind=Let
+// CHECK-NEXT:         LetStmt #74 @8:1..8:36 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #73 @8:5..8:38 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #73 @8:5..8:35 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #72 @8:5..8:38
+// CHECK-NEXT:                 VariableDeclarator #72 @8:5..8:35
 // CHECK-NEXT:                   pattern:
 // CHECK-NEXT:                     IdentifierPattern #63 @8:5..8:6 name="h"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     FunctionTypeExpr #70 @8:8..8:33
+// CHECK-NEXT:                     FunctionTypeExpr #70 @8:8..8:30
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         NamedTypeExpr #69 @8:15..8:16
+// CHECK-NEXT:                         NamedTypeExpr #69 @8:12..8:13
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #68 @8:15..8:16 segments=["T"]
+// CHECK-NEXT:                             ModulePath #68 @8:12..8:13 segments=["T"]
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       ret_ty:
-// CHECK-NEXT:                         NamedTypeExpr #65 @8:21..8:22
+// CHECK-NEXT:                         NamedTypeExpr #65 @8:18..8:19
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #64 @8:21..8:22 segments=["T"]
+// CHECK-NEXT:                             ModulePath #64 @8:18..8:19 segments=["T"]
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       raises:
-// CHECK-NEXT:                         NamedTypeExpr #67 @8:30..8:33
+// CHECK-NEXT:                         NamedTypeExpr #67 @8:27..8:30
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #66 @8:30..8:33 segments=["Err"]
+// CHECK-NEXT:                             ModulePath #66 @8:27..8:30 segments=["Err"]
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     IdentExpr #71 @8:36..8:38 name="fn"
+// CHECK-NEXT:                     IdentExpr #71 @8:33..8:35 name="fn"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #83 @9:1..9:27
 // CHECK-NEXT:       item:

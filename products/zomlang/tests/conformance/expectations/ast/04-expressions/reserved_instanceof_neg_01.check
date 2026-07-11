@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/reserved_instanceof_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*reserved_instanceof_neg_01.zom}}:1:11
-// CHECK:   |
-// CHECK: 1 | let b = x instanceof Object;
-// CHECK:   |           ^
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*reserved_instanceof_neg_01.zom}}:1:9
-// CHECK:   |
-// CHECK: 1 | let b = x instanceof Object;
-// CHECK:   |         ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?reserved_instanceof_neg_01\.zom:1:11$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let b = x instanceof Object;
+// CHECK-LITERAL:   |           ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?reserved_instanceof_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let b = x instanceof Object;
+// CHECK-LITERAL:   |         ^

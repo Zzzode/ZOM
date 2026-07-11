@@ -6,7 +6,7 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #7 @1:1..1:33
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #6 @1:1..1:33 name="Point" extensibility=Sealed
+// CHECK-NEXT:         StructDecl #6 @1:1..1:33 name="Point"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #5 @1:14..1:33 nmembers=2
@@ -22,7 +22,7 @@
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #16 @2:1..2:61
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StructDecl #15 @2:1..2:61 name="CursorObject" extensibility=Sealed
+// CHECK-NEXT:         StructDecl #15 @2:1..2:61 name="CursorObject"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #14 @2:21..2:61 nmembers=3

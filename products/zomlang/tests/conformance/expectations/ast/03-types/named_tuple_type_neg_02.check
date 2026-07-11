@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %corpus/03-types/named_tuple_type_neg_02.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?named_tuple_type_neg_02\.zom:1:14$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let value: (x: i32, y: i32) = (1, 2);
+// CHECK-LITERAL:   |              ^
+// CHECK-LITERAL: Error [ZOM2072]: Type expected
+// CHECK:   --> products {{(?:.*[/\\])?named_tuple_type_neg_02\.zom:1:12$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let value: (x: i32, y: i32) = (1, 2);
+// CHECK-LITERAL:   |            ^

@@ -1,17 +1,35 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/enum_discriminant_expr_edge_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #7 @1:1..6:1 file_name="enum_discriminant_expr_edge_02.zom"
+// CHECK: SourceFile #16 @1:1..6:1 file_name="enum_discriminant_expr_edge_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @1:1..5:2
+// CHECK-NEXT:     StatementListItem #15 @1:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         EnumDeclaration #5 @1:1..5:2 name="Flag" extensibility=Sealed nvars=0 base_repr=I32
+// CHECK-NEXT:         EnumDeclaration #14 @1:1..5:2 name="Flag"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           variants_id:
-// CHECK-NEXT:             EnumVariantList #4 @1:11..5:2 nvars=3
+// CHECK-NEXT:             EnumVariantList #13 @1:11..5:2 nvars=3
 // CHECK-NEXT:               variants:
-// CHECK-NEXT:                 UnitVariant #1 @2:5..2:16 name="A" has_disc=true disc="1"
-// CHECK-NEXT:                 UnitVariant #2 @3:5..3:16 name="B" has_disc=true disc="1"
-// CHECK-NEXT:                 UnitVariant #3 @4:5..4:15 name="C" has_disc=true disc="1"
+// CHECK-NEXT:                 UnitVariant #4 @2:5..2:16 name="A"
+// CHECK-NEXT:                   discriminant:
+// CHECK-NEXT:                     BinaryExpr #3 @2:9..2:15 op=Shl
+// CHECK-NEXT:                       lhs:
+// CHECK-NEXT:                         IntLiteral #1 @2:9..2:10 base=10 value="1"
+// CHECK-NEXT:                       rhs:
+// CHECK-NEXT:                         IntLiteral #2 @2:14..2:15 base=10 value="0"
+// CHECK-NEXT:                 UnitVariant #8 @3:5..3:16 name="B"
+// CHECK-NEXT:                   discriminant:
+// CHECK-NEXT:                     BinaryExpr #7 @3:9..3:15 op=Shl
+// CHECK-NEXT:                       lhs:
+// CHECK-NEXT:                         IntLiteral #5 @3:9..3:10 base=10 value="1"
+// CHECK-NEXT:                       rhs:
+// CHECK-NEXT:                         IntLiteral #6 @3:14..3:15 base=10 value="1"
+// CHECK-NEXT:                 UnitVariant #12 @4:5..4:15 name="C"
+// CHECK-NEXT:                   discriminant:
+// CHECK-NEXT:                     BinaryExpr #11 @4:9..4:14 op=Add
+// CHECK-NEXT:                       lhs:
+// CHECK-NEXT:                         IntLiteral #9 @4:9..4:10 base=10 value="1"
+// CHECK-NEXT:                       rhs:
+// CHECK-NEXT:                         IntLiteral #10 @4:13..4:14 base=10 value="2"
 // CHECK-NEXT:       attrs: null

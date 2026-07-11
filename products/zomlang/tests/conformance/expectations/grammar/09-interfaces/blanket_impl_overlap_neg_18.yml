@@ -1,0 +1,5 @@
+section: "Ch.09 Impl coherence"
+covers_rule: "standaloneImplDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks direct-vs-blanket impl overlap ZOM4017."

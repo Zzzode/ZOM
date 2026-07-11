@@ -1,0 +1,5 @@
+section: "Ch.11 Forced unwrap lowering"
+covers_rule: "functionDeclaration, raisesClause, postfix forced unwrap"
+expected: "ACCEPT"
+notes:
+  - "The IR runner verifies source metadata and the forced-unwrapping panic terminator."

@@ -1,0 +1,12 @@
+interface Iterator {
+    type Item;
+}
+
+class Bytes { }
+
+impl Iterator for Bytes {
+    type Item = str;
+}
+
+let value: Bytes;
+let it: dyn Iterator<Item = u8> = value;

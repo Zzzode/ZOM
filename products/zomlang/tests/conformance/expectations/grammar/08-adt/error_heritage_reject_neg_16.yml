@@ -1,0 +1,4 @@
+section: "§8 Error Declarations"
+covers_rule: "errorDeclaration without a base type"
+expected: "REJECT"
+notes: []

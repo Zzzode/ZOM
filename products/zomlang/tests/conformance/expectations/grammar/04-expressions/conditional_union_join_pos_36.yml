@@ -1,0 +1,5 @@
+section: "§4 Conditional expression union join"
+covers_rule: "conditionalExpression, unionType"
+expected: "ACCEPT"
+notes:
+  - "A conditional expression with different branch types can flow into an explicit union target."

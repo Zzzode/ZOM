@@ -1,0 +1,5 @@
+module graphics {
+    fun inside() {}
+}
+
+fun trailing() {}

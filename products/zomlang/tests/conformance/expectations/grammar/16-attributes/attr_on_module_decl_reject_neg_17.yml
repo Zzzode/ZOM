@@ -1,0 +1,4 @@
+section: "§16 Attribute on Module Declaration"
+covers_rule: "sourceFile, moduleDeclaration, outerAttributeList"
+expected: "REJECT"
+notes: ["The SourceFile module slot has no attribute storage."]

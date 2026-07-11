@@ -19,6 +19,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:19..2:23 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #15 @5:1..7:2
@@ -42,13 +43,14 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #11 @6:19..6:23 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #18 @9:1..9:17
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #17 @9:1..9:17 name="Sprite" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #17 @9:1..9:17 name="Sprite"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #16 @9:14..9:17 nmembers=0
 // CHECK-NEXT:               members: []
@@ -80,6 +82,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #25 @12:19..12:23 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #26 @12:24..12:27
 // CHECK-NEXT:                       stmts: []
@@ -111,6 +114,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #37 @16:19..16:23 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #38 @16:24..16:27
 // CHECK-NEXT:                       stmts: []
@@ -152,6 +156,7 @@
 // CHECK-NEXT:                                 ModulePath #51 @20:16..20:21 segments=["Child"]
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                       assoc_bindings_id: null
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IdentExpr #55 @20:24..20:30 name="sprite"
 // CHECK-NEXT:       attrs: null

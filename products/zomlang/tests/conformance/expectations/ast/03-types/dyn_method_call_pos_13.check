@@ -19,13 +19,14 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:19..2:23 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #9 @5:1..5:17
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #8 @5:1..5:17 name="Sprite" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #8 @5:1..5:17 name="Sprite"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #7 @5:14..5:17 nmembers=0
 // CHECK-NEXT:               members: []
@@ -57,6 +58,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #16 @8:19..8:23 kind=Unit
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #17 @8:24..8:27
 // CHECK-NEXT:                       stmts: []
@@ -98,6 +100,7 @@
 // CHECK-NEXT:                                 ModulePath #30 @12:19..12:27 segments=["Drawable"]
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       markers_id: null
+// CHECK-NEXT:                       assoc_bindings_id: null
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IdentExpr #34 @12:30..12:36 name="sprite"
 // CHECK-NEXT:       attrs: null

@@ -24,11 +24,16 @@ class FileChecker:
     """Simple FileCheck implementation for AST testing."""
 
     def __init__(
-        self, check_file: str, input_file: str, strict_whitespace: bool = False
+        self,
+        check_file: str,
+        input_file: str,
+        strict_whitespace: bool = False,
+        check_prefix: str = "CHECK",
     ):
         self.check_file = check_file
         self.input_file = input_file
         self.strict_whitespace = strict_whitespace
+        self.check_prefix = check_prefix
         self.check_lines = []
         self.input_content = ""
 
@@ -41,29 +46,35 @@ class FileChecker:
                 for raw_line in content.splitlines():
                     line = raw_line.strip()
                     directive = raw_line.lstrip()
-                    if directive.startswith("// CHECK-LITERAL:"):
-                        pattern = directive[17:]
+                    literal = f"// {self.check_prefix}-LITERAL:"
+                    next_literal = f"// {self.check_prefix}-NEXT-LITERAL:"
+                    same = f"// {self.check_prefix}-SAME:"
+                    next_check = f"// {self.check_prefix}-NEXT:"
+                    not_check = f"// {self.check_prefix}-NOT:"
+                    check = f"// {self.check_prefix}:"
+                    if directive.startswith(literal):
+                        pattern = directive[len(literal) :]
                         if pattern.startswith(" "):
                             pattern = pattern[1:]
                         self.check_lines.append(("CHECK-LITERAL", pattern))
-                    elif directive.startswith("// CHECK-NEXT-LITERAL:"):
-                        pattern = directive[22:]
+                    elif directive.startswith(next_literal):
+                        pattern = directive[len(next_literal) :]
                         if pattern.startswith(" "):
                             pattern = pattern[1:]
                         self.check_lines.append(("CHECK-NEXT-LITERAL", pattern))
-                    elif line.startswith("// CHECK:"):
-                        pattern = line[9:].strip()  # Remove '// CHECK:' prefix
+                    elif line.startswith(check):
+                        pattern = line[len(check) :].strip()
                         self.check_lines.append(("CHECK", pattern))
-                    elif directive.startswith("// CHECK-SAME:"):
-                        pattern = directive[14:]
+                    elif directive.startswith(same):
+                        pattern = directive[len(same) :]
                         if pattern.startswith(" "):
                             pattern = pattern[1:]
                         self.check_lines.append(("CHECK-SAME", pattern))
-                    elif line.startswith("// CHECK-NEXT:"):
-                        pattern = line[14:].strip()  # Remove '// CHECK-NEXT:' prefix
+                    elif line.startswith(next_check):
+                        pattern = line[len(next_check) :].strip()
                         self.check_lines.append(("CHECK-NEXT", pattern))
-                    elif line.startswith("// CHECK-NOT:"):
-                        pattern = line[13:].strip()  # Remove '// CHECK-NOT:' prefix
+                    elif line.startswith(not_check):
+                        pattern = line[len(not_check) :].strip()
                         self.check_lines.append(("CHECK-NOT", pattern))
 
             with open(self.input_file, "r", encoding="utf-8") as f:
@@ -261,7 +272,9 @@ def main():
             input_file = tmp.name
 
     try:
-        checker = FileChecker(args.check_file, input_file, args.strict_whitespace)
+        checker = FileChecker(
+            args.check_file, input_file, args.strict_whitespace, args.check_prefix
+        )
         if checker.check():
             print(f"FileCheck passed: {args.check_file}")
             sys.exit(0)

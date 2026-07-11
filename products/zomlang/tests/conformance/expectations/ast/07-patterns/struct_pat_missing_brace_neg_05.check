@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/07-patterns/struct_pat_missing_brace_neg_05.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
-// CHECK:   --> {{.*struct_pat_missing_brace_neg_05.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | struct S { x: i32, y: i32 }
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
+// CHECK:   --> products {{(?:.*[/\\])?struct_pat_missing_brace_neg_05\.zom:1:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | struct S { x: i32, y: i32 }
+// CHECK-LITERAL:   | ^

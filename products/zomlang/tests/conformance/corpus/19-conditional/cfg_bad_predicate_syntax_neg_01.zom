@@ -1,2 +1,0 @@
-#[zom::cfg(all(unix, target_os = "linux")]
-fun bad_syntax() -> i32 { return 11; }

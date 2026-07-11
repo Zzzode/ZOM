@@ -1,20 +1,18 @@
 // RUN: ! %zomc compile --dump-ast %corpus/04-expressions/as_op_neg_02.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2072]: Type expected
-// CHECK:   --> {{.*as_op_neg_02.zom}}:1:17
-// CHECK:   |
-// CHECK: 1 | let x = v as dyn;
-// CHECK:   |                 ^
-// CHECK: Error [ZOM2072]: Type expected
-// CHECK:   --> {{.*as_op_neg_02.zom}}:1:14
-// CHECK:   |
-// CHECK: 1 | let x = v as dyn;
-// CHECK:   |              ^
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*as_op_neg_02.zom}}:1:9
-// CHECK:   |
-// CHECK: 1 | let x = v as dyn;
-// CHECK:   |         ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2072]: Type expected
+// CHECK:   --> products {{(?:.*[/\\])?as_op_neg_02\.zom:1:17$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let x = v as dyn;
+// CHECK-LITERAL:   |                 ^
+// CHECK-LITERAL: Error [ZOM2072]: Type expected
+// CHECK:   --> products {{(?:.*[/\\])?as_op_neg_02\.zom:1:14$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let x = v as dyn;
+// CHECK-LITERAL:   |              ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?as_op_neg_02\.zom:1:9$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let x = v as dyn;
+// CHECK-LITERAL:   |         ^

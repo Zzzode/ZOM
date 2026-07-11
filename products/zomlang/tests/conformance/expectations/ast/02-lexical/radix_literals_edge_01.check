@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/02-lexical/radix_literals_edge_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2035]: Numeric separators are not allowed here
-// CHECK:   --> {{.*radix_literals_edge_01.zom}}:4:12
-// CHECK:   |
-// CHECK: 4 | let d = 0B1_;
-// CHECK:   |            ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2035]: Numeric separators are not allowed here
+// CHECK:   --> products {{(?:.*[/\\])?radix_literals_edge_01\.zom:4:12$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 4 | let d = 0B1_;
+// CHECK-LITERAL:   |            ^

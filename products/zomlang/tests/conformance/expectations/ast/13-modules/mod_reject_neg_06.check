@@ -1,15 +1,13 @@
 // RUN: ! %zomc compile --dump-ast %corpus/13-modules/mod_reject_neg_06.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*mod_reject_neg_06.zom}}:1:5
-// CHECK:   |
-// CHECK: 1 | mod foo;
-// CHECK:   |     ^
-// CHECK: Error [ZOM2056]: Expression expected
-// CHECK:   --> {{.*mod_reject_neg_06.zom}}:1:1
-// CHECK:   |
-// CHECK: 1 | mod foo;
-// CHECK:   | ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?mod_reject_neg_06\.zom:1:5$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | mod foo;
+// CHECK-LITERAL:   |     ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK:   --> products {{(?:.*[/\\])?mod_reject_neg_06\.zom:1:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | mod foo;
+// CHECK-LITERAL:   | ^

@@ -1,0 +1,5 @@
+section: "§12 Local variable inference"
+covers_rule: "letStmt, callExpression"
+expected: "ACCEPT"
+notes:
+  - "A call argument constraint can refine an unannotated integer local binding."

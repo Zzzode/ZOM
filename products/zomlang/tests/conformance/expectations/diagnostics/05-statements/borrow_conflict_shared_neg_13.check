@@ -1,0 +1,14 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 05-statements/borrow_conflict_shared_neg_13.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4059]: Shared borrow conflicts with an active mutable borrow
+// CHECK-LITERAL:   --> 05-statements/borrow_conflict_shared_neg_13.zom:4:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 4 |     let shared: &i32 = &value;
+// CHECK-LITERAL:   |     ^
+// CHECK-LITERAL: Note [ZOM4060]: Conflicting borrow starts here
+// CHECK-LITERAL:   --> 05-statements/borrow_conflict_shared_neg_13.zom:3:31
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     let exclusive: &mut i32 = &mut value;
+// CHECK-LITERAL:   |                               ^

@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/module_alias_single_segment_reject_neg_21.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2025]: Expected '::'
+// CHECK:   --> products {{(?:.*[/\\])?module_alias_single_segment_reject_neg_21\.zom:1:23$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | module geometry = math;
+// CHECK-LITERAL:   |                       ^

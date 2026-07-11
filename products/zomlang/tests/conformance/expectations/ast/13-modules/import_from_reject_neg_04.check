@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/13-modules/import_from_reject_neg_04.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> {{.*import_from_reject_neg_04.zom}}:1:10
-// CHECK:   |
-// CHECK: 1 | import A from std::io;
-// CHECK:   |          ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK:   --> products {{(?:.*[/\\])?import_from_reject_neg_04\.zom:1:10$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | import A from std::io;
+// CHECK-LITERAL:   |          ^

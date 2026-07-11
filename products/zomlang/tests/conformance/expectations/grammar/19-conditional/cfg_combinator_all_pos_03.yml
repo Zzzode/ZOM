@@ -1,4 +1,0 @@
-section: "§19.3.2 all(P, Q, ...) conjunction"
-covers_rule: "cfgAll, cfgAtom, cfgPredicate, attrCfg"
-expected: "ACCEPT"
-notes: []

@@ -1,0 +1,2 @@
+let source: i32 = 1000;
+let target: i8 = source as! i8;

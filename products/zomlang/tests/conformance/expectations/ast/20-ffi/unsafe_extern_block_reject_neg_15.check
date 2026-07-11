@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/20-ffi/unsafe_extern_block_reject_neg_15.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2025]: Expected ';'
+// CHECK:   --> products {{(?:.*[/\\])?unsafe_extern_block_reject_neg_15\.zom:9:1$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 9 |
+// CHECK-LITERAL:   | ^

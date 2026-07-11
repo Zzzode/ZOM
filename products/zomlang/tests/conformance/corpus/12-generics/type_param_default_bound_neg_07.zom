@@ -1,1 +1,1 @@
-fun f<T: A extends B>(x: T) -> T { return x; }
+fun f<T: A + + B>(x: T) -> T { return x; }

@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/13-modules/nested_module_reject_neg_11.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2049]: A module declaration can only appear at the top of a file
-// CHECK:   --> {{.*nested_module_reject_neg_11.zom}}:2:5
-// CHECK:   |
-// CHECK: 2 |     module b {}
-// CHECK:   |     ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2049]: A module declaration can only appear at the top of a file
+// CHECK:   --> products {{(?:.*[/\\])?nested_module_reject_neg_11\.zom:2:5$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     module b {}
+// CHECK-LITERAL:   |     ^

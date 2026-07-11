@@ -1,0 +1,107 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/reference_raw_pointer_coercions_pos_37.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #48 @1:1..7:1 file_name="reference_raw_pointer_coercions_pos_37.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:20
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #6 @1:1..1:20 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #5 @1:5..1:19 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #4 @1:5..1:19
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:10 name="value"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:12..1:15 kind=I32
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IntLiteral #3 @1:18..1:19 base=10 value="1"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #16 @2:1..2:27
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #15 @2:1..2:27 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #14 @2:5..2:26 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #13 @2:5..2:26
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #8 @2:5..2:11 name="shared"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     ReferenceTypeExpr #10 @2:13..2:17 is_mut=false
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         PredefinedTypeExpr #9 @2:14..2:17 kind=I32
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     UnaryExpression #12 @2:20..2:26 op=Ref
+// CHECK-NEXT:                       operand:
+// CHECK-NEXT:                         IdentExpr #11 @2:21..2:26 name="value"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #24 @3:1..3:30
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #23 @3:1..3:30 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #22 @3:5..3:29 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #21 @3:5..3:29
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #17 @3:5..3:8 name="ptr"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     RawPointerTypeExpr #19 @3:10..3:20 is_mut=false
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         PredefinedTypeExpr #18 @3:17..3:20 kind=I32
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IdentExpr #20 @3:23..3:29 name="shared"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #31 @4:1..4:23
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #30 @4:1..4:23 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #29 @4:5..4:22 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #28 @4:5..4:22
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #25 @4:5..4:12 name="mutable"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     ReferenceTypeExpr #27 @4:14..4:22 is_mut=true
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         PredefinedTypeExpr #26 @4:19..4:22 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #39 @5:1..5:33
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #38 @5:1..5:33 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #37 @5:5..5:32 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #36 @5:5..5:32
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #32 @5:5..5:12 name="mut_ptr"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     RawPointerTypeExpr #34 @5:14..5:22 is_mut=true
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         PredefinedTypeExpr #33 @5:19..5:22 kind=I32
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IdentExpr #35 @5:25..5:32 name="mutable"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #47 @6:1..6:37
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #46 @6:1..6:37 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #45 @6:5..6:36 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #44 @6:5..6:36
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #40 @6:5..6:14 name="const_ptr"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     RawPointerTypeExpr #42 @6:16..6:26 is_mut=false
+// CHECK-NEXT:                       elem:
+// CHECK-NEXT:                         PredefinedTypeExpr #41 @6:23..6:26 kind=I32
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IdentExpr #43 @6:29..6:36 name="mut_ptr"
+// CHECK-NEXT:       attrs: null

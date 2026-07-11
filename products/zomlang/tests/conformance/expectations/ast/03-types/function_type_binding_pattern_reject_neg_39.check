@@ -1,0 +1,6 @@
+// RUN: ! %zomc compile --dump-ast %corpus/03-types/function_type_binding_pattern_reject_neg_39.zom 2>&1 | %FileCheck %s
+
+// CHECK-LITERAL: Error [ZOM2025]: Expected ':'
+// CHECK-LITERAL: Error [ZOM2072]: Type expected
+// CHECK-LITERAL: Error [ZOM2025]: Expected ']'
+// CHECK-LITERAL: Error [ZOM2072]: Type expected

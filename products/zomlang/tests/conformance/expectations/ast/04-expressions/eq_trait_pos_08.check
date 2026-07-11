@@ -27,13 +27,14 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @2:27..2:31 kind=Bool
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #12 @5:1..5:16
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #11 @5:1..5:16 name="Point" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #11 @5:1..5:16 name="Point"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #10 @5:13..5:16 nmembers=0
 // CHECK-NEXT:               members: []
@@ -73,6 +74,7 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #22 @8:27..8:31 kind=Bool
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #33 @11:1..11:14

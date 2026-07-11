@@ -1,0 +1,4 @@
+fun main(ptr: *const i32) -> unit {
+    mut target: i32;
+    target = *ptr;
+}

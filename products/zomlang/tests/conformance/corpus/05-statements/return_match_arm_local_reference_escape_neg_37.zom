@@ -1,0 +1,8 @@
+fun leak(flag: bool) -> &i32 {
+    match (flag) {
+        when _ => {
+            let value: i32;
+            return &value;
+        }
+    }
+}

@@ -1,0 +1,5 @@
+section: "Ch.09 Interface declarations"
+covers_rule: "interfaceDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Interface properties use explicit get or set accessor signatures."

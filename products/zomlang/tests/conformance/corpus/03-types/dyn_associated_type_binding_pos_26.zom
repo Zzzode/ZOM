@@ -1,0 +1,11 @@
+interface Iterator {
+    type Item;
+}
+
+class Bytes { }
+
+impl Iterator for Bytes {
+    type Item = u8;
+}
+
+let it: dyn Iterator<Item = u8>;

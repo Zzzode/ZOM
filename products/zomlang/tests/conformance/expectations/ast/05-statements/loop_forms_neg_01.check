@@ -1,10 +1,8 @@
 // RUN: ! %zomc compile --dump-ast %corpus/05-statements/loop_forms_neg_01.zom 2>&1 | %FileCheck %s
 
 
-// CHECK: Error [ZOM2025]: Expected '('
-// CHECK:   --> {{.*loop_forms_neg_01.zom}}:2:11
-// CHECK:   |
-// CHECK: 2 |     while true { break; }
-// CHECK:   |           ^
-// CHECK: {{.*zomc}} compile: Compilation failed due to parsing errors.
-// CHECK: Try '{{.*zomc}} compile --help' for more information.
+// CHECK-LITERAL: Error [ZOM2025]: Expected '('
+// CHECK:   --> products {{(?:.*[/\\])?loop_forms_neg_01\.zom:2:11$}}
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     while true { break; }
+// CHECK-LITERAL:   |           ^

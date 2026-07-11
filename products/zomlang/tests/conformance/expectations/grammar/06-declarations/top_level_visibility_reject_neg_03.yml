@@ -1,0 +1,4 @@
+section: "§23.1 Module-Level Visibility"
+covers_rule: "Declaration"
+expected: "REJECT"
+notes: []

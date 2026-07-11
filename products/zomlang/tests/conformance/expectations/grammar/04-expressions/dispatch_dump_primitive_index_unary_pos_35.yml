@@ -1,0 +1,5 @@
+section: "Ch.04 Dispatch dump primitive index and unary operators"
+covers_rule: "arrayLiteral, tupleLiteral, indexExpression, unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks primitive index and unary dispatch dump records."

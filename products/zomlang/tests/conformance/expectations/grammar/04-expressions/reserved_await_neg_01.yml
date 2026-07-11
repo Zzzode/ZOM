@@ -1,4 +1,4 @@
-section: "§4.6 await reserved (ZOM5002) as unary"
+section: "§4.6 await reserved as unary"
 covers_rule: "unaryExpr"
 expected: "REJECT"
 notes: []

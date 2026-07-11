@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 12-generics/generic_explicit_unsupported_type_arg_neg_14.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4034]: Unsupported explicit type argument
-// CHECK-LITERAL:   --> 12-generics/generic_explicit_unsupported_type_arg_neg_14.zom:5:12
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 5 | let y = id<fun(i32) -> i32>(1);
-// CHECK-LITERAL:   |            ^

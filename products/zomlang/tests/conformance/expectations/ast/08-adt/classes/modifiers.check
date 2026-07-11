@@ -6,9 +6,9 @@
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #21 @1:1..9:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #20 @1:1..9:2 name="Modifiers" extensibility=Sealed
+// CHECK-NEXT:         ClassDecl #20 @1:1..9:2 name="Modifiers"
 // CHECK-NEXT:           type_params_id: null
-// CHECK-NEXT:           extends: null
+// CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #19 @1:17..9:2 nmembers=6
 // CHECK-NEXT:               members:
@@ -17,7 +17,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @2:24..2:27 kind=I32
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IntLiteral #2 @2:30..2:31 base=10 value="1"
-// CHECK-NEXT:                 FieldDecl #6 @3:3..3:30 name="b" is_mut=false is_static=false visibility=Private
+// CHECK-NEXT:                 ClassConstDecl #6 @3:3..3:30 name="b" is_static=false visibility=Private
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @3:20..3:23 kind=Str
 // CHECK-NEXT:                   init:
@@ -33,6 +33,7 @@
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #11 @6:36..6:38
 // CHECK-NEXT:                       stmts: []
@@ -42,6 +43,7 @@
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #14 @7:31..7:33
 // CHECK-NEXT:                       stmts: []
@@ -51,6 +53,7 @@
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
+// CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #17 @8:35..8:37
 // CHECK-NEXT:                       stmts: []

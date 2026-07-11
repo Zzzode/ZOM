@@ -1,0 +1,23 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/dyn_generic_interface_args_pos_35.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #8 @1:1..2:1 file_name="dyn_generic_interface_args_pos_35.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:32
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         AliasDecl #6 @1:1..1:32 name="ErasedBox"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           target:
+// CHECK-NEXT:             DynTypeExpr #5 @1:19..1:31 has_lifetime=false lifetime=null
+// CHECK-NEXT:               ifaces_id:
+// CHECK-NEXT:                 DynTypeIfaceList #4 @1:23..1:31 n_ifaces=1
+// CHECK-NEXT:                   ifaces:
+// CHECK-NEXT:                     NamedTypeExpr #3 @1:23..1:31
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #2 @1:23..1:26 segments=["Box"]
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         PredefinedTypeExpr #1 @1:27..1:30 kind=I32
+// CHECK-NEXT:               markers_id: null
+// CHECK-NEXT:               assoc_bindings_id: null
+// CHECK-NEXT:       attrs: null

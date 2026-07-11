@@ -22,7 +22,6 @@ ALLOWED_EXTRA_AST_CHECKS = {
 
 ALLOWED_AST_WITHOUT_GRAMMAR_CHECKS = {
     Path("02-lexical/identifiers/reserved-words.check"),
-    Path("03-types/function-type-binding-patterns.check"),
     Path("03-types/function-types.check"),
     Path("03-types/object-types.check"),
     Path("03-types/tuple-types.check"),

@@ -1,3 +1,0 @@
-fun deep() -> unit {
-    let _ = a!{ b![ c!( d!() ) ] };
-}

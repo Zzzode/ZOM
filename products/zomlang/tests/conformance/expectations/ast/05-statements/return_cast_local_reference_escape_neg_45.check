@@ -1,0 +1,50 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/return_cast_local_reference_escape_neg_45.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #20 @1:1..5:1 file_name="return_cast_local_reference_escape_neg_45.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #19 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #18 @1:1..4:2 name="leak"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             ReferenceTypeExpr #3 @1:15..1:19 is_mut=false
+// CHECK-NEXT:               elem:
+// CHECK-NEXT:                 PredefinedTypeExpr #2 @1:16..1:19 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #17 @1:20..4:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #9 @2:5..2:20
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #8 @2:5..2:20 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #7 @2:9..2:19 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #6 @2:9..2:19
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #4 @2:9..2:14 name="value"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #5 @2:16..2:19 kind=I32
+// CHECK-NEXT:                               init: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #16 @3:5..3:31
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #15 @3:5..3:31
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         CastExpression #14 @3:13..3:29 mode=As
+// CHECK-NEXT:                           expr:
+// CHECK-NEXT:                             UnaryExpression #11 @3:14..3:20 op=Ref
+// CHECK-NEXT:                               operand:
+// CHECK-NEXT:                                 IdentExpr #10 @3:15..3:20 name="value"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             ReferenceTypeExpr #13 @3:25..3:29 is_mut=false
+// CHECK-NEXT:                               elem:
+// CHECK-NEXT:                                 PredefinedTypeExpr #12 @3:26..3:29 kind=I32
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

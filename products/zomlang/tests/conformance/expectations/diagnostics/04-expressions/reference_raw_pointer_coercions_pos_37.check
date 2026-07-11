@@ -1,0 +1,5 @@
+// RUN: cd %corpus && %zomc compile --syntax-only 04-expressions/reference_raw_pointer_coercions_pos_37.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Syntax check completed successfully.

@@ -1,0 +1,5 @@
+section: "§3 Existential associated type bindings"
+covers_rule: "dynType, dyn associated type binding"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks that the source impl associated type matches the dyn head binding."

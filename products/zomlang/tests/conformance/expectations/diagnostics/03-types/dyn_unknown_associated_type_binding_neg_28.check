@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_unknown_associated_type_binding_neg_28.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4020]: No associated type 'Item' for type 'Drawable'
+// CHECK-LITERAL:   --> 03-types/dyn_unknown_associated_type_binding_neg_28.zom:3:19
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 | let drawable: dyn Drawable<Item = u8>;
+// CHECK-LITERAL:   |                   ^

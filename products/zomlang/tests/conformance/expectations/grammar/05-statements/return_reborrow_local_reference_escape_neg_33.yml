@@ -1,0 +1,5 @@
+section: "05-statements return diagnostics"
+covers_rule: "returnStatement, unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; diagnostics runner checks borrow-checker rejection for returning a reborrow of a local reference whose referent is local."

@@ -1,0 +1,4 @@
+section: "Section 5.15 labeled statement target"
+covers_rule: "labeledStatement"
+expected: "REJECT"
+notes: []
