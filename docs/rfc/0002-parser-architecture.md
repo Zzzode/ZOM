@@ -215,7 +215,7 @@ The contract changes as follows:
 - Required AST fields must never be published as null.
 - Optional AST fields may be empty only when marked optional in the schema.
 
-`basic::performParse()` and `CompilerDriver::parseSources()` continue to use
+`basic::performParse()` and `CompilerSession::parseSources()` continue to use
 the diagnostic engine as the phase error state, but they no longer depend on
 the parser accidentally emitting a diagnostic for every invalid token pattern.
 The parser itself owns grammar failure.
@@ -1012,7 +1012,7 @@ slice updates.
 | Lexer and parser | `products/zomlang/compiler/lexer/**`, `products/zomlang/compiler/parser/**`, `products/zomlang/compiler/parser/parser-coverage.yml`, `products/zomlang/compiler/ast/kinds.h`, `docs/spec/ZomLexer.g4`, `docs/spec/ZomParser.g4`, `docs/spec/chapters/02-lexical-structure.md`, `docs/spec/chapters/04-expressions.md`, `docs/spec/chapters/17-grammar-reference.md` | `lexer-parser` |
 | Diagnostics | `products/zomlang/compiler/diagnostics/**`, `docs/spec/chapters/11-error-handling.md` | `error-system` |
 | Binder and checker contracts | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/checker/**`, `docs/spec/chapters/03-types.md`, `docs/spec/chapters/06-declarations.md`, `docs/spec/chapters/08-classes-and-structures.md`, `docs/spec/chapters/09-interfaces.md`, `docs/spec/chapters/10-enumerations.md`, `docs/spec/chapters/12-generics.md` | `binder-checker` |
-| Driver and module boundary | `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/symbol/**`, `docs/spec/chapters/13-modules-and-imports.md`, `docs/spec/chapters/21-package-model-and-manifest.md`, `docs/spec/chapters/23-visibility-ladder.md`, `docs/spec/chapters/24-module-resolution-algorithm.md` | `module-system` |
+| Driver and module boundary | `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/symbol/**`, `docs/spec/chapters/13-modules-and-imports.md`, `docs/spec/chapters/23-visibility-ladder.md` | `module-system` |
 | Spec alignment | `docs/spec/**`, `docs/reports/*spec-alignment*` | `spec-audit` |
 | Tests and verification | `products/zomlang/tests/**`, `examples/**`, `docs/reports/*coverage*` | `verification` |
 

@@ -60,13 +60,15 @@ struct Node final {
 
 ```cpp
 struct NodePayload final {
-  uint32_t words[6] = {};
+  uint32_t words[kNodePayloadWordCount] = {};
 };
 ```
 
-Generated constants and accessors assign semantic meaning to payload words for
-each schema node. Hand-written code uses generated names instead of numeric word
-indexes.
+`schema.yml` owns `storage.payload_words`; `gen_ast.py` emits
+`generated/node-layout.h`, and `tree.h` statically verifies the resulting byte
+capacity. Generated constants and accessors assign semantic meaning to payload
+words for each schema node. Hand-written code uses generated names instead of
+numeric word indexes.
 
 `NodeList` is an independent list handle over contiguous `NodeId` storage:
 
@@ -127,7 +129,11 @@ from the `SourceFile` payload when a file declares a module.
 - id: 0x0EC
   name: ModuleDeclaration
   fields:
-    - {name: path, type: NodeId, cast: ModulePath}
+    - {name: form, type: ModuleDeclarationForm}
+    - {name: declared_name, type: IdentId}
+    - {name: alias_target, type: NodeId, cast: ModulePath, optional: true}
+    - {name: inline_items, type: NodeList, cast: StatementListItem, optional: true}
+    - {name: exported_alias, type: bool}
 ```
 
 The generated payload constants define the root layout:
@@ -175,6 +181,7 @@ headers into `products/zomlang/compiler/ast/generated/`.
 | File | Purpose |
 |---|---|
 | `generated/node-kind.inc` | `SyntaxKind` node rows included by `ast/kinds.h` |
+| `generated/node-layout.h` | Schema-owned payload capacity used by `NodePayload` |
 | `generated/node-payload.h` | Payload word counts and named payload indexes |
 | `generated/node-accessors.h` | Node kind names and schema helper functions |
 | `generated/node-traverse.h` | Generic tree traversal entry points |

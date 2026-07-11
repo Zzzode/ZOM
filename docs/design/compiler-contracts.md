@@ -62,37 +62,33 @@ A compiler engineer who modifies behavior along any labeled edge must update the
 
 ## 2. Diagnostic Code Authority
 
-The table below is the **authoritative copy** of the ZOM diagnostic-code range assignment. The three columns `Range`, `Subsystem`, and `Default Severity` are a bit-identical mirror of `docs/design/architecture.md` §8; PRs changing any of the three values require simultaneous updates to both files. Additional ZIS-only columns document the owning C++ directory path and whether a subsystem owner may allocate unused sub-ranges without an accepted RFC under `docs/rfc/` (`Extensible = No` means every new code requires an RFC before implementation).
+Diagnostic codes and default severities exist only when allocated by a
+non-empty diagnostic definition file included by
+`products/zomlang/compiler/diagnostics/diagnostic-ids.h`. Design and spec prose
+are not allocation authorities.
 
-| Range (start-end) | Subsystem / Owner path | Owner (C++ dir path) | Default Severity | Extensible | Example Code |
-|---|---|---|---|---|---|
-| 1000-1099 | Common diagnostics | `products/zomlang/compiler/diagnostics` | Error | No | `ZOM1000` = common diagnostic sentinel; `ZOM1001` = invalid source path -> Error |
-| 2000-2999 | Parser / syntax | `products/zomlang/compiler/parser` | Error | No | `ZOM2002` = invalid character; `ZOM2076` = unexpected token -> Error |
-| 3000-3099 | Binder diagnostics | `products/zomlang/compiler/binder` | Error | No | `ZOM3001` = undefined identifier -> Error |
-| 4000-4099 | Type checker / semantic analysis | `products/zomlang/compiler/checker` | Error | No | `ZOM4001` = dyn interface has a generic method; `ZOM4026` = `!!` on a non-error-union type -> Error |
-| 5000-5999 | Reserved syntax rejections | `products/zomlang/compiler/parser` | Error | No | `ZOM5001` = reserved exception syntax -> Error |
-| 9900-9999 | Internal compiler errors | `products/zomlang/compiler/diagnostics` | ICE | No | `ZOM9999` = compiler invariant violation -> ICE |
+| Current range | Included registry | Owner |
+|---|---|---|
+| `ZOM1000-ZOM1001` | `diagnostics-common.def` | driver/source diagnostics |
+| `ZOM2001-ZOM2087` | `diagnostics-parse.def` | lexer/parser diagnostics |
+| `ZOM3001-ZOM3016` | `diagnostics-binder.def` | binder diagnostics |
+| `ZOM4001-ZOM4070` | `diagnostics-checker.def` | checker and current ownership diagnostics |
+| `ZOM6001-ZOM6008` | `diagnostics-lowering.def` | current IR and backend capability diagnostics |
+| `ZOM9901-ZOM9903` | `diagnostics-lowering.def` | current IR invariant diagnostics |
 
-Diagnostic codes and default severities are allocated by the diagnostic
-definition files under `products/zomlang/compiler/diagnostics/`; design
-documents must not publish a code that is absent from those definitions unless
-the implementation lands in the same change.
+The current lowering registry provides the first typed capability and invariant
+boundary, but RFC 0010 still requires layer verifiers and complete HIR, MIR,
+LIR, and backend diagnostic ownership.
+
 Concrete language diagnostics are exercised by conformance sources under
 `products/zomlang/tests/conformance/corpus/` plus matching expectations under
 `products/zomlang/tests/conformance/expectations/`, and compiler-only diagnostic
 plumbing is exercised by ztest suites under
 `products/zomlang/tests/unittests/compiler/diagnostics/`. The emitted registry
 is generated from `diagnostics-common.def`, `diagnostics-parse.def`,
-`diagnostics-binder.def`, and `diagnostics-checker.def`; `DiagnosticEngine`
-refuses to emit any code not present in the generated ids (emitting ZOM9999
-`DiagnosticCodeNotRegistered` as an ICE fallthrough).
-
-Additional structural rules for the 100-block sub-allocation:
-
-- Block `ZOMx000–ZOMx019` is always reserved for setup / generic errors (`MisplacedX`, `UnboundY`).
-- Block `ZOMx020–ZOMx069` carries specific, named semantic diagnostics (one per programmer mistake, each with a canonical short-name slug).
-- Block `ZOMx070–ZOMx089` carries lint-level diagnostics that may be `allow`'d per scope.
-- Block `ZOMx090–ZOMx099` carries `deny`-by-default or `forbid`-by-default entries that are not allowed to be downgraded inside user code.
+`diagnostics-binder.def`, `diagnostics-checker.def`, and
+`diagnostics-lowering.def`. A new family must add its `.def` inclusion, typed
+emitter, source location policy, and tests in the same change.
 
 > #### AST representation contract
 > Syntax nodes are value payloads in `ast::Tree`, addressed by `ast::NodeId`.

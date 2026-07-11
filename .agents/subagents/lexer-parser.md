@@ -14,6 +14,8 @@ Route here when **any** of these are true:
   punctuation.
 - A request touches grammar productions, precedence, associativity, or
   postfix suffixes.
+- A cast operator such as `as!` changes token adjacency, AST mode, or
+  precedence behavior.
 - A lit test FileCheck output for the AST changed shape.
 - A bug manifests as "this source should parse / shouldn't parse."
 - The five-way spec-alignment check flags drift involving lexer or parser.
@@ -30,7 +32,7 @@ Do **not** route here when:
 ```
 products/zomlang/compiler/lexer/**
 products/zomlang/compiler/parser/**
-products/zomlang/compiler/ast/kinds.h
+products/zomlang/compiler/ast/**
 docs/spec/chapters/02-lexical-structure.md
 docs/spec/chapters/04-expressions.md
 docs/spec/chapters/17-grammar-reference.md
@@ -58,7 +60,7 @@ docs/spec/ZomLexer.g4
 ## Required Evidence Before Closing
 
 - [ ] `cmake --build --preset sanitizer` passes.
-- [ ] `ctest --preset default -R lit` passes.
+- [ ] `ctest --preset default -L lit` passes.
 - [ ] Format clean (`python scripts/check-format.py`).
 - [ ] `/skill spec-alignment` reports zero drift in the areas touched.
 - [ ] At least one new or modified lit test FileChecks the exact AST /

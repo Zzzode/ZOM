@@ -16,6 +16,8 @@ Route here when **any** of these are true:
   semantic layer.
 - Implementing or modifying generic parameters, constraints, traits,
   interfaces, associated types.
+- Defining checked-cast legality, result typing, or `CastMode` facts for
+  `as`, `as?`, or `as!`.
 - Defining `Send` / `Sync` / `Sendable` / `Drop` / `Clone` / `Eq` / `Hash`
   built-in traits that the concurrency and error systems depend on.
 - Writing a new checker pass (liveness, exhaustiveness, etc.).

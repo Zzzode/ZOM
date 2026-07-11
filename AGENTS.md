@@ -56,30 +56,25 @@ Additional path-scoped rules live in `.agents/rules/*.md`. Skills loadable via
 
 ZOM is a modern systems programming language.
 
-```
-ZOM/
-├── libraries/zc/               # Core library (Own<T>, Vector<T>, String,
-│                               #   Maybe<T>, OneOf<T…>, exceptions, macros)
-├── products/zomlang/
-│   ├── compiler/               # Frontend pipeline
-│   │   ├── lexer/              #   Tokenizer
-│   │   ├── parser/             #   Recursive descent parser
-│   │   ├── ast/                #   AST kinds, nodes, builders, defs
-│   │   ├── binder/             #   Scope / name binding / symbol resolution
-│   │   ├── checker/            #   Type checker + semantic analysis
-│   │   ├── symbol/             #   Symbol tables, flags, scopes
-│   │   ├── diagnostic/         #   Diagnostic messages, codes (ZOMxxxx)
-│   │   └── driver/             #   Build driver, CompilerSession, CLI
-│   ├── runtime/                # Language runtime, allocation, concurrency primitives
-│   └── tests/                  # ztest unit tests + LLVM lit AST tests
-├── docs/
-│   ├── spec/chapters/          # Spec: lexical / expressions / types /
-│   │                           #   declarations / modules / errors / concurrency …
-│   ├── spec/ZomLexer.g4        # Canonical lexer definition
-│   └── reports/                # Multi-expert audit reports (234 findings)
-├── examples/                   # Small ZOM source samples
-└── scripts/                    # check-format.py, regen-lit.py, etc.
-```
+| Path | Purpose |
+|---|---|
+| `libraries/zc/` | Core ownership, container, string, sum-type, exception, and macro library |
+| `products/zomlang/compiler/lexer/` | Lazy tokenization |
+| `products/zomlang/compiler/parser/` | Recursive-descent parsing |
+| `products/zomlang/compiler/ast/` | Immutable schema-backed AST |
+| `products/zomlang/compiler/binder/` | Scope construction and name resolution |
+| `products/zomlang/compiler/checker/` | Type, trait, exhaustiveness, and partial ownership checking |
+| `products/zomlang/compiler/type/` | Type representations, interning, unification, coercion, and side tables |
+| `products/zomlang/compiler/symbol/` | Symbols, scopes, flags, and stable identifiers |
+| `products/zomlang/compiler/diagnostics/` | Diagnostic codes, records, and rendering |
+| `products/zomlang/compiler/driver/` | Per-source compiler orchestration |
+| `products/zomlang/compiler/irgen/` | Early mixed IR prototype; RFC 0010 proposes a replacement |
+| `products/zomlang/runtime/` | Language runtime and panic/concurrency primitives |
+| `products/zomlang/tests/` | ztest unit tests and LLVM lit conformance runners |
+| `docs/spec/` | Normative language specification and grammar artifacts |
+| `docs/rfc/` | Reviewable compiler and language design decisions |
+| `docs/reports/` | Audits and evidence reports |
+| `scripts/` | Repository quality, generation, and verification gates |
 
 ### Technology Stack
 
@@ -88,8 +83,8 @@ ZOM/
 | Language | C++20 (constexpr, concepts, Pimpl everywhere) |
 | Build | CMake + `CMakePresets.json` — **always use presets, never bare `cmake`** |
 | Core library | `zc` — no `std::` unless `zc` has no substitute |
-| Unit tests | `ztest` (harness in-tree) — run with `ctest -R unittest` |
-| AST tests | LLVM `lit` + FileCheck — run with `ctest -R lit` |
+| Unit tests | `ztest` (harness in-tree) — run with `ctest --preset default -L unittest` |
+| AST tests | LLVM `lit` + FileCheck — run with `ctest --preset default -L lit` |
 | Sanitizers | `sanitizer` preset — enabled by default for all development builds |
 | Test presets | `default` preset = lit + unittest combined |
 
@@ -114,10 +109,10 @@ cmake --build --preset debug
 ctest --preset default
 
 # Only lit tests (AST / parser / binder / semantic)
-ctest --preset default -R lit
+ctest --preset default -L lit
 
 # Only unit tests (ztest)
-ctest --preset default -R unittest
+ctest --preset default -L unittest
 
 # Verbose failing output
 ctest --preset default --output-on-failure
@@ -151,48 +146,58 @@ lldb ./products/zomlang/compiler/zomlangc -- path/to/source.zom
 
 ## Architecture: Frontend Pipeline
 
-```
-Source (.zom)
-  │
-  ▼
-Lexer         ───► Token stream    (lexer/*.cc, docs/spec/ZomLexer.g4)
-  │
-  ▼
-Parser        ───► AST tree        (parser/*.cc, ast/nodes.cc)
-  │                              kinds in ast/kinds.h
-  ▼
-Binder        ───► Scopes + symbols resolved  (binder/*.cc)
-  │                              symbol tables in symbol/*
-  ▼
-Type Checker  ───► Type + semantic analysis (checker/*.cc — CURRENTLY EMPTY)
-  │
-  ▼
-Diagnostics   ───► ZOMxxxx codes, pretty-printing  (diagnostic/*.cc)
-  │
-  ▼
-… IR / Codegen (future)
+```mermaid
+flowchart TD
+    S[Source buffer] --> L[Lazy Lexer]
+    L --> T[Retained TokenStream]
+    T --> P[Recursive-descent Parser]
+    P --> A[Immutable ast::Tree]
+    A --> B[Binder]
+    B --> BM[BindingMetadata and symbols]
+    BM --> C[Checker]
+    A --> C
+    C --> TE[Frozen TypeEnv and semantic facts]
+    TE --> IR[Early mixed irgen prototype]
+    A --> IR
+    BM --> IR
+    IR -. RFC 0010 proposed replacement .-> H[Semantic HIR]
+    H -. planned .-> M[Control-flow MIR]
+    M -. planned .-> R[Target LIR]
+    R -. planned .-> LLVM[LLVM IR and native artifacts]
+    L --> D[DiagnosticEngine]
+    P --> D
+    B --> D
+    C --> D
 ```
 
-**CRITICAL KNOWN GAPS (as of 2026-06-24)** that are tracked by audit findings
+**CRITICAL KNOWN GAPS (as of 2026-07-10)** that are tracked by audit findings
 and must be handled with principle #4 (delete or implement, no drift):
 
-1. **TypeChecker is a stub.** `checker/checker.h` is entirely commented out;
-   `checker/checker.cc` is an empty namespace. No type / trait / raises /
-   concurrency-safety checking exists yet.
-2. **Driver has no `checkSources()` phase.** The driver only wires parse + bind.
-3. **ErrorPropagate `?!` lexer branch is missing.** lexer `case '?'` handles
-   `?.`, `??`, `??=` but not `charAt(1)=='!'` — token defined in `ast/kinds.h`
-   and `ZomLexer.g4:189` but never emitted.
-4. **Parser does not consume ErrorPropagate/ErrorUnwrap as postfix.**
-   `parseUpdateExpression` only handles `++/--`. Grammar reference:308 lists
-   all four as `PostfixSuffix`.
-5. **No cross-module `CompilerSession`.** Each `SymbolTable` owns an isolated
-   `ScopeManager`; package/import/export semantics are single-file only.
-6. **Concurrency chapter is 11 lines.** `docs/spec/chapters/15-concurrency.md`
-   explicitly states no grammar is defined. Reserved keywords `async/await`
-   exist in the lexical table only.
-7. **`Export` symbol flag never written.** Defined in `symbol-flags.h:148`;
-   grep `addFlag.*Export` across compiler = zero hits.
+1. **RFC 0004 and RFC 0005 are revised DRAFT proposals.** Dependency reviews
+   returned both proposals for canonical identity, verified-handoff,
+   spec-alignment, implementation-evidence, and test blockers. They now depend
+   on RFC 0011, but owner re-review, approvers, and decisions remain open.
+2. **Type representation is not canonical.** `TypeEnv` owns concrete `Type`
+   trees and `TypeId` values simultaneously, and nominal identity is still
+   partially name-based. The active audit requires an immutable
+   direct `SemanticTypeId -> TypeData` replacement proposed by RFC 0005.
+3. **Borrow checking is partial.** Current analysis relies on bounded AST
+   tracing for several region and lifetime cases. Path-sensitive MIR dataflow,
+   complete reborrow restoration, Copy/Linear facts, and scoped-task checking
+   remain open under RFC 0007.
+4. **No cross-module `CompilerSession` exists.** The driver still owns
+   per-source AST, binding metadata, and type environments without RFC 0008's
+   module graph, immutable interfaces, signature store, or global coherence.
+5. **The IR pipeline is not separated.** `compiler/irgen` combines logical
+   error control flow with concrete target layout. RFC 0010 proposes an
+   HIR/MIR/LIR replacement and is `DRAFT` after adding collision-free package,
+   crate, and module identities; coordinated owner re-review remains pending.
+6. **There is no native backend.** `compiler/backend` and LLVM/object emission
+   are absent; binary emission is not implemented.
+7. **RFC 0006 is partial.** The worktree has target layout, limited `?!` and
+   `!!` lowering, panic metadata, and abort-only gating, but lacks real drop
+   cleanup, general calls, multi-residual lowering, target/runtime capability
+   integration, native emission, and FFI conformance.
 
 ---
 
@@ -214,21 +219,22 @@ Invoke with `/skill <name>`.
 ## Available Subagents
 
 Codex/Claude-code custom agent entrypoints (if configured) are routed by
-`task-router-agent.md`. The minimum safe gate set for a change is selected from
+`.agents/subagents/task-router.md`. The minimum safe gate set for a change is selected from
 the trigger matrix in `.agents/subagents/README.md`.
 
 | ID | Owns | Triggered when |
 |---|---|---|
-| `task-router-agent` | Gate selection + escalation | Default entry for all non-trivial changes |
-| `rfc-agent` | RFC process, templates, proposal review, prior-art gates | RFCs, proposals, accepted designs, governance changes |
-| `lexer-parser-agent` | Tokenization, grammar, AST, operator precedence | lexer/*.cc, parser/*.cc, ast/kinds.h, spec grammar |
-| `binder-checker-agent` | Scopes, symbols, traits, generics, type rules | binder/**, checker/**, symbol/**, traits, ADT |
-| `module-system-agent` | Import/export, packages, visibility, dependency topology | modules, `docs/spec/chapters/13-*`, symbol export flags |
-| `error-system-agent` | Result/Option, ?! / !! / ?: , raises clauses, panic boundaries | Diagnostic codes, error chapters, error operators in parser/lexer |
-| `concurrency-agent` | async/await, Future, nursery, cancel, Sendable, memory model, primitives | runtime concurrency, spec 15-concurrency, channel/mutex, `Send/Sync`/`Sendable` |
-| `spec-audit-agent` | Spec ↔ implementation 1:1 alignment | Any change to docs/spec/** or any compiler frontend file |
-| `runtime-memory-agent` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, runtime/**, FFI |
-| `verification-agent` | Build + sanitizer + tests + format, evidence-gating | Runs last; required for all merge-ready changes |
+| `task-router` | Gate selection + escalation | Default entry for all non-trivial changes |
+| `rfc` | RFC process, templates, proposal review, prior-art gates | RFCs, proposals, accepted designs, governance changes |
+| `lexer-parser` | Tokenization, grammar, AST, operator precedence | lexer/**, parser/**, ast/**, spec grammar |
+| `binder-checker` | Scopes, symbols, traits, generics, type rules | binder/**, checker/**, symbol/**, traits, ADT |
+| `module-system` | Import/export, packages, visibility, dependency topology | modules, `docs/spec/chapters/13-*`, symbol export flags |
+| `error-system` | Result/Option, ?! / !! / ?: , raises clauses, panic boundaries | Diagnostic codes, error chapters, error operators in parser/lexer |
+| `concurrency` | async/await, Future, nursery, cancel, Sendable, memory model, primitives | runtime concurrency, spec 15-concurrency, channel/mutex, `Send/Sync`/`Sendable` |
+| `ir-backend` | HIR, MIR, LIR, lowering, target ABI, LLVM, native artifacts | compiler/hir, compiler/mir, compiler/lir, compiler/irgen replacement, compiler/backend |
+| `spec-audit` | Spec ↔ implementation 1:1 alignment | Any change to docs/spec/** or any compiler frontend file |
+| `runtime-memory` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, runtime/**, FFI |
+| `verification` | Build + sanitizer + tests + format, evidence-gating | Runs last; required for all merge-ready changes |
 
 ---
 
@@ -369,4 +375,4 @@ shape.
 
 *This file is the top-level entry point. Detailed rules, skills, and subagent
 specs live under `.agents/`. Read `design-principles.md` before any design decision;
-read `task-router-agent.md` before any non-trivial implementation.*
+read `.agents/subagents/task-router.md` before any non-trivial implementation.*

@@ -22,8 +22,13 @@
 subagents:
   - id: task-router
     name: Task Router
-    owns: []
-    triggers: [ "route", "assign", "split", "owner", "delegate", "task split", "workflow" ]
+    owns:
+      - ".agents/subagents/README.md"
+      - ".agents/subagents/manifest.yaml"
+      - ".agents/subagents/task-router.md"
+      - ".agents/subagents/ir-backend.md"
+      - "AGENTS.md"
+    triggers: [ "route", "assign", "split", "owner", "delegate", "task split", "workflow", "forced cast", "as!" ]
     required-skills: [ build-ci ]
     escalation-to: [ spec-audit ]
 
@@ -42,12 +47,12 @@ subagents:
     owns:
       - "products/zomlang/compiler/lexer/**"
       - "products/zomlang/compiler/parser/**"
-      - "products/zomlang/compiler/ast/kinds.h"
+      - "products/zomlang/compiler/ast/**"
       - "docs/spec/chapters/02-lexical-structure.md"
       - "docs/spec/chapters/04-expressions.md"
       - "docs/spec/chapters/17-grammar-reference.md"
       - "docs/spec/ZomLexer.g4"
-    triggers: [ "lexer", "token", "parser", "grammar", "precedence", "operator", "keyword", "EBNF", "?!", "!!" ]
+    triggers: [ "lexer", "token", "parser", "grammar", "precedence", "operator", "keyword", "EBNF", "cast", "as!", "?!", "!!" ]
     required-skills: [ build-ci, lit-testing, spec-alignment, zc-library ]
     escalation-to: [ spec-audit ]
 
@@ -56,34 +61,35 @@ subagents:
     owns:
       - "products/zomlang/compiler/binder/**"
       - "products/zomlang/compiler/checker/**"
+      - "products/zomlang/compiler/type/**"
       - "products/zomlang/compiler/ast/ast-visitor*"
       - "docs/spec/chapters/06-declarations.md"
       - "docs/spec/chapters/07-types.md"
       - "docs/spec/chapters/08-generics.md"
       - "docs/spec/chapters/09-traits.md"
-    triggers: [ "binder", "scope", "lookup", "type", "checker", "trait", "generic", "polymorphism", "Sendable", "Send", "Sync" ]
+    triggers: [ "binder", "scope", "lookup", "type", "checker", "trait", "generic", "polymorphism", "cast", "as!", "Sendable", "Send", "Sync" ]
     required-skills: [ build-ci, lit-testing, zc-library ]
     escalation-to: [ verification ]
 
   - id: module-system
     name: Module System & Visibility
     owns:
+      - "products/zomlang/compiler/identity/**"
+      - "products/zomlang/compiler/source/**"
       - "products/zomlang/compiler/symbol/**"
       - "products/zomlang/compiler/driver/**"
-      - "docs/spec/chapters/12-modules.md"
-      - "docs/spec/chapters/13-visibility.md"
-      - "docs/spec/chapters/14-package.md"
-    triggers: [ "module", "import", "export", "pub", "visibility", "package", "session", "CompilerSession", "cross-module" ]
+      - "docs/spec/chapters/13-modules-and-imports.md"
+      - "docs/spec/chapters/23-visibility-ladder.md"
+    triggers: [ "identity", "brand", "source provenance", "SourceFileId", "ModuleId", "DefId", "module", "import", "export", "visibility", "package", "session", "CompilerSession", "cross-module" ]
     required-skills: [ build-ci, lit-testing, spec-alignment ]
     escalation-to: [ spec-audit ]
 
   - id: error-system
     name: Error System & Diagnostics
     owns:
-      - "products/zomlang/compiler/diagnostic/**"
-      - "docs/spec/chapters/10-error-handling.md"
-      - "docs/spec/chapters/11-diagnostics.md"
-    triggers: [ "error", "diagnostic", "raises", "try", "exception", "ZOM", "?!", "!!", "propagat" ]
+      - "products/zomlang/compiler/diagnostics/**"
+      - "docs/spec/chapters/11-error-handling.md"
+    triggers: [ "error", "diagnostic", "raises", "try", "exception", "panic", "cast", "as!", "ZOM", "?!", "!!", "propagat" ]
     required-skills: [ build-ci, lit-testing, spec-alignment ]
     escalation-to: [ lexer-parser, binder-checker ]
 
@@ -95,18 +101,35 @@ subagents:
       - "products/zomlang/runtime/**/actor*"
       - "products/zomlang/runtime/**/channel*"
       - "products/zomlang/runtime/**/scheduler*"
+      - "docs/concurrency/**"
       - "docs/spec/chapters/15-concurrency.md"
-      - "docs/spec/chapters/16-memory-model.md"
-    triggers: [ "async", "await", "concurr", "actor", "sendable", "task", "future", "channel", "cancel", "parallel", "asynchronous" ]
+    triggers: [ "async", "await", "concurr", "actor", "sendable", "task", "future", "channel", "cancel", "parallel", "asynchronous", "forced cast", "as!" ]
     required-skills: [ build-ci, zc-library, lit-testing, ultracode-audit ]
     escalation-to: [ runtime-memory, verification ]
+
+  - id: ir-backend
+    name: Intermediate Representations & Native Backend
+    owns:
+      - "products/zomlang/compiler/hir/**"
+      - "products/zomlang/compiler/ir/**"
+      - "products/zomlang/compiler/mir/**"
+      - "products/zomlang/compiler/lir/**"
+      - "products/zomlang/compiler/irgen/**"
+      - "products/zomlang/compiler/backend/**"
+      - "products/zomlang/compiler/basic/compiler-opts.h"
+      - "products/zomlang/compiler/CMakeLists.txt"
+      - "products/zomlang/utils/zomc/**"
+    triggers: [ "IR", "HIR", "MIR", "LIR", "SSA", "CFG", "lowering", "codegen", "backend", "LLVM", "ABI", "object file", "forced cast", "as!" ]
+    required-skills: [ build-ci, zc-library, lit-testing ]
+    escalation-to: [ binder-checker, module-system, error-system, concurrency, runtime-memory, verification, spec-audit ]
 
   - id: spec-audit
     name: Spec Alignment & Spec/Impl Drift
     owns:
       - "docs/spec/**"
+      - "docs/design/**"
       - "docs/reports/*spec-alignment*"
-    triggers: [ "spec", "grammar-ref", "align", "drift", "EBNF", "five-way", "audit" ]
+    triggers: [ "spec", "grammar-ref", "align", "drift", "EBNF", "five-way", "audit", "cast", "as!" ]
     required-skills: [ spec-alignment, ultracode-audit, build-ci ]
     escalation-to: []
 
@@ -120,7 +143,8 @@ subagents:
       - "!products/zomlang/runtime/**/actor*"
       - "!products/zomlang/runtime/**/channel*"
       - "!products/zomlang/runtime/**/scheduler*"
-    triggers: [ "zc::", "Own<", "ArrayPtr", "Vector", "String", "Maybe", "memory", "heap", "stack", "drop", "free", "FFI", "Pimpl", "ownership" ]
+      - "docs/spec/chapters/14-memory-management.md"
+    triggers: [ "zc::", "Own<", "ArrayPtr", "Vector", "String", "Maybe", "memory", "heap", "stack", "drop", "free", "FFI", "Pimpl", "ownership", "panic", "forced cast", "as!" ]
     required-skills: [ zc-library, build-ci ]
     escalation-to: [ verification ]
 
@@ -130,6 +154,7 @@ subagents:
       - "products/zomlang/tests/**"
       - "examples/**"
       - "docs/reports/*coverage*"
-    triggers: [ "test", "coverage", "lit", "FileCheck", "ztest", "fuzz", "XFAIL", "regen", "verify", "prove" ]
+      - "scripts/check-identity-architecture.py"
+    triggers: [ "test", "coverage", "lit", "FileCheck", "ztest", "fuzz", "XFAIL", "regen", "verify", "prove", "cast", "as!" ]
     required-skills: [ build-ci, lit-testing ]
     escalation-to: [ spec-audit ]

@@ -72,12 +72,16 @@ not reused.
 | [RFC 0001](0001-ast-dump-format.md) | AST Dump Format | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0001-ast-dump-format.md#acceptance-criteria) | [AST Dumper](../../products/zomlang/compiler/ast/dump.cc) |
 | [RFC 0002](0002-parser-architecture.md) | Parser Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0002-parser-architecture.md#acceptance-criteria) | [Parser](../../products/zomlang/compiler/parser/parser.cc) |
 | [RFC 0003](0003-lexer-architecture.md) | Lexer Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0003-lexer-architecture.md#acceptance-criteria) | [Lexer](../../products/zomlang/compiler/lexer/lexer.cc) |
-| [RFC 0004](0004-binder-architecture.md) | Binder Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0004-binder-architecture.md#acceptance-criteria) | [Binder](../../products/zomlang/compiler/binder/binder.cc) |
-| [RFC 0005](0005-type-system-architecture.md) | Type System Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0005-type-system-architecture.md#acceptance-criteria) | [Checker](../../products/zomlang/compiler/checker/checker.cc) |
-| [RFC 0006](0006-error-lowering-runtime-abi.md) | Error Lowering And Runtime ABI | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0006-error-lowering-runtime-abi.md#acceptance-criteria) | [Runtime Panic ABI](../../products/zomlang/runtime/panic.cc) |
-| [RFC 0007](0007-borrow-lifetime-ownership-checker.md) | Borrow Lifetime And Ownership Checker | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0007-borrow-lifetime-ownership-checker.md#acceptance-criteria) | TBD |
-| [RFC 0008](0008-compiler-session-cross-module.md) | CompilerSession Cross-Module Architecture | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0008-compiler-session-cross-module.md#acceptance-criteria) | TBD |
-| [RFC 0009](0009-call-dispatch-and-operator-lowering.md) | Call Dispatch And Operator Lowering | REVIEW | compiler | compiler | rfc | [Acceptance Criteria](0009-call-dispatch-and-operator-lowering.md#acceptance-criteria) | [Checker Dispatch](../../products/zomlang/compiler/checker/body-checker.cc) |
+| [RFC 0004](0004-binder-architecture.md) | Binder Architecture | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0004-review-and-implementation.md) | TBD |
+| [RFC 0005](0005-type-system-architecture.md) | Type System Architecture | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0005-review-and-implementation.md) | TBD |
+| [RFC 0006](0006-error-lowering-runtime-abi.md) | Error Lowering And Runtime ABI | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0006-review-and-implementation.md) | TBD |
+| [RFC 0007](0007-borrow-lifetime-ownership-checker.md) | Borrow Lifetime And Ownership Checker | RETURNED | compiler | compiler | rfc | [Review Tracker](tracking/0007-review-and-implementation.md) | TBD |
+| [RFC 0008](0008-compiler-session-cross-module.md) | CompilerSession Cross-Module Architecture | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0008-review-and-implementation.md) | [Implementation Tracker](tracking/0008-review-and-implementation.md#implementation-tracker) |
+| [RFC 0009](0009-call-dispatch-and-operator-lowering.md) | Call Dispatch And Operator Lowering | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0009-review-and-implementation.md) | TBD |
+| [RFC 0010](0010-intermediate-representation-pipeline.md) | Intermediate Representation Pipeline Architecture | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0010-review-and-implementation.md) | TBD |
+| [RFC 0011](0011-semantic-identity-foundation.md) | Semantic Identity Foundation | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0011-review-and-implementation.md) | [Implementation Tracker](tracking/0011-review-and-implementation.md#implementation-tracker) |
+| [RFC 0012](0012-package-manifest-and-resolver.md) | Package Manifest And Deterministic Resolver | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0012-review-and-implementation.md) | [Implementation Tracker](tracking/0012-review-and-implementation.md#implementation-tracker) |
+| [RFC 0013](0013-ownership-analysis-integration-boundary.md) | Ownership Analysis Integration Boundary | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0013-review-and-implementation.md) | TBD |
 
 ## Status Values
 

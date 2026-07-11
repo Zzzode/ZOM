@@ -86,8 +86,8 @@ Doc comments (`///`, `/** */`) and attributes (`#[...]`, `@[...]`) have
 **semantic meaning** in ZOM:
 
 - Doc comments feed documentation generation and IDE tooltips.
-- Attributes control conditional compilation (`#[cfg(...)]`), visibility,
-  alignment, and other compiler behavior.
+- Attributes carry retained metadata for explicitly registered semantic
+  consumers.
 
 These are parsed as first-class AST nodes and retained. They are **not**
 trivia.

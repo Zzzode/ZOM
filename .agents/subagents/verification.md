@@ -20,6 +20,8 @@ Route here when **any** of these are true:
 - Writing a stress / fuzz / adversarial reducer against the lexer,
   parser, or binder.
 - Requesting the user-facing report of "this is safe to ship."
+- Verifying every cast mode and its parser, checker, MIR, panic, and negative
+  invariant matrix, including `as!` failure behavior.
 
 Do **not** route here when:
 - The fix is trivial and the owning subagent already has the right lit
@@ -32,6 +34,7 @@ Do **not** route here when:
 products/zomlang/tests/**
 examples/**
 docs/reports/*coverage*
+scripts/check-identity-architecture.py
 ```
 
 ## Review Checklist (applies to every PR this subagent touches)

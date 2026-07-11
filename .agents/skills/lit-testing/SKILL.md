@@ -150,6 +150,6 @@ Most lit failures fall into one of these buckets — diagnose in order:
 
 - Every meaningful parser/binder/diagnostic change ships with at least one
   new lit test or modifies an existing one.
-- `ctest --preset default -R lit` passes with zero failures.
+- `ctest --preset default -L lit` passes with zero failures.
 - No `XFAIL` marker exists without an accompanying finding / ticket link.
 - No `CHECK-DAG` was added to mask a non-determinism bug.

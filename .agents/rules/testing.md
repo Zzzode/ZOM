@@ -14,8 +14,8 @@ existing coverage is already sufficient.
 
 | Layer | Tool | Purpose | Runs With |
 |---|---|---|---|
-| **Unit tests** | `ztest` (harness in-tree) | Low-level behavior of lexer, parser visitors, binder, zc types, utilities | `ctest --preset default -R unittest` |
-| **AST / integration tests** | **LLVM lit + FileCheck** (+ regen helper) | End-to-end frontend: compile a `.zom` source and assert on AST dump / diagnostics / bindings | `ctest --preset default -R lit` |
+| **Unit tests** | `ztest` (harness in-tree) | Low-level behavior of lexer, parser visitors, binder, zc types, utilities | `ctest --preset default -L unittest` |
+| **AST / integration tests** | **LLVM lit + FileCheck** (+ regen helper) | End-to-end frontend: compile a `.zom` source and assert on AST dump / diagnostics / bindings | `ctest --preset default -L lit` |
 | **Fuzz tests** (future) | `libFuzzer` + custom mutators | Lexer, parser robustness against adversarial input | Manual (`fuzz/` harness) |
 
 ---

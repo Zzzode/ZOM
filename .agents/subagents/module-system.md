@@ -2,16 +2,18 @@
 
 ## Mission
 
-Own the module graph, import/export semantics, visibility (`pub` /
-`pub(crate)` / `pub(path, …)`), package layout, cross-module
-`CompilerSession` coordination, and the `Export` flag write path.
+Own semantic identity and source provenance, the module graph, import/export
+semantics, member visibility, package layout, cross-module `CompilerSession`
+coordination, and the `Export` flag write path.
 
 ## Use When
 
 Route here when **any** of these are true:
 
 - Import, export, or package-path resolution is wrong.
-- `pub`, `pub(crate)`, visibility modifiers, or re-exports change.
+- Context brands, canonical identity keys, source provenance, or semantic
+  handle ancestry changes.
+- Module export, member visibility modifiers, or re-exports change.
 - `CompilerSession` needs to gain / change cross-module state (symbol
   registries, dependency edges, parallel compilation scheduling).
 - The `Export` `SymbolFlag` finally gets written (audit finding MOD-007).
@@ -28,9 +30,10 @@ Do **not** route here when:
 ```
 products/zomlang/compiler/symbol/**
 products/zomlang/compiler/driver/**
-docs/spec/chapters/12-modules.md
-docs/spec/chapters/13-visibility.md
-docs/spec/chapters/14-package.md
+products/zomlang/compiler/identity/**
+products/zomlang/compiler/source/**
+docs/spec/chapters/13-modules-and-imports.md
+docs/spec/chapters/23-visibility-ladder.md
 ```
 
 ## Review Checklist (applies to every PR this subagent touches)
@@ -42,10 +45,13 @@ docs/spec/chapters/14-package.md
       → … No heuristics that skip a phase per-file.
 - [ ] Cross-module identity flows through `CompilerSession` APIs. No
       direct pointer walks from one `SymbolTable` into another.
+- [ ] Context and registry brands have one explicit issuer, are never
+      serialized, and are validated before handle lookup.
+- [ ] Canonical identities and source ranges contain no process-local pointer,
+      `BufferId`, table slot, or iteration-order dependency.
 - [ ] `Export` flag has at least one write site (per `addFlag`/`setFlag`
       grep). If it still does not after the PR → blocker.
-- [ ] Visibility modifiers `pub(...)` map 1:1 onto the spec chapter 13
-      enumeration.
+- [ ] Module export and member visibility map 1:1 onto Chapters 13 and 23.
 - [ ] Circular import error detection produces a deterministic `ZOMxxxx`
       diagnostic, not a stack overflow or panic.
 
@@ -55,14 +61,14 @@ docs/spec/chapters/14-package.md
 - [ ] `ctest --preset default` passes.
 - [ ] A new `examples/` or `tests/conformance/` multi-file test exercises
       cross-TU import / export if any path in that area changed.
-- [ ] `/skill spec-alignment` confirms chapters 12/13/14 have no drift vs
-      the implementation.
+- [ ] `/skill spec-alignment` confirms the owned module/package/visibility
+      chapters have no drift versus the implementation.
 
 ## Block Conditions (auto-escalate to `escalation-to` when hit)
 
-- A module-graph decision contradicts the existing spec and requires
-  rewriting chapters 12/13/14 → escalate to `spec-audit` to spec the
-  change first, implement second.
+- A module-graph or identity decision contradicts the existing spec and
+  requires rewriting an owned chapter -> escalate to `spec-audit` before
+  implementation.
 - Driver phase reordering is requested but would change the diagnostic
   contract (e.g. "run type-checker inside parse") → escalate to
   `spec-audit` for a drift review before touching code.

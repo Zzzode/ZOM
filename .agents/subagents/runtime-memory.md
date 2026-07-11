@@ -18,6 +18,8 @@ Route here when **any** of these are true:
 - Reviewing a type that crosses thread / await boundaries for
   ownership correctness (in coordination with `concurrency`).
 - Any question about destructor order, move semantics, copy ban, RAII.
+- A forced cast or other compiler operation enters the runtime panic ABI,
+  especially across unwind, catch, FFI, or task boundaries.
 
 Do **not** route here when:
 - The request is "use the correct zc type for this variable" in a
@@ -36,10 +38,12 @@ products/zomlang/runtime/**
 !products/zomlang/runtime/**/actor*
 !products/zomlang/runtime/**/channel*
 !products/zomlang/runtime/**/scheduler*
+docs/spec/chapters/14-memory-management.md
 ```
 
 (Concurrency runtime primitives are owned by `concurrency`; this
-subagent owns everything else in `runtime/`.)
+subagent owns everything else in `runtime/` and is the sole primary owner of
+the language ownership and memory contract in Chapter 14.)
 
 ## Review Checklist (applies to every PR this subagent touches)
 

@@ -22,6 +22,8 @@ Route here when **any** of these are true:
   CancellationToken / manual C++ coro handle / Zig suspend mental load
   / zombie tasks / etc.)
 - Adding scheduler, work-stealing, executor, or runtime-internal state.
+- Reviewing whether a forced-cast panic crosses a task, suspension,
+  cancellation, or structured-concurrency boundary.
 - Reviewing a type for its `Send` / `Sync` / `Sendable` trait safety
   contract when it crosses an await boundary.
 
@@ -40,8 +42,8 @@ products/zomlang/runtime/**/async*
 products/zomlang/runtime/**/actor*
 products/zomlang/runtime/**/channel*
 products/zomlang/runtime/**/scheduler*
+docs/concurrency/**
 docs/spec/chapters/15-concurrency.md
-docs/spec/chapters/16-memory-model.md
 ```
 
 ## Review Checklist (applies to every PR this subagent touches)
@@ -62,9 +64,9 @@ docs/spec/chapters/16-memory-model.md
       semantics. No undefined behavior at the close edge.
 - [ ] Actors are non-reentrant by default. Re-entrance, if supported, is
       opt-in with a compiler-visible attribute.
-- [ ] Memory model chapter (16) lists every guaranteed-happens-before
-      edge. No "undefined behavior" without a checker rule that catches
-      it at compile time.
+- [ ] Chapter 15 lists every concurrency-specific happens-before edge. General
+      ownership and memory semantics remain owned by `runtime-memory` in
+      Chapter 14.
 
 ## Required Evidence Before Closing
 
@@ -76,7 +78,8 @@ docs/spec/chapters/16-memory-model.md
       comment explains why the area is already audited for this change.
 - [ ] At least one stress / fuzz-style unit test runs the new construct
       N iterations under TSan.
-- [ ] `/skill spec-alignment` confirms chapter 15/16 match reality.
+- [ ] `/skill spec-alignment` confirms Chapter 15 matches reality and any
+      Chapter 14 dependency has joint `runtime-memory` review.
 
 ## Block Conditions (auto-escalate to `escalation-to` when hit)
 

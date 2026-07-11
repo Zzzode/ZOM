@@ -8,11 +8,11 @@
 > parser rejects is treated as a bug (in the parser OR in this document) and
 > drift is eliminated via the `spec-alignment` skill before every commit.
 >
-> `Result<T,E>` is a proper ZOM type alias defined at
-> `docs/spec/chapters/06-declarations.md:227` as
-> `alias Result<T,E> = T | E`. It pairs with constructor forms `Success(x)` /
-> `Failure(e)` and the declaration form `-> T raises E`; all three share the
-> same underlying set-type representation and interconvert at zero cost.
+> The `Result<T, E>` used by the specification examples is the nominal enum
+> defined in Chapter 6 with `Success(T)` and `Failure(E)` variants. The
+> identifier has no built-in meaning. A nominal `Result` value is independent
+> from a function's `raises` effect and does not carry checked error-union role
+> metadata.
 >
 > Produced by the ultracode multi-phase workflow: 16 independent agents,
 > 1,295,049 subagent tokens, 437 tool calls, 35.7 minutes wall-clock.
@@ -37,7 +37,7 @@
 4. [Syntax Layer EBNF (Nine Chapters, incl. suspend / spawn / Attribute Whitelist)](#4-syntax-layer-ebnf)
 5. [Core Types and Marker Interface Matrix](#5-core-types-and-marker-interface-matrix)
 6. [Runtime Architecture / Edge Semantics / FFI C-ABI / Examples](#6-runtime-architecture--edge-semantics--ffi-c-abi--examples)
-7. [Assurance and Roadmap (Rejected Alternatives / Compliance Tests / Four-Phase Rollout)](#7-assurance-and-roadmap)
+7. [Assurance and Roadmap (Compliance Tests / Four-Phase Rollout)](#7-assurance-and-roadmap)
 8. [Adversarial Audit Report (Grammar Authenticity + Credibility + Appendix B 10-Item Closure Table)](#8-adversarial-audit-report)
 9. [Twelve Release Blockers (Must Be Completed Before Release)](#9-twelve-release-blockers)
 10. [File Change Manifest](#10-file-change-manifest)
@@ -103,7 +103,7 @@ Taskdumps, spantraces, deterministic-schedule seed mode, and the 20-trap detecto
 | **safe code** | Code blocks and functions that are not marked `#[zom::lang::unsafe_block]` |
 | **lexical scope** | The source-code lexical region where the `spawn` / `spawn_scope` closure is defined; does not cross function parameters |
 | **error variant** | A nominal type declared by `error Name(fields) extends Base`; all error variants automatically carry a compiler-injected error-discriminator tag |
-| **raises clause** | `fun f() -> T raises E1 \| E2`: equivalent to return type `T \| E1 \| E2`, with the addition of compiler static checks (L2) for **E-subset enumerability** and **?! propagation compatibility** |
+| **raises clause** | `fun f() -> T raises E1 \| E2`: the function signature stores success type `T` and raises effect `E1 \| E2` separately; a call produces value type `T \| E1 \| E2` plus checked success/residual role metadata |
 | **marker interface** | An empty-body interface `@zom::marker interface Sendable`; it provides no methods, only serves as a type predicate |
 | **Linear type** | A value implementing `@zom::marker interface Linear`; under normal control flow it must be consumed exactly once (L1, with L3 linear-cleanup fallback on unwind paths) |
 | **det_sched mode** | Enabled by `-Z deterministic-schedule=<seed>`: ASLR is turned off, stack base is fixed, the injection order of I/O and mutex events is seed-determined; used for reproducible verification of L2 guarantees |
@@ -138,22 +138,25 @@ constructed purely within the corresponding subspace of the modal model.
 
 ---
 
-## 3. Eight Foundational Decisions (Phase 2 Seven Independent Experts + 2026-06-24 Canonical Judge D8 Ruling)
+## 3. Foundational Decisions
 
-> Each expert independently reviewed, producing a recommended option, four supporting reasons, a rejected option list, a risk list, and a downstream constraint set. D1–D7 are the recommendations from seven Phase 2 independent experts; **D8 is the 2026-06-24 Canonical Judge Design formal freeze ruling on the attribute and marker system**, which supersedes and replaces the "TBD placeholder" entries in the former D6. See the full 37 KB text in appendix `decision-appendix.md`; the full D8 ruling document is `CANONICAL-JUDGE-ATTRIBUTE-SYSTEM.json` (nine submodules: AST / Checker / EBNF / Lexer / Marker / Namespaces / Negative-Impl / Retention / Soundness).
+The normative language contracts live in the specification chapters and
+accepted RFCs. This document applies those contracts to concurrency without
+defining a second type, error, ownership, or attribute system.
 
-### D1 · Error Channel: `raises(E)` and `Result<T,E>` Unified Underlying `T|E`
+### D1 · Raising Functions Preserve Success and Residual Roles
 
-| Item | Content |
-|---|---|
-| Recommended | **Option B (Revised) — Dual-Track Unification: `raises E` as the declaration-layer verification track + `Result<T,E>` as a named alias of the same underlying type (`06-declarations.md:227`: `alias Result<T,E> = T\|E`), bottom-level normalized to SetType `{T} ∪ E`** |
-| Freeze-1 | `raises E` is semantically equivalent to "return type = T \| E"; **no new runtime channel is introduced**; `fun f() -> T raises A\|B` and `fun f() -> Result<T, A\|B>` are completely the same `FunctionTypeSymbol` at the symbol level (identical SetType) with zero difference from the caller's perspective |
-| Freeze-2 | The three operators `?!` / `!!` / `?:` **apply to either form equally**: if the input is `Result<T,E>`, it is normalized via SetType `T\|E` during expansion; the match expansion of `e?!` does not require explicit `Success/Failure` matching — the compiler canonicalizes and directly matches the union |
-| Freeze-3 | User-authored `enum Result<T,E>` (a nominal enum, not an alias) coexists with the 06-decl style type alias; nominal types enter the `?!` system through the standard library's `Try<O,E>` interface (`intoUnion / fromUnion`); the built-in `alias Result<T,E>` does not require the Try interface (the underlying type IS the union, zero-cost bridging) |
-| Freeze-4 | 17-grammar-reference.md L196 **must be changed to** `RaisesClause ::= 'raises' TypeExpression` (a single type, which naturally carries the union), and the dead code of the original RaisesClause / ErrorTypeList SyntaxKind must be removed |
-| Closed findings | Design audit Finding 18 four-form non-normalized (**T?/T\|null/raises/Result all go through the same underlying SetType**); error audit gap C FunctionTypeSymbol has no errorTypes; audit gap H ?! domain ambiguity; 17-chapter grammar contradiction (TypeList comma vs `\|` union) |
-| Risks | error tag confusion → compiler injects nominal discriminator; **nominal Result vs alias Result name collision** → standard library ensures the type alias is globally unique, user's nominal Result needs explicit `import MyResult`; async color drift → raises always only affects the return-value union, not a re-invented Future inner Output layer |
-| Implementation | 1.0x baseline (Option A: 2.0x, Option C: 1.8x); 4 core steps: add errorTypes to FunctionTypeSymbol / Binder supplements visit(ReturnTypeNode) flatten / Checker canonicalizes SetType (**immediately expands Result aliases**) / formalize three-operator semantics |
+A function type `(P...) -> T raises E` stores `T` as its success type and `E`
+as a distinct raises effect. A call to that function has canonical value type
+`T | E` plus checked metadata identifying the success and residual components.
+The function type is not identical to `(P...) -> (T | E)`.
+
+`?!` and `!!` require that checked error-union role metadata. An ordinary union
+or a nominal `Result<T, E>` value does not acquire error semantics from
+canonical union order. Concurrency lowering preserves the same role facts
+through task results, supervisor aggregation, suspension, and cancellation; it
+does not reconstruct roles from runtime tags. Chapter 11 and RFCs 0005, 0006,
+0009, and 0010 own the complete source and lowering contracts.
 
 ### D2 · Concurrency Safety Marker System (CONDITIONAL GO — Seven Mandatory Corrections)
 
@@ -330,7 +333,8 @@ declaration block and §10.2 `09-interfaces.md` manifest entry.
 
 ## 4. Syntax Layer EBNF (Nine Chapters, incl. suspend / spawn / Attribute Whitelist)
 
-> The **full text** is approximately 1187 lines and has been written to the standalone file `docs/design/syntax-ebnf.md`; only the **new/corrected key points directly related to concurrency** are presented here. Readers requiring the complete EBNF / lexical grammar / five-way consistency matrix / T1~T7 verification examples should follow that file.
+> The normative language grammar is Chapter 17. The productions in this
+> section are design input and do not change the accepted parser surface.
 
 ### 4.0 New Concurrency Syntax Summary
 
@@ -356,30 +360,9 @@ SpawnModifier ::=
    Inside the AST 100% unified as ModifierList → OuterAttribute.
    @ is allowed only at ParameterDecl position; the parser directly lowers it to #[zom::param::name]. ── *)
 Declaration ::= ModifierList* ( DeclarationKeyword ... ) ;
-ModifierList ::= ( OuterAttribute | visibilityKeyword | keywordModifier )* ;
-OuterAttribute ::= '#' '[' attributeEntry ( ',' attributeEntry )* ','? ']' ;
-InnerAttribute ::= '#' '!' '[' attributeEntry ( ',' attributeEntry )* ','? ']'
-                    { only permitted at SourceFile.head / BlockStatement.head } ;
-attributeEntry
-    = attributePath                                           (* #[zom::hint::inline]          — hint  *)
-    | attributePath '=' attrLiteral                           (* #[zom::doc = "text"]         — equal *)
-    | attributePath '(' ( attrArgument (',' attrArgument)* ','? )? ')'
-                                                            (* #[zom::repr(C, align(8))]    — call  *)
-    ;
-attributePath
-    = Identifier ( '::' Identifier )+                         (* HARD RULE: ≥ 2 segments       *)
-    | Identifier                                              (* LegacyBareWhitelist only:
-                                                                 deprecated | inline | cold
-                                                                 → parser rewrite → zom::… + W7105 *)
-    ;
-attrArgument
-    = attrLiteral | Identifier                                (* positional                     *)
-    | Identifier '=' ( attrLiteral | Identifier )             (* named key=value                *)
-    | attrTokenTree                                           (* free-form for Tier-2 macro    *)
-    ;
-(* ParameterDecl @ sugar: @variadic x: ...  ⟹  #[zom::param::variadic] on parameter
-   FIRST set guarded by isStartOfParameter(position) context.
-   Misplaced @  ⇒  ZOM0602 MisplacedAt                                      *)
+Attribute syntax and placement are defined exclusively by Chapter 16. This
+concurrency design consumes validated attribute facts and does not define an
+independent attribute grammar.
 
 (* ── 4. raises clause: single Type naturally carries the union ── *)
 FunctionSignature ::=
@@ -390,7 +373,7 @@ FunctionSignature ::=
 ;
 ```
 
-### 4.1 Ten Drift Corrections (G1–G10, taken from syntax-ebnf §7)
+### 4.1 Grammar Requirements
 
 | ID | Content | Concurrency Impact |
 |---|---|---|
@@ -445,9 +428,9 @@ FunctionSignature ::=
   • 3 utility: MustUse (std::marker::MustUse, **cannot be written as std::must_use**)
               / NonExhaustive / Deprecated
 
-**Tier-2 (open set for user macros):** see Ch.16 §16.10; currently Ch.16 only provides the Macro trait interface; concrete syntax is specified in a separate chapter.
+**Tier-2 (open attribute namespaces):** user-defined attribute semantics require a separately accepted language extension.
 
-rc1 phase: 100% parseable syntax (L0 guarantee); Tier-0 ArgsSchema / target-node validation is fully enabled in S1 WFF; Tier-1 nine R0–R9 propagation rules are fully enabled in S3 Closure; Tier-2 macro expansion is fully enabled in S0 Macros. **Any unrecognized attribute → ZOM0610 ERROR (not WARNING). The former rc1 draft "unrecognized → WARNING" is promoted to ERROR, consistent with the namespace-enforcement hard rule.**
+rc1 phase: Tier-0 ArgsSchema / target-node validation is enabled in S1 WFF, and Tier-1 propagation rules are enabled in S3 Closure. **Any unrecognized attribute → ZOM0610 ERROR.**
 
 ### 4.3 Interaction Between Concurrency Syntax and the Zero-Color Principle (L2 Guarantee)
 
@@ -460,7 +443,9 @@ rc1 phase: 100% parseable syntax (L0 guarantee); Tier-0 ArgsSchema / target-node
 
 ## 5. Core Types and Marker Interface Matrix
 
-> The marker interface system and core concurrency types in this section derive from the D1 error-channel unification + D2 concurrency-safety-marker decisions. For an audit of the current state of the underlying type system (type-system gaps, Interface matrix, Error variants, Linear status and implementation roadmap), read D1/D2's full decision text in `docs/design/decision-appendix.md`.
+> The marker interface system and core concurrency types in this section consume
+> the canonical type, error, ownership, and marker contracts from Chapters 3,
+> 11, 12, 14, and 16 plus RFCs 0005 through 0010.
 
 ### 5.1 Full Set of Concurrency-Related Error Variants (ZOM Native Syntax)
 
@@ -505,7 +490,7 @@ error FfiNull(param_name: str) extends BaseError
 #[zom::stability::discriminator(0x0A)]
 error FfiAbiMismatch(expected: str, got: str) extends BaseError
 
-// Union type alias (users may use it directly in raises clauses)
+// A union used as the raises effect of the functions in this section.
 alias ConcurrencyError =
     Cancelled | Timeout | IoError | Panic | Poisoned
   | ScopeAbandoned | DeadlineExceeded | DoublePanic | FfiNull | FfiAbiMismatch
@@ -930,24 +915,7 @@ See §11 of `runtime-ffi-examples`:
 > descriptive kebab-case names; no numbered design-dimension filename is
 > canonical.
 
-### 7.1 Twelve Rejected Alternatives (including newly added RA-9/RA-10)
-
-| # | Rejected Alternative | Core Rationale |
-|---|---|---|
-| RA-1 | Introduce Rust-style async/await dual-track function colors | Violates NP-1; ecosystem bifurcation; delays delivery by 3 months |
-| RA-2 | Go-style goroutine + channel + runtime GC (ARC global reference) | Not viable for systems programming (no unsafe, no raw pointers) |
-| RA-3 | Single global executor (no work-steal, per-process single queue) | Poor NUMA scalability (B.7 false sharing amplified) |
-| RA-4 | 1:1 kernel-thread stack model | 1M-task memory footprint exceeds limits; violates NP-4 eager |
-| RA-5 | Rust-style Future poll model (stackless) | Conflicts with segmented-stack specification; FFI bridge infeasible (D4) |
-| RA-6 | Java Object.wait/notify-style monitor lock as sole concurrency primitive | Cancellation/timeout semantics impossible; deadlocks difficult to reproduce |
-| RA-7 | Erlang-style actor-only concurrency (shared-memory Mutex forbidden) | 10–100x performance degradation; FFI memory alignment infeasible |
-| RA-8 | Do not introduce Linear for scopes, use full runtime reference counting | P02 zombie tasks cannot be closed at compile time; ecosystem-breaking after formation |
-| RA-9 | **Introduce a Rust-style trait/impl system to express markers** | Duplicates ZOM's existing interface architecture; the interface chapter is complete; reusing interface + @marker has lower cost |
-| RA-10 | **Introduce Result<T,E> as a built-in nominal enum + route raises separately through IR (dual tracks with different bottoms)** | Error audits indicate 3x cost for dual tracks; ZOM already has `alias Result<T,E> = T\|E` and `raises E` unified under SetType; one bottom with two entry points is zero-cost |
-| RA-11 | Deterministic seed as the default mode (enabled in release builds) | ASLR-off security risk; 5%~15% performance loss; correct as an opt-in tool only |
-| RA-12 | Concurrency v1 runtime-only without markers (TypeChecker added later) | spawn without gates = default data races; a post-ecosystem fix would be breaking (Rust 2018 async Send precedent) |
-
-### 7.2 Compliance Test-Suite Highlights (Lit L01~L22 + ZTest Z01~Z26)
+### 7.1 Compliance Test-Suite Highlights (Lit L01~L22 + ZTest Z01~Z26)
 
 The complete list is maintained by the roadmap tables in this section. Top-10 most critical:
 
@@ -964,7 +932,7 @@ The complete list is maintained by the roadmap tables in this section. Top-10 mo
 | Z08 | det_sched seed × 10 runs output consistency | ✓ byte-level exact match | L3 |
 | Z12 | 32-core benchmark false sharing (B.7) | Throughput slope under TaskHeader three-cacheline layout ≥ approximately linear through 22 cores | L3 |
 
-### 7.3 Four-Phase Rollout Roadmap (D7 Final Plan)
+### 7.2 Four-Phase Rollout Roadmap (D7 Final Plan)
 
 | Level | Timeline | Deliverables | Acceptance Green-Bar | Impact on Concurrency Spec |
 |---|---|---|---|---|
@@ -979,10 +947,10 @@ The complete list is maintained by the roadmap tables in this section. Top-10 mo
 
 ### Adversarial Audit A · Grammar Authenticity Scan
 
-**Overall Conclusion**: After adversarial grammar scanning of the four chapters plus decision appendix, **no illegal Rust-style grammar was found remaining in the semantic context of "ZOM sample code / type signatures / interface definitions"**. Notes:
-- `trait` / `&` borrow / `'lt` tick / `where` — only appear in **discursive text** (comparisons / discussion) as "rejected forms".
-- `Result<T,E>` / `#[]` — instances appearing in ZOM code samples are **completely legal** (the former is a type alias declared at `06-declarations.md:227`; the latter is the D8 Canonical frozen primary attribute form `#[ns::name(args)]`).
-- Adversarial scanning only operates on code blocks that **"claim to be ZOM compilable code"**.
+**Overall Conclusion**: Grammar scanning covers every code block that claims to
+be compilable ZOM. `Result<T, E>` names the nominal enum declared in Chapter 6,
+and `#[ns::name(args)]` is the canonical attribute form. Every scanned example
+must use the current grammar.
 
 - violations=1 (the audit agent self-reported a single false positive "test/test") — after re-examination, human reviewers classified it as the audit agent's placeholder output.
 - inconsistencies=0 (four chapters + appendix naming fully consistent: Task<T>.await/cancel/status/id, ErrorPolicy variant names, attribute namespaces, etc.).
@@ -1018,7 +986,7 @@ Adversarial audit B sampled 35 high+/critical directly related to concurrency ou
 | MOD-001~005 (5 Critical) | Module system Import/Export/Scope/Cycle/Package all blank | ✅ (D7 Phase 0/1 deliverables + releaseBlockers #8 Appendix C adversarial audit) | §3 D7; §7.3 Level-1 |
 | DES-001 | TypeChecker completely unimplemented (empty shell, driver has no checkSources stage) | ✅ (D7 Phase 0 #1 priority; releaseBlockers #12 requires parallel progress) | §3 D7; §9 #12 |
 | DES-002 | Type-inference unification algorithm completely unimplemented (let x = 42 has no type) | ✅ (D7 Phase 0 Checker skeleton S-3 deliverable; marker solver reuses unification) | §3 D7; D2 implCost |
-| DES-018 | T? / T\|null / raises E / Result four-form semantic conflict | ✅ (D1 revised: underlying same SetType base; T? is T\|null sugar / raises E is T\|E verification track / Result<T,E> is a named alias of T\|E — four normalized to one) | §3 D1 revised; §5.1 |
+| DES-018 | Nullable, union, raising-call, and `Result` identities must remain distinct | ✅ `T?` normalizes to `T \| null`; raising signatures preserve success and raises separately; calls publish checked success/residual roles; `Result<T, E>` is nominal | §3 D1; Chapter 6; Chapter 11 |
 | ERR-001 | `?!` double-character-chain lexer token missing + parser without consume | ✅ (D6 G8 unified as Postfix; D1 S-4 semantic formalization) | §3 D6; §4.1 G8 |
 | ERR-00C | FunctionTypeSymbol no errorTypes field + Binder ignores RaisesClause | ✅ (D1 S-2 freeze item) | §3 D1; §7.3 Level-1 |
 | CON-H05 | No unsafe escape hatch; concurrency-unsafe APIs cannot be gated | ✅ (D8 Tier-0 `zom::lang::unsafe_block` + `zom::ffi::unsafe_function` attributes; TopUnaddressed #9) | §3 D8; §11 Open Problems |
@@ -1055,10 +1023,9 @@ Release Blockers are 12 items identified by Adversarial Audit B that **must be r
 |---|---|---|
 | **`docs/concurrency/zom-async-canonical-design.md` (this file)** | ≈ 93K | **Final deliverable**: single entry point, 12-chapter complete structure (§3 D8 Canonical freeze ruling added / Adversarial Audit summary / 12 blockers) |
 | `docs/spec/chapters/16-attributes-and-markers.md` (**Canonical rewrite in this pass — original 11-line placeholder → production-grade spec**) | ≈ 67K / 1812 lines | **Official attributes + marker spec**: original file was an 11-line placeholder at rc1-draft stage ("this chapter reserved for a future attribute-system design"). After completion of the 2026-06-24 Canonical Judge Design process, **no longer treated as "reserved for the future"**, rewritten to production-grade spec. Covers: (1) Lexer rules (ColonColon / Shebang / At / Hash single-char tokens — 0 compound tokens); (2) Parser LL(2) EBNF (Outer/Inner Attribute / attributeEntry 3 forms / attributePath ≥ 2 segment hard rule / ModifierList / markerDeclaration / markerImplDeclaration / BoundForm / WhereClause extensions — all strictly LL(1), Hash disambiguation is LL(2)); (3) AST 9 concrete nodes + 2 interface nodes delta (ModifierList/Outer/Inner/AttributePath/PositionalAttrArg/NamedAttrArg/AttrTokenTree/AttributeMarkerDecl/MarkerImplDecl/MarkerBound, X-macro visitor zero-change + serializer + factory totaling ≈ 490 LOC); (4) Binder S0 name resolution 3 paths (zom::* / std::marker::* / dep::<crate>::*) + DocParamSynthesisPass + 9 diagnostics ZOM0601–ZOM0617; (5) Checker S1–S5 6-stage pipeline (WFF/Tier/Lattice/Closure/Usage/Lowering) + 200 diagnostics (ZOM0600–ZOM0699 attribute-system / ZOM0700–ZOM0799 marker-related / concurrency gates); (6) 9 R0–R9 lattice propagation rules (Shared≤Sendable, TaskBound≤¬Sendable, Copy≤¬Linear, Pod≤ZeroInit+NoUninit+Copy, StableAbi≤Pod, Discriminant≤Sized, NoSuspendHazard≤SuspendSafe, Linear⇒¬Copy, NoInteriorMuta⇒Shared default) + 5 negative-impl semantic rules + orphan rule + justification check; (7) 10 Tier-0 zom::* subspaces + 15 Tier-1 std::marker::* + Pod family marker list; (8) @ parameter-sugar (ParameterDecl position only) + LegacyBareWhitelist 3 items; (9) Implementation estimate 16,305 ±12% LOC breakdown (AST 500 / Binder 900 / Checker 4600 / Lexer 75 / LSP 260 / Macro 2000 / Parser 1350 / Rustdoc 220 / Test 6400); (10) 9-modal Kripke semantics + Soundness proof skeleton over 3-world reachability. This file is the **official normative spec**; mutually complementary to the D8 ruling. Downstream implementations must treat the 16-chapter + `CANONICAL-JUDGE-ATTRIBUTE-SYSTEM.json` as the dual sources of truth. |
-| `docs/design/syntax-ebnf.md` | 51,788 B / 1,187 lines | Full syntax-layer EBNF (lexer + parser + attributes + concurrency + five-way consistency + T1~T7 verification), produced independently by the dim1 agent; Attribute section cross-checked against 16-chapter |
-| `docs/design/decision-appendix.md` | 66,975 B / 292 lines | **Complete decision text** of the seven decision experts (including type system / Interface matrix / Linear gap audit, reasons / risks / downstream constraints / rejected options expanded line-by-line) |
+| `docs/spec/chapters/17-grammar-reference.md` | Normative | Language EBNF aligned with the lexer, recursive parser, ANTLR grammar, and AST schema |
 | `docs/design/runtime-ffi-examples.md` | 17,098 B / 397 lines | Runtime architecture diagrams / pseudocode / edge-semantics 6-step / C ABI header / 4 complete examples |
-| This file, sections 7-9 | In-tree summary | Rejected alternatives / open problems / compliance test suite / four-phase roadmap / credibility audit closure table |
+| This file, sections 7-9 | In-tree summary | Open problems / compliance test suite / four-phase roadmap / credibility audit closure table |
 | `CANONICAL-JUDGE-ATTRIBUTE-SYSTEM.json` (**new formal ruling file**) | ≈ 38K / 7 modules | Machine-readable ruling output of Canonical Judge Design: finalAST / finalCheckerStages / finalEBNF / finalLexerRules / finalMarkerSyntax / finalNamespaces / finalNegativeImplSyntax / finalImplementationEstimate / finalRetention / finalSoundnessSketch — 10 submodules, forming "one document + one JSON" dual truth-source with the 16-chapter |
 
 ### 10.2 Recommended Changes to Existing Files (**downstream code-level work**, not directly modified in this workflow)
@@ -1069,9 +1036,9 @@ Release Blockers are 12 items identified by Adversarial Audit B that **must be r
 |---|---|---|---|
 | `docs/spec/chapters/17-grammar-reference.md` L196/L214 | RaisesClause changed to `'raises' TypeExpression`; delete the description of RaisesClause using TypeList | Critical | D1 S-1 |
 | `docs/spec/chapters/03-types.md` | Add § Canonical Normalization (T?→T\|null; flatten; dedup; `T\|never == T`) | Critical | D1 S-1 |
-| `docs/spec/chapters/11-error-handling.md` | Append "raises E = return type T\|E + compiler verification" explicit note to the first section; expand `?!`/`!!`/`?:` three-operator § (match-equivalent desugaring) | Critical | D1 S-1/S-4 |
-| `products/zomlang/compiler/symbol/type-symbol.h` | Add `Vector<Ref<TypeSymbol>> errorTypes` + API to FunctionTypeSymbol::Impl | Critical | D1 S-2 |
-| `products/zomlang/compiler/binder/binder.cc` around L812 | `visit(ReturnTypeNode)` supplements `getErrorType()` Union flatten + per-element lookup; add checker diagnostics for raises mismatch / error-not-in-signature cases | Critical | D1 S-2 |
+| `docs/spec/chapters/11-error-handling.md` | Specify distinct signature success/raises components, checked call-result role metadata, and `?!`/`!!`/`?:` semantics | Critical | D1 S-1/S-4 |
+| `products/zomlang/compiler/checker/` | Materialize canonical semantic signatures with distinct success and raises types and publish checked call-result role facts | Critical | D1 S-2 |
+| `products/zomlang/compiler/binder/` | Bind the return type and raises type as distinct syntax-owned inputs for checker signature construction | Critical | D1 S-2 |
 | `products/zomlang/compiler/ast/kinds.h` L315-317 | Delete dead code RaisesClause / ErrorTypeList / ErrorReturnClause SyntaxKind | High | D1 R3 |
 | `products/zomlang/compiler/parser/parser.cc` + ZomLexer.g4 | Attribute parsing: add ColonColon (`::`) token; OuterAttribute / InnerAttribute / AttrEntry 3 forms / ModifierList / MarkerDecl / MarkerImplDecl unified into AST; `@` at ParameterDecl position only, parser lowers directly to `#[zom::param::name]`; suspend/spawn parsing wired in | High | §3 D8; §4.0 finalEBNF |
 | `products/zomlang/compiler/ast/{schema.yml, tree.h, tree.cc, generated/}` + `products/zomlang/compiler/parser/{parser.cc, parser.h}` | Add schema payloads and builder integration for AttributeNode / AttrArgumentNode equivalents plus ModifierList / OuterAttribute / InnerAttribute / AttributePath / PositionalAttrArg / NamedAttrArg / AttrTokenTree / AttributeMarkerDecl / MarkerImplDecl / MarkerBound; Diagnostic Engine adds ZOM0600-ZOM0699 and ZOM0700-ZOM0799 two diagnostic ranges | Critical | §3 D8; finalAST; finalCheckerStages |

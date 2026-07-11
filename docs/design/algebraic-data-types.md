@@ -216,7 +216,7 @@ When a sum type has exactly two variants, at least one of which contains a type 
 | `Own<T>` | `0x000…000` (null) | `Option<Own<T>> == Own<T>` |
 | `NonNull<T>` | `0x000…000` | `Option<NonNull<T>> == NonNull<T>` |
 | `&T`, `&mut T` | `0x000…000` | `Option<&T> == &T` (still 8/16 bytes) |
-| `Result<T, NeverOk>` | N/A (uninhabited variant) | `Result<T, E> == T` when E uninhabited |
+| `Result<T, NeverOk>` | N/A (uninhabited variant) | Layout-equivalent to `T` when `E` is uninhabited |
 | `enum Foo { A }` | Every value = variant A | No tag required; `Foo` is the variant alone |
 | `bool` (prim) | Non-0x00,0x01 bytes treated as `true` | Niche not used for user-code niche-filling |
 
@@ -864,11 +864,11 @@ Fifteen release-blocking test cases. Each has a (name, ZOM source sketch, expect
 All fifteen tests must pass on the `sanitizer` preset (`-Z sanitizer` = address + UB + leak) before the ADT system is declared complete. RB-12 additionally runs under three distinct CMake presets (`release-linux-x64`, `release-macos-arm64`, `release-win-x64`) in CI to catch layout drift across targets.
 
 ### AST Node Representation
-The Struct and Enum forms in this document are represented by dedicated schema
-variants in the compiler AST. Unit, tuple, and struct enum variants each carry
-their own payload shape, and positional structs are separate declaration nodes.
-The AST layout is defined in [ast-data-structure.md](ast-data-structure.md);
-the implementation schema lives at
-`products/zomlang/compiler/ast/schema.yml`.
+The compiler AST represents named-field structs plus unit and tuple enum
+variants. Each enum discriminant preserves its complete expression node.
+Named-field enum variants and positional struct declarations are outside the
+current grammar. The AST layout is defined in
+[ast-data-structure.md](ast-data-structure.md); the implementation schema lives
+at `products/zomlang/compiler/ast/schema.yml`.
 
 <!-- File stats: 12 ## headings, 43 ### headings, 6 ebnf blocks, 19 zom blocks, 3 cpp blocks, 3 mermaid blocks -->

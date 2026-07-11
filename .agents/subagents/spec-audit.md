@@ -19,6 +19,8 @@ Route here when **any** of these are true:
   between subagents.
 - Another subagent explicitly escalates here because the contract needs
   to be rewritten first (before any code can land).
+- A cast surface such as `as!` must agree across the specification, ANTLR,
+  recursive parser, generated AST, checker, and conformance tests.
 
 Do **not** route here when:
 - A concrete 1-file 1-line fix is already known and matches an existing

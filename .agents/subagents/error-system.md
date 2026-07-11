@@ -15,6 +15,8 @@ Route here when **any** of these are true:
 - Changing the wording, severity, or auto-suggestion behavior of a
   diagnostic.
 - Adding a new `?` / `?!` / `!!` / raises-clause semantic rule.
+- Defining the public diagnostic or panic mapping for a failed forced cast
+  such as `as!`.
 - Fixing audit findings around error handling (e.g. ERR-001: `?!` token
   not lexed).
 - The user asks about error propagation, try-like syntax, Result types,
@@ -30,9 +32,8 @@ Do **not** route here when:
 ## Owns
 
 ```
-products/zomlang/compiler/diagnostic/**
-docs/spec/chapters/10-error-handling.md
-docs/spec/chapters/11-diagnostics.md
+products/zomlang/compiler/diagnostics/**
+docs/spec/chapters/11-error-handling.md
 ```
 
 ## Review Checklist (applies to every PR this subagent touches)
@@ -40,8 +41,7 @@ docs/spec/chapters/11-diagnostics.md
 - [ ] Every `ZOMxxxx` code lives in exactly one central list and has a
       one-line "headline sentence" used consistently across the
       diagnostic engine, spec, and lit tests.
-- [ ] No code is repurposed; deprecated codes are deleted per no-forward-
-      compat Rule #3, never reassigned.
+- [ ] No code is repurposed; removed codes are deleted and never reassigned.
 - [ ] Every parse / bind / checker error path emits a code. No ad-hoc
       strings.
 - [ ] `?!` / `!!` tokens: their lexer dispatch, postfix precedence, and
@@ -51,8 +51,8 @@ docs/spec/chapters/11-diagnostics.md
       function bodies actually raise the declared union; `?` inside a
       function widens the raises set correctly; mismatch is a stable
       error code.
-- [ ] Diagnostic locations (file / line / column / range / caret /
-      macro expansion) are well-defined per spec chapter 11.
+- [ ] Diagnostic locations (file / line / column / range / caret) are
+      well-defined per spec chapter 11.
 
 ## Required Evidence Before Closing
 
