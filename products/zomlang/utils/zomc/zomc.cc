@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "zc/core/common.h"
+#include "zc/core/exception.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/io.h"
 #include "zc/core/main.h"
@@ -25,7 +26,9 @@
 #include "zomlang/compiler/basic/io-utils.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/driver/driver.h"
+#include "zomlang/compiler/driver/compiler-session.h"
+#include "zomlang/compiler/irgen/ir-dump.h"
+#include "zomlang/compiler/irgen/lowering.h"
 #include "zomlang/compiler/source/manager.h"
 
 #ifndef VERSION
@@ -41,7 +44,7 @@ static constexpr char VERSION_STRING[] = "ZomLang Version " VERSION;
 class CompilerMain {
 public:
   explicit CompilerMain(zc::ProcessContext& context) : context(context) {
-    driver = driverSpace.construct(langOpts, compilerOpts);
+    session = sessionSpace.construct(contextFactory, langOpts, compilerOpts);
   }
 
   zc::MainFunc getMain() {
@@ -81,6 +84,8 @@ public:
                    "Only perform syntax checking, no code generation")
         .addOptionWithArg({'O', "optimize"}, ZC_BIND_METHOD(*this, setOptimizationLevel), "<level>",
                           "Set optimization level: 0, 1, 2, 3 (default: 0)")
+        .addOptionWithArg({"panic"}, ZC_BIND_METHOD(*this, setPanicStrategy), "<strategy>",
+                          "Set panic strategy: abort, unwind (default: abort)")
         .addOption({"no-unicode"}, ZC_BIND_METHOD(*this, disableUnicode),
                    "Disable Unicode support in identifiers")
         .addOption({"allow-dollar-identifiers"}, ZC_BIND_METHOD(*this, enableDollarIdentifiers),
@@ -97,7 +102,7 @@ public:
   zc::MainBuilder::Validity addSource(const zc::StringPtr file) {
     if (!file.endsWith(".zom")) { return "Error: zomc: source file must have .zom extension"; }
 
-    if (const zc::Maybe<source::BufferId> bufferId = driver->addSourceFile(file);
+    if (const zc::Maybe<source::BufferId> bufferId = session->addSourceFile(file);
         bufferId == zc::none) {
       return zc::str("Failed to load source file.");
     }
@@ -173,6 +178,17 @@ public:
     return true;
   }
 
+  zc::MainBuilder::Validity setPanicStrategy(zc::StringPtr strategy) {
+    if (strategy == "abort") {
+      compilerOpts.panicStrategy = basic::CompilerOptions::PanicStrategy::Abort;
+    } else if (strategy == "unwind") {
+      compilerOpts.panicStrategy = basic::CompilerOptions::PanicStrategy::Unwind;
+    } else {
+      return zc::str("Invalid panic strategy: ", strategy, ". Valid strategies are: abort, unwind");
+    }
+    return true;
+  }
+
   zc::MainBuilder::Validity disableUnicode() {
     langOpts.useUnicode = false;
     return true;
@@ -190,11 +206,11 @@ public:
 
   zc::MainBuilder::Validity emitOutput() {
     // 1. Parsing
-    if (!driver->parseSources() || driver->getDiagnosticEngine().hasErrors()) {
+    if (!session->parseSources() || session->getDiagnosticEngine().hasErrors()) {
       return zc::str("Compilation failed due to parsing errors.");
     }
 
-    const auto& options = driver->getCompilerOptions();
+    const auto& options = session->getCompilerOptions();
 
     // 2. Early AST Emission (skips binding)
     // We handle AST emission here to allow inspecting the syntax tree without requiring a
@@ -204,12 +220,12 @@ public:
     }
 
     // 3. Binding
-    if (!driver->bindSources() || driver->getDiagnosticEngine().hasErrors()) {
+    if (!session->bindSources() || session->getDiagnosticEngine().hasErrors()) {
       return zc::str("Compilation failed due to binding errors.");
     }
 
     // 4. Type checking
-    if (!driver->checkSources() || driver->getDiagnosticEngine().hasErrors()) {
+    if (!session->checkSources() || session->getDiagnosticEngine().hasErrors()) {
       return zc::str("Compilation failed due to type checking errors.");
     }
 
@@ -226,6 +242,9 @@ public:
     }
 
     // 7. Final Emission
+    if (options.panicStrategy == basic::CompilerOptions::PanicStrategy::Unwind) {
+      return diagnoseEmission<diagnostics::DiagID::PanicUnwindUnsupported>(emissionLocation());
+    }
     switch (options.emission.outputType) {
       case basic::CompilerOptions::EmissionOptions::OutputType::IR:
         return emitIR();
@@ -239,8 +258,8 @@ public:
   }
 
   zc::MainBuilder::Validity emitAST() {
-    const auto& asts = driver->getASTs();
-    const auto& options = driver->getCompilerOptions();
+    const auto& asts = session->getASTs();
+    const auto& options = session->getCompilerOptions();
 
     zc::Maybe<zc::Own<zc::OutputStream>> outputStream = createOutputStream(
         options.emission.outputPath, options.emission.astDumpFormat, DumpOutputKind::Ast);
@@ -265,6 +284,7 @@ private:
   enum class DumpOutputKind {
     Ast,
     Dispatch,
+    Ir,
   };
 
   static ast::AstDumpFormat toAstDumpFormat(ASTDumpFormat format) {
@@ -275,6 +295,118 @@ private:
         return ast::AstDumpFormat::Json;
       case ASTDumpFormat::Raw:
         return ast::AstDumpFormat::Raw;
+    }
+    ZC_UNREACHABLE;
+  }
+
+  static zc::StringPtr loweringPhaseName(irgen::LoweringPhase phase) {
+    switch (phase) {
+      case irgen::LoweringPhase::CheckedInput:
+        return "checked-input"_zc;
+      case irgen::LoweringPhase::FunctionSignature:
+        return "function-signature"_zc;
+      case irgen::LoweringPhase::FunctionBody:
+        return "function-body"_zc;
+      case irgen::LoweringPhase::Expression:
+        return "expression"_zc;
+      case irgen::LoweringPhase::ErrorPropagation:
+        return "error-propagation"_zc;
+      case irgen::LoweringPhase::ForcedUnwrap:
+        return "forced-unwrap"_zc;
+      case irgen::LoweringPhase::TargetLayout:
+        return "target-layout"_zc;
+      case irgen::LoweringPhase::ModuleVerification:
+        return "module-verification"_zc;
+    }
+    ZC_UNREACHABLE;
+  }
+
+  static zc::StringPtr loweringFailureName(irgen::LoweringFailureKind kind) {
+    switch (kind) {
+      case irgen::LoweringFailureKind::UnsupportedSourceShape:
+        return "unsupported-source-shape"_zc;
+      case irgen::LoweringFailureKind::UnsupportedExpression:
+        return "unsupported-expression"_zc;
+      case irgen::LoweringFailureKind::UnknownTargetLayout:
+        return "unknown-target-layout"_zc;
+      case irgen::LoweringFailureKind::UnsupportedCrossSourceTarget:
+        return "unsupported-cross-source-target"_zc;
+      case irgen::LoweringFailureKind::DispatchNotFrozen:
+        return "dispatch-not-frozen"_zc;
+      case irgen::LoweringFailureKind::InvalidSourceRoot:
+        return "invalid-source-root"_zc;
+      case irgen::LoweringFailureKind::InvalidStatementList:
+        return "invalid-statement-list"_zc;
+      case irgen::LoweringFailureKind::InvalidBindingMetadata:
+        return "invalid-binding-metadata"_zc;
+      case irgen::LoweringFailureKind::MissingBindingSymbol:
+        return "missing-binding-symbol"_zc;
+      case irgen::LoweringFailureKind::MissingTypeFact:
+        return "missing-type-fact"_zc;
+      case irgen::LoweringFailureKind::InvalidTypeFact:
+        return "invalid-type-fact"_zc;
+      case irgen::LoweringFailureKind::MissingDispatchFact:
+        return "missing-dispatch-fact"_zc;
+      case irgen::LoweringFailureKind::InvalidDispatchFact:
+        return "invalid-dispatch-fact"_zc;
+      case irgen::LoweringFailureKind::ErrorUnionLayoutMismatch:
+        return "error-union-layout-mismatch"_zc;
+      case irgen::LoweringFailureKind::MissingErrorAlternative:
+        return "missing-error-alternative"_zc;
+      case irgen::LoweringFailureKind::MissingSourceContext:
+        return "missing-source-context"_zc;
+      case irgen::LoweringFailureKind::InvalidSourceRange:
+        return "invalid-source-range"_zc;
+      case irgen::LoweringFailureKind::DuplicateFunctionSymbol:
+        return "duplicate-function-symbol"_zc;
+    }
+    ZC_UNREACHABLE;
+  }
+
+  static zc::StringPtr irDumpFailureName(irgen::IrDumpFailureKind kind) {
+    switch (kind) {
+      case irgen::IrDumpFailureKind::InvalidTypeReference:
+        return "invalid-type-reference"_zc;
+      case irgen::IrDumpFailureKind::InvalidLayout:
+        return "invalid-layout"_zc;
+      case irgen::IrDumpFailureKind::InvalidLayoutReference:
+        return "invalid-layout-reference"_zc;
+      case irgen::IrDumpFailureKind::InvalidFunction:
+        return "invalid-function"_zc;
+      case irgen::IrDumpFailureKind::DuplicateFunctionSymbol:
+        return "duplicate-function-symbol"_zc;
+      case irgen::IrDumpFailureKind::InvalidBlockReference:
+        return "invalid-block-reference"_zc;
+      case irgen::IrDumpFailureKind::DuplicateBlock:
+        return "duplicate-block"_zc;
+      case irgen::IrDumpFailureKind::InvalidValueReference:
+        return "invalid-value-reference"_zc;
+      case irgen::IrDumpFailureKind::DuplicateValue:
+        return "duplicate-value"_zc;
+      case irgen::IrDumpFailureKind::InvalidInstruction:
+        return "invalid-instruction"_zc;
+      case irgen::IrDumpFailureKind::InvalidTerminator:
+        return "invalid-terminator"_zc;
+      case irgen::IrDumpFailureKind::UnresolvedCallTarget:
+        return "unresolved-call-target"_zc;
+    }
+    ZC_UNREACHABLE;
+  }
+
+  static zc::StringPtr irDumpVerifierSiteName(irgen::IrDumpVerifierSite site) {
+    switch (site) {
+      case irgen::IrDumpVerifierSite::Module:
+        return "module"_zc;
+      case irgen::IrDumpVerifierSite::Layout:
+        return "layout"_zc;
+      case irgen::IrDumpVerifierSite::Function:
+        return "function"_zc;
+      case irgen::IrDumpVerifierSite::Block:
+        return "block"_zc;
+      case irgen::IrDumpVerifierSite::Instruction:
+        return "instruction"_zc;
+      case irgen::IrDumpVerifierSite::Terminator:
+        return "terminator"_zc;
     }
     ZC_UNREACHABLE;
   }
@@ -291,18 +423,21 @@ private:
   zc::Maybe<zc::Own<zc::OutputStream>> createFileOutputStream(zc::StringPtr outputPath,
                                                               ASTDumpFormat format,
                                                               DumpOutputKind kind) {
-    auto filesystem = zc::newDiskFilesystem();
-    bool isAbsolute = outputPath.size() > 0 && outputPath[0] == '/';
+    zc::Maybe<zc::Own<zc::OutputStream>> result;
+    auto exception = zc::runCatchingExceptions([&]() {
+      auto filesystem = zc::newDiskFilesystem();
+      const bool isAbsolute = outputPath.size() > 0 && outputPath[0] == '/';
 
-    const zc::Directory& baseDir = isAbsolute ? filesystem->getRoot() : filesystem->getCurrent();
-    zc::StringPtr pathText = isAbsolute ? outputPath.slice(1) : outputPath;
+      const zc::Directory& baseDir = isAbsolute ? filesystem->getRoot() : filesystem->getCurrent();
+      const zc::StringPtr pathText = isAbsolute ? outputPath.slice(1) : outputPath;
+      const zc::Path path = resolveOutputPath(pathText, format, kind, baseDir);
 
-    zc::Path path = resolveOutputPath(pathText, format, kind, baseDir);
-
-    auto file = baseDir.openFile(
-        path, zc::WriteMode::CREATE | zc::WriteMode::MODIFY | zc::WriteMode::CREATE_PARENT);
-
-    return zc::heap<basic::FileOutputStream>(zc::mv(file));
+      auto file = baseDir.openFile(
+          path, zc::WriteMode::CREATE | zc::WriteMode::MODIFY | zc::WriteMode::CREATE_PARENT);
+      result = zc::heap<basic::FileOutputStream>(zc::mv(file));
+    });
+    if (exception != zc::none) { return zc::none; }
+    return result;
   }
 
   /// Resolves the final output path, generating filename if path is a directory
@@ -329,22 +464,31 @@ private:
     zc::String baseName;
     ZC_IF_SOME(name, maybeBaseName) { baseName = zc::mv(name); }
     else { baseName = zc::str(kDefaultBaseName); }
-    zc::StringPtr extension = kind == DumpOutputKind::Dispatch
-                                  ? ".dispatch.txt"_zc
-                                  : ast::astDumpFileExtension(toAstDumpFormat(format));
+    zc::StringPtr extension;
+    switch (kind) {
+      case DumpOutputKind::Ast:
+        extension = ast::astDumpFileExtension(toAstDumpFormat(format));
+        break;
+      case DumpOutputKind::Dispatch:
+        extension = ".dispatch.txt"_zc;
+        break;
+      case DumpOutputKind::Ir:
+        extension = ".ir"_zc;
+        break;
+    }
 
     return zc::str(baseName, extension);
   }
 
   /// Extracts base name from the first source file
   zc::Maybe<zc::String> extractSourceBaseName() {
-    const auto& asts = driver->getASTs();
+    const auto& asts = session->getASTs();
     if (asts.size() == 0) return zc::none;
 
     const auto& firstEntry = *asts.begin();
     const source::BufferId& firstBufferId = firstEntry.key;
 
-    const auto& sourceManager = driver->getSourceManager();
+    const auto& sourceManager = session->getSourceManager();
     zc::StringPtr filePath = sourceManager.getIdentifierForBuffer(firstBufferId);
 
     zc::Path sourcePath = zc::Path::parse(filePath);
@@ -359,7 +503,7 @@ private:
 
   zc::MainBuilder::Validity dumpASTsToStream(zc::OutputStream& outputStream, const auto& asts,
                                              ASTDumpFormat format) {
-    const auto& sourceManager = driver->getSourceManager();
+    const auto& sourceManager = session->getSourceManager();
     for (const auto& entry : asts) {
       const ast::Tree& tree = entry.value;
 
@@ -372,27 +516,138 @@ private:
   }
 
   zc::MainBuilder::Validity dumpDispatchToStream(zc::OutputStream& outputStream) {
-    const auto& typeEnvs = driver->getTypeEnvs();
-    for (const source::BufferId& bufferId : driver->getSourceManager().getManagedBufferIds()) {
+    const auto& typeEnvs = session->getTypeEnvs();
+    for (const source::BufferId& bufferId : session->getSourceManager().getManagedBufferIds()) {
       ZC_IF_SOME(typeEnv, typeEnvs.find(bufferId)) { typeEnv.dumpDispatch(outputStream); }
     }
     return true;
   }
 
+  source::SourceLoc emissionLocation() const {
+    const auto& asts = session->getASTs();
+    if (asts.size() == 0) { return source::SourceLoc(); }
+
+    const auto& firstEntry = *asts.begin();
+    const auto& tree = firstEntry.value;
+    const auto root = tree.root();
+    if (!root || !tree.contains(root) || tree.node(root).range.isInvalid()) {
+      return source::SourceLoc();
+    }
+    return tree.node(root).range.getStart();
+  }
+
+  template <diagnostics::DiagID Id>
+  zc::MainBuilder::Validity diagnoseEmission(source::SourceLoc loc) {
+    session->getDiagnosticEngine().diagnose<Id>(loc);
+    context.error(zc::StringPtr());
+    return true;
+  }
+
+  zc::MainBuilder::Validity diagnoseLoweringFailure(const ast::Tree& tree,
+                                                    const irgen::LoweringFailure& failure) {
+    auto loc = emissionLocation();
+    if (failure.node && tree.contains(failure.node) && tree.node(failure.node).range.isValid()) {
+      loc = tree.node(failure.node).range.getStart();
+    }
+
+    switch (failure.kind) {
+      case irgen::LoweringFailureKind::UnsupportedSourceShape:
+        return diagnoseEmission<diagnostics::DiagID::IrUnsupportedSourceShape>(loc);
+      case irgen::LoweringFailureKind::UnsupportedExpression:
+        return diagnoseEmission<diagnostics::DiagID::IrUnsupportedExpression>(loc);
+      case irgen::LoweringFailureKind::UnknownTargetLayout:
+        return diagnoseEmission<diagnostics::DiagID::IrUnknownTargetLayout>(loc);
+      case irgen::LoweringFailureKind::UnsupportedCrossSourceTarget:
+        return diagnoseEmission<diagnostics::DiagID::IrCrossSourceCallUnsupported>(loc);
+      case irgen::LoweringFailureKind::DispatchNotFrozen:
+      case irgen::LoweringFailureKind::InvalidSourceRoot:
+      case irgen::LoweringFailureKind::InvalidStatementList:
+      case irgen::LoweringFailureKind::InvalidBindingMetadata:
+      case irgen::LoweringFailureKind::MissingBindingSymbol:
+      case irgen::LoweringFailureKind::MissingTypeFact:
+      case irgen::LoweringFailureKind::InvalidTypeFact:
+      case irgen::LoweringFailureKind::MissingDispatchFact:
+      case irgen::LoweringFailureKind::InvalidDispatchFact:
+      case irgen::LoweringFailureKind::ErrorUnionLayoutMismatch:
+      case irgen::LoweringFailureKind::MissingErrorAlternative:
+      case irgen::LoweringFailureKind::MissingSourceContext:
+      case irgen::LoweringFailureKind::InvalidSourceRange:
+      case irgen::LoweringFailureKind::DuplicateFunctionSymbol:
+        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::IrLoweringInvariantViolation>(
+            loc, loweringPhaseName(failure.phase), loweringFailureName(failure.kind),
+            zc::str(static_cast<uint64_t>(failure.node.value)));
+        context.error(zc::StringPtr());
+        return true;
+    }
+
+    ZC_UNREACHABLE;
+  }
+
   zc::MainBuilder::Validity emitIR() {
-    // TODO: Implement IR generation and output
-    return zc::str("IR emission is not yet implemented.");
+    const auto bufferIds = session->getSourceManager().getManagedBufferIds();
+    if (bufferIds.size() != 1) {
+      return diagnoseEmission<diagnostics::DiagID::IrSingleSourceRequired>(emissionLocation());
+    }
+
+    const auto bufferId = bufferIds[0];
+    const auto& asts = session->getASTs();
+    const auto& metadataByBuffer = session->getBindingMetadata();
+    const auto& typeEnvs = session->getTypeEnvs();
+    const auto maybeTree = asts.find(bufferId);
+    const auto maybeMetadata = metadataByBuffer.find(bufferId);
+    const auto maybeTypeEnv = typeEnvs.find(bufferId);
+    if (maybeTree == zc::none || maybeMetadata == zc::none || maybeTypeEnv == zc::none) {
+      return diagnoseEmission<diagnostics::DiagID::IrCheckedInputMissing>(emissionLocation());
+    }
+
+    zc::Maybe<const ast::Tree&> tree = maybeTree;
+    zc::Maybe<const ast::BindingMetadata&> metadata = maybeMetadata;
+    zc::Maybe<const type::TypeEnv&> typeEnv = maybeTypeEnv;
+    ZC_IF_SOME(checkedTree, tree) {
+      ZC_IF_SOME(bindingMetadata, metadata) {
+        ZC_IF_SOME(checkedTypeEnv, typeEnv) {
+          irgen::LoweringSourceContext sourceContext(session->getSourceManager(), bufferId);
+          auto lowering = irgen::lowerCheckedTree(checkedTree, bindingMetadata, checkedTypeEnv,
+                                                  irgen::TargetDataLayout::lp64(), sourceContext);
+          if (lowering.is<irgen::LoweringFailure>()) {
+            return diagnoseLoweringFailure(checkedTree, lowering.get<irgen::LoweringFailure>());
+          }
+
+          zc::Maybe<zc::Own<zc::OutputStream>> outputStream = createOutputStream(
+              compilerOpts.emission.outputPath, ASTDumpFormat::Tree, DumpOutputKind::Ir);
+          ZC_IF_SOME(stream, outputStream) {
+            auto dumpResult = irgen::dumpModule(*stream, lowering.get<irgen::Module>());
+            ZC_IF_SOME(failure, dumpResult) {
+              session->getDiagnosticEngine()
+                  .diagnose<diagnostics::DiagID::IrDumpInvariantViolation>(
+                      emissionLocation(), irDumpVerifierSiteName(failure.site),
+                      irDumpFailureName(failure.kind), zc::str(failure.symbol.getRaw()),
+                      zc::str(static_cast<uint64_t>(failure.block.value)),
+                      zc::str(static_cast<uint64_t>(failure.value.value)),
+                      zc::str(static_cast<uint64_t>(failure.type.value)),
+                      zc::str(static_cast<uint64_t>(failure.index)));
+              context.error(zc::StringPtr());
+              return true;
+            }
+            return true;
+          }
+          return diagnoseEmission<diagnostics::DiagID::IrOutputCreationFailed>(emissionLocation());
+        }
+      }
+    }
+
+    ZC_UNREACHABLE;
   }
 
   zc::MainBuilder::Validity emitBinary() {
-    // TODO: Implement binary generation
-    return "Binary emission is not yet implemented.";
+    return diagnoseEmission<diagnostics::DiagID::BinaryEmissionUnavailable>(emissionLocation());
   }
 
 private:
   zc::ProcessContext& context;
-  zc::Own<driver::CompilerDriver> driver;
-  zc::SpaceFor<driver::CompilerDriver> driverSpace;
+  identity::SemanticContextFactory contextFactory;
+  zc::Own<driver::CompilerSession> session;
+  zc::SpaceFor<driver::CompilerSession> sessionSpace;
   basic::CompilerOptions compilerOpts;
   basic::LangOptions langOpts;
 };
