@@ -1,6 +1,7 @@
 add_subdirectory(basic)
 add_subdirectory(diagnostics)
 add_subdirectory(driver)
+add_subdirectory(identity)
 add_subdirectory(lexer)
 add_subdirectory(parser)
 add_subdirectory(source)
@@ -10,6 +11,7 @@ add_subdirectory(ast)
 add_subdirectory(trace)
 add_subdirectory(binder)
 add_subdirectory(type)
+add_subdirectory(irgen)
 
 add_library(
   frontend STATIC
@@ -19,13 +21,15 @@ add_library(
   $<TARGET_OBJECTS:checker>
   $<TARGET_OBJECTS:diagnostics>
   $<TARGET_OBJECTS:driver>
+  $<TARGET_OBJECTS:identity>
+  $<TARGET_OBJECTS:irgen>
   $<TARGET_OBJECTS:lexer>
   $<TARGET_OBJECTS:parser>
   $<TARGET_OBJECTS:source>
   $<TARGET_OBJECTS:symbol>
   $<TARGET_OBJECTS:trace>
   $<TARGET_OBJECTS:type>)
-target_link_libraries(frontend PUBLIC zc)
+target_link_libraries(frontend PUBLIC zc zom_vendor_sodium zom_vendor_zstd)
 
 set_target_include_directories(
   "${INCLUDE_DIRS}"
@@ -35,6 +39,8 @@ set_target_include_directories(
   checker
   diagnostics
   driver
+  identity
+  irgen
   lexer
   parser
   source
