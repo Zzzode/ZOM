@@ -11,6 +11,7 @@ namespace source {
 ZC_TEST("SourceLocation InvalidLocation") {
   zomlang::compiler::source::SourceLoc loc;
   ZC_EXPECT(loc.isInvalid());
+  ZC_EXPECT(loc.getAdvancedLoc(1).isInvalid());
 }
 
 ZC_TEST("SourceLocation ValidLocation") {

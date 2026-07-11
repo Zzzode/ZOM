@@ -21,6 +21,9 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/binder/definition-inventory.h"
+#include "zomlang/compiler/identity/brand.h"
+#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/type/type-env.h"
 
 namespace zomlang {
@@ -45,11 +48,12 @@ class StringPool;
 
 namespace driver {
 
-class CompilerDriver {
+class CompilerSession {
 public:
-  CompilerDriver(const basic::LangOptions& langOpts,
-                 const basic::CompilerOptions& compilerOpts) noexcept;
-  ~CompilerDriver() noexcept(false);
+  CompilerSession(identity::SemanticContextFactory& contextFactory,
+                  const basic::LangOptions& langOpts, const basic::CompilerOptions& compilerOpts);
+  ~CompilerSession() noexcept(false);
+  ZC_DISALLOW_COPY_AND_MOVE(CompilerSession);
 
   /// Add a source file to the compiler.
   /// \param file The path to the source file to add
@@ -81,6 +85,13 @@ public:
   /// \return A reference to the map of buffer IDs to binder metadata.
   const zc::HashMap<source::BufferId, ast::BindingMetadata>& getBindingMetadata() const;
 
+  /// Return the number of parsed source buffers with a prebinding inventory.
+  size_t getDefinitionInventoryCount() const;
+
+  /// Return an owning snapshot of one source buffer's prebinding inventory.
+  zc::Maybe<binder::DefinitionInventory> getDefinitionInventory(
+      const source::BufferId& buffer) const;
+
   /// Get type environments keyed by buffer ID.
   /// \return A reference to the map of buffer IDs to type environments.
   const zc::HashMap<source::BufferId, type::TypeEnv>& getTypeEnvs() const;
@@ -94,13 +105,19 @@ public:
   basic::StringPool& getStringPool();
   const basic::StringPool& getStringPool() const;
 
-  /// Get the compiler options used by the driver.
+  /// Get the compiler options used by the session.
   /// \return A reference to the compiler options
   const basic::CompilerOptions& getCompilerOptions() const;
 
-  /// Get the source manager used by the driver.
+  /// Get the source manager used by the session.
   /// \return A reference to the source manager
   const source::SourceManager& getSourceManager() const;
+
+  /// \brief Returns the process-unique brand owned by this compilation session.
+  identity::SemanticContextBrand getSemanticContextBrand() const noexcept;
+
+  /// \brief Returns the sole RFC 0011 registry family owned by this session.
+  zc::Maybe<const identity::SemanticIdentityRegistrySet&> getIdentityRegistries() const noexcept;
 
 private:
   struct Impl;

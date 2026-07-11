@@ -78,16 +78,19 @@ ZC_TEST("SourceManager: Source Location Navigation") {
   BufferId bufferId = manager.addMemBufferCopy(content.asBytes(), "nav.txt");
 
   SourceLoc loc = manager.getLocForBufferStart(bufferId);
+  ZC_EXPECT(manager.getLocOffsetInBuffer(loc, bufferId) == 0);
   LineAndColumn lineCol = manager.getPresumedLineAndColumnForLoc(loc, bufferId);
   ZC_EXPECT(lineCol.line == 1);
   ZC_EXPECT(lineCol.column == 1);
 
   SourceLoc loc2 = manager.getLocForOffset(bufferId, 6);
+  ZC_EXPECT(manager.getLocOffsetInBuffer(loc2, bufferId) == 6);
   LineAndColumn lineCol2 = manager.getPresumedLineAndColumnForLoc(loc2, bufferId);
   ZC_EXPECT(lineCol2.line == 2);
   ZC_EXPECT(lineCol2.column == 1);
 
   SourceLoc loc3 = manager.getLocForOffset(bufferId, 14);
+  ZC_EXPECT(manager.getLocOffsetInBuffer(loc3, bufferId) == 14);
   LineAndColumn lineCol3 = manager.getPresumedLineAndColumnForLoc(loc3, bufferId);
   ZC_EXPECT(lineCol3.line == 3);
   ZC_EXPECT(lineCol3.column == 3);

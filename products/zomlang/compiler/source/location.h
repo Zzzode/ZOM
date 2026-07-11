@@ -36,6 +36,7 @@ public:
   static SourceLoc getFromOpaqueValue(const zc::byte* ptr) { return SourceLoc(ptr); }
 
   ZC_NODISCARD SourceLoc getAdvancedLoc(unsigned offset) const {
+    if (isInvalid()) { return SourceLoc(); }
     return getFromOpaqueValue(getOpaqueValue() + offset);
   }
 

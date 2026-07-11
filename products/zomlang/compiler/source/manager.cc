@@ -263,8 +263,11 @@ SourceLoc SourceManager::getLocForBufferStart(BufferId bufferId) const {
 }
 
 unsigned SourceManager::getLocOffsetInBuffer(SourceLoc loc, BufferId bufferId) const {
-  ZC_ASSERT(loc.isValid(), "invalid loc");
-  return 0;
+  ZC_IREQUIRE(loc.isValid(), "SourceManager::getLocOffsetInBuffer: invalid location");
+  const auto range = getRangeForBuffer(bufferId);
+  ZC_IREQUIRE(range.getStart() <= loc && loc <= range.getEnd(),
+              "SourceManager::getLocOffsetInBuffer: location is outside the buffer");
+  return static_cast<unsigned>(loc.getOpaqueValue() - range.getStart().getOpaqueValue());
 }
 
 SourceLoc SourceManager::getLocForOffset(BufferId bufferId, unsigned offset) const {

@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/driver/driver.h"
+#include "zomlang/compiler/driver/compiler-session.h"
 
 #include "zc/core/filesystem.h"
 #include "zc/core/map.h"
@@ -23,6 +23,7 @@
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/thread-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/diagnostics/consoling-diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
@@ -33,12 +34,12 @@
 namespace zomlang {
 namespace compiler {
 namespace driver {
-
 // ================================================================================
-// CompilerDriver::Impl
+// CompilerSession::Impl
 
-struct CompilerDriver::Impl {
-  Impl(const basic::LangOptions& opts, const basic::CompilerOptions& compOpts) noexcept
+struct CompilerSession::Impl {
+  Impl(identity::SemanticContextFactory& contextFactory, const basic::LangOptions& opts,
+       const basic::CompilerOptions& compOpts)
       : langOpts(opts),
         compilerOpts(compOpts),
         stringPool(zc::heap<basic::StringPool>()),
@@ -46,6 +47,23 @@ struct CompilerDriver::Impl {
         diagnosticEngine(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager)),
         symbolTable(zc::heap<symbol::SymbolTable>()) {
     diagnosticEngine->addConsumer(zc::heap<diagnostics::ConsolingDiagnosticConsumer>());
+    auto issuedContext = contextFactory.issue();
+    if (issuedContext == zc::none) {
+      diagnosticEngine->diagnose<diagnostics::DiagID::IdentityBrandExhausted>(source::SourceLoc(),
+                                                                              zc::str(uint64_t{1}));
+      return;
+    }
+    ZC_IF_SOME(context, issuedContext) {
+      contextBrand = context;
+      auto issuedRegistries =
+          identity::SemanticIdentityRegistrySet::create(contextFactory, contextBrand);
+      if (issuedRegistries == zc::none) {
+        diagnosticEngine->diagnose<diagnostics::DiagID::IdentityDuplicateSingletonStore>(
+            source::SourceLoc(), zc::str(uint64_t{1}));
+        return;
+      }
+      ZC_IF_SOME(registries, issuedRegistries) { identityRegistries = zc::mv(registries); }
+    }
   }
   ~Impl() noexcept(false) = default;
 
@@ -65,6 +83,10 @@ struct CompilerDriver::Impl {
   const basic::LangOptions& langOpts;
   /// Compiler options
   const basic::CompilerOptions& compilerOpts;
+  /// Process-unique identity for this semantic compilation.
+  identity::SemanticContextBrand contextBrand;
+  /// Sole RFC 0011 identity registry family for this session.
+  zc::Maybe<identity::SemanticIdentityRegistrySet> identityRegistries;
   /// String pool to manage interned strings.
   zc::Own<basic::StringPool> stringPool;
   /// Source manager to manage source files.
@@ -77,19 +99,23 @@ struct CompilerDriver::Impl {
   zc::MutexGuarded<zc::HashMap<source::BufferId, ast::Tree>> astMutex;
   /// Mutex-guarded map from BufferId to binder metadata side tables.
   zc::MutexGuarded<zc::HashMap<source::BufferId, ast::BindingMetadata>> bindingMetadataMutex;
+  /// Mutex-guarded prebinding definition inventory for every parsed syntax tree.
+  zc::MutexGuarded<zc::HashMap<source::BufferId, binder::DefinitionInventory>>
+      definitionInventoryMutex;
   /// Mutex-guarded map from BufferId to type environments from type checking.
   zc::MutexGuarded<zc::HashMap<source::BufferId, type::TypeEnv>> typeEnvMutex;
 };
 
 // ================================================================================
-// CompilerDriver
+// CompilerSession
 
-CompilerDriver::CompilerDriver(const basic::LangOptions& langOpts,
-                               const basic::CompilerOptions& compilerOpts) noexcept
-    : impl(zc::heap<Impl>(langOpts, compilerOpts)) {}
-CompilerDriver::~CompilerDriver() noexcept(false) = default;
+CompilerSession::CompilerSession(identity::SemanticContextFactory& contextFactory,
+                                 const basic::LangOptions& langOpts,
+                                 const basic::CompilerOptions& compilerOpts)
+    : impl(zc::heap<Impl>(contextFactory, langOpts, compilerOpts)) {}
+CompilerSession::~CompilerSession() noexcept(false) = default;
 
-zc::Maybe<source::BufferId> CompilerDriver::addSourceFile(const zc::StringPtr file) {
+zc::Maybe<source::BufferId> CompilerSession::addSourceFile(const zc::StringPtr file) {
   const zc::Maybe<source::BufferId> bufferId =
       impl->sourceManager->getFileSystemSourceBufferID(file);
   if (bufferId == zc::none) {
@@ -98,31 +124,44 @@ zc::Maybe<source::BufferId> CompilerDriver::addSourceFile(const zc::StringPtr fi
   return bufferId;
 }
 
-const diagnostics::DiagnosticEngine& CompilerDriver::getDiagnosticEngine() const {
+const diagnostics::DiagnosticEngine& CompilerSession::getDiagnosticEngine() const {
   return *impl->diagnosticEngine;
 }
 
-diagnostics::DiagnosticEngine& CompilerDriver::getDiagnosticEngine() {
+diagnostics::DiagnosticEngine& CompilerSession::getDiagnosticEngine() {
   return *impl->diagnosticEngine;
 }
 
-const zc::HashMap<source::BufferId, ast::Tree>& CompilerDriver::getASTs() const {
+const zc::HashMap<source::BufferId, ast::Tree>& CompilerSession::getASTs() const {
   auto lockedAsts = impl->astMutex.lockShared();
   return *lockedAsts;
 }
 
-const zc::HashMap<source::BufferId, ast::BindingMetadata>& CompilerDriver::getBindingMetadata()
+const zc::HashMap<source::BufferId, ast::BindingMetadata>& CompilerSession::getBindingMetadata()
     const {
   auto lockedMetadata = impl->bindingMetadataMutex.lockShared();
   return *lockedMetadata;
 }
 
-const zc::HashMap<source::BufferId, type::TypeEnv>& CompilerDriver::getTypeEnvs() const {
+size_t CompilerSession::getDefinitionInventoryCount() const {
+  auto lockedInventories = impl->definitionInventoryMutex.lockShared();
+  return lockedInventories->size();
+}
+
+zc::Maybe<binder::DefinitionInventory> CompilerSession::getDefinitionInventory(
+    const source::BufferId& buffer) const {
+  auto lockedInventories = impl->definitionInventoryMutex.lockShared();
+  ZC_IF_SOME(inventory, lockedInventories->find(buffer)) { return inventory.clone(); }
+  return zc::none;
+}
+
+const zc::HashMap<source::BufferId, type::TypeEnv>& CompilerSession::getTypeEnvs() const {
   auto lockedTypeEnvs = impl->typeEnvMutex.lockShared();
   return *lockedTypeEnvs;
 }
 
-bool CompilerDriver::parseSources() {
+bool CompilerSession::parseSources() {
+  if (impl->diagnosticEngine->hasErrors()) { return false; }
   // Get BufferIds directly from SourceManager
   zc::Vector<source::BufferId> bufferIds = impl->sourceManager->getManagedBufferIds();
 
@@ -138,6 +177,11 @@ bool CompilerDriver::parseSources() {
 
       // Store the result if successful
       ZC_IF_SOME(ast, maybeAst) {
+        auto inventory = binder::DefinitionInventory::collect(ast);
+        {
+          auto lockedInventories = impl->definitionInventoryMutex.lockExclusive();
+          lockedInventories->upsert(bufferId, zc::mv(inventory));
+        }
         // Lock the mutex to safely access the shared map
         auto lockedAsts = impl->astMutex.lockExclusive();
         // Insert or update the AST in the map
@@ -151,7 +195,8 @@ bool CompilerDriver::parseSources() {
   return !impl->diagnosticEngine->hasErrors();
 }
 
-bool CompilerDriver::bindSources() {
+bool CompilerSession::bindSources() {
+  if (impl->diagnosticEngine->hasErrors()) { return false; }
   auto lockedAsts = impl->astMutex.lockShared();
   auto lockedMetadata = impl->bindingMetadataMutex.lockExclusive();
   for (const auto& entry : *lockedAsts) {
@@ -164,7 +209,8 @@ bool CompilerDriver::bindSources() {
   return !impl->diagnosticEngine->hasErrors();
 }
 
-bool CompilerDriver::checkSources() {
+bool CompilerSession::checkSources() {
+  if (impl->diagnosticEngine->hasErrors()) { return false; }
   auto lockedAsts = impl->astMutex.lockShared();
   auto lockedMetadata = impl->bindingMetadataMutex.lockShared();
   auto lockedTypeEnvs = impl->typeEnvMutex.lockExclusive();
@@ -186,18 +232,28 @@ bool CompilerDriver::checkSources() {
   return !impl->diagnosticEngine->hasErrors();
 }
 
-const symbol::SymbolTable& CompilerDriver::getSymbolTable() const { return *impl->symbolTable; }
+const symbol::SymbolTable& CompilerSession::getSymbolTable() const { return *impl->symbolTable; }
 
-basic::StringPool& CompilerDriver::getStringPool() { return *impl->stringPool; }
+basic::StringPool& CompilerSession::getStringPool() { return *impl->stringPool; }
 
-const basic::StringPool& CompilerDriver::getStringPool() const { return *impl->stringPool; }
+const basic::StringPool& CompilerSession::getStringPool() const { return *impl->stringPool; }
 
-const basic::CompilerOptions& CompilerDriver::getCompilerOptions() const {
+const basic::CompilerOptions& CompilerSession::getCompilerOptions() const {
   return impl->compilerOpts;
 }
 
-const source::SourceManager& CompilerDriver::getSourceManager() const {
+const source::SourceManager& CompilerSession::getSourceManager() const {
   return *impl->sourceManager;
+}
+
+identity::SemanticContextBrand CompilerSession::getSemanticContextBrand() const noexcept {
+  return impl->contextBrand;
+}
+
+zc::Maybe<const identity::SemanticIdentityRegistrySet&> CompilerSession::getIdentityRegistries()
+    const noexcept {
+  ZC_IF_SOME(registries, impl->identityRegistries) { return registries; }
+  return zc::none;
 }
 
 }  // namespace driver
