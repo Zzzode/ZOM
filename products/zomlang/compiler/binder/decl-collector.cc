@@ -45,7 +45,7 @@ const source::BufferId kNoBufferId{0};
 
 // Convert AST visibility word encoding (0=Default, 1=Public, 2=Private,
 // 3=Protected) to the symbol::Visibility enum.
-Visibility visibilityFromAst(uint32_t word) {
+Visibility visibilityFromAst(uint32_t word, Visibility defaultVisibility) {
   switch (word) {
     case 1:
       return Visibility::Public;
@@ -54,7 +54,7 @@ Visibility visibilityFromAst(uint32_t word) {
     case 3:
       return Visibility::Protected;
     default:
-      return Visibility::Internal;
+      return defaultVisibility;
   }
 }
 
@@ -256,6 +256,18 @@ Symbol& DeclCollector::declareSymbol(zc::StringPtr name, NodeId declNode, Symbol
       sym = &impl->symbols.createFunction(name, scope);
       sym->addFlag(SymbolFlags::Method);
       break;
+    case SymbolKind::Constructor:
+      sym = &impl->symbols.createFunction(name, scope);
+      sym->addFlag(SymbolFlags::Constructor);
+      break;
+    case SymbolKind::Destructor:
+      sym = &impl->symbols.createFunction(name, scope);
+      sym->addFlag(SymbolFlags::Destructor);
+      break;
+    case SymbolKind::Constant:
+      sym = &impl->symbols.createVariable(name, scope);
+      sym->addFlag(SymbolFlags::Constant | SymbolFlags::Immutable);
+      break;
     case SymbolKind::Field:
       sym = &impl->symbols.createVariable(name, scope);
       sym->addFlag(SymbolFlags::Field);
@@ -339,9 +351,6 @@ void DeclCollector::visitNode(NodeId node) {
     case SyntaxKind::AliasDecl:
       visitAliasDecl(node);
       break;
-    case SyntaxKind::MarkerDeclaration:
-      visitMarkerDeclaration(node);
-      break;
     case SyntaxKind::StandaloneImplDecl:
       visitStandaloneImplDecl(node);
       break;
@@ -374,10 +383,19 @@ void DeclCollector::visitNode(NodeId node) {
 
     // Class/interface members
     case SyntaxKind::MethodDecl:
-      visitMethodDecl(node);
+      visitCallableDecl(node, SymbolKind::Method);
+      break;
+    case SyntaxKind::ConstructorDecl:
+      visitCallableDecl(node, SymbolKind::Constructor);
+      break;
+    case SyntaxKind::DestructorDecl:
+      visitCallableDecl(node, SymbolKind::Destructor);
       break;
     case SyntaxKind::FieldDecl:
       visitFieldDecl(node);
+      break;
+    case SyntaxKind::ClassConstDecl:
+      visitClassConstDecl(node);
       break;
 
     // Function parameters
@@ -515,10 +533,9 @@ void DeclCollector::visitClassDecl(NodeId node) {
   NodeId typeParams(n.payload.words[kClassDeclTypeParamsIdWord]);
   if (impl->tree.contains(typeParams)) { visitNode(typeParams); }
 
-  // Visit extends clause (for name references, but we're in collection phase so
-  // we just traverse to collect any nested declarations)
-  NodeId extends(n.payload.words[kClassDeclExtendsWord]);
-  if (impl->tree.contains(extends)) { visitNode(extends); }
+  // Visit the base type for name references.
+  NodeId baseTy(n.payload.words[kClassDeclBaseTyWord]);
+  if (impl->tree.contains(baseTy)) { visitNode(baseTy); }
 
   // Visit members
   NodeId members(n.payload.words[kClassDeclMembersIdWord]);
@@ -631,9 +648,6 @@ void DeclCollector::visitEnumDeclaration(NodeId node) {
           case SyntaxKind::TupleVariant:
             variantName = impl->tree.ident(IdentId(v.payload.words[kTupleVariantNameWord]));
             break;
-          case SyntaxKind::StructVariant:
-            variantName = impl->tree.ident(IdentId(v.payload.words[kStructVariantNameWord]));
-            break;
           default:
             continue;
         }
@@ -673,27 +687,6 @@ void DeclCollector::visitAliasDecl(NodeId node) {
   // Visit the target type (no declarations to collect, but traverse for completeness)
   NodeId target(n.payload.words[kAliasDeclTargetWord]);
   if (impl->tree.contains(target)) { visitNode(target); }
-}
-
-void DeclCollector::visitMarkerDeclaration(NodeId node) {
-  const Node& n = impl->tree.node(node);
-  zc::StringPtr name = declName(node, kMarkerDeclarationNameWord);
-
-  // Markers are type-level entities, similar to interfaces
-  Symbol& sym = declareSymbol(name, node, SymbolKind::Interface);
-  sym.addFlag(SymbolFlags::Interface);  // Markers are a form of interface/trait
-  // We could add a special Marker flag if SymbolFlags had one
-
-  // Visit type parameters
-  NodeId typeParams(n.payload.words[kMarkerDeclarationTypeParamsIdWord]);
-  if (impl->tree.contains(typeParams)) { visitNode(typeParams); }
-
-  // Markers don't have a body scope with members; they're just declarations.
-  // But we still visit the marker constraint list for completeness.
-  NodeList markers;
-  markers.first = n.payload.words[kMarkerDeclarationMarkersFirstWord];
-  markers.size = n.payload.words[kMarkerDeclarationMarkersSizeWord];
-  for (NodeId marker : impl->tree.list(markers)) { visitNode(marker); }
 }
 
 void DeclCollector::visitStandaloneImplDecl(NodeId node) {
@@ -1004,16 +997,60 @@ void DeclCollector::visitMatchArmStmt(NodeId node) {
 // Class/interface members
 // ============================================================================
 
-void DeclCollector::visitMethodDecl(NodeId node) {
+void DeclCollector::visitCallableDecl(NodeId node, SymbolKind symbolKind) {
   const Node& n = impl->tree.node(node);
-  zc::StringPtr name = declName(node, kMethodDeclNameWord);
+  uint32_t visibilityWord = 0;
+  uint32_t nameWord = 0;
+  uint32_t paramsWord = 0;
+  uint32_t typeParamsWord = 0;
+  bool hasTypeParams = false;
+  uint32_t signatureTypeWord = 0;
+  uint32_t raisesTypeWord = 0;
+  bool hasRaisesType = false;
+  uint32_t bodyWord = 0;
+  bool isStatic = false;
 
-  // Declare the method symbol
-  Symbol& sym = declareSymbol(name, node, SymbolKind::Method);
+  switch (n.kind) {
+    case SyntaxKind::MethodDecl:
+      visibilityWord = n.payload.words[kMethodDeclVisibilityWord];
+      nameWord = kMethodDeclNameWord;
+      paramsWord = kMethodDeclParamsIdWord;
+      typeParamsWord = kMethodDeclTypeParamsIdWord;
+      hasTypeParams = true;
+      signatureTypeWord = kMethodDeclRetTyWord;
+      raisesTypeWord = kMethodDeclRaisesTyWord;
+      hasRaisesType = true;
+      bodyWord = kMethodDeclBodyWord;
+      isStatic = n.payload.words[kMethodDeclIsStaticWord] != 0;
+      break;
+    case SyntaxKind::ConstructorDecl:
+      visibilityWord = n.payload.words[kConstructorDeclVisibilityWord];
+      nameWord = kConstructorDeclNameWord;
+      paramsWord = kConstructorDeclParamsIdWord;
+      signatureTypeWord = kConstructorDeclRaisesTyWord;
+      bodyWord = kConstructorDeclBodyWord;
+      break;
+    case SyntaxKind::DestructorDecl:
+      visibilityWord = n.payload.words[kDestructorDeclVisibilityWord];
+      nameWord = kDestructorDeclNameWord;
+      paramsWord = kDestructorDeclParamsIdWord;
+      signatureTypeWord = kDestructorDeclRaisesTyWord;
+      bodyWord = kDestructorDeclBodyWord;
+      break;
+    default:
+      ZC_UNREACHABLE;
+  }
+
+  zc::StringPtr name = impl->tree.ident(IdentId(n.payload.words[nameWord]));
+
+  Symbol& sym = declareSymbol(name, node, symbolKind);
 
   // Set visibility flag
-  uint32_t visibilityWord = n.payload.words[kMethodDeclVisibilityWord];
-  switch (visibilityFromAst(visibilityWord)) {
+  Visibility defaultVisibility = Visibility::Private;
+  ZC_IF_SOME(scope, impl->scopes.getCurrentScope()) {
+    if (scope.getKind() == Scope::Kind::Interface) { defaultVisibility = Visibility::Public; }
+  }
+  switch (visibilityFromAst(visibilityWord, defaultVisibility)) {
     case Visibility::Public:
       sym.addFlag(SymbolFlags::Public);
       break;
@@ -1024,12 +1061,10 @@ void DeclCollector::visitMethodDecl(NodeId node) {
       sym.addFlag(SymbolFlags::Protected);
       break;
     case Visibility::Internal:
-      // Default visibility (internal for class members)
+      // All current member defaults resolve to explicit public or private facts.
       break;
   }
 
-  // Set static flag
-  bool isStatic = n.payload.words[kMethodDeclIsStaticWord] != 0;
   if (isStatic) { sym.addFlag(SymbolFlags::Static); }
 
   // Enter a function scope for the method body
@@ -1037,15 +1072,25 @@ void DeclCollector::visitMethodDecl(NodeId node) {
   bindScope(node, methodScope);
 
   // Visit parameters
-  NodeId params(n.payload.words[kMethodDeclParamsIdWord]);
+  NodeId params(n.payload.words[paramsWord]);
   if (impl->tree.contains(params)) { visitNode(params); }
 
-  // Visit return type
-  NodeId retTy(n.payload.words[kMethodDeclRetTyWord]);
-  if (impl->tree.contains(retTy)) { visitNode(retTy); }
+  if (hasTypeParams) {
+    NodeId typeParams(n.payload.words[typeParamsWord]);
+    if (impl->tree.contains(typeParams)) { visitNode(typeParams); }
+  }
+
+  // Visit the return type for methods or raises type for constructors/destructors.
+  NodeId signatureType(n.payload.words[signatureTypeWord]);
+  if (impl->tree.contains(signatureType)) { visitNode(signatureType); }
+
+  if (hasRaisesType) {
+    NodeId raisesType(n.payload.words[raisesTypeWord]);
+    if (impl->tree.contains(raisesType)) { visitNode(raisesType); }
+  }
 
   // Visit body
-  NodeId body(n.payload.words[kMethodDeclBodyWord]);
+  NodeId body(n.payload.words[bodyWord]);
   if (impl->tree.contains(body)) { visitNode(body); }
 
   leaveScope();
@@ -1076,7 +1121,11 @@ void DeclCollector::visitFieldDecl(NodeId node) {
 
   // Set visibility flag
   uint32_t visibilityWord = n.payload.words[kFieldDeclVisibilityWord];
-  switch (visibilityFromAst(visibilityWord)) {
+  Visibility defaultVisibility = Visibility::Private;
+  ZC_IF_SOME(scope, impl->scopes.getCurrentScope()) {
+    if (scope.getKind() == Scope::Kind::Interface) { defaultVisibility = Visibility::Public; }
+  }
+  switch (visibilityFromAst(visibilityWord, defaultVisibility)) {
     case Visibility::Public:
       sym.addFlag(SymbolFlags::Public);
       break;
@@ -1096,6 +1145,37 @@ void DeclCollector::visitFieldDecl(NodeId node) {
 
   // Visit the initializer
   NodeId init(n.payload.words[kFieldDeclInitWord]);
+  if (impl->tree.contains(init)) { visitNode(init); }
+}
+
+void DeclCollector::visitClassConstDecl(NodeId node) {
+  const Node& n = impl->tree.node(node);
+  zc::StringPtr name = declName(node, kClassConstDeclNameWord);
+
+  Symbol& sym = declareSymbol(name, node, SymbolKind::Constant);
+  if (n.payload.words[kClassConstDeclIsStaticWord] != 0) { sym.addFlag(SymbolFlags::Static); }
+
+  Visibility defaultVisibility = Visibility::Private;
+  ZC_IF_SOME(scope, impl->scopes.getCurrentScope()) {
+    if (scope.getKind() == Scope::Kind::Interface) { defaultVisibility = Visibility::Public; }
+  }
+  switch (visibilityFromAst(n.payload.words[kClassConstDeclVisibilityWord], defaultVisibility)) {
+    case Visibility::Public:
+      sym.addFlag(SymbolFlags::Public);
+      break;
+    case Visibility::Private:
+      sym.addFlag(SymbolFlags::Private);
+      break;
+    case Visibility::Protected:
+      sym.addFlag(SymbolFlags::Protected);
+      break;
+    case Visibility::Internal:
+      break;
+  }
+
+  NodeId ty(n.payload.words[kClassConstDeclTyWord]);
+  if (impl->tree.contains(ty)) { visitNode(ty); }
+  NodeId init(n.payload.words[kClassConstDeclInitWord]);
   if (impl->tree.contains(init)) { visitNode(init); }
 }
 

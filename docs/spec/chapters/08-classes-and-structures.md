@@ -37,7 +37,7 @@ class Vehicle {
 ### Inheritance
 
 ```zom
-class Car extends Vehicle {
+class Car : Vehicle {
     private let doors: i32;
     private let fuelType: str;
 
@@ -82,7 +82,7 @@ abstract class Shape {
     }
 }
 
-class Circle extends Shape {
+class Circle : Shape {
     private let radius: f64;
 
     public init(color: str, radius: f64) {

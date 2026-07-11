@@ -28,6 +28,7 @@
 #include "zomlang/compiler/type/raw-pointer-type.h"
 #include "zomlang/compiler/type/reference-type.h"
 #include "zomlang/compiler/type/tuple-type.h"
+#include "zomlang/compiler/type/type-algebra.h"
 #include "zomlang/compiler/type/type-interner.h"
 #include "zomlang/compiler/type/type-var.h"
 #include "zomlang/compiler/type/union-type.h"
@@ -407,14 +408,20 @@ void TypeEnv::unite(const Type& a, const Type& b) {
     uint64_t idA = varA.getId();
 
     uint64_t rootA = findRoot(idA);
-    impl->idBindings.upsert(rootA, &repB);
+    auto owned = cloneType(repB);
+    const Type& binding = *owned;
+    impl->ownedBindings.add(zc::mv(owned));
+    impl->idBindings.upsert(rootA, &binding);
   } else if (!aIsVar && bIsVar) {
     // Bind TypeVar repB to concrete type repA.
     auto& varB = static_cast<const TypeVar&>(repB);
     uint64_t idB = varB.getId();
 
     uint64_t rootB = findRoot(idB);
-    impl->idBindings.upsert(rootB, &repA);
+    auto owned = cloneType(repA);
+    const Type& binding = *owned;
+    impl->ownedBindings.add(zc::mv(owned));
+    impl->idBindings.upsert(rootB, &binding);
   }
   // If neither is a TypeVar, nothing to do.
 }
@@ -665,8 +672,14 @@ zc::Own<Type> TypeEnv::substituteType(const Type& ty,
       for (size_t i = 0; i < existential.getMarkerCount(); ++i) {
         markers.add(existential.getMarkerName(i));
       }
+      zc::Vector<ExistentialType::AssocBinding> bindings;
+      for (size_t i = 0; i < existential.getAssocBindingCount(); ++i) {
+        bindings.add(ExistentialType::AssocBinding{
+            existential.getAssocBindingName(i),
+            substituteType(existential.getAssocBindingType(i), subst)});
+      }
       return zc::heap<ExistentialType>(substituteType(existential.getInterfaceType(), subst),
-                                       markers.asPtr());
+                                       markers.asPtr(), zc::mv(bindings));
     }
     case TypeKind::Associated: {
       auto& associated = static_cast<const AssociatedType&>(resolved);
@@ -833,15 +846,12 @@ zc::Own<Type> TypeEnv::instantiateFunction(const FunctionType& fnTy) {
 // Type variable binding API
 // ===========================================================================
 
-void TypeEnv::bind(const TypeVar& var, const Type& type) {
-  uint64_t id = var.getId();
-  impl->idBindings.upsert(id, &type);
-}
+void TypeEnv::bind(const TypeVar& var, const Type& type) { bind(var, cloneType(type)); }
 
 void TypeEnv::bind(const TypeVar& var, zc::Own<Type> type) {
   const Type& ref = *type;
   impl->ownedBindings.add(zc::mv(type));
-  bind(var, ref);
+  impl->idBindings.upsert(var.getId(), &ref);
 }
 
 zc::Maybe<const Type&> TypeEnv::lookup(const TypeVar& var) const {

@@ -184,6 +184,64 @@ ast::NodeId DeclSignatureComputer::findInterfaceDecl(zc::StringPtr name) const {
   return result;
 }
 
+void removeActiveInterface(zc::HashSet<zc::StringPtr>& activeIfaces, zc::StringPtr ifaceName);
+
+bool DeclSignatureComputer::interfaceDeclaresAssociatedType(
+    zc::StringPtr ifaceName, zc::StringPtr assocName,
+    zc::HashSet<zc::StringPtr>& activeIfaces) const {
+  const ast::NodeId ifaceDecl = findInterfaceDecl(ifaceName);
+  if (!impl->tree.contains(ifaceDecl)) { return false; }
+  if (activeIfaces.contains(ifaceName)) { return false; }
+  activeIfaces.insert(ifaceName);
+
+  const auto& ifaceNode = impl->tree.node(ifaceDecl);
+  const ast::NodeId membersId(ifaceNode.payload.words[kInterfaceDeclMembersIdWord]);
+  if (impl->tree.contains(membersId)) {
+    const auto& membersNode = impl->tree.node(membersId);
+    if (membersNode.kind == SyntaxKind::ClassMemberList) {
+      NodeList members;
+      members.first = membersNode.payload.words[kClassMemberListMembersFirstWord];
+      members.size = membersNode.payload.words[kClassMemberListMembersSizeWord];
+      for (ast::NodeId memberId : impl->tree.list(members)) {
+        if (!impl->tree.contains(memberId)) { continue; }
+        const auto& member = impl->tree.node(memberId);
+        if (member.kind != SyntaxKind::AssociatedTypeDecl) { continue; }
+        auto memberName =
+            impl->tree.ident(IdentId(member.payload.words[kAssociatedTypeDeclNameWord]));
+        if (memberName == assocName) {
+          removeActiveInterface(activeIfaces, ifaceName);
+          return true;
+        }
+      }
+    }
+  }
+
+  const ast::NodeId ifacesId(ifaceNode.payload.words[kInterfaceDeclIfacesIdWord]);
+  if (impl->tree.contains(ifacesId)) {
+    const auto& ifacesNode = impl->tree.node(ifacesId);
+    if (ifacesNode.kind == SyntaxKind::ImplIfaceList) {
+      NodeList ifaces;
+      ifaces.first = ifacesNode.payload.words[kImplIfaceListIfacesFirstWord];
+      ifaces.size = ifacesNode.payload.words[kImplIfaceListIfacesSizeWord];
+      for (ast::NodeId superIfaceId : impl->tree.list(ifaces)) {
+        if (!impl->tree.contains(superIfaceId)) { continue; }
+        const auto& superIface = impl->tree.node(superIfaceId);
+        if (superIface.kind != SyntaxKind::NamedTypeExpr) { continue; }
+        auto superIfaceName =
+            resolvePathName(ast::NodeId(superIface.payload.words[kNamedTypeExprPathWord]));
+        if (superIfaceName.size() == 0) { continue; }
+        if (interfaceDeclaresAssociatedType(superIfaceName, assocName, activeIfaces)) {
+          removeActiveInterface(activeIfaces, ifaceName);
+          return true;
+        }
+      }
+    }
+  }
+
+  removeActiveInterface(activeIfaces, ifaceName);
+  return false;
+}
+
 bool isBareSelfTypeExpr(const ast::Tree& tree, ast::NodeId typeExpr) {
   if (!tree.contains(typeExpr)) { return false; }
 
@@ -260,7 +318,8 @@ void removeActiveInterface(zc::HashSet<zc::StringPtr>& activeIfaces, zc::StringP
   ZC_IF_SOME(activeIface, activeIfaces.find(ifaceName)) { activeIfaces.erase(activeIface); }
 }
 
-bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::StringPtr ifaceName,
+bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId objectSafetyDiagExpr,
+                                            ast::NodeId assocBindingsId, zc::StringPtr ifaceName,
                                             zc::StringPtr& failingIface,
                                             zc::HashSet<zc::StringPtr>& activeIfaces,
                                             bool emitDirectDiagnostics) {
@@ -269,6 +328,30 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
 
   if (activeIfaces.contains(ifaceName)) { return true; }
   activeIfaces.insert(ifaceName);
+
+  if (emitDirectDiagnostics) {
+    ZC_IF_SOME(duplicate, findDuplicateDynAssocBindingName(impl->tree, assocBindingsId)) {
+      impl->diags.diagnose<DiagID::DynDuplicateAssociatedTypeBinding>(
+          nodeLoc(impl->tree, objectSafetyDiagExpr), duplicate, ifaceName);
+      impl->hadErrors = true;
+      failingIface = ifaceName;
+      removeActiveInterface(activeIfaces, ifaceName);
+      return false;
+    }
+
+    auto bindingNames = dynAssocBindingListNames(impl->tree, assocBindingsId);
+    for (size_t i = 0; i < bindingNames.size(); ++i) {
+      zc::HashSet<zc::StringPtr> assocActiveIfaces;
+      if (!interfaceDeclaresAssociatedType(ifaceName, bindingNames[i], assocActiveIfaces)) {
+        impl->diags.diagnose<DiagID::NoAssociatedTypeProjection>(
+            nodeLoc(impl->tree, objectSafetyDiagExpr), bindingNames[i], ifaceName);
+        impl->hadErrors = true;
+        failingIface = ifaceName;
+        removeActiveInterface(activeIfaces, ifaceName);
+        return false;
+      }
+    }
+  }
 
   const auto& ifaceNode = impl->tree.node(ifaceDecl);
   const ast::NodeId ifacesId(ifaceNode.payload.words[kInterfaceDeclIfacesIdWord]);
@@ -288,7 +371,8 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
         if (superIfaceName.size() == 0) { continue; }
 
         zc::StringPtr nestedFailure;
-        if (!isDynObjectSafe(superIfaceId, superIfaceName, nestedFailure, activeIfaces, false)) {
+        if (!isDynObjectSafe(superIfaceId, assocBindingsId, superIfaceName, nestedFailure,
+                             activeIfaces, false)) {
           failingIface = nestedFailure.size() > 0 ? nestedFailure : superIfaceName;
           removeActiveInterface(activeIfaces, ifaceName);
           return false;
@@ -324,8 +408,8 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
             typeParams.payload.words[kGenericParamsNparamsWord] != 0) {
           auto methodName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
           if (emitDirectDiagnostics) {
-            impl->diags.diagnose<DiagID::DynGenericMethod>(nodeLoc(impl->tree, ifaceTypeExpr),
-                                                           ifaceName, methodName);
+            impl->diags.diagnose<DiagID::DynGenericMethod>(
+                nodeLoc(impl->tree, objectSafetyDiagExpr), ifaceName, methodName);
             impl->hadErrors = true;
           }
           failingIface = ifaceName;
@@ -339,8 +423,8 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
       if (isBareSelfTypeExpr(impl->tree, retTyId)) {
         auto methodName = impl->tree.ident(IdentId(member.payload.words[kMethodDeclNameWord]));
         if (emitDirectDiagnostics) {
-          impl->diags.diagnose<DiagID::DynSelfReturn>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName,
-                                                      methodName);
+          impl->diags.diagnose<DiagID::DynSelfReturn>(nodeLoc(impl->tree, objectSafetyDiagExpr),
+                                                      ifaceName, methodName);
           impl->hadErrors = true;
         }
         failingIface = ifaceName;
@@ -364,7 +448,7 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
             if (param.kind != SyntaxKind::FunctionParameterDecl) { continue; }
             if (hasMoveSelfReceiverAttribute(impl->tree, param)) {
               if (emitDirectDiagnostics) {
-                impl->diags.diagnose<DiagID::DynMoveSelf>(nodeLoc(impl->tree, ifaceTypeExpr),
+                impl->diags.diagnose<DiagID::DynMoveSelf>(nodeLoc(impl->tree, objectSafetyDiagExpr),
                                                           ifaceName, methodName);
                 impl->hadErrors = true;
               }
@@ -375,7 +459,8 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
             if (isUnsizedDynBoundaryTypeExpr(impl->tree, tyId)) {
               if (emitDirectDiagnostics) {
                 impl->diags.diagnose<DiagID::DynUnsizedParameter>(
-                    nodeLoc(impl->tree, ifaceTypeExpr), ifaceName, methodName, "parameter"_zc);
+                    nodeLoc(impl->tree, objectSafetyDiagExpr), ifaceName, methodName,
+                    "parameter"_zc);
                 impl->hadErrors = true;
               }
               hasUnsizedBoundaryType = true;
@@ -393,8 +478,8 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
       auto retTyId = ast::NodeId(member.payload.words[kMethodDeclRetTyWord]);
       if (isUnsizedDynBoundaryTypeExpr(impl->tree, retTyId)) {
         if (emitDirectDiagnostics) {
-          impl->diags.diagnose<DiagID::DynUnsizedParameter>(nodeLoc(impl->tree, ifaceTypeExpr),
-                                                            ifaceName, methodName, "return"_zc);
+          impl->diags.diagnose<DiagID::DynUnsizedParameter>(
+              nodeLoc(impl->tree, objectSafetyDiagExpr), ifaceName, methodName, "return"_zc);
           impl->hadErrors = true;
         }
         failingIface = ifaceName;
@@ -405,7 +490,7 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
     if (member.kind == SyntaxKind::MethodDecl &&
         member.payload.words[kMethodDeclIsStaticWord] != 0) {
       if (emitDirectDiagnostics) {
-        impl->diags.diagnose<DiagID::DynStaticMethod>(nodeLoc(impl->tree, ifaceTypeExpr),
+        impl->diags.diagnose<DiagID::DynStaticMethod>(nodeLoc(impl->tree, objectSafetyDiagExpr),
                                                       ifaceName);
         impl->hadErrors = true;
       }
@@ -422,8 +507,8 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
           auto assocName =
               impl->tree.ident(IdentId(member.payload.words[kAssociatedTypeDeclNameWord]));
           if (emitDirectDiagnostics) {
-            impl->diags.diagnose<DiagID::DynGatNotAllowed>(nodeLoc(impl->tree, ifaceTypeExpr),
-                                                           ifaceName, assocName);
+            impl->diags.diagnose<DiagID::DynGatNotAllowed>(
+                nodeLoc(impl->tree, objectSafetyDiagExpr), ifaceName, assocName);
             impl->hadErrors = true;
           }
           failingIface = ifaceName;
@@ -433,12 +518,12 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
       }
 
       auto defaultTyId = ast::NodeId(member.payload.words[kAssociatedTypeDeclDefaultTyWord]);
-      if (!impl->tree.contains(defaultTyId)) {
-        auto assocName =
-            impl->tree.ident(IdentId(member.payload.words[kAssociatedTypeDeclNameWord]));
+      auto assocName = impl->tree.ident(IdentId(member.payload.words[kAssociatedTypeDeclNameWord]));
+      if (!impl->tree.contains(defaultTyId) &&
+          !dynAssocBindingListContains(impl->tree, assocBindingsId, assocName)) {
         if (emitDirectDiagnostics) {
-          impl->diags.diagnose<DiagID::DynUnassociatedType>(nodeLoc(impl->tree, ifaceTypeExpr),
-                                                            ifaceName, assocName);
+          impl->diags.diagnose<DiagID::DynUnassociatedType>(
+              nodeLoc(impl->tree, objectSafetyDiagExpr), ifaceName, assocName);
           impl->hadErrors = true;
         }
         failingIface = ifaceName;
@@ -452,15 +537,19 @@ bool DeclSignatureComputer::isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::Strin
   return true;
 }
 
-void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId ifaceTypeExpr,
+void DeclSignatureComputer::checkDynObjectSafety(ast::NodeId objectSafetyDiagExpr,
+                                                 ast::NodeId assocBindingsId,
                                                  zc::StringPtr ifaceName) {
   zc::StringPtr failingIface;
   zc::HashSet<zc::StringPtr> activeIfaces;
-  if (isDynObjectSafe(ifaceTypeExpr, ifaceName, failingIface, activeIfaces, true)) { return; }
+  if (isDynObjectSafe(objectSafetyDiagExpr, assocBindingsId, ifaceName, failingIface, activeIfaces,
+                      true)) {
+    return;
+  }
   if (failingIface.size() == 0 || failingIface == ifaceName) { return; }
 
-  impl->diags.diagnose<DiagID::DynSuperNotObjectSafe>(nodeLoc(impl->tree, ifaceTypeExpr), ifaceName,
-                                                      failingIface);
+  impl->diags.diagnose<DiagID::DynSuperNotObjectSafe>(nodeLoc(impl->tree, objectSafetyDiagExpr),
+                                                      ifaceName, failingIface);
   impl->hadErrors = true;
 }
 
@@ -511,6 +600,11 @@ bool DeclSignatureComputer::computeSignatures() {
         computeMethodSignature(id);
         break;
       }
+      case SyntaxKind::ConstructorDecl:
+      case SyntaxKind::DestructorDecl: {
+        computeMethodSignature(id);
+        break;
+      }
       case SyntaxKind::VariableDeclarator: {
         // Extract the variable name from the pattern and find its symbol
         auto patternId = ast::NodeId(node.payload.words[kVariableDeclaratorPatternWord]);
@@ -537,6 +631,16 @@ bool DeclSignatureComputer::computeSignatures() {
       }
       case SyntaxKind::FieldDecl: {
         auto name = impl->tree.ident(IdentId(node.payload.words[kFieldDeclNameWord]));
+        auto sym = lookupSymbol(name);
+        ZC_IF_SOME(s, sym) {
+          if (s.isVariableSymbol()) {
+            computeVariableSignature(static_cast<symbol::VariableSymbol&>(s), id);
+          }
+        }
+        break;
+      }
+      case SyntaxKind::ClassConstDecl: {
+        auto name = impl->tree.ident(IdentId(node.payload.words[kClassConstDeclNameWord]));
         auto sym = lookupSymbol(name);
         ZC_IF_SOME(s, sym) {
           if (s.isVariableSymbol()) {
@@ -783,7 +887,27 @@ void DeclSignatureComputer::computeMethodSignature(ast::NodeId methodDecl) {
   const auto& node = impl->tree.node(methodDecl);
 
   // Extract parameter list
-  auto paramsId = ast::NodeId(node.payload.words[kMethodDeclParamsIdWord]);
+  uint32_t paramsWord = 0;
+  ast::NodeId retTyId;
+  ast::NodeId raisesTyId;
+  switch (node.kind) {
+    case SyntaxKind::MethodDecl:
+      paramsWord = kMethodDeclParamsIdWord;
+      retTyId = ast::NodeId(node.payload.words[kMethodDeclRetTyWord]);
+      raisesTyId = ast::NodeId(node.payload.words[kMethodDeclRaisesTyWord]);
+      break;
+    case SyntaxKind::ConstructorDecl:
+      paramsWord = kConstructorDeclParamsIdWord;
+      raisesTyId = ast::NodeId(node.payload.words[kConstructorDeclRaisesTyWord]);
+      break;
+    case SyntaxKind::DestructorDecl:
+      paramsWord = kDestructorDeclParamsIdWord;
+      raisesTyId = ast::NodeId(node.payload.words[kDestructorDeclRaisesTyWord]);
+      break;
+    default:
+      ZC_UNREACHABLE;
+  }
+  auto paramsId = ast::NodeId(node.payload.words[paramsWord]);
   zc::Vector<zc::Own<type::Type>> paramTypes;
 
   if (impl->tree.contains(paramsId)) {
@@ -818,7 +942,6 @@ void DeclSignatureComputer::computeMethodSignature(ast::NodeId methodDecl) {
   }
 
   // Extract return type
-  auto retTyId = ast::NodeId(node.payload.words[kMethodDeclRetTyWord]);
   zc::Own<type::Type> returnType;
 
   if (impl->tree.contains(retTyId)) {
@@ -829,6 +952,7 @@ void DeclSignatureComputer::computeMethodSignature(ast::NodeId methodDecl) {
 
   // Build function type
   auto fnType = zc::heap<type::FunctionType>(zc::mv(paramTypes), zc::mv(returnType));
+  if (impl->tree.contains(raisesTyId)) { fnType->setRaisesType(resolveTypeExpr(raisesTyId)); }
 
   impl->typeEnv.setType(methodDecl, zc::mv(fnType));
 }
@@ -848,6 +972,8 @@ void DeclSignatureComputer::computeVariableSignature(symbol::VariableSymbol& var
     tyId = ast::NodeId(node.payload.words[kVariableDeclaratorTyWord]);
   } else if (node.kind == SyntaxKind::FieldDecl) {
     tyId = ast::NodeId(node.payload.words[kFieldDeclTyWord]);
+  } else if (node.kind == SyntaxKind::ClassConstDecl) {
+    tyId = ast::NodeId(node.payload.words[kClassConstDeclTyWord]);
   } else {
     tyId = ast::NodeId();
   }
@@ -1273,7 +1399,10 @@ zc::Own<type::Type> DeclSignatureComputer::resolveRawPointerType(ast::NodeId typ
 zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node) {
   // Extract interface list
   auto ifacesId = ast::NodeId(node.payload.words[kDynTypeExprIfacesIdWord]);
+  auto assocBindingsId = ast::NodeId(node.payload.words[kDynTypeExprAssocBindingsIdWord]);
   auto markerNames = dynMarkerNames(impl->tree, node);
+  auto assocBindings = dynAssocBindings(impl->tree, node,
+                                        [this](ast::NodeId tyId) { return resolveTypeExpr(tyId); });
 
   if (!impl->tree.contains(ifacesId)) {
     return zc::heap<type::ErrorType>("dyn type requires at least one interface");
@@ -1285,10 +1414,11 @@ zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node)
     if (ifaceListNode.kind == SyntaxKind::NamedTypeExpr) {
       auto ifaceName =
           resolvePathName(ast::NodeId(ifaceListNode.payload.words[kNamedTypeExprPathWord]));
-      if (ifaceName.size() > 0) { checkDynObjectSafety(ifacesId, ifaceName); }
+      if (ifaceName.size() > 0) { checkDynObjectSafety(ifacesId, assocBindingsId, ifaceName); }
     }
     auto ifaceType = resolveTypeExpr(ifacesId);
-    return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
+    return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr(),
+                                           zc::mv(assocBindings));
   }
 
   // Resolve the first interface from the list
@@ -1311,13 +1441,14 @@ zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node)
         if (ifaceNode.kind == SyntaxKind::NamedTypeExpr) {
           auto ifaceName =
               resolvePathName(ast::NodeId(ifaceNode.payload.words[kNamedTypeExprPathWord]));
-          if (ifaceName.size() > 0) { checkDynObjectSafety(ifaceId, ifaceName); }
+          if (ifaceName.size() > 0) { checkDynObjectSafety(ifaceId, assocBindingsId, ifaceName); }
         }
       }
       conjuncts.add(resolveTypeExpr(ifaceId));
     }
     auto interTy = zc::heap<type::IntersectionType>(zc::mv(conjuncts));
-    return zc::heap<type::ExistentialType>(zc::mv(interTy), markerNames.asPtr());
+    return zc::heap<type::ExistentialType>(zc::mv(interTy), markerNames.asPtr(),
+                                           zc::mv(assocBindings));
   }
 
   // Single interface
@@ -1327,11 +1458,12 @@ zc::Own<type::Type> DeclSignatureComputer::resolveDynType(const ast::Node& node)
     if (ifaceNode.kind == SyntaxKind::NamedTypeExpr) {
       auto ifaceName =
           resolvePathName(ast::NodeId(ifaceNode.payload.words[kNamedTypeExprPathWord]));
-      if (ifaceName.size() > 0) { checkDynObjectSafety(firstIfaceId, ifaceName); }
+      if (ifaceName.size() > 0) { checkDynObjectSafety(firstIfaceId, assocBindingsId, ifaceName); }
     }
   }
   auto ifaceType = resolveTypeExpr(firstIfaceId);
-  return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
+  return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr(),
+                                         zc::mv(assocBindings));
 }
 
 zc::Own<type::Type> DeclSignatureComputer::resolveAssociatedTypeProjection(const ast::Node& node) {

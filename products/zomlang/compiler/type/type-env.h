@@ -291,9 +291,7 @@ public:
   /// Records the substitution: var := type.
   /// The type variable must not already be bound.
   ///
-  /// The environment stores a non-owning reference to the type; the
-  /// caller must ensure the type outlives all references through this
-  /// environment.
+  /// The environment stores an owned clone of the type.
   void bind(const TypeVar& var, const Type& type);
 
   /// \brief Bind a type variable to a concrete type (owning version).

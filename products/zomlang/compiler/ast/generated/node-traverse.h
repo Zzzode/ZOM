@@ -29,1317 +29,1701 @@ void visitNode(const Node& node, Fn&& fn) {
 }
 
 template <typename Fn>
+void visitAttributeListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kAttributeListAttrsFirstWord];
+    list.size = node.payload.words[kAttributeListAttrsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitAttributeChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kAttributePathWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kAttributeArgsFirstWord];
+    list.size = node.payload.words[kAttributeArgsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitExternDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kExternDeclParamsFirstWord];
+    list.size = node.payload.words[kExternDeclParamsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kExternDeclRetTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kExternDeclRaisesTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitUnsafeBlockExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kUnsafeBlockExprBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitExternBlockChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kExternBlockItemsFirstWord];
+    list.size = node.payload.words[kExternBlockItemsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitExternVarDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kExternVarDeclTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitUnitVariantChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kUnitVariantDiscriminantWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitTupleVariantChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kTupleVariantTysFirstWord];
+    list.size = node.payload.words[kTupleVariantTysSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kTupleVariantDiscriminantWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitEnumDeclarationChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kEnumDeclarationTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kEnumDeclarationVariantsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitEnumVariantListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kEnumVariantListVariantsFirstWord];
+    list.size = node.payload.words[kEnumVariantListVariantsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitLiteralPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kLiteralPatternLiteralWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitIsPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kIsPatternTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitWildcardPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kWildcardPatternTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitBindingPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kBindingPatternSubWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitIdentifierPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kIdentifierPatternTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitTuplePatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kTuplePatternPatsFirstWord];
+    list.size = node.payload.words[kTuplePatternPatsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitStructPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kStructPatternTyPathWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kStructPatternFieldsFirstWord];
+    list.size = node.payload.words[kStructPatternFieldsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kStructPatternRestWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitPatternPropertyChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kPatternPropertyPatWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitArrayPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kArrayPatternPatsFirstWord];
+    list.size = node.payload.words[kArrayPatternPatsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kArrayPatternRestWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitExpressionPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kExpressionPatternExprWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitEnumPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kEnumPatternPathWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kEnumPatternArgsFirstWord];
+    list.size = node.payload.words[kEnumPatternArgsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitTupleLiteral1ChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kTupleLiteral1ElemWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitErrorDefaultExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kErrorDefaultExprPrimaryWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kErrorDefaultExprFallbackWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitNullCoalesceExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kNullCoalesceExprPrimaryWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kNullCoalesceExprFallbackWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitIsExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kIsExpressionExprWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kIsExpressionTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitArrayLiteralChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kArrayLiteralElemsFirstWord];
+    list.size = node.payload.words[kArrayLiteralElemsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitTupleLiteralChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kTupleLiteralElemsFirstWord];
+    list.size = node.payload.words[kTupleLiteralElemsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitWherePredChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kWherePredTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kWherePredBoundWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitCallExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kCallExpressionCalleeWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kCallExpressionTypeArgsFirstWord];
+    list.size = node.payload.words[kCallExpressionTypeArgsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kCallExpressionArgsFirstWord];
+    list.size = node.payload.words[kCallExpressionArgsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitBinaryExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kBinaryExprLhsWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kBinaryExprRhsWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitConditionalExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kConditionalExprCondWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kConditionalExprThenExprWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kConditionalExprElseExprWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitAssignmentExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kAssignmentExprLhsWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kAssignmentExprRhsWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitCommaExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kCommaExprElemsFirstWord];
+    list.size = node.payload.words[kCommaExprElemsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitMemberExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kMemberExpressionObjectWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitIndexExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kIndexExpressionObjectWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kIndexExpressionIndexWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitNewExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kNewExpressionCalleeWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kNewExpressionTypeArgsFirstWord];
+    list.size = node.payload.words[kNewExpressionTypeArgsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kNewExpressionArgsFirstWord];
+    list.size = node.payload.words[kNewExpressionArgsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitFunctionExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kFunctionExpressionParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionExpressionTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionExpressionCapturesIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionExpressionRetTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionExpressionRaisesTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionExpressionBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitImportCallExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kImportCallExpressionArgsFirstWord];
+    list.size = node.payload.words[kImportCallExpressionArgsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitObjectLiteralExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kObjectLiteralExprPropertiesFirstWord];
+    list.size = node.payload.words[kObjectLiteralExprPropertiesSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitObjectPropertyChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kObjectPropertyValueWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitObjectSpreadChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kObjectSpreadExprWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitTemplateLiteralExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kTemplateLiteralExprExprsFirstWord];
+    list.size = node.payload.words[kTemplateLiteralExprExprsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitTypeOfExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kTypeOfExpressionExprWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitUnaryExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kUnaryExpressionOperandWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitPostfixExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kPostfixExpressionOperandWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitCastExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kCastExpressionExprWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kCastExpressionTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitLambdaExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kLambdaExpressionParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kLambdaExpressionRetTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kLambdaExpressionRaisesTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kLambdaExpressionBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kLambdaExpressionExprBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitSpawnExpressionChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kSpawnExpressionBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitStructLiteralExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kStructLiteralExprTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kStructLiteralExprPropertiesFirstWord];
+    list.size = node.payload.words[kStructLiteralExprPropertiesSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitCaptureListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kCaptureListCapturesFirstWord];
+    list.size = node.payload.words[kCaptureListCapturesSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitDynTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kDynTypeExprIfacesIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kDynTypeExprMarkersIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kDynTypeExprAssocBindingsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitFixedArrayTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kFixedArrayTypeExprElemWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFixedArrayTypeExprLenExprWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitSliceArrayTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kSliceArrayTypeExprElemWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitOptionalTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kOptionalTypeExprInnerWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitNamedTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kNamedTypeExprPathWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kNamedTypeExprArgsFirstWord];
+    list.size = node.payload.words[kNamedTypeExprArgsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitFunctionTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kFunctionTypeExprParamsFirstWord];
+    list.size = node.payload.words[kFunctionTypeExprParamsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionTypeExprRetTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionTypeExprRaisesWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitUnionTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kUnionTypeExprAltsFirstWord];
+    list.size = node.payload.words[kUnionTypeExprAltsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitIntersectionTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kIntersectionTypeExprAltsFirstWord];
+    list.size = node.payload.words[kIntersectionTypeExprAltsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitArrayTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kArrayTypeExprElemWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kArrayTypeExprLenExprWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitDynTypeIfaceListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kDynTypeIfaceListIfacesFirstWord];
+    list.size = node.payload.words[kDynTypeIfaceListIfacesSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitDynTypeMarkerListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kDynTypeMarkerListMarkersFirstWord];
+    list.size = node.payload.words[kDynTypeMarkerListMarkersSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitTypeQueryExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kTypeQueryExprPathWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitObjectTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kObjectTypeExprMembersFirstWord];
+    list.size = node.payload.words[kObjectTypeExprMembersSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitTupleTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kTupleTypeExprElemsFirstWord];
+    list.size = node.payload.words[kTupleTypeExprElemsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitAssociatedTypeProjectionExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kAssociatedTypeProjectionExprBaseTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kAssociatedTypeProjectionExprIfaceTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitReferenceTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kReferenceTypeExprElemWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitRawPointerTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kRawPointerTypeExprElemWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitDynTypeAssocBindingChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kDynTypeAssocBindingTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitDynTypeAssocBindingListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kDynTypeAssocBindingListBindingsFirstWord];
+    list.size = node.payload.words[kDynTypeAssocBindingListBindingsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitSuspendStatementChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kSuspendStatementUntilCondWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitUntilClauseChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kUntilClauseCondWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitBlockStmtChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kBlockStmtStmtsFirstWord];
+    list.size = node.payload.words[kBlockStmtStmtsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitIfStmtChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kIfStmtCondWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kIfStmtThenStmtWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kIfStmtElseStmtWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitMatchStmtChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kMatchStmtScrutineeWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kMatchStmtArmsFirstWord];
+    list.size = node.payload.words[kMatchStmtArmsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitWhileStmtChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kWhileStmtCondWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kWhileStmtBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitForStmtChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kForStmtInitWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kForStmtCondWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kForStmtUpdateWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kForStmtBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitReturnStmtChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kReturnStmtValueWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitStatementListItemChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kStatementListItemItemWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kStatementListItemAttrsWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitMatchArmStmtChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kMatchArmStmtPatternWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMatchArmStmtGuardWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMatchArmStmtBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitLetStmtChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kLetStmtDeclarationsWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitModuleDeclarationChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kModuleDeclarationAliasTargetWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kModuleDeclarationInlineItemsFirstWord];
+    list.size = node.payload.words[kModuleDeclarationInlineItemsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitExpressionStatementChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kExpressionStatementExpressionWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitLabeledStatementChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kLabeledStatementStatementWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitForInStatementChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kForInStatementBindingWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kForInStatementExpressionWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kForInStatementBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitDoWhileStatementChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kDoWhileStatementBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kDoWhileStatementCondWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitVariableDeclaratorListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kVariableDeclaratorListDeclsFirstWord];
+    list.size = node.payload.words[kVariableDeclaratorListDeclsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitVariableDeclaratorChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kVariableDeclaratorPatternWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kVariableDeclaratorTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kVariableDeclaratorInitWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitStandaloneImplDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kStandaloneImplDeclIfacesIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kStandaloneImplDeclForTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kStandaloneImplDeclWhereWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kStandaloneImplDeclTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kStandaloneImplDeclMembersIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitMarkerImplChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kMarkerImplMarkerPathWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMarkerImplForTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMarkerImplWhereWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMarkerImplTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitWhereClauseChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kWhereClausePredsFirstWord];
+    list.size = node.payload.words[kWhereClausePredsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitFunctionDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kFunctionDeclParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionDeclTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionDeclRetTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionDeclRaisesTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionDeclBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitClassDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kClassDeclTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kClassDeclBaseTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kClassDeclMembersIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitStructDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kStructDeclTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kStructDeclMembersIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitGenericParamsChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kGenericParamsParamsFirstWord];
+    list.size = node.payload.words[kGenericParamsParamsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kGenericParamsWhereWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitFunctionParameterDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kFunctionParameterDeclTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionParameterDeclDefaultWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFunctionParameterDeclAttrsWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitFunctionParameterListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kFunctionParameterListParamsFirstWord];
+    list.size = node.payload.words[kFunctionParameterListParamsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitImplIfaceListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kImplIfaceListIfacesFirstWord];
+    list.size = node.payload.words[kImplIfaceListIfacesSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitClassMemberListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kClassMemberListMembersFirstWord];
+    list.size = node.payload.words[kClassMemberListMembersSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitInterfaceDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kInterfaceDeclTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kInterfaceDeclIfacesIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kInterfaceDeclMembersIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitErrorDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kErrorDeclMembersIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitAliasDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kAliasDeclTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kAliasDeclTargetWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitMethodDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kMethodDeclParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMethodDeclTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMethodDeclRetTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMethodDeclRaisesTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMethodDeclBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitFieldDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kFieldDeclTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kFieldDeclInitWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitAssociatedTypeDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kAssociatedTypeDeclTypeParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kAssociatedTypeDeclBoundWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kAssociatedTypeDeclDefaultTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitGenericTypeParamChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kGenericTypeParamBoundWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kGenericTypeParamDefaultTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitConstructorDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kConstructorDeclParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kConstructorDeclRaisesTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kConstructorDeclBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitDestructorDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kDestructorDeclParamsIdWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kDestructorDeclRaisesTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kDestructorDeclBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitClassConstDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kClassConstDeclTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kClassConstDeclInitWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitSourceFileChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kSourceFileModuleWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kSourceFileStatementsFirstWord];
+    list.size = node.payload.words[kSourceFileStatementsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitImportDeclarationChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kImportDeclarationPathWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kImportDeclarationSpecifiersFirstWord];
+    list.size = node.payload.words[kImportDeclarationSpecifiersSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitExportDeclarationChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kExportDeclarationDeclarationWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kExportDeclarationPathWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kExportDeclarationSpecifiersFirstWord];
+    list.size = node.payload.words[kExportDeclarationSpecifiersSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitObjectTypeMemberChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kObjectTypeMemberTyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
 void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
   switch (node.kind) {
     case SyntaxKind::AttributeList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kAttributeListAttrsFirstWord];
-        list.size = node.payload.words[kAttributeListAttrsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitAttributeListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::Attribute:
-      {
-        const NodeId child(node.payload.words[kAttributePathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kAttributeArgsFirstWord];
-        list.size = node.payload.words[kAttributeArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::ZomCfgAttribute:
-      {
-        const NodeId child(node.payload.words[kZomCfgAttributePredWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::CfgAtom:
-      {
-        const NodeId child(node.payload.words[kCfgAtomKeyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::CfgAll:
-      {
-        NodeList list;
-        list.first = node.payload.words[kCfgAllPredsFirstWord];
-        list.size = node.payload.words[kCfgAllPredsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::CfgAny:
-      {
-        NodeList list;
-        list.first = node.payload.words[kCfgAnyPredsFirstWord];
-        list.size = node.payload.words[kCfgAnyPredsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::CfgNot:
-      {
-        const NodeId child(node.payload.words[kCfgNotInnerWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::CfgOp:
-      {
-        const NodeId child(node.payload.words[kCfgOpLhsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kCfgOpRhsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitAttributeChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ExternDecl:
-      {
-        NodeList list;
-        list.first = node.payload.words[kExternDeclParamsFirstWord];
-        list.size = node.payload.words[kExternDeclParamsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kExternDeclRetTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kExternDeclRaisesTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitExternDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::UnsafeBlockExpr:
-      {
-        const NodeId child(node.payload.words[kUnsafeBlockExprBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitUnsafeBlockExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ExternBlock:
-      {
-        NodeList list;
-        list.first = node.payload.words[kExternBlockItemsFirstWord];
-        list.size = node.payload.words[kExternBlockItemsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::FFIParameterDecl:
-      {
-        const NodeId child(node.payload.words[kFFIParameterDeclTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFFIParameterDeclAttrsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitExternBlockChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ExternVarDecl:
-      {
-        const NodeId child(node.payload.words[kExternVarDeclTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitExternVarDeclChildNodeIds(tree, node, fn);
       return;
-    case SyntaxKind::ExternStaticDecl:
-      {
-        const NodeId child(node.payload.words[kExternStaticDeclTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kExternStaticDeclInitWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::FFIConstDecl:
-      {
-        const NodeId child(node.payload.words[kFFIConstDeclTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::MacroInvocationExpr:
-      {
-        const NodeId child(node.payload.words[kMacroInvocationExprNameWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kMacroInvocationExprTtFirstWord];
-        list.size = node.payload.words[kMacroInvocationExprTtSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::MacroRulesDecl:
-      {
-        NodeList list;
-        list.first = node.payload.words[kMacroRulesDeclRulesFirstWord];
-        list.size = node.payload.words[kMacroRulesDeclRulesSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::MacroRule:
-      {
-        const NodeId child(node.payload.words[kMacroRulePatternWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kMacroRuleExpandWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::MacroPattern:
-      {
-        NodeList list;
-        list.first = node.payload.words[kMacroPatternFragsFirstWord];
-        list.size = node.payload.words[kMacroPatternFragsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::MacroTokenTree:
-      {
-        NodeList list;
-        list.first = node.payload.words[kMacroTokenTreeTokensFirstWord];
-        list.size = node.payload.words[kMacroTokenTreeTokensSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::DeriveList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kDeriveListItemsFirstWord];
-        list.size = node.payload.words[kDeriveListItemsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::DeriveItem:
-      {
-        const NodeId child(node.payload.words[kDeriveItemTraitPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kDeriveItemArgsFirstWord];
-        list.size = node.payload.words[kDeriveItemArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::MacroQuasiQuote:
-      {
-        const NodeId child(node.payload.words[kMacroQuasiQuoteBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::MacroUnquote:
-      {
-        const NodeId child(node.payload.words[kMacroUnquoteExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::MacroDelimitedGroup:
-      {
-        NodeList list;
-        list.first = node.payload.words[kMacroDelimitedGroupTokensFirstWord];
-        list.size = node.payload.words[kMacroDelimitedGroupTokensSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::ProcMacroDecl:
-      {
-        NodeList list;
-        list.first = node.payload.words[kProcMacroDeclParamsFirstWord];
-        list.size = node.payload.words[kProcMacroDeclParamsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kProcMacroDeclAttributesWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+    case SyntaxKind::UnitVariant:
+      visitUnitVariantChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::TupleVariant:
-      {
-        NodeList list;
-        list.first = node.payload.words[kTupleVariantTysFirstWord];
-        list.size = node.payload.words[kTupleVariantTysSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::StructVariant:
-      {
-        NodeList list;
-        list.first = node.payload.words[kStructVariantFieldsFirstWord];
-        list.size = node.payload.words[kStructVariantFieldsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitTupleVariantChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::EnumDeclaration:
-      {
-        const NodeId child(node.payload.words[kEnumDeclarationTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kEnumDeclarationVariantsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::AssociatedConstVariant:
-      {
-        const NodeId child(node.payload.words[kAssociatedConstVariantConstExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::EnumMemberAlias:
-      {
-        const NodeId child(node.payload.words[kEnumMemberAliasTargetPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::EnumVariantAttr:
-      {
-        const NodeId child(node.payload.words[kEnumVariantAttrAttrsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kEnumVariantAttrVariantWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::DiscriminantRef:
-      {
-        const NodeId child(node.payload.words[kDiscriminantRefOwnerEnumWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::EnumExtendsClause:
-      {
-        const NodeId child(node.payload.words[kEnumExtendsClauseBaseTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::RawVariant:
-      {
-        const NodeId child(node.payload.words[kRawVariantTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitEnumDeclarationChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::EnumVariantList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kEnumVariantListVariantsFirstWord];
-        list.size = node.payload.words[kEnumVariantListVariantsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitEnumVariantListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::LiteralPattern:
-      {
-        const NodeId child(node.payload.words[kLiteralPatternLiteralWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitLiteralPatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::IsPattern:
-      {
-        const NodeId child(node.payload.words[kIsPatternTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitIsPatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::WildcardPattern:
-      {
-        const NodeId child(node.payload.words[kWildcardPatternTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitWildcardPatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::BindingPattern:
-      {
-        const NodeId child(node.payload.words[kBindingPatternSubWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitBindingPatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::IdentifierPattern:
-      {
-        const NodeId child(node.payload.words[kIdentifierPatternTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitIdentifierPatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::TuplePattern:
-      {
-        NodeList list;
-        list.first = node.payload.words[kTuplePatternPatsFirstWord];
-        list.size = node.payload.words[kTuplePatternPatsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitTuplePatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::StructPattern:
-      {
-        const NodeId child(node.payload.words[kStructPatternTyPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kStructPatternFieldsFirstWord];
-        list.size = node.payload.words[kStructPatternFieldsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kStructPatternRestWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitStructPatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::PatternProperty:
-      {
-        const NodeId child(node.payload.words[kPatternPropertyPatWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitPatternPropertyChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ArrayPattern:
-      {
-        NodeList list;
-        list.first = node.payload.words[kArrayPatternPatsFirstWord];
-        list.size = node.payload.words[kArrayPatternPatsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kArrayPatternRestWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitArrayPatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ExpressionPattern:
-      {
-        const NodeId child(node.payload.words[kExpressionPatternExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitExpressionPatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::EnumPattern:
-      {
-        const NodeId child(node.payload.words[kEnumPatternPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kEnumPatternArgsFirstWord];
-        list.size = node.payload.words[kEnumPatternArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::PositionalStructCtorExpr:
-      {
-        const NodeId child(node.payload.words[kPositionalStructCtorExprStructPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kPositionalStructCtorExprArgsFirstWord];
-        list.size = node.payload.words[kPositionalStructCtorExprArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitEnumPatternChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::TupleLiteral1:
-      {
-        const NodeId child(node.payload.words[kTupleLiteral1ElemWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitTupleLiteral1ChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ErrorDefaultExpr:
-      {
-        const NodeId child(node.payload.words[kErrorDefaultExprPrimaryWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kErrorDefaultExprFallbackWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitErrorDefaultExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::NullCoalesceExpr:
-      {
-        const NodeId child(node.payload.words[kNullCoalesceExprPrimaryWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kNullCoalesceExprFallbackWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitNullCoalesceExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::IsExpression:
-      {
-        const NodeId child(node.payload.words[kIsExpressionExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kIsExpressionTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitIsExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ArrayLiteral:
-      {
-        NodeList list;
-        list.first = node.payload.words[kArrayLiteralElemsFirstWord];
-        list.size = node.payload.words[kArrayLiteralElemsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitArrayLiteralChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::TupleLiteral:
-      {
-        NodeList list;
-        list.first = node.payload.words[kTupleLiteralElemsFirstWord];
-        list.size = node.payload.words[kTupleLiteralElemsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitTupleLiteralChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::WherePred:
-      {
-        const NodeId child(node.payload.words[kWherePredTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kWherePredBoundWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitWherePredChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::CallExpression:
-      {
-        const NodeId child(node.payload.words[kCallExpressionCalleeWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kCallExpressionTypeArgsFirstWord];
-        list.size = node.payload.words[kCallExpressionTypeArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kCallExpressionArgsFirstWord];
-        list.size = node.payload.words[kCallExpressionArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitCallExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::BinaryExpr:
-      {
-        const NodeId child(node.payload.words[kBinaryExprLhsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kBinaryExprRhsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitBinaryExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ConditionalExpr:
-      {
-        const NodeId child(node.payload.words[kConditionalExprCondWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kConditionalExprThenExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kConditionalExprElseExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitConditionalExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::AssignmentExpr:
-      {
-        const NodeId child(node.payload.words[kAssignmentExprLhsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kAssignmentExprRhsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitAssignmentExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::CommaExpr:
-      {
-        NodeList list;
-        list.first = node.payload.words[kCommaExprElemsFirstWord];
-        list.size = node.payload.words[kCommaExprElemsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitCommaExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::MemberExpression:
-      {
-        const NodeId child(node.payload.words[kMemberExpressionObjectWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitMemberExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::IndexExpression:
-      {
-        const NodeId child(node.payload.words[kIndexExpressionObjectWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kIndexExpressionIndexWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitIndexExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::NewExpression:
-      {
-        const NodeId child(node.payload.words[kNewExpressionCalleeWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kNewExpressionTypeArgsFirstWord];
-        list.size = node.payload.words[kNewExpressionTypeArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kNewExpressionArgsFirstWord];
-        list.size = node.payload.words[kNewExpressionArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitNewExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::FunctionExpression:
-      {
-        const NodeId child(node.payload.words[kFunctionExpressionParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionExpressionTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionExpressionCapturesIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionExpressionRetTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionExpressionRaisesTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionExpressionBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitFunctionExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ImportCallExpression:
-      {
-        NodeList list;
-        list.first = node.payload.words[kImportCallExpressionArgsFirstWord];
-        list.size = node.payload.words[kImportCallExpressionArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitImportCallExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ObjectLiteralExpr:
-      {
-        NodeList list;
-        list.first = node.payload.words[kObjectLiteralExprPropertiesFirstWord];
-        list.size = node.payload.words[kObjectLiteralExprPropertiesSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitObjectLiteralExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ObjectProperty:
-      {
-        const NodeId child(node.payload.words[kObjectPropertyValueWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitObjectPropertyChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ObjectSpread:
-      {
-        const NodeId child(node.payload.words[kObjectSpreadExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitObjectSpreadChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::TemplateLiteralExpr:
-      {
-        NodeList list;
-        list.first = node.payload.words[kTemplateLiteralExprExprsFirstWord];
-        list.size = node.payload.words[kTemplateLiteralExprExprsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitTemplateLiteralExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::TypeOfExpression:
-      {
-        const NodeId child(node.payload.words[kTypeOfExpressionExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitTypeOfExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::UnaryExpression:
-      {
-        const NodeId child(node.payload.words[kUnaryExpressionOperandWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitUnaryExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::PostfixExpression:
-      {
-        const NodeId child(node.payload.words[kPostfixExpressionOperandWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitPostfixExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::CastExpression:
-      {
-        const NodeId child(node.payload.words[kCastExpressionExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kCastExpressionTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitCastExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::LambdaExpression:
-      {
-        const NodeId child(node.payload.words[kLambdaExpressionParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kLambdaExpressionRetTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kLambdaExpressionRaisesTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kLambdaExpressionBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kLambdaExpressionExprBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitLambdaExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::SpawnExpression:
-      {
-        const NodeId child(node.payload.words[kSpawnExpressionBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitSpawnExpressionChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::StructLiteralExpr:
-      {
-        const NodeId child(node.payload.words[kStructLiteralExprTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kStructLiteralExprPropertiesFirstWord];
-        list.size = node.payload.words[kStructLiteralExprPropertiesSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitStructLiteralExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::CaptureList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kCaptureListCapturesFirstWord];
-        list.size = node.payload.words[kCaptureListCapturesSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitCaptureListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::DynTypeExpr:
-      {
-        const NodeId child(node.payload.words[kDynTypeExprIfacesIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kDynTypeExprMarkersIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitDynTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::FixedArrayTypeExpr:
-      {
-        const NodeId child(node.payload.words[kFixedArrayTypeExprElemWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFixedArrayTypeExprLenExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitFixedArrayTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::SliceArrayTypeExpr:
-      {
-        const NodeId child(node.payload.words[kSliceArrayTypeExprElemWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitSliceArrayTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::OptionalTypeExpr:
-      {
-        const NodeId child(node.payload.words[kOptionalTypeExprInnerWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitOptionalTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::NamedTypeExpr:
-      {
-        const NodeId child(node.payload.words[kNamedTypeExprPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kNamedTypeExprArgsFirstWord];
-        list.size = node.payload.words[kNamedTypeExprArgsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitNamedTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::FunctionTypeExpr:
-      {
-        NodeList list;
-        list.first = node.payload.words[kFunctionTypeExprParamsFirstWord];
-        list.size = node.payload.words[kFunctionTypeExprParamsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionTypeExprRetTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionTypeExprRaisesWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitFunctionTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::UnionTypeExpr:
-      {
-        NodeList list;
-        list.first = node.payload.words[kUnionTypeExprAltsFirstWord];
-        list.size = node.payload.words[kUnionTypeExprAltsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitUnionTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::IntersectionTypeExpr:
-      {
-        NodeList list;
-        list.first = node.payload.words[kIntersectionTypeExprAltsFirstWord];
-        list.size = node.payload.words[kIntersectionTypeExprAltsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitIntersectionTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ArrayTypeExpr:
-      {
-        const NodeId child(node.payload.words[kArrayTypeExprElemWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kArrayTypeExprLenExprWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitArrayTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::DynTypeIfaceList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kDynTypeIfaceListIfacesFirstWord];
-        list.size = node.payload.words[kDynTypeIfaceListIfacesSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitDynTypeIfaceListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::DynTypeMarkerList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kDynTypeMarkerListMarkersFirstWord];
-        list.size = node.payload.words[kDynTypeMarkerListMarkersSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitDynTypeMarkerListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::TypeQueryExpr:
-      {
-        const NodeId child(node.payload.words[kTypeQueryExprPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitTypeQueryExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ObjectTypeExpr:
-      {
-        NodeList list;
-        list.first = node.payload.words[kObjectTypeExprMembersFirstWord];
-        list.size = node.payload.words[kObjectTypeExprMembersSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitObjectTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::TupleTypeExpr:
-      {
-        NodeList list;
-        list.first = node.payload.words[kTupleTypeExprElemsFirstWord];
-        list.size = node.payload.words[kTupleTypeExprElemsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitTupleTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::AssociatedTypeProjectionExpr:
-      {
-        const NodeId child(node.payload.words[kAssociatedTypeProjectionExprBaseTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kAssociatedTypeProjectionExprIfaceTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitAssociatedTypeProjectionExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ReferenceTypeExpr:
-      {
-        const NodeId child(node.payload.words[kReferenceTypeExprElemWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitReferenceTypeExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::RawPointerTypeExpr:
-      {
-        const NodeId child(node.payload.words[kRawPointerTypeExprElemWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitRawPointerTypeExprChildNodeIds(tree, node, fn);
+      return;
+    case SyntaxKind::DynTypeAssocBinding:
+      visitDynTypeAssocBindingChildNodeIds(tree, node, fn);
+      return;
+    case SyntaxKind::DynTypeAssocBindingList:
+      visitDynTypeAssocBindingListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::SuspendStatement:
-      {
-        const NodeId child(node.payload.words[kSuspendStatementUntilCondWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitSuspendStatementChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::UntilClause:
-      {
-        const NodeId child(node.payload.words[kUntilClauseCondWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitUntilClauseChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::BlockStmt:
-      {
-        NodeList list;
-        list.first = node.payload.words[kBlockStmtStmtsFirstWord];
-        list.size = node.payload.words[kBlockStmtStmtsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitBlockStmtChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::IfStmt:
-      {
-        const NodeId child(node.payload.words[kIfStmtCondWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kIfStmtThenStmtWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kIfStmtElseStmtWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitIfStmtChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::MatchStmt:
-      {
-        const NodeId child(node.payload.words[kMatchStmtScrutineeWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kMatchStmtArmsFirstWord];
-        list.size = node.payload.words[kMatchStmtArmsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitMatchStmtChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::WhileStmt:
-      {
-        const NodeId child(node.payload.words[kWhileStmtCondWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kWhileStmtBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitWhileStmtChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ForStmt:
-      {
-        const NodeId child(node.payload.words[kForStmtInitWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kForStmtCondWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kForStmtUpdateWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kForStmtBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitForStmtChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ReturnStmt:
-      {
-        const NodeId child(node.payload.words[kReturnStmtValueWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitReturnStmtChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::StatementListItem:
-      {
-        const NodeId child(node.payload.words[kStatementListItemItemWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kStatementListItemAttrsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitStatementListItemChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::MatchArmStmt:
-      {
-        const NodeId child(node.payload.words[kMatchArmStmtPatternWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kMatchArmStmtGuardWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kMatchArmStmtBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitMatchArmStmtChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::LetStmt:
-      {
-        const NodeId child(node.payload.words[kLetStmtDeclarationsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitLetStmtChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ModuleDeclaration:
-      {
-        const NodeId child(node.payload.words[kModuleDeclarationPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitModuleDeclarationChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ExpressionStatement:
-      {
-        const NodeId child(node.payload.words[kExpressionStatementExpressionWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitExpressionStatementChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::LabeledStatement:
-      {
-        const NodeId child(node.payload.words[kLabeledStatementStatementWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitLabeledStatementChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ForInStatement:
-      {
-        const NodeId child(node.payload.words[kForInStatementBindingWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kForInStatementExpressionWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kForInStatementBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitForInStatementChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::DoWhileStatement:
-      {
-        const NodeId child(node.payload.words[kDoWhileStatementBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kDoWhileStatementCondWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitDoWhileStatementChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::VariableDeclaratorList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kVariableDeclaratorListDeclsFirstWord];
-        list.size = node.payload.words[kVariableDeclaratorListDeclsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitVariableDeclaratorListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::VariableDeclarator:
-      {
-        const NodeId child(node.payload.words[kVariableDeclaratorPatternWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kVariableDeclaratorTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kVariableDeclaratorInitWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitVariableDeclaratorChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::StandaloneImplDecl:
-      {
-        const NodeId child(node.payload.words[kStandaloneImplDeclIfacesIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kStandaloneImplDeclForTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kStandaloneImplDeclWhereWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kStandaloneImplDeclTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kStandaloneImplDeclMembersIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitStandaloneImplDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::MarkerImpl:
-      {
-        const NodeId child(node.payload.words[kMarkerImplMarkerPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kMarkerImplForTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kMarkerImplWhereWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kMarkerImplTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitMarkerImplChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::WhereClause:
-      {
-        NodeList list;
-        list.first = node.payload.words[kWhereClausePredsFirstWord];
-        list.size = node.payload.words[kWhereClausePredsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::MarkerDeclaration:
-      {
-        const NodeId child(node.payload.words[kMarkerDeclarationTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kMarkerDeclarationMarkersFirstWord];
-        list.size = node.payload.words[kMarkerDeclarationMarkersSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      return;
-    case SyntaxKind::PositionalStructDecl:
-      {
-        const NodeId child(node.payload.words[kPositionalStructDeclTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kPositionalStructDeclFieldsFirstWord];
-        list.size = node.payload.words[kPositionalStructDeclFieldsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitWhereClauseChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::FunctionDecl:
-      {
-        const NodeId child(node.payload.words[kFunctionDeclParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionDeclTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionDeclRetTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionDeclRaisesTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionDeclBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitFunctionDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ClassDecl:
-      {
-        const NodeId child(node.payload.words[kClassDeclTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kClassDeclExtendsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kClassDeclMembersIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitClassDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::StructDecl:
-      {
-        const NodeId child(node.payload.words[kStructDeclTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kStructDeclMembersIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitStructDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::GenericParams:
-      {
-        NodeList list;
-        list.first = node.payload.words[kGenericParamsParamsFirstWord];
-        list.size = node.payload.words[kGenericParamsParamsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kGenericParamsWhereWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitGenericParamsChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::FunctionParameterDecl:
-      {
-        const NodeId child(node.payload.words[kFunctionParameterDeclTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionParameterDeclDefaultWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFunctionParameterDeclAttrsWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitFunctionParameterDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::FunctionParameterList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kFunctionParameterListParamsFirstWord];
-        list.size = node.payload.words[kFunctionParameterListParamsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitFunctionParameterListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ImplIfaceList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kImplIfaceListIfacesFirstWord];
-        list.size = node.payload.words[kImplIfaceListIfacesSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitImplIfaceListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ClassMemberList:
-      {
-        NodeList list;
-        list.first = node.payload.words[kClassMemberListMembersFirstWord];
-        list.size = node.payload.words[kClassMemberListMembersSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitClassMemberListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::InterfaceDecl:
-      {
-        const NodeId child(node.payload.words[kInterfaceDeclTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kInterfaceDeclIfacesIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kInterfaceDeclMembersIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitInterfaceDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ErrorDecl:
-      {
-        const NodeId child(node.payload.words[kErrorDeclMembersIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitErrorDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::AliasDecl:
-      {
-        const NodeId child(node.payload.words[kAliasDeclTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kAliasDeclTargetWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitAliasDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::MethodDecl:
-      {
-        const NodeId child(node.payload.words[kMethodDeclParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kMethodDeclTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kMethodDeclRetTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kMethodDeclBodyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitMethodDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::FieldDecl:
-      {
-        const NodeId child(node.payload.words[kFieldDeclTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kFieldDeclInitWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitFieldDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::AssociatedTypeDecl:
-      {
-        const NodeId child(node.payload.words[kAssociatedTypeDeclTypeParamsIdWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kAssociatedTypeDeclBoundWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kAssociatedTypeDeclDefaultTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitAssociatedTypeDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::GenericTypeParam:
-      {
-        const NodeId child(node.payload.words[kGenericTypeParamBoundWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kGenericTypeParamDefaultTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitGenericTypeParamChildNodeIds(tree, node, fn);
+      return;
+    case SyntaxKind::ConstructorDecl:
+      visitConstructorDeclChildNodeIds(tree, node, fn);
+      return;
+    case SyntaxKind::DestructorDecl:
+      visitDestructorDeclChildNodeIds(tree, node, fn);
+      return;
+    case SyntaxKind::ClassConstDecl:
+      visitClassConstDeclChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::SourceFile:
-      {
-        const NodeId child(node.payload.words[kSourceFileModuleWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kSourceFileStatementsFirstWord];
-        list.size = node.payload.words[kSourceFileStatementsSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitSourceFileChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ImportDeclaration:
-      {
-        const NodeId child(node.payload.words[kImportDeclarationPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kImportDeclarationSpecifiersFirstWord];
-        list.size = node.payload.words[kImportDeclarationSpecifiersSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitImportDeclarationChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ExportDeclaration:
-      {
-        const NodeId child(node.payload.words[kExportDeclarationDeclarationWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        const NodeId child(node.payload.words[kExportDeclarationPathWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
-      {
-        NodeList list;
-        list.first = node.payload.words[kExportDeclarationSpecifiersFirstWord];
-        list.size = node.payload.words[kExportDeclarationSpecifiersSizeWord];
-        for (NodeId child : tree.list(list)) { fn(child); }
-      }
+      visitExportDeclarationChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::ObjectTypeMember:
-      {
-        const NodeId child(node.payload.words[kObjectTypeMemberTyWord]);
-        if (tree.contains(child)) { fn(child); }
-      }
+      visitObjectTypeMemberChildNodeIds(tree, node, fn);
       return;
     default:
       return;

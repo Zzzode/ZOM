@@ -174,9 +174,7 @@ void Symbol::removeDeclarationRef(const DeclarationRef& ref) {
 }
 
 /// \brief Check if symbol is public
-bool Symbol::isPublic() const {
-  return !hasAnyFlag(SymbolFlags::Private | SymbolFlags::Protected | SymbolFlags::Internal);
-}
+bool Symbol::isPublic() const { return hasFlag(SymbolFlags::Public); }
 
 /// \brief Check if symbol is private
 bool Symbol::isPrivate() const { return hasFlag(SymbolFlags::Private); }

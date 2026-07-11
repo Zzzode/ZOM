@@ -195,7 +195,6 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "else"_zcb) return ast::SyntaxKind::ElseKeyword;
   if (text == "enum"_zcb) return ast::SyntaxKind::EnumKeyword;
   if (text == "error"_zcb) return ast::SyntaxKind::ErrorKeyword;
-  if (text == "extends"_zcb) return ast::SyntaxKind::ExtendsKeyword;
   if (text == "export"_zcb) return ast::SyntaxKind::ExportKeyword;
   if (text == "f32"_zcb) return ast::SyntaxKind::F32Keyword;
   if (text == "f64"_zcb) return ast::SyntaxKind::F64Keyword;
@@ -213,7 +212,6 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "i64"_zcb) return ast::SyntaxKind::I64Keyword;
   if (text == "if"_zcb) return ast::SyntaxKind::IfKeyword;
   if (text == "immediate"_zcb) return ast::SyntaxKind::ImmediateKeyword;
-  if (text == "implements"_zcb) return ast::SyntaxKind::ImplementsKeyword;
   if (text == "import"_zcb) return ast::SyntaxKind::ImportKeyword;
   if (text == "in"_zcb) return ast::SyntaxKind::InKeyword;
   if (text == "infer"_zcb) return ast::SyntaxKind::InferKeyword;

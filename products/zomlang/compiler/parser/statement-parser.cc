@@ -20,6 +20,24 @@ namespace zomlang {
 namespace compiler {
 namespace parser {
 
+namespace {
+
+bool isLabelTargetStart(ast::SyntaxKind first, ast::SyntaxKind second) {
+  switch (first) {
+    case ast::SyntaxKind::LeftBrace:
+    case ast::SyntaxKind::WhileKeyword:
+    case ast::SyntaxKind::DoKeyword:
+    case ast::SyntaxKind::ForKeyword:
+      return true;
+    case ast::SyntaxKind::Identifier:
+      return second == ast::SyntaxKind::Colon;
+    default:
+      return false;
+  }
+}
+
+}  // namespace
+
 // RFC 0002: findMatchingRight* pattern — explicitly allowed. Caller has already seen the
 // opening '{' and committed to parsing a braced block. Returns the matching '}' index.
 size_t Parser::Impl::findMatchingRightBrace(size_t openIndex, size_t limit) const {
@@ -63,27 +81,6 @@ size_t Parser::Impl::findMatchingRightBracket(size_t openIndex, size_t limit) co
     } else if (kind == ast::SyntaxKind::RightBracket) {
       if (bracketDepth > 0) { --bracketDepth; }
       if (bracketDepth == 0 && parenDepth == 0 && braceDepth == 0) { return index; }
-    }
-  }
-  return limit;
-}
-
-// RFC 0002: findMatchingRight* pattern — explicitly allowed. Caller has already seen a
-// macro group opening delimiter ('(', '[', or '{') and committed to parsing the group.
-// Returns the matching closing delimiter index.
-size_t Parser::Impl::findMatchingMacroGroup(size_t openIndex, size_t limit) const {
-  if (openIndex >= limit || !isMacroGroupOpen(kindAt(openIndex))) { return limit; }
-
-  const ast::SyntaxKind open = kindAt(openIndex);
-  const ast::SyntaxKind close = macroGroupClose(open);
-  int32_t depth = 0;
-  for (size_t index = openIndex; index < limit; ++index) {
-    const ast::SyntaxKind kind = kindAt(index);
-    if (kind == ast::SyntaxKind::EndOfFile) { return limit; }
-    if (kind == open) { ++depth; }
-    if (kind == close) {
-      --depth;
-      if (depth == 0) { return index; }
     }
   }
   return limit;
@@ -411,12 +408,6 @@ ast::NodeId Parser::Impl::parseBlock(AstFactory& builder, size_t openBrace, size
       }
     }
     const size_t statementEnd = itemResult.boundary.end;
-    if (outerAttributePrefixContainsZomCfg(statementStart, statementEnd) &&
-        itemResult.boundary.kind != ast::SyntaxKind::BlockStmt) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-          tokenAt(effectiveStatementStart(statementStart, statementEnd)).getLocation(),
-          "cfg-gated block"_zc);
-    }
     if (itemResult.node) {
       items.add(makeStatementListItem(builder, itemResult.node,
                                       rangeFor(statementStart, statementEnd), itemResult.attrs));
@@ -546,6 +537,8 @@ ast::NodeId Parser::Impl::parseWhileStatement(AstFactory& builder, size_t start,
 
 ast::NodeId Parser::Impl::parseDoWhileStatement(AstFactory& builder, size_t start,
                                                 size_t end) const {
+  if (!requireTrailingSemicolon(start, end)) { return ast::NodeId(); }
+
   const DoWhileStatementParts parts = parseDoWhileStatementParts(start, end);
   ast::NodeId cond;
   if (parts.whileIndex < end) {
@@ -578,7 +571,20 @@ ast::NodeId Parser::Impl::parseContinueStatement(AstFactory& builder, size_t sta
 
 ast::NodeId Parser::Impl::parseLabeledStatement(AstFactory& builder, size_t start,
                                                 size_t end) const {
+  if (start + 2 >= end) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        diagnosticLoc(start + 2));
+    return ast::NodeId();
+  }
   if (isOuterAttributeStart(start + 2, end)) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+        tokenAt(start + 2).getLocation());
+    return ast::NodeId();
+  }
+  const ast::SyntaxKind targetStart = kindAt(start + 2);
+  const ast::SyntaxKind targetNext =
+      start + 3 < end ? kindAt(start + 3) : ast::SyntaxKind::EndOfFile;
+  if (!isLabelTargetStart(targetStart, targetNext)) {
     diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
         tokenAt(start + 2).getLocation());
     return ast::NodeId();
@@ -721,7 +727,6 @@ ast::NodeId Parser::Impl::parseMatchStatement(AstFactory& builder, size_t start,
 ast::NodeId Parser::Impl::parseExternBlockDeclaration(AstFactory& builder, size_t start,
                                                       size_t end) const {
   size_t cursor = start;
-  if (isSoftKeyword(cursor, "unsafe"_zc)) { ++cursor; }
   if (cursor >= end || !isSoftKeyword(cursor, "extern"_zc)) {
     if (!shouldSuppressDiagnostic(cursor)) {
       diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
@@ -768,13 +773,6 @@ ast::NodeId Parser::Impl::parseExternBlockDeclaration(AstFactory& builder, size_
       cursor = itemEnd > itemStart ? itemEnd : itemStart + 1;
       continue;
     }
-    if (kindAt(itemStart) == ast::SyntaxKind::TypeKeyword) {
-      const size_t itemEnd = consumeSimpleStatementEnd(itemStart, bodyEnd);
-      addNodeIfPresent(items, parseExternTypeAliasDecl(builder, itemStart, itemEnd));
-      cursor = itemEnd > itemStart ? itemEnd : itemStart + 1;
-      continue;
-    }
-
     diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
         tokenAt(itemStart).getLocation());
     ++cursor;

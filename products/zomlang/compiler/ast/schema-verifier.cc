@@ -36,14 +36,8 @@ bool equals(const char* lhs, const char* rhs) {
   return *lhs == *rhs;
 }
 
-bool isCfgPredicateKind(SyntaxKind kind) {
-  return kind == SyntaxKind::CfgAtom || kind == SyntaxKind::CfgAll || kind == SyntaxKind::CfgAny ||
-         kind == SyntaxKind::CfgNot || kind == SyntaxKind::CfgOp;
-}
-
 bool isExpressionSchemaKind(SyntaxKind kind) {
-  return isLiteralExprKind(kind) || isExprKind(kind) || kind == SyntaxKind::UnsafeBlockExpr ||
-         kind == SyntaxKind::MacroInvocationExpr;
+  return isLiteralExprKind(kind) || isExprKind(kind) || kind == SyntaxKind::UnsafeBlockExpr;
 }
 
 bool isStatementSchemaKind(SyntaxKind kind) {
@@ -55,9 +49,7 @@ bool isIdentifierSchemaKind(SyntaxKind kind) {
          kind == SyntaxKind::AttributePath || kind == SyntaxKind::Identifier;
 }
 
-bool isParameterDeclKind(SyntaxKind kind) {
-  return kind == SyntaxKind::FunctionParameterDecl || kind == SyntaxKind::FFIParameterDecl;
-}
+bool isParameterDeclKind(SyntaxKind kind) { return kind == SyntaxKind::FunctionParameterDecl; }
 
 bool isObjectLiteralElementKind(SyntaxKind kind) {
   return kind == SyntaxKind::ObjectProperty || kind == SyntaxKind::ObjectSpread;
@@ -65,7 +57,8 @@ bool isObjectLiteralElementKind(SyntaxKind kind) {
 
 bool isClassElementKind(SyntaxKind kind) {
   return kind == SyntaxKind::MethodDecl || kind == SyntaxKind::FieldDecl ||
-         kind == SyntaxKind::AssociatedTypeDecl;
+         kind == SyntaxKind::AssociatedTypeDecl || kind == SyntaxKind::ConstructorDecl ||
+         kind == SyntaxKind::DestructorDecl || kind == SyntaxKind::ClassConstDecl;
 }
 
 bool isTypeParamDeclKind(SyntaxKind kind) { return kind == SyntaxKind::GenericTypeParam; }
@@ -77,7 +70,6 @@ bool matchesCastTarget(SyntaxKind kind, const char* target) {
   if (equals(target, "Statement")) { return isStatementSchemaKind(kind); }
   if (equals(target, "Declaration")) { return isDeclarationKind(kind); }
   if (equals(target, "Pattern")) { return isPatternKind(kind); }
-  if (equals(target, "CfgPredicate")) { return isCfgPredicateKind(kind); }
   if (equals(target, "Identifier")) { return isIdentifierSchemaKind(kind); }
   if (equals(target, "BlockStmt")) { return kind == SyntaxKind::BlockStmt; }
   if (equals(target, "ParameterDecl")) { return isParameterDeclKind(kind); }

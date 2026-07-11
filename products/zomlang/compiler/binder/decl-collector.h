@@ -95,7 +95,6 @@ private:
   void visitInterfaceDecl(ast::NodeId node);
   void visitEnumDeclaration(ast::NodeId node);
   void visitAliasDecl(ast::NodeId node);
-  void visitMarkerDeclaration(ast::NodeId node);
   void visitStandaloneImplDecl(ast::NodeId node);
 
   // Statements that introduce scopes or bindings
@@ -112,8 +111,9 @@ private:
   void visitMatchArmStmt(ast::NodeId node);
 
   // Class/interface members
-  void visitMethodDecl(ast::NodeId node);
+  void visitCallableDecl(ast::NodeId node, symbol::SymbolKind symbolKind);
   void visitFieldDecl(ast::NodeId node);
+  void visitClassConstDecl(ast::NodeId node);
 
   // Function parameters
   void visitFunctionParameterDecl(ast::NodeId node);

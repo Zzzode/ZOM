@@ -25,6 +25,11 @@ namespace basic {
 /// This class encapsulates all compiler-specific options that control
 /// compilation behavior, separate from language-specific options.
 struct CompilerOptions {
+  enum class PanicStrategy {
+    Abort,
+    Unwind,
+  };
+
   /// \brief Output and emission options
   struct EmissionOptions {
     enum class OutputType {
@@ -70,6 +75,7 @@ struct CompilerOptions {
   EmissionOptions emission;
   OptimizationOptions optimization;
   DiagnosticOptions diagnostics;
+  PanicStrategy panicStrategy = PanicStrategy::Abort;
 
   CompilerOptions() = default;
 };

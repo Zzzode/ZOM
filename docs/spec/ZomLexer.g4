@@ -138,7 +138,7 @@ WS
 //   Non-recursive implementation: non-greedy '/*' .*? '*/'.
 // ============================================================================
 SINGLE_LINE_COMMENT
-    : '//' ~['\r\n\u2028\u2029]*
+    : '//' ~[\r\n\u2028\u2029]*
       -> channel(COMMENTS)
     ;
 
@@ -482,8 +482,6 @@ ASSERT   : 'assert';
 NEW      : 'new';
 THIS     : 'this';
 SUPER    : 'super';
-EXTENDS  : 'extends';
-IMPLEMENTS : 'implements';
 RAISES   : 'raises';
 
 // -- Module ------------------------------------------------------------------
@@ -508,30 +506,28 @@ SPAWN   : 'spawn';
 //
 // Dedicated tokens let the parser report precise ZOM500x diagnostics.
 // ============================================================================
-THROW      : 'throw';       // ZOM5001
-TRY        : 'try';         // ZOM5001
-CATCH      : 'catch';       // ZOM5001
-FINALLY    : 'finally';     // ZOM5001
-ASYNC      : 'async';       // ZOM5002
-AWAIT      : 'await';       // ZOM5002
-VAR        : 'var';         // ZOM5003
-ACTOR      : 'actor';       // ZOM5004
-CHANNEL    : 'channel';     // ZOM5004
-YIELD      : 'yield';       // ZOM5005
-GENERATOR  : 'generator';   // ZOM5005
-NAMESPACE  : 'namespace';   // ZOM5006
-PACKAGE    : 'package';     // ZOM5006
-TYPE       : 'type';        // ZOM5007, except where object/interface syntax admits it.
-DELETE     : 'delete';      // ZOM5008
-INSTANCEOF : 'instanceof';  // ZOM5008
-OF         : 'of';          // ZOM5008
-WITH       : 'with';        // ZOM5008
+THROW      : 'throw';
+TRY        : 'try';
+CATCH      : 'catch';
+FINALLY    : 'finally';
+ASYNC      : 'async';
+AWAIT      : 'await';
+VAR        : 'var';
+ACTOR      : 'actor';
+CHANNEL    : 'channel';
+YIELD      : 'yield';
+GENERATOR  : 'generator';
+NAMESPACE  : 'namespace';
+PACKAGE    : 'package';
+TYPE       : 'type';
+DELETE     : 'delete';
+INSTANCEOF : 'instanceof';
+OF         : 'of';
+WITH       : 'with';
 
 // ============================================================================
 // Literal-like hard keywords.
 // TRUE and FALSE are boolean literals. UNDERSCORE is the wildcard token.
-// `implements` is a hard keyword for class/interface heritage. The standalone
-// `impl Interface for Type { }` form keeps `impl` as a parser soft keyword.
 TRUE       : 'true';
 FALSE      : 'false';
 UNDERSCORE : '_';

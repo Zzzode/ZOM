@@ -628,6 +628,10 @@ ZC_TEST("BodyChecker.BinaryEqUsesUserTypeEqImpl") {
   expectUserTypeComparisonImpl("Eq"_zc, ast::BinaryOperatorKind::Eq);
 }
 
+ZC_TEST("BodyChecker.BinaryNeUsesUserTypeEqImpl") {
+  expectUserTypeComparisonImpl("Eq"_zc, ast::BinaryOperatorKind::Ne);
+}
+
 ZC_TEST("BodyChecker.BinaryEqRejectsWrongTraitMethodSignature") {
   TestFixture fix;
   auto consumer = zc::heap<CapturingDiagnosticConsumer>();
@@ -2313,6 +2317,41 @@ ZC_TEST("BodyChecker.CastAllowsNumericConversion") {
   ZC_EXPECT(isPrimitive(result.typeEnv.getType(cast)));
 }
 
+ZC_TEST("BodyChecker.OptionalCheckedCastReturnsNullableTarget") {
+  TestFixture fix;
+  auto cast = fix.makeCastExpr(fix.makeIntLiteral(42), fix.makeNamedTypeExpr("i8"_zc), 1);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(cast);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(cast));
+  ZC_EXPECT(isUnion(result.typeEnv.getType(cast)));
+  if (isUnion(result.typeEnv.getType(cast))) {
+    auto& unionType = static_cast<const type::UnionType&>(result.typeEnv.getType(cast));
+    ZC_EXPECT(unionType.isNullable());
+  }
+}
+
+ZC_TEST("BodyChecker.ForcedCheckedCastReturnsTarget") {
+  TestFixture fix;
+  auto cast = fix.makeCastExpr(fix.makeIntLiteral(42), fix.makeNamedTypeExpr("i8"_zc), 2);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(cast);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(!fix.diagnostics().hasErrors());
+  ZC_EXPECT(result.typeEnv.hasType(cast));
+  ZC_EXPECT(isPrimitive(result.typeEnv.getType(cast)));
+  ZC_IF_SOME(kind, type::primitiveKindOf(result.typeEnv.getType(cast))) {
+    ZC_EXPECT(kind == type::PrimitiveKind::I8);
+  }
+}
+
 ZC_TEST("BodyChecker.CastRejectsIntegerToBool") {
   TestFixture fix;
   auto consumer = zc::heap<CapturingDiagnosticConsumer>();
@@ -2382,6 +2421,29 @@ ZC_TEST("BodyChecker.CastAllowsRawPointerReinterpretInsideUnsafe") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(cast));
   ZC_EXPECT(isRawPointer(result.typeEnv.getType(cast)));
+}
+
+ZC_TEST("BodyChecker.RawPointerDerefProducesPointeeType") {
+  TestFixture fix;
+  auto ptrTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
+  auto pat = fix.makeBindingPattern("ptr"_zc);
+  auto decl = fix.makeVariableDeclarator(pat, ptrTy);
+  zc::Vector<ast::NodeId> declList;
+  declList.add(decl);
+  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
+  auto let = fix.makeLetStmt(varList);
+  auto deref = fix.makeUnaryExpr(ast::UnaryOperatorKind::Deref, fix.makeIdentExpr("ptr"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(let);
+  topDecls.add(deref);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.typeEnv.hasType(deref));
+  ZC_EXPECT(isPrimitive(result.typeEnv.getType(deref)));
+  ZC_IF_SOME(kind, type::primitiveKindOf(result.typeEnv.getType(deref))) {
+    ZC_EXPECT(kind == type::PrimitiveKind::I32);
+  }
 }
 
 ZC_TEST("BodyChecker.CastAllowsSharedReferenceToConstRawPointer") {
@@ -2519,6 +2581,37 @@ ZC_TEST("BodyChecker.IsExprReturnsBool") {
   if (result.typeEnv.hasType(isExpr)) {
     auto& resultTy = result.typeEnv.getType(isExpr);
     ZC_EXPECT(isPrimitive(resultTy));
+  }
+}
+
+ZC_TEST("BodyChecker.IsExprChecksOperand") {
+  TestFixture fix;
+  auto ptrPattern = fix.makeBindingPattern("ptr"_zc);
+  auto ptrDecl = fix.makeVariableDeclarator(
+      ptrPattern, fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
+  zc::Vector<ast::NodeId> decls;
+  decls.add(ptrDecl);
+  auto letStmt = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto ptrUse = fix.makeIdentExpr("ptr"_zc);
+  auto deref = fix.makeUnaryExpr(ast::UnaryOperatorKind::Deref, ptrUse);
+  auto isExpr = fix.makeIsExpr(deref, fix.makeNamedTypeExpr("i32"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(letStmt);
+  topDecls.add(isExpr);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(result.typeEnv.hasType(ptrUse));
+  ZC_EXPECT(result.typeEnv.hasType(deref));
+  ZC_EXPECT(result.typeEnv.hasType(isExpr));
+  if (result.typeEnv.hasType(deref)) {
+    auto& derefTy = result.typeEnv.getType(deref);
+    ZC_EXPECT(isPrimitive(derefTy));
+    if (isPrimitive(derefTy)) {
+      auto& primitive = static_cast<const type::PrimitiveType&>(derefTy);
+      ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
+    }
   }
 }
 
@@ -2942,6 +3035,65 @@ ZC_TEST("BodyChecker.LetWithDynMarkerAnnotationRequiresMarker") {
   ZC_EXPECT(isExistential(result.typeEnv.getType(yDecl)));
   ZC_EXPECT(result.typeEnv.hasCoercion(yDecl));
   ZC_EXPECT(result.typeEnv.getCoercion(yDecl) == type::CoercionKind::ExistentialErasure);
+}
+
+ZC_TEST("BodyChecker.PreservesGenericArgumentsInLocalAnnotations") {
+  TestFixture fix;
+  auto goodType = fix.makeClassDecl("Good"_zc);
+  auto boxType = fix.makeClassDecl("Box"_zc);
+
+  zc::Vector<ast::NodeId> arguments;
+  arguments.add(fix.makeNamedTypeExpr("Good"_zc));
+  auto annotatedType = fix.makeNamedTypeExpr("Box"_zc, fix.makeNodeList(arguments.asPtr()));
+  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc), annotatedType);
+  zc::Vector<ast::NodeId> declarations;
+  declarations.add(valueDecl);
+  auto let =
+      fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declarations.asPtr())));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(goodType);
+  topDecls.add(boxType);
+  topDecls.add(let);
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(result.typeEnv.hasType(valueDecl));
+  const auto& valueType = result.typeEnv.getType(valueDecl);
+  ZC_EXPECT(isNamed(valueType));
+  if (!isNamed(valueType)) { return; }
+
+  const auto& named = static_cast<const type::NamedType&>(valueType);
+  ZC_EXPECT(named.getName() == "Box"_zc);
+  ZC_EXPECT(named.getTypeArgCount() == 1);
+  if (named.getTypeArgCount() == 1) {
+    ZC_EXPECT(named.getTypeArg(0).toString().asPtr() == "Good"_zc);
+  }
+}
+
+ZC_TEST("BodyChecker.RejectsMismatchedTupleAnnotation") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> elements;
+  elements.add(fix.makeNamedTypeExpr("i32"_zc));
+  elements.add(fix.makeNamedTypeExpr("str"_zc));
+  auto tupleType = fix.makeTupleTypeExpr(fix.makeNodeList(elements.asPtr()));
+  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc), tupleType,
+                                              fix.makeBoolLiteral(true));
+  zc::Vector<ast::NodeId> declarations;
+  declarations.add(valueDecl);
+  auto let =
+      fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declarations.asPtr())));
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(let);
+
+  auto result = runFullCheck(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!result.success);
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::TypeCheckerTypeMismatch));
 }
 
 ZC_TEST("BodyChecker.LetWithDynMarkerAnnotationRejectsMissingMarker") {

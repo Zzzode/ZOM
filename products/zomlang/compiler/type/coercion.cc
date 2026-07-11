@@ -56,6 +56,21 @@ CoercionResult CoercionResolver::check(const Type& source, const Type& target) c
     }
   }
 
+  if (isReference(source) && isRawPointer(target)) {
+    auto& sourceRef = static_cast<const ReferenceType&>(source);
+    auto& targetPtr = static_cast<const RawPointerType&>(target);
+    if (sourceRef.getPointeeType().equals(targetPtr.getPointeeType())) {
+      if (sourceRef.getMutability() == Mutability::Const &&
+          targetPtr.getMutability() == Mutability::Const) {
+        return CoercionResult{true, CoercionKind::SharedRefToConstRaw};
+      }
+      if (sourceRef.getMutability() == Mutability::Mutable &&
+          targetPtr.getMutability() == Mutability::Mutable) {
+        return CoercionResult{true, CoercionKind::MutRefToMutRaw};
+      }
+    }
+  }
+
   if (isRawPointer(source) && isRawPointer(target)) {
     auto& sourcePtr = static_cast<const RawPointerType&>(source);
     auto& targetPtr = static_cast<const RawPointerType&>(target);

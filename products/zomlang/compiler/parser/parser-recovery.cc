@@ -499,14 +499,16 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
   switch (cursor.peek()) {
     case ast::SyntaxKind::ModuleKeyword:
       boundary.kind = ast::SyntaxKind::ModuleDeclaration;
-      boundary.end = consumeSimpleStatementEnd(head, limit);
+      boundary.end = consumeBracedDeclarationEnd(head, limit);
       break;
     case ast::SyntaxKind::ImportKeyword:
       boundary.kind = ast::SyntaxKind::ImportDeclaration;
       boundary.end = consumeSimpleStatementEnd(head, limit);
       break;
     case ast::SyntaxKind::ExportKeyword:
-      boundary.kind = ast::SyntaxKind::ExportDeclaration;
+      boundary.kind = head + 1 < limit && kindAt(head + 1) == ast::SyntaxKind::ModuleKeyword
+                          ? ast::SyntaxKind::ModuleDeclaration
+                          : ast::SyntaxKind::ExportDeclaration;
       boundary.end = consumeExportDeclarationEnd(head, limit);
       break;
     case ast::SyntaxKind::MutKeyword:
@@ -604,10 +606,7 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
       boundary.kind = ast::SyntaxKind::BlockStmt;
       break;
     case ast::SyntaxKind::Identifier:
-      if (isSoftKeyword(head, "macro"_zc)) {
-        boundary.kind = ast::SyntaxKind::MacroRulesDecl;
-        boundary.end = consumeBracedDeclarationEnd(head, limit);
-      } else if (isExternDeclarationStart(head, limit)) {
+      if (isExternDeclarationStart(head, limit)) {
         boundary.kind = ast::SyntaxKind::ExternBlock;
         boundary.end = consumeExternDeclarationEnd(head, limit);
       } else if (isSoftKeyword(head, "impl"_zc) ||
@@ -649,6 +648,19 @@ Parser::Impl::SourceElementParseResult Parser::Impl::parseSourceElement(AstFacto
   }
 
   result.attrs = parseOuterAttributeList(builder, result.boundary.start, result.boundary.end);
+  if (result.attrs && result.boundary.kind == ast::SyntaxKind::ModuleDeclaration) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::AttributeRequiresSupportedTarget>(
+        tokenAt(result.boundary.start).getLocation());
+  }
+  for (size_t index = result.boundary.nodeStart; index < result.boundary.head; ++index) {
+    const ast::SyntaxKind modifier = kindAt(index);
+    if (modifier == ast::SyntaxKind::PublicKeyword || modifier == ast::SyntaxKind::PrivateKeyword ||
+        modifier == ast::SyntaxKind::ProtectedKeyword) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::VisibilityModifierRequiresMemberContext>(
+          tokenAt(index).getLocation(), tokenLabel(tokenAt(index)));
+      break;
+    }
+  }
   if (result.boundary.start < result.boundary.nodeStart &&
       result.boundary.kind == ast::SyntaxKind::ExpressionStatement) {
     diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
@@ -704,8 +716,6 @@ ast::NodeId Parser::Impl::parseSourceElementOfKind(AstFactory& builder, size_t s
       return parseErrorDeclaration(builder, start, end);
     case ast::SyntaxKind::AliasDecl:
       return parseAliasDeclaration(builder, start, end);
-    case ast::SyntaxKind::MacroRulesDecl:
-      return parseMacroRulesDeclaration(builder, start, end);
     case ast::SyntaxKind::ExternBlock:
       return parseExternBlockDeclaration(builder, start, end);
     case ast::SyntaxKind::StandaloneImplDecl:

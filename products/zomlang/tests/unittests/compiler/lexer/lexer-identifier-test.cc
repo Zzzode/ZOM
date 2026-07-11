@@ -263,6 +263,15 @@ ZC_TEST("LexerIdentifierTest.KeywordThenIdentifier") {
   ZC_EXPECT(tokens[1].getValue() == "x"_zc);
 }
 
+ZC_TEST("LexerIdentifierTest.NonKeywordHeritageSpellingsAreIdentifiers") {
+  auto tokens = tokenize("extends implements"_zc);
+  ZC_EXPECT(tokens.size() == 3);
+  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
+  ZC_EXPECT(tokens[0].getValue() == "extends"_zc);
+  ZC_EXPECT(tokens[1].is(ast::SyntaxKind::Identifier));
+  ZC_EXPECT(tokens[1].getValue() == "implements"_zc);
+}
+
 }  // namespace lexer
 }  // namespace compiler
 }  // namespace zomlang

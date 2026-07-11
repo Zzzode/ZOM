@@ -67,7 +67,6 @@ enum class SyntaxKind {
   DeleteKeyword,       // delete
   DoKeyword,           // do
   ElseKeyword,         // else
-  ExtendsKeyword,      // extends
   ExportKeyword,       // export
   FinallyKeyword,      // finally
   ForKeyword,          // for
@@ -77,7 +76,6 @@ enum class SyntaxKind {
   GlobalKeyword,       // global
   IfKeyword,           // if
   ImmediateKeyword,    // immediate
-  ImplementsKeyword,   // implements
   ImportKeyword,       // import
   InKeyword,           // in
   InferKeyword,        // infer

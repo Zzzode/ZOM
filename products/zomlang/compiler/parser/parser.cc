@@ -113,16 +113,13 @@ ast::Tree Parser::Impl::buildTree() {
     const size_t end = elementResult.boundary.end;
     const size_t elementStart = elementResult.boundary.head;
     const ast::SyntaxKind first = kindAt(elementStart);
-    if (outerAttributePrefixContainsZomCfg(index, end) &&
-        !isTopLevelCfgAttributeTarget(elementResult.boundary.kind)) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-          tokenAt(elementStart).getLocation(), "cfg-gated declaration or block"_zc);
-    }
-
-    if (first == ast::SyntaxKind::ModuleKeyword && firstSourceElement && !moduleNode) {
+    const bool isModuleDeclaration = first == ast::SyntaxKind::ModuleKeyword ||
+                                     (first == ast::SyntaxKind::ExportKeyword &&
+                                      kindAt(elementStart + 1) == ast::SyntaxKind::ModuleKeyword);
+    if (isModuleDeclaration && firstSourceElement && !moduleNode) {
       moduleNode = elementResult.node;
     } else {
-      if (first == ast::SyntaxKind::ModuleKeyword) {
+      if (isModuleDeclaration) {
         diagnosticEngine.diagnose<diagnostics::DiagID::ModuleDeclarationMustBeFirst>(
             tokenAt(elementStart).getLocation());
       }

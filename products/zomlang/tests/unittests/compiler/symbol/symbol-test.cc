@@ -169,6 +169,7 @@ ZC_TEST("Symbol_VisibilityMethods") {
   Symbol privateSymbol(id, "privateSymbol"_zc, SymbolFlags::Private, location);
   Symbol protectedSymbol(id, "protectedSymbol"_zc, SymbolFlags::Protected, location);
   Symbol internalSymbol(id, "internalSymbol"_zc, SymbolFlags::Internal, location);
+  Symbol unclassifiedSymbol(id, "unclassifiedSymbol"_zc, SymbolFlags::None, location);
 
   // Test visibility methods
   ZC_EXPECT(publicSymbol.isPublic());
@@ -190,6 +191,11 @@ ZC_TEST("Symbol_VisibilityMethods") {
   ZC_EXPECT(!internalSymbol.isPrivate());
   ZC_EXPECT(!internalSymbol.isProtected());
   ZC_EXPECT(internalSymbol.isInternal());
+
+  ZC_EXPECT(!unclassifiedSymbol.isPublic());
+  ZC_EXPECT(!unclassifiedSymbol.isPrivate());
+  ZC_EXPECT(!unclassifiedSymbol.isProtected());
+  ZC_EXPECT(!unclassifiedSymbol.isInternal());
 }
 
 ZC_TEST("Symbol_StorageAndLifetimeAttributes") {

@@ -446,6 +446,11 @@ bool UnificationEngine::unifyExistentials(const ExistentialType& a, const Existe
   for (size_t i = 0; i < a.getMarkerCount(); ++i) {
     if (a.getMarkerName(i) != b.getMarkerName(i)) { return false; }
   }
+  if (a.getAssocBindingCount() != b.getAssocBindingCount()) { return false; }
+  for (size_t i = 0; i < a.getAssocBindingCount(); ++i) {
+    if (a.getAssocBindingName(i) != b.getAssocBindingName(i)) { return false; }
+    if (!unify(a.getAssocBindingType(i), b.getAssocBindingType(i))) { return false; }
+  }
 
   const Type& ifaceA = a.getInterfaceType();
   const Type& ifaceB = b.getInterfaceType();

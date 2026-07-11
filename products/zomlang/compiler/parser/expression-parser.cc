@@ -181,30 +181,6 @@ ast::NodeId Parser::Impl::parseNewExpression(AstFactory& builder, size_t start, 
   return builder.makeNewExpression(rangeFor(start, end), callee, typeArgs, args);
 }
 
-ast::NodeId Parser::Impl::parseMacroInvocationExpression(AstFactory& builder, size_t start,
-                                                         size_t end) const {
-  if (!isMacroInvocationStart(start, end)) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(diagnosticLoc(start));
-    return ast::NodeId();
-  }
-
-  const size_t groupOpen = start + 2;
-  const size_t groupClose = findMatchingMacroGroup(groupOpen, end);
-  if (groupClose >= end) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-        diagnosticLoc(groupOpen), macroGroupCloseLabel(kindAt(groupOpen)));
-    return ast::NodeId();
-  }
-
-  const ast::NodeId name =
-      builder.makeIdentExpr(rangeFor(start, start + 1), internIdent(builder, start));
-
-  zc::Vector<ast::NodeId> tt;
-  return builder.makeMacroInvocationExpr(rangeFor(start, groupClose + 1), name,
-                                         macroBraceCode(kindAt(groupOpen)),
-                                         builder.makeList(tt.asPtr()));
-}
-
 ast::NodeId Parser::Impl::parseUnsafeBlockExpression(AstFactory& builder, size_t start,
                                                      size_t end) const {
   if (start + 1 >= end || kindAt(start + 1) != ast::SyntaxKind::LeftBrace) {
@@ -289,12 +265,8 @@ ast::NodeId Parser::Impl::parseCastExpression(AstFactory& builder, size_t start,
                                               size_t end) const {
   size_t typeStart = asIndex + 1;
   uint8_t mode = castModeCode(ast::SyntaxKind::AsKeyword);
-  if (typeStart < end && kindAt(typeStart) == ast::SyntaxKind::Exclamation) {
-    diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-        tokenAt(typeStart).getLocation());
-    return ast::NodeId();
-  }
-  if (typeStart < end && kindAt(typeStart) == ast::SyntaxKind::Question) {
+  if (typeStart < end && (kindAt(typeStart) == ast::SyntaxKind::Question ||
+                          kindAt(typeStart) == ast::SyntaxKind::Exclamation)) {
     mode = castModeCode(kindAt(typeStart));
     ++typeStart;
   }
@@ -801,12 +773,8 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseBinaryExpressionAt(
     if (kind == ast::SyntaxKind::AsKeyword) {
       size_t typeStart = cursor + 1;
       uint8_t mode = castModeCode(ast::SyntaxKind::AsKeyword);
-      if (typeStart < limit && kindAt(typeStart) == ast::SyntaxKind::Exclamation) {
-        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
-            tokenAt(typeStart).getLocation());
-        return ExpressionParseResult();
-      }
-      if (typeStart < limit && kindAt(typeStart) == ast::SyntaxKind::Question) {
+      if (typeStart < limit && (kindAt(typeStart) == ast::SyntaxKind::Question ||
+                                kindAt(typeStart) == ast::SyntaxKind::Exclamation)) {
         mode = castModeCode(kindAt(typeStart));
         ++typeStart;
       }
@@ -873,13 +841,19 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseUnaryExpressionAt(AstFact
   }
 
   if (isPrefixUnaryOperator(kindAt(start))) {
-    ExpressionParseResult operand = parseUnaryExpressionAt(builder, start + 1, limit);
+    size_t operandStart = start + 1;
+    ast::UnaryOperatorKind op = unaryOpCode(kindAt(start));
+    if (kindAt(start) == ast::SyntaxKind::Ampersand && operandStart < limit &&
+        kindAt(operandStart) == ast::SyntaxKind::MutKeyword) {
+      op = ast::UnaryOperatorKind::RefMut;
+      ++operandStart;
+    }
+    ExpressionParseResult operand = parseUnaryExpressionAt(builder, operandStart, limit);
     if (!operand.node) {
-      diagnoseExpressionExpected(start + 1);
+      diagnoseExpressionExpected(operandStart);
       return ExpressionParseResult();
     }
-    return {builder.makeUnaryExpression(rangeFor(start, operand.next), unaryOpCode(kindAt(start)),
-                                        operand.node),
+    return {builder.makeUnaryExpression(rangeFor(start, operand.next), op, operand.node),
             operand.next};
   }
 
@@ -1127,16 +1101,6 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
     return {parseFunctionExpression(builder, start, limit), limit};
   }
 
-  if (isMacroInvocationStart(start, limit)) {
-    const size_t macroEnd = findMacroInvocationEnd(start, limit);
-    if (macroEnd >= limit && findMatchingMacroGroup(start + 2, limit) >= limit) {
-      diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(
-          diagnosticLoc(start + 2), macroGroupCloseLabel(kindAt(start + 2)));
-      return ExpressionParseResult();
-    }
-    return {parseMacroInvocationExpression(builder, start, macroEnd), macroEnd};
-  }
-
   if (kindAt(start) == ast::SyntaxKind::NewKeyword) {
     size_t calleeEnd = start + 1;
     size_t typeArgsEnd = start + 1;
@@ -1232,11 +1196,6 @@ ast::NodeId Parser::Impl::parseExpressionRange(AstFactory& builder, size_t start
   RecoveryFrameScope recoveryFrame(*this, RecoveryContext::Expression, start);
   while (start < end && kindAt(end - 1) == ast::SyntaxKind::Semicolon) { --end; }
   if (start >= end) { return ast::NodeId(); }
-
-  if (isMacroInvocationStart(start, end)) {
-    const size_t macroEnd = findMacroInvocationEnd(start, end);
-    if (macroEnd == end) { return parseMacroInvocationExpression(builder, start, end); }
-  }
 
   TokenCursor cursor = tokenCursorAt(start);
   ExpressionParseResult parsed = parseExpression(builder, cursor, end);

@@ -16,11 +16,18 @@
 
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/symbol/symbol-id.h"
 
 namespace zomlang {
 namespace compiler {
 namespace ast {
+
+ZC_TEST("TreeBuilder.PayloadCapacityMatchesSchemaLayout") {
+  ZC_EXPECT(kNodePayloadWordCount == 8);
+  ZC_EXPECT(sizeof(NodePayload) == kNodePayloadByteCount);
+  ZC_EXPECT(kMethodDeclPayloadWordCount == kNodePayloadWordCount);
+}
 
 ZC_TEST("TreeBuilder.AllocatesStableOneBasedNodeIds") {
   TreeBuilder builder;

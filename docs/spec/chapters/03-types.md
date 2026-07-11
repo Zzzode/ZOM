@@ -93,17 +93,17 @@ fun doSomething() -> unit {
 }
 ```
 
-### Never Type (`!`)
+### Never Type (`never`)
 
-The **never type** (written `!`, pronounced "never" or "bottom") is the type with no values at all. A function whose declared return type is `!` is guaranteed to never return normally.
+The **never type** (written `never`, pronounced "never" or "bottom") is the type with no values at all. A function whose declared return type is `never` is guaranteed to never return normally.
 
-**Formation.** The never type is written as a standalone `!` token in any type position. It has no parameters, no qualifiers, and no user-extensible surface.
+**Formation.** The never type is written as the predefined type `never` in type position. It has no parameters, no qualifiers, and no user-extensible surface. The `!` token is not a ZOM v1 type spelling.
 
-**Subtyping.** `!` is a **subtype of every other type** (the unique bottom element of the ZOM type lattice). Whenever a value of type `T` is expected, a value of type `!` is accepted as `T` without further conversion.
+**Subtyping.** `never` is a **subtype of every other type** (the unique bottom element of the ZOM type lattice). Whenever a value of type `T` is expected, a value of type `never` is accepted as `T` without further conversion.
 
 **Expressions that produce `!`:**
 
-- `panic!(...)` macro invocation and equivalent builtins.
+- the runtime panic primitive and equivalent compiler intrinsics.
 - `return expr;` when evaluated in expression position.
 - `break` and `continue` (loop-exit constructs).
 - `exit(code)`, `abort()`, `unreachable!()`, `todo!()` builtins.
@@ -129,11 +129,13 @@ fun value_or_panic(opt: Option<i32>) -> i32 {
 
 These rules are applied by the canonicalizer before subtype or bound checks.
 
-**Generic bound satisfaction.** `!` satisfies all bounds trivially and vacuously. Since there can never be a value of type `!`, any property claimed about such a value is classically true.
+**Generic bound satisfaction.** `never` satisfies all bounds trivially and vacuously. Since there can never be a value of type `never`, any property claimed about such a value is classically true.
 
 ### Top Type (`any`)
 
-The `any` type is the **top type** (supertype of every other type). A value of type `any` can hold any value. Downcasting from `any` to a concrete type requires a runtime check via `as?` or `as!`.
+The `any` type is the **top type** (supertype of every other type). A value of
+type `any` can hold any value. Downcasting from `any` to a concrete type requires
+a checked cast via `as?` or `as!`.
 
 ```zom
 let anything: any = 42;
@@ -174,7 +176,7 @@ ZOM provides the following type forms. Each is a distinct constructor in the typ
 
 ### Primitive Types
 
-The primitive types are the predefined scalar types listed above: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`, `f32`, `f64`, `bool`, `char`, `str`, `unit`, `never` (`!`), `any`, and `null`.
+The primitive types are the predefined scalar types listed above: `i8`, `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `isize`, `usize`, `f32`, `f64`, `bool`, `char`, `str`, `unit`, `never`, `any`, and `null`.
 
 ### Function Types
 
@@ -201,7 +203,16 @@ type Mapper<T, U> = (T -> U, T[]) -> U[];
 type SafeParser = (str) -> i32 raises ParseError;
 ```
 
-A function type `(P1, P2, ..., Pn) -> R raises E` describes a callable that takes parameters of types `P1` through `Pn` and returns a value of type `R`. The `raises E` clause indicates the function may also produce an error of type `E`; it is syntactic sugar for returning `R | E`. See [Chapter 11](11-error-handling.md) for the full error handling model.
+A function type `(P1, P2, ..., Pn) -> R raises E` describes a callable that
+takes parameters of types `P1` through `Pn`, has success type `R`, and has a
+distinct raises effect `E`. Calling it produces an error-union expression whose
+canonical value type is `R | E`; the checker also retains the success/residual
+roles required by `?!` and `!!`. The raises effect remains part of function-type
+identity, so this function type is not identical to `(P1, ..., Pn) -> (R | E)`.
+Function-type parameter clauses contain types only. Parameter names belong to
+function declarations and expressions, so `(value: T) -> U` is not a function
+type.
+See [Chapter 11](11-error-handling.md) for the full error handling model.
 
 ### Tuple Types
 
@@ -212,16 +223,14 @@ Tuple types represent fixed-size, ordered collections with potentially different
 let point: (f64, f64) = (3.0, 4.0);
 let person: (str, i32, bool) = ("Alice", 30, true);
 
-// Named tuple elements
-let namedPoint: (x: f64, y: f64) = (x: 3.0, y: 4.0);
-let coordinate = namedPoint.x; // Access by name
-
 // Destructuring
 let (name, age, isActive) = person;
 let (x, y) = point;
 ```
 
-Two tuple types are equal when they have the same number of elements and corresponding element types are equal (order matters). Named tuple elements do not affect type identity — `(x: f64, y: f64)` and `(a: f64, b: f64)` are the same type as `(f64, f64)`.
+Tuple elements are positional and have no labels. Two tuple types are equal
+when they have the same number of elements and corresponding element types are
+equal in order. Named fields use object, struct, or class types.
 
 ### Object Types
 
@@ -329,9 +338,14 @@ fun process(input: str | i32 | bool) {
 }
 ```
 
-Union types are **commutative** and **associative** up to type identity. The canonical form of a union is sorted, deduplicated, and with `never` removed. `T | !` normalizes to `T`.
+Union types are **commutative** and **associative** up to type identity. The canonical form of a union is sorted, deduplicated, and with `never` removed. `T | never` normalizes to `T`.
 
-The union type `T | E` is the foundation of ZOM's error handling model: a function returning `T raises E` is equivalent to returning `T | E`. See [Chapter 11](11-error-handling.md).
+The canonical value representation of a raising call with success type `T` and
+raises type `E` is the union `T | E`. The function type still retains `T` and
+`E` as distinct success and effect components, and the checker records their
+roles on the call expression. An ordinary union expression has no error-union
+role merely because it contains two alternatives. See
+[Chapter 11](11-error-handling.md).
 
 ### Intersection Types
 
@@ -468,8 +482,10 @@ Existential types provide first-class runtime-dispatched values whose concrete t
 ZOM follows an **explicit existential erasure model** (Swift 6 `any` semantics). An `interface I { ... }` declaration introduces only a *bound* — a predicate on type variables. It does **not** by itself introduce a type that can appear in value position. To treat "any value whose type implements I" as a first-class type, the programmer writes `dyn I`.
 
 ```ebnf
-ExistentialType      ::= 'dyn' InterfaceType ( '+' MarkerPath )*
+ExistentialType      ::= 'dyn' InterfaceType AssocBindingArgs? ( '+' MarkerPath )*
 InterfaceType        ::= InterfaceName ( '<' GenericArgs '>' )?
+AssocBindingArgs     ::= '<' AssocBinding ( ',' AssocBinding )* ','? '>'
+AssocBinding         ::= Identifier '=' TypeExpression
 MarkerPath           ::= AttributePath | Identifier
 ```
 
@@ -480,12 +496,14 @@ let c: dyn Read + Sendable + Shared = open_file();
 ```
 
 The parser represents the first item after `dyn` as the object-safe interface
-head in `DynTypeIfaceList` and every `+ MarkerPath` suffix as marker bounds in
+head in `DynTypeIfaceList`, every `Item = T` associated type binding in
+`DynTypeAssocBindingList`, and every `+ MarkerPath` suffix as marker bounds in
 `DynTypeMarkerList`. Semantic analysis resolves the interface head as the
-dispatch contract and resolves marker paths as marker-only bounds. Keeping the
-two lists distinct prevents object-safety checks from mistaking marker bounds
-for callable interface requirements while preserving the compact source form
-`dyn I + Sendable + Shared`.
+dispatch contract, treats associated type bindings as the dyn head's vtable
+shape constraints, and resolves marker paths as marker-only bounds. Keeping
+these lists distinct prevents object-safety checks from mistaking marker bounds
+or associated type bindings for callable interface requirements while preserving
+the compact source forms `dyn I<Item = T>` and `dyn I + Sendable + Shared`.
 
 **Three normative rules:**
 
@@ -692,7 +710,7 @@ takes_u64(x);       // unifies ?X with u64
 | Identifier | Look up the symbol's type. If the symbol is a generic parameter, return the corresponding type variable. |
 | Binary `op` | Infer both operand types, unify them (for arithmetic/comparison), check `op` validity. Arithmetic result = operand type. Comparison result = `bool`. |
 | Unary `op` | Infer operand type, check `op` validity. `-` result = operand type. `!` result = `bool`. `*` result = dereferenced type. `&` result = reference type. |
-| Call `callee(args)` | Infer callee type (must be function type). If generic, infer type args from arg types. Emit a directional coercion constraint from each argument type to the parameter type. Result = function return type. |
+| Call `callee(args)` | Infer callee type (must be function type). If generic, infer type args from arg types. Emit a directional coercion constraint from each argument type to the parameter type. A non-raising call has the declared success type. A call with success type `T` and raises type `E` has canonical expression type `T \| E` plus checked success/residual role metadata. |
 | Member `obj.member` | Infer `obj` type. Look up `member` in the type's fields/methods. Result = field/method type. |
 | Index `arr[idx]` | Infer `arr` type (must be `[T]` or `[T; N]`). Infer `idx` type (must be `usize` or `isize`). Result = `T`. |
 | Conditional `cond ? then : else` | `cond` must unify with `bool`. Infer `then` and `else` types, choose a join type, and emit directional coercions from each arm to the join. Result = join type. |
@@ -708,32 +726,35 @@ takes_u64(x);       // unifies ?X with u64
 
 ### Operator Desugaring
 
-Binary and unary operators desugar to interface method calls. The compiler provides built-in impls for all numeric types.
+The operators in this table select interface methods for user-defined types.
+Built-in numeric and container operations use compiler primitive targets with
+the same checked result contracts.
 
 | Operator | Interface | Method | Notes |
 |---|---|---|---|
-| `a + b` | `Add<Rhs>` | `add(a, b)` | |
-| `a - b` | `Sub<Rhs>` | `sub(a, b)` | |
-| `a * b` | `Mul<Rhs>` | `mul(a, b)` | |
-| `a / b` | `Div<Rhs>` | `div(a, b)` | |
-| `a % b` | `Rem<Rhs>` | `rem(a, b)` | |
-| `a == b` | `Eq` | `eq(a, b)` | Returns `bool` |
-| `a != b` | `Eq` | `eq(a, b)` | Lowering negates the `eq` result |
-| `a < b` | `Ord` | `cmp(a, b)` | Interprets negative as less-than |
-| `a <= b` | `Ord` | `cmp(a, b)` | Interprets negative or zero as true |
-| `a > b` | `Ord` | `cmp(a, b)` | Interprets positive as true |
-| `a >= b` | `Ord` | `cmp(a, b)` | Interprets positive or zero as true |
-| `-a` | `Neg` | `neg(a)` | Unary |
-| `!a` | `Not` | `not(a)` | Unary |
-| `a[b]` | `Index<Idx>` | `index(a, b) -> Output` | Impl method signature is `index(idx: Idx) -> Output` |
-| `a[b] = c` | `IndexMut<Idx>` | `index_mut(a, b, c)` | |
-| `a in b` | `Contains` | `contains(b, a)` | Note argument order reversal |
+| `a + b` | `Add<Rhs>` | `add(rhs: Rhs) -> Output` | Receiver is `a` |
+| `a - b` | `Sub<Rhs>` | `sub(rhs: Rhs) -> Output` | Receiver is `a` |
+| `a * b` | `Mul<Rhs>` | `mul(rhs: Rhs) -> Output` | Receiver is `a` |
+| `a / b` | `Div<Rhs>` | `div(rhs: Rhs) -> Output` | Receiver is `a` |
+| `a % b` | `Rem<Rhs>` | `rem(rhs: Rhs) -> Output` | Receiver is `a` |
+| `a ** b` | `Pow<Rhs>` | `pow(rhs: Rhs) -> Output` | Receiver is `a` |
+| `a == b`, `a != b` | `Eq<Rhs>` | `eq(rhs: Rhs) -> bool` | `!=` negates the result |
+| `a < b`, `a <= b`, `a > b`, `a >= b` | `Ord<Rhs>` | `cmp(rhs: Rhs) -> i32` | Lowering tests the ordering relation |
+| `-a` | `Neg` | `neg() -> Output` | Receiver is `a` |
+| `!a` | `Not` | `not() -> bool` | Receiver is `a` |
+| rvalue `a[b]` | `Index<Idx>` | `index(idx: Idx) -> Output` | Receiver is `a` |
+| mutable place for `a[b] = c` or `a[b] op= c` | `IndexMut<Idx>` | `index_mut(idx: Idx) -> &mut Output` | Acquires one mutable place |
+| `a in b` | `Contains` | `contains(value: Value) -> bool` | Receiver is `b` |
 
-For user-defined types, the type checker looks up the interface impl. For built-in numeric types, the compiler provides built-in impls.
+Unary plus, bitwise not, reference and dereference, pre/post update, shifts,
+bitwise operations, short-circuit logical operations, strict equality, and null
+coalescing are primitive-only operations. Plain assignment has no operation
+dispatch; an indexed assignment may have the independent `IndexMut` access
+shown above.
 
 ## Type Casting and Conversion
 
-ZOM provides three cast operators with distinct safety guarantees.
+ZOM provides three cast operators with distinct failure behavior.
 
 ```ebnf
 CastExpression ::= Expression 'as' ('?' | '!')? TypeExpr
@@ -743,7 +764,7 @@ CastExpression ::= Expression 'as' ('?' | '!')? TypeExpr
 |----------|------|-----------|-----------------|
 | `x as T` | Guaranteed cast | Compile-time-proven safe conversion | Always succeeds |
 | `x as? T` | Optional cast | Runtime-checked conversion | Returns `T?`, `null` on failure |
-| `x as! T` | Forced cast | Runtime-checked conversion | Panics on failure |
+| `x as! T` | Forced cast | Runtime-checked conversion | Returns `T`, panics on failure |
 
 ### `as` — Compile-Time Guaranteed
 
@@ -776,7 +797,7 @@ These conversions require a runtime check and return `null` on failure:
 | `*mut T` | `&mut T` | Requires `unsafe { }`. Returns `null` if null or misaligned. |
 
 ```zom
-let big: i64 = 1000;
+let big: i32 = 1000;
 let small: i8? = big as? i8;
 
 let any_val: any = get_any();
@@ -785,14 +806,15 @@ let str_val: str? = any_val as? str;
 
 ### `as!` — Forced Runtime Check
 
-Same conversions as `as?`, but panics with a descriptive message instead of returning `null`:
+`as!` accepts the same runtime-checked conversions as `as?`, but returns `T`
+and enters the language panic boundary when the check fails.
 
 ```zom
-let big: i64 = 1000;
-let small: i8 = big as! i8;  // panics if overflow
+let big: i32 = 1000;
+let small: i8 = big as! i8;
 
 let any_val: any = get_any();
-let str_val: str = any_val as! str;  // panics if not actually a str
+let str_val: str = any_val as! str;
 ```
 
 ### Cast Validity Summary

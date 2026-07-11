@@ -44,7 +44,7 @@ ZC_TEST("DiagnosticTest.BasicDiagnosticReporting") {
   diagnosticEngine->addConsumer(zc::mv(consumer));
 
   auto bufferId = sourceManager->addMemBufferCopy(zc::StringPtr("let x = ;").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
+  auto loc = sourceManager->getLocForOffset(bufferId, 0);
 
   diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   ZC_EXPECT(diagnosticEngine->hasErrors());
@@ -119,6 +119,54 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::RecursiveTypeAliasCycle) == 4052);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::UnsupportedTypeExpression) == 4053);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::OrphanImpl) == 4054);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DynDuplicateAssociatedTypeBinding) == 4055);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::UseAfterMove) == 4056);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ValueMovedHere) == 4057);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::MutableBorrowConflicts) == 4058);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::SharedBorrowConflicts) == 4059);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BorrowOriginHere) == 4060);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BorrowDoesNotLiveLongEnough) == 4061);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BorrowReferentHere) == 4062);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::LinearNotConsumed) == 4063);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::LinearInitializedHere) == 4064);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::LinearConsumedTwice) == 4065);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::LinearFirstConsumedHere) == 4066);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ScopedTaskBorrowEscapes) == 4067);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ScopedTaskReferentHere) == 4068);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::RawPointerBoundaryRequiresUnsafe) == 4069);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::MoveOutOfBorrow) == 4070);
+}
+
+ZC_TEST("DiagnosticTest.IrDiagnosticIdsAreStable") {
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrUnsupportedSourceShape) == 6001);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrUnsupportedExpression) == 6002);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrUnknownTargetLayout) == 6003);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrCrossSourceCallUnsupported) == 6004);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrSingleSourceRequired) == 6005);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::PanicUnwindUnsupported) == 6006);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BinaryEmissionUnavailable) == 6007);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrOutputCreationFailed) == 6008);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrLoweringInvariantViolation) == 9901);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrCheckedInputMissing) == 9902);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrDumpInvariantViolation) == 9903);
+  ZC_EXPECT(DiagnosticTraits<DiagID::IrLoweringInvariantViolation>::argCount == 3);
+  ZC_EXPECT(DiagnosticTraits<DiagID::IrDumpInvariantViolation>::argCount == 7);
+}
+
+ZC_TEST("DiagnosticTest.IdentityDiagnosticIdsAreStable") {
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityInvalidHandle) == 9910);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityForeignContext) == 9911);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityForeignRegistry) == 9912);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentitySlotOutOfRange) == 9913);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityAncestorMismatch) == 9914);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityInvalidSourceRange) == 9915);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityDuplicateCanonicalKey) == 9916);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityInvalidClosedValue) == 9917);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityPostFreezeMutation) == 9918);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityBrandExhausted) == 9919);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityDuplicateSingletonStore) == 9920);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityNonCanonicalEncoding) == 9921);
+  ZC_EXPECT(DiagnosticTraits<DiagID::IdentityNonCanonicalEncoding>::argCount == 1);
 }
 
 ZC_TEST("DiagnosticTest.MultipleDiagnostics") {
@@ -129,7 +177,7 @@ ZC_TEST("DiagnosticTest.MultipleDiagnostics") {
 
   auto bufferId =
       sourceManager->addMemBufferCopy(zc::StringPtr("invalid code").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
+  auto loc = sourceManager->getLocForOffset(bufferId, 0);
 
   diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   diagnosticEngine->diagnose<DiagID::UnterminatedString>(loc);
@@ -143,8 +191,8 @@ ZC_TEST("DiagnosticTest.DeduplicatesSameIdAtSameLocation") {
   auto consumerPtr = consumer.get();
   diagnosticEngine->addConsumer(zc::mv(consumer));
 
-  sourceManager->addMemBufferCopy(zc::StringPtr("x").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
+  auto bufferId = sourceManager->addMemBufferCopy(zc::StringPtr("x").asBytes(), "test.zom");
+  auto loc = sourceManager->getLocForOffset(bufferId, 0);
 
   diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
@@ -160,12 +208,12 @@ ZC_TEST("DiagnosticTest.DefaultErrorBudgetStopsAfterOneHundredErrors") {
   auto consumerPtr = consumer.get();
   diagnosticEngine->addConsumer(zc::mv(consumer));
 
-  sourceManager->addMemBufferCopy(
+  auto bufferId = sourceManager->addMemBufferCopy(
       zc::StringPtr("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                     "xxxxxxxxxxxxxxxxxxxxxxxxxx")
           .asBytes(),
       "test.zom");
-  auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
+  auto loc = sourceManager->getLocForOffset(bufferId, 0);
 
   for (size_t i = 0; i < 105; ++i) {
     diagnosticEngine->diagnose<DiagID::InvalidCharacter>(
@@ -184,7 +232,7 @@ ZC_TEST("DiagnosticTest.DiagnosticConsumer") {
 
   auto bufferId =
       sourceManager->addMemBufferCopy(zc::StringPtr("code with error").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
+  auto loc = sourceManager->getLocForOffset(bufferId, 0);
 
   diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   ZC_EXPECT(diagnosticEngine->hasErrors());
@@ -198,7 +246,7 @@ ZC_TEST("DiagnosticTest.SourceLocationReporting") {
 
   auto bufferId =
       sourceManager->addMemBufferCopy(zc::StringPtr("line1\nline2\nline3").asBytes(), "test.zom");
-  auto loc = sourceManager->getLocFromExternalSource("test.zom", 1, 1);
+  auto loc = sourceManager->getLocForOffset(bufferId, 0);
 
   diagnosticEngine->diagnose<DiagID::InvalidCharacter>(loc);
   ZC_EXPECT(diagnosticEngine->hasErrors());

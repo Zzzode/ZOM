@@ -75,10 +75,6 @@ constexpr bool isFFIKind(SyntaxKind kind) noexcept {
   return kindInRange(kind, 0x010, 0x01f);
 }
 
-constexpr bool isMacrosKind(SyntaxKind kind) noexcept {
-  return kindInRange(kind, 0x020, 0x02f);
-}
-
 constexpr bool isEnumVariantKind(SyntaxKind kind) noexcept {
   return kindInRange(kind, 0x030, 0x03f);
 }
@@ -116,43 +112,13 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::AttributeList: return true;
     case SyntaxKind::AttributePath: return true;
     case SyntaxKind::Attribute: return true;
-    case SyntaxKind::ZomCfgAttribute: return true;
-    case SyntaxKind::CfgAtom: return true;
-    case SyntaxKind::CfgAll: return true;
-    case SyntaxKind::CfgAny: return true;
-    case SyntaxKind::CfgNot: return true;
-    case SyntaxKind::CfgOp: return true;
     case SyntaxKind::ExternDecl: return true;
     case SyntaxKind::UnsafeBlockExpr: return true;
     case SyntaxKind::ExternBlock: return true;
-    case SyntaxKind::FFIParameterDecl: return true;
     case SyntaxKind::ExternVarDecl: return true;
-    case SyntaxKind::ExternStaticDecl: return true;
-    case SyntaxKind::FFIConstDecl: return true;
-    case SyntaxKind::FFILinkSpec: return true;
-    case SyntaxKind::MacroInvocationExpr: return true;
-    case SyntaxKind::MacroRulesDecl: return true;
-    case SyntaxKind::MacroRule: return true;
-    case SyntaxKind::MacroPattern: return true;
-    case SyntaxKind::MacroFragment: return true;
-    case SyntaxKind::MacroTokenTree: return true;
-    case SyntaxKind::DeriveList: return true;
-    case SyntaxKind::DeriveItem: return true;
-    case SyntaxKind::MacroQuasiQuote: return true;
-    case SyntaxKind::MacroUnquote: return true;
-    case SyntaxKind::MacroDelimitedGroup: return true;
-    case SyntaxKind::ProcMacroDecl: return true;
     case SyntaxKind::UnitVariant: return true;
     case SyntaxKind::TupleVariant: return true;
-    case SyntaxKind::StructVariant: return true;
     case SyntaxKind::EnumDeclaration: return true;
-    case SyntaxKind::AssociatedConstVariant: return true;
-    case SyntaxKind::EnumMemberAlias: return true;
-    case SyntaxKind::EnumVariantAttr: return true;
-    case SyntaxKind::DiscriminantRef: return true;
-    case SyntaxKind::EnumExtendsClause: return true;
-    case SyntaxKind::RawVariant: return true;
-    case SyntaxKind::EnumReprAttr: return true;
     case SyntaxKind::EnumVariantList: return true;
     case SyntaxKind::RestPattern: return true;
     case SyntaxKind::LiteralPattern: return true;
@@ -166,7 +132,6 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::ArrayPattern: return true;
     case SyntaxKind::ExpressionPattern: return true;
     case SyntaxKind::EnumPattern: return true;
-    case SyntaxKind::PositionalStructCtorExpr: return true;
     case SyntaxKind::TupleLiteral1: return true;
     case SyntaxKind::ErrorDefaultExpr: return true;
     case SyntaxKind::NullCoalesceExpr: return true;
@@ -226,6 +191,8 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::AssociatedTypeProjectionExpr: return true;
     case SyntaxKind::ReferenceTypeExpr: return true;
     case SyntaxKind::RawPointerTypeExpr: return true;
+    case SyntaxKind::DynTypeAssocBinding: return true;
+    case SyntaxKind::DynTypeAssocBindingList: return true;
     case SyntaxKind::SuspendStatement: return true;
     case SyntaxKind::UntilClause: return true;
     case SyntaxKind::BlockStmt: return true;
@@ -251,8 +218,6 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::StandaloneImplDecl: return true;
     case SyntaxKind::MarkerImpl: return true;
     case SyntaxKind::WhereClause: return true;
-    case SyntaxKind::MarkerDeclaration: return true;
-    case SyntaxKind::PositionalStructDecl: return true;
     case SyntaxKind::FunctionDecl: return true;
     case SyntaxKind::ClassDecl: return true;
     case SyntaxKind::StructDecl: return true;
@@ -268,6 +233,9 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::FieldDecl: return true;
     case SyntaxKind::AssociatedTypeDecl: return true;
     case SyntaxKind::GenericTypeParam: return true;
+    case SyntaxKind::ConstructorDecl: return true;
+    case SyntaxKind::DestructorDecl: return true;
+    case SyntaxKind::ClassConstDecl: return true;
     case SyntaxKind::SourceFile: return true;
     case SyntaxKind::ModulePath: return true;
     case SyntaxKind::ImportDeclaration: return true;
@@ -284,43 +252,13 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::AttributeList: return "AttributeList";
     case SyntaxKind::AttributePath: return "AttributePath";
     case SyntaxKind::Attribute: return "Attribute";
-    case SyntaxKind::ZomCfgAttribute: return "ZomCfgAttribute";
-    case SyntaxKind::CfgAtom: return "CfgAtom";
-    case SyntaxKind::CfgAll: return "CfgAll";
-    case SyntaxKind::CfgAny: return "CfgAny";
-    case SyntaxKind::CfgNot: return "CfgNot";
-    case SyntaxKind::CfgOp: return "CfgOp";
     case SyntaxKind::ExternDecl: return "ExternDecl";
     case SyntaxKind::UnsafeBlockExpr: return "UnsafeBlockExpr";
     case SyntaxKind::ExternBlock: return "ExternBlock";
-    case SyntaxKind::FFIParameterDecl: return "FFIParameterDecl";
     case SyntaxKind::ExternVarDecl: return "ExternVarDecl";
-    case SyntaxKind::ExternStaticDecl: return "ExternStaticDecl";
-    case SyntaxKind::FFIConstDecl: return "FFIConstDecl";
-    case SyntaxKind::FFILinkSpec: return "FFILinkSpec";
-    case SyntaxKind::MacroInvocationExpr: return "MacroInvocationExpr";
-    case SyntaxKind::MacroRulesDecl: return "MacroRulesDecl";
-    case SyntaxKind::MacroRule: return "MacroRule";
-    case SyntaxKind::MacroPattern: return "MacroPattern";
-    case SyntaxKind::MacroFragment: return "MacroFragment";
-    case SyntaxKind::MacroTokenTree: return "MacroTokenTree";
-    case SyntaxKind::DeriveList: return "DeriveList";
-    case SyntaxKind::DeriveItem: return "DeriveItem";
-    case SyntaxKind::MacroQuasiQuote: return "MacroQuasiQuote";
-    case SyntaxKind::MacroUnquote: return "MacroUnquote";
-    case SyntaxKind::MacroDelimitedGroup: return "MacroDelimitedGroup";
-    case SyntaxKind::ProcMacroDecl: return "ProcMacroDecl";
     case SyntaxKind::UnitVariant: return "UnitVariant";
     case SyntaxKind::TupleVariant: return "TupleVariant";
-    case SyntaxKind::StructVariant: return "StructVariant";
     case SyntaxKind::EnumDeclaration: return "EnumDeclaration";
-    case SyntaxKind::AssociatedConstVariant: return "AssociatedConstVariant";
-    case SyntaxKind::EnumMemberAlias: return "EnumMemberAlias";
-    case SyntaxKind::EnumVariantAttr: return "EnumVariantAttr";
-    case SyntaxKind::DiscriminantRef: return "DiscriminantRef";
-    case SyntaxKind::EnumExtendsClause: return "EnumExtendsClause";
-    case SyntaxKind::RawVariant: return "RawVariant";
-    case SyntaxKind::EnumReprAttr: return "EnumReprAttr";
     case SyntaxKind::EnumVariantList: return "EnumVariantList";
     case SyntaxKind::RestPattern: return "RestPattern";
     case SyntaxKind::LiteralPattern: return "LiteralPattern";
@@ -334,7 +272,6 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::ArrayPattern: return "ArrayPattern";
     case SyntaxKind::ExpressionPattern: return "ExpressionPattern";
     case SyntaxKind::EnumPattern: return "EnumPattern";
-    case SyntaxKind::PositionalStructCtorExpr: return "PositionalStructCtorExpr";
     case SyntaxKind::TupleLiteral1: return "TupleLiteral1";
     case SyntaxKind::ErrorDefaultExpr: return "ErrorDefaultExpr";
     case SyntaxKind::NullCoalesceExpr: return "NullCoalesceExpr";
@@ -394,6 +331,8 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::AssociatedTypeProjectionExpr: return "AssociatedTypeProjectionExpr";
     case SyntaxKind::ReferenceTypeExpr: return "ReferenceTypeExpr";
     case SyntaxKind::RawPointerTypeExpr: return "RawPointerTypeExpr";
+    case SyntaxKind::DynTypeAssocBinding: return "DynTypeAssocBinding";
+    case SyntaxKind::DynTypeAssocBindingList: return "DynTypeAssocBindingList";
     case SyntaxKind::SuspendStatement: return "SuspendStatement";
     case SyntaxKind::UntilClause: return "UntilClause";
     case SyntaxKind::BlockStmt: return "BlockStmt";
@@ -419,8 +358,6 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::StandaloneImplDecl: return "StandaloneImplDecl";
     case SyntaxKind::MarkerImpl: return "MarkerImpl";
     case SyntaxKind::WhereClause: return "WhereClause";
-    case SyntaxKind::MarkerDeclaration: return "MarkerDeclaration";
-    case SyntaxKind::PositionalStructDecl: return "PositionalStructDecl";
     case SyntaxKind::FunctionDecl: return "FunctionDecl";
     case SyntaxKind::ClassDecl: return "ClassDecl";
     case SyntaxKind::StructDecl: return "StructDecl";
@@ -436,6 +373,9 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::FieldDecl: return "FieldDecl";
     case SyntaxKind::AssociatedTypeDecl: return "AssociatedTypeDecl";
     case SyntaxKind::GenericTypeParam: return "GenericTypeParam";
+    case SyntaxKind::ConstructorDecl: return "ConstructorDecl";
+    case SyntaxKind::DestructorDecl: return "DestructorDecl";
+    case SyntaxKind::ClassConstDecl: return "ClassConstDecl";
     case SyntaxKind::SourceFile: return "SourceFile";
     case SyntaxKind::ModulePath: return "ModulePath";
     case SyntaxKind::ImportDeclaration: return "ImportDeclaration";

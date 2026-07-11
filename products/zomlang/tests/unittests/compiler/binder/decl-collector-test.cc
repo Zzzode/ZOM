@@ -34,7 +34,7 @@ namespace {
 
 // Helper: build a simple source file with given declarations and run collection.
 bool collect(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
-  auto tree = fix.buildSourceFile("test"_zc, decls);
+  const auto& tree = fix.buildRetainedSourceFile("test"_zc, decls);
   DeclCollector collector(fix.symbols(), fix.scopes(), tree, fix.metadata(), fix.diagnostics());
   return collector.collect();
 }
@@ -43,6 +43,15 @@ bool collect(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
 // In tests the global scope always exists; this avoids repeating ZC_IF_SOME everywhere.
 const symbol::Scope& globalScope(TestFixture& fix) {
   ZC_IF_SOME(scope, fix.scopes().getGlobalScope()) { return scope; }
+  ZC_UNREACHABLE;
+}
+
+const symbol::Scope& namedScope(TestFixture& fix, symbol::Scope::Kind kind, zc::StringPtr name) {
+  for (const auto& maybeScope : fix.scopes().getScopesOfKind(kind)) {
+    ZC_IF_SOME(scope, maybeScope) {
+      if (scope.getName() == name) { return scope; }
+    }
+  }
   ZC_UNREACHABLE;
 }
 
@@ -140,6 +149,29 @@ ZC_TEST("DeclCollector.ClassDeclIsTypeSymbol") {
   ZC_IF_SOME(s, sym) { ZC_EXPECT(s.isTypeSymbol()); }
 }
 
+ZC_TEST("DeclCollector.ClassMembersDefaultToPrivate") {
+  TestFixture fix;
+  zc::Vector<ast::NodeId> members;
+  members.add(fix.makeMethodDecl("hiddenMethod"_zc));
+  members.add(fix.makeFieldDecl("hiddenField"_zc));
+  auto memberList = fix.makeClassMemberList(fix.makeNodeList(members.asPtr()));
+  auto cls = fix.makeClassDecl("Vault"_zc, ast::NodeId(), memberList);
+
+  zc::Vector<ast::NodeId> decls;
+  decls.add(cls);
+  ZC_EXPECT(collect(fix, decls.asPtr()));
+
+  const auto& scope = namedScope(fix, symbol::Scope::Kind::Class, "Vault"_zc);
+  ZC_IF_SOME(method, scope.lookupSymbolLocally("hiddenMethod"_zc)) {
+    ZC_EXPECT(method.isPrivate());
+    ZC_EXPECT(!method.isPublic());
+  }
+  ZC_IF_SOME(field, scope.lookupSymbolLocally("hiddenField"_zc)) {
+    ZC_EXPECT(field.isPrivate());
+    ZC_EXPECT(!field.isPublic());
+  }
+}
+
 // ============================================================================
 // Interface declaration collection
 // ============================================================================
@@ -169,6 +201,29 @@ ZC_TEST("DeclCollector.CollectsMultipleInterfaces") {
   auto& scope = globalScope(fix);
   ZC_EXPECT(fix.symbols().lookup("Readable"_zc, scope) != zc::none);
   ZC_EXPECT(fix.symbols().lookup("Writable"_zc, scope) != zc::none);
+}
+
+ZC_TEST("DeclCollector.InterfaceMembersDefaultToPublic") {
+  TestFixture fix;
+  zc::Vector<ast::NodeId> members;
+  members.add(fix.makeMethodDecl("requiredMethod"_zc));
+  members.add(fix.makeFieldDecl("requiredField"_zc));
+  auto memberList = fix.makeClassMemberList(fix.makeNodeList(members.asPtr()));
+  auto iface = fix.makeInterfaceDecl("Contract"_zc, memberList);
+
+  zc::Vector<ast::NodeId> decls;
+  decls.add(iface);
+  ZC_EXPECT(collect(fix, decls.asPtr()));
+
+  const auto& scope = namedScope(fix, symbol::Scope::Kind::Interface, "Contract"_zc);
+  ZC_IF_SOME(method, scope.lookupSymbolLocally("requiredMethod"_zc)) {
+    ZC_EXPECT(method.isPublic());
+    ZC_EXPECT(!method.isPrivate());
+  }
+  ZC_IF_SOME(field, scope.lookupSymbolLocally("requiredField"_zc)) {
+    ZC_EXPECT(field.isPublic());
+    ZC_EXPECT(!field.isPrivate());
+  }
 }
 
 // ============================================================================
@@ -491,21 +546,6 @@ ZC_TEST("DeclCollector.ValueAndTypeNamespacesSeparate") {
 
   auto clsSym = fix.symbols().lookup("Bar"_zc, scope);
   ZC_IF_SOME(s, clsSym) { ZC_EXPECT(s.isTypeSymbol()); }
-}
-
-// ============================================================================
-// Marker and standalone impl declarations
-// ============================================================================
-
-ZC_TEST("DeclCollector.CollectsMarkerDecl") {
-  TestFixture fix;
-  auto marker = fix.makeMarkerDecl("Sendable"_zc);
-
-  zc::Vector<ast::NodeId> decls;
-  decls.add(marker);
-  ZC_EXPECT(collect(fix, decls.asPtr()));
-
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
 }
 
 ZC_TEST("DeclCollector.CollectsStandaloneImplDecl") {

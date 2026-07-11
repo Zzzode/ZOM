@@ -67,6 +67,34 @@ ZC_TEST("Coercion.MutableRefToSharedRef") {
   ZC_EXPECT(result.kind == CoercionKind::MutRefToSharedRef);
 }
 
+ZC_TEST("Coercion.SharedRefToConstRawPointer") {
+  CoercionResolver resolver;
+  ReferenceType sharedRef(PrimitiveType::createI32(), Mutability::Const);
+  RawPointerType constPtr(PrimitiveType::createI32(), Mutability::Const);
+
+  auto result = resolver.check(sharedRef, constPtr);
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(result.kind == CoercionKind::SharedRefToConstRaw);
+}
+
+ZC_TEST("Coercion.MutableRefToMutableRawPointer") {
+  CoercionResolver resolver;
+  ReferenceType mutRef(PrimitiveType::createI32(), Mutability::Mutable);
+  RawPointerType mutPtr(PrimitiveType::createI32(), Mutability::Mutable);
+
+  auto result = resolver.check(mutRef, mutPtr);
+  ZC_EXPECT(result.success);
+  ZC_EXPECT(result.kind == CoercionKind::MutRefToMutRaw);
+}
+
+ZC_TEST("Coercion.SharedRefDoesNotCoerceToMutableRawPointer") {
+  CoercionResolver resolver;
+  ReferenceType sharedRef(PrimitiveType::createI32(), Mutability::Const);
+  RawPointerType mutPtr(PrimitiveType::createI32(), Mutability::Mutable);
+
+  ZC_EXPECT(!resolver.canCoerce(sharedRef, mutPtr));
+}
+
 ZC_TEST("Coercion.SharedRefDoesNotCoerceToMutableRef") {
   CoercionResolver resolver;
   ReferenceType sharedRef(PrimitiveType::createI32(), Mutability::Const);

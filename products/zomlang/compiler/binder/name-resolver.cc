@@ -493,17 +493,6 @@ struct NameResolver::Impl {
     if (tree.contains(rhsId)) resolveNode(rhsId);
   }
 
-  void resolvePositionalStructCtorExpr(NodeId node) {
-    const Node& n = tree.node(node);
-    NodeId structPathId(n.payload.words[ast::kPositionalStructCtorExprStructPathWord]);
-    if (tree.contains(structPathId)) resolveNode(structPathId);
-
-    NodeList args;
-    args.first = n.payload.words[ast::kPositionalStructCtorExprArgsFirstWord];
-    args.size = n.payload.words[ast::kPositionalStructCtorExprArgsSizeWord];
-    for (NodeId arg : tree.list(args)) resolveNode(arg);
-  }
-
   void resolveStructLiteralExpr(NodeId node) {
     const Node& n = tree.node(node);
     NodeId tyId(n.payload.words[ast::kStructLiteralExprTyWord]);
@@ -573,9 +562,6 @@ struct NameResolver::Impl {
         break;
       case SyntaxKind::AssignmentExpr:
         resolveAssignmentExpr(node);
-        break;
-      case SyntaxKind::PositionalStructCtorExpr:
-        resolvePositionalStructCtorExpr(node);
         break;
       case SyntaxKind::StructLiteralExpr:
         resolveStructLiteralExpr(node);

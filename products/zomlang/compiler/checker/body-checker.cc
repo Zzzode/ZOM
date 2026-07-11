@@ -332,6 +332,8 @@ zc::Maybe<const type::Type&> BodyChecker::getSymbolType(const symbol::Symbol& sy
       tyId = ast::NodeId(decl.payload.words[kVariableDeclaratorTyWord]);
     } else if (decl.kind == SyntaxKind::FieldDecl) {
       tyId = ast::NodeId(decl.payload.words[kFieldDeclTyWord]);
+    } else if (decl.kind == SyntaxKind::ClassConstDecl) {
+      tyId = ast::NodeId(decl.payload.words[kClassConstDeclTyWord]);
     } else if (decl.kind == SyntaxKind::FunctionParameterDecl) {
       tyId = ast::NodeId(decl.payload.words[kFunctionParameterDeclTyWord]);
     }
@@ -918,9 +920,69 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
       // Check if it's a primitive type
       auto primTy = makePrimitiveType(typeName);
       if (primTy) return zc::mv(primTy);
-      // Otherwise return a NamedType (user-defined type)
-      return zc::heap<type::NamedType>(typeName);
+
+      auto namedType = zc::heap<type::NamedType>(typeName);
+      ZC_IF_SOME(resolvedSymbol, lookupSymbol(typeName)) {
+        if (resolvedSymbol.isTypeSymbol()) {
+          namedType->setSymbol(static_cast<const symbol::TypeSymbol&>(resolvedSymbol));
+        }
+      }
+
+      ast::NodeList arguments;
+      arguments.first = node.payload.words[kNamedTypeExprArgsFirstWord];
+      arguments.size = node.payload.words[kNamedTypeExprArgsSizeWord];
+      for (ast::NodeId argument : impl->tree.list(arguments)) {
+        auto argumentType = resolveTypeExpr(argument);
+        if (!argumentType) { return zc::Own<type::Type>(); }
+        namedType->addTypeArg(zc::mv(argumentType));
+      }
+
+      return namedType;
     }
+  }
+
+  if (node.kind == SyntaxKind::TupleTypeExpr) {
+    NodeList elements;
+    elements.first = node.payload.words[kTupleTypeExprElemsFirstWord];
+    elements.size = node.payload.words[kTupleTypeExprElemsSizeWord];
+    zc::Vector<zc::Own<type::Type>> elementTypes;
+    for (NodeId element : impl->tree.list(elements)) {
+      auto elementType = resolveTypeExpr(element);
+      if (!elementType) { return zc::Own<type::Type>(); }
+      elementTypes.add(zc::mv(elementType));
+    }
+    if (elementTypes.empty()) { return type::PrimitiveType::createUnit(); }
+    return zc::heap<type::TupleType>(zc::mv(elementTypes));
+  }
+
+  if (node.kind == SyntaxKind::ArrayTypeExpr || node.kind == SyntaxKind::FixedArrayTypeExpr ||
+      node.kind == SyntaxKind::SliceArrayTypeExpr) {
+    NodeId element;
+    if (node.kind == SyntaxKind::ArrayTypeExpr) {
+      element = NodeId(node.payload.words[kArrayTypeExprElemWord]);
+    } else if (node.kind == SyntaxKind::FixedArrayTypeExpr) {
+      element = NodeId(node.payload.words[kFixedArrayTypeExprElemWord]);
+    } else {
+      element = NodeId(node.payload.words[kSliceArrayTypeExprElemWord]);
+    }
+    auto elementType = resolveTypeExpr(element);
+    if (!elementType) { return zc::Own<type::Type>(); }
+    return zc::heap<type::ArrayType>(zc::mv(elementType));
+  }
+
+  if (node.kind == SyntaxKind::FunctionTypeExpr) {
+    NodeList parameters;
+    parameters.first = node.payload.words[kFunctionTypeExprParamsFirstWord];
+    parameters.size = node.payload.words[kFunctionTypeExprParamsSizeWord];
+    zc::Vector<zc::Own<type::Type>> parameterTypes;
+    for (NodeId parameter : impl->tree.list(parameters)) {
+      auto parameterType = resolveTypeExpr(parameter);
+      if (!parameterType) { return zc::Own<type::Type>(); }
+      parameterTypes.add(zc::mv(parameterType));
+    }
+    auto returnType = resolveTypeExpr(NodeId(node.payload.words[kFunctionTypeExprRetTyWord]));
+    if (!returnType) { returnType = type::PrimitiveType::createUnit(); }
+    return zc::heap<type::FunctionType>(zc::mv(parameterTypes), zc::mv(returnType));
   }
 
   if (node.kind == SyntaxKind::UnionTypeExpr) {
@@ -939,6 +1001,22 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
     return zc::heap<type::UnionType>(zc::mv(alternatives));
   }
 
+  if (node.kind == SyntaxKind::IntersectionTypeExpr) {
+    NodeList conjuncts;
+    conjuncts.first = node.payload.words[kIntersectionTypeExprAltsFirstWord];
+    conjuncts.size = node.payload.words[kIntersectionTypeExprAltsSizeWord];
+    zc::Vector<zc::Own<type::Type>> conjunctTypes;
+    for (NodeId conjunct : impl->tree.list(conjuncts)) {
+      auto conjunctType = resolveTypeExpr(conjunct);
+      if (!conjunctType) { return zc::Own<type::Type>(); }
+      conjunctTypes.add(zc::mv(conjunctType));
+    }
+    if (conjunctTypes.empty()) { return type::PrimitiveType::createAny(); }
+    return zc::heap<type::IntersectionType>(zc::mv(conjunctTypes));
+  }
+
+  if (node.kind == SyntaxKind::BottomTypeExpr) { return type::PrimitiveType::createNever(); }
+
   if (node.kind == SyntaxKind::OptionalTypeExpr) {
     auto innerId = NodeId(node.payload.words[kOptionalTypeExprInnerWord]);
     auto innerType = resolveTypeExpr(innerId);
@@ -952,16 +1030,27 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
 
   if (node.kind == SyntaxKind::DynTypeExpr) {
     auto ifacesId = NodeId(node.payload.words[kDynTypeExprIfacesIdWord]);
+    auto assocBindingsId = NodeId(node.payload.words[kDynTypeExprAssocBindingsIdWord]);
     auto markerNames = dynMarkerNames(impl->tree, node);
+    auto assocBindings =
+        dynAssocBindings(impl->tree, node, [this](NodeId tyId) { return resolveTypeExpr(tyId); });
     if (!impl->tree.contains(ifacesId)) {
       return zc::heap<type::ErrorType>("dyn type requires at least one interface");
     }
 
     const auto& ifaceListNode = impl->tree.node(ifacesId);
     if (ifaceListNode.kind != SyntaxKind::DynTypeIfaceList) {
+      auto ifaceName = simpleTypeExprName(impl->tree, ifacesId);
+      ZC_IF_SOME(duplicate, findDuplicateDynAssocBindingName(impl->tree, assocBindingsId)) {
+        impl->diags.diagnose<DiagID::DynDuplicateAssociatedTypeBinding>(
+            node.range.getStart(), duplicate, ifaceName.size() > 0 ? ifaceName : "dyn"_zc);
+        impl->hadErrors = true;
+        return zc::heap<type::ErrorType>();
+      }
       auto ifaceType = resolveTypeExpr(ifacesId);
       if (!ifaceType) { return zc::heap<type::ErrorType>(); }
-      return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
+      return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr(),
+                                             zc::mv(assocBindings));
     }
 
     NodeList ifaceNodeList;
@@ -972,9 +1061,17 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
       return zc::heap<type::ErrorType>("dyn type requires at least one interface");
     }
     if (ifaces.size() == 1) {
+      auto ifaceName = simpleTypeExprName(impl->tree, ifaces.front());
+      ZC_IF_SOME(duplicate, findDuplicateDynAssocBindingName(impl->tree, assocBindingsId)) {
+        impl->diags.diagnose<DiagID::DynDuplicateAssociatedTypeBinding>(
+            node.range.getStart(), duplicate, ifaceName.size() > 0 ? ifaceName : "dyn"_zc);
+        impl->hadErrors = true;
+        return zc::heap<type::ErrorType>();
+      }
       auto ifaceType = resolveTypeExpr(ifaces.front());
       if (!ifaceType) { return zc::heap<type::ErrorType>(); }
-      return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
+      return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr(),
+                                             zc::mv(assocBindings));
     }
 
     zc::Vector<zc::Own<type::Type>> conjuncts;
@@ -984,7 +1081,8 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
       conjuncts.add(zc::mv(ifaceType));
     }
     zc::Own<type::Type> intersection = zc::heap<type::IntersectionType>(zc::mv(conjuncts));
-    return zc::heap<type::ExistentialType>(zc::mv(intersection), markerNames.asPtr());
+    return zc::heap<type::ExistentialType>(zc::mv(intersection), markerNames.asPtr(),
+                                           zc::mv(assocBindings));
   }
 
   if (node.kind == SyntaxKind::ReferenceTypeExpr) {
@@ -1005,6 +1103,24 @@ zc::Own<type::Type> BodyChecker::resolveTypeExpr(ast::NodeId tyExpr) {
                           ? type::Mutability::Mutable
                           : type::Mutability::Const;
     return zc::heap<type::RawPointerType>(zc::mv(elemType), mutability);
+  }
+
+  if (node.kind == SyntaxKind::ObjectTypeExpr) {
+    NodeList members;
+    members.first = node.payload.words[kObjectTypeExprMembersFirstWord];
+    members.size = node.payload.words[kObjectTypeExprMembersSizeWord];
+    auto objectType = zc::heap<type::ObjectType>();
+    for (NodeId member : impl->tree.list(members)) {
+      if (!impl->tree.contains(member)) { return zc::Own<type::Type>(); }
+      const auto& memberNode = impl->tree.node(member);
+      if (memberNode.kind != SyntaxKind::ObjectTypeMember) { return zc::Own<type::Type>(); }
+      auto memberType = resolveTypeExpr(NodeId(memberNode.payload.words[kObjectTypeMemberTyWord]));
+      if (!memberType) { return zc::Own<type::Type>(); }
+      auto memberName =
+          impl->tree.ident(IdentId(memberNode.payload.words[kObjectTypeMemberNameWord]));
+      objectType->addMember(memberName, zc::mv(memberType));
+    }
+    return objectType;
   }
 
   return zc::Own<type::Type>();
@@ -1165,6 +1281,33 @@ void BodyChecker::checkAssignable(const type::Type& target, const type::Type& so
             auto loc = getNodeLoc(impl->tree, node);
             impl->diags.diagnose<DiagID::CheckerTraitNotImplemented>(loc, resolvedSource.toString(),
                                                                      markerName);
+            impl->hadErrors = true;
+            return;
+          }
+        }
+        for (size_t i = 0; i < existential.getAssocBindingCount(); ++i) {
+          auto assocName = existential.getAssocBindingName(i);
+          auto associated =
+              traitResolver.resolveAssociatedTypeWithStatus(resolvedSource, ifaceName, assocName);
+          if (associated.kind != AssociatedTypeResolutionKind::Resolved) {
+            auto loc = getNodeLoc(impl->tree, node);
+            impl->diags.diagnose<DiagID::NoAssociatedTypeProjection>(loc, assocName,
+                                                                     resolvedSource.toString());
+            impl->hadErrors = true;
+            return;
+          }
+          ZC_IF_SOME(actualType, associated.type) {
+            const auto& expectedType = impl->typeEnv.find(existential.getAssocBindingType(i));
+            const auto& resolvedActual = impl->typeEnv.find(actualType);
+            if (!expectedType.equals(resolvedActual)) {
+              reportTypeMismatch(node, expectedType, resolvedActual);
+              return;
+            }
+          }
+          else {
+            auto loc = getNodeLoc(impl->tree, node);
+            impl->diags.diagnose<DiagID::NoAssociatedTypeProjection>(loc, assocName,
+                                                                     resolvedSource.toString());
             impl->hadErrors = true;
             return;
           }
@@ -1691,13 +1834,11 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
       // Dereference: returns the pointed-to type
       if (isReference(resolved)) {
         auto& refTy = static_cast<const type::ReferenceType&>(resolved);
-        (void)refTy;
-        return storeType(expr, zc::heap<type::ErrorType>());
+        return storeType(expr, cloneResolvedType(refTy.getPointeeType()));
       }
       if (isRawPointer(resolved)) {
         auto& ptrTy = static_cast<const type::RawPointerType&>(resolved);
-        (void)ptrTy;
-        return storeType(expr, zc::heap<type::ErrorType>());
+        return storeType(expr, cloneResolvedType(ptrTy.getPointeeType()));
       }
       auto loc = getNodeLoc(impl->tree, expr);
       impl->diags.diagnose<DiagID::CannotDereferenceType>(loc);
@@ -1709,6 +1850,10 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
       if (isError(resolved)) { return storeType(expr, zc::heap<type::ErrorType>()); }
       return storeType(expr, zc::heap<type::ReferenceType>(cloneResolvedType(resolved),
                                                            type::Mutability::Const));
+    case ast::UnaryOperatorKind::RefMut:
+      if (isError(resolved)) { return storeType(expr, zc::heap<type::ErrorType>()); }
+      return storeType(expr, zc::heap<type::ReferenceType>(cloneResolvedType(resolved),
+                                                           type::Mutability::Mutable));
     default:
       return storeType(expr, zc::heap<type::ErrorType>());
   }
@@ -1756,8 +1901,8 @@ const type::Type& BodyChecker::checkPostfixExpr(ast::NodeId expr) {
       }
 
       if (op == ast::PostfixOperatorKind::ErrorPropagate && unionTy.getAlternativeCount() > 1) {
-        const auto& errorAlt = unionTy.getAlternative(1);
         if (impl->expectedRaisesType == zc::none) {
+          const auto& errorAlt = unionTy.getAlternative(1);
           auto loc = getNodeLoc(impl->tree, expr);
           auto errorText = errorAlt.toString();
           impl->diags.diagnose<DiagID::ErrorPropagateOutsideRaises>(loc, errorText.asPtr(),
@@ -1767,7 +1912,9 @@ const type::Type& BodyChecker::checkPostfixExpr(ast::NodeId expr) {
         }
         ZC_IF_SOME(raisesType, impl->expectedRaisesType) {
           auto& resolvedRaises = impl->typeEnv.find(raisesType);
-          if (!isAllowedRaiseType(errorAlt, resolvedRaises)) {
+          for (size_t i = 1; i < unionTy.getAlternativeCount(); ++i) {
+            const auto& errorAlt = unionTy.getAlternative(i);
+            if (isAllowedRaiseType(errorAlt, resolvedRaises)) { continue; }
             auto loc = getNodeLoc(impl->tree, expr);
             auto errorText = errorAlt.toString();
             impl->diags.diagnose<DiagID::ErrorPropagateOutsideRaises>(loc, errorText.asPtr(),
@@ -2399,6 +2546,7 @@ const type::Type& BodyChecker::checkNewExpr(ast::NodeId expr) {
 
 const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
   const auto& node = impl->tree.node(expr);
+  const uint8_t mode = static_cast<uint8_t>(node.payload.words[kCastExpressionModeWord]);
   auto exprId = NodeId(node.payload.words[kCastExpressionExprWord]);
   auto tyId = NodeId(node.payload.words[kCastExpressionTyWord]);
 
@@ -2421,16 +2569,26 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     return storeType(expr, zc::heap<type::ErrorType>());
   }
 
-  if (resolvedSource.equals(resolvedTarget)) {
-    return storeType(expr, cloneResolvedType(resolvedTarget));
-  }
+  auto storeCastResult = [&](const type::Type& target) -> const type::Type& {
+    if (mode == 1) {
+      zc::Vector<zc::Own<type::Type>> alternatives;
+      alternatives.add(cloneResolvedType(target));
+      alternatives.add(type::PrimitiveType::createNull());
+      return storeType(expr, zc::heap<type::UnionType>(zc::mv(alternatives)));
+    }
+    return storeType(expr, cloneResolvedType(target));
+  };
+
+  if (resolvedSource.equals(resolvedTarget)) { return storeCastResult(resolvedTarget); }
+
+  if (mode != 0 && isAny(resolvedSource)) { return storeCastResult(resolvedTarget); }
 
   if (isPrimitive(resolvedSource) && isPrimitive(resolvedTarget)) {
     auto& sourcePrim = static_cast<const type::PrimitiveType&>(resolvedSource);
     auto& targetPrim = static_cast<const type::PrimitiveType&>(resolvedTarget);
     if ((sourcePrim.isIntegerType() || sourcePrim.isFloatingPointType()) &&
         (targetPrim.isIntegerType() || targetPrim.isFloatingPointType())) {
-      return storeType(expr, cloneResolvedType(resolvedTarget));
+      return storeCastResult(resolvedTarget);
     }
   }
 
@@ -2440,9 +2598,9 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     if (sourcePtr.getPointeeType().equals(targetPtr.getPointeeType()) &&
         sourcePtr.getMutability() == type::Mutability::Mutable &&
         targetPtr.getMutability() == type::Mutability::Const) {
-      return storeType(expr, cloneResolvedType(resolvedTarget));
+      return storeCastResult(resolvedTarget);
     }
-    if (impl->unsafeDepth > 0) { return storeType(expr, cloneResolvedType(resolvedTarget)); }
+    if (impl->unsafeDepth > 0) { return storeCastResult(resolvedTarget); }
 
     auto loc = getNodeLoc(impl->tree, expr);
     impl->diags.diagnose<DiagID::RawPointerCastRequiresUnsafe>(loc, resolvedSource.toString(),
@@ -2457,7 +2615,7 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     if (sourceRef.getPointeeType().equals(targetPtr.getPointeeType())) {
       if (sourceRef.getMutability() == type::Mutability::Mutable ||
           targetPtr.getMutability() == type::Mutability::Const) {
-        return storeType(expr, cloneResolvedType(resolvedTarget));
+        return storeCastResult(resolvedTarget);
       }
     }
   }
@@ -2468,7 +2626,7 @@ const type::Type& BodyChecker::checkCastExpr(ast::NodeId expr) {
     if (dynTypeExtends(sourceExistential.getInterfaceType(), targetExistential.getInterfaceType(),
                        impl->tree)) {
       impl->typeEnv.setCoercion(expr, type::CoercionKind::DynUpcast);
-      return storeType(expr, cloneResolvedType(resolvedTarget));
+      return storeCastResult(resolvedTarget);
     }
 
     auto loc = getNodeLoc(impl->tree, expr);
@@ -2975,7 +3133,7 @@ const type::Type& BodyChecker::checkTupleLiteral(ast::NodeId expr) {
 
 const type::Type& BodyChecker::checkIsExpr(ast::NodeId expr) {
   const auto& node = impl->tree.node(expr);
-  (void)node;
+  checkExpr(NodeId(node.payload.words[kIsExpressionExprWord]));
   // `expr is Type` always returns bool
   return storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
 }
@@ -3050,11 +3208,13 @@ void BodyChecker::checkStmt(ast::NodeId stmt) {
 
 void BodyChecker::checkBlockStmt(ast::NodeId stmt) {
   const auto& node = impl->tree.node(stmt);
+  const bool pushedScope = impl->pushNodeScope(stmt);
   NodeList stmts;
   stmts.first = node.payload.words[kBlockStmtStmtsFirstWord];
   stmts.size = node.payload.words[kBlockStmtStmtsSizeWord];
 
   for (NodeId childId : impl->tree.list(stmts)) { checkStmt(childId); }
+  if (pushedScope) { impl->popNodeScope(); }
 }
 
 void BodyChecker::checkIfStmt(ast::NodeId stmt) {
@@ -3169,7 +3329,20 @@ void BodyChecker::checkLetStmt(ast::NodeId stmt) {
     auto initId = NodeId(declNode.payload.words[kVariableDeclaratorInitWord]);
     auto tyId = NodeId(declNode.payload.words[kVariableDeclaratorTyWord]);
 
-    if (!impl->tree.contains(initId)) return;
+    if (!impl->tree.contains(initId)) {
+      if (impl->tree.contains(tyId)) {
+        auto annotatedType = resolveTypeExpr(tyId);
+        if (annotatedType) {
+          if (impl->hadErrors) {
+            impl->typeEnv.setType(declId, zc::heap<type::ErrorType>());
+            return;
+          }
+          auto& resolvedAnnotated = impl->typeEnv.find(*annotatedType);
+          impl->typeEnv.setType(declId, cloneResolvedType(resolvedAnnotated));
+        }
+      }
+      return;
+    }
 
     // Check initializer
     auto& initType = checkExpr(initId);
@@ -3251,8 +3424,10 @@ void BodyChecker::checkMatchStmt(ast::NodeId stmt) {
   }
 
   // Run exhaustiveness checker
+  const size_t errorsBeforeExhaustiveness = impl->diags.errorCount();
   ExhaustivenessChecker exhaustChecker(impl->typeEnv, impl->tree, impl->diags);
   exhaustChecker.checkMatchExhaustiveness(stmt, resolvedScrutinee);
+  if (impl->diags.errorCount() > errorsBeforeExhaustiveness) { impl->hadErrors = true; }
 }
 
 void BodyChecker::checkFunctionDecl(ast::NodeId declId) {

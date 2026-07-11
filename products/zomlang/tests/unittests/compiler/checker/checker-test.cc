@@ -17,7 +17,9 @@
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/binder/binder.h"
+#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/type/function-type.h"
 #include "zomlang/compiler/type/primitive-type.h"
 #include "zomlang/compiler/type/type-env.h"
@@ -31,6 +33,24 @@ namespace checker {
 using tests::TestFixture;
 
 namespace {
+
+class CapturingDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
+public:
+  zc::Vector<diagnostics::DiagID> ids;
+
+  void handleDiagnostic(const source::SourceManager&,
+                        const diagnostics::Diagnostic& diagnostic) override {
+    ids.add(diagnostic.getId());
+    for (const auto& child : diagnostic.getChildDiagnostics()) { ids.add(child->getId()); }
+  }
+};
+
+bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnostics::DiagID id) {
+  for (auto emitted : consumer.ids) {
+    if (emitted == id) return true;
+  }
+  return false;
+}
 
 struct CheckerRunResult {
   bool bindSuccess;
@@ -172,6 +192,40 @@ ZC_TEST("Checker.RejectsFunctionArgumentTypeMismatch") {
   ZC_EXPECT(fix.diagnostics().hasErrors());
   ZC_EXPECT(result.typeEnv.hasType(call));
   ZC_EXPECT(isError(result.typeEnv.getType(call)));
+}
+
+ZC_TEST("Checker.EmitsUseAfterMoveFromBorrowPhase") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto ownedPattern = fix.makeBindingPattern("owned"_zc);
+  auto ownedDecl = fix.makeVariableDeclarator(ownedPattern, fix.makeNamedTypeExpr("Owner"_zc));
+  auto sinkPattern = fix.makeBindingPattern("sink"_zc);
+  auto sinkInit = fix.makeIdentExpr("owned"_zc);
+  auto sinkDecl =
+      fix.makeVariableDeclarator(sinkPattern, fix.makeNamedTypeExpr("Owner"_zc), sinkInit);
+  zc::Vector<ast::NodeId> decls;
+  decls.add(ownedDecl);
+  decls.add(sinkDecl);
+  auto letStmt = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
+  auto useStmt = fix.makeExpressionStatement(fix.makeIdentExpr("owned"_zc));
+  zc::Vector<ast::NodeId> stmts;
+  stmts.add(letStmt);
+  stmts.add(useStmt);
+  auto body = fix.makeBlockStmt(fix.makeNodeList(stmts.asPtr()));
+  auto fn = fix.makeFunctionDecl("main"_zc, body, ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(fix.makeClassDecl("Owner"_zc));
+  topDecls.add(fn);
+  auto result = runChecker(fix, topDecls.asPtr());
+
+  ZC_EXPECT(result.bindSuccess);
+  ZC_EXPECT(!result.checkSuccess);
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::UseAfterMove));
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ValueMovedHere));
 }
 
 ZC_TEST("Checker.DoesNotMutateAstNodes") {

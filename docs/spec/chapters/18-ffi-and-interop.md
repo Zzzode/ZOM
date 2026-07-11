@@ -1,445 +1,83 @@
-# Foreign Function Interface and Interoperability
+# Foreign Declarations And Unsafe Blocks
 
-This chapter specifies the mechanism by which ZOM code calls functions implemented in other languages and, conversely, exposes ZOM functions to callers written in other languages. The primary target of the v1 FFI layer is the **C calling convention and C type layout**, which serve as the cross-language lowest-common denominator. Secondary interop with Rust is achieved by routing through the same C ABI; Rust-native async bridges are deferred to the v2 roadmap.
+This chapter specifies the foreign-declaration and unsafe-block syntax currently
+implemented by the frontend. The compiler does not yet type-check foreign calls,
+validate FFI-safe types, link foreign symbols, lower a foreign calling convention,
+or emit executable code.
 
-## 18.0 Purpose and Scope
+## 18.1 Extern Blocks
 
-The ZOM FFI layer provides four orthogonal capabilities:
+An extern block groups foreign function and variable declarations:
 
-1. **Foreign imports.** Declaring functions implemented in a C (or C-compatible) shared library and calling them from ZOM source with zero overhead beyond the C call itself.
-2. **Foreign exports.** Annotating ZOM functions so they are callable from C or any language that understands the C ABI, with predictable symbol names and call-frame layouts.
-3. **Memory ownership discipline.** Normative rules for passing pointers, buffers, and heap-allocated objects across the boundary so that each side's allocator stays self-consistent.
-4. **Panic and unwind safety.** Rules and compiler-enforced diagnostics that prevent undefined behavior when a ZOM panic escapes through the FFI boundary.
-
-The boundary layer is depicted below:
-
-```mermaid
-graph TD
-    ZOM[ZOM code<br/>linear types, markers, borrows] --> AB[FFI Boundary layer]
-    AB -->|extern "C" import| CLIB[C shared library<br/>*.so / *.dll / *.dylib]
-    CLIB -->|no_mangle export| AB
-    AB -->|C ABI bridge| RUST[Rust crate<br/>repr(C) + C calling convention]
-    RUST -->|staticlib linkage| CLIB
-    AB -->|marshaling rules| MARSH[Type marshaler<br/>repr(C), FfiSafe, raw ptrs]
+```ebnf
+ExternBlockDeclaration ::= 'extern' AbiLiteral? '{' ExternItem* '}'
+AbiLiteral             ::= '"C"' | '"Cdecl"' | '"system"' | '"zom-cdecl"'
+ExternItem              ::= ExternFunctionDeclaration
+                          | ExternVariableDeclaration
+ExternFunctionDeclaration ::= 'fun' Identifier FunctionSignature ';'
+ExternVariableDeclaration ::= 'variable' Identifier ':' TypeExpression ';'
 ```
 
-All interop paths converge on the C ABI. Calling a Rust function directly through a non-C ABI is not supported in v1; instead, users are expected to mark the Rust side with `#[no_mangle] extern "C"` and call it through the `extern "C"` import mechanism described in §18.1. A ZOM-native async bridge for Rust is planned for v2 of the language; v1 treats Rust as just another C-ABI producer.
+When `AbiLiteral` is omitted, the AST records `Cdecl`. The parser maps `"C"`
+and `"Cdecl"` to `Cdecl`, `"system"` to `Stdcall`, and `"zom-cdecl"` to
+`ZomNative`. These are frontend AST facts only; no backend calling-convention
+contract exists.
 
-## 18.1 `extern "C"` — Declaring Foreign Imports
-
-An `extern` block declares one or more foreign functions whose implementation is provided by a linked external library. The normative EBNF (cross-reference Ch.17) is:
-
-```
-ExternDecl        ::= 'unsafe'? 'extern' StringLiteral? ( ExternBlock | FunDecl )
-ExternBlock       ::= '{' ExternItem* '}'
-ExternItem        ::= FunDecl                           // foreign function
-                    | 'variable' Identifier ':' TypeExpr ';'   // imported global variable
-                    | 'type' Identifier '=' 'opaque'? Identifier TypeExpr? ';'  // type alias / opaque type
-```
-
-The `extern` declaration takes two forms:
-
-- **Block form:** `extern "ABI" { ... }` groups multiple foreign declarations under one ABI specifier.
-- **Single-function form:** `extern "ABI" fun name(params) -> Ret;` declares a single foreign function inline without a block.
-
-Both forms accept an optional `unsafe` prefix (`unsafe extern "ABI" { ... }` or `unsafe extern "ABI" fun ...`) which marks the declarations as inherently unsafe operations; the compiler may use this to suppress or adjust certain diagnostics.
-
-### ABI strings
-
-When the `StringLiteral` is omitted, the ABI defaults to `"C"`. The v1 grammar recognizes the following ABI strings at parse time:
-
-| ABI literal | Meaning |
-|---|---|
-| `"C"` | Default C calling convention (platform-native) |
-| `"Cdecl"` | Explicit cdecl calling convention |
-| `"system"` | Alias for the platform's default system ABI |
-| `"zom-cdecl"` | ZOM-specific cdecl variant |
-
-Any other ABI literal (for example `"Rust"`, `"stdcall"`, `"win64"`) is diagnosed at parse time as **ZOM2001 UnknownExternAbi**. Future editions will expand the recognized set; the internal `Abi` enum in the compiler IR reserves slots for `Stdcall`, `Fastcall`, `Swift`, `Rust`, `ZomNative`, and `VarArgs` for forward compatibility.
-
-### Extern block items
-
-Three kinds of items may appear inside an `extern` block:
-
-**1. Foreign functions.** A `fun` declaration without a body. The function signature follows the same syntax as a ZOM function declaration (§18.1), including optional `-> ReturnType` and `raises ErrorType` clauses. Writing a body inside an `extern` block is an error: **ZOM1804 ExternFunctionBody**.
+An unknown ABI literal is rejected with `ZOM2091 UnknownExternAbi`.
 
 ```zom
 extern "C" {
-    fun printf(fmt: *const u8, ...) -> i32;
-    fun free(ptr: *mut u8);
-}
-```
-
-**2. Imported variables.** Declared with the `variable` keyword (not `var`), this imports a global variable from the foreign library:
-
-```zom
-extern "C" {
+    fun read(fd: i32, buffer: str, length: u64) -> i64;
     variable errno: i32;
-    variable sys_nerr: u32;
 }
 ```
 
-The corresponding AST node is `ExternVarDecl` (id `0x014`). An optional `mut` qualifier (not yet surfaced in the v1 grammar; reserved in the IR) will indicate that the imported variable is mutable.
+Extern functions require a semicolon and do not have a body. Extern blocks do
+not accept type aliases, constants, static declarations, linkage attributes, or
+an `unsafe` prefix.
 
-**3. Type aliases and opaque types.** The `type` keyword inside an `extern` block declares a type alias or an opaque type for use across the boundary:
+## 18.2 Unsafe Block Expressions
+
+An unsafe block is an expression containing a block body:
+
+```ebnf
+UnsafeBlockExpression ::= 'unsafe' BlockStatement
+```
 
 ```zom
-extern "C" {
-    type FILE = opaque FILE_IMPL;   // opaque type — C sees only a forward declaration
-    type DIR  = opaque DIR_IMPL;
-    type c_int = i32;               // simple type alias
-}
+let value = unsafe {
+    compute_value()
+};
 ```
 
-Opaque types (`type Name = opaque Tag`) are the preferred way to represent C opaque struct handles. The C side sees only a forward declaration (`typedef struct Name Name;`) and never accesses the internal layout.
+The AST records `UnsafeBlockExpr`. The current checker recognizes unsafe context
+for the implemented raw-pointer operations. This syntax does not yet establish a
+foreign-call safety contract because foreign-call checking is not implemented.
 
-### Normative constraints on extern function signatures
+## 18.3 AST Contract
 
-1. **FFI-safe parameters.** Every parameter type and the optional return type must satisfy the built-in marker `FfiSafe` (§18.5). Concretely:
-   - Primitives `i8`..`u64`, `f32`, `f64`, `bool`, `usize`, `isize` are FFI-safe.
-   - Raw pointers `*const T` and `*mut T` are FFI-safe for any `T`. Note: raw pointer types are general-purpose ZOM types (see Ch.03 §Raw Pointer Types), not FFI-only. Their FfiSafe impl means they may cross the extern boundary.
-   - Structs, unions, and enums annotated `#[repr(C)]` are FFI-safe (see §18.5).
-   - A type that does not impl `FfiSafe` is rejected with **ZOM1802 NonFfiSafeType**.
-2. **No ZOM Linear types.** Linear-typed parameters or return values are rejected at signature-check time (**ZOM1810 LinearIncompatibleFfi**) because the C caller has no ownership model and could leak or double-free the opaque payload. The opaque-pointer pattern `*const OpaqueTag` / `*mut OpaqueTag` works around this restriction: ownership is expressed through pointer identity, not through a ZOM-level Linear value.
-3. **No bodies.** Functions inside an `extern` block are declarations only; writing a body is an error: **ZOM1804 ExternFunctionBody**.
-4. **`raises` clause for setjmp/longjmp-style raise.** Writing `extern fun foo() -> unit raises FFIError;` declares that the foreign implementation may raise an error via the C helper `zom_raise_error`. If the foreign code panics or longjmps without a matching `raises` clause, the behavior is undefined and no diagnostic is emitted at compile time for the foreign side; the runtime, however, will trap if `--runtime-checks` is enabled.
-5. **Calling extern functions requires `unsafe { }`.** Because foreign functions have no ZOM-level type safety guarantees, every call to an `extern "C"` function MUST appear inside an `unsafe { }` block. The compiler emits **ZOM0902 ExternCallOutsideUnsafe** when an extern function is called outside an unsafe context. This rule applies at the call site, not the declaration site — declaring the extern function is always safe.
+The current AST uses these nodes:
 
-### Variadic arguments
+| Node | Purpose |
+|---|---|
+| `ExternBlock` | ABI plus the ordered extern item list |
+| `ExternDecl` | Foreign function name, ABI, parameters, return type, and raises type |
+| `ExternVarDecl` | Foreign variable name, type, ABI, and mutability fact |
+| `UnsafeBlockExpr` | Unsafe block body |
 
-The `...` token (ELLIPSIS) in a parameter list enables C-style variadic arguments:
+Every accepted extern item is represented by one of these nodes. The frontend
+does not create placeholder nodes for unsupported foreign declarations.
 
-```zom
-extern "C" {
-    fun printf(fmt: *const u8, ...) -> i32;
-}
-```
+## 18.4 Current Boundary
 
-On architectures that do not support C variadic natively (for example WebAssembly with some target profiles), the compiler emits **ZOM1830 VarargsUnsupportedVariance** as a warning.
+The following behavior is not part of the implemented language contract:
 
-### Example — POSIX I/O
+- foreign symbol resolution or linkage;
+- C-compatible aggregate layout or representation attributes;
+- variadic calling-convention lowering;
+- FFI-safe type or ownership validation;
+- panic behavior across foreign boundaries;
+- foreign exports, name mangling, or binary emission.
 
-```zom
-extern "C" {
-    fun open(path: *const u8, flags: i32, ...) -> i32;
-    fun close(fd: i32) -> i32;
-    fun read(fd: i32, buf: *mut u8, count: usize) -> isize;
-    fun write(fd: i32, buf: *const u8, count: usize) -> isize;
-}
-
-// Calling extern functions requires unsafe { }
-fun safe_open(path: str, flags: i32) -> i32 {
-    let c_path = path.as_cstr();
-    // SAFETY: as_cstr() guarantees null-termination and valid pointer
-    unsafe { open(c_path, flags) }
-}
-```
-
-### Single-function extern form
-
-For convenience, a single foreign function may be declared without a block:
-
-```zom
-extern "C" fun getpid() -> i32;
-extern "system" fun malloc(size: usize) -> *mut u8;
-```
-
-This is semantically equivalent to placing the same declaration inside an `extern` block with the same ABI.
-
-### Omitting the ABI string
-
-When no ABI string literal is provided, the default `"C"` ABI is assumed:
-
-```zom
-extern {
-    fun simple_bridge(x: i32) -> bool;
-}
-```
-
-This is equivalent to `extern "C" { fun simple_bridge(x: i32) -> bool; }`.
-
-## 18.2 Exposing ZOM to Foreign Code
-
-Three mechanisms control how ZOM functions become callable from C:
-
-- **`#[zom::no_mangle]`** disables the ZOM name mangler for the annotated function; the resulting symbol name is the function's identifier exactly as written.
-- **`#[zom::export_name = "foo_c_entry"]`** overrides the exported symbol name entirely, regardless of identifier text. Conflicts with `#[zom::no_mangle]` are diagnosed via the shared FFI attribute conflict machinery (**ZOM0626**).
-- **`extern "C" fun ...`** on the function *definition* (not only in a block) switches the function's own calling convention to the C ABI. Without this modifier, a ZOM function uses the native ZOM calling convention and cannot be called from C.
-
-The canonical export pattern combines all three:
-
-```zom
-#[zom::no_mangle]
-extern "C" fun process_image(
-    input: *const u8,
-    len: usize,
-    output: *mut u8,
-) -> i32 {
-    // ... ZOM implementation ...
-    return 0;
-}
-```
-
-Note: the `export` keyword at module level (`export { process_image }`) controls ZOM-level module visibility, not C symbol visibility. Use `#[zom::no_mangle]` and `extern "C"` for C export.
-
-### Panic boundary rule
-
-If the crate's panic strategy is `"unwind"` and a panic escapes the body of an `extern "C"` function without a corresponding catch, the result is **undefined behavior**. The C ABI does not specify how to propagate unwinding frames, and foreign callers almost never expect an unwind. The compiler enforces this rule at definition time with lint **ZOM0965 UndefinedBehaviorOnUnwind**, unless:
-
-1. the function body's **top-level statement** is a visible `catch_unwind` block, or
-2. the function carries the `#[zom::error_boundary]` attribute (§18.4), which implicitly wraps the body at codegen time.
-
-### The opaque-type pattern
-
-When ZOM owns a structured resource and C only needs to pass a handle around, the opaque-pointer pattern lets ZOM retain type safety without leaking layout:
-
-```zom
-// ZOM side
-export struct Database { conn_str: String, pool: Pool }
-
-// The shared C header carries only a forward declaration:
-//   typedef struct Database Database;
-
-#[zom::no_mangle]
-extern "C" fun database_new(url: *const u8) -> *mut Database {
-    // ... construct a Box<Database> and leak into a raw pointer ...
-}
-
-#[zom::no_mangle]
-extern "C" fun database_free(db: *mut Database) {
-    // ... convert the raw pointer back into a Box and let it drop
-}
-```
-
-Within an `extern` block, the `type Name = opaque Tag` syntax provides a lighter-weight alternative when the ZOM side does not need the full struct definition:
-
-```zom
-extern "C" {
-    type Database = opaque DatabaseImpl;  // opaque handle, no layout exposed
-    fun database_new(url: *const u8) -> *mut Database;
-    fun database_free(db: *mut Database);
-    fun database_query(db: *mut Database, sql: *const u8) -> *mut QueryResult;
-}
-```
-
-See §18.3 for the allocator-matching rule that underpins this pattern.
-
-### Generic functions and no_mangle
-
-Applying `#[zom::no_mangle]` to a generic function is a hard error — **ZOM1805 NoMangleGeneric** — because the compiler cannot emit a single symbol for every possible monomorphization. Users who want to expose generic instantiations to C must write a thin `extern "C"` wrapper for each concrete type.
-
-## 18.3 Memory Ownership Across the Boundary
-
-The following rules are normative. Any code that violates them has undefined behavior at runtime, even if it compiles without diagnostics.
-
-1. **Pointer aliasing rules.** ZOM's internal aliasing model (equivalent to LLVM's `noalias` / `readonly`) applies at code-generation time for ZOM-owned pointers. Pointers that cross the FFI boundary in either direction follow C's default aliasing rules unless the ZOM side explicitly carries a `restrict`-equivalent annotation. Future attributes in the `zom::ffi::` namespace will expose `restrict` and other qualifiers; in v1, only `*const` vs `*mut` are semantically meaningful.
-2. **Lifetime guarantees do not survive the boundary.** ZOM reference types (`borrow<T>`, `own<T>` tokens, and any lifetime-annotated reference) are not FFI-safe. Only raw pointers are. Converting `*const T <-> borrow<T>` is permitted only when the caller can prove the lifetime statically; at the FFI boundary the **ZOM caller takes full responsibility** for the lifetime, and the compiler does not verify it.
-3. **Allocator matching — "who allocates, frees."** If ZOM allocates memory with its own allocator and returns a pointer to C, C **must** return the pointer to a ZOM-exported deallocation function. Passing a ZOM-allocated pointer to the C standard library's `free()` is undefined behavior. The normative design pattern is to export a matching `*_free` function for every `*_new` function that returns a heap allocation. The converse rule also holds: a pointer allocated with C `malloc` must be freed with C `free`, not by ZOM's allocator.
-4. **Marker re-establishment on return.** An `extern "C"` function that accepts a raw pointer has no marker information attached on the C side. When a ZOM wrapper converts the pointer back into a typed reference, the wrapper must re-establish `Sendable`, `Shared`, and other marker contracts. The idiomatic approach is to declare a `CWrapper<T>` newtype and provide an `unsafe impl Sendable for CWrapper<DatabaseHandle>` or similar attestation.
-
-## 18.4 Panic Boundary and `catch_unwind`
-
-The combination `#[zom::error_boundary]` on an `extern "C"` function is the **recommended** pattern. It is strictly safer than a manually-written `catch_unwind` because the compiler fills in the boilerplate correctly for every return type, including `unit`, primitives, and error unions.
-
-### Canonical example
-
-```zom
-#[zom::error_boundary]
-#[zom::no_mangle]
-extern "C" fun plugin_init() -> i32 {
-    setup_logging();
-    load_config()?!;                 // now safe at the FFI boundary
-    return 0;
-}
-```
-
-### Low-level expansion
-
-The attribute desugars the function body into the equivalent of:
-
-```zom
-match (zom::panic::catch_unwind(|| {
-    setup_logging();
-    load_config()?!;
-    return 0;
-})) {
-    when Ok(res) => { return res; }
-    when Err(_payload) => { return -1; }
-}
-```
-
-where `-1` is the default error return for integer-typed functions, `null()` for pointer-typed functions, and an all-zero value for other `repr(C)` return types. A future revision will expose a per-function override for the error default.
-
-Writing `catch_unwind` in non-FFI user code is flagged with **ZOM0962 CatchUnwindOutsideFfi** as a warning because the pattern is almost always a code smell — the raises-clause mechanism (Ch.11) is the correct way to propagate errors within ZOM.
-
-## 18.5 FFI-Safe Marker and `#[repr(C)]`
-
-ZOM provides a built-in Tier-1 marker `FfiSafe` whose meaning is: "the in-memory layout of this type is identical to the equivalent C type at every offset."
-
-### Auto-derivation
-
-The compiler auto-implements `FfiSafe` for:
-
-- All primitive numeric and boolean types listed in §18.1.
-- All raw pointer types `*const T`, `*mut T` regardless of `T` (pointers are always a single machine word, and the pointed-to layout is opaque to the FFI layer).
-- Structs, unions, and enums annotated with `#[repr(C)]` whose every field recursively impls `FfiSafe`.
-
-A struct used as an FFI parameter **must** carry `#[repr(C)]`; missing it raises **ZOM1803 ReprCRequired**, even if the struct's fields look C-like, because without the attribute ZOM may reorder fields to minimize padding.
-
-### Layout attributes
-
-- **`#[repr(C)]` on structs and unions.** Forces C-compatible field ordering and padding. Field offsets match the C ABI size-and-alignment rules of the current target. Without this attribute ZOM may reorder fields; the resulting layout is **not** part of the language ABI.
-- **`#[repr(IntType)]` on enums.** `#[repr(i32)] enum Color { Red, Green, Blue }` declares a C-style enum with a fixed discriminant width. Enums that cross the FFI boundary are required to carry such a repr; the absence of a fixed integer repr triggers **ZOM1803 ReprCRequired** at the call site.
-
-### Linear / FfiSafe incompatibility
-
-The implicit meta-rule `#[zom::marker::incompatible(Linear, FfiSafe)]` holds by negative coherence: C has no ownership model, so any type that is Linear cannot simultaneously be FfiSafe. Trying to export a function that takes or returns a Linear type through `extern "C"` is rejected with **ZOM1810 LinearIncompatibleFfi**, even if the user manually writes `impl FfiSafe for LinearType`.
-
-## 18.6 String Conversions
-
-C strings and ZOM strings are fundamentally different:
-
-| Model | Type | Shape | Terminator |
-|---|---|---|---|
-| C string | `*const u8` / `*mut u8` | Thin pointer | NUL (`\0`) terminated |
-| ZOM `StrSlice<'a>` | `StrSlice<'a>` | Fat pointer `(ptr, len)` | No NUL guarantee |
-| ZOM owned | `String` | Length-prefixed owned buffer | No NUL guarantee |
-
-The mismatch means passing a ZOM string directly to a C function that expects a NUL-terminated pointer is undefined behavior. The standard library exposes conversion helpers in `zom::ffi::cstr`:
-
-- **`from_cstr(ptr: *const u8) -> StrSlice<'static> raises NulError`** — scans for the trailing NUL byte. Raises `NulError` (diagnostic family ZOM1820) if an interior NUL is present at a nonzero offset. Raises `StrTooLong` (**ZOM1821**) if the length would exceed `isize::MAX` bytes.
-- **`to_cstring(s: StrSlice) -> Vec<u8>`** — appends a NUL terminator and returns an owned, heap-allocated buffer whose pointer can be passed directly to C. The buffer is dropped when the `Vec<u8>` goes out of scope; callers must ensure the pointer is not used past that point.
-- **`as_cstr_parts(s: &String) -> (*const u8, usize)`** — exposes the raw pointer and length of an existing `String`'s backing storage **without** appending a NUL. Useful only when calling C APIs that take an explicit length pair.
-
-### Common pattern
-
-```zom
-extern "C" { fun puts(s: *const u8) -> i32; }
-
-fun print_c(s: StrSlice) {
-    let buf = zom.ffi.cstr.to_cstring(s);
-    puts(buf.as_ptr());
-    // buf dropped here; the pointer is no longer valid
-}
-```
-
-## 18.7 Imported Variables and Linkage
-
-Beyond functions, the `extern` mechanism supports importing global variables from foreign libraries.
-
-### `variable` declarations
-
-The `variable` keyword inside an `extern` block declares an imported global:
-
-```zom
-extern "C" {
-    variable errno: i32;       // thread-local error code from libc
-    variable sys_nerr: u32;    // maximum errno value
-}
-```
-
-Accessing an imported variable requires an `unsafe { }` context because the foreign library may mutate it at any time without ZOM's knowledge.
-
-### Planned: `extern static` and `extern const`
-
-The AST reserves node kinds for two additional import forms that are not yet surfaced in the v1 grammar:
-
-- **`ExternStaticDecl`** (id `0x015`): `extern static NAME: T = value;` — an imported static with a known initializer.
-- **`FFIConstDecl`** (id `0x016`): `extern const NAME: T;` — an imported compile-time constant.
-
-These will be exposed in a future grammar revision; the IR nodes exist to support forward-compatible deserialization.
-
-### Linkage specification
-
-The `FFILinkSpec` AST node (id `0x017`) carries resolved linkage metadata for extern items:
-
-| Field | Type | Meaning |
-|---|---|---|
-| `link_name` | `StringId?` | Overrides the symbol name used for linking (from `#[zom::link_name = "..."]`) |
-| `link_section` | `StringId?` | Places the symbol in a specific output section (from `#[zom::link_section = "..."]`) |
-| `link_align` | `uint32?` | Explicit alignment for the symbol in bytes |
-
-## 18.8 Unsafe Operations
-
-The `unsafe` keyword serves three distinct roles in the FFI surface:
-
-### `unsafe { }` block expression
-
-An `unsafe { ... }` block is an expression that enables calling `extern` functions and performing raw pointer operations. It is the caller's way of asserting "I have verified the safety invariants that the compiler cannot check."
-
-```zom
-fun demo() -> i32 {
-    let result = unsafe {
-        ffi_dangerous_op();
-        touch_raw_memory();
-        0
-    };
-    return result;
-}
-```
-
-The value of an `unsafe` block is the value of its last expression (or `unit` if the block ends with a statement). Nested `unsafe` blocks are permitted and have no additional effect beyond the outermost one.
-
-### `unsafe extern` block
-
-Prefixing an `extern` block with `unsafe` marks all declarations within as inherently unsafe operations:
-
-```zom
-unsafe extern "system" {
-    fun malloc(sz: usize) -> *mut u8;
-    fun free(p: *mut u8);
-    fun memcpy(dst: *mut u8, src: *const u8, n: usize) -> *mut u8;
-}
-```
-
-This is a documentation and lint-level hint; the primary safety gate remains the `unsafe { }` requirement at call sites.
-
-### `unsafe` on non-functions is an error
-
-Applying `unsafe` to a non-function construct (such as `let x = unsafe 42;`) is a parse-time error. The `unsafe` keyword may only appear as:
-- A prefix to `extern` blocks or single extern function declarations
-- A prefix to `{ ... }` block expressions (the `unsafe { }` form)
-- A prefix to `impl` blocks for marker traits (see Ch.09)
-
-## 18.9 Diagnostic Codes
-
-The 18xx range is reserved for FFI and interop diagnostics. Every code below is referenced normatively elsewhere in this chapter and must be registered in `docs/design/compiler-contracts.md` §2.
-
-| Code | Name | Severity | Meaning |
-|---|---|---|---|
-| ZOM0902 | ExternCallOutsideUnsafe | Error | An `extern "C"` function is called outside an `unsafe { }` block. |
-| ZOM0904 | NonFfiSafeReturnType | Error | An `extern "C"` function returns a non-FFI-safe type (e.g. `String`) without `#[repr(C)]`. Overlaps with ZOM1802 at the return-position; ZOM0904 is the backend/codegen-phase variant. |
-| ZOM0962 | CatchUnwindOutsideFfi | Warning | `catch_unwind` is invoked outside an `extern "C"` boundary; prefer `raises` clauses or `?!` propagation. |
-| ZOM0965 | UndefinedBehaviorOnUnwind | Warning | An `extern "C"` function whose panic strategy is "unwind" has no visible `catch_unwind` or `#[zom::error_boundary]` wrapper; a panic escaping this function is undefined behavior. |
-| ZOM1801 | UnknownAbi | Error | `extern "X"` specifies an ABI string not supported by the current compiler or target triple. (Parse-time variant emitted as **ZOM2001 UnknownExternAbi**.) |
-| ZOM1802 | NonFfiSafeType | Error | A parameter or return type in an extern block does not implement the `FfiSafe` marker. |
-| ZOM1803 | ReprCRequired | Error | A struct, union, or enum used as an FFI parameter or return lacks the `#[repr(C)]` (or fixed integer repr for enums) attribute. |
-| ZOM1804 | ExternFunctionBody | Error | A function declared inside an `extern` block contains a body; bodies are illegal there because the function is imported, not defined. |
-| ZOM1805 | NoMangleGeneric | Error | `#[zom::no_mangle]` is applied to a generic function, which cannot have a single exported symbol for all monomorphizations. |
-| ZOM1810 | LinearIncompatibleFfi | Error | A function exported or imported through `extern "C"` takes or returns a Linear-typed value, which C cannot safely own. |
-| ZOM1820 | NulError | Error | A C-string conversion encounters an unexpected interior NUL byte at a nonzero offset. |
-| ZOM1821 | StrTooLong | Error | A C-string length exceeds `isize::MAX`, violating the thin-pointer length contract. |
-| ZOM1830 | VarargsUnsupportedVariance | Warning | `...` variadic arguments in an extern declaration require platform support that is unavailable on the current target (for example, some wasm profiles). |
-
-### Parse-time FFI diagnostics
-
-The following code is emitted during parsing (before the TypeChecker runs). It uses the `20xx` range in the current grammar implementation:
-
-| Code | Name | Severity | Meaning |
-|---|---|---|---|
-| ZOM2001 | UnknownExternAbi | Error | Parse-time variant of ZOM1801; emitted by the parser predicate `checkExternAbiFormat` when the ABI string literal is not in the recognized set `{"C", "Cdecl", "system", "zom-cdecl"}`. Note: this code overlaps with `ZOM2001 ForbidLintDowngrade` in the 2000–2049 Edition & Lint range; a future revision will consolidate parse-time ABI errors into ZOM1801. |
-
-## 18.10 AST Node Reference
-
-The FFI family occupies node ids `0x010` through `0x017` in the AST schema (`products/zomlang/compiler/ast/schema.yml`):
-
-| Id | Name | Purpose |
-|---|---|---|
-| `0x010` | `ExternDecl` | A single `extern fun name(params) -> Ret raises E;` declaration |
-| `0x011` | `UnsafeBlockExpr` | `unsafe { ... }` boundary expression |
-| `0x012` | `ExternBlock` | `extern "ABI" { item* }` grouping construct |
-| `0x013` | `FFIParameterDecl` | Parameter inside an extern function (reserved; current implementation reuses `FunctionParameterDecl`) |
-| `0x014` | `ExternVarDecl` | `variable name: T;` imported global |
-| `0x015` | `ExternStaticDecl` | `extern static NAME: T = value;` (reserved, not yet in grammar) |
-| `0x016` | `FFIConstDecl` | `extern const NAME: T;` (reserved, not yet in grammar) |
-| `0x017` | `FFILinkSpec` | Resolved `link_name` / `link_section` / `link_align` payload |
+These behaviors require accepted architecture and executable implementation
+evidence before they can become normative.

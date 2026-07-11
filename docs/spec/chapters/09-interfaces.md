@@ -1,6 +1,9 @@
 # Interfaces
 
-Interfaces define contracts that types can implement, enabling polymorphism and code reuse without coupling behavior to a specific class hierarchy. An interface declares a set of method signatures, property signatures, and associated type requirements; any type that satisfies those requirements — via an `impl I for T` block or an in-class heritage clause — is said to *implement* the interface.
+Interfaces define contracts that types can implement, enabling polymorphism and
+code reuse without coupling behavior to a class hierarchy. An interface
+declares method signatures, accessor signatures, and associated type
+requirements. A type implements an interface through an `impl I for T` block.
 
 ## 9.1 Basic Interface Declaration
 
@@ -26,10 +29,12 @@ interface Marker {}
 
 ### 9.1.1 Visibility and Modifiers
 
-Interface declarations accept a `ModifierList` prefix. The `public` modifier makes the interface visible across module boundaries; `private` restricts it to the enclosing module.
+Module-level visibility is expressed with `export`. Visibility modifiers are
+valid only on type members and are rejected on a module-level interface
+declaration.
 
 ```zom
-public interface Container<T> : Iterable {
+export interface Container<T> : Iterable {
     fun size() -> i32;
 }
 ```
@@ -182,7 +187,7 @@ impl Drawable for Button {
         print("Drawing " + this.text);
     }
 
-    get bounds() -> Rectangle {
+    fun bounds() -> Rectangle {
         return Rectangle(this.position, this.size);
     }
 }
@@ -210,7 +215,7 @@ impl Iterator for ByteReader {
     }
 
     fun next() -> u8? {
-        if !this.hasNext() { return null; }
+        if (!this.hasNext()) { return null; }
         let byte = this.buf[this.pos];
         this.pos = this.pos + 1;
         return byte;
@@ -227,7 +232,7 @@ impl<T> Debug for Vec<T> where T: Debug {
     fun fmt(f: &mut Formatter) {
         f.write_char('[');
         for (mut i = 0; i < this.length; i = i + 1) {
-            if i > 0 { f.write_str(", "); }
+            if (i > 0) { f.write_str(", "); }
             Debug::fmt(this[i], f);
         }
         f.write_char(']');
@@ -235,18 +240,28 @@ impl<T> Debug for Vec<T> where T: Debug {
 }
 ```
 
-Note: `where`-clauses on `interface` declarations themselves are **not** supported; constraints on interface type parameters are expressed in the type parameter list directly.
+Interface declarations themselves do not accept a trailing `where`-clause in
+v1. Generic constraints for an interface are expressed in the type parameter
+list or on standalone impl declarations. A declaration such as
+`interface BadIface<T> where T: Eq { ... }` is rejected by the parser, matching the conformance fixture
+`09-interfaces/iface_where_reject_neg_05.zom`.
 
 ### 9.4.3 Orphan Rule
 
-An `impl I for T` block is legal if **either**: (1) `I` is declared in the current crate, OR (2) `T` is declared in the current crate. If both the interface and the target type are foreign to the current crate, the orphan-rule checker emits the orphan-impl diagnostic for that follow-up coherence contract. This rule preserves coherence across crate boundaries: downstream crates cannot inject conflicting implementations for types and interfaces they do not own.
+An `impl I for T` block is legal if either `I` or `T` is declared in the
+current module. If both are foreign to the current module, the checker emits
+`ZOM4054 OrphanImpl`.
 
 Common legitimate use cases:
 
-- **External type + internal interface:** e.g. `impl JsonSerializable for u64` where `u64` is from the standard crate but `JsonSerializable` is local.
-- **Internal type + external interface:** e.g. `impl Display for MyUuid` where `MyUuid` is local but `Display` comes from the standard library.
+- **External type + local interface:** `impl JsonSerializable for u64` when
+  `JsonSerializable` is declared in the current module.
+- **Local type + external interface:** `impl Display for MyUuid` when `MyUuid`
+  is declared in the current module.
 
-Per-crate coherence allows at most **one** `impl I for T` per `(I, T)` pair; if two distinct `impl I for T` blocks exist for the same nominal pair within the same crate, the type checker emits `ZOM4017 ConflictingImpl`. Cross-crate overlap is owned by the cross-module coherence contract (Ch.22 §22.4).
+The current module may contain at most one `impl I for T` for a nominal
+`(I, T)` pair. A duplicate emits `ZOM4017 ConflictingImpl`. RFC 0008 owns the
+cross-module coherence design.
 
 ### 9.4.4 Marker Forwarding
 
@@ -345,7 +360,7 @@ flowchart TD
     OS4 -->|No| E4[ZOM4004 DynUnassociatedType]
     OS4 -->|Yes| OS5{"OS-5: Any static method<br/>(no this receiver)?"}
     OS5 -->|Yes| E5[ZOM4005 DynStaticMethod]
-    OS5 -->|No| OS6{"OS-6: Any GAT<br/>(lifetime-parametric assoc type)?"}
+    OS5 -->|No| OS6{"OS-6: Any generic<br/>associated type?"}
     OS6 -->|Yes| E6[ZOM4006 DynGatNotAllowed]
     OS6 -->|No| OS7{"OS-7: All param/return types<br/>impl Sized?"}
     OS7 -->|No| E7[ZOM4007 DynUnsizedParameter]
@@ -397,15 +412,15 @@ vtable. Such methods remain callable through the qualified path
 interface ineligible for `dyn I`.
 
 ```zom
-interface Factory { static fun new() -> Self; }           // ZOM4005 DynStaticMethod
+interface Factory { static fun create() -> Self; }        // ZOM4005 DynStaticMethod
 ```
 
 ### 9.6.8 OS-6 No Generic Associated Types (GAT)
 
-An associated type that introduces its own lifetime or type parameters (e.g. `type Iter<'a>;`) is a GAT. GAT vtable representation is deferred to post-v1.
+An associated type that introduces its own type parameters is a GAT. GAT vtable representation is not part of the current dynamic-dispatch contract.
 
 ```zom
-interface Iterable { type Iter<'a>: Iterator; }           // ZOM4006 DynGatNotAllowed
+interface Iterable { type Iter<T>: Iterator; }            // ZOM4006 DynGatNotAllowed
 ```
 
 ### 9.6.9 OS-7 All Parameters and Returns Are Sized
@@ -426,7 +441,7 @@ interface Writer {
 
 fun write_all(w: &mut dyn Writer, data: u8[]) {
     mut remaining = data.length;
-    while remaining > 0 {
+    while (remaining > 0) {
         let written = w.write_bytes(data.slice(data.length - remaining));
         remaining = remaining - written;
     }
@@ -441,77 +456,22 @@ interface RpcHandler {
     fun handle(req: Request) -> Response;
 }
 
-fun dispatch<T>(h: &(dyn RpcHandler + Sendable + Shared), req: Request)
-    -> Task<Response>
-{
-    return async { h.handle(req) };
+fun dispatch(h: &(dyn RpcHandler + Sendable + Shared), req: Request) -> Response {
+    return h.handle(req);
 }
 ```
 
-## 9.7 Unsafe Interfaces and Unsafe Impl
-
-Some interfaces carry semantic contracts that the compiler cannot statically verify — for example, "this allocator is safe to call concurrently from multiple threads" or "this iterator yields valid UTF-8." Such interfaces are *semantically unsafe*: implementing them correctly requires the programmer to attest to invariants that the type system cannot prove.
-
-### 9.7.1 `unsafe impl` Syntax
-
-The `unsafe` keyword prefixes the `impl` block to signal that the implementor is attesting to the interface's semantic contract:
-
-```zom
-/// # Safety
-/// Implementors must guarantee that all methods are safe to call concurrently
-/// from multiple threads without external synchronization.
-interface GlobalAllocator {
-    fun allocate(size: usize, align: usize) -> *mut u8;
-    fun deallocate(ptr: *mut u8, size: usize, align: usize);
-}
-
-unsafe impl GlobalAllocator for MyArena {
-    fun allocate(size: usize, align: usize) -> *mut u8 { /* ... */ }
-    fun deallocate(ptr: *mut u8, size: usize, align: usize) { /* ... */ }
-}
-```
-
-Omitting `unsafe` produces an unsafe-implementation diagnostic when the target interface is marked as requiring unsafe implementation.
-
-### 9.7.2 Calling Methods of Semantically Unsafe Interfaces
-
-When an interface is documented as requiring `unsafe impl`, calling its methods through a `dyn` reference may require the caller to be in an `unsafe { }` context, depending on the specific interface's documented contract. The compiler does not automatically gate all calls; the safety obligation is documented in the interface's `# Safety` doc section.
-
-### 9.7.3 Documentation Required
-
-Every semantically unsafe interface SHOULD include a `# Safety` section in its doc comment describing the invariants that implementors must uphold. A missing-safety-doc lint warns when absent.
-
-### 9.7.4 When to Use
-
-Mark an interface as semantically unsafe when correct behavior depends on invariants that are:
-
-- **Semantic rather than structural.** E.g., "this allocator is thread-safe" — the compiler cannot prove this from types alone.
-- **Global rather than local.** E.g., "this global state has exactly one writer."
-- **Protocol-based.** E.g., "methods must be called in order A then B then C."
-
-If the invariant can be expressed in the type system (e.g., via marker bounds or associated types), prefer that approach over relying on `unsafe impl`.
-
-## 9.8 Interfaces as Generic Bounds
+## 9.7 Interfaces as Generic Bounds
 
 Interface names and marker names both participate in the same `BoundList` syntax, shared with [Ch.12 §Generics](12-generics.md). The full `BoundList` grammar (normative in Ch.12) is:
 
 ```ebnf
-BoundList = BoundItem ( "+" BoundItem )* ;
-
-BoundItem = ( "!" )? MarkerPath
-          | InterfaceName ( "<" GenericArgs ">" )?
-          ;
+BoundList = TypeExpression ( "+" TypeExpression )* ;
 ```
 
-A type parameter's bound list therefore has the general form `<T: Interface1<Arg> + Interface2 + Marker1 + !Marker2>`.
+A type parameter's bound list therefore has the general form `<T: Interface1<Arg> + Interface2 + Marker1>`.
 
-### 9.8.1 Negation Prefix (`!`) — Interface Bounds Are Positive Only
-
-The `!` prefix is ONLY legal on marker bounds. Writing `!Drawable` as a bound is a semantic error because interfaces are behavioral contracts, not structural properties; the predicate "explicitly does NOT have interface I" is not meaningful in ZOM's type system because negative interface impls are deliberately not supported, and the orphan rule has no mechanism for coherently propagating negations across crate boundaries.
-
-Marker bounds MAY use `!` to express a negative bound. For example `!Shared` means "definitely not shared" and is a valid structural predicate.
-
-### 9.8.2 Examples
+### 9.7.1 Examples
 
 A single interface bound on a generic function (Ch.12 generic form):
 
@@ -525,29 +485,21 @@ fun sort<T: Comparable<T>>(arr: T[]) -> T[] {
 Combining an interface bound with two positive marker bounds for thread-safety:
 
 ```zom
-fun draw_all<T: Drawable + Sendable>(items: [T]) { for x in items x.draw(); }
+fun draw_all<T: Drawable + Sendable>(items: T[]) {
+    for (x in items) {
+        x.draw();
+    }
+}
 ```
 
-Combining an interface bound, a positive marker bound, and a NEGATED marker bound to express "runnable on the local thread only, must be linear so the executor owns the task uniquely":
-
-```zom
-fun clone_into<T: Cloneable + Linear + !Shared>(x: T, target: &mut Vec<T>);
-```
-
-Attempting to negate an interface bound is an error:
-
-```zom
-// Incorrect — interface bounds cannot be negated.
-fun bad<T: !Drawable>(x: T);
-```
-
-### 9.8.3 Intersection Types vs. Bound Lists
+### 9.7.2 Intersection Types vs. Bound Lists
 
 The intersection operator `&` used in type expressions such as `Drawable & Rounded` (Ch.03) is structural and produces a type. The `+` separator used in bound lists such as `T: Drawable + Rounded` is predicate-level conjunction and produces a proof obligation. A type satisfies `T: I1 + I2` precisely when it satisfies both bounds simultaneously; the type expression `I1 & I2` as a standalone type is sugar for `dyn (I1 & I2)`, the existential form combining multiple object-safe interfaces.
 
-## 9.9 Grammar Reference (Informative)
+## 9.8 Grammar Reference (Informative)
 
-The following productions are reproduced from [Ch.17 Grammar Reference](17-grammar-reference.md) and the authoritative [`docs/design/syntax-ebnf.md`](../design/syntax-ebnf.md) for convenience.
+The following productions are reproduced from the normative
+[Ch.17 Grammar Reference](17-grammar-reference.md) for convenience.
 
 ```ebnf
 InterfaceDecl  ::= ModifierList 'interface' BindingIdent TypeParameters?
@@ -555,40 +507,45 @@ InterfaceDecl  ::= ModifierList 'interface' BindingIdent TypeParameters?
                    '{' InterfaceBody '}'
 
 Interface declarations do not accept `WhereClause`; generic constraints for an
-interface are written in `TypeParameters`.
+interface are written in `TypeParameters` or on standalone impl declarations.
+The parser rejects `interface I<T> where T: Bound { ... }`.
 
 InterfaceHeritage ::= ':' InterfaceBoundList
 InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*
 InterfaceBound     ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
 
 InterfaceBody   ::= InterfaceElement*
-InterfaceElement ::= ';'
-                  | OuterAttributeList ModifierList 'fun' MethodSignature ';'
-                  | OuterAttributeList ModifierList ('get' | 'set') PropertySignature ';'
-                  | OuterAttributeList ModifierList 'type' Identifier TypeParameters?
+InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
+                  | ModifierList ('get' | 'set') PropertySignature ';'
+                  | ModifierList 'type' Identifier TypeParameters?
                     ( ':' InterfaceBoundList )? ( '=' TypeExpr )? ';'
 
 MethodSignature   ::= PropertyName CallSignature
-CallSignature     ::= TypeParameters? ParameterClause FunctionSignature?
-PropertySignature ::= PropertyName ParameterClause FunctionSignature?
+CallSignature     ::= TypeParameters? FunctionSignature
+PropertySignature ::= PropertyName FunctionSignature
 
-StandaloneImplDecl ::= 'impl' TypeParameters? InterfaceBoundList 'for' TypeExpr
-                       WhereClause?
+StandaloneImplDecl ::= UnsafePrefix? 'impl' TypeParameters? InterfaceBoundList
+                       'for' TypeExpr WhereClause?
                        '{' ImplMember* '}'
 
-ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters? ParameterClause
-                    FunctionSignature? ( ';' | BlockStatement )
+ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters?
+                    FunctionSignature ( ';' | BlockStatement )
                  | 'type' Identifier TypeParameters? '=' TypeExpr ';'
+                 | 'mut' VariableDeclList ';'
+                 | 'let' VariableDeclList ';'
+                 | 'const' ConstDeclList ';'
 ```
 
-## 9.10 Summary
+## 9.9 Summary
 
 - Interfaces declare method signatures, property signatures, and associated type requirements that types satisfy via `impl I for T` blocks.
 - Interface inheritance uses the colon (`:`) syntax with `+` for multiple super-interfaces (conjunction). Pipe `|` is rejected in heritage position.
 - Interface method and property signatures end with a semicolon; method bodies are not permitted inside interface declarations.
 - Associated types support four forms: unconstrained, bounded, defaulted, and generic (GAT). Full form combines type parameters, bounds, and defaults.
-- Standalone `impl I for T` blocks extend interface coverage to foreign types and allow modular grouping of impls, governed by Ch.22's orphan rule and the duplicate-impl coherence check (`ZOM4017 ConflictingImpl` for the same nominal pair within one crate).
+- Standalone `impl I for T` blocks extend interface coverage when either the
+  interface or target type is local to the current module. `ZOM4054 OrphanImpl`
+  rejects a fully foreign pair, and `ZOM4017 ConflictingImpl` rejects duplicate
+  nominal pairs in the module.
 - Multiple interface inheritance uses four conflict-resolution rules (IR-1..IR-4): redundant signatures warn, independent overloads coexist, incompatible return types error, and shared pure-method obligations converge.
 - Eight object-safety rules (OS-0..OS-7) govern whether an interface can be coerced to `dyn I` (Ch.03 §Existential Types), with dedicated diagnostics `ZOM4001` through `ZOM4008`.
-- Semantically unsafe interfaces require `unsafe impl` to implement. The `unsafe` keyword appears on the `impl` block, not on the `interface` declaration. A missing `# Safety` doc section is linted.
-- Interface names participate in Ch.12's generic bound lists alongside marker bounds. Only marker bounds may be negated.
+- Interface names and marker names participate in positive generic bound lists.

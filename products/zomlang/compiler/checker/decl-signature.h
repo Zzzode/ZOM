@@ -188,13 +188,18 @@ private:
   /// \brief Find the interface declaration node for a resolved interface name.
   ast::NodeId findInterfaceDecl(zc::StringPtr name) const;
 
+  /// \brief Return true if an interface or its superinterfaces declare an associated type.
+  bool interfaceDeclaresAssociatedType(zc::StringPtr ifaceName, zc::StringPtr assocName,
+                                       zc::HashSet<zc::StringPtr>& activeIfaces) const;
+
   /// \brief Emit object-safety diagnostics for a dyn interface head.
-  void checkDynObjectSafety(ast::NodeId ifaceTypeExpr, zc::StringPtr ifaceName);
+  void checkDynObjectSafety(ast::NodeId objectSafetyDiagExpr, ast::NodeId assocBindingsId,
+                            zc::StringPtr ifaceName);
 
   /// \brief Check whether an interface and its superinterfaces are object-safe.
-  bool isDynObjectSafe(ast::NodeId ifaceTypeExpr, zc::StringPtr ifaceName,
-                       zc::StringPtr& failingIface, zc::HashSet<zc::StringPtr>& activeIfaces,
-                       bool emitDirectDiagnostics);
+  bool isDynObjectSafe(ast::NodeId objectSafetyDiagExpr, ast::NodeId assocBindingsId,
+                       zc::StringPtr ifaceName, zc::StringPtr& failingIface,
+                       zc::HashSet<zc::StringPtr>& activeIfaces, bool emitDirectDiagnostics);
 
   // ==========================================================================
   // Helpers

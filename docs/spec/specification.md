@@ -37,34 +37,12 @@ For the complete specification, please refer to the individual chapter files in 
 
 ### Cross-Cutting Systems
 
-- [FFI & Interop](chapters/18-ffi-and-interop.md) — `extern "C"` boundary, no_mangle exports, FfiSafe marker, `repr(C)` layout, panic boundary & error_boundary attribute, C-string conversions
-- [Conditional Compilation](chapters/19-conditional-compilation.md) — `#[zom::cfg(predicate)]` attribute, all/any/not combinators, file-name suffix gating, manifest `[features]`, gated-declaration semantics
-- [Edition Model & Stability](chapters/20-edition-and-stability.md) — year-string editions, per-crate opt-in scope, allow/warn/deny/forbid lint tiers, 4-step lint-promotion cycle, SemVer contracts, `no_core` unstable exception
+- [FFI & Interop](chapters/18-ffi-and-interop.md) — `extern "C"` declarations and unsafe boundaries
 
-### Module Infrastructure
+### Cross-Module Language Rules
 
-- [Package Model, Manifest & Workspaces](chapters/21-package-model-and-manifest.md) - Package model, Zom.toml schema, editions, dependency resolution and build scripts
-- [Orphan Rule & Cross-Crate Coherence](chapters/22-orphan-rule-and-coherence.md) - Impl locality, negative-impl 3-phase closure, coherence matrix and cross-crate metadata rules
-- [Visibility Ladder](chapters/23-visibility-ladder.md) — 8-level private→export ladder, sealed/final/open extensibility (default FINAL), 6×4 truth table for isPublic() single source of truth
-- [Module Resolution Algorithm](chapters/24-module-resolution-algorithm.md) — dual filesystem convention (`foo.zom` ⊕ `foo/mod.zom` → ZOM0881), resolveModule() pseudocode, sibling-directory fallback
-- [Standard Prelude](chapters/25-standard-prelude.md) — normative prelude symbol list (Maybe, OneOf, Own, Ptr, Array, ArrayPtr, Vector, String, StringPtr, ConstString, Rc, Arc, MutexGuarded), 6 marker traits, function/macro set aligned with zc library, 4-level injection ordering, no_std/core swap contract, edition-gated symbols, full std library module map (memory, refcount, option, variant, array, string, collections, exception, debug, io, fs, sync, time, hash, encoding, net, process, functional, source_location, arena, glob, units, ownership)
-- [Registry & PubGrub Resolver (Roadmap v2)](chapters/26-registry-and-resolver.md) — HTTP REST API, index.git NDJSON layout, PubGrub algorithm lock, min-version-first policy, `Zom.lock` TOML schema, cache layout, provenance & supply chain contracts
-
-## About This Organization
-
-The specification was previously contained in a single large file, which led to:
-
-- Difficulty in navigation and maintenance
-- Potential for content duplication
-- Challenges in collaborative editing
-
-By splitting the specification into focused chapters, we achieve:
-
-- **Better Organization**: Each topic has its own dedicated file
-- **Improved Navigation**: Easy to find specific language features
-- **Enhanced Maintainability**: Changes can be made to individual sections
-- **Reduced Redundancy**: Eliminates duplicate content
-- **Collaborative Friendly**: Multiple contributors can work simultaneously
+- [Orphan Rule and Coherence](chapters/22-orphan-rule-and-coherence.md) - Implemented single-compilation impl locality and exact or blanket overlap rules
+- [Visibility Syntax and Retained Facts](chapters/23-visibility-ladder.md) — Module export syntax, member visibility facts, and current enforcement boundary
 
 ## Grammar Consistency
 
@@ -85,11 +63,6 @@ When contributing to the specification:
 3. **Update cross-references** when adding new content
 4. **Keep grammar in sync** with ANTLR4 files
 5. **Follow the established format** and style
-
-## Version History
-
-- **v2.0** - Restructured into modular chapters (current)
-- **v1.x** - Single-file specification with grammar consistency updates
 
 ---
 

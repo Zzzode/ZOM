@@ -217,6 +217,9 @@ private:
 
   /// \brief Extract a path name from a ModulePath or NamedTypeExpr node.
   zc::StringPtr resolvePathName(ast::NodeId pathNode);
+
+  /// \brief Return direct parent interfaces declared by an interface.
+  zc::Vector<zc::StringPtr> parentInterfaceNames(zc::StringPtr ifaceName);
 };
 
 }  // namespace checker

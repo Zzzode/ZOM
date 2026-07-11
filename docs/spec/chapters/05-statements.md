@@ -465,10 +465,17 @@ If the function has a declared return type, the expression (if present) must be 
 Statements can be labeled for use with `break` and `continue`.
 
 ```ebnf
-LabeledStatement ::= Identifier ':' Statement
+LabeledStatement ::= Identifier ':' LabelTarget
+LabelTarget      ::= BlockStatement
+                   | WhileStatement
+                   | DoWhileStatement
+                   | ForStatement
+                   | ForInStatement
+                   | LabeledStatement
 ```
 
-Labels may only prefix control-flow or block statements. Declarations (`let`, `mut`, `const`, `fun`, `class`, `struct`, `interface`, `enum`, `error`, `alias`, `import`, `export`, `module`, `type`) must NOT be labeled (enforced by constraint C25#2).
+Labels prefix `while`, `do-while`, classic `for`, iterator `for`, blocks, or
+another label that ultimately prefixes one of those targets.
 
 ```zom
 // Label a loop
@@ -496,57 +503,30 @@ Outer attributes (`#[...]`) are not allowed immediately after a label.
 
 ## Concurrency Statements
 
-ZOM uses a **zero-color** concurrency model. There is no `async`/`await`. Instead, two keywords manage task suspension and spawning: `suspend` and `spawn`.
+The current frontend parses `spawn` expressions and `suspend` statements. This
+section defines syntax and AST retention only. Chapter 15 defines the same
+surface in detail.
 
-### `spawn` Statement
-
-`spawn` creates a new asynchronous task. In statement form, the `TaskHandle<T>` result is discarded.
+### `spawn` Expression
 
 ```ebnf
-SpawnStatement     ::= 'spawn' SpawnModifierList? ( SpawnBlockBody | Expression ) ';'?
-SpawnModifierList  ::= SpawnModifier ( ','? SpawnModifier )*
+SpawnExpression    ::= 'spawn' SpawnModifier* (SpawnBlockBody | AssignmentExpression)
 SpawnModifier      ::= 'detached'
                      | 'blocking'
                      | 'priority' '(' ( 'high' | 'low' ) ')'
-SpawnBlockBody     ::= '{' StatementList Expression? '}'
+SpawnBlockBody     ::= BlockStatement
 ```
 
 ```zom
-// Spawn a block body
-spawn {
-    let result = heavy_computation();
-    report_result(result);
-}
-
-// Spawn with modifiers
-spawn detached, priority(high) {
-    background_task();
-}
-
-// Spawn a blocking task (runs on the blocking thread pool)
-spawn blocking {
-    let data = read_file_sync(path);
-    process(data);
-}
-
-// Spawn a function call
-spawn compute_value();
-
-// Spawn a closure
-spawn fun() -> i32 use [x, y] {
-    return x + y;
-};
+let background = spawn detached priority(low) { work(); };
+let blocking = spawn blocking read_sync(path);
 ```
 
-Semantics:
-- **Default `spawn`**: The body's immediate enclosing scope must be inside an active `Scope` (provided by `spawn_scope` or the runtime root scope). The body is enqueued before `spawn` returns (eager task principle).
-- **`spawn detached`**: All captures must be `'static`; not bound to any scope; exiting without join triggers lint ZOM8008.
-- **`spawn blocking`**: The body is dispatched to the blocking thread pool and does not consume an M:N worker.
-- **Capture checking**: Ownership transfers across a spawn-closure boundary must satisfy `Sendable`; shared references must satisfy `Shared`; violation produces compile error ZOM8001.
+The AST stores modifier bits, priority, and a statement body. An expression
+body is wrapped in an `ExpressionStatement`. The checker and runtime do not yet
+assign task, capture, scheduling, or result semantics to this node.
 
 ### `suspend` Statement
-
-`suspend` removes the current task from the run queue and waits for a suspend event to become ready before resuming.
 
 ```ebnf
 SuspendStatement ::= 'suspend' ( ';'
@@ -561,45 +541,38 @@ suspend;
 suspend until timer.duration(1000);
 
 // Suspend until an I/O event
-suspend until socket.readable();
+suspend until ready;
 ```
 
-Semantics:
-1. Evaluate the `until` expression to yield an event object `ev` (must be a `SuspendEvent<T>` or implement `SuspendEventContract<T>`).
-2. Inject the current task's waker into `ev.waker`.
-3. Register `ev` with the appropriate reactor.
-4. The current task yields the worker.
-5. When the event becomes ready or is canceled, the reactor invokes the waker and the task re-enters the runnable queue.
+The AST stores `Bare` or `Until` mode and the optional condition. `suspend` is
+not an expression. No wake, cancellation, scheduler, or event-type semantics
+are implemented.
 
-The statement form `suspend until expr;` discards the event result. To obtain the result, use the expression form `let result = suspend until expr;` (expression form is a spec requirement; parser support is tracked separately).
-
-## Unsafe Block Statement
+## Unsafe Block Expression Statement
 
 An `unsafe` block grants the capability to perform operations that the compiler cannot prove safe. It does not disable type checking, borrow checking, or any other safe-language analysis -- it only enables the specific unsafe operations listed in [Ch.03 §Unsafe Safety Model](03-types.md).
 
 ```ebnf
-UnsafeBlockStatement ::= 'unsafe' BlockStatement
+UnsafeBlockExpr ::= 'unsafe' BlockStatement
 ```
 
-> **Note**: In the current implementation, `unsafe { }` is parsed as `UnsafeBlockExpr` (an expression form). It appears as a statement when followed by `;` as an expression statement: `unsafe { raw_op(); };`. The bare `unsafe { stmt* }` without semicolon is not yet recognized as a standalone statement form.
+An unsafe block is an expression. It appears in statement position through an
+expression statement.
 
 ```zom
 // Basic unsafe block
 unsafe {
-    let value = *raw_pointer;     // OK: raw pointer dereference
-    extern_c_function();          // OK: calling extern "C" function
-    unsafe_helper();              // OK: calling unsafe fun
+    let value = *raw_pointer;
 };
 
 // Outside unsafe block, these operations are errors
-// let value = *raw_pointer;     // Error ZOM0901: RawPointerDerefOutsideUnsafe
-// extern_c_function();         // Error ZOM0902: ExternCallOutsideUnsafe
+// let value = *raw_pointer; // ZOM4069 RawPointerBoundaryRequiresUnsafe
 ```
 
 An `unsafe` block:
 
-1. Creates a new lexical scope (identical to a regular block statement).
-2. Grants the capability to perform unsafe operations within its body.
+1. Creates a block-expression lexical scope.
+2. Grants the capability required by raw-pointer operations within its body.
 3. Does NOT suppress diagnostics for safe operations -- type errors, borrow errors, etc. are still reported normally.
 4. Should be as small as possible, wrapping only the specific unsafe operation.
 
@@ -656,57 +629,37 @@ In non-debug builds, `debugger;` is a no-op.
 
 ## Reserved Syntax
 
-The following keywords are reserved and produce specific diagnostic codes when used in statement position. They are not part of the current statement grammar.
+The lexer reserves the following spellings, but the parser does not accept
+them as statement or expression forms:
 
-| Keyword(s) | Diagnostic | Description |
-|---|---|---|
-| `throw`, `try`, `catch`, `finally` | ZOM5001 | Exception syntax not implemented. Use explicit error values, `raises` annotations, and pattern matching instead. |
-| `async`, `await` | ZOM5002 | Async/await not implemented. ZOM uses the zero-color `suspend`/`spawn` model (see [Concurrency Statements](#concurrency-statements)). |
-| `var` | ZOM5003 | `var` not implemented. Use `let`, `mut`, or `const` instead. |
-| `actor`, `channel` | ZOM5004 | Actor/channel are library types, not language keywords. |
-| `yield`, `generator` | ZOM5005 | Generator syntax not implemented. |
-| `namespace`, `package` | ZOM5006 | Use module dotted paths instead. |
-| `type` | ZOM5007 | Top-level `type` declaration not implemented. Use `alias` for type aliases. |
-| `delete`, `instanceof`, `of`, `with` | ZOM5008 | JavaScript legacy syntax, not part of ZOM v1. Use `is` for type testing. |
+- `throw`, `try`, `catch`, and `finally`;
+- `async` and `await`;
+- `var`;
+- `actor` and `channel`;
+- `yield` and `generator`;
+- `namespace` and `package`;
+- `type` as a top-level declaration keyword; and
+- `delete`, `instanceof`, `of`, and `with`.
 
-```ebnf
-ReservedStatement ::= 'throw' Expression? ';'?
-                    | 'try' BlockStatement
-                      ( 'catch' '(' Identifier ':'? TypeExpr ')' BlockStatement )*
-                      ( 'finally' BlockStatement )?
-                    | 'async' Statement
-                    | 'await' Expression
-                    | 'var' VariableDeclList ';'
-                    | 'actor' Identifier TypeParameters? '{' ... '}'
-                    | 'channel' TypeExpr
-                    | 'yield' Expression?
-                    | 'generator' Identifier '{' ... '}'
-                    | 'namespace' Identifier '{' ... '}'
-                    | 'package' Identifier '{' ... '}'
-                    | 'type' Identifier TypeParameters? '=' TypeExpr ';'
-                    | 'delete' Expression
-                    | Expression 'instanceof' TypeExpr
-                    | 'of' Expression
-                    | 'with' '(' Expression ')' Statement
-```
+Rejected uses emit registered parser diagnostics. Diagnostic identifiers are
+owned by `diagnostics-parse.def`; this chapter does not allocate a separate
+reserved-syntax diagnostic range.
 
-## Conditional Compilation Gates
+## Statement Attributes
 
-Statements at module or block scope may be gated by `#[zom::cfg(...)]` attributes. However, the attribute can only gate a **standalone block** of the form `#[zom::cfg(...)] { stmt* }`. It cannot gate individual expressions, control-flow statements, or declaration-statement forms like `let`, `mut`, `for`, `if`, or `return`.
+An outer attribute list may prefix any non-expression statement stored as a
+`StatementListItem`. Qualified attributes are retained as syntax metadata; a
+semantic effect exists only when a later phase explicitly recognizes the
+attribute path. Bare expression statements cannot carry attributes.
 
 ```zom
-// OK: cfg gates a standalone block
-#[zom::cfg(feature = "logging")] {
-    log("debug info");
+// Accepted qualified metadata on a control-flow statement.
+#[trace::branch]
+if ready {
+    log("ready");
 }
-
-// Error ZOM1901: cannot gate a single let statement
-// #[zom::cfg(feature = "logging")]
-// let log_level = 3;
-
-// Error ZOM1601: non-cfg attributes not allowed on statements
-// #[deprecated]
-// print("hello");
 ```
 
-See [Ch.19 Conditional Compilation](19-conditional-compilation.md) for full `#[zom::cfg(...)]` syntax and semantics.
+The exact path `zom::cfg` is rejected because the compiler has no conditional
+selection phase. See [Ch.16 Attributes](16-attributes-and-annotations.md) for
+the complete placement and AST-retention contract.

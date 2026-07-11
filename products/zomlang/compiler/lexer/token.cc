@@ -232,12 +232,8 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "intrinsic"_zc;
     case ast::SyntaxKind::InterfaceKeyword:
       return "interface"_zc;
-    case ast::SyntaxKind::ImplementsKeyword:
-      return "implements"_zc;
     case ast::SyntaxKind::KeyOfKeyword:
       return "keyof"_zc;
-    case ast::SyntaxKind::ExtendsKeyword:
-      return "extends"_zc;
     case ast::SyntaxKind::StructKeyword:
       return "struct"_zc;
     case ast::SyntaxKind::EnumKeyword:

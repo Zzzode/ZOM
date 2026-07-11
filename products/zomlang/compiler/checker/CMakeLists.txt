@@ -1,4 +1,5 @@
 set(CHECKER_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/borrow-model.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/checker.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/body-checker.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/decl-signature.cc

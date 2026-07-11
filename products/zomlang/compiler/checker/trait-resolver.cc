@@ -39,6 +39,7 @@
 #include "zomlang/compiler/type/raw-pointer-type.h"
 #include "zomlang/compiler/type/reference-type.h"
 #include "zomlang/compiler/type/tuple-type.h"
+#include "zomlang/compiler/type/type-algebra.h"
 #include "zomlang/compiler/type/type-env.h"
 #include "zomlang/compiler/type/type.h"
 #include "zomlang/compiler/type/union-type.h"
@@ -52,6 +53,30 @@ using namespace zomlang::compiler::symbol;
 using namespace zomlang::compiler::ast;
 using namespace zomlang::compiler::diagnostics;
 
+namespace {
+
+zc::Vector<zc::StringPtr> genericParamNames(const ast::Tree& tree, ast::NodeId typeParamsId) {
+  zc::Vector<zc::StringPtr> names;
+  if (!tree.contains(typeParamsId)) { return names; }
+  const auto& typeParams = tree.node(typeParamsId);
+  if (typeParams.kind != ast::SyntaxKind::GenericParams) { return names; }
+
+  ast::NodeList params;
+  params.first = typeParams.payload.words[ast::kGenericParamsParamsFirstWord];
+  params.size = typeParams.payload.words[ast::kGenericParamsParamsSizeWord];
+
+  for (ast::NodeId paramId : tree.list(params)) {
+    if (!tree.contains(paramId)) { continue; }
+    const auto& param = tree.node(paramId);
+    if (param.kind != ast::SyntaxKind::GenericTypeParam) { continue; }
+    names.add(tree.ident(ast::IdentId(param.payload.words[ast::kGenericTypeParamNameWord])));
+  }
+
+  return names;
+}
+
+}  // namespace
+
 // ============================================================================
 // Impl struct (PIMPL)
 // ============================================================================
@@ -63,8 +88,6 @@ struct TraitResolver::Impl {
   const ast::BindingMetadata& metadata;
   diagnostics::DiagnosticEngine& diags;
 
-  // Cache of discovered impls: (typeName, ifaceName) -> impl NodeId
-  zc::HashMap<zc::String, ast::NodeId> implCache;
   zc::HashSet<zc::String> positiveMarkerImpls;
   zc::HashSet<zc::String> negativeMarkerImpls;
 
@@ -397,6 +420,8 @@ zc::Own<type::Type> TraitResolver::resolveTypeExpr(ast::NodeId typeExprId) {
     case SyntaxKind::DynTypeExpr: {
       auto ifacesId = ast::NodeId(node.payload.words[kDynTypeExprIfacesIdWord]);
       auto markerNames = dynMarkerNames(impl->tree, node);
+      auto assocBindings = dynAssocBindings(
+          impl->tree, node, [this](ast::NodeId tyId) { return resolveTypeExpr(tyId); });
       if (!impl->tree.contains(ifacesId)) {
         return zc::heap<type::ErrorType>("dyn type requires at least one interface");
       }
@@ -404,7 +429,8 @@ zc::Own<type::Type> TraitResolver::resolveTypeExpr(ast::NodeId typeExprId) {
       const auto& ifaceListNode = impl->tree.node(ifacesId);
       if (ifaceListNode.kind != SyntaxKind::DynTypeIfaceList) {
         auto ifaceType = resolveTypeExpr(ifacesId);
-        return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
+        return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr(),
+                                               zc::mv(assocBindings));
       }
 
       NodeList ifaceNodeList;
@@ -420,12 +446,14 @@ zc::Own<type::Type> TraitResolver::resolveTypeExpr(ast::NodeId typeExprId) {
         zc::Vector<zc::Own<type::Type>> conjuncts;
         for (ast::NodeId ifaceId : ifaces) { conjuncts.add(resolveTypeExpr(ifaceId)); }
         auto interTy = zc::heap<type::IntersectionType>(zc::mv(conjuncts));
-        return zc::heap<type::ExistentialType>(zc::mv(interTy), markerNames.asPtr());
+        return zc::heap<type::ExistentialType>(zc::mv(interTy), markerNames.asPtr(),
+                                               zc::mv(assocBindings));
       }
 
       auto firstIfaceId = ifaces.front();
       auto ifaceType = resolveTypeExpr(firstIfaceId);
-      return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr());
+      return zc::heap<type::ExistentialType>(zc::mv(ifaceType), markerNames.asPtr(),
+                                             zc::mv(assocBindings));
     }
 
     case SyntaxKind::ObjectTypeExpr: {
@@ -511,6 +539,36 @@ zc::Vector<zc::StringPtr> TraitResolver::resolveImplIfaceNames(ast::NodeId implN
   return names;
 }
 
+zc::Vector<zc::StringPtr> TraitResolver::parentInterfaceNames(zc::StringPtr ifaceName) {
+  zc::Vector<zc::StringPtr> names;
+  const auto rootId = impl->tree.root();
+  if (!impl->tree.contains(rootId)) { return names; }
+
+  ast::NodeId ifaceDecl;
+  visitTreePreOrder(impl->tree, rootId, [&](ast::NodeId id, const ast::Node& node) {
+    if (ifaceDecl || node.kind != SyntaxKind::InterfaceDecl) { return; }
+    auto name = impl->tree.ident(IdentId(node.payload.words[kInterfaceDeclNameWord]));
+    if (name == ifaceName) { ifaceDecl = id; }
+  });
+  if (!impl->tree.contains(ifaceDecl)) { return names; }
+
+  const auto& ifaceNode = impl->tree.node(ifaceDecl);
+  auto ifacesId = ast::NodeId(ifaceNode.payload.words[kInterfaceDeclIfacesIdWord]);
+  if (!impl->tree.contains(ifacesId)) { return names; }
+
+  const auto& ifacesNode = impl->tree.node(ifacesId);
+  if (ifacesNode.kind != SyntaxKind::ImplIfaceList) { return names; }
+
+  NodeList ifaces;
+  ifaces.first = ifacesNode.payload.words[kImplIfaceListIfacesFirstWord];
+  ifaces.size = ifacesNode.payload.words[kImplIfaceListIfacesSizeWord];
+  for (ast::NodeId ifaceId : impl->tree.list(ifaces)) {
+    auto name = resolvePathName(ifaceId);
+    if (name.size() > 0) { names.add(name); }
+  }
+  return names;
+}
+
 zc::StringPtr TraitResolver::resolveMarkerImplName(ast::NodeId markerImplNode) {
   if (!impl->tree.contains(markerImplNode)) return ""_zc;
 
@@ -533,30 +591,31 @@ void TraitResolver::discoverImpls() {
     if (node.kind == SyntaxKind::StandaloneImplDecl) {
       auto forType = resolveImplForType(id);
       auto ifaceNames = resolveImplIfaceNames(id);
+      const bool hasTypeParams =
+          impl->tree.contains(ast::NodeId(node.payload.words[kStandaloneImplDeclTypeParamsIdWord]));
 
       for (auto ifaceName : ifaceNames) {
         if (ifaceName.size() == 0) continue;
+        if (hasTypeParams) { continue; }
 
-        // Register in TypeEnv
         impl->typeEnv.registerImpl(ifaceName, *forType, id);
-
-        // Cache for fast lookup
-        impl->implCache.upsert(zc::str(getTypeName(*forType), "::", ifaceName), id);
       }
     } else if (node.kind == SyntaxKind::MarkerImpl) {
       auto forType = resolveImplForType(id);
       auto markerName = resolveMarkerImplName(id);
 
       if (markerName.size() > 0) {
-        auto typeName = getTypeName(*forType);
-        auto key = markerImplKey(typeName, markerName);
+        auto typeKey = forType->toString();
+        auto key = markerImplKey(typeKey, markerName);
+        const bool hasTypeParams =
+            impl->tree.contains(ast::NodeId(node.payload.words[kMarkerImplTypeParamsIdWord]));
         const bool isNegated = node.payload.words[kMarkerImplIsNegatedWord] != 0;
+        if (hasTypeParams) { return; }
         if (isNegated) {
           impl->negativeMarkerImpls.insert(zc::mv(key));
         } else {
           impl->positiveMarkerImpls.insert(zc::str(key));
           impl->typeEnv.registerImpl(markerName, *forType, id);
-          impl->implCache.upsert(zc::mv(key), id);
         }
       }
     }
@@ -572,22 +631,23 @@ bool TraitResolver::implements(const type::Type& ty, zc::StringPtr ifaceName) {
 
   // Resolve the type (follow type variable bindings)
   const auto& resolved = impl->typeEnv.find(ty);
-  auto typeName = getTypeName(resolved);
-  auto markerKey = markerImplKey(typeName, ifaceName);
+  auto typeKey = resolved.toString();
+  auto markerKey = markerImplKey(typeKey, ifaceName);
 
   // Marker trait auto-derivation
   if (ifaceName == "Sendable"_zc || ifaceName == "Shared"_zc) {
     if (impl->negativeMarkerImpls.contains(markerKey)) { return false; }
     if (impl->positiveMarkerImpls.contains(markerKey)) { return true; }
     if (impl->typeEnv.implements(resolved, ifaceName)) { return true; }
+    if (findImpl(resolved, ifaceName) != zc::none) { return true; }
     if (ifaceName == "Sendable"_zc) { return isAutoSendable(resolved); }
     return isAutoShared(resolved);
   }
 
-  // Check TypeEnv's impl table (registered via discoverImpls)
-  if (impl->typeEnv.implements(resolved, ifaceName)) { return true; }
+  // Check registered concrete impls and AST-backed generic impls.
+  if (findImpl(resolved, ifaceName) != zc::none) { return true; }
 
-  // For named types, check class hierarchy: if the class extends/implements
+  // For named types, check class and interface relationships.
   // an interface, check if that interface matches
   if (isNamed(resolved)) {
     const auto& named = static_cast<const NamedType&>(resolved);
@@ -621,7 +681,7 @@ bool TraitResolver::implements(const type::Type& ty, zc::StringPtr ifaceName) {
 
       // If it's an interface symbol, check parent interfaces
       if (s.getKind() == symbol::SymbolKind::Interface) {
-        // Interface extends - check parent interfaces
+        // Check parent interfaces.
         // The InterfaceType stores parent interfaces via addParentInterface
         // We'd need the InterfaceType to check this properly
       }
@@ -667,11 +727,6 @@ zc::Maybe<ast::NodeId> TraitResolver::findImpl(const type::Type& ty, zc::StringP
   auto envResult = impl->typeEnv.lookupImpl(ifaceName, resolved);
   if (envResult != zc::none) return envResult;
 
-  // Fall back to cache
-  ZC_IF_SOME(nodeId, impl->implCache.find(zc::str(getTypeName(resolved), "::", ifaceName))) {
-    return nodeId;
-  }
-
   // Walk AST to find matching impl
   const auto rootId = impl->tree.root();
   if (!impl->tree.contains(rootId)) return zc::none;
@@ -699,30 +754,79 @@ bool TraitResolver::checkImplMatches(ast::NodeId implNode, const type::Type& ty,
   auto forType = resolveImplForType(implNode);
   if (!forType) return false;
 
-  // Check if the for-type matches
-  if (!forType->equals(ty)) {
-    // Also check if ty is a named type with the same name
-    if (isNamed(ty) && isNamed(*forType)) {
-      const auto& tyNamed = static_cast<const NamedType&>(ty);
-      const auto& forNamed = static_cast<const NamedType&>(*forType);
-      if (tyNamed.getName() != forNamed.getName()) return false;
-    } else {
+  ast::NodeId typeParamsId;
+  if (node.kind == SyntaxKind::StandaloneImplDecl) {
+    typeParamsId = ast::NodeId(node.payload.words[kStandaloneImplDeclTypeParamsIdWord]);
+  } else if (node.kind == SyntaxKind::MarkerImpl) {
+    typeParamsId = ast::NodeId(node.payload.words[kMarkerImplTypeParamsIdWord]);
+  }
+
+  auto genericNames = genericParamNames(impl->tree, typeParamsId);
+  zc::Vector<type::GenericSubstitution> substitutions;
+  if (impl->tree.contains(typeParamsId)) {
+    if (!type::matchGenericTypePattern(genericNames.asPtr(), *forType, ty, substitutions)) {
       return false;
     }
+  } else if (!forType->equals(ty)) {
+    return false;
   }
 
   // Check if the interface name matches
+  bool interfaceMatches = false;
   if (node.kind == SyntaxKind::StandaloneImplDecl) {
     auto ifaceNames = resolveImplIfaceNames(implNode);
     for (auto name : ifaceNames) {
-      if (name == ifaceName) return true;
+      if (name == ifaceName) {
+        interfaceMatches = true;
+        break;
+      }
     }
   } else if (node.kind == SyntaxKind::MarkerImpl) {
     auto markerName = resolveMarkerImplName(implNode);
-    if (markerName == ifaceName) return true;
+    if (markerName == ifaceName) { interfaceMatches = true; }
   }
 
-  return false;
+  if (!interfaceMatches) { return false; }
+
+  ast::NodeId whereId;
+  if (node.kind == SyntaxKind::StandaloneImplDecl) {
+    whereId = ast::NodeId(node.payload.words[kStandaloneImplDeclWhereWord]);
+  } else if (node.kind == SyntaxKind::MarkerImpl) {
+    whereId = ast::NodeId(node.payload.words[kMarkerImplWhereWord]);
+  }
+
+  if (impl->tree.contains(whereId)) {
+    const auto& whereNode = impl->tree.node(whereId);
+    if (whereNode.kind != SyntaxKind::WhereClause) { return false; }
+
+    NodeList preds;
+    preds.first = whereNode.payload.words[kWhereClausePredsFirstWord];
+    preds.size = whereNode.payload.words[kWhereClausePredsSizeWord];
+
+    for (ast::NodeId predId : impl->tree.list(preds)) {
+      if (!impl->tree.contains(predId)) { return false; }
+      const auto& pred = impl->tree.node(predId);
+      if (pred.kind != SyntaxKind::WherePred) { return false; }
+
+      auto predKind = static_cast<WhereBoundKind>(pred.payload.words[kWherePredKindWord]);
+      if (predKind != WhereBoundKind::Implements) { return false; }
+
+      auto predTyId = ast::NodeId(pred.payload.words[kWherePredTyWord]);
+      auto boundId = ast::NodeId(pred.payload.words[kWherePredBoundWord]);
+      if (!impl->tree.contains(predTyId) || !impl->tree.contains(boundId)) { return false; }
+
+      auto predTy = resolveTypeExpr(predTyId);
+      auto substitutedTy =
+          type::substituteGenericTypePattern(genericNames.asPtr(), *predTy, substitutions.asPtr());
+      auto boundName = resolvePathName(boundId);
+      if (boundName.size() == 0) { return false; }
+
+      if (boundName == ifaceName && substitutedTy->equals(ty)) { return false; }
+      if (!implements(*substitutedTy, boundName)) { return false; }
+    }
+  }
+
+  return true;
 }
 
 // ============================================================================
@@ -871,6 +975,10 @@ AssociatedTypeResolution TraitResolver::resolveAssociatedTypeWithStatus(const ty
     return AssociatedTypeResolution{AssociatedTypeResolutionKind::Ambiguous, zc::none};
   }
   if (result == zc::none) {
+    for (auto parentName : parentInterfaceNames(ifaceName)) {
+      auto parentResult = resolveAssociatedTypeWithStatus(resolved, parentName, assocName);
+      if (parentResult.kind != AssociatedTypeResolutionKind::NotFound) { return parentResult; }
+    }
     return AssociatedTypeResolution{AssociatedTypeResolutionKind::NotFound, zc::none};
   }
   return AssociatedTypeResolution{AssociatedTypeResolutionKind::Resolved, result};
@@ -1141,11 +1249,6 @@ bool TraitResolver::allFieldsAreSend(const type::NamedType& namedTy) {
           memberNodeList.size = memberList.payload.words[kClassMemberListMembersSizeWord];
         }
       }
-    } else if (node.kind == SyntaxKind::PositionalStructDecl) {
-      declName = impl->tree.ident(IdentId(node.payload.words[kPositionalStructDeclNameWord]));
-      // Positional struct fields
-      memberNodeList.first = node.payload.words[kPositionalStructDeclFieldsFirstWord];
-      memberNodeList.size = node.payload.words[kPositionalStructDeclFieldsSizeWord];
     }
 
     if (declName.size() == 0 || declName != name) return;
@@ -1177,13 +1280,6 @@ bool TraitResolver::allFieldsAreSend(const type::NamedType& namedTy) {
                 break;
               }
             }
-          }
-        } else if (memberNode.kind == SyntaxKind::PositionalStructDecl) {
-          // Positional struct field - the field type is the node itself
-          auto fieldTy = resolveTypeExpr(memberId);
-          if (!isAutoSendable(*fieldTy)) {
-            allSend = false;
-            break;
           }
         }
       }
@@ -1240,10 +1336,6 @@ bool TraitResolver::allFieldsAreSync(const type::NamedType& namedTy) {
           memberNodeList.size = memberList.payload.words[kClassMemberListMembersSizeWord];
         }
       }
-    } else if (node.kind == SyntaxKind::PositionalStructDecl) {
-      declName = impl->tree.ident(IdentId(node.payload.words[kPositionalStructDeclNameWord]));
-      memberNodeList.first = node.payload.words[kPositionalStructDeclFieldsFirstWord];
-      memberNodeList.size = node.payload.words[kPositionalStructDeclFieldsSizeWord];
     }
 
     if (declName.size() == 0 || declName != name) return;
@@ -1272,12 +1364,6 @@ bool TraitResolver::allFieldsAreSync(const type::NamedType& namedTy) {
                 break;
               }
             }
-          }
-        } else if (memberNode.kind == SyntaxKind::PositionalStructDecl) {
-          auto fieldTy = resolveTypeExpr(memberId);
-          if (!isAutoShared(*fieldTy)) {
-            allSync = false;
-            break;
           }
         }
       }
@@ -1386,9 +1472,15 @@ void TraitResolver::checkCoherence() {
 
       const auto typeName = getTypeName(*forType);
       const auto key = zc::str(typeName, "::", ifaceName);
-      const bool isBlanket =
-          node.kind == SyntaxKind::StandaloneImplDecl &&
-          impl->tree.contains(ast::NodeId(node.payload.words[kStandaloneImplDeclTypeParamsIdWord]));
+      ast::NodeId typeParamsId;
+      if (node.kind == SyntaxKind::StandaloneImplDecl) {
+        typeParamsId = ast::NodeId(node.payload.words[kStandaloneImplDeclTypeParamsIdWord]);
+      } else if (node.kind == SyntaxKind::MarkerImpl) {
+        typeParamsId = ast::NodeId(node.payload.words[kMarkerImplTypeParamsIdWord]);
+      }
+      const bool isBlanket = impl->tree.contains(typeParamsId) &&
+                             type::isBareGenericTypePattern(
+                                 genericParamNames(impl->tree, typeParamsId).asPtr(), *forType);
 
       bool overlapsExisting = false;
       for (const auto& existing : impl->coherenceImpls) {

@@ -26,12 +26,12 @@ DIAG(2008, UnaryExpressionInExponentiation, kError,
      1)
 DIAG(2009, InvalidOptionalChainFromNewExpression, kError,
      "Invalid optional chain from a 'new' expression. Consider calling the constructor first", 0)
-DIAG(2010, ReservedKeywordAsIdentifier, kError, "Reserved keyword '{0}' cannot be used as an identifier",
-     1)
+DIAG(2010, ReservedKeywordAsIdentifier, kError,
+     "Reserved keyword '{0}' cannot be used as an identifier", 1)
 DIAG(2011, ExceptedIdentifier, kError, "Identifier expected, found '{0}'", 1)
 DIAG(2012, MissingSemicolon, kError, "Missing semicolon before '{0}'", 1)
-DIAG(2013, VariableDeclarationNotAllowedHere, kError, "Variable declaration not allowed at this location",
-     0)
+DIAG(2013, VariableDeclarationNotAllowedHere, kError,
+     "Variable declaration not allowed at this location", 0)
 DIAG(2014, InterfaceNameCannotBeKeyword, kError, "Interface name cannot be '{0}'", 1)
 DIAG(2015, InterfaceMustBeGivenAName, kError, "Interface must be given a name", 0)
 DIAG(2016, TypeAliasNameCannotBeKeyword, kError, "Type alias name cannot be '{0}'", 1)
@@ -54,13 +54,14 @@ DIAG(2028, OctalEscapeSequencesAndBackreferencesNotAllowed, kError,
      "Octal escape sequences and backreferences are not allowed in a character class. If this was "
      "intended as an escape sequence, use the syntax '\\x{0}'",
      1)
-DIAG(2029,
-    DecimalEscapeSequencesAndBackreferencesNotAllowed, kError,
+DIAG(
+    2029, DecimalEscapeSequencesAndBackreferencesNotAllowed, kError,
     "Decimal escape sequences and backreferences are not allowed in a character class. If this was "
     "intended as an escape sequence, use the syntax '\\x{0}'",
     1)
 DIAG(2030, EscapeSequenceNotAllowed, kError, "Escape sequence '{0}' is not allowed", 1)
-DIAG(2031, UnicodeEscapeSequenceCannotAppearHere, kError, "Unicode escape sequence cannot appear here", 0)
+DIAG(2031, UnicodeEscapeSequenceCannotAppearHere, kError,
+     "Unicode escape sequence cannot appear here", 0)
 DIAG(2032, HexadecimalDigitExpected, kError, "Hexadecimal digit expected", 0)
 DIAG(2033, BinaryOrOctalDigitExpected, kError, "Binary or octal digit expected", 0)
 DIAG(2034, OctalDigitExpected, kError, "Octal digit expected", 0)
@@ -76,8 +77,8 @@ DIAG(2038, ExtendedUnicodeEscapeValueOutOfRange, kError,
 DIAG(2039, UnterminatedUnicodeEscapeSequence, kError, "Unterminated Unicode escape sequence", 0)
 DIAG(2040, ExpectedMatchingTokenHere, kNote,
      "The parser expected to find a {0} to match the {1} token here", 2)
-DIAG(2041, DecimalsWithLeadingZerosAreNotAllowed, kError, "Decimals with leading zeros are not allowed",
-     0)
+DIAG(2041, DecimalsWithLeadingZerosAreNotAllowed, kError,
+     "Decimals with leading zeros are not allowed", 0)
 DIAG(2042, DigitExpected, kError, "Digit expected", 0)
 DIAG(2043, ABigIntLiteralCannotUseExponentialNotation, kError,
      "A BigInt literal cannot use exponential notation", 0)
@@ -103,17 +104,18 @@ DIAG(2055, EnumMemberExpected, kError, "Enum member expected", 0)
 DIAG(2056, ExpressionExpected, kError, "Expression expected", 0)
 DIAG(2057, DanglingHash, kError,
      "Stray '#' with no attribute following; expected '[' after '#' to start an attribute.", 0)
-DIAG(2058, DanglingHashHelp, kNote,
-     "To start an attribute, write #[path::to::attribute].", 0)
+DIAG(2058, DanglingHashHelp, kNote, "To start an attribute, write #[path::to::attribute].", 0)
 DIAG(2059, ObjectLiteralPropertyNameExpected, kError,
      "Expected an identifier as object property name", 0)
-DIAG(2060, ObjectLiteralMethodSyntax, kError,
-     "Method syntax is not allowed in object literals. Use a property with a function value instead",
-     0)
+DIAG(
+    2060, ObjectLiteralMethodSyntax, kError,
+    "Method syntax is not allowed in object literals. Use a property with a function value instead",
+    0)
 DIAG(2061, VariableDeclarationNameNotAllowed, kError,
      "'{0}' is not allowed as a variable declaration name", 1)
 DIAG(2062, VariableDeclarationExpected, kError, "Variable declaration expected", 0)
-DIAG(2063, PropertyDestructuringPatternExpected, kError, "Property destructuring pattern expected", 0)
+DIAG(2063, PropertyDestructuringPatternExpected, kError, "Property destructuring pattern expected",
+     0)
 DIAG(2064, ArrayElementDestructuringPatternExpected, kError,
      "Array element destructuring pattern expected", 0)
 DIAG(2065, ArgumentExpressionExpected, kError, "Argument expression expected", 0)
@@ -147,8 +149,23 @@ DIAG(2084, IncompatibleDeclarationModifiers, kError,
      "Declaration modifiers '{0}' and '{1}' cannot be used together", 2)
 DIAG(2085, MultiCharacterSingleQuotedLiteral, kError,
      "Multi-character single-quoted literals are not allowed", 0)
-DIAG(2086, NumericLiteralCannotStartWithUnderscore, kError, "Numeric literals cannot start with '_'", 0)
+DIAG(2086, NumericLiteralCannotStartWithUnderscore, kError,
+     "Numeric literals cannot start with '_'", 0)
 
 // --- Warning-level diagnostics ---
 DIAG(2087, LineBreakBeforeAsCast, kWarning,
      "A line break before an 'as' cast expression may be confusing", 0)
+DIAG(
+    2088, VisibilityModifierRequiresMemberContext, kError,
+    "Visibility modifier '{0}' is valid only on a type member; use 'export' for a module-level API",
+    1)
+DIAG(2089, AttributeRequiresSupportedTarget, kError,
+     "Attributes are supported only on module items, non-expression block items, and function "
+     "parameters",
+     0)
+DIAG(2090, ConditionalCompilationUnavailable, kError,
+     "Conditional compilation is unavailable; remove 'zom::cfg'", 0)
+DIAG(2091, UnknownExternAbi, kError,
+     "Unknown extern ABI '{0}'; expected one of 'C', 'Cdecl', 'system', or 'zom-cdecl'", 1)
+DIAG(2092, InterfaceMemberExpected, kError,
+     "Interface bodies accept only methods, accessors, and associated type declarations", 0)

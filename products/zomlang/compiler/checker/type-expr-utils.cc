@@ -45,6 +45,62 @@ zc::Vector<zc::StringPtr> dynMarkerNames(const ast::Tree& tree, const ast::Node&
   return result;
 }
 
+zc::Vector<zc::StringPtr> dynAssocBindingNames(const ast::Tree& tree, const ast::Node& node) {
+  auto bindingsId = ast::NodeId(node.payload.words[ast::kDynTypeExprAssocBindingsIdWord]);
+  return dynAssocBindingListNames(tree, bindingsId);
+}
+
+zc::Vector<zc::StringPtr> dynAssocBindingListNames(const ast::Tree& tree, ast::NodeId bindingsId) {
+  zc::Vector<zc::StringPtr> result;
+  if (!tree.contains(bindingsId)) { return result; }
+
+  const auto& bindingsNode = tree.node(bindingsId);
+  if (bindingsNode.kind != ast::SyntaxKind::DynTypeAssocBindingList) { return result; }
+
+  ast::NodeList bindings;
+  bindings.first = bindingsNode.payload.words[ast::kDynTypeAssocBindingListBindingsFirstWord];
+  bindings.size = bindingsNode.payload.words[ast::kDynTypeAssocBindingListBindingsSizeWord];
+  for (ast::NodeId bindingId : tree.list(bindings)) {
+    if (!tree.contains(bindingId)) { continue; }
+    const auto& binding = tree.node(bindingId);
+    if (binding.kind != ast::SyntaxKind::DynTypeAssocBinding) { continue; }
+    result.add(tree.ident(ast::IdentId(binding.payload.words[ast::kDynTypeAssocBindingNameWord])));
+  }
+  return result;
+}
+
+zc::Maybe<zc::StringPtr> findDuplicateDynAssocBindingName(const ast::Tree& tree,
+                                                          ast::NodeId bindingsId) {
+  auto names = dynAssocBindingListNames(tree, bindingsId);
+  for (size_t i = 0; i < names.size(); ++i) {
+    for (size_t j = i + 1; j < names.size(); ++j) {
+      if (names[i] == names[j]) { return names[i]; }
+    }
+  }
+  return zc::none;
+}
+
+bool dynAssocBindingListContains(const ast::Tree& tree, ast::NodeId bindingsId,
+                                 zc::StringPtr assocName) {
+  if (!tree.contains(bindingsId)) { return false; }
+
+  const auto& bindingsNode = tree.node(bindingsId);
+  if (bindingsNode.kind != ast::SyntaxKind::DynTypeAssocBindingList) { return false; }
+
+  ast::NodeList bindings;
+  bindings.first = bindingsNode.payload.words[ast::kDynTypeAssocBindingListBindingsFirstWord];
+  bindings.size = bindingsNode.payload.words[ast::kDynTypeAssocBindingListBindingsSizeWord];
+  for (ast::NodeId bindingId : tree.list(bindings)) {
+    if (!tree.contains(bindingId)) { continue; }
+    const auto& binding = tree.node(bindingId);
+    if (binding.kind != ast::SyntaxKind::DynTypeAssocBinding) { continue; }
+    auto name = tree.ident(ast::IdentId(binding.payload.words[ast::kDynTypeAssocBindingNameWord]));
+    if (name == assocName) { return true; }
+  }
+
+  return false;
+}
+
 }  // namespace checker
 }  // namespace compiler
 }  // namespace zomlang

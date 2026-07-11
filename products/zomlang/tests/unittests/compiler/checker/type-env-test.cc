@@ -449,6 +449,36 @@ ZC_TEST("TypeEnv.OwnsBoundType") {
   ZC_EXPECT(isPrimitive(resolved));
 }
 
+ZC_TEST("TypeEnv.CopiesBorrowedBindingBeforeSourceDies") {
+  TypeEnv env;
+  auto& tv = env.freshTypeVar();
+  {
+    auto i32 = PrimitiveType::createI32();
+    env.bind(tv, *i32);
+  }
+
+  const auto& resolved = env.resolve(tv);
+  ZC_EXPECT(isPrimitive(resolved));
+  if (isPrimitive(resolved)) {
+    ZC_EXPECT(static_cast<const PrimitiveType&>(resolved).getPrimitiveKind() == PrimitiveKind::I32);
+  }
+}
+
+ZC_TEST("TypeEnv.OwnsConcreteUnificationBinding") {
+  TypeEnv env;
+  auto& tv = env.freshTypeVar();
+  {
+    auto i32 = PrimitiveType::createI32();
+    env.unite(tv, *i32);
+  }
+
+  const auto& resolved = env.resolve(tv);
+  ZC_EXPECT(isPrimitive(resolved));
+  if (isPrimitive(resolved)) {
+    ZC_EXPECT(static_cast<const PrimitiveType&>(resolved).getPrimitiveKind() == PrimitiveKind::I32);
+  }
+}
+
 // ============================================================================
 // TypeEnv occurs check
 // ============================================================================

@@ -14,8 +14,11 @@
 
 #pragma once
 
+#include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
 #include "zomlang/compiler/type/type.h"
 
 namespace zomlang {
@@ -32,6 +35,28 @@ zc::Own<Type> cloneType(const Type& type);
 /// \param name The type variable name to find.
 /// \return A reference to the first matching type variable, or none.
 zc::Maybe<const Type&> findTypeVarByName(const Type& type, zc::StringPtr name);
+
+struct GenericSubstitution {
+  zc::String name;
+  zc::Own<Type> type;
+};
+
+zc::Maybe<const Type&> lookupGenericSubstitution(
+    zc::ArrayPtr<const GenericSubstitution> substitutions, zc::StringPtr name);
+
+bool bindGenericSubstitution(zc::Vector<GenericSubstitution>& substitutions, zc::StringPtr name,
+                             const Type& concrete);
+
+bool isGenericParamName(zc::ArrayPtr<const zc::StringPtr> genericNames, zc::StringPtr name);
+
+bool matchGenericTypePattern(zc::ArrayPtr<const zc::StringPtr> genericNames, const Type& pattern,
+                             const Type& concrete, zc::Vector<GenericSubstitution>& substitutions);
+
+zc::Own<Type> substituteGenericTypePattern(zc::ArrayPtr<const zc::StringPtr> genericNames,
+                                           const Type& pattern,
+                                           zc::ArrayPtr<const GenericSubstitution> substitutions);
+
+bool isBareGenericTypePattern(zc::ArrayPtr<const zc::StringPtr> genericNames, const Type& type);
 
 }  // namespace type
 }  // namespace compiler

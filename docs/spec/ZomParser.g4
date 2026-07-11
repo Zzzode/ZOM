@@ -35,39 +35,8 @@ options {
 }
 
 @parser::members {
-    /**
-     // * Reserved-word check for ZOM5001-ZOM5008 diagnostics.
-     // * Returns the diagnostic code or null when the spelling is not reserved.
-     // */
-    static String reservedDiag(String text) {
-        if (text == null) return null;
-        switch (text) {
-            case "throw": case "try": case "catch": case "finally":
-                return "ZOM5001";
-            case "async": case "await":
-                return "ZOM5002";
-            case "var":
-                return "ZOM5003";
-            case "actor": case "channel":
-                return "ZOM5004";
-            case "yield": case "generator":
-                return "ZOM5005";
-            case "namespace": case "package":
-                return "ZOM5006";
-            case "type":
-                return "ZOM5007";
-            case "delete": case "instanceof": case "of": case "with":
-                return "ZOM5008";
-            default:
-                return null;
-        }
-    }
-
-    static boolean isReservedWord(String text) { return reservedDiag(text) != null; }
-
-    static boolean reserved(String zomCode, String detail, Object parser) {
-        throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-            zomCode + ": " + detail);
+    static boolean reserved(String detail, Object parser) {
+        throw new org.antlr.v4.runtime.misc.ParseCancellationException(detail);
     }
 
     // ========== Semantic predicates: helpers returning boolean, NO STATEMENTS ALLOWED INSIDE { }? =====
@@ -157,6 +126,13 @@ options {
         }
     }
 
+    static void rejectUnavailableConditionalAttribute(String first, String rest) {
+        if ("zom".equals(first) && "cfg".equals(rest)) {
+            throw new org.antlr.v4.runtime.misc.ParseCancellationException(
+                "ConditionalCompilationUnavailable: remove `zom::cfg`");
+        }
+    }
+
     /* Trailing separator relaxation for struct / class / interface / error
      // * body fields.
      // * Called as a gated predicate on the "no explicit separator" alternative
@@ -192,46 +168,6 @@ options {
         // semantic pass
         return true;
     }
-    static boolean checkLabelNoAttrAfterLabel(Token nextTok, String labelText, Object parser) {
-        if (nextTok != null && nextTok.getType() == ZomParser.HASH)
-            throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                "outer attribute #[...] not allowed right after label '" + labelText + "'");
-        return true;
-    }
-
-    /** Labeled-statement constraint C25#2: label may only prefix control-flow / block
-     // *  statements. Declarations (let/const/fun/class/struct/interface/enum/error/alias/
-     // *  import/export/module/type) must NOT be labeled.
-     // *
-     // *  Implementation: inspect the first token produced by the matched statement — if it's
-     // *  a declaration-class keyword, REJECT via ParseCancellationException.
-     // */
-    static boolean checkLabelC25ControlFlowOnly(Token firstTok, Object parser) {
-        if (firstTok == null) return true;
-        int t = firstTok.getType();
-        // Declaration-class keywords — REJECT
-        switch (t) {
-            case ZomParser.LET:
-            case ZomParser.CONST:
-            case ZomParser.FUN:
-            case ZomParser.CLASS:
-            case ZomParser.STRUCT:
-            case ZomParser.INTERFACE:
-            case ZomParser.ENUM:
-            case ZomParser.ERROR:
-            case ZomParser.TYPE:     // type alias declaration
-            case ZomParser.ALIAS:
-            case ZomParser.IMPORT:
-            case ZomParser.EXPORT:
-            case ZomParser.MODULE:
-            case ZomParser.HASH:
-                throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                    "C25#2: label may only prefix control-flow or block statements, " +
-                    "not a declaration");
-        }
-        return true;
-    }
-
     /** suspend until soft-keyword check. */
     static boolean checkSuspendUntil(String kw, Object parser) {
         if (!kw.equals("until"))
@@ -247,10 +183,6 @@ options {
 
     static boolean checkIsImplKeyword(String text, Object parser) {
         if (!text.equals("impl")) return false;
-        return true;
-    }
-    static boolean checkIsMarkerKeyword(String text, Object parser) {
-        if (!text.equals("marker")) return false;
         return true;
     }
     static boolean checkIsWhereKeyword(String text, Object parser) {
@@ -281,17 +213,6 @@ options {
         if ("_".equals(idText))
             throw new org.antlr.v4.runtime.misc.ParseCancellationException(
                 "'_' is a wildcard pattern, cannot bind-pattern invalid");
-        return true;
-    }
-
-    static boolean checkAsForceCastLookahead(Object parser) {
-        org.antlr.v4.runtime.Parser p = (org.antlr.v4.runtime.Parser) parser;
-        org.antlr.v4.runtime.TokenStream ts = p.getInputStream();
-        org.antlr.v4.runtime.Token tok = ts.LT(1);
-        if (tok == null) return true;
-        if (tok.getType() == ZomParser.NOT)
-            throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                "as! force-cast syntax not supported (ZOM has no force-cast operator)");
         return true;
     }
 
@@ -401,6 +322,17 @@ options {
             if (r != null) return r;
         }
         return null;
+    }
+
+    private static void rejectTopLevelVisibility(
+            org.antlr.v4.runtime.ParserRuleContext declaration) {
+        org.antlr.v4.runtime.tree.TerminalNode first = firstTerminal(declaration);
+        if (first == null) return;
+        int type = first.getSymbol().getType();
+        if (type == PUBLIC || type == PRIVATE || type == PROTECTED) {
+            throw new org.antlr.v4.runtime.misc.ParseCancellationException(
+                "module-level declarations use export instead of member visibility");
+        }
     }
 
     /** A4: 1-tuple type `(T,)` (with TRAILING COMMA) is REJECTED.
@@ -878,388 +810,22 @@ static void insertRemainingAngleTokens(int compactType, Object parser) {
 
     // =========================================================================
 
-    /** Utility helper for semantic predicates: flatten a ParseTree's concatenated text
-     // *  (identifier ':' ':' identifier)* to a single String. Used by attrCfg alt
-     // *  semantic predicate to test attributePath.toString() == "zom::cfg". */
-    static String stringOf(org.antlr.v4.runtime.tree.ParseTree tree) {
-        if (tree == null) return "";
-        java.lang.StringBuilder sb = new java.lang.StringBuilder();
-        java.util.Queue<org.antlr.v4.runtime.tree.ParseTree> q = new java.util.LinkedList<>();
-        q.add(tree);
-        while (!q.isEmpty()) {
-            org.antlr.v4.runtime.tree.ParseTree n = q.poll();
-            if (n instanceof org.antlr.v4.runtime.tree.TerminalNode) {
-                sb.append(((org.antlr.v4.runtime.tree.TerminalNode)n).getSymbol().getText());
-            } else {
-                for (int i = 0; i < n.getChildCount(); i++) q.add(n.getChild(i));
-            }
-        }
-        return sb.toString();
-    }
-
-     // *  inline on fall-through alts so malformed cfg predicates are diagnosed with the
-     // *  right code instead of a generic ANTLR "no viable alternative". */
-    static boolean rejectCfgPredicateBad(Object parser) {
-        throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-            "ZOM1900 CfgPredicateParseError: malformed `#[zom::cfg(...)]` predicate; " +
-            "expected all(...), any(...), not(...), or a key/value cfg atom.");
-    }
-
-     // *  Invoked on the `moduleItemStatementCfgGated` alt:
-     // *      outerAttributeList statement
-     // *  Called only when outerAttributeList is non-empty (the no-attr case goes to
-     // *  the separate `moduleItemStatement` alt). Validation rules:
-     // *    (a) outerAttributeList may only contain `#[zom::cfg(...)]` attributes —
-     // *        any other attribute path is rejected with ZOM1601.
-     // *    (b) if any zom::cfg attribute is present, statement MUST be a standalone
-     // *        `blockBody` (`#stmtBlock`); anything else raises ZOM1901.
-     // *  Declarations always pass because they go to `moduleItemDeclaration` alt,
-     // *  which unconditionally allows all attributes — never calls this helper.
-     // *
-     // *  @param attrsCtx outerAttributeList context (non-empty)
-     // *  @param stmtCtx  parsed statement context (already matched)
-     // */
-    static boolean checkStatementCfgGate(
+    static boolean checkAttributedStatementTarget(
             org.antlr.v4.runtime.RuleContext attrsCtx,
             org.antlr.v4.runtime.RuleContext stmtCtx,
             Object parser) {
         if (attrsCtx == null || attrsCtx.getChildCount() == 0) return true;
 
-        boolean hasCfgAttr = false;
-        String firstNonCfgPath = null;
-        // The attribute list lives under RULE_attrItem (after v3 dispatch split).
-        // attrItem has two labelled alts:
-
-
-        java.util.Collection<?> items =
-            org.antlr.v4.runtime.tree.Trees.findAllRuleNodes(attrsCtx, ZomParser.RULE_attrItem);
-        if (items.isEmpty()) {
-            // Legacy fallback: walk RULE_attr directly (in case caller passed a
-            // single attr context without attrItem wrapping).
-            items = org.antlr.v4.runtime.tree.Trees.findAllRuleNodes(attrsCtx, ZomParser.RULE_attr);
-        }
-        for (Object oa : items) {
-            org.antlr.v4.runtime.RuleContext itemCtx = (org.antlr.v4.runtime.RuleContext) oa;
-            if (itemCtx.getChildCount() == 0) continue;
-            String itemAlt = itemCtx.getClass().getSimpleName();
-            String pathText;
-            if (itemAlt.contains("AttrZomCfg")) {
-                // Directly matched attrItem#attrZomCfg alt — path is canonical.
-                pathText = "zom::cfg";
-            } else {
-                // Either (a) attrItem#attrGenericItem wrapping a RULE_attr, or
-                // (b) legacy RULE_attr direct node.
-                org.antlr.v4.runtime.RuleContext attrCtx = itemCtx;
-                if (itemAlt.contains("AttrGenericItem")) {
-                    // Unwrap to find the inner RULE_attr child (should be at index 0
-                    // of the non-children elements — walk looking for RuleContext whose
-                    // rule index == RULE_attr).
-                    attrCtx = null;
-                    for (int _k = 0; _k < itemCtx.getChildCount(); _k++) {
-                        Object c = itemCtx.getChild(_k);
-                        if (c instanceof org.antlr.v4.runtime.RuleContext
-                            && !(c instanceof org.antlr.v4.runtime.tree.TerminalNode)) {
-                            int ri = ((org.antlr.v4.runtime.RuleContext) c).getRuleIndex();
-                            if (ri == ZomParser.RULE_attr) {
-                                attrCtx = (org.antlr.v4.runtime.RuleContext) c;
-                                break;
-                            }
-                        }
-                    }
-                    if (attrCtx == null) continue;
-                }
-                // GRAMMAR NOTE (dispatcher for attr rule).
-                //   The attr rule has two TOP-LEVEL labelled alternatives:
-                //     "GenericMultiSegContext"  → multi-segment (first::tail + opt args)
-                //     "GenericSegment1Context"  → 1-segment (name + opt args)
-                String attrAlt = attrCtx.getClass().getSimpleName();
-                StringBuilder sb = new StringBuilder();
-                // Both alts put the leading identifier at child index 0.
-                sb.append(stringOf(attrCtx.getChild(0)));
-                // Only multi-seg has a RULE_attributePathTail child.
-                for (int _k = 1; _k < attrCtx.getChildCount(); _k++) {
-                    Object c = attrCtx.getChild(_k);
-                    if (!(c instanceof org.antlr.v4.runtime.RuleContext)) continue;
-                    String rn = ((org.antlr.v4.runtime.RuleContext) c).getClass().getSimpleName();
-                    if (rn.contains("AttributePathTail")) {
-                        sb.append("::").append(stringOf((org.antlr.v4.runtime.tree.ParseTree) c));
-                        break;
-                    }
-                }
-                pathText = sb.toString();
-            }
-            if ("zom::cfg".equals(pathText)) {
-                hasCfgAttr = true;
-            } else if (firstNonCfgPath == null) {
-                firstNonCfgPath = pathText;
-            }
-        }
-
-
-        if (firstNonCfgPath != null) {
+        if (stmtCtx != null && stmtCtx.getClass().getSimpleName().contains("StmtExpr")) {
             throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                "ZOM1601 AttrOnStatementDisallowed: statements may not carry outer " +
-                "attributes other than `#[zom::cfg(...)]` at module/block scope. " +
-                "Move attribute `#[" + firstNonCfgPath + "]` to the declaration " +
-                "or wrap the guarded statement in a standalone block.");
-        }
-
-        // (b) With cfg attr present, only blockBody is an allowed statement form.
-        if (hasCfgAttr && stmtCtx != null) {
-            boolean isBlock = false;
-            // Fast path: class name contains "StmtBlock".
-            String cn = stmtCtx.getClass().getSimpleName();
-            if (cn.contains("StmtBlock")) isBlock = true;
-            // Fallback: first terminal is LBRACE.
-            if (!isBlock) {
-                org.antlr.v4.runtime.tree.TerminalNode tn0 = firstTerminal(stmtCtx);
-                if (tn0 != null && tn0.getSymbol().getType() == ZomParser.LBRACE) isBlock = true;
-            }
-            if (!isBlock) {
-                throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                    "ZOM1901 CfgOnExpression: `#[zom::cfg(...)]` at module or block " +
-                    "scope can only gate STANDALONE BLOCK statements of the form " +
-                    "`#[zom::cfg(...)] { stmt* }`. It cannot gate individual " +
-                    "expressions, control-flow statements, or declaration-statement " +
-                    "forms like `let`, `mut`, `for`, `if`, `return`. " +
-                    "Wrap the guarded statement in a standalone block.");
-            }
+                "AttributeRequiresSupportedTarget: attributes cannot prefix an expression statement");
         }
 
         return true;
     }
 
-    /** Helper used by checkStatementCfgGate + checkCfgDeclarationTarget to
-     // *  reconstruct the canonical attribute-path string from an attrItem or
-     // *  attr context. Mirrors the v3 dispatch hierarchy:
-     // *    attrItem#attrZomCfg       → "zom::cfg"
-     // *    attrItem#attrGenericItem  → unwrap to RULE_attr, then dispatch:
-     // *      attr#genericMultiSeg    → first::attributePathTail
-     // *      attr#genericSegment1    → name
-     // *  Returns null if no path can be reconstructed (should never happen).
-     // */
-    static String pathOfAttrItemOrAttr(Object ctx) {
-        if (!(ctx instanceof org.antlr.v4.runtime.RuleContext)) return null;
-        org.antlr.v4.runtime.RuleContext rctx = (org.antlr.v4.runtime.RuleContext) ctx;
-        String altName = rctx.getClass().getSimpleName();
-        if (altName.contains("AttrZomCfg")) return "zom::cfg";
-
-        org.antlr.v4.runtime.RuleContext attrCtx = rctx;
-        // Unwrap attrItem#attrGenericItem to find its RULE_attr child.
-        if (altName.contains("AttrGenericItem")) {
-            attrCtx = null;
-            for (int _k = 0; _k < rctx.getChildCount(); _k++) {
-                Object c = rctx.getChild(_k);
-                if (c instanceof org.antlr.v4.runtime.RuleContext
-                    && !(c instanceof org.antlr.v4.runtime.tree.TerminalNode)) {
-                    int ri = ((org.antlr.v4.runtime.RuleContext) c).getRuleIndex();
-                    if (ri == ZomParser.RULE_attr) {
-                        attrCtx = (org.antlr.v4.runtime.RuleContext) c;
-                        break;
-                    }
-                }
-            }
-            if (attrCtx == null) return null;
-        }
-        // Now inside a RULE_attr context (genericMultiSeg or genericSegment1).
-        StringBuilder sb = new StringBuilder();
-        sb.append(stringOf(attrCtx.getChild(0)));
-        for (int _k = 1; _k < attrCtx.getChildCount(); _k++) {
-            Object c = attrCtx.getChild(_k);
-            if (!(c instanceof org.antlr.v4.runtime.RuleContext)) continue;
-            String rn = ((org.antlr.v4.runtime.RuleContext) c).getClass().getSimpleName();
-            if (rn.contains("AttributePathTail")) {
-                sb.append("::").append(stringOf((org.antlr.v4.runtime.tree.ParseTree) c));
-                break;
-            }
-        }
-        return sb.toString();
-    }
-
-     // *  checkStatementCfgGate. Invoked on the `moduleItemDeclaration` alt:
-     // *      outerAttributeList declaration
-     // *  Declarations that are "statement-like" (let / mut / const, which also
-     // *  appear in statement-form inside block bodies) are NOT allowed to carry
-     // *  `#[zom::cfg(...)]` at module scope either — they must be wrapped in a
-     // *  `let x = 5;` statement without wrapping it in `{ ... }`").
-     // *  Real declarations (fun, class, struct, enum, interface, error, import,
-     // *  export, alias, marker, standalone impl, type alias, module, package,
-     // *  const) are always allowed.
-     // *
-     // *  Detection strategy: look at the declaration context's alt class name.
-     // *  "LetDeclContext", "MutDeclContext" (actually these appear as
-     // *  "LetDeclarationContext"/"MutDeclarationContext" — use contains() as a
-     // *  sub-string match so we are immune to exact naming conventions).
-     // */
-    static boolean checkCfgDeclarationTarget(
-            org.antlr.v4.runtime.RuleContext attrsCtx,
-            org.antlr.v4.runtime.RuleContext declCtx,
-            Object parser) {
-        if (attrsCtx == null || attrsCtx.getChildCount() == 0) return true;
-        if (declCtx == null) return true;
-        // Does the outerAttrList actually contain at least one zom::cfg?
-        boolean hasCfg = false;
-        String firstNonCfgPath = null;
-        java.util.Collection<?> items =
-            org.antlr.v4.runtime.tree.Trees.findAllRuleNodes(attrsCtx, ZomParser.RULE_attrItem);
-        if (items.isEmpty()) {
-            // Legacy fallback (same as checkStatementCfgGate).
-            items = org.antlr.v4.runtime.tree.Trees.findAllRuleNodes(attrsCtx, ZomParser.RULE_attr);
-        }
-        for (Object oa : items) {
-            String p = pathOfAttrItemOrAttr(oa);
-            if (p == null) continue;
-            if ("zom::cfg".equals(p)) hasCfg = true;
-            else if (firstNonCfgPath == null) firstNonCfgPath = p;
-        }
-        // Non-cfg attrs on declarations are always fine.
-        if (!hasCfg) return true;
-        // If cfg is present, reject statement-like decls.
-        String cn = declCtx.getClass().getSimpleName();
-        boolean isStatementLike =
-            cn.contains("Let") || cn.contains("Mut");  // constDecl stays allowed
-        if (isStatementLike) {
-            throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                "ZOM1901 CfgOnExpression: `#[zom::cfg(...)]` at module scope cannot " +
-                "gate a single let/mut declaration. Wrap it in a standalone block: " +
-                "`#[zom::cfg(...)] { let x: T = v; }`.");
-        }
-        return true;
-    }
-
-    /** @deprecated Replaced by {@link #checkStatementCfgGate}. Retained so that
-     // *  external code that reflects over these helper names does not break;
-     // *  the current grammar never calls it (it couldn't — by the time the
-     // *  `statement` rule is matched, its parent's outerAttributeList has not
-     // *  yet been constructed in ANTLR's bottom-up parse order). */
-    @Deprecated
-    static boolean checkCfgNotOnExpression(org.antlr.v4.runtime.RuleContext stmtCtx, Object parser) {
-        return true;
-    }
-
-     // *  (the full check requires reading Zom.toml, which runs at a later semantic pass;
-     // *  the parser only validates that `feature = "..."` has a non-empty identifier RHS). */
-     // *
-     // *  ⚠  THIS IS A LEGACY PROBE ONLY — NEVER call it inside { ... }? semantic predicates
-     // *     because ParseCancellationException thrown inside predicate-eval is wrapped as
-     // *     predicate-false by the ANTLR 4 runtime.
-     // *
-     // *  Real enforcement lives in `enforceCfgAtomQuotedRhs` (tail parser-action in
-     // *  attrItem#attrZomCfg), which walks the complete cfgPredicate parse-tree AFTER
-     // *  all tokens have been consumed — throws PCE cleanly as an exception (rc=2).
-     // *
-     // *  Returns true for non-`feature` keys AND for `feature` with non-empty stripped
-     // *  value; returns false for `feature = ""` (empty quoted string). Used as a read-
-     // *  only predicate probe by anyone who wants to guard without throwing.
-     // *
-     // *  Historical: before tail-action enforcement, this method attempted to throw
-     // *  PCE inside a semantic predicate → the exception was swallowed by ANTLR's
-     // *  PredicateEval try/catch → `cfg_feature_empty_value_neg_04.zom` silently accepted
-     // *  with rc=0 (a false-negative bug — see R12 bugfix). */
-    static boolean checkCfgFeatureAtomFormat(Token key, String valueText, Object parser) {
-        if (key == null) return true;
-        String k = key.getText();
-        if (!"feature".equals(k)) return true;
-        if (valueText == null || valueText.length() < 3) return false;
-        return true;
-    }
-
-     // *  Because ANTLR semantic predicates cannot emit warnings, we only validate structural
-     // *  shape (comparison operators do not apply to bare-key atoms) here; the warning
-     // *  is emitted in a post-parse cfg-lint pass. */
-    static boolean checkCfgAtomShape(Object keyNode, boolean hasOp, String opText, Object parser) {
-        // - Bare atom: hasOp == false → always ok.
-        // - Valued atom: op must be one of = != < <= > >= (enforced by grammar already),
-        //   just sanity-check that comparisons operate on version-capable keys.
-        if (!hasOp) return true;
-        return true;
-    }
-
-     // *  gate: when the next token is a CfgOp (= != < <= > >=), it means the user attempted
-     // *  to write a valued atom but produced a non-DOUBLE_STRING_LITERAL RHS (e.g. a bare
-     // *  identifier like `target_os = linux`). Without this explicit gate, ANTLR's default
-     // *  error recovery would single-token-delete the stray op and silently accept the
-     // *  malformed line as a bare-key atom, producing a false-positive ACCEPT.
-     // *
-     // *  Returns true (proceed) when LA(1) is NOT a CfgOp; throws ParseCancellationException
-     // *  (parser aborts, reports ZOM1900) otherwise.
-     // */
-    static boolean checkCfgAtomNoPendingOp(Object parser) {
-        if (!(parser instanceof ZomParser)) return true;
-        ZomParser self = (ZomParser) parser;
-        int la;
-        try {
-            la = ((org.antlr.v4.runtime.TokenStream) self.getTokenStream()).LA(1);
-        } catch (Exception ignore) { return true; }
-        // Six CfgOp token types: ASSIGN NEQ LT LTE GT GTE
-        if (la == ASSIGN || la == NEQ || la == LT || la == LTE || la == GT || la == GTE) {
-            String sym = ZomParser.VOCABULARY.getSymbolicName(la);
-            if (sym == null) sym = "<unknown>";
-            throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                "ZOM1900 CfgPredicateMalformed — cfg atom value must be a double-quoted string literal after '"
-                + sym + "' operator, e.g. key = \"value\" (got unquoted bare identifier or wrong token type).");
-        }
-        return true;
-    }
-
-     // *
-     // *  PROBLEM: ANTLR 4 ALL(*) makes alt-selection decisions based on UNLIMITED lookahead.
-     // *  When the raw token stream matches `IDENTIFIER :: IDENTIFIER ( ... )`, ALL(*) reads
-     // *  ahead through the PAREN body to decide between the two labeled alts. If it sees
-     // *  that the *next* tokens (e.g. unquoted bare identifier `target_os = linux`) would
-     // *  cause cfgPredicate to fail, it ABANDONS the gated attrCfg path and falls through
-     // *  to attrGeneric — where the entire `zom::cfg(...)` block is silently parsed as a
-     // *  generic attribute with an expression inside. Result: false-positive ACCEPT on
-     // *  malformed cfg predicates (REJECT tests wrongly pass).
-     // *
-     // *  SOLUTION: make the two alts' LEADING GATED PREDICATES DETERMINISTIC and MUTUALLY
-     // *  EXCLUSIVE. We do this by peeking 4 tokens ahead in the raw TokenStream:
-     // *    pattern  =  IDENTIFIER("zom")  COLONCOLON  IDENTIFIER("cfg")  LPAREN
-     // *  If this pattern matches, the parser MUST dispatch to attrCfg (no fallthrough),
-     // *  and attrGeneric's gated predicate returns false so it is not even considered.
-     // *  If it does NOT match, only attrGeneric is considered. This converts a non-local
-     // *  ALL(*) decision (unbounded lookahead into the paren body) into a LOCAL, bounded
-     // *  lookahead that ANTLR evaluates identically in prediction and parse phases.
-     // */
-    static boolean peekIsZomCfgParen(Object parser) {
-        if (!(parser instanceof ZomParser)) return false;
-        org.antlr.v4.runtime.TokenStream ts;
-        try { ts = ((ZomParser) parser).getTokenStream(); }
-        catch (Exception ignore) { return false; }
-        int la1, la2, la3, la4;
-        String t1, t3;
-        try {
-            la1 = ts.LA(1); t1 = ts.LT(1).getText();
-            la2 = ts.LA(2);
-            la3 = ts.LA(3);
-            t3 = ts.LT(3).getText();
-            la4 = ts.LA(4);
-        } catch (Exception ignore) { return false; }
-        return la1 == IDENTIFIER && "zom".equals(t1)
-            && la2 == COLONCOLON
-            && la3 == IDENTIFIER && "cfg".equals(t3)
-            && la4 == LPAREN;
-    }
-
-     // *  Returns true iff:
-     // *    LA(1) == IDENTIFIER   AND   LA(2) == COLONCOLON
-     // *  AND   NOT the 4-token "zom" :: "cfg" "(" pattern (that belongs to #zomCfg).
-     // *  Combined with the other two leading gates (peekIsZomCfgParen for #zomCfg,
-     // *  !la2IsColonColon for #genericSegment1), the three attr alternatives
-     // *  form a PARTITION of the reachable prefix space: mutually exclusive & total.
-     // *
-     // *  Why leading-gate all three instead of relying on FIRST-set tie-breaking:
-     // *  ANTLR 4 ALL(*) simulator continues exploring past the gated entry into the
-     // *  alt body IF the gated predicate succeeds. A gated that returns false short-
-     // *  circuits body simulation entirely — which is precisely what we need for
-     // *  the #zomCfg alt (its body can throw PCE on malformed cfgPredicates, so we
-     // *  must prevent ALL(*) from trying it when the 4-token prefix does not match).
-     // *  For the generic alts, prefix-disjoint gates eliminate the ALL(*) cross-body
-     // *  reachability check that otherwise makes the decision SLL-k=∞ and fragile.
-     // */
     static boolean peekIsGenericMultiSeg(Object parser) {
         if (!(parser instanceof ZomParser)) return false;
-        if (peekIsZomCfgParen(parser)) return false;  // #zomCfg's prefix, not ours
         org.antlr.v4.runtime.TokenStream ts;
         try { ts = ((ZomParser) parser).getTokenStream(); }
         catch (Exception ignore) { return false; }
@@ -1314,6 +880,25 @@ static void insertRemainingAngleTokens(int compactType, Object parser) {
             org.antlr.v4.runtime.Token implTok = ts.LT(implOffset);
             if (implTok == null || !"impl".equals(implTok.getText())) return false;
             return peekIsMarkerImplRestFromOffset(parser, implOffset + 1);
+        } catch (Exception ignore) {
+            return false;
+        }
+    }
+
+    static boolean peekIsOrdinaryImplAfterOptionalUnsafe(Object parser, boolean hasUnsafePrefix) {
+        if (!(parser instanceof ZomParser)) return false;
+        org.antlr.v4.runtime.TokenStream ts;
+        try { ts = ((ZomParser) parser).getTokenStream(); }
+        catch (Exception ignore) { return false; }
+        int implOffset = hasUnsafePrefix ? 2 : 1;
+        try {
+            org.antlr.v4.runtime.Token unsafeTok = hasUnsafePrefix ? ts.LT(1) : null;
+            if (hasUnsafePrefix && (unsafeTok == null || !"unsafe".equals(unsafeTok.getText()))) {
+                return false;
+            }
+            org.antlr.v4.runtime.Token implTok = ts.LT(implOffset);
+            if (implTok == null || !"impl".equals(implTok.getText())) return false;
+            return !peekIsMarkerImplRestFromOffset(parser, implOffset + 1);
         } catch (Exception ignore) {
             return false;
         }
@@ -1392,155 +977,6 @@ static void insertRemainingAngleTokens(int compactType, Object parser) {
     }
 
     // ---------------------------------------------------------------------
-
-    // ---------------------------------------------------------------------
-    /** Entry gate for cfgAtom alt 1 + alt 2.
-     // *  Returns true iff LA(1) is one of the six CfgOp tokens. */
-    static boolean isCfgOpNext(Object parser) {
-        if (!(parser instanceof ZomParser)) return false;
-        org.antlr.v4.runtime.TokenStream ts;
-        try { ts = ((ZomParser) parser).getTokenStream(); }
-        catch (Exception ignore) { return false; }
-        int la;
-        try { la = ts.LA(1); } catch (Exception ignore) { return false; }
-        return la == ASSIGN || la == NEQ || la == LT || la == LTE || la == GT || la == GTE;
-    }
-
-    /** cfgAtom alt 1 guard (valued form: CfgOp + quoted string).
-     // *  Returns true iff LA(2) (position after the consumed CfgOp) is DOUBLE_STRING_LITERAL.
-     // *  Precondition: caller has already gated with `isCfgOpNext`, so LA(1) ∈ CfgOpSet. */
-    static boolean isDoubleStringAfterCfgOp(Object parser) {
-        if (!(parser instanceof ZomParser)) return false;
-        org.antlr.v4.runtime.TokenStream ts;
-        try { ts = ((ZomParser) parser).getTokenStream(); }
-        catch (Exception ignore) { return false; }
-        int la2;
-        try { la2 = ts.LA(2); } catch (Exception ignore) { return false; }
-        return la2 == DOUBLE_STRING_LITERAL;
-    }
-
-    /** Tail parser-action for attrItem#attrZomCfg — invoked AFTER the entire
-     // *  `#[zom::cfg(PRED)]` block has been successfully matched (i.e. every token
-     // *  consumed, all semantic predicates accepted, rule-end RPAREN recognised).
-     // *
-     // *  POSITIONAL SAFETY NOTE (critical, do not inline the throw elsewhere)
-     // *  --------------------------------------------------------------------
-     // *  This action is placed at the TAIL of a fully-matched rule alternative.
-     // *  ANTLR 4's ALL(*) simulator walks the ATN ONLY through positions that are
-     // *  reachable during PREDICTION — i.e. every node that precedes a decision
-     // *  state that the simulator must disambiguate. A tail action following the
-     // *  LAST concrete terminal in a rule (here, `RPAREN`) is NOT on any
-     // *  prediction path; the simulator treats it as a benign ε-action leading
-     // *  directly to the rule's stop-state. Unlike a mid-body throw (which the
-     // *  simulator walks through to determine reachability, producing poisoned
-     // *  DFA states with "exception-terminated accept-sets"), a tail throw is
-     // *  INVISIBLE to the entire ATN construction / DFA merge phase.
-     // *
-     // *  This is why ZOM1900 + ZOM1903 are enforced HERE and not inside
-     // *  (V1/V2/V3 designs that placed the throws inline all produced spurious
-     // *  NVA or silent-failed predicates that the DefaultErrorStrategy recovered).
-     // *
-     // *  WALK (V5 — dedicated sub-rule matching):
-     // *    1. Collect every cfgAtom node under `predCtx` (recursive, so && / || /
-     // *       ! / paren-groups are all descended into).
-     // *    2. For each cfgAtom, scan its FIRST-level rule children:
-     // *       a. RULE_badRhsCfgAtomRhs → OP + unquoted-IDENTIFIER → throw ZOM1900
-     // *       b. RULE_valuedCfgAtomRhs → OP + DOUBLE_STRING
-     // *          i. key=="feature" AND stripped-val=="" → throw ZOM1903 FeatureUndeclared
-     // *       c. RULE_bareCfgAtomRhs → bare (no OP) → OK
-     // *
-     // *  Returns void so the generated code is a plain { method_call(); } parser
-     // *  action — NO trailing `?`, NO predicate-false swallowing, so any PCE throw
-     // *  produces rc=2 (NOT rc=1).
-     // */
-    static void enforceCfgAtomQuotedRhs(org.antlr.v4.runtime.RuleContext predCtx, Object parser) {
-        if (predCtx == null || !(parser instanceof ZomParser)) return;
-        final int RULE_ATOM = ZomParser.RULE_cfgAtom;
-        final int RULE_BAD  = ZomParser.RULE_badRhsCfgAtomRhs;
-        final int RULE_VAL  = ZomParser.RULE_valuedCfgAtomRhs;
-        java.util.Collection<? extends org.antlr.v4.runtime.tree.Tree> atoms =
-            org.antlr.v4.runtime.tree.Trees.findAllRuleNodes(predCtx, RULE_ATOM);
-        for (org.antlr.v4.runtime.tree.Tree atom : atoms) {
-            if (!(atom instanceof org.antlr.v4.runtime.RuleContext)) continue;
-            org.antlr.v4.runtime.RuleContext atomCtx = (org.antlr.v4.runtime.RuleContext) atom;
-            // Extract cfgAtom's key token: first IDENTIFIER terminal child.
-            Token keyTok = null;
-            // Locate first-level rule child (BAD, VAL, BARE — exactly one present).
-            org.antlr.v4.runtime.RuleContext rhsBad = null;
-            org.antlr.v4.runtime.RuleContext rhsVal = null;
-            for (int i = 0; i < atomCtx.getChildCount(); i++) {
-                Object c = atomCtx.getChild(i);
-                if (c instanceof org.antlr.v4.runtime.tree.TerminalNode) {
-                    Token tk = ((org.antlr.v4.runtime.tree.TerminalNode)c).getSymbol();
-                    if (tk.getType() == IDENTIFIER && keyTok == null) keyTok = tk;
-                } else if (c instanceof org.antlr.v4.runtime.RuleContext) {
-                    org.antlr.v4.runtime.RuleContext rc = (org.antlr.v4.runtime.RuleContext) c;
-                    if (rc.getRuleIndex() == RULE_BAD) rhsBad = rc;
-                    if (rc.getRuleIndex() == RULE_VAL) rhsVal = rc;
-                }
-            }
-            if (rhsBad != null) {
-                // ——— ZOM1900 — unquoted RHS (badRhsCfgAtomRhs) ———
-                String key = "<key>", op = "<op>", rhs = "<rhs>";
-                int line = -1, col = -1;
-                if (keyTok != null) {
-                    key = keyTok.getText();
-                    line = keyTok.getLine();
-                    col = keyTok.getCharPositionInLine();
-                }
-                for (int i = 0; i < rhsBad.getChildCount(); i++) {
-                    Object c = rhsBad.getChild(i);
-                    if (!(c instanceof org.antlr.v4.runtime.tree.TerminalNode)) continue;
-                    Token tk = ((org.antlr.v4.runtime.tree.TerminalNode) c).getSymbol();
-                    int t = tk.getType();
-                    if (t == ASSIGN || t == NEQ || t == LT || t == LTE || t == GT || t == GTE) {
-                        op = tk.getText();
-                        if (line < 0) { line = tk.getLine(); col = tk.getCharPositionInLine(); }
-                    } else if (t == IDENTIFIER) {
-                        rhs = tk.getText();
-                    }
-                }
-                String loc = (line >= 0) ? (line + ":" + col) : "<unknown>";
-                throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                  "ZOM1900 CfgPredicateMalformed at " + loc
-                  + " — cfg atom value must be a double-quoted string literal after '"
-                  + op + "' operator, e.g. key = \"value\" (got unquoted token '"
-                  + rhs + "' for key '" + key + "').");
-            }
-            if (rhsVal != null && keyTok != null && "feature".equals(keyTok.getText())) {
-                // ——— ZOM1903 — `feature = ""` — empty value ———
-                // Find the DOUBLE_STRING_LITERAL terminal child
-                String valText = null;
-                int line = keyTok.getLine(), col = keyTok.getCharPositionInLine();
-                for (int i = 0; i < rhsVal.getChildCount(); i++) {
-                    Object c = rhsVal.getChild(i);
-                    if (!(c instanceof org.antlr.v4.runtime.tree.TerminalNode)) continue;
-                    Token tk = ((org.antlr.v4.runtime.tree.TerminalNode) c).getSymbol();
-                    if (tk.getType() == DOUBLE_STRING_LITERAL) {
-                        valText = tk.getText();
-                        if (line < 0) { line = tk.getLine(); col = tk.getCharPositionInLine(); }
-                    }
-                }
-                // Strip the surrounding quotes.
-                String inner = valText;
-                if (inner != null && inner.length() >= 2) inner = inner.substring(1, inner.length() - 1);
-                if (inner == null || inner.isEmpty()) {
-                    String loc = line >= 0 ? (line + ":" + col) : "<unknown>";
-                    throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                      "ZOM1903 FeatureUndeclared at " + loc
-                      + " — `feature = \"\" requires a non-empty string value "
-                      + "(got empty double-quoted empty string).");
-                }
-            }
-        }
-    }
-
-
-
-
-
-
-
     static boolean checkExternAbiFormat(String literalText, Object parser) {
 
         String inner = literalText;
@@ -1557,7 +993,7 @@ static void insertRemainingAngleTokens(int compactType, Object parser) {
                 return true;
             default:
                 throw new ParseCancellationException(
-                    "ZOM2001[UnknownExternAbi]: unknown FFI ABI '" + inner
+                    "unknown FFI ABI '" + inner
                     + "'; expected one of {\"C\", \"Cdecl\", \"system\", \"zom-cdecl\"}");
         }
     }
@@ -1569,16 +1005,6 @@ static void insertRemainingAngleTokens(int compactType, Object parser) {
 
     static boolean checkIsVariableKeyword(String text, Object parser) {
         if (!text.equals("variable")) return false;
-        return true;
-    }
-
-    static boolean checkIsOpaqueKeyword(String text, Object parser) {
-        if (!text.equals("opaque")) return false;
-        return true;
-    }
-
-    static boolean checkIsMacroKeyword(String text, Object parser) {
-        if (!text.equals("macro")) return false;
         return true;
     }
 
@@ -1636,7 +1062,7 @@ sourceFile
     @init {
         preSplitAllCompactCloses(this);
     }
-    : (outerAttributeList moduleDeclaration)? moduleItem* EOF
+    : moduleDeclaration? moduleItem* EOF
     ;
 
 moduleDeclaration
@@ -1645,22 +1071,19 @@ moduleDeclaration
     //                       | 'export'? 'module' Identifier '=' AttributePath ';'
     : MODULE identifier SEMICOLON                                                           # moduleDeclSimple
     | MODULE identifier LBRACE moduleItem* RBRACE                                            # moduleDeclBlock
-    | EXPORT? MODULE identifier ASSIGN attributePath SEMICOLON                               # moduleDeclAlias
+    | EXPORT? MODULE identifier ASSIGN moduleAliasPath SEMICOLON                             # moduleDeclAlias
+    ;
+
+moduleAliasPath
+    : identifier COLONCOLON identifier (COLONCOLON identifier)*
     ;
 
 moduleItem
-
-
-
-    // attribute list when it is purely `#[zom::cfg(...)]`; however ZOM1901
-    // restricts cfg-gated statements to the standalone-block form only:
-    // `#[zom::cfg(...)] { stmt* }`. Any non-block statement form that carries
-    // a `#[zom::cfg(...)]` attribute is rejected by `checkStatementCfgGate`
-    // below (moduleItemStatementCfgGated alt).
-    : outerAttributeList declaration                                                        # moduleItemDeclaration
+    : outerAttributeList declaration
+        { rejectTopLevelVisibility($declaration.ctx); }                                    # moduleItemDeclaration
 
     | attrs=outerAttributeList statement
-        { checkStatementCfgGate($attrs.ctx, $statement.ctx, this) }?       # moduleItemStatementCfgGated
+        { checkAttributedStatementTarget($attrs.ctx, $statement.ctx, this) }? # moduleItemStatementAttributed
     | statement                                                                             # moduleItemStatement
     ;
 
@@ -1675,15 +1098,12 @@ moduleItem
 //     unsafe? impl !? AttrPath for Type (body | ';')      (Marker)
 // ============================================================================
 declaration
-    : IMPORT importBody SEMICOLON?                                                           # importDeclaration
-    | EXPORT exportBody SEMICOLON?                                                           # exportDeclaration
+    : IMPORT importBody SEMICOLON                                                            # importDeclaration
+    | EXPORT exportBody                                                                      # exportDeclaration
 
 
-    // Strict separation (user feedback, 2026/06/26):
-    //   class head colon = SUPERCLASS INHERITANCE, ONE class only.
-    //   interface implementation = standalone `impl Iface for T {}` form (NEVER
-    //   listed in the class header — no repeat of Java/C#'s mistake).
-    // Superclass is written `class NAME: SuperClass` (single, optional).
+    // A class header has at most one superclass. Interface implementations use
+    // standalone `impl Interface for Type {}` declarations.
     | modifierList CLASS memberIdentifier
       typeParameters?
       ( COLON typeExpr )?
@@ -1698,9 +1118,7 @@ declaration
       structBody                                                                            # structDeclaration   // named fields only (G5: no positional/newtype)
 
 
-    // NOT comma; matches interfaceBoundList structure).
-    // Super-interfaces = inheritance of contracts; multiple is conjunction
-    // (this interface is guaranteed to provide all listed contracts).
+    // Multiple super-interfaces form a conjunction.
     | modifierList INTERFACE memberIdentifier
       typeParameters?
       ( COLON interfaceBoundList )?
@@ -1711,11 +1129,7 @@ declaration
       enumBody                                                                              # enumDeclaration       // unit + tuple only (G6: no brace variant)
 
 
-    // (matches Java's RuntimeException extends Exception pattern, but written
-    //  with colon for consistency.)
     | modifierList ERROR memberIdentifier
-      typeParameters?
-      ( COLON typeExpr )?
       errorBody                                                                             # errorDeclaration
 
     | modifierList FUN memberIdentifier
@@ -1748,7 +1162,17 @@ declaration
 
 
     // impl <GenericParams>? InterfaceName ('+' MarkerPath)* for Type { ImplMember* }
-    | implTok=identifier   { checkIsImplKeyword($implTok.text, this) }?
+    | { peekIsOrdinaryImplAfterOptionalUnsafe(this, true) }?
+      unsafeTok=identifier { checkIsUnsafePrefix($unsafeTok.text, this) }?
+      implTok=identifier   { checkIsImplKeyword($implTok.text, this) }?
+      typeParameters?
+      interfaceBoundList
+      FOR typeExpr
+      whereClause?
+      implBody                                                                              # standaloneUnsafeImplDeclaration
+
+    | { peekIsOrdinaryImplAfterOptionalUnsafe(this, false) }?
+      implTok=identifier   { checkIsImplKeyword($implTok.text, this) }?
       typeParameters?
       interfaceBoundList
       FOR typeExpr
@@ -1757,9 +1181,6 @@ declaration
 
 
     | externDecl                                                                            # externDeclarationTop
-
-
-    | macroRulesDecl                                                                        # macroRulesDeclarationTop
 
 
     ;
@@ -1826,8 +1247,6 @@ implMember
     | MUT variableDeclarationList SEMICOLON
     | LET variableDeclarationList SEMICOLON
     | CONST constDeclarationList SEMICOLON
-    // Alias inside impl (rare but harmless)
-    | modifierList ALIAS memberIdentifier typeParameters? ASSIGN typeExpr SEMICOLON
     ;
 
 
@@ -1845,8 +1264,7 @@ importBody
     : importClause { rejectImportBareIdUnlessStarOrAttrPath($importClause.ctx, this) }?  # importSimple
     | importClause AS identifier
       { rejectImportBareIdUnlessStarOrAttrPath($importClause.ctx, this) }?                  # importRename
-    | importQualifiedPath ( PERIOD | colonColon )? LBRACE importSpecList? RBRACE            # importGroup
-    | importQualifiedPath ELLIPSIS importQualifiedPath ( AS identifier )?                   # importRange
+    | importQualifiedPath colonColon LBRACE importSpecList? RBRACE                           # importGroup
     ;
 
 
@@ -1859,10 +1277,8 @@ importQualifiedPath
     ;
 
 importClause
-    : '*'
-    // Bare identifier permitted INSIDE import specifiers (e.g. `import std::collections::{HashMap}`).
-    // REJECTION only enforced at importBody top-level (importSimple / importRename).
-    | identifier
+    // Bare identifier is rejected at importBody top-level.
+    : identifier
     | attributePath
     ;
 
@@ -1875,15 +1291,15 @@ importSpecList
 
 
 importSpec
-    : ( identifier | attributePath ) ( AS identifier )?
+    : identifier ( AS identifier )?
     ;
 
 exportBody
 
     //                        | AttributePath ('.' | '::')? '{' ImportSpecList? '}'
 
-    : LBRACE exportSpecList RBRACE                                                          # exportGroup
-    | importQualifiedPath ( PERIOD | colonColon )? LBRACE importSpecList? RBRACE            # exportReexportGroup
+    : LBRACE exportSpecList RBRACE SEMICOLON                                                # exportGroup
+    | importQualifiedPath colonColon LBRACE importSpecList? RBRACE SEMICOLON                 # exportReexportGroup
     | declaration                                                                           # exportDeclDirect
     ;
 
@@ -1895,7 +1311,7 @@ exportSpecList
 
 
 exportSpec
-    : ( identifier | attributePath ) ( AS identifier )?
+    : identifier ( AS identifier )?
     ;
 
 // ============================================================================
@@ -1972,27 +1388,27 @@ errorBody  : LBRACE structMember* RBRACE ;
 
 
 classMember
-    : outerAttributeList modifierList FUN memberIdentifier typeParameters? functionSignature
+    : modifierList FUN memberIdentifier typeParameters? functionSignature
       ( SEMICOLON
       | blockBody { checkAbstractNoBlock($modifierList.ctx, this) }?
       )                                                                                     # classMethod
-    | outerAttributeList modifierList (INIT | DEINIT) parameterList (RAISES typeExpr)? blockBody # classCtor
+    | modifierList (INIT | DEINIT) parameterList (RAISES typeExpr)? blockBody # classCtor
     // Class value member: mut / let / const (Ch.06 + Ch.08 class field)
     // Visibility (public/private/protected/static/readonly) still flows from modifierList.
-    | outerAttributeList modifierList MUT variableDeclarationList SEMICOLON                # classMut
-    | outerAttributeList modifierList LET variableDeclarationList SEMICOLON                # classLet
-    | outerAttributeList modifierList CONST constDeclarationList SEMICOLON                 # classConst
+    | modifierList MUT variableDeclarationList SEMICOLON                # classMut
+    | modifierList LET variableDeclarationList SEMICOLON                # classLet
+    | modifierList CONST constDeclarationList SEMICOLON                 # classConst
     // Class value field: bare value decl like `public name: String = default;
     // (Ch.08 class field — separate from classMut/classLet that require MUT/LET keyword)
-    | outerAttributeList modifierList memberIdentifier COLON typeExpr ( ASSIGN expression )?
+    | modifierList memberIdentifier COLON typeExpr ( ASSIGN expression )?
       ( SEMICOLON | COMMA | { okAfterStructFieldNoSeparator(this) }? )                                # classField
 
 
 
 
 
-    | outerAttributeList modifierList GET memberIdentifier functionSignature blockBody
-      ( outerAttributeList modifierList SET memberIdentifier functionSignature blockBody
+    | modifierList GET memberIdentifier functionSignature blockBody
+      ( modifierList SET memberIdentifier functionSignature blockBody
       | SET memberIdentifier functionSignature blockBody
       )?                                                                                   # classProperty
     ;
@@ -2005,11 +1421,11 @@ classMember
 structMember
 
 
-    : outerAttributeList modifierList (MUT | readonly)? memberIdentifier COLON typeExpr (ASSIGN expression)?
+    : modifierList (MUT | readonly)? memberIdentifier COLON typeExpr (ASSIGN expression)?
       ( SEMICOLON | COMMA | { okAfterStructFieldNoSeparator(this) }? )            # structField
-    | outerAttributeList modifierList FUN memberIdentifier typeParameters? functionSignature
+    | modifierList FUN memberIdentifier typeParameters? functionSignature
       ( SEMICOLON | blockBody )                                                             # structMethod
-    | outerAttributeList modifierList (INIT | DEINIT) parameterList (RAISES typeExpr)? blockBody   # structCtor
+    | modifierList (INIT | DEINIT) parameterList (RAISES typeExpr)? blockBody   # structCtor
     ;
 
 // --- Interface -------------------------------------------------------------------------
@@ -2019,9 +1435,9 @@ interfaceBody : LBRACE interfaceMember* RBRACE ;
 
 
 interfaceMember
-    : outerAttributeList modifierList FUN memberIdentifier typeParameters? functionSignature SEMICOLON    # interfaceMethod
-    | outerAttributeList modifierList (GET | SET) memberIdentifier functionSignature SEMICOLON            # interfaceProperty
-    | outerAttributeList modifierList TYPE memberIdentifier typeParameters?
+    : modifierList FUN memberIdentifier typeParameters? functionSignature SEMICOLON    # interfaceMethod
+    | modifierList (GET | SET) memberIdentifier functionSignature SEMICOLON            # interfaceProperty
+    | modifierList TYPE memberIdentifier typeParameters?
       ( COLON interfaceBoundList )? ( ASSIGN typeExpr )? SEMICOLON                                       # interfaceAssocType
     ;
 
@@ -2035,7 +1451,7 @@ enumVariantList : enumVariant ( COMMA enumVariant )* COMMA? ;
 enumVariant
 
 
-    : outerAttributeList identifier
+    : identifier
       ( LPAREN variantTypeList RPAREN )?
       ( ASSIGN expression )?
     ;
@@ -2062,8 +1478,8 @@ parameterList
 
 
 parameter
-    : outerAttributeList ( ( identifier | THIS ) COLON )? typeExpr ( ASSIGN expression )?
-    | outerAttributeList THIS
+    : outerAttributeList identifier COLON typeExpr ( ASSIGN expression )?
+    | outerAttributeList THIS ( COLON typeExpr )?
     ;
 
 
@@ -2072,8 +1488,6 @@ typeParameters
     ;
 
 
-// Industry convention (Swift / Kotlin): bounds are written with COLON, not Java-style
-// 'extends' keyword. EXTENDS is reserved for class heritage (superclass).
 // Bounds are trait conjunctions (PLUS-chain), same as impl head / dyn existential.
 // Order: variance? NAME : Bound+ = Default
 // Examples:
@@ -2139,91 +1553,19 @@ outerAttribute
     ;
 
 
-// NOTE: uses `attrItem` (not `attr` directly) so that `#[zom::cfg(PRED)]`
-// can have a DISJOINT top-level dispatch without ANTLR 4 ALL(*) simulator
-// poisoning the decision with body-reachability scans into cfgPredicate.
 attrList : attrItem ( COMMA attrItem )* COMMA? ;
 
-
-// leading-gated alternatives (a partition of every reachable attr prefix).
-//
-// Architectural decision (the 3rd rewrite):
-//   Previous attempts:
-//     v1  `attr : attrCfg | attrGeneric ;` (sub-rules)
-//         → ALL(*) still simulates into each sub-rule ATN → attrCfg's body
-//           reachability (cfgAtom hardfail alt predicates) poisons the
-//           parent-level decision: alt attrCfg is abandoned even when the
-//           4-token prefix matches → neg_05 false-accepted.
-//     v2  `attr : #zomCfg | #genericMultiSeg | #genericSegment1` (top-level labels)
-//         → Same problem: ALL(*) continues through the labelled-alt body
-//           into cfgPredicate. cfgAtom's valued-alt semantic predicate
-//           returns DIFFERENT values for pos_02 vs neg_05, which makes the
-//           reachable-state DFA *sensitive to input past the decision point*.
-//           With SLL k=∞ the decision reportAttemptingFullContext, and then
-//           NoViableAltException when no single alt uniquely wins.
-//     v3  (THIS ONE) lift the #[zom::cfg(...)] shape UP to attrItem and give
-//         the generic path its own `attr` rule. The attrItem leading gates
-//         are bounded (≤4 tokens) and their RETURN VALUES do not depend on
-//         anything after the decision. The body of attrItem#attrZomCfg
-//         terminates cleanly (its final RPAREN is a reachable terminal
-//         regardless of what cfgAtom does inside — the cfgAtom hardfail
-//         parser action is skipped during prediction so the simulator
-//         always reaches RPAREN and reports success).
-//
-//   Critical invariant: parser actions (`{ code }` without `?`) are NOT
-//   executed during adaptive prediction, only semantic predicates (`{e}?`)
-//   are evaluated and contribute to reachability. So after attrItem is
-//   split into its OWN rule, attrItem#attrZomCfg's body:
-//     IDENT(zom) :: IDENT(cfg) ( cfgAtom )
-//   The cfgAtom hardfail alt ends with `{ throw PCE }` → simulator sees a
-//   "clean state with no further tokens" → cfgAtom returns normally under
-//   prediction. The outer RPAREN is reachable, the full alt is reachable,
-//   ALL(*) picks it. During the ACTUAL parse, the action throws → rc=2.
 attrItem
-    // Two disjoint labelled alternatives with 2-token / 1-token bounded
-    // leading semantic predicates. Entry is via attrList.
-    //
-    //   Alt 1 — `#[zom::cfg(PRED)]` — gated by 3-token lookahead in
-    //          `peekIsZomCfgParen`, which also verifies LPAREN follows
-    //          the identifier. Canonical attribute path is "zom::cfg".
-    //          Returns `cfg` label pointing to cfgPredicate subtree.
-    //
-    //   Alt 2 — any OTHER attribute shape — delegated to the `attr` rule,
-    //          which itself splits into multi-segment (LA2 == ::) vs
-    //          single-segment (LA2 != ::) via bounded lookahead.
-
-
-    : { peekIsZomCfgParen(this) }?
-      nsIdent=identifier colonColon cfgIdent=identifier
-      LPAREN cfg=cfgPredicate RPAREN
-      // ⚠  TAIL PARSER-ACTION (positional safety critical — see helper docstring)
-      //    Enforces ZOM1900: every cfgAtom with a CfgOp must have a quoted-string
-      //    RHS. Malformed atoms (e.g. `target_os = linux`) were matched by
-      //    cfgAtom#cfgAtomBadRhs so the parse tree is complete; now we turn that
-      //    structural match into the precise diagnostic.
-      { enforceCfgAtomQuotedRhs($cfg.ctx, this); }                              # attrZomCfg
-    | { !peekIsZomCfgParen(this) }?
-      attr                                                                    # attrGenericItem
+    : attr
     ;
 
 attr
-    // =======================================================================
-
-    // because that shape is intercepted by attrItem#attrZomCfg above.
-    //
-    // Alt 1: Multi-segment (attrpath >= 2 segments with ::) — gated by
-    //        LA2 == ::. Accepts serde::rename, zom::deprecated, etc.
-    // Alt 2: Single-segment built-in compiler attribute selected by the
-    //        isBuiltinSingleSegAttr allowlist. Custom single-segment
-    //        attributes are rejected to preserve the G11 path rule.
-    //
-    // The two alternatives are complementary, keeping SLL decisions stable.
-    // =======================================================================
     : { isNextToken(this, IDENTIFIER) && la2IsColonColon(this) }?
       first=identifier colonColon rest=attributePathTail
       ( LPAREN input=attrInput RPAREN
       | ASSIGN value=expression
-      )?                                                                            # genericMultiSeg
+      )?
+      { rejectUnavailableConditionalAttribute($first.text, $rest.text); }            # genericMultiSeg
     | { isNextToken(this, IDENTIFIER) && !la2IsColonColon(this) }?
       name=identifier { isBuiltinSingleSegAttr($name.ctx.getText()) }?
       ( LPAREN input=attrInput RPAREN
@@ -2252,12 +1594,12 @@ pathSegment
     | MUTATING | OVERRIDE | ABSTRACT | GLOBAL | IMMEDIATE | INTRINSIC | UNIQUE
     // -- Operator --
     | AS | IS | TYPEOF | KEYOF | INFER | SATISFIES | ASSERTS | ASSERT
-    | NEW | THIS | SUPER | EXTENDS | IMPLEMENTS | RAISES
+    | NEW | THIS | SUPER | RAISES
     // -- Module --
     | MODULE | IMPORT | EXPORT | FROM | USING | REQUIRE
     // -- Concurrency --
     | SUSPEND | SPAWN
-    // -- Reserved (ZOM500x) --
+    // -- Reserved syntax --
     | THROW | TRY | CATCH | FINALLY | ASYNC | AWAIT | VAR
     | ACTOR | CHANNEL | YIELD | GENERATOR | NAMESPACE | PACKAGE | TYPE
     | DELETE | INSTANCEOF | OF | WITH
@@ -2309,149 +1651,6 @@ attributePath
 // ============================================================================
 
 // ============================================================================
-
-// The three combinators (all/any/not) are contextual keywords — they are NOT
-// hard keywords in the lexer; they are matched here by identifier text.
-// A semantic predicate is used because the `all` identifier alone would
-// otherwise be consumed by the cfgAtom branch (bare-key form) without
-// left-factoring help.
-
-cfgPredicate
-    // NOTE: order matters — combinator rules must come BEFORE cfgAtom (bare
-    // identifier) so that `all(...)` is recognized as a combinator, not as a
-    // bare key "all" followed by a parenthesised expression that ANTLR's error
-    // recovery would try to reattach elsewhere.
-    //
-    // IMPLEMENTATION NOTE (Hard Token vs Contextual Keyword):
-    //   The 4 combinator alternatives MUST precede cfgAtom because cfgAtom accepts
-    //   any bare IDENTIFIER; if it were first, `all(x)` would parse as bare key
-    //   "all" followed by a loose parenthesised group that ANTLR cannot recover.
-    //
-
-    //   type-level existential `any` keyword). The combinator `any()` and the type
-    //   `any` never co-occur at the same grammar position: combinators appear ONLY
-    //   inside `#[zom::cfg(  HERE  )]` (a closed sub-grammar), while the type
-    //   `any` appears ONLY in type-expression contexts. So reusing `ANY` here is
-    //   unambiguous and eliminates the need for a gated predicate.
-    //
-    //   `all` and `not` are NOT hard lexer keywords:
-    //     - `all` is not reserved anywhere (users may legitimately declare `fun all(...)`)
-    //     - `NOT` in the lexer is the single-character `!`, not the word
-    //   So these two use LEADING GATED SEMANTIC PREDICATES via
-    //   `((TokenStream)getTokenStream()).LT(1).getText()` — TokenStream.LT(1) is
-    //   used instead of `getCurrentToken()` because during ALL(*) SLL prediction
-    //   the parser's internal current-token pointer is not yet advanced when the
-    //   decision gate is evaluated; the raw TokenStream always gives true LA(1).
-    : { ((org.antlr.v4.runtime.TokenStream)getTokenStream()).LT(1).getText().equals("all") }?
-      IDENTIFIER
-      ( LPAREN RPAREN
-      | LPAREN cfgPredicate ( COMMA cfgPredicate )* COMMA? RPAREN
-      )                                                                       # cfgAllPred
-    | ANY
-      ( LPAREN RPAREN
-      | LPAREN cfgPredicate ( COMMA cfgPredicate )* COMMA? RPAREN
-      )                                                                       # cfgAnyPred
-    | { ((org.antlr.v4.runtime.TokenStream)getTokenStream()).LT(1).getText().equals("not") }?
-      IDENTIFIER
-      LPAREN cfgPredicate RPAREN                                              # cfgNotPred
-    | cfgAtom                                                                 # cfgAtomPred
-    | { rejectCfgPredicateBad(this) }?                                       # cfgPredicateBad
-    ;
-
-cfgAtom
-
-    //   Bare-key existence-check if no CfgOp.
-    //   Valued-equality if CfgOp is `=` (ASSIGN) or `!=` (NEQ).
-
-    // NOTE: `=` (CFG equality) reuses token ASSIGN because EQ is `==` (the binary
-    // relational operator); this is unambiguous because cfgPredicate is a sub-grammar
-    // that does not overlap with expression parsing.
-    //
-    // IMPLEMENTATION NOTE (shared-prefix IDENTIFIER + 3 RHS sub-rules — eliminates
-    // gated-predicate lookahead offset errors)
-    // -----------------------------------------------------------------------------
-    // In V4 we placed the 3 `isCfgOpNext` gated predicates as ALT-ENTRY leading gates,
-    // BEFORE the shared `key=IDENTIFIER` terminal. At entry to `cfgAtom`, LA(1) is the
-    // IDENTIFIER itself (e.g. `target_os`), NOT the CfgOp — so every `isCfgOpNext`
-    // returned false, Alt 3 (bare-key) was (spuriously) selected, `checkCfgAtomShape`
-    // (which enforces "no CfgOp follows bare key") then returned false, and the full
-    // adaptive backtrack reported NVA at the PARENT (`cfgPredicate`) with only the
-    // "rejectCfgPredicateBad" alt-survivor in the dead-end set. The bug was a LOOKAHEAD
-    // OFFSET ERROR: `isCfgOpNext` is well-defined ONLY AFTER the Identifier has been
-    // consumed (because it is a test on what FOLLOWS the key, not what IS the key).
-    //
-    // This rewrite keeps `key=IDENTIFIER` as the shared mandatory prefix, then uses a
-    // 3-alternative nested group to dispatch to THREE DEDICATED SUB-RULES, each with
-    // a single labelled top-level alternative of its own:
-    //
-    //   valuedCfgAtomRhs   — gated by `{ isCfgOpNext && isDoubleStringAfterCfgOp }`
-    //                        OP + "value" + structural/feature predicates (returns
-    //                        nothing extra; the checks run as predicates, not throws).
-    //   badRhsCfgAtomRhs   — gated by `{ isCfgOpNext && !isDoubleStringAfterCfgOp }`
-    //                        OP + stray IDENTIFIER (malformed unquoted value; stored
-    //                        via `rhsBad` label for later detection).
-    //   bareCfgAtomRhs     — gated by `{ !isCfgOpNext }`
-    //                        ε  +  structural predicate.
-    //
-    // Using distinct sub-rules (instead of inline labels inside the nested group)
-    // satisfies ANTLR's "labels only on top-level alternatives" restriction and makes
-
-    // predicate partition — no DFA state merges can conflict.
-    : key=IDENTIFIER
-      ( valuedCfgAtomRhs
-      | badRhsCfgAtomRhs
-      | bareCfgAtomRhs
-      )
-    ;
-
-
-//   `= "linux"` | `!= "linux"` | `<  "1.0.0"` | `<= "1.0.0"` | `>= "1.0.0"` | `>  "1.0.0"`
-valuedCfgAtomRhs
-    : { isCfgOpNext(this) && isDoubleStringAfterCfgOp(this) }?
-      op=( ASSIGN | NEQ | LT | LTE | GT | GTE )
-      val=DOUBLE_STRING_LITERAL
-      // NOTE: `feature = ""` (ZOM1903) validation + any atom-level validation that
-      // requires throwing a ParseCancellationException is performed BY THE TAIL
-      // parser-action in `attrItem#attrZomCfg` (see `enforceCfgAtomQuotedRhs`).
-      // Semantic predicates ({...}?) here MUST NOT throw PCE because the ANTLR 4
-      // runtime wraps them in `try { eval() } catch (RuntimeException) { false }`,
-      // which would silently convert PCE into predicate-false → spurious NVA /
-      // error-recovery acceptance. `checkCfgAtomShape` returns boolean (no throw).
-      { checkCfgAtomShape(((org.antlr.v4.runtime.CommonTokenStream)getTokenStream()).LT(-1), true, $op.text, this) }?
-    ;
-
-
-//   Matches `= linux` / `!= windows` / `< 14` / ... as a syntactically valid token
-//   stream so no NVA is raised during prediction. The stray `rhsBad=IDENTIFIER` token
-//   is preserved on the parse-tree so that `enforceCfgAtomQuotedRhs` (called as a
-//   TAIL parser-action in `attrItem#attrZomCfg`) can turn it into ZOM1900.
-//   ⚠  NO parser action throws here. NO semantic predicate rejections here. Pure match.
-badRhsCfgAtomRhs
-    : { isCfgOpNext(this) && !isDoubleStringAfterCfgOp(this) }?
-      op=( ASSIGN | NEQ | LT | LTE | GT | GTE )
-      rhsBad=IDENTIFIER
-    ;
-
-
-//   `target_feature` | `unix` / `zomc_version` etc.
-//   `checkCfgAtomShape` ensures no CfgOp silently remains in the follow-set.
-bareCfgAtomRhs
-    : { !isCfgOpNext(this) }?
-      { checkCfgAtomShape(((org.antlr.v4.runtime.CommonTokenStream)getTokenStream()).LT(-1), false, null, this) }?
-    ;
-
-//   ASSIGN → `=`   (not EQ `==`; the only place in the grammar where ASSIGN
-//                   is used for equality; restricted to cfg atom values)
-//   NEQ    → `!=`
-//   LT     → `<`
-//   LTE    → `<=`
-//   GT     → `>`
-//   GTE    → `>=`
-
-
-// ============================================================================
-
-// ============================================================================
 statement
     : labeledStatement                                                                      # stmtLabeled
     | declaration                                                                           # stmtDecl
@@ -2484,10 +1683,16 @@ expressionStatement
 
 
 labeledStatement
-    : label=identifier COLON
-      { checkLabelNoAttrAfterLabel(_input.LT(1), $label.text, this) }?
-      stmt=statement
-      { checkLabelC25ControlFlowOnly($stmt.start, this) }?
+    : identifier COLON labelTarget
+    ;
+
+labelTarget
+    : whileStatement
+    | doWhileStatement
+    | forStatement
+    | forInStatement
+    | blockBody
+    | labeledStatement
     ;
 
 // ---- Control flow ---------------------------------------------------------------------
@@ -2555,7 +1760,7 @@ spawnStatement
 
 
 spawnModifierList
-    : spawnModifier ( COMMA? spawnModifier )*
+    : spawnModifier+
     ;
 
 
@@ -2577,28 +1782,28 @@ suspendStatement
       )
     ;
 
-// ---- Reserved syntax (ZOM5001~ZOM5008 precise diagnostics) ----------------
+// ---- Reserved syntax -------------------------------------------------------
 //   NOTE: Use semantic predicate `{ ... }?` (not bare action) so ANTLR does
 //   not inject an unreachable `break;` after the action, which would make
 //   javac complain.
 
 reservedSyntax
     : ( THROW | TRY | CATCH | FINALLY ) expressionStatement?
-      { reserved("ZOM5001", "exception syntax not implemented (throw/try/catch/finally)", this) }?
+      { reserved("exception syntax is not accepted (throw/try/catch/finally)", this) }?
     | ( ASYNC | AWAIT ) expressionStatement?
-      { reserved("ZOM5002", "async/await syntax not implemented", this) }?
+      { reserved("async/await syntax is not accepted", this) }?
     | VAR expressionStatement?
-      { reserved("ZOM5003", "var syntax not implemented; use let/mut/const", this) }?
+      { reserved("var syntax is not accepted; use let/mut/const", this) }?
     | ( ACTOR | CHANNEL ) expressionStatement?
-      { reserved("ZOM5004", "actor/channel concurrency types not implemented", this) }?
+      { reserved("actor/channel syntax is not accepted", this) }?
     | ( YIELD | GENERATOR ) expressionStatement?
-      { reserved("ZOM5005", "generator/yield syntax not implemented", this) }?
+      { reserved("generator/yield syntax is not accepted", this) }?
     | ( NAMESPACE | PACKAGE ) expressionStatement?
-      { reserved("ZOM5006", "namespace/package module syntax not implemented", this) }?
+      { reserved("namespace/package syntax is not accepted", this) }?
     | TYPE expressionStatement?
-      { reserved("ZOM5007", "top-level type declaration not implemented; use alias", this) }?
+      { reserved("top-level type declaration is not accepted; use alias", this) }?
     | ( DELETE | INSTANCEOF | OF | WITH ) expressionStatement?
-      { reserved("ZOM5008", "syntax not implemented (delete/instanceof/of/with)", this) }?
+      { reserved("delete/instanceof/of/with syntax is not accepted", this) }?
     ;
 
 // ---- Block ---------------------------------------------------------------------------
@@ -2607,7 +1812,7 @@ blockBody : LBRACE statementList RBRACE ;
 
 spawnBlockBody : LBRACE statementList expression? RBRACE ;
 
-statementList : statement* ;
+statementList : moduleItem* ;
 
 
 parenExpression : LPAREN expression RPAREN ;
@@ -2722,7 +1927,7 @@ equalityExpr
 // NOTE: Right-hand side of `as` / `is` is a type (typeExpr), NOT a shift expression;
 //       using shiftExpr would force `as i32` into a non-type expression and fail.
 relationalExpr
-    : relationalExpr AS { checkAsForceCastLookahead(this) }? typeExpr
+    : relationalExpr AS (QUESTION | NOT)? typeExpr
       { checkAsRightIsNotDyn($typeExpr.ctx, this) }?                                  # exprRelationalAs
     | relationalExpr ( LT | GT | LTE | GTE ) shiftExpr                                   # exprRelational
     | relationalExpr IS typeExpr                                                         # exprIs
@@ -2766,7 +1971,8 @@ powerExpr
 // Level 5: Unary prefix
 
 unaryExpr
-    : ( PLUS | MINUS | NOT | BIT_NOT | TYPEOF | MUL | BIT_AND ) unaryExpr     # exprUnary
+    : BIT_AND MUT? unaryExpr                                                  # exprReference
+    | ( PLUS | MINUS | NOT | BIT_NOT | TYPEOF | MUL ) unaryExpr              # exprUnary
     | preIncrementExpr                                                                    # exprPreIncSingle
     ;
 
@@ -2836,7 +2042,6 @@ primaryExpr
 
     | unsafeBlockExpr                                                                     # exprUnsafeBlock
 
-    | macroInvocationExpr                                                                 # exprMacroInvocation
     | predefinedType                                                                      # exprPredefinedType
     ;
 
@@ -2970,10 +2175,14 @@ typeExpr : functionType ;
 
 
 functionType
-    : typeParameters? parameterList ( ARROW returnType ( RAISES typeExpr )? )              # typeFunction
+    : typeParameters? functionTypeParameterList ( ARROW returnType ( RAISES typeExpr )? )  # typeFunction
     // FUN-keyword-prefixed function type: fun(T) -> U raises E? (industry-standard explicit syntax)
-    | FUN typeParameters? parameterList ( ARROW returnType ( RAISES typeExpr )? )          # typeFunctionKeyword
+    | FUN typeParameters? functionTypeParameterList ( ARROW returnType ( RAISES typeExpr )? ) # typeFunctionKeyword
     | unionType                                                                           # typeUnionSingle
+    ;
+
+functionTypeParameterList
+    : LPAREN ( typeExpr ( COMMA typeExpr )* COMMA? )? RPAREN
     ;
 
 functionExpression
@@ -3042,6 +2251,7 @@ atomType
     | associatedTypeProjection                                                            # typeAssociatedProjection
     | attributePath ( LT typeArgList genericClose )?                                     # typeQualified
     | identifier ( LT typeArgList genericClose )?                                        # typeNamed
+    | LPAREN RPAREN                                                                       # typeTupleEmpty
     | LPAREN typeExpr ( COMMA typeExpr )* COMMA? RPAREN
       { checkTupleTypeNot1Tuple(_localctx, this) }?                                   # typeTuple
     | LBRACE structFieldType ( COMMA structFieldType )* COMMA? RBRACE                     # typeObject
@@ -3052,7 +2262,20 @@ atomType
 
 dynType
     : dynTok=identifier { checkIsDynKeyword($dynTok.text, this) }?
-      interfaceBoundList
+      qualifiedPathOrIdent ( LT typeArgList genericClose )?
+      dynAssocBindingArgs? ( PLUS markerPath )*
+    ;
+
+dynAssocBindingArgs
+    : LT dynAssocBinding ( COMMA dynAssocBinding )* COMMA? genericClose
+    ;
+
+dynAssocBinding
+    : identifier ASSIGN typeExpr
+    ;
+
+markerPath
+    : qualifiedPathOrIdent
     ;
 
 associatedTypeProjection
@@ -3100,9 +2323,8 @@ identifier
 
 funDecl
     : FUN identifier
-      typeParameters?
       functionSignature
-      ( SEMICOLON | blockBody )
+      SEMICOLON
     ;
 
 // 20.1 Unsafe block expression (escape hatch for unsafe operations)
@@ -3122,16 +2344,10 @@ unsafeBlockExpr
 
 
 externDecl
-    : ( unsafeTok=identifier { checkIsUnsafePrefix($unsafeTok.text, this) }? )?
-      extTok=identifier    { checkIsExternKeyword($extTok.text, this) }?
+    : extTok=identifier    { checkIsExternKeyword($extTok.text, this) }?
       ( abi=DOUBLE_STRING_LITERAL )?
       externBlock
       { $abi == null || checkExternAbiFormat($abi.text, this) }?              # externBlockDecl
-    | ( unsafeTok=identifier { checkIsUnsafePrefix($unsafeTok.text, this) }? )?
-      extTok=identifier    { checkIsExternKeyword($extTok.text, this) }?
-      ( abi=DOUBLE_STRING_LITERAL )?
-      funDecl
-      { $abi == null || checkExternAbiFormat($abi.text, this) }?              # externSingleFunDecl
     ;
 
 // 20.3 Extern block — groups multiple FFI declarations
@@ -3147,17 +2363,6 @@ externItem
     : funDecl                                                                           # externFunDecl
     | vTok=identifier   { checkIsVariableKeyword($vTok.text, this) }?
       identifier COLON typeExpr SEMICOLON                                               # externVarDecl
-    | TYPE identifier ASSIGN
-      ( oTok=identifier { checkIsOpaqueKeyword($oTok.text, this) }? )?
-      identifier typeExpr? SEMICOLON                                                    # externTypeAlias
-    ;
-
-// 20.5 Unsafe function declaration (caller guarantees memory safety)
-
-
-unsafeFunDecl
-    : tok=identifier { checkIsUnsafePrefix($tok.text, this) }?
-      funDecl
     ;
 
 // ============================================================================
@@ -3172,109 +2377,3 @@ unsafeFunDecl
 
 
 // ============================================================================
-
-// 21.1 Function-like macro invocation: name!(token_tree) / name![tt] / name!{tt}
-
-macroInvocationExpr
-    : path=identifier NOT ( LPAREN macroTokenTree RPAREN
-                          | LBRACK macroTokenTree RBRACK
-                          | LBRACE macroTokenTree RBRACE )
-    ;
-
-// 21.2 Token tree — balanced delimiters + any token sequence
-macroTokenTree
-    : macroToken*
-    ;
-
-macroToken
-
-
-
-
-    : ( NOT | AND | OR | BIT_OR | BIT_AND | BIT_XOR | PLUS | MINUS | MUL | DIV
-      | MOD | ASSIGN | COLON | SEMICOLON | COMMA | QUESTION | AT | BIT_NOT
-      | LSHIFT | RSHIFT | URSHIFT | LT | GT | EQ | NEQ | LTE | GTE | PERIOD
-      | ELLIPSIS )                                                             # macroPunctTok
-    | identifier                                                             # macroIdentTok
-    | literal                                                                # macroLiteralTok
-
-
-    | ( CLASS | STRUCT | INTERFACE | ENUM | ERROR | FUN | MUT | LET | CONST
-      | CONSTRUCTOR | ALIAS | INIT | DEINIT | GET | SET | ACCESSOR | DECLARE
-      | IF | ELSE | MATCH | WHEN | DEFAULT | CASE
-      | FOR | WHILE | DO | BREAK | CONTINUE | RETURN | DEBUGGER | IN | OUT
-      | BOOL | STR | CHAR | NULL | UNIT | NEVER | ANY | OBJECT | SYMBOL | BIGINT | UNDEFINED
-      | PUBLIC | PRIVATE | PROTECTED | STATIC | READONLY | MUTATING | OVERRIDE
-      | ABSTRACT | GLOBAL | IMMEDIATE | INTRINSIC | UNIQUE
-      | AS | IS | TYPEOF | KEYOF | INFER | SATISFIES | ASSERTS | ASSERT
-      | NEW | THIS | SUPER | EXTENDS | IMPLEMENTS | RAISES
-      | MODULE | IMPORT | EXPORT | FROM | USING | REQUIRE | SUSPEND | SPAWN
-      | THROW | TRY | CATCH | FINALLY | ASYNC | AWAIT | VAR | ACTOR | CHANNEL
-      | YIELD | GENERATOR | NAMESPACE | PACKAGE | TYPE | DELETE | INSTANCEOF
-      | OF | WITH | TRUE | FALSE | UNDERSCORE
-      | I8 | I16 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64 )              # macroKeywordTok
-    | LPAREN macroTokenTree RPAREN                                           # macroParenGroup
-    | LBRACK macroTokenTree RBRACK                                           # macroBrackGroup
-    | LBRACE macroTokenTree RBRACE                                           # macroBraceGroup
-    ;
-
-// 21.3 Macro Rules (declarative macro 2.0)
-//      `macro NAME! { ( $a:expr ) => { ... }; ... }`
-
-
-macroRulesDecl
-    : MAC_=identifier { checkIsMacroKeyword($MAC_.text, this) }?
-      identifier NOT
-      LBRACE ( macroRule ( SEMICOLON )? )* RBRACE
-    ;
-
-macroRule
-
-    : LPAREN macroPattern RPAREN ROCKET LBRACE macroTokenTree RBRACE          # macroRuleParen
-    | LBRACK macroPattern RBRACK ROCKET LBRACE macroTokenTree RBRACE          # macroRuleBrack
-    ;
-
-
-
-macroPattern
-    : macroPatToken ( COMMA macroPatToken )* ( COMMA ELLIPSIS )?
-    ;
-
-macroPatToken
-    : captureName=identifier COLON macroFragSpec
-        { $captureName.text.length() > 1
-          && $captureName.text.charAt(0) == '$' }?                                         # macroCapture
-    | identifier                                                              # macroPatIdent
-    | literal                                                                 # macroPatLiteral
-
-    | ( NOT | AND | OR | BIT_OR | BIT_AND | BIT_XOR | PLUS | MINUS | MUL | DIV
-      | MOD | ASSIGN | QUESTION | AT | BIT_NOT
-      | LSHIFT | RSHIFT | URSHIFT | LT | GT | EQ | NEQ | LTE | GTE | PERIOD
-      | ELLIPSIS )                                                           # macroPatPunct
-
-    | ( TRUE | FALSE | NULL | UNIT | NEVER | ANY | BOOL | STR | CHAR
-      | I8 | I16 | I32 | I64 | U8 | U16 | U32 | U64 | F32 | F64
-      | IF | ELSE | MATCH | FOR | WHILE | RETURN | LET | CONST | MUT
-      | UNDERSCORE )                                                          # macroPatKeyword
-    ;
-
-
-
-
-macroFragSpec
-    : identifier
-    ;
-
-
-//      `#[derive(Debug, Clone, Copy)]` / `#[derive(Serde(rename_all = "camelCase"))]`
-
-
-
-
-deriveList
-    : LPAREN ( deriveItem ( COMMA deriveItem )* COMMA? )? RPAREN
-    ;
-
-deriveItem
-    : path=identifier ( LPAREN attrInput RPAREN )?
-    ;

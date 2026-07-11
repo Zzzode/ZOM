@@ -70,14 +70,6 @@ bool isPostfixOperator(ast::SyntaxKind kind);
 
 uint8_t postfixOpCode(ast::SyntaxKind kind);
 
-bool isMacroGroupOpen(ast::SyntaxKind kind);
-
-ast::SyntaxKind macroGroupClose(ast::SyntaxKind kind);
-
-zc::StringPtr macroGroupCloseLabel(ast::SyntaxKind kind);
-
-ast::MacroBrace macroBraceCode(ast::SyntaxKind kind);
-
 ast::BindingDeclarationKind bindingDeclarationKindCode(ast::SyntaxKind kind);
 
 bool isAssignmentOperator(ast::SyntaxKind kind);
@@ -113,8 +105,6 @@ bool isLiteralExpressionToken(ast::SyntaxKind kind);
 bool isAttributePathSegment(ast::SyntaxKind kind);
 
 bool isAttributeStart(ast::SyntaxKind first, ast::SyntaxKind second);
-
-bool isTopLevelCfgAttributeTarget(ast::SyntaxKind kind);
 
 zc::StringPtr tokenLabel(const lexer::Token& token);
 
@@ -254,12 +244,6 @@ struct Parser::Impl {
 
   size_t findMatchingRightBracket(size_t openIndex, size_t limit) const;
 
-  size_t findMatchingMacroGroup(size_t openIndex, size_t limit) const;
-
-  bool isMacroInvocationStart(size_t start, size_t limit) const;
-
-  size_t findMacroInvocationEnd(size_t start, size_t limit) const;
-
   bool isOuterAttributeStart(size_t index, size_t limit) const;
 
   size_t skipOuterAttributePrefix(size_t start, size_t end) const;
@@ -326,17 +310,13 @@ struct Parser::Impl {
   void diagnoseImportPathSyntax(size_t clauseStart, size_t clauseEnd, size_t pathEnd,
                                 size_t groupOpen) const;
 
-  bool isZomCfgAttributePath(size_t start, size_t end) const;
+  bool isUnavailableConditionalAttributePath(size_t start, size_t end) const;
 
   bool containsUnmodeledRangeOperator(size_t start, size_t end) const;
-
-  void diagnoseCfgAttributeArgs(size_t start, size_t end) const;
 
   ast::NodeId parseAttribute(AstFactory& builder, size_t start, size_t end) const;
 
   ast::NodeId parseOuterAttributeList(AstFactory& builder, size_t start, size_t end) const;
-
-  bool outerAttributePrefixContainsZomCfg(size_t start, size_t end) const;
 
   ast::NodeId makeStatementListItem(AstFactory& builder, ast::NodeId item,
                                     source::SourceRange range,
@@ -404,8 +384,6 @@ struct Parser::Impl {
   bool consumeFunctionTypeHead(TokenCursor& cursor, size_t limit, size_t& openParen,
                                size_t& closeParen) const;
 
-  size_t functionTypeParameterTypeStart(TokenCursor& cursor, size_t limit) const;
-
   ast::NodeList parseFunctionTypeParameters(AstFactory& builder, size_t start, size_t end) const;
 
   ast::NodeId parseTupleTypeRange(AstFactory& builder, size_t start, size_t end) const;
@@ -424,6 +402,8 @@ struct Parser::Impl {
   TypeParseResult parsePostfixType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
 
   TypeParseResult parseFunctionType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
+
+  bool isDynAssocBindingArgList(size_t openAngle, size_t closeAngle) const;
 
   TypeParseResult parseDynType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
 
@@ -459,12 +439,6 @@ struct Parser::Impl {
 
   ast::NodeId parseNewExpression(AstFactory& builder, size_t start, size_t calleeEnd,
                                  size_t typeArgsEnd, size_t end) const;
-
-  ast::NodeId makeEmptyMacroPattern(AstFactory& builder, size_t start, size_t end) const;
-
-  ast::NodeId makeEmptyMacroTokenTree(AstFactory& builder, size_t start, size_t end) const;
-
-  ast::NodeId parseMacroInvocationExpression(AstFactory& builder, size_t start, size_t end) const;
 
   ast::NodeId parseUnsafeBlockExpression(AstFactory& builder, size_t start, size_t end) const;
 
@@ -742,11 +716,7 @@ struct Parser::Impl {
 
   ast::NodeId parseExternVarDecl(AstFactory& builder, size_t start, size_t end, ast::Abi abi) const;
 
-  ast::NodeId parseExternTypeAliasDecl(AstFactory& builder, size_t start, size_t end) const;
-
   ast::NodeId parseExternBlockDeclaration(AstFactory& builder, size_t start, size_t end) const;
-
-  ast::NodeId parseMacroRulesDeclaration(AstFactory& builder, size_t start, size_t end) const;
 
   ast::NodeId parseFunctionDeclaration(AstFactory& builder, size_t start, size_t end) const;
 

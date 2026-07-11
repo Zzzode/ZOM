@@ -196,6 +196,10 @@ zc::String canonicalKey(const Type& type) {
     case TypeKind::Existential: {
       auto& existential = static_cast<const ExistentialType&>(type);
       auto result = zc::str("dyn(", canonicalKey(existential.getInterfaceType()));
+      for (size_t i = 0; i < existential.getAssocBindingCount(); ++i) {
+        result = zc::str(result, ";", existential.getAssocBindingName(i), "=",
+                         canonicalKey(existential.getAssocBindingType(i)));
+      }
       for (size_t i = 0; i < existential.getMarkerCount(); ++i) {
         result = zc::str(result, "+", existential.getMarkerName(i));
       }
@@ -240,10 +244,36 @@ TypeId TypeInterner::intern(const Type& type) {
   return id;
 }
 
+TypeId TypeInterner::internUnion(const Type& first, const Type& second) {
+  zc::Vector<zc::String> keys;
+  collectUnionKeys(first, keys);
+  collectUnionKeys(second, keys);
+  sortStrings(keys);
+
+  zc::String key;
+  if (keys.empty()) {
+    key = zc::str("never");
+  } else if (keys.size() == 1) {
+    key = zc::str(keys[0]);
+  } else {
+    key = joinKeys("union"_zc, " | "_zc, keys);
+  }
+
+  auto existing = impl->idsByKey.find(key);
+  ZC_IF_SOME(id, existing) { return id; }
+
+  TypeId id(static_cast<uint32_t>(impl->keysById.size() + 1));
+  impl->idsByKey.insert(zc::str(key), id);
+  impl->keysById.add(zc::mv(key));
+  return id;
+}
+
+bool TypeInterner::contains(TypeId id) const {
+  return id.isValid() && id.value <= impl->keysById.size();
+}
+
 zc::StringPtr TypeInterner::getCanonicalKey(TypeId id) const {
-  ZC_IREQUIRE(id.isValid(), "TypeInterner::getCanonicalKey: invalid TypeId");
-  ZC_IREQUIRE(id.value <= impl->keysById.size(),
-              "TypeInterner::getCanonicalKey: TypeId out of range");
+  ZC_IREQUIRE(contains(id), "TypeInterner::getCanonicalKey: TypeId is not interned");
   return impl->keysById[id.value - 1];
 }
 

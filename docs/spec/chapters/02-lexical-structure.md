@@ -157,7 +157,7 @@ immediate   intrinsic   global      unique      out
 as          is          in          of          typeof
 keyof       infer       satisfies   asserts     assert
 instanceof  new         delete      this        super
-raises      extends     implements
+raises
 ```
 
 ### Advanced Keywords

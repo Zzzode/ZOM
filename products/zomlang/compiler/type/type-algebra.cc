@@ -162,7 +162,13 @@ zc::Own<Type> cloneType(const Type& type) {
       for (size_t i = 0; i < existential.getMarkerCount(); ++i) {
         markers.add(existential.getMarkerName(i));
       }
-      return zc::heap<ExistentialType>(cloneType(existential.getInterfaceType()), markers.asPtr());
+      zc::Vector<ExistentialType::AssocBinding> bindings;
+      for (size_t i = 0; i < existential.getAssocBindingCount(); ++i) {
+        bindings.add(ExistentialType::AssocBinding{existential.getAssocBindingName(i),
+                                                   cloneType(existential.getAssocBindingType(i))});
+      }
+      return zc::heap<ExistentialType>(cloneType(existential.getInterfaceType()), markers.asPtr(),
+                                       zc::mv(bindings));
     }
 
     case TypeKind::Associated: {
@@ -267,6 +273,86 @@ zc::Maybe<const Type&> findTypeVarByName(const Type& type, zc::StringPtr name) {
   }
 
   return zc::none;
+}
+
+zc::Maybe<const Type&> lookupGenericSubstitution(
+    zc::ArrayPtr<const GenericSubstitution> substitutions, zc::StringPtr name) {
+  for (const auto& substitution : substitutions) {
+    if (substitution.name.asPtr() == name) { return *substitution.type; }
+  }
+  return zc::none;
+}
+
+bool bindGenericSubstitution(zc::Vector<GenericSubstitution>& substitutions, zc::StringPtr name,
+                             const Type& concrete) {
+  ZC_IF_SOME(existing, lookupGenericSubstitution(substitutions.asPtr(), name)) {
+    return existing.equals(concrete);
+  }
+
+  substitutions.add(GenericSubstitution{zc::str(name), cloneType(concrete)});
+  return true;
+}
+
+bool isGenericParamName(zc::ArrayPtr<const zc::StringPtr> genericNames, zc::StringPtr name) {
+  for (zc::StringPtr genericName : genericNames) {
+    if (genericName == name) { return true; }
+  }
+  return false;
+}
+
+bool matchGenericTypePattern(zc::ArrayPtr<const zc::StringPtr> genericNames, const Type& pattern,
+                             const Type& concrete, zc::Vector<GenericSubstitution>& substitutions) {
+  if (isNamed(pattern)) {
+    const auto& patternNamed = static_cast<const NamedType&>(pattern);
+    if (patternNamed.getTypeArgCount() == 0 &&
+        isGenericParamName(genericNames, patternNamed.getName())) {
+      return bindGenericSubstitution(substitutions, patternNamed.getName(), concrete);
+    }
+
+    if (!isNamed(concrete)) { return false; }
+    const auto& concreteNamed = static_cast<const NamedType&>(concrete);
+    if (patternNamed.getName() != concreteNamed.getName()) { return false; }
+    if (patternNamed.getTypeArgCount() != concreteNamed.getTypeArgCount()) { return false; }
+
+    for (size_t i = 0; i < patternNamed.getTypeArgCount(); ++i) {
+      if (!matchGenericTypePattern(genericNames, patternNamed.getTypeArg(i),
+                                   concreteNamed.getTypeArg(i), substitutions)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return pattern.equals(concrete);
+}
+
+zc::Own<Type> substituteGenericTypePattern(zc::ArrayPtr<const zc::StringPtr> genericNames,
+                                           const Type& pattern,
+                                           zc::ArrayPtr<const GenericSubstitution> substitutions) {
+  if (isNamed(pattern)) {
+    const auto& named = static_cast<const NamedType&>(pattern);
+    if (named.getTypeArgCount() == 0 && isGenericParamName(genericNames, named.getName())) {
+      ZC_IF_SOME(substituted, lookupGenericSubstitution(substitutions, named.getName())) {
+        return cloneType(substituted);
+      }
+    }
+
+    auto result = zc::heap<NamedType>(named.getName());
+    ZC_IF_SOME(symbol, named.getSymbol()) { result->setSymbol(symbol); }
+    for (size_t i = 0; i < named.getTypeArgCount(); ++i) {
+      result->addTypeArg(
+          substituteGenericTypePattern(genericNames, named.getTypeArg(i), substitutions));
+    }
+    return zc::mv(result);
+  }
+
+  return cloneType(pattern);
+}
+
+bool isBareGenericTypePattern(zc::ArrayPtr<const zc::StringPtr> genericNames, const Type& type) {
+  if (!isNamed(type)) { return false; }
+  const auto& named = static_cast<const NamedType&>(type);
+  return named.getTypeArgCount() == 0 && isGenericParamName(genericNames, named.getName());
 }
 
 }  // namespace type

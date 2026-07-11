@@ -291,52 +291,6 @@ uint8_t postfixOpCode(ast::SyntaxKind kind) {
   }
 }
 
-// --- Macro group helpers ---
-
-bool isMacroGroupOpen(ast::SyntaxKind kind) {
-  return kind == ast::SyntaxKind::LeftParen || kind == ast::SyntaxKind::LeftBracket ||
-         kind == ast::SyntaxKind::LeftBrace;
-}
-
-ast::SyntaxKind macroGroupClose(ast::SyntaxKind kind) {
-  switch (kind) {
-    case ast::SyntaxKind::LeftParen:
-      return ast::SyntaxKind::RightParen;
-    case ast::SyntaxKind::LeftBracket:
-      return ast::SyntaxKind::RightBracket;
-    case ast::SyntaxKind::LeftBrace:
-      return ast::SyntaxKind::RightBrace;
-    default:
-      return ast::SyntaxKind::Unknown;
-  }
-}
-
-zc::StringPtr macroGroupCloseLabel(ast::SyntaxKind kind) {
-  switch (kind) {
-    case ast::SyntaxKind::LeftParen:
-      return ")"_zc;
-    case ast::SyntaxKind::LeftBracket:
-      return "]"_zc;
-    case ast::SyntaxKind::LeftBrace:
-      return "}"_zc;
-    default:
-      return "delimiter"_zc;
-  }
-}
-
-ast::MacroBrace macroBraceCode(ast::SyntaxKind kind) {
-  switch (kind) {
-    case ast::SyntaxKind::LeftParen:
-      return ast::MacroBrace::Paren;
-    case ast::SyntaxKind::LeftBracket:
-      return ast::MacroBrace::Brack;
-    case ast::SyntaxKind::LeftBrace:
-      return ast::MacroBrace::Brace;
-    default:
-      return ast::MacroBrace::Paren;
-  }
-}
-
 // --- Binding declaration helpers ---
 
 ast::BindingDeclarationKind bindingDeclarationKindCode(ast::SyntaxKind kind) {
@@ -649,27 +603,6 @@ bool isAttributePathSegment(ast::SyntaxKind kind) {
 
 bool isAttributeStart(ast::SyntaxKind first, ast::SyntaxKind second) {
   return first == ast::SyntaxKind::Hash && second == ast::SyntaxKind::LeftBracket;
-}
-
-bool isTopLevelCfgAttributeTarget(ast::SyntaxKind kind) {
-  switch (kind) {
-    case ast::SyntaxKind::ModuleDeclaration:
-    case ast::SyntaxKind::ImportDeclaration:
-    case ast::SyntaxKind::ExportDeclaration:
-    case ast::SyntaxKind::LetStmt:
-    case ast::SyntaxKind::FunctionDecl:
-    case ast::SyntaxKind::ClassDecl:
-    case ast::SyntaxKind::StructDecl:
-    case ast::SyntaxKind::InterfaceDecl:
-    case ast::SyntaxKind::EnumDeclaration:
-    case ast::SyntaxKind::ErrorDecl:
-    case ast::SyntaxKind::AliasDecl:
-    case ast::SyntaxKind::ExternBlock:
-    case ast::SyntaxKind::BlockStmt:
-      return true;
-    default:
-      return false;
-  }
 }
 
 // --- Token labeling ---

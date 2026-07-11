@@ -69,6 +69,17 @@ ast::NodeId makeClassMemberList(TestFixture& fix, ast::NodeList members) {
   return fix.builder().makeNode(ast::SyntaxKind::ClassMemberList, source::SourceRange(), payload);
 }
 
+ast::NodeId makeClassDecl(TestFixture& fix, zc::StringPtr name, ast::NodeId members,
+                          ast::NodeId typeParams = ast::NodeId()) {
+  ast::NodePayload payload;
+  auto nameId = fix.builder().internIdent(name);
+  payload.words[ast::kClassDeclNameWord] = nameId.value;
+  payload.words[ast::kClassDeclTypeParamsIdWord] = typeParams.value;
+  payload.words[ast::kClassDeclBaseTyWord] = 0;
+  payload.words[ast::kClassDeclMembersIdWord] = members.value;
+  return fix.builder().makeNode(ast::SyntaxKind::ClassDecl, source::SourceRange(), payload);
+}
+
 ast::NodeId makeStandaloneImplDecl(TestFixture& fix, ast::NodeId forTy, ast::NodeId members) {
   ast::NodePayload payload;
   payload.words[ast::kStandaloneImplDeclIsUnsafeWord] = 0;
@@ -115,6 +126,20 @@ ast::NodeId makeStandaloneImplDecl(TestFixture& fix, ast::NodeId forTy, ast::Nod
                                 payload);
 }
 
+ast::NodeId makeStandaloneImplDecl(TestFixture& fix, ast::NodeId forTy, ast::NodeId ifaces,
+                                   ast::NodeId members, ast::NodeId typeParams,
+                                   ast::NodeId whereClause) {
+  ast::NodePayload payload;
+  payload.words[ast::kStandaloneImplDeclIsUnsafeWord] = 0;
+  payload.words[ast::kStandaloneImplDeclIfacesIdWord] = ifaces.value;
+  payload.words[ast::kStandaloneImplDeclForTyWord] = forTy.value;
+  payload.words[ast::kStandaloneImplDeclWhereWord] = whereClause.value;
+  payload.words[ast::kStandaloneImplDeclTypeParamsIdWord] = typeParams.value;
+  payload.words[ast::kStandaloneImplDeclMembersIdWord] = members.value;
+  return fix.builder().makeNode(ast::SyntaxKind::StandaloneImplDecl, source::SourceRange(),
+                                payload);
+}
+
 ast::NodeId makeMarkerImpl(TestFixture& fix, zc::StringPtr markerName, ast::NodeId forTy,
                            bool isUnsafe = false, bool isNegated = false) {
   ast::NodePayload payload;
@@ -124,6 +149,19 @@ ast::NodeId makeMarkerImpl(TestFixture& fix, zc::StringPtr markerName, ast::Node
   payload.words[ast::kMarkerImplForTyWord] = forTy.value;
   payload.words[ast::kMarkerImplWhereWord] = 0;
   payload.words[ast::kMarkerImplTypeParamsIdWord] = 0;
+  return fix.builder().makeNode(ast::SyntaxKind::MarkerImpl, source::SourceRange(), payload);
+}
+
+ast::NodeId makeMarkerImpl(TestFixture& fix, zc::StringPtr markerName, ast::NodeId forTy,
+                           ast::NodeId typeParams, ast::NodeId whereClause, bool isUnsafe = false,
+                           bool isNegated = false) {
+  ast::NodePayload payload;
+  payload.words[ast::kMarkerImplIsUnsafeWord] = isUnsafe ? 1 : 0;
+  payload.words[ast::kMarkerImplIsNegatedWord] = isNegated ? 1 : 0;
+  payload.words[ast::kMarkerImplMarkerPathWord] = fix.makeIdentExpr(markerName).value;
+  payload.words[ast::kMarkerImplForTyWord] = forTy.value;
+  payload.words[ast::kMarkerImplWhereWord] = whereClause.value;
+  payload.words[ast::kMarkerImplTypeParamsIdWord] = typeParams.value;
   return fix.builder().makeNode(ast::SyntaxKind::MarkerImpl, source::SourceRange(), payload);
 }
 
@@ -307,6 +345,110 @@ ZC_TEST("TraitResolver.DirectAndBlanketImplOverlapReportsCoherenceError") {
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ConflictingImpl));
 }
 
+ZC_TEST("TraitResolver.GenericImplWhereBoundControlsImplementation") {
+  TestFixture fix;
+
+  auto eqDecl = fix.makeInterfaceDecl("Eq"_zc);
+  auto goodDecl = fix.makeClassDecl("Good"_zc);
+  auto plainDecl = fix.makeClassDecl("Plain"_zc);
+
+  zc::Vector<ast::NodeId> boxMembers;
+  boxMembers.add(fix.makeFieldDecl("value"_zc, fix.makeNamedTypeExpr("T"_zc)));
+  auto boxGenericParam = fix.makeGenericTypeParam("T"_zc);
+  zc::Vector<ast::NodeId> boxGenericNodes;
+  boxGenericNodes.add(boxGenericParam);
+  auto boxTypeParams = fix.makeGenericParams(fix.makeNodeList(boxGenericNodes.asPtr()));
+  auto boxDecl = fix.makeClassDecl(
+      "Box"_zc, makeClassMemberList(fix, fix.makeNodeList(boxMembers.asPtr())), boxTypeParams);
+
+  zc::Vector<ast::NodeId> ifaceNodes;
+  ifaceNodes.add(fix.makeNamedTypeExpr("Eq"_zc));
+  auto ifaces = makeImplIfaceList(fix, fix.makeNodeList(ifaceNodes.asPtr()));
+  auto emptyMembers = makeClassMemberList(fix, ast::NodeList());
+  auto goodImpl =
+      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Good"_zc), ifaces, emptyMembers);
+
+  zc::Vector<ast::NodeId> boxTypeArgs;
+  boxTypeArgs.add(fix.makeNamedTypeExpr("T"_zc));
+  auto boxForTy = fix.makeNamedTypeExpr("Box"_zc, fix.makeNodeList(boxTypeArgs.asPtr()));
+  auto wherePred = fix.makeWherePred(fix.makeNamedTypeExpr("T"_zc), fix.makeNamedTypeExpr("Eq"_zc));
+  zc::Vector<ast::NodeId> wherePreds;
+  wherePreds.add(wherePred);
+  auto whereClause = fix.makeWhereClause(fix.makeNodeList(wherePreds.asPtr()));
+  auto implGenericParam = fix.makeGenericTypeParam("T"_zc);
+  zc::Vector<ast::NodeId> implGenericNodes;
+  implGenericNodes.add(implGenericParam);
+  auto implTypeParams =
+      fix.makeGenericParams(fix.makeNodeList(implGenericNodes.asPtr()), whereClause);
+  auto boxImpl =
+      makeStandaloneImplDecl(fix, boxForTy, ifaces, emptyMembers, implTypeParams, whereClause);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(eqDecl);
+  topDecls.add(goodDecl);
+  topDecls.add(plainDecl);
+  topDecls.add(boxDecl);
+  topDecls.add(goodImpl);
+  topDecls.add(boxImpl);
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  ZC_EXPECT(binder.bind());
+
+  type::TypeEnv typeEnv;
+  TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
+  resolver.checkCoherence();
+  resolver.discoverImpls();
+
+  type::NamedType boxGood("Box"_zc);
+  boxGood.addTypeArg(zc::heap<type::NamedType>("Good"_zc));
+  type::NamedType boxPlain("Box"_zc);
+  boxPlain.addTypeArg(zc::heap<type::NamedType>("Plain"_zc));
+
+  ZC_EXPECT(resolver.implements(boxGood, "Eq"_zc));
+  ZC_EXPECT(!resolver.implements(boxPlain, "Eq"_zc));
+}
+
+ZC_TEST("TraitResolver.ConcreteGenericImplDoesNotMatchAnotherSpecialization") {
+  TestFixture fix;
+  auto eqDecl = fix.makeInterfaceDecl("Eq"_zc);
+  auto goodDecl = fix.makeClassDecl("Good"_zc);
+  auto plainDecl = fix.makeClassDecl("Plain"_zc);
+  auto boxDecl = fix.makeClassDecl("Box"_zc);
+
+  zc::Vector<ast::NodeId> ifaceNodes;
+  ifaceNodes.add(fix.makeNamedTypeExpr("Eq"_zc));
+  auto ifaces = makeImplIfaceList(fix, fix.makeNodeList(ifaceNodes.asPtr()));
+  zc::Vector<ast::NodeId> goodTypeArgs;
+  goodTypeArgs.add(fix.makeNamedTypeExpr("Good"_zc));
+  auto boxGoodType = fix.makeNamedTypeExpr("Box"_zc, fix.makeNodeList(goodTypeArgs.asPtr()));
+  auto concreteImpl =
+      makeStandaloneImplDecl(fix, boxGoodType, ifaces, makeClassMemberList(fix, ast::NodeList()));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(eqDecl);
+  topDecls.add(goodDecl);
+  topDecls.add(plainDecl);
+  topDecls.add(boxDecl);
+  topDecls.add(concreteImpl);
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  ZC_EXPECT(binder.bind());
+
+  type::TypeEnv typeEnv;
+  TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
+  resolver.discoverImpls();
+
+  type::NamedType boxGood("Box"_zc);
+  boxGood.addTypeArg(zc::heap<type::NamedType>("Good"_zc));
+  type::NamedType boxPlain("Box"_zc);
+  boxPlain.addTypeArg(zc::heap<type::NamedType>("Plain"_zc));
+
+  ZC_EXPECT(resolver.implements(boxGood, "Eq"_zc));
+  ZC_EXPECT(!resolver.implements(boxPlain, "Eq"_zc));
+}
+
 ZC_TEST("TraitResolver.OrphanImplDiagnosticIsCrossModuleFallback") {
   TestFixture fix;
   auto consumer = zc::heap<CapturingDiagnosticConsumer>();
@@ -400,6 +542,61 @@ ZC_TEST("TraitResolver.UnsafeMarkerImplOverridesStructuralRejection") {
 
   type::NamedType rawWrapper("RawWrapper"_zc);
   ZC_EXPECT(resolver.implements(rawWrapper, "Sendable"_zc));
+}
+
+ZC_TEST("TraitResolver.GenericMarkerImplWhereBoundControlsImplementation") {
+  TestFixture fix;
+
+  auto goodDecl = fix.makeClassDecl("Good"_zc);
+  zc::Vector<ast::NodeId> unsafeMembers;
+  unsafeMembers.add(
+      fix.makeFieldDecl("ptr"_zc, fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc))));
+  auto unsafeDecl = makeClassDecl(
+      fix, "Unsafe"_zc, makeClassMemberList(fix, fix.makeNodeList(unsafeMembers.asPtr())));
+
+  zc::Vector<ast::NodeId> boxMembers;
+  boxMembers.add(fix.makeFieldDecl("value"_zc, fix.makeNamedTypeExpr("T"_zc)));
+  auto boxGenericParam = fix.makeGenericTypeParam("T"_zc);
+  zc::Vector<ast::NodeId> boxGenericNodes;
+  boxGenericNodes.add(boxGenericParam);
+  auto boxTypeParams = fix.makeGenericParams(fix.makeNodeList(boxGenericNodes.asPtr()));
+  auto boxDecl = makeClassDecl(
+      fix, "Box"_zc, makeClassMemberList(fix, fix.makeNodeList(boxMembers.asPtr())), boxTypeParams);
+
+  zc::Vector<ast::NodeId> boxTypeArgs;
+  boxTypeArgs.add(fix.makeNamedTypeExpr("T"_zc));
+  auto boxForTy = fix.makeNamedTypeExpr("Box"_zc, fix.makeNodeList(boxTypeArgs.asPtr()));
+  auto wherePred =
+      fix.makeWherePred(fix.makeNamedTypeExpr("T"_zc), fix.makeNamedTypeExpr("Sendable"_zc));
+  zc::Vector<ast::NodeId> wherePreds;
+  wherePreds.add(wherePred);
+  auto whereClause = fix.makeWhereClause(fix.makeNodeList(wherePreds.asPtr()));
+  auto implGenericParam = fix.makeGenericTypeParam("T"_zc);
+  zc::Vector<ast::NodeId> implGenericNodes;
+  implGenericNodes.add(implGenericParam);
+  auto implTypeParams =
+      fix.makeGenericParams(fix.makeNodeList(implGenericNodes.asPtr()), whereClause);
+  auto markerImpl =
+      makeMarkerImpl(fix, "Sendable"_zc, boxForTy, implTypeParams, whereClause, true, false);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(goodDecl);
+  topDecls.add(unsafeDecl);
+  topDecls.add(boxDecl);
+  topDecls.add(markerImpl);
+  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
+
+  type::TypeEnv typeEnv;
+  TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
+  resolver.discoverImpls();
+
+  type::NamedType boxGood("Box"_zc);
+  boxGood.addTypeArg(zc::heap<type::NamedType>("Good"_zc));
+  type::NamedType boxUnsafe("Box"_zc);
+  boxUnsafe.addTypeArg(zc::heap<type::NamedType>("Unsafe"_zc));
+
+  ZC_EXPECT(resolver.implements(boxGood, "Sendable"_zc));
+  ZC_EXPECT(!resolver.implements(boxUnsafe, "Sendable"_zc));
 }
 
 ZC_TEST("TraitResolver.ResolveAssociatedTypeRequiresUniqueBinding") {

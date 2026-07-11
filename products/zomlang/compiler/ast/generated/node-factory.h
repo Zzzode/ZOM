@@ -53,49 +53,6 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::Attribute, zc::mv(range), payload);
   }
 
-  NodeId makeZomCfgAttribute(source::SourceRange range, NodeId pred) {
-    NodePayload payload;
-    payload.words[kZomCfgAttributePredWord] = pred.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ZomCfgAttribute, zc::mv(range), payload);
-  }
-
-  NodeId makeCfgAtom(source::SourceRange range, NodeId key, CfgAtomValueKind vk, uint64_t value_or_id) {
-    NodePayload payload;
-    payload.words[kCfgAtomKeyWord] = key.value;
-    payload.words[kCfgAtomVkWord] = static_cast<uint32_t>(vk);
-    payload.words[kCfgAtomValueOrIdLowWord] = static_cast<uint32_t>(value_or_id & 0xffffffffull);
-    payload.words[kCfgAtomValueOrIdHighWord] = static_cast<uint32_t>(value_or_id >> 32);
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CfgAtom, zc::mv(range), payload);
-  }
-
-  NodeId makeCfgAll(source::SourceRange range, NodeList preds) {
-    NodePayload payload;
-    payload.words[kCfgAllPredsFirstWord] = preds.first;
-    payload.words[kCfgAllPredsSizeWord] = preds.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CfgAll, zc::mv(range), payload);
-  }
-
-  NodeId makeCfgAny(source::SourceRange range, NodeList preds) {
-    NodePayload payload;
-    payload.words[kCfgAnyPredsFirstWord] = preds.first;
-    payload.words[kCfgAnyPredsSizeWord] = preds.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CfgAny, zc::mv(range), payload);
-  }
-
-  NodeId makeCfgNot(source::SourceRange range, NodeId inner) {
-    NodePayload payload;
-    payload.words[kCfgNotInnerWord] = inner.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CfgNot, zc::mv(range), payload);
-  }
-
-  NodeId makeCfgOp(source::SourceRange range, CfgOpKind op, NodeId lhs, NodeId rhs) {
-    NodePayload payload;
-    payload.words[kCfgOpOpWord] = static_cast<uint32_t>(op);
-    payload.words[kCfgOpLhsWord] = lhs.value;
-    payload.words[kCfgOpRhsWord] = rhs.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CfgOp, zc::mv(range), payload);
-  }
-
   NodeId makeExternDecl(source::SourceRange range, IdentId name, Abi abi, NodeList params, NodeId ret_ty, NodeId raises_ty) {
     NodePayload payload;
     payload.words[kExternDeclNameWord] = name.value;
@@ -121,14 +78,6 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ExternBlock, zc::mv(range), payload);
   }
 
-  NodeId makeFFIParameterDecl(source::SourceRange range, IdentId name, NodeId ty, NodeId attrs) {
-    NodePayload payload;
-    payload.words[kFFIParameterDeclNameWord] = name.value;
-    payload.words[kFFIParameterDeclTyWord] = ty.value;
-    payload.words[kFFIParameterDeclAttrsWord] = attrs.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::FFIParameterDecl, zc::mv(range), payload);
-  }
-
   NodeId makeExternVarDecl(source::SourceRange range, IdentId name, NodeId ty, Abi abi, bool is_mut) {
     NodePayload payload;
     payload.words[kExternVarDeclNameWord] = name.value;
@@ -138,214 +87,29 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ExternVarDecl, zc::mv(range), payload);
   }
 
-  NodeId makeExternStaticDecl(source::SourceRange range, IdentId name, NodeId ty, Abi abi, NodeId init) {
-    NodePayload payload;
-    payload.words[kExternStaticDeclNameWord] = name.value;
-    payload.words[kExternStaticDeclTyWord] = ty.value;
-    payload.words[kExternStaticDeclAbiWord] = static_cast<uint32_t>(abi);
-    payload.words[kExternStaticDeclInitWord] = init.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ExternStaticDecl, zc::mv(range), payload);
-  }
-
-  NodeId makeFFIConstDecl(source::SourceRange range, IdentId name, NodeId ty, Abi abi) {
-    NodePayload payload;
-    payload.words[kFFIConstDeclNameWord] = name.value;
-    payload.words[kFFIConstDeclTyWord] = ty.value;
-    payload.words[kFFIConstDeclAbiWord] = static_cast<uint32_t>(abi);
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::FFIConstDecl, zc::mv(range), payload);
-  }
-
-  NodeId makeFFILinkSpec(source::SourceRange range, StringId link_name, StringId link_section, uint32_t link_align) {
-    NodePayload payload;
-    payload.words[kFFILinkSpecLinkNameWord] = link_name.value;
-    payload.words[kFFILinkSpecLinkSectionWord] = link_section.value;
-    payload.words[kFFILinkSpecLinkAlignWord] = static_cast<uint32_t>(link_align);
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::FFILinkSpec, zc::mv(range), payload);
-  }
-
-  NodeId makeMacroInvocationExpr(source::SourceRange range, NodeId name, MacroBrace brace, NodeList tt) {
-    NodePayload payload;
-    payload.words[kMacroInvocationExprNameWord] = name.value;
-    payload.words[kMacroInvocationExprBraceWord] = static_cast<uint32_t>(brace);
-    payload.words[kMacroInvocationExprTtFirstWord] = tt.first;
-    payload.words[kMacroInvocationExprTtSizeWord] = tt.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MacroInvocationExpr, zc::mv(range), payload);
-  }
-
-  NodeId makeMacroRulesDecl(source::SourceRange range, IdentId name, NodeList rules) {
-    NodePayload payload;
-    payload.words[kMacroRulesDeclNameWord] = name.value;
-    payload.words[kMacroRulesDeclRulesFirstWord] = rules.first;
-    payload.words[kMacroRulesDeclRulesSizeWord] = rules.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MacroRulesDecl, zc::mv(range), payload);
-  }
-
-  NodeId makeMacroRule(source::SourceRange range, NodeId pattern, NodeId expand) {
-    NodePayload payload;
-    payload.words[kMacroRulePatternWord] = pattern.value;
-    payload.words[kMacroRuleExpandWord] = expand.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MacroRule, zc::mv(range), payload);
-  }
-
-  NodeId makeMacroPattern(source::SourceRange range, NodeList frags) {
-    NodePayload payload;
-    payload.words[kMacroPatternFragsFirstWord] = frags.first;
-    payload.words[kMacroPatternFragsSizeWord] = frags.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MacroPattern, zc::mv(range), payload);
-  }
-
-  NodeId makeMacroFragment(source::SourceRange range, IdentId binding_name, uint8_t frag_kind, bool is_repetition, uint8_t sep) {
-    NodePayload payload;
-    payload.words[kMacroFragmentBindingNameWord] = binding_name.value;
-    payload.words[kMacroFragmentFragKindWord] = static_cast<uint32_t>(frag_kind);
-    payload.words[kMacroFragmentIsRepetitionWord] = is_repetition ? 1u : 0u;
-    payload.words[kMacroFragmentSepWord] = static_cast<uint32_t>(sep);
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MacroFragment, zc::mv(range), payload);
-  }
-
-  NodeId makeMacroTokenTree(source::SourceRange range, NodeList tokens) {
-    NodePayload payload;
-    payload.words[kMacroTokenTreeTokensFirstWord] = tokens.first;
-    payload.words[kMacroTokenTreeTokensSizeWord] = tokens.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MacroTokenTree, zc::mv(range), payload);
-  }
-
-  NodeId makeDeriveList(source::SourceRange range, NodeList items) {
-    NodePayload payload;
-    payload.words[kDeriveListItemsFirstWord] = items.first;
-    payload.words[kDeriveListItemsSizeWord] = items.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DeriveList, zc::mv(range), payload);
-  }
-
-  NodeId makeDeriveItem(source::SourceRange range, NodeId trait_path, NodeList args) {
-    NodePayload payload;
-    payload.words[kDeriveItemTraitPathWord] = trait_path.value;
-    payload.words[kDeriveItemArgsFirstWord] = args.first;
-    payload.words[kDeriveItemArgsSizeWord] = args.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DeriveItem, zc::mv(range), payload);
-  }
-
-  NodeId makeMacroQuasiQuote(source::SourceRange range, uint8_t depth, NodeId body) {
-    NodePayload payload;
-    payload.words[kMacroQuasiQuoteDepthWord] = static_cast<uint32_t>(depth);
-    payload.words[kMacroQuasiQuoteBodyWord] = body.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MacroQuasiQuote, zc::mv(range), payload);
-  }
-
-  NodeId makeMacroUnquote(source::SourceRange range, NodeId expr) {
-    NodePayload payload;
-    payload.words[kMacroUnquoteExprWord] = expr.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MacroUnquote, zc::mv(range), payload);
-  }
-
-  NodeId makeMacroDelimitedGroup(source::SourceRange range, MacroBrace brace, NodeList tokens) {
-    NodePayload payload;
-    payload.words[kMacroDelimitedGroupBraceWord] = static_cast<uint32_t>(brace);
-    payload.words[kMacroDelimitedGroupTokensFirstWord] = tokens.first;
-    payload.words[kMacroDelimitedGroupTokensSizeWord] = tokens.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MacroDelimitedGroup, zc::mv(range), payload);
-  }
-
-  NodeId makeProcMacroDecl(source::SourceRange range, IdentId name, uint8_t kind, NodeList params, NodeId attributes) {
-    NodePayload payload;
-    payload.words[kProcMacroDeclNameWord] = name.value;
-    payload.words[kProcMacroDeclKindWord] = static_cast<uint32_t>(kind);
-    payload.words[kProcMacroDeclParamsFirstWord] = params.first;
-    payload.words[kProcMacroDeclParamsSizeWord] = params.size;
-    payload.words[kProcMacroDeclAttributesWord] = attributes.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ProcMacroDecl, zc::mv(range), payload);
-  }
-
-  NodeId makeUnitVariant(source::SourceRange range, IdentId name, bool has_disc, BigIntId disc) {
+  NodeId makeUnitVariant(source::SourceRange range, IdentId name, NodeId discriminant) {
     NodePayload payload;
     payload.words[kUnitVariantNameWord] = name.value;
-    payload.words[kUnitVariantHasDiscWord] = has_disc ? 1u : 0u;
-    payload.words[kUnitVariantDiscWord] = disc.value;
+    payload.words[kUnitVariantDiscriminantWord] = discriminant.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::UnitVariant, zc::mv(range), payload);
   }
 
-  NodeId makeTupleVariant(source::SourceRange range, IdentId name, uint16_t nfields, NodeList tys, bool has_disc, BigIntId disc) {
+  NodeId makeTupleVariant(source::SourceRange range, IdentId name, uint16_t nfields, NodeList tys, NodeId discriminant) {
     NodePayload payload;
     payload.words[kTupleVariantNameWord] = name.value;
     payload.words[kTupleVariantNfieldsWord] = static_cast<uint32_t>(nfields);
     payload.words[kTupleVariantTysFirstWord] = tys.first;
     payload.words[kTupleVariantTysSizeWord] = tys.size;
-    payload.words[kTupleVariantHasDiscWord] = has_disc ? 1u : 0u;
-    payload.words[kTupleVariantDiscWord] = disc.value;
+    payload.words[kTupleVariantDiscriminantWord] = discriminant.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::TupleVariant, zc::mv(range), payload);
   }
 
-  NodeId makeStructVariant(source::SourceRange range, IdentId name, uint16_t nfields, NodeList fields, bool has_disc, BigIntId disc) {
-    NodePayload payload;
-    payload.words[kStructVariantNameWord] = name.value;
-    payload.words[kStructVariantNfieldsWord] = static_cast<uint32_t>(nfields);
-    payload.words[kStructVariantFieldsFirstWord] = fields.first;
-    payload.words[kStructVariantFieldsSizeWord] = fields.size;
-    payload.words[kStructVariantHasDiscWord] = has_disc ? 1u : 0u;
-    payload.words[kStructVariantDiscWord] = disc.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::StructVariant, zc::mv(range), payload);
-  }
-
-  NodeId makeEnumDeclaration(source::SourceRange range, IdentId name, ClassExtensibility extensibility, NodeId type_params_id, uint16_t nvars, NodeId variants_id, uint8_t base_repr) {
+  NodeId makeEnumDeclaration(source::SourceRange range, IdentId name, NodeId type_params_id, NodeId variants_id) {
     NodePayload payload;
     payload.words[kEnumDeclarationNameWord] = name.value;
-    payload.words[kEnumDeclarationExtensibilityWord] = static_cast<uint32_t>(extensibility);
     payload.words[kEnumDeclarationTypeParamsIdWord] = type_params_id.value;
-    payload.words[kEnumDeclarationNvarsWord] = static_cast<uint32_t>(nvars);
     payload.words[kEnumDeclarationVariantsIdWord] = variants_id.value;
-    payload.words[kEnumDeclarationBaseReprWord] = static_cast<uint32_t>(base_repr);
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::EnumDeclaration, zc::mv(range), payload);
-  }
-
-  NodeId makeAssociatedConstVariant(source::SourceRange range, IdentId name, NodeId const_expr, bool has_disc, BigIntId disc) {
-    NodePayload payload;
-    payload.words[kAssociatedConstVariantNameWord] = name.value;
-    payload.words[kAssociatedConstVariantConstExprWord] = const_expr.value;
-    payload.words[kAssociatedConstVariantHasDiscWord] = has_disc ? 1u : 0u;
-    payload.words[kAssociatedConstVariantDiscWord] = disc.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::AssociatedConstVariant, zc::mv(range), payload);
-  }
-
-  NodeId makeEnumMemberAlias(source::SourceRange range, IdentId name, NodeId target_path) {
-    NodePayload payload;
-    payload.words[kEnumMemberAliasNameWord] = name.value;
-    payload.words[kEnumMemberAliasTargetPathWord] = target_path.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::EnumMemberAlias, zc::mv(range), payload);
-  }
-
-  NodeId makeEnumVariantAttr(source::SourceRange range, NodeId attrs, NodeId variant) {
-    NodePayload payload;
-    payload.words[kEnumVariantAttrAttrsWord] = attrs.value;
-    payload.words[kEnumVariantAttrVariantWord] = variant.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::EnumVariantAttr, zc::mv(range), payload);
-  }
-
-  NodeId makeDiscriminantRef(source::SourceRange range, NodeId owner_enum, uint32_t variant_index) {
-    NodePayload payload;
-    payload.words[kDiscriminantRefOwnerEnumWord] = owner_enum.value;
-    payload.words[kDiscriminantRefVariantIndexWord] = static_cast<uint32_t>(variant_index);
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DiscriminantRef, zc::mv(range), payload);
-  }
-
-  NodeId makeEnumExtendsClause(source::SourceRange range, NodeId base_ty, bool is_explicit) {
-    NodePayload payload;
-    payload.words[kEnumExtendsClauseBaseTyWord] = base_ty.value;
-    payload.words[kEnumExtendsClauseIsExplicitWord] = is_explicit ? 1u : 0u;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::EnumExtendsClause, zc::mv(range), payload);
-  }
-
-  NodeId makeRawVariant(source::SourceRange range, IdentId name, NodeId ty) {
-    NodePayload payload;
-    payload.words[kRawVariantNameWord] = name.value;
-    payload.words[kRawVariantTyWord] = ty.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::RawVariant, zc::mv(range), payload);
-  }
-
-  NodeId makeEnumReprAttr(source::SourceRange range, uint8_t repr_kind, bool is_explicit) {
-    NodePayload payload;
-    payload.words[kEnumReprAttrReprKindWord] = static_cast<uint32_t>(repr_kind);
-    payload.words[kEnumReprAttrIsExplicitWord] = is_explicit ? 1u : 0u;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::EnumReprAttr, zc::mv(range), payload);
   }
 
   NodeId makeEnumVariantList(source::SourceRange range, uint16_t nvars, NodeList variants) {
@@ -440,15 +204,6 @@ public:
     payload.words[kEnumPatternArgsFirstWord] = args.first;
     payload.words[kEnumPatternArgsSizeWord] = args.size;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::EnumPattern, zc::mv(range), payload);
-  }
-
-  NodeId makePositionalStructCtorExpr(source::SourceRange range, NodeId struct_path, uint16_t nargs, NodeList args) {
-    NodePayload payload;
-    payload.words[kPositionalStructCtorExprStructPathWord] = struct_path.value;
-    payload.words[kPositionalStructCtorExprNargsWord] = static_cast<uint32_t>(nargs);
-    payload.words[kPositionalStructCtorExprArgsFirstWord] = args.first;
-    payload.words[kPositionalStructCtorExprArgsSizeWord] = args.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::PositionalStructCtorExpr, zc::mv(range), payload);
   }
 
   NodeId makeTupleLiteral1(source::SourceRange range, NodeId elem) {
@@ -740,10 +495,11 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CaptureList, zc::mv(range), payload);
   }
 
-  NodeId makeDynTypeExpr(source::SourceRange range, NodeId ifaces_id, NodeId markers_id, bool has_lifetime, IdentId lifetime) {
+  NodeId makeDynTypeExpr(source::SourceRange range, NodeId ifaces_id, NodeId markers_id, NodeId assoc_bindings_id, bool has_lifetime, IdentId lifetime) {
     NodePayload payload;
     payload.words[kDynTypeExprIfacesIdWord] = ifaces_id.value;
     payload.words[kDynTypeExprMarkersIdWord] = markers_id.value;
+    payload.words[kDynTypeExprAssocBindingsIdWord] = assoc_bindings_id.value;
     payload.words[kDynTypeExprHasLifetimeWord] = has_lifetime ? 1u : 0u;
     payload.words[kDynTypeExprLifetimeWord] = lifetime.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DynTypeExpr, zc::mv(range), payload);
@@ -876,6 +632,21 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::RawPointerTypeExpr, zc::mv(range), payload);
   }
 
+  NodeId makeDynTypeAssocBinding(source::SourceRange range, IdentId name, NodeId ty) {
+    NodePayload payload;
+    payload.words[kDynTypeAssocBindingNameWord] = name.value;
+    payload.words[kDynTypeAssocBindingTyWord] = ty.value;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DynTypeAssocBinding, zc::mv(range), payload);
+  }
+
+  NodeId makeDynTypeAssocBindingList(source::SourceRange range, uint8_t n_bindings, NodeList bindings) {
+    NodePayload payload;
+    payload.words[kDynTypeAssocBindingListNBindingsWord] = static_cast<uint32_t>(n_bindings);
+    payload.words[kDynTypeAssocBindingListBindingsFirstWord] = bindings.first;
+    payload.words[kDynTypeAssocBindingListBindingsSizeWord] = bindings.size;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DynTypeAssocBindingList, zc::mv(range), payload);
+  }
+
   NodeId makeSuspendStatement(source::SourceRange range, SuspendMode mode, NodeId until_cond, uint32_t on_timeout_ms) {
     NodePayload payload;
     payload.words[kSuspendStatementModeWord] = static_cast<uint32_t>(mode);
@@ -963,9 +734,14 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::LetStmt, zc::mv(range), payload);
   }
 
-  NodeId makeModuleDeclaration(source::SourceRange range, NodeId path) {
+  NodeId makeModuleDeclaration(source::SourceRange range, ModuleDeclarationForm form, IdentId declared_name, NodeId alias_target, NodeList inline_items, bool exported_alias) {
     NodePayload payload;
-    payload.words[kModuleDeclarationPathWord] = path.value;
+    payload.words[kModuleDeclarationFormWord] = static_cast<uint32_t>(form);
+    payload.words[kModuleDeclarationDeclaredNameWord] = declared_name.value;
+    payload.words[kModuleDeclarationAliasTargetWord] = alias_target.value;
+    payload.words[kModuleDeclarationInlineItemsFirstWord] = inline_items.first;
+    payload.words[kModuleDeclarationInlineItemsSizeWord] = inline_items.size;
+    payload.words[kModuleDeclarationExportedAliasWord] = exported_alias ? 1u : 0u;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ModuleDeclaration, zc::mv(range), payload);
   }
 
@@ -1058,28 +834,6 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::WhereClause, zc::mv(range), payload);
   }
 
-  NodeId makeMarkerDeclaration(source::SourceRange range, IdentId name, bool is_auto, NodeId type_params_id, uint8_t n_markers, NodeList markers) {
-    NodePayload payload;
-    payload.words[kMarkerDeclarationNameWord] = name.value;
-    payload.words[kMarkerDeclarationIsAutoWord] = is_auto ? 1u : 0u;
-    payload.words[kMarkerDeclarationTypeParamsIdWord] = type_params_id.value;
-    payload.words[kMarkerDeclarationNMarkersWord] = static_cast<uint32_t>(n_markers);
-    payload.words[kMarkerDeclarationMarkersFirstWord] = markers.first;
-    payload.words[kMarkerDeclarationMarkersSizeWord] = markers.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MarkerDeclaration, zc::mv(range), payload);
-  }
-
-  NodeId makePositionalStructDecl(source::SourceRange range, IdentId name, ClassExtensibility extensibility, NodeId type_params_id, uint16_t nfields, NodeList fields) {
-    NodePayload payload;
-    payload.words[kPositionalStructDeclNameWord] = name.value;
-    payload.words[kPositionalStructDeclExtensibilityWord] = static_cast<uint32_t>(extensibility);
-    payload.words[kPositionalStructDeclTypeParamsIdWord] = type_params_id.value;
-    payload.words[kPositionalStructDeclNfieldsWord] = static_cast<uint32_t>(nfields);
-    payload.words[kPositionalStructDeclFieldsFirstWord] = fields.first;
-    payload.words[kPositionalStructDeclFieldsSizeWord] = fields.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::PositionalStructDecl, zc::mv(range), payload);
-  }
-
   NodeId makeFunctionDecl(source::SourceRange range, IdentId name, NodeId params_id, NodeId type_params_id, NodeId ret_ty, NodeId raises_ty, NodeId body) {
     NodePayload payload;
     payload.words[kFunctionDeclNameWord] = name.value;
@@ -1091,20 +845,18 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::FunctionDecl, zc::mv(range), payload);
   }
 
-  NodeId makeClassDecl(source::SourceRange range, IdentId name, ClassExtensibility extensibility, NodeId type_params_id, NodeId extends, NodeId members_id) {
+  NodeId makeClassDecl(source::SourceRange range, IdentId name, NodeId type_params_id, NodeId base_ty, NodeId members_id) {
     NodePayload payload;
     payload.words[kClassDeclNameWord] = name.value;
-    payload.words[kClassDeclExtensibilityWord] = static_cast<uint32_t>(extensibility);
     payload.words[kClassDeclTypeParamsIdWord] = type_params_id.value;
-    payload.words[kClassDeclExtendsWord] = extends.value;
+    payload.words[kClassDeclBaseTyWord] = base_ty.value;
     payload.words[kClassDeclMembersIdWord] = members_id.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ClassDecl, zc::mv(range), payload);
   }
 
-  NodeId makeStructDecl(source::SourceRange range, IdentId name, ClassExtensibility extensibility, NodeId type_params_id, NodeId members_id) {
+  NodeId makeStructDecl(source::SourceRange range, IdentId name, NodeId type_params_id, NodeId members_id) {
     NodePayload payload;
     payload.words[kStructDeclNameWord] = name.value;
-    payload.words[kStructDeclExtensibilityWord] = static_cast<uint32_t>(extensibility);
     payload.words[kStructDeclTypeParamsIdWord] = type_params_id.value;
     payload.words[kStructDeclMembersIdWord] = members_id.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::StructDecl, zc::mv(range), payload);
@@ -1176,12 +928,13 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::AliasDecl, zc::mv(range), payload);
   }
 
-  NodeId makeMethodDecl(source::SourceRange range, IdentId name, NodeId params_id, NodeId type_params_id, NodeId ret_ty, NodeId body, bool is_static, uint8_t visibility) {
+  NodeId makeMethodDecl(source::SourceRange range, IdentId name, NodeId params_id, NodeId type_params_id, NodeId ret_ty, NodeId raises_ty, NodeId body, bool is_static, uint8_t visibility) {
     NodePayload payload;
     payload.words[kMethodDeclNameWord] = name.value;
     payload.words[kMethodDeclParamsIdWord] = params_id.value;
     payload.words[kMethodDeclTypeParamsIdWord] = type_params_id.value;
     payload.words[kMethodDeclRetTyWord] = ret_ty.value;
+    payload.words[kMethodDeclRaisesTyWord] = raises_ty.value;
     payload.words[kMethodDeclBodyWord] = body.value;
     payload.words[kMethodDeclIsStaticWord] = is_static ? 1u : 0u;
     payload.words[kMethodDeclVisibilityWord] = static_cast<uint32_t>(visibility);
@@ -1215,6 +968,36 @@ public:
     payload.words[kGenericTypeParamDefaultTyWord] = default_ty.value;
     payload.words[kGenericTypeParamVarianceWord] = static_cast<uint32_t>(variance);
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::GenericTypeParam, zc::mv(range), payload);
+  }
+
+  NodeId makeConstructorDecl(source::SourceRange range, IdentId name, NodeId params_id, NodeId raises_ty, NodeId body, uint8_t visibility) {
+    NodePayload payload;
+    payload.words[kConstructorDeclNameWord] = name.value;
+    payload.words[kConstructorDeclParamsIdWord] = params_id.value;
+    payload.words[kConstructorDeclRaisesTyWord] = raises_ty.value;
+    payload.words[kConstructorDeclBodyWord] = body.value;
+    payload.words[kConstructorDeclVisibilityWord] = static_cast<uint32_t>(visibility);
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ConstructorDecl, zc::mv(range), payload);
+  }
+
+  NodeId makeDestructorDecl(source::SourceRange range, IdentId name, NodeId params_id, NodeId raises_ty, NodeId body, uint8_t visibility) {
+    NodePayload payload;
+    payload.words[kDestructorDeclNameWord] = name.value;
+    payload.words[kDestructorDeclParamsIdWord] = params_id.value;
+    payload.words[kDestructorDeclRaisesTyWord] = raises_ty.value;
+    payload.words[kDestructorDeclBodyWord] = body.value;
+    payload.words[kDestructorDeclVisibilityWord] = static_cast<uint32_t>(visibility);
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DestructorDecl, zc::mv(range), payload);
+  }
+
+  NodeId makeClassConstDecl(source::SourceRange range, IdentId name, NodeId ty, NodeId init, bool is_static, uint8_t visibility) {
+    NodePayload payload;
+    payload.words[kClassConstDeclNameWord] = name.value;
+    payload.words[kClassConstDeclTyWord] = ty.value;
+    payload.words[kClassConstDeclInitWord] = init.value;
+    payload.words[kClassConstDeclIsStaticWord] = is_static ? 1u : 0u;
+    payload.words[kClassConstDeclVisibilityWord] = static_cast<uint32_t>(visibility);
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ClassConstDecl, zc::mv(range), payload);
   }
 
   NodeId makeSourceFile(source::SourceRange range, StringId file_name, NodeId module, NodeList statements) {

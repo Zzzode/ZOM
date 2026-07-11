@@ -452,11 +452,11 @@ ZC_TEST("ParserTest.TupleType") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("let x: (a: i32, b: str) = (42, \"test\");").asBytes(), "test.zom");
+      zc::str("let x: (i32, str) = (42, \"test\");").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse tuple type with named elements");
+  ZC_EXPECT(result != zc::none, "Should parse positional tuple type");
 }
 
 // ================================================================================
@@ -885,21 +885,124 @@ ZC_TEST("ParserTest.ParseModuleSyntax") {
     ZC_EXPECT(hasModuleDeclaration(root), "Should contain a module declaration");
     const ast::Node& module = root.node(moduleDeclaration(root));
     ZC_EXPECT(module.kind == ast::SyntaxKind::ModuleDeclaration);
-    const ast::Node& modulePath =
-        root.node(ast::NodeId(module.payload.words[ast::kModuleDeclarationPathWord]));
-    ZC_EXPECT(modulePath.kind == ast::SyntaxKind::ModulePath);
-    ast::IdentList segments;
-    segments.first = modulePath.payload.words[ast::kModulePathSegmentsFirstWord];
-    segments.size = modulePath.payload.words[ast::kModulePathSegmentsSizeWord];
-    const auto moduleSegments = root.identList(segments);
-    ZC_EXPECT(moduleSegments.size() == 1);
-    ZC_EXPECT(root.ident(moduleSegments[0]) == "graphics");
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationFormWord] ==
+              static_cast<uint32_t>(ast::ModuleDeclarationForm::RootDeclaration));
+    ZC_EXPECT(root.ident(ast::IdentId(
+                  module.payload.words[ast::kModuleDeclarationDeclaredNameWord])) == "graphics");
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationAliasTargetWord] == 0);
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationInlineItemsSizeWord] == 0);
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationExportedAliasWord] == 0);
     ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ImportDeclaration);
     ZC_EXPECT(topLevelStatementKind(root, 1) == ast::SyntaxKind::ImportDeclaration);
     ZC_EXPECT(topLevelStatementKind(root, 2) == ast::SyntaxKind::ExportDeclaration);
     ZC_EXPECT(topLevelStatementKind(root, 3) == ast::SyntaxKind::ExportDeclaration);
   }
   else { ZC_EXPECT(false, "Should parse module syntax"); }
+}
+
+ZC_TEST("ParserTest.ParseInlineModuleDeclarationShape") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("module graphics {\n"
+                                                          "  fun first() -> i32 { return 1; }\n"
+                                                          "  fun second() -> i32 { return 2; }\n"
+                                                          "}\n")
+                                                      .asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    ZC_EXPECT(topLevelStatements(root).size() == 0);
+    const ast::Node& module = root.node(moduleDeclaration(root));
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationFormWord] ==
+              static_cast<uint32_t>(ast::ModuleDeclarationForm::InlineRoot));
+    ZC_EXPECT(root.ident(ast::IdentId(
+                  module.payload.words[ast::kModuleDeclarationDeclaredNameWord])) == "graphics");
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationAliasTargetWord] == 0);
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationExportedAliasWord] == 0);
+
+    ast::NodeList inlineItems;
+    inlineItems.first = module.payload.words[ast::kModuleDeclarationInlineItemsFirstWord];
+    inlineItems.size = module.payload.words[ast::kModuleDeclarationInlineItemsSizeWord];
+    const auto items = root.list(inlineItems);
+    ZC_EXPECT(items.size() == 2);
+    ZC_EXPECT(root.node(statementItem(root, items[0])).kind == ast::SyntaxKind::FunctionDecl);
+    ZC_EXPECT(root.node(statementItem(root, items[1])).kind == ast::SyntaxKind::FunctionDecl);
+  }
+  else { ZC_EXPECT(false, "Should preserve inline module items"); }
+}
+
+ZC_TEST("ParserTest.PreserveDeclarationAfterInlineModule") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("module graphics {\n"
+                                                          "  fun inside() {}\n"
+                                                          "}\n"
+                                                          "fun trailing() {}\n")
+                                                      .asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 1);
+    ZC_EXPECT(root.node(statementItem(root, statements[0])).kind == ast::SyntaxKind::FunctionDecl);
+  }
+  else { ZC_EXPECT(false, "Should preserve a declaration after an inline module"); }
+}
+
+ZC_TEST("ParserTest.ParseExportedModuleAliasShape") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("export module geometry = math::geometry;\n").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    ZC_EXPECT(topLevelStatements(root).size() == 0);
+    const ast::Node& module = root.node(moduleDeclaration(root));
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationFormWord] ==
+              static_cast<uint32_t>(ast::ModuleDeclarationForm::Alias));
+    ZC_EXPECT(root.ident(ast::IdentId(
+                  module.payload.words[ast::kModuleDeclarationDeclaredNameWord])) == "geometry");
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationInlineItemsSizeWord] == 0);
+    ZC_EXPECT(module.payload.words[ast::kModuleDeclarationExportedAliasWord] == 1);
+
+    const ast::Node& aliasTarget =
+        root.node(ast::NodeId(module.payload.words[ast::kModuleDeclarationAliasTargetWord]));
+    ZC_EXPECT(aliasTarget.kind == ast::SyntaxKind::ModulePath);
+    ast::IdentList segments;
+    segments.first = aliasTarget.payload.words[ast::kModulePathSegmentsFirstWord];
+    segments.size = aliasTarget.payload.words[ast::kModulePathSegmentsSizeWord];
+    const auto aliasSegments = root.identList(segments);
+    ZC_EXPECT(aliasSegments.size() == 2);
+    ZC_EXPECT(root.ident(aliasSegments[0]) == "math");
+    ZC_EXPECT(root.ident(aliasSegments[1]) == "geometry");
+  }
+  else { ZC_EXPECT(false, "Should preserve an exported module alias"); }
+}
+
+ZC_TEST("ParserTest.RejectSingleSegmentModuleAlias") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("module geometry = math;\n").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_EXPECT(parser.parse() == zc::none, "A module alias target must be qualified");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "A single-segment alias target should diagnose");
 }
 
 ZC_TEST("ParserTest.ParseDeclarationSiteExport") {
@@ -1124,9 +1227,11 @@ ZC_TEST("ParserTest.ParseInterfacePropertySignature") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface I { let x?: i32; const y: str; fun f<T>(a: i32) -> unit; }").asBytes(),
-      "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("interface I { get x() -> i32; set x(value: i32); "
+                                              "fun f<T>(a: i32) -> unit raises Failure; }")
+                                          .asBytes(),
+                                      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
@@ -1134,8 +1239,60 @@ ZC_TEST("ParserTest.ParseInterfacePropertySignature") {
     ZC_EXPECT(statements.size() == 1, "Should contain a single top-level statement");
     ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::InterfaceDecl,
               "Should parse an interface declaration");
+    const ast::Node& interfaceNode = topLevelStatement(root, 0);
+    const ast::Node& members =
+        root.node(ast::NodeId(interfaceNode.payload.words[ast::kInterfaceDeclMembersIdWord]));
+    ast::NodeList memberList;
+    memberList.first = members.payload.words[ast::kClassMemberListMembersFirstWord];
+    memberList.size = members.payload.words[ast::kClassMemberListMembersSizeWord];
+    const auto memberIds = root.list(memberList);
+    ZC_EXPECT(memberIds.size() == 3);
+    ZC_EXPECT(root.node(memberIds[0]).kind == ast::SyntaxKind::MethodDecl);
+    ZC_EXPECT(root.node(memberIds[1]).kind == ast::SyntaxKind::MethodDecl);
+    ZC_EXPECT(root.node(memberIds[2]).kind == ast::SyntaxKind::MethodDecl);
+    ZC_EXPECT(root.contains(
+        ast::NodeId(root.node(memberIds[2]).payload.words[ast::kMethodDeclRaisesTyWord])));
   }
   else { ZC_EXPECT(false, "Parse should succeed"); }
+}
+
+ZC_TEST("ParserTest.ParseConstructorDestructorKinds") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("error Failure {}\n"
+                                                          "struct Resource {\n"
+                                                          "  init() raises Failure {}\n"
+                                                          "  deinit() raises Failure {}\n"
+                                                          "}\n")
+                                                      .asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_IF_SOME(root, parser.parse()) {
+    const ast::Node& structNode = topLevelStatement(root, 1);
+    ZC_EXPECT(structNode.kind == ast::SyntaxKind::StructDecl);
+    const ast::Node& members =
+        root.node(ast::NodeId(structNode.payload.words[ast::kStructDeclMembersIdWord]));
+    ast::NodeList memberList;
+    memberList.first = members.payload.words[ast::kClassMemberListMembersFirstWord];
+    memberList.size = members.payload.words[ast::kClassMemberListMembersSizeWord];
+    const auto memberIds = root.list(memberList);
+    ZC_EXPECT(memberIds.size() == 2);
+
+    const ast::Node& constructor = root.node(memberIds[0]);
+    ZC_EXPECT(constructor.kind == ast::SyntaxKind::ConstructorDecl);
+    ZC_EXPECT(
+        root.contains(ast::NodeId(constructor.payload.words[ast::kConstructorDeclRaisesTyWord])));
+
+    const ast::Node& destructor = root.node(memberIds[1]);
+    ZC_EXPECT(destructor.kind == ast::SyntaxKind::DestructorDecl);
+    ZC_EXPECT(
+        root.contains(ast::NodeId(destructor.payload.words[ast::kDestructorDeclRaisesTyWord])));
+  }
+  else { ZC_EXPECT(false, "Should preserve constructor and destructor declaration kinds"); }
 }
 
 ZC_TEST("ParserTest.ParseInterfaceGenericMethodPreservesTypeParams") {
@@ -1231,6 +1388,34 @@ ZC_TEST("ParserTest.ParseErrorDeclaration") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse error declaration");
+}
+
+ZC_TEST("ParserTest.RejectsGenericErrorDeclaration") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("error ParseError<T> { input: T; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_EXPECT(parser.parse() == zc::none, "Error declarations do not have type parameters");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
+}
+
+ZC_TEST("ParserTest.RejectsErrorHeritage") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("error QueryError : DatabaseError { query: str; }").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_EXPECT(parser.parse() == zc::none, "Error declarations do not have base types");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 ZC_TEST("ParserTest.ParseAliasDeclaration") {
@@ -1351,7 +1536,7 @@ ZC_TEST("ParserTest.ParseTypeQueryInReturnType") {
   ZC_EXPECT(result != zc::none, "Should parse function with type query return type");
 }
 
-ZC_TEST("ParserTest.ParseFunctionTypeWithModifiedParameter") {
+ZC_TEST("ParserTest.RejectFunctionTypeWithModifiedNamedParameter") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -1362,7 +1547,8 @@ ZC_TEST("ParserTest.ParseFunctionTypeWithModifiedParameter") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse function type with a modified parameter");
+  ZC_EXPECT(result == zc::none, "Function type parameters contain types, not declarations");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "Rejected function type parameter should diagnose");
 }
 
 ZC_TEST("ParserTest.ParseShortCircuitExpression") {
@@ -1496,8 +1682,8 @@ ZC_TEST("ParserTest.ParseClassHeritageClauses") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class Child extends Base implements IFoo, IBar { }").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("class Child : Base { }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
@@ -1505,6 +1691,11 @@ ZC_TEST("ParserTest.ParseClassHeritageClauses") {
     ZC_EXPECT(statements.size() == 1, "Should contain a single top-level statement");
     ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ClassDecl,
               "Should parse a class declaration");
+    const ast::Node& declaration = topLevelStatement(root, 0);
+    const ast::NodeId base(declaration.payload.words[ast::kClassDeclBaseTyWord]);
+    ZC_EXPECT(base.value != 0, "The class base must be represented in the AST");
+    ZC_EXPECT(root.node(base).kind == ast::SyntaxKind::NamedTypeExpr,
+              "The class base must be parsed as a type expression");
   }
   else { ZC_EXPECT(false, "Parse should succeed"); }
 }
@@ -1516,7 +1707,7 @@ ZC_TEST("ParserTest.ParseHeritageClauseDoubleComma") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("class C extends Base,, { }").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("class C : Base,, { }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1530,8 +1721,8 @@ ZC_TEST("ParserTest.ParseHeritageTypeArgumentsSameLine") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class C extends Base<i32> { }").asBytes(), "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("class C : Base<i32> { }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
@@ -1549,27 +1740,8 @@ ZC_TEST("ParserTest.ParseHeritageTypeArgumentsWithLineBreak") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class C extends Base<i32>\n{ }").asBytes(), "test.zom");
-  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
-
-  ZC_IF_SOME(root, parser.parse()) {
-    const auto statements = topLevelStatements(root);
-    ZC_EXPECT(statements.size() == 1, "Should contain a class declaration");
-    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ClassDecl,
-              "Should parse a class declaration");
-  }
-  else { ZC_EXPECT(false, "Parse should succeed"); }
-}
-
-ZC_TEST("ParserTest.ParseHeritageObjectLiteral") {
-  auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
-  basic::LangOptions langOpts;
-  basic::StringPool stringPool;
-
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("class C extends {} {}").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("class C : Base<i32>\n{ }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
@@ -1581,25 +1753,33 @@ ZC_TEST("ParserTest.ParseHeritageObjectLiteral") {
   else { ZC_EXPECT(false, "Parse should succeed"); }
 }
 
-ZC_TEST("ParserTest.ParseHeritageObjectLiteralBeforeNextDeclaration") {
+ZC_TEST("ParserTest.RejectsStructuralObjectClassBase") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("class C : {} {}").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  const auto result = parser.parse();
+  ZC_EXPECT(result == zc::none, "A class base must be a complete type before its body");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
+}
+
+ZC_TEST("ParserTest.RejectsStructuralObjectClassBaseBeforeNextDeclaration") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class C extends {} {}\nlet value = 1;").asBytes(), "test.zom");
+      zc::str("class C : {} {}\nlet value = 1;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  ZC_IF_SOME(root, parser.parse()) {
-    const auto statements = topLevelStatements(root);
-    ZC_EXPECT(statements.size() == 2, "Should keep the following declaration separate");
-    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::ClassDecl,
-              "Should parse the class declaration first");
-    ZC_EXPECT(topLevelStatementKind(root, 1) == ast::SyntaxKind::LetStmt,
-              "Should parse the following variable declaration second");
-  }
-  else { ZC_EXPECT(false, "Parse should succeed"); }
+  const auto result = parser.parse();
+  ZC_EXPECT(result == zc::none, "Malformed class heritage must fail the source parse");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 ZC_TEST("ParserTest.ParseFunctionReturnObjectTypeBeforeNextDeclaration") {
@@ -1827,8 +2007,8 @@ ZC_TEST("ParserTest.DeinitDeclaration") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("class MyClass { deinit { } }").asBytes(),
-                                                  "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("class MyClass { deinit() { } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1842,7 +2022,7 @@ ZC_TEST("ParserTest.DeinitDeclarationWithModifiers") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class MyClass { public deinit { } }").asBytes(), "test.zom");
+      zc::str("class MyClass { public deinit() { } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1981,7 +2161,7 @@ ZC_TEST("ParserTest.ParseInvalidTokenSequence") {
 
 // ================================================================================
 // Statement Parsing Tests
-ZC_TEST("ParserTest.ParseLabeledStatement") {
+ZC_TEST("ParserTest.RejectLabeledLetDeclaration") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -1992,21 +2172,37 @@ ZC_TEST("ParserTest.ParseLabeledStatement") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none, "Should parse labeled statement");
+  ZC_EXPECT(result == zc::none, "A label must not prefix a declaration");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "A labeled declaration should diagnose");
+}
 
-  ZC_IF_SOME(root, result) {
-    const auto statements = topLevelStatements(root);
-    ZC_EXPECT(statements.size() == 1, "Should contain one labeled statement");
-    const ast::Node& labeledNode = topLevelStatement(root, 0);
-    ZC_EXPECT(labeledNode.kind == ast::SyntaxKind::LabeledStatement,
-              "Statement should be a labeled statement");
-    ZC_EXPECT(root.ident(ast::IdentId(
-                  labeledNode.payload.words[ast::kLabeledStatementLabelWord])) == "label");
+ZC_TEST("ParserTest.RejectLabeledMutDeclaration") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
 
-    const ast::Node& inner =
-        root.node(ast::NodeId(labeledNode.payload.words[ast::kLabeledStatementStatementWord]));
-    ZC_EXPECT(inner.kind == ast::SyntaxKind::LetStmt);
-  }
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("label: mut x = 1;").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result == zc::none, "A label must not prefix a mutable declaration");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "A labeled mutable declaration should diagnose");
+}
+
+ZC_TEST("ParserTest.RejectLabeledExpressionStatement") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("label: call();").asBytes(), "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result == zc::none, "A label must not prefix an expression statement");
+  ZC_EXPECT(diagnosticEngine->hasErrors(), "A labeled expression statement should diagnose");
 }
 
 ZC_TEST("ParserTest.ParseEmptyStatement") {
@@ -2090,7 +2286,7 @@ ZC_TEST("ParserTest.ParseSuperExpression") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class A extends B { init() { super.init(); } }").asBytes(), "test.zom");
+      zc::str("class A : B { init() { super.init(); } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2570,7 +2766,7 @@ ZC_TEST("ParserTest.ParseOptionalCastExpression") {
   else { ZC_EXPECT(false, "Should parse optional cast expression"); }
 }
 
-ZC_TEST("ParserTest.ParseForceCastExpressionReportsError") {
+ZC_TEST("ParserTest.ParseForceCastExpression") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -2580,9 +2776,14 @@ ZC_TEST("ParserTest.ParseForceCastExpressionReportsError") {
       sourceManager->addMemBufferCopy(zc::str("let x = value as! i32;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
-  auto result = parser.parse();
-  ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported force cast syntax");
-  ZC_EXPECT(diagnosticEngine->hasErrors(), "Force cast syntax is not supported");
+  ZC_IF_SOME(root, parser.parse()) {
+    const auto statements = topLevelStatements(root);
+    ZC_EXPECT(statements.size() == 1, "Should contain one statement");
+    ZC_EXPECT(topLevelStatementKind(root, 0) == ast::SyntaxKind::LetStmt,
+              "Force cast expression should stay inside a variable statement");
+  }
+  else { ZC_EXPECT(false, "Should parse force cast expression"); }
+  ZC_EXPECT(!diagnosticEngine->hasErrors(), "Force cast syntax should not emit diagnostics");
 }
 
 ZC_TEST("ParserTest.ParseAsKeywordAfterLineBreakReportsErrorAndRecovers") {
@@ -2885,7 +3086,7 @@ ZC_TEST("ParserTest.ParseSuperExpression") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class A extends B { init() { super.init(); } }").asBytes(), "test.zom");
+      zc::str("class A : B { init() { super.init(); } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2899,7 +3100,7 @@ ZC_TEST("ParserTest.ParseSuperWithoutDotOrParen") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class A extends B { init() { let x = super; } }").asBytes(), "test.zom");
+      zc::str("class A : B { init() { let x = super; } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3165,7 +3366,7 @@ ZC_TEST("ParserTest.ParseTupleType") {
   ZC_EXPECT(result != zc::none);
 }
 
-ZC_TEST("ParserTest.ParseTupleTypeWithNamedElements") {
+ZC_TEST("ParserTest.RejectTupleTypeWithNamedElements") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3176,7 +3377,8 @@ ZC_TEST("ParserTest.ParseTupleTypeWithNamedElements") {
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 ZC_TEST("ParserTest.ParseFunctionType") {
@@ -3840,8 +4042,7 @@ ZC_TEST("ParserTest.ParseVariousLiterals") {
   ZC_EXPECT(result != zc::none);
 }
 
-/// Covers parseEnumDeclaration with type annotation
-ZC_TEST("ParserTest.ParseEnumWithType") {
+ZC_TEST("ParserTest.RejectsEnumBaseRepresentation") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3851,7 +4052,8 @@ ZC_TEST("ParserTest.ParseEnumWithType") {
       zc::str("enum Color: i32 { Red = 1, Green = 2, Blue = 3 }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none, "Enum declarations do not expose a base representation syntax");
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 /// Covers parseErrorDeclaration with methods
@@ -3935,10 +4137,11 @@ ZC_TEST("ParserTest.ParseInterfaceWithModifiers") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface Comparable { fun compareTo(other: Self) -> i32; pub val: i32; }")
-          .asBytes(),
-      "test.zom");
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("interface Comparable { public fun compareTo(other: "
+                                              "Self) -> i32; readonly get val() -> i32; }")
+                                          .asBytes(),
+                                      "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
@@ -3966,7 +4169,7 @@ ZC_TEST("ParserTest.ParseDoWhileStatement") {
   }
 }
 
-ZC_TEST("ParserTest.ParseDoWhileStatementWithoutSemicolon") {
+ZC_TEST("ParserTest.RejectDoWhileStatementWithoutSemicolon") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -3976,9 +4179,9 @@ ZC_TEST("ParserTest.ParseDoWhileStatementWithoutSemicolon") {
       sourceManager->addMemBufferCopy(zc::str("do { bar(); } while (true)").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
-  ZC_EXPECT(!diagnosticEngine->hasErrors(),
-            "Valid do-while statement without trailing semicolon should not diagnose");
+  ZC_EXPECT(result == zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors(),
+            "A do-while statement without a trailing semicolon should diagnose");
 }
 
 /// Covers isStartOfType - predefined type keywords
@@ -4007,13 +4210,13 @@ ZC_TEST("ParserTest.ParseSuperWithBracket") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class A extends B { init() { let x = super[0]; } }").asBytes(), "test.zom");
+      zc::str("class A : B { init() { let x = super[0]; } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
 }
 
-/// Covers parseClassElement with heritage clause parsing
+/// Covers standalone interface implementation syntax.
 ZC_TEST("ParserTest.ParseClassImplementsInterface") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
@@ -4021,7 +4224,8 @@ ZC_TEST("ParserTest.ParseClassImplementsInterface") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class Dog implements Animal { pub fun speak() -> str { return \"woof\"; } }")
+      zc::str("class Dog { public fun speak() -> str { return \"woof\"; } } "
+              "impl Animal for Dog {}")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
@@ -4367,15 +4571,15 @@ ZC_TEST("ParserTest.ParseArrayTypeInFunction") {
   ZC_EXPECT(result != zc::none);
 }
 
-/// Covers isValidHeritageClauseObjectLiteral
-ZC_TEST("ParserTest.ParseClassExtendsWithGenerics") {
+/// Covers a generic nominal class base.
+ZC_TEST("ParserTest.ParseGenericClassBase") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class MyList extends List<i32> { }").asBytes(), "test.zom");
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("class MyList : List<i32> { }").asBytes(),
+                                                  "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);

@@ -33,7 +33,6 @@ void Parser::Impl::diagnoseTokenPatterns() {
   // brackets, braces, angles). When it returns to 0 and we see '=>', we
   // know we've reached the match arm arrow. Replaces consumeBalancedUntil.
   int32_t whenPatternDepth = -1;
-  size_t macroTokenTreeEnd = 0;
 
   // RFC 0002: Forward state tracking replaces backward scans for interface
   // element head and method initializer detection.
@@ -45,11 +44,6 @@ void Parser::Impl::diagnoseTokenPatterns() {
     const lexer::Token& current = tokenAt(i);
     const ast::SyntaxKind kind = current.getKind();
     const ast::SyntaxKind next = i + 1 < count ? kindAt(i + 1) : ast::SyntaxKind::EndOfFile;
-    if (i >= macroTokenTreeEnd) { macroTokenTreeEnd = 0; }
-    if (macroTokenTreeEnd == 0 && isMacroInvocationStart(i, count)) {
-      macroTokenTreeEnd = findMacroInvocationEnd(i, count);
-    }
-    const bool insideMacroTokenTree = macroTokenTreeEnd > i;
     const bool insideInterfaceBody = interfaceBodyDepth >= 0 && braceDepth >= interfaceBodyDepth;
     const bool insideInterfaceTopLevel =
         interfaceBodyDepth >= 0 && braceDepth == interfaceBodyDepth;
@@ -57,9 +51,9 @@ void Parser::Impl::diagnoseTokenPatterns() {
     // RFC 0002: Forward state tracking for interface element head detection.
     // atInterfaceElementHead is true when the current token follows a '{' or ';'
     // with only interface modifiers in between — computed without backward scanning.
-    const bool atInterfaceElementHead = insideInterfaceTopLevel && lastNonModifierWasBoundary &&
-        !isInterfaceModifier(kind) && kind != ast::SyntaxKind::LeftBrace &&
-        kind != ast::SyntaxKind::Semicolon;
+    const bool atInterfaceElementHead =
+        insideInterfaceTopLevel && lastNonModifierWasBoundary && !isInterfaceModifier(kind) &&
+        kind != ast::SyntaxKind::LeftBrace && kind != ast::SyntaxKind::Semicolon;
 
     // Update element-head boundary state for the next iteration.
     if (isInterfaceModifier(kind)) {
@@ -216,14 +210,13 @@ void Parser::Impl::diagnoseTokenPatterns() {
         }
       }
 
-      if (atInterfaceElementHead &&
-          kind == ast::SyntaxKind::Identifier && next == ast::SyntaxKind::LeftParen) {
+      if (atInterfaceElementHead && kind == ast::SyntaxKind::Identifier &&
+          next == ast::SyntaxKind::LeftParen) {
         diagnosticEngine.diagnose<diagnostics::DiagID::PropertyOrSignatureExpected>(
             current.getLocation());
       }
 
-      if (atInterfaceElementHead &&
-          kind == ast::SyntaxKind::ClassKeyword) {
+      if (atInterfaceElementHead && kind == ast::SyntaxKind::ClassKeyword) {
         diagnosticEngine.diagnose<diagnostics::DiagID::PropertyOrSignatureExpected>(
             current.getLocation());
       }
@@ -263,7 +256,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
       }
     }
 
-    if (!insideMacroTokenTree && braceDepth > 0 && isInvalidObjectLiteralPropertyName(kind) &&
+    if (braceDepth > 0 && isInvalidObjectLiteralPropertyName(kind) &&
         next == ast::SyntaxKind::Colon) {
       diagnosticEngine.diagnose<diagnostics::DiagID::ExceptedIdentifier>(current.getLocation(),
                                                                          tokenLabel(current));
@@ -305,9 +298,9 @@ void Parser::Impl::diagnoseTokenPatterns() {
       }
     }
 
-    if (!insideMacroTokenTree && !insideMatchArmPattern && braceDepth > 0 &&
-        kind == ast::SyntaxKind::Identifier && i + 3 < count &&
-        kindAt(i + 1) == ast::SyntaxKind::Colon && kindAt(i + 2) != ast::SyntaxKind::Semicolon &&
+    if (!insideMatchArmPattern && braceDepth > 0 && kind == ast::SyntaxKind::Identifier &&
+        i + 3 < count && kindAt(i + 1) == ast::SyntaxKind::Colon &&
+        kindAt(i + 2) != ast::SyntaxKind::Semicolon &&
         kindAt(i + 2) != ast::SyntaxKind::RightBrace &&
         !followsFieldTypeColonWithoutSemicolon(i + 2) &&
         kindAt(i + 3) == ast::SyntaxKind::Identifier) {
@@ -326,12 +319,6 @@ void Parser::Impl::diagnoseTokenPatterns() {
   }
 }
 
-ast::NodeId Parser::Impl::makeEmptyMacroPattern(AstFactory& builder, size_t start,
-                                                size_t end) const {
-  zc::Vector<ast::NodeId> frags;
-  return builder.makeMacroPattern(rangeFor(start, end), builder.makeList(frags.asPtr()));
-}
-
 ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, size_t end) const {
   RecoveryFrameScope recoveryFrame(*this, RecoveryContext::Pattern, start);
   if (start >= end) { return ast::NodeId(); }
@@ -347,8 +334,8 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
       bool hasDuplicateAt = false;
       if (at + 1 < end && kindAt(at + 1) == ast::SyntaxKind::Identifier) {
         const size_t subPathEnd = findTypePathEnd(at + 1, end);
-        hasDuplicateAt = subPathEnd > at + 1 && subPathEnd < end &&
-                         kindAt(subPathEnd) == ast::SyntaxKind::At;
+        hasDuplicateAt =
+            subPathEnd > at + 1 && subPathEnd < end && kindAt(subPathEnd) == ast::SyntaxKind::At;
       }
       if (at == start || hasDuplicateAt) {
         if (!shouldSuppressDiagnostic(at)) {
@@ -529,13 +516,13 @@ ast::NodeId Parser::Impl::parsePatternRange(AstFactory& builder, size_t start, s
           // RFC 0002: Cursor-driven struct pattern property ':' detection.
           // Use findTypePathEnd (boundary detection) to find the identifier
           // end, then check if ':' follows.
-          const size_t nameEnd =
-              kindAt(itemStart) == ast::SyntaxKind::Identifier ? findTypePathEnd(itemStart, itemEnd)
-                                                                : itemStart;
-          const size_t colon =
-              (nameEnd > itemStart && nameEnd < itemEnd && kindAt(nameEnd) == ast::SyntaxKind::Colon)
-                  ? nameEnd
-                  : itemEnd;
+          const size_t nameEnd = kindAt(itemStart) == ast::SyntaxKind::Identifier
+                                     ? findTypePathEnd(itemStart, itemEnd)
+                                     : itemStart;
+          const size_t colon = (nameEnd > itemStart && nameEnd < itemEnd &&
+                                kindAt(nameEnd) == ast::SyntaxKind::Colon)
+                                   ? nameEnd
+                                   : itemEnd;
           if (kindAt(itemStart) != ast::SyntaxKind::Identifier) {
             if (!shouldSuppressDiagnostic(itemStart)) {
               diagnosticEngine.diagnose<diagnostics::DiagID::IdentifierExpected>(

@@ -196,6 +196,16 @@ def field_types(schema: dict[str, Any]) -> set[str]:
     return set(raw.keys()) | enum_names
 
 
+def payload_word_capacity(schema: dict[str, Any]) -> int:
+    raw = schema.get("storage")
+    if not isinstance(raw, dict):
+        raise SchemaError("schema.storage must be a mapping")
+    value = raw.get("payload_words")
+    if not isinstance(value, int) or value <= 0:
+        raise SchemaError("schema.storage.payload_words must be a positive integer")
+    return value
+
+
 def variant_fields(item: dict[str, Any]) -> list[dict[str, Any]]:
     fields = item.get("fields", [])
     if fields is None:
@@ -298,10 +308,13 @@ def field_storage(schema: dict[str, Any], field: dict[str, Any]) -> str:
 
 
 def validate_payload_layouts(schema: dict[str, Any]) -> None:
+    capacity = payload_word_capacity(schema)
     for item in variants(schema):
         _, word_count = payload_layout(item)
-        if word_count > 7:
-            raise SchemaError(f"{item['name']} payload uses {word_count} words; max is 7")
+        if word_count > capacity:
+            raise SchemaError(
+                f"{item['name']} payload uses {word_count} words; max is {capacity}"
+            )
 
 
 def validate_schema(schema: dict[str, Any]) -> None:
@@ -345,6 +358,7 @@ def validate_schema(schema: dict[str, Any]) -> None:
 def schema_fingerprint(schema: dict[str, Any]) -> str:
     payload = {
         "version": schema.get("version"),
+        "storage": schema.get("storage", {}),
         "categories": schema.get("categories", {}),
         "variants": [
             {
@@ -371,6 +385,24 @@ def generate_node_kind_inc(schema: dict[str, Any]) -> str:
     ]
     for item in variants(schema):
         lines.append(f"ZOM_AST_NODE({item['name']}, {as_int(item['id']):#05x})")
+    return "\n".join(lines) + "\n"
+
+
+def generate_node_layout_h(schema: dict[str, Any]) -> str:
+    capacity = payload_word_capacity(schema)
+    lines = [
+        HEADER,
+        generated_notice(schema),
+        "#include <cstdint>",
+        "",
+        NAMESPACE_OPEN,
+        "",
+        f"constexpr uint32_t kNodePayloadWordCount = {capacity};",
+        "constexpr uint32_t kNodePayloadByteCount =",
+        "    kNodePayloadWordCount * static_cast<uint32_t>(sizeof(uint32_t));",
+        "",
+        NAMESPACE_CLOSE,
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -401,10 +433,6 @@ def generate_node_payload_h(schema: dict[str, Any]) -> str:
         "",
     ]
     lines.extend(enum_lines)
-    lines += [
-        "constexpr uint32_t kNodePayloadWordCount = 7;",
-        "",
-    ]
     for item in variants(schema):
         variant_name = str(item["name"])
         layout, word_count = payload_layout(item)
@@ -768,9 +796,6 @@ def generate_node_traverse_h(schema: dict[str, Any]) -> str:
         "  fn(node);",
         "}",
         "",
-        "template <typename Fn>",
-        "void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {",
-        "  switch (node.kind) {",
     ]
     for item in variants(schema):
         variant_name = str(item["name"])
@@ -780,24 +805,48 @@ def generate_node_traverse_h(schema: dict[str, Any]) -> str:
             field_name = field_name_fragment(str(field["name"]))
             if field_type == "NodeId":
                 child_lines += [
-                    "      {",
-                    f"        const NodeId child(node.payload.words[k{variant_name}{field_name}Word]);",
-                    "        if (tree.contains(child)) { fn(child); }",
-                    "      }",
+                    "  {",
+                    f"    const NodeId child(node.payload.words[k{variant_name}{field_name}Word]);",
+                    "    if (tree.contains(child)) { fn(child); }",
+                    "  }",
                 ]
             elif field_type == "NodeList":
                 child_lines += [
-                    "      {",
-                    "        NodeList list;",
-                    f"        list.first = node.payload.words[k{variant_name}{field_name}FirstWord];",
-                    f"        list.size = node.payload.words[k{variant_name}{field_name}SizeWord];",
-                    "        for (NodeId child : tree.list(list)) { fn(child); }",
-                    "      }",
+                    "  {",
+                    "    NodeList list;",
+                    f"    list.first = node.payload.words[k{variant_name}{field_name}FirstWord];",
+                    f"    list.size = node.payload.words[k{variant_name}{field_name}SizeWord];",
+                    "    for (NodeId child : tree.list(list)) { fn(child); }",
+                    "  }",
                 ]
         if child_lines:
-            lines.append(f"    case SyntaxKind::{variant_name}:")
+            lines += [
+                "template <typename Fn>",
+                f"void visit{variant_name}ChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {{",
+            ]
             lines.extend(child_lines)
-            lines.append("      return;")
+            lines += [
+                "}",
+                "",
+            ]
+
+    lines += [
+        "template <typename Fn>",
+        "void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {",
+        "  switch (node.kind) {",
+    ]
+    for item in variants(schema):
+        variant_name = str(item["name"])
+        has_children = any(
+            str(field["type"]) in {"NodeId", "NodeList"}
+            for field, _, _ in payload_layout(item)[0]
+        )
+        if has_children:
+            lines += [
+                f"    case SyntaxKind::{variant_name}:",
+                f"      visit{variant_name}ChildNodeIds(tree, node, fn);",
+                "      return;",
+            ]
 
     lines += [
         "    default:",
@@ -820,6 +869,7 @@ def generate_node_traverse_h(schema: dict[str, Any]) -> str:
 
 GENERATORS = {
     "node-kind.inc": generate_node_kind_inc,
+    "node-layout.h": generate_node_layout_h,
     "node-payload.h": generate_node_payload_h,
     "node-accessors.h": generate_node_accessors_h,
     "node-factory.h": generate_node_factory_h,
@@ -837,6 +887,24 @@ def write_outputs(schema: dict[str, Any], output_dir: str) -> None:
         print(f"wrote {path}")
 
 
+def check_outputs(schema: dict[str, Any], output_dir: str) -> bool:
+    current = True
+    for filename, generator in GENERATORS.items():
+        path = os.path.join(output_dir, filename)
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                actual = handle.read()
+        except OSError:
+            print(f"generated file is missing: {path}", file=sys.stderr)
+            current = False
+            continue
+
+        if actual != generator(schema):
+            print(f"generated file is stale: {path}", file=sys.stderr)
+            current = False
+    return current
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate ZOM AST schema support files")
     parser.add_argument("--schema", default=DEFAULT_SCHEMA, help="path to ast schema.yml")
@@ -847,8 +915,11 @@ def main(argv: list[str] | None = None) -> int:
         dest="output_dir",
         help="directory for generated files",
     )
-    parser.add_argument("--check", action="store_true", help="validate schema only")
-    parser.add_argument("--write", action="store_true", help="write generated files")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--check", action="store_true", help="fail if generated files differ from the schema"
+    )
+    mode.add_argument("--write", action="store_true", help="write generated files")
     args = parser.parse_args(argv)
 
     try:
@@ -860,7 +931,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"schema ok: {len(variants(schema))} variants")
     if args.check:
-        return 0
+        return 0 if check_outputs(schema, os.path.abspath(args.output_dir)) else 1
     if not args.write:
         print("no files written; pass --write to generate outputs")
         return 0

@@ -112,8 +112,14 @@ public:
   /// \brief Create a ModuleDeclaration node.
   ast::NodeId makeModuleDecl(zc::StringPtr name) {
     ast::NodePayload payload;
-    auto pathId = builder_.internString(name);
-    payload.words[ast::kModuleDeclarationPathWord] = pathId.value;
+    auto nameId = builder_.internIdent(name);
+    payload.words[ast::kModuleDeclarationFormWord] =
+        static_cast<uint32_t>(ast::ModuleDeclarationForm::RootDeclaration);
+    payload.words[ast::kModuleDeclarationDeclaredNameWord] = nameId.value;
+    payload.words[ast::kModuleDeclarationAliasTargetWord] = 0;
+    payload.words[ast::kModuleDeclarationInlineItemsFirstWord] = 0;
+    payload.words[ast::kModuleDeclarationInlineItemsSizeWord] = 0;
+    payload.words[ast::kModuleDeclarationExportedAliasWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::ModuleDeclaration, source::SourceRange(), payload);
   }
 
@@ -142,15 +148,14 @@ public:
     return builder_.makeNode(ast::SyntaxKind::FunctionDecl, source::SourceRange(), payload);
   }
 
-  /// \brief Create a ClassDecl with name, optional extends, and optional members.
-  ast::NodeId makeClassDecl(zc::StringPtr name, ast::NodeId extends = ast::NodeId(),
-                            ast::NodeId members = ast::NodeId(), uint8_t extensibility = 0) {
+  /// \brief Create a ClassDecl with name, optional base type, and optional members.
+  ast::NodeId makeClassDecl(zc::StringPtr name, ast::NodeId baseTy = ast::NodeId(),
+                            ast::NodeId members = ast::NodeId()) {
     ast::NodePayload payload;
     auto nameId = builder_.internIdent(name);
     payload.words[ast::kClassDeclNameWord] = nameId.value;
-    payload.words[ast::kClassDeclExtensibilityWord] = extensibility;
     payload.words[ast::kClassDeclTypeParamsIdWord] = 0;
-    payload.words[ast::kClassDeclExtendsWord] = extends.value;
+    payload.words[ast::kClassDeclBaseTyWord] = baseTy.value;
     payload.words[ast::kClassDeclMembersIdWord] = members.value;
     return builder_.makeNode(ast::SyntaxKind::ClassDecl, source::SourceRange(), payload);
   }
@@ -172,7 +177,6 @@ public:
     ast::NodePayload payload;
     auto nameId = builder_.internIdent(name);
     payload.words[ast::kStructDeclNameWord] = nameId.value;
-    payload.words[ast::kStructDeclExtensibilityWord] = 0;
     payload.words[ast::kStructDeclTypeParamsIdWord] = 0;
     payload.words[ast::kStructDeclMembersIdWord] = members.value;
     return builder_.makeNode(ast::SyntaxKind::StructDecl, source::SourceRange(), payload);
@@ -192,11 +196,8 @@ public:
     ast::NodePayload payload;
     auto nameId = builder_.internIdent(name);
     payload.words[ast::kEnumDeclarationNameWord] = nameId.value;
-    payload.words[ast::kEnumDeclarationExtensibilityWord] = 0;
     payload.words[ast::kEnumDeclarationTypeParamsIdWord] = 0;
-    payload.words[ast::kEnumDeclarationNvarsWord] = 0;
     payload.words[ast::kEnumDeclarationVariantsIdWord] = variants.value;
-    payload.words[ast::kEnumDeclarationBaseReprWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::EnumDeclaration, source::SourceRange(), payload);
   }
 
@@ -531,13 +532,15 @@ public:
   /// \brief Create a MethodDecl.
   ast::NodeId makeMethodDecl(zc::StringPtr name, ast::NodeId body = ast::NodeId(),
                              ast::NodeId params = ast::NodeId(), ast::NodeId retTy = ast::NodeId(),
-                             bool isStatic = false, ast::NodeId typeParams = ast::NodeId()) {
+                             bool isStatic = false, ast::NodeId typeParams = ast::NodeId(),
+                             ast::NodeId raisesTy = ast::NodeId()) {
     ast::NodePayload payload;
     auto nameId = builder_.internIdent(name);
     payload.words[ast::kMethodDeclNameWord] = nameId.value;
     payload.words[ast::kMethodDeclParamsIdWord] = params.value;
     payload.words[ast::kMethodDeclTypeParamsIdWord] = typeParams.value;
     payload.words[ast::kMethodDeclRetTyWord] = retTy.value;
+    payload.words[ast::kMethodDeclRaisesTyWord] = raisesTy.value;
     payload.words[ast::kMethodDeclBodyWord] = body.value;
     payload.words[ast::kMethodDeclIsStaticWord] = isStatic ? 1 : 0;
     payload.words[ast::kMethodDeclVisibilityWord] = 0;
@@ -599,6 +602,14 @@ public:
     payload.words[ast::kNullCoalesceExprPrimaryWord] = primary.value;
     payload.words[ast::kNullCoalesceExprFallbackWord] = fallback.value;
     return builder_.makeNode(ast::SyntaxKind::NullCoalesceExpr, source::SourceRange(), payload);
+  }
+
+  /// \brief Create an ErrorDefaultExpr.
+  ast::NodeId makeErrorDefaultExpr(ast::NodeId primary, ast::NodeId fallback) {
+    ast::NodePayload payload;
+    payload.words[ast::kErrorDefaultExprPrimaryWord] = primary.value;
+    payload.words[ast::kErrorDefaultExprFallbackWord] = fallback.value;
+    return builder_.makeNode(ast::SyntaxKind::ErrorDefaultExpr, source::SourceRange(), payload);
   }
 
   /// \brief Create an AssignmentExpr.
@@ -669,9 +680,9 @@ public:
   }
 
   /// \brief Create a CastExpression.
-  ast::NodeId makeCastExpr(ast::NodeId expr, ast::NodeId ty) {
+  ast::NodeId makeCastExpr(ast::NodeId expr, ast::NodeId ty, uint8_t mode = 0) {
     ast::NodePayload payload;
-    payload.words[ast::kCastExpressionModeWord] = 0;
+    payload.words[ast::kCastExpressionModeWord] = mode;
     payload.words[ast::kCastExpressionExprWord] = expr.value;
     payload.words[ast::kCastExpressionTyWord] = ty.value;
     return builder_.makeNode(ast::SyntaxKind::CastExpression, source::SourceRange(), payload);
@@ -706,6 +717,14 @@ public:
     return builder_.makeNode(ast::SyntaxKind::NewExpression, source::SourceRange(), payload);
   }
 
+  /// \brief Create an ImportCallExpression.
+  ast::NodeId makeImportCallExpr(ast::NodeList args) {
+    ast::NodePayload payload;
+    payload.words[ast::kImportCallExpressionArgsFirstWord] = args.first;
+    payload.words[ast::kImportCallExpressionArgsSizeWord] = args.size;
+    return builder_.makeNode(ast::SyntaxKind::ImportCallExpression, source::SourceRange(), payload);
+  }
+
   /// \brief Create an IndexExpression.
   ast::NodeId makeIndexExpr(ast::NodeId object, ast::NodeId index) {
     ast::NodePayload payload;
@@ -723,19 +742,6 @@ public:
     payload.words[ast::kForStmtUpdateWord] = update.value;
     payload.words[ast::kForStmtBodyWord] = body.value;
     return builder_.makeNode(ast::SyntaxKind::ForStmt, source::SourceRange(), payload);
-  }
-
-  /// \brief Create a MarkerDeclaration.
-  ast::NodeId makeMarkerDecl(zc::StringPtr name) {
-    ast::NodePayload payload;
-    auto nameId = builder_.internIdent(name);
-    payload.words[ast::kMarkerDeclarationNameWord] = nameId.value;
-    payload.words[ast::kMarkerDeclarationIsAutoWord] = 0;
-    payload.words[ast::kMarkerDeclarationTypeParamsIdWord] = 0;
-    payload.words[ast::kMarkerDeclarationNMarkersWord] = 0;
-    payload.words[ast::kMarkerDeclarationMarkersFirstWord] = 0;
-    payload.words[ast::kMarkerDeclarationMarkersSizeWord] = 0;
-    return builder_.makeNode(ast::SyntaxKind::MarkerDeclaration, source::SourceRange(), payload);
   }
 
   /// \brief Create a StandaloneImplDecl.
@@ -946,6 +952,7 @@ public:
     ast::NodePayload payload;
     payload.words[ast::kDynTypeExprIfacesIdWord] = ifaceListNode.value;
     payload.words[ast::kDynTypeExprMarkersIdWord] = 0;
+    payload.words[ast::kDynTypeExprAssocBindingsIdWord] = 0;
     payload.words[ast::kDynTypeExprHasLifetimeWord] = 0;
     payload.words[ast::kDynTypeExprLifetimeWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::DynTypeExpr, source::SourceRange(), payload);
@@ -986,6 +993,7 @@ public:
     ast::NodePayload payload;
     payload.words[ast::kDynTypeExprIfacesIdWord] = ifaceListNode.value;
     payload.words[ast::kDynTypeExprMarkersIdWord] = markerListNode.value;
+    payload.words[ast::kDynTypeExprAssocBindingsIdWord] = 0;
     payload.words[ast::kDynTypeExprHasLifetimeWord] = 0;
     payload.words[ast::kDynTypeExprLifetimeWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::DynTypeExpr, source::SourceRange(), payload);
@@ -1038,12 +1046,11 @@ public:
   // ==========================================================================
 
   /// \brief Create a UnitVariant (simple enum variant with no data).
-  ast::NodeId makeEnumVariant(zc::StringPtr name, int64_t disc = -1) {
+  ast::NodeId makeEnumVariant(zc::StringPtr name, ast::NodeId discriminant = ast::NodeId()) {
     ast::NodePayload payload;
     auto nameId = builder_.internIdent(name);
     payload.words[ast::kUnitVariantNameWord] = nameId.value;
-    payload.words[ast::kUnitVariantHasDiscWord] = (disc >= 0) ? 1 : 0;
-    payload.words[ast::kUnitVariantDiscWord] = static_cast<uint32_t>(disc);
+    payload.words[ast::kUnitVariantDiscriminantWord] = discriminant.value;
     return builder_.makeNode(ast::SyntaxKind::UnitVariant, source::SourceRange(), payload);
   }
 
@@ -1055,8 +1062,7 @@ public:
     payload.words[ast::kTupleVariantNfieldsWord] = tys.size;
     payload.words[ast::kTupleVariantTysFirstWord] = tys.first;
     payload.words[ast::kTupleVariantTysSizeWord] = tys.size;
-    payload.words[ast::kTupleVariantHasDiscWord] = 0;
-    payload.words[ast::kTupleVariantDiscWord] = 0;
+    payload.words[ast::kTupleVariantDiscriminantWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::TupleVariant, source::SourceRange(), payload);
   }
 
@@ -1084,6 +1090,12 @@ public:
     return finishTree();
   }
 
+  /// \brief Build and retain a source file for tests that inspect borrowed AST names after a pass.
+  const ast::Tree& buildRetainedSourceFile(zc::StringPtr moduleName,
+                                           zc::ArrayPtr<const ast::NodeId> decls) {
+    return retainedTree_.emplace(buildSourceFile(moduleName, decls));
+  }
+
   // ==========================================================================
   // List helpers
   // ==========================================================================
@@ -1095,6 +1107,7 @@ public:
 private:
   zc::Own<source::SourceManager> sourceManager_;
   zc::Own<diagnostics::DiagnosticEngine> diagnostics_;
+  zc::Maybe<ast::Tree> retainedTree_;
   symbol::SymbolTable symbols_;
   ast::BindingMetadata metadata_;
   ast::TreeBuilder builder_;

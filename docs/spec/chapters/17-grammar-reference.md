@@ -1,20 +1,9 @@
 # Grammar Reference
 
-> **Authoritative grammar reference moved**
->
-> This document remains as historical reference and a quick overview.
-> `docs/design/syntax-ebnf.md` is the single authoritative source of truth for
-> the ZOM grammar layer. All lexer, parser, AST, diagnostic, LSP, and
-> documentation-generator behavior must align with that document.
-> If this document conflicts with `docs/design/syntax-ebnf.md`, the syntax EBNF
-> document wins.
->
-> For the current grammar specification, see
-> [`docs/design/syntax-ebnf.md`](../design/syntax-ebnf.md).
-
----
-
-This section provides the complete formal grammar for the Zom language in EBNF notation.
+This chapter is the normative EBNF reference for the ZOM language. The lexical
+rules in Chapter 02 and `docs/spec/ZomLexer.g4`, the parser grammar in
+`docs/spec/ZomParser.g4`, the recursive parser, and the generated AST schema
+must remain aligned with these productions.
 
 ### Lexical Grammar
 
@@ -99,22 +88,38 @@ Punctuator ::= '{' | '}' | '(' | ')' | '[' | ']' | '.' | '...' | '#' | '@'
 ```ebnf
 (* Program Structure *)
 Program ::= SourceFile
-SourceFile ::= Shebang? InnerAttributeList? ModuleDeclaration?
+SourceFile ::= Shebang? ModuleDeclaration?
                ModuleItem* EOF
 
-InnerAttributeList ::= InnerAttribute*
-InnerAttribute     ::= '#' '!' '[' AttrEntry ']'      (see Ch.16 §16.2 A-005)
-OuterAttribute     ::= '#' '[' AttrEntry ']'          (see Ch.16 §16.2 A-004)
-ModifierList       ::= ( OuterAttribute | ModifierKeyword )*
+OuterAttributeList ::= OuterAttribute*
+OuterAttribute ::= '#' '[' AttributeEntry
+                       (',' AttributeEntry)* ','? ']'
+AttributeEntry ::= AttributePath AttributePayload?
+AttributePayload ::= '(' AttributeInput? ')' | '=' Expression
+AttributeInput ::= AttributeInputItem (',' AttributeInputItem)* ','?
+AttributeInputItem ::= IdentifierName '=' AttributeInputValue
+                     | AttributeInputValue
+AttributeInputValue ::= Expression | '{' AttributeInput? '}'
+AttributePath ::= IdentifierName ('::' IdentifierName)+
+                | BuiltinSingleSegmentAttribute
+BuiltinSingleSegmentAttribute ::= 'inline' | 'deprecated' | 'cold' | 'repr'
+ModifierList ::= ModifierKeyword*
+ModifierKeyword ::= 'public' | 'private' | 'protected' | 'static'
+                  | 'readonly' | 'mutating' | 'override' | 'abstract'
+                  | 'export'
 
-ModuleDeclaration ::= 'module' ModuleName ';'
-ModuleItem ::= ImportDeclaration | ExportDeclaration | StatementListItem
-ModuleName ::= Identifier ('.' Identifier)*
+ModuleDeclaration ::= 'module' Identifier ';'
+                    | 'module' Identifier '{' ModuleItem* '}'
+                    | 'export'? 'module' Identifier '=' ModuleAliasPath ';'
+ModuleItem ::= StatementListItem
+ModuleAliasPath ::= Identifier ('::' Identifier)+
+QualifiedModulePath ::= Identifier ('::' Identifier)+
+GroupBasePath ::= Identifier ('::' Identifier)*
 
 ImportDeclaration ::= 'import' ImportClause ';'
 ImportClause ::= NamedImportClause | ModuleImportClause
-ModuleImportClause ::= ModuleName ('as' Identifier)?
-NamedImportClause ::= ModuleName '.' '{' ImportSpecifierList? '}'
+ModuleImportClause ::= QualifiedModulePath ('as' Identifier)?
+NamedImportClause ::= GroupBasePath '::' '{' ImportSpecifierList? '}'
 ImportSpecifierList ::= ImportSpecifier (',' ImportSpecifier)* ','?
 ImportSpecifier ::= Identifier ('as' Identifier)?
 
@@ -122,62 +127,29 @@ ExportDeclaration ::= 'export' Declaration
                     | 'export' ExportClause ';'
 ExportClause ::= LocalExportClause | ReexportClause
 LocalExportClause ::= '{' ExportSpecifierList? '}'
-ReexportClause ::= ModuleName '.' '{' ExportSpecifierList? '}'
+ReexportClause ::= GroupBasePath '::' '{' ExportSpecifierList? '}'
 ExportSpecifierList ::= ExportSpecifier (',' ExportSpecifier)* ','?
 ExportSpecifier ::= Identifier ('as' Identifier)?
-
-(* ── Module grammar additions (Ch.13 §Modules and Imports) ──────────
-   A Visibility generalizes the prior ModifierKeyword visibility set.
-   At TOP LEVEL of a module, only `export` and the epsilon (private)
-   forms are meaningful. Inside class/interface/struct/enum bodies the
-   additional MemberModifier keywords (public / private / protected)
-   apply alongside the usual static / mutating / override / sealed /
-   final / open extensibility tokens.                                    *)
-
-InlineModuleDeclaration ::= Visibility? 'mod' Identifier
-                            ( '{' ModuleItem* '}' | ';' )
-PackageDeclaration      ::= 'package' PackageName (':' VersionString)? ';'
-                                (* full VersionString syntax in Manifest annex *)
-
-Visibility ::= 'export'
-             | 'pub' '(' 'crate' ')'
-             | 'pub' '(' 'package' ')'
-             | 'pub' '(' 'super' ')'
-             | 'pub' '(' 'self' ')'
-             | 'pub' '(' 'in' QualifiedPath ')'
-             | epsilon
-
-MemberModifier ::= Visibility | 'static' | 'mutating' | 'override'
-                 | 'sealed' | 'final'  | 'open'
-                 | 'readonly' | 'unsafe' | 'marker'
-
-ClassExtensibility ::= 'sealed' | 'final' | 'open'
 
 PathPrefix    ::= 'crate::' | 'self::' | 'super::' | '::'
 QualifiedPath ::= PathPrefix? Identifier ( '::' Identifier )*
 
-(* ── end Ch.13 grammar additions ───────────────────────────────────── *)
-
 (* Declarations *)
-Declaration ::= ModifierList (
-                   MutDeclaration
-                 | LetDeclaration
-                 | ConstDeclaration
-                 | FunctionDeclaration
-                 | ClassDeclaration
-                 | StructDeclaration
-                 | InterfaceDeclaration
-                 | EnumDeclaration
-                 | ErrorDeclaration
-                 | AliasDeclaration
-                 | ModuleDeclaration
-                 | InlineModuleDeclaration
-                 | PackageDeclaration
-                 | ExportDeclaration
-                 | ImportDeclaration
-                 | MarkerDeclaration
-                 | MarkerImplDeclaration
-               )
+Declaration ::= MutDeclaration
+              | LetDeclaration
+              | ConstDeclaration
+              | FunctionDeclaration
+              | ClassDeclaration
+              | StructDeclaration
+              | InterfaceDeclaration
+              | EnumDeclaration
+              | ErrorDeclaration
+              | AliasDeclaration
+              | ExportDeclaration
+              | ImportDeclaration
+              | StandaloneImplDeclaration
+              | MarkerImplDeclaration
+              | ExternBlockDeclaration
 
 MutDeclaration   ::= 'mut' VariableDeclarationList ';'
 LetDeclaration   ::= 'let' VariableDeclarationList ';'
@@ -195,88 +167,89 @@ ConstExpression ::= AssignmentExpression
    storage address. A `let` field may be definitely assigned by its owning
    `init` path before `this` escapes; after initialization it is immutable. *)
 
-FunctionDeclaration ::= 'unsafe'? 'fun' BindingIdentifier TypeParameters? ParameterClause
-                       ReturnType? WhereClause? BlockStatement
-    (* 'unsafe' marks a function with caller-proven preconditions.
-       See Ch.03 Unsafe Safety Model and Ch.06 Unsafe Functions. *)
+FunctionDeclaration ::= ModifierList 'fun' BindingIdentifier TypeParameters?
+                        FunctionSignature WhereClause? (BlockStatement | ';')
+FunctionSignature ::= ParameterClause (ReturnType | RaisesClause)?
 ReturnType ::= '->' TypeExpression RaisesClause?
 
-ClassDeclaration ::= ClassExtensibility? ModifierList 'class' BindingIdentifier
-                     TypeParameters? WhereClause? HeritageClauses? '{' ClassElement* '}'
+ClassDeclaration ::= ModifierList 'class' BindingIdentifier
+                     TypeParameters? (':' TypeExpression)? WhereClause?
+                     '{' ClassElement* '}'
+    (* Class headers admit at most one superclass after ':'.
+       Interface implementations are written only as standalone impl blocks. *)
 StructDeclaration ::= ModifierList 'struct' BindingIdentifier TypeParameters?
-                      WhereClause? HeritageClauses? '{' ClassElement* '}'
-HeritageClauses ::= HeritageClause+
-HeritageClause ::= ExtendsClause | ImplementsClause
-ExtendsClause ::= 'extends' ExpressionWithTypeArguments
-                  (',' ExpressionWithTypeArguments)*
-ImplementsClause ::= 'implements' InterfaceTypeList
+                      WhereClause? '{' StructElement* '}'
+    (* Struct headers do not accept a base type or interface list. *)
 
-InterfaceDeclaration ::= ClassExtensibility? ModifierList 'interface' BindingIdentifier
+InterfaceDeclaration ::= ModifierList 'interface' BindingIdentifier
                          TypeParameters? InterfaceHeritage? '{' InterfaceBody '}'
-    (* NOTE: 'unsafe' semantic-invariant attestation appears on the `impl` block
-       (unsafe impl I for T), not on the interface declaration. See Ch.09 §9.7.
-       Interface declarations do not accept WhereClause. Put interface type
+    (* Interface declarations do not accept WhereClause. Put interface type
        parameter constraints in TypeParameters.
-       Canonical grammar: docs/design/syntax-ebnf.md §4.3.5 *)
+       Canonical grammar: this chapter, InterfaceDeclaration *)
 InterfaceHeritage ::= ':' InterfaceBoundList
     (* '+' = conjunction (AND); '|' is ONLY for UnionType.
-       Canonical grammar: docs/design/syntax-ebnf.md §4.3.5 *)
+       Canonical grammar: this chapter, InterfaceHeritage *)
 InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*
 InterfaceBound ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
 InterfaceBody ::= InterfaceElement*
-InterfaceElement ::= ';'
-                   | Modifier* PropertyStorage PropertySignature Initializer? ';'?
-                   | Modifier* ConstantDeclaration
-                   | Modifier* 'fun' MethodSignature ';'
+InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
+                   | ModifierList ('get' | 'set') PropertySignature ';'
+                   | ModifierList 'type' Identifier TypeParameters?
+                     (':' InterfaceBoundList)? ('=' TypeExpression)? ';'
                       (* NOTE: Method bodies (BlockStatement) inside interface
                          declarations are not part of ZOM v1. The parser
                          rejects a block after an interface method signature.
                          See Ch.09 §9.3.1. *)
-PropertySignature ::= PropertyName '?'? TypeAnnotation
-MethodSignature ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType?
+PropertySignature ::= PropertyName FunctionSignature
+MethodSignature ::= PropertyName TypeParameters? FunctionSignature
 PropertyStorage ::= 'mut' | 'let'
 ConstantDeclaration ::= 'const' BindingIdentifier TypeAnnotation? '=' ConstExpression ';'
 
-ClassElement ::= ';'
-               | Modifier* InitDeclaration
-               | Modifier* DeinitDeclaration
-               | Modifier* AccessorDeclaration
-               | Modifier* PropertyStorage PropertyDeclaration
-               | Modifier* ConstantDeclaration
-               | Modifier* 'fun' MethodDeclaration
-PropertyDeclaration ::= PropertyName '?'? TypeAnnotation? Initializer? ';'
-MethodDeclaration ::= PropertyName '?'? TypeParameters? ParameterClause ReturnType? (BlockStatement | ';')
-InitDeclaration ::= 'init' TypeParameters? ParameterClause ReturnType? (BlockStatement | ';')
-DeinitDeclaration ::= 'deinit' (BlockStatement | ';')
-AccessorDeclaration ::= ('get' | 'set') PropertyName TypeParameters? ParameterClause ReturnType?
-                        (BlockStatement | ';')
-ModifierKeyword ::= Visibility
-                  | MemberModifier
-                  | 'public' | 'private' | 'protected'   (* member-level inside bodies *)
-                  | 'unsafe'              (marker impl prefix, Ch.16 A-019)
-                  | 'marker'              (contextual, Ch.16 A-017)
+ClassElement ::= ModifierList 'fun' MethodDeclaration
+               | ModifierList InitDeclaration
+               | ModifierList DeinitDeclaration
+               | ModifierList 'mut' VariableDeclarationList ';'
+               | ModifierList 'let' VariableDeclarationList ';'
+               | ModifierList 'const' ConstDeclarationList ';'
+               | ModifierList PropertyName ':' TypeExpression Initializer? FieldTerminator
+               | AccessorDeclaration
+StructElement ::= ModifierList ('mut' | 'readonly')? PropertyName ':' TypeExpression
+                  Initializer? FieldTerminator
+                | ModifierList 'fun' MethodDeclaration
+                | ModifierList InitDeclaration
+                | ModifierList DeinitDeclaration
+MethodDeclaration ::= PropertyName TypeParameters? FunctionSignature (BlockStatement | ';')
+InitDeclaration ::= 'init' ParameterClause RaisesClause? BlockStatement
+DeinitDeclaration ::= 'deinit' ParameterClause RaisesClause? BlockStatement
+AccessorDeclaration ::= ModifierList 'get' PropertyName FunctionSignature BlockStatement
+                        (ModifierList 'set' PropertyName FunctionSignature BlockStatement)?
+FieldTerminator ::= ';' | ',' | /* empty */
+    (* The empty form is accepted only before the next member or the closing brace. *)
 
-ErrorDeclaration ::= 'error' BindingIdentifier '{' StatementList? '}'
+ErrorDeclaration ::= ModifierList 'error' BindingIdentifier '{' StructElement* '}'
 
-EnumDeclaration ::= 'enum' BindingIdentifier '{' EnumBody? '}'
-EnumBody ::= EnumMember (',' EnumMember)*
-EnumMember ::= PropertyName (('=' Expression) | TupleType)?
+EnumDeclaration ::= ModifierList 'enum' BindingIdentifier TypeParameters?
+                    '{' EnumBody? '}'
+EnumBody ::= EnumMember (',' EnumMember)* ','?
+EnumMember ::= Identifier ('(' TypeExpression (',' TypeExpression)* ','? ')')?
+               ('=' ConstExpression)?
 
-AliasDeclaration ::= 'alias' BindingIdentifier TypeParameters? '=' TypeExpression ';'
+AliasDeclaration ::= ModifierList 'alias' BindingIdentifier TypeParameters?
+                     '=' TypeExpression ';'
 
-(* Marker Declarations — Ch.16 §16.14.2 (four styles) *)
-MarkerDeclaration
-    ::= ( 'auto' | 'unsafe' )? 'marker' Identifier TypeParameters?
-        ( '=' MarkerConjunction )? ';'
+ExternBlockDeclaration ::= 'extern' AbiLiteral? '{' ExternItem* '}'
+AbiLiteral ::= '"C"' | '"Cdecl"' | '"system"' | '"zom-cdecl"'
+ExternItem ::= ExternFunctionDeclaration | ExternVariableDeclaration
+ExternFunctionDeclaration ::= 'fun' Identifier FunctionSignature ';'
+ExternVariableDeclaration ::= 'variable' Identifier ':' TypeExpression ';'
 
-MarkerConjunction ::= MarkerPath ( '+' MarkerPath )*
-MarkerPath        ::= '!'? ( Identifier | QualifiedMarkerPath )
+MarkerPath        ::= Identifier | QualifiedMarkerPath
 QualifiedMarkerPath ::= Identifier ( '::' Identifier )+
 
 MarkerImplDeclaration
     ::= 'unsafe'? 'impl' TypeParameters? '!'? MarkerImplPath
-        'for' TypeExpression WhereClause? ( structBody | ';' )
-MarkerImplPath ::= attributePath | Identifier
+        'for' TypeExpression WhereClause? ( '{' StructElement* '}' | ';' )
+MarkerImplPath ::= Identifier ('::' Identifier)*
 
 (* ── impl-head disambiguation — MarkerImpl vs ordinary TraitImpl ─────────
    After the keyword 'impl', parser attempts MarkerImplDeclaration FIRST,
@@ -297,9 +270,13 @@ MarkerImplPath ::= attributePath | Identifier
 
 (* Standalone Interface Impl — Ch.09 §7 *)
 StandaloneImplDeclaration
-    ::= 'unsafe'? 'impl' TypeArguments? InterfaceBoundList 'for' Type
-        WhereClause? '{' (MethodDeclaration | AssociatedTypeAssignment | ConstantDeclaration)* '}'
-    (* 'unsafe' required when implementing an unsafe interface. See Ch.09 §Unsafe Interfaces. *)
+    ::= 'unsafe'? 'impl' TypeParameters? InterfaceBoundList 'for' TypeExpression
+        WhereClause? '{' ImplMember* '}'
+ImplMember ::= ModifierList 'fun' MethodDeclaration
+             | AssociatedTypeAssignment
+             | 'mut' VariableDeclarationList ';'
+             | 'let' VariableDeclarationList ';'
+             | 'const' ConstDeclarationList ';'
 AssociatedTypeAssignment ::= 'type' Identifier TypeParameters? '=' TypeExpression ';'
 
 (* Type Expressions *)
@@ -320,9 +297,12 @@ AtomType ::= ParenthesizedType
           | ReferenceType          (* &T / &mut T — Ch.03 §Reference Types *)
           | RawPointerType         (* *const T / *mut T — Ch.03 §Raw Pointer Types *)
           | DynType                (* existential type — Ch.03 §Existential Types *)
-DynType ::= 'dyn' InterfaceType ( '+' MarkerPath )*            (* Ch.03 §Existential *)
-    (* Parser AST stores the interface head in DynTypeIfaceList and marker
-       suffixes in DynTypeMarkerList. *)
+DynType ::= 'dyn' InterfaceType DynAssocBindingArgs? ( '+' MarkerPath )*
+    (* Parser AST stores the interface head in DynTypeIfaceList, associated
+       type bindings in DynTypeAssocBindingList, and marker suffixes in
+       DynTypeMarkerList. *)
+DynAssocBindingArgs ::= '<' DynAssocBinding ( ',' DynAssocBinding )* ','? '>'
+DynAssocBinding ::= Identifier '=' TypeExpression
 
 ReferenceType ::= '&' ('mut')? TypeExpression
     (* Immutable or mutable reference. Sized = ptr_size.
@@ -350,17 +330,16 @@ TypeQuery ::= 'typeof' TypeQueryExpression
 TypeQueryExpression ::= Identifier ('.' Identifier)*
 
 TupleType ::= '(' TupleElementTypes? ')'
-TupleElementTypes ::= TupleElementType (',' TupleElementType)*
-TupleElementType ::= NamedTupleElement | TypeExpression
-NamedTupleElement ::= ElementName ':' TypeExpression
-ElementName ::= Identifier
+TupleElementTypes ::= TypeExpression (',' TypeExpression)*
 
-FunctionType ::= TypeParameters? ParameterClause '->' TypeExpression RaisesClause?
-               | 'fun' TypeParameters? ParameterClause '->' TypeExpression RaisesClause?
+FunctionType ::= TypeParameters? FunctionTypeParameterClause '->' TypeExpression RaisesClause?
+               | 'fun' TypeParameters? FunctionTypeParameterClause '->' TypeExpression RaisesClause?
+FunctionTypeParameterClause ::= '(' FunctionTypeParameterList? ')'
+FunctionTypeParameterList ::= TypeExpression (',' TypeExpression)* ','?
 ParameterClause ::= '(' ParameterList? ')'
 ParameterList ::= Parameter (',' Parameter)* ','?
-Parameter ::= OuterAttributeList? (Identifier ':')? TypeExpression Initializer?
-            | OuterAttributeList? 'this'
+Parameter ::= OuterAttributeList? Identifier ':' TypeExpression Initializer?
+            | OuterAttributeList? 'this' (':' TypeExpression)?
 RaisesClause ::= 'raises' TypeExpression
     (* Multiple error types are written as a union type expression.
        Example: 'fun f() -> T raises IoError | ParseError | ZOM80xx'
@@ -374,17 +353,12 @@ TypeMember ::= ObjectPropertySignature | MethodSignature
 ObjectPropertySignature ::= 'mut'? PropertyName '?'? TypeAnnotation
 
 TypeParameters ::= '<' TypeParameterList '>'
-TypeParameterList ::= TypeParameter (',' TypeParameter)*
-TypeParameter  ::= Identifier ( ':' BoundItem ( '+' BoundItem )* )? ','?
-BoundItem      ::= '!'? ( TypeExpression | MarkerPath )
-    (* Example: <T: std::marker::Sendable + !std::marker::Shared,
-                 U: 'static + Linear>
-       Marker negation (!) is allowed and follows Ch.16 A-023.
-       Type parameter bounds are introduced only with ':'; conjunctive bounds
-       use '+' separators, and marker negation uses '!'. *)
+TypeParameterList ::= TypeParameter (',' TypeParameter)* ','?
+TypeParameter ::= Identifier (':' TypeParameterBoundList)? ('=' TypeExpression)?
+TypeParameterBoundList ::= TypeExpression ('+' TypeExpression)*
 
 TypeArguments ::= '<' TypeArgumentList '>'
-TypeArgumentList ::= TypeExpression (',' TypeExpression)*
+TypeArgumentList ::= TypeExpression (',' TypeExpression)* ','?
 WhereClause ::= 'where' WherePredicate (',' WherePredicate)* ','?
 WherePredicate ::= TypeExpression ':' TypeExpression
     (* AST note: declarations that carry TypeParameters and WhereClause store
@@ -407,7 +381,6 @@ ExpressionWithTypeArguments ::= LeftHandSideExpression TypeArguments?
 
 (* Statements *)
 Statement ::= BlockStatement
-           | UnsafeBlockStatement  (* unsafe { } — Ch.05 §Unsafe Block *)
            | EmptyStatement
            | VariableStatement
            | ExpressionStatement
@@ -418,27 +391,22 @@ Statement ::= BlockStatement
            | ForStatement
            | ForInStatement
            | SpawnStatement
+           | SuspendStatement
            | ContinueStatement
            | BreakStatement
            | ReturnStatement
            | DebuggerStatement
            | LabeledStatement
 
-UnsafeBlockStatement ::= 'unsafe' BlockStatement
-    (* Grants capability to perform unsafe operations: raw pointer deref,
-       extern "C" calls, unsafe fun calls, repr(Packed) field borrows,
-       static mut access. See Ch.03 §Unsafe Safety Model and Ch.05. *)
-
 VariableStatement ::= ('mut' | 'let') VariableDeclarationList ';'
 
 BlockStatement ::= '{' StatementList? '}'
 StatementList ::= StatementListItem+
-StatementListItem ::= ModifierList ( Statement | Declaration )
-    (* NOTE: Hash ∈ FIRST(StatementListItem) always denotes a ModifierList
-       containing an OuterAttribute. Hash is NEVER the start of an
-       attributeAnnotatedExpression at statement head. This is the
-       canonical S/R resolution for the "2 consecutive items with
-       leading attrs" scenario. *)
+StatementListItem ::= OuterAttributeList Declaration
+                    | OuterAttributeList Statement
+                    | Statement
+    (* The parser predicate validates which statement forms may carry an
+       outer attribute. Modifiers are consumed by their owning declaration. *)
 
 EmptyStatement ::= ';'
 
@@ -457,53 +425,38 @@ DefaultClause ::= 'default' '=>' StatementList
 GuardClause ::= 'if' Expression
 
 WhileStatement ::= 'while' '(' Expression ')' Statement
-DoWhileStatement ::= 'do' Statement 'while' '(' Expression ')' ';'?
+DoWhileStatement ::= 'do' Statement 'while' '(' Expression ')' ';'
 
 ForStatement ::= 'for' '(' ForInit? ';' Expression? ';' ForUpdate? ')' Statement
-ForInStatement ::= 'for' '(' (ForDeclaration | LeftHandSideExpression) 'in' Expression ')' Statement
-ForDeclaration ::= ('mut' | 'let') ForBinding
-ForBinding ::= BindingIdentifier | BindingPattern
-ForInit ::= ('mut' | 'let') VariableDeclarationList | Expression
-ForUpdate ::= Expression
+ForInit ::= ('mut' | 'let') VariableDeclarationList | ExpressionList
+ForUpdate ::= ExpressionList
+ExpressionList ::= Expression (',' Expression)* ','?
+ForInStatement ::= 'for' '(' ('mut' | 'let')? Pattern 'in' Expression ')' Statement
 
 SpawnStatement ::= 'spawn' SpawnModifierList? (SpawnBlockStatement | Expression) ';'?
 SpawnExpression ::= 'spawn' SpawnModifierList? (SpawnBlockStatement | AssignmentExpression)
 SpawnBlockStatement ::= '{' StatementList? Expression? '}'
-SpawnModifierList ::= SpawnModifier (','? SpawnModifier)*
-SpawnModifier ::= Identifier | Identifier '(' Identifier ')'
+SpawnModifierList ::= SpawnModifier+
+SpawnModifier ::= 'detached'
+                | 'blocking'
+                | 'priority' '(' ('high' | 'low') ')'
+
+SuspendStatement ::= 'suspend' ';'
+                   | 'suspend' 'until' Expression ';'
 
 ContinueStatement ::= 'continue' Identifier? ';'
 BreakStatement ::= 'break' Identifier? ';'
 ReturnStatement ::= 'return' Expression? ';'
 
 DebuggerStatement ::= 'debugger' ';'
-LabeledStatement ::= Identifier ':' Statement
-    with the following co-normative FIRST/FOLLOW constraints:
-
-    (a) Contextual-priority: at the start of ANY StatementListItem, try
-        markerDeclaration (look for 'marker' + Identifier | '!') FIRST.
-        Only if that fails (recoverable) fall back to LabeledStatement.
-        This prevents 'marker: loop { break marker; }' from being parsed
-        as a marker declaration with a recovery error at ': loop'.
-
-    (b) Label FOLLOW set restriction: The 'Statement' child of a
-        LabeledStatement MUST have
-        FIRST(Statement) ∈ { if, match, while, do, for, loop, '{', ';' }
-        ∪ { Identifier ∈ {loop, while, for, match, if, block, switch} }.
-        In particular, 'label: fun f(){}' or 'label: struct S{}' are
-        SYNTAX ERRORS (declarations are not statements).
-
-    (c) Outer-attr insertion forbidden between label ':' and Statement:
-        After the ':' of a label, a Hash starting an OuterAttribute is
-        ZOM0602 with diagnostic: "Attach attributes BEFORE the label
-        (e.g. '#[attr] label: loop …') or INSIDE the controlled statement
-        body."
-        Rationale: Without (c),
-            loop1: #[zom::hint::unroll]
-            for x in xs { … }
-        produces two structurally different ASTs that are semantically
-        equivalent but differ on pretty-print / LSP incremental node
-        identity.
+LabeledStatement ::= Identifier ':' LabelTarget
+LabelTarget ::= BlockStatement
+              | WhileStatement
+              | DoWhileStatement
+              | ForStatement
+              | ForInStatement
+              | LabeledStatement
+    (* An outer attribute cannot occur between the label colon and its target. *)
 
 (* Expressions *)
 Expression ::= AssignmentExpression (',' AssignmentExpression)*
@@ -536,7 +489,8 @@ ExponentiationExpression ::= UnaryExpression ('**' ExponentiationExpression)?
 
 UnaryExpression ::= PostfixExpression
                  | UpdateExpression
-                 | ('+' | '-' | '!' | '~' | '*' | '&' | 'typeof') UnaryExpression
+                 | ('+' | '-' | '!' | '~' | '*' | 'typeof') UnaryExpression
+                 | '&' 'mut'? UnaryExpression
 
 PostfixExpression ::= LeftHandSideExpression PostfixSuffix*
 PostfixSuffix ::= '?!' | '!!' | '++' | '--'
@@ -585,32 +539,20 @@ PrimaryExpression ::= 'this'
                    | StructLiteral
                    | FunctionExpression
                    | SpawnExpression
+                   | UnsafeBlockExpression
                    | '(' Expression ')'
 
-(* ── Control-flow exclusions from PrimaryExpression ─────────────────────
-   The following statement-level forms are NOT primary expressions and
-   CANNOT appear in expression position:
-       whileStatement, doWhileStatement, forStatement, forInStatement,
-       forOfStatement, doStatement, returnStatement, breakStatement,
-       continueStatement, debuggerStatement.
-   Hence 'return #[zom::hint::unroll] while COND { BODY }' is syntactically
-   impossible: the while is a Statement, not a primary expression, so the
-   '#[zom::hint::unroll]' attaches to the while-Statement via its
-   ModifierList slot (parse-tree B), NEVER as an attributeAnnotatedExpression.
-   This matches Ch.16 A-026a (contextual attachment disambiguation).
-   ────────────────────────────────────────────────────────────────────── *)
+UnsafeBlockExpression ::= 'unsafe' BlockStatement
+    (* Grants the capability required by raw-pointer operations.
+       See Ch.03 §Unsafe Safety Model and Ch.05. *)
+(* Statement forms are not alternatives of PrimaryExpression. *)
 
+ArrayLiteral ::= '[' (ElementList)? ']'
 ArrayLiteral ::= '[' (ElementList)? ']'
 ElementList ::= (AssignmentExpression | '...' AssignmentExpression)
               (',' (AssignmentExpression | '...' AssignmentExpression))* ','?
 
 ObjectLiteral ::= '{' ObjectLiteralElement (',' ObjectLiteralElement)* ','? '}'
-    (* Constraint: the Identifier of an ObjectLiteralElement in
-       statement position may NOT be one of:
-         struct | class | fun | enum | marker | alias | error | interface
-       (i.e. any contextual declaration keyword.)
-       This disambiguates struct-declaration-vs-object-literal when
-       combined with the statement-head Hash rule above. *)
 ObjectLiteralElement ::= PropertyDefinition
 PropertyDefinitionList ::= PropertyDefinition (',' PropertyDefinition)* ','?
 PropertyDefinition ::= Identifier
@@ -659,177 +601,50 @@ EnumPattern ::= PropertyName TuplePattern
 
 ## Module System Grammar (Authoritative)
 
-This sub-section restates and expands the module-related grammar rules scattered throughout the Syntactic Grammar section above into a single authoritative block. It mirrors the Chapter 13 Modules and Imports specification in full. Every production here is normative; implementations MUST parse module declarations, imports, exports, and inline modules according to these productions.
-
-### Module Declarations
-
-```ebnf
-(* ── Module declarations ────────────────────────────────────────── *)
-
-(* A `module` clause at the head of a source file declares the dotted
-   symbol path of that file. It is optional for crate-root files, whose
-   implicit module name is the crate name from the manifest. When
-   present, it must be the first non-comment, non-shebang item in the
-   file. A duplicate `module` declaration within one crate raises
-   ZOM0850 DuplicateModuleDeclaration. See Ch.13 §Module Declaration. *)
-
-ModuleDeclaration ::= 'module' ModuleName ';'
-ModuleName        ::= Identifier ('.' Identifier)*
-
-(* A `package` declaration is optional in source files. It is a
-   forward-reference to the PackageName/VersionString grammar from the
-   Manifest annex. When present it declares the published package
-   metadata for that crate root; typically it is written only in
-   generated or regenerated manifest headers. *)
-
-PackageDeclaration ::= 'package' PackageName (':' VersionString)? ';'
-```
-
-### Import Declarations
+This section mirrors Chapter 13 and the recursive parser. `module` declarations
+use one declared identifier. Imports and re-exports use `::` paths.
 
 ```ebnf
-(* ── Import declarations ────────────────────────────────────────── *)
+ModuleDeclaration ::=
+    'module' Identifier ';'
+  | 'module' Identifier '{' ModuleItem* '}'
+  | 'export'? 'module' Identifier '=' ModuleAliasPath ';'
 
-(* Zom v1 supports two mutually-exclusive import forms. Placing an
-   import anywhere other than module-root scope is ZOM0840
-   ImportMustBeTopLevel. *)
+ModuleAliasPath ::= Identifier ('::' Identifier)+
+QualifiedModulePath ::= Identifier ('::' Identifier)+
+GroupBasePath ::= Identifier ('::' Identifier)*
 
 ImportDeclaration ::= 'import' ImportClause ';'
+ImportClause ::=
+    QualifiedModulePath ('as' Identifier)?
+  | GroupBasePath '::' '{' ImportSpecifierList? '}'
 
-ImportClause      ::= ModuleImportClause
-                    | NamedImportClause
-
-(* Form A: Namespace import. Binds the final segment (or alias) as a
-   NamespaceSymbol whose backing scope is the target module's EXPORT
-   scope. Clash on local name -> ZOM0820 AmbiguousImport. *)
-ModuleImportClause ::= ModuleName ('as' Identifier)?
-
-(* Form B: Named import. Each specifier is resolved against the
-   target's EXPORT scope only. Missing/non-exported symbols raise
-   ZOM0815 SymbolNotExported. *)
-NamedImportClause ::= ModuleName '.' '{' ImportSpecifierList? '}'
 ImportSpecifierList ::= ImportSpecifier (',' ImportSpecifier)* ','?
-ImportSpecifier   ::= Identifier ('as' Identifier)?
+ImportSpecifier ::= Identifier ('as' Identifier)?
 
-(* Separator convention reminder (Ch.13 §Path Qualification and
-   Disambiguation): module-path segments in `import` always use `.`;
-   item-path selection inside expressions/types always uses `::`. The
-   form `import a.b.C` is a syntax error — users must write
-   `import a.b.{C}` for named selection. *)
-```
-
-### Export Declarations
-
-```ebnf
-(* ── Export declarations ────────────────────────────────────────── *)
-
-(* Three forms with disjoint FIRST sets:
-   (a) Declaration-site `export` — starts with `export` followed by
-       any Declaration keyword. Raises ZOM0845 ExportMustBeTopLevel if
-       the declaration is not at module-root scope.
-   (b) Local export-list `export { A, B as C };`. Raises ZOM0827 if A
-       or B is not declared in the module's root scope, ZOM0828 on
-       duplicate exported target names, ZOM0821 if the symbol binding
-       is not in root scope.
-   (c) Re-export `export mod.path.{ A, B as C };`. Looks up each
-       symbol in the target module's EXPORT scope only; non-exported
-       symbols raise ZOM0825 ReexportNonExportedSymbol. Cross-module
-       private-access attempts additionally raise
-       ZOM0830 PrivateAccessCrossBoundary when the target's private
-       scope is probed by an intermediate tool. *)
-
-ExportDeclaration ::= 'export' Declaration
-                    | 'export' ExportClause ';'
-
-ExportClause      ::= LocalExportClause
-                    | ReexportClause
-
-LocalExportClause ::= '{' ExportSpecifierList? '}'
-ReexportClause    ::= ModuleName '.' '{' ExportSpecifierList? '}'
+ExportDeclaration ::=
+    'export' Declaration
+  | 'export' '{' ExportSpecifierList? '}' ';'
+  | 'export' GroupBasePath '::' '{' ExportSpecifierList? '}' ';'
 
 ExportSpecifierList ::= ExportSpecifier (',' ExportSpecifier)* ','?
-ExportSpecifier   ::= Identifier ('as' Identifier)?
+ExportSpecifier ::= Identifier ('as' Identifier)?
 ```
 
-### Inline Modules and Paths
-
-```ebnf
-(* ── Inline modules, visibility, and qualified paths ───────────── *)
-
-(* Inline submodule declaration. The body form `mod foo { ... }`
-   creates a new child ModuleScope in the symbol table. The header
-   form `mod foo;` instructs the compiler to load the submodule from
-   disk via the filesystem-convention rules in Ch.13 §Filesystem
-   Conventions; ambiguity (both `foo.zom` and `foo/mod.zom` present)
-   raises ZOM0881 ModulePathAmbiguous. Visibility modifiers control
-   importability of the submodule; bare `mod` is module-private. *)
-
-InlineModuleDeclaration ::= Visibility? 'mod' Identifier
-                            ( '{' ModuleItem* '}' | ';' )
-
-(* Visibility ladder. `export` is the only keyword that promotes a
-   symbol across crate boundaries. The remaining `pub(...)` forms
-   restrict visibility to progressively narrower scopes. At the TOP
-   LEVEL of a module only `export` and the epsilon (private) form are
-   meaningful; the finer `pub(...)` forms are primarily used on
-   `InlineModuleDeclaration` and on class/interface members, where
-   they are interpreted by the member-level modifier grammar. *)
-
-Visibility ::= 'export'
-             | 'pub' '(' 'crate' ')'
-             | 'pub' '(' 'package' ')'
-             | 'pub' '(' 'super' ')'
-             | 'pub' '(' 'self' ')'
-             | 'pub' '(' 'in' QualifiedPath ')'
-             | epsilon
-
-(* MemberModifier extends Visibility with member-only tokens. The
-   ClassExtensibility tokens (`sealed`, `final`, `open`) are applied
-   BEFORE the ModifierList on class and interface declarations, so
-   that extensibility is a first-class, non-reorderable syntactic
-   decision. Defaults: classes and interfaces are `final` by default
-   — the user must write `open class X` for an extensible class, and
-   `sealed interface Y` for a closed hierarchy. Class members default
-   to module-private; interface methods default to public. *)
-
-MemberModifier       ::= Visibility
-                       | 'static'
-                       | 'readonly'
-                       | 'mutating'
-                       | 'override'
-                       | 'sealed'
-                       | 'final'
-                       | 'open'
-                       | 'unsafe'
-                       | 'marker'
-ClassExtensibility   ::= 'sealed' | 'final' | 'open'
-
-(* Four explicit path prefixes for qualified item paths. `::` is a
-   strict synonym of `crate::` in v1; it is reserved for future use as
-   a cross-crate absolute path prefix. Item paths always use `::` for
-   segment separation; module paths use `.`. *)
-
-PathPrefix    ::= 'crate::' | 'self::' | 'super::' | '::'
-QualifiedPath ::= PathPrefix? Identifier ( '::' Identifier )*
-```
-
-### FIRST / FOLLOW Notes
-
-| Production               | FIRST set (keywords)                                 |
-|--------------------------|------------------------------------------------------|
-| `ModuleDeclaration`      | `module`                                             |
-| `PackageDeclaration`     | `package`                                            |
-| `ImportDeclaration`      | `import`                                             |
-| `ExportDeclaration`      | `export`                                             |
-| `InlineModuleDeclaration`| `mod`, or any leading `Visibility` + `mod`           |
-| `MutDeclaration`         | `mut`                                                |
-| `LetDeclaration`         | `let`                                                |
-| `ConstDeclaration`       | `const`                                              |
-| `ClassDeclaration`       | `class`, any `ClassExtensibility` keyword, or any member of `FIRST(ModifierList)` |
-| `InterfaceDeclaration`   | `interface`, any `ClassExtensibility` keyword, or any member of `FIRST(ModifierList)` |
-
-The disambiguation between `InlineModuleDeclaration` (body form) and `InlineModuleDeclaration` (header form `;`) is resolved by the single-token lookahead after the identifier: `'{'` commits to the body form, and `';'` commits to the header form.
+| Production | FIRST set |
+|---|---|
+| `ModuleDeclaration` | `module`, or `export module` for the alias form |
+| `ImportDeclaration` | `import` |
+| `ExportDeclaration` | `export` |
+| `MutDeclaration` | `mut` |
+| `LetDeclaration` | `let` |
+| `ConstDeclaration` | `const` |
+| `ClassDeclaration` | `class` or a valid declaration modifier |
+| `InterfaceDeclaration` | `interface` or a valid declaration modifier |
 
 ---
 
-This completes the implementation-aligned Zom grammar reference for lexical structure, types, expressions, statements, declarations, patterns, classes, interfaces, enumerations, error handling, generics, modules, and the complete formal grammar.
+This completes the implementation-aligned Zom grammar reference for lexical
+structure, types, expressions, statements, declarations, patterns, classes,
+interfaces, enumerations, error handling, generics, modules, and the complete
+formal grammar.

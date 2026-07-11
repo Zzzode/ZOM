@@ -69,18 +69,14 @@ interface Monad<T> : Functor<T> {
 
 ### Type Constraints
 
-Type constraints restrict which concrete types may be substituted for a generic parameter. ZOM uses a **single unified bound list syntax**: both interface bounds and marker bounds appear in `:`-separated bound lists, joined by `+`. Interface bounds always accept the positive form; marker bounds additionally accept a `!` (negative) prefix.
+Type constraints restrict which concrete types may be substituted for a generic parameter. ZOM uses a single positive bound-list syntax: interface and marker names appear after `:`, joined by `+`.
 
 #### Bound List Grammar
 
 ```ebnf
-BoundList ::= BoundItem ( '+' BoundItem )*
-BoundItem ::= '!' MarkerPath
-            | InterfaceName ( '<' GenericArgs '>' )?
+BoundList ::= TypeExpression ( '+' TypeExpression )*
 ```
 
-- **Positive interface bounds only.** Writing `fun f<T: !Drawable>(x: T)` is a hard error. Rationale: interfaces describe *behavioral obligations* — "does NOT implement Drawable" is not a useful static contract; refactoring into smaller, finer-grained interfaces achieves the same goal without requiring negative reasoning.
-- **Marker bounds allow negation.** The form `!Shared` means "definitely does NOT impl the Shared marker". Marker negation is sound because markers are structural Boolean properties of types, closed under negative coherence (Ch.22 §22.3).
 - **Order-independence.** The bound set `{Drawable, Sendable, Shared}` describes exactly the same predicate as `{Sendable, Drawable, Shared}`. The tooling canonicalization convention is: interface bounds first, then marker bounds, each subgroup sorted alphabetically.
 - **Duplicate detection.** Duplicate bounds within the same list produce warning W1204 `DuplicateBound`, suppressed by default.
 
@@ -104,10 +100,7 @@ fun draw<T: Drawable + Sendable>(x: T);
 fun draw<T>(x: T)
 where
     T: Drawable,
-    T: Sendable,
-{
-    ...
-}
+    T: Sendable;
 ```
 
 Where clause preferred when:
@@ -129,32 +122,23 @@ fun render_all<T: Drawable + Sendable + Shared>(surfaces: T[]) -> Canvas {
     return Canvas();
 }
 
-// 3. Interface + negated marker — !Sendable is legitimate
-fun spawn_local<T: Runnable + !Sendable>(task: T) -> LocalJoinHandle<T> {
+// 3. Interface + marker
+fun spawn_local<T: Runnable + TaskBound>(task: T) -> LocalJoinHandle<T> {
     return LocalJoinHandle(task);
 }
 
 // 4. Where clause for a complex multi-parameter signature
 fun complex_render<T, U>(surfaces: T[], transforms: U[]) -> Canvas
 where
-    T: Drawable + Sendable + Shared,
-    U: Transform + Linear,
+    T: Drawable,
+    T: Sendable,
+    T: Shared,
+    U: Transform,
+    U: Linear,
     T::Item: Cloneable,
 {
     return Canvas();
 }
-```
-
-Two anti-examples:
-
-```zom
-// ERROR — interface negation is not a meaningful static contract.
-// fun f<T: !Drawable>(x: T) -> unit;
-// → error: interface bounds cannot be negated
-
-// ERROR — two interface negations; rewrite using structural marker bounds
-// fun g<T: !JsonSerializable + !BinarySerializable>(x: T) -> unit;
-// → error: interface bounds cannot be negated
 ```
 
 #### Semantic Rules for Bound Lists
@@ -168,19 +152,15 @@ Two anti-examples:
 
    Type intersections `A & B` at type position are independent from the bound conjunction above. They are enforced structurally by the type checker as true sub-typing relationships, not as proof obligations on generic parameters. To name an intersection as an existential, write `dyn (Drawable & Movable)` (requires object-safe interfaces).
 
-2. **Marker negation `!` is legal only on marker bounds.** Applied to an interface name it is a semantic error.
-
-3. **Marker-only privileges in where clauses.** Markers are Boolean predicates in a proper lattice, which grants them two syntactic privileges that interface bounds do not possess:
-   - **Negation.** As above.
-   - **Commutative / associative closure.** The expression `M1 + M2 + M3` forms a proper Boolean conjunction. Interface bounds share the alphabetical-order rule but do NOT form a closed lattice — there is no automatic way to combine `Drawable + Hashable` into a named third interface.
+2. **Conjunction.** The expression `M1 + M2 + M3` in a type-parameter bound list requires all three bounds. A `where` predicate carries one right-hand type, so multiple obligations for the same subject are written as repeated predicates. Interface and marker bounds share the same source syntax and canonical ordering.
 
    ```zom
    fun spawn_single_writer<F, T>(f: F) -> JoinHandle<T>
    where
-       F: FnOnce() -> T,
-       F: Sendable + !Shared,        // !Shared: requires no shared-read aliasing
-       T: Sendable + Linear,         // Linear: must be consumed exactly once
-   { ... }
+       F: Sendable,
+       F: Linear,
+       T: Sendable,
+       T: Linear;
    ```
 
 #### Bound Satisfaction at Call Site
@@ -189,7 +169,6 @@ For each call to a generic function `f<T_real>()`, the compiler performs, for ev
 
 - **Interface bound** `T: I<...>` → a valid impl block must exist declaring `impl I<...> for T_real`. Failure raises `ZOM4018 CheckerTraitNotImplemented`.
 - **Positive marker bound** `T: M` → the marker bitmap for `T_real` must have bit `M` set. Marker-bound failure diagnostics belong to the marker/coherence diagnostic range and must not reuse the type-mismatch or trait-coherence codes reserved by RFC 0005.
-- **Negative marker bound** `T: !M` → the marker bitmap for `T_real` must have bit `M` explicitly clear (either by negative impl or by the negative-closure lattice rejecting derivation). Negative marker-bound failure diagnostics belong to the marker/coherence diagnostic range and must not reuse the trait-bound code reserved for missing interface implementations.
 
 Bound satisfaction is also checked *inside* the generic body (prior to monomorphisation) against the declared bounds alone. The body may not assume any property of `T` that is not listed in its bound set; violations are diagnosed at body-check time via the same ZOM04xx diagnostic codes.
 
@@ -198,12 +177,6 @@ Bound satisfaction is also checked *inside* the generic body (prior to monomorph
 User-defined generic named types are invariant in all type parameters in v1.
 This conservative rule prevents mutable containers from accidentally lifting a
 reference coercion through the container boundary.
-
-```zom
-let xs: Vec<&mut i32> = make_mut_refs();
-// INVALID: Vec<T> is invariant in T.
-// let ys: Vec<&i32> = xs;
-```
 
 Function types still use the standard variance rule: parameter types are
 contravariant, and return and raises members are covariant. See

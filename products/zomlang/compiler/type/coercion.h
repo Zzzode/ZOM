@@ -26,6 +26,8 @@ enum class CoercionKind {
   NeverToAny,
   ToAny,
   MutRefToSharedRef,
+  SharedRefToConstRaw,
+  MutRefToMutRaw,
   MutRawToConstRaw,
   UnionInjection,
   NullToNullableUnion,

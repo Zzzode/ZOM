@@ -465,11 +465,6 @@ zc::Vector<Constructor> ExhaustivenessChecker::getConstructors(const Type& ty) {
             ctor.arity = varNode.payload.words[kTupleVariantNfieldsWord];
             break;
 
-          case SyntaxKind::StructVariant:
-            ctor.name = impl->tree.ident(IdentId(varNode.payload.words[kStructVariantNameWord]));
-            ctor.arity = varNode.payload.words[kStructVariantNfieldsWord];
-            break;
-
           default:
             continue;
         }
@@ -931,26 +926,22 @@ void ExhaustivenessChecker::checkMatchExhaustiveness(NodeId matchStmt, const Typ
   // Quick check: unguarded wildcard makes it exhaustive
   if (foundWildcard) { return; }
 
+  auto missing = computeMissingPatterns(coverageMatrix, scrutineeType);
+  if (!missing.empty()) {
+    zc::String missingStr = zc::str(missing[0].asPtr());
+    for (size_t i = 1; i < missing.size(); ++i) {
+      missingStr = zc::str(missingStr.asPtr(), ", "_zc, missing[i].asPtr());
+    }
+    impl->diags.diagnose<DiagID::CheckerNonExhaustiveMatch>(matchLoc, missingStr.asPtr());
+    return;
+  }
+
   // Full usefulness check
   PatternRow wildcardTest;
   wildcardTest.add(NodeId());
 
   bool useful = isUseful(coverageMatrix, wildcardTest, scrutineeType);
-  if (useful) {
-    auto missing = computeMissingPatterns(coverageMatrix, scrutineeType);
-
-    zc::String missingStr;
-    if (!missing.empty()) {
-      missingStr = zc::str(missing[0].asPtr());
-      for (size_t i = 1; i < missing.size(); ++i) {
-        missingStr = zc::str(missingStr.asPtr(), ", "_zc, missing[i].asPtr());
-      }
-    } else {
-      missingStr = zc::str("_"_zc);
-    }
-
-    impl->diags.diagnose<DiagID::CheckerNonExhaustiveMatch>(matchLoc, missingStr.asPtr());
-  }
+  if (useful) { impl->diags.diagnose<DiagID::CheckerNonExhaustiveMatch>(matchLoc, "_"_zc); }
 }
 
 }  // namespace checker

@@ -98,3 +98,23 @@ DIAG(4053, UnsupportedTypeExpression, kError, "Unsupported type expression", 0)
 DIAG(4054, OrphanImpl, kError,
              "Cannot implement '{0}' for '{1}': either the type or the interface must be "
              "defined in the current module", 2)
+DIAG(4055, DynDuplicateAssociatedTypeBinding, kError,
+             "Duplicate associated type binding '{0}' in dyn interface '{1}'", 2)
+DIAG(4056, UseAfterMove, kError, "Use of moved value", 0)
+DIAG(4057, ValueMovedHere, kNote, "Value moved here", 0)
+DIAG(4058, MutableBorrowConflicts, kError, "Mutable borrow conflicts with an active borrow", 0)
+DIAG(4059, SharedBorrowConflicts, kError, "Shared borrow conflicts with an active mutable borrow",
+             0)
+DIAG(4060, BorrowOriginHere, kNote, "Conflicting borrow starts here", 0)
+DIAG(4061, BorrowDoesNotLiveLongEnough, kError, "Borrowed value does not live long enough", 0)
+DIAG(4062, BorrowReferentHere, kNote, "Borrowed value is created here", 0)
+DIAG(4063, LinearNotConsumed, kError, "Linear value is not consumed on all normal paths", 0)
+DIAG(4064, LinearInitializedHere, kNote, "Linear value is initialized here", 0)
+DIAG(4065, LinearConsumedTwice, kError, "Linear value is consumed more than once", 0)
+DIAG(4066, LinearFirstConsumedHere, kNote, "Linear value was first consumed here", 0)
+DIAG(4067, ScopedTaskBorrowEscapes, kError,
+             "Scoped task captures a reference that may outlive its referent", 0)
+DIAG(4068, ScopedTaskReferentHere, kNote, "Captured referent is created here", 0)
+DIAG(4069, RawPointerBoundaryRequiresUnsafe, kError,
+             "Raw pointer safe boundary requires unsafe acknowledgement", 0)
+DIAG(4070, MoveOutOfBorrow, kError, "Cannot move a value while it is borrowed", 0)

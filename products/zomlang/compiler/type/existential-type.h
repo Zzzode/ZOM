@@ -15,6 +15,8 @@
 #pragma once
 
 #include "zc/core/array.h"
+#include "zc/core/string.h"
+#include "zc/core/vector.h"
 #include "zomlang/compiler/type/type.h"
 
 namespace zomlang {
@@ -37,11 +39,20 @@ namespace type {
 /// soundness (the concrete type has unknown size).
 class ExistentialType final : public Type {
 public:
+  struct AssocBinding {
+    zc::StringPtr name;
+    zc::Own<Type> type;
+  };
+
   /// \brief Construct an existential type for the given interface.
   explicit ExistentialType(zc::Own<Type> interfaceType);
 
   /// \brief Construct an existential type for the given interface and marker bounds.
   ExistentialType(zc::Own<Type> interfaceType, zc::ArrayPtr<const zc::StringPtr> markerNames);
+
+  /// \brief Construct an existential type with markers and associated type bindings.
+  ExistentialType(zc::Own<Type> interfaceType, zc::ArrayPtr<const zc::StringPtr> markerNames,
+                  zc::Vector<AssocBinding> assocBindings);
 
   ~ExistentialType() noexcept(false);
 
@@ -59,6 +70,18 @@ public:
 
   /// \brief Return a marker bound by index.
   zc::StringPtr getMarkerName(size_t index) const;
+
+  /// \brief Return the number of associated type bindings.
+  size_t getAssocBindingCount() const;
+
+  /// \brief Return the associated type binding name by index.
+  zc::StringPtr getAssocBindingName(size_t index) const;
+
+  /// \brief Return the associated type binding value by index.
+  const Type& getAssocBindingType(size_t index) const;
+
+  /// \brief Return an associated type binding value by name.
+  zc::Maybe<const Type&> getAssocBinding(zc::StringPtr name) const;
 
   // Type overrides
   TypeKind getKind() const override { return TypeKind::Existential; }

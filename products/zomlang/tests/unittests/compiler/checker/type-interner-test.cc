@@ -61,6 +61,23 @@ ZC_TEST("TypeInterner.UnionOrderDoesNotAffectId") {
   ZC_EXPECT(interner.size() == 1);
 }
 
+ZC_TEST("TypeInterner.InternUnionMatchesOwnedUnionCanonicalIdentity") {
+  TypeInterner interner;
+  auto success = PrimitiveType::createI32();
+  auto error = PrimitiveType::createStr();
+
+  zc::Vector<zc::Own<Type>> alternatives;
+  alternatives.add(PrimitiveType::createStr());
+  alternatives.add(PrimitiveType::createI32());
+  UnionType ownedUnion(zc::mv(alternatives));
+
+  const auto directId = interner.internUnion(*success, *error);
+  ZC_EXPECT(directId == interner.intern(ownedUnion));
+  ZC_EXPECT(interner.contains(directId));
+  ZC_EXPECT(!interner.contains(TypeId()));
+  ZC_EXPECT(!interner.contains(TypeId(99)));
+}
+
 ZC_TEST("TypeInterner.UnionDeduplicatesAlternatives") {
   TypeInterner interner;
 

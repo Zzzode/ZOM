@@ -275,6 +275,15 @@ void BindingMetadata::resizeFor(const Tree& tree) {
   impl->labelTargets.resize(tree.nodeCount());
 }
 
+bool BindingMetadata::isSizedFor(const Tree& tree) const {
+  const auto count = tree.nodeCount();
+  return impl->parents.size() == count && impl->scopes.size() == count &&
+         impl->symbols.size() == count && impl->unresolved.size() == count &&
+         impl->deferredMembers.size() == count && impl->shadowOfs.size() == count &&
+         impl->reexports.size() == count && impl->captureLists.size() == count &&
+         impl->labelTargets.size() == count;
+}
+
 void BindingMetadata::setParent(NodeId node, NodeId parent) {
   ZC_IREQUIRE(indexOf(node) < impl->parents.size(), "metadata parent write is outside tree");
   impl->parents[indexOf(node)] = parent;

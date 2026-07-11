@@ -51,6 +51,17 @@ public:
   /// \brief Intern a type and return its canonical id.
   TypeId intern(const Type& type);
 
+  /// \brief Intern the canonical union of two type trees without constructing an owning union.
+  /// \param first First type tree to include.
+  /// \param second Second type tree to include.
+  /// \return Canonical id of the flattened, deduplicated union.
+  TypeId internUnion(const Type& first, const Type& second);
+
+  /// \brief Return whether an identifier belongs to this interner.
+  /// \param id Identifier to validate.
+  /// \return True when the identifier is valid and in range.
+  bool contains(TypeId id) const;
+
   /// \brief Return the canonical key for an interned type.
   zc::StringPtr getCanonicalKey(TypeId id) const;
 

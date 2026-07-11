@@ -1,6 +1,9 @@
 # Declarations
 
-Declarations introduce new named entities into a program's namespace. They define variables, functions, types, classes, and other program constructs. Every declaration may be preceded by an outer attribute list `#[...]` and/or a modifier list.
+Declarations introduce named entities into a program's namespace. Module items
+and non-expression block items may carry an outer attribute list. Function
+parameters have their own attribute slot. Type members and enum variants do not
+accept outer attributes.
 
 ## Declaration Categories
 
@@ -16,7 +19,6 @@ Declaration ::= VariableStatement
               | AliasDecl
               | ImplDecl
               | ExternDecl
-              | MacroRulesDecl
 ```
 
 | Category | Keywords | Description |
@@ -31,13 +33,14 @@ Declaration ::= VariableStatement
 | **Type Aliases** | `alias` | Named synonyms for type expressions |
 | **Impl Declarations** | `impl` | Interface implementations and marker evidence |
 | **Extern Declarations** | `extern` | Foreign function interface bindings |
-| **Macro Rules Declarations** | `macro` | Declarative macro 2.0 definitions |
 
 ---
 
 ## Modifiers and Attributes
 
-All declarations (except value declarations at statement position) accept an optional `ModifierList` prefix and/or outer attributes `#[...]`.
+Named function, type, and alias declarations have a `ModifierList` syntax slot.
+Module-level visibility modifiers are rejected with `ZOM2088`; `export` creates
+the module export surface. Member modifiers apply only inside a type body.
 
 ```ebnf
 Modifier     ::= 'public' | 'private' | 'protected'
@@ -46,20 +49,25 @@ Modifier     ::= 'public' | 'private' | 'protected'
 
 ModifierList ::= Modifier*
                  (* semantic predicate enforces valid combinations:
-                    e.g. 'static mutating' rejected, 'abstract static' accepted *)
+                    e.g. 'static mutating' and 'abstract static' are rejected *)
 ```
 
 | Modifier | Applies To | Semantics |
 |---|---|---|
-| `public` | Class/struct/interface members, functions | Visible to all modules |
-| `private` | Class/struct/interface members, functions | Visible only within enclosing module |
-| `protected` | Class members | Visible within module and subclasses |
+| `public` | Class/struct/interface members | Public member visibility fact |
+| `private` | Class/struct/interface members | Private member visibility fact |
+| `protected` | Class members | Protected member visibility fact |
 | `static` | Class/struct/interface members | Belongs to type, not instances |
 | `readonly` | Struct fields, interface properties | Cannot be mutated after initialization |
 | `mutating` | Methods | May mutate `self` / `this` |
 | `override` | Class methods | Overrides a superclass method |
 | `abstract` | Classes, methods | No implementation; must be overridden |
-| `export` | Top-level declarations | Promotes symbol across crate boundaries |
+| `export` | Module declarations | Adds a symbol to the module export surface |
+
+`public`, `private`, and `protected` are retained member metadata. The current
+language does not reject member lookup from those facts and does not compute a
+subclass access context. Chapter 23 defines this boundary. Module visibility is
+controlled only by explicit `export` surfaces.
 
 Value declarations (`mut`, `let`, `const`) do **not** accept a `ModifierList` prefix. Visibility and attributes flow via the enclosing `moduleItem` / `StatementListItem` production.
 
@@ -169,20 +177,20 @@ const AREA = PI * RADIUS * RADIUS;
 
 ### Rejected `var`
 
-`var` is reserved only to produce a targeted diagnostic (`ZOM5003`). It is not a declaration form in ZOM. Use `mut` for mutable block-scoped runtime bindings.
+`var` is a reserved lexer keyword and is not a declaration form. Rejected uses
+emit registered parser diagnostics. Use `mut` for mutable block-scoped runtime
+bindings.
 
 ---
 
 ## Function Declarations
 
 ```ebnf
-FunctionDecl   ::= ModifierList UnsafePrefix? 'fun' BindingIdent TypeParameters?
-                   ParameterClause FunctionSignature? FunctionBody?
+FunctionDecl   ::= ModifierList 'fun' BindingIdent TypeParameters?
+                   FunctionSignature WhereClause? FunctionBody
 
-UnsafePrefix   ::= 'unsafe'   (* soft keyword; semantic predicate enforces position *)
-
-FunctionSignature ::= '->' TypeExpr RaisesClause?   (* return type with optional raises *)
-                    | RaisesClause                   (* raises without return type *)
+FunctionSignature ::= ParameterClause
+                      ( '->' TypeExpr RaisesClause? | RaisesClause )?
 
 FunctionBody   ::= BlockStatement | ';'
 
@@ -192,10 +200,9 @@ RaisesClause   ::= 'raises' TypeExpr
 
 ParameterClause ::= '(' ParameterList? ')'
 ParameterList   ::= Parameter (',' Parameter)* ','?
-Parameter       ::= OuterAttributeList? (Identifier ':')? TypeExpr Initializer?
-                  | OuterAttributeList? 'this'
-                    (* unnamed positional params allowed: `fun f(i32, str) -> i32`;
-                       `this` is the explicit receiver parameter and defaults to Self. *)
+Parameter       ::= OuterAttributeList? Identifier ':' TypeExpr Initializer?
+                  | OuterAttributeList? 'this' (':' TypeExpr)?
+                    (* `this` is the explicit receiver parameter and defaults to Self. *)
 ```
 
 ### Basic Function Declaration
@@ -230,31 +237,20 @@ fun greet(name: str, greeting: str = "Hello") -> str {
     return greeting + ", " + name + "!";
 }
 
-// Optional parameters
-fun createUser(name: str, email: str, age?: i32) {
-    // age is of type i32?
+// Nullable parameter with a default value
+fun createUser(name: str, email: str, age: i32? = null) {
     if (age != null) {
         print("Age: " + age.toString());
     }
 }
 
-// Rest parameters
-fun sum(...numbers: i32[]) -> i32 {
-    mut total = 0;
-    for (let num in numbers) {
-        total += num;
-    }
-    return total;
-}
-
-// Named parameters at call site
+// Default parameter used by positional calls
 fun createPoint(x: f64, y: f64, z: f64 = 0.0) -> Point {
     return Point(x, y, z);
 }
 
-// Call with named parameters
-let point = createPoint(x: 10.0, y: 20.0);
-let point3D = createPoint(x: 1.0, y: 2.0, z: 3.0);
+let point = createPoint(10.0, 20.0);
+let point3D = createPoint(1.0, 2.0, 3.0);
 ```
 
 ### Function with Error Handling (`raises`)
@@ -333,31 +329,6 @@ fun parseOrDefault<T = str>(input: str, defaultValue: T) -> T {
 }
 ```
 
-### Unsafe Functions
-
-An `unsafe fun` declares a function whose correct calling depends on preconditions that the compiler cannot statically verify. Calling an `unsafe fun` requires the caller to wrap the call in an `unsafe { }` block, attesting that the preconditions are satisfied.
-
-```zom
-/// # Safety
-/// Caller must ensure:
-/// - `ptr` is non-null and properly aligned
-/// - `ptr` points to a valid, initialized `T`
-/// - No concurrent mutable access to `*ptr` during this call
-unsafe fun read_unchecked<T>(ptr: *const T) -> T {
-    *ptr  // OK: function body is implicitly unsafe context
-}
-
-// Calling requires unsafe { } at call site
-let value = unsafe { read_unchecked(my_ptr) };
-```
-
-Rules:
-
-1. **Body is implicitly unsafe.** The body of an `unsafe fun` is treated as an `unsafe` context.
-2. **Caller attestation.** Every call to an `unsafe fun` must appear within an `unsafe { }` block, or the compiler emits `ZOM0904 UnsafeCallOutsideUnsafe`.
-3. **Documentation required.** Every `unsafe fun` SHOULD include a `# Safety` section in its doc comment. Lint `ZOM0920 MissingSafetyDoc` warns when an `unsafe fun` lacks a `# Safety` doc section.
-4. **Transitivity.** An `unsafe fun` that calls another `unsafe fun` does NOT need a nested `unsafe { }` block.
-
 ### Reserved Function Forms
 
 `async` and `await` are reserved words, but asynchronous function syntax is not part of the current parser grammar. ZOM uses the zero-color `suspend`/`spawn` model instead (see [Ch.15 Concurrency](15-concurrency.md)).
@@ -370,20 +341,18 @@ Classes are reference types that support single inheritance, polymorphism, and e
 
 ```ebnf
 ClassDecl      ::= ModifierList 'class' BindingIdent TypeParameters?
-                   ClassHeritage?
+                   ClassHeritage? WhereClause?
                    '{' ClassElement* '}'
 
-ClassHeritage  ::= ':' TypeExpr        (* single superclass; written with colon,
-                                           NOT 'extends' keyword *)
+ClassHeritage  ::= ':' TypeExpr        (* single superclass *)
 
-ClassElement   ::= ';'
-                 | OuterAttributeList ModifierList InitDecl
-                 | OuterAttributeList ModifierList DeinitDecl
-                 | OuterAttributeList ModifierList PropertyDecl
-                 | OuterAttributeList ModifierList ClassConstDecl
-                 | OuterAttributeList ModifierList MethodDecl
-                 | OuterAttributeList ModifierList ClassFieldDecl
-                 | OuterAttributeList ModifierList ComputedPropertyDecl
+ClassElement   ::= ModifierList InitDecl
+                 | ModifierList DeinitDecl
+                 | ModifierList PropertyDecl
+                 | ModifierList ClassConstDecl
+                 | ModifierList MethodDecl
+                 | ModifierList ClassFieldDecl
+                 | ModifierList ComputedPropertyDecl
 
 PropertyStorage ::= 'mut' | 'let'
 PropertyDecl    ::= PropertyStorage PropertyName
@@ -391,19 +360,16 @@ PropertyDecl    ::= PropertyStorage PropertyName
 ClassConstDecl  ::= 'const' BindingIdent TypeAnnotation? '=' ConstExpression ';'
 ClassFieldDecl  ::= PropertyName ':' TypeExpr ('=' Expression)?
                      (';' | ',' | (* implicit separator before next keyword-starting member *))
-MethodDecl      ::= 'fun' PropertyName TypeParameters?
-                     ParameterClause FunctionSignature?
+MethodDecl      ::= 'fun' PropertyName TypeParameters? FunctionSignature
                      ( BlockStatement | ';' )
-InitDecl        ::= 'init' TypeParameters? ParameterClause
-                     RaisesClause? BlockStatement
+InitDecl        ::= 'init' ParameterClause RaisesClause? BlockStatement
 DeinitDecl      ::= 'deinit' ParameterClause RaisesClause? BlockStatement
 
-ComputedPropertyDecl ::= 'get' PropertyName ParameterClause
-                          FunctionSignature? BlockStatement
+ComputedPropertyDecl ::= 'get' PropertyName FunctionSignature BlockStatement
                           SetAccessorDecl?
-SetAccessorDecl  ::= OuterAttributeList ModifierList 'set' PropertyName
-                      ParameterClause FunctionSignature? BlockStatement
-                   | 'set' ParameterClause FunctionSignature? BlockStatement
+SetAccessorDecl  ::= ModifierList 'set' PropertyName
+                      FunctionSignature BlockStatement
+                   | 'set' PropertyName FunctionSignature BlockStatement
 ```
 
 ### Basic Class Declaration
@@ -456,7 +422,7 @@ class BankAccount {
 
 ### Class Inheritance
 
-Class inheritance uses the colon (`:`) syntax, **not** the `extends` keyword:
+Class inheritance uses a colon (`:`):
 
 ```zom
 // Base class
@@ -478,7 +444,7 @@ class Animal {
     }
 }
 
-// Derived class (colon syntax, NOT 'extends')
+// Derived class
 class Dog: Animal {
     private let breed: str;
 
@@ -619,7 +585,7 @@ class Resource {
         this.handle = unsafe { allocate_memory(1024) };
     }
 
-    deinit {
+    deinit() {
         unsafe { free_memory(this.handle) };
     }
 }
@@ -633,11 +599,12 @@ Structs are value types with named fields. They do not support inheritance but c
 
 ```ebnf
 StructDecl     ::= ModifierList 'struct' BindingIdent TypeParameters?
+                   WhereClause?
                    '{' StructElement* '}'
 
-StructElement  ::= OuterAttributeList ModifierList StructFieldDecl
-                 | OuterAttributeList ModifierList MethodDecl
-                 | OuterAttributeList ModifierList StructCtorDecl
+StructElement  ::= ModifierList StructFieldDecl
+                 | ModifierList MethodDecl
+                 | ModifierList StructCtorDecl
 
 StructFieldDecl ::= ('mut' | 'readonly')? PropertyName
                     ':' TypeExpr
@@ -699,7 +666,7 @@ struct Vector2D {
 
     fun normalize() -> Vector2D {
         let len = this.length();
-        return Vector2D(x: this.x / len, y: this.y / len);
+        return Vector2D { x: this.x / len, y: this.y / len };
     }
 }
 ```
@@ -708,8 +675,8 @@ struct Vector2D {
 
 ```zom
 struct Person {
-    let name: str;
-    let age: i32;
+    readonly name: str;
+    readonly age: i32;
     mut email: str?;
 
     init(name: str, age: i32) {
@@ -730,33 +697,31 @@ struct Person {
 
 ## Interface Declarations
 
-Interfaces define contracts that types can implement. They support single-inheritance via the colon (`:`) syntax and may contain associated type declarations.
+Interfaces define contracts that types can implement. They support inheritance
+through the colon (`:`) syntax and may contain methods, accessors, and associated
+type declarations.
 
 ```ebnf
 InterfaceDecl  ::= ModifierList 'interface' BindingIdent TypeParameters?
                    InterfaceHeritage?
                    '{' InterfaceBody '}'
 
-InterfaceHeritage ::= ':' InterfaceBoundList   (* super-interfaces; colon-separated,
-                                                   NOT 'extends' *)
+InterfaceHeritage ::= ':' InterfaceBoundList   (* super-interfaces *)
 InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*
                        (* '+' = conjunction (AND); '|' is ONLY for UnionType *)
 InterfaceBound     ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
 QualifiedPathOrIdent ::= PathSegment ( '::' PathSegment )*
 
 InterfaceBody   ::= InterfaceElement*
-InterfaceElement ::= ';'
-                  | OuterAttributeList ModifierList 'fun' MethodSignature ';'?
-                  | OuterAttributeList ModifierList ('get' | 'set') PropertySignature ';'?
-                  | OuterAttributeList ModifierList 'type' Identifier TypeParameters?
+InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
+                  | ModifierList ('get' | 'set') PropertySignature ';'
+                  | ModifierList 'type' Identifier TypeParameters?
                     ( ':' InterfaceBoundList )? ( '=' TypeExpr )? ';'
 
-PropertySignature ::= PropertyName '?'? TypeAnnotation
-MethodSignature   ::= PropertyName '?'? CallSignature
-CallSignature     ::= TypeParameters? ParameterClause FunctionSignature?
+PropertySignature ::= PropertyName FunctionSignature
+MethodSignature   ::= PropertyName CallSignature
+CallSignature     ::= TypeParameters? FunctionSignature
 ```
-
-Interfaces may be marked `unsafe` to indicate that implementing them carries a semantic contract the compiler cannot enforce. See [Ch.09 Interfaces](09-interfaces.md) for full semantics.
 
 ### Basic Interface
 
@@ -771,8 +736,8 @@ interface Drawable {
 
 ```zom
 interface Named {
-    name: str;
-    readonly id: i64;
+    get name() -> str;
+    readonly get id() -> i64;
 }
 ```
 
@@ -780,8 +745,8 @@ interface Named {
 
 ```zom
 interface Shape {
-    readonly area: f64;
-    readonly perimeter: f64;
+    readonly get area() -> f64;
+    readonly get perimeter() -> f64;
 
     fun scale(factor: f64);
     fun contains(point: Point) -> bool;
@@ -806,7 +771,7 @@ Interface inheritance uses the colon (`:`) syntax with `+` for multiple super-in
 ```zom
 // Single super-interface
 interface ColoredShape: Shape {
-    color: Color;
+    get color() -> Color;
     fun changeColor(newColor: Color);
 }
 
@@ -816,12 +781,12 @@ interface NamedShape: Named + Shape {
 }
 ```
 
-### Interface with Optional Methods
+### Interface Methods
 
 ```zom
 interface Configurable {
     fun configure(options: ConfigOptions);
-    fun reset?(); // Optional method
+    fun reset();
 }
 ```
 
@@ -831,47 +796,31 @@ interface Configurable {
 interface Iterator {
     type Item;   // Associated type
 
-    fun next() -> this.Item?;
+    fun next() -> Self::Item?;
     fun hasNext() -> bool;
 }
 
 interface Collection {
     type Element;
-    type Iter: Iterator<Item = this.Element>;
+    type Iter: Iterator;
 
-    fun iter() -> this.Iter;
+    fun iter() -> Self::Iter;
     fun count() -> i32;
 }
 ```
 
-### Unsafe Interfaces
-
-Interfaces with unverifiable semantic invariants may be documented as unsafe via the `unsafe` prefix in their `impl` declaration:
-
-```zom
-interface Sendable {
-    // Marker interface — see Ch.16 §16.9 for standard markers
-}
-
-// Implementing an unsafe interface requires 'unsafe impl'
-unsafe impl Sendable for MyType {
-    // ...
-}
-```
-
----
-
 ## Enum Declarations
 
-Enums define tagged union (algebraic data) types. Each variant may carry associated tuple data or an explicit discriminant value.
+Enums define tagged union types. Each variant is either a unit variant or a
+tuple variant and may carry an explicit constant discriminant expression.
 
 ```ebnf
 EnumDecl       ::= ModifierList 'enum' BindingIdent TypeParameters?
                    '{' EnumBody? '}'
 EnumBody       ::= EnumVariant ( ',' EnumVariant )* ','?
-EnumVariant    ::= OuterAttributeList Identifier
+EnumVariant    ::= Identifier
                    ( '(' VariantTypeList ')' )?   (* tuple associated value *)
-                   ( '=' Expression )?            (* explicit discriminant / raw value *)
+                   ( '=' ConstExpression )?       (* explicit discriminant *)
 VariantTypeList ::= TypeExpr ( ',' TypeExpr )* ','?
 ```
 
@@ -905,31 +854,14 @@ enum Result<T, E> {
 }
 ```
 
-### Complex Enum with Multiple Associated Values
+### Enum with Multiple Associated Values
 
 ```zom
 enum WebEvent {
     PageLoad,
     KeyPress(char),
     Click(i32, i32),
-    Scroll { deltaX: f64, deltaY: f64 }
-}
-```
-
-### Enum with Methods
-
-```zom
-enum Planet {
-    Mercury = 0.330,
-    Venus = 4.87,
-    Earth = 5.97,
-    Mars = 0.642;
-
-    fun surfaceGravity() -> f64 {
-        const G = 6.67300E-11;
-        const RADIUS = 6.37814E6;
-        return G * this.mass / (RADIUS * RADIUS);
-    }
+    Scroll(f64, f64),
 }
 ```
 
@@ -940,14 +872,8 @@ enum Planet {
 Error types provide structured error handling with custom error types that can carry additional context information. They work with the `raises` clause and `match`/`is` patterns.
 
 ```ebnf
-ErrorDecl      ::= ModifierList 'error' BindingIdent TypeParameters?
-                   ErrorHeritage?
-                   '{' ErrorBody? '}'
-ErrorHeritage  ::= ':' TypeExpr             (* error inheritance chain;
-                                                   colon-separated, NOT 'extends' *)
-ErrorBody      ::= ErrorField ( (',' | ';') ErrorField )* (',' | ';')?
-ErrorField     ::= PropertyName ':' TypeExpr
-                   ( '=' Expression )?
+ErrorDecl      ::= ModifierList 'error' BindingIdent '{' ErrorBody? '}'
+ErrorBody      ::= StructElement*
 ```
 
 There is no `throw` keyword (Principle P3: Explicit Error Flow). Errors are returned as values and handled via pattern matching.
@@ -956,7 +882,7 @@ There is no `throw` keyword (Principle P3: Explicit Error Flow). Errors are retu
 
 ```zom
 error NetworkError {
-    message: str
+    message: str;
 }
 ```
 
@@ -964,40 +890,9 @@ error NetworkError {
 
 ```zom
 error ValidationError {
-    field: str,
-    message: str,
-    code: i32
-}
-```
-
-### Generic Error Type
-
-```zom
-error ParseError<T> {
-    input: str,
-    expectedType: Type<T>,
-    position: i32
-}
-```
-
-### Error Hierarchy
-
-Error inheritance uses the colon (`:`) syntax:
-
-```zom
-error DatabaseError {
-    message: str,
-    code: i32
-}
-
-error ConnectionError: DatabaseError {
-    host: str,
-    port: i32
-}
-
-error QueryError: DatabaseError {
-    query: str,
-    parameters: any[]
+    field: str;
+    message: str;
+    code: i32;
 }
 ```
 
@@ -1022,9 +917,14 @@ alias EmailAddress = str;
 ### Generic Type Alias
 
 ```zom
-alias Result<T, E> = T | E;
 alias Optional<T> = T | null;
 ```
+
+The `Result<T, E>` example in this chapter is the nominal enum declared in the
+enum section. It is not a type alias and does not acquire the checked
+error-union role used by raising calls. Code handles that declaration through
+its `Success` and `Failure` variants. The identifier `Result` is not reserved;
+other declarations with that name follow ordinary scope and module rules.
 
 ### Complex Type Alias
 
@@ -1061,17 +961,16 @@ Impl blocks attach interface implementations to types. There are two forms: **st
 ImplDecl       ::= StandaloneImplDecl
                  | MarkerImplDecl
 
-StandaloneImplDecl ::= 'impl' TypeParameters? InterfaceBoundList 'for' TypeExpr
-                       '{' ImplMember* '}'
+StandaloneImplDecl ::= UnsafePrefix? 'impl' TypeParameters? InterfaceBoundList 'for' TypeExpr
+                       WhereClause? '{' ImplMember* '}'
     (* 'impl' is a SOFT keyword — recognized only at impl-head position *)
 
-ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters? ParameterClause
-                    FunctionSignature? ( ';' | BlockStatement )
+ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters?
+                    FunctionSignature ( ';' | BlockStatement )
                  | 'type' Identifier TypeParameters? '=' TypeExpr ';'
                  | 'mut' VariableDeclList ';'
                  | 'let' VariableDeclList ';'
                  | 'const' ConstDeclList ';'
-                 | ModifierList 'alias' BindingIdent TypeParameters? '=' TypeExpr ';'
 
 MarkerImplDecl ::= UnsafePrefix? 'impl' TypeParameters? '!'? MarkerImplPath
                    'for' TypeExpr WhereClause? ( ';' | '{' StructElement* '}' )
@@ -1117,12 +1016,12 @@ impl Drawable for Button {
 ```zom
 interface Iterator {
     type Item;
-    fun next() -> this.Item?;
+    fun next() -> Self::Item?;
     fun hasNext() -> bool;
 }
 
 struct VecIter<T> {
-    let data: T[];
+    readonly data: T[];
     mut index: i32;
 
     init(data: T[]) {
@@ -1131,7 +1030,7 @@ struct VecIter<T> {
     }
 }
 
-impl Iterator for VecIter<T> {
+impl<T> Iterator for VecIter<T> {
     type Item = T;
 
     fun next() -> T? {
@@ -1172,23 +1071,21 @@ impl std::marker::Linear for FileHandle {
 Foreign function interface (FFI) declarations provide bindings to code written in other languages.
 
 ```ebnf
-ExternDecl     ::= UnsafePrefix? 'extern' AbiLiteral? ( ExternBlock | FunctionDecl )
+ExternDecl     ::= 'extern' AbiLiteral? ExternBlock
     (* 'extern' is a SOFT keyword *)
 
 AbiLiteral     ::= '"' ('C' | 'Cdecl' | 'system' | 'zom-cdecl') '"'
 
 ExternBlock    ::= '{' ExternItem* '}'
-ExternItem     ::= FunctionDecl                            (* external function *)
+ExternItem     ::= 'fun' Identifier FunctionSignature ';'  (* external function *)
                  | 'variable' Identifier ':' TypeExpr ';'  (* external variable *)
-                 | 'type' Identifier '=' 'opaque'? Identifier TypeExpr? ';'
-                   (* opaque type alias for FFI forward declarations *)
 ```
 
 ### External Function Binding
 
 ```zom
 extern "C" {
-    fun printf(format: str, ...) -> i32;
+    fun puts(message: str) -> i32;
     fun malloc(size: i64) -> *mut u8;
     fun free(ptr: *mut u8);
 }
@@ -1202,79 +1099,30 @@ extern "C" {
 }
 ```
 
-### Opaque Type Forward Declaration
-
-```zom
-extern "C" {
-    type FILE = opaque;
-    fun fopen(filename: str, mode: str) -> *FILE;
-    fun fclose(stream: *FILE) -> i32;
-}
-```
-
-### Unsafe Extern Block
-
-```zom
-unsafe extern "C" {
-    fun memcpy(dest: *mut u8, src: *const u8, n: i64) -> *mut u8;
-}
-```
-
----
-
-## Macro Rules Declarations
-
-Declarative macro 2.0 definitions. The `macro` keyword is a soft keyword recognized only at macro-head position.
-
-```ebnf
-MacroRulesDecl ::= 'macro' Identifier '!' '{' MacroRule* '}'
-
-MacroRule      ::= '(' MacroPattern ')' '=>' '{' MacroTokenTree '}' ';'?
-                 | '[' MacroPattern ']' '=>' '{' MacroTokenTree '}' ';'?
-
-MacroPattern   ::= MacroPatToken ( ',' MacroPatToken )* ( ',' '...' )?
-MacroPatToken  ::= '$' Identifier ':' MacroFragSpec
-                 | Identifier | Literal
-                 | Punctuator
-
-MacroFragSpec  ::= Identifier   (* e.g. expr, stmt, item, pat, ty, ident, path, tt *)
-```
-
-### Basic Macro
-
-```zom
-macro println! {
-    ($msg:expr) => {
-        print($msg + "\n");
-    };
-    ($fmt:expr, $($arg:expr),*) => {
-        print(format!($fmt, $($arg),*) + "\n");
-    };
-}
-```
-
----
-
 ## Module Declarations
 
-A `module` clause at the head of a source file declares the dotted symbol path of that file. It is optional for crate-root files, whose implicit module name is the crate name from the manifest. When present, it must be the first non-comment, non-shebang item in the file.
+A source file may begin with one `module` declaration. When present, it must be
+the first source item after the shebang and outer attributes. The declared name
+is one identifier; module paths use `::` only in the alias target.
 
 ```ebnf
-ModuleDecl     ::= 'module' ModuleName ';'
-                 | 'module' ModuleName '{' ModuleItem* '}'
-                 | 'export'? 'module' ModuleName '=' AttributePath ';'
+ModuleDeclaration ::=
+    'module' Identifier ';'
+  | 'module' Identifier '{' ModuleItem* '}'
+  | 'export'? 'module' Identifier '=' ModuleAliasPath ';'
 
-ModuleName     ::= Identifier ('.' Identifier)*
+ModuleAliasPath ::= Identifier ('::' Identifier)+
 ```
 
 ```zom
-// Simple module declaration
-module myapp.services.auth;
+module auth;
 
-// Module alias
+module auth {
+    export fun validate() -> bool { true }
+}
+
 module utils = myapp::utilities::common;
 
-// Exported module alias
 export module math = myapp::math::core;
 ```
 
@@ -1289,33 +1137,19 @@ See [Ch.13 Modules and Imports](13-modules-and-imports.md) for the full module s
 - Forward references to functions, types, and classes at module scope are permitted.
 - Forward references to local `let`/`mut` bindings are not permitted; definite-assignment rules apply.
 
-## Conditional Compilation on Declarations
+## Attributes on Declarations
 
-Declarations may be gated by `#[zom::cfg(...)]` attributes at module scope. Unlike statements, declarations (including `const`, `fun`, `class`, `struct`, `interface`, `enum`, `error`, `alias`, `import`, `export`, `module`, `impl`, `extern`, `macro`) unconditionally accept all outer attributes.
+An outer attribute list may prefix a module-item declaration, including an
+import, export, value declaration, function, named type, alias, standalone impl,
+or extern block. The parser retains the list on the
+containing `StatementListItem`. The module declaration itself cannot carry an
+attribute because it occupies the source-file header rather than the module-item
+list.
 
-```zom
-#[zom::cfg(feature = "logging")]
-fun logMessage(msg: str) {
-    print("[LOG] " + msg);
-}
+Attributes are not accepted on type members or enum variants because those AST
+nodes have no attribute storage. See Chapter 16 for the complete placement
+matrix.
 
-#[zom::cfg(target_os = "linux")]
-extern "C" {
-    fun epoll_create1(flags: i32) -> i32;
-}
-```
-
-Value declarations (`let`, `mut`) at module scope may NOT be individually cfg-gated; they must be wrapped in a standalone block:
-
-```zom
-// Error ZOM1901: cannot gate a single let/mut declaration
-// #[zom::cfg(feature = "debug")]
-// let debug_level = 3;
-
-// OK: wrap in standalone block
-#[zom::cfg(feature = "debug")] {
-    let debug_level = 3;
-}
-```
-
-See [Ch.19 Conditional Compilation](19-conditional-compilation.md) for full `#[zom::cfg(...)]` syntax and semantics.
+The exact path `zom::cfg` is rejected because the compiler has no conditional
+selection phase. Generic qualified attribute acceptance does not imply code
+generation hooks or source removal.

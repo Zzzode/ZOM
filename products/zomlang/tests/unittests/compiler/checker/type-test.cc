@@ -923,6 +923,31 @@ ZC_TEST("ExistentialType.MarkerBoundsAreCanonicalized") {
   ZC_EXPECT(!sendableOnly.isSubtypeOf(first));
 }
 
+ZC_TEST("ExistentialType.AssociatedBindingsParticipateInIdentity") {
+  zc::Vector<zc::StringPtr> noMarkers;
+  zc::Vector<ExistentialType::AssocBinding> firstBindings;
+  firstBindings.add(ExistentialType::AssocBinding{"Item"_zc, PrimitiveType::createU8()});
+  zc::Vector<ExistentialType::AssocBinding> secondBindings;
+  secondBindings.add(ExistentialType::AssocBinding{"Item"_zc, PrimitiveType::createU8()});
+  zc::Vector<ExistentialType::AssocBinding> differentBindings;
+  differentBindings.add(ExistentialType::AssocBinding{"Item"_zc, PrimitiveType::createStr()});
+
+  ExistentialType first(zc::heap<InterfaceType>("Iterator"_zc), noMarkers.asPtr(),
+                        zc::mv(firstBindings));
+  ExistentialType second(zc::heap<InterfaceType>("Iterator"_zc), noMarkers.asPtr(),
+                         zc::mv(secondBindings));
+  ExistentialType different(zc::heap<InterfaceType>("Iterator"_zc), noMarkers.asPtr(),
+                            zc::mv(differentBindings));
+
+  ZC_EXPECT(first.getAssocBindingCount() == 1);
+  ZC_EXPECT(first.getAssocBindingName(0) == "Item"_zc);
+  ZC_EXPECT(isPrimitive(first.getAssocBindingType(0)));
+  ZC_EXPECT(first.equals(second));
+  ZC_EXPECT(first.isSubtypeOf(second));
+  ZC_EXPECT(!first.equals(different));
+  ZC_EXPECT(!first.isSubtypeOf(different));
+}
+
 // ============================================================================
 // AssociatedType
 // ============================================================================
@@ -1112,6 +1137,47 @@ ZC_TEST("TypeAlgebra.ClonePreservesCompositeStructure") {
   ZC_EXPECT(cloned.get() != &original);
   ZC_EXPECT(cloned->equals(original));
   ZC_EXPECT(cloned->toString() == original.toString());
+}
+
+ZC_TEST("TypeAlgebra.GenericPatternMatchesAndSubstitutesNamedArguments") {
+  zc::StringPtr genericNames[] = {"T"_zc};
+
+  NamedType pattern("Box"_zc);
+  pattern.addTypeArg(zc::heap<NamedType>("T"_zc));
+
+  NamedType concrete("Box"_zc);
+  concrete.addTypeArg(zc::heap<NamedType>("Good"_zc));
+
+  zc::Vector<GenericSubstitution> substitutions;
+  ZC_EXPECT(matchGenericTypePattern(genericNames, pattern, concrete, substitutions));
+  ZC_EXPECT(substitutions.size() == 1);
+
+  ZC_IF_SOME(bound, lookupGenericSubstitution(substitutions.asPtr(), "T"_zc)) {
+    ZC_EXPECT(bound.toString() == "Good"_zc);
+  }
+  else { ZC_FAIL_REQUIRE("expected T substitution"); }
+
+  auto substituted = substituteGenericTypePattern(genericNames, pattern, substitutions.asPtr());
+  ZC_EXPECT(substituted->equals(concrete));
+  ZC_EXPECT(!isBareGenericTypePattern(genericNames, pattern));
+
+  NamedType bare("T"_zc);
+  ZC_EXPECT(isBareGenericTypePattern(genericNames, bare));
+}
+
+ZC_TEST("TypeAlgebra.GenericPatternRejectsConflictingRepeatedBinding") {
+  zc::StringPtr genericNames[] = {"T"_zc};
+
+  NamedType pattern("Pair"_zc);
+  pattern.addTypeArg(zc::heap<NamedType>("T"_zc));
+  pattern.addTypeArg(zc::heap<NamedType>("T"_zc));
+
+  NamedType concrete("Pair"_zc);
+  concrete.addTypeArg(zc::heap<NamedType>("Left"_zc));
+  concrete.addTypeArg(zc::heap<NamedType>("Right"_zc));
+
+  zc::Vector<GenericSubstitution> substitutions;
+  ZC_EXPECT(!matchGenericTypePattern(genericNames, pattern, concrete, substitutions));
 }
 
 }  // namespace type

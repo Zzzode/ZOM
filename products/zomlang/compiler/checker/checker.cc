@@ -17,6 +17,7 @@
 #include "zc/core/common.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/checker/body-checker.h"
+#include "zomlang/compiler/checker/borrow-model.h"
 #include "zomlang/compiler/checker/decl-signature.h"
 #include "zomlang/compiler/checker/trait-resolver.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -77,6 +78,11 @@ bool Checker::check() {
   TraitResolver traitResolver(impl->typeEnv, impl->symbolTable, impl->tree, impl->metadata,
                               impl->diags);
   traitResolver.checkCoherence();
+  if (impl->diags.hasErrors()) return false;
+
+  BorrowCheckerPhase borrowPhase(impl->tree, impl->typeEnv, impl->metadata);
+  auto borrowResult = borrowPhase.run();
+  emitBorrowDiagnostics(impl->tree, borrowResult, impl->diags);
 
   return !impl->diags.hasErrors();
 }

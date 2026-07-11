@@ -71,7 +71,7 @@ zc::String InterfaceType::toString() const {
   zc::String result = zc::str("interface ", impl->name);
 
   if (impl->parentInterfaces.size() > 0) {
-    result = zc::str(result, " extends ");
+    result = zc::str(result, " : ");
     for (size_t i = 0; i < impl->parentInterfaces.size(); ++i) {
       if (i > 0) { result = zc::str(result, ", "); }
       result = zc::str(result, impl->parentInterfaces[i]->toString());

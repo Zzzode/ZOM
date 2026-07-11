@@ -35,7 +35,7 @@ namespace type {
 /// ```
 ///
 /// Interface types support:
-/// - Interface inheritance (extends)
+/// - Parent interfaces
 /// - Method signature specification
 /// - Structural subtyping (duck typing) when enabled
 class InterfaceType final : public Type {
@@ -72,7 +72,7 @@ public:
   /// \brief Check if the interface has a specific method.
   bool hasMethod(zc::StringPtr name) const;
 
-  /// \brief Add a parent interface (extends).
+  /// \brief Add a parent interface.
   void addParentInterface(zc::Own<Type> parent);
 
   /// \brief Get the number of parent interfaces.

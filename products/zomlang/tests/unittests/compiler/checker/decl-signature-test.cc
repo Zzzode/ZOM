@@ -162,6 +162,43 @@ ast::NodeId makeAssociatedTypeBinding(TestFixture& fix, zc::StringPtr name, ast:
                                 payload);
 }
 
+ast::NodeId makeDynTypeWithAssocBinding(TestFixture& fix, zc::StringPtr ifaceName,
+                                        zc::StringPtr assocName, ast::NodeId bindingTy) {
+  ast::NodePayload bindingPayload;
+  bindingPayload.words[ast::kDynTypeAssocBindingNameWord] =
+      fix.builder().internIdent(assocName).value;
+  bindingPayload.words[ast::kDynTypeAssocBindingTyWord] = bindingTy.value;
+  auto binding = fix.builder().makeNode(ast::SyntaxKind::DynTypeAssocBinding, source::SourceRange(),
+                                        bindingPayload);
+  zc::Vector<ast::NodeId> bindings;
+  bindings.add(binding);
+  auto bindingNodeList = fix.makeNodeList(bindings.asPtr());
+  ast::NodePayload bindingListPayload;
+  bindingListPayload.words[ast::kDynTypeAssocBindingListNBindingsWord] = bindings.size();
+  bindingListPayload.words[ast::kDynTypeAssocBindingListBindingsFirstWord] = bindingNodeList.first;
+  bindingListPayload.words[ast::kDynTypeAssocBindingListBindingsSizeWord] = bindingNodeList.size;
+  auto bindingList = fix.builder().makeNode(ast::SyntaxKind::DynTypeAssocBindingList,
+                                            source::SourceRange(), bindingListPayload);
+
+  zc::Vector<ast::NodeId> ifaces;
+  ifaces.add(fix.makeNamedTypeExpr(ifaceName));
+  auto ifaceNodeList = fix.makeNodeList(ifaces.asPtr());
+  ast::NodePayload ifaceListPayload;
+  ifaceListPayload.words[ast::kDynTypeIfaceListNIfacesWord] = ifaces.size();
+  ifaceListPayload.words[ast::kDynTypeIfaceListIfacesFirstWord] = ifaceNodeList.first;
+  ifaceListPayload.words[ast::kDynTypeIfaceListIfacesSizeWord] = ifaceNodeList.size;
+  auto ifaceList = fix.builder().makeNode(ast::SyntaxKind::DynTypeIfaceList, source::SourceRange(),
+                                          ifaceListPayload);
+
+  ast::NodePayload dynPayload;
+  dynPayload.words[ast::kDynTypeExprIfacesIdWord] = ifaceList.value;
+  dynPayload.words[ast::kDynTypeExprMarkersIdWord] = 0;
+  dynPayload.words[ast::kDynTypeExprAssocBindingsIdWord] = bindingList.value;
+  dynPayload.words[ast::kDynTypeExprHasLifetimeWord] = 0;
+  dynPayload.words[ast::kDynTypeExprLifetimeWord] = 0;
+  return fix.builder().makeNode(ast::SyntaxKind::DynTypeExpr, source::SourceRange(), dynPayload);
+}
+
 ast::NodeId makeImplIfaceList(TestFixture& fix, ast::NodeList ifaces) {
   ast::NodePayload payload;
   payload.words[ast::kImplIfaceListNIfacesWord] = ifaces.size;
@@ -224,6 +261,30 @@ ZC_TEST("DeclSignature.FunctionDeclHasSignature") {
   ZC_EXPECT(typeEnv.hasType(fn));
   auto& ty = typeEnv.getType(fn);
   ZC_EXPECT(isFunction(ty));
+}
+
+ZC_TEST("DeclSignature.MethodPreservesRaisesType") {
+  TestFixture fix;
+  auto raisesTy = fix.makeNamedTypeExpr("Failure"_zc);
+  auto method =
+      fix.makeMethodDecl("run"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc),
+                         false, ast::NodeId(), raisesTy);
+  zc::Vector<ast::NodeId> members;
+  members.add(method);
+  auto iface = fix.makeInterfaceDecl("Runner"_zc,
+                                     fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  auto typeEnv = computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(typeEnv.hasType(method));
+  const auto& ty = typeEnv.getType(method);
+  ZC_EXPECT(isFunction(ty));
+  if (isFunction(ty)) {
+    const auto& fnTy = static_cast<const type::FunctionType&>(ty);
+    ZC_EXPECT(fnTy.getRaisesType() != zc::none);
+  }
 }
 
 ZC_TEST("DeclSignature.FunctionWithParamsHasParamTypes") {
@@ -971,6 +1032,48 @@ ZC_TEST("DeclSignature.DynRejectsUnboundAssociatedType") {
   computeSignatures(fix, topDecls.asPtr());
 
   ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynUnassociatedType));
+}
+
+ZC_TEST("DeclSignature.DynAcceptsAssociatedTypeBinding") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  zc::Vector<ast::NodeId> members;
+  members.add(makeAssociatedTypeDecl(fix, "Item"_zc));
+  auto iface = fix.makeInterfaceDecl("Iterator"_zc,
+                                     fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
+
+  auto dynTy =
+      makeDynTypeWithAssocBinding(fix, "Iterator"_zc, "Item"_zc, fix.makeNamedTypeExpr("i32"_zc));
+  auto alias = fix.makeAliasDecl("DynIterator"_zc, dynTy);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(!containsDiagnosticId(*consumerPtr, diagnostics::DiagID::DynUnassociatedType));
+}
+
+ZC_TEST("DeclSignature.DynRejectsUnknownAssociatedTypeBinding") {
+  TestFixture fix;
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  auto consumerPtr = consumer.get();
+  fix.diagnostics().addConsumer(zc::mv(consumer));
+
+  auto iface = fix.makeInterfaceDecl("Drawable"_zc, fix.makeClassMemberList(ast::NodeList()));
+  auto dynTy =
+      makeDynTypeWithAssocBinding(fix, "Drawable"_zc, "Item"_zc, fix.makeNamedTypeExpr("i32"_zc));
+  auto alias = fix.makeAliasDecl("DynDrawable"_zc, dynTy);
+
+  zc::Vector<ast::NodeId> topDecls;
+  topDecls.add(iface);
+  topDecls.add(alias);
+  computeSignatures(fix, topDecls.asPtr());
+
+  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::NoAssociatedTypeProjection));
 }
 
 ZC_TEST("DeclSignature.DynRejectsGenericAssociatedType") {

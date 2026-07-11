@@ -21,6 +21,7 @@
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/ast/generated/node-layout.h"
 #include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/source/location.h"
@@ -100,8 +101,11 @@ struct IdentList final {
 
 /// \brief Fixed payload words for schema-generated syntax nodes.
 struct NodePayload final {
-  uint32_t words[7] = {};
+  uint32_t words[kNodePayloadWordCount] = {};
 };
+
+static_assert(sizeof(NodePayload) == kNodePayloadByteCount,
+              "NodePayload storage must match the generated schema layout");
 
 /// \brief Main syntax record used by ast::Tree.
 struct Node final {
@@ -212,6 +216,11 @@ public:
   ZC_DISALLOW_COPY(BindingMetadata);
 
   void resizeFor(const Tree& tree);
+
+  /// \brief Return whether every metadata side table is sized for the tree.
+  /// \param tree Syntax tree whose node capacity must be covered exactly.
+  /// \return True when all side tables match the tree node count.
+  bool isSizedFor(const Tree& tree) const;
 
   void setParent(NodeId node, NodeId parent);
   NodeId parent(NodeId node) const;
