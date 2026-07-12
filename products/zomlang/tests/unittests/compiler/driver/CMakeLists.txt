@@ -33,16 +33,15 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
     PROPERTIES C_STANDARD 11
                C_STANDARD_REQUIRED ON
                C_EXTENSIONS OFF)
+  zom_disable_coverage_for_target(zom-linux-sandbox-runtime-fixture)
   target_compile_options(
     zom-linux-sandbox-runtime-fixture
     PRIVATE -ffreestanding -fPIE -fno-asynchronous-unwind-tables
-            -fno-stack-protector -fno-sanitize=all
-            -fno-profile-instr-generate -fno-coverage-mapping)
+            -fno-stack-protector -fno-sanitize=all)
   target_link_options(
     zom-linux-sandbox-runtime-fixture
     PRIVATE -nostdlib -static-pie -Wl,--build-id=none -Wl,-e,_start
-            -Wl,-z,noexecstack -fno-sanitize=all
-            -fno-profile-instr-generate -fno-coverage-mapping)
+            -Wl,-z,noexecstack -fno-sanitize=all)
   add_dependencies(linux-native-sandbox-test zom-linux-sandbox-runtime-fixture)
   target_compile_definitions(
     linux-native-sandbox-test

@@ -67,4 +67,26 @@ if(ZOM_ENABLE_COVERAGE)
   endif()
 endif()
 
+function(zom_disable_coverage_for_target target)
+  if(NOT TARGET ${target})
+    message(FATAL_ERROR "Unknown target passed to zom_disable_coverage_for_target: ${target}")
+  endif()
+  if(NOT ZOM_ENABLE_COVERAGE)
+    return()
+  endif()
+
+  get_target_property(compile_options ${target} COMPILE_OPTIONS)
+  if(compile_options)
+    list(REMOVE_ITEM compile_options -fprofile-instr-generate -fcoverage-mapping -fno-inline
+         --coverage)
+    set_property(TARGET ${target} PROPERTY COMPILE_OPTIONS ${compile_options})
+  endif()
+
+  get_target_property(link_options ${target} LINK_OPTIONS)
+  if(link_options)
+    list(REMOVE_ITEM link_options -fprofile-instr-generate -fcoverage-mapping --coverage)
+    set_property(TARGET ${target} PROPERTY LINK_OPTIONS ${link_options})
+  endif()
+endfunction()
+
 add_compile_options(-Wno-sign-compare -Wno-unused-parameter)
