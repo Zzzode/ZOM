@@ -728,17 +728,19 @@ BindingCandidateResult BindingBuilder::buildCandidate(
   auto skeleton = zc::mv(skeletonResult.get<DefinitionSkeletonCandidate>());
 
   zc::Vector<ExportSurfaceEntry> visibleEntries;
+  zc::Vector<ExportSurfaceEntry> exports;
   for (auto& seed : skeleton.moduleSurfaceSeeds) {
     zc::Maybe<identity::SourceSpan> noSurfaceAlias;
-    zc::Maybe<identity::SourceSpan> noExportSpan;
     zc::Vector<ReexportProvenanceStep> noChain;
-    visibleEntries.add(ExportSurfaceEntry(
+    auto entry = ExportSurfaceEntry(
         zc::mv(seed.name), BindingTarget::definition(seed.identity),
-        BindingTarget::definition(seed.identity), VisibilityEnvelope::module(input.module()), false,
-        seed.source.clone(), seed.source.clone(), zc::mv(noSurfaceAlias), zc::mv(noExportSpan),
-        zc::mv(noChain)));
+        BindingTarget::definition(seed.identity),
+        seed.exported ? VisibilityEnvelope::external() : VisibilityEnvelope::module(input.module()),
+        seed.exported, seed.source.clone(), seed.source.clone(), zc::mv(noSurfaceAlias),
+        zc::mv(seed.exportSpan), zc::mv(noChain));
+    if (entry.exported) { exports.add(cloneEntry(entry)); }
+    visibleEntries.add(zc::mv(entry));
   }
-  zc::Vector<ExportSurfaceEntry> exports;
   auto encodedVisible = encodeSurfaceMap(input, visibleEntries.asPtr());
   auto encodedExports = encodeSurfaceMap(input, exports.asPtr());
   if (encodedVisible == zc::none || encodedExports == zc::none) {
@@ -794,8 +796,7 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
   if (!candidate.moduleAliases.empty() || !candidate.imports.empty() ||
       !candidate.localExports.empty() || !candidate.deferredMembers.empty() ||
       !candidate.labels.empty() || !candidate.controlTransfers.empty() ||
-      !candidate.shadowTargets.empty() || !candidate.closureFreeVariables.empty() ||
-      !candidate.currentSurface.exports.empty()) {
+      !candidate.shadowTargets.empty() || !candidate.closureFreeVariables.empty()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
   auto candidateAllocation = encodeBindingAllocationDump(input, candidate.scopes.asPtr());

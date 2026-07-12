@@ -13,13 +13,16 @@ namespace zomlang::compiler::binder {
 
 struct ModuleSkeletonSurfaceSeed final {
   ModuleSkeletonSurfaceSeed(BindingNameKey&& name, identity::DefId identity,
-                            identity::SourceSpan&& source) noexcept;
+                            identity::SourceSpan&& source, bool exported,
+                            zc::Maybe<identity::SourceSpan>&& exportSpan) noexcept;
   ModuleSkeletonSurfaceSeed(ModuleSkeletonSurfaceSeed&&) noexcept = default;
   ModuleSkeletonSurfaceSeed& operator=(ModuleSkeletonSurfaceSeed&&) noexcept = default;
   ZC_DISALLOW_COPY(ModuleSkeletonSurfaceSeed);
   BindingNameKey name;
   identity::DefId identity;
   identity::SourceSpan source;
+  bool exported;
+  zc::Maybe<identity::SourceSpan> exportSpan;
 };
 
 struct DefinitionSkeletonCandidate final {

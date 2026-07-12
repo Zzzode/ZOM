@@ -6,6 +6,8 @@
 #include "zomlang/compiler/binder/internal/binding-skeleton.h"
 
 #include "zc/core/debug.h"
+#include "zomlang/compiler/ast/generated/node-payload.h"
+#include "zomlang/compiler/ast/generated/node-traverse.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -153,12 +155,37 @@ void sortSurfaceSeeds(zc::Vector<ModuleSkeletonSurfaceSeed>& seeds) {
   }
 }
 
+zc::Maybe<ast::NodeId> declarationExport(const ast::Tree& tree, ast::NodeId target,
+                                         bool& ambiguous) {
+  zc::Maybe<ast::NodeId> result;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::ExportDeclaration) { return; }
+    const ast::NodeId declaration(syntax.payload.words[ast::kExportDeclarationDeclarationWord]);
+    if (!tree.contains(declaration)) { return; }
+    bool containsTarget = false;
+    ast::visitTreePreOrder(tree, declaration, [&](ast::NodeId child, const ast::Node&) {
+      if (child == target) { containsTarget = true; }
+    });
+    if (!containsTarget) { return; }
+    if (result != zc::none) {
+      ambiguous = true;
+      return;
+    }
+    result = node;
+  });
+  return result;
+}
+
 }  // namespace
 
-ModuleSkeletonSurfaceSeed::ModuleSkeletonSurfaceSeed(BindingNameKey&& name,
-                                                     identity::DefId identity,
-                                                     identity::SourceSpan&& source) noexcept
-    : name(zc::mv(name)), identity(identity), source(zc::mv(source)) {}
+ModuleSkeletonSurfaceSeed::ModuleSkeletonSurfaceSeed(
+    BindingNameKey&& name, identity::DefId identity, identity::SourceSpan&& source, bool exported,
+    zc::Maybe<identity::SourceSpan>&& exportSpan) noexcept
+    : name(zc::mv(name)),
+      identity(identity),
+      source(zc::mv(source)),
+      exported(exported),
+      exportSpan(zc::mv(exportSpan)) {}
 
 DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindingInput& input,
                                                             ScopeArenaCandidate& arena) {
@@ -246,9 +273,21 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
           definition.definition, definition.site.clone(), definition.kind, definition.name.clone(),
           nameSpace, scope, definition.source.clone(), DefinitionActivation::ModuleSkeleton));
       if (record.kind == ScopeKind::Module) {
-        result.moduleSurfaceSeeds.add(
-            ModuleSkeletonSurfaceSeed(BindingNameKey(nameSpace, name.clone()),
-                                      definition.definition, definition.source.clone()));
+        bool ambiguousExport = false;
+        auto exportNode = declarationExport(input.tree(), definition.node, ambiguousExport);
+        if (ambiguousExport) {
+          return failure(input, BinderInvariantKind::InvalidBindingFact, definition.node);
+        }
+        zc::Maybe<identity::SourceSpan> exportSpan;
+        ZC_IF_SOME(node, exportNode) {
+          exportSpan = input.parsedModule().spanFor(input.tree().node(node).range);
+          if (exportSpan == zc::none) {
+            return failure(input, BinderInvariantKind::InvalidBindingFact, definition.node);
+          }
+        }
+        result.moduleSurfaceSeeds.add(ModuleSkeletonSurfaceSeed(
+            BindingNameKey(nameSpace, name.clone()), definition.definition,
+            definition.source.clone(), exportNode != zc::none, zc::mv(exportSpan)));
       }
     }
   }

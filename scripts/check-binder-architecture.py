@@ -378,6 +378,8 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "implementations[current].key.encode()",
         "definition.declaringScope == scopeValue",
         "result.impls.add(ImplBindingFact",
+        "declarationExport(input.tree(), definition.node, ambiguousExport)",
+        "exportNode != zc::none",
     ):
         if required not in source:
             errors.append(f"{SKELETON_SOURCE}: incomplete skeleton projection: {required}")
@@ -395,6 +397,7 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "BindingSkeleton.PublishesModuleAndTypeFactsInCanonicalMaps",
         "BindingSkeleton.PublishesImplMemberMapsAndDefersParameters",
         "BindingSkeleton.IncludesModuleConstantPatternLeaves",
+        "BindingSkeleton.PublishesOnlyDeclarationExports",
         "BindingSkeleton.PublishesEmptyMarkerImplFact",
         "BindingVerifier.RejectsMalformedImplFactsAndMemberOrder",
         "BindingBuilder.DefersIdentifierResolutionBeforePublishingMetadata",

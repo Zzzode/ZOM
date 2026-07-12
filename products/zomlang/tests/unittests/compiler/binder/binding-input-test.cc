@@ -1284,6 +1284,30 @@ ZC_TEST("BindingSkeleton.IncludesModuleConstantPatternLeaves") {
   }
 }
 
+ZC_TEST("BindingSkeleton.PublishesOnlyDeclarationExports") {
+  ParsedSource sourceFixture(
+      "module root;\nexport class Point { let x: i32; }\nfun private_value();\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& surface = verified.get<VerifiedBindingOutput>().surface;
+  ZC_REQUIRE(surface.visibleEntries().size() == 2);
+  ZC_REQUIRE(surface.exports().size() == 1);
+  ZC_EXPECT(surface.visibleEntries()[0].name.name().text() == "private_value"_zc);
+  ZC_EXPECT(!surface.visibleEntries()[0].exported);
+  ZC_EXPECT(surface.visibleEntries()[1].name.name().text() == "Point"_zc);
+  ZC_EXPECT(surface.visibleEntries()[1].exported);
+  ZC_EXPECT(surface.visibleEntries()[1].visibility.value().is<ExternalVisibility>());
+  ZC_EXPECT(surface.visibleEntries()[1].exportSpan != zc::none);
+  ZC_EXPECT(surface.exports()[0].name.name().text() == "Point"_zc);
+  ZC_EXPECT(surface.exports()[0].exported);
+}
+
 ZC_TEST("ModuleGraph.ClassifiesUnresolvedSyntaxRequesterAndRevisionFailures") {
   ParsedSource importSource("module root;\nimport math::geometry;\n"_zc);
   FrozenFixture unresolved(importSource);
