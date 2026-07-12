@@ -572,12 +572,21 @@ Focused sanitizer and architecture-negative tests cover request/graph,
 target-revision, snapshot/graph, ancestor, moved-from, and duplicate-install
 failures without publishing partial session state.
 
-P8 remains open. The current resolver still publishes the narrower
-`PackageResolution` prototype instead of the accepted `ResolutionOutput`, and
-locked replay still reconstructs activation domains incompletely. Final and
-preparatory dependency crates, crate dependency edges, complete build-script
-closures, and the production semantic-context fingerprint are not yet derived
-from one authoritative resolution output.
+Commit `e058db25` replaced the narrower resolver prototype with the accepted
+`ResolutionOutput`. The resolver is now the only producer of final package
+keys, complete verified package records, canonical package edges, separate
+Target and Build feature sets, source-view keys, and the exact
+`VerifiedLockGraph`. Registry, VCS, and local releases enter only through
+verified record adapters carrying their manifest, source-tree, archive, and
+signing metadata. Locked replay reconstructs the exact feature-domain closure
+from current roots and verified releases without invoking version solving, then
+requires byte-identical lock output. The CLI and `CompilerSession` consume this
+output directly and no longer rebuild package keys or activation domains.
+
+P8 remains open. Final and preparatory dependency crates, crate dependency
+edges, complete build-script closures, and the production semantic-context
+fingerprint are not yet derived from the authoritative resolution output. RFC
+0008 owns those remaining session-wide crate-graph and fingerprint surfaces.
 
 P9 now has an executable package architecture gate with nine adversarial
 fixtures, a vendored-dependency mutation self-test, and a Linux-only privileged
@@ -588,13 +597,22 @@ the namespace, cgroup, seccomp, pidfd, timerfd, `openat2`, static-PIE, and outpu
 verification path. The release resolver fixture binds a fixed SHA-256, resolves
 10,000 packages, 40,000 candidate releases, and 50,000 edges, then performs an
 exact zero-solver locked replay with one visit per package and edge. Canonical
-lock-edge validation now uses logarithmic lookup; the release gate completed in
-8.79 seconds with 507,887,616 bytes peak RSS. The full sanitizer matrix passed
+lock-edge validation now uses logarithmic lookup. After the authoritative
+output cutover, deterministic iterative cycle detection and pre-construction
+package-key deduplication kept the same release fixture at 8.13 seconds and
+728,875,008 bytes peak RSS, below the 1 GiB gate. Exact output framing has a
+fixed SHA-256 and all 256 input permutations pass; locked replay invokes the
+solver zero times and visits exactly 10,000 packages and 50,000 edges. The zc
+foundation now provides explicit object, array, Vector, String, canonical
+encoder, and package-identity resource propagation with focused sanitizer
+lifecycle tests. The full sanitizer matrix previously passed
 1,241 of 1,241 tests, including the 653.32-second grammar conformance target.
 
-P9 remains open. The resolver performance executable still requires an
-injected peak-live allocation counter in addition to the OS RSS wrapper, and
-the complete checked-in generated-oracle set plus one regeneration gate remain
+P9 remains open. The resource must still be threaded through every
+resolver-owned manifest, constraint, analysis, record, sort, output, and locked
+replay allocation before the performance executable can enforce an injected
+peak-live counter in addition to the OS RSS wrapper. The complete checked-in
+generated-oracle set plus one regeneration gate remain
 to be published. Final release evidence must be rerun after the remaining P8,
 RFC 0008 crate-graph, and RFC 0010 LIR target-publication work.
 
