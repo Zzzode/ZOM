@@ -42,13 +42,75 @@ private:
 struct FreshDirectoryState final {
   size_t cleanupAttempts = 0;
   size_t cleanupFailures = 0;
+  size_t readOnlyOpenAttempts = 0;
   bool createFails = false;
+  bool rejectReadOnlyOpen = false;
   zc::Maybe<zc::Own<const zc::Directory>> inspectionRoot;
+};
+
+class ReadOnlyOpenRejectingDirectory final : public zc::Directory {
+public:
+  ReadOnlyOpenRejectingDirectory(zc::Own<const zc::Directory>&& inner, FreshDirectoryState& state)
+      : inner(zc::mv(inner)), state(state) {}
+
+  Metadata stat() const override { return inner->stat(); }
+  void sync() const override { inner->sync(); }
+  void datasync() const override { inner->datasync(); }
+  zc::Array<zc::String> listNames() const override { return inner->listNames(); }
+  zc::Array<Entry> listEntries() const override { return inner->listEntries(); }
+  bool exists(zc::PathPtr path) const override { return inner->exists(path); }
+  zc::Maybe<Metadata> tryLstat(zc::PathPtr path) const override { return inner->tryLstat(path); }
+  zc::Maybe<zc::Own<const zc::ReadableFile>> tryOpenFile(zc::PathPtr path) const override {
+    ++state.readOnlyOpenAttempts;
+    if (state.rejectReadOnlyOpen) {
+      ZC_FAIL_REQUIRE("injected transient destination reopen denial");
+    }
+    return inner->tryOpenFile(path);
+  }
+  zc::Maybe<zc::Own<const zc::ReadableDirectory>> tryOpenSubdir(zc::PathPtr path) const override {
+    return inner->tryOpenSubdir(path);
+  }
+  zc::Maybe<zc::String> tryReadlink(zc::PathPtr path) const override {
+    return inner->tryReadlink(path);
+  }
+  zc::Maybe<zc::Own<const zc::File>> tryOpenFile(zc::PathPtr path,
+                                                 zc::WriteMode mode) const override {
+    return inner->tryOpenFile(path, mode);
+  }
+  zc::Own<Replacer<zc::File>> replaceFile(zc::PathPtr path, zc::WriteMode mode) const override {
+    return inner->replaceFile(path, mode);
+  }
+  zc::Own<const zc::File> createTemporary() const override { return inner->createTemporary(); }
+  zc::Maybe<zc::Own<zc::AppendableFile>> tryAppendFile(zc::PathPtr path,
+                                                       zc::WriteMode mode) const override {
+    return inner->tryAppendFile(path, mode);
+  }
+  zc::Maybe<zc::Own<const zc::Directory>> tryOpenSubdir(zc::PathPtr path,
+                                                        zc::WriteMode mode) const override {
+    return inner->tryOpenSubdir(path, mode);
+  }
+  zc::Own<Replacer<zc::Directory>> replaceSubdir(zc::PathPtr path,
+                                                 zc::WriteMode mode) const override {
+    return inner->replaceSubdir(path, mode);
+  }
+  bool trySymlink(zc::PathPtr path, zc::StringPtr content, zc::WriteMode mode) const override {
+    return inner->trySymlink(path, content, mode);
+  }
+  bool tryRemove(zc::PathPtr path) const override { return inner->tryRemove(path); }
+
+protected:
+  zc::Own<const zc::FsNode> cloneFsNode() const override {
+    return zc::heap<ReadOnlyOpenRejectingDirectory>(inner->clone(), state);
+  }
+
+private:
+  zc::Own<const zc::Directory> inner;
+  FreshDirectoryState& state;
 };
 
 class MemoryFreshDirectory final : public FreshSourceDirectory {
 public:
-  MemoryFreshDirectory(zc::Own<zc::Directory>&& root, FreshDirectoryState& state)
+  MemoryFreshDirectory(zc::Own<const zc::Directory>&& root, FreshDirectoryState& state)
       : rootValue(zc::mv(root)), state(state) {}
   ~MemoryFreshDirectory() noexcept override = default;
 
@@ -63,7 +125,7 @@ public:
   }
 
 private:
-  zc::Own<zc::Directory> rootValue;
+  zc::Own<const zc::Directory> rootValue;
   FreshDirectoryState& state;
 };
 
@@ -75,7 +137,11 @@ public:
     if (state.createFails) { return MaterializationIssue::FreshDirectoryCreateFailed; }
     auto root = zc::newInMemoryDirectory(zc::nullClock());
     state.inspectionRoot = root->clone();
-    return zc::Own<FreshSourceDirectory>(zc::heap<MemoryFreshDirectory>(zc::mv(root), state));
+    zc::Own<const zc::Directory> exposed = zc::mv(root);
+    if (state.rejectReadOnlyOpen) {
+      exposed = zc::heap<ReadOnlyOpenRejectingDirectory>(zc::mv(exposed), state);
+    }
+    return zc::Own<FreshSourceDirectory>(zc::heap<MemoryFreshDirectory>(zc::mv(exposed), state));
   }
 
 private:
@@ -149,6 +215,25 @@ public:
 
 private:
   DestinationFaultStage stage;
+};
+
+class CorruptingDestinationObserver final : public SourceMaterializationObserver {
+public:
+  explicit CorruptingDestinationObserver(FreshDirectoryState& state) : state(state) {}
+
+  zc::Maybe<MaterializationIssue> beforeDestinationSync() override {
+    if (corrupted) { return zc::none; }
+    ZC_IF_SOME(root, state.inspectionRoot) {
+      auto file = root->openFile(zc::Path({"src"_zc, "lib.zom"_zc}), zc::WriteMode::MODIFY);
+      file->writeAll("changed"_zc);
+      corrupted = true;
+    }
+    return zc::none;
+  }
+
+private:
+  FreshDirectoryState& state;
+  bool corrupted = false;
 };
 
 }  // namespace
@@ -234,6 +319,29 @@ ZC_TEST("SourceSnapshotTest.CopiesLocalSourceThroughTwoInventories") {
   auto read = snapshot.readVerifiedFile(libraryPath());
   ZC_REQUIRE(read.is<zc::Array<zc::byte>>());
   ZC_EXPECT(zc::str(read.get<zc::Array<zc::byte>>().asChars()) == "library"_zc);
+}
+
+ZC_TEST("SourceSnapshotTest.VerifiesDestinationThroughItsOpenFileCapability") {
+  auto source = localSource();
+  FreshDirectoryState state;
+  state.rejectReadOnlyOpen = true;
+  MemoryFreshDirectoryFactory factory(state);
+  SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*source, factory);
+  ZC_REQUIRE(result.is<DigestVerifiedSourceSnapshot>());
+  ZC_EXPECT(state.readOnlyOpenAttempts == 0);
+}
+
+ZC_TEST("SourceSnapshotTest.RejectsDestinationCorruptionThroughItsOpenFileCapability") {
+  auto source = localSource();
+  FreshDirectoryState state;
+  MemoryFreshDirectoryFactory factory(state);
+  CorruptingDestinationObserver observer(state);
+  SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*source, factory, observer);
+  ZC_REQUIRE(result.is<MaterializationIssue>());
+  ZC_EXPECT(result.get<MaterializationIssue>() == MaterializationIssue::SourceTreeDigestMismatch);
+  ZC_EXPECT(state.cleanupAttempts == 1);
 }
 
 ZC_TEST("SourceSnapshotTest.DetectsLocalMutationBetweenInventoryPasses") {

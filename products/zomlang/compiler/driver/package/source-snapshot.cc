@@ -79,11 +79,14 @@ const SourceTreeFile* findFile(const SourceTreeRecord& record,
 
 class DirectoryArchiveOutput final : public ArchiveOutput {
 public:
-  explicit DirectoryArchiveOutput(const zc::Directory& root,
+  explicit DirectoryArchiveOutput(const zc::Directory& root, uint64_t verificationChunkSize,
                                   zc::Maybe<SourceMaterializationObserver&> observer = zc::none)
-      : root(root), observer(observer) {}
+      : root(root), verificationChunkSize(verificationChunkSize), observer(observer) {}
 
   zc::Maybe<MaterializationIssue> beginFile(zc::StringPtr path, uint64_t byteLength) override {
+    if (verificationChunkSize == 0 || verificationChunkSize > SIZE_MAX) {
+      return MaterializationIssue::LengthOverflow;
+    }
     ZC_IF_SOME(issue, builder.beginFile(path, byteLength)) { return issue; }
     ZC_IF_SOME(value, observer) {
       ZC_IF_SOME(issue, value.beforeDestinationCreate()) { return issue; }
@@ -92,11 +95,14 @@ public:
     if (canonicalPath == zc::none) { return MaterializationIssue::InvalidEntryEncoding; }
     try {
       ZC_IF_SOME(value, canonicalPath) {
+        activePath = value.clone();
         file = root.openFile(
             value, zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT | zc::WriteMode::PRIVATE);
       }
     } catch (const zc::Exception&) { return MaterializationIssue::DestinationCreateFailed; }
     offset = 0;
+    expectedLength = byteLength;
+    expectedHasher = zc::heap<identity::Sha256Hasher>();
     return zc::none;
   }
 
@@ -109,6 +115,9 @@ public:
       file->write(offset, bytes);
     } catch (const zc::Exception&) { return MaterializationIssue::DestinationWriteFailed; }
     offset += bytes.size();
+    if (!expectedHasher || !expectedHasher->update(bytes)) {
+      return MaterializationIssue::LengthOverflow;
+    }
     return builder.write(bytes);
   }
 
@@ -120,7 +129,46 @@ public:
     try {
       file->sync();
     } catch (const zc::Exception&) { return MaterializationIssue::DestinationSyncFailed; }
+    auto expectedDigest = expectedHasher->finish();
+    if (expectedDigest == zc::none) { return MaterializationIssue::LengthOverflow; }
+    try {
+      const auto pathMetadata = root.lstat(activePath);
+      const auto fileMetadata = file->stat();
+      if (pathMetadata.type != zc::FsNode::Type::FILE || fileMetadata.type != pathMetadata.type ||
+          pathMetadata.linkCount != 1 || fileMetadata.linkCount != pathMetadata.linkCount ||
+          pathMetadata.size != expectedLength || fileMetadata.size != pathMetadata.size ||
+          (pathMetadata.hashCode != 0 && fileMetadata.hashCode != pathMetadata.hashCode)) {
+        return MaterializationIssue::SourceTreeDigestMismatch;
+      }
+      auto buffer = zc::heapArray<zc::byte>(static_cast<size_t>(verificationChunkSize));
+      identity::Sha256Hasher actualHasher;
+      uint64_t readOffset = 0;
+      while (readOffset < expectedLength) {
+        const uint64_t remaining = expectedLength - readOffset;
+        const size_t request = static_cast<size_t>(zc::min(verificationChunkSize, remaining));
+        const size_t count = file->read(readOffset, buffer.first(request));
+        if (count == 0 || !actualHasher.update(buffer.first(count))) {
+          return MaterializationIssue::SourceTreeDigestMismatch;
+        }
+        readOffset += count;
+      }
+      const auto finalMetadata = file->stat();
+      if (finalMetadata.type != fileMetadata.type ||
+          finalMetadata.linkCount != fileMetadata.linkCount ||
+          finalMetadata.size != fileMetadata.size ||
+          finalMetadata.hashCode != fileMetadata.hashCode) {
+        return MaterializationIssue::SourceTreeDigestMismatch;
+      }
+      auto actualDigest = actualHasher.finish();
+      if (actualDigest == zc::none) { return MaterializationIssue::LengthOverflow; }
+      ZC_IF_SOME(expected, expectedDigest) {
+        ZC_IF_SOME(actual, actualDigest) {
+          if (actual != expected) { return MaterializationIssue::SourceTreeDigestMismatch; }
+        }
+      }
+    } catch (const zc::Exception&) { return MaterializationIssue::SourceReadFailed; }
     file = nullptr;
+    expectedHasher = nullptr;
     return builder.endFile();
   }
 
@@ -128,10 +176,14 @@ public:
 
 private:
   const zc::Directory& root;
+  uint64_t verificationChunkSize;
   zc::Maybe<SourceMaterializationObserver&> observer;
   SourceTreeBuilder builder;
   zc::Own<const zc::File> file;
+  zc::Path activePath = nullptr;
   uint64_t offset = 0;
+  uint64_t expectedLength = 0;
+  zc::Own<identity::Sha256Hasher> expectedHasher;
 };
 
 class FreshDirectoryCleanupGuard final {
@@ -441,7 +493,7 @@ SourceSnapshotCopyResult DigestVerifiedSourceSnapshot::materializeVerifiedCopy(
   auto fresh = factory.create();
   if (fresh.is<MaterializationIssue>()) { return fresh.get<MaterializationIssue>(); }
   FreshDirectoryCleanupGuard directory(zc::mv(fresh.get<zc::Own<FreshSourceDirectory>>()));
-  DirectoryArchiveOutput output(directory.root());
+  DirectoryArchiveOutput output(directory.root(), 1048576);
   for (const auto& file : impl->record.files()) {
     ZC_IF_SOME(issue, copyVerifiedFile(impl->directory->root(), file, output, 1048576)) {
       return issue;
@@ -454,11 +506,6 @@ SourceSnapshotCopyResult DigestVerifiedSourceSnapshot::materializeVerifiedCopy(
   try {
     directory.root().sync();
   } catch (const zc::Exception&) { return MaterializationIssue::DestinationSyncFailed; }
-  for (const auto& file : value.files()) {
-    if (readVerified(directory.root(), file, 1048576).is<MaterializationIssue>()) {
-      return MaterializationIssue::SourceTreeDigestMismatch;
-    }
-  }
   auto snapshot = DigestVerifiedSourceSnapshot(directory.release(), zc::mv(value));
   return zc::heap<DigestVerifiedSourceSnapshot>(zc::mv(snapshot));
 }
@@ -508,7 +555,7 @@ SourceSnapshotResult SourceArchiveMaterializer::materialize(
   if (decoded.is<MaterializationIssue>()) { return decoded.get<MaterializationIssue>(); }
   auto archiveInput = zc::mv(decoded.get<zc::Own<ArchiveInput>>());
   ArchiveReader reader(limits);
-  DirectoryArchiveOutput output(directory.root(), observer);
+  DirectoryArchiveOutput output(directory.root(), limits.ioChunkBytes, observer);
   ZC_IF_SOME(issue, reader.read(*archiveInput, output)) { return issue; }
   try {
     ZC_IF_SOME(value, observer) {
@@ -519,12 +566,6 @@ SourceSnapshotResult SourceArchiveMaterializer::materialize(
   auto record = output.finish();
   if (record.is<MaterializationIssue>()) { return record.get<MaterializationIssue>(); }
   auto value = zc::mv(record.get<SourceTreeRecord>());
-  for (const auto& file : value.files()) {
-    auto verified = readVerified(directory.root(), file, limits.ioChunkBytes);
-    if (verified.is<MaterializationIssue>()) {
-      return MaterializationIssue::SourceTreeDigestMismatch;
-    }
-  }
   return DigestVerifiedSourceSnapshot(directory.release(), zc::mv(value));
 }
 
@@ -552,7 +593,7 @@ SourceSnapshotResult SourceDirectoryMaterializer::materialize(
   auto fresh = factory.create();
   if (fresh.is<MaterializationIssue>()) { return fresh.get<MaterializationIssue>(); }
   FreshDirectoryCleanupGuard directory(zc::mv(fresh.get<zc::Own<FreshSourceDirectory>>()));
-  DirectoryArchiveOutput secondOutput(directory.root(), observer);
+  DirectoryArchiveOutput secondOutput(directory.root(), limits.ioChunkBytes, observer);
   WalkCounts secondCounts;
   ZC_IF_SOME(issue, scanDirectory(source, ""_zc, secondOutput, limits, secondCounts)) {
     return issue;
@@ -567,11 +608,6 @@ SourceSnapshotResult SourceDirectoryMaterializer::materialize(
     }
     directory.root().sync();
   } catch (const zc::Exception&) { return MaterializationIssue::DestinationSyncFailed; }
-  for (const auto& file : second.files()) {
-    if (readVerified(directory.root(), file, limits.ioChunkBytes).is<MaterializationIssue>()) {
-      return MaterializationIssue::SourceTreeDigestMismatch;
-    }
-  }
   return DigestVerifiedSourceSnapshot(directory.release(), zc::mv(second));
 }
 
