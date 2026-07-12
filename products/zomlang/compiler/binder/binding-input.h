@@ -10,8 +10,8 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/ast/tree.h"
-#include "zomlang/compiler/binder/definition-identity-map.h"
+#include "zomlang/compiler/binder/frozen-definition-inventory.h"
+#include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
 
 namespace zomlang::compiler::diagnostics {
@@ -81,7 +81,7 @@ public:
       identity::SemanticContextBrand context,
       const identity::SemanticContextFingerprint& expectedFingerprint,
       const identity::SemanticIdentityRegistrySet& registries, identity::ModuleId requester,
-      const ast::Tree& tree);
+      const VerifiedParsedModule& parsedModule);
 };
 
 /// \brief Emits the fatal ZOM9956 diagnostic for a rejected graph or binding handoff.
@@ -93,12 +93,11 @@ struct BindingInputCandidate final {
   identity::SemanticContextBrand semanticContext;
   identity::PackageId package;
   identity::CrateId crate;
-  identity::SourceFileId source;
   identity::ModuleId module;
-  const ast::Tree& tree;
   const identity::SemanticIdentityRegistrySet& registries;
   const VerifiedModuleGraphView& moduleGraph;
-  const DefinitionIdentityMap& definitions;
+  const VerifiedParsedModule& parsedModule;
+  const FrozenDefinitionInventoryView& definitions;
 };
 
 /// \brief Move-only binder input published only after complete verification.
@@ -111,7 +110,8 @@ public:
 
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const ast::Tree& tree() const noexcept;
-  ZC_NODISCARD const DefinitionIdentityMap& definitions() const noexcept;
+  ZC_NODISCARD const VerifiedParsedModule& parsedModule() const noexcept;
+  ZC_NODISCARD const FrozenDefinitionInventoryView& definitions() const noexcept;
 
 private:
   struct Impl;

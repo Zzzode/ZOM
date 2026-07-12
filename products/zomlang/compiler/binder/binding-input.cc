@@ -8,7 +8,6 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
-#include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/identity/sha256.h"
 
@@ -110,9 +109,11 @@ ModuleGraphVerificationResult ModuleGraphVerifier::verifySingleModule(
     identity::SemanticContextBrand context,
     const identity::SemanticContextFingerprint& expectedFingerprint,
     const identity::SemanticIdentityRegistrySet& registries, identity::ModuleId requester,
-    const ast::Tree& tree) {
+    const VerifiedParsedModule& parsedModule) {
+  const auto& tree = parsedModule.tree();
   zc::Maybe<identity::ModuleId> requesterFact = requester;
-  if (!context.isValid() || !requester.belongsTo(context) || !allRegistriesFrozen(registries) ||
+  if (!context.isValid() || !requester.belongsTo(context) ||
+      !parsedModule.sourceFile().belongsTo(context) || !allRegistriesFrozen(registries) ||
       registries.modules().size() != 1 ||
       registries.modules().validate(requester) != identity::FrozenRegistryFailure::None ||
       !tree.contains(tree.root()) || tree.node(tree.root()).kind != ast::SyntaxKind::SourceFile) {
@@ -122,10 +123,12 @@ ModuleGraphVerificationResult ModuleGraphVerifier::verifySingleModule(
     return failure(ModuleGraphInvariantKind::IncompleteResolution, zc::mv(requesterFact));
   }
   auto module = registries.modules().lookup(requester);
+  auto source = registries.sourceFiles().lookup(parsedModule.sourceFile());
+  auto snapshot = registries.sourceSnapshot(parsedModule.sourceFile());
   auto fingerprint = identity::SemanticContextFingerprint::compute(
       registries, zc::ArrayPtr<const identity::PackageDependencyEdgeKey>(),
       zc::ArrayPtr<const identity::CrateDependencyEdgeKey>());
-  if (module == zc::none || fingerprint == zc::none) {
+  if (module == zc::none || source == zc::none || snapshot == zc::none || fingerprint == zc::none) {
     return failure(ModuleGraphInvariantKind::InputMismatch, zc::mv(requesterFact));
   }
   ZC_IF_SOME(fingerprintValue, fingerprint) {
@@ -133,6 +136,17 @@ ModuleGraphVerificationResult ModuleGraphVerifier::verifySingleModule(
       return failure(ModuleGraphInvariantKind::RevisionMismatch, zc::mv(requesterFact));
     }
     ZC_IF_SOME(moduleValue, module) {
+      ZC_IF_SOME(sourceValue, source) {
+        if (!moduleValue.source().sameAs(sourceValue)) {
+          return failure(ModuleGraphInvariantKind::InputMismatch, zc::mv(requesterFact));
+        }
+      }
+      ZC_IF_SOME(snapshotValue, snapshot) {
+        if (snapshotValue.contentDigest() != parsedModule.contentDigest() ||
+            snapshotValue.bytes().size() != parsedModule.byteLength()) {
+          return failure(ModuleGraphInvariantKind::InputMismatch, zc::mv(requesterFact));
+        }
+      }
       auto revision = computeModuleGraphRevision(fingerprintValue, moduleValue);
       ZC_IF_SOME(revisionValue, revision) {
         return VerifiedModuleGraphView(zc::heap<VerifiedModuleGraphView::Impl>(
@@ -151,11 +165,13 @@ void emitModuleGraphInvariant(diagnostics::DiagnosticEngine& diagnostics,
 
 struct VerifiedBindingInput::Impl final {
   explicit Impl(const BindingInputCandidate& candidate)
-      : module(candidate.module), tree(candidate.tree), definitions(candidate.definitions) {}
+      : module(candidate.module),
+        parsedModule(candidate.parsedModule),
+        definitions(candidate.definitions) {}
 
   identity::ModuleId module;
-  const ast::Tree& tree;
-  const DefinitionIdentityMap& definitions;
+  const VerifiedParsedModule& parsedModule;
+  const FrozenDefinitionInventoryView& definitions;
 };
 
 VerifiedBindingInput::VerifiedBindingInput(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
@@ -163,8 +179,11 @@ VerifiedBindingInput::~VerifiedBindingInput() noexcept(false) = default;
 VerifiedBindingInput::VerifiedBindingInput(VerifiedBindingInput&&) noexcept = default;
 VerifiedBindingInput& VerifiedBindingInput::operator=(VerifiedBindingInput&&) noexcept = default;
 identity::ModuleId VerifiedBindingInput::module() const noexcept { return impl->module; }
-const ast::Tree& VerifiedBindingInput::tree() const noexcept { return impl->tree; }
-const DefinitionIdentityMap& VerifiedBindingInput::definitions() const noexcept {
+const ast::Tree& VerifiedBindingInput::tree() const noexcept { return impl->parsedModule.tree(); }
+const VerifiedParsedModule& VerifiedBindingInput::parsedModule() const noexcept {
+  return impl->parsedModule;
+}
+const FrozenDefinitionInventoryView& VerifiedBindingInput::definitions() const noexcept {
   return impl->definitions;
 }
 
@@ -181,18 +200,20 @@ BindingInputVerificationResult BindingInputVerifier::verify(
   if (!candidate.semanticContext.isValid() || !allRegistriesFrozen(registries) ||
       !candidate.package.belongsTo(candidate.semanticContext) ||
       !candidate.crate.belongsTo(candidate.semanticContext) ||
-      !candidate.source.belongsTo(candidate.semanticContext) ||
       !candidate.module.belongsTo(candidate.semanticContext) ||
+      !candidate.parsedModule.sourceFile().belongsTo(candidate.semanticContext) ||
       candidate.moduleGraph.semanticContext() != candidate.semanticContext ||
-      candidate.moduleGraph.requester() != candidate.module) {
+      candidate.moduleGraph.requester() != candidate.module ||
+      candidate.definitions.semanticContext() != candidate.semanticContext ||
+      candidate.definitions.module() != candidate.module) {
     return inputFailure();
   }
   auto package = registries.packages().lookup(candidate.package);
   auto crate = registries.crates().lookup(candidate.crate);
-  auto source = registries.sourceFiles().lookup(candidate.source);
+  auto source = registries.sourceFiles().lookup(candidate.parsedModule.sourceFile());
   auto module = registries.modules().lookup(candidate.module);
   if (package == zc::none || crate == zc::none || source == zc::none || module == zc::none ||
-      registries.sourceSnapshot(candidate.source) == zc::none) {
+      registries.sourceSnapshot(candidate.parsedModule.sourceFile()) == zc::none) {
     return inputFailure();
   }
   ZC_IF_SOME(packageValue, package) {
@@ -218,26 +239,20 @@ BindingInputVerificationResult BindingInputVerifier::verify(
               }
             }
           }
-          if (!candidate.tree.contains(candidate.tree.root()) ||
-              candidate.tree.node(candidate.tree.root()).kind != ast::SyntaxKind::SourceFile) {
+          const auto& tree = candidate.parsedModule.tree();
+          if (!tree.contains(tree.root()) ||
+              tree.node(tree.root()).kind != ast::SyntaxKind::SourceFile) {
             return inputFailure();
           }
-          if (hasUnresolvedDependency(candidate.tree)) { return incomplete(); }
-          const auto inventory = DefinitionInventory::collect(candidate.tree);
-          if (inventory.modules().size() != 1 || inventory.impls().size() != 0 ||
-              candidate.definitions.size() != inventory.definitions().size()) {
-            return incomplete();
-          }
-          for (const auto& definition : inventory.definitions()) {
-            auto handle = candidate.definitions.find(definition.node);
-            if (handle == zc::none) { return incomplete(); }
-            ZC_IF_SOME(value, handle) {
-              if (!value.belongsTo(candidate.semanticContext)) { return inputFailure(); }
-              auto key = registries.definitions().lookup(value);
-              if (key == zc::none) { return inputFailure(); }
-              ZC_IF_SOME(keyValue, key) {
-                if (keyValue.module().encode() != moduleValue.encode()) { return inputFailure(); }
-              }
+          if (hasUnresolvedDependency(tree)) { return incomplete(); }
+          for (const auto& definition : candidate.definitions.definitions()) {
+            if (!definition.definition.belongsTo(candidate.semanticContext)) {
+              return inputFailure();
+            }
+            auto key = registries.definitions().lookup(definition.definition);
+            if (key == zc::none) { return inputFailure(); }
+            ZC_IF_SOME(keyValue, key) {
+              if (keyValue.module().encode() != moduleValue.encode()) { return inputFailure(); }
             }
           }
         }

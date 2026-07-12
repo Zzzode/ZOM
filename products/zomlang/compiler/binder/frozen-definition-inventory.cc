@@ -1,0 +1,243 @@
+// Copyright (c) 2026 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+
+#include "zomlang/compiler/binder/frozen-definition-inventory.h"
+
+#include "zc/core/vector.h"
+#include "zomlang/compiler/binder/definition-inventory.h"
+
+namespace zomlang::compiler::binder {
+namespace {
+
+FrozenInventoryInvariantFact failure(FrozenInventoryInvariantKind kind) { return {kind, 1}; }
+
+bool sameParentPath(zc::ArrayPtr<const StructuralIdentityParent> left,
+                    zc::ArrayPtr<const StructuralIdentityParent> right) {
+  if (left.size() != right.size()) { return false; }
+  for (size_t index = 0; index < left.size(); ++index) {
+    if (left[index].kind != right[index].kind || left[index].node != right[index].node) {
+      return false;
+    }
+  }
+  return true;
+}
+
+uint32_t siblingOrdinal(const DefinitionInventory& inventory,
+                        const DefinitionInventoryEntry& entry) {
+  uint32_t ordinal = 0;
+  for (const auto& candidate : inventory.definitions()) {
+    if (candidate.node.value < entry.node.value && candidate.moduleNode == entry.moduleNode &&
+        sameParentPath(candidate.parentPath.asPtr(), entry.parentPath.asPtr())) {
+      ++ordinal;
+    }
+  }
+  for (const auto& candidate : inventory.impls()) {
+    if (candidate.node.value < entry.node.value && candidate.moduleNode == entry.moduleNode &&
+        sameParentPath(candidate.parentPath.asPtr(), entry.parentPath.asPtr())) {
+      ++ordinal;
+    }
+  }
+  return ordinal;
+}
+
+uint32_t siblingOrdinal(const DefinitionInventory& inventory, const ImplInventoryEntry& entry) {
+  uint32_t ordinal = 0;
+  for (const auto& candidate : inventory.definitions()) {
+    if (candidate.node.value < entry.node.value && candidate.moduleNode == entry.moduleNode &&
+        sameParentPath(candidate.parentPath.asPtr(), entry.parentPath.asPtr())) {
+      ++ordinal;
+    }
+  }
+  for (const auto& candidate : inventory.impls()) {
+    if (candidate.node.value < entry.node.value && candidate.moduleNode == entry.moduleNode &&
+        sameParentPath(candidate.parentPath.asPtr(), entry.parentPath.asPtr())) {
+      ++ordinal;
+    }
+  }
+  return ordinal;
+}
+
+zc::Maybe<const DefinitionInventoryEntry&> definitionEntry(const DefinitionInventory& inventory,
+                                                           ast::NodeId node) {
+  for (const auto& entry : inventory.definitions()) {
+    if (entry.node == node) { return entry; }
+  }
+  return zc::none;
+}
+
+zc::Maybe<const ImplInventoryEntry&> implEntry(const DefinitionInventory& inventory,
+                                               ast::NodeId node) {
+  for (const auto& entry : inventory.impls()) {
+    if (entry.node == node) { return entry; }
+  }
+  return zc::none;
+}
+
+zc::Maybe<identity::DefinitionPathSegment> definitionSegment(
+    const DefinitionInventory& inventory, const DefinitionInventoryEntry& entry,
+    const VerifiedParsedModule& parsedModule) {
+  zc::Maybe<identity::DefinitionNameKey> name;
+  if (entry.nameKind == InventoryDefinitionNameKind::Declared) {
+    auto declared =
+        identity::DeclaredDefinitionName::fromSource(parsedModule.tree().ident(entry.declaredName));
+    ZC_IF_SOME(value, declared) { name = identity::DefinitionNameKey::declared(zc::mv(value)); }
+  } else {
+    ZC_IF_SOME(role, entry.anonymousRole) { name = identity::DefinitionNameKey::anonymous(role); }
+  }
+  auto span = parsedModule.spanFor(entry.source);
+  if (name == zc::none || span == zc::none) { return zc::none; }
+  ZC_IF_SOME(nameValue, name) {
+    ZC_IF_SOME(spanValue, span) {
+      return identity::DefinitionPathSegment::from(entry.kind, zc::mv(nameValue), zc::mv(spanValue),
+                                                   siblingOrdinal(inventory, entry));
+    }
+  }
+  return zc::none;
+}
+
+zc::Maybe<identity::DefinitionKey> expectedKey(const DefinitionInventory& inventory,
+                                               const DefinitionInventoryEntry& entry,
+                                               const VerifiedParsedModule& parsedModule,
+                                               const identity::ModuleKey& module) {
+  zc::Vector<identity::DefinitionPathComponent> path;
+  for (const auto& parent : entry.parentPath) {
+    if (parent.kind == StructuralIdentityParentKind::Definition) {
+      ZC_IF_SOME(parentEntry, definitionEntry(inventory, parent.node)) {
+        ZC_IF_SOME(segment, definitionSegment(inventory, parentEntry, parsedModule)) {
+          path.add(identity::DefinitionPathComponent::definition(zc::mv(segment)));
+          continue;
+        }
+      }
+      return zc::none;
+    }
+    ZC_IF_SOME(parentImpl, implEntry(inventory, parent.node)) {
+      ZC_IF_SOME(span, parsedModule.spanFor(parentImpl.source)) {
+        path.add(identity::DefinitionPathComponent::impl(
+            identity::ImplPathSegment::from(zc::mv(span), siblingOrdinal(inventory, parentImpl))));
+        continue;
+      }
+    }
+    return zc::none;
+  }
+  ZC_IF_SOME(segment, definitionSegment(inventory, entry, parsedModule)) {
+    path.add(identity::DefinitionPathComponent::definition(zc::mv(segment)));
+    return identity::DefinitionKey::from(module.clone(), zc::mv(path));
+  }
+  return zc::none;
+}
+
+bool allRegistriesFrozen(const identity::SemanticIdentityRegistrySet& registries) {
+  return registries.packages().isFrozen() && registries.crates().isFrozen() &&
+         registries.sourceFiles().isFrozen() && registries.modules().isFrozen() &&
+         registries.definitions().isFrozen() && registries.impls().isFrozen();
+}
+
+}  // namespace
+
+FrozenDefinitionEntry::FrozenDefinitionEntry(ast::NodeId node, identity::DefId definition,
+                                             identity::DefinitionKind kind,
+                                             identity::SourceSpan&& source) noexcept
+    : node(node), definition(definition), kind(kind), source(zc::mv(source)) {}
+
+struct FrozenDefinitionInventoryView::Impl final {
+  Impl(identity::SemanticContextBrand context, identity::ModuleId module, ast::NodeId moduleNode,
+       zc::Vector<FrozenDefinitionEntry>&& definitions)
+      : context(context),
+        module(module),
+        moduleNode(moduleNode),
+        definitions(zc::mv(definitions)) {}
+
+  identity::SemanticContextBrand context;
+  identity::ModuleId module;
+  ast::NodeId moduleNode;
+  zc::Vector<FrozenDefinitionEntry> definitions;
+};
+
+FrozenDefinitionInventoryView::FrozenDefinitionInventoryView(zc::Own<Impl>&& impl) noexcept
+    : impl(zc::mv(impl)) {}
+FrozenDefinitionInventoryView::~FrozenDefinitionInventoryView() noexcept(false) = default;
+FrozenDefinitionInventoryView::FrozenDefinitionInventoryView(
+    FrozenDefinitionInventoryView&&) noexcept = default;
+FrozenDefinitionInventoryView& FrozenDefinitionInventoryView::operator=(
+    FrozenDefinitionInventoryView&&) noexcept = default;
+identity::SemanticContextBrand FrozenDefinitionInventoryView::semanticContext() const noexcept {
+  return impl->context;
+}
+identity::ModuleId FrozenDefinitionInventoryView::module() const noexcept { return impl->module; }
+ast::NodeId FrozenDefinitionInventoryView::moduleNode() const noexcept { return impl->moduleNode; }
+zc::ArrayPtr<const FrozenDefinitionEntry> FrozenDefinitionInventoryView::definitions() const {
+  return impl->definitions.asPtr();
+}
+zc::Maybe<identity::DefId> FrozenDefinitionInventoryView::definitionAt(ast::NodeId node) const {
+  for (const auto& entry : impl->definitions) {
+    if (entry.node == node) { return entry.definition; }
+  }
+  return zc::none;
+}
+
+FrozenDefinitionInventoryResult FrozenDefinitionInventoryVerifier::verifySingleModule(
+    identity::SemanticContextBrand context, identity::ModuleId module,
+    const VerifiedParsedModule& parsedModule,
+    const identity::SemanticIdentityRegistrySet& registries,
+    const DefinitionIdentityMap& definitions) {
+  if (!context.isValid() || !module.belongsTo(context) ||
+      !parsedModule.sourceFile().belongsTo(context) || !allRegistriesFrozen(registries)) {
+    return failure(FrozenInventoryInvariantKind::InputMismatch);
+  }
+  auto moduleKey = registries.modules().lookup(module);
+  auto sourceKey = registries.sourceFiles().lookup(parsedModule.sourceFile());
+  if (moduleKey == zc::none || sourceKey == zc::none) {
+    return failure(FrozenInventoryInvariantKind::InputMismatch);
+  }
+  const auto inventory = DefinitionInventory::collect(parsedModule.tree());
+  if (inventory.modules().size() != 1 || definitions.size() != inventory.definitions().size() ||
+      registries.definitions().size() != inventory.definitions().size()) {
+    return failure(FrozenInventoryInvariantKind::IncompleteInventory);
+  }
+  if (inventory.impls().size() != 0) {
+    return failure(FrozenInventoryInvariantKind::UnsupportedImplInventory);
+  }
+  ZC_IF_SOME(moduleValue, moduleKey) {
+    ZC_IF_SOME(sourceValue, sourceKey) {
+      if (!moduleValue.source().sameAs(sourceValue)) {
+        return failure(FrozenInventoryInvariantKind::InputMismatch);
+      }
+      zc::Vector<FrozenDefinitionEntry> frozen;
+      for (const auto& entry : inventory.definitions()) {
+        auto definition = definitions.find(entry.node);
+        auto span = parsedModule.spanFor(entry.source);
+        auto key = expectedKey(inventory, entry, parsedModule, moduleValue);
+        if (definition == zc::none || span == zc::none || key == zc::none) {
+          return failure(FrozenInventoryInvariantKind::InvalidDefinitionSite);
+        }
+        ZC_IF_SOME(definitionValue, definition) {
+          if (!definitionValue.belongsTo(context)) {
+            return failure(FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
+          }
+          ZC_IF_SOME(keyValue, key) {
+            auto expected = registries.definitions().find(keyValue);
+            if (expected == zc::none) {
+              return failure(FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
+            }
+            ZC_IF_SOME(expectedValue, expected) {
+              if (expectedValue != definitionValue) {
+                return failure(FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
+              }
+            }
+          }
+          ZC_IF_SOME(spanValue, span) {
+            frozen.add(
+                FrozenDefinitionEntry(entry.node, definitionValue, entry.kind, zc::mv(spanValue)));
+          }
+        }
+      }
+      return FrozenDefinitionInventoryView(zc::heap<FrozenDefinitionInventoryView::Impl>(
+          context, module, inventory.modules()[0].node, zc::mv(frozen)));
+    }
+  }
+  return failure(FrozenInventoryInvariantKind::InputMismatch);
+}
+
+}  // namespace zomlang::compiler::binder

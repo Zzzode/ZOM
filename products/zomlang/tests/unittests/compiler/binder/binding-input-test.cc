@@ -8,13 +8,16 @@
 #include "zc/core/encoding.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/generated/node-payload.h"
+#include "zomlang/compiler/basic/string-pool.h"
+#include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-info.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
-#include "zomlang/tests/unittests/compiler/test-ast-builder.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -76,15 +79,6 @@ identity::SourceFileKey source() {
   return identity::SourceFileKey::from(crate(), identity::SourceOriginKey::localFile(zc::mv(path)));
 }
 
-identity::ImmutableSourceSnapshot snapshot() {
-  uint8_t bytes[8];
-  for (auto& byte : bytes) { byte = 0x41; }
-  auto value =
-      identity::ImmutableSourceSnapshot::from(source(), zc::heapArray(zc::arrayPtr(bytes)));
-  ZC_IF_SOME(result, value) { return zc::mv(result); }
-  ZC_FAIL_REQUIRE("invalid source snapshot test input");
-}
-
 identity::ModuleKey module() {
   zc::Vector<identity::ModulePathSegment> path;
   path.add(requireScalar<identity::ModulePathSegment>("root"_zc));
@@ -94,27 +88,8 @@ identity::ModuleKey module() {
   ZC_FAIL_REQUIRE("invalid module test input");
 }
 
-identity::DefinitionKey definition() {
-  auto snapshotValue = snapshot();
-  auto span = snapshotValue.span(0, 1);
-  auto name = identity::DefinitionNameKey::declared(
-      requireScalar<identity::DeclaredDefinitionName>("run"_zc));
-  ZC_IF_SOME(spanValue, span) {
-    auto segment = identity::DefinitionPathSegment::from(identity::DefinitionKind::Function,
-                                                         zc::mv(name), zc::mv(spanValue), 0);
-    ZC_IF_SOME(segmentValue, segment) {
-      zc::Vector<identity::DefinitionPathComponent> path;
-      path.add(identity::DefinitionPathComponent::definition(zc::mv(segmentValue)));
-      auto value = identity::DefinitionKey::from(module(), zc::mv(path));
-      ZC_IF_SOME(result, value) { return zc::mv(result); }
-    }
-  }
-  ZC_FAIL_REQUIRE("invalid definition test input");
-}
-
 identity::SemanticContextBrand requireContext(identity::SemanticContextFactory& factory) {
-  auto value = factory.issue();
-  ZC_IF_SOME(result, value) { return result; }
+  ZC_IF_SOME(result, factory.issue()) { return result; }
   ZC_FAIL_REQUIRE("semantic context test input exhausted");
 }
 
@@ -141,39 +116,130 @@ identity::SemanticContextFingerprint emptyFingerprint() {
   ZC_FAIL_REQUIRE("empty semantic context fingerprint failed");
 }
 
+struct ParsedSource final {
+  explicit ParsedSource(zc::StringPtr text)
+      : sources(zc::heap<source::SourceManager>()),
+        diagnostics(zc::heap<diagnostics::DiagnosticEngine>(*sources)),
+        buffer(sources->addMemBufferCopy(text.asBytes(), "main.zom")) {
+    parser::Parser parser(*sources, *diagnostics, options, strings, buffer);
+    ZC_IF_SOME(parsed, parser.parse()) { tree = zc::mv(parsed); }
+    else { ZC_FAIL_REQUIRE("source fixture did not parse"); }
+    ZC_REQUIRE(!diagnostics->hasErrors());
+  }
+
+  identity::ImmutableSourceSnapshot snapshot() const {
+    auto value = identity::ImmutableSourceSnapshot::from(
+        source(), zc::heapArray(sources->getEntireTextForBuffer(buffer)));
+    ZC_IF_SOME(result, value) { return zc::mv(result); }
+    ZC_FAIL_REQUIRE("source snapshot fixture failed");
+  }
+
+  zc::Own<source::SourceManager> sources;
+  zc::Own<diagnostics::DiagnosticEngine> diagnostics;
+  basic::LangOptions options;
+  basic::StringPool strings;
+  source::BufferId buffer;
+  ast::Tree tree;
+};
+
+identity::DefinitionKey definitionKey(
+    const ParsedSource& parsed, const identity::ImmutableSourceSnapshot& snapshot,
+    identity::DefinitionKind kind = identity::DefinitionKind::Function) {
+  const auto inventory = DefinitionInventory::collect(parsed.tree);
+  ZC_REQUIRE(inventory.definitions().size() == 1);
+  const auto& entry = inventory.definitions()[0];
+  auto name = identity::DeclaredDefinitionName::fromSource(parsed.tree.ident(entry.declaredName));
+  const auto start = parsed.sources->getLocOffsetInBuffer(entry.source.getStart(), parsed.buffer);
+  const auto end = parsed.sources->getLocOffsetInBuffer(entry.source.getEnd(), parsed.buffer);
+  auto span = snapshot.span(start, end);
+  ZC_IF_SOME(nameValue, name) {
+    ZC_IF_SOME(spanValue, span) {
+      auto segment = identity::DefinitionPathSegment::from(
+          kind, identity::DefinitionNameKey::declared(zc::mv(nameValue)), zc::mv(spanValue), 0);
+      ZC_IF_SOME(segmentValue, segment) {
+        zc::Vector<identity::DefinitionPathComponent> path;
+        path.add(identity::DefinitionPathComponent::definition(zc::mv(segmentValue)));
+        ZC_IF_SOME(value, identity::DefinitionKey::from(module(), zc::mv(path))) {
+          return zc::mv(value);
+        }
+      }
+    }
+  }
+  ZC_FAIL_REQUIRE("definition key fixture failed");
+}
+
+ast::Tree manualModuleTree(source::SourceRange range, zc::StringPtr moduleName) {
+  ast::TreeBuilder builder;
+  ast::NodePayload modulePayload;
+  modulePayload.words[ast::kModuleDeclarationFormWord] =
+      static_cast<uint32_t>(ast::ModuleDeclarationForm::RootDeclaration);
+  modulePayload.words[ast::kModuleDeclarationDeclaredNameWord] =
+      builder.internIdent(moduleName).value;
+  const auto moduleNode =
+      builder.makeNode(ast::SyntaxKind::ModuleDeclaration, range, modulePayload);
+  ast::NodePayload rootPayload;
+  rootPayload.words[ast::kSourceFileFileNameWord] = builder.internString("main.zom"_zc).value;
+  rootPayload.words[ast::kSourceFileModuleWord] = moduleNode.value;
+  const auto root = builder.makeNode(ast::SyntaxKind::SourceFile, range, rootPayload);
+  builder.setRoot(root);
+  return builder.finish();
+}
+
 struct FrozenFixture final {
-  explicit FrozenFixture(const ast::Tree& tree, ast::NodeId definitionNode = {})
+  explicit FrozenFixture(ParsedSource& sourceFixture, bool includeDefinition = false,
+                         bool wrongDefinitionKind = false)
       : context(requireContext(factory)), registries(createRegistries()) {
+    auto snapshot = sourceFixture.snapshot();
     ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectSourceFile(snapshot()) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectSourceFile(snapshot.clone()) ==
+               identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectModule(module()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeModules() == identity::FrozenRegistryFailure::None);
-    if (definitionNode) {
-      auto key = definition();
+    if (includeDefinition) {
+      auto key = definitionKey(sourceFixture, snapshot,
+                               wrongDefinitionKind ? identity::DefinitionKind::Class
+                                                   : identity::DefinitionKind::Function);
       auto retained = key.clone();
       ZC_REQUIRE(registries.collectDefinition(zc::mv(key)) ==
                  identity::FrozenRegistryFailure::None);
       ZC_REQUIRE(registries.freezeDefinitions() == identity::FrozenRegistryFailure::None);
       definitionId = requireHandle(registries.definitions().find(retained));
-      ZC_REQUIRE(definitions.insert(definitionNode, definitionId));
+      const auto node = DefinitionInventory::collect(sourceFixture.tree).definitions()[0].node;
+      ZC_REQUIRE(rawDefinitions.insert(node, definitionId));
     } else {
       ZC_REQUIRE(registries.freezeDefinitions() == identity::FrozenRegistryFailure::None);
     }
     ZC_REQUIRE(registries.freezeImpls() == identity::FrozenRegistryFailure::None);
     packageId = requireHandle(registries.packages().find(package()));
     crateId = requireHandle(registries.crates().find(crate()));
-    sourceId = requireHandle(registries.sourceFiles().find(source()));
     moduleId = requireHandle(registries.modules().find(module()));
-    auto result = ModuleGraphVerifier::verifySingleModule(context, fingerprint(registries),
-                                                          registries, moduleId, tree);
-    if (result.is<VerifiedModuleGraphView>()) {
-      graph = zc::mv(result.get<VerifiedModuleGraphView>());
-    } else {
-      graphFailure = result.get<ModuleGraphInvariantFact>().kind;
+
+    auto admission = ParsedModuleVerifier::admit(snapshot, *sourceFixture.sources,
+                                                 sourceFixture.buffer, zc::mv(sourceFixture.tree));
+    ZC_REQUIRE(admission.is<UnbrandedParsedModule>());
+    auto promotion = ParsedModuleVerifier::promote(context, registries,
+                                                   zc::mv(admission.get<UnbrandedParsedModule>()));
+    ZC_REQUIRE(promotion.is<VerifiedParsedModule>());
+    parsed = zc::mv(promotion.get<VerifiedParsedModule>());
+    ZC_IF_SOME(parsedValue, parsed) {
+      auto graphResult = ModuleGraphVerifier::verifySingleModule(context, fingerprint(registries),
+                                                                 registries, moduleId, parsedValue);
+      if (graphResult.is<VerifiedModuleGraphView>()) {
+        graph = zc::mv(graphResult.get<VerifiedModuleGraphView>());
+      } else {
+        graphFailure = graphResult.get<ModuleGraphInvariantFact>().kind;
+      }
+      auto inventoryResult = FrozenDefinitionInventoryVerifier::verifySingleModule(
+          context, moduleId, parsedValue, registries, rawDefinitions);
+      if (inventoryResult.is<FrozenDefinitionInventoryView>()) {
+        frozenDefinitions = zc::mv(inventoryResult.get<FrozenDefinitionInventoryView>());
+      } else {
+        inventoryFailure = inventoryResult.get<FrozenInventoryInvariantFact>().kind;
+      }
     }
   }
 
@@ -184,8 +250,9 @@ struct FrozenFixture final {
   }
 
   identity::SemanticIdentityRegistrySet createRegistries() {
-    auto value = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_IF_SOME(result, value) { return zc::mv(result); }
+    ZC_IF_SOME(result, identity::SemanticIdentityRegistrySet::create(factory, context)) {
+      return zc::mv(result);
+    }
     ZC_FAIL_REQUIRE("registry set test input was already claimed");
   }
 
@@ -194,118 +261,233 @@ struct FrozenFixture final {
   identity::SemanticIdentityRegistrySet registries;
   identity::PackageId packageId;
   identity::CrateId crateId;
-  identity::SourceFileId sourceId;
   identity::ModuleId moduleId;
   identity::DefId definitionId;
-  DefinitionIdentityMap definitions;
+  DefinitionIdentityMap rawDefinitions;
+  zc::Maybe<VerifiedParsedModule> parsed;
   zc::Maybe<VerifiedModuleGraphView> graph;
+  zc::Maybe<FrozenDefinitionInventoryView> frozenDefinitions;
   zc::Maybe<ModuleGraphInvariantKind> graphFailure;
+  zc::Maybe<FrozenInventoryInvariantKind> inventoryFailure;
 };
 
-ast::Tree dependencyFreeTree(bool includeDefinition = false, bool includeImpl = false) {
-  tests::TestFixture fix;
-  zc::Vector<ast::NodeId> declarations;
-  if (includeDefinition) {
-    declarations.add(fix.makeFunctionDecl("run"_zc, fix.makeBlockStmt(ast::NodeList())));
+BindingInputVerificationResult verify(FrozenFixture& fixture) {
+  ZC_IF_SOME(parsed, fixture.parsed) {
+    ZC_IF_SOME(graph, fixture.graph) {
+      ZC_IF_SOME(definitions, fixture.frozenDefinitions) {
+        return BindingInputVerifier::verify(BindingInputCandidate{
+            fixture.context, fixture.packageId, fixture.crateId, fixture.moduleId,
+            fixture.registries, graph, parsed, definitions});
+      }
+    }
   }
-  if (includeImpl) {
-    declarations.add(fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Target"_zc), ast::NodeId(),
-                                                fix.makeClassMemberList(ast::NodeList())));
-  }
-  zc::Vector<ast::NodeId> items;
-  for (const auto declaration : declarations) { items.add(fix.makeStatementListItem(declaration)); }
-  fix.makeSourceFile(fix.makeModuleDecl("root"_zc), fix.makeNodeList(items));
-  return fix.finishTree();
-}
-
-BindingInputVerificationResult verify(FrozenFixture& fixture, const ast::Tree& tree,
-                                      const DefinitionIdentityMap& definitions) {
-  ZC_IF_SOME(graph, fixture.graph) {
-    return BindingInputVerifier::verify(
-        BindingInputCandidate{fixture.context, fixture.packageId, fixture.crateId, fixture.sourceId,
-                              fixture.moduleId, tree, fixture.registries, graph, definitions});
-  }
-  ZC_FAIL_REQUIRE("binding verification requires a verified graph fixture");
+  ZC_FAIL_REQUIRE("binding verification requires complete verified inputs");
 }
 
 template <typename Success>
-void expectFailure(zc::OneOf<Success, ModuleGraphInvariantFact>& result,
-                   ModuleGraphInvariantKind kind) {
+void expectGraphFailure(zc::OneOf<Success, ModuleGraphInvariantFact>& result,
+                        ModuleGraphInvariantKind kind) {
   ZC_REQUIRE(result.template is<ModuleGraphInvariantFact>());
-  ZC_EXPECT(static_cast<uint32_t>(result.template get<ModuleGraphInvariantFact>().kind) ==
-            static_cast<uint32_t>(kind));
+  ZC_EXPECT(result.template get<ModuleGraphInvariantFact>().kind == kind);
+}
+
+void expectInventoryFailure(FrozenDefinitionInventoryResult& result,
+                            FrozenInventoryInvariantKind kind) {
+  ZC_REQUIRE(result.is<FrozenInventoryInvariantFact>());
+  ZC_EXPECT(result.get<FrozenInventoryInvariantFact>().kind == kind);
 }
 
 }  // namespace
 
-ZC_TEST("BindingInput.AcceptsCompleteDependencyFreeInventory") {
-  const auto tree = dependencyFreeTree(true);
-  const auto definitionNode = DefinitionInventory::collect(tree).definitions()[0].node;
-  FrozenFixture fixture(tree, definitionNode);
-  auto result = verify(fixture, tree, fixture.definitions);
-  ZC_REQUIRE(result.is<VerifiedBindingInput>());
+ZC_TEST("ParsedModuleReceipt.MatchesNormativeRFC0004Oracle") {
+  uint8_t sourceBytes[] = {0xa1};
+  uint8_t contentBytes[32];
+  uint8_t schemaBytes[32];
+  for (auto& byte : contentBytes) { byte = 0x22; }
+  for (auto& byte : schemaBytes) { byte = 0x33; }
+  auto content = identity::Sha256Digest::fromBytes(zc::arrayPtr(contentBytes));
+  auto schema = identity::Sha256Digest::fromBytes(zc::arrayPtr(schemaBytes));
+  const uint8_t dump[] = {'x', 'y', 'z'};
+  ZC_IF_SOME(contentValue, content) {
+    ZC_IF_SOME(schemaValue, schema) {
+      auto receipt = ParsedModuleReceipt::compute(zc::arrayPtr(sourceBytes), contentValue, 3,
+                                                  schemaValue, zc::arrayPtr(dump));
+      ZC_IF_SOME(value, receipt) {
+        ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
+                  "7a4ab18a31387244311bd2a1b1472350536140c89532ce64240d7670d5a20b8e"_zc);
+        return;
+      }
+    }
+  }
+  ZC_EXPECT(false);
 }
 
-ZC_TEST("BindingInput.ClassifiesIncompleteAndForeignDefinitionInventories") {
-  const auto tree = dependencyFreeTree(true);
-  const auto definitionNode = DefinitionInventory::collect(tree).definitions()[0].node;
-  FrozenFixture fixture(tree, definitionNode);
+ZC_TEST("ParsedModule.PromotesExactSourceTreeAndRootSpan") {
+  ParsedSource sourceFixture("module root;\nfun run() {}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  ZC_REQUIRE(fixture.parsed != zc::none);
+  ZC_IF_SOME(parsed, fixture.parsed) {
+    ZC_EXPECT(parsed.byteLength() == 26);
+    ZC_EXPECT(parsed.tree().node(parsed.tree().root()).kind == ast::SyntaxKind::SourceFile);
+    ZC_EXPECT(parsed.rootSpan().belongsTo(source()));
+  }
+  ZC_REQUIRE(fixture.frozenDefinitions != zc::none);
+  ZC_IF_SOME(definitions, fixture.frozenDefinitions) {
+    ZC_EXPECT(definitions.definitions().size() == 1);
+  }
+}
 
+ZC_TEST("ParsedModule.RejectsCrossSourceAndInvalidRanges") {
+  source::SourceManager sources;
+  const auto buffer = sources.addMemBufferCopy("module root;"_zcb, "main.zom");
+  auto snapshot = identity::ImmutableSourceSnapshot::from(
+      source(), zc::heapArray(sources.getEntireTextForBuffer(buffer)));
+  const uint8_t foreign[] = {0, 1};
+  const auto badRange = source::SourceRange(foreign, foreign + 1);
+  ZC_IF_SOME(snapshotValue, snapshot) {
+    auto result = ParsedModuleVerifier::admit(snapshotValue, sources, buffer,
+                                              manualModuleTree(badRange, "root"_zc));
+    ZC_REQUIRE(result.is<ParsedModuleInvariantFact>());
+    ZC_EXPECT(result.get<ParsedModuleInvariantFact>().kind ==
+              ParsedModuleInvariantKind::InvalidSourceRange);
+  }
+}
+
+ZC_TEST("ParsedModule.ReceiptBindsExactTreeAndPromotionRejectsStaleSource") {
+  source::SourceManager sources;
+  const auto buffer = sources.addMemBufferCopy("module root;"_zcb, "main.zom");
+  auto snapshot = identity::ImmutableSourceSnapshot::from(
+      source(), zc::heapArray(sources.getEntireTextForBuffer(buffer)));
+  ZC_IF_SOME(snapshotValue, snapshot) {
+    const auto bufferRange = sources.getRangeForBuffer(buffer).getAsRange();
+    auto first = ParsedModuleVerifier::admit(snapshotValue, sources, buffer,
+                                             manualModuleTree(bufferRange, "root"_zc));
+    auto second = ParsedModuleVerifier::admit(snapshotValue, sources, buffer,
+                                              manualModuleTree(bufferRange, "other"_zc));
+    ZC_REQUIRE(first.is<UnbrandedParsedModule>());
+    ZC_REQUIRE(second.is<UnbrandedParsedModule>());
+    ZC_EXPECT(first.get<UnbrandedParsedModule>().receipt().digest() !=
+              second.get<UnbrandedParsedModule>().receipt().digest());
+
+    identity::SemanticContextFactory factory;
+    const auto context = requireContext(factory);
+    auto registriesValue = identity::SemanticIdentityRegistrySet::create(factory, context);
+    ZC_REQUIRE(registriesValue != zc::none);
+    ZC_IF_SOME(registries, registriesValue) {
+      ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
+      auto stale =
+          identity::ImmutableSourceSnapshot::from(source(), zc::heapArray("module root; "_zcb));
+      ZC_IF_SOME(staleValue, stale) {
+        ZC_REQUIRE(registries.collectSourceFile(zc::mv(staleValue)) ==
+                   identity::FrozenRegistryFailure::None);
+      }
+      ZC_REQUIRE(registries.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
+      auto promoted = ParsedModuleVerifier::promote(context, registries,
+                                                    zc::mv(first.get<UnbrandedParsedModule>()));
+      ZC_REQUIRE(promoted.is<ParsedModuleInvariantFact>());
+      ZC_EXPECT(promoted.get<ParsedModuleInvariantFact>().kind ==
+                ParsedModuleInvariantKind::SourceMismatch);
+    }
+  }
+}
+
+ZC_TEST("BindingInput.AcceptsVerifiedDependencyFreeInventory") {
+  ParsedSource sourceFixture("module root;\nfun run() {}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto result = verify(fixture);
+  ZC_REQUIRE(result.is<VerifiedBindingInput>());
+  ZC_EXPECT(result.get<VerifiedBindingInput>().definitions().definitions().size() == 1);
+}
+
+ZC_TEST("FrozenInventory.RejectsMissingAdditionalWrongKindAndForeignDefinitions") {
+  ParsedSource missingSource("module root;\nfun run() {}\n"_zc);
+  FrozenFixture missingFixture(missingSource, true);
   DefinitionIdentityMap missing;
-  auto missingResult = verify(fixture, tree, missing);
-  expectFailure(missingResult, ModuleGraphInvariantKind::IncompleteResolution);
+  ZC_IF_SOME(parsed, missingFixture.parsed) {
+    auto result = FrozenDefinitionInventoryVerifier::verifySingleModule(
+        missingFixture.context, missingFixture.moduleId, parsed, missingFixture.registries,
+        missing);
+    expectInventoryFailure(result, FrozenInventoryInvariantKind::IncompleteInventory);
+  }
 
+  ParsedSource additionalSource("module root;\nfun run() {}\n"_zc);
+  FrozenFixture additionalFixture(additionalSource, true);
   DefinitionIdentityMap additional;
-  ZC_REQUIRE(additional.insert(definitionNode, fixture.definitionId));
-  ZC_REQUIRE(additional.insert(tree.root(), fixture.definitionId));
-  auto additionalResult = verify(fixture, tree, additional);
-  expectFailure(additionalResult, ModuleGraphInvariantKind::IncompleteResolution);
+  ZC_IF_SOME(parsed, additionalFixture.parsed) {
+    ZC_REQUIRE(additional.insert(parsed.tree().root(), additionalFixture.definitionId));
+    const auto definitionNode = DefinitionInventory::collect(parsed.tree()).definitions()[0].node;
+    ZC_REQUIRE(additional.insert(definitionNode, additionalFixture.definitionId));
+    auto result = FrozenDefinitionInventoryVerifier::verifySingleModule(
+        additionalFixture.context, additionalFixture.moduleId, parsed, additionalFixture.registries,
+        additional);
+    expectInventoryFailure(result, FrozenInventoryInvariantKind::IncompleteInventory);
+  }
 
-  FrozenFixture foreign(tree, definitionNode);
-  auto foreignResult = verify(fixture, tree, foreign.definitions);
-  expectFailure(foreignResult, ModuleGraphInvariantKind::InputMismatch);
+  ParsedSource wrongSource("module root;\nfun run() {}\n"_zc);
+  FrozenFixture wrongFixture(wrongSource, true, true);
+  ZC_IF_SOME(kind, wrongFixture.inventoryFailure) {
+    ZC_EXPECT(kind == FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
+  }
+  else { ZC_EXPECT(false); }
+
+  ParsedSource localSource("module root;\nfun run() {}\n"_zc);
+  ParsedSource foreignSource("module root;\nfun run() {}\n"_zc);
+  FrozenFixture local(localSource, true);
+  FrozenFixture foreign(foreignSource, true);
+  DefinitionIdentityMap foreignMap;
+  ZC_IF_SOME(parsed, local.parsed) {
+    const auto definitionNode = DefinitionInventory::collect(parsed.tree()).definitions()[0].node;
+    ZC_REQUIRE(foreignMap.insert(definitionNode, foreign.definitionId));
+    auto result = FrozenDefinitionInventoryVerifier::verifySingleModule(
+        local.context, local.moduleId, parsed, local.registries, foreignMap);
+    expectInventoryFailure(result, FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
+  }
 }
 
 ZC_TEST("BindingInput.RejectsImplProducerUntilImplInventoryPublicationExists") {
-  const auto tree = dependencyFreeTree(false, true);
-  FrozenFixture fixture(tree);
-  auto result = verify(fixture, tree, fixture.definitions);
-  expectFailure(result, ModuleGraphInvariantKind::IncompleteResolution);
+  ParsedSource sourceFixture("module root;\nimpl Trait for Target {}\n"_zc);
+  FrozenFixture fixture(sourceFixture);
+  ZC_IF_SOME(kind, fixture.inventoryFailure) {
+    ZC_EXPECT(kind == FrozenInventoryInvariantKind::UnsupportedImplInventory);
+  }
+  else { ZC_EXPECT(false); }
 }
 
 ZC_TEST("ModuleGraph.ClassifiesUnresolvedSyntaxRequesterAndRevisionFailures") {
-  tests::TestFixture fix;
-  zc::Vector<ast::NodeId> declarations;
-  declarations.add(fix.makeImportDecl("dependency"_zc));
-  const auto importTree = fix.buildSourceFile("root"_zc, declarations);
-  FrozenFixture unresolved(importTree);
+  ParsedSource importSource("module root;\nimport math::geometry;\n"_zc);
+  FrozenFixture unresolved(importSource);
   ZC_IF_SOME(kind, unresolved.graphFailure) {
     ZC_EXPECT(kind == ModuleGraphInvariantKind::IncompleteResolution);
   }
   else { ZC_EXPECT(false); }
 
-  const auto tree = dependencyFreeTree();
-  FrozenFixture fixture(tree);
-  auto requesterResult =
-      ModuleGraphVerifier::verifySingleModule(fixture.context, fingerprint(fixture.registries),
-                                              fixture.registries, identity::ModuleId(), tree);
-  expectFailure(requesterResult, ModuleGraphInvariantKind::InputMismatch);
+  ParsedSource sourceFixture("module root;\n"_zc);
+  FrozenFixture fixture(sourceFixture);
+  ZC_IF_SOME(parsed, fixture.parsed) {
+    auto requesterResult =
+        ModuleGraphVerifier::verifySingleModule(fixture.context, fingerprint(fixture.registries),
+                                                fixture.registries, identity::ModuleId(), parsed);
+    expectGraphFailure(requesterResult, ModuleGraphInvariantKind::InputMismatch);
 
-  auto revisionResult = ModuleGraphVerifier::verifySingleModule(
-      fixture.context, emptyFingerprint(), fixture.registries, fixture.moduleId, tree);
-  expectFailure(revisionResult, ModuleGraphInvariantKind::RevisionMismatch);
+    auto revisionResult = ModuleGraphVerifier::verifySingleModule(
+        fixture.context, emptyFingerprint(), fixture.registries, fixture.moduleId, parsed);
+    expectGraphFailure(revisionResult, ModuleGraphInvariantKind::RevisionMismatch);
+  }
 }
 
 ZC_TEST("ModuleGraphRevision.IsDeterministicForEquivalentSingleModuleGraphs") {
-  const auto firstTree = dependencyFreeTree();
-  const auto secondTree = dependencyFreeTree();
-  FrozenFixture first(firstTree);
-  FrozenFixture second(secondTree);
+  ParsedSource firstSource("module root;\n"_zc);
+  ParsedSource secondSource("module root;\n"_zc);
+  FrozenFixture first(firstSource);
+  FrozenFixture second(secondSource);
   ZC_IF_SOME(firstGraph, first.graph) {
     ZC_IF_SOME(secondGraph, second.graph) {
       ZC_EXPECT(firstGraph.revision().digest() == secondGraph.revision().digest());
       ZC_EXPECT(zc::encodeHex(firstGraph.revision().digest().bytes()) ==
-                "bc59817632beabe08f937aa1ff8f2986ad6d1b0f9916a7e8417bf2f2525f8802"_zc);
+                "2d40cd7d8c0fa23e5857fa4785dfcd2db7bff312a635ce0d692ddea433a6f81d"_zc);
       return;
     }
   }
@@ -340,7 +522,6 @@ ZC_TEST("ModuleGraphInvariant.EmitsFatalZOM9956WithOccurrenceCount") {
   emitModuleGraphInvariant(diagnostics,
                            ModuleGraphInvariantFact{ModuleGraphInvariantKind::InvalidEdge, zc::none,
                                                     zc::Vector<uint32_t>(), 7});
-
   ZC_EXPECT(captured.id == diagnostics::DiagID::ModuleGraphInvariant);
   ZC_EXPECT(diagnostics::getDiagnosticInfo(captured.id).severity ==
             diagnostics::DiagSeverity::kFatal);
