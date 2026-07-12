@@ -525,6 +525,50 @@ VerifiedBuildScriptResult executedResult(const BuildScriptExecutionKey& key) {
   return zc::mv(result.get<VerifiedBuildScriptResult>());
 }
 
+enum class OutputRecordMutation : uint8_t {
+  SourceDigest,
+  DeclaredEnvironment,
+  ExportedEnvironment
+};
+
+identity::BuildScriptOutputRecord mutateOutputRecord(
+    const identity::BuildScriptOutputRecord& source, OutputRecordMutation mutation) {
+  zc::Vector<identity::BuildScriptDigestEntry> sourceDigests(source.sourceDigests().size());
+  for (size_t index = 0; index < source.sourceDigests().size(); ++index) {
+    const auto& value = source.sourceDigests()[index];
+    sourceDigests.add(mutation == OutputRecordMutation::SourceDigest && index == 0
+                          ? identity::BuildScriptDigestEntry::from(value.path().clone(),
+                                                                   digest("stale-source"_zc))
+                          : value.clone());
+  }
+  zc::Vector<identity::BuildScriptEnvironmentEntry> declared(source.declaredEnvironment().size());
+  for (size_t index = 0; index < source.declaredEnvironment().size(); ++index) {
+    const auto& value = source.declaredEnvironment()[index];
+    declared.add(mutation == OutputRecordMutation::DeclaredEnvironment && index == 0
+                     ? identity::BuildScriptEnvironmentEntry::from(
+                           scalar<identity::SemanticEnvironmentName>(value.name()),
+                           bytes("stale-declared"_zc))
+                     : value.clone());
+  }
+  zc::Vector<identity::BuildScriptDigestEntry> generated(source.generatedSources().size());
+  for (const auto& value : source.generatedSources()) { generated.add(value.clone()); }
+  zc::Vector<identity::BuildScriptEnvironmentEntry> exported(source.exportedEnvironment().size());
+  for (size_t index = 0; index < source.exportedEnvironment().size(); ++index) {
+    const auto& value = source.exportedEnvironment()[index];
+    exported.add(mutation == OutputRecordMutation::ExportedEnvironment && index == 0
+                     ? identity::BuildScriptEnvironmentEntry::from(
+                           scalar<identity::SemanticEnvironmentName>(value.name()),
+                           bytes("stale-exported"_zc))
+                     : value.clone());
+  }
+  auto output = identity::BuildScriptOutputRecord::from(source.preparatoryKey().clone(),
+                                                        zc::mv(sourceDigests), zc::mv(declared),
+                                                        zc::mv(generated), zc::mv(exported));
+  ZC_REQUIRE(output != zc::none);
+  ZC_IF_SOME(value, output) { return zc::mv(value); }
+  ZC_UNREACHABLE;
+}
+
 zc::String invalidUtf8() {
   const char raw[] = {static_cast<char>(0xff)};
   return zc::heapString(zc::arrayPtr(raw, zc::size(raw)));
@@ -637,6 +681,54 @@ ZC_TEST("Build-script cache miss publishes one complete byte-identical output re
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
               "d7e0bdb6b5a960cc8803f7f0f7191bc91bca8c259928c604dd09094d0598a5ff"_zc);
   }
+}
+
+ZC_TEST("Build-result publication rejects stale execution environment facts with provenance") {
+  const OutputRecordMutation mutations[] = {
+      OutputRecordMutation::SourceDigest,
+      OutputRecordMutation::DeclaredEnvironment,
+      OutputRecordMutation::ExportedEnvironment,
+  };
+  const BuildResultIntegrityFact expectedFacts[] = {
+      BuildResultIntegrityFact::SourceDigests,
+      BuildResultIntegrityFact::DeclaredEnvironment,
+      BuildResultIntegrityFact::ExportedEnvironment,
+  };
+  for (size_t index = 0; index < zc::size(mutations); ++index) {
+    auto key = executionKey(false);
+    auto original = executedResult(key);
+    auto stale = mutateOutputRecord(original.output(), mutations[index]);
+    zc::Vector<BuildScriptEnvironmentValue> exported;
+    exported.add(BuildScriptEnvironmentValue::from(
+        scalar<identity::SemanticEnvironmentName>("MODE"_zc), bytes("fast"_zc)));
+    auto publication = VerifiedBuildScriptResult::publishDeterministicExecution(
+        key,
+        VerifiedBuildScriptRun::from(outputSnapshot("generated"_zc),
+                                     BuildScriptResponse::success(zc::mv(exported))),
+        zc::mv(stale));
+    ZC_REQUIRE(publication.is<BuildResultIntegrityViolation>());
+    const auto& violation = publication.get<BuildResultIntegrityViolation>();
+    ZC_EXPECT(violation.producer() == BuildResultIntegrityProducer::DeterministicExecution);
+    ZC_EXPECT(violation.fact() == expectedFacts[index]);
+  }
+}
+
+ZC_TEST("Build-result cache replay reports the cache publication producer") {
+  auto key = executionKey(false);
+  auto original = executedResult(key);
+  auto stale = mutateOutputRecord(original.output(), OutputRecordMutation::ExportedEnvironment);
+  zc::Vector<BuildScriptEnvironmentValue> exported;
+  exported.add(BuildScriptEnvironmentValue::from(
+      scalar<identity::SemanticEnvironmentName>("MODE"_zc), bytes("fast"_zc)));
+  auto publication = VerifiedBuildScriptResult::publishCacheReplay(
+      key,
+      VerifiedBuildScriptRun::from(outputSnapshot("generated"_zc),
+                                   BuildScriptResponse::success(zc::mv(exported))),
+      zc::mv(stale));
+  ZC_REQUIRE(publication.is<BuildResultIntegrityViolation>());
+  const auto& violation = publication.get<BuildResultIntegrityViolation>();
+  ZC_EXPECT(violation.producer() == BuildResultIntegrityProducer::CacheReplay);
+  ZC_EXPECT(violation.fact() == BuildResultIntegrityFact::ExportedEnvironment);
 }
 
 ZC_TEST("Build-script cache miss rejects record bytes outputs and teardown divergence") {
@@ -770,18 +862,17 @@ ZC_TEST("Build-script final result set freezes exact plan keys and generated vie
   zc::Vector<VerifiedBuildScriptResult> results;
   results.add(executedResult(key));
   auto verified = VerifiedBuildScriptResultSet::from(zc::mv(planKeys), zc::mv(results));
-  ZC_REQUIRE(verified != zc::none);
-  ZC_IF_SOME(value, verified) {
-    ZC_EXPECT(value.planKeys().size() == 1);
-    ZC_EXPECT(value.results().size() == 1);
-    ZC_EXPECT(value.results()[0].output().generatedSources()[0].digest() ==
-              value.results()[0].run().outputs().files()[0].contentDigest());
-  }
+  ZC_REQUIRE(verified.is<VerifiedBuildScriptResultSet>());
+  auto& value = verified.get<VerifiedBuildScriptResultSet>();
+  ZC_EXPECT(value.planKeys().size() == 1);
+  ZC_EXPECT(value.results().size() == 1);
+  ZC_EXPECT(value.results()[0].output().generatedSources()[0].digest() ==
+            value.results()[0].run().outputs().files()[0].contentDigest());
 
   zc::Vector<identity::PreparatoryBuildScriptKey> emptyPlan;
   zc::Vector<VerifiedBuildScriptResult> emptyResults;
   auto empty = VerifiedBuildScriptResultSet::from(zc::mv(emptyPlan), zc::mv(emptyResults));
-  ZC_REQUIRE(empty != zc::none);
+  ZC_REQUIRE(empty.is<VerifiedBuildScriptResultSet>());
 }
 
 ZC_TEST("Build-script final result set rejects missing duplicate and changed generated facts") {
@@ -790,7 +881,12 @@ ZC_TEST("Build-script final result set rejects missing duplicate and changed gen
     zc::Vector<identity::PreparatoryBuildScriptKey> planKeys;
     planKeys.add(key.preparatory().clone());
     zc::Vector<VerifiedBuildScriptResult> noResults;
-    ZC_EXPECT(VerifiedBuildScriptResultSet::from(zc::mv(planKeys), zc::mv(noResults)) == zc::none);
+    auto rejected = VerifiedBuildScriptResultSet::from(zc::mv(planKeys), zc::mv(noResults));
+    ZC_REQUIRE(rejected.is<BuildResultIntegrityViolation>());
+    ZC_EXPECT(rejected.get<BuildResultIntegrityViolation>().producer() ==
+              BuildResultIntegrityProducer::FinalSessionPublication);
+    ZC_EXPECT(rejected.get<BuildResultIntegrityViolation>().fact() ==
+              BuildResultIntegrityFact::PlanAssociation);
   }
   {
     auto key = executionKey(false);
@@ -800,7 +896,12 @@ ZC_TEST("Build-script final result set rejects missing duplicate and changed gen
     zc::Vector<VerifiedBuildScriptResult> results;
     results.add(executedResult(key));
     results.add(executedResult(key));
-    ZC_EXPECT(VerifiedBuildScriptResultSet::from(zc::mv(planKeys), zc::mv(results)) == zc::none);
+    auto rejected = VerifiedBuildScriptResultSet::from(zc::mv(planKeys), zc::mv(results));
+    ZC_REQUIRE(rejected.is<BuildResultIntegrityViolation>());
+    ZC_EXPECT(rejected.get<BuildResultIntegrityViolation>().producer() ==
+              BuildResultIntegrityProducer::FinalSessionPublication);
+    ZC_EXPECT(rejected.get<BuildResultIntegrityViolation>().fact() ==
+              BuildResultIntegrityFact::PlanAssociation);
   }
   {
     auto key = executionKey(false);
@@ -809,15 +910,16 @@ ZC_TEST("Build-script final result set rejects missing duplicate and changed gen
     zc::Vector<BuildScriptEnvironmentValue> exported;
     exported.add(BuildScriptEnvironmentValue::from(
         scalar<identity::SemanticEnvironmentName>("MODE"_zc), bytes("fast"_zc)));
-    auto changed = VerifiedBuildScriptResult::from(
+    auto changed = VerifiedBuildScriptResult::publishDeterministicExecution(
+        key,
         VerifiedBuildScriptRun::from(outputSnapshot("changed"_zc),
                                      BuildScriptResponse::success(zc::mv(exported))),
         zc::mv(output));
-    zc::Vector<identity::PreparatoryBuildScriptKey> planKeys;
-    planKeys.add(key.preparatory().clone());
-    zc::Vector<VerifiedBuildScriptResult> results;
-    results.add(zc::mv(changed));
-    ZC_EXPECT(VerifiedBuildScriptResultSet::from(zc::mv(planKeys), zc::mv(results)) == zc::none);
+    ZC_REQUIRE(changed.is<BuildResultIntegrityViolation>());
+    ZC_EXPECT(changed.get<BuildResultIntegrityViolation>().producer() ==
+              BuildResultIntegrityProducer::DeterministicExecution);
+    ZC_EXPECT(changed.get<BuildResultIntegrityViolation>().fact() ==
+              BuildResultIntegrityFact::GeneratedInventory);
   }
 }
 

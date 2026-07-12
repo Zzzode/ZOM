@@ -338,11 +338,53 @@ private:
 
 using BuildScriptRunResult = zc::OneOf<VerifiedBuildScriptRun, BuildScriptIssue>;
 
+/// \brief Boundary that detected an invalid build-result publication.
+enum class BuildResultIntegrityProducer : uint8_t {
+  DeterministicExecution = 0x01,
+  CacheReplay = 0x02,
+  FinalSessionPublication = 0x03,
+};
+
+/// \brief Exact relation that failed while publishing a build result.
+enum class BuildResultIntegrityFact : uint8_t {
+  PreparatoryKey = 0x01,
+  SourceDigests = 0x02,
+  DeclaredEnvironment = 0x03,
+  GeneratedInventory = 0x04,
+  GeneratedBytes = 0x05,
+  ExportedEnvironment = 0x06,
+  PlanAssociation = 0x07,
+};
+
+/// \brief Typed provenance for one build-result integrity failure.
+class BuildResultIntegrityViolation final {
+public:
+  ZC_NODISCARD BuildResultIntegrityProducer producer() const noexcept;
+  ZC_NODISCARD BuildResultIntegrityFact fact() const noexcept;
+
+private:
+  friend class VerifiedBuildScriptResult;
+  friend class VerifiedBuildScriptResultSet;
+
+  BuildResultIntegrityViolation(BuildResultIntegrityProducer producer,
+                                BuildResultIntegrityFact fact) noexcept;
+  BuildResultIntegrityProducer producerValue;
+  BuildResultIntegrityFact factValue;
+};
+
+class VerifiedBuildScriptResult;
+using BuildScriptResultPublication =
+    zc::OneOf<VerifiedBuildScriptResult, BuildResultIntegrityViolation>;
+
 /// \brief One deterministic run paired with its complete RFC 0011 output record.
 class VerifiedBuildScriptResult final {
 public:
-  ZC_NODISCARD static VerifiedBuildScriptResult from(VerifiedBuildScriptRun&& run,
-                                                     identity::BuildScriptOutputRecord&& output);
+  ZC_NODISCARD static BuildScriptResultPublication publishDeterministicExecution(
+      const BuildScriptExecutionKey& executionKey, VerifiedBuildScriptRun&& run,
+      identity::BuildScriptOutputRecord&& output);
+  ZC_NODISCARD static BuildScriptResultPublication publishCacheReplay(
+      const BuildScriptExecutionKey& executionKey, VerifiedBuildScriptRun&& run,
+      identity::BuildScriptOutputRecord&& output);
   VerifiedBuildScriptResult(VerifiedBuildScriptResult&&) noexcept = default;
   VerifiedBuildScriptResult& operator=(VerifiedBuildScriptResult&&) noexcept = default;
   ZC_DISALLOW_COPY(VerifiedBuildScriptResult);
@@ -351,6 +393,9 @@ public:
   ZC_NODISCARD const identity::BuildScriptOutputRecord& output() const noexcept;
 
 private:
+  ZC_NODISCARD static BuildScriptResultPublication publish(
+      BuildResultIntegrityProducer producer, const BuildScriptExecutionKey& executionKey,
+      VerifiedBuildScriptRun&& run, identity::BuildScriptOutputRecord&& output);
   VerifiedBuildScriptResult(VerifiedBuildScriptRun&& run,
                             identity::BuildScriptOutputRecord&& output) noexcept;
   VerifiedBuildScriptRun runValue;
@@ -435,7 +480,7 @@ public:
 /// \brief Frozen exact-key result map admitted into one final package session.
 class VerifiedBuildScriptResultSet final {
 public:
-  ZC_NODISCARD static zc::Maybe<VerifiedBuildScriptResultSet> from(
+  ZC_NODISCARD static zc::OneOf<VerifiedBuildScriptResultSet, BuildResultIntegrityViolation> from(
       zc::Vector<identity::PreparatoryBuildScriptKey>&& planKeys,
       zc::Vector<VerifiedBuildScriptResult>&& results);
   ~VerifiedBuildScriptResultSet() noexcept;

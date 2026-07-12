@@ -1250,8 +1250,11 @@ zc::Maybe<package::BuildScriptIssue> CompilerSession::executeBuildScripts(
     zc::Vector<identity::PreparatoryBuildScriptKey> planKeys(plan.nodes().size());
     for (const auto& node : plan.nodes()) { planKeys.add(node.key().preparatory().clone()); }
     auto results = package::VerifiedBuildScriptResultSet::from(zc::mv(planKeys), zc::mv(completed));
-    if (results == zc::none) { return package::BuildScriptIssue::BuildResultIntegrityViolation; }
-    ZC_IF_SOME(value, results) {
+    if (results.is<package::BuildResultIntegrityViolation>()) {
+      return package::BuildScriptIssue::BuildResultIntegrityViolation;
+    }
+    auto& value = results.get<package::VerifiedBuildScriptResultSet>();
+    {
       ZC_IF_SOME(request, impl->packageRequest) {
         ZC_IF_SOME(graph, impl->packageGraph) {
           zc::Maybe<const package::VerifiedBuildScriptResultSet&> resultView = value;
@@ -1264,7 +1267,7 @@ zc::Maybe<package::BuildScriptIssue> CompilerSession::executeBuildScripts(
       }
     }
     impl->preparatoryCrateGraphs = zc::mv(preparatoryGraphs);
-    ZC_IF_SOME(value, results) { impl->buildScriptResults = zc::mv(value); }
+    impl->buildScriptResults = zc::mv(value);
     return zc::none;
   }
   return package::BuildScriptIssue::BuildResultIntegrityViolation;

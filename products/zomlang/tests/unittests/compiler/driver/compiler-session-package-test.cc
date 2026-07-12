@@ -21,6 +21,7 @@
 #include "zomlang/compiler/driver/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
+#include "zomlang/compiler/driver/package/trusted-runtime-manifest.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang::compiler::driver {
@@ -475,6 +476,80 @@ VerifiedPackageSessionInput packageInput(zc::MemoryResource& resource,
   ZC_FAIL_REQUIRE("valid atomic package-session input was rejected");
 }
 
+identity::Sha256Digest digest(zc::StringPtr text) {
+  auto result = identity::sha256(text.asBytes());
+  ZC_REQUIRE(result != zc::none);
+  ZC_IF_SOME(value, result) { return value; }
+  ZC_UNREACHABLE;
+}
+
+zc::Array<uint8_t> bytes(zc::StringPtr text) {
+  zc::Vector<uint8_t> result(text.size());
+  result.addAll(text.asBytes());
+  return result.releaseAsArray();
+}
+
+package::TrustedBuildRuntimeKey trustedRuntime() {
+  zc::Vector<zc::Array<uint8_t>> objects;
+  objects.add(bytes("runtime-object"_zc));
+  zc::Vector<package::TrustedRuntimeSymbolRecord> declaredSymbols;
+  zc::Vector<package::TrustedRuntimeRelocationRecord> declaredRelocations;
+  zc::Vector<package::TrustedRuntimeOperationRecord> declaredOperations;
+  zc::Vector<package::TrustedRuntimeSymbolId> requiredOperations;
+  uint32_t sectionCount[] = {1};
+  auto declared = package::TrustedRuntimeManifestSet::verify(
+      zc::arrayPtr(sectionCount), zc::mv(declaredSymbols), zc::mv(declaredRelocations),
+      zc::mv(declaredOperations), requiredOperations);
+  ZC_REQUIRE(declared.is<package::TrustedRuntimeManifestSet>());
+  zc::Vector<package::TrustedRuntimeSymbolRecord> observedSymbols;
+  zc::Vector<package::TrustedRuntimeRelocationRecord> observedRelocations;
+  zc::Vector<package::TrustedRuntimeOperationRecord> observedOperations;
+  zc::Vector<package::TrustedRuntimeSymbolId> observedRequiredOperations;
+  auto observed = package::TrustedRuntimeManifestSet::verify(
+      zc::arrayPtr(sectionCount), zc::mv(observedSymbols), zc::mv(observedRelocations),
+      zc::mv(observedOperations), observedRequiredOperations);
+  ZC_REQUIRE(observed.is<package::TrustedRuntimeManifestSet>());
+  zc::Vector<identity::Sha256Digest> objectDigests;
+  objectDigests.add(digest("runtime-object"_zc));
+  auto evidence = package::TrustedRuntimeVerificationEvidence::verify(
+      zc::mv(objectDigests), zc::mv(declared.get<package::TrustedRuntimeManifestSet>()),
+      observed.get<package::TrustedRuntimeManifestSet>());
+  ZC_REQUIRE(evidence.is<package::TrustedRuntimeVerificationEvidence>());
+  auto result = package::TrustedBuildRuntimeKey::verifyEvidence(
+      "zom-v1"_zc, "zom-v1"_zc, zc::mv(objects),
+      zc::mv(evidence.get<package::TrustedRuntimeVerificationEvidence>()));
+  ZC_REQUIRE(result.is<package::TrustedBuildRuntimeKey>());
+  return zc::mv(result.get<package::TrustedBuildRuntimeKey>());
+}
+
+package::BuildScriptLimitKey buildScriptLimits() {
+  auto result = package::BuildScriptLimitKey::verify(package::BuildScriptLimitKey::defaults());
+  ZC_REQUIRE(result.is<package::BuildScriptLimitKey>());
+  return zc::mv(result.get<package::BuildScriptLimitKey>());
+}
+
+package::BuildScriptExecutionKey executionKey(const package::BuildScriptPlanNode& node,
+                                              const VerifiedPreparatoryCrateGraph& graph) {
+  auto registry = targetRegistry();
+  zc::Vector<identity::CrateKey> crates(graph.crates().size());
+  for (const auto& value : graph.crates()) { crates.add(value.clone()); }
+  zc::Vector<identity::CrateDependencyEdgeKey> edges(graph.edges().size());
+  for (const auto& value : graph.edges()) { edges.add(value.clone()); }
+  zc::Vector<identity::BuildScriptDigestEntry> inputs(node.contract().inputs().size());
+  for (const auto& value : node.contract().inputs()) {
+    inputs.add(identity::BuildScriptDigestEntry::from(value.clone(), digest("input"_zc)));
+  }
+  zc::Vector<identity::BuildScriptEnvironmentEntry> environment;
+  auto result = package::BuildScriptExecutionKey::from(
+      node.key().preparatory().clone(), graph.fingerprint().clone(),
+      package::BuildScriptExecutableKey::from(selection(registry), digest("image"_zc)),
+      trustedRuntime(), node.contract().clone(), graph.root().clone(), zc::mv(crates),
+      zc::mv(edges), zc::mv(inputs), zc::mv(environment), buildScriptLimits());
+  ZC_REQUIRE(result != zc::none);
+  ZC_IF_SOME(value, result) { return zc::mv(value); }
+  ZC_UNREACHABLE;
+}
+
 class RecordingPlanExecutor final : public package::BuildScriptPlanExecutor {
 public:
   package::BuildScriptExecutionResult execute(
@@ -482,9 +557,13 @@ public:
       zc::ArrayPtr<const package::VerifiedBuildScriptResult> completedResults) override {
     observedCrateCounts.add(crateGraph.crates().size());
     observedCompletedCounts.add(completedResults.size());
+    auto key = executionKey(node, crateGraph);
     auto generatedSnapshot = snapshot("generated"_zc);
-    zc::Vector<identity::BuildScriptDigestEntry> sourceDigests;
-    zc::Vector<identity::BuildScriptEnvironmentEntry> declaredEnvironment;
+    zc::Vector<identity::BuildScriptDigestEntry> sourceDigests(key.inputDigests().size());
+    for (const auto& value : key.inputDigests()) { sourceDigests.add(value.clone()); }
+    zc::Vector<identity::BuildScriptEnvironmentEntry> declaredEnvironment(
+        key.declaredEnvironment().size());
+    for (const auto& value : key.declaredEnvironment()) { declaredEnvironment.add(value.clone()); }
     zc::Vector<identity::BuildScriptDigestEntry> generatedSources;
     generatedSources.add(identity::BuildScriptDigestEntry::from(
         generatedSnapshot.record().files()[0].path().clone(),
@@ -496,11 +575,16 @@ public:
     ZC_REQUIRE(output != zc::none);
     zc::Vector<package::BuildScriptEnvironmentValue> responseEnvironment;
     ZC_IF_SOME(value, output) {
-      return package::VerifiedBuildScriptResult::from(
+      auto publication = package::VerifiedBuildScriptResult::publishDeterministicExecution(
+          key,
           package::VerifiedBuildScriptRun::from(
               zc::mv(generatedSnapshot),
               package::BuildScriptResponse::success(zc::mv(responseEnvironment))),
           zc::mv(value));
+      if (publication.is<package::BuildResultIntegrityViolation>()) {
+        return package::BuildScriptIssue::BuildResultIntegrityViolation;
+      }
+      return zc::mv(publication.get<package::VerifiedBuildScriptResult>());
     }
     ZC_UNREACHABLE;
   }

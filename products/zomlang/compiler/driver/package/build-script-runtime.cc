@@ -630,10 +630,15 @@ VerifiedBuildScriptResult::VerifiedBuildScriptResult(
     VerifiedBuildScriptRun&& run, identity::BuildScriptOutputRecord&& output) noexcept
     : runValue(zc::mv(run)), outputValue(zc::mv(output)) {}
 
-VerifiedBuildScriptResult VerifiedBuildScriptResult::from(
-    VerifiedBuildScriptRun&& run, identity::BuildScriptOutputRecord&& output) {
-  return VerifiedBuildScriptResult(zc::mv(run), zc::mv(output));
+BuildResultIntegrityViolation::BuildResultIntegrityViolation(BuildResultIntegrityProducer producer,
+                                                             BuildResultIntegrityFact fact) noexcept
+    : producerValue(producer), factValue(fact) {}
+
+BuildResultIntegrityProducer BuildResultIntegrityViolation::producer() const noexcept {
+  return producerValue;
 }
+
+BuildResultIntegrityFact BuildResultIntegrityViolation::fact() const noexcept { return factValue; }
 
 const VerifiedBuildScriptRun& VerifiedBuildScriptResult::run() const noexcept { return runValue; }
 
@@ -722,7 +727,71 @@ zc::Maybe<identity::BuildScriptOutputRecord> buildOutputRecord(
                                                  zc::mv(generated), zc::mv(exported));
 }
 
+template <typename Value>
+bool samePublicationSequence(zc::ArrayPtr<const Value> left, zc::ArrayPtr<const Value> right) {
+  if (left.size() != right.size()) { return false; }
+  for (size_t index = 0; index < left.size(); ++index) {
+    identity::CanonicalEncoder leftEncoder;
+    identity::CanonicalEncoder rightEncoder;
+    left[index].encode(leftEncoder);
+    right[index].encode(rightEncoder);
+    if (leftEncoder.finish().asPtr() != rightEncoder.finish().asPtr()) { return false; }
+  }
+  return true;
+}
+
 }  // namespace
+
+BuildScriptResultPublication VerifiedBuildScriptResult::publish(
+    BuildResultIntegrityProducer producer, const BuildScriptExecutionKey& executionKey,
+    VerifiedBuildScriptRun&& run, identity::BuildScriptOutputRecord&& output) {
+  auto expected = buildOutputRecord(executionKey, run);
+  if (expected == zc::none) {
+    return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::GeneratedBytes);
+  }
+  ZC_IF_SOME(expectedValue, expected) {
+    if (output.preparatoryKey().encode().asPtr() != executionKey.preparatory().encode().asPtr()) {
+      return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::PreparatoryKey);
+    }
+    if (!samePublicationSequence(output.sourceDigests(), executionKey.inputDigests())) {
+      return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::SourceDigests);
+    }
+    if (!samePublicationSequence(output.declaredEnvironment(),
+                                 executionKey.declaredEnvironment())) {
+      return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::DeclaredEnvironment);
+    }
+    if (!samePublicationSequence(output.generatedSources(), expectedValue.generatedSources())) {
+      return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::GeneratedInventory);
+    }
+    for (const auto& file : run.outputs().files()) {
+      auto bytes = run.outputSnapshot().readVerifiedFile(file.path());
+      if (!bytes.is<zc::Array<zc::byte>>() ||
+          zc::encodeUtf32(bytes.get<zc::Array<zc::byte>>().asChars()) == zc::none) {
+        return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::GeneratedBytes);
+      }
+    }
+    if (!samePublicationSequence(output.exportedEnvironment(),
+                                 expectedValue.exportedEnvironment())) {
+      return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::ExportedEnvironment);
+    }
+    return VerifiedBuildScriptResult(zc::mv(run), zc::mv(output));
+  }
+  ZC_UNREACHABLE;
+}
+
+BuildScriptResultPublication VerifiedBuildScriptResult::publishDeterministicExecution(
+    const BuildScriptExecutionKey& executionKey, VerifiedBuildScriptRun&& run,
+    identity::BuildScriptOutputRecord&& output) {
+  return publish(BuildResultIntegrityProducer::DeterministicExecution, executionKey, zc::mv(run),
+                 zc::mv(output));
+}
+
+BuildScriptResultPublication VerifiedBuildScriptResult::publishCacheReplay(
+    const BuildScriptExecutionKey& executionKey, VerifiedBuildScriptRun&& run,
+    identity::BuildScriptOutputRecord&& output) {
+  return publish(BuildResultIntegrityProducer::CacheReplay, executionKey, zc::mv(run),
+                 zc::mv(output));
+}
 
 BuildScriptExecutionResult BuildScriptDeterminismExecutor::executeCacheMiss(
     BuildScriptSandboxFactory& factory, const BuildScriptExecutionKey& executionKey,
@@ -744,7 +813,12 @@ BuildScriptExecutionResult BuildScriptDeterminismExecutor::executeCacheMiss(
           !sameOutputBytes(firstRun, secondRun)) {
         return BuildScriptIssue::NondeterministicOutput;
       }
-      return VerifiedBuildScriptResult::from(zc::mv(firstRun), zc::mv(firstOutputValue));
+      auto publication = VerifiedBuildScriptResult::publishDeterministicExecution(
+          executionKey, zc::mv(firstRun), zc::mv(firstOutputValue));
+      if (publication.is<BuildResultIntegrityViolation>()) {
+        return BuildScriptIssue::BuildResultIntegrityViolation;
+      }
+      return zc::mv(publication.get<VerifiedBuildScriptResult>());
     }
   }
   else { return BuildScriptIssue::NondeterministicOutput; }
@@ -889,7 +963,12 @@ BuildScriptExecutionResult BuildScriptCacheExecutor::execute(
     if (response.is<BuildScriptIssue>()) { return response.get<BuildScriptIssue>(); }
     auto run = VerifiedBuildScriptRun::from(zc::mv(candidate.impl->generatedSnapshotValue),
                                             zc::mv(response.get<BuildScriptResponse>()));
-    return VerifiedBuildScriptResult::from(zc::mv(run), zc::mv(candidate.impl->outputValue));
+    auto publication = VerifiedBuildScriptResult::publishCacheReplay(
+        executionKey, zc::mv(run), zc::mv(candidate.impl->outputValue));
+    if (publication.is<BuildResultIntegrityViolation>()) {
+      return BuildScriptIssue::BuildResultIntegrityViolation;
+    }
+    return zc::mv(publication.get<VerifiedBuildScriptResult>());
   }
 
   auto executed = BuildScriptDeterminismExecutor::executeCacheMiss(factory, executionKey, request);
@@ -964,18 +1043,25 @@ bool validFrozenResult(const VerifiedBuildScriptResult& result) {
 
 }  // namespace
 
-zc::Maybe<VerifiedBuildScriptResultSet> VerifiedBuildScriptResultSet::from(
-    zc::Vector<identity::PreparatoryBuildScriptKey>&& planKeys,
-    zc::Vector<VerifiedBuildScriptResult>&& results) {
+zc::OneOf<VerifiedBuildScriptResultSet, BuildResultIntegrityViolation>
+VerifiedBuildScriptResultSet::from(zc::Vector<identity::PreparatoryBuildScriptKey>&& planKeys,
+                                   zc::Vector<VerifiedBuildScriptResult>&& results) {
   sortPlanKeys(planKeys);
   sortBuildResults(results);
-  if (planKeys.size() != results.size()) { return zc::none; }
+  if (planKeys.size() != results.size()) {
+    return BuildResultIntegrityViolation(BuildResultIntegrityProducer::FinalSessionPublication,
+                                         BuildResultIntegrityFact::PlanAssociation);
+  }
   for (size_t index = 0; index < planKeys.size(); ++index) {
     const auto keyBytes = planKeys[index].encode();
     if ((index != 0 && keyBytes.asPtr() == planKeys[index - 1].encode().asPtr()) ||
-        keyBytes.asPtr() != results[index].output().preparatoryKey().encode().asPtr() ||
-        !validFrozenResult(results[index])) {
-      return zc::none;
+        keyBytes.asPtr() != results[index].output().preparatoryKey().encode().asPtr()) {
+      return BuildResultIntegrityViolation(BuildResultIntegrityProducer::FinalSessionPublication,
+                                           BuildResultIntegrityFact::PlanAssociation);
+    }
+    if (!validFrozenResult(results[index])) {
+      return BuildResultIntegrityViolation(BuildResultIntegrityProducer::FinalSessionPublication,
+                                           BuildResultIntegrityFact::GeneratedInventory);
     }
   }
   return VerifiedBuildScriptResultSet(zc::heap<Impl>(zc::mv(planKeys), zc::mv(results)));
