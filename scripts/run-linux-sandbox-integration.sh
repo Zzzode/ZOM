@@ -40,6 +40,7 @@ unprivileged_userns_path=/proc/sys/kernel/unprivileged_userns_clone
 apparmor_userns_original=
 unprivileged_userns_original=
 cgroup_parent="${cgroup_root}/zom-linux-sandbox-${UID}-$$"
+test_host_cgroup="${cgroup_parent}/test-host"
 
 cleanup() {
   local status=$?
@@ -54,6 +55,9 @@ cleanup() {
         "${cgroup_parent}/isolated-run/cgroup.kill" >/dev/null
     fi
     "${privileged[@]}" rmdir "${cgroup_parent}/isolated-run" || cleanup_status=$?
+  fi
+  if [[ -d "${test_host_cgroup}" ]]; then
+    "${privileged[@]}" rmdir "${test_host_cgroup}" || cleanup_status=$?
   fi
   if [[ -d "${cgroup_parent}" ]]; then
     "${privileged[@]}" rmdir "${cgroup_parent}" || cleanup_status=$?
@@ -102,10 +106,13 @@ for controller in memory pids; do
 done
 printf '+memory +pids\n' | "${privileged[@]}" tee \
   "${cgroup_parent}/cgroup.subtree_control" >/dev/null
+"${privileged[@]}" mkdir "${test_host_cgroup}"
 "${privileged[@]}" chown "${UID}:$(id -g)" \
   "${cgroup_parent}" \
   "${cgroup_parent}/cgroup.procs" \
-  "${cgroup_parent}/cgroup.subtree_control"
+  "${cgroup_parent}/cgroup.subtree_control" \
+  "${test_host_cgroup}" \
+  "${test_host_cgroup}/cgroup.procs"
 if [[ -f "${cgroup_parent}/cgroup.threads" ]]; then
   "${privileged[@]}" chown "${UID}:$(id -g)" "${cgroup_parent}/cgroup.threads"
 fi
@@ -118,7 +125,7 @@ test_command=(
 (
   test_process_id=${BASHPID}
   printf '%s\n' "${test_process_id}" | "${privileged[@]}" tee \
-    "${cgroup_parent}/cgroup.procs" >/dev/null
+    "${test_host_cgroup}/cgroup.procs" >/dev/null
   ZOM_LINUX_SANDBOX_CGROUP_PARENT="${cgroup_parent}" \
     "${test_command[@]}"
 )
