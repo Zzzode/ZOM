@@ -12,6 +12,7 @@
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
+#include "zomlang/compiler/binder/internal/binding-skeleton.h"
 #include "zomlang/compiler/binder/internal/binding-verifier.h"
 #include "zomlang/compiler/binder/internal/scope-arena.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
@@ -1112,6 +1113,99 @@ ZC_TEST("ScopeArena.AssignsDefinitionAndImplOwners") {
 ZC_TEST("ScopeArena.RejectsScopeIndexOverflow") {
   ZC_EXPECT(checkedScopeIndex(UINT32_MAX) == UINT32_MAX);
   ZC_EXPECT(checkedScopeIndex(uint64_t(UINT32_MAX) + 1) == zc::none);
+}
+
+ZC_TEST("BindingSkeleton.PublishesModuleAndTypeFactsInCanonicalMaps") {
+  ParsedSource sourceFixture(
+      "module root;\nfun zebra();\nclass Alpha { let field: i32; fun method(); }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& output = verified.get<VerifiedBindingOutput>();
+  ZC_REQUIRE(output.metadata.definitions().size() == 4);
+  ZC_REQUIRE(output.metadata.scopes()[0].bindings.size() == 2);
+  ZC_EXPECT(output.metadata.scopes()[0].bindings[0].name.nameSpace() == Namespace::Value);
+  ZC_EXPECT(output.metadata.scopes()[0].bindings[0].name.name().text() == "zebra"_zc);
+  ZC_EXPECT(output.metadata.scopes()[0].bindings[1].name.nameSpace() == Namespace::Type);
+  ZC_EXPECT(output.metadata.scopes()[0].bindings[1].name.name().text() == "Alpha"_zc);
+  zc::Maybe<size_t> typeScopeIndex;
+  for (size_t index = 0; index < output.metadata.scopes().size(); ++index) {
+    if (output.metadata.scopes()[index].kind == ScopeKind::TypeBody) { typeScopeIndex = index; }
+  }
+  ZC_REQUIRE(typeScopeIndex != zc::none);
+  ZC_IF_SOME(index, typeScopeIndex) {
+    const auto& typeScope = output.metadata.scopes()[index];
+    ZC_REQUIRE(typeScope.bindings.size() == 2);
+    ZC_EXPECT(typeScope.bindings[0].name.name().text() == "field"_zc);
+    ZC_EXPECT(typeScope.bindings[1].name.name().text() == "method"_zc);
+  }
+  ZC_REQUIRE(output.surface.visibleEntries().size() == 2);
+  ZC_EXPECT(output.surface.visibleEntries()[0].name.name().text() == "zebra"_zc);
+  ZC_EXPECT(output.surface.visibleEntries()[1].name.name().text() == "Alpha"_zc);
+}
+
+ZC_TEST("BindingSkeleton.PublishesImplMemberMapsAndDefersParameters") {
+  ParsedSource implSource(
+      "module root;\ninterface Action { fun act(); }\nclass Target {}\n"
+      "impl Action for Target { fun act(); }\n"_zc);
+  FrozenFixture implFixture(implSource, true, false, ImplRegistration::Exact);
+  auto implInputResult = verify(implFixture);
+  ZC_REQUIRE(implInputResult.is<VerifiedBindingInput>());
+  auto implInput = zc::mv(implInputResult.get<VerifiedBindingInput>());
+  auto arenaResult = ScopeArenaBuilder::build(implInput);
+  ZC_REQUIRE(arenaResult.is<ScopeArenaCandidate>());
+  auto arena = zc::mv(arenaResult.get<ScopeArenaCandidate>());
+  auto skeletonResult = BindingSkeletonBuilder::build(implInput, arena);
+  ZC_REQUIRE(skeletonResult.is<DefinitionSkeletonCandidate>());
+  bool foundImpl = false;
+  for (const auto& scope : arena.scopes) {
+    if (scope.kind != ScopeKind::ImplBody) { continue; }
+    foundImpl = true;
+    ZC_REQUIRE(scope.bindings.size() == 1);
+    ZC_EXPECT(scope.bindings[0].name.name().text() == "act"_zc);
+  }
+  ZC_EXPECT(foundImpl);
+
+  ParsedSource parameterSource("module root;\nfun apply(value: i32);\n"_zc);
+  FrozenFixture parameterFixture(parameterSource, true);
+  auto parameterInputResult = verify(parameterFixture);
+  ZC_REQUIRE(parameterInputResult.is<VerifiedBindingInput>());
+  auto parameterInput = zc::mv(parameterInputResult.get<VerifiedBindingInput>());
+  auto parameterArenaResult = ScopeArenaBuilder::build(parameterInput);
+  ZC_REQUIRE(parameterArenaResult.is<ScopeArenaCandidate>());
+  auto parameterArena = zc::mv(parameterArenaResult.get<ScopeArenaCandidate>());
+  auto deferred = BindingSkeletonBuilder::build(parameterInput, parameterArena);
+  ZC_REQUIRE(deferred.is<BinderInvariantFact>());
+  ZC_EXPECT(deferred.get<BinderInvariantFact>().kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+}
+
+ZC_TEST("BindingSkeleton.IncludesModuleConstantPatternLeaves") {
+  ParsedSource sourceFixture("module root;\nconst (left, right) = (1, 2);\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& output = verified.get<VerifiedBindingOutput>();
+  ZC_REQUIRE(output.metadata.definitions().size() == 2);
+  ZC_REQUIRE(output.metadata.scopes()[0].bindings.size() == 2);
+  ZC_EXPECT(output.metadata.scopes()[0].bindings[0].name.name().text() == "left"_zc);
+  ZC_EXPECT(output.metadata.scopes()[0].bindings[1].name.name().text() == "right"_zc);
+  for (const auto& fact : output.metadata.definitions()) {
+    ZC_EXPECT(fact.kind == identity::DefinitionKind::Constant);
+    ZC_EXPECT(fact.activation == DefinitionActivation::ModuleSkeleton);
+    ZC_REQUIRE(fact.site.value().is<PatternBindingSite>());
+    ZC_EXPECT(fact.site.value().get<PatternBindingSite>().patternPath.size() == 2);
+  }
 }
 
 ZC_TEST("ModuleGraph.ClassifiesUnresolvedSyntaxRequesterAndRevisionFailures") {

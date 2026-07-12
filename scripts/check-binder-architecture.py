@@ -379,6 +379,14 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
             errors.append(f"{SKELETON_SOURCE}: incomplete skeleton projection: {required}")
     if "BindingSkeletonBuilder::build(input, arena)" not in files.get(VERIFIER_SOURCE, ""):
         errors.append(f"{VERIFIER_SOURCE}: binding skeleton cutover is disconnected")
+    for marker in (
+        "BindingSkeleton.PublishesModuleAndTypeFactsInCanonicalMaps",
+        "BindingSkeleton.PublishesImplMemberMapsAndDefersParameters",
+        "BindingSkeleton.IncludesModuleConstantPatternLeaves",
+        "BindingBuilder.DefersIdentifierResolutionBeforePublishingMetadata",
+    ):
+        if marker not in files.get(TEST_SOURCE, ""):
+            errors.append(f"{TEST_SOURCE}: missing binding skeleton evidence: {marker}")
 
 
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
