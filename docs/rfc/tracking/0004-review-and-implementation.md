@@ -291,9 +291,9 @@ series is named and starts.
 
 The retained direction is global module-graph verification, context-wide
 identity freeze, per-module declaration collection, then source-ordered
-reference resolution against complete verified inputs. The written formal
-review blockers have a coordinated response, but acceptance remains blocked
-until every required owner approves the exact repaired REVIEW bytes above.
+reference resolution against complete verified inputs. Formal acceptance is
+complete; the implementation tracker below is authoritative for remaining
+landing work.
 
 ## Implementation Tracker
 

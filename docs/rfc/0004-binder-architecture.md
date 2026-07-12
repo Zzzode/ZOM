@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 approvers: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-12
+updated: 2026-07-13
 area: compiler
 requires: [1, 2, 3, 11]
 supersedes: []
@@ -48,8 +48,10 @@ checked facts, or IR layers.
 
 The live implementation demonstrates the risks this contract must eliminate:
 
-- scope identity is derived from object addresses;
-- symbol identity is an insertion-ordered index in one mutable table;
+- scope identity is an insertion-ordered `uint32_t` allocated by the mutable
+  `ScopeManager`;
+- semantic bindings remain coupled to mutable `SymbolTable` entries and
+  source-order allocation;
 - source provenance can use a synthetic zero buffer;
 - module loading and missing-module behavior are hidden inside binder helpers;
 - import aliases may allocate unrelated symbols without a canonical-target
@@ -84,8 +86,10 @@ defines a session-shaped binding input and the complete output consumed by RFC
 
 ## Non-Goals
 
-- This RFC does not discover files, resolve manifests, build module SCCs, or
-  schedule modules; RFC 0008 owns those operations.
+- RFC 0008 owns file discovery, verified resolution-environment assembly, and
+  deterministic module scheduling. This RFC's `ModuleGraphVerifier` consumes
+  those verified inputs, constructs the semantic dependency graph, and owns
+  deterministic SCC classification.
 - This RFC does not infer or check types; RFC 0005 owns semantic types and
   checked facts.
 - This RFC does not select interface methods, operator implementations,
@@ -1431,8 +1435,8 @@ Diagnostic ownership is exhaustive:
 `diagnostics-module.def` included by the same central registry; their numeric
 IDs and headlines remain the exact table contract. `ZOM3018-ZOM3019` and
 `ZOM3023-ZOM3024` are registered in that module file, `ZOM3020-ZOM3022` in
-`diagnostics-binder.def` before their producers land, with these exact
-definitions:
+`diagnostics-binder.def`, in the same atomic change as each first producer,
+with these exact definitions:
 
 | Code | Severity | Registered headline | Arity and safe arguments |
 |---|---|---|---|
@@ -1878,3 +1882,4 @@ None
 | 2026-07-11 | REVIEW | Entered formal review after every required technical owner approved proposal hash `98f4a6b22ebfa1e3f05a67b092b8164bbac24621c0d4b8c58d111a6707bd4620` and the review manager authorized the atomic transition. Acceptance, decision, and implementation remain open. |
 | 2026-07-11 | ACCEPTED | Every required owner approved proposal hash `26bcc9dd95f5abbf623dd39af0cf6bd3ae2de9ed6be89649465803609c8af5cd` after formal graph, resolution-environment, visibility, diagnostic, codec, and verifier review. Implementation has not started. |
 | 2026-07-12 | IMPLEMENTING | Started the direct replacement series with the dependency-free module-graph and binding-input verifier spine tracked by the local implementation record. |
+| 2026-07-13 | IMPLEMENTING | Corrected module-discovery versus semantic-SCC ownership, described the live insertion-ordered legacy state accurately, and moved active module diagnostics into their owned registry family. Future diagnostics must land atomically with their first producer. |
