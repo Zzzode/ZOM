@@ -1,5 +1,6 @@
 set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/binding-metadata.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/binding-verifier.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/binder.cc

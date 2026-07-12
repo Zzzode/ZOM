@@ -136,6 +136,7 @@ private:
   Namespace namespaceValue;
   identity::SemanticIdentifier nameValue;
   friend class BindingBuilder;
+  friend class BindingSkeletonBuilder;
   friend class BindingVerifier;
 };
 
