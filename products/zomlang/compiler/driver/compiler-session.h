@@ -163,6 +163,10 @@ public:
   /// \brief Installs one fully verified package input before parsing begins.
   ZC_NODISCARD bool installVerifiedPackageInput(VerifiedPackageSessionInput&& input);
 
+  /// \brief Returns session-owned storage for package resolution inputs and outputs.
+  /// \return A resource that outlives the installed package graph.
+  ZC_NODISCARD zc::MemoryResource& getPackageResolutionMemoryResource() noexcept;
+
   /// \brief Returns the installed package request, if this is a package compilation.
   ZC_NODISCARD zc::Maybe<const package::VerifiedPackageCompilationRequest&>
   getPackageCompilationRequest() const noexcept;

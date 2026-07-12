@@ -254,6 +254,8 @@ struct CompilerSession::Impl {
   zc::Maybe<identity::SemanticIdentityRegistrySet> identityRegistries;
   /// Sole RFC 0005 canonical semantic type store for this session.
   zc::Own<type::SemanticTypeStore> semanticTypeStore;
+  /// Explicit storage owner for resolver inputs and the retained resolution output.
+  zc::MemoryResource packageResolutionMemory;
   /// Workspace-verified package roots and their semantic identities.
   zc::Maybe<package::VerifiedPackageCompilationRequest> packageRequest;
   /// Post-build roots whose complete CrateKey values are safe to freeze.
@@ -1061,6 +1063,10 @@ zc::Maybe<const identity::SemanticIdentityRegistrySet&> CompilerSession::getIden
 zc::Maybe<const type::SemanticTypeStore&> CompilerSession::getSemanticTypeStore() const noexcept {
   if (impl->semanticTypeStore == nullptr) { return zc::none; }
   return *impl->semanticTypeStore;
+}
+
+zc::MemoryResource& CompilerSession::getPackageResolutionMemoryResource() noexcept {
+  return impl->packageResolutionMemory;
 }
 
 bool CompilerSession::installVerifiedPackageInput(VerifiedPackageSessionInput&& input) {
