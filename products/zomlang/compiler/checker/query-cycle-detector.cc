@@ -18,23 +18,27 @@ namespace zomlang {
 namespace compiler {
 namespace checker {
 
-QueryKey::QueryKey(QueryKind kind, uint32_t primaryId, uint32_t secondaryId, type::TypeId typeId,
-                   zc::StringPtr name)
-    : kind(kind), primaryId(primaryId), secondaryId(secondaryId), typeId(typeId), name(name) {}
+QueryKey::QueryKey(QueryKind kind, uint32_t primaryId, uint32_t secondaryId,
+                   type::SemanticTypeId semanticTypeId, zc::StringPtr name)
+    : kind(kind),
+      primaryId(primaryId),
+      secondaryId(secondaryId),
+      semanticTypeId(semanticTypeId),
+      name(name) {}
 
 QueryKey QueryKey::signatureOf(uint32_t symbolId) {
-  return QueryKey(QueryKind::SignatureOf, symbolId, 0, type::TypeId(), ""_zc);
+  return QueryKey(QueryKind::SignatureOf, symbolId, 0, type::SemanticTypeId(), ""_zc);
 }
 
 QueryKey QueryKey::typeAliasOf(uint32_t symbolId) {
-  return QueryKey(QueryKind::TypeAliasOf, symbolId, 0, type::TypeId(), ""_zc);
+  return QueryKey(QueryKind::TypeAliasOf, symbolId, 0, type::SemanticTypeId(), ""_zc);
 }
 
-QueryKey QueryKey::associatedProjection(type::TypeId base, zc::StringPtr name) {
+QueryKey QueryKey::associatedProjection(type::SemanticTypeId base, zc::StringPtr name) {
   return QueryKey(QueryKind::AssociatedProjection, 0, 0, base, name);
 }
 
-QueryKey QueryKey::markerDerivation(type::TypeId type, uint32_t markerId) {
+QueryKey QueryKey::markerDerivation(type::SemanticTypeId type, uint32_t markerId) {
   return QueryKey(QueryKind::MarkerDerivation, 0, markerId, type, ""_zc);
 }
 
@@ -44,13 +48,13 @@ uint32_t QueryKey::getPrimaryId() const { return primaryId; }
 
 uint32_t QueryKey::getSecondaryId() const { return secondaryId; }
 
-type::TypeId QueryKey::getTypeId() const { return typeId; }
+type::SemanticTypeId QueryKey::getSemanticTypeId() const { return semanticTypeId; }
 
 zc::StringPtr QueryKey::getName() const { return name; }
 
 bool QueryKey::equals(const QueryKey& other) const {
   return kind == other.kind && primaryId == other.primaryId && secondaryId == other.secondaryId &&
-         typeId == other.typeId && name == other.name;
+         semanticTypeId == other.semanticTypeId && name == other.name;
 }
 
 zc::String QueryKey::toString() const {
@@ -60,9 +64,9 @@ zc::String QueryKey::toString() const {
     case QueryKind::TypeAliasOf:
       return zc::str("TypeAliasOf(", primaryId, ")");
     case QueryKind::AssociatedProjection:
-      return zc::str("AssociatedProjection(", typeId.value, "::", name, ")");
+      return zc::str("AssociatedProjection(semantic-type::", name, ")");
     case QueryKind::MarkerDerivation:
-      return zc::str("MarkerDerivation(", typeId.value, ",", secondaryId, ")");
+      return zc::str("MarkerDerivation(semantic-type,", secondaryId, ")");
   }
   return zc::str("<unknown-query>");
 }

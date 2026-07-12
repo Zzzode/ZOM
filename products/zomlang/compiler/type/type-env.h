@@ -21,9 +21,9 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/node-id.h"
-#include "zomlang/compiler/symbol/symbol-id.h"
+#include "zomlang/compiler/identity/frozen-registry.h"
 #include "zomlang/compiler/type/coercion.h"
-#include "zomlang/compiler/type/type-interner.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 #include "zomlang/compiler/type/type-scheme.h"
 #include "zomlang/compiler/type/type.h"
 
@@ -67,11 +67,11 @@ struct CallDispatchRecord {
   ReceiverMode receiverMode = ReceiverMode::None;
   zc::String interfaceName;
   zc::String methodName;
-  symbol::SymbolId targetSymbol;
+  identity::DefId targetDefinition;
   ast::NodeId implNode;
   uint32_t vtableSlot = 0;
-  zc::Vector<TypeId> argumentTypes;
-  TypeId resultType;
+  zc::Vector<SemanticTypeId> argumentTypes;
+  SemanticTypeId resultType;
 };
 
 /// \brief TypeEnv - Type environment for the ZOM type checker.
@@ -99,7 +99,7 @@ struct CallDispatchRecord {
 /// Type variables created via freshTypeVar() are owned by the environment.
 class TypeEnv {
 public:
-  TypeEnv();
+  explicit TypeEnv(SemanticTypeStore& semanticTypes);
 
   ~TypeEnv() noexcept(false);
 
@@ -131,17 +131,20 @@ public:
 
   /// \brief Get the canonical interned type id assigned to an AST node.
   ///
-  /// The node must have a type assigned (use hasTypeId() to check).
-  TypeId getTypeId(ast::NodeId node) const;
+  /// The node must have a type assigned (use hasSemanticTypeId() to check).
+  SemanticTypeId getSemanticTypeId(ast::NodeId node) const;
 
   /// \brief Check if a canonical type id has been assigned to the given node.
-  bool hasTypeId(ast::NodeId node) const;
+  bool hasSemanticTypeId(ast::NodeId node) const;
 
   /// \brief Return the number of AST nodes with assigned types.
   size_t nodeTypeCount() const;
 
   /// \brief Intern an arbitrary type in the environment's canonical interner.
-  TypeId internType(const Type& type);
+  SemanticTypeId internType(const Type& type);
+
+  /// \brief Returns the context-global semantic type store used by this environment.
+  SemanticTypeStore& getSemanticTypeStore() const;
 
   // =========================================================================
   // Coercion records

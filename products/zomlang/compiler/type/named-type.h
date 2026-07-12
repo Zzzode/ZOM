@@ -17,7 +17,6 @@
 #include "zc/core/array.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/symbol/symbol-id.h"
 #include "zomlang/compiler/type/type.h"
 
 namespace zomlang {

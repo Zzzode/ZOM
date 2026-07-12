@@ -17,7 +17,7 @@
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/type/type-interner.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang {
 namespace compiler {
@@ -29,8 +29,8 @@ enum class ConstraintKind { Eq, Sub, Obligation, ProjectionEq };
 /// \brief A single type-system constraint.
 struct Constraint {
   ConstraintKind kind;
-  TypeId first;
-  TypeId second;
+  SemanticTypeId first;
+  SemanticTypeId second;
   zc::String reason;
 };
 
@@ -44,10 +44,10 @@ public:
   ConstraintSet(ConstraintSet&& other) noexcept;
   ConstraintSet& operator=(ConstraintSet&& other) noexcept;
 
-  void addEq(TypeId left, TypeId right, zc::String reason);
-  void addSub(TypeId source, TypeId target, zc::String reason);
-  void addObligation(TypeId type, TypeId interfaceType, zc::String reason);
-  void addProjectionEq(TypeId projection, TypeId value, zc::String reason);
+  void addEq(SemanticTypeId left, SemanticTypeId right, zc::String reason);
+  void addSub(SemanticTypeId source, SemanticTypeId target, zc::String reason);
+  void addObligation(SemanticTypeId type, SemanticTypeId interfaceType, zc::String reason);
+  void addProjectionEq(SemanticTypeId projection, SemanticTypeId value, zc::String reason);
 
   size_t size() const;
   bool empty() const;

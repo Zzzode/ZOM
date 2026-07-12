@@ -15,6 +15,7 @@
 #include "zomlang/compiler/type/constraint-set.h"
 
 #include "zc/ztest/test.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -29,8 +30,8 @@ ZC_TEST("ConstraintSet.InitiallyEmpty") {
 
 ZC_TEST("ConstraintSet.AddEq") {
   ConstraintSet constraints;
-  TypeId left(1);
-  TypeId right(2);
+  const auto left = tests::testSemanticType(1);
+  const auto right = tests::testSemanticType(2);
 
   constraints.addEq(left, right, zc::str("binary operands"));
 
@@ -45,8 +46,8 @@ ZC_TEST("ConstraintSet.AddEq") {
 
 ZC_TEST("ConstraintSet.AddSub") {
   ConstraintSet constraints;
-  TypeId source(3);
-  TypeId target(4);
+  const auto source = tests::testSemanticType(3);
+  const auto target = tests::testSemanticType(4);
 
   constraints.addSub(source, target, zc::str("call argument"));
 
@@ -58,8 +59,8 @@ ZC_TEST("ConstraintSet.AddSub") {
 
 ZC_TEST("ConstraintSet.AddObligation") {
   ConstraintSet constraints;
-  TypeId type(5);
-  TypeId iface(6);
+  const auto type = tests::testSemanticType(5);
+  const auto iface = tests::testSemanticType(6);
 
   constraints.addObligation(type, iface, zc::str("where clause"));
 
@@ -71,8 +72,8 @@ ZC_TEST("ConstraintSet.AddObligation") {
 
 ZC_TEST("ConstraintSet.AddProjectionEq") {
   ConstraintSet constraints;
-  TypeId projection(7);
-  TypeId value(8);
+  const auto projection = tests::testSemanticType(7);
+  const auto value = tests::testSemanticType(8);
 
   constraints.addProjectionEq(projection, value, zc::str("associated type"));
 
@@ -84,7 +85,7 @@ ZC_TEST("ConstraintSet.AddProjectionEq") {
 
 ZC_TEST("ConstraintSet.Clear") {
   ConstraintSet constraints;
-  constraints.addEq(TypeId(1), TypeId(2), zc::str("test"));
+  constraints.addEq(tests::testSemanticType(1), tests::testSemanticType(2), zc::str("test"));
   ZC_EXPECT(!constraints.empty());
 
   constraints.clear();

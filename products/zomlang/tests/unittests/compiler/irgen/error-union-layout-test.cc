@@ -23,10 +23,11 @@
 #include "zomlang/compiler/type/primitive-type.h"
 #include "zomlang/compiler/type/raw-pointer-type.h"
 #include "zomlang/compiler/type/reference-type.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 #include "zomlang/compiler/type/tuple-type.h"
-#include "zomlang/compiler/type/type-interner.h"
 #include "zomlang/compiler/type/type.h"
 #include "zomlang/compiler/type/union-type.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -48,7 +49,8 @@ ZC_TEST("TargetDataLayout.ExposesExplicitIlp32AndLp64PointerLayouts") {
 }
 
 ZC_TEST("ErrorUnionLayout.CanonicalizesNestedUnionPermutationTags") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
 
   zc::Vector<zc::Own<type::Type>> firstNestedAlternatives;
   firstNestedAlternatives.add(zc::heap<type::NamedType>("NetworkError"_zc));
@@ -71,28 +73,31 @@ ZC_TEST("ErrorUnionLayout.CanonicalizesNestedUnionPermutationTags") {
 
   auto successType = type::PrimitiveType::createI32();
   auto first =
-      computeErrorUnionLayout(interner, TargetDataLayout::lp64(), firstUnion, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::lp64(), firstUnion, *successType);
   auto second =
-      computeErrorUnionLayout(interner, TargetDataLayout::lp64(), secondUnion, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::lp64(), secondUnion, *successType);
 
-  ZC_EXPECT(first.typeId == second.typeId);
+  ZC_EXPECT(first.semanticTypeId == second.semanticTypeId);
   ZC_EXPECT(first.kind == ErrorUnionLayoutKind::TaggedUnion);
   ZC_EXPECT(first.alternatives.size() == 4);
   ZC_EXPECT(second.alternatives.size() == first.alternatives.size());
   ZC_EXPECT(first.alternatives[0].tag == 0);
   ZC_EXPECT(first.alternatives[0].kind == ErrorUnionAlternativeKind::Success);
-  ZC_EXPECT(interner.getCanonicalKey(first.alternatives[0].typeId) == "i32"_zc);
-  ZC_EXPECT(interner.getCanonicalKey(first.alternatives[1].typeId) == "named(IoError)"_zc);
-  ZC_EXPECT(interner.getCanonicalKey(first.alternatives[2].typeId) == "named(NetworkError)"_zc);
-  ZC_EXPECT(interner.getCanonicalKey(first.alternatives[3].typeId) == "named(ParseError)"_zc);
+  ZC_EXPECT(semanticTypes.getCanonicalKey(first.alternatives[0].semanticTypeId) == "i32"_zc);
+  ZC_EXPECT(semanticTypes.getCanonicalKey(first.alternatives[1].semanticTypeId) ==
+            "named(IoError)"_zc);
+  ZC_EXPECT(semanticTypes.getCanonicalKey(first.alternatives[2].semanticTypeId) ==
+            "named(NetworkError)"_zc);
+  ZC_EXPECT(semanticTypes.getCanonicalKey(first.alternatives[3].semanticTypeId) ==
+            "named(ParseError)"_zc);
   for (size_t i = 0; i < first.alternatives.size(); ++i) {
     ZC_EXPECT(first.alternatives[i].tag == second.alternatives[i].tag);
-    ZC_EXPECT(interner.getCanonicalKey(first.alternatives[i].typeId) ==
-              interner.getCanonicalKey(second.alternatives[i].typeId));
+    ZC_EXPECT(semanticTypes.getCanonicalKey(first.alternatives[i].semanticTypeId) ==
+              semanticTypes.getCanonicalKey(second.alternatives[i].semanticTypeId));
   }
 }
 
-ZC_TEST("ErrorUnionLayout.IgnoresInternerInsertionHistoryWhenAssigningTags") {
+ZC_TEST("ErrorUnionLayout.IgnoresStoreInsertionHistoryWhenAssigningTags") {
   auto makeUnion = []() {
     zc::Vector<zc::Own<type::Type>> alternatives;
     alternatives.add(zc::heap<type::NamedType>("ParseError"_zc));
@@ -101,33 +106,36 @@ ZC_TEST("ErrorUnionLayout.IgnoresInternerInsertionHistoryWhenAssigningTags") {
     return type::UnionType(zc::mv(alternatives));
   };
 
-  type::TypeInterner firstInterner;
-  type::TypeInterner secondInterner;
+  tests::TestSemanticTypeContext firstContext;
+  tests::TestSemanticTypeContext secondContext;
+  auto& firstSemanticTypes = firstContext.semanticTypes();
+  auto& secondSemanticTypes = secondContext.semanticTypes();
   auto firstNoise = zc::heap<type::NamedType>("NoiseA"_zc);
   auto secondNoise = zc::heap<type::NamedType>("NoiseB"_zc);
-  firstInterner.intern(*firstNoise);
-  firstInterner.intern(*secondNoise);
-  secondInterner.intern(*secondNoise);
+  (void)firstSemanticTypes.intern(*firstNoise);
+  (void)firstSemanticTypes.intern(*secondNoise);
+  (void)secondSemanticTypes.intern(*secondNoise);
 
   auto firstUnion = makeUnion();
   auto secondUnion = makeUnion();
   auto firstSuccess = type::PrimitiveType::createI32();
   auto secondSuccess = type::PrimitiveType::createI32();
-  auto first =
-      computeErrorUnionLayout(firstInterner, TargetDataLayout::lp64(), firstUnion, *firstSuccess);
-  auto second = computeErrorUnionLayout(secondInterner, TargetDataLayout::lp64(), secondUnion,
+  auto first = computeErrorUnionLayout(firstSemanticTypes, TargetDataLayout::lp64(), firstUnion,
+                                       *firstSuccess);
+  auto second = computeErrorUnionLayout(secondSemanticTypes, TargetDataLayout::lp64(), secondUnion,
                                         *secondSuccess);
 
   ZC_ASSERT(first.alternatives.size() == second.alternatives.size());
   for (size_t i = 0; i < first.alternatives.size(); ++i) {
     ZC_EXPECT(first.alternatives[i].tag == second.alternatives[i].tag);
-    ZC_EXPECT(firstInterner.getCanonicalKey(first.alternatives[i].typeId) ==
-              secondInterner.getCanonicalKey(second.alternatives[i].typeId));
+    ZC_EXPECT(firstSemanticTypes.getCanonicalKey(first.alternatives[i].semanticTypeId) ==
+              secondSemanticTypes.getCanonicalKey(second.alternatives[i].semanticTypeId));
   }
 }
 
 ZC_TEST("ErrorUnionLayout.ComputesScalarPayloadLayout") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::Own<type::Type>> alternatives;
   alternatives.add(type::PrimitiveType::createUnit());
   alternatives.add(type::PrimitiveType::createI64());
@@ -135,7 +143,7 @@ ZC_TEST("ErrorUnionLayout.ComputesScalarPayloadLayout") {
   auto successType = type::PrimitiveType::createUnit();
 
   auto layout =
-      computeErrorUnionLayout(interner, TargetDataLayout::ilp32(), unionType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::ilp32(), unionType, *successType);
 
   ZC_EXPECT(layout.kind == ErrorUnionLayoutKind::TaggedUnion);
   ZC_EXPECT(layout.payloadLayoutState == ErrorUnionPayloadLayoutState::Known);
@@ -149,7 +157,8 @@ ZC_TEST("ErrorUnionLayout.ComputesScalarPayloadLayout") {
 }
 
 ZC_TEST("ErrorUnionLayout.UsesFourByteUnicodeScalarLayout") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::Own<type::Type>> alternatives;
   alternatives.add(type::PrimitiveType::createUnit());
   alternatives.add(type::PrimitiveType::createChar());
@@ -157,7 +166,7 @@ ZC_TEST("ErrorUnionLayout.UsesFourByteUnicodeScalarLayout") {
   auto successType = type::PrimitiveType::createUnit();
 
   auto layout =
-      computeErrorUnionLayout(interner, TargetDataLayout::ilp32(), unionType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::ilp32(), unionType, *successType);
 
   ZC_EXPECT(layout.payloadLayoutState == ErrorUnionPayloadLayoutState::Known);
   ZC_EXPECT(layout.payloadOffset == 4);
@@ -170,7 +179,8 @@ ZC_TEST("ErrorUnionLayout.UsesFourByteUnicodeScalarLayout") {
 }
 
 ZC_TEST("ErrorUnionLayout.ComputesTuplePayloadLayout") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::Own<type::Type>> tupleElements;
   tupleElements.add(type::PrimitiveType::createI8());
   tupleElements.add(type::PrimitiveType::createI32());
@@ -182,7 +192,7 @@ ZC_TEST("ErrorUnionLayout.ComputesTuplePayloadLayout") {
   auto successType = type::PrimitiveType::createUnit();
 
   auto layout =
-      computeErrorUnionLayout(interner, TargetDataLayout::lp64(), unionType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::lp64(), unionType, *successType);
 
   ZC_EXPECT(layout.payloadLayoutState == ErrorUnionPayloadLayoutState::Known);
   ZC_EXPECT(layout.payloadOffset == 4);
@@ -195,7 +205,8 @@ ZC_TEST("ErrorUnionLayout.ComputesTuplePayloadLayout") {
 }
 
 ZC_TEST("ErrorUnionLayout.ComputesCanonicalObjectPayloadLayout") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   auto objectError = zc::heap<type::ObjectType>();
   objectError->addMember("c"_zc, type::PrimitiveType::createI8());
   objectError->addMember("b"_zc, type::PrimitiveType::createI32());
@@ -208,7 +219,7 @@ ZC_TEST("ErrorUnionLayout.ComputesCanonicalObjectPayloadLayout") {
   auto successType = type::PrimitiveType::createUnit();
 
   auto layout =
-      computeErrorUnionLayout(interner, TargetDataLayout::lp64(), unionType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::lp64(), unionType, *successType);
 
   ZC_EXPECT(layout.payloadLayoutState == ErrorUnionPayloadLayoutState::Known);
   ZC_EXPECT(layout.payloadOffset == 4);
@@ -221,7 +232,8 @@ ZC_TEST("ErrorUnionLayout.ComputesCanonicalObjectPayloadLayout") {
 }
 
 ZC_TEST("ErrorUnionLayout.UsesExplicitTargetPointerSizeAndAlignment") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::Own<type::Type>> alternatives;
   alternatives.add(type::PrimitiveType::createUnit());
   alternatives.add(
@@ -232,8 +244,9 @@ ZC_TEST("ErrorUnionLayout.UsesExplicitTargetPointerSizeAndAlignment") {
   auto successType = type::PrimitiveType::createUnit();
 
   auto ilp32 =
-      computeErrorUnionLayout(interner, TargetDataLayout::ilp32(), unionType, *successType);
-  auto lp64 = computeErrorUnionLayout(interner, TargetDataLayout::lp64(), unionType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::ilp32(), unionType, *successType);
+  auto lp64 =
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::lp64(), unionType, *successType);
 
   ZC_EXPECT(ilp32.payloadOffset == 4);
   ZC_EXPECT(ilp32.payloadSize == 4);
@@ -254,7 +267,8 @@ ZC_TEST("ErrorUnionLayout.UsesExplicitTargetPointerSizeAndAlignment") {
 }
 
 ZC_TEST("ErrorUnionLayout.PreservesZeroSizedPayloads") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::Own<type::Type>> alternatives;
   alternatives.add(type::PrimitiveType::createUnit());
   alternatives.add(type::PrimitiveType::createNull());
@@ -262,7 +276,7 @@ ZC_TEST("ErrorUnionLayout.PreservesZeroSizedPayloads") {
   auto successType = type::PrimitiveType::createUnit();
 
   auto layout =
-      computeErrorUnionLayout(interner, TargetDataLayout::lp64(), unionType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::lp64(), unionType, *successType);
 
   ZC_EXPECT(layout.kind == ErrorUnionLayoutKind::TaggedUnion);
   ZC_EXPECT(layout.payloadLayoutState == ErrorUnionPayloadLayoutState::Known);
@@ -276,11 +290,12 @@ ZC_TEST("ErrorUnionLayout.PreservesZeroSizedPayloads") {
 }
 
 ZC_TEST("ErrorUnionLayout.UsesDirectSuccessWithoutErrorAlternatives") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   auto successType = type::PrimitiveType::createI64();
 
   auto layout =
-      computeErrorUnionLayout(interner, TargetDataLayout::ilp32(), *successType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::ilp32(), *successType, *successType);
 
   ZC_EXPECT(layout.kind == ErrorUnionLayoutKind::DirectSuccess);
   ZC_EXPECT(layout.payloadLayoutState == ErrorUnionPayloadLayoutState::Known);
@@ -296,7 +311,8 @@ ZC_TEST("ErrorUnionLayout.UsesDirectSuccessWithoutErrorAlternatives") {
 }
 
 ZC_TEST("ErrorUnionLayout.MarksUnresolvedNamedPayloadLayoutUnknown") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::Own<type::Type>> alternatives;
   alternatives.add(type::PrimitiveType::createI32());
   alternatives.add(zc::heap<type::NamedType>("IoError"_zc));
@@ -304,7 +320,7 @@ ZC_TEST("ErrorUnionLayout.MarksUnresolvedNamedPayloadLayoutUnknown") {
   auto successType = type::PrimitiveType::createI32();
 
   auto layout =
-      computeErrorUnionLayout(interner, TargetDataLayout::lp64(), unionType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::lp64(), unionType, *successType);
 
   ZC_EXPECT(layout.kind == ErrorUnionLayoutKind::TaggedUnion);
   ZC_EXPECT(layout.payloadLayoutState == ErrorUnionPayloadLayoutState::Unknown);
@@ -315,11 +331,13 @@ ZC_TEST("ErrorUnionLayout.MarksUnresolvedNamedPayloadLayoutUnknown") {
   ZC_EXPECT(layout.align == 1);
   ZC_EXPECT(layout.alternatives[1].payloadLayoutState == ErrorUnionPayloadLayoutState::Unknown);
   ZC_EXPECT(layout.alternatives[1].tag == 1);
-  ZC_EXPECT(interner.getCanonicalKey(layout.alternatives[1].typeId) == "named(IoError)"_zc);
+  ZC_EXPECT(semanticTypes.getCanonicalKey(layout.alternatives[1].semanticTypeId) ==
+            "named(IoError)"_zc);
 }
 
 ZC_TEST("ErrorUnionLayout.MarksAnyPayloadLayoutUnknown") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::Own<type::Type>> alternatives;
   alternatives.add(type::PrimitiveType::createUnit());
   alternatives.add(type::PrimitiveType::createAny());
@@ -327,7 +345,7 @@ ZC_TEST("ErrorUnionLayout.MarksAnyPayloadLayoutUnknown") {
   auto successType = type::PrimitiveType::createUnit();
 
   auto layout =
-      computeErrorUnionLayout(interner, TargetDataLayout::lp64(), unionType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::lp64(), unionType, *successType);
 
   ZC_EXPECT(layout.payloadLayoutState == ErrorUnionPayloadLayoutState::Unknown);
   ZC_EXPECT(layout.size == 0);
@@ -336,7 +354,8 @@ ZC_TEST("ErrorUnionLayout.MarksAnyPayloadLayoutUnknown") {
 }
 
 ZC_TEST("ErrorUnionLayout.SelectsWiderTagForManyAlternatives") {
-  type::TypeInterner interner;
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::Own<type::Type>> alternatives;
   alternatives.add(type::PrimitiveType::createI32());
   for (size_t i = 0; i < 256; ++i) {
@@ -346,7 +365,7 @@ ZC_TEST("ErrorUnionLayout.SelectsWiderTagForManyAlternatives") {
   auto successType = type::PrimitiveType::createI32();
 
   auto layout =
-      computeErrorUnionLayout(interner, TargetDataLayout::lp64(), unionType, *successType);
+      computeErrorUnionLayout(semanticTypes, TargetDataLayout::lp64(), unionType, *successType);
 
   ZC_EXPECT(layout.tagType == ErrorUnionTagType::U16);
   ZC_EXPECT(layout.alternatives.size() == 257);

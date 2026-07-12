@@ -68,18 +68,18 @@ void writeValue(zc::OutputStream& output, ValueId value) {
   output.write(zc::str("%", static_cast<uint64_t>(value.value)).asBytes());
 }
 
-zc::StringPtr resolveFunctionName(const Module& module, symbol::SymbolId symbol) {
+zc::StringPtr resolveFunctionName(const Module& module, identity::DefId definition) {
   for (const auto& function : module.getFunctions()) {
-    if (function.symbol == symbol) { return function.name; }
+    if (function.definition == definition) { return function.name; }
   }
   ZC_UNREACHABLE;
 }
 
 IrDumpFailure dumpFailure(IrDumpFailureKind kind, IrDumpVerifierSite site,
-                          symbol::SymbolId symbol = symbol::SymbolId(), BlockId block = BlockId(),
-                          ValueId value = ValueId(), type::TypeId type = type::TypeId(),
-                          uint32_t index = 0) {
-  return IrDumpFailure{kind, site, symbol, block, value, type, index};
+                          identity::DefId definition = {}, BlockId block = BlockId(),
+                          ValueId value = ValueId(),
+                          type::SemanticTypeId type = type::SemanticTypeId(), uint32_t index = 0) {
+  return IrDumpFailure{kind, site, definition, block, value, type, index};
 }
 
 bool isPowerOfTwo(uint64_t value) { return value != 0 && (value & (value - 1)) == 0; }
@@ -104,9 +104,9 @@ bool isValidTagType(ErrorUnionTagType tagType) {
   return false;
 }
 
-bool hasFunctionSymbol(const Module& module, symbol::SymbolId symbol) {
+bool hasFunctionDefinition(const Module& module, identity::DefId definition) {
   for (const auto& function : module.getFunctions()) {
-    if (function.symbol == symbol) { return true; }
+    if (function.definition == definition) { return true; }
   }
   return false;
 }
@@ -126,7 +126,7 @@ zc::Maybe<const BasicBlock&> findBlock(const Function& function, BlockId id) {
   return zc::none;
 }
 
-type::TypeId instructionResultType(const Instruction& instruction) {
+type::SemanticTypeId instructionResultType(const Instruction& instruction) {
   if (instruction.data.is<IntegerConstant>()) {
     return instruction.data.get<IntegerConstant>().resultType;
   }
@@ -142,11 +142,11 @@ type::TypeId instructionResultType(const Instruction& instruction) {
 
 struct ValueDefinition final {
   ValueId value;
-  type::TypeId type;
+  type::SemanticTypeId type;
 };
 
-zc::Maybe<type::TypeId> findValueType(const zc::Vector<ValueDefinition>& definitions,
-                                      ValueId value) {
+zc::Maybe<type::SemanticTypeId> findValueType(const zc::Vector<ValueDefinition>& definitions,
+                                              ValueId value) {
   for (const auto& definition : definitions) {
     if (definition.value == value) { return definition.type; }
   }
@@ -162,54 +162,56 @@ bool hasBlockId(const zc::Vector<BlockId>& blocks, BlockId block) {
 
 IrDumpResult verifyLayout(const Module& module, const ErrorUnionLayout& layout,
                           uint32_t layoutIndex) {
-  const auto& interner = module.getTypeInterner();
-  if (!interner.contains(layout.typeId)) {
+  const auto& semanticTypes = module.getSemanticTypeStore();
+  if (!semanticTypes.contains(layout.semanticTypeId)) {
     return dumpFailure(IrDumpFailureKind::InvalidTypeReference, IrDumpVerifierSite::Layout,
-                       symbol::SymbolId(), BlockId(), ValueId(), layout.typeId, layoutIndex);
+                       identity::DefId(), BlockId(), ValueId(), layout.semanticTypeId, layoutIndex);
   }
   if (!isValidLayoutKind(layout.kind) || !isValidTagType(layout.tagType) ||
       layout.alternatives.empty() || !isPowerOfTwo(layout.payloadAlign) ||
       !isPowerOfTwo(layout.align) ||
       layout.payloadLayoutState != ErrorUnionPayloadLayoutState::Known) {
     return dumpFailure(IrDumpFailureKind::InvalidLayout, IrDumpVerifierSite::Layout,
-                       symbol::SymbolId(), BlockId(), ValueId(), layout.typeId, layoutIndex);
+                       identity::DefId(), BlockId(), ValueId(), layout.semanticTypeId, layoutIndex);
   }
   if (layout.kind == ErrorUnionLayoutKind::DirectSuccess && layout.alternatives.size() != 1) {
     return dumpFailure(IrDumpFailureKind::InvalidLayout, IrDumpVerifierSite::Layout,
-                       symbol::SymbolId(), BlockId(), ValueId(), layout.typeId, layoutIndex);
+                       identity::DefId(), BlockId(), ValueId(), layout.semanticTypeId, layoutIndex);
   }
   if (layout.kind == ErrorUnionLayoutKind::TaggedUnion && layout.alternatives.size() < 2) {
     return dumpFailure(IrDumpFailureKind::InvalidLayout, IrDumpVerifierSite::Layout,
-                       symbol::SymbolId(), BlockId(), ValueId(), layout.typeId, layoutIndex);
+                       identity::DefId(), BlockId(), ValueId(), layout.semanticTypeId, layoutIndex);
   }
 
   for (size_t i = 0; i < layout.alternatives.size(); ++i) {
     const auto& alternative = layout.alternatives[i];
     const auto expectedKind =
         i == 0 ? ErrorUnionAlternativeKind::Success : ErrorUnionAlternativeKind::Error;
-    if (!interner.contains(alternative.typeId)) {
+    if (!semanticTypes.contains(alternative.semanticTypeId)) {
       return dumpFailure(IrDumpFailureKind::InvalidTypeReference, IrDumpVerifierSite::Layout,
-                         symbol::SymbolId(), BlockId(), ValueId(), alternative.typeId, layoutIndex);
+                         identity::DefId(), BlockId(), ValueId(), alternative.semanticTypeId,
+                         layoutIndex);
     }
     if (alternative.tag != i || alternative.kind != expectedKind ||
         !isPowerOfTwo(alternative.payloadAlign) ||
         alternative.payloadLayoutState != ErrorUnionPayloadLayoutState::Known) {
       return dumpFailure(IrDumpFailureKind::InvalidLayout, IrDumpVerifierSite::Layout,
-                         symbol::SymbolId(), BlockId(), ValueId(), alternative.typeId, layoutIndex);
+                         identity::DefId(), BlockId(), ValueId(), alternative.semanticTypeId,
+                         layoutIndex);
     }
     for (size_t j = i + 1; j < layout.alternatives.size(); ++j) {
-      if (alternative.typeId == layout.alternatives[j].typeId) {
+      if (alternative.semanticTypeId == layout.alternatives[j].semanticTypeId) {
         return dumpFailure(IrDumpFailureKind::InvalidLayout, IrDumpVerifierSite::Layout,
-                           symbol::SymbolId(), BlockId(), ValueId(), alternative.typeId,
+                           identity::DefId(), BlockId(), ValueId(), alternative.semanticTypeId,
                            layoutIndex);
       }
     }
   }
 
   if (layout.kind == ErrorUnionLayoutKind::DirectSuccess &&
-      layout.typeId != layout.alternatives[0].typeId) {
+      layout.semanticTypeId != layout.alternatives[0].semanticTypeId) {
     return dumpFailure(IrDumpFailureKind::InvalidLayout, IrDumpVerifierSite::Layout,
-                       symbol::SymbolId(), BlockId(), ValueId(), layout.typeId, layoutIndex);
+                       identity::DefId(), BlockId(), ValueId(), layout.semanticTypeId, layoutIndex);
   }
   return zc::none;
 }
@@ -221,14 +223,14 @@ IrDumpResult verifyInstruction(const Module& module, const Function& function,
   if (instruction.data.is<IntegerConstant>()) {
     if (instruction.data.get<IntegerConstant>().value.size() == 0) {
       return dumpFailure(IrDumpFailureKind::InvalidInstruction, IrDumpVerifierSite::Instruction,
-                         function.symbol, block.id, instruction.result);
+                         function.definition, block.id, instruction.result);
     }
     return zc::none;
   }
 
   if (instruction.data.is<RaisingCall>()) {
     const auto target = instruction.data.get<RaisingCall>().target;
-    if (!target.isValid() || !hasFunctionSymbol(module, target)) {
+    if (!target.isValid() || !hasFunctionDefinition(module, target)) {
       return dumpFailure(IrDumpFailureKind::UnresolvedCallTarget, IrDumpVerifierSite::Instruction,
                          target, block.id, instruction.result);
     }
@@ -239,27 +241,28 @@ IrDumpResult verifyInstruction(const Module& module, const Function& function,
     const auto& construct = instruction.data.get<ErrorUnionConstruct>();
     if (construct.layoutIndex >= layouts.size()) {
       return dumpFailure(IrDumpFailureKind::InvalidLayoutReference, IrDumpVerifierSite::Instruction,
-                         function.symbol, block.id, instruction.result, construct.resultType,
+                         function.definition, block.id, instruction.result, construct.resultType,
                          construct.layoutIndex);
     }
     const auto& layout = layouts[construct.layoutIndex];
     const auto alternative = findAlternative(layout, construct.tag);
     const auto payloadType = findValueType(definitions, construct.payload);
     if (alternative == zc::none || payloadType == zc::none ||
-        construct.resultType != layout.typeId || layout.kind != ErrorUnionLayoutKind::TaggedUnion) {
+        construct.resultType != layout.semanticTypeId ||
+        layout.kind != ErrorUnionLayoutKind::TaggedUnion) {
       return dumpFailure(IrDumpFailureKind::InvalidInstruction, IrDumpVerifierSite::Instruction,
-                         function.symbol, block.id, construct.payload, construct.resultType,
+                         function.definition, block.id, construct.payload, construct.resultType,
                          construct.layoutIndex);
     }
     bool matches = false;
     ZC_IF_SOME(foundAlternative, alternative) {
       ZC_IF_SOME(foundPayloadType, payloadType) {
-        matches = foundAlternative.typeId == foundPayloadType;
+        matches = foundAlternative.semanticTypeId == foundPayloadType;
       }
     }
     if (!matches) {
       return dumpFailure(IrDumpFailureKind::InvalidInstruction, IrDumpVerifierSite::Instruction,
-                         function.symbol, block.id, construct.payload, construct.resultType,
+                         function.definition, block.id, construct.payload, construct.resultType,
                          construct.layoutIndex);
     }
     return zc::none;
@@ -269,7 +272,7 @@ IrDumpResult verifyInstruction(const Module& module, const Function& function,
     const auto& move = instruction.data.get<ErrorUnionMovePayload>();
     if (move.layoutIndex >= layouts.size()) {
       return dumpFailure(IrDumpFailureKind::InvalidLayoutReference, IrDumpVerifierSite::Instruction,
-                         function.symbol, block.id, instruction.result, move.resultType,
+                         function.definition, block.id, instruction.result, move.resultType,
                          move.layoutIndex);
     }
     const auto& layout = layouts[move.layoutIndex];
@@ -278,17 +281,20 @@ IrDumpResult verifyInstruction(const Module& module, const Function& function,
     if (alternative == zc::none || sourceType == zc::none ||
         layout.kind != ErrorUnionLayoutKind::TaggedUnion) {
       return dumpFailure(IrDumpFailureKind::InvalidValueReference, IrDumpVerifierSite::Instruction,
-                         function.symbol, block.id, move.source, move.resultType, move.layoutIndex);
+                         function.definition, block.id, move.source, move.resultType,
+                         move.layoutIndex);
     }
     bool matches = false;
     ZC_IF_SOME(foundAlternative, alternative) {
       ZC_IF_SOME(foundSourceType, sourceType) {
-        matches = foundSourceType == layout.typeId && move.resultType == foundAlternative.typeId;
+        matches = foundSourceType == layout.semanticTypeId &&
+                  move.resultType == foundAlternative.semanticTypeId;
       }
     }
     if (!matches) {
       return dumpFailure(IrDumpFailureKind::InvalidInstruction, IrDumpVerifierSite::Instruction,
-                         function.symbol, block.id, move.source, move.resultType, move.layoutIndex);
+                         function.definition, block.id, move.source, move.resultType,
+                         move.layoutIndex);
     }
     return zc::none;
   }
@@ -309,7 +315,7 @@ IrDumpResult verifyTerminator(const Module& module, const Function& function,
     }
     if (!matches) {
       return dumpFailure(IrDumpFailureKind::InvalidTerminator, IrDumpVerifierSite::Terminator,
-                         function.symbol, block.id, terminator.value, terminator.valueType);
+                         function.definition, block.id, terminator.value, terminator.valueType);
     }
     return zc::none;
   }
@@ -320,7 +326,7 @@ IrDumpResult verifyTerminator(const Module& module, const Function& function,
     const auto argumentType = findValueType(definitions, terminator.argument);
     if (target == zc::none || argumentType == zc::none) {
       return dumpFailure(IrDumpFailureKind::InvalidBlockReference, IrDumpVerifierSite::Terminator,
-                         function.symbol, terminator.target, terminator.argument);
+                         function.definition, terminator.target, terminator.argument);
     }
     bool matches = false;
     ZC_IF_SOME(targetBlock, target) {
@@ -332,7 +338,7 @@ IrDumpResult verifyTerminator(const Module& module, const Function& function,
     }
     if (!matches) {
       return dumpFailure(IrDumpFailureKind::InvalidTerminator, IrDumpVerifierSite::Terminator,
-                         function.symbol, block.id, terminator.argument);
+                         function.definition, block.id, terminator.argument);
     }
     return zc::none;
   }
@@ -344,22 +350,22 @@ IrDumpResult verifyTerminator(const Module& module, const Function& function,
         findBlock(function, terminator.errorTarget) == zc::none ||
         terminator.successTarget == terminator.errorTarget) {
       return dumpFailure(IrDumpFailureKind::InvalidBlockReference, IrDumpVerifierSite::Terminator,
-                         function.symbol, block.id, terminator.value, type::TypeId(),
+                         function.definition, block.id, terminator.value, type::SemanticTypeId(),
                          terminator.layoutIndex);
     }
     if (layouts[terminator.layoutIndex].kind != ErrorUnionLayoutKind::TaggedUnion) {
       return dumpFailure(IrDumpFailureKind::InvalidLayoutReference, IrDumpVerifierSite::Terminator,
-                         function.symbol, block.id, terminator.value, type::TypeId(),
+                         function.definition, block.id, terminator.value, type::SemanticTypeId(),
                          terminator.layoutIndex);
     }
     const auto valueType = findValueType(definitions, terminator.value);
     bool matches = false;
     ZC_IF_SOME(foundType, valueType) {
-      matches = foundType == layouts[terminator.layoutIndex].typeId;
+      matches = foundType == layouts[terminator.layoutIndex].semanticTypeId;
     }
     if (!matches) {
       return dumpFailure(IrDumpFailureKind::InvalidTerminator, IrDumpVerifierSite::Terminator,
-                         function.symbol, block.id, terminator.value, type::TypeId(),
+                         function.definition, block.id, terminator.value, type::SemanticTypeId(),
                          terminator.layoutIndex);
     }
     return zc::none;
@@ -369,7 +375,7 @@ IrDumpResult verifyTerminator(const Module& module, const Function& function,
     const auto& terminator = block.terminator.get<ForcedUnwrapPanicTerminator>();
     if (terminator.layoutIndex >= layouts.size()) {
       return dumpFailure(IrDumpFailureKind::InvalidLayoutReference, IrDumpVerifierSite::Terminator,
-                         function.symbol, block.id, terminator.value,
+                         function.definition, block.id, terminator.value,
                          terminator.metadata.payloadType, terminator.layoutIndex);
     }
     const auto& layout = layouts[terminator.layoutIndex];
@@ -379,8 +385,8 @@ IrDumpResult verifyTerminator(const Module& module, const Function& function,
     ZC_IF_SOME(foundAlternative, alternative) {
       ZC_IF_SOME(foundValueType, valueType) {
         matches = foundAlternative.kind == ErrorUnionAlternativeKind::Error &&
-                  foundAlternative.typeId == terminator.metadata.payloadType &&
-                  foundValueType == layout.typeId;
+                  foundAlternative.semanticTypeId == terminator.metadata.payloadType &&
+                  foundValueType == layout.semanticTypeId;
       }
     }
     if (!matches || layout.kind != ErrorUnionLayoutKind::TaggedUnion ||
@@ -388,7 +394,7 @@ IrDumpResult verifyTerminator(const Module& module, const Function& function,
         terminator.metadata.column == 0 ||
         terminator.metadata.byteStart >= terminator.metadata.byteEnd) {
       return dumpFailure(IrDumpFailureKind::InvalidTerminator, IrDumpVerifierSite::Terminator,
-                         function.symbol, block.id, terminator.value,
+                         function.definition, block.id, terminator.value,
                          terminator.metadata.payloadType, terminator.layoutIndex);
     }
     return zc::none;
@@ -398,33 +404,33 @@ IrDumpResult verifyTerminator(const Module& module, const Function& function,
 }
 
 IrDumpResult verifyFunction(const Module& module, const Function& function) {
-  const auto& interner = module.getTypeInterner();
+  const auto& semanticTypes = module.getSemanticTypeStore();
   const auto layouts = module.getErrorUnionLayouts();
-  if (!function.symbol.isValid() || function.name.size() == 0 || function.blocks.empty()) {
+  if (!function.definition.isValid() || function.name.size() == 0 || function.blocks.empty()) {
     return dumpFailure(IrDumpFailureKind::InvalidFunction, IrDumpVerifierSite::Function,
-                       function.symbol);
+                       function.definition);
   }
-  if (!interner.contains(function.checkedSignature)) {
+  if (!semanticTypes.contains(function.checkedSignature)) {
     return dumpFailure(IrDumpFailureKind::InvalidTypeReference, IrDumpVerifierSite::Function,
-                       function.symbol, BlockId(), ValueId(), function.checkedSignature);
+                       function.definition, BlockId(), ValueId(), function.checkedSignature);
   }
-  if (!interner.contains(function.abiReturnType)) {
+  if (!semanticTypes.contains(function.abiReturnType)) {
     return dumpFailure(IrDumpFailureKind::InvalidTypeReference, IrDumpVerifierSite::Function,
-                       function.symbol, BlockId(), ValueId(), function.abiReturnType);
+                       function.definition, BlockId(), ValueId(), function.abiReturnType);
   }
   if (function.errorUnionLayout >= layouts.size()) {
     return dumpFailure(IrDumpFailureKind::InvalidLayoutReference, IrDumpVerifierSite::Function,
-                       function.symbol, BlockId(), ValueId(), type::TypeId(),
+                       function.definition, BlockId(), ValueId(), type::SemanticTypeId(),
                        function.errorUnionLayout);
   }
 
   const auto& functionLayout = layouts[function.errorUnionLayout];
   const auto expectedReturnType = functionLayout.kind == ErrorUnionLayoutKind::DirectSuccess
-                                      ? functionLayout.alternatives[0].typeId
-                                      : functionLayout.typeId;
+                                      ? functionLayout.alternatives[0].semanticTypeId
+                                      : functionLayout.semanticTypeId;
   if (function.abiReturnType != expectedReturnType) {
     return dumpFailure(IrDumpFailureKind::InvalidFunction, IrDumpVerifierSite::Function,
-                       function.symbol, BlockId(), ValueId(), function.abiReturnType,
+                       function.definition, BlockId(), ValueId(), function.abiReturnType,
                        function.errorUnionLayout);
   }
 
@@ -433,35 +439,35 @@ IrDumpResult verifyFunction(const Module& module, const Function& function) {
   for (const auto& block : function.blocks) {
     if (!block.id.isValid()) {
       return dumpFailure(IrDumpFailureKind::InvalidBlockReference, IrDumpVerifierSite::Block,
-                         function.symbol, block.id);
+                         function.definition, block.id);
     }
     if (hasBlockId(blockIds, block.id)) {
       return dumpFailure(IrDumpFailureKind::DuplicateBlock, IrDumpVerifierSite::Block,
-                         function.symbol, block.id);
+                         function.definition, block.id);
     }
     blockIds.add(block.id);
 
     ZC_IF_SOME(parameter, block.parameter) {
-      if (!parameter.value.isValid() || !interner.contains(parameter.type)) {
+      if (!parameter.value.isValid() || !semanticTypes.contains(parameter.type)) {
         return dumpFailure(IrDumpFailureKind::InvalidTypeReference, IrDumpVerifierSite::Block,
-                           function.symbol, block.id, parameter.value, parameter.type);
+                           function.definition, block.id, parameter.value, parameter.type);
       }
       if (findValueType(definitions, parameter.value) != zc::none) {
         return dumpFailure(IrDumpFailureKind::DuplicateValue, IrDumpVerifierSite::Block,
-                           function.symbol, block.id, parameter.value, parameter.type);
+                           function.definition, block.id, parameter.value, parameter.type);
       }
       definitions.add(ValueDefinition{parameter.value, parameter.type});
     }
 
     for (const auto& instruction : block.instructions) {
       const auto resultType = instructionResultType(instruction);
-      if (!instruction.result.isValid() || !interner.contains(resultType)) {
+      if (!instruction.result.isValid() || !semanticTypes.contains(resultType)) {
         return dumpFailure(IrDumpFailureKind::InvalidTypeReference, IrDumpVerifierSite::Instruction,
-                           function.symbol, block.id, instruction.result, resultType);
+                           function.definition, block.id, instruction.result, resultType);
       }
       if (findValueType(definitions, instruction.result) != zc::none) {
         return dumpFailure(IrDumpFailureKind::DuplicateValue, IrDumpVerifierSite::Instruction,
-                           function.symbol, block.id, instruction.result, resultType);
+                           function.definition, block.id, instruction.result, resultType);
       }
       definitions.add(ValueDefinition{instruction.result, resultType});
     }
@@ -495,9 +501,9 @@ IrDumpResult verifyDumpableModule(const Module& module) {
   }
   for (size_t i = 0; i < functions.size(); ++i) {
     for (size_t j = i + 1; j < functions.size(); ++j) {
-      if (functions[i].symbol == functions[j].symbol) {
+      if (functions[i].definition == functions[j].definition) {
         return dumpFailure(IrDumpFailureKind::DuplicateFunctionSymbol, IrDumpVerifierSite::Module,
-                           functions[i].symbol);
+                           functions[i].definition);
       }
     }
     ZC_IF_SOME(failure, verifyFunction(module, functions[i])) { return failure; }
@@ -507,19 +513,19 @@ IrDumpResult verifyDumpableModule(const Module& module) {
 
 void dumpInstruction(zc::OutputStream& output, const Module& module,
                      const Instruction& instruction) {
-  const auto& interner = module.getTypeInterner();
+  const auto& semanticTypes = module.getSemanticTypeStore();
   writeValue(output, instruction.result);
   if (instruction.data.is<IntegerConstant>()) {
     const auto& constant = instruction.data.get<IntegerConstant>();
     output.write(zc::str(" = integer.constant ", constant.value,
-                         " type=", interner.getCanonicalKey(constant.resultType), "\n")
+                         " type=", semanticTypes.getCanonicalKey(constant.resultType), "\n")
                      .asBytes());
     return;
   }
   if (instruction.data.is<RaisingCall>()) {
     const auto& call = instruction.data.get<RaisingCall>();
     output.write(zc::str(" = call.raising @", resolveFunctionName(module, call.target),
-                         " type=", interner.getCanonicalKey(call.resultType), "\n")
+                         " type=", semanticTypes.getCanonicalKey(call.resultType), "\n")
                      .asBytes());
     return;
   }
@@ -529,7 +535,7 @@ void dumpInstruction(zc::OutputStream& output, const Module& module,
     writeValue(output, construct.payload);
     output.write(zc::str(" layout=", static_cast<uint64_t>(construct.layoutIndex),
                          " tag=", construct.tag,
-                         " type=", interner.getCanonicalKey(construct.resultType), "\n")
+                         " type=", semanticTypes.getCanonicalKey(construct.resultType), "\n")
                      .asBytes());
     return;
   }
@@ -538,7 +544,7 @@ void dumpInstruction(zc::OutputStream& output, const Module& module,
     output.write(" = error_union.move_payload "_zcb);
     writeValue(output, move.source);
     output.write(zc::str(" layout=", static_cast<uint64_t>(move.layoutIndex), " tag=", move.tag,
-                         " type=", interner.getCanonicalKey(move.resultType), "\n")
+                         " type=", semanticTypes.getCanonicalKey(move.resultType), "\n")
                      .asBytes());
     return;
   }
@@ -550,9 +556,9 @@ void dumpTerminator(zc::OutputStream& output, const Module& module, const Termin
     const auto& returnValue = terminator.get<ReturnTerminator>();
     output.write("return "_zcb);
     writeValue(output, returnValue.value);
-    output.write(
-        zc::str(" type=", module.getTypeInterner().getCanonicalKey(returnValue.valueType), "\n")
-            .asBytes());
+    output.write(zc::str(" type=",
+                         module.getSemanticTypeStore().getCanonicalKey(returnValue.valueType), "\n")
+                     .asBytes());
     return;
   }
   if (terminator.is<JumpTerminator>()) {
@@ -576,14 +582,13 @@ void dumpTerminator(zc::OutputStream& output, const Module& module, const Termin
     const auto& panic = terminator.get<ForcedUnwrapPanicTerminator>();
     output.write("panic.forced_unwrap "_zcb);
     writeValue(output, panic.value);
-    output.write(
-        zc::str(
-            " layout=", static_cast<uint64_t>(panic.layoutIndex), " tag=", panic.tag,
-            " payload_type=", module.getTypeInterner().getCanonicalKey(panic.metadata.payloadType),
-            " file=\"", panic.metadata.file, "\" line=", panic.metadata.line,
-            " column=", panic.metadata.column, " byte_start=", panic.metadata.byteStart,
-            " byte_end=", panic.metadata.byteEnd, "\n")
-            .asBytes());
+    output.write(zc::str(" layout=", static_cast<uint64_t>(panic.layoutIndex), " tag=", panic.tag,
+                         " payload_type=",
+                         module.getSemanticTypeStore().getCanonicalKey(panic.metadata.payloadType),
+                         " file=\"", panic.metadata.file, "\" line=", panic.metadata.line,
+                         " column=", panic.metadata.column, " byte_start=",
+                         panic.metadata.byteStart, " byte_end=", panic.metadata.byteEnd, "\n")
+                     .asBytes());
     return;
   }
   ZC_UNREACHABLE;
@@ -602,32 +607,35 @@ IrDumpResult dumpModule(zc::OutputStream& output, const Module& module) {
   const auto layouts = module.getErrorUnionLayouts();
   for (size_t i = 0; i < layouts.size(); ++i) {
     const auto& layout = layouts[i];
-    output.write(zc::str("layout ", static_cast<uint64_t>(i),
-                         " type=", module.getTypeInterner().getCanonicalKey(layout.typeId),
-                         " kind=", layoutKindName(layout.kind),
-                         " tag=", tagTypeName(layout.tagType), " tag_offset=", layout.tagOffset,
-                         " payload_state=", payloadStateName(layout.payloadLayoutState),
-                         " payload_offset=", layout.payloadOffset, " payload_size=",
-                         layout.payloadSize, " payload_align=", layout.payloadAlign,
-                         " size=", layout.size, " align=", layout.align, "\n")
-                     .asBytes());
+    output.write(
+        zc::str("layout ", static_cast<uint64_t>(i),
+                " type=", module.getSemanticTypeStore().getCanonicalKey(layout.semanticTypeId),
+                " kind=", layoutKindName(layout.kind), " tag=", tagTypeName(layout.tagType),
+                " tag_offset=", layout.tagOffset,
+                " payload_state=", payloadStateName(layout.payloadLayoutState),
+                " payload_offset=", layout.payloadOffset, " payload_size=", layout.payloadSize,
+                " payload_align=", layout.payloadAlign, " size=", layout.size,
+                " align=", layout.align, "\n")
+            .asBytes());
     for (const auto& alternative : layout.alternatives) {
-      output.write(zc::str("  alternative tag=", alternative.tag,
-                           " kind=", alternativeKindName(alternative.kind),
-                           " type=", module.getTypeInterner().getCanonicalKey(alternative.typeId),
-                           " payload_state=", payloadStateName(alternative.payloadLayoutState),
-                           " payload_size=", alternative.payloadSize,
-                           " payload_align=", alternative.payloadAlign, "\n")
-                       .asBytes());
+      output.write(
+          zc::str("  alternative tag=", alternative.tag,
+                  " kind=", alternativeKindName(alternative.kind), " type=",
+                  module.getSemanticTypeStore().getCanonicalKey(alternative.semanticTypeId),
+                  " payload_state=", payloadStateName(alternative.payloadLayoutState),
+                  " payload_size=", alternative.payloadSize,
+                  " payload_align=", alternative.payloadAlign, "\n")
+              .asBytes());
     }
   }
 
   for (const auto& function : module.getFunctions()) {
     output.write(
-        zc::str("function @", function.name,
-                " signature=", module.getTypeInterner().getCanonicalKey(function.checkedSignature),
-                " abi_return=", module.getTypeInterner().getCanonicalKey(function.abiReturnType),
-                " layout=", static_cast<uint64_t>(function.errorUnionLayout), "\n")
+        zc::str(
+            "function @", function.name,
+            " signature=", module.getSemanticTypeStore().getCanonicalKey(function.checkedSignature),
+            " abi_return=", module.getSemanticTypeStore().getCanonicalKey(function.abiReturnType),
+            " layout=", static_cast<uint64_t>(function.errorUnionLayout), "\n")
             .asBytes());
     for (const auto& block : function.blocks) {
       output.write(zc::str("  ^bb", static_cast<uint64_t>(block.id.value)).asBytes());
@@ -635,7 +643,8 @@ IrDumpResult dumpModule(zc::OutputStream& output, const Module& module) {
         output.write("("_zcb);
         writeValue(output, parameter.value);
         output.write(
-            zc::str(":", module.getTypeInterner().getCanonicalKey(parameter.type), ")").asBytes());
+            zc::str(":", module.getSemanticTypeStore().getCanonicalKey(parameter.type), ")")
+                .asBytes());
       }
       output.write(":\n"_zcb);
       for (const auto& instruction : block.instructions) {

@@ -19,13 +19,14 @@
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/source/manager.h"
-#include "zomlang/compiler/symbol/symbol-id.h"
 #include "zomlang/compiler/type/named-type.h"
 #include "zomlang/compiler/type/primitive-type.h"
 #include "zomlang/compiler/type/raw-pointer-type.h"
 #include "zomlang/compiler/type/reference-type.h"
 #include "zomlang/compiler/type/type-env.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -36,7 +37,7 @@ namespace {
 using tests::TestFixture;
 
 Place makeLocal(uint32_t placeId, uint32_t localId = 1) {
-  return Place::local(PlaceId(placeId), localId, type::TypeId(7));
+  return Place::local(PlaceId(placeId), localId, tests::testSemanticType(7));
 }
 
 class CapturingDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
@@ -81,12 +82,13 @@ ZC_TEST("BorrowModel.DefaultIdsAreInvalid") {
 }
 
 ZC_TEST("BorrowModel.PlaceStoresRootAndType") {
-  auto place = Place::parameter(PlaceId(1), 3, type::TypeId(9));
+  const auto semanticType = tests::testSemanticType(9);
+  auto place = Place::parameter(PlaceId(1), 3, semanticType);
 
   ZC_EXPECT(place.getId() == PlaceId(1));
   ZC_EXPECT(place.getRootKind() == PlaceRootKind::Parameter);
   ZC_EXPECT(place.getRootId() == 3);
-  ZC_EXPECT(place.getTypeId() == type::TypeId(9));
+  ZC_EXPECT(place.getSemanticTypeId() == semanticType);
   ZC_EXPECT(place.getProjections().size() == 0);
 }
 
@@ -204,11 +206,12 @@ ZC_TEST("BorrowModel.MoveRecordsOrigin") {
 ZC_TEST("BorrowModel.OwnerAllocatesAndLooksUpPlaces") {
   BorrowModel model;
 
-  auto local = model.addLocalPlace(10, type::TypeId(1));
-  auto parameter = model.addParameterPlace(20, type::TypeId(2));
-  auto temporary = model.addTemporaryPlace(30, type::TypeId(3));
-  auto capture = model.addClosureCapturePlace(40, type::TypeId(4));
-  auto ret = model.addReturnSlotPlace(type::TypeId(5));
+  auto local = model.addLocalPlace(10, tests::testSemanticType(1));
+  const auto parameterType = tests::testSemanticType(2);
+  auto parameter = model.addParameterPlace(20, parameterType);
+  auto temporary = model.addTemporaryPlace(30, tests::testSemanticType(3));
+  auto capture = model.addClosureCapturePlace(40, tests::testSemanticType(4));
+  auto ret = model.addReturnSlotPlace(tests::testSemanticType(5));
 
   ZC_EXPECT(model.placeCount() == 5);
   ZC_EXPECT(local == PlaceId(1));
@@ -222,7 +225,7 @@ ZC_TEST("BorrowModel.OwnerAllocatesAndLooksUpPlaces") {
   ZC_IF_SOME(p, place) {
     ZC_EXPECT(p.getRootKind() == PlaceRootKind::Parameter);
     ZC_EXPECT(p.getRootId() == 20);
-    ZC_EXPECT(p.getTypeId() == type::TypeId(2));
+    ZC_EXPECT(p.getSemanticTypeId() == parameterType);
   }
 
   ZC_EXPECT(model.getPlace(PlaceId(99)) == zc::none);
@@ -230,7 +233,7 @@ ZC_TEST("BorrowModel.OwnerAllocatesAndLooksUpPlaces") {
 
 ZC_TEST("BorrowModel.OwnerAppliesProjectionMutations") {
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
 
   model.addFieldProjection(place, "payload"_zc);
   model.addDerefProjection(place);
@@ -251,7 +254,7 @@ ZC_TEST("BorrowModel.OwnerAppliesProjectionMutations") {
 
 ZC_TEST("BorrowModel.OwnerAllocatesRegionsLoansAndMoves") {
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
 
   auto rootRegion = model.addRegion(RegionKind::Lexical);
   auto nestedRegion = model.addRegion(RegionKind::Temporary, rootRegion);
@@ -434,8 +437,8 @@ ZC_TEST("BorrowModel.EmitsRawPointerBoundaryDiagnostic") {
 
 ZC_TEST("BorrowModel.OwnerChecksOverlapByPlaceId") {
   BorrowModel model;
-  auto lhs = model.addLocalPlace(1, type::TypeId(1));
-  auto rhs = model.addLocalPlace(1, type::TypeId(1));
+  auto lhs = model.addLocalPlace(1, tests::testSemanticType(1));
+  auto rhs = model.addLocalPlace(1, tests::testSemanticType(1));
 
   model.addFieldProjection(lhs, "left"_zc);
   model.addFieldProjection(rhs, "right"_zc);
@@ -447,7 +450,7 @@ ZC_TEST("BorrowModel.OwnerChecksOverlapByPlaceId") {
 
 ZC_TEST("BorrowModel.SharedLoanDoesNotConflictWithSharedLoan") {
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   model.addLoan(place, LoanKind::Shared, region, ast::NodeId(1));
 
@@ -456,7 +459,7 @@ ZC_TEST("BorrowModel.SharedLoanDoesNotConflictWithSharedLoan") {
 
 ZC_TEST("BorrowModel.MutableLoanConflictsWithSharedLoan") {
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   auto loan = model.addLoan(place, LoanKind::Shared, region, ast::NodeId(1));
 
@@ -467,7 +470,7 @@ ZC_TEST("BorrowModel.MutableLoanConflictsWithSharedLoan") {
 
 ZC_TEST("BorrowModel.SharedLoanConflictsWithMutableLoan") {
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   auto loan = model.addLoan(place, LoanKind::Mutable, region, ast::NodeId(1));
 
@@ -478,8 +481,8 @@ ZC_TEST("BorrowModel.SharedLoanConflictsWithMutableLoan") {
 
 ZC_TEST("BorrowModel.DisjointFieldLoanDoesNotConflict") {
   BorrowModel model;
-  auto lhs = model.addLocalPlace(1, type::TypeId(1));
-  auto rhs = model.addLocalPlace(1, type::TypeId(1));
+  auto lhs = model.addLocalPlace(1, tests::testSemanticType(1));
+  auto rhs = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
 
   model.addFieldProjection(lhs, "left"_zc);
@@ -516,7 +519,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsTypedParameterAndLocalPlaces") {
   auto fn = fix.makeFunctionDecl("main"_zc, body, paramList);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(paramA, type::PrimitiveType::createI32());
   typeEnv.setType(paramB, type::PrimitiveType::createBool());
   typeEnv.setType(localX, type::PrimitiveType::createI32());
@@ -538,7 +541,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsTypedParameterAndLocalPlaces") {
     ZC_IF_SOME(p, place) {
       ZC_EXPECT(p.getRootKind() == PlaceRootKind::ReturnSlot);
       ZC_EXPECT(p.getRootId() == 0);
-      ZC_EXPECT(p.getTypeId().isValid());
+      ZC_EXPECT(p.getSemanticTypeId().isValid());
     }
   }
 
@@ -550,7 +553,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsTypedParameterAndLocalPlaces") {
     ZC_IF_SOME(p, place) {
       ZC_EXPECT(p.getRootKind() == PlaceRootKind::Parameter);
       ZC_EXPECT(p.getRootId() == 0);
-      ZC_EXPECT(p.getTypeId().isValid());
+      ZC_EXPECT(p.getSemanticTypeId().isValid());
     }
   }
 
@@ -562,7 +565,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsTypedParameterAndLocalPlaces") {
     ZC_IF_SOME(p, place) {
       ZC_EXPECT(p.getRootKind() == PlaceRootKind::Local);
       ZC_EXPECT(p.getRootId() == localY.value);
-      ZC_EXPECT(p.getTypeId().isValid());
+      ZC_EXPECT(p.getSemanticTypeId().isValid());
     }
   }
 }
@@ -581,7 +584,7 @@ ZC_TEST("BorrowPlaceBuilder.SkipsUntypedBindings") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   BorrowModel model;
   BorrowPlaceBuilder builder(model, tree, typeEnv);
   builder.buildFunctionPlaces(fn);
@@ -591,7 +594,7 @@ ZC_TEST("BorrowPlaceBuilder.SkipsUntypedBindings") {
   ZC_EXPECT(builder.getPlaceForNode(local) == zc::none);
 }
 
-ZC_TEST("BorrowPlaceBuilder.UsesBindingMetadataSymbolIdsForPlaceRoots") {
+ZC_TEST("BorrowPlaceBuilder.UsesDefinitionIdentitiesForPlaceRoots") {
   TestFixture fix;
   auto param = fix.makeFunctionParamDecl("value"_zc);
   zc::Vector<ast::NodeId> params;
@@ -612,10 +615,11 @@ ZC_TEST("BorrowPlaceBuilder.UsesBindingMetadataSymbolIdsForPlaceRoots") {
 
   ast::BindingMetadata metadata;
   metadata.resizeFor(tree);
-  metadata.setSymbol(param, symbol::SymbolId::create(41));
-  metadata.setSymbol(local, symbol::SymbolId::create(42));
+  auto definitions = tests::makeTestDefinitionIds(2);
+  metadata.setDefinition(param, definitions[0]);
+  metadata.setDefinition(local, definitions[1]);
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(param, type::PrimitiveType::createI32());
   typeEnv.setType(local, type::PrimitiveType::createBool());
 
@@ -630,7 +634,7 @@ ZC_TEST("BorrowPlaceBuilder.UsesBindingMetadataSymbolIdsForPlaceRoots") {
     ZC_EXPECT(place != zc::none);
     ZC_IF_SOME(p, place) {
       ZC_EXPECT(p.getRootKind() == PlaceRootKind::Parameter);
-      ZC_EXPECT(p.getRootId() == 41);
+      ZC_EXPECT(p.getRootDefinition() == definitions[0]);
     }
   }
 
@@ -641,7 +645,7 @@ ZC_TEST("BorrowPlaceBuilder.UsesBindingMetadataSymbolIdsForPlaceRoots") {
     ZC_EXPECT(place != zc::none);
     ZC_IF_SOME(p, place) {
       ZC_EXPECT(p.getRootKind() == PlaceRootKind::Local);
-      ZC_EXPECT(p.getRootId() == 42);
+      ZC_EXPECT(p.getRootDefinition() == definitions[1]);
     }
   }
 }
@@ -673,7 +677,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsProjectionPlacesForExpressions") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, type::PrimitiveType::createI32());
   typeEnv.setType(ptrPattern, type::PrimitiveType::createI32());
   typeEnv.setType(arrPattern, type::PrimitiveType::createI32());
@@ -748,7 +752,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsNestedProjectionPlacesForExpressions") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, type::PrimitiveType::createI32());
   typeEnv.setType(ptrPattern, type::PrimitiveType::createI32());
   typeEnv.setType(fieldExpr, type::PrimitiveType::createI32());
@@ -800,7 +804,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsTemporaryPlaceForTypedRvalueExpression") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(expr, type::PrimitiveType::createI32());
 
   BorrowModel model;
@@ -815,7 +819,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsTemporaryPlaceForTypedRvalueExpression") {
     ZC_IF_SOME(p, place) {
       ZC_EXPECT(p.getRootKind() == PlaceRootKind::Temporary);
       ZC_EXPECT(p.getRootId() == expr.value);
-      ZC_EXPECT(p.getTypeId().isValid());
+      ZC_EXPECT(p.getSemanticTypeId().isValid());
       ZC_EXPECT(p.getProjections().size() == 0);
     }
   }
@@ -843,7 +847,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsClosureCapturePlaceForOuterBindingUse") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(outerPattern, type::PrimitiveType::createI32());
   typeEnv.setType(capturedUse, type::PrimitiveType::createI32());
   typeEnv.setType(closure, type::PrimitiveType::createUnit());
@@ -860,7 +864,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsClosureCapturePlaceForOuterBindingUse") {
     ZC_IF_SOME(p, place) {
       ZC_EXPECT(p.getRootKind() == PlaceRootKind::ClosureCapture);
       ZC_EXPECT(p.getRootId() == outerPattern.value);
-      ZC_EXPECT(p.getTypeId().isValid());
+      ZC_EXPECT(p.getSemanticTypeId().isValid());
     }
   }
 }
@@ -887,7 +891,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsClosureCaptureProjectionPlaceForOuterBindingUs
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(outerPattern, type::PrimitiveType::createI32());
   typeEnv.setType(capturedField, type::PrimitiveType::createI32());
   typeEnv.setType(closure, type::PrimitiveType::createUnit());
@@ -941,7 +945,7 @@ ZC_TEST("BorrowPlaceBuilder.DoesNotCaptureShadowedClosureLocal") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(outerPattern, type::PrimitiveType::createI32());
   typeEnv.setType(innerPattern, type::PrimitiveType::createI32());
   typeEnv.setType(innerUse, type::PrimitiveType::createI32());
@@ -981,7 +985,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsProjectionPlaceForLetInitializerExpression") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, type::PrimitiveType::createI32());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(initExpr, type::PrimitiveType::createI32());
@@ -1021,7 +1025,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsProjectionPlaceForReturnExpression") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, type::PrimitiveType::createI32());
   typeEnv.setType(returnExpr, type::PrimitiveType::createI32());
 
@@ -1062,7 +1066,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsProjectionPlaceForCallArgumentExpression") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, type::PrimitiveType::createI32());
   typeEnv.setType(argExpr, type::PrimitiveType::createI32());
   typeEnv.setType(callExpr, type::PrimitiveType::createUnit());
@@ -1105,7 +1109,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsProjectionPlaceForAssignmentExpression") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, type::PrimitiveType::createI32());
   typeEnv.setType(targetPattern, type::PrimitiveType::createI32());
   typeEnv.setType(rhsExpr, type::PrimitiveType::createI32());
@@ -1149,7 +1153,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsProjectionPlaceInsideIfBranch") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, type::PrimitiveType::createI32());
   typeEnv.setType(branchExpr, type::PrimitiveType::createI32());
 
@@ -1191,7 +1195,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsProjectionPlaceInsideWhileBody") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, type::PrimitiveType::createI32());
   typeEnv.setType(loopExpr, type::PrimitiveType::createI32());
 
@@ -1236,7 +1240,7 @@ ZC_TEST("BorrowPlaceBuilder.BuildsProjectionPlaceInsideMatchArmBody") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, type::PrimitiveType::createI32());
   typeEnv.setType(armExpr, type::PrimitiveType::createI32());
 
@@ -1277,7 +1281,7 @@ ZC_TEST("BorrowPlaceCollection.CollectsTopLevelFunctionPlaces") {
   auto fn = fix.makeFunctionDecl("main"_zc, body, paramList);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, type::PrimitiveType::createUnit());
   typeEnv.setType(param, type::PrimitiveType::createI32());
   typeEnv.setType(local, type::PrimitiveType::createBool());
@@ -1312,7 +1316,7 @@ ZC_TEST("BorrowCheckerPhase.CollectsPlacesAndFunctionCfgs") {
   auto fn = fix.makeFunctionDecl("main"_zc, body, paramList);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, type::PrimitiveType::createUnit());
   typeEnv.setType(param, type::PrimitiveType::createI32());
   typeEnv.setType(local, type::PrimitiveType::createBool());
@@ -1345,7 +1349,7 @@ ZC_TEST("BorrowCheckerPhase.BuildsInitialLoansForReferenceInitializers") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(sourcePattern, type::PrimitiveType::createI32());
   typeEnv.setType(refPattern, type::PrimitiveType::createI32());
 
@@ -1388,7 +1392,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsMutableBorrowConflictFromRefMutInitializer") 
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(valueDecl, type::PrimitiveType::createI32());
   typeEnv.setType(sharedDecl, zc::heap<type::NamedType>("RefI32"_zc));
   typeEnv.setType(sharedBorrow, zc::heap<type::NamedType>("RefI32"_zc));
@@ -1442,7 +1446,7 @@ ZC_TEST("BorrowCheckerPhase.EndsBlockScopedBorrowBeforeLaterMutableBorrow") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(sharedPattern, makeSharedI32ReferenceType());
   typeEnv.setType(sharedBorrow, makeSharedI32ReferenceType());
@@ -1477,7 +1481,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsMoveOutOfBorrowFromInitializer") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(refPattern, makeSharedI32ReferenceType());
   typeEnv.setType(borrowExpr, makeSharedI32ReferenceType());
@@ -1532,7 +1536,7 @@ ZC_TEST("BorrowCheckerPhase.EndsBlockScopedBorrowBeforeOuterMove") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(refPattern, makeSharedI32ReferenceType());
   typeEnv.setType(borrowExpr, makeSharedI32ReferenceType());
@@ -1583,7 +1587,7 @@ ZC_TEST("BorrowCheckerPhase.EndsIfBranchBorrowBeforeOuterMove") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(refPattern, makeSharedI32ReferenceType());
   typeEnv.setType(borrowExpr, makeSharedI32ReferenceType());
@@ -1634,7 +1638,7 @@ ZC_TEST("BorrowCheckerPhase.EndsWhileBodyBorrowBeforeOuterMove") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(refPattern, makeSharedI32ReferenceType());
   typeEnv.setType(borrowExpr, makeSharedI32ReferenceType());
@@ -1687,7 +1691,7 @@ ZC_TEST("BorrowCheckerPhase.EndsMatchArmBorrowBeforeOuterMove") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(refPattern, makeSharedI32ReferenceType());
   typeEnv.setType(borrowExpr, makeSharedI32ReferenceType());
@@ -1732,7 +1736,7 @@ ZC_TEST("BorrowCheckerPhase.EndsCallArgumentBorrowBeforeOuterMove") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(borrowExpr, makeSharedI32ReferenceType());
   typeEnv.setType(call, type::PrimitiveType::createUnit());
@@ -1765,7 +1769,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefOutsideUnsafe") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -1798,7 +1802,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInLetInitializer") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -1831,7 +1835,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInReturnValue") {
   auto fn = fix.makeFunctionDecl("main"_zc, body, ast::NodeId(), fix.makeNamedTypeExpr("i32"_zc));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, type::PrimitiveType::createI32());
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
@@ -1870,7 +1874,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInConditionalExpression") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(flagPattern, type::PrimitiveType::createBool());
   typeEnv.setType(flagUse, type::PrimitiveType::createBool());
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
@@ -1912,7 +1916,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInNullCoalesceExpression") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(fallbackPattern, type::PrimitiveType::createI32());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
@@ -1950,7 +1954,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInIsExpression") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -1988,7 +1992,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInArrayLiteral") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -2025,7 +2029,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInTupleLiteral") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -2059,7 +2063,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInCastExpression") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -2097,7 +2101,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInObjectLiteral") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -2134,7 +2138,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInStructLiteral") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -2171,7 +2175,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsRawPointerDerefInMemberExpressionObject") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -2207,7 +2211,7 @@ ZC_TEST("BorrowCheckerPhase.AcceptsRawPointerDerefInsideUnsafe") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ptrPattern, makeConstRawI32PointerType());
   typeEnv.setType(ptrUse, makeConstRawI32PointerType());
   typeEnv.setType(deref, type::PrimitiveType::createI32());
@@ -2248,7 +2252,7 @@ ZC_TEST("BorrowCheckerPhase.InfersMoveAndReinitializeFactsFromTypedAssignments")
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(replacementPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
@@ -2291,7 +2295,7 @@ ZC_TEST("BorrowCheckerPhase.InfersMoveFactFromReturnValue") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(returnUse, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(fn, zc::heap<type::NamedType>("Owner"_zc));
@@ -2329,7 +2333,7 @@ ZC_TEST("BorrowCheckerPhase.InfersMoveFactFromCallArgument") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(argUse, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(call, type::PrimitiveType::createUnit());
@@ -2370,7 +2374,7 @@ ZC_TEST("BorrowCheckerPhase.InfersMoveFactFromBinaryOperand") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(otherPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(lhsUse, zc::heap<type::NamedType>("Owner"_zc));
@@ -2416,7 +2420,7 @@ ZC_TEST("BorrowCheckerPhase.InfersMoveFactFromIndexOperand") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(arrPattern, zc::heap<type::NamedType>("ArrayOwner"_zc));
   typeEnv.setType(indexPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(indexUse, zc::heap<type::NamedType>("Owner"_zc));
@@ -2454,7 +2458,7 @@ ZC_TEST("BorrowCheckerPhase.InfersMoveFactFromUnaryOperand") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(operand, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(unary, zc::heap<type::NamedType>("Owner"_zc));
@@ -2491,7 +2495,7 @@ ZC_TEST("BorrowCheckerPhase.DoesNotInferMoveFactFromReferenceOperand") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(operand, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(reference, zc::heap<type::NamedType>("OwnerRef"_zc));
@@ -2529,7 +2533,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveFromTypedUseSite") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkInit, zc::heap<type::NamedType>("Owner"_zc));
@@ -2565,7 +2569,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -2598,7 +2602,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningReferenceToLocalField") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(objPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(member, type::PrimitiveType::createI32());
@@ -2632,7 +2636,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningReferenceToNestedLocalField") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(objPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(field, zc::heap<type::NamedType>("Field"_zc));
@@ -2671,7 +2675,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningLocalReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -2716,7 +2720,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningLocalReferenceAliasToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -2757,7 +2761,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningObjectMemberReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -2794,7 +2798,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningStructLiteralReferenceToLocal") {
   auto fn = fix.makeFunctionDecl("leak"_zc, body, ast::NodeId(), fix.makeNamedTypeExpr("Box"_zc));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, zc::heap<type::NamedType>("Box"_zc));
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -2832,7 +2836,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningArrayLiteralReferenceToLocal") {
       fix.makeArrayTypeExpr(fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc))));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
   typeEnv.setType(borrowExpr, makeSharedI32ReferenceType());
@@ -2871,7 +2875,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningConditionalReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(flagPattern, type::PrimitiveType::createBool());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
@@ -2911,7 +2915,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningCastReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -2948,7 +2952,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningNullCoalesceReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(primaryUse, type::PrimitiveType::createI32());
@@ -2987,7 +2991,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningErrorDefaultReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(primaryUse, type::PrimitiveType::createI32());
@@ -3027,7 +3031,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningIndexReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -3065,7 +3069,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningCallReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -3101,7 +3105,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningNewExpressionReferenceToLocal") {
   auto fn = fix.makeFunctionDecl("leak"_zc, body, ast::NodeId(), fix.makeNamedTypeExpr("Box"_zc));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -3139,7 +3143,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningImportCallReferenceToLocal") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -3193,7 +3197,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsStoredLocalReferenceEscape") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(slotPattern, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
@@ -3254,7 +3258,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsStoredLocalReferenceAliasEscape") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(slotPattern, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
@@ -3297,7 +3301,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsReturningReborrowOfLocalReference") {
                                  fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, makeSharedI32ReferenceType());
   typeEnv.setType(valuePattern, type::PrimitiveType::createI32());
   typeEnv.setType(valueUse, type::PrimitiveType::createI32());
@@ -3337,7 +3341,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveWithDeclaratorTypedBindings") {
   auto fn = fix.makeFunctionDecl("main"_zc, body, ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedDecl, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkDecl, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkInit, zc::heap<type::NamedType>("Owner"_zc));
@@ -3371,7 +3375,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveWithIdentifierPatterns") {
   auto fn = fix.makeFunctionDecl("main"_zc, body, ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedDecl, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkDecl, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkInit, zc::heap<type::NamedType>("Owner"_zc));
@@ -3406,7 +3410,7 @@ ZC_TEST("BorrowCheckerPhase.EmitsUseAfterMoveDiagnosticFromPhaseReport") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkInit, zc::heap<type::NamedType>("Owner"_zc));
@@ -3457,7 +3461,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveFromCallArgument") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkInit, zc::heap<type::NamedType>("Owner"_zc));
@@ -3504,7 +3508,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveFromBinaryOperand") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(otherPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
@@ -3552,7 +3556,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveFromIndexOperand") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(arrPattern, zc::heap<type::NamedType>("ArrayOwner"_zc));
   typeEnv.setType(indexPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
@@ -3596,7 +3600,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveFromUnaryOperand") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkInit, zc::heap<type::NamedType>("Owner"_zc));
@@ -3638,7 +3642,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveFromMovedParentMember") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(objPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkInit, zc::heap<type::NamedType>("Owner"_zc));
@@ -3677,7 +3681,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveFromReturnValue") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkInit, zc::heap<type::NamedType>("Owner"_zc));
@@ -3723,7 +3727,7 @@ ZC_TEST("BorrowCheckerPhase.ReportsUseAfterMoveFromAssignmentRhs") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(ownedPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(targetPattern, zc::heap<type::NamedType>("Owner"_zc));
   typeEnv.setType(sinkPattern, zc::heap<type::NamedType>("Owner"_zc));
@@ -3756,7 +3760,7 @@ ZC_TEST("BorrowCheckerPhase.BuildsCfgSummaryForFunctionExpressionBody") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, type::PrimitiveType::createUnit());
   typeEnv.setType(closure, type::PrimitiveType::createUnit());
 
@@ -3794,7 +3798,7 @@ ZC_TEST("BorrowCheckerPhase.BuildsCfgSummaryForLambdaExpressionBody") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(fn, type::PrimitiveType::createUnit());
   typeEnv.setType(exprBody, type::PrimitiveType::createI32());
   typeEnv.setType(lambda, type::PrimitiveType::createUnit());
@@ -4817,7 +4821,7 @@ ZC_TEST("BorrowLoanState.PropagatesSharedLoanConflictToSuccessorNode") {
   auto cfg = buildStraightLineBorrowCfg(tree, fn);
 
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   auto loan = model.addLoan(place, LoanKind::Shared, region, ast::NodeId(1));
 
@@ -4848,7 +4852,7 @@ ZC_TEST("BorrowLoanState.ReportsConflictLoanOriginAtSuccessorNode") {
   auto cfg = buildStraightLineBorrowCfg(tree, fn);
 
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   auto origin = ast::NodeId(42);
   auto loan = model.addLoan(place, LoanKind::Shared, region, origin);
@@ -4881,7 +4885,7 @@ ZC_TEST("BorrowLoanState.ReportsConflictLoanIdAtSuccessorNode") {
   auto cfg = buildStraightLineBorrowCfg(tree, fn);
 
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   auto loan = model.addLoan(place, LoanKind::Shared, region, ast::NodeId(1));
 
@@ -4912,7 +4916,7 @@ ZC_TEST("BorrowLoanState.ReportsStructuredConflictAtSuccessorNode") {
   auto cfg = buildStraightLineBorrowCfg(tree, fn);
 
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   auto origin = ast::NodeId(42);
   auto loan = model.addLoan(place, LoanKind::Shared, region, origin);
@@ -4953,7 +4957,7 @@ ZC_TEST("BorrowLoanState.EmitsMutableBorrowConflictDiagnostic") {
   auto cfg = buildStraightLineBorrowCfg(tree, fn);
 
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   auto origin = letStmt;
   auto loan = model.addLoan(place, LoanKind::Shared, region, origin);
@@ -5007,7 +5011,7 @@ ZC_TEST("BorrowLoanState.EndLoanClearsConflictForSuccessorNode") {
   auto cfg = buildStraightLineBorrowCfg(tree, fn);
 
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   auto loan = model.addLoan(place, LoanKind::Shared, region, ast::NodeId(1));
 
@@ -5055,7 +5059,7 @@ ZC_TEST("BorrowLoanState.SuspendAndResumeLoanUpdatesConflicts") {
   auto cfg = buildStraightLineBorrowCfg(tree, fn);
 
   BorrowModel model;
-  auto place = model.addLocalPlace(1, type::TypeId(1));
+  auto place = model.addLocalPlace(1, tests::testSemanticType(1));
   auto region = model.addRegion(RegionKind::Lexical);
   auto loan = model.addLoan(place, LoanKind::Mutable, region, ast::NodeId(1));
 
@@ -5094,7 +5098,7 @@ ZC_TEST("BorrowLoanBuilder.CreatesSharedLoanForReferenceInitializer") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(sourcePattern, type::PrimitiveType::createI32());
   typeEnv.setType(refPattern, type::PrimitiveType::createI32());
 
@@ -5133,7 +5137,7 @@ ZC_TEST("BorrowLoanBuilder.CreatesSharedLoanForFieldReferenceInitializer") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(sourcePattern, type::PrimitiveType::createI32());
   typeEnv.setType(refPattern, type::PrimitiveType::createI32());
 
@@ -5185,7 +5189,7 @@ ZC_TEST("BorrowLoanBuilder.CreatesSharedLoanForDerefReferenceInitializer") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(sourcePattern, type::PrimitiveType::createI32());
   typeEnv.setType(refPattern, type::PrimitiveType::createI32());
 
@@ -5236,7 +5240,7 @@ ZC_TEST("BorrowLoanBuilder.CreatesSharedLoanForIndexReferenceInitializer") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(sourcePattern, type::PrimitiveType::createI32());
   typeEnv.setType(refPattern, type::PrimitiveType::createI32());
 
@@ -5278,7 +5282,7 @@ ZC_TEST("BorrowLoanBuilder.CreatesMutableLoanForMarkedReferenceInitializer") {
   auto fn = fix.makeFunctionDecl("main"_zc, body);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&fn, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   typeEnv.setType(sourcePattern, type::PrimitiveType::createI32());
   typeEnv.setType(refPattern, type::PrimitiveType::createI32());
 

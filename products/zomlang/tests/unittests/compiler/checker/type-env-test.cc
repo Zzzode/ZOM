@@ -27,6 +27,8 @@
 #include "zomlang/compiler/type/primitive-type.h"
 #include "zomlang/compiler/type/type-scheme.h"
 #include "zomlang/compiler/type/type-var.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -37,13 +39,13 @@ namespace type {
 // ============================================================================
 
 ZC_TEST("TypeEnv.InitiallyEmpty") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ZC_EXPECT(env.size() == 0);
   ZC_EXPECT(env.nodeTypeCount() == 0);
 }
 
 ZC_TEST("TypeEnv.SetAndGetType") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(1);
   env.setType(node, PrimitiveType::createI32());
   ZC_EXPECT(env.hasType(node));
@@ -53,43 +55,43 @@ ZC_TEST("TypeEnv.SetAndGetType") {
 }
 
 ZC_TEST("TypeEnv.SetTypeAlsoAssignsCanonicalTypeId") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId first(1);
   ast::NodeId second(2);
 
   env.setType(first, PrimitiveType::createI32());
   env.setType(second, PrimitiveType::createI32());
 
-  ZC_EXPECT(env.hasTypeId(first));
-  ZC_EXPECT(env.hasTypeId(second));
-  ZC_EXPECT(env.getTypeId(first).isValid());
-  ZC_EXPECT(env.getTypeId(first) == env.getTypeId(second));
+  ZC_EXPECT(env.hasSemanticTypeId(first));
+  ZC_EXPECT(env.hasSemanticTypeId(second));
+  ZC_EXPECT(env.getSemanticTypeId(first).isValid());
+  ZC_EXPECT(env.getSemanticTypeId(first) == env.getSemanticTypeId(second));
 }
 
 ZC_TEST("TypeEnv.OverwriteTypeUpdatesCanonicalTypeId") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(1);
   ast::NodeId strNode(2);
 
   env.setType(node, PrimitiveType::createI32());
-  auto oldId = env.getTypeId(node);
+  auto oldId = env.getSemanticTypeId(node);
 
   env.setType(node, PrimitiveType::createStr());
   env.setType(strNode, PrimitiveType::createStr());
 
-  ZC_EXPECT(env.getTypeId(node) != oldId);
-  ZC_EXPECT(env.getTypeId(node) == env.getTypeId(strNode));
+  ZC_EXPECT(env.getSemanticTypeId(node) != oldId);
+  ZC_EXPECT(env.getSemanticTypeId(node) == env.getSemanticTypeId(strNode));
 }
 
 ZC_TEST("TypeEnv.HasTypeFalseForUnset") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(1);
   ZC_EXPECT(!env.hasType(node));
-  ZC_EXPECT(!env.hasTypeId(node));
+  ZC_EXPECT(!env.hasSemanticTypeId(node));
 }
 
 ZC_TEST("TypeEnv.MultipleNodeTypes") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId n1(1);
   ast::NodeId n2(2);
   ast::NodeId n3(3);
@@ -104,7 +106,7 @@ ZC_TEST("TypeEnv.MultipleNodeTypes") {
 }
 
 ZC_TEST("TypeEnv.OverwriteType") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(1);
   env.setType(node, PrimitiveType::createI32());
   env.setType(node, PrimitiveType::createStr());
@@ -118,7 +120,7 @@ ZC_TEST("TypeEnv.OverwriteType") {
 // ============================================================================
 
 ZC_TEST("TypeEnv.SetAndGetCoercion") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(42);
 
   env.setCoercion(node, CoercionKind::UnionInjection);
@@ -128,7 +130,7 @@ ZC_TEST("TypeEnv.SetAndGetCoercion") {
 }
 
 ZC_TEST("TypeEnv.ClearRemovesCoercions") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(42);
 
   env.setCoercion(node, CoercionKind::MutRefToSharedRef);
@@ -139,18 +141,18 @@ ZC_TEST("TypeEnv.ClearRemovesCoercions") {
 }
 
 ZC_TEST("TypeEnv.ClearRemovesTypeIds") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(42);
 
   env.setType(node, PrimitiveType::createI32());
-  ZC_EXPECT(env.hasTypeId(node));
+  ZC_EXPECT(env.hasSemanticTypeId(node));
 
   env.clear();
-  ZC_EXPECT(!env.hasTypeId(node));
+  ZC_EXPECT(!env.hasSemanticTypeId(node));
 }
 
 ZC_TEST("TypeEnv.SetAndGetDispatch") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(42);
 
   CallDispatchRecord record;
@@ -158,12 +160,16 @@ ZC_TEST("TypeEnv.SetAndGetDispatch") {
   record.receiverMode = ReceiverMode::ExplicitFirstArgument;
   record.interfaceName = zc::str("Drawable"_zc);
   record.methodName = zc::str("draw"_zc);
-  record.targetSymbol = symbol::SymbolId::create(99);
+  const auto targetDefinition = tests::makeTestDefinitionIds(1)[0];
+  record.targetDefinition = targetDefinition;
   record.implNode = ast::NodeId(7);
   record.vtableSlot = 11;
-  record.argumentTypes.add(TypeId(1));
-  record.argumentTypes.add(TypeId(2));
-  record.resultType = TypeId(3);
+  const auto firstArgumentType = env.internType(*PrimitiveType::createI8());
+  const auto secondArgumentType = env.internType(*PrimitiveType::createI16());
+  const auto resultType = env.internType(*PrimitiveType::createI32());
+  record.argumentTypes.add(firstArgumentType);
+  record.argumentTypes.add(secondArgumentType);
+  record.resultType = resultType;
   env.setDispatch(node, zc::mv(record));
 
   ZC_EXPECT(env.hasDispatch(node));
@@ -172,17 +178,17 @@ ZC_TEST("TypeEnv.SetAndGetDispatch") {
   ZC_EXPECT(stored.receiverMode == ReceiverMode::ExplicitFirstArgument);
   ZC_EXPECT(stored.interfaceName.asPtr() == "Drawable"_zc);
   ZC_EXPECT(stored.methodName.asPtr() == "draw"_zc);
-  ZC_EXPECT(stored.targetSymbol == symbol::SymbolId::create(99));
+  ZC_EXPECT(stored.targetDefinition == targetDefinition);
   ZC_EXPECT(stored.implNode == ast::NodeId(7));
   ZC_EXPECT(stored.vtableSlot == 11);
   ZC_EXPECT(stored.argumentTypes.size() == 2);
-  ZC_EXPECT(stored.argumentTypes[0] == TypeId(1));
-  ZC_EXPECT(stored.argumentTypes[1] == TypeId(2));
-  ZC_EXPECT(stored.resultType == TypeId(3));
+  ZC_EXPECT(stored.argumentTypes[0] == firstArgumentType);
+  ZC_EXPECT(stored.argumentTypes[1] == secondArgumentType);
+  ZC_EXPECT(stored.resultType == resultType);
 }
 
 ZC_TEST("TypeEnv.ClearRemovesDispatch") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(42);
   CallDispatchRecord record;
   record.targetKind = CallTargetKind::IndexMethod;
@@ -194,7 +200,7 @@ ZC_TEST("TypeEnv.ClearRemovesDispatch") {
 }
 
 ZC_TEST("TypeEnv.DispatchFreezeStateClearsWithEnvironment") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
 
   ZC_EXPECT(!env.isDispatchFrozen());
   env.freezeDispatch();
@@ -205,7 +211,7 @@ ZC_TEST("TypeEnv.DispatchFreezeStateClearsWithEnvironment") {
 }
 
 ZC_TEST("TypeEnv.DumpDispatchEmptyTable") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   zc::VectorOutputStream output;
 
   env.dumpDispatch(output);
@@ -214,7 +220,7 @@ ZC_TEST("TypeEnv.DumpDispatchEmptyTable") {
 }
 
 ZC_TEST("TypeEnv.DumpDispatchIsSortedAndComplete") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
 
   CallDispatchRecord later;
   later.targetKind = CallTargetKind::DynVTable;
@@ -222,16 +228,16 @@ ZC_TEST("TypeEnv.DumpDispatchIsSortedAndComplete") {
   later.interfaceName = zc::str("Drawable"_zc);
   later.methodName = zc::str("draw"_zc);
   later.vtableSlot = 3;
-  later.argumentTypes.add(TypeId(1));
-  later.argumentTypes.add(TypeId(2));
-  later.resultType = TypeId(4);
+  later.argumentTypes.add(env.internType(*PrimitiveType::createI8()));
+  later.argumentTypes.add(env.internType(*PrimitiveType::createI16()));
+  later.resultType = env.internType(*PrimitiveType::createI32());
   env.setDispatch(ast::NodeId(9), zc::mv(later));
 
   CallDispatchRecord earlier;
   earlier.targetKind = CallTargetKind::FreeFunction;
   earlier.receiverMode = ReceiverMode::None;
-  earlier.targetSymbol = symbol::SymbolId::create(42);
-  earlier.resultType = TypeId(7);
+  earlier.targetDefinition = tests::makeTestDefinitionIds(1)[0];
+  earlier.resultType = env.internType(*PrimitiveType::createBool());
   env.setDispatch(ast::NodeId(2), zc::mv(earlier));
 
   zc::VectorOutputStream output;
@@ -239,9 +245,9 @@ ZC_TEST("TypeEnv.DumpDispatchIsSortedAndComplete") {
 
   ZC_EXPECT(zc::str(output.getArray().asChars()) ==
             "zom.dispatch.v0\n"
-            "node=2 target=FreeFunction receiver=None symbol=42 args=[] result=7\n"
+            "node=2 target=FreeFunction receiver=None definition=resolved args=[] result=bool\n"
             "node=9 target=DynVTable receiver=ImplicitSelf interface=Drawable method=draw "
-            "slot=3 args=[1,2] result=4\n"_zc);
+            "slot=3 args=[i8,i16] result=i32\n"_zc);
 }
 
 // ============================================================================
@@ -249,13 +255,13 @@ ZC_TEST("TypeEnv.DumpDispatchIsSortedAndComplete") {
 // ============================================================================
 
 ZC_TEST("TypeEnv.FreshTypeVar") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   ZC_EXPECT(isTypeVar(tv));
 }
 
 ZC_TEST("TypeEnv.FreshTypeVarsHaveUniqueIds") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv1 = env.freshTypeVar();
   auto& tv2 = env.freshTypeVar();
   auto& tv3 = env.freshTypeVar();
@@ -265,13 +271,13 @@ ZC_TEST("TypeEnv.FreshTypeVarsHaveUniqueIds") {
 }
 
 ZC_TEST("TypeEnv.FreshTypeVarWithName") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar("T"_zc);
   ZC_EXPECT(tv.getName() == "T"_zc);
 }
 
 ZC_TEST("TypeEnv.InstantiateFunctionHandlesRepeatedTypeVar") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar("T"_zc);
 
   zc::Vector<zc::Own<Type>> params;
@@ -286,7 +292,7 @@ ZC_TEST("TypeEnv.InstantiateFunctionHandlesRepeatedTypeVar") {
 }
 
 ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicExistential") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   zc::Vector<zc::Own<GenericParam>> params;
   zc::Vector<zc::StringPtr> markers;
   markers.add("Sendable"_zc);
@@ -305,7 +311,7 @@ ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicExistential") {
 }
 
 ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicAssociatedType") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   zc::Vector<zc::Own<GenericParam>> params;
   auto body = zc::heap<AssociatedType>(zc::heap<NamedType>("Iterator"_zc), "Item"_zc);
   TypeScheme scheme(zc::mv(params), zc::mv(body));
@@ -322,7 +328,7 @@ ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicAssociatedType") {
 }
 
 ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicIntersection") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   zc::Vector<zc::Own<GenericParam>> params;
   zc::Vector<zc::Own<Type>> conjuncts;
   conjuncts.add(zc::heap<NamedType>("Drawable"_zc));
@@ -343,7 +349,7 @@ ZC_TEST("TypeEnv.InstantiatePreservesMonomorphicIntersection") {
 }
 
 ZC_TEST("TypeEnv.GeneralizeCollectsExistentialInterfaceTypeVars") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar("T"_zc);
   auto iface = zc::heap<NamedType>("Box"_zc);
   iface->addTypeArg(zc::heap<TypeVar>(tv.getName(), tv.getId()));
@@ -358,7 +364,7 @@ ZC_TEST("TypeEnv.GeneralizeCollectsExistentialInterfaceTypeVars") {
 }
 
 ZC_TEST("TypeEnv.GeneralizeCollectsAssociatedParentTypeVars") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar("T"_zc);
   auto parent = zc::heap<NamedType>("Iterator"_zc);
   parent->addTypeArg(zc::heap<TypeVar>(tv.getName(), tv.getId()));
@@ -371,7 +377,7 @@ ZC_TEST("TypeEnv.GeneralizeCollectsAssociatedParentTypeVars") {
 }
 
 ZC_TEST("TypeEnv.GeneralizeCollectsIntersectionConjunctTypeVars") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar("T"_zc);
   auto drawable = zc::heap<NamedType>("Drawable"_zc);
   drawable->addTypeArg(zc::heap<TypeVar>(tv.getName(), tv.getId()));
@@ -391,7 +397,7 @@ ZC_TEST("TypeEnv.GeneralizeCollectsIntersectionConjunctTypeVars") {
 // ============================================================================
 
 ZC_TEST("TypeEnv.BindTypeVar") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   auto i32 = PrimitiveType::createI32();
   env.bind(tv, *i32);
@@ -402,14 +408,14 @@ ZC_TEST("TypeEnv.BindTypeVar") {
 }
 
 ZC_TEST("TypeEnv.UnboundTypeVar") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   ZC_EXPECT(!env.isBound(tv));
   ZC_EXPECT(env.lookup(tv) == zc::none);
 }
 
 ZC_TEST("TypeEnv.ResolveBoundTypeVar") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   auto i32 = PrimitiveType::createI32();
   env.bind(tv, *i32);
@@ -419,14 +425,14 @@ ZC_TEST("TypeEnv.ResolveBoundTypeVar") {
 }
 
 ZC_TEST("TypeEnv.ResolveUnboundTypeVarReturnsSelf") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   auto& resolved = env.resolve(tv);
   ZC_EXPECT(isTypeVar(resolved));
 }
 
 ZC_TEST("TypeEnv.ResolveChainOfBindings") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv1 = env.freshTypeVar();
   auto& tv2 = env.freshTypeVar();
   auto i32 = PrimitiveType::createI32();
@@ -439,7 +445,7 @@ ZC_TEST("TypeEnv.ResolveChainOfBindings") {
 }
 
 ZC_TEST("TypeEnv.OwnsBoundType") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   auto i32 = PrimitiveType::createI32();
   env.bind(tv, zc::Own<Type>(zc::mv(i32)));
@@ -450,7 +456,7 @@ ZC_TEST("TypeEnv.OwnsBoundType") {
 }
 
 ZC_TEST("TypeEnv.CopiesBorrowedBindingBeforeSourceDies") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   {
     auto i32 = PrimitiveType::createI32();
@@ -465,7 +471,7 @@ ZC_TEST("TypeEnv.CopiesBorrowedBindingBeforeSourceDies") {
 }
 
 ZC_TEST("TypeEnv.OwnsConcreteUnificationBinding") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   {
     auto i32 = PrimitiveType::createI32();
@@ -484,7 +490,7 @@ ZC_TEST("TypeEnv.OwnsConcreteUnificationBinding") {
 // ============================================================================
 
 ZC_TEST("TypeEnv.OccursInSimple") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   auto i32 = PrimitiveType::createI32();
 
@@ -493,7 +499,7 @@ ZC_TEST("TypeEnv.OccursInSimple") {
 }
 
 ZC_TEST("TypeEnv.OccursInSelf") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
 
   // tv occurs in itself
@@ -501,7 +507,7 @@ ZC_TEST("TypeEnv.OccursInSelf") {
 }
 
 ZC_TEST("TypeEnv.OccursInThroughBinding") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv1 = env.freshTypeVar();
   auto& tv2 = env.freshTypeVar();
 
@@ -515,14 +521,14 @@ ZC_TEST("TypeEnv.OccursInThroughBinding") {
 // ============================================================================
 
 ZC_TEST("TypeEnv.FindUnboundVarReturnsSelf") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   auto& found = env.find(tv);
   ZC_EXPECT(isTypeVar(found));
 }
 
 ZC_TEST("TypeEnv.FindBoundVarReturnsBinding") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv = env.freshTypeVar();
   auto i32 = PrimitiveType::createI32();
   env.bind(tv, *i32);
@@ -532,7 +538,7 @@ ZC_TEST("TypeEnv.FindBoundVarReturnsBinding") {
 }
 
 ZC_TEST("TypeEnv.UniteTwoVars") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& tv1 = env.freshTypeVar();
   auto& tv2 = env.freshTypeVar();
 
@@ -549,7 +555,7 @@ ZC_TEST("TypeEnv.UniteTwoVars") {
 // ============================================================================
 
 ZC_TEST("TypeEnv.RegisterAndLookupImpl") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto i32 = PrimitiveType::createI32();
   ast::NodeId implNode(10);
 
@@ -562,13 +568,13 @@ ZC_TEST("TypeEnv.RegisterAndLookupImpl") {
 }
 
 ZC_TEST("TypeEnv.LookupMissingImpl") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto i32 = PrimitiveType::createI32();
   ZC_EXPECT(!env.implements(*i32, "NonExistent"_zc));
 }
 
 ZC_TEST("TypeEnv.MultipleImpls") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto i32 = PrimitiveType::createI32();
 
   env.registerImpl("Display"_zc, *i32, ast::NodeId(1));
@@ -585,7 +591,7 @@ ZC_TEST("TypeEnv.MultipleImpls") {
 // ============================================================================
 
 ZC_TEST("TypeEnv.ErrorTypeSingleton") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   auto& err1 = env.errorType();
   auto& err2 = env.errorType();
   ZC_EXPECT(&err1 == &err2);
@@ -597,7 +603,7 @@ ZC_TEST("TypeEnv.ErrorTypeSingleton") {
 // ============================================================================
 
 ZC_TEST("TypeEnv.ClearRemovesAll") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ast::NodeId node(1);
   env.setType(node, PrimitiveType::createI32());
   ZC_EXPECT(env.hasType(node));
@@ -612,7 +618,7 @@ ZC_TEST("TypeEnv.ClearRemovesAll") {
 // ============================================================================
 
 ZC_TEST("TypeEnv.SizeIncreasesWithBindings") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   ZC_EXPECT(env.size() == 0);
 
   auto& tv1 = env.freshTypeVar();

@@ -52,10 +52,10 @@ enum class IrDumpVerifierSite : uint8_t {
 struct IrDumpFailure final {
   IrDumpFailureKind kind = IrDumpFailureKind::InvalidFunction;
   IrDumpVerifierSite site = IrDumpVerifierSite::Module;
-  symbol::SymbolId symbol;
+  identity::DefId definition;
   BlockId block;
   ValueId value;
-  type::TypeId type;
+  type::SemanticTypeId type;
   uint32_t index = 0;
 };
 

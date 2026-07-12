@@ -30,20 +30,22 @@ ConstraintSet::ConstraintSet(ConstraintSet&& other) noexcept = default;
 
 ConstraintSet& ConstraintSet::operator=(ConstraintSet&& other) noexcept = default;
 
-void ConstraintSet::addEq(TypeId left, TypeId right, zc::String reason) {
+void ConstraintSet::addEq(SemanticTypeId left, SemanticTypeId right, zc::String reason) {
   impl->constraints.add(Constraint{ConstraintKind::Eq, left, right, zc::mv(reason)});
 }
 
-void ConstraintSet::addSub(TypeId source, TypeId target, zc::String reason) {
+void ConstraintSet::addSub(SemanticTypeId source, SemanticTypeId target, zc::String reason) {
   impl->constraints.add(Constraint{ConstraintKind::Sub, source, target, zc::mv(reason)});
 }
 
-void ConstraintSet::addObligation(TypeId type, TypeId interfaceType, zc::String reason) {
+void ConstraintSet::addObligation(SemanticTypeId type, SemanticTypeId interfaceType,
+                                  zc::String reason) {
   impl->constraints.add(
       Constraint{ConstraintKind::Obligation, type, interfaceType, zc::mv(reason)});
 }
 
-void ConstraintSet::addProjectionEq(TypeId projection, TypeId value, zc::String reason) {
+void ConstraintSet::addProjectionEq(SemanticTypeId projection, SemanticTypeId value,
+                                    zc::String reason) {
   impl->constraints.add(
       Constraint{ConstraintKind::ProjectionEq, projection, value, zc::mv(reason)});
 }

@@ -24,6 +24,8 @@
 #include "zomlang/compiler/type/primitive-type.h"
 #include "zomlang/compiler/type/union-type.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -34,7 +36,7 @@ namespace {
 struct CheckedFunction final {
   ast::Tree tree;
   ast::BindingMetadata metadata;
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
 };
 
 CheckedFunction makeCheckedIntegerFunction(zc::Own<type::Type> raisesType, bool propagate = false,
@@ -60,9 +62,9 @@ CheckedFunction makeCheckedIntegerFunction(zc::Own<type::Type> raisesType, bool 
 
   ast::BindingMetadata metadata;
   metadata.resizeFor(tree);
-  metadata.setSymbol(function, symbol::SymbolId::create(1));
+  metadata.setDefinition(function, tests::makeTestDefinitionIds(1)[0]);
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   zc::Vector<zc::Own<type::Type>> parameterTypes;
   auto functionType =
       zc::heap<type::FunctionType>(zc::mv(parameterTypes), type::PrimitiveType::createI32());
@@ -75,25 +77,25 @@ CheckedFunction makeCheckedIntegerFunction(zc::Own<type::Type> raisesType, bool 
   return CheckedFunction{zc::mv(tree), zc::mv(metadata), zc::mv(typeEnv)};
 }
 
-type::TypeId addDirectI32Layout(Module& module) {
+type::SemanticTypeId addDirectI32Layout(Module& module) {
   auto success = type::PrimitiveType::createI32();
-  const auto valueType = module.getTypeInterner().intern(*success);
-  auto layout =
-      computeErrorUnionLayout(module.getTypeInterner(), module.getTarget(), *success, *success);
+  const auto valueType = module.getSemanticTypeStore().intern(*success);
+  auto layout = computeErrorUnionLayout(module.getSemanticTypeStore(), module.getTarget(), *success,
+                                        *success);
   const auto layoutIndex = module.addErrorUnionLayout(zc::mv(layout));
   ZC_ASSERT(layoutIndex != zc::none);
   return valueType;
 }
 
-void addSingleBlockFunction(Module& module, type::TypeId checkedSignature,
-                            type::TypeId abiReturnType, uint32_t layoutIndex,
+void addSingleBlockFunction(Module& module, type::SemanticTypeId checkedSignature,
+                            type::SemanticTypeId abiReturnType, uint32_t layoutIndex,
                             Terminator terminator) {
   zc::Vector<Instruction> instructions;
   instructions.add(Instruction(ValueId(1), IntegerConstant{abiReturnType, zc::str("42")}));
   zc::Vector<BasicBlock> blocks;
   blocks.add(BasicBlock(BlockId(1), zc::none, zc::mv(instructions), zc::mv(terminator)));
-  module.addFunction(Function(zc::str("answer"), symbol::SymbolId::create(1), checkedSignature,
-                              abiReturnType, layoutIndex, zc::mv(blocks)));
+  module.addFunction(Function(zc::str("answer"), tests::makeTestDefinitionIds(1)[0],
+                              checkedSignature, abiReturnType, layoutIndex, zc::mv(blocks)));
 }
 
 CheckedFunction makeCheckedPropagationFunctions(
@@ -130,14 +132,15 @@ CheckedFunction makeCheckedPropagationFunctions(
   declarations.add(answer);
   auto tree = fixture.buildSourceFile("test"_zc, declarations.asPtr());
 
-  const auto fetchSymbol = symbol::SymbolId::create(1);
-  const auto answerSymbol = symbol::SymbolId::create(2);
+  auto definitions = tests::makeTestDefinitionIds(3);
+  const auto fetchSymbol = definitions[0];
+  const auto answerSymbol = definitions[1];
   ast::BindingMetadata metadata;
   metadata.resizeFor(tree);
-  metadata.setSymbol(fetch, fetchSymbol);
-  metadata.setSymbol(answer, answerSymbol);
+  metadata.setDefinition(fetch, fetchSymbol);
+  metadata.setDefinition(answer, answerSymbol);
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   zc::Vector<zc::Own<type::Type>> fetchParameterTypes;
   auto fetchType =
       zc::heap<type::FunctionType>(zc::mv(fetchParameterTypes), type::PrimitiveType::createI32());
@@ -173,10 +176,9 @@ CheckedFunction makeCheckedPropagationFunctions(
   typeEnv.setType(propagation, type::PrimitiveType::createI32());
   type::CallDispatchRecord dispatch;
   dispatch.targetKind = type::CallTargetKind::FreeFunction;
-  dispatch.targetSymbol = invalidDispatchSymbol
-                              ? symbol::SymbolId()
-                              : (externalTarget ? symbol::SymbolId::create(99) : fetchSymbol);
-  dispatch.resultType = typeEnv.getTypeId(call);
+  dispatch.targetDefinition =
+      invalidDispatchSymbol ? identity::DefId() : (externalTarget ? definitions[2] : fetchSymbol);
+  dispatch.resultType = typeEnv.getSemanticTypeId(call);
   if (!omitDispatch) { typeEnv.setDispatch(call, zc::mv(dispatch)); }
   typeEnv.freezeDispatch();
 
@@ -392,28 +394,31 @@ ZC_TEST("IrLowering.DumpIsDeterministicAndIndependentOfAstNodeIds") {
 }
 
 ZC_TEST("IrModule.RejectsInvalidLayoutAccessWithoutDebugAssertions") {
-  Module module(TargetDataLayout::lp64());
+  tests::TestSemanticTypeContext semanticContext;
+  Module module(semanticContext.semanticTypes(), TargetDataLayout::lp64());
 
   ZC_EXPECT(module.addErrorUnionLayout(ErrorUnionLayout()) == zc::none);
   ZC_EXPECT(module.getErrorUnionLayout(0) == zc::none);
 }
 
 ZC_TEST("IrDump.RejectsUnresolvedCallTargetBeforeWritingOutput") {
-  Module module(TargetDataLayout::lp64());
+  tests::TestSemanticTypeContext semanticContext;
+  Module module(semanticContext.semanticTypes(), TargetDataLayout::lp64());
   auto success = type::PrimitiveType::createI32();
-  const auto valueType = module.getTypeInterner().intern(*success);
-  auto layout =
-      computeErrorUnionLayout(module.getTypeInterner(), module.getTarget(), *success, *success);
+  const auto valueType = module.getSemanticTypeStore().intern(*success);
+  auto layout = computeErrorUnionLayout(module.getSemanticTypeStore(), module.getTarget(), *success,
+                                        *success);
   const auto layoutIndex = module.addErrorUnionLayout(zc::mv(layout));
   ZC_ASSERT(layoutIndex != zc::none);
 
   zc::Vector<Instruction> instructions;
-  instructions.add(Instruction(ValueId(1), RaisingCall{valueType, symbol::SymbolId::create(99)}));
+  auto definitions = tests::makeTestDefinitionIds(2);
+  instructions.add(Instruction(ValueId(1), RaisingCall{valueType, definitions[1]}));
   zc::Vector<BasicBlock> blocks;
   blocks.add(BasicBlock(BlockId(1), zc::none, zc::mv(instructions),
                         ReturnTerminator{ValueId(1), valueType}));
-  module.addFunction(Function(zc::str("broken"), symbol::SymbolId::create(1), valueType, valueType,
-                              0, zc::mv(blocks)));
+  module.addFunction(
+      Function(zc::str("broken"), definitions[0], valueType, valueType, 0, zc::mv(blocks)));
 
   zc::VectorOutputStream output;
   const auto dumpResult = dumpModule(output, module);
@@ -421,15 +426,16 @@ ZC_TEST("IrDump.RejectsUnresolvedCallTargetBeforeWritingOutput") {
   ZC_IF_SOME(dumpFailure, dumpResult) {
     ZC_EXPECT(dumpFailure.kind == IrDumpFailureKind::UnresolvedCallTarget);
     ZC_EXPECT(dumpFailure.site == IrDumpVerifierSite::Instruction);
-    ZC_EXPECT(dumpFailure.symbol == symbol::SymbolId::create(99));
+    ZC_EXPECT(dumpFailure.definition == definitions[1]);
   }
   ZC_EXPECT(output.getArray().size() == 0);
 }
 
 ZC_TEST("IrDump.RejectsInvalidTypeReferenceBeforeWritingOutput") {
-  Module module(TargetDataLayout::lp64());
+  tests::TestSemanticTypeContext semanticContext;
+  Module module(semanticContext.semanticTypes(), TargetDataLayout::lp64());
   const auto valueType = addDirectI32Layout(module);
-  addSingleBlockFunction(module, type::TypeId(99), valueType, 0,
+  addSingleBlockFunction(module, tests::testSemanticType(99), valueType, 0,
                          ReturnTerminator{ValueId(1), valueType});
 
   zc::VectorOutputStream output;
@@ -442,7 +448,8 @@ ZC_TEST("IrDump.RejectsInvalidTypeReferenceBeforeWritingOutput") {
 }
 
 ZC_TEST("IrDump.RejectsInvalidLayoutReferenceBeforeWritingOutput") {
-  Module module(TargetDataLayout::lp64());
+  tests::TestSemanticTypeContext semanticContext;
+  Module module(semanticContext.semanticTypes(), TargetDataLayout::lp64());
   const auto valueType = addDirectI32Layout(module);
   addSingleBlockFunction(module, valueType, valueType, 99, ReturnTerminator{ValueId(1), valueType});
 
@@ -456,7 +463,8 @@ ZC_TEST("IrDump.RejectsInvalidLayoutReferenceBeforeWritingOutput") {
 }
 
 ZC_TEST("IrDump.RejectsInvalidBlockReferenceBeforeWritingOutput") {
-  Module module(TargetDataLayout::lp64());
+  tests::TestSemanticTypeContext semanticContext;
+  Module module(semanticContext.semanticTypes(), TargetDataLayout::lp64());
   const auto valueType = addDirectI32Layout(module);
   addSingleBlockFunction(module, valueType, valueType, 0, JumpTerminator{BlockId(99), ValueId(1)});
 
@@ -470,7 +478,8 @@ ZC_TEST("IrDump.RejectsInvalidBlockReferenceBeforeWritingOutput") {
 }
 
 ZC_TEST("IrDump.RejectsInvalidValueReferenceBeforeWritingOutput") {
-  Module module(TargetDataLayout::lp64());
+  tests::TestSemanticTypeContext semanticContext;
+  Module module(semanticContext.semanticTypes(), TargetDataLayout::lp64());
   const auto valueType = addDirectI32Layout(module);
   addSingleBlockFunction(module, valueType, valueType, 0, ReturnTerminator{ValueId(99), valueType});
 
@@ -482,10 +491,11 @@ ZC_TEST("IrDump.RejectsInvalidValueReferenceBeforeWritingOutput") {
 }
 
 ZC_TEST("IrDump.RejectsInvalidLayoutKindBeforeWritingOutput") {
-  Module module(TargetDataLayout::lp64());
+  tests::TestSemanticTypeContext semanticContext;
+  Module module(semanticContext.semanticTypes(), TargetDataLayout::lp64());
   auto success = type::PrimitiveType::createI32();
-  auto layout =
-      computeErrorUnionLayout(module.getTypeInterner(), module.getTarget(), *success, *success);
+  auto layout = computeErrorUnionLayout(module.getSemanticTypeStore(), module.getTarget(), *success,
+                                        *success);
   layout.kind = static_cast<ErrorUnionLayoutKind>(255);
   ZC_ASSERT(module.addErrorUnionLayout(zc::mv(layout)) != zc::none);
 
@@ -500,10 +510,11 @@ ZC_TEST("IrDump.RejectsInvalidLayoutKindBeforeWritingOutput") {
 }
 
 ZC_TEST("IrDump.RejectsInvalidTagTypeBeforeWritingOutput") {
-  Module module(TargetDataLayout::lp64());
+  tests::TestSemanticTypeContext semanticContext;
+  Module module(semanticContext.semanticTypes(), TargetDataLayout::lp64());
   auto success = type::PrimitiveType::createI32();
   auto error = type::PrimitiveType::createStr();
-  auto layout = computeFunctionErrorUnionLayout(module.getTypeInterner(), module.getTarget(),
+  auto layout = computeFunctionErrorUnionLayout(module.getSemanticTypeStore(), module.getTarget(),
                                                 *success, *error);
   layout.tagType = static_cast<ErrorUnionTagType>(255);
   ZC_ASSERT(module.addErrorUnionLayout(zc::mv(layout)) != zc::none);

@@ -19,6 +19,7 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/binder/binder.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
@@ -39,6 +40,8 @@
 #include "zomlang/compiler/type/type.h"
 #include "zomlang/compiler/type/union-type.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -115,15 +118,16 @@ ast::NodeId makeFunctionParamDecl(TestFixture& fix, zc::StringPtr name, ast::Nod
 }
 
 // Helper: run Binder then DeclSignatureComputer, return TypeEnv.
-type::TypeEnv computeSignatures(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
+tests::TestTypeEnv computeSignatures(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
   auto tree = fix.buildSourceFile("test"_zc, decls);
 
   // Phase 1+2: Binder
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
   binder.bind();
 
   // Phase A: DeclSignatureComputer
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   DeclSignatureComputer sigComputer(typeEnv, fix.symbols(), tree, fix.metadata(),
                                     fix.diagnostics());
   sigComputer.computeSignatures();

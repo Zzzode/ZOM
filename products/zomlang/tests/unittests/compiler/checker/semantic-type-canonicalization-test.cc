@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/type/type-interner.h"
-
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/type/associated-type.h"
@@ -24,28 +22,32 @@
 #include "zomlang/compiler/type/named-type.h"
 #include "zomlang/compiler/type/object-type.h"
 #include "zomlang/compiler/type/primitive-type.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 #include "zomlang/compiler/type/type.h"
 #include "zomlang/compiler/type/union-type.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
 namespace type {
 
-ZC_TEST("TypeInterner.SamePrimitiveGetsSameId") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.SamePrimitiveGetsSameId") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   auto i32a = PrimitiveType::createI32();
   auto i32b = PrimitiveType::createI32();
 
-  auto idA = interner.intern(*i32a);
-  auto idB = interner.intern(*i32b);
+  auto idA = semanticTypes.intern(*i32a);
+  auto idB = semanticTypes.intern(*i32b);
 
   ZC_EXPECT(idA == idB);
-  ZC_EXPECT(interner.size() == 1);
-  ZC_EXPECT(interner.getCanonicalKey(idA) == "i32"_zc);
+  ZC_EXPECT(semanticTypes.size() == 1);
+  ZC_EXPECT(semanticTypes.getCanonicalKey(idA) == "i32"_zc);
 }
 
-ZC_TEST("TypeInterner.UnionOrderDoesNotAffectId") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.UnionOrderDoesNotAffectId") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
 
   zc::Vector<zc::Own<Type>> altsA;
   altsA.add(PrimitiveType::createI32());
@@ -57,12 +59,13 @@ ZC_TEST("TypeInterner.UnionOrderDoesNotAffectId") {
   altsB.add(PrimitiveType::createI32());
   UnionType unionB(zc::mv(altsB));
 
-  ZC_EXPECT(interner.intern(unionA) == interner.intern(unionB));
-  ZC_EXPECT(interner.size() == 1);
+  ZC_EXPECT(semanticTypes.intern(unionA) == semanticTypes.intern(unionB));
+  ZC_EXPECT(semanticTypes.size() == 1);
 }
 
-ZC_TEST("TypeInterner.InternUnionMatchesOwnedUnionCanonicalIdentity") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.InternUnionMatchesOwnedUnionCanonicalIdentity") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   auto success = PrimitiveType::createI32();
   auto error = PrimitiveType::createStr();
 
@@ -71,15 +74,15 @@ ZC_TEST("TypeInterner.InternUnionMatchesOwnedUnionCanonicalIdentity") {
   alternatives.add(PrimitiveType::createI32());
   UnionType ownedUnion(zc::mv(alternatives));
 
-  const auto directId = interner.internUnion(*success, *error);
-  ZC_EXPECT(directId == interner.intern(ownedUnion));
-  ZC_EXPECT(interner.contains(directId));
-  ZC_EXPECT(!interner.contains(TypeId()));
-  ZC_EXPECT(!interner.contains(TypeId(99)));
+  const auto directId = semanticTypes.internUnion(*success, *error);
+  ZC_EXPECT(directId == semanticTypes.intern(ownedUnion));
+  ZC_EXPECT(semanticTypes.contains(directId));
+  ZC_EXPECT(!semanticTypes.contains(SemanticTypeId()));
 }
 
-ZC_TEST("TypeInterner.UnionDeduplicatesAlternatives") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.UnionDeduplicatesAlternatives") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
 
   zc::Vector<zc::Own<Type>> altsA;
   altsA.add(PrimitiveType::createI32());
@@ -88,11 +91,12 @@ ZC_TEST("TypeInterner.UnionDeduplicatesAlternatives") {
 
   auto i32 = PrimitiveType::createI32();
 
-  ZC_EXPECT(interner.intern(unionA) == interner.intern(*i32));
+  ZC_EXPECT(semanticTypes.intern(unionA) == semanticTypes.intern(*i32));
 }
 
-ZC_TEST("TypeInterner.UnionRemovesNever") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.UnionRemovesNever") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
 
   zc::Vector<zc::Own<Type>> alts;
   alts.add(PrimitiveType::createI32());
@@ -101,11 +105,12 @@ ZC_TEST("TypeInterner.UnionRemovesNever") {
 
   auto i32 = PrimitiveType::createI32();
 
-  ZC_EXPECT(interner.intern(unionTy) == interner.intern(*i32));
+  ZC_EXPECT(semanticTypes.intern(unionTy) == semanticTypes.intern(*i32));
 }
 
-ZC_TEST("TypeInterner.IntersectionOrderDoesNotAffectId") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.IntersectionOrderDoesNotAffectId") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
 
   zc::Vector<zc::Own<Type>> conjunctsA;
   conjunctsA.add(PrimitiveType::createI32());
@@ -117,12 +122,13 @@ ZC_TEST("TypeInterner.IntersectionOrderDoesNotAffectId") {
   conjunctsB.add(PrimitiveType::createI32());
   IntersectionType intersectionB(zc::mv(conjunctsB));
 
-  ZC_EXPECT(interner.intern(intersectionA) == interner.intern(intersectionB));
-  ZC_EXPECT(interner.size() == 1);
+  ZC_EXPECT(semanticTypes.intern(intersectionA) == semanticTypes.intern(intersectionB));
+  ZC_EXPECT(semanticTypes.size() == 1);
 }
 
-ZC_TEST("TypeInterner.IntersectionWithNeverBecomesNever") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.IntersectionWithNeverBecomesNever") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
 
   zc::Vector<zc::Own<Type>> conjuncts;
   conjuncts.add(PrimitiveType::createI32());
@@ -131,11 +137,12 @@ ZC_TEST("TypeInterner.IntersectionWithNeverBecomesNever") {
 
   auto never = PrimitiveType::createNever();
 
-  ZC_EXPECT(interner.intern(intersectionTy) == interner.intern(*never));
+  ZC_EXPECT(semanticTypes.intern(intersectionTy) == semanticTypes.intern(*never));
 }
 
-ZC_TEST("TypeInterner.ObjectMemberOrderDoesNotAffectId") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.ObjectMemberOrderDoesNotAffectId") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
 
   ObjectType objectA;
   objectA.addMember("x"_zc, PrimitiveType::createI32());
@@ -145,12 +152,13 @@ ZC_TEST("TypeInterner.ObjectMemberOrderDoesNotAffectId") {
   objectB.addMember("name"_zc, PrimitiveType::createStr());
   objectB.addMember("x"_zc, PrimitiveType::createI32());
 
-  ZC_EXPECT(interner.intern(objectA) == interner.intern(objectB));
-  ZC_EXPECT(interner.size() == 1);
+  ZC_EXPECT(semanticTypes.intern(objectA) == semanticTypes.intern(objectB));
+  ZC_EXPECT(semanticTypes.size() == 1);
 }
 
-ZC_TEST("TypeInterner.FunctionRaisesUnionIsCanonical") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.FunctionRaisesUnionIsCanonical") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
 
   zc::Vector<zc::Own<Type>> paramsA;
   auto fnA = zc::heap<FunctionType>(zc::mv(paramsA), PrimitiveType::createI32());
@@ -166,38 +174,42 @@ ZC_TEST("TypeInterner.FunctionRaisesUnionIsCanonical") {
   raisesB.add(PrimitiveType::createStr());
   fnB->setRaisesType(zc::heap<UnionType>(zc::mv(raisesB)));
 
-  ZC_EXPECT(interner.intern(*fnA) == interner.intern(*fnB));
-  ZC_EXPECT(interner.size() == 1);
+  ZC_EXPECT(semanticTypes.intern(*fnA) == semanticTypes.intern(*fnB));
+  ZC_EXPECT(semanticTypes.size() == 1);
 }
 
-ZC_TEST("TypeInterner.InterfaceGetsStableId") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.InterfaceGetsStableId") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   InterfaceType first("Drawable"_zc);
   InterfaceType second("Drawable"_zc);
 
-  ZC_EXPECT(interner.intern(first) == interner.intern(second));
+  ZC_EXPECT(semanticTypes.intern(first) == semanticTypes.intern(second));
 }
 
-ZC_TEST("TypeInterner.ExistentialGetsStableId") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.ExistentialGetsStableId") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   ExistentialType first(zc::heap<InterfaceType>("Drawable"_zc));
   ExistentialType second(zc::heap<InterfaceType>("Drawable"_zc));
 
-  ZC_EXPECT(interner.intern(first) == interner.intern(second));
+  ZC_EXPECT(semanticTypes.intern(first) == semanticTypes.intern(second));
 }
 
-ZC_TEST("TypeInterner.ExistentialMarkersAffectStableId") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.ExistentialMarkersAffectStableId") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::StringPtr> markers;
   markers.add("Sendable"_zc);
   ExistentialType plain(zc::heap<InterfaceType>("Drawable"_zc));
   ExistentialType marked(zc::heap<InterfaceType>("Drawable"_zc), markers.asPtr());
 
-  ZC_EXPECT(interner.intern(plain) != interner.intern(marked));
+  ZC_EXPECT(semanticTypes.intern(plain) != semanticTypes.intern(marked));
 }
 
-ZC_TEST("TypeInterner.ExistentialMarkerOrderDoesNotAffectStableId") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.ExistentialMarkerOrderDoesNotAffectStableId") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   zc::Vector<zc::StringPtr> firstMarkers;
   firstMarkers.add("Sendable"_zc);
   firstMarkers.add("Shared"_zc);
@@ -208,15 +220,16 @@ ZC_TEST("TypeInterner.ExistentialMarkerOrderDoesNotAffectStableId") {
   ExistentialType first(zc::heap<InterfaceType>("Drawable"_zc), firstMarkers.asPtr());
   ExistentialType second(zc::heap<InterfaceType>("Drawable"_zc), secondMarkers.asPtr());
 
-  ZC_EXPECT(interner.intern(first) == interner.intern(second));
+  ZC_EXPECT(semanticTypes.intern(first) == semanticTypes.intern(second));
 }
 
-ZC_TEST("TypeInterner.AssociatedTypeGetsStableId") {
-  TypeInterner interner;
+ZC_TEST("SemanticTypeStore.AssociatedTypeGetsStableId") {
+  tests::TestSemanticTypeContext semanticContext;
+  auto& semanticTypes = semanticContext.semanticTypes();
   AssociatedType first(zc::heap<NamedType>("Iterator"_zc), "Item"_zc);
   AssociatedType second(zc::heap<NamedType>("Iterator"_zc), "Item"_zc);
 
-  ZC_EXPECT(interner.intern(first) == interner.intern(second));
+  ZC_EXPECT(semanticTypes.intern(first) == semanticTypes.intern(second));
 }
 
 }  // namespace type

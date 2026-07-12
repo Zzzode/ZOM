@@ -23,7 +23,8 @@
 #include "zomlang/compiler/ast/ast.h"
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/ast/tree.h"
-#include "zomlang/compiler/type/type-interner.h"
+#include "zomlang/compiler/identity/frozen-registry.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang {
 namespace compiler {
@@ -120,18 +121,24 @@ struct PlaceProjection final {
 /// \brief A typed memory place used by move and loan analysis.
 class Place final {
 public:
-  Place(PlaceId id, PlaceRootKind rootKind, uint32_t rootId, type::TypeId typeId);
+  Place(PlaceId id, PlaceRootKind rootKind, identity::DefId rootDefinition, uint32_t rootId,
+        type::SemanticTypeId semanticTypeId);
 
-  static Place local(PlaceId id, uint32_t localId, type::TypeId typeId);
-  static Place parameter(PlaceId id, uint32_t parameterId, type::TypeId typeId);
-  static Place temporary(PlaceId id, uint32_t temporaryId, type::TypeId typeId);
-  static Place closureCapture(PlaceId id, uint32_t captureId, type::TypeId typeId);
-  static Place returnSlot(PlaceId id, type::TypeId typeId);
+  static Place local(PlaceId id, uint32_t localId, type::SemanticTypeId semanticTypeId);
+  static Place local(PlaceId id, identity::DefId definition, uint32_t fallbackId,
+                     type::SemanticTypeId semanticTypeId);
+  static Place parameter(PlaceId id, uint32_t parameterId, type::SemanticTypeId semanticTypeId);
+  static Place parameter(PlaceId id, identity::DefId definition, uint32_t fallbackId,
+                         type::SemanticTypeId semanticTypeId);
+  static Place temporary(PlaceId id, uint32_t temporaryId, type::SemanticTypeId semanticTypeId);
+  static Place closureCapture(PlaceId id, uint32_t captureId, type::SemanticTypeId semanticTypeId);
+  static Place returnSlot(PlaceId id, type::SemanticTypeId semanticTypeId);
 
   PlaceId getId() const;
   PlaceRootKind getRootKind() const;
   uint32_t getRootId() const;
-  type::TypeId getTypeId() const;
+  identity::DefId getRootDefinition() const;
+  type::SemanticTypeId getSemanticTypeId() const;
   zc::ArrayPtr<const PlaceProjection> getProjections() const;
 
   void addFieldProjection(zc::StringPtr name);
@@ -144,8 +151,9 @@ public:
 private:
   PlaceId id;
   PlaceRootKind rootKind;
+  identity::DefId rootDefinition;
   uint32_t rootId;
-  type::TypeId typeId;
+  type::SemanticTypeId semanticTypeId;
   zc::Vector<PlaceProjection> projections;
 };
 
@@ -236,11 +244,15 @@ public:
   BorrowModel(BorrowModel&& other) noexcept;
   BorrowModel& operator=(BorrowModel&& other) noexcept;
 
-  PlaceId addLocalPlace(uint32_t localId, type::TypeId typeId);
-  PlaceId addParameterPlace(uint32_t parameterId, type::TypeId typeId);
-  PlaceId addTemporaryPlace(uint32_t temporaryId, type::TypeId typeId);
-  PlaceId addClosureCapturePlace(uint32_t captureId, type::TypeId typeId);
-  PlaceId addReturnSlotPlace(type::TypeId typeId);
+  PlaceId addLocalPlace(uint32_t localId, type::SemanticTypeId semanticTypeId);
+  PlaceId addLocalPlace(identity::DefId definition, uint32_t fallbackId,
+                        type::SemanticTypeId semanticTypeId);
+  PlaceId addParameterPlace(uint32_t parameterId, type::SemanticTypeId semanticTypeId);
+  PlaceId addParameterPlace(identity::DefId definition, uint32_t fallbackId,
+                            type::SemanticTypeId semanticTypeId);
+  PlaceId addTemporaryPlace(uint32_t temporaryId, type::SemanticTypeId semanticTypeId);
+  PlaceId addClosureCapturePlace(uint32_t captureId, type::SemanticTypeId semanticTypeId);
+  PlaceId addReturnSlotPlace(type::SemanticTypeId semanticTypeId);
   PlaceId addFieldPlace(PlaceId base, zc::StringPtr fieldName);
   PlaceId addDerefPlace(PlaceId base);
   PlaceId addIndexPlace(PlaceId base, uint32_t index);

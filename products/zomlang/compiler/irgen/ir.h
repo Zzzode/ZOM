@@ -21,10 +21,10 @@
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/identity/frozen-registry.h"
 #include "zomlang/compiler/irgen/error-union-layout.h"
 #include "zomlang/compiler/irgen/target-data-layout.h"
-#include "zomlang/compiler/symbol/symbol-id.h"
-#include "zomlang/compiler/type/type-interner.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang {
 namespace compiler {
@@ -55,24 +55,24 @@ public:
 };
 
 struct IntegerConstant final {
-  type::TypeId resultType;
+  type::SemanticTypeId resultType;
   zc::String value;
 };
 
 struct RaisingCall final {
-  type::TypeId resultType;
-  symbol::SymbolId target;
+  type::SemanticTypeId resultType;
+  identity::DefId target;
 };
 
 struct ErrorUnionConstruct final {
-  type::TypeId resultType;
+  type::SemanticTypeId resultType;
   ValueId payload;
   uint32_t layoutIndex = 0;
   uint64_t tag = 0;
 };
 
 struct ErrorUnionMovePayload final {
-  type::TypeId resultType;
+  type::SemanticTypeId resultType;
   ValueId source;
   uint32_t layoutIndex = 0;
   uint64_t tag = 0;
@@ -94,12 +94,12 @@ struct Instruction final {
 
 struct BlockParameter final {
   ValueId value;
-  type::TypeId type;
+  type::SemanticTypeId type;
 };
 
 struct ReturnTerminator final {
   ValueId value;
-  type::TypeId valueType;
+  type::SemanticTypeId valueType;
 };
 
 struct JumpTerminator final {
@@ -120,7 +120,7 @@ struct PanicSourceMetadata final {
   uint32_t column = 0;
   uint32_t byteStart = 0;
   uint32_t byteEnd = 0;
-  type::TypeId payloadType;
+  type::SemanticTypeId payloadType;
 };
 
 struct ForcedUnwrapPanicTerminator final {
@@ -148,8 +148,8 @@ struct BasicBlock final {
 };
 
 struct Function final {
-  Function(zc::String name, symbol::SymbolId symbol, type::TypeId checkedSignature,
-           type::TypeId abiReturnType, uint32_t errorUnionLayout,
+  Function(zc::String name, identity::DefId definition, type::SemanticTypeId checkedSignature,
+           type::SemanticTypeId abiReturnType, uint32_t errorUnionLayout,
            zc::Vector<BasicBlock> blocks) noexcept;
   Function(Function&& other) noexcept;
   Function& operator=(Function&& other) noexcept;
@@ -157,16 +157,16 @@ struct Function final {
   ZC_DISALLOW_COPY(Function);
 
   zc::String name;
-  symbol::SymbolId symbol;
-  type::TypeId checkedSignature;
-  type::TypeId abiReturnType;
+  identity::DefId definition;
+  type::SemanticTypeId checkedSignature;
+  type::SemanticTypeId abiReturnType;
   uint32_t errorUnionLayout = 0;
   zc::Vector<BasicBlock> blocks;
 };
 
 class Module final {
 public:
-  explicit Module(TargetDataLayout target);
+  Module(type::SemanticTypeStore& semanticTypes, TargetDataLayout target);
   ~Module() noexcept(false);
 
   ZC_DISALLOW_COPY(Module);
@@ -174,8 +174,8 @@ public:
   Module& operator=(Module&& other) noexcept;
 
   const TargetDataLayout& getTarget() const;
-  type::TypeInterner& getTypeInterner();
-  const type::TypeInterner& getTypeInterner() const;
+  type::SemanticTypeStore& getSemanticTypeStore();
+  const type::SemanticTypeStore& getSemanticTypeStore() const;
 
   zc::Maybe<uint32_t> addErrorUnionLayout(ErrorUnionLayout layout);
   zc::Maybe<const ErrorUnionLayout&> getErrorUnionLayout(uint32_t index) const;

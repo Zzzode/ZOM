@@ -15,6 +15,7 @@
 #include "zomlang/compiler/checker/query-cycle-detector.h"
 
 #include "zc/ztest/test.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -52,7 +53,7 @@ ZC_TEST("QueryCycleDetector.AllowsDifferentQueries") {
 
 ZC_TEST("QueryCycleDetector.DetectsAssociatedProjectionCycle") {
   QueryCycleDetector detector;
-  auto key = QueryKey::associatedProjection(type::TypeId(7), "Item"_zc);
+  auto key = QueryKey::associatedProjection(tests::testSemanticType(7), "Item"_zc);
 
   auto outer = detector.enter(key);
   auto inner = detector.enter(key);
@@ -63,7 +64,7 @@ ZC_TEST("QueryCycleDetector.DetectsAssociatedProjectionCycle") {
 
 ZC_TEST("QueryCycleDetector.DetectsMarkerDerivationCycle") {
   QueryCycleDetector detector;
-  auto key = QueryKey::markerDerivation(type::TypeId(8), 42);
+  auto key = QueryKey::markerDerivation(tests::testSemanticType(8), 42);
 
   auto outer = detector.enter(key);
   auto inner = detector.enter(key);
@@ -73,7 +74,7 @@ ZC_TEST("QueryCycleDetector.DetectsMarkerDerivationCycle") {
 }
 
 ZC_TEST("QueryKey.ToStringIncludesKind") {
-  auto key = QueryKey::associatedProjection(type::TypeId(7), "Item"_zc);
+  auto key = QueryKey::associatedProjection(tests::testSemanticType(7), "Item"_zc);
   auto text = key.toString();
 
   ZC_EXPECT(text.contains("AssociatedProjection"_zc));

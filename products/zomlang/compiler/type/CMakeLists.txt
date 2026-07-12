@@ -15,12 +15,13 @@ set(TYPE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/intersection-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/reference-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/raw-pointer-type.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/semantic-type-store.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/existential-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/associated-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/coercion.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/type-scheme.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/type-env.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/type-interner.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/type-canonical-key.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/unification.cc)
 
 add_library(type STATIC ${TYPE_SRC})

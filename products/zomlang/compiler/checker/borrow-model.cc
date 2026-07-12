@@ -19,7 +19,6 @@
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
-#include "zomlang/compiler/symbol/symbol-id.h"
 #include "zomlang/compiler/type/type-env.h"
 #include "zomlang/compiler/type/type.h"
 
@@ -43,27 +42,42 @@ bool PlaceProjection::equals(const PlaceProjection& other) const {
   return kind == other.kind && name == other.name && index == other.index;
 }
 
-Place::Place(PlaceId id, PlaceRootKind rootKind, uint32_t rootId, type::TypeId typeId)
-    : id(id), rootKind(rootKind), rootId(rootId), typeId(typeId) {}
+Place::Place(PlaceId id, PlaceRootKind rootKind, identity::DefId rootDefinition, uint32_t rootId,
+             type::SemanticTypeId semanticTypeId)
+    : id(id),
+      rootKind(rootKind),
+      rootDefinition(rootDefinition),
+      rootId(rootId),
+      semanticTypeId(semanticTypeId) {}
 
-Place Place::local(PlaceId id, uint32_t localId, type::TypeId typeId) {
-  return Place(id, PlaceRootKind::Local, localId, typeId);
+Place Place::local(PlaceId id, uint32_t localId, type::SemanticTypeId semanticTypeId) {
+  return Place(id, PlaceRootKind::Local, {}, localId, semanticTypeId);
 }
 
-Place Place::parameter(PlaceId id, uint32_t parameterId, type::TypeId typeId) {
-  return Place(id, PlaceRootKind::Parameter, parameterId, typeId);
+Place Place::local(PlaceId id, identity::DefId definition, uint32_t fallbackId,
+                   type::SemanticTypeId semanticTypeId) {
+  return Place(id, PlaceRootKind::Local, definition, fallbackId, semanticTypeId);
 }
 
-Place Place::temporary(PlaceId id, uint32_t temporaryId, type::TypeId typeId) {
-  return Place(id, PlaceRootKind::Temporary, temporaryId, typeId);
+Place Place::parameter(PlaceId id, uint32_t parameterId, type::SemanticTypeId semanticTypeId) {
+  return Place(id, PlaceRootKind::Parameter, {}, parameterId, semanticTypeId);
 }
 
-Place Place::closureCapture(PlaceId id, uint32_t captureId, type::TypeId typeId) {
-  return Place(id, PlaceRootKind::ClosureCapture, captureId, typeId);
+Place Place::parameter(PlaceId id, identity::DefId definition, uint32_t fallbackId,
+                       type::SemanticTypeId semanticTypeId) {
+  return Place(id, PlaceRootKind::Parameter, definition, fallbackId, semanticTypeId);
 }
 
-Place Place::returnSlot(PlaceId id, type::TypeId typeId) {
-  return Place(id, PlaceRootKind::ReturnSlot, 0, typeId);
+Place Place::temporary(PlaceId id, uint32_t temporaryId, type::SemanticTypeId semanticTypeId) {
+  return Place(id, PlaceRootKind::Temporary, {}, temporaryId, semanticTypeId);
+}
+
+Place Place::closureCapture(PlaceId id, uint32_t captureId, type::SemanticTypeId semanticTypeId) {
+  return Place(id, PlaceRootKind::ClosureCapture, {}, captureId, semanticTypeId);
+}
+
+Place Place::returnSlot(PlaceId id, type::SemanticTypeId semanticTypeId) {
+  return Place(id, PlaceRootKind::ReturnSlot, {}, 0, semanticTypeId);
 }
 
 PlaceId Place::getId() const { return id; }
@@ -72,7 +86,9 @@ PlaceRootKind Place::getRootKind() const { return rootKind; }
 
 uint32_t Place::getRootId() const { return rootId; }
 
-type::TypeId Place::getTypeId() const { return typeId; }
+identity::DefId Place::getRootDefinition() const { return rootDefinition; }
+
+type::SemanticTypeId Place::getSemanticTypeId() const { return semanticTypeId; }
 
 zc::ArrayPtr<const PlaceProjection> Place::getProjections() const { return projections.asPtr(); }
 
@@ -87,7 +103,11 @@ void Place::addIndexProjection(uint32_t index) {
 }
 
 bool Place::sameRoot(const Place& other) const {
-  return rootKind == other.rootKind && rootId == other.rootId;
+  if (rootKind != other.rootKind) { return false; }
+  if (rootDefinition.isValid() || other.rootDefinition.isValid()) {
+    return rootDefinition == other.rootDefinition;
+  }
+  return rootId == other.rootId;
 }
 
 bool Place::equals(const Place& other) const {
@@ -334,33 +354,48 @@ BorrowModel::BorrowModel(BorrowModel&& other) noexcept = default;
 
 BorrowModel& BorrowModel::operator=(BorrowModel&& other) noexcept = default;
 
-PlaceId BorrowModel::addLocalPlace(uint32_t localId, type::TypeId typeId) {
+PlaceId BorrowModel::addLocalPlace(uint32_t localId, type::SemanticTypeId semanticTypeId) {
   auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
-  impl->places.add(Place::local(id, localId, typeId));
+  impl->places.add(Place::local(id, localId, semanticTypeId));
   return id;
 }
 
-PlaceId BorrowModel::addParameterPlace(uint32_t parameterId, type::TypeId typeId) {
-  auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
-  impl->places.add(Place::parameter(id, parameterId, typeId));
+PlaceId BorrowModel::addLocalPlace(identity::DefId definition, uint32_t fallbackId,
+                                   type::SemanticTypeId semanticTypeId) {
+  PlaceId id(static_cast<uint32_t>(impl->places.size() + 1));
+  impl->places.add(Place::local(id, definition, fallbackId, semanticTypeId));
   return id;
 }
 
-PlaceId BorrowModel::addTemporaryPlace(uint32_t temporaryId, type::TypeId typeId) {
+PlaceId BorrowModel::addParameterPlace(uint32_t parameterId, type::SemanticTypeId semanticTypeId) {
   auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
-  impl->places.add(Place::temporary(id, temporaryId, typeId));
+  impl->places.add(Place::parameter(id, parameterId, semanticTypeId));
   return id;
 }
 
-PlaceId BorrowModel::addClosureCapturePlace(uint32_t captureId, type::TypeId typeId) {
-  auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
-  impl->places.add(Place::closureCapture(id, captureId, typeId));
+PlaceId BorrowModel::addParameterPlace(identity::DefId definition, uint32_t fallbackId,
+                                       type::SemanticTypeId semanticTypeId) {
+  PlaceId id(static_cast<uint32_t>(impl->places.size() + 1));
+  impl->places.add(Place::parameter(id, definition, fallbackId, semanticTypeId));
   return id;
 }
 
-PlaceId BorrowModel::addReturnSlotPlace(type::TypeId typeId) {
+PlaceId BorrowModel::addTemporaryPlace(uint32_t temporaryId, type::SemanticTypeId semanticTypeId) {
   auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
-  impl->places.add(Place::returnSlot(id, typeId));
+  impl->places.add(Place::temporary(id, temporaryId, semanticTypeId));
+  return id;
+}
+
+PlaceId BorrowModel::addClosureCapturePlace(uint32_t captureId,
+                                            type::SemanticTypeId semanticTypeId) {
+  auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
+  impl->places.add(Place::closureCapture(id, captureId, semanticTypeId));
+  return id;
+}
+
+PlaceId BorrowModel::addReturnSlotPlace(type::SemanticTypeId semanticTypeId) {
+  auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
+  impl->places.add(Place::returnSlot(id, semanticTypeId));
   return id;
 }
 
@@ -369,7 +404,8 @@ PlaceId BorrowModel::addFieldPlace(PlaceId base, zc::StringPtr fieldName) {
               "BorrowModel::addFieldPlace: invalid base place id");
   const auto& basePlace = impl->places[base.value - 1];
   auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
-  Place result(id, basePlace.getRootKind(), basePlace.getRootId(), basePlace.getTypeId());
+  Place result(id, basePlace.getRootKind(), basePlace.getRootDefinition(), basePlace.getRootId(),
+               basePlace.getSemanticTypeId());
   auto projections = basePlace.getProjections();
   for (size_t i = 0; i < projections.size(); ++i) {
     const auto& projection = projections[i];
@@ -395,7 +431,8 @@ PlaceId BorrowModel::addDerefPlace(PlaceId base) {
               "BorrowModel::addDerefPlace: invalid base place id");
   const auto& basePlace = impl->places[base.value - 1];
   auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
-  Place result(id, basePlace.getRootKind(), basePlace.getRootId(), basePlace.getTypeId());
+  Place result(id, basePlace.getRootKind(), basePlace.getRootDefinition(), basePlace.getRootId(),
+               basePlace.getSemanticTypeId());
   auto projections = basePlace.getProjections();
   for (size_t i = 0; i < projections.size(); ++i) {
     const auto& projection = projections[i];
@@ -421,7 +458,8 @@ PlaceId BorrowModel::addIndexPlace(PlaceId base, uint32_t index) {
               "BorrowModel::addIndexPlace: invalid base place id");
   const auto& basePlace = impl->places[base.value - 1];
   auto id = PlaceId(static_cast<uint32_t>(impl->places.size() + 1));
-  Place result(id, basePlace.getRootKind(), basePlace.getRootId(), basePlace.getTypeId());
+  Place result(id, basePlace.getRootKind(), basePlace.getRootDefinition(), basePlace.getRootId(),
+               basePlace.getSemanticTypeId());
   auto projections = basePlace.getProjections();
   for (size_t i = 0; i < projections.size(); ++i) {
     const auto& projection = projections[i];
@@ -573,26 +611,31 @@ void mapNodePlace(zc::HashMap<uint32_t, PlaceId>& nodePlaces, ast::NodeId node, 
   nodePlaces.upsert(node.value, place);
 }
 
-uint32_t rootIdForNode(zc::Maybe<const ast::BindingMetadata&> metadata, ast::NodeId node,
-                       uint32_t fallback) {
+struct DefinitionPlaceRoot final {
+  identity::DefId definition;
+  uint32_t fallback;
+};
+
+DefinitionPlaceRoot rootForNode(zc::Maybe<const ast::BindingMetadata&> metadata, ast::NodeId node,
+                                uint32_t fallback) {
   ZC_IF_SOME(meta, metadata) {
-    auto symbolId = meta.symbol(node);
-    if (symbolId.isValid()) { return static_cast<uint32_t>(symbolId.getRaw()); }
+    auto definition = meta.definition(node);
+    if (definition.isValid()) { return DefinitionPlaceRoot{definition, fallback}; }
   }
-  return fallback;
+  return DefinitionPlaceRoot{{}, fallback};
 }
 
-uint32_t rootIdForLocalPattern(zc::Maybe<const ast::BindingMetadata&> metadata, ast::NodeId pattern,
-                               ast::NodeId declarator) {
+DefinitionPlaceRoot rootForLocalPattern(zc::Maybe<const ast::BindingMetadata&> metadata,
+                                        ast::NodeId pattern, ast::NodeId declarator) {
   ZC_IF_SOME(meta, metadata) {
-    auto patternSymbol = meta.symbol(pattern);
-    if (patternSymbol.isValid()) { return static_cast<uint32_t>(patternSymbol.getRaw()); }
+    auto patternDefinition = meta.definition(pattern);
+    if (patternDefinition.isValid()) { return {patternDefinition, pattern.value}; }
     if (declarator) {
-      auto declaratorSymbol = meta.symbol(declarator);
-      if (declaratorSymbol.isValid()) { return static_cast<uint32_t>(declaratorSymbol.getRaw()); }
+      auto declaratorDefinition = meta.definition(declarator);
+      if (declaratorDefinition.isValid()) { return {declaratorDefinition, pattern.value}; }
     }
   }
-  return pattern.value;
+  return {{}, pattern.value};
 }
 
 zc::StringPtr localPatternName(const ast::Tree& tree, const ast::Node& node) {
@@ -610,8 +653,9 @@ void buildParameterPlace(BorrowModel& model, const type::TypeEnv& typeEnv,
                          zc::HashMap<uint32_t, PlaceId>& nodePlaces, ast::NodeId param,
                          uint32_t index) {
   if (!param || !typeEnv.hasType(param)) { return; }
+  auto root = rootForNode(metadata, param, index);
   auto place =
-      model.addParameterPlace(rootIdForNode(metadata, param, index), typeEnv.getTypeId(param));
+      model.addParameterPlace(root.definition, root.fallback, typeEnv.getSemanticTypeId(param));
   mapNodePlace(nodePlaces, param, place);
 }
 
@@ -622,15 +666,16 @@ void buildLocalPatternPlace(BorrowModel& model, const ast::Tree& tree, const typ
   if (!pattern) { return; }
   const auto& node = tree.node(pattern);
   if (localPatternName(tree, node).size() == 0) { return; }
-  type::TypeId typeId;
+  type::SemanticTypeId semanticTypeId;
   if (typeEnv.hasType(pattern)) {
-    typeId = typeEnv.getTypeId(pattern);
+    semanticTypeId = typeEnv.getSemanticTypeId(pattern);
   } else if (declarator && typeEnv.hasType(declarator)) {
-    typeId = typeEnv.getTypeId(declarator);
+    semanticTypeId = typeEnv.getSemanticTypeId(declarator);
   } else {
     return;
   }
-  auto place = model.addLocalPlace(rootIdForLocalPattern(metadata, pattern, declarator), typeId);
+  auto root = rootForLocalPattern(metadata, pattern, declarator);
+  auto place = model.addLocalPlace(root.definition, root.fallback, semanticTypeId);
   mapNodePlace(nodePlaces, pattern, place);
 }
 
@@ -684,7 +729,8 @@ zc::Maybe<PlaceId> buildClosureCaptureExpressionPlace(
         return binding.place;
       }
       ZC_IF_SOME(bindingPlace, model.getPlace(binding.place)) {
-        auto place = model.addClosureCapturePlace(binding.binding.value, bindingPlace.getTypeId());
+        auto place =
+            model.addClosureCapturePlace(binding.binding.value, bindingPlace.getSemanticTypeId());
         mapNodePlace(nodePlaces, expr, place);
         return place;
       }
@@ -739,7 +785,8 @@ void buildDirectClosureCaptureExpressionPlace(BorrowModel& model, const ast::Tre
   if (exprNode.kind != ast::SyntaxKind::IdentExpr) { return; }
   auto name = tree.ident(ast::IdentId(exprNode.payload.words[ast::kIdentExprNameWord]));
   ZC_IF_SOME(binding, findMappedBindingByName(tree, nodePlaces, name)) {
-    auto place = model.addClosureCapturePlace(binding.binding.value, typeEnv.getTypeId(expr));
+    auto place =
+        model.addClosureCapturePlace(binding.binding.value, typeEnv.getSemanticTypeId(expr));
     mapNodePlace(nodePlaces, expr, place);
   }
 }
@@ -893,7 +940,7 @@ zc::Maybe<PlaceId> buildExpressionPlace(BorrowModel& model, const ast::Tree& tre
       exprNode.kind == ast::SyntaxKind::LambdaExpression) {
     buildClosureCapturePlaces(model, tree, typeEnv, nodePlaces, expr);
   }
-  auto place = model.addTemporaryPlace(expr.value, typeEnv.getTypeId(expr));
+  auto place = model.addTemporaryPlace(expr.value, typeEnv.getSemanticTypeId(expr));
   mapNodePlace(nodePlaces, expr, place);
   return place;
 }
@@ -999,7 +1046,7 @@ void BorrowPlaceBuilder::buildFunctionPlaces(ast::NodeId functionDecl) {
   if (fnNode.kind != ast::SyntaxKind::FunctionDecl) { return; }
 
   if (impl->typeEnv.hasType(functionDecl)) {
-    auto place = impl->model.addReturnSlotPlace(impl->typeEnv.getTypeId(functionDecl));
+    auto place = impl->model.addReturnSlotPlace(impl->typeEnv.getSemanticTypeId(functionDecl));
     mapNodePlace(*impl->nodePlaces, functionDecl, place);
   }
 

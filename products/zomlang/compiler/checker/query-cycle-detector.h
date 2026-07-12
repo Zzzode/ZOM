@@ -19,7 +19,7 @@
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/type/type-interner.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang {
 namespace compiler {
@@ -33,26 +33,26 @@ class QueryKey final {
 public:
   static QueryKey signatureOf(uint32_t symbolId);
   static QueryKey typeAliasOf(uint32_t symbolId);
-  static QueryKey associatedProjection(type::TypeId base, zc::StringPtr name);
-  static QueryKey markerDerivation(type::TypeId type, uint32_t markerId);
+  static QueryKey associatedProjection(type::SemanticTypeId base, zc::StringPtr name);
+  static QueryKey markerDerivation(type::SemanticTypeId type, uint32_t markerId);
 
   QueryKind getKind() const;
   uint32_t getPrimaryId() const;
   uint32_t getSecondaryId() const;
-  type::TypeId getTypeId() const;
+  type::SemanticTypeId getSemanticTypeId() const;
   zc::StringPtr getName() const;
 
   bool equals(const QueryKey& other) const;
   zc::String toString() const;
 
 private:
-  QueryKey(QueryKind kind, uint32_t primaryId, uint32_t secondaryId, type::TypeId typeId,
-           zc::StringPtr name);
+  QueryKey(QueryKind kind, uint32_t primaryId, uint32_t secondaryId,
+           type::SemanticTypeId semanticTypeId, zc::StringPtr name);
 
   QueryKind kind;
   uint32_t primaryId;
   uint32_t secondaryId;
-  type::TypeId typeId;
+  type::SemanticTypeId semanticTypeId;
   zc::StringPtr name;
 };
 

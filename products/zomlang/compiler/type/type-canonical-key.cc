@@ -12,7 +12,7 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/type/type-interner.h"
+#include "zomlang/compiler/type/type-canonical-key.h"
 
 #include "zomlang/compiler/type/array-type.h"
 #include "zomlang/compiler/type/associated-type.h"
@@ -220,64 +220,7 @@ zc::String canonicalKey(const Type& type) {
 
 }  // namespace
 
-struct TypeInterner::Impl {
-  zc::HashMap<zc::String, TypeId> idsByKey;
-  zc::Vector<zc::String> keysById;
-};
-
-TypeInterner::TypeInterner() : impl(zc::heap<Impl>()) {}
-
-TypeInterner::~TypeInterner() noexcept(false) = default;
-
-TypeInterner::TypeInterner(TypeInterner&& other) noexcept = default;
-
-TypeInterner& TypeInterner::operator=(TypeInterner&& other) noexcept = default;
-
-TypeId TypeInterner::intern(const Type& type) {
-  auto key = canonicalKey(type);
-  auto existing = impl->idsByKey.find(key);
-  ZC_IF_SOME(id, existing) { return id; }
-
-  TypeId id(static_cast<uint32_t>(impl->keysById.size() + 1));
-  impl->idsByKey.insert(zc::str(key), id);
-  impl->keysById.add(zc::mv(key));
-  return id;
-}
-
-TypeId TypeInterner::internUnion(const Type& first, const Type& second) {
-  zc::Vector<zc::String> keys;
-  collectUnionKeys(first, keys);
-  collectUnionKeys(second, keys);
-  sortStrings(keys);
-
-  zc::String key;
-  if (keys.empty()) {
-    key = zc::str("never");
-  } else if (keys.size() == 1) {
-    key = zc::str(keys[0]);
-  } else {
-    key = joinKeys("union"_zc, " | "_zc, keys);
-  }
-
-  auto existing = impl->idsByKey.find(key);
-  ZC_IF_SOME(id, existing) { return id; }
-
-  TypeId id(static_cast<uint32_t>(impl->keysById.size() + 1));
-  impl->idsByKey.insert(zc::str(key), id);
-  impl->keysById.add(zc::mv(key));
-  return id;
-}
-
-bool TypeInterner::contains(TypeId id) const {
-  return id.isValid() && id.value <= impl->keysById.size();
-}
-
-zc::StringPtr TypeInterner::getCanonicalKey(TypeId id) const {
-  ZC_IREQUIRE(contains(id), "TypeInterner::getCanonicalKey: TypeId is not interned");
-  return impl->keysById[id.value - 1];
-}
-
-size_t TypeInterner::size() const { return impl->keysById.size(); }
+zc::String canonicalTypeKey(const Type& type) { return canonicalKey(type); }
 
 }  // namespace type
 }  // namespace compiler

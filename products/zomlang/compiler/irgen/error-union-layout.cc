@@ -33,7 +33,7 @@ struct PayloadLayout {
 };
 
 struct ErrorCandidate {
-  type::TypeId typeId;
+  type::SemanticTypeId semanticTypeId;
   zc::String canonicalKey;
   PayloadLayout payload;
 };
@@ -219,28 +219,29 @@ bool containsCandidate(const zc::Vector<ErrorCandidate>& candidates, zc::StringP
   return false;
 }
 
-void addErrorCandidate(type::TypeInterner& interner, const TargetDataLayout& target,
+void addErrorCandidate(type::SemanticTypeStore& semanticTypes, const TargetDataLayout& target,
                        const type::Type& errorType, zc::Vector<ErrorCandidate>& candidates) {
-  const auto typeId = interner.intern(errorType);
-  auto canonicalKey = interner.getCanonicalKey(typeId);
+  const auto semanticTypeId = semanticTypes.intern(errorType);
+  auto canonicalKey = semanticTypes.getCanonicalKey(semanticTypeId);
   if (containsCandidate(candidates, canonicalKey)) { return; }
-  candidates.add(ErrorCandidate{typeId, zc::str(canonicalKey), payloadLayoutOf(target, errorType)});
+  candidates.add(
+      ErrorCandidate{semanticTypeId, zc::str(canonicalKey), payloadLayoutOf(target, errorType)});
 }
 
-void collectErrorCandidates(type::TypeInterner& interner, const TargetDataLayout& target,
+void collectErrorCandidates(type::SemanticTypeStore& semanticTypes, const TargetDataLayout& target,
                             const type::Type& valueType, const type::Type& successType,
                             zc::Vector<ErrorCandidate>& candidates) {
   if (type::isUnion(valueType)) {
     const auto& unionType = static_cast<const type::UnionType&>(valueType);
     for (size_t i = 0; i < unionType.getAlternativeCount(); ++i) {
-      collectErrorCandidates(interner, target, unionType.getAlternative(i), successType,
+      collectErrorCandidates(semanticTypes, target, unionType.getAlternative(i), successType,
                              candidates);
     }
     return;
   }
 
   if (!valueType.equals(successType) && !type::isNever(valueType)) {
-    addErrorCandidate(interner, target, valueType, candidates);
+    addErrorCandidate(semanticTypes, target, valueType, candidates);
   }
 }
 
@@ -256,14 +257,14 @@ void sortErrorCandidates(zc::Vector<ErrorCandidate>& candidates) {
   }
 }
 
-ErrorUnionLayout computeLayout(type::TypeInterner& interner, const TargetDataLayout& target,
-                               type::TypeId layoutType, const type::Type& alternativesType,
-                               const type::Type& successType) {
+ErrorUnionLayout computeLayout(type::SemanticTypeStore& semanticTypes,
+                               const TargetDataLayout& target, type::SemanticTypeId layoutType,
+                               const type::Type& alternativesType, const type::Type& successType) {
   ErrorUnionLayout layout;
-  layout.typeId = layoutType;
+  layout.semanticTypeId = layoutType;
 
   zc::Vector<ErrorCandidate> errors;
-  collectErrorCandidates(interner, target, alternativesType, successType, errors);
+  collectErrorCandidates(semanticTypes, target, alternativesType, successType, errors);
   sortErrorCandidates(errors);
 
   const auto successPayload = payloadLayoutOf(target, successType);
@@ -271,8 +272,8 @@ ErrorUnionLayout computeLayout(type::TypeInterner& interner, const TargetDataLay
   layout.payloadSize = successPayload.size;
   layout.payloadAlign = successPayload.align;
   layout.alternatives.add(ErrorUnionAlternativeLayout{
-      0, interner.intern(successType), ErrorUnionAlternativeKind::Success, successPayload.state,
-      successPayload.size, successPayload.align});
+      0, semanticTypes.intern(successType), ErrorUnionAlternativeKind::Success,
+      successPayload.state, successPayload.size, successPayload.align});
 
   if (errors.empty()) {
     layout.kind = ErrorUnionLayoutKind::DirectSuccess;
@@ -289,7 +290,7 @@ ErrorUnionLayout computeLayout(type::TypeInterner& interner, const TargetDataLay
   for (size_t i = 0; i < errors.size(); ++i) {
     const auto& candidate = errors[i];
     layout.alternatives.add(ErrorUnionAlternativeLayout{
-        static_cast<uint64_t>(i + 1), candidate.typeId, ErrorUnionAlternativeKind::Error,
+        static_cast<uint64_t>(i + 1), candidate.semanticTypeId, ErrorUnionAlternativeKind::Error,
         candidate.payload.state, candidate.payload.size, candidate.payload.align});
     if (candidate.payload.state == ErrorUnionPayloadLayoutState::Unknown) {
       layout.payloadLayoutState = ErrorUnionPayloadLayoutState::Unknown;
@@ -314,19 +315,20 @@ ErrorUnionLayout computeLayout(type::TypeInterner& interner, const TargetDataLay
 
 }  // namespace
 
-ErrorUnionLayout computeErrorUnionLayout(type::TypeInterner& interner,
+ErrorUnionLayout computeErrorUnionLayout(type::SemanticTypeStore& semanticTypes,
                                          const TargetDataLayout& target,
                                          const type::Type& unionType,
                                          const type::Type& successType) {
-  return computeLayout(interner, target, interner.intern(unionType), unionType, successType);
+  return computeLayout(semanticTypes, target, semanticTypes.intern(unionType), unionType,
+                       successType);
 }
 
-ErrorUnionLayout computeFunctionErrorUnionLayout(type::TypeInterner& interner,
+ErrorUnionLayout computeFunctionErrorUnionLayout(type::SemanticTypeStore& semanticTypes,
                                                  const TargetDataLayout& target,
                                                  const type::Type& successType,
                                                  const type::Type& raisesType) {
-  return computeLayout(interner, target, interner.internUnion(successType, raisesType), raisesType,
-                       successType);
+  return computeLayout(semanticTypes, target, semanticTypes.internUnion(successType, raisesType),
+                       raisesType, successType);
 }
 
 }  // namespace irgen

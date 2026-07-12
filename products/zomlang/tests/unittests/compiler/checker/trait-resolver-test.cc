@@ -16,6 +16,7 @@
 
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/binder/binder.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/type/named-type.h"
@@ -24,6 +25,8 @@
 #include "zomlang/compiler/type/raw-pointer-type.h"
 #include "zomlang/compiler/type/type-env.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -192,7 +195,7 @@ ast::NodeId makeAttributePathMarkerImpl(TestFixture& fix, zc::StringPtr markerNa
 
 struct ResolverFixture {
   TestFixture fix;
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   ast::Tree tree;
 
   ResolverFixture() : tree(fix.buildSourceFile("test"_zc, {})) {}
@@ -259,7 +262,7 @@ ZC_TEST("TraitResolver.NamedStructMarkerDerivationChecksFields") {
   topDecls.add(unsafeStruct);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
 
   type::NamedType safe("SafeBox"_zc);
@@ -295,10 +298,11 @@ ZC_TEST("TraitResolver.DuplicateImplReportsCoherenceError") {
   topDecls.add(implB);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
   ZC_EXPECT(binder.bind());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   resolver.checkCoherence();
 
@@ -334,10 +338,11 @@ ZC_TEST("TraitResolver.DirectAndBlanketImplOverlapReportsCoherenceError") {
   topDecls.add(blanketImpl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
   ZC_EXPECT(binder.bind());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   resolver.checkCoherence();
 
@@ -392,10 +397,11 @@ ZC_TEST("TraitResolver.GenericImplWhereBoundControlsImplementation") {
   topDecls.add(boxImpl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
   ZC_EXPECT(binder.bind());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   resolver.checkCoherence();
   resolver.discoverImpls();
@@ -433,10 +439,11 @@ ZC_TEST("TraitResolver.ConcreteGenericImplDoesNotMatchAnotherSpecialization") {
   topDecls.add(concreteImpl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
   ZC_EXPECT(binder.bind());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   resolver.discoverImpls();
 
@@ -466,7 +473,7 @@ ZC_TEST("TraitResolver.OrphanImplDiagnosticIsCrossModuleFallback") {
   topDecls.add(implDecl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   resolver.checkCoherence();
 
@@ -489,7 +496,7 @@ ZC_TEST("TraitResolver.NegativeMarkerImplSuppressesAutoDerivation") {
   topDecls.add(negativeImpl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   resolver.discoverImpls();
 
@@ -512,7 +519,7 @@ ZC_TEST("TraitResolver.AttributePathNegativeMarkerImplSuppressesAutoDerivation")
   topDecls.add(negativeImpl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   resolver.discoverImpls();
 
@@ -536,7 +543,7 @@ ZC_TEST("TraitResolver.UnsafeMarkerImplOverridesStructuralRejection") {
   topDecls.add(unsafeImpl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   resolver.discoverImpls();
 
@@ -586,7 +593,7 @@ ZC_TEST("TraitResolver.GenericMarkerImplWhereBoundControlsImplementation") {
   topDecls.add(markerImpl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   resolver.discoverImpls();
 
@@ -611,7 +618,7 @@ ZC_TEST("TraitResolver.ResolveAssociatedTypeRequiresUniqueBinding") {
   topDecls.add(implDecl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   type::NamedType box("Box"_zc);
 
@@ -646,7 +653,7 @@ ZC_TEST("TraitResolver.ResolveAssociatedTypeWithInterfaceQualifier") {
   topDecls.add(streamImpl);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   type::NamedType box("Box"_zc);
 
@@ -680,7 +687,7 @@ ZC_TEST("TraitResolver.ResolveAssociatedTypeReportsAmbiguousBinding") {
   topDecls.add(implB);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   type::NamedType box("Box"_zc);
 
@@ -707,7 +714,7 @@ ZC_TEST("TraitResolver.ResolveAssociatedTypeEmitsAmbiguousDiagnostic") {
   topDecls.add(implB);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   type::NamedType box("Box"_zc);
 
@@ -721,7 +728,7 @@ ZC_TEST("TraitResolver.ResolveAssociatedTypeEmitsNotFoundDiagnostic") {
   zc::Vector<ast::NodeId> topDecls;
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TraitResolver resolver(typeEnv, fix.symbols(), tree, fix.metadata(), fix.diagnostics());
   type::NamedType box("Box"_zc);
 

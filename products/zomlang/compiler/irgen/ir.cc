@@ -36,11 +36,11 @@ BasicBlock::BasicBlock(BasicBlock&& other) noexcept = default;
 
 BasicBlock& BasicBlock::operator=(BasicBlock&& other) noexcept = default;
 
-Function::Function(zc::String name, symbol::SymbolId symbol, type::TypeId checkedSignature,
-                   type::TypeId abiReturnType, uint32_t errorUnionLayout,
-                   zc::Vector<BasicBlock> blocks) noexcept
+Function::Function(zc::String name, identity::DefId definition,
+                   type::SemanticTypeId checkedSignature, type::SemanticTypeId abiReturnType,
+                   uint32_t errorUnionLayout, zc::Vector<BasicBlock> blocks) noexcept
     : name(zc::mv(name)),
-      symbol(symbol),
+      definition(definition),
       checkedSignature(checkedSignature),
       abiReturnType(abiReturnType),
       errorUnionLayout(errorUnionLayout),
@@ -51,15 +51,17 @@ Function::Function(Function&& other) noexcept = default;
 Function& Function::operator=(Function&& other) noexcept = default;
 
 struct Module::Impl {
-  explicit Impl(TargetDataLayout target) : target(target) {}
+  Impl(type::SemanticTypeStore& semanticTypes, TargetDataLayout target)
+      : semanticTypes(semanticTypes), target(target) {}
 
+  type::SemanticTypeStore& semanticTypes;
   TargetDataLayout target;
-  type::TypeInterner interner;
   zc::Vector<ErrorUnionLayout> errorUnionLayouts;
   zc::Vector<Function> functions;
 };
 
-Module::Module(TargetDataLayout target) : impl(zc::heap<Impl>(target)) {}
+Module::Module(type::SemanticTypeStore& semanticTypes, TargetDataLayout target)
+    : impl(zc::heap<Impl>(semanticTypes, target)) {}
 
 Module::~Module() noexcept(false) = default;
 
@@ -69,17 +71,17 @@ Module& Module::operator=(Module&& other) noexcept = default;
 
 const TargetDataLayout& Module::getTarget() const { return impl->target; }
 
-type::TypeInterner& Module::getTypeInterner() { return impl->interner; }
+type::SemanticTypeStore& Module::getSemanticTypeStore() { return impl->semanticTypes; }
 
-const type::TypeInterner& Module::getTypeInterner() const { return impl->interner; }
+const type::SemanticTypeStore& Module::getSemanticTypeStore() const { return impl->semanticTypes; }
 
 zc::Maybe<uint32_t> Module::addErrorUnionLayout(ErrorUnionLayout layout) {
   if (layout.alternatives.empty()) { return zc::none; }
-  const auto successType = layout.alternatives[0].typeId;
+  const auto successType = layout.alternatives[0].semanticTypeId;
   for (size_t i = 0; i < impl->errorUnionLayouts.size(); ++i) {
     const auto& existing = impl->errorUnionLayouts[i];
-    if (existing.typeId == layout.typeId && !existing.alternatives.empty() &&
-        existing.alternatives[0].typeId == successType) {
+    if (existing.semanticTypeId == layout.semanticTypeId && !existing.alternatives.empty() &&
+        existing.alternatives[0].semanticTypeId == successType) {
       return static_cast<uint32_t>(i);
     }
   }

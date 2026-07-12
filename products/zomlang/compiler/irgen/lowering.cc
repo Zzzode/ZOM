@@ -70,19 +70,19 @@ ast::NodeId unwrapStatement(const ast::Tree& tree, ast::NodeId wrapperId) {
 }
 
 zc::Maybe<uint64_t> findTagByCanonicalKey(const Module& module, const ErrorUnionLayout& layout,
-                                          type::TypeId typeId) {
-  const auto key = module.getTypeInterner().getCanonicalKey(typeId);
+                                          type::SemanticTypeId semanticTypeId) {
+  const auto key = module.getSemanticTypeStore().getCanonicalKey(semanticTypeId);
   for (const auto& alternative : layout.alternatives) {
-    if (module.getTypeInterner().getCanonicalKey(alternative.typeId) == key) {
+    if (module.getSemanticTypeStore().getCanonicalKey(alternative.semanticTypeId) == key) {
       return alternative.tag;
     }
   }
   return zc::none;
 }
 
-bool hasFunctionSymbol(const Module& module, symbol::SymbolId symbol) {
+bool hasFunctionDefinition(const Module& module, identity::DefId definition) {
   for (const auto& function : module.getFunctions()) {
-    if (function.symbol == symbol) { return true; }
+    if (function.definition == definition) { return true; }
   }
   return false;
 }
@@ -92,7 +92,7 @@ bool allCallTargetsResolve(const Module& module) {
     for (const auto& block : function.blocks) {
       for (const auto& instruction : block.instructions) {
         if (instruction.data.is<RaisingCall>() &&
-            !hasFunctionSymbol(module, instruction.data.get<RaisingCall>().target)) {
+            !hasFunctionDefinition(module, instruction.data.get<RaisingCall>().target)) {
           return false;
         }
       }
@@ -105,7 +105,7 @@ bool functionSymbolsAreUnique(const Module& module) {
   const auto functions = module.getFunctions();
   for (size_t i = 0; i < functions.size(); ++i) {
     for (size_t j = i + 1; j < functions.size(); ++j) {
-      if (functions[i].symbol == functions[j].symbol) { return false; }
+      if (functions[i].definition == functions[j].definition) { return false; }
     }
   }
   return true;
@@ -115,8 +115,8 @@ zc::Maybe<LoweringFailure> lowerDirectReturn(Module& module, const ast::Tree& tr
                                              const type::TypeEnv& typeEnv,
                                              const type::FunctionType& functionType,
                                              ast::NodeId value, ErrorUnionLayoutKind layoutKind,
-                                             type::TypeId layoutType, uint32_t layoutIndex,
-                                             type::TypeId successType, uint32_t& nextValue,
+                                             type::SemanticTypeId layoutType, uint32_t layoutIndex,
+                                             type::SemanticTypeId successType, uint32_t& nextValue,
                                              zc::Vector<BasicBlock>& blocks) {
   if (!value || !tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::IntLiteral) {
     return failure(LoweringFailureKind::UnsupportedExpression, LoweringPhase::Expression, value);
@@ -181,10 +181,10 @@ zc::Maybe<LoweringFailure> lowerPropagationReturn(
     return failure(LoweringFailureKind::UnsupportedExpression, LoweringPhase::ErrorPropagation,
                    call);
   }
-  if (!dispatch.targetSymbol.isValid()) {
+  if (!dispatch.targetDefinition.isValid()) {
     return failure(LoweringFailureKind::InvalidDispatchFact, LoweringPhase::ErrorPropagation, call);
   }
-  if (dispatch.resultType != typeEnv.getTypeId(call)) {
+  if (dispatch.resultType != typeEnv.getSemanticTypeId(call)) {
     return failure(LoweringFailureKind::InvalidDispatchFact, LoweringPhase::ErrorPropagation, call);
   }
 
@@ -198,18 +198,18 @@ zc::Maybe<LoweringFailure> lowerPropagationReturn(
                    postfix);
   }
 
-  auto callLayout = computeErrorUnionLayout(module.getTypeInterner(), module.getTarget(), callType,
-                                            successTypeValue);
+  auto callLayout = computeErrorUnionLayout(module.getSemanticTypeStore(), module.getTarget(),
+                                            callType, successTypeValue);
   if (callLayout.kind != ErrorUnionLayoutKind::TaggedUnion ||
       callLayout.payloadLayoutState == ErrorUnionPayloadLayoutState::Unknown ||
       callLayout.alternatives.size() != 2) {
     return failure(LoweringFailureKind::UnsupportedExpression, LoweringPhase::ErrorPropagation,
                    call);
   }
-  const auto callLayoutType = callLayout.typeId;
-  const auto enclosingLayoutType = enclosingLayout.typeId;
-  const auto callSuccessType = callLayout.alternatives[0].typeId;
-  const auto callErrorType = callLayout.alternatives[1].typeId;
+  const auto callLayoutType = callLayout.semanticTypeId;
+  const auto enclosingLayoutType = enclosingLayout.semanticTypeId;
+  const auto callSuccessType = callLayout.alternatives[0].semanticTypeId;
+  const auto callErrorType = callLayout.alternatives[1].semanticTypeId;
   const auto callErrorTag = callLayout.alternatives[1].tag;
   auto destinationErrorTag = findTagByCanonicalKey(module, enclosingLayout, callErrorType);
   if (destinationErrorTag == zc::none) {
@@ -228,7 +228,8 @@ zc::Maybe<LoweringFailure> lowerPropagationReturn(
 
   const auto callValue = ValueId(nextValue++);
   zc::Vector<Instruction> entryInstructions;
-  entryInstructions.add(Instruction(callValue, RaisingCall{callLayoutType, dispatch.targetSymbol}));
+  entryInstructions.add(
+      Instruction(callValue, RaisingCall{callLayoutType, dispatch.targetDefinition}));
   blocks.add(
       BasicBlock(BlockId(1), zc::none, zc::mv(entryInstructions),
                  ErrorUnionBranchTerminator{callValue, callLayoutIndex, BlockId(2), BlockId(3)}));
@@ -298,7 +299,8 @@ zc::Maybe<LoweringFailure> lowerForcedUnwrapReturn(
   if (dispatch.targetKind != type::CallTargetKind::FreeFunction) {
     return failure(LoweringFailureKind::UnsupportedExpression, LoweringPhase::ForcedUnwrap, call);
   }
-  if (!dispatch.targetSymbol.isValid() || dispatch.resultType != typeEnv.getTypeId(call)) {
+  if (!dispatch.targetDefinition.isValid() ||
+      dispatch.resultType != typeEnv.getSemanticTypeId(call)) {
     return failure(LoweringFailureKind::InvalidDispatchFact, LoweringPhase::ForcedUnwrap, call);
   }
 
@@ -311,19 +313,19 @@ zc::Maybe<LoweringFailure> lowerForcedUnwrapReturn(
     return failure(LoweringFailureKind::UnsupportedExpression, LoweringPhase::ForcedUnwrap,
                    postfix);
   }
-  auto callLayout = computeErrorUnionLayout(module.getTypeInterner(), module.getTarget(), callType,
-                                            successTypeValue);
+  auto callLayout = computeErrorUnionLayout(module.getSemanticTypeStore(), module.getTarget(),
+                                            callType, successTypeValue);
   if (callLayout.kind != ErrorUnionLayoutKind::TaggedUnion ||
       callLayout.payloadLayoutState == ErrorUnionPayloadLayoutState::Unknown ||
       callLayout.alternatives.size() != 2) {
     return failure(LoweringFailureKind::UnsupportedExpression, LoweringPhase::ForcedUnwrap, call);
   }
 
-  const auto callLayoutType = callLayout.typeId;
-  const auto callSuccessType = callLayout.alternatives[0].typeId;
-  const auto callErrorType = callLayout.alternatives[1].typeId;
+  const auto callLayoutType = callLayout.semanticTypeId;
+  const auto callSuccessType = callLayout.alternatives[0].semanticTypeId;
+  const auto callErrorType = callLayout.alternatives[1].semanticTypeId;
   const auto callErrorTag = callLayout.alternatives[1].tag;
-  const auto enclosingLayoutType = enclosingLayout.typeId;
+  const auto enclosingLayoutType = enclosingLayout.semanticTypeId;
   const auto maybeCallLayoutIndex = module.addErrorUnionLayout(zc::mv(callLayout));
   if (maybeCallLayoutIndex == zc::none) {
     return failure(LoweringFailureKind::ErrorUnionLayoutMismatch, LoweringPhase::ForcedUnwrap,
@@ -357,7 +359,8 @@ zc::Maybe<LoweringFailure> lowerForcedUnwrapReturn(
 
   const auto callValue = ValueId(nextValue++);
   zc::Vector<Instruction> entryInstructions;
-  entryInstructions.add(Instruction(callValue, RaisingCall{callLayoutType, dispatch.targetSymbol}));
+  entryInstructions.add(
+      Instruction(callValue, RaisingCall{callLayoutType, dispatch.targetDefinition}));
   blocks.add(
       BasicBlock(BlockId(1), zc::none, zc::mv(entryInstructions),
                  ErrorUnionBranchTerminator{callValue, callLayoutIndex, BlockId(2), BlockId(3)}));
@@ -399,7 +402,7 @@ zc::Maybe<LoweringFailure> lowerFunction(Module& module, const ast::Tree& tree,
     return failure(LoweringFailureKind::UnsupportedSourceShape, LoweringPhase::FunctionSignature,
                    functionId);
   }
-  const auto functionSymbol = metadata.symbol(functionId);
+  const auto functionSymbol = metadata.definition(functionId);
   if (!functionSymbol.isValid()) {
     return failure(LoweringFailureKind::MissingBindingSymbol, LoweringPhase::FunctionSignature,
                    functionId);
@@ -422,17 +425,17 @@ zc::Maybe<LoweringFailure> lowerFunction(Module& module, const ast::Tree& tree,
 
   ErrorUnionLayout enclosingLayout;
   ZC_IF_SOME(raises, raisesType) {
-    enclosingLayout = computeFunctionErrorUnionLayout(module.getTypeInterner(), module.getTarget(),
-                                                      functionType.getReturnType(), raises);
+    enclosingLayout = computeFunctionErrorUnionLayout(
+        module.getSemanticTypeStore(), module.getTarget(), functionType.getReturnType(), raises);
   }
   if (enclosingLayout.payloadLayoutState == ErrorUnionPayloadLayoutState::Unknown) {
     return failure(LoweringFailureKind::UnknownTargetLayout, LoweringPhase::TargetLayout,
                    functionId);
   }
   const auto layoutKind = enclosingLayout.kind;
-  const auto layoutType = enclosingLayout.typeId;
-  const auto successType = module.getTypeInterner().intern(functionType.getReturnType());
-  const auto checkedSignature = module.getTypeInterner().intern(functionType);
+  const auto layoutType = enclosingLayout.semanticTypeId;
+  const auto successType = module.getSemanticTypeStore().intern(functionType.getReturnType());
+  const auto checkedSignature = module.getSemanticTypeStore().intern(functionType);
   const auto maybeLayoutIndex = module.addErrorUnionLayout(zc::mv(enclosingLayout));
   if (maybeLayoutIndex == zc::none) {
     return failure(LoweringFailureKind::ErrorUnionLayoutMismatch, LoweringPhase::TargetLayout,
@@ -514,7 +517,7 @@ LoweringResult lowerCheckedTree(const ast::Tree& tree, const ast::BindingMetadat
     return failure(LoweringFailureKind::InvalidBindingMetadata, LoweringPhase::CheckedInput,
                    tree.root());
   }
-  Module module(target);
+  Module module(typeEnv.getSemanticTypeStore(), target);
   const auto root = tree.root();
   if (!root || !tree.contains(root) || tree.node(root).kind != ast::SyntaxKind::SourceFile) {
     return failure(LoweringFailureKind::InvalidSourceRoot, LoweringPhase::CheckedInput, root);

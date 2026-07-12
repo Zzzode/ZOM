@@ -18,6 +18,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/binder/binder.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/checker/decl-signature.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -34,6 +35,8 @@
 #include "zomlang/compiler/type/unification.h"
 #include "zomlang/compiler/type/union-type.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -80,7 +83,7 @@ zc::StringPtr unaryOperatorMethodName(zc::StringPtr ifaceName) {
 // the TypeEnv for inspection.
 struct CheckResult {
   bool success;
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   TestFixture& fix;
   size_t constraintCount;
 };
@@ -89,11 +92,12 @@ CheckResult runFullCheck(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls
   auto tree = fix.buildSourceFile("test"_zc, decls);
 
   // Phase 1+2: Binder (DeclCollector + ImportResolver + NameResolver)
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
-  if (!binder.bind()) { return {false, type::TypeEnv(), fix, 0}; }
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
+  if (!binder.bind()) { return {false, tests::TestTypeEnv(), fix, 0}; }
 
   // Phase A: DeclSignatureComputer
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   DeclSignatureComputer sigComputer(typeEnv, fix.symbols(), tree, fix.metadata(),
                                     fix.diagnostics());
   sigComputer.computeSignatures();
@@ -163,7 +167,7 @@ void expectUserTypeBinaryOperatorImpl(zc::StringPtr ifaceName, ast::BinaryOperat
   ZC_EXPECT(dispatch.methodName.asPtr() == binaryOperatorMethodName(ifaceName));
   ZC_EXPECT(dispatch.implNode == implDecl);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(binExpr));
 }
 
 void expectUserTypeComparisonImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKind op) {
@@ -223,7 +227,7 @@ void expectUserTypeComparisonImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKi
   ZC_EXPECT(dispatch.methodName.asPtr() == (isEq ? "eq"_zc : "cmp"_zc));
   ZC_EXPECT(dispatch.implNode == implDecl);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(binExpr));
 }
 
 void expectUserTypeComparisonWithoutImplFails(zc::StringPtr missingIfaceName,
@@ -318,7 +322,7 @@ void expectUserTypeUnaryOperatorImpl(zc::StringPtr ifaceName, ast::UnaryOperator
   ZC_EXPECT(dispatch.methodName.asPtr() == unaryOperatorMethodName(ifaceName));
   ZC_EXPECT(dispatch.implNode == implDecl);
   ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(unary));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(unary));
 }
 
 void expectUserTypeUnaryWithoutImplFails(ast::UnaryOperatorKind op) {
@@ -492,7 +496,7 @@ ZC_TEST("BodyChecker.InfersBinaryArithExprType") {
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(binExpr));
 }
 
 ZC_TEST("BodyChecker.BinaryArithmeticRejectsImplicitNumericWidening") {
@@ -621,7 +625,7 @@ ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(binExpr));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(binExpr));
 }
 
 ZC_TEST("BodyChecker.BinaryEqUsesUserTypeEqImpl") {
@@ -866,9 +870,9 @@ ZC_TEST("BodyChecker.InfersCallExprReturnType") {
   auto& dispatch = result.typeEnv.getDispatch(call);
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::FreeFunction);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::None);
-  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.targetDefinition.isValid());
   ZC_EXPECT(dispatch.argumentTypes.size() == 0);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
 }
 
 ZC_TEST("BodyChecker.CallWithArgs") {
@@ -906,9 +910,9 @@ ZC_TEST("BodyChecker.CallWithArgs") {
   auto& dispatch = result.typeEnv.getDispatch(call);
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::FreeFunction);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::None);
-  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.targetDefinition.isValid());
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
 }
 
 ZC_TEST("BodyChecker.CallArgumentRecordsUnionInjectionCoercion") {
@@ -1518,7 +1522,7 @@ ZC_TEST("BodyChecker.UnaryMinus") {
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorOperand);
   ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(unary));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(unary));
 }
 
 ZC_TEST("BodyChecker.LogicalNot") {
@@ -1542,7 +1546,7 @@ ZC_TEST("BodyChecker.LogicalNot") {
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorOperand);
   ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(unary));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(unary));
 }
 
 ZC_TEST("BodyChecker.UnaryMinusUsesUserTypeNegImpl") {
@@ -1918,7 +1922,7 @@ ZC_TEST("BodyChecker.UndeclaredValueDiagnosticIsCheckerFallback") {
   topDecls.add(ident);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   type::UnificationEngine unifier(typeEnv);
   type::ConstraintSet constraints;
   BodyChecker bodyChecker(typeEnv, unifier, constraints, fix.symbols(), tree, fix.metadata(),
@@ -1944,7 +1948,7 @@ ZC_TEST("BodyChecker.EmptyUnionErrorOperatorDiagnosticIsCheckerFallback") {
   topDecls.add(propagate);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   zc::Vector<zc::Own<type::Type>> alternatives;
   typeEnv.setType(operand, zc::heap<type::UnionType>(zc::mv(alternatives)));
   type::UnificationEngine unifier(typeEnv);
@@ -1973,7 +1977,7 @@ ZC_TEST("BodyChecker.UnsupportedStructLiteralTargetDiagnosticIsCheckerFallback")
   topDecls.add(lit);
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   type::UnificationEngine unifier(typeEnv);
   type::ConstraintSet constraints;
   BodyChecker bodyChecker(typeEnv, unifier, constraints, fix.symbols(), tree, fix.metadata(),
@@ -2199,9 +2203,9 @@ ZC_TEST("BodyChecker.MemberCallRecordsInstanceMethodDispatch") {
   auto& dispatch = result.typeEnv.getDispatch(call);
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::InstanceMethod);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ImplicitSelf);
-  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.targetDefinition.isValid());
   ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
 }
 
 ZC_TEST("BodyChecker.StructMemberCallRecordsInstanceMethodDispatch") {
@@ -2241,9 +2245,9 @@ ZC_TEST("BodyChecker.StructMemberCallRecordsInstanceMethodDispatch") {
   auto& dispatch = result.typeEnv.getDispatch(call);
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::InstanceMethod);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ImplicitSelf);
-  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.targetDefinition.isValid());
   ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
 }
 
 ZC_TEST("BodyChecker.MemberCallRecordsStaticMethodDispatch") {
@@ -2273,9 +2277,9 @@ ZC_TEST("BodyChecker.MemberCallRecordsStaticMethodDispatch") {
   auto& dispatch = result.typeEnv.getDispatch(call);
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::StaticMethod);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::None);
-  ZC_EXPECT(dispatch.targetSymbol.isValid());
+  ZC_EXPECT(dispatch.targetDefinition.isValid());
   ZC_EXPECT(dispatch.argumentTypes.size() == 0);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
 }
 
 // ============================================================================
@@ -2878,7 +2882,7 @@ ZC_TEST("BodyChecker.DynReceiverCallRecordsVTableDispatch") {
   ZC_EXPECT(dispatch.methodName.asPtr() == "draw"_zc);
   ZC_EXPECT(dispatch.vtableSlot == 0);
   ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
 }
 
 ZC_TEST("BodyChecker.DynReceiverCallFindsInheritedVTableSlot") {
@@ -2942,7 +2946,7 @@ ZC_TEST("BodyChecker.DynReceiverCallFindsInheritedVTableSlot") {
   ZC_EXPECT(dispatch.methodName.asPtr() == "ping"_zc);
   ZC_EXPECT(dispatch.vtableSlot == 0);
   ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
 }
 
 ZC_TEST("BodyChecker.QualifiedInterfaceCallRecordsDispatch") {
@@ -2998,7 +3002,7 @@ ZC_TEST("BodyChecker.QualifiedInterfaceCallRecordsDispatch") {
   ZC_EXPECT(dispatch.interfaceName.asPtr() == "Drawable"_zc);
   ZC_EXPECT(dispatch.methodName.asPtr() == "draw"_zc);
   ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(call));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
 }
 
 ZC_TEST("BodyChecker.LetWithDynMarkerAnnotationRequiresMarker") {
@@ -3382,7 +3386,7 @@ ZC_TEST("BodyChecker.IndexExpr") {
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::IndexBase);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(index));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(index));
 }
 
 ZC_TEST("BodyChecker.TupleIndexExprReturnsElementType") {
@@ -3411,7 +3415,7 @@ ZC_TEST("BodyChecker.TupleIndexExprReturnsElementType") {
   ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
   ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::IndexBase);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(index));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(index));
 }
 
 ZC_TEST("BodyChecker.UserIndexExprReturnsAssociatedOutput") {
@@ -3471,7 +3475,7 @@ ZC_TEST("BodyChecker.UserIndexExprReturnsAssociatedOutput") {
   ZC_EXPECT(dispatch.methodName.asPtr() == "index"_zc);
   ZC_EXPECT(dispatch.implNode == implDecl);
   ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getTypeId(index));
+  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(index));
 }
 
 ZC_TEST("BodyChecker.UserIndexExprRejectsWrongTraitMethodSignature") {

@@ -29,6 +29,7 @@
 #include "zomlang/compiler/type/type-env.h"
 #include "zomlang/compiler/type/type-var.h"
 #include "zomlang/compiler/type/union-type.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -39,7 +40,7 @@ namespace type {
 // ============================================================================
 
 ZC_TEST("Unify.SamePrimitiveSucceeds") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32a = PrimitiveType::createI32();
@@ -48,7 +49,7 @@ ZC_TEST("Unify.SamePrimitiveSucceeds") {
 }
 
 ZC_TEST("Unify.DifferentPrimitiveFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32 = PrimitiveType::createI32();
@@ -57,7 +58,7 @@ ZC_TEST("Unify.DifferentPrimitiveFails") {
 }
 
 ZC_TEST("Unify.BoolUnifiesWithBool") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto b1 = PrimitiveType::createBool();
@@ -66,7 +67,7 @@ ZC_TEST("Unify.BoolUnifiesWithBool") {
 }
 
 ZC_TEST("Unify.BoolDoesNotUnifyWithI32") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto b = PrimitiveType::createBool();
@@ -75,7 +76,7 @@ ZC_TEST("Unify.BoolDoesNotUnifyWithI32") {
 }
 
 ZC_TEST("Unify.UnitUnifiesWithUnit") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto u1 = PrimitiveType::createUnit();
@@ -84,7 +85,7 @@ ZC_TEST("Unify.UnitUnifiesWithUnit") {
 }
 
 ZC_TEST("Unify.NullUnifiesOnlyWithNull") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto nullA = PrimitiveType::createNull();
@@ -96,7 +97,7 @@ ZC_TEST("Unify.NullUnifiesOnlyWithNull") {
 }
 
 ZC_TEST("Unify.NeverDoesNotUnifyWithI32") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto never = PrimitiveType::createNever();
@@ -105,7 +106,7 @@ ZC_TEST("Unify.NeverDoesNotUnifyWithI32") {
 }
 
 ZC_TEST("Unify.NeverDoesNotUnifyWithStr") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto never = PrimitiveType::createNever();
@@ -114,7 +115,7 @@ ZC_TEST("Unify.NeverDoesNotUnifyWithStr") {
 }
 
 ZC_TEST("Unify.AnyDoesNotUnifyWithI32") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto any = PrimitiveType::createAny();
@@ -127,7 +128,7 @@ ZC_TEST("Unify.AnyDoesNotUnifyWithI32") {
 // ============================================================================
 
 ZC_TEST("Unify.TypeVarUnifiesWithI32") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto& tv = env.freshTypeVar();
@@ -140,7 +141,7 @@ ZC_TEST("Unify.TypeVarUnifiesWithI32") {
 }
 
 ZC_TEST("Unify.I32UnifiesWithTypeVar") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32 = PrimitiveType::createI32();
@@ -152,7 +153,7 @@ ZC_TEST("Unify.I32UnifiesWithTypeVar") {
 }
 
 ZC_TEST("Unify.TwoTypeVarsUnify") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto& tv1 = env.freshTypeVar();
@@ -166,7 +167,7 @@ ZC_TEST("Unify.TwoTypeVarsUnify") {
 }
 
 ZC_TEST("Unify.TypeVarUnifiesWithTypeVarThenBothResolve") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto& tv1 = env.freshTypeVar();
@@ -184,7 +185,7 @@ ZC_TEST("Unify.TypeVarUnifiesWithTypeVarThenBothResolve") {
 }
 
 ZC_TEST("Unify.TypeVarOccursCheckPreventsInfinite") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto& tv = env.freshTypeVar();
@@ -199,7 +200,7 @@ ZC_TEST("Unify.TypeVarOccursCheckPreventsInfinite") {
 }
 
 ZC_TEST("Unify.TypeVarWithSelfReferentialFunctionFailsOccursCheck") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto& tv = env.freshTypeVar("T"_zc);
@@ -219,7 +220,7 @@ ZC_TEST("Unify.TypeVarWithSelfReferentialFunctionFailsOccursCheck") {
 // ============================================================================
 
 ZC_TEST("Unify.FunctionTypesSameSignature") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> params1;
@@ -236,7 +237,7 @@ ZC_TEST("Unify.FunctionTypesSameSignature") {
 }
 
 ZC_TEST("Unify.FunctionTypesDifferentParamFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> params1;
@@ -253,7 +254,7 @@ ZC_TEST("Unify.FunctionTypesDifferentParamFails") {
 }
 
 ZC_TEST("Unify.FunctionTypesDifferentReturnFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> params1;
@@ -270,7 +271,7 @@ ZC_TEST("Unify.FunctionTypesDifferentReturnFails") {
 }
 
 ZC_TEST("Unify.FunctionTypesDifferentArityFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> params1;
@@ -288,7 +289,7 @@ ZC_TEST("Unify.FunctionTypesDifferentArityFails") {
 }
 
 ZC_TEST("Unify.FunctionTypesWithTypeVars") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto& tv = env.freshTypeVar();
@@ -315,7 +316,7 @@ ZC_TEST("Unify.FunctionTypesWithTypeVars") {
 // ============================================================================
 
 ZC_TEST("Unify.TupleTypesSameElements") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> elems1;
@@ -332,7 +333,7 @@ ZC_TEST("Unify.TupleTypesSameElements") {
 }
 
 ZC_TEST("Unify.TupleTypesDifferentElementsFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> elems1;
@@ -347,7 +348,7 @@ ZC_TEST("Unify.TupleTypesDifferentElementsFails") {
 }
 
 ZC_TEST("Unify.TupleTypesDifferentLengthFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> elems1;
@@ -363,7 +364,7 @@ ZC_TEST("Unify.TupleTypesDifferentLengthFails") {
 }
 
 ZC_TEST("Unify.EmptyTuplesUnify") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> empty;
@@ -379,7 +380,7 @@ ZC_TEST("Unify.EmptyTuplesUnify") {
 // ============================================================================
 
 ZC_TEST("Unify.ArrayTypesSameElem") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ArrayType a1(PrimitiveType::createI32());
@@ -388,7 +389,7 @@ ZC_TEST("Unify.ArrayTypesSameElem") {
 }
 
 ZC_TEST("Unify.ArrayTypesDifferentElemFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ArrayType a1(PrimitiveType::createI32());
@@ -401,7 +402,7 @@ ZC_TEST("Unify.ArrayTypesDifferentElemFails") {
 // ============================================================================
 
 ZC_TEST("Unify.NamedTypesSameName") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   NamedType n1("MyClass"_zc);
@@ -410,7 +411,7 @@ ZC_TEST("Unify.NamedTypesSameName") {
 }
 
 ZC_TEST("Unify.NamedTypesDifferentNameFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   NamedType n1("Foo"_zc);
@@ -423,7 +424,7 @@ ZC_TEST("Unify.NamedTypesDifferentNameFails") {
 // ============================================================================
 
 ZC_TEST("Unify.ReferenceTypesSamePointeeConst") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ReferenceType r1(PrimitiveType::createI32(), Mutability::Const);
@@ -432,7 +433,7 @@ ZC_TEST("Unify.ReferenceTypesSamePointeeConst") {
 }
 
 ZC_TEST("Unify.ReferenceTypesDifferentPointeeFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ReferenceType r1(PrimitiveType::createI32(), Mutability::Const);
@@ -441,7 +442,7 @@ ZC_TEST("Unify.ReferenceTypesDifferentPointeeFails") {
 }
 
 ZC_TEST("Unify.ReferenceTypesDifferentMutabilityFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ReferenceType r1(PrimitiveType::createI32(), Mutability::Mutable);
@@ -454,7 +455,7 @@ ZC_TEST("Unify.ReferenceTypesDifferentMutabilityFails") {
 // ============================================================================
 
 ZC_TEST("Unify.RawPointerTypesSamePointee") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   RawPointerType p1(PrimitiveType::createI32(), Mutability::Const);
@@ -463,7 +464,7 @@ ZC_TEST("Unify.RawPointerTypesSamePointee") {
 }
 
 ZC_TEST("Unify.RawPointerTypesDifferentPointeeFails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   RawPointerType p1(PrimitiveType::createI32(), Mutability::Const);
@@ -476,7 +477,7 @@ ZC_TEST("Unify.RawPointerTypesDifferentPointeeFails") {
 // ============================================================================
 
 ZC_TEST("Unify.ErrorTypeUnifiesWithI32") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ErrorType err;
@@ -485,7 +486,7 @@ ZC_TEST("Unify.ErrorTypeUnifiesWithI32") {
 }
 
 ZC_TEST("Unify.I32UnifiesWithErrorType") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32 = PrimitiveType::createI32();
@@ -494,7 +495,7 @@ ZC_TEST("Unify.I32UnifiesWithErrorType") {
 }
 
 ZC_TEST("Unify.ErrorTypeUnifiesWithErrorType") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ErrorType e1;
@@ -503,7 +504,7 @@ ZC_TEST("Unify.ErrorTypeUnifiesWithErrorType") {
 }
 
 ZC_TEST("Unify.ErrorTypeUnifiesWithFunction") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ErrorType err;
@@ -518,7 +519,7 @@ ZC_TEST("Unify.ErrorTypeUnifiesWithFunction") {
 // ============================================================================
 
 ZC_TEST("Unify.TryUnifySuccessReturnsNoError") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32a = PrimitiveType::createI32();
@@ -529,7 +530,7 @@ ZC_TEST("Unify.TryUnifySuccessReturnsNoError") {
 }
 
 ZC_TEST("Unify.TryUnifyFailureReturnsError") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32 = PrimitiveType::createI32();
@@ -541,7 +542,7 @@ ZC_TEST("Unify.TryUnifyFailureReturnsError") {
 }
 
 ZC_TEST("Unify.TryUnifyBoolConversion") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32a = PrimitiveType::createI32();
@@ -555,7 +556,7 @@ ZC_TEST("Unify.TryUnifyBoolConversion") {
 // ============================================================================
 
 ZC_TEST("Unify.IsSubtypeNeverOfI32") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto never = PrimitiveType::createNever();
@@ -564,7 +565,7 @@ ZC_TEST("Unify.IsSubtypeNeverOfI32") {
 }
 
 ZC_TEST("Unify.IsSubtypeI32OfAny") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32 = PrimitiveType::createI32();
@@ -573,7 +574,7 @@ ZC_TEST("Unify.IsSubtypeI32OfAny") {
 }
 
 ZC_TEST("Unify.IsSubtypeI32NotOfStr") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32 = PrimitiveType::createI32();
@@ -582,7 +583,7 @@ ZC_TEST("Unify.IsSubtypeI32NotOfStr") {
 }
 
 ZC_TEST("Unify.IsSubtypeReflexive") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto i32 = PrimitiveType::createI32();
@@ -590,7 +591,7 @@ ZC_TEST("Unify.IsSubtypeReflexive") {
 }
 
 ZC_TEST("Unify.IsSubtypeMutRefOfConstRef") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ReferenceType mutRef(PrimitiveType::createI32(), Mutability::Mutable);
@@ -599,7 +600,7 @@ ZC_TEST("Unify.IsSubtypeMutRefOfConstRef") {
 }
 
 ZC_TEST("Unify.IsSubtypeConstRefNotOfMutRef") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ReferenceType constRef(PrimitiveType::createI32(), Mutability::Const);
@@ -612,7 +613,7 @@ ZC_TEST("Unify.IsSubtypeConstRefNotOfMutRef") {
 // ============================================================================
 
 ZC_TEST("Unify.NestedFunctionTypes") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   // fn(fn(i32) -> bool) -> str
@@ -641,7 +642,7 @@ ZC_TEST("Unify.NestedFunctionTypes") {
 }
 
 ZC_TEST("Unify.TypeVarInFunctionParam") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   auto& tv = env.freshTypeVar();
@@ -664,7 +665,7 @@ ZC_TEST("Unify.TypeVarInFunctionParam") {
 }
 
 ZC_TEST("Unify.UnionTypeWithI32Fails") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> alts;
@@ -677,7 +678,7 @@ ZC_TEST("Unify.UnionTypeWithI32Fails") {
 }
 
 ZC_TEST("Unify.UnionTypesIgnoreAlternativeOrder") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> leftAlts;
@@ -694,7 +695,7 @@ ZC_TEST("Unify.UnionTypesIgnoreAlternativeOrder") {
 }
 
 ZC_TEST("Unify.UnionTypesRejectDifferentAlternatives") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   zc::Vector<zc::Own<Type>> leftAlts;
@@ -711,7 +712,7 @@ ZC_TEST("Unify.UnionTypesRejectDifferentAlternatives") {
 }
 
 ZC_TEST("Unify.IdenticalExistentialsUnify") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ExistentialType left(zc::heap<InterfaceType>("Drawable"_zc));
@@ -721,7 +722,7 @@ ZC_TEST("Unify.IdenticalExistentialsUnify") {
 }
 
 ZC_TEST("Unify.ExistentialMarkersMustMatch") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
   zc::Vector<zc::StringPtr> firstMarkers;
   firstMarkers.add("Sendable"_zc);
@@ -743,7 +744,7 @@ ZC_TEST("Unify.ExistentialMarkersMustMatch") {
 }
 
 ZC_TEST("Unify.DifferentExistentialsFail") {
-  TypeEnv env;
+  tests::TestTypeEnv env;
   UnificationEngine unifier(env);
 
   ExistentialType left(zc::heap<InterfaceType>("Drawable"_zc));

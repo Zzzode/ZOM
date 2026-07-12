@@ -26,6 +26,7 @@
 #include "zomlang/compiler/type/type-env.h"
 #include "zomlang/compiler/type/union-type.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -93,7 +94,7 @@ ZC_TEST("Exhaustiveness.BoolMatchTrueAndFalseExhaustive") {
   auto result = buildBoolMatch(fix, true, true, false);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&result.matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(result.scrutinee, type::PrimitiveType::createBool());
 
@@ -108,7 +109,7 @@ ZC_TEST("Exhaustiveness.BoolMatchMissingTrueReportsError") {
   auto result = buildBoolMatch(fix, false, true, false);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&result.matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(result.scrutinee, type::PrimitiveType::createBool());
 
@@ -123,7 +124,7 @@ ZC_TEST("Exhaustiveness.BoolMatchMissingFalseReportsError") {
   auto result = buildBoolMatch(fix, true, false, false);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&result.matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(result.scrutinee, type::PrimitiveType::createBool());
 
@@ -139,7 +140,7 @@ ZC_TEST("Exhaustiveness.BoolMatchWildcardMakesExhaustive") {
   auto result = buildBoolMatch(fix, true, false, true);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&result.matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(result.scrutinee, type::PrimitiveType::createBool());
 
@@ -154,7 +155,7 @@ ZC_TEST("Exhaustiveness.BoolMatchOnlyWildcardExhaustive") {
   auto result = buildBoolMatch(fix, false, false, true);
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&result.matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(result.scrutinee, type::PrimitiveType::createBool());
 
@@ -175,7 +176,7 @@ ZC_TEST("Exhaustiveness.GuardedWildcardDoesNotProveCoverage") {
   auto matchStmt = fix.makeMatchStmt(scrutinee, fix.makeNodeList(arms.asPtr()));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(scrutinee, type::PrimitiveType::createBool());
 
@@ -193,7 +194,7 @@ ZC_TEST("Exhaustiveness.BoolMatchEmptyArmsReportsError") {
   auto matchStmt = fix.makeMatchStmt(scrutinee, fix.makeNodeList(emptyArms.asPtr()));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(scrutinee, type::PrimitiveType::createBool());
 
@@ -220,7 +221,7 @@ ZC_TEST("Exhaustiveness.UnitMatchUnitPatternExhaustive") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto unitTy = type::PrimitiveType::createUnit();
   typeEnv.setType(scrutinee, type::PrimitiveType::createUnit());
 
@@ -243,7 +244,7 @@ ZC_TEST("Exhaustiveness.UnitMatchWildcardExhaustive") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto unitTy = type::PrimitiveType::createUnit();
   typeEnv.setType(scrutinee, type::PrimitiveType::createUnit());
 
@@ -270,7 +271,7 @@ ZC_TEST("Exhaustiveness.NullMatchNullPatternExhaustive") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto nullTy = type::PrimitiveType::createNull();
   typeEnv.setType(scrutinee, type::PrimitiveType::createNull());
 
@@ -292,7 +293,7 @@ ZC_TEST("Exhaustiveness.NeverTypeAlwaysExhaustive") {
   auto matchStmt = fix.makeMatchStmt(scrutinee, fix.makeNodeList(emptyArms.asPtr()));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto neverTy = type::PrimitiveType::createNever();
   typeEnv.setType(scrutinee, type::PrimitiveType::createNever());
 
@@ -330,7 +331,7 @@ ZC_TEST("Exhaustiveness.UnionTypeAllAlternativesExhaustive") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   // Build a second union type for the type env (setType takes ownership)
   zc::Vector<zc::Own<type::Type>> alts2;
   alts2.add(type::PrimitiveType::createI32());
@@ -362,7 +363,7 @@ ZC_TEST("Exhaustiveness.UnionTypeMissingAlternativeReportsError") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   zc::Vector<zc::Own<type::Type>> alts2;
   alts2.add(type::PrimitiveType::createI32());
   alts2.add(type::PrimitiveType::createStr());
@@ -393,7 +394,7 @@ ZC_TEST("Exhaustiveness.UnionTypeWildcardMakesExhaustive") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   zc::Vector<zc::Own<type::Type>> alts2;
   alts2.add(type::PrimitiveType::createI32());
   alts2.add(type::PrimitiveType::createStr());
@@ -424,7 +425,7 @@ ZC_TEST("Exhaustiveness.OpenTypeI32WithoutWildcardReportsError") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto i32Ty = type::PrimitiveType::createI32();
   typeEnv.setType(scrutinee, type::PrimitiveType::createI32());
 
@@ -449,7 +450,7 @@ ZC_TEST("Exhaustiveness.OpenTypeI32WithWildcardExhaustive") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto i32Ty = type::PrimitiveType::createI32();
   typeEnv.setType(scrutinee, type::PrimitiveType::createI32());
 
@@ -471,7 +472,7 @@ ZC_TEST("Exhaustiveness.OpenTypeStrWithoutWildcardReportsError") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto strTy = type::PrimitiveType::createStr();
   typeEnv.setType(scrutinee, type::PrimitiveType::createStr());
 
@@ -495,7 +496,7 @@ ZC_TEST("Exhaustiveness.OpenTypeStrWithWildcardExhaustive") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto strTy = type::PrimitiveType::createStr();
   typeEnv.setType(scrutinee, type::PrimitiveType::createStr());
 
@@ -528,7 +529,7 @@ ZC_TEST("Exhaustiveness.WildcardFirstMakesLaterArmsUnreachable") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(scrutinee, type::PrimitiveType::createBool());
 
@@ -559,7 +560,7 @@ ZC_TEST("Exhaustiveness.DuplicateBoolPatternUnreachable") {
 
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(scrutinee, type::PrimitiveType::createBool());
 
@@ -580,7 +581,7 @@ ZC_TEST("Exhaustiveness.BoolMatchNoArmsReportsMissingBoth") {
   auto matchStmt = fix.makeMatchStmt(scrutinee, fix.makeNodeList(emptyArms.asPtr()));
   auto tree = fix.buildSourceFile("test"_zc, zc::ArrayPtr<const ast::NodeId>(&matchStmt, 1));
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   auto boolTy = type::PrimitiveType::createBool();
   typeEnv.setType(scrutinee, type::PrimitiveType::createBool());
 

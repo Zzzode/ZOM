@@ -99,8 +99,9 @@ static source::SourceLoc nodeLoc(const ast::Tree& tree, ast::NodeId id) {
   return tree.node(id).range.getStart();
 }
 
-static uint32_t querySymbolId(const symbol::Symbol& symbol) {
-  return static_cast<uint32_t>(symbol.getId().getRaw());
+static uint32_t queryDefinitionNode(const symbol::Symbol& symbol) {
+  const auto declarations = symbol.getDeclarationRefs();
+  return declarations.size() == 0 ? 0 : declarations[0].node.value;
 }
 
 static zc::Maybe<size_t> findGenericParamIndex(
@@ -653,9 +654,7 @@ bool DeclSignatureComputer::computeSignatures() {
         // For type aliases, resolve the target type and store it
         auto targetId = ast::NodeId(node.payload.words[kAliasDeclTargetWord]);
         if (impl->tree.contains(targetId)) {
-          auto symbolId = impl->metadata.symbol(id);
-          auto guard =
-              impl->cycles.enter(QueryKey::typeAliasOf(static_cast<uint32_t>(symbolId.getRaw())));
+          auto guard = impl->cycles.enter(QueryKey::typeAliasOf(id.value));
           if (guard.hasCycle()) {
             impl->diags.diagnose<DiagID::RecursiveTypeAliasCycle>(nodeLoc(impl->tree, id));
             impl->hadErrors = true;
@@ -1180,7 +1179,7 @@ zc::Own<type::Type> DeclSignatureComputer::resolveNamedType(const ast::Node& nod
 
 zc::Own<type::Type> DeclSignatureComputer::resolveTypeAliasTarget(symbol::Symbol& symbol,
                                                                   ast::NodeId useSite) {
-  auto guard = impl->cycles.enter(QueryKey::typeAliasOf(querySymbolId(symbol)));
+  auto guard = impl->cycles.enter(QueryKey::typeAliasOf(queryDefinitionNode(symbol)));
   if (guard.hasCycle()) {
     impl->diags.diagnose<DiagID::RecursiveTypeAliasCycle>(nodeLoc(impl->tree, useSite));
     impl->hadErrors = true;

@@ -89,16 +89,11 @@ struct BodyChecker::Impl {
   // Track whether we had errors
   bool hadErrors = false;
 
-  // Map from scope ID (as stored in BindingMetadata) to scope pointer.
-  // Used to enter the correct scope when checking function/class bodies.
-  zc::HashMap<uint32_t, const symbol::Scope*> scopeIdMap;  // non-owning
-
-  // Scope stack for tracking pushed scopes
-  zc::Vector<const symbol::Scope*> scopeStack;  // non-owning
+  zc::Vector<zc::Maybe<const symbol::Scope&>> scopeStack;
 
   // Unannotated local bindings can be refined by later use-site constraints.
   zc::HashMap<uint32_t, ast::NodeId> identExprDeclarations;
-  zc::HashMap<uint32_t, symbol::SymbolId> memberExprSymbols;
+  zc::HashMap<uint32_t, identity::DefId> memberExprDefinitions;
   zc::HashMap<uint32_t, bool> memberExprIsStatic;
   zc::HashMap<uint32_t, zc::StringPtr> memberExprQualifiedInterfaceNames;
   zc::HashMap<uint32_t, zc::StringPtr> memberExprQualifiedMethodNames;
@@ -110,30 +105,24 @@ struct BodyChecker::Impl {
   Impl(type::TypeEnv& te, type::UnificationEngine& u, type::ConstraintSet& cs,
        symbol::SymbolTable& sym, const ast::Tree& t, const ast::BindingMetadata& meta,
        diagnostics::DiagnosticEngine& d)
-      : typeEnv(te), unifier(u), constraints(cs), symbols(sym), tree(t), metadata(meta), diags(d) {
-    buildScopeIdMap();
-  }
+      : typeEnv(te), unifier(u), constraints(cs), symbols(sym), tree(t), metadata(meta), diags(d) {}
 
-  void buildScopeIdMap() {
+  zc::Maybe<const symbol::Scope&> scopeById(uint32_t id) const {
     auto allScopes = symbols.getScopeManager().getAllScopes();
-    for (size_t i = 0; i < allScopes.size(); ++i) {
-      const auto& own = allScopes[i];
-      if (own) {
-        const symbol::Scope& s = *own;
-        uint32_t sid = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&s) & 0xFFFFFFFF);
-        scopeIdMap.insert(sid, &s);
-      }
+    for (const auto& own : allScopes) {
+      if (own && own->getId() == id) { return *own; }
     }
+    return zc::none;
   }
 
   bool pushNodeScope(ast::NodeId node) {
     uint32_t sid = metadata.scope(node);
     if (sid == 0) return false;
 
-    auto it = scopeIdMap.find(sid);
-    ZC_IF_SOME(scopePtr, it) {
-      scopeStack.add(scopePtr);
-      symbols.getScopeManager().pushScope(*scopePtr);
+    auto found = scopeById(sid);
+    ZC_IF_SOME(scope, found) {
+      scopeStack.add(scope);
+      symbols.getScopeManager().pushScope(scope);
       return true;
     }
     return false;
@@ -171,7 +160,7 @@ static source::SourceLoc getNodeLoc(const ast::Tree& tree, ast::NodeId id) {
 
 static void recordPrimitiveDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
                                     type::ReceiverMode receiverMode,
-                                    zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                    zc::ArrayPtr<const type::SemanticTypeId> argumentTypes,
                                     const type::Type& resultType) {
   type::CallDispatchRecord record;
   record.targetKind = type::CallTargetKind::PrimitiveOperator;
@@ -182,39 +171,39 @@ static void recordPrimitiveDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
 }
 
 static void recordFreeFunctionDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
-                                       symbol::SymbolId targetSymbol,
-                                       zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                       identity::DefId targetDefinition,
+                                       zc::ArrayPtr<const type::SemanticTypeId> argumentTypes,
                                        const type::Type& resultType) {
   type::CallDispatchRecord record;
   record.targetKind = type::CallTargetKind::FreeFunction;
   record.receiverMode = type::ReceiverMode::None;
-  record.targetSymbol = targetSymbol;
+  record.targetDefinition = targetDefinition;
   for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
   record.resultType = typeEnv.internType(resultType);
   typeEnv.setDispatch(node, zc::mv(record));
 }
 
 static void recordInstanceMethodDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
-                                         symbol::SymbolId targetSymbol,
-                                         zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                         identity::DefId targetDefinition,
+                                         zc::ArrayPtr<const type::SemanticTypeId> argumentTypes,
                                          const type::Type& resultType) {
   type::CallDispatchRecord record;
   record.targetKind = type::CallTargetKind::InstanceMethod;
   record.receiverMode = type::ReceiverMode::ImplicitSelf;
-  record.targetSymbol = targetSymbol;
+  record.targetDefinition = targetDefinition;
   for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
   record.resultType = typeEnv.internType(resultType);
   typeEnv.setDispatch(node, zc::mv(record));
 }
 
 static void recordStaticMethodDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
-                                       symbol::SymbolId targetSymbol,
-                                       zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                       identity::DefId targetDefinition,
+                                       zc::ArrayPtr<const type::SemanticTypeId> argumentTypes,
                                        const type::Type& resultType) {
   type::CallDispatchRecord record;
   record.targetKind = type::CallTargetKind::StaticMethod;
   record.receiverMode = type::ReceiverMode::None;
-  record.targetSymbol = targetSymbol;
+  record.targetDefinition = targetDefinition;
   for (auto argType : argumentTypes) { record.argumentTypes.add(argType); }
   record.resultType = typeEnv.internType(resultType);
   typeEnv.setDispatch(node, zc::mv(record));
@@ -222,7 +211,7 @@ static void recordStaticMethodDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
 
 static void recordQualifiedInterfaceDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
                                              zc::StringPtr interfaceName, zc::StringPtr methodName,
-                                             zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                             zc::ArrayPtr<const type::SemanticTypeId> argumentTypes,
                                              const type::Type& resultType) {
   type::CallDispatchRecord record;
   record.targetKind = type::CallTargetKind::QualifiedInterfaceMethod;
@@ -236,7 +225,8 @@ static void recordQualifiedInterfaceDispatch(type::TypeEnv& typeEnv, ast::NodeId
 
 static void recordDynVTableDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
                                     zc::StringPtr interfaceName, zc::StringPtr methodName,
-                                    uint32_t slot, zc::ArrayPtr<const type::TypeId> argumentTypes,
+                                    uint32_t slot,
+                                    zc::ArrayPtr<const type::SemanticTypeId> argumentTypes,
                                     const type::Type& resultType) {
   type::CallDispatchRecord record;
   record.targetKind = type::CallTargetKind::DynVTable;
@@ -249,9 +239,9 @@ static void recordDynVTableDispatch(type::TypeEnv& typeEnv, ast::NodeId node,
   typeEnv.setDispatch(node, zc::mv(record));
 }
 
-static zc::Vector<type::TypeId> dispatchArgTypeIds(type::TypeEnv& typeEnv,
-                                                   zc::ArrayPtr<const ast::NodeId> argNodes) {
-  zc::Vector<type::TypeId> result;
+static zc::Vector<type::SemanticTypeId> dispatchArgTypeIds(
+    type::TypeEnv& typeEnv, zc::ArrayPtr<const ast::NodeId> argNodes) {
+  zc::Vector<type::SemanticTypeId> result;
   for (auto argNode : argNodes) {
     if (typeEnv.hasType(argNode)) {
       result.add(typeEnv.internType(typeEnv.find(typeEnv.getType(argNode))));
@@ -302,7 +292,9 @@ const symbol::Scope& BodyChecker::currentScope() {
   // SymbolTable vs ScopeManager currentScope desync: pushScope() updates
   // ScopeManager::currentScope but symbols.getCurrentScope() reads a separate
   // SymbolTable::currentScope that is never updated by scope pushes.
-  if (!impl->scopeStack.empty()) { return *impl->scopeStack.back(); }
+  if (!impl->scopeStack.empty()) {
+    ZC_IF_SOME(scope, impl->scopeStack.back()) { return scope; }
+  }
 
   auto constGlobal = impl->symbols.getScopeManager().getGlobalScope();
   ZC_IF_SOME(cg, constGlobal) { return cg; }
@@ -1558,7 +1550,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
           return storeType(expr, zc::heap<type::ErrorType>());
         }
         auto& result = storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolvedLhs)));
-        zc::Vector<type::TypeId> args;
+        zc::Vector<type::SemanticTypeId> args;
         args.add(impl->typeEnv.internType(resolvedLhs));
         args.add(impl->typeEnv.internType(resolvedRhs));
         recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorLeftHandSide,
@@ -1567,7 +1559,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
       }
       if (isString(resolvedLhs) && op == ast::BinaryOperatorKind::Add) {
         auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Str));
-        zc::Vector<type::TypeId> args;
+        zc::Vector<type::SemanticTypeId> args;
         args.add(impl->typeEnv.internType(resolvedLhs));
         args.add(impl->typeEnv.internType(resolvedRhs));
         recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorLeftHandSide,
@@ -1624,7 +1616,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
     case ast::BinaryOperatorKind::StrictEq:
     case ast::BinaryOperatorKind::StrictNe: {
       auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
-      zc::Vector<type::TypeId> args;
+      zc::Vector<type::SemanticTypeId> args;
       args.add(impl->typeEnv.internType(resolvedLhs));
       args.add(impl->typeEnv.internType(resolvedRhs));
       recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorLeftHandSide,
@@ -1690,7 +1682,7 @@ const type::Type& BodyChecker::checkBinaryExpr(ast::NodeId expr) {
         return result;
       }
       auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
-      zc::Vector<type::TypeId> args;
+      zc::Vector<type::SemanticTypeId> args;
       args.add(impl->typeEnv.internType(resolvedLhs));
       args.add(impl->typeEnv.internType(resolvedRhs));
       recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorLeftHandSide,
@@ -1769,7 +1761,7 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
       // Numeric unary: result is operand type
       {
         auto& result = storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolved)));
-        zc::Vector<type::TypeId> args;
+        zc::Vector<type::SemanticTypeId> args;
         args.add(impl->typeEnv.internType(resolved));
         recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorOperand,
                                 args.asPtr(), result);
@@ -1814,7 +1806,7 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
       // Logical not: returns bool
       {
         auto& result = storeType(expr, zc::heap<type::PrimitiveType>(type::PrimitiveKind::Bool));
-        zc::Vector<type::TypeId> args;
+        zc::Vector<type::SemanticTypeId> args;
         args.add(impl->typeEnv.internType(resolved));
         recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorOperand,
                                 args.asPtr(), result);
@@ -1824,7 +1816,7 @@ const type::Type& BodyChecker::checkUnaryExpr(ast::NodeId expr) {
       // Bitwise not: result is operand type
       {
         auto& result = storeType(expr, zc::heap<type::PrimitiveType>(getPrimKind(resolved)));
-        zc::Vector<type::TypeId> args;
+        zc::Vector<type::SemanticTypeId> args;
         args.add(impl->typeEnv.internType(resolved));
         recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::OperatorOperand,
                                 args.asPtr(), result);
@@ -1943,8 +1935,8 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
   auto& calleeType = checkExpr(calleeId);
   auto& resolvedCallee = impl->typeEnv.find(calleeType);
 
-  symbol::SymbolId freeFunctionTarget;
-  symbol::SymbolId instanceMethodTarget;
+  identity::DefId freeFunctionTarget;
+  identity::DefId instanceMethodTarget;
   bool isStaticMethodTarget = false;
   zc::StringPtr dynInterfaceName;
   zc::StringPtr dynMethodName;
@@ -1965,8 +1957,8 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
              impl->tree.node(calleeId).kind == SyntaxKind::MemberExpression) {
     const auto& calleeNode = impl->tree.node(calleeId);
     instanceReceiverId = NodeId(calleeNode.payload.words[kMemberExpressionObjectWord]);
-    ZC_IF_SOME(symbolId, impl->memberExprSymbols.find(calleeId.value)) {
-      instanceMethodTarget = symbolId;
+    ZC_IF_SOME(definition, impl->memberExprDefinitions.find(calleeId.value)) {
+      instanceMethodTarget = definition;
     }
     ZC_IF_SOME(isStatic, impl->memberExprIsStatic.find(calleeId.value)) {
       isStaticMethodTarget = isStatic;
@@ -2159,7 +2151,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
           recordStaticMethodDispatch(impl->typeEnv, expr, instanceMethodTarget,
                                      dispatchArgs.asPtr(), result);
         } else if (impl->typeEnv.hasType(instanceReceiverId)) {
-          zc::Vector<type::TypeId> argsWithReceiver;
+          zc::Vector<type::SemanticTypeId> argsWithReceiver;
           argsWithReceiver.add(impl->typeEnv.internType(
               impl->typeEnv.find(impl->typeEnv.getType(instanceReceiverId))));
           for (auto argType : dispatchArgs) { argsWithReceiver.add(argType); }
@@ -2168,7 +2160,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
         }
       } else if (isDynVTableTarget && impl->typeEnv.hasType(instanceReceiverId)) {
         auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
-        zc::Vector<type::TypeId> argsWithReceiver;
+        zc::Vector<type::SemanticTypeId> argsWithReceiver;
         argsWithReceiver.add(impl->typeEnv.internType(
             impl->typeEnv.find(impl->typeEnv.getType(instanceReceiverId))));
         for (auto argType : dispatchArgs) { argsWithReceiver.add(argType); }
@@ -2193,7 +2185,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
         recordStaticMethodDispatch(impl->typeEnv, expr, instanceMethodTarget, dispatchArgs.asPtr(),
                                    result);
       } else if (impl->typeEnv.hasType(instanceReceiverId)) {
-        zc::Vector<type::TypeId> argsWithReceiver;
+        zc::Vector<type::SemanticTypeId> argsWithReceiver;
         argsWithReceiver.add(impl->typeEnv.internType(
             impl->typeEnv.find(impl->typeEnv.getType(instanceReceiverId))));
         for (auto argType : dispatchArgs) { argsWithReceiver.add(argType); }
@@ -2202,7 +2194,7 @@ const type::Type& BodyChecker::checkCallExpr(ast::NodeId expr) {
       }
     } else if (isDynVTableTarget && impl->typeEnv.hasType(instanceReceiverId)) {
       auto dispatchArgs = dispatchArgTypeIds(impl->typeEnv, impl->tree.list(argList));
-      zc::Vector<type::TypeId> argsWithReceiver;
+      zc::Vector<type::SemanticTypeId> argsWithReceiver;
       argsWithReceiver.add(
           impl->typeEnv.internType(impl->typeEnv.find(impl->typeEnv.getType(instanceReceiverId))));
       for (auto argType : dispatchArgs) { argsWithReceiver.add(argType); }
@@ -2314,7 +2306,7 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
     ZC_IF_SOME(sym, memberSym) {
       auto ty = getSymbolType(sym);
       ZC_IF_SOME(memberType, ty) {
-        impl->memberExprSymbols.upsert(expr.value, sym.getId());
+        impl->memberExprDefinitions.upsert(expr.value, sym.getId());
         impl->memberExprIsStatic.upsert(expr.value, sym.isStatic());
         return storeType(expr, cloneResolvedType(memberType));
       }
@@ -2325,13 +2317,13 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
       auto refs = sym.getDeclarationRefs();
       if (refs.size() > 0) {
         auto scopeId = impl->metadata.scope(refs[0].node);
-        auto scopeEntry = impl->scopeIdMap.find(scopeId);
-        ZC_IF_SOME(scopePtr, scopeEntry) {
-          auto scopedMember = impl->symbols.lookup(propName, *scopePtr);
+        auto scopeEntry = impl->scopeById(scopeId);
+        ZC_IF_SOME(scope, scopeEntry) {
+          auto scopedMember = impl->symbols.lookup(propName, scope);
           ZC_IF_SOME(member, scopedMember) {
             auto ty = getSymbolType(member);
             ZC_IF_SOME(memberType, ty) {
-              impl->memberExprSymbols.upsert(expr.value, member.getId());
+              impl->memberExprDefinitions.upsert(expr.value, member.getId());
               impl->memberExprIsStatic.upsert(expr.value, member.isStatic());
               return storeType(expr, cloneResolvedType(memberType));
             }
@@ -2346,7 +2338,7 @@ const type::Type& BodyChecker::checkMemberExpr(ast::NodeId expr) {
       ZC_IF_SOME(member, scopedMember) {
         auto ty = getSymbolType(member);
         ZC_IF_SOME(memberType, ty) {
-          impl->memberExprSymbols.upsert(expr.value, member.getId());
+          impl->memberExprDefinitions.upsert(expr.value, member.getId());
           impl->memberExprIsStatic.upsert(expr.value, member.isStatic());
           return storeType(expr, cloneResolvedType(memberType));
         }
@@ -2418,7 +2410,7 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
       impl->hadErrors = true;
     }
     auto& result = storeType(expr, cloneResolvedType(arrTy.getElementType()));
-    zc::Vector<type::TypeId> args;
+    zc::Vector<type::SemanticTypeId> args;
     args.add(impl->typeEnv.internType(resolvedObj));
     args.add(impl->typeEnv.internType(resolvedIdx));
     recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::IndexBase, args.asPtr(),
@@ -2454,7 +2446,7 @@ const type::Type& BodyChecker::checkIndexExpr(ast::NodeId expr) {
 
     auto& result =
         storeType(expr, cloneResolvedType(tupleTy.getElementType(static_cast<size_t>(index))));
-    zc::Vector<type::TypeId> args;
+    zc::Vector<type::SemanticTypeId> args;
     args.add(impl->typeEnv.internType(resolvedObj));
     args.add(impl->typeEnv.internType(resolvedIdx));
     recordPrimitiveDispatch(impl->typeEnv, expr, type::ReceiverMode::IndexBase, args.asPtr(),
@@ -3445,7 +3437,7 @@ void BodyChecker::checkFunctionDecl(ast::NodeId declId) {
   if (fnName.size() > 0) {
     auto funcScope = impl->symbols.getScopeManager().getFunctionScope(fnName);
     ZC_IF_SOME(scope, funcScope) {
-      impl->scopeStack.add(&scope);
+      impl->scopeStack.add(scope);
       impl->symbols.getScopeManager().pushScope(scope);
       pushedScope = true;
     }

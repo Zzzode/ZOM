@@ -29,7 +29,6 @@
 #include "zomlang/compiler/type/reference-type.h"
 #include "zomlang/compiler/type/tuple-type.h"
 #include "zomlang/compiler/type/type-algebra.h"
-#include "zomlang/compiler/type/type-interner.h"
 #include "zomlang/compiler/type/type-var.h"
 #include "zomlang/compiler/type/union-type.h"
 
@@ -93,11 +92,12 @@ void sortNodeIds(zc::Vector<uint32_t>& ids) {
   }
 }
 
-void writeTypeIds(zc::OutputStream& output, zc::ArrayPtr<const TypeId> ids) {
+void writeSemanticTypeIds(zc::OutputStream& output, const SemanticTypeStore& semanticTypes,
+                          zc::ArrayPtr<const SemanticTypeId> ids) {
   output.write("["_zcb);
   for (size_t i = 0; i < ids.size(); ++i) {
     if (i > 0) { output.write(","_zcb); }
-    output.write(zc::str(ids[i].value).asBytes());
+    output.write(semanticTypes.getCanonicalKey(ids[i]).asBytes());
   }
   output.write("]"_zcb);
 }
@@ -111,11 +111,11 @@ void writeTypeIds(zc::OutputStream& output, zc::ArrayPtr<const TypeId> ids) {
 struct TypeEnv::Impl {
   // --- Node type mapping ---
   zc::HashMap<uint32_t, zc::Own<Type>> nodeTypes;            // keyed by NodeId::value
-  zc::HashMap<uint32_t, TypeId> nodeTypeIds;                 // keyed by NodeId::value
+  zc::HashMap<uint32_t, SemanticTypeId> nodeTypeIds;         // keyed by NodeId::value
   zc::HashMap<uint32_t, CoercionKind> nodeCoercions;         // keyed by NodeId::value
   zc::HashMap<uint32_t, CallDispatchRecord> nodeDispatches;  // keyed by NodeId::value
   bool dispatchFrozen = false;
-  TypeInterner interner;
+  SemanticTypeStore& semanticTypes;
 
   // --- Type variable storage ---
   zc::Vector<zc::Own<TypeVar>> typeVars;  // owns all created type variables
@@ -151,14 +151,15 @@ struct TypeEnv::Impl {
   // --- Error type singleton ---
   zc::Own<ErrorType> errorTypeInstance;
 
-  Impl() : errorTypeInstance(zc::heap<ErrorType>()) {}
+  explicit Impl(SemanticTypeStore& store)
+      : semanticTypes(store), errorTypeInstance(zc::heap<ErrorType>()) {}
 };
 
 // ===========================================================================
 // Construction / destruction
 // ===========================================================================
 
-TypeEnv::TypeEnv() : impl(zc::heap<Impl>()) {}
+TypeEnv::TypeEnv(SemanticTypeStore& semanticTypes) : impl(zc::heap<Impl>(semanticTypes)) {}
 
 TypeEnv::~TypeEnv() noexcept(false) = default;
 
@@ -171,7 +172,7 @@ TypeEnv& TypeEnv::operator=(TypeEnv&& other) noexcept = default;
 // ===========================================================================
 
 void TypeEnv::setType(ast::NodeId node, zc::Own<Type> ty) {
-  TypeId id = impl->interner.intern(*ty);
+  SemanticTypeId id = impl->semanticTypes.intern(*ty);
   impl->nodeTypeIds.upsert(node.value, id);
   impl->nodeTypes.upsert(node.value, zc::mv(ty));
 }
@@ -188,20 +189,22 @@ bool TypeEnv::hasType(ast::NodeId node) const {
   return impl->nodeTypes.find(node.value) != zc::none;
 }
 
-TypeId TypeEnv::getTypeId(ast::NodeId node) const {
+SemanticTypeId TypeEnv::getSemanticTypeId(ast::NodeId node) const {
   auto found = impl->nodeTypeIds.find(node.value);
-  ZC_IREQUIRE(found != zc::none, "TypeEnv::getTypeId: node has no assigned TypeId");
+  ZC_IREQUIRE(found != zc::none, "TypeEnv::getSemanticTypeId: node has no assigned SemanticTypeId");
   ZC_IF_SOME(id, found) { return id; }
-  return TypeId();
+  return SemanticTypeId();
 }
 
-bool TypeEnv::hasTypeId(ast::NodeId node) const {
+bool TypeEnv::hasSemanticTypeId(ast::NodeId node) const {
   return impl->nodeTypeIds.find(node.value) != zc::none;
 }
 
 size_t TypeEnv::nodeTypeCount() const { return impl->nodeTypes.size(); }
 
-TypeId TypeEnv::internType(const Type& type) { return impl->interner.intern(type); }
+SemanticTypeId TypeEnv::internType(const Type& type) { return impl->semanticTypes.intern(type); }
+
+SemanticTypeStore& TypeEnv::getSemanticTypeStore() const { return impl->semanticTypes; }
 
 void TypeEnv::setCoercion(ast::NodeId node, CoercionKind kind) {
   impl->nodeCoercions.upsert(node.value, kind);
@@ -259,9 +262,7 @@ void TypeEnv::dumpDispatch(zc::OutputStream& output) const {
       if (record.methodName.size() > 0) {
         output.write(zc::str(" method=", record.methodName).asBytes());
       }
-      if (record.targetSymbol.isValid()) {
-        output.write(zc::str(" symbol=", record.targetSymbol.getRaw()).asBytes());
-      }
+      if (record.targetDefinition.isValid()) { output.write(" definition=resolved"_zc.asBytes()); }
       if (record.implNode) {
         output.write(zc::str(" impl=", static_cast<uint64_t>(record.implNode.value)).asBytes());
       }
@@ -269,9 +270,9 @@ void TypeEnv::dumpDispatch(zc::OutputStream& output) const {
         output.write(zc::str(" slot=", static_cast<uint64_t>(record.vtableSlot)).asBytes());
       }
       output.write(" args="_zcb);
-      writeTypeIds(output, record.argumentTypes.asPtr());
-      output.write(
-          zc::str(" result=", static_cast<uint64_t>(record.resultType.value), "\n").asBytes());
+      writeSemanticTypeIds(output, impl->semanticTypes, record.argumentTypes.asPtr());
+      output.write(zc::str(" result=", impl->semanticTypes.getCanonicalKey(record.resultType), "\n")
+                       .asBytes());
     }
   }
 }

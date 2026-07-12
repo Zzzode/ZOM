@@ -17,6 +17,7 @@
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/binder/binder.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
@@ -25,6 +26,8 @@
 #include "zomlang/compiler/type/type-env.h"
 #include "zomlang/compiler/type/type.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
 namespace zomlang {
 namespace compiler {
@@ -55,7 +58,7 @@ bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnosti
 struct CheckerRunResult {
   bool bindSuccess;
   bool checkSuccess;
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
 };
 
 bool sameNode(const ast::Node& lhs, const ast::Node& rhs) {
@@ -71,7 +74,7 @@ bool sameNode(const ast::Node& lhs, const ast::Node& rhs) {
 struct MetadataSnapshotEntry {
   ast::NodeId parent;
   uint32_t scope = 0;
-  symbol::SymbolId symbol;
+  identity::DefId definition;
   bool unresolved = false;
   bool deferredMember = false;
   ast::NodeId shadowOf;
@@ -82,14 +85,14 @@ struct MetadataSnapshotEntry {
 
 MetadataSnapshotEntry snapshotMetadata(const ast::BindingMetadata& metadata, ast::NodeId node) {
   return MetadataSnapshotEntry{metadata.parent(node),           metadata.scope(node),
-                               metadata.symbol(node),           metadata.isUnresolved(node),
+                               metadata.definition(node),       metadata.isUnresolved(node),
                                metadata.isDeferredMember(node), metadata.shadowOf(node),
                                metadata.isReexport(node),       metadata.captures(node),
                                metadata.labelTarget(node)};
 }
 
 bool sameMetadata(const MetadataSnapshotEntry& lhs, const MetadataSnapshotEntry& rhs) {
-  return lhs.parent == rhs.parent && lhs.scope == rhs.scope && lhs.symbol == rhs.symbol &&
+  return lhs.parent == rhs.parent && lhs.scope == rhs.scope && lhs.definition == rhs.definition &&
          lhs.unresolved == rhs.unresolved && lhs.deferredMember == rhs.deferredMember &&
          lhs.shadowOf == rhs.shadowOf && lhs.reexport == rhs.reexport &&
          lhs.captures.first == rhs.captures.first && lhs.captures.size == rhs.captures.size &&
@@ -99,10 +102,11 @@ bool sameMetadata(const MetadataSnapshotEntry& lhs, const MetadataSnapshotEntry&
 CheckerRunResult runChecker(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
   auto tree = fix.buildSourceFile("test"_zc, decls);
 
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
   bool bindSuccess = binder.bind();
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   bool checkSuccess = false;
   if (bindSuccess) {
     Checker checker(fix.symbols(), fix.diagnostics(), tree, fix.metadata(), typeEnv);
@@ -244,10 +248,11 @@ ZC_TEST("Checker.DoesNotMutateAstNodes") {
   zc::Vector<ast::Node> before;
   for (const auto& node : tree.nodes()) { before.add(node); }
 
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
   ZC_EXPECT(binder.bind());
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   Checker checker(fix.symbols(), fix.diagnostics(), tree, fix.metadata(), typeEnv);
   ZC_EXPECT(checker.check());
 
@@ -271,7 +276,8 @@ ZC_TEST("Checker.DoesNotMutateBindingMetadata") {
   topDecls.add(ref);
 
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, fix.metadata());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
   ZC_EXPECT(binder.bind());
 
   zc::Vector<MetadataSnapshotEntry> before;
@@ -281,7 +287,7 @@ ZC_TEST("Checker.DoesNotMutateBindingMetadata") {
     before.add(snapshotMetadata(fix.metadata(), id));
   }
 
-  type::TypeEnv typeEnv;
+  tests::TestTypeEnv typeEnv;
   Checker checker(fix.symbols(), fix.diagnostics(), tree, fix.metadata(), typeEnv);
   ZC_EXPECT(checker.check());
 

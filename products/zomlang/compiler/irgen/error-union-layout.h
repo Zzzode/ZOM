@@ -18,7 +18,7 @@
 
 #include "zc/core/vector.h"
 #include "zomlang/compiler/irgen/target-data-layout.h"
-#include "zomlang/compiler/type/type-interner.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 #include "zomlang/compiler/type/type.h"
 
 namespace zomlang {
@@ -54,7 +54,7 @@ enum class ErrorUnionPayloadLayoutState : uint8_t {
 /// \brief Target layout assigned to one canonical error-union alternative.
 struct ErrorUnionAlternativeLayout {
   uint64_t tag = 0;
-  type::TypeId typeId;
+  type::SemanticTypeId semanticTypeId;
   ErrorUnionAlternativeKind kind = ErrorUnionAlternativeKind::Error;
   ErrorUnionPayloadLayoutState payloadLayoutState = ErrorUnionPayloadLayoutState::Unknown;
   uint64_t payloadSize = 0;
@@ -63,7 +63,7 @@ struct ErrorUnionAlternativeLayout {
 
 /// \brief Target-aware physical layout of a success value and its error alternatives.
 struct ErrorUnionLayout {
-  type::TypeId typeId;
+  type::SemanticTypeId semanticTypeId;
   ErrorUnionLayoutKind kind = ErrorUnionLayoutKind::TaggedUnion;
   ErrorUnionTagType tagType = ErrorUnionTagType::U8;
   ErrorUnionPayloadLayoutState payloadLayoutState = ErrorUnionPayloadLayoutState::Unknown;
@@ -77,23 +77,23 @@ struct ErrorUnionLayout {
 };
 
 /// \brief Compute the canonical target layout for an error union.
-/// \param interner Canonical type interner used to identify and order alternatives.
+/// \param semanticTypes Context-global semantic type store used to identify alternatives.
 /// \param target Target ABI data layout used for pointer-dependent payloads.
 /// \param unionType Complete success-or-error type to lower.
 /// \param successType Alternative represented by tag zero.
 /// \return A direct-success layout or a tagged layout with canonically ordered errors.
-ErrorUnionLayout computeErrorUnionLayout(type::TypeInterner& interner,
+ErrorUnionLayout computeErrorUnionLayout(type::SemanticTypeStore& semanticTypes,
                                          const TargetDataLayout& target,
                                          const type::Type& unionType,
                                          const type::Type& successType);
 
 /// \brief Compute a function error-union layout without constructing an owning union type.
-/// \param interner Canonical type interner used to identify and order alternatives.
+/// \param semanticTypes Context-global semantic type store used to identify alternatives.
 /// \param target Target ABI data layout used for pointer-dependent payloads.
 /// \param successType Function return type represented by tag zero.
 /// \param raisesType Function raises component, possibly itself a union.
 /// \return A direct-success layout or a tagged layout with canonically ordered errors.
-ErrorUnionLayout computeFunctionErrorUnionLayout(type::TypeInterner& interner,
+ErrorUnionLayout computeFunctionErrorUnionLayout(type::SemanticTypeStore& semanticTypes,
                                                  const TargetDataLayout& target,
                                                  const type::Type& successType,
                                                  const type::Type& raisesType);
