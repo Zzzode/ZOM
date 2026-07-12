@@ -499,6 +499,10 @@ zc::Maybe<CanonicalUrl> CanonicalUrl::fromCanonical(zc::StringPtr input) {
 
 CanonicalUrl CanonicalUrl::clone() const { return CanonicalUrl(zc::heapString(value)); }
 
+CanonicalUrl CanonicalUrl::clone(zc::MemoryResource& resource) const {
+  return CanonicalUrl(zc::resourceHeapString(resource, value));
+}
+
 zc::StringPtr CanonicalUrl::text() const noexcept { return value; }
 
 void CanonicalUrl::encode(CanonicalEncoder& encoder) const {

@@ -109,6 +109,10 @@ zc::Maybe<ResolvedVersion> ResolvedVersion::fromCanonical(zc::StringPtr input) {
 
 ResolvedVersion ResolvedVersion::clone() const { return ResolvedVersion(zc::heapString(value)); }
 
+ResolvedVersion ResolvedVersion::clone(zc::MemoryResource& resource) const {
+  return ResolvedVersion(zc::resourceHeapString(resource, value));
+}
+
 zc::StringPtr ResolvedVersion::text() const noexcept { return value; }
 
 void ResolvedVersion::encode(CanonicalEncoder& encoder) const {

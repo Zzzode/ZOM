@@ -55,6 +55,11 @@ public:
   /// \brief Creates an explicit owned duplicate of this move-only scalar.
   ZC_NODISCARD CanonicalScalar clone() const;
 
+  /// \brief Creates an owned duplicate whose storage comes from `resource`.
+  /// \param resource Resource that must outlive the returned scalar.
+  /// \return A byte-identical scalar owned by `resource`.
+  ZC_NODISCARD CanonicalScalar clone(zc::MemoryResource& resource) const;
+
   /// \brief Returns the validated NFC text.
   ZC_NODISCARD zc::StringPtr text() const noexcept;
 

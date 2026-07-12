@@ -39,6 +39,10 @@ public:
 
   ZC_NODISCARD static CanonicalRelativePath from(zc::Vector<CanonicalPathSegment>&& segments);
   ZC_NODISCARD CanonicalRelativePath clone() const;
+  /// \brief Clones this path into storage owned by `resource`.
+  /// \param resource Resource that must outlive the returned path.
+  /// \return A byte-identical path owned by `resource`.
+  ZC_NODISCARD CanonicalRelativePath clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD zc::ArrayPtr<const CanonicalPathSegment> segments() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
 
@@ -58,6 +62,10 @@ public:
   ZC_NODISCARD static CanonicalWorkspaceRelativePath from(
       uint32_t leadingParentCount, zc::Vector<CanonicalPathSegment>&& segments);
   ZC_NODISCARD CanonicalWorkspaceRelativePath clone() const;
+  /// \brief Clones this workspace path into storage owned by `resource`.
+  /// \param resource Resource that must outlive the returned path.
+  /// \return A byte-identical workspace path owned by `resource`.
+  ZC_NODISCARD CanonicalWorkspaceRelativePath clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD uint32_t leadingParents() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const CanonicalPathSegment> segments() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
@@ -82,6 +90,10 @@ public:
   ZC_NODISCARD static zc::Maybe<VcsRevision> from(VcsRevisionAlgorithm algorithm,
                                                   zc::ArrayPtr<const uint8_t> digest);
   ZC_NODISCARD VcsRevision clone() const;
+  /// \brief Clones this revision into storage owned by `resource`.
+  /// \param resource Resource that must outlive the returned revision.
+  /// \return A byte-identical revision owned by `resource`.
+  ZC_NODISCARD VcsRevision clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD VcsRevisionAlgorithm algorithm() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> digest() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
@@ -103,6 +115,10 @@ public:
   ZC_NODISCARD static RegistryIdentity from(CanonicalUrl&& indexUrl,
                                             const Sha256Digest& trustDomain);
   ZC_NODISCARD RegistryIdentity clone() const;
+  /// \brief Clones this registry identity into storage owned by `resource`.
+  /// \param resource Resource that must outlive the returned identity.
+  /// \return A byte-identical registry identity owned by `resource`.
+  ZC_NODISCARD RegistryIdentity clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const CanonicalUrl& indexUrl() const noexcept;
   ZC_NODISCARD const Sha256Digest& trustDomain() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
@@ -142,6 +158,10 @@ public:
                                                  CanonicalRelativePath&& subdirectory);
   ZC_NODISCARD static CanonicalPackageSource localPath(CanonicalWorkspaceRelativePath&& value);
   ZC_NODISCARD CanonicalPackageSource clone() const;
+  /// \brief Clones this source into storage owned by `resource`.
+  /// \param resource Resource that must outlive the returned source.
+  /// \return A byte-identical source owned by `resource`.
+  ZC_NODISCARD CanonicalPackageSource clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD PackageSourceKind kind() const noexcept;
   /// \pre `kind() == PackageSourceKind::Registry`.
   ZC_NODISCARD const RegistryIdentity& registryIdentity() const;
@@ -173,6 +193,10 @@ public:
   ZC_NODISCARD static PackageBaseKey from(CanonicalPackageSource&& source, PackageName&& name,
                                           ResolvedVersion&& version);
   ZC_NODISCARD PackageBaseKey clone() const;
+  /// \brief Clones this package coordinate into storage owned by `resource`.
+  /// \param resource Resource that must outlive the returned coordinate.
+  /// \return A byte-identical package coordinate owned by `resource`.
+  ZC_NODISCARD PackageBaseKey clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const CanonicalPackageSource& source() const noexcept;
   ZC_NODISCARD zc::StringPtr name() const noexcept;
   ZC_NODISCARD zc::StringPtr version() const noexcept;
@@ -199,6 +223,10 @@ public:
                                       ResolvedVersion&& version,
                                       SortedFeatureSet&& enabledFeatures);
   ZC_NODISCARD PackageKey clone() const;
+  /// \brief Clones this package key into storage owned by `resource`.
+  /// \param resource Resource that must outlive the returned key.
+  /// \return A byte-identical package key owned by `resource`.
+  ZC_NODISCARD PackageKey clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const CanonicalPackageSource& source() const noexcept;
   ZC_NODISCARD zc::StringPtr name() const noexcept;
   ZC_NODISCARD zc::StringPtr version() const noexcept;
@@ -230,6 +258,10 @@ public:
                                                                DependencyDomain domain,
                                                                PackageKey&& provider);
   ZC_NODISCARD PackageDependencyEdgeKey clone() const;
+  /// \brief Clones this dependency edge into storage owned by `resource`.
+  /// \param resource Resource that must outlive the returned edge.
+  /// \return A byte-identical dependency edge owned by `resource`.
+  ZC_NODISCARD PackageDependencyEdgeKey clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const PackageKey& consumer() const noexcept;
   ZC_NODISCARD zc::StringPtr alias() const noexcept;
   ZC_NODISCARD DependencyDomain domain() const noexcept;

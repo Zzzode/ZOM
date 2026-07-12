@@ -142,6 +142,11 @@ CanonicalScalar<Domain> CanonicalScalar<Domain>::clone() const {
 }
 
 template <CanonicalScalarDomain Domain>
+CanonicalScalar<Domain> CanonicalScalar<Domain>::clone(zc::MemoryResource& resource) const {
+  return CanonicalScalar(zc::resourceHeapString(resource, value));
+}
+
+template <CanonicalScalarDomain Domain>
 zc::StringPtr CanonicalScalar<Domain>::text() const noexcept {
   return value;
 }

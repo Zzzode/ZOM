@@ -34,6 +34,11 @@ public:
   /// \brief Creates an explicit owned duplicate of this move-only version.
   ZC_NODISCARD ResolvedVersion clone() const;
 
+  /// \brief Creates an owned duplicate whose storage comes from `resource`.
+  /// \param resource Resource that must outlive the returned version.
+  /// \return A byte-identical version owned by `resource`.
+  ZC_NODISCARD ResolvedVersion clone(zc::MemoryResource& resource) const;
+
   /// \brief Returns the complete validated version text.
   ZC_NODISCARD zc::StringPtr text() const noexcept;
 

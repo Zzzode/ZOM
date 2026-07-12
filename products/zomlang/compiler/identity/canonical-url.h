@@ -37,6 +37,11 @@ public:
   /// \brief Creates an explicit owned duplicate of this move-only URL.
   ZC_NODISCARD CanonicalUrl clone() const;
 
+  /// \brief Creates an owned duplicate whose storage comes from `resource`.
+  /// \param resource Resource that must outlive the returned URL.
+  /// \return A byte-identical URL owned by `resource`.
+  ZC_NODISCARD CanonicalUrl clone(zc::MemoryResource& resource) const;
+
   /// \brief Returns the canonical credential-free URL text.
   ZC_NODISCARD zc::StringPtr text() const noexcept;
 

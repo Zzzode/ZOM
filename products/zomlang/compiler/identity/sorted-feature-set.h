@@ -36,6 +36,11 @@ public:
   /// \brief Creates an explicit owned duplicate of this move-only set.
   ZC_NODISCARD SortedFeatureSet clone() const;
 
+  /// \brief Creates an owned duplicate whose storage comes from `resource`.
+  /// \param resource Resource that must outlive the returned set.
+  /// \return A byte-identical feature set owned by `resource`.
+  ZC_NODISCARD SortedFeatureSet clone(zc::MemoryResource& resource) const;
+
   /// \brief Returns the sorted unique values.
   ZC_NODISCARD zc::ArrayPtr<const FeatureName> values() const noexcept;
 

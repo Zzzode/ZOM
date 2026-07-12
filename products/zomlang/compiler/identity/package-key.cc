@@ -25,6 +25,20 @@ zc::Vector<CanonicalPathSegment> cloneSegments(zc::ArrayPtr<const CanonicalPathS
   return result;
 }
 
+zc::Vector<CanonicalPathSegment> cloneSegments(zc::MemoryResource& resource,
+                                               zc::ArrayPtr<const CanonicalPathSegment> input) {
+  zc::Vector<CanonicalPathSegment> result(resource, input.size());
+  for (const auto& segment : input) { result.add(segment.clone(resource)); }
+  return result;
+}
+
+zc::Array<uint8_t> cloneBytes(zc::MemoryResource& resource,
+                              zc::ArrayPtr<const uint8_t> input) {
+  auto result = zc::resourceHeapArray<uint8_t>(resource, input.size());
+  for (size_t index = 0; index < input.size(); ++index) { result[index] = input[index]; }
+  return result;
+}
+
 void encodeSegments(CanonicalEncoder& encoder, zc::ArrayPtr<const CanonicalPathSegment> input) {
   encoder.encodeSequenceSize(input.size());
   for (const auto& segment : input) { segment.encode(encoder); }
@@ -41,6 +55,10 @@ CanonicalRelativePath CanonicalRelativePath::from(zc::Vector<CanonicalPathSegmen
 
 CanonicalRelativePath CanonicalRelativePath::clone() const {
   return CanonicalRelativePath(cloneSegments(value.asPtr()));
+}
+
+CanonicalRelativePath CanonicalRelativePath::clone(zc::MemoryResource& resource) const {
+  return CanonicalRelativePath(cloneSegments(resource, value.asPtr()));
 }
 
 zc::ArrayPtr<const CanonicalPathSegment> CanonicalRelativePath::segments() const noexcept {
@@ -62,6 +80,11 @@ CanonicalWorkspaceRelativePath CanonicalWorkspaceRelativePath::from(
 
 CanonicalWorkspaceRelativePath CanonicalWorkspaceRelativePath::clone() const {
   return CanonicalWorkspaceRelativePath(parentCount, cloneSegments(value.asPtr()));
+}
+
+CanonicalWorkspaceRelativePath CanonicalWorkspaceRelativePath::clone(
+    zc::MemoryResource& resource) const {
+  return CanonicalWorkspaceRelativePath(parentCount, cloneSegments(resource, value.asPtr()));
 }
 
 uint32_t CanonicalWorkspaceRelativePath::leadingParents() const noexcept { return parentCount; }
@@ -98,6 +121,10 @@ VcsRevision VcsRevision::clone() const {
   return VcsRevision(algorithmValue, zc::heapArray(digestValue.asPtr()));
 }
 
+VcsRevision VcsRevision::clone(zc::MemoryResource& resource) const {
+  return VcsRevision(algorithmValue, cloneBytes(resource, digestValue.asPtr()));
+}
+
 VcsRevisionAlgorithm VcsRevision::algorithm() const noexcept { return algorithmValue; }
 
 zc::ArrayPtr<const uint8_t> VcsRevision::digest() const noexcept { return digestValue.asPtr(); }
@@ -116,6 +143,9 @@ RegistryIdentity RegistryIdentity::from(CanonicalUrl&& indexUrl, const Sha256Dig
 }
 
 RegistryIdentity RegistryIdentity::clone() const { return RegistryIdentity(url.clone(), trust); }
+RegistryIdentity RegistryIdentity::clone(zc::MemoryResource& resource) const {
+  return RegistryIdentity(url.clone(resource), trust);
+}
 const CanonicalUrl& RegistryIdentity::indexUrl() const noexcept { return url; }
 const Sha256Digest& RegistryIdentity::trustDomain() const noexcept { return trust; }
 
@@ -157,6 +187,22 @@ ZC_CASE_ONEOF(source, VcsPackageSource) {
 ZC_CASE_ONEOF(source, LocalPathPackageSource) { return localPath(source.canonicalPath.clone()); }
 }
 ZC_UNREACHABLE
+}
+
+CanonicalPackageSource CanonicalPackageSource::clone(zc::MemoryResource& resource) const {
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(source, RegistryPackageSource) {
+      return registry(source.registry.clone(resource));
+    }
+    ZC_CASE_ONEOF(source, VcsPackageSource) {
+      return vcs(source.repository.clone(resource), source.revision.clone(resource),
+                 source.subdirectory.clone(resource));
+    }
+    ZC_CASE_ONEOF(source, LocalPathPackageSource) {
+      return localPath(source.canonicalPath.clone(resource));
+    }
+  }
+  ZC_UNREACHABLE
 }
 
 PackageSourceKind CanonicalPackageSource::kind() const noexcept {
@@ -207,6 +253,11 @@ PackageBaseKey PackageBaseKey::clone() const {
   return PackageBaseKey(sourceValue.clone(), nameValue.clone(), versionValue.clone());
 }
 
+PackageBaseKey PackageBaseKey::clone(zc::MemoryResource& resource) const {
+  return PackageBaseKey(sourceValue.clone(resource), nameValue.clone(resource),
+                        versionValue.clone(resource));
+}
+
 const CanonicalPackageSource& PackageBaseKey::source() const noexcept { return sourceValue; }
 zc::StringPtr PackageBaseKey::name() const noexcept { return nameValue.text(); }
 zc::StringPtr PackageBaseKey::version() const noexcept { return versionValue.text(); }
@@ -238,6 +289,10 @@ PackageKey PackageKey::from(CanonicalPackageSource&& source, PackageName&& name,
 PackageKey PackageKey::clone() const {
   return PackageKey(sourceValue.clone(), nameValue.clone(), versionValue.clone(),
                     featureValue.clone());
+}
+PackageKey PackageKey::clone(zc::MemoryResource& resource) const {
+  return PackageKey(sourceValue.clone(resource), nameValue.clone(resource),
+                    versionValue.clone(resource), featureValue.clone(resource));
 }
 const CanonicalPackageSource& PackageKey::source() const noexcept { return sourceValue; }
 zc::StringPtr PackageKey::name() const noexcept { return nameValue.text(); }
@@ -281,6 +336,10 @@ zc::Maybe<PackageDependencyEdgeKey> PackageDependencyEdgeKey::from(PackageKey&& 
 PackageDependencyEdgeKey PackageDependencyEdgeKey::clone() const {
   return PackageDependencyEdgeKey(consumerValue.clone(), aliasValue.clone(), domainValue,
                                   providerValue.clone());
+}
+PackageDependencyEdgeKey PackageDependencyEdgeKey::clone(zc::MemoryResource& resource) const {
+  return PackageDependencyEdgeKey(consumerValue.clone(resource), aliasValue.clone(resource),
+                                  domainValue, providerValue.clone(resource));
 }
 const PackageKey& PackageDependencyEdgeKey::consumer() const noexcept { return consumerValue; }
 zc::StringPtr PackageDependencyEdgeKey::alias() const noexcept { return aliasValue.text(); }

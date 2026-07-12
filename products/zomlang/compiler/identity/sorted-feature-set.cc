@@ -59,6 +59,12 @@ SortedFeatureSet SortedFeatureSet::clone() const {
   return SortedFeatureSet(zc::mv(result));
 }
 
+SortedFeatureSet SortedFeatureSet::clone(zc::MemoryResource& resource) const {
+  zc::Vector<FeatureName> result(resource, features.size());
+  for (const auto& feature : features) { result.add(feature.clone(resource)); }
+  return SortedFeatureSet(zc::mv(result));
+}
+
 zc::ArrayPtr<const FeatureName> SortedFeatureSet::values() const noexcept {
   return features.asPtr();
 }
