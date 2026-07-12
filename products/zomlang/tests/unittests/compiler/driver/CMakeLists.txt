@@ -36,11 +36,13 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
   target_compile_options(
     zom-linux-sandbox-runtime-fixture
     PRIVATE -ffreestanding -fPIE -fno-asynchronous-unwind-tables
-            -fno-stack-protector -fno-sanitize=all)
+            -fno-stack-protector -fno-sanitize=all
+            -fno-profile-instr-generate -fno-coverage-mapping)
   target_link_options(
     zom-linux-sandbox-runtime-fixture
     PRIVATE -nostdlib -static-pie -Wl,--build-id=none -Wl,-e,_start
-            -Wl,-z,noexecstack -fno-sanitize=all)
+            -Wl,-z,noexecstack -fno-sanitize=all
+            -fno-profile-instr-generate -fno-coverage-mapping)
   add_dependencies(linux-native-sandbox-test zom-linux-sandbox-runtime-fixture)
   target_compile_definitions(
     linux-native-sandbox-test
